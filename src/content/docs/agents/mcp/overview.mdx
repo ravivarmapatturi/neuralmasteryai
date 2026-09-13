@@ -57,6 +57,21 @@ Large Language Models (LLMs) are extraordinarily capable at reasoning and writin
 
 MCP bridges this gap by providing an open **JSON-RPC 2.0** messaging standard between AI applications and external software services.
 
+### MCP Doesn't Replace APIs — It Standardizes How LLMs Discover and Call Them
+
+A common misconception: MCP is not a competitor to APIs, and it doesn't remove the need for them. An MCP server almost always calls a real API (or database, or filesystem) under the hood to actually do the work — MCP is the standardized *discovery-and-invocation layer* sitting on top, so an LLM can find out what's available and call it consistently, instead of a developer hand-writing bespoke integration code for every service's unique API shape.
+
+| | **API** | **MCP** |
+| :--- | :--- | :--- |
+| **Purpose** | Direct, predefined access to a specific service. | A standard for LLMs to discover and use tools and resources from external systems. |
+| **Interface** | Fixed endpoints (REST, GraphQL, ...). | Standardized protocol (JSON-RPC 2.0). |
+| **Scope** | One API per service. | Many tools and resources reachable via one server. |
+| **Discovery** | Client must already know what to call and how. | LLM lists available tools at runtime and decides which to use. |
+| **Context** | Stateless, request–response. | Stateful, tool-aware — supports richer context (files, code, DB schemas). |
+| **Example** | `GET /weather?city=Kolkata` → returns weather data. | "List my recent files" → MCP discovers and calls the file tool, returns the result to the LLM. |
+
+**In short:** an API gives you access to *one* service. MCP gives an LLM a standardized way to find and use *many* services — and it needs real APIs underneath every one of those services to actually call. Two things still only make sense as plain APIs, never MCP: non-AI clients (a mobile app calling a weather service directly has no LLM in the loop to benefit from MCP's discovery layer), and the underlying service implementation itself (someone still has to build the API an MCP server wraps).
+
 ---
 
 ## 2. The Integration Challenge: $M \times N$ vs. $M + N$
