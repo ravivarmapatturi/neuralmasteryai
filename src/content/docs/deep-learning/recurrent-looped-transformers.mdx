@@ -1,0 +1,127 @@
+---
+title: "From RNNs to Transformers to Recurrent Looped Transformers"
+sidebar_position: 7.4
+description: "The real throughline from RNNs' sequential bottleneck, through the Transformer's fixed-depth tradeoff, to Recurrent Looped Transformers (RLT) -- an architecture that reuses transformer blocks across every token so reasoning depth keeps growing with context instead of stopping at the layer count."
+---
+
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import { Remember } from '../../../components/content/Remember';
+
+# From RNNs to Transformers to Recurrent Looped Transformers
+
+Every architecture on this page exists because the one before it hit a real, specific wall. RNNs solved "how do I process a sequence at all," then hit a wall on speed and memory. Transformers solved that wall, then hit a different one: no matter how hard a problem is, a Transformer spends exactly the same amount of computation on it, because depth is fixed at however many layers you built. Recurrent Looped Transformers (RLT) are one recent, concrete attempt to remove *that* wall — by making a token's reasoning depth grow with how much context has accumulated, instead of stopping at the last layer.
+
+<ELI5>
+
+Think of reading a hard paragraph. A short sentence, you understand in one pass. A dense one, you reread it, maybe twice. Ordinary Transformers can't do that — every token gets exactly the same fixed number of passes through the network, whether it's "the" or the hardest word in the sentence, and whether it's the first token you've ever seen or the ten-thousandth. RLT's core idea is to let *later* tokens draw on more accumulated computation than earlier ones did, without adding a single new layer to the network — by reusing the same blocks again for every new token instead of building deeper ones. This page walks the whole path that leads here: why RNNs came first, why Transformers replaced them, why even Transformers have a depth ceiling, and exactly what RLT does about it.
+
+</ELI5>
+
+## The Short Version, First
+
+1. **RNNs** process a sequence one step at a time, carrying a running summary forward. That summary is the entire bottleneck: it's strictly sequential (step $t$ can't start until step $t-1$ finishes) and long-range information fades out through it (the vanishing-gradient problem).
+2. **Transformers** remove the running summary entirely. Every token attends directly to every other token in parallel — no chain to be sequential through, no fading signal over distance. The cost: attention scales quadratically with sequence length, and — the part this page focuses on — every token gets exactly the same fixed amount of computation, set once at design time by the number of layers.
+3. **Looped Transformers** (a real, established idea, not new to RLT) attack that fixed-depth ceiling a different way: instead of adding more distinct layers, reuse the *same* layers more than once per token. More effective depth, without more stored parameters.
+4. **Recurrent Looped Transformer (RLT)**, the architecture this page centers on, takes looping one step further: instead of looping a fixed number of times per token, it carries a recurrent state *across every token in the sequence* — prompt and response alike — so the total computation behind any given token keeps growing the longer the conversation runs, with no architectural ceiling on it.
+
+Full derivations of steps 1 and 2 already exist on this site in real depth — [Sequence Models](/docs/deep-learning/sequence-models) for RNN/LSTM/GRU, [Attention & Transformers](/docs/deep-learning/attention-transformers) for the Transformer itself. This page recaps both just enough to keep the throughline intact, then spends its real depth on steps 3 and 4, which aren't covered elsewhere on the site yet.
+
+---
+
+## Step 1 Recap: What RNNs Got Right, and Where They Broke
+
+An RNN reads a sequence token by token, updating one hidden vector $h_t$ at each step:
+
+$$h_t = \tanh(W_h h_{t-1} + W_x x_t + b)$$
+
+That single design choice — one running summary, updated in place — is both the entire idea and the entire problem. It's the idea because it lets the model handle sequences of any length with a fixed number of parameters. It's the problem for two concrete reasons:
+
+- **No parallelism across time.** Computing $h_t$ needs $h_{t-1}$ first, which needs $h_{t-2}$ first, and so on back to the start. A GPU that could otherwise do thousands of operations at once is forced to wait through the chain, one step at a time.
+- **Vanishing gradients.** Training an RNN means backpropagating through that same chain. Gradients get multiplied by (roughly) the same weight matrix once per step, and repeated multiplication by a matrix with eigenvalues under 1 shrinks the signal toward zero — in practice, plain RNNs reliably remember only about 10-20 steps back, no matter how far the true dependency actually is. ([Sequence Models](/docs/deep-learning/sequence-models#vanishing-and-exploding-gradients-derived) derives this in full, including the exact eigenvalue argument.)
+
+LSTM, GRU, and attention-augmented Seq2Seq each patched a version of this problem without removing the underlying chain. The patches worked well enough to power real production systems for years — but every one of them was still fundamentally sequential underneath.
+
+## Step 2 Recap: What Transformers Fixed, and the Tradeoff Nobody Talks About
+
+The Transformer's actual innovation wasn't a better patch — it was asking what's left if you remove the chain entirely. Self-attention lets every token look directly at every other token in one parallel operation, with no hidden state relayed step-by-step between them. That single change removed both RNN problems at once: full parallelism during training (every position computed together), and no more fading signal over distance (token 1 and token 10,000 are one attention hop apart, not ten thousand chained multiplications apart).
+
+That fix came with a cost the field talks about constantly — attention's $O(n^2)$ scaling in sequence length — and a second cost that gets discussed far less:
+
+<Remember>A Transformer's computational depth per token is fixed the moment you decide the layer count, and it never changes again. A 48-layer Transformer spends exactly 48 blocks of computation on "2+2" and exactly 48 blocks on the hardest reasoning step in the sequence. There is no mechanism inside the base architecture for "this one needs more thought."</Remember>
+
+Modern reasoning models work around this from *outside* the architecture — by generating extra chain-of-thought tokens, so a hard problem gets more forward passes, one per generated token, rather than more depth within a single pass. That works, but it's an external patch: it burns real output tokens and real latency to buy the extra computation, and it only helps insofar as the model can externalize its intermediate reasoning as text. Looped and recurrent architectures try to buy variable depth a different way — from inside the architecture itself, without spending an output token to get it.
+
+## Step 3: Looped Transformers — Reusing Blocks Instead of Building Deeper Ones
+
+The idea of looping isn't new, and it isn't unique to RLT. **Universal Transformers**, published in 2018, already established the basic move: instead of stacking $N$ distinct transformer blocks with $N$ separate sets of weights, apply the *same* block repeatedly, feeding each output back in as the next input. Formally, where a normal $N$-layer Transformer computes
+
+$$z^{(1)} = \text{Block}_1(x), \quad z^{(2)} = \text{Block}_2(z^{(1)}), \quad \dots, \quad z^{(N)} = \text{Block}_N(z^{(N-1)})$$
+
+with $N$ separate weight sets $\text{Block}_1, \dots, \text{Block}_N$, a looped version computes the same chain of $N$ applications using **one** shared block:
+
+$$z^{(1)} = \text{Block}(x), \quad z^{(2)} = \text{Block}(z^{(1)}), \quad \dots, \quad z^{(N)} = \text{Block}(z^{(N-1)})$$
+
+The immediate payoff is parameter efficiency: you get $N$ applications of depth while storing the weights for only one block. The cost is that you don't get $N$ applications' worth of *compute* savings — the forward pass still runs the block $N$ times, and gradients during training still flow back through all $N$ applications, so training cost stays close to the full-depth version even though stored parameter count drops sharply. Modern looped models generally add a **learned exit gate** on top of that basic idea — the model itself decides, per token, how many loop passes are worth running, rather than a fixed count set at design time — which is what turns "loop the same block $N$ times" into something closer to variable, content-dependent depth.
+
+<GoDeeper title="Go deeper: why looping helps at all, if the weights are identical every pass">
+It looks at first like looping the exact same function should converge to a fixed point and stop being useful after a couple of passes — why would applying the identical transformation five times do more than applying it twice? The answer is that each pass's *input* is different, because it's the *output* of the previous pass, not the original input again. The block isn't computing the same thing five times; it's computing five successive refinements of a representation that's changing at every step, the same way five iterations of Newton's method on a function converge toward a root by repeatedly applying one fixed update rule to a value that itself keeps changing. Whether the model has actually learned to use that iterative structure for something like genuine multi-step reasoning, versus just learning a block that happens to be well-suited to repeated application, is an open empirical question the underlying architecture doesn't answer by itself — a point the RLT paper this page draws on for step 4 is explicit and careful about.
+</GoDeeper>
+
+## Step 4: Recurrent Looped Transformer (RLT) — Looping Across Every Token, Not Just Within One
+
+RLT (Zhang, 2026) takes the looping idea and applies it along a different axis. Where a plain looped Transformer loops a fixed number of times *within* processing one token, RLT carries a recurrent state *across* every token in the sequence — prompt tokens and generated response tokens alike, with no reset at the boundary between them. The paper organizes this around three explicit design goals: unbounded-depth latent reasoning, hardware-execution co-design, and consistency between training and RL sampling. The first is the one that matters most for understanding the architecture; the other two are what make it practical to actually train and serve.
+
+### The Mechanism: Two Stacks, One Continuous State
+
+RLT is built from two components working together, not one:
+
+- **A causal encoder** reads the observed tokens (the prompt, and later the response as it's generated) and produces a key-value memory — the same kind of context representation an ordinary Transformer encoder would produce, computed with full parallelism across all currently-known tokens.
+- **A recurrent decoder** processes tokens one at a time, but — and this is the whole idea — it does not reset between tokens. Each decoder call receives the *complete* state left over from the previous token: its running output vector $s_{t-1}$, plus a bounded cache of its own recent key-value projections, merged together with that token's fresh encoder representation before running through the decoder's blocks.
+
+Concretely, for a 48-layer encoder paired with a 48-layer decoder, every single token — whether it's the 1st token of the prompt or the 500th token of a long response — triggers 48 (encoder) + 48 (decoder) = **96 logical block evaluations**, exactly as a plain 96-layer Transformer would. The difference is what those decoder blocks are *building on*. In a plain Transformer, each token's forward pass starts from nothing. In RLT, each token's decoder pass starts from the accumulated decoder state left behind by every token that came before it. After $t$ tokens have been processed, the decoder state has effectively passed through $48t$ decoder-block evaluations in total, chained one after another back to the start of the sequence — a "state path" that keeps growing for as long as the conversation runs, even though the per-token cost stays fixed at 96 blocks.
+
+<Remember>RLT doesn't make any single token's forward pass deeper. It makes the *sequence's* total accumulated computation keep growing as it gets longer — a form of depth that scales with context length instead of stopping at the layer count, while the cost of processing any one new token stays exactly what it would cost in an ordinary fixed-depth Transformer.</Remember>
+
+### Why It Also Carries State Across the Prompt/Response Boundary
+
+A detail that sounds minor but solves a genuinely real, previously-unaddressed problem: most systems treat "the prompt you were given" and "the response you're generating" as two different computational phases — the prompt gets processed once in a batched pass, then generation happens token-by-token afterward, often through a slightly different code path for efficiency reasons. RLT deliberately keeps the *exact same* recurrent transition running across that boundary, with no reset and no separate code path.
+
+The paper's stated motivation for this is reinforcement-learning training, not raw model quality. RL fine-tuning needs to compute, after the fact, "what probability did the model actually assign to the response it generated." If the code path used to compute that probability during training (the *trainer*) differs even slightly from the code path used to generate the response in the first place (the *sampler*) — different batching, different treatment of the prompt/response boundary — the training signal becomes subtly wrong in a way that's hard to detect and traces back to an implementation mismatch rather than the learning algorithm itself. By using one identical transition for prefill, generation, and RL replay, RLT removes that entire class of bug by construction rather than by careful bookkeeping.
+
+## What RLT Actually Buys You — and What It Doesn't, Yet
+
+This is the part worth being precise about, because it's exactly where hype tends to outrun what's actually been shown. Here's what RLT's own source material claims, split honestly by how well-established each claim actually is:
+
+**Real, structural advantages — true by construction, not by experiment:**
+- **Reasoning depth grows with context, at no extra per-token compute cost.** This follows directly from the architecture as defined; it doesn't need an experiment to be true, only a definition of what "depth" means in this context.
+- **Removes a real, specific class of training/sampling mismatch bug in RL fine-tuning**, by construction, for exactly the reason described above.
+- **Genuine hardware-scheduling opportunities**: because the encoder's work only depends on which tokens have been observed (not on the recurrent decoder state), it can be computed with ordinary parallel kernels and batched across independent sequences, separately from the strictly-sequential decoder work — a real, exploitable separation of concerns in how the system could be implemented.
+
+**What is explicitly *not* yet established — and the paper says so itself, directly:**
+- **No measured efficiency numbers.** The paper is explicit that it develops the mechanism and its hardware/training implications, but does not report measured throughput, latency, or scaling results from a real trained system.
+- **No proof that structural depth becomes useful reasoning.** A longer chain of decoder-block evaluations is available to the model; whether training actually teaches the model to use that extra depth for anything resembling better reasoning — rather than the extra computation simply going unused, or being suppressed by gating — is called out explicitly as a separate, unanswered question, not a guaranteed consequence of the architecture.
+- **No claim that this beats other looping-style architectures.** The paper positions RLT relative to several real precedents (Universal Transformers, Feedback Transformer, YOCO, and others) as differing in *where* the feedback loop lives and *what* gets treated as recurrent state, not as a demonstrated improvement over them.
+
+<GoDeeper title="Go deeper: why 'the paper doesn't report results' matters more here than it might elsewhere">
+Most architecture papers that introduce a new mechanism also report at least small-scale experiments showing it does something measurable. RLT's own abstract and conclusion are unusually direct about not doing that — it states outright that computational definitions are made explicit, but that "realized reasoning quality, hardware efficiency, and scaling behavior require future validation." That's not a weakness to read past; it's the single most important piece of context for evaluating any claim about RLT's advantages. Everything under "structural advantages" above is true the way a mathematical definition is true — it follows necessarily from how the architecture is specified. Everything under "not yet established" is an empirical question about what happens when you actually train a model this way at scale, and empirical questions don't get answered by a specification, no matter how carefully the specification is written.
+</GoDeeper>
+
+---
+
+## The Full Arc, Compared
+
+| | RNN | Transformer | Looped Transformer | Recurrent Looped Transformer (RLT) |
+|---|---|---|---|---|
+| **What carries information forward** | One hidden state, updated every step | Nothing — full attention over all tokens at once | A block's own output, fed back into itself $N$ times per token | A decoder state carried across *every* token in the sequence, prompt and response alike |
+| **Parallelism during training** | None — strictly sequential over time | Full — every position at once | Full across tokens; sequential only within one token's $N$ loop passes | Encoder: full. Decoder: sequential across tokens, by design |
+| **Per-token compute** | Fixed, small | Fixed, set by layer count | Fixed, but higher than a non-looped model of the same size (multiple passes) | Fixed per token (same as a plain Transformer of equal layer count) |
+| **Total depth available as the sequence grows** | Fixed — and unreachable in practice past ~10-20 steps due to vanishing gradients | Fixed — never changes regardless of sequence length | Fixed per token, reset at each new token | **Unbounded — grows continuously as more tokens are processed** |
+| **Known, real limitation** | Sequential bottleneck; vanishing gradients | Fixed reasoning depth per token; $O(n^2)$ attention cost | Training cost doesn't drop even though parameter count does | No published measurement yet of whether the extra structural depth is actually used for better reasoning |
+
+## Where This Leaves Things
+
+RNNs proved sequence modeling was possible at all, then ran out of road on speed and memory. Transformers removed that specific bottleneck by throwing away recurrence entirely — buying massive parallelism at the cost of a hard ceiling on how much computation any single token can ever receive. Looped Transformers showed that ceiling isn't actually load-bearing: the same weights, applied again, can stand in for genuinely deeper networks. RLT pushes that one step further, tying the loop to the *sequence* itself rather than to a fixed per-token count, so the total computation behind a long conversation keeps growing the longer it runs — with the useful side effect of closing a real correctness gap in RL training along the way.
+
+Whether that extra structural depth turns into measurably better reasoning is, honestly, still an open question — and it's worth trusting an architecture more, not less, for saying so plainly instead of skipping straight to the claim.
+
+Next: [Linear Attention & State-Space Models](/docs/deep-learning/linear-attention-and-state-space-models) covers a different answer to the Transformer's other cost — the $O(n^2)$ attention bottleneck this page didn't focus on — and [LLMs & GenAI](/docs/llms-genai/roadmap) for where these architectures get trained and deployed as production systems.
