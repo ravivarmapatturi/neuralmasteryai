@@ -9,6 +9,7 @@ import JudgePositionBiasDiagram from '../../../viz/diagrams/JudgePositionBiasDia
 import JudgeVerbosityBiasDiagram from '../../../viz/diagrams/JudgeVerbosityBiasDiagram';
 import JudgeValidationDiagram from '../../../viz/diagrams/JudgeValidationDiagram';
 import AgentTrajectoryDiagram from '../../../viz/diagrams/AgentTrajectoryDiagram';
+import { Remember } from '../../../components/content/Remember';
 
 # LLM, RAG & Agent Evaluation
 
@@ -49,6 +50,31 @@ A vague instruction ("rate this response 1-10") produces noisy, low-agreement sc
 <JudgeValidationDiagram />
 
 An unvalidated judge is exactly the "untrustworthy measurement" problem [Evaluation Fundamentals](/docs/ai-evaluation/evaluation-fundamentals) warns about, just one layer removed.
+
+### Judge Reliability Is Not Judge Validity
+
+A judge can pass the validation check above and still be wrong in a way that check can't catch. **Reliability** means a judge gives consistent scores — run it twice on the same input, get the same answer. **Validity** means those consistent scores actually track the thing you care about. A judge can have both at once, or — the failure mode that matters here — have one without the other.
+
+This distinction stopped being theoretical in 2026: a large-scale study found production LLM-judges with test-retest reliability above 0.95 (near-perfect internal consistency) whose *rankings* of the same candidate responses shifted by up to 14 positions when the same underlying quality was re-evaluated through a different but equally reasonable rubric framing. The judge wasn't noisy — it was consistently applying a biased standard. A reliability check alone (run it twice, confirm the scores match) would have passed this judge every time, because reliability only asks "does the judge agree with itself," never "does the judge agree with the truth."
+
+**What this changes in practice**: validating a judge against raw percent-agreement with human labels isn't enough either, because percent agreement doesn't correct for chance — a judge issuing the same score on every item can score high percent-agreement against a lopsided human-label distribution without discriminating between good and bad outputs at all. Use **Cohen's κ** (kappa) instead, which subtracts out the agreement rate expected from chance:
+
+$$\kappa = \frac{p_o - p_e}{1 - p_e}$$
+
+where $p_o$ is the observed agreement rate between judge and human, and $p_e$ is the agreement rate two random raters would produce by chance given the label distribution. A judge scoring 90% raw agreement against a dataset where 90% of items are labeled "pass" could have $\kappa$ near zero — it may just be predicting the majority class, not actually discriminating quality. As a rule of thumb, treat $\kappa$ below 0.4 as weak agreement worth real scrutiny before trusting the judge at scale, regardless of how good the raw percentage looks.
+
+### Error Analysis: Finding Failure Modes Before You Can Fix Them
+
+Every technique above helps you *measure* quality once you already know what to measure. Error analysis is the earlier, more foundational step: systematically reading through real failures to discover *what actually goes wrong*, before you can write a rubric, a metric, or an eval set that targets it. Skipping straight to metrics without this step is a common, expensive mistake — it's easy to build a precise measurement of the wrong thing.
+
+The concrete method, borrowed from qualitative research and now standard practice in eval-driven development:
+
+1. **Open coding**: pull a real sample of failures (20-50 is often enough to start) — actual production traces, not synthetic test cases — and, without any predetermined category list, write a short free-text note on *why each one failed*, in your own words, as specifically as possible ("retrieved the right document but cited the wrong section," not "bad answer").
+2. **Axial coding**: once you have notes across the whole sample, group them into a small number of named failure categories that emerge from the notes themselves — not categories you guessed in advance. A category should be specific enough to point at a fix ("tool called with a malformed date argument" is actionable; "agent made a mistake" is not).
+3. **Count and prioritize**: tally how often each category occurs across the sample. This turns "the agent seems flaky sometimes" into "38% of failures are one specific, fixable category" — a completely different, and far more actionable, problem statement.
+4. **Build the eval set from what you found**: each real category becomes a targeted eval case — write held-out examples that specifically exercise the failure mode you just named, so a fix can be verified, and a regression can be caught, on the exact thing that was actually breaking, not a generic proxy for it.
+
+<Remember>Error analysis answers "what's actually going wrong," which has to come before "how do I measure it" — a rubric or eval set built without first doing this tends to precisely measure a problem nobody's real failures look like, which is worse than not measuring at all because it creates false confidence.</Remember>
 
 ## RAG Evaluation
 
