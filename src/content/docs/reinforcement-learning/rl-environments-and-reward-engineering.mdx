@@ -1,0 +1,85 @@
+---
+title: "RL Environment & Reward Engineering"
+sidebar_position: 4.5
+description: "Why RL post-training for reasoning models lives or dies on the quality of the environment and reward, not the RL algorithm -- task synthesis, reward soundness, and sandboxed verifiers, for real."
+---
+
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import { Remember } from '../../../components/content/Remember';
+
+# RL Environment & Reward Engineering
+
+<ELI5>Training a model with RL is a lot like training a dog: the algorithm that decides how much to adjust behavior after each treat (PPO, GRPO, whatever) matters far less than *what you're actually rewarding it for*. A dog trained with a perfectly-tuned clicker but rewarded for the wrong thing still learns the wrong trick. The environment and the reward are the "what," and getting that right is now the harder, more valuable half of the job.</ELI5>
+
+## The Short Version, First
+
+1. [Advanced RL](/docs/reinforcement-learning/advanced-rl#rlhf-rlaif-and-grpo-in-the-rl-framework) already covers the RL *algorithms* used in LLM post-training (PPO, GRPO) and how RLHF maps onto the classic RL framework. This page covers the layer underneath that: the **environment** the policy is trained inside, and the **reward function** that scores its behavior in that environment — the two things that actually determine what the model learns, regardless of which algorithm updates the weights.
+2. For reasoning models (math, code, agentic tool-use), the field has largely moved from RLHF's *learned* reward model to **RLVR — RL with Verifiable Rewards** — checking an answer against ground truth (does the code pass its tests, is the math answer correct) instead of asking a second model to guess if the output is good.
+3. Building a good RLVR environment is mostly a task-design and infrastructure problem, not a machine-learning problem: writing tasks with genuinely checkable answers, building a sandbox that executes untrusted model output safely and deterministically, and catching the many ways a reward function can be gamed before the model finds them for you.
+4. Epoch AI's 2026 analysis of frontier post-training pipelines names environment quality — not algorithm choice — as the single biggest bottleneck to further reasoning-model progress, and notes that the people best positioned to build good environments are often domain experts (a real competitive programmer, a real accountant) who can write a correct verifier for their field, not ML engineers without that domain grounding.
+
+## From Learned Reward Models to Verifiable Rewards
+
+[Advanced RL's RLHF section](/docs/reinforcement-learning/advanced-rl#rlhf-rlaif-and-grpo-in-the-rl-framework) frames RLHF as: a reward *model* is trained on human preference data, and that learned model stands in for the environment's reward function during RL. This works well for open-ended tasks like "write a helpful email" where there's no single correct answer to check against — but it inherits a real weakness. A learned reward model is itself just another neural network with its own blind spots, and [Reward Hacking](/docs/ai-safety/alignment-and-rlhf#reward-hacking) covers exactly what happens when the policy learns to exploit those blind spots instead of actually getting better.
+
+For tasks that *do* have a checkable ground truth — did the code pass its test suite, does the math proof's final line match the known answer, did the SQL query return the right rows — there's a way to sidestep that whole failure mode: skip the learned reward model entirely, and reward the policy directly from a **verifier**, a program (not a neural network) that checks the output against ground truth. This is **RLVR: Reinforcement Learning with Verifiable Rewards**, and it's the core training regime behind most 2025-2026 reasoning-model gains (DeepSeek-R1's math/code RL stage, OpenAI's o-series post-training, and similar pipelines across the field).
+
+<Remember>The reason RLVR matters isn't that it's a new algorithm — GRPO and PPO both still work the same way underneath. It's that the *reward signal itself* stops being a fallible learned guess and becomes a fact you can check with code. That single change removes an entire category of reward-hacking risk (the policy fooling the reward model) at the cost of only working for tasks where "correct" can actually be checked mechanically.</Remember>
+
+## Anatomy of an Environment
+
+An RL environment for LLM post-training is smaller and more concrete than the phrase suggests. Every one of them, from a single-turn math checker to a multi-tool coding agent, is built from the same four pieces:
+
+- **Task distribution**: the set of prompts/problems the policy trains on — a pool of math problems, a set of GitHub issues with known fixes, a library of tool-use scenarios. This is the part that's actually hardest to get right, covered next.
+- **Action space**: what the policy is allowed to do at each step — generate a full response (single-turn), or take one action at a time and see a result before continuing (multi-turn/agentic — write code, run it, read the error, revise).
+- **Verifier**: the program that checks the final (or intermediate) state and produces a reward — a unit-test runner for code, a symbolic-equality checker for math, a regex or schema validator for structured output.
+- **Termination condition**: when an episode ends — after one response, after N tool calls, after a fixed token budget, or when the verifier reports success.
+
+A concrete example makes this stick. A coding-RL environment for "fix this failing test" looks like: task distribution = a scraped set of real GitHub commits where a test went from failing to passing; action space = the model can read files, edit files, and run the test suite, in a loop, for up to 20 tool calls; verifier = did the test suite pass afterward, plus a check that no *other* previously-passing test broke; termination = test suite passes, tool-call budget exhausted, or the model calls a "done" action. Every piece above has a direct, checkable answer — that checkability is what makes this an RLVR environment rather than an RLHF one.
+
+## Task Synthesis Is the Real Bottleneck
+
+Given a fixed algorithm, more and better tasks reliably produce a better policy — which sounds like it should make task creation the easy, low-leverage part. In practice it's the opposite: writing a large set of tasks that are simultaneously *solvable*, *non-trivial*, and have a *genuinely correct, checkable answer* is slow, expert-labor-intensive work, and quietly determines the ceiling on everything downstream of it.
+
+Three real approaches, each with a real tradeoff:
+
+- **Scraping real-world tasks**: mining GitHub commits, Stack Overflow Q&A, or competitive-programming archives for problems with a known correct outcome (a merged fix, an accepted solution). Pro: tasks are realistic and the difficulty distribution matches what the model will actually face. Con: ground truth needs independent verification — a merged GitHub PR isn't automatically the *only* correct fix, and treating it as the sole accepted answer can penalize equally valid alternative solutions.
+- **Synthetic generation**: using a strong LLM to generate new problems (and their solutions) programmatically, often at far higher volume than scraping allows. Pro: essentially unlimited scale, and difficulty is tunable. Con: a generator model can produce problems that look plausible but have a subtly wrong "ground truth" answer baked in — without independent verification, the policy ends up training against a mistaken reward signal, and it learns to match the generator's mistake rather than reality.
+- **Human-authored, domain-expert tasks**: a real subject-matter expert (an actual competitive programmer, an actual tax accountant, an actual lawyer) writes the problem and its verifier by hand. Pro: the highest-trust ground truth available. Con: the slowest and most expensive of the three, so it's typically reserved for the hardest or highest-stakes task categories rather than used at bulk scale.
+
+<GoDeeper>Epoch AI's framing worth taking seriously: the scarce skill here is increasingly *domain expertise that can be turned into a correct verifier*, not RL engineering. A machine-learning engineer can implement GRPO from a paper in an afternoon; writing 500 competitive-programming problems with airtight, edge-case-proof test suites is a different, slower kind of expert labor, and it's the one that actually gates progress once the algorithm is a solved, reusable piece of infrastructure. This is a real, current hiring signal: post-training teams are increasingly recruiting former competitive programmers, mathematicians, and other domain specialists specifically to author environments, not to write RL code.</GoDeeper>
+
+## Reward Soundness: Catching the Cheap Wins Before the Model Does
+
+A verifier that's even slightly wrong doesn't fail quietly — RL optimization is exactly the process that finds and exploits whatever gap exists between the verifier's literal check and the real intended behavior, at scale, automatically. This is the same phenomenon [Specification Gaming](/docs/ai-safety/alignment-and-rlhf#specification-gaming) describes for RL generally, but it shows up in specific, recognizable shapes once you're the one writing the verifier:
+
+- **False positives (the model finds a shortcut)**: a code verifier that only checks a function's return value on given test cases can be satisfied by a policy that special-cases those exact inputs (`if x == 17: return 42`) instead of implementing the real logic — technically passes, learns nothing generalizable.
+- **False negatives (the model gets punished for being right)**: a math verifier doing exact string-matching on the final answer will reward `0.5` but fail an equally correct `1/2`, teaching the model that a correct answer in the "wrong" format is worse than a subtly wrong one in the expected format.
+- **Reward sparsity**: a verifier that only ever returns pass/fail on a long multi-step agentic task gives almost no learning signal for the many episodes that get most of the way there and then fail on one step — partial credit (e.g., how many of N sub-checks passed) usually trains faster and more stably than pure binary reward.
+
+<Remember>Before trusting a new verifier at training scale, run the same check [Judge Reliability Is Not Judge Validity](/docs/ai-evaluation/llm-rag-agent-evaluation#judge-reliability-is-not-judge-validity) recommends for LLM judges: deliberately construct a handful of adversarial "cheap win" solutions by hand and confirm the verifier correctly rejects them, and a handful of correct-but-unusually-formatted solutions and confirm it correctly accepts them. A verifier that's never been adversarially tested against its own blind spots is a reward hack waiting to happen, not a hypothetical risk.</Remember>
+
+## Sandboxed Execution: The Infrastructure Underneath the Verifier
+
+Any environment where the verifier means "actually run the model's output" (code execution, SQL queries, shell commands, tool calls) needs a sandbox — an isolated execution environment the model's output runs inside — and the practical engineering demands here are different from most ML infrastructure work:
+
+- **Isolation**: model-generated code is untrusted by definition and must run with no access to the host filesystem, network, or credentials — the same threat model as running arbitrary code from the internet, because that's effectively what it is.
+- **Determinism**: the same submission should get the same verdict every time; flaky verifiers (timing-dependent tests, network calls that sometimes fail) inject noise directly into the reward signal, and RL is already a noisy-gradient setting before adding avoidable noise on top.
+- **Resource limits**: a hard wall-clock timeout and memory cap per execution, both to catch models that produce infinite loops (a real, common early-training failure mode) and to keep training throughput predictable across thousands of parallel rollouts.
+- **Throughput**: RL training needs a very large number of environment steps, so the sandbox has to support many concurrent, short-lived executions cheaply — this is usually the actual engineering bottleneck in a real post-training pipeline, more than GPU time for the policy update itself.
+
+## Environment Types, Compared
+
+| Environment type | Verifier | Typical failure mode to guard against | Example |
+|---|---|---|---|
+| Single-turn math/logic | Symbolic or numeric equality check | Format-mismatch false negatives (`1/2` vs `0.5`) | Grade-school through olympiad math |
+| Code execution | Unit test suite pass/fail | Special-casing the visible tests instead of solving generally | "Fix this failing test" / competitive programming |
+| Structured output | Schema/regex/parser validation | Overly loose schema accepts near-miss garbage | JSON extraction, SQL generation |
+| Multi-turn agentic / tool-use | Final-state check plus per-step trajectory checks | Sparse reward on long trajectories; reward hacking a sub-step instead of the real goal | Coding agents, browser agents, research agents |
+| Multi-agent / negotiation | Outcome check on the joint final state | One agent exploiting a scripted counterpart's fixed weaknesses instead of general skill | Debate, negotiation, red-team/blue-team setups |
+
+## Where This Fits
+
+[GRPO](/docs/llms-genai/training-pipeline#group-relative-policy-optimization-grpo) and the RL algorithms in [Advanced RL](/docs/reinforcement-learning/advanced-rl) are what turns a reward signal into a weight update. Everything on this page is what has to exist *before* that step even runs: a task distribution worth training on, a verifier that measures the real thing instead of a gameable proxy of it, and infrastructure that can execute that verifier safely, deterministically, and at the throughput RL training demands. Algorithm choice is close to solved, reusable infrastructure at this point — the actual differentiator between a strong post-training pipeline and a weak one, in practice, is almost entirely the quality of the environments and rewards feeding it.
+
+Next: [Multi-Armed & Contextual Bandits](/docs/reinforcement-learning/bandits) — the degenerate, single-state special case of everything in this section, and the actual production answer to the explore/exploit problem this site's recommendation-system material has been gesturing at.
