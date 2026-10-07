@@ -116,4 +116,22 @@ describe('BADGES definition & unlock logic', () => {
     expect(stats.depthRevealed).toBe(1);
     expect(stats.reviewsCompleted).toBe(1);
   });
+
+  it('does not count a stale completion event for a problem no longer in the catalogue (C6 regression)', () => {
+    // Real scenario this guards against: a problem gets renamed/removed
+    // from the catalogue after a learner already solved it under its old
+    // route. The old 'complete' event never disappears from their saved
+    // history, but it should stop counting toward problemsSolved once
+    // nothing in the current catalogue matches it -- otherwise this
+    // number silently drifts above (and never matches) the Progress
+    // page's own "Practice Solved" count, which IS filtered against the
+    // current catalogue (practiceStats()).
+    const mockProblems = [{ route: '/practice/prob-1', title: 'P1', difficulty: 'easy' } as any];
+    const mockEvents = [
+      { permalink: '/practice/prob-1', kind: 'complete' as const, date: '2026-09-10', points: 25 },
+      { permalink: '/practice/prob-2-renamed-away', kind: 'complete' as const, date: '2026-08-01', points: 25 },
+    ];
+    const stats = computeBadgeStats(mockEvents, 50, 1, true, mockProblems);
+    expect(stats.problemsSolved).toBe(1); // not 2 -- the raw event count would wrongly say 2
+  });
 });

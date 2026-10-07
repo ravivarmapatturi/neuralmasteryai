@@ -1,5 +1,6 @@
 import type { DocPage } from './contentTree';
 import type { AwardEvent } from './gamification';
+import { isSolved } from './mastery';
 
 export type BadgeCategory = 'learning' | 'practice' | 'difficulty' | 'consistency' | 'mastery';
 export type BadgeRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' | 'mythic';
@@ -441,8 +442,16 @@ export function computeBadgeStats(
   problems: DocPage[],
 ): BadgeStats {
   const pagesUnderstood = events.filter((e) => e.kind === 'mark').length;
-  const problemsSolved = events.filter((e) => e.kind === 'complete').length;
-  const systemDesignSolved = events.filter((e) => e.kind === 'design').length;
+  // Deduplicated against the CURRENT problem catalogue via isSolved, the
+  // same source of truth practiceStats() uses for "Practice Solved" on
+  // the Progress page -- not a raw events.filter(...).length. A stale
+  // 'complete' event whose permalink no longer matches any current
+  // problem (route renamed/removed since it was solved) would otherwise
+  // inflate this count forever while the catalogue-filtered count
+  // correctly drops it, which is exactly the real counter-disagreement
+  // bug this site's own audit found (badge said "3/5", Progress said 2).
+  const problemsSolved = problems.filter((p) => p.difficulty && isSolved(p, events)).length;
+  const systemDesignSolved = problems.filter((p) => !p.difficulty && isSolved(p, events)).length;
   const reviewsCompleted = events.filter((e) => e.kind === 'review').length;
   const depthRevealed = events.filter((e) => e.kind === 'depth').length;
   const dailySignIns = events.filter((e) => e.kind === 'signin').length;
