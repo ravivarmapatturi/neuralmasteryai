@@ -16,6 +16,7 @@ export default function Navbar({
 }) {
   const { colorMode, toggleColorMode } = useColorMode();
   const [searchOpen, setSearchOpen] = useState(false);
+  const [primaryMenuOpen, setPrimaryMenuOpen] = useState(false);
 
   // Cmd+K (Mac) / Ctrl+K (everywhere else) opens search from anywhere on
   // the page, not just when the navbar button has focus -- the standard
@@ -30,6 +31,20 @@ export default function Navbar({
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, []);
+
+  useEffect(() => {
+    if (!primaryMenuOpen) return undefined;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setPrimaryMenuOpen(false);
+    }
+    document.addEventListener('keydown', onKeyDown);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [primaryMenuOpen]);
 
   return (
     <>
@@ -79,6 +94,26 @@ export default function Navbar({
           </Link>
         </div>
         <nav className="nm-navbar-nav" style={{ display: 'flex', alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={() => setPrimaryMenuOpen(true)}
+            aria-label="Open menu"
+            aria-haspopup="true"
+            aria-expanded={primaryMenuOpen}
+            className="nm-navbar-primary-toggle"
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              border: '1px solid var(--nm-border)',
+              background: 'transparent',
+              color: 'var(--nm-text-primary)',
+              cursor: 'pointer',
+              fontSize: 15,
+            }}
+          >
+            ☰
+          </button>
           <Link to="/learn" className="nm-navbar-learn-link" style={{ color: 'var(--nm-text-primary)', textDecoration: 'none', fontSize: 14 }}>
             Learn
           </Link>
@@ -166,6 +201,66 @@ export default function Navbar({
         </nav>
       </header>
       <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
+      {primaryMenuOpen && (
+        <>
+          <div
+            aria-hidden="true"
+            onClick={() => setPrimaryMenuOpen(false)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.5)', zIndex: 200 }}
+          />
+          <nav
+            aria-label="Primary"
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              bottom: 0,
+              width: 'min(280px, 80vw)',
+              zIndex: 201,
+              background: 'var(--nm-surface)',
+              borderRight: '1px solid var(--nm-border)',
+              boxShadow: '4px 0 24px rgba(0,0,0,0.25)',
+              padding: '1rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--nm-text-primary)' }}>Menu</span>
+              <button
+                type="button"
+                onClick={() => setPrimaryMenuOpen(false)}
+                aria-label="Close menu"
+                style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--nm-border)', background: 'transparent', color: 'var(--nm-text-primary)', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+            {[
+              { to: '/learn', label: 'Learn' },
+              { to: '/practice', label: 'Practice' },
+              { to: '/leaderboard', label: 'Leaderboard' },
+              { to: '/progress', label: 'Progress' },
+            ].map((item) => (
+              <Link
+                key={item.to}
+                to={item.to}
+                onClick={() => setPrimaryMenuOpen(false)}
+                style={{
+                  color: 'var(--nm-text-primary)',
+                  textDecoration: 'none',
+                  fontSize: 15,
+                  padding: '0.6rem 0.5rem',
+                  borderRadius: 8,
+                }}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+        </>
+      )}
     </>
   );
 }
