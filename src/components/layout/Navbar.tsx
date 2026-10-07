@@ -1,4 +1,4 @@
-import { useEffect, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Link } from 'react-router-dom';
 import { useColorMode } from '../../theme/ThemeProvider';
 import SearchModal from './SearchModal';
@@ -6,6 +6,7 @@ import AuthButton from './AuthButton';
 import StreakBadge from './StreakBadge';
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform ?? navigator.userAgent);
+const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 export default function Navbar({
   onMenuClick,
@@ -17,6 +18,7 @@ export default function Navbar({
   const { colorMode, toggleColorMode } = useColorMode();
   const [searchOpen, setSearchOpen] = useState(false);
   const [primaryMenuOpen, setPrimaryMenuOpen] = useState(false);
+  const primaryMenuPanelRef = useRef<HTMLElement>(null);
 
   // Cmd+K (Mac) / Ctrl+K (everywhere else) opens search from anywhere on
   // the page, not just when the navbar button has focus -- the standard
@@ -35,14 +37,37 @@ export default function Navbar({
   useEffect(() => {
     if (!primaryMenuOpen) return undefined;
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') setPrimaryMenuOpen(false);
+      if (e.key === 'Escape') {
+        setPrimaryMenuOpen(false);
+        return;
+      }
+      // Focus trap -- same pattern as SearchModal/ConfirmDialog/
+      // MobileNavDrawer, which this drawer was missing (caught via a
+      // real World-Class Standard benchmark against this site's own
+      // established overlay convention, not an external one).
+      if (e.key !== 'Tab' || !primaryMenuPanelRef.current) return;
+      const focusable = Array.from(primaryMenuPanelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
     document.addEventListener('keydown', onKeyDown);
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    const id = requestAnimationFrame(() => {
+      primaryMenuPanelRef.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+    });
     return () => {
       document.removeEventListener('keydown', onKeyDown);
       document.body.style.overflow = prevOverflow;
+      cancelAnimationFrame(id);
     };
   }, [primaryMenuOpen]);
 
@@ -209,6 +234,7 @@ export default function Navbar({
             style={{ position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.5)', zIndex: 200 }}
           />
           <nav
+            ref={primaryMenuPanelRef}
             aria-label="Primary"
             style={{
               position: 'fixed',
