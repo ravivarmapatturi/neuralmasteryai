@@ -102,10 +102,14 @@ export default function TestResultsPane({
   const passedCount = result?.caseResults.filter((c) => c.passed).length ?? 0;
   const totalCount = result?.caseResults.length ?? 0;
 
-  // Immediately make results visible upon execution/submission
+  // Immediately make results visible upon execution/submission. A wrong
+  // answer routes to the Examples tab specifically, since that's the
+  // view that actually shows expected-vs-actual per case (C2) -- the
+  // Results/console tab only ever showed a bare "Wrong Answer" status
+  // with no diff, even though the diff UI already existed one tab over.
   useEffect(() => {
     if (result) {
-      setActiveTab('console');
+      setActiveTab(result.status === 'wrong_answer' ? 'examples' : 'console');
     }
   }, [result]);
 

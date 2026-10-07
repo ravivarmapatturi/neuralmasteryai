@@ -479,23 +479,25 @@ def multi_head_attention(Q: np.ndarray, K: np.ndarray, V: np.ndarray, d_model: i
     topic: 'Deep Learning',
     estimatedTime: '15–20 min',
     functionName: 'adamw_step',
-    functionSignature: 'adamw_step(param: list, grad: list, m: list, v: list, t: int) -> tuple',
-    starterCode: `def adamw_step(param: list, grad: list, m: list, v: list, t: int) -> tuple:
+    functionSignature: 'adamw_step(param: list, grad: list, m: list, v: list, t: int, lr: float = 0.001, beta1: float = 0.9, beta2: float = 0.999, eps: float = 1e-8, weight_decay: float = 0.01) -> tuple',
+    starterCode: `def adamw_step(param: list, grad: list, m: list, v: list, t: int, lr: float = 0.001, beta1: float = 0.9, beta2: float = 0.999, eps: float = 1e-8, weight_decay: float = 0.01) -> tuple:
     """
-    Execute one AdamW update step.
-    Return tuple (next_param, next_m, next_v) as lists.
+    Execute one AdamW update step using the standard defaults above
+    (beta1=0.9, beta2=0.999, eps=1e-8) unless overridden.
+    Return tuple (next_param, next_m, next_v), each the same shape as param.
     """
     # Your implementation here
     pass
 `,
     mission: 'Implement AdamW adaptive learning rate optimization with decoupled weight decay.',
-    taskDescription: 'Implement `adamw_step` computing first/second moments, bias corrections, and decoupled weight decay updates.',
+    taskDescription: 'Implement `adamw_step` computing first/second moments, bias corrections, and decoupled weight decay updates, using beta1=0.9, beta2=0.999, eps=1e-8 unless the caller overrides them.',
     libraryPolicyText: 'Libraries allowed · Pure Python earns +10 bonus XP',
     bonusPoints: 10,
     bonusDescription: 'Pure Python implementation',
     constraints: [
       'Must apply bias correction m_hat = m / (1 - beta1^t) and v_hat = v / (1 - beta2^t).',
       'Weight decay must be decoupled: param = param - lr * (m_hat / (sqrt(v_hat) + eps) + weight_decay * param).',
+      'next_param, next_m, and next_v must each be a list the same length as param (elementwise over every parameter), not a single flattened list.',
     ],
     hints: {
       small: 'How do exponentially decaying running averages of past gradients (first moment) and squared gradients (second moment) adapt the per-parameter learning rate?',
@@ -503,7 +505,9 @@ def multi_head_attention(Q: np.ndarray, K: np.ndarray, V: np.ndarray, d_model: i
       concept: 'What subtle flaw in classical Adam with L2 regularization does decoupled weight decay in AdamW fix?',
     },
     testCases: [
-      { id: 't1', label: 'Step 1 Update', input: { param: [1.0], grad: [0.1], m: [0.0], v: [0.0], t: 1, lr: 0.1, weight_decay: 0.01 }, expectedOutput: [[0.899, 0.01, 0.0001]], hidden: false },
+      { id: 't1', label: 'Step 1 Update (single parameter)', input: { param: [1.0], grad: [0.1], m: [0.0], v: [0.0], t: 1, lr: 0.1, weight_decay: 0.01 }, expectedOutput: [[0.899], [0.01], [0.00001]], hidden: false },
+      { id: 't2', label: 'Step 1 Update (multi-parameter)', input: { param: [0.5, -0.3], grad: [0.2, -0.1], m: [0.0, 0.0], v: [0.0, 0.0], t: 1, lr: 0.1, weight_decay: 0.01 }, expectedOutput: [[0.3995, -0.1997], [0.02, -0.01], [0.00004, 0.00001]], hidden: false },
+      { id: 't3', label: 'Later timestep, warm-started moments, default hyperparameters', input: { param: [2.0], grad: [0.05], m: [0.02], v: [0.0003], t: 5 }, expectedOutput: [[1.99975177], [0.023], [0.0003022]], hidden: true },
     ],
     runtime: { language: 'python', capabilities: ['python', 'numpy'] },
   },

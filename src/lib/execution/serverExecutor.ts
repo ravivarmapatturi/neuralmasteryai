@@ -16,11 +16,21 @@ export class ServerExecutor implements CodeExecutor {
   private endpointUrl: string;
   private timeoutMs: number;
   private enableFallback: boolean;
+  // True only when the caller (or VITE_SERVER_EXECUTOR_URL) explicitly
+  // configured a real endpoint. This project ships as a static site with
+  // no backend -- the un-configured default used to silently try
+  // http://localhost:3001, fail every single time in production, and
+  // leak that failure as a "[Server unreachable ...]" notice into every
+  // learner's test-result stdout. Without a real endpoint, skip the
+  // network attempt entirely and go straight to Pyodide with no notice,
+  // since there's no actual error here, just this site's normal mode.
+  private hasRealEndpoint: boolean;
   private fallbackExecutor: PyodideExecutor | null = null;
   private activeController: AbortController | null = null;
 
   constructor(options: ServerExecutorOptions = {}) {
     const envUrl = typeof import.meta !== 'undefined' ? (import.meta.env?.VITE_SERVER_EXECUTOR_URL as string | undefined) : undefined;
+    this.hasRealEndpoint = Boolean(options.endpointUrl || envUrl);
     this.endpointUrl = options.endpointUrl || envUrl || 'http://localhost:3001/api/execute';
     this.timeoutMs = options.timeoutMs ?? 6000;
     this.enableFallback = options.enableFallback ?? true;
@@ -34,6 +44,23 @@ export class ServerExecutor implements CodeExecutor {
   }
 
   async execute(request: ExecutionRequest): Promise<ExecutionResult> {
+    if (!this.hasRealEndpoint && this.enableFallback) {
+      // No real server was ever configured -- don't waste a network
+      // round-trip on a connection nothing will answer, and don't print
+      // a notice about it: this is this site's normal, expected mode.
+      try {
+        return await this.getFallback().execute(request);
+      } catch (fallbackErr) {
+        return {
+          status: 'runtime_error',
+          mode: 'local',
+          stdout: '',
+          caseResults: [],
+          errorMessage: `Local execution unavailable: ${fallbackErr}`,
+        };
+      }
+    }
+
     this.activeController = new AbortController();
     const signal = this.activeController.signal;
 
