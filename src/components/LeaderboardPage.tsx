@@ -17,7 +17,7 @@ export default function LeaderboardPage() {
     'Global Neural Mastery Leaderboard -- see how your AI engineering points, level, and problem-solving streak stack up against learners worldwide.',
   );
 
-  const { user, signInWithGoogle } = useAuth();
+  const { user, loading: authLoading, signInWithGoogle } = useAuth();
   const { points, weeklyPoints, displayName: userDisplayName } = useGamification();
   const [tab, setTab] = useState<'allTime' | 'weekly'>('allTime');
   const [tierFilter, setTierFilter] = useState<string>('all');
@@ -149,7 +149,11 @@ export default function LeaderboardPage() {
         </div>
 
         {/* --- Guest / Sign-in Banner --- */}
-        {!user && (
+        {/* Gated on !authLoading too: Firebase's auth check is async, and
+            without this a returning signed-in visitor sees this exact
+            "Sign in with Google" banner flash before the real state
+            resolves (audit finding C5). */}
+        {!authLoading && !user && (
           <div
             style={{
               padding: '1.25rem 1.5rem',
