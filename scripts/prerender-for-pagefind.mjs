@@ -88,7 +88,12 @@ function routesFromContentTree() {
 // problem-LIST page (eagerly rendered, like '/' and '/progress' -- see the
 // readySelector split below); the individual /practice/<slug> problem
 // pages themselves come from routesFromContentTree()'s remap instead.
-const APP_ROUTES = ['/', '/learn', '/progress', '/practice'];
+// /profile, /leaderboard, /about, /privacy, /terms were missing from
+// this list entirely (added after the original fix that covered
+// '/', '/learn', '/progress', '/practice') -- each one genuinely 404'd
+// on the live site (real HTTP 404 status, confirmed via a real website
+// audit 2026-10-07), the identical bug this list exists to prevent.
+const APP_ROUTES = ['/', '/learn', '/progress', '/practice', '/profile', '/leaderboard', '/about', '/privacy', '/terms'];
 
 async function waitForServer(url, timeoutMs = 15000) {
   const start = Date.now();
