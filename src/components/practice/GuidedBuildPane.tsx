@@ -3,6 +3,7 @@ import type { GuidedStep } from '../../lib/practiceProblem';
 import { validateStepCode, assembleGuidedCode, getGuidedScaffold, type StepValidationResult } from '../../lib/guidedValidation';
 import { loadGuidedStep, saveGuidedStep, clearGuidedStep } from '../../lib/practicePersistence';
 import { useVizTokens, RADIUS, SPACING, FONT_FAMILY } from '../../theme/vizTokens';
+import ConfirmDialog from '../common/ConfirmDialog';
 
 const CodeEditor = lazy(() => import('../content/CodeEditor'));
 
@@ -55,6 +56,7 @@ export default function GuidedBuildPane({
   });
 
   const [validationFeedback, setValidationFeedback] = useState<StepValidationResult | null>(null);
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const isComplete = currentStep >= steps.length;
 
   // Sync workspace code when completing steps or initializing complete state
@@ -92,7 +94,10 @@ export default function GuidedBuildPane({
 
   // Reset steps handler
   function handleResetSteps() {
-    if (!window.confirm('Reset all guided steps back to Step 1?')) return;
+    setConfirmResetOpen(true);
+  }
+  function doResetSteps() {
+    setConfirmResetOpen(false);
     clearGuidedStep(problemId);
     setCurrentStep(0);
     setValidationFeedback(null);
@@ -405,6 +410,14 @@ export default function GuidedBuildPane({
           />
         </Suspense>
       </div>
+      <ConfirmDialog
+        open={confirmResetOpen}
+        title="Reset guided steps?"
+        description="This resets all guided steps back to Step 1."
+        confirmLabel="Reset"
+        onConfirm={doResetSteps}
+        onCancel={() => setConfirmResetOpen(false)}
+      />
     </div>
   );
 }

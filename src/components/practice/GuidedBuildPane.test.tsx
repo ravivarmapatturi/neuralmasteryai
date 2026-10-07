@@ -120,7 +120,6 @@ describe('GuidedBuildPane Component', () => {
 
   it('resets back to Step 1 on reset confirmation', async () => {
     const user = userEvent.setup();
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
 
     // Pre-populate step 3
     window.localStorage.setItem('nm_practice_guided_step_react-agent-loop', '3');
@@ -129,8 +128,25 @@ describe('GuidedBuildPane Component', () => {
     expect(screen.getByTestId('guided-step-indicator')).toHaveTextContent('Step 4 of 5');
 
     await user.click(screen.getByTestId('reset-guided-steps-btn'));
+    // Clicking Reset opens an in-app confirm dialog (not window.confirm) --
+    // confirm within it before the reset actually happens.
+    await user.click(screen.getByRole('button', { name: 'Reset' }));
 
     expect(screen.getByTestId('guided-step-indicator')).toHaveTextContent('Step 1 of 5');
     expect(screen.getByTestId('guided-step-title')).toHaveTextContent(steps[0].title);
+  });
+
+  it('does not reset when the confirm dialog is cancelled', async () => {
+    const user = userEvent.setup();
+
+    window.localStorage.setItem('nm_practice_guided_step_react-agent-loop', '3');
+
+    renderGuidedPane();
+    expect(screen.getByTestId('guided-step-indicator')).toHaveTextContent('Step 4 of 5');
+
+    await user.click(screen.getByTestId('reset-guided-steps-btn'));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.getByTestId('guided-step-indicator')).toHaveTextContent('Step 4 of 5');
   });
 });

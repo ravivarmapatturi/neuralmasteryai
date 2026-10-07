@@ -32,6 +32,7 @@ import AuthButton from '../layout/AuthButton';
 import StreakBadge from '../layout/StreakBadge';
 import { useColorMode } from '../../theme/ThemeProvider';
 import { showRewardToast } from '../ui/Confetti';
+import ConfirmDialog from '../common/ConfirmDialog';
 import { useGamification } from '../../contexts/GamificationContext';
 import { normalizeRoute, getFlatPages, getPageByRoute, getPracticeProblems } from '../../lib/contentTree';
 import { isSolved, recommendedProblem, relatedLesson } from '../../lib/mastery';
@@ -81,6 +82,7 @@ export default function PracticeWorkspace({ problemId, mdxContent }: PracticeWor
   // Execution state
   const [status, setStatus] = useState<'idle' | 'running' | 'submitting'>('idle');
   const [result, setResult] = useState<ExecutionResult | null>(null);
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const [lastAction, setLastAction] = useState<'run' | 'submit' | null>(null);
 
   const [isMobile, setIsMobile] = useState<boolean>(() => typeof window !== 'undefined' && window.innerWidth < 768);
@@ -390,7 +392,10 @@ export default function PracticeWorkspace({ problemId, mdxContent }: PracticeWor
   }
 
   function handleReset() {
-    if (!window.confirm('Reset your code to the original starter template? Unsaved changes will be lost.')) return;
+    setConfirmResetOpen(true);
+  }
+  function doReset() {
+    setConfirmResetOpen(false);
     if (workspaceMode === 'framework' && problem?.frameworkSpec) {
       setFrameworkCode(frameworkStarterCode);
       saveUserCode(`${problemId}-framework`, frameworkStarterCode);
@@ -986,6 +991,14 @@ export default function PracticeWorkspace({ problemId, mdxContent }: PracticeWor
           </div>
         )}
       </div>
+      <ConfirmDialog
+        open={confirmResetOpen}
+        title="Reset your code?"
+        description="This resets your code to the original starter template. Unsaved changes will be lost."
+        confirmLabel="Reset"
+        onConfirm={doReset}
+        onCancel={() => setConfirmResetOpen(false)}
+      />
     </div>
   );
 }

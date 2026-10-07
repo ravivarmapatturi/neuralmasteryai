@@ -14,6 +14,7 @@ import { getPracticeTracks, buildTopicLabels } from '../lib/practiceTracks';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useDocumentMeta } from '../lib/useDocumentMeta';
 import RankBadge from './RankBadge';
+import ConfirmDialog from './common/ConfirmDialog';
 import RankLadder from './RankLadder';
 
 /** Best-effort title lookup for a permalink -- falls back to the raw path
@@ -45,6 +46,7 @@ export default function ProgressPage() {
 
   const { understood, isUnderstood, toggle, countWithin, reset, dueForReview, markReviewed } = useProgress();
   const { points, streak, events, awardReviewCompleted } = useGamification();
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const { level, xpIntoLevel, xpForNextLevel } = levelForPoints(points);
   const rank = rankForLevel(level);
   const levelPct = xpForNextLevel === 0 ? 1 : Math.min(1, xpIntoLevel / xpForNextLevel);
@@ -579,14 +581,23 @@ export default function ProgressPage() {
 
         <button
           type="button"
-          onClick={() => {
-            if (window.confirm('Reset all progress? This clears every page you\'ve marked as understood.')) reset();
-          }}
+          onClick={() => setConfirmResetOpen(true)}
           style={{ fontSize: 13, color: 'var(--nm-text-muted)', background: 'transparent', border: '1px solid var(--nm-border)', borderRadius: 8, padding: '0.5rem 0.9rem', cursor: 'pointer' }}
         >
           Reset progress
         </button>
       </section>
+      <ConfirmDialog
+        open={confirmResetOpen}
+        title="Reset all progress?"
+        description="This clears every page you've marked as understood."
+        confirmLabel="Reset"
+        onConfirm={() => {
+          setConfirmResetOpen(false);
+          reset();
+        }}
+        onCancel={() => setConfirmResetOpen(false)}
+      />
     </div>
   );
 }

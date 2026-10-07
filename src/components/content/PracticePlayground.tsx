@@ -10,6 +10,7 @@ import { PyodideExecutor } from '../../lib/execution/pyodideExecutor';
 import { ServerExecutor } from '../../lib/execution/serverExecutor';
 import type { CodeExecutor, ExecutionResult } from '../../lib/execution/types';
 import { showRewardToast } from '../ui/Confetti';
+import ConfirmDialog from '../common/ConfirmDialog';
 
 // Same bundle-size reasoning as RunnableCode.tsx: CodeMirror stays out of
 // every page that doesn't need it.
@@ -59,6 +60,7 @@ export default function PracticePlayground({ problemId, celebrateOnSuccess = fal
 
   const [code, setCode] = useState(problem?.starterCode ?? '');
   const [status, setStatus] = useState<RunStatus>('idle');
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const [result, setResult] = useState<ExecutionResult | null>(null);
   const [lastAction, setLastAction] = useState<'run' | 'submit' | null>(null);
 
@@ -117,7 +119,10 @@ export default function PracticePlayground({ problemId, celebrateOnSuccess = fal
     void runAgainst(problem!.testCases, 'submit');
   }
   function handleReset() {
-    if (!window.confirm('Reset your code back to the starter template? This cannot be undone.')) return;
+    setConfirmResetOpen(true);
+  }
+  function doReset() {
+    setConfirmResetOpen(false);
     setCode(problem!.starterCode);
     setResult(null);
     executorRef.current?.terminate();
@@ -254,6 +259,14 @@ export default function PracticePlayground({ problemId, celebrateOnSuccess = fal
       <>
         {panes.editorPaneEl && createPortal(editorBlock, panes.editorPaneEl)}
         {panes.testcasePaneEl && createPortal(testcaseBlock, panes.testcasePaneEl)}
+        <ConfirmDialog
+          open={confirmResetOpen}
+          title="Reset your code?"
+          description="This resets your code back to the starter template. This cannot be undone."
+          confirmLabel="Reset"
+          onConfirm={doReset}
+          onCancel={() => setConfirmResetOpen(false)}
+        />
       </>
     );
   }
@@ -261,6 +274,14 @@ export default function PracticePlayground({ problemId, celebrateOnSuccess = fal
     <div style={{ display: 'flex', flexDirection: 'column', gap: SPACING.sm }}>
       {editorBlock}
       {testcaseBlock}
+      <ConfirmDialog
+        open={confirmResetOpen}
+        title="Reset your code?"
+        description="This resets your code back to the starter template. This cannot be undone."
+        confirmLabel="Reset"
+        onConfirm={doReset}
+        onCancel={() => setConfirmResetOpen(false)}
+      />
     </div>
   );
 }
