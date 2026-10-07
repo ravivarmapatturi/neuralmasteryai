@@ -16,6 +16,7 @@ import LeaderboardPage from './components/LeaderboardPage';
 import AboutPage from './components/AboutPage';
 import PrivacyPolicyPage from './components/PrivacyPolicyPage';
 import TermsOfServicePage from './components/TermsOfServicePage';
+import NotFoundPage from './components/NotFoundPage';
 import ThemedImage from './components/ThemedImage';
 import MDXCodeBlock from './components/MDXCodeBlock';
 import MDXLink from './components/MDXLink';
@@ -80,6 +81,7 @@ export default function App() {
                       <Route path="/docs/practice-problems/overview" element={<Navigate to="/practice" replace />} />
                       <Route path="/docs/practice-problems/:slug" element={<PracticeProblemRedirect />} />
                       <Route path="/docs/*" element={<DocLayout />} />
+                      <Route path="*" element={<NotFoundPage />} />
                     </Routes>
                   </div>
                   <Footer />
