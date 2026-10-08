@@ -8,6 +8,29 @@ function getJsonLd(): Record<string, unknown> | null {
   return JSON.parse(el.textContent ?? '{}')
 }
 
+describe('useDocumentMeta OG/Twitter image tags (audit: "0 of 248 pages have og:image")', () => {
+  afterEach(() => {
+    document.getElementById('nm-breadcrumb-jsonld')?.remove()
+  })
+
+  it('sets a real, correctly-dimensioned og:image and the matching large-image twitter card', () => {
+    renderHook(() => useDocumentMeta('Some Page', 'desc'))
+    const ogImage = document.head.querySelector('meta[property="og:image"]')?.getAttribute('content')
+    const ogWidth = document.head.querySelector('meta[property="og:image:width"]')?.getAttribute('content')
+    const ogHeight = document.head.querySelector('meta[property="og:image:height"]')?.getAttribute('content')
+    const twitterCard = document.head.querySelector('meta[name="twitter:card"]')?.getAttribute('content')
+    const twitterImage = document.head.querySelector('meta[name="twitter:image"]')?.getAttribute('content')
+
+    expect(ogImage).toBe(`${SITE_URL.replace(/\/$/, '')}/og-image.png`)
+    expect(ogWidth).toBe('1200')
+    expect(ogHeight).toBe('630')
+    // summary_large_image, not summary -- summary renders a small square
+    // thumbnail, which would crop/misrepresent a 1200x630 landscape image.
+    expect(twitterCard).toBe('summary_large_image')
+    expect(twitterImage).toBe(ogImage)
+  })
+})
+
 describe('useDocumentMeta BreadcrumbList structured data (audit: "No structured data")', () => {
   afterEach(() => {
     document.getElementById('nm-breadcrumb-jsonld')?.remove()

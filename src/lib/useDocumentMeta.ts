@@ -4,6 +4,10 @@ const SITE_NAME = 'Neural Mastery';
 export const SITE_URL = 'https://neuralmasteryai.com/';
 export const DEFAULT_DESCRIPTION =
   'Learn AI and machine learning through real, computed, interactive visualizations, not static diagrams -- covering machine learning, deep learning, LLMs, and agents.';
+// One real, static, branded image for the whole site (audit: "0 of 248
+// pages have og:image") -- see scripts/generate-og-image.mjs. Real,
+// per-page images are a larger follow-up, deliberately deferred.
+const OG_IMAGE_URL = SITE_URL.replace(/\/$/, '') + '/og-image.png';
 
 function upsertMeta(attr: 'name' | 'property', key: string, content: string): void {
   let el = document.head.querySelector<HTMLMetaElement>(`meta[${attr}="${key}"]`);
@@ -100,7 +104,11 @@ export function useDocumentMeta(pageTitle: string | undefined, description?: str
     upsertMeta('property', 'og:type', 'website');
     upsertMeta('property', 'og:url', canonical);
     upsertMeta('property', 'og:site_name', SITE_NAME);
-    upsertMeta('name', 'twitter:card', 'summary');
+    upsertMeta('property', 'og:image', OG_IMAGE_URL);
+    upsertMeta('property', 'og:image:width', '1200');
+    upsertMeta('property', 'og:image:height', '630');
+    upsertMeta('name', 'twitter:card', 'summary_large_image');
+    upsertMeta('name', 'twitter:image', OG_IMAGE_URL);
     upsertMeta('name', 'twitter:title', fullTitle);
     upsertMeta('name', 'twitter:description', desc);
     upsertCanonical(canonical);
