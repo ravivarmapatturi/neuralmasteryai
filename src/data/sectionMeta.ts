@@ -209,3 +209,18 @@ export function completionFor(key: string, understood: Record<string, unknown>):
   ).length;
   return Math.min(1, done / meta.pageCount);
 }
+
+/** Looks up a DocPage's `section` (its top-level content folder, e.g.
+ * "deep-learning") against every group's `subsections` to find its real,
+ * human-readable label and a real, navigable landing page -- the same
+ * `landing || /docs/<dir>/roadmap` convention used everywhere else this
+ * data drives navigation. Used for BreadcrumbList structured data
+ * (useDocumentMeta), so every breadcrumb is a real, currently-reachable
+ * page, not an invented label with no corresponding link. */
+export function sectionBreadcrumb(section: string): { label: string; href: string } | undefined {
+  for (const group of Object.values(SECTION_META)) {
+    const sub = group.subsections.find((s) => s.dir === section);
+    if (sub) return { label: sub.label, href: sub.landing ?? `/docs/${sub.dir}/roadmap` };
+  }
+  return undefined;
+}

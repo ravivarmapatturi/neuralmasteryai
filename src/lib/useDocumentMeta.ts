@@ -25,6 +25,56 @@ function upsertCanonical(href: string): void {
   el.setAttribute('href', href);
 }
 
+export interface BreadcrumbItem {
+  label: string;
+  /** Route relative to the site root, e.g. "/docs/deep-learning/roadmap". */
+  href: string;
+}
+
+const JSON_LD_ID = 'nm-breadcrumb-jsonld';
+
+/** Real schema.org BreadcrumbList structured data (audit: "No structured
+ * data... Add JSON-LD"), built only from crumbs the caller passes in --
+ * every `item` URL is a real, currently-reachable route (see
+ * sectionBreadcrumb()), never an invented label. Removes the script tag
+ * entirely when no crumbs are given, rather than leaving a stale one from
+ * a previous route behind. */
+function upsertBreadcrumbJsonLd(crumbs: BreadcrumbItem[] | undefined, currentPageName: string, currentPath: string): void {
+  const existing = document.getElementById(JSON_LD_ID);
+  if (!crumbs || crumbs.length === 0) {
+    existing?.remove();
+    return;
+  }
+  const base = SITE_URL.replace(/\/$/, '');
+  const itemListElement = [
+    ...crumbs.map((c, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: c.label,
+      item: base + c.href,
+    })),
+    {
+      '@type': 'ListItem',
+      position: crumbs.length + 1,
+      name: currentPageName,
+      item: base + currentPath,
+    },
+  ];
+  const json = JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement,
+  });
+  let el = existing as HTMLScriptElement | null;
+  if (!el) {
+    el = document.createElement('script');
+    el.id = JSON_LD_ID;
+    el.type = 'application/ld+json';
+    document.head.appendChild(el);
+  }
+  el.textContent = json;
+}
+
 /** Sets <meta name="description"> plus Open Graph / Twitter Card tags and a
  * canonical link, per route -- the SEO surface useDocumentTitle doesn't
  * cover. Falls back to a sitewide description when a page has no
@@ -36,7 +86,7 @@ function upsertCanonical(href: string): void {
  * JS runs. Search engines that execute JS (Googlebot) see them fine; some
  * social-preview crawlers that don't will only see index.html's static
  * fallback tags. */
-export function useDocumentMeta(pageTitle: string | undefined, description?: string): void {
+export function useDocumentMeta(pageTitle: string | undefined, description?: string, breadcrumb?: BreadcrumbItem[]): void {
   useEffect(() => {
     const desc = description ?? DEFAULT_DESCRIPTION;
     const fullTitle = pageTitle ? `${pageTitle} — ${SITE_NAME}` : SITE_NAME;
@@ -54,5 +104,6 @@ export function useDocumentMeta(pageTitle: string | undefined, description?: str
     upsertMeta('name', 'twitter:title', fullTitle);
     upsertMeta('name', 'twitter:description', desc);
     upsertCanonical(canonical);
-  }, [pageTitle, description]);
+    upsertBreadcrumbJsonLd(breadcrumb, pageTitle ?? SITE_NAME, window.location.pathname);
+  }, [pageTitle, description, breadcrumb]);
 }

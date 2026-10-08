@@ -12,6 +12,7 @@ import ThemeSkinPicker from '../ThemeSkinPicker';
 import { getPageByRoute } from '../../lib/contentTree';
 import { useDocumentTitle } from '../../lib/useDocumentTitle';
 import { useDocumentMeta } from '../../lib/useDocumentMeta';
+import { sectionBreadcrumb } from '../../data/sectionMeta';
 
 const SIDEBAR_COLLAPSE_KEY = 'neural-mastery-sidebar-collapsed';
 const TOC_COLLAPSE_KEY = 'neural-mastery-toc-collapsed';
@@ -64,7 +65,8 @@ export default function DocLayout() {
   }, [tocCollapsed]);
 
   useDocumentTitle(page ? page.title : 'Page Not Found');
-  useDocumentMeta(page?.title, page?.description);
+  const crumb = page ? sectionBreadcrumb(page.section) : undefined;
+  useDocumentMeta(page?.title, page?.description, crumb ? [{ label: 'Home', href: '/' }, crumb] : undefined);
 
   if (!page) {
     return (

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { getSidebar } from '../lib/contentTree'
-import { completionFor, getGroupForSubsection, groupLandingRoute, SECTION_META, SECTION_ORDER, timeEstimate, TOTAL_PAGES } from './sectionMeta'
+import { completionFor, getGroupForSubsection, groupLandingRoute, sectionBreadcrumb, SECTION_META, SECTION_ORDER, timeEstimate, TOTAL_PAGES } from './sectionMeta'
 import { getPageByRoute } from '../lib/contentTree'
 import { DOMAIN_ICON_BY_GROUP_KEY } from '../components/icons/DomainIcons'
 
@@ -137,5 +137,22 @@ describe('TOTAL_PAGES / timeEstimate / completionFor', () => {
     }
     expect(completionFor(key, understood)).toBeLessThanOrEqual(1)
     expect(completionFor(key, understood)).toBeGreaterThan(0)
+  })
+})
+
+describe('sectionBreadcrumb (BreadcrumbList structured data)', () => {
+  it('finds a real label and a real, reachable landing href for every real subsection dir', () => {
+    for (const group of Object.values(SECTION_META)) {
+      for (const sub of group.subsections) {
+        const crumb = sectionBreadcrumb(sub.dir)
+        expect(crumb).toBeDefined()
+        expect(crumb!.label).toBe(sub.label)
+        expect(crumb!.href).toBe(sub.landing ?? `/docs/${sub.dir}/roadmap`)
+      }
+    }
+  })
+
+  it('returns undefined for a section dir that matches no subsection', () => {
+    expect(sectionBreadcrumb('not-a-real-section')).toBeUndefined()
   })
 })
