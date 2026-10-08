@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, VizButton } from '../primitives';
 
-type Tool = 'chroma' | 'pinecone' | 'weaviate' | 'pgvector';
+type Tool = 'chroma' | 'pinecone' | 'weaviate' | 'pgvector' | 'milvus';
 
 const TOOLS: Record<Tool, { name: string; deployment: string; indexing: string; bestFor: string; tradeoff: string }> = {
   chroma: {
@@ -32,6 +32,13 @@ const TOOLS: Record<Tool, { name: string; deployment: string; indexing: string; 
     indexing: 'HNSW or IVFFlat index types',
     bestFor: 'Keeping vectors in the same transactional store as your structured data -- one JOIN across embeddings and relational metadata instead of syncing two systems',
     tradeoff: 'Postgres was not purpose-built for vector search -- at very large scale or very high QPS, a dedicated vector database\'s specialized indexing still outperforms it.',
+  },
+  milvus: {
+    name: 'Milvus',
+    deployment: 'Open-source (Apache 2.0) -- Milvus Lite (embedded, pip-installable) for prototyping, Standalone or Distributed for production, or Zilliz Cloud\'s fully managed hosting',
+    indexing: 'A genuinely pluggable set of index types, not just one -- HNSW, IVF, DiskANN, and quantized/binary indexes, chosen per use case',
+    bestFor: 'Billion-scale vector search where you want to pick your own index tradeoff rather than accept one vendor\'s proprietary default -- and self-host it if you need to',
+    tradeoff: 'That flexibility is also the cost: running a horizontally-scaled Milvus Distributed cluster yourself is real operational work, well past ChromaDB\'s territory -- Zilliz Cloud trades that complexity away for the same managed-hosting tradeoff Pinecone makes.',
   },
 };
 
