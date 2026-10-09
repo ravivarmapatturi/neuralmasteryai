@@ -7,6 +7,7 @@ description: "Claude Code, Cursor, Gemini CLI, and Windsurf -- the named, real a
 import AgenticCodingLoopDiagram from '../../../viz/diagrams/AgenticCodingLoopDiagram';
 import CodingAgentSafetyModelDiagram from '../../../viz/diagrams/CodingAgentSafetyModelDiagram';
 import OversightSpectrumDiagram from '../../../viz/diagrams/OversightSpectrumDiagram';
+import VerificationLayersDiagram from '../../../viz/diagrams/VerificationLayersDiagram';
 
 # Agentic Coding Assistants
 
@@ -55,6 +56,21 @@ Re-explaining a codebase's conventions every single session doesn't scale. Claud
 <OversightSpectrumDiagram />
 
 Spec-driven development is the disciplined middle, not a compromise: write and review the spec or plan first, then let the agent implement against it with less line-by-line scrutiny on the resulting diff. The oversight moves earlier in the loop rather than disappearing — closer to reviewing a PR description before the PR exists than to reviewing every line after the fact.
+
+## Verifying Spec-Driven Work: Beyond Reading the Diff
+
+Spec-driven development answers what the agent should do, but not how you know it actually did that once the diff itself gets less line-by-line scrutiny. A spec is only as good as the mechanism that checks the code actually satisfies it — the same idea [RL Environment & Reward Engineering](/docs/reinforcement-learning/rl-environments-and-reward-engineering#from-learned-reward-models-to-verifiable-rewards) covers for RLVR (a verifier program, not a learned judge, checking AI output against ground truth), applied here to human-agent collaboration instead of RL training.
+
+Four real, current techniques do most of the actual verifying, each catching a different class of mistake, and none substituting for the others:
+
+- **Executable specs as the actual gate.** Acceptance criteria written as tests *before* the agent implements, not after, so "done" has a mechanical definition instead of a subjective one. Writing the test first also forces the spec itself to be concrete enough to check — a spec too vague to turn into a test was probably too vague to hand to an agent in the first place.
+- **Property-based / invariant testing.** A fixed example test checks specific inputs; a property-based test (Hypothesis in Python, fast-check in JS) checks a general property instead — round-trip encode/decode, idempotency, no crash on any input — across many generated cases. This matters specifically for AI-generated code because an agent can satisfy three example tests with a solution that's wrong in general; property-based testing is what catches that gap.
+- **A second, independent model as critic.** Having a separate agent or model review the first one's output is a real, current practice, distinct from an agent re-reading its own work — a second context with no stake in the first attempt looking correct. The real limit: it only helps for properties the critic can actually check by inspection, so it narrows the diff that still needs a human look, it doesn't replace an executable spec.
+- **Type systems and static analysis as the cheap first pass.** A strict type checker and a linter with real rules (not just style) catch a meaningful share of mistakes before any test even runs, deterministically and for close to free — the right first filter, not the last word.
+
+<VerificationLayersDiagram />
+
+None of this eliminates the need for human judgment on *intent* — did the code do the right thing, not just a thing that happens to pass every check written for it. A test suite, a property check, and a critic model can all agree a result is "correct" by their own definitions while still missing that the actual goal was slightly different from what got specified. Spec-driven verification narrows how much of a diff needs that judgment; it doesn't remove the need for it, and no technique above claims otherwise.
 
 ## Seen Elsewhere on This Site
 
