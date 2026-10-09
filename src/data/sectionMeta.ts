@@ -50,7 +50,7 @@ export const SECTION_META: Record<string, SectionMetaEntry> = {
     icon: '🧠',
     color: '#5B8CFF',
     description: 'Classical ML through modern LLMs — every model family covered in depth.',
-    pageCount: 82,
+    pageCount: 83,
     difficulty: 'Intermediate → Advanced',
     prerequisites: 'Foundations',
     leadsTo: 'Agents & Applications',
