@@ -1,0 +1,40 @@
+---
+title: "Continual Learning"
+sidebar_position: 8.95
+description: "Catastrophic forgetting -- why sequential training unlearns earlier tasks -- and the real mitigations: EWC, replay, and parameter isolation."
+---
+
+import CatastrophicForgettingDiagram from '../../../viz/diagrams/CatastrophicForgettingDiagram';
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+
+# Continual Learning
+
+Every page before this one assumes a network trains on one dataset, once. **Continual learning** (also called lifelong learning) asks the question that matters the moment a model has to keep working after deployment: what happens when it then has to learn Task B, and later Task C, without access to Task A's original data anymore?
+
+<ELI5>
+
+A person who learns calculus after already knowing algebra doesn't forget how to factor a polynomial — the new skill builds on the old one without erasing it. A neural network trained the naive way doesn't work like that at all: training it on Task B actively overwrites whatever weights Task A was using, because nothing in Task B's training signal has any idea Task A exists. The network doesn't just stop improving on the old task — it gets *worse* at it, often back to near-random. That's catastrophic forgetting, and this page is about the three real families of techniques that fight it.
+
+</ELI5>
+
+## Catastrophic Forgetting: Why Sequential Training Breaks a Network
+
+Gradient descent on Task B only ever looks at Task B's loss. It has no term telling it "also, don't move the weights that Task A's accuracy depends on" — so it moves every weight exactly as far as Task B's gradient says to, regardless of whether that weight happened to matter for something else. The result isn't gentle performance decay, it's collapse: accuracy on Task A can fall close to the random-guessing floor within a small number of Task B training steps, even though nothing about Task A itself changed.
+
+<CatastrophicForgettingDiagram />
+
+## Three Real Mitigation Families
+
+None of these fully solves the problem — each trades away something else to slow the forgetting down:
+
+- **Regularization-based (Elastic Weight Consolidation).** [Kirkpatrick et al., 2017](https://arxiv.org/abs/1612.00796) (DeepMind and Imperial College London, published in *PNAS*) add a penalty that discourages moving weights away from their post-Task-A values, weighted by how *important* each weight was to Task A — measured using the diagonal of the Fisher information matrix. The name is a physical analogy: important weights become "elastic," resisting being pulled away from their old values, while unimportant ones stay free to adapt to the new task. This is a real, principled fix — not a full solution, since the importance estimate is only ever a diagonal approximation and the penalty is a soft constraint, not a hard guarantee.
+- **Replay-based.** Keep a (usually small) buffer of real examples from earlier tasks, and mix them back into training alongside the new task's data — or train a generative model to produce synthetic stand-ins for old-task data instead of storing real examples. This directly re-exposes the network to what it would otherwise forget, which is often simple and effective, at the real cost of a memory budget that grows with the number of past tasks, plus a genuine privacy concern wherever the original data can't be legally or practically retained.
+- **Parameter-isolation / architectural.** Give each task its own dedicated piece of the network — a progressive network that grows a new column of weights per task, or a small per-task adapter module bolted onto a frozen shared base, in the same spirit as the [Parameter-Efficient Fine-Tuning adapters](/docs/llms-genai/training-pipeline#parameter-efficient-fine-tuning-peft) covered on the LLM training page. Because each task's own parameters are never touched by another task's gradient, there's no interference by construction — the real cost is that the network's parameter count grows with the number of tasks instead of staying fixed, which doesn't scale cleanly to an open-ended, unbounded task stream.
+
+## Where This Shows Up Now
+
+This isn't a solved, academic corner of the field — it's a live problem for exactly the models this site spends the most time on. Continually pretraining or fine-tuning a large language model on new data (a new domain, a new instruction-tuning round, a new safety update) risks quietly degrading capabilities the model already had, for the same root reason: the new training signal has no idea what the old one was protecting. Weight-space regularization methods like EWC tend to transfer less cleanly to this setting than the mitigation-family list above might suggest — a single scalar importance score per weight is a coarse tool once that weight is doing many unrelated jobs across a model with billions of parameters, a property closely related to [superposition](/docs/interpretability/deep-learning-and-llm-interpretability#sparse-autoencoders-and-superposition) — a single weight or neuron often doesn't correspond to one clean, isolated concept, so a single importance score for it can't cleanly separate "safe to overwrite" from "critical to an earlier task". In practice, replay (mixing a slice of earlier training data back in) and parameter isolation (LoRA-style adapters per update) are the techniques that have actually held up at this scale, more than pure weight regularization.
+
+Choosing between the three families in practice comes down to three honest questions: is a memory budget for replay data available and legally fine to use, is the number of future tasks bounded (parameter isolation only scales cleanly if it is), and is some unavoidable residual forgetting actually acceptable for this application. There is no current technique that makes forgetting fully disappear — only ones that trade it against memory, parameter growth, or implementation complexity.
+
+Next: [NN Layers Reference](/docs/deep-learning/nn-layers-reference) — a single lookup page for every layer type introduced across this section's architectures.
