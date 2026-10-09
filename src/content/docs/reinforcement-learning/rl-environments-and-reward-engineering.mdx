@@ -6,6 +6,7 @@ description: "Why RL post-training lives or dies on environment and reward quali
 
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import { Remember } from '../../../components/content/Remember';
+import RlhfVsRlvrFlowDiagram from '../../../viz/diagrams/RlhfVsRlvrFlowDiagram';
 
 # RL Environment & Reward Engineering
 
@@ -23,6 +24,8 @@ import { Remember } from '../../../components/content/Remember';
 [Advanced RL's RLHF section](/docs/reinforcement-learning/advanced-rl#rlhf-rlaif-and-grpo-in-the-rl-framework) frames RLHF as: a reward *model* is trained on human preference data, and that learned model stands in for the environment's reward function during RL. This works well for open-ended tasks like "write a helpful email" where there's no single correct answer to check against — but it inherits a real weakness. A learned reward model is itself just another neural network with its own blind spots, and [Reward Hacking](/docs/ai-safety/alignment-and-rlhf#reward-hacking) covers exactly what happens when the policy learns to exploit those blind spots instead of actually getting better.
 
 For tasks that *do* have a checkable ground truth — did the code pass its test suite, does the math proof's final line match the known answer, did the SQL query return the right rows — there's a way to sidestep that whole failure mode: skip the learned reward model entirely, and reward the policy directly from a **verifier**, a program (not a neural network) that checks the output against ground truth. This is **RLVR: Reinforcement Learning with Verifiable Rewards**, and it's the core training regime behind most 2025-2026 reasoning-model gains (DeepSeek-R1's math/code RL stage, OpenAI's o-series post-training, and similar pipelines across the field).
+
+<RlhfVsRlvrFlowDiagram />
 
 <Remember>The reason RLVR matters isn't that it's a new algorithm — GRPO and PPO both still work the same way underneath. It's that the *reward signal itself* stops being a fallible learned guess and becomes a fact you can check with code. That single change removes an entire category of reward-hacking risk (the policy fooling the reward model) at the cost of only working for tasks where "correct" can actually be checked mechanically.</Remember>
 
