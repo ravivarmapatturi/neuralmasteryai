@@ -10,6 +10,7 @@ import SacEntropyDiagram from '../../../viz/diagrams/SacEntropyDiagram';
 import OfflineRlExtrapolationDiagram from '../../../viz/diagrams/OfflineRlExtrapolationDiagram';
 import CompoundingErrorDiagram from '../../../viz/diagrams/CompoundingErrorDiagram';
 import RlhfMappingDiagram from '../../../viz/diagrams/RlhfMappingDiagram';
+import WorldModelDiagram from '../../../viz/diagrams/WorldModelDiagram';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Advanced RL
@@ -24,7 +25,7 @@ Tabular RL is like a lookup table you could actually print out — one row per s
 
 ## Intuition: Each Method Fixes One Specific Assumption Break
 
-Every topic below exists because one specific assumption from RL Fundamentals stopped holding, and each fix is narrowly scoped to that one break: SAC and TD3 fix specific *statistical* failure modes of actor-critic methods once a neural network stands in for the Q-table. Offline RL breaks the "agent can freely explore" assumption. Imitation and inverse RL break the "a reward function is given" assumption. Keep that mapping in mind — it turns this page from a list of algorithm names into "here's the assumption, here's exactly what breaks, here's the fix."
+Every topic below exists because one specific assumption from RL Fundamentals stopped holding, and each fix is narrowly scoped to that one break: SAC and TD3 fix specific *statistical* failure modes of actor-critic methods once a neural network stands in for the Q-table. Model-based RL and world models break the assumption that a policy can only be updated from a real environment transition. Offline RL breaks the "agent can freely explore" assumption. Imitation and inverse RL break the "a reward function is given" assumption. Keep that mapping in mind — it turns this page from a list of algorithm names into "here's the assumption, here's exactly what breaks, here's the fix."
 
 ## Deep RL: DQN, Policy Gradients, Actor-Critic, PPO
 
@@ -59,6 +60,18 @@ with the inequality strict whenever the estimates actually have any variance —
 <SacEntropyDiagram />
 
 This tends to produce more robust policies that don't collapse prematurely onto a single, possibly-suboptimal deterministic behavior — exactly the failure mode a purely greedy objective (α=0) is prone to.
+
+## Model-Based RL and World Models
+
+Every method above this point is **model-free**: it never actually knows how the environment works, only ever updating a policy or value function from real transitions the agent actually experienced. **Model-based RL** breaks that assumption directly — learn a model of the environment's own dynamics ($\hat{s}_{t+1} = f(s_t, a_t)$, usually paired with a learned reward model too), then train or plan using that learned model instead of, or alongside, real interaction.
+
+A **world model** is the specific, now-standard instance of this idea for deep RL: a learned, compressed simulator of the environment the policy can train inside, needing far fewer real environment steps than a model-free method. [Ha and Schmidhuber's original "World Models" paper (2018)](https://arxiv.org/abs/1803.10122) made this concrete: a variational autoencoder compresses raw observations into a small latent space, a recurrent dynamics model predicts how that latent state evolves under an action, and the policy trains entirely inside the resulting learned simulator — real environment data refreshes the model only occasionally, it doesn't train the policy directly. In one of the paper's results, a policy trained *entirely* inside its own hallucinated version of a VizDoom level, never seeing a single real frame during training, still scored well above the game's own "solved" threshold once dropped into the real environment.
+
+<WorldModelDiagram />
+
+**DreamerV3** (Hafner et al.) is the widely-used current successor: a single configuration that works across 150+ diverse tasks with no per-task tuning, and performance that keeps improving as the model itself is scaled up — the same scaling behavior this site's LLM pages describe, here applied to a learned environment model instead of a learned language model. DeepMind's **Genie** line takes the idea a step further: instead of using the world model as scaffolding to train a policy, the *world model itself* is the product — an interactive, generative simulator a human or another agent can act inside directly.
+
+The real tradeoff, not a free upgrade: a model-based agent is only as good as its learned model. In any state the model never saw real data for, its predictions are wrong in exactly the "confidently wrong on unseen states" way [Offline RL's extrapolation problem](#offline-rl) and [imitation learning's compounding error](#imitation-learning) already describe elsewhere on this page — model-based RL doesn't remove that failure mode, it just moves it from a value function or a cloned policy to a learned environment model instead.
 
 ## Offline RL
 
