@@ -5,6 +5,7 @@ description: "Real, concrete methods for deploying a trained model on AWS and Az
 ---
 
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import CloudDeploymentChoiceDiagram from '../../../viz/diagrams/CloudDeploymentChoiceDiagram';
 
 # Deploying Models on AWS & Azure
 
@@ -313,15 +314,8 @@ response = client.chat.completions.create(
 
 ## Choosing Among These
 
-The same decision criteria as [Batch, Online, and Streaming Inference](/docs/mlops/model-serving#batch-online-and-streaming-inference) and [LLM Inference Optimization](/docs/mlops/llm-inference-optimization) apply directly to picking a method here, not just a serving tool:
+The same decision criteria as [Batch, Online, and Streaming Inference](/docs/mlops/model-serving#batch-online-and-streaming-inference) and [LLM Inference Optimization](/docs/mlops/llm-inference-optimization) apply directly to picking a method here, not just a serving tool. Click a need to see why the AWS and Azure answers line up (or don't):
 
-| Need | AWS | Azure |
-|---|---|---|
-| Synchronous, low-latency, steady traffic | SageMaker real-time endpoint | AML managed online endpoint |
-| Spiky/low-average traffic, tolerate cold starts | SageMaker Serverless Inference | Container Apps (scale-to-zero) |
-| Slow requests, large payloads, async result | SageMaker Async Inference | AML online endpoint + your own queue (no direct AML equivalent) |
-| Score a whole dataset, no persistent endpoint | SageMaker Batch Transform | AML batch endpoint |
-| Full control over the serving stack | ECS / EKS | AKS |
-| Managed foundation models, zero infra | Bedrock | Azure OpenAI Service |
+<CloudDeploymentChoiceDiagram />
 
 Next: [Kubernetes](/docs/mlops/kubernetes) — the orchestration layer underneath the EKS/AKS paths above, in full depth.
