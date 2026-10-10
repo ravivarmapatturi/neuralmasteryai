@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { SelectableRow, VisualizationContainer } from '../primitives';
 
 const NEEDS = [
   {
@@ -60,19 +60,12 @@ export default function CloudDeploymentChoiceDiagram() {
         {NEEDS.map((n) => {
           const isActive = active === n.key;
           return (
-            <div
+            <SelectableRow
               key={n.key}
-              onClick={() => setActive(n.key)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  setActive(n.key);
-                }
-              }}
+              selected={isActive}
+              label={n.need}
+              onSelect={() => setActive(n.key)}
               style={{
-                cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 10,
@@ -92,7 +85,7 @@ export default function CloudDeploymentChoiceDiagram() {
               <span style={{ flex: 1, minWidth: 140, fontSize: 11, fontWeight: 600, color: azureColor, textAlign: 'right' }}>
                 Azure: {n.azure}
               </span>
-            </div>
+            </SelectableRow>
           );
         })}
       </div>

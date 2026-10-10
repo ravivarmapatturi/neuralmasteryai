@@ -8,3 +8,4 @@ export { default as VisualizationStepController, useStepController } from './Vis
 export { default as VisualizationExplanation } from './VisualizationExplanation';
 export { default as VisualizationCode } from './VisualizationCode';
 export { default as VisualizationMath } from './VisualizationMath';
+export { default as SelectableRow } from './SelectableRow';
