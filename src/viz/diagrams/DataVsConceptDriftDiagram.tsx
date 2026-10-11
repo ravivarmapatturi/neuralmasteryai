@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { SelectableRow, VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Kind = 'data' | 'concept';
@@ -21,12 +21,12 @@ export default function DataVsConceptDriftDiagram() {
         : 'Concept drift: the SAME input now genuinely warrants a DIFFERENT prediction (fraudsters adapt their behavior) -- the target definition itself moved. Retraining on stale labels won\'t help; the labeling/evaluation process needs revisiting.'}
     >
       <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-        <div onClick={() => setKind('data')} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setKind('data'); } }} onMouseEnter={() => setKind('data')} style={{ flex: 1, cursor: 'pointer', padding: '0.6rem', borderRadius: 8, background: kind === 'data' ? `${dataColor}18` : t.surfaceAlt, border: `1.5px solid ${kind === 'data' ? dataColor : t.border}`, textAlign: 'center' }}>
+        <SelectableRow selected={kind === 'data'} label="Data drift" onSelect={() => setKind('data')} onMouseEnter={() => setKind('data')} style={{ flex: 1, padding: '0.6rem', borderRadius: 8, background: kind === 'data' ? `${dataColor}18` : t.surfaceAlt, border: `1.5px solid ${kind === 'data' ? dataColor : t.border}`, textAlign: 'center' }}>
           <span style={{ fontSize: 11.5, fontWeight: 700, color: kind === 'data' ? dataColor : t.textPrimary }}>Data drift</span>
-        </div>
-        <div onClick={() => setKind('concept')} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setKind('concept'); } }} onMouseEnter={() => setKind('concept')} style={{ flex: 1, cursor: 'pointer', padding: '0.6rem', borderRadius: 8, background: kind === 'concept' ? `${conceptColor}18` : t.surfaceAlt, border: `1.5px solid ${kind === 'concept' ? conceptColor : t.border}`, textAlign: 'center' }}>
+        </SelectableRow>
+        <SelectableRow selected={kind === 'concept'} label="Concept drift" onSelect={() => setKind('concept')} onMouseEnter={() => setKind('concept')} style={{ flex: 1, padding: '0.6rem', borderRadius: 8, background: kind === 'concept' ? `${conceptColor}18` : t.surfaceAlt, border: `1.5px solid ${kind === 'concept' ? conceptColor : t.border}`, textAlign: 'center' }}>
           <span style={{ fontSize: 11.5, fontWeight: 700, color: kind === 'concept' ? conceptColor : t.textPrimary }}>Concept drift</span>
-        </div>
+        </SelectableRow>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0.8rem', borderRadius: 9, background: `${color}12` }}>
         <div style={{ fontSize: 11, color: t.textSecondary }}>Input X</div>

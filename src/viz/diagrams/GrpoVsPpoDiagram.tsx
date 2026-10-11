@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { SelectableRow, VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const REWARDS = [0.82, 0.61, 0.35, 0.74, 0.49];
@@ -27,9 +27,9 @@ export default function GrpoVsPpoDiagram() {
     >
       <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
         {(['ppo', 'grpo'] as const).map((m) => (
-          <div key={m} onClick={() => setMethod(m)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMethod(m); } }} style={{ padding: '6px 14px', borderRadius: 999, fontSize: 11, cursor: 'pointer', background: method === m ? t.accentPrimary : t.surfaceAlt, color: method === m ? t.background : t.textSecondary, fontWeight: method === m ? 700 : 400 }}>
+          <SelectableRow key={m} selected={method === m} label={m.toUpperCase()} onSelect={() => setMethod(m)} style={{ padding: '6px 14px', borderRadius: 999, fontSize: 11, background: method === m ? t.accentPrimary : t.surfaceAlt, color: method === m ? t.background : t.textSecondary, fontWeight: method === m ? 700 : 400 }}>
             {m.toUpperCase()}
-          </div>
+          </SelectableRow>
         ))}
       </div>
       {method === 'ppo' ? (
