@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { SelectableRow, VisualizationContainer } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 type Mode = 'code' | 'data';
@@ -22,12 +22,12 @@ export default function GitVsDataVersioningDiagram() {
         : 'Data: a 500GB dataset has no meaningful line-by-line diff to compute -- git either stores the whole file again per commit (huge) or chokes trying to diff binary content. "Which exact version trained model v3" becomes unanswerable with git alone.'}
     >
       <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-        <div onClick={() => setMode('code')} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMode('code'); } }} onMouseEnter={() => setMode('code')} style={{ flex: 1, cursor: 'pointer', padding: '0.6rem', borderRadius: 8, background: mode === 'code' ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${mode === 'code' ? color : t.border}`, textAlign: 'center' }}>
+        <SelectableRow selected={mode === 'code'} label="Code" onSelect={() => setMode('code')} onMouseEnter={() => setMode('code')} style={{ flex: 1, padding: '0.6rem', borderRadius: 8, background: mode === 'code' ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${mode === 'code' ? color : t.border}`, textAlign: 'center' }}>
           <span style={{ fontSize: 11.5, fontWeight: 700, color: mode === 'code' ? color : t.textPrimary }}>Code</span>
-        </div>
-        <div onClick={() => setMode('data')} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMode('data'); } }} onMouseEnter={() => setMode('data')} style={{ flex: 1, cursor: 'pointer', padding: '0.6rem', borderRadius: 8, background: mode === 'data' ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${mode === 'data' ? color : t.border}`, textAlign: 'center' }}>
+        </SelectableRow>
+        <SelectableRow selected={mode === 'data'} label="500GB dataset" onSelect={() => setMode('data')} onMouseEnter={() => setMode('data')} style={{ flex: 1, padding: '0.6rem', borderRadius: 8, background: mode === 'data' ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${mode === 'data' ? color : t.border}`, textAlign: 'center' }}>
           <span style={{ fontSize: 11.5, fontWeight: 700, color: mode === 'data' ? color : t.textPrimary }}>500GB dataset</span>
-        </div>
+        </SelectableRow>
       </div>
       <div style={{ padding: '0.7rem', borderRadius: 8, background: mode === 'code' ? `${okColor}12` : `${badColor}12`, border: `1.5px solid ${mode === 'code' ? okColor : badColor}`, textAlign: 'center' }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: mode === 'code' ? okColor : badColor }}>

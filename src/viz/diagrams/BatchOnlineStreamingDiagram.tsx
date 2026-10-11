@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { SelectableRow, VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Mode = 'batch' | 'online' | 'streaming';
@@ -28,7 +28,7 @@ export default function BatchOnlineStreamingDiagram() {
         {MODES.map((m) => {
           const isSelected = selected === m.key;
           return (
-            <div key={m.key} onClick={() => setSelected(m.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(m.key); } }} onMouseEnter={() => setSelected(m.key)} style={{ flex: '1 1 150px', cursor: 'pointer', padding: '0.7rem 0.85rem', borderRadius: 8, background: isSelected ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isSelected ? color : t.border}` }}>
+            <SelectableRow key={m.key} selected={isSelected} label={m.label} onSelect={() => setSelected(m.key)} onMouseEnter={() => setSelected(m.key)} style={{ flex: '1 1 150px', padding: '0.7rem 0.85rem', borderRadius: 8, background: isSelected ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isSelected ? color : t.border}` }}>
               <div style={{ fontWeight: 700, fontSize: 12.5, color }}>{m.label}</div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 9.5, color: t.textMuted }}>
                 <span>latency <Dots n={m.latency} color={color} t={t} /></span>
@@ -36,7 +36,7 @@ export default function BatchOnlineStreamingDiagram() {
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 9.5, color: t.textMuted }}>
                 <span>throughput <Dots n={m.throughput} color={color} t={t} /></span>
               </div>
-            </div>
+            </SelectableRow>
           );
         })}
       </div>
