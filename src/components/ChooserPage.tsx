@@ -4,6 +4,7 @@ import LiveComputation from './home/LiveComputation';
 import PracticePlayground from './content/PracticePlayground';
 import AgentGraphSketch from './notebook/AgentGraphSketch';
 import NotebookCallout from './notebook/NotebookCallout';
+import { DomainIcon } from './icons/DomainIcons';
 import { SketchUnderline } from './notebook/RoughShape';
 import { getFlatPages, getPracticeProblems } from '../lib/contentTree';
 import { SECTION_META, SECTION_ORDER, groupLandingRoute } from '../data/sectionMeta';
@@ -154,7 +155,7 @@ export default function ChooserPage() {
                     }}
                   >
                     <span className="nb-hand" style={{ color: section.color, fontSize: '0.85rem' }}>0{index + 1}</span>
-                    <div style={{ fontSize: '1.3rem', margin: '0.4rem 0' }} aria-hidden="true">{section.icon}</div>
+                    <div style={{ margin: '0.4rem 0' }}><DomainIcon groupKey={key} color={section.color} size={24} /></div>
                     <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--nb-ink)' }}>{section.label}</h3>
                     <p style={{ margin: '0.4rem 0 0', fontSize: '0.82rem', color: 'var(--nb-ink-soft)', maxWidth: '25ch' }}>{section.description}</p>
                     <p className="nb-hand" style={{ margin: '0.8rem 0 0', color: section.color, fontSize: '0.8rem' }}>{section.pageCount} pages <Arrow /></p>

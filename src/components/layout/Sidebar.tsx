@@ -96,10 +96,17 @@ export default function Sidebar({
                 borderLeft: group ? `2.5px solid ${group.meta.color}` : 'none',
                 padding: group ? '0 0 0 6px' : 0,
                 cursor: 'pointer',
-                fontSize: 11,
+                // Hand font, not uppercase: handwriting-style faces (Kalam)
+                // are drawn for mixed case -- setting one in all-caps with
+                // letter-spacing (the previous look) destroys the natural
+                // letterforms and reads worse, not more "notebook." Bumped
+                // from 11px to 13px for the same reason the body-text pass
+                // needed a size bump -- handwriting needs more room to stay
+                // legible at a given visual weight than a tight uppercase
+                // sans label does.
+                fontFamily: "'Kalam', 'Comic Sans MS', cursive",
+                fontSize: 13,
                 fontWeight: 700,
-                letterSpacing: '0.06em',
-                textTransform: 'uppercase',
                 color: sectionActive ? 'var(--nm-accent-primary)' : 'var(--nm-text-muted)',
                 marginBottom: 6,
                 textAlign: 'left',
@@ -128,10 +135,11 @@ export default function Sidebar({
                   style={({ isActive }) => ({
                     display: 'block',
                     padding: '6px 0 6px 15px',
-                    fontSize: 14,
+                    fontFamily: "'Kalam', 'Comic Sans MS', cursive",
+                    fontSize: 15,
                     textDecoration: 'none',
                     color: isActive ? 'var(--nm-accent-primary)' : 'var(--nm-text-secondary)',
-                    fontWeight: isActive ? 600 : 400,
+                    fontWeight: isActive ? 700 : 400,
                   })}
                 >
                   {page.title}

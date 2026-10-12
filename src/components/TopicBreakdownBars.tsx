@@ -1,4 +1,5 @@
 import { topicBreakdown, type AwardEvent } from '../lib/gamification';
+import { DomainIcon } from './icons/DomainIcons';
 
 /**
  * Where a user's points actually came from, by top-level learning-path
@@ -32,7 +33,7 @@ export default function TopicBreakdownBars({ events }: { events: AwardEvent[] })
             background: 'var(--nm-surface)',
           }}
         >
-          <span style={{ fontSize: 16 }}>{entry.icon}</span>
+          <DomainIcon groupKey={entry.groupKey} color={entry.color} size={18} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--nm-text-primary)', marginBottom: 4 }}>{entry.label}</div>
             <div style={{ height: 5, borderRadius: 3, background: 'var(--nm-border)', overflow: 'hidden' }}>

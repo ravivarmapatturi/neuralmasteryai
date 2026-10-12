@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { SECTION_META, SECTION_ORDER, groupLandingRoute, timeEstimate, TOTAL_PAGES } from '../data/sectionMeta';
+import { DomainIcon } from './icons/DomainIcons';
 
 const STATS = [
   { value: SECTION_ORDER.length, label: 'sections' },
@@ -38,7 +39,7 @@ export default function CurriculumBreakdown() {
             >
               <Link to={groupLandingRoute(key)} style={{ textDecoration: 'none', color: 'inherit' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <span style={{ fontSize: 22 }}>{meta.icon}</span>
+                  <DomainIcon groupKey={key} color={meta.color} size={22} />
                   <span style={{ fontSize: 17, fontWeight: 700 }}>{meta.label}</span>
                 </div>
               </Link>

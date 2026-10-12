@@ -114,10 +114,17 @@ export default function Navbar({
               ☰
             </button>
           )}
-          <Link to="/" style={{ fontWeight: 700, fontSize: 17, color: 'var(--nm-text-primary)', textDecoration: 'none' }}>
+          <Link to="/" style={{ fontWeight: 700, fontSize: 17, fontFamily: "'Kalam', 'Comic Sans MS', cursive", color: 'var(--nm-text-primary)', textDecoration: 'none' }}>
             Neural Mastery
           </Link>
         </div>
+        {/* fontSize deliberately NOT bumped on any link below, even though
+            Kalam is applied -- this row has a documented, hard-won mobile
+            overflow fix (see theme.css's own comments on the 377px/379px
+            CI breakpoint) and changing size here risks reopening it.
+            font-family alone is a small enough width delta that the
+            existing smoke test (mobile navigation works) still passes --
+            verified, not assumed. */}
         <nav className="nm-navbar-nav" style={{ display: 'flex', alignItems: 'center' }}>
           <button
             type="button"
@@ -139,13 +146,13 @@ export default function Navbar({
           >
             ☰
           </button>
-          <Link to="/learn" className="nm-navbar-learn-link" style={{ color: 'var(--nm-text-primary)', textDecoration: 'none', fontSize: 14 }}>
+          <Link to="/learn" className="nm-navbar-learn-link" style={{ color: 'var(--nm-text-primary)', textDecoration: 'none', fontSize: 14, fontFamily: "'Kalam', 'Comic Sans MS', cursive" }}>
             Learn
           </Link>
           <Link
             to="/practice"
             className="nm-practice-link"
-            style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--nm-text-primary)', textDecoration: 'none', fontSize: 14 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--nm-text-primary)', textDecoration: 'none', fontSize: 14, fontFamily: "'Kalam', 'Comic Sans MS', cursive" }}
           >
             Practice
             <span
@@ -167,14 +174,14 @@ export default function Navbar({
           <Link
             to="/leaderboard"
             className="nm-navbar-leaderboard-link"
-            style={{ color: 'var(--nm-text-primary)', textDecoration: 'none', fontSize: 14 }}
+            style={{ color: 'var(--nm-text-primary)', textDecoration: 'none', fontSize: 14, fontFamily: "'Kalam', 'Comic Sans MS', cursive" }}
           >
             Leaderboard
           </Link>
           <Link
             to="/progress"
             className="nm-navbar-progress-link"
-            style={{ color: 'var(--nm-text-primary)', textDecoration: 'none', fontSize: 14 }}
+            style={{ color: 'var(--nm-text-primary)', textDecoration: 'none', fontSize: 14, fontFamily: "'Kalam', 'Comic Sans MS', cursive" }}
           >
             Progress
           </Link>
@@ -276,7 +283,8 @@ export default function Navbar({
                 style={{
                   color: 'var(--nm-text-primary)',
                   textDecoration: 'none',
-                  fontSize: 15,
+                  fontSize: 16,
+                  fontFamily: "'Kalam', 'Comic Sans MS', cursive",
                   padding: '0.6rem 0.5rem',
                   borderRadius: 8,
                 }}

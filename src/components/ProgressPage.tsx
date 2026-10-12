@@ -9,6 +9,7 @@ import { useProgress, REVIEW_INTERVALS_DAYS } from '../contexts/ProgressContext'
 import { useGamification } from '../contexts/GamificationContext';
 import { levelForPoints } from '../lib/gamification';
 import { rankForLevel } from '../lib/rankTiers';
+import { DomainIcon } from './icons/DomainIcons';
 import { practiceStats, isSolved, nextLesson, recommendedProblem, cleanPracticeTitle } from '../lib/mastery';
 import { getPracticeTracks, buildTopicLabels } from '../lib/practiceTracks';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
@@ -359,7 +360,7 @@ export default function ProgressPage() {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 16 }}>{meta.icon}</span>
+                      <DomainIcon groupKey={key} color={meta.color} size={18} />
                       <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--nm-text-primary)' }}>{meta.label}</span>
                     </div>
                     <span style={{ fontSize: 12, fontWeight: 700, color: meta.color }}>
