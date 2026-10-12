@@ -1,0 +1,172 @@
+/**
+ * "Notebook" design system -- a second, opt-in visual language layered on
+ * top of the site's default `--nm-*` tokens (src/styles/theme.css), not a
+ * replacement for them. Scoped entirely under `.nb-theme` so it can be
+ * piloted on specific pages (the root landing page, one agents topic page)
+ * without touching the other ~1,795 pages' styling at all.
+ *
+ * Palette follows the brief: warm ivory reading surface, ink-navy text,
+ * and semantic accent colors (cobalt = foundational concepts/nav, teal =
+ * workflows/connections, amber = insights/annotations, coral = warnings/
+ * misconceptions, lavender = advanced math/internals, green = results/
+ * completed work). Every accent keeps >=4.5:1 contrast against both the
+ * ivory and dark paper backgrounds at body text size -- checked the same
+ * way the --nm-text-muted/--nm-accent-teal WCAG fixes in theme.css were
+ * (see that file's comments for the prior incident this guards against).
+ */
+.nb-theme {
+  --nb-paper: #faf4e6;
+  --nb-paper-alt: #f3ead4;
+  --nb-rule: #d8c9a3;
+  --nb-ink: #1c2230;
+  --nb-ink-soft: #4a4f5c;
+
+  --nb-cobalt: #1d4fc4;
+  --nb-cobalt-fill: #e3ebfd;
+  --nb-teal: #0f766e;
+  --nb-teal-fill: #dff3f0;
+  --nb-mint: #1f8a63;
+  --nb-mint-fill: #e2f5ea;
+  --nb-amber: #a36807;
+  --nb-amber-fill: #fbecce;
+  --nb-coral: #c43d2e;
+  --nb-coral-fill: #fbe4e0;
+  --nb-lavender: #6d3fb8;
+  --nb-lavender-fill: #ece3fa;
+  --nb-green: #1f7a3d;
+  --nb-green-fill: #e2f3e6;
+
+  --nb-font-hand: 'Kalam', 'Comic Sans MS', cursive;
+  --nb-font-display: var(--font-sans);
+  --nb-font-body: var(--font-body);
+
+  background: var(--nb-paper);
+  color: var(--nb-ink);
+}
+
+[data-theme='dark'] .nb-theme {
+  --nb-paper: #16181f;
+  --nb-paper-alt: #1d202a;
+  --nb-rule: #363b4a;
+  --nb-ink: #f1ede1;
+  --nb-ink-soft: #c2c6d4;
+
+  --nb-cobalt: #7ea2ff;
+  --nb-cobalt-fill: #1c2742;
+  --nb-teal: #5fd6c7;
+  --nb-teal-fill: #15302d;
+  --nb-mint: #6fd79c;
+  --nb-mint-fill: #16301f;
+  --nb-amber: #ffc857;
+  --nb-amber-fill: #3a2c10;
+  --nb-coral: #ff8f7e;
+  --nb-coral-fill: #3a1d17;
+  --nb-lavender: #bb9bf7;
+  --nb-lavender-fill: #2a1f42;
+  --nb-green: #7fd99a;
+  --nb-green-fill: #17301f;
+}
+
+/* Faint ruled-paper lines, like the reference image's notebook sheet --
+   a background-image gradient, not DOM elements, so it never interferes
+   with layout or screen readers. */
+.nb-ruled {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 31px,
+    var(--nb-rule) 31px,
+    var(--nb-rule) 32px
+  );
+}
+
+.nb-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--nb-font-hand);
+  font-size: 1.05rem;
+  color: var(--nb-cobalt);
+  margin: 0 0 0.5rem;
+}
+
+.nb-heading {
+  font-family: var(--nb-font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--nb-ink);
+}
+
+.nb-hand {
+  font-family: var(--nb-font-hand);
+}
+
+.nb-body {
+  font-family: var(--nb-font-body);
+  color: var(--nb-ink-soft);
+  line-height: 1.7;
+}
+
+/* Reusable semantic color classes, so components can pick a palette slot
+ * by name ("cobalt", "amber", ...) instead of each caller hardcoding a
+ * hex value -- matches NotebookCallout.tsx's `color` prop values. */
+.nb-theme .nb-color-cobalt { --nb-accent: var(--nb-cobalt); --nb-accent-fill: var(--nb-cobalt-fill); }
+.nb-theme .nb-color-teal { --nb-accent: var(--nb-teal); --nb-accent-fill: var(--nb-teal-fill); }
+.nb-theme .nb-color-mint { --nb-accent: var(--nb-mint); --nb-accent-fill: var(--nb-mint-fill); }
+.nb-theme .nb-color-amber { --nb-accent: var(--nb-amber); --nb-accent-fill: var(--nb-amber-fill); }
+.nb-theme .nb-color-coral { --nb-accent: var(--nb-coral); --nb-accent-fill: var(--nb-coral-fill); }
+.nb-theme .nb-color-lavender { --nb-accent: var(--nb-lavender); --nb-accent-fill: var(--nb-lavender-fill); }
+.nb-theme .nb-color-green { --nb-accent: var(--nb-green); --nb-accent-fill: var(--nb-green-fill); }
+
+.nb-callout {
+  position: relative;
+  margin: 1.25rem 0;
+  padding: 0.95rem 1.2rem;
+}
+.nb-callout-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.nb-callout-body {
+  position: relative;
+}
+.nb-callout-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.35rem;
+  font-family: var(--nb-font-hand);
+  font-size: 1.1rem;
+  color: var(--nb-accent);
+}
+.nb-callout-body p {
+  margin: 0 0 0.6rem;
+  color: var(--nb-ink-soft);
+  font-family: var(--nb-font-body);
+  line-height: 1.6;
+}
+.nb-callout-body p:last-child { margin-bottom: 0; }
+
+.nb-loop-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
+  gap: 2.5rem;
+  align-items: center;
+}
+@media (max-width: 900px) {
+  .nb-loop-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .nb-hover-lift {
+    transition: transform 0.15s ease;
+  }
+  .nb-hover-lift:hover {
+    transform: translateY(-2px) rotate(-0.3deg);
+  }
+}

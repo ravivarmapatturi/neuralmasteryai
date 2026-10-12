@@ -5,10 +5,22 @@ description: "What's actually inside a Loop vs. a Graph -- a real, checkable pas
 ---
 
 import LoopGraphAnatomyDiagram from '../../../viz/diagrams/LoopGraphAnatomyDiagram';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
 # Loops and Graphs: The Actual Anatomy
 
 [Agent Architectures](/docs/agents/agent-architectures#how-we-got-here-prompt-context-harness-loop-graph) narrated *why* the field moved from a single loop to a graph of them. This page stops narrating and gets precise: what is actually inside a Loop, what is actually inside a Graph, and where each one earns its keep.
+
+<div className="nb-theme" style={{ padding: '0.25rem 0' }}>
+<div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0.75rem' }}>
+<NotebookCallout color="cobalt" title="① What is a Loop?">
+<p>The mechanism that makes <strong>one unit of work</strong> correct without supervision: produce → check → correct → repeat, until a real pass/fail condition is met — not a vibe.</p>
+</NotebookCallout>
+<NotebookCallout color="teal" title="② What is a Graph?">
+<p>The layer <strong>above</strong> the loop: decides which units of work exist, what order they run in, and what runs in parallel vs. sequentially.</p>
+</NotebookCallout>
+</div>
+</div>
 
 ## Loop vs. Graph, Precisely
 
@@ -18,11 +30,34 @@ A **graph** is the layer above the loop, not a fancier version of it: it decides
 
 Neither substitutes for the other. A graph with no real loop inside its nodes just ships unverified work faster and in parallel — worse than one slow, unverified loop, not better. A loop with no graph around it is one well-built step sitting in an undesigned queue, with no say over what runs before or after it.
 
+<div className="nb-theme" style={{ padding: '0.25rem 0' }}>
+<NotebookCallout color="amber" title="★ In short">
+<p>A graph with no loop inside its nodes ships unverified work faster, in parallel — <strong>worse</strong>, not better. A loop with no graph around it has no say over what runs before or after it. Neither one substitutes for the other.</p>
+</NotebookCallout>
+</div>
+
 This distinction has a real, recent formal treatment: Hu Wei's ["From Agent Loops to Structured Graphs: A Scheduler-Theoretic Framework for LLM Agent Execution"](https://arxiv.org/abs/2604.11378) applies scheduler theory — the same lens distributed systems uses for task scheduling — to the "Agent Loop" pattern, and finds three structural weaknesses in a plain loop: dependencies between steps stay implicit rather than declared, a stuck loop can recover indefinitely with no bound, and the execution history it accumulates is mutable rather than an auditable record. It's worth being precise about what the paper actually claims: the author describes it explicitly as "a position paper and design proposal," not an implementation with measured results, and the formal guarantee offered is *termination and soundness* for its proposed graph harness (SGH) — not a claim that graphs are provably optimal over loops in every case. Real, useful formal grounding; not a benchmark result.
 
 ## Four Node Types
 
 <LoopGraphAnatomyDiagram />
+
+<div className="nb-theme" style={{ padding: '0.25rem 0' }}>
+<div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.75rem' }}>
+<NotebookCallout color="cobalt" title="Splitter">
+<p>Cuts the task into units of work. The single highest-leverage decision in the graph — split along the wrong dimension and every downstream node inherits the mistake.</p>
+</NotebookCallout>
+<NotebookCallout color="teal" title="Worker">
+<p>Does one unit, from its own isolated context. Shared context between workers means paying for two calls and getting one opinion, not two.</p>
+</NotebookCallout>
+<NotebookCallout color="lavender" title="Code node">
+<p>A deterministic transformation — merge, rank, dedupe, diff. No model call belongs here: if it has no verb like "judge" or "decide," it's code.</p>
+</NotebookCallout>
+<NotebookCallout color="amber" title="Gate">
+<p>The approval checkpoint. Not a confidence score — a real pass/fail condition deciding whether a unit's output is accepted, and if not, where it goes next.</p>
+</NotebookCallout>
+</div>
+</div>
 
 - **Splitter** — cuts the incoming task into units of work. The single highest-leverage decision in the graph: split along the wrong dimension (by page instead of by section, by file instead of by concern) and every node downstream inherits that mistake, no matter how good each individual node is.
 - **Worker** — does one unit, from its own isolated context. Isolated matters: two workers sharing the same context tend to converge on the same answer, which means paying for two calls and getting one opinion, not two independent ones.
