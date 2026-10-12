@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, VisualizationMath, VizButton } from '../primitives';
 import { DIAGRAM_TYPE, DIAGRAM_ANIMATION, getConceptColor, valueColor } from './diagramSystem';
+import { SketchRect } from '../../components/notebook/RoughShape';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 const TOKENS = ['I', 'love', 'ice', 'cream'];
 // A plausible, fixed post-softmax causal attention distribution (each row
@@ -44,12 +47,12 @@ export default function CausalMaskAnimated() {
 
       <svg width="100%" viewBox={`0 0 ${labelW + n * cellSize + (n - 1) * 2} ${labelH + n * cellSize + (n - 1) * 2}`} style={{ maxWidth: 420, display: 'block', margin: '0 auto' }}>
         {TOKENS.map((tok, c) => (
-          <text key={`col-${c}`} x={labelW + c * (cellSize + 2) + cellSize / 2} y={labelH - 10} textAnchor="middle" fontSize={DIAGRAM_TYPE.secondaryLabel.size} fill={t.textMuted}>
+          <text key={`col-${c}`} x={labelW + c * (cellSize + 2) + cellSize / 2} y={labelH - 10} textAnchor="middle" fontSize={DIAGRAM_TYPE.secondaryLabel.size + 1} fontFamily={HAND_FONT} fill={t.textMuted}>
             {tok}
           </text>
         ))}
         {TOKENS.map((tok, r) => (
-          <text key={`row-${r}`} x={labelW - 10} y={labelH + r * (cellSize + 2) + cellSize / 2 + 4} textAnchor="end" fontSize={DIAGRAM_TYPE.secondaryLabel.size} fill={t.textMuted}>
+          <text key={`row-${r}`} x={labelW - 10} y={labelH + r * (cellSize + 2) + cellSize / 2 + 4} textAnchor="end" fontSize={DIAGRAM_TYPE.secondaryLabel.size + 1} fontFamily={HAND_FONT} fill={t.textMuted}>
             {tok}
           </text>
         ))}
@@ -75,6 +78,15 @@ export default function CausalMaskAnimated() {
 
             return (
               <g key={`${r}-${c}`} style={{ transition: `all ${DIAGRAM_ANIMATION.normal}ms ${DIAGRAM_ANIMATION.easing}` }}>
+                {/* fill here is real data (the probability-intensity
+                    heatmap color), not decoration -- kept as a plain rect
+                    so it keeps its CSS transition between stages and stays
+                    an accurate color encoding. The SketchRect below adds
+                    only the hand-drawn border on top, no fillColor (same
+                    legibility fix as every other converted diagram). Its
+                    own color (future ? maskColor : attnColor) doesn't
+                    depend on `stage`, so it doesn't even regenerate on
+                    stage clicks -- only the backing fill animates. */}
                 <rect
                   x={x}
                   y={y}
@@ -82,10 +94,18 @@ export default function CausalMaskAnimated() {
                   height={cellSize}
                   rx={3}
                   fill={fill}
-                  stroke={future ? maskColor : attnColor}
-                  strokeOpacity={future ? 0.4 : 0.7}
-                  strokeWidth={1}
+                  stroke="none"
                   style={{ transition: `all ${DIAGRAM_ANIMATION.normal}ms ${DIAGRAM_ANIMATION.easing}` }}
+                />
+                <SketchRect
+                  x={x}
+                  y={y}
+                  width={cellSize}
+                  height={cellSize}
+                  color={future ? maskColor : attnColor}
+                  roughness={1.1}
+                  strokeWidth={future ? 1.1 : 1.4}
+                  id={`cma-cell-${r}-${c}`}
                 />
                 <text
                   x={x + cellSize / 2}

@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
+import { SketchPath } from '../../components/notebook/RoughShape';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 const D_MODEL = 512;
 const POSITIONS = 60;
@@ -40,15 +43,19 @@ export default function PositionalEncodingSinusoids() {
     <VisualizationContainer footer="Every dimension is a fixed sine or cosine wave of position -- no data, no training, just the formula. Hover a dimension to trace its wave alone.">
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
         <line x1={padL} y1={yFor(0)} x2={width - padR} y2={yFor(0)} stroke={t.border} strokeWidth={1} />
-        <text x={padL - 8} y={yFor(1) + 4} textAnchor="end" fontSize={10} fill={t.textMuted}>1</text>
-        <text x={padL - 8} y={yFor(-1) + 4} textAnchor="end" fontSize={10} fill={t.textMuted}>−1</text>
-        <text x={padL} y={height - 8} textAnchor="start" fontSize={10} fill={t.textMuted}>pos = 0</text>
-        <text x={width - padR} y={height - 8} textAnchor="end" fontSize={10} fill={t.textMuted}>pos = {POSITIONS - 1}</text>
+        <text x={padL - 8} y={yFor(1) + 4} textAnchor="end" fontSize={10.5} fontFamily={HAND_FONT} fill={t.textMuted}>1</text>
+        <text x={padL - 8} y={yFor(-1) + 4} textAnchor="end" fontSize={10.5} fontFamily={HAND_FONT} fill={t.textMuted}>−1</text>
+        <text x={padL} y={height - 8} textAnchor="start" fontSize={10.5} fontFamily={HAND_FONT} fill={t.textMuted}>pos = 0</text>
+        <text x={width - padR} y={height - 8} textAnchor="end" fontSize={10.5} fontFamily={HAND_FONT} fill={t.textMuted}>pos = {POSITIONS - 1}</text>
 
         {DIM_PAIRS.map((dim, di) => {
           const dimmed = hoveredDim !== null && hoveredDim !== dim;
           const d = Array.from({ length: POSITIONS }, (_, pos) => `${pos === 0 ? 'M' : 'L'} ${xFor(pos)},${yFor(pe(pos, dim))}`).join(' ');
-          return <path key={dim} d={d} fill="none" stroke={colors[di % colors.length]} strokeWidth={hoveredDim === dim ? 2.5 : 1.75} opacity={dimmed ? 0.15 : 0.9} />;
+          return (
+            <g key={dim} opacity={dimmed ? 0.15 : 0.9}>
+              <SketchPath d={d} color={colors[di % colors.length]} roughness={1.2} strokeWidth={hoveredDim === dim ? 2.5 : 1.75} id={`pe-sine-${dim}`} />
+            </g>
+          );
         })}
       </svg>
 
