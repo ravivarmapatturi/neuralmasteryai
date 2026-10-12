@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, VizButton } from '../primitives';
 import { getConceptColor } from './diagramSystem';
+import SketchBox from '../../components/notebook/SketchBox';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 export default function VirtualEnvIsolationDiagram() {
   const t = useVizTokens();
@@ -31,27 +34,31 @@ export default function VirtualEnvIsolationDiagram() {
       {isolated ? (
         <div style={{ display: 'flex', gap: 24 }}>
           {[{ name: 'Project A', color: projA, torch: '2.0.0' }, { name: 'Project B', color: projB, torch: '2.4.0' }].map((p) => (
-            <div key={p.name} style={{ flex: 1, border: `1.5px solid ${p.color}`, borderRadius: 8, padding: 12 }}>
-              <div style={{ fontWeight: 700, color: p.color, marginBottom: 6 }}>{p.name}</div>
-              <div style={{ fontSize: 11, color: t.textMuted, marginBottom: 4 }}>.venv/site-packages</div>
-              <div style={{ fontFamily: 'monospace', fontSize: 12, padding: '4px 8px', background: `${okColor}18`, borderRadius: 4, color: okColor }}>torch=={p.torch} ✓</div>
-            </div>
+            <SketchBox key={p.name} color={p.color} strokeWidth={1.5} style={{ flex: 1 }}>
+              <div style={{ padding: 12 }}>
+                <div style={{ fontWeight: 700, color: p.color, marginBottom: 6, fontFamily: HAND_FONT }}>{p.name}</div>
+                <div style={{ fontSize: 11, color: t.textMuted, marginBottom: 4, fontFamily: HAND_FONT }}>.venv/site-packages</div>
+                <div style={{ fontFamily: 'monospace', fontSize: 12, padding: '4px 8px', background: `${okColor}18`, borderRadius: 4, color: okColor }}>torch=={p.torch} ✓</div>
+              </div>
+            </SketchBox>
           ))}
         </div>
       ) : (
         <div>
-          <div style={{ border: `1.5px solid ${errColor}`, borderRadius: 8, padding: 12, marginBottom: 10 }}>
-            <div style={{ fontSize: 11, color: t.textMuted, marginBottom: 4 }}>global site-packages (shared, one install at a time)</div>
-            <div style={{ fontFamily: 'monospace', fontSize: 12, padding: '4px 8px', background: `${errColor}18`, borderRadius: 4, color: errColor }}>torch==2.4.0 (only one version can exist here)</div>
-          </div>
+          <SketchBox color={errColor} strokeWidth={1.5} style={{ marginBottom: 10 }}>
+            <div style={{ padding: 12 }}>
+              <div style={{ fontSize: 11, color: t.textMuted, marginBottom: 4, fontFamily: HAND_FONT }}>global site-packages (shared, one install at a time)</div>
+              <div style={{ fontFamily: 'monospace', fontSize: 12, padding: '4px 8px', background: `${errColor}18`, borderRadius: 4, color: errColor }}>torch==2.4.0 (only one version can exist here)</div>
+            </div>
+          </SketchBox>
           <div style={{ display: 'flex', gap: 24 }}>
             <div style={{ flex: 1, textAlign: 'center' }}>
-              <div style={{ fontWeight: 700, color: projA }}>Project A</div>
-              <div style={{ fontSize: 12, color: errColor, marginTop: 4 }}>needs 2.0.0 — breaks ✗</div>
+              <div style={{ fontWeight: 700, color: projA, fontFamily: HAND_FONT }}>Project A</div>
+              <div style={{ fontSize: 12, color: errColor, marginTop: 4, fontFamily: HAND_FONT }}>needs 2.0.0 — breaks ✗</div>
             </div>
             <div style={{ flex: 1, textAlign: 'center' }}>
-              <div style={{ fontWeight: 700, color: projB }}>Project B</div>
-              <div style={{ fontSize: 12, color: okColor, marginTop: 4 }}>needs 2.4.0 — works ✓</div>
+              <div style={{ fontWeight: 700, color: projB, fontFamily: HAND_FONT }}>Project B</div>
+              <div style={{ fontSize: 12, color: okColor, marginTop: 4, fontFamily: HAND_FONT }}>needs 2.4.0 — works ✓</div>
             </div>
           </div>
         </div>
