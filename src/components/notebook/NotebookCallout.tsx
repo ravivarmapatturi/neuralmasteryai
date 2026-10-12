@@ -67,10 +67,18 @@ export default function NotebookCallout({ color, title, icon, children }: Notebo
       </svg>
       <div className="nb-callout-body">
         {title && (
-          <p className="nb-callout-title">
+          // A <div>, not a <p> -- a sibling rule (.nb-callout-body p) styles
+          // body paragraphs with the body font and, as a <p>, previously
+          // matched this element too with HIGHER specificity (class+tag
+          // beats class alone), silently winning over this element's own
+          // .nb-callout-title rule and overriding the hand font with the
+          // body font. Real bug, found live (title rendered as Literata,
+          // not Kalam) -- a <div> can't match a `p` selector, so it can't
+          // recur structurally.
+          <div className="nb-callout-title">
             {icon}
             {title}
-          </p>
+          </div>
         )}
         {children}
       </div>

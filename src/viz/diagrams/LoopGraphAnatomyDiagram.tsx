@@ -102,7 +102,12 @@ export default function LoopGraphAnatomyDiagram() {
           const n = NODES[key];
           const isSelected = selectedNode === key;
           const color = colorFor(n.kind);
-          const fill = isSelected ? color : undefined;
+          // No fillColor, ever: a hachure fill in the same color as the
+          // node's own text label visually collides with the glyph strokes
+          // (found live -- the default-selected "Gate" node was reported as
+          // unreadable, the hachure diagonals reading as "/////" over the
+          // text). Selection is indicated by strokeWidth alone, same as
+          // every unselected node already relies on for its border.
           return (
             <g
               key={key}
@@ -124,14 +129,13 @@ export default function LoopGraphAnatomyDiagram() {
                 <SketchPath
                   d={`M ${n.x - 24} ${n.y} L ${n.x} ${n.y - 18} L ${n.x + 24} ${n.y} L ${n.x} ${n.y + 18} Z`}
                   color={color}
-                  fillColor={fill}
                   strokeWidth={isSelected ? 2.6 : 1.8}
                   id={`lga-node-${key}`}
                 />
               ) : n.kind === 'code' ? (
-                <SketchRect x={n.x - 60} y={n.y - 12} width={120} height={24} color={color} fillColor={fill} strokeWidth={isSelected ? 2.6 : 1.8} id={`lga-node-${key}`} />
+                <SketchRect x={n.x - 60} y={n.y - 12} width={120} height={24} color={color} strokeWidth={isSelected ? 2.6 : 1.8} id={`lga-node-${key}`} />
               ) : (
-                <SketchRect x={n.x - 44} y={n.y - 16} width={88} height={32} color={color} fillColor={fill} strokeWidth={isSelected ? 2.6 : 1.8} id={`lga-node-${key}`} />
+                <SketchRect x={n.x - 44} y={n.y - 16} width={88} height={32} color={color} strokeWidth={isSelected ? 2.6 : 1.8} id={`lga-node-${key}`} />
               )}
               <text x={n.x} y={n.y + 4} textAnchor="middle" fontSize={10.5} fontFamily={HAND_FONT} fontWeight={700} fill={color}>{n.label}</text>
             </g>

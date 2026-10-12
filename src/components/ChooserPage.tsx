@@ -175,10 +175,10 @@ export default function ChooserPage() {
               No sign-up or installation — hit <strong>▶ Run</strong> to execute real Python in your browser (via
               Pyodide/WebAssembly) and check it against real test cases, no vague LLM grading.
             </p>
-            <div style={{ marginTop: '2rem' }}>
+            <div className="nm-practice-live">
               <PracticePlayground problemId="fizz-buzz" celebrateOnSuccess />
             </div>
-            <div style={{ marginTop: '1.75rem' }}>
+            <div className="nm-practice-live-foot">
               <Link className="nm-button nm-button-primary" to="/practice" style={{ background: 'var(--nb-cobalt)' }}>
                 Browse {problems.length} problems <Arrow />
               </Link>

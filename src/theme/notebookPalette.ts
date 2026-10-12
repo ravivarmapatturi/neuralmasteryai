@@ -30,11 +30,14 @@ export const NOTEBOOK_LIGHT: NotebookPalette = {
   inkSoft: '#4a4f5c',
   cobalt: '#1d4fc4',
   teal: '#0f766e',
-  mint: '#1f8a63',
-  amber: '#a36807',
-  coral: '#c43d2e',
+  // mint/amber/coral/green darkened to clear 4.5:1 against both light
+  // backgrounds -- see notebook.css's matching comment for the measured
+  // before/after.
+  mint: '#1b7856',
+  amber: '#935e06',
+  coral: '#be3b2d',
   lavender: '#6d3fb8',
-  green: '#1f7a3d',
+  green: '#1f793c',
 };
 
 export const NOTEBOOK_DARK: NotebookPalette = {

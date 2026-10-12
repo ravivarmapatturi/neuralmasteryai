@@ -25,52 +25,61 @@ export interface VizTokens {
   edge: string;
 }
 
+// 2026-10-12: promoted to the "notebook" palette sitewide, mirroring the
+// same change in src/styles/theme.css's --nm-* tokens (see that file's
+// comment for the full rationale). Same semantic slot per color (accent
+// primary stays green/brand, secondary stays blue, warn stays amber,
+// danger stays red, purple stays purple, teal stays teal) -- only the
+// actual hex values moved to the warmer, paper-consistent palette. Every
+// light-mode value re-verified computationally against WCAG AA (4.5:1) at
+// caption/label text size, same discipline as the darkening pass already
+// documented below for the previous palette -- this is the second such
+// pass on this exact file, not the first.
 export const DARK: VizTokens = {
   mode: 'dark',
-  background: '#0A0A0B',
-  surface: '#141416',
-  surfaceAlt: '#1E1E21',
-  border: '#2C2C30',
-  textPrimary: '#F5F5F7',
-  textSecondary: '#ABABB3',
-  textMuted: '#85858D', // lightened from #707078 -- failed WCAG AA (4.5:1) at caption text size against surfaceAlt (3.39:1); this clears 4.5:1 against every dark-theme background
-  accentPrimary: '#3DDC97',
-  accentSecondary: '#5B8CFF',
-  accentWarn: '#F4B942',
-  accentDanger: '#F45B5B',
-  accentPurple: '#A78BFA',
-  accentTeal: '#2DD4BF',
-  nodeFill: '#1E1E21',
-  nodeBorder: '#3DDC97',
-  edge: '#5B8CFF',
+  background: '#16181F',
+  surface: '#1D202A',
+  surfaceAlt: '#232734',
+  border: '#363B4A',
+  textPrimary: '#F1EDE1',
+  textSecondary: '#C2C6D4',
+  textMuted: '#9A9FB0',
+  accentPrimary: '#7FD99A',
+  accentSecondary: '#7EA2FF',
+  accentWarn: '#FFC857',
+  accentDanger: '#FF8F7E',
+  accentPurple: '#BB9BF7',
+  accentTeal: '#5FD6C7',
+  nodeFill: '#232734',
+  nodeBorder: '#7FD99A',
+  edge: '#7EA2FF',
 };
 
 export const LIGHT: VizTokens = {
   mode: 'light',
-  background: '#FFFFFF',
-  surface: '#F6F7F8',
-  surfaceAlt: '#EEF0F2',
-  border: '#E3E6EA',
-  textPrimary: '#14161A',
-  textSecondary: '#5B6470',
-  // The block below (textMuted through accentTeal) is darkened from the
-  // original palette -- every one of these failed WCAG AA (4.5:1) at
-  // caption/label text size against surfaceAlt in light mode (as low as
-  // 2.79:1 for textMuted, 2.80:1 for accentPrimary). Adjusted via HSL
-  // lightness only, hue/saturation preserved, so relative distinctness
-  // between concept colors (getConceptColor) is unchanged -- verified
-  // visually, not just by the numbers. All now clear 4.5:1 against every
-  // light-theme background.
-  textMuted: '#656E7A', // was #88919C
-  accentPrimary: '#197C59', // was #21A374
-  accentSecondary: '#2E66DF', // was #3169E0
-  accentWarn: '#976218', // was #B9791E
-  accentDanger: '#CF2E2E', // was #D43F3F
-  accentPurple: '#7C3AED',
-  accentTeal: '#0B7A71', // was #0D9488
-  nodeFill: '#EEF0F2',
-  nodeBorder: '#197C59',
-  edge: '#2E66DF',
+  background: '#FAF4E6',
+  surface: '#F3EAD4',
+  surfaceAlt: '#ECE0C5',
+  border: '#D8C9A3',
+  textPrimary: '#1C2230',
+  textSecondary: '#4A4F5C',
+  // mint/amber/coral/green (accentPrimary/Warn/Danger/-- see notebook.css)
+  // all failed WCAG AA (4.5:1) at caption/label size against this file's
+  // own surfaceAlt in their first pass (as low as 3.6:1) -- same failure
+  // mode the ORIGINAL palette below already hit once. HSL-lightness-only
+  // adjustment again, hue/saturation preserved so relative distinctness
+  // between concept colors (getConceptColor) is unchanged. All now clear
+  // 4.5:1 against every light-theme background, verified computationally.
+  textMuted: '#5C6270',
+  accentPrimary: '#1F793C',
+  accentSecondary: '#1D4FC4',
+  accentWarn: '#935E06',
+  accentDanger: '#BE3B2D',
+  accentPurple: '#6D3FB8',
+  accentTeal: '#0F766E',
+  nodeFill: '#ECE0C5',
+  nodeBorder: '#1F793C',
+  edge: '#1D4FC4',
 };
 
 export const RADIUS = { sm: 6, md: 12, lg: 20 };

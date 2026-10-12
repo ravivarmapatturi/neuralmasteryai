@@ -1,7 +1,9 @@
-import { useState, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
-import { useVizTokens, RADIUS, SPACING } from '../../theme/vizTokens';
+import { SPACING } from '../../theme/vizTokens';
+import { useNotebookPalette } from '../../theme/notebookPalette';
 import { useGamification } from '../../contexts/GamificationContext';
+import { SketchRect } from '../notebook/RoughShape';
 
 type Depth = 'eli5' | 'deeper' | 'solution' | 'qa';
 
@@ -42,10 +44,22 @@ function ExpandableDepth({
   onReveal?: () => void;
   children: ReactNode;
 }) {
-  const t = useVizTokens();
+  const nb = useNotebookPalette();
   const meta = DEPTH_META[kind];
   const [open, setOpen] = useState(defaultOpen ?? kind === 'eli5');
-  const color = kind === 'eli5' ? t.accentTeal : kind === 'solution' ? t.accentWarn : kind === 'qa' ? t.accentSecondary : t.accentPurple;
+  const color = kind === 'eli5' ? nb.teal : kind === 'solution' ? nb.amber : kind === 'qa' ? nb.cobalt : nb.lavender;
+
+  const ref = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ width: 600, height: 48 });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const measure = () => setSize({ width: el.clientWidth, height: el.clientHeight });
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   function toggle() {
     setOpen((wasOpen) => {
@@ -55,20 +69,30 @@ function ExpandableDepth({
   }
 
   return (
-    <div
-      style={{
-        margin: `${SPACING.sm}px 0`,
-        border: `1px solid ${t.border}`,
-        borderLeft: `3px solid ${color}`,
-        borderRadius: RADIUS.sm,
-        background: t.surfaceAlt,
-      }}
-    >
+    <div ref={ref} style={{ position: 'relative', margin: `${SPACING.sm}px 0` }}>
+      <svg
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible', pointerEvents: 'none' }}
+        viewBox={`0 0 ${size.width} ${size.height}`}
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        <SketchRect
+          x={3}
+          y={3}
+          width={Math.max(size.width - 6, 10)}
+          height={Math.max(size.height - 6, 10)}
+          color={color}
+          roughness={1.3}
+          strokeWidth={1.5}
+          id={`depth-${kind}-${title ?? 'box'}`}
+        />
+      </svg>
       <button
         type="button"
         onClick={toggle}
         aria-expanded={open}
         style={{
+          position: 'relative',
           display: 'flex',
           alignItems: 'center',
           gap: 8,
@@ -80,6 +104,7 @@ function ExpandableDepth({
           textAlign: 'left',
           fontWeight: 700,
           fontSize: 14,
+          fontFamily: "'Kalam', 'Comic Sans MS', cursive",
           color,
         }}
       >
@@ -93,7 +118,7 @@ function ExpandableDepth({
         </span>
       </button>
       {open && (
-        <div style={{ padding: `0 ${SPACING.sm}px ${SPACING.xs}px` }}>
+        <div style={{ position: 'relative', padding: `0 ${SPACING.sm}px ${SPACING.xs}px` }}>
           {children}
         </div>
       )}

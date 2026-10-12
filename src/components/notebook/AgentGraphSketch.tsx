@@ -6,7 +6,13 @@ import { SketchArrow, SketchEllipse, SketchRect } from './RoughShape';
  * LangGraph, and the same real architecture LoopGraphAnatomyDiagram
  * teaches on /docs/agents/loops-and-graphs (Splitter/Worker/Gate/Code).
  * Purely decorative here (the homepage hero); the interactive, accurate
- * version with click-to-inspect lives on that lesson page. */
+ * version with click-to-inspect lives on that lesson page.
+ *
+ * No fillColor on any node: a colored hachure fill in the same hue as a
+ * node's own text label visually collides with the glyph strokes (found
+ * live on the sibling LoopGraphAnatomyDiagram -- see that file's comment).
+ * Outline-only nodes, same as this component's own Input/Output ellipses
+ * already were. */
 export default function AgentGraphSketch() {
   const cobalt = 'var(--nb-cobalt)';
   const teal = 'var(--nb-teal)';
@@ -22,7 +28,7 @@ export default function AgentGraphSketch() {
       <SketchArrow points={[[210, 44], [210, 68]]} color={ink} id="agh-arrow-input" />
 
       {/* Router / planning node */}
-      <SketchRect x={135} y={70} width={150} height={38} color={cobalt} fillColor={cobalt} roughness={1.5} id="agh-router" />
+      <SketchRect x={135} y={70} width={150} height={38} color={cobalt} roughness={1.5} id="agh-router" />
       <text x={210} y={94} textAnchor="middle" fontFamily="var(--nb-font-hand)" fontSize={14} fill={cobalt}>Router / Planner</text>
 
       {/* fan-out arrows */}
@@ -31,13 +37,13 @@ export default function AgentGraphSketch() {
       <SketchArrow points={[[245, 108], [330, 140]]} color={ink} id="agh-arrow-c" />
 
       {/* Agent nodes */}
-      <SketchRect x={30} y={142} width={120} height={42} color={teal} fillColor={teal} roughness={1.5} id="agh-node-a" />
+      <SketchRect x={30} y={142} width={120} height={42} color={teal} roughness={1.5} id="agh-node-a" />
       <text x={90} y={168} textAnchor="middle" fontFamily="var(--nb-font-hand)" fontSize={12.5} fill={teal}>Agent (tools)</text>
 
-      <SketchRect x={150} y={142} width={120} height={42} color={teal} fillColor={teal} roughness={1.5} id="agh-node-b" />
+      <SketchRect x={150} y={142} width={120} height={42} color={teal} roughness={1.5} id="agh-node-b" />
       <text x={210} y={168} textAnchor="middle" fontFamily="var(--nb-font-hand)" fontSize={12.5} fill={teal}>Agent (search)</text>
 
-      <SketchRect x={270} y={142} width={120} height={42} color={teal} fillColor={teal} roughness={1.5} id="agh-node-c" />
+      <SketchRect x={270} y={142} width={120} height={42} color={teal} roughness={1.5} id="agh-node-c" />
       <text x={330} y={168} textAnchor="middle" fontFamily="var(--nb-font-hand)" fontSize={12.5} fill={teal}>Agent (code)</text>
 
       {/* converge arrows */}
@@ -46,7 +52,7 @@ export default function AgentGraphSketch() {
       <SketchArrow points={[[330, 186], [245, 220]]} color={ink} id="agh-arrow-f" />
 
       {/* State update */}
-      <SketchRect x={140} y={222} width={140} height={36} color={amber} fillColor={amber} roughness={1.5} id="agh-state" />
+      <SketchRect x={140} y={222} width={140} height={36} color={amber} roughness={1.5} id="agh-state" />
       <text x={210} y={245} textAnchor="middle" fontFamily="var(--nb-font-hand)" fontSize={13} fill={amber}>State Update</text>
 
       <SketchArrow points={[[210, 258], [210, 280]]} color={ink} id="agh-arrow-out" />
