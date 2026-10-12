@@ -1,0 +1,77 @@
+---
+title: "Caching Strategies & Redis Patterns"
+sidebar_position: 22.35
+description: "Cache-aside reads, write-through vs. write-behind writes, TTL/LRU eviction, and cache stampede -- the mechanics behind every 'add a Redis cache' decision, with real code."
+---
+
+import CacheAsideFlowDiagram from '../../../viz/diagrams/CacheAsideFlowDiagram';
+import WriteThroughVsWriteBehindDiagram from '../../../viz/diagrams/WriteThroughVsWriteBehindDiagram';
+import CacheEvictionTtlDiagram from '../../../viz/diagrams/CacheEvictionTtlDiagram';
+
+# Caching Strategies & Redis Patterns
+
+[AI Cost Engineering](/docs/mlops/ai-cost-engineering#caching) already leans on "a cache hit is free," and [Production Reliability](/docs/mlops/production-reliability#idempotency-and-distributed-locks) already uses Redis for idempotency keys — both assume a cache without explaining how one actually reads, writes, and forgets data. This page is that mechanics, with the real Redis code behind each pattern.
+
+## Cache Reads: Cache-Aside (Lazy Loading)
+
+**Cache-aside** (also called lazy loading) is the default pattern for reads: the application checks the cache first; on a hit, it returns immediately with no database round-trip. On a miss, it reads from the actual source of truth (a database, an API), then writes that result back into the cache — with a TTL — before returning it. The cache only ever holds data that's actually been requested, and if the cache is unavailable entirely, every request just falls through to the database: the system gets slower, not broken.
+
+<CacheAsideFlowDiagram />
+
+```python
+def get_user_profile(user_id: str) -> dict:
+    cached = redis.get(f"user:{user_id}")
+    if cached:
+        return json.loads(cached)          # cache hit -- no DB round-trip
+
+    profile = db.query_user(user_id)        # cache miss -- fall through to source of truth
+    redis.set(f"user:{user_id}", json.dumps(profile), ex=300)   # write-back, 5 min TTL
+    return profile
+```
+
+## Cache Writes: Write-Through vs. Write-Behind
+
+Reads have one dominant pattern; writes split into two genuinely different philosophies for keeping a cache correct as the underlying data changes:
+
+- **Write-through**: every write updates the cache and the database synchronously, before acking the caller. The cache is never stale, but write latency is at least as slow as the database write itself — no speedup on the write path.
+- **Write-behind (write-back)**: the write updates the cache and acks immediately; the database update happens asynchronously afterward, often batched. Writes are much faster, but a cache crash before that async flush loses the write — a durability-for-latency tradeoff, not a strict improvement.
+
+<WriteThroughVsWriteBehindDiagram />
+
+```python
+def update_user_profile(user_id: str, profile: dict) -> None:
+    db.save_user(user_id, profile)                              # source of truth first
+    redis.set(f"user:{user_id}", json.dumps(profile), ex=300)    # cache kept in lockstep
+```
+
+## Eviction: TTL and LRU
+
+A cache entry disappears for two independent reasons. **TTL (time-to-live)** expiry removes a key once a fixed amount of time has passed, regardless of how full the cache is — set per-write (the `ex=300` above). **LRU (least-recently-used) eviction** only kicks in once the cache hits a configured memory limit, and then removes whichever entries haven't been accessed in the longest time to make room for new ones — Redis enables this with `maxmemory` and a policy like `maxmemory-policy allkeys-lru`. Both mechanisms run at once in a real deployment; TTL bounds staleness, LRU bounds memory.
+
+<CacheEvictionTtlDiagram />
+
+## Cache Invalidation and Stampede
+
+TTL alone means a key can serve stale data for up to its full TTL window after the underlying data changes. **Explicit invalidation** (deleting or overwriting the cached key on every write to the source of truth) fixes that staleness immediately, but adds a real failure mode: a write path that forgets to invalidate every cached representation of that data leaves it silently stale with no error to notice.
+
+A **cache stampede** (thundering herd) happens when a hot key expires and many concurrent requests miss at the same instant, all hitting the database simultaneously to repopulate it — enough to take down a database that was otherwise healthy. The standard fix is a short-lived lock so only one request repopulates the key while the rest wait briefly or serve the stale value, plus jittered TTLs so many keys don't expire in the same instant:
+
+```python
+def get_with_stampede_protection(key: str) -> dict:
+    cached = redis.get(key)
+    if cached:
+        return json.loads(cached)
+
+    if redis.set(f"lock:{key}", "1", nx=True, ex=10):   # only one caller wins the lock
+        value = recompute_expensive_value(key)
+        redis.set(key, json.dumps(value), ex=300)
+        redis.delete(f"lock:{key}")
+        return value
+
+    time.sleep(0.05)                                     # lost the lock -- brief wait, then retry
+    return get_with_stampede_protection(key)
+```
+
+The same cache-aside idea shows up at other layers of this platform too, at different granularity: [prompt/response caching](/docs/mlops/ai-cost-engineering#caching) caches whole LLM responses, and [KV/prefix caching](/docs/mlops/llm-inference-optimization#kv-cache) caches intermediate attention state inside a single model — same hit-avoids-recompute idea, applied at the request level versus inside the forward pass.
+
+Next: [Legal, Licensing & Governance](/docs/mlops/legal-licensing-and-governance) — the non-technical constraints that shape which of these tradeoffs are even legally available to make.
