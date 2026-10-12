@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { getConceptColor } from './diagramSystem';
+import SketchBox from '../../components/notebook/SketchBox';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 /** A quick preview of the two deployment shapes an MCP server can
  * take -- the full mechanics are in the protocol deep dive. */
@@ -20,9 +23,11 @@ export default function McpLocalVsRemoteDiagram() {
           Remote (HTTP)
         </button>
       </div>
-      <div style={{ padding: '0.6rem 0.8rem', borderRadius: 7, background: `${color}10`, border: `1px solid ${color}40`, textAlign: 'center' }}>
-        <span style={{ fontSize: 10.5, fontWeight: 700, color: t.textPrimary }}>{remote ? 'One server, many clients over the network' : 'One client, one local subprocess'}</span>
-      </div>
+      <SketchBox color={color}>
+        <div style={{ padding: '0.6rem 0.8rem', background: `${color}10`, textAlign: 'center' }}>
+          <span style={{ fontSize: 10.5, fontWeight: 700, fontFamily: HAND_FONT, color: t.textPrimary }}>{remote ? 'One server, many clients over the network' : 'One client, one local subprocess'}</span>
+        </div>
+      </SketchBox>
     </VisualizationContainer>
   );
 }
