@@ -118,7 +118,14 @@ function ExpandableDepth({
         </span>
       </button>
       {open && (
-        <div style={{ position: 'relative', padding: `0 ${SPACING.sm}px ${SPACING.xs}px` }}>
+        <div
+          style={{
+            position: 'relative',
+            padding: `0 ${SPACING.sm}px ${SPACING.xs}px`,
+            fontFamily: "'Kalam', 'Comic Sans MS', cursive",
+            fontSize: '1.02em',
+          }}
+        >
           {children}
         </div>
       )}

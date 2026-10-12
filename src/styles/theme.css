@@ -119,11 +119,20 @@
      technical -- deliberately not Inter/Space Grotesk, matching a platform
      whose actual subject matter is code, math notation, and computation. */
   --font-display: 'Space Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  /* Body/lesson-prose face: Literata is built specifically for long-form
-     reading (Google Play Books uses it) -- this site's pages are dense,
-     long-form technical reading, so readability-at-length matters more
-     here than for a typical product's marketing copy. */
-  --font-body: 'Literata', Georgia, 'Times New Roman', serif;
+  /* Body/lesson-prose face: 2026-10-12, switched to the handwritten
+     "notebook" face sitewide per explicit direction -- all learning
+     content (paragraphs AND headings, see .prose h1-h4 below) should
+     read as hand-written, not just the short annotation boxes.
+     Literata (the previous, purpose-built-for-long-form-reading face)
+     is kept as the fallback chain's 2nd link, not dropped -- if Kalam
+     fails to load for any reason, the page degrades to the old,
+     measurably more readable face rather than the browser's generic
+     serif. Code (.prose code/pre), inline math (KaTeX has its own font
+     stack), and UI chrome (nav/buttons/sidebar, --font-sans) are each
+     governed by their own more-specific rule and are UNCHANGED by this
+     -- this only affects reading prose, never code correctness or
+     interactive controls. */
+  --font-body: 'Kalam', 'Literata', Georgia, 'Times New Roman', serif;
 }
 
 body {
@@ -155,16 +164,21 @@ body {
    images but left text stuck at 760px. That asymmetry is the bug.) */
 .prose {
   max-width: 100%;
-  line-height: 1.7;
-  font-size: 16px;
+  /* Bumped from 1.7/16px -- handwriting-style faces need more room per
+     line and a slightly larger base size to stay as legible as a
+     purpose-built serif did at the old values, same reasoning as the
+     size bump already applied to .nb-callout-body p. */
+  line-height: 1.85;
+  font-size: 17px;
   font-family: var(--font-body);
 }
-/* Headings stay on the neutral UI face -- Literata's serif reads well for
-   paragraphs at length but gets heavy/decorative at heading weights; this
-   matches how Literata itself is typically paired (serif body, sans
-   headings) rather than serif everywhere. */
+/* 2026-10-12: headings now also use the hand font (--font-body, now
+   Kalam), not the neutral UI sans -- "entire learning content" means
+   headings too, not just paragraphs. (--font-sans is still used
+   elsewhere for nav/buttons/sidebar -- this change is scoped to .prose
+   headings only.) */
 .prose h1, .prose h2, .prose h3, .prose h4 {
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
 }
 /* Brand/display moments: wordmark, section eyebrows, big stat numbers,
    homepage hero headline, domain-card category labels. Not for body text
