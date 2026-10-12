@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { getConceptColor } from './diagramSystem';
+import SketchBox from '../../components/notebook/SketchBox';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 const PARTS = [
   { key: 'tracking', label: 'Tracking', desc: 'Logs params, metrics, artifacts per run -- mlflow.log_param/log_metric/log_artifact -- viewable in a comparison UI.' },
@@ -24,9 +27,11 @@ export default function MlflowFourComponentsDiagram() {
         {PARTS.map((p) => {
           const isActive = active === p.key;
           return (
-            <div key={p.key} onClick={() => setActive(p.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActive(p.key); } }} onMouseEnter={() => setActive(p.key)} style={{ flex: '1 1 100px', cursor: 'pointer', padding: '0.6rem', borderRadius: 8, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}`, textAlign: 'center' }}>
-              <span style={{ fontSize: 10.5, fontWeight: 700, color: isActive ? color : t.textPrimary }}>{p.label}</span>
-            </div>
+            <SketchBox key={p.key} color={isActive ? color : t.border} strokeWidth={isActive ? 2 : 1.3} style={{ flex: '1 1 100px' }}>
+              <div onClick={() => setActive(p.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActive(p.key); } }} onMouseEnter={() => setActive(p.key)} style={{ cursor: 'pointer', padding: '0.6rem', borderRadius: 8, background: isActive ? `${color}18` : t.surfaceAlt, textAlign: 'center' }}>
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: isActive ? color : t.textPrimary, fontFamily: HAND_FONT }}>{p.label}</span>
+              </div>
+            </SketchBox>
           );
         })}
       </div>

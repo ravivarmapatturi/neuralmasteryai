@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { getConceptColor } from './diagramSystem';
+import SketchBox from '../../components/notebook/SketchBox';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 type Store = 'offline' | 'online';
 const INFO: Record<Store, { backend: string; scale: string; use: string }> = {
@@ -21,14 +24,18 @@ export default function OfflineVsOnlineStoreDiagram() {
   return (
     <VisualizationContainer footer={info.use}>
       <div style={{ display: 'flex', gap: 8 }}>
-        <div onClick={() => setStore('offline')} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStore('offline'); } }} onMouseEnter={() => setStore('offline')} style={{ flex: 1, cursor: 'pointer', padding: '0.7rem', borderRadius: 9, background: store === 'offline' ? `${offlineColor}18` : t.surfaceAlt, border: `1.5px solid ${store === 'offline' ? offlineColor : t.border}`, textAlign: 'center' }}>
-          <div style={{ fontSize: 11.5, fontWeight: 700, color: store === 'offline' ? offlineColor : t.textPrimary }}>Offline store</div>
-          <div style={{ fontSize: 9, color: t.textMuted, marginTop: 3 }}>{INFO.offline.backend}</div>
-        </div>
-        <div onClick={() => setStore('online')} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStore('online'); } }} onMouseEnter={() => setStore('online')} style={{ flex: 1, cursor: 'pointer', padding: '0.7rem', borderRadius: 9, background: store === 'online' ? `${onlineColor}18` : t.surfaceAlt, border: `1.5px solid ${store === 'online' ? onlineColor : t.border}`, textAlign: 'center' }}>
-          <div style={{ fontSize: 11.5, fontWeight: 700, color: store === 'online' ? onlineColor : t.textPrimary }}>Online store</div>
-          <div style={{ fontSize: 9, color: t.textMuted, marginTop: 3 }}>{INFO.online.backend}</div>
-        </div>
+        <SketchBox color={store === 'offline' ? offlineColor : t.border} strokeWidth={store === 'offline' ? 2 : 1.3} style={{ flex: 1 }}>
+          <div onClick={() => setStore('offline')} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStore('offline'); } }} onMouseEnter={() => setStore('offline')} style={{ cursor: 'pointer', padding: '0.7rem', borderRadius: 9, background: store === 'offline' ? `${offlineColor}18` : t.surfaceAlt, textAlign: 'center' }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: store === 'offline' ? offlineColor : t.textPrimary, fontFamily: HAND_FONT }}>Offline store</div>
+            <div style={{ fontSize: 9, color: t.textMuted, marginTop: 3, fontFamily: HAND_FONT }}>{INFO.offline.backend}</div>
+          </div>
+        </SketchBox>
+        <SketchBox color={store === 'online' ? onlineColor : t.border} strokeWidth={store === 'online' ? 2 : 1.3} style={{ flex: 1 }}>
+          <div onClick={() => setStore('online')} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStore('online'); } }} onMouseEnter={() => setStore('online')} style={{ cursor: 'pointer', padding: '0.7rem', borderRadius: 9, background: store === 'online' ? `${onlineColor}18` : t.surfaceAlt, textAlign: 'center' }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: store === 'online' ? onlineColor : t.textPrimary, fontFamily: HAND_FONT }}>Online store</div>
+            <div style={{ fontSize: 9, color: t.textMuted, marginTop: 3, fontFamily: HAND_FONT }}>{INFO.online.backend}</div>
+          </div>
+        </SketchBox>
       </div>
     </VisualizationContainer>
   );
