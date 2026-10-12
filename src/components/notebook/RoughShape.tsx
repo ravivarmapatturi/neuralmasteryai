@@ -38,13 +38,17 @@ interface SketchRectProps {
   fillColor?: string;
   roughness?: number;
   strokeWidth?: number;
+  /** Border-only opacity, independent of any sibling data-fill rect drawn
+   * underneath (e.g. DiagramMatrix's unhighlighted cells) -- a wrapping <g>,
+   * not a stroke-opacity property rough.js's generator doesn't expose. */
+  opacity?: number;
   id?: string;
 }
 
 /** A hand-drawn-style rectangle -- the notebook equivalent of a plain
  * bordered <div>/<rect>. Used for node boxes, annotation callouts, and
  * table cells throughout the notebook-themed pilot pages. */
-export function SketchRect({ x, y, width, height, color, fillColor, roughness = 1.6, strokeWidth = 1.8, id }: SketchRectProps) {
+export function SketchRect({ x, y, width, height, color, fillColor, roughness = 1.6, strokeWidth = 1.8, opacity, id }: SketchRectProps) {
   const drawable = useMemo(
     () =>
       generator.rectangle(x, y, width, height, {
@@ -59,7 +63,8 @@ export function SketchRect({ x, y, width, height, color, fillColor, roughness = 
       }),
     [x, y, width, height, color, fillColor, roughness, strokeWidth],
   );
-  return <>{toPathElements(drawable, id ?? `rect-${x}-${y}`)}</>;
+  const elements = toPathElements(drawable, id ?? `rect-${x}-${y}`);
+  return opacity === undefined ? <>{elements}</> : <g opacity={opacity}>{elements}</g>;
 }
 
 interface SketchEllipseProps {

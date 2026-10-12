@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { DIAGRAM_TYPE, DIAGRAM_SPACING, DIAGRAM_RADIUS, valueColor, getConceptColor, type DiagramConcept } from './diagramSystem';
+import { SketchRect } from '../../components/notebook/RoughShape';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 /**
  * The one reusable tensor-grid primitive every matrix/vector in this page's
@@ -60,8 +63,9 @@ export default function DiagramMatrix({
           x={labelColW + c * (cellSize + gap) + cellSize / 2}
           y={labelRowH - 10}
           textAnchor="middle"
-          fontSize={DIAGRAM_TYPE.secondaryLabel.size}
+          fontSize={DIAGRAM_TYPE.secondaryLabel.size + 1}
           fontWeight={DIAGRAM_TYPE.secondaryLabel.weight}
+          fontFamily={HAND_FONT}
           fill={c === highlightCol ? getConceptColor(t, concept) : t.textMuted}
         >
           {label}
@@ -73,8 +77,9 @@ export default function DiagramMatrix({
           x={labelColW - 10}
           y={labelRowH + r * (cellSize + gap) + cellSize / 2 + 4}
           textAnchor="end"
-          fontSize={DIAGRAM_TYPE.secondaryLabel.size}
+          fontSize={DIAGRAM_TYPE.secondaryLabel.size + 1}
           fontWeight={DIAGRAM_TYPE.secondaryLabel.weight}
+          fontFamily={HAND_FONT}
           fill={r === highlightRow ? getConceptColor(t, concept) : t.textMuted}
         >
           {label}
@@ -99,16 +104,24 @@ export default function DiagramMatrix({
               }}
               style={{ cursor: onCellHover ? 'pointer' : 'default' }}
             >
-              <rect
+              {/* fill is real data (magnitude -> concept color), not
+                  decoration -- kept as a plain rect so the value encoding
+                  stays exact. SketchRect adds only the hand-drawn border
+                  on top, no fillColor (same legibility fix as every other
+                  diagram converted this session, now applied at the root
+                  shared primitive every matrix on the site renders
+                  through). */}
+              <rect x={x} y={y} width={cellSize} height={cellSize} rx={DIAGRAM_RADIUS.cell} fill={valueColor(t, concept, Math.abs(v) / normalizer)} stroke="none" />
+              <SketchRect
                 x={x}
                 y={y}
                 width={cellSize}
                 height={cellSize}
-                rx={DIAGRAM_RADIUS.cell}
-                fill={valueColor(t, concept, Math.abs(v) / normalizer)}
-                stroke={isHovered ? getConceptColor(t, concept) : inHighlightBand ? getConceptColor(t, concept) : t.border}
+                color={isHovered || inHighlightBand ? getConceptColor(t, concept) : t.border}
                 strokeWidth={isHovered ? 2 : inHighlightBand ? 1.5 : 1}
-                strokeOpacity={isHovered || inHighlightBand ? 1 : 0.5}
+                opacity={isHovered || inHighlightBand ? 1 : 0.5}
+                roughness={1.1}
+                id={`dm-cell-${r}-${c}`}
               />
               {showValues && (
                 <text
