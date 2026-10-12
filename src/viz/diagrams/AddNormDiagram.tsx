@@ -1,12 +1,24 @@
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, VisualizationMath } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
+import { SketchArrow, SketchEllipse, SketchPath, SketchRect } from '../../components/notebook/RoughShape';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 /** The residual/skip connection: the sublayer's input travels straight
  * through (bottom path) AND through the sublayer transform (top path),
  * the two are summed, then LayerNorm normalizes the result. The skip path
  * is what lets gradients flow straight through depth without passing
- * through every sublayer's transformation. */
+ * through every sublayer's transformation.
+ *
+ * Hand-drawn pass: shapes only (rect/circle/line/path -> SketchRect/
+ * SketchEllipse/SketchArrow/SketchPath), colors still sourced from
+ * useVizTokens() -- that already resolves to the notebook palette, no
+ * separate hook needed for a static (non-interactive) diagram like this
+ * one. No fillColor on anything: a colored hachure fill behind text
+ * caused a real, reported legibility bug on LoopGraphAnatomyDiagram (see
+ * that file's comment) -- outline-only nodes, same fix applied here from
+ * the start rather than repeated after the fact. */
 export default function AddNormDiagram() {
   const t = useVizTokens();
   const subColor = getConceptColor(t, 'attention');
@@ -22,40 +34,35 @@ export default function AddNormDiagram() {
   return (
     <VisualizationContainer footer="Post-norm, as in the original paper: LayerNorm(x + Sublayer(x)). The skip connection (bottom path) means depth never forces gradients through a transformation they can't get around.">
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
-        <circle cx={inX} cy={height / 2} r={16} fill={t.surfaceAlt} stroke={t.textSecondary} strokeWidth={1.5} />
-        <text x={inX} y={height / 2 + 4} textAnchor="middle" fontSize={11} fontWeight={700} fontFamily="monospace" fill={t.textSecondary}>x</text>
+        <SketchEllipse cx={inX} cy={height / 2} width={32} height={32} color={t.textSecondary} id="an-x" />
+        <text x={inX} y={height / 2 + 4} textAnchor="middle" fontSize={12} fontWeight={700} fontFamily="monospace" fill={t.textSecondary}>x</text>
 
         {/* top path: through the sublayer */}
-        <path d={`M ${inX + 16},${height / 2} C 80,${topY} 120,${topY} 150,${topY}`} fill="none" stroke={subColor} strokeWidth={2} />
-        <rect x={150} y={topY - 18} width={100} height={36} rx={6} fill={`${subColor}22`} stroke={subColor} strokeWidth={2} />
-        <text x={200} y={topY + 5} textAnchor="middle" fontSize={11} fontWeight={700} fill={subColor}>Sublayer(x)</text>
-        <path d={`M 250,${topY} C ${sumX - 30},${topY} ${sumX - 10},${height / 2 - 12} ${sumX},${height / 2 - 8}`} fill="none" stroke={subColor} strokeWidth={2} />
+        <SketchPath d={`M ${inX + 16},${height / 2} C 80,${topY} 120,${topY} 150,${topY}`} color={subColor} id="an-top-in" />
+        <SketchRect x={150} y={topY - 18} width={100} height={36} color={subColor} id="an-sublayer" />
+        <text x={200} y={topY + 5} textAnchor="middle" fontSize={11.5} fontWeight={700} fontFamily={HAND_FONT} fill={subColor}>Sublayer(x)</text>
+        <SketchPath d={`M 250,${topY} C ${sumX - 30},${topY} ${sumX - 10},${height / 2 - 12} ${sumX},${height / 2 - 8}`} color={subColor} id="an-top-out" />
 
         {/* bottom path: skip connection */}
-        <path d={`M ${inX + 12},${height / 2 + 10} C 80,${botY} ${sumX - 40},${botY} ${sumX},${height / 2 + 8}`} fill="none" stroke={t.textSecondary} strokeWidth={2} strokeDasharray="5 3" />
-        <text x={140} y={botY + 16} textAnchor="middle" fontSize={10} fill={t.textMuted}>skip connection</text>
+        <SketchPath d={`M ${inX + 12},${height / 2 + 10} C 80,${botY} ${sumX - 40},${botY} ${sumX},${height / 2 + 8}`} color={t.textSecondary} roughness={2} id="an-skip" />
+        <text x={140} y={botY + 16} textAnchor="middle" fontSize={11} fontFamily={HAND_FONT} fill={t.textMuted}>skip connection</text>
 
         {/* sum node */}
-        <circle cx={sumX} cy={height / 2} r={16} fill={t.surface} stroke={t.textPrimary} strokeWidth={2} />
+        <SketchEllipse cx={sumX} cy={height / 2} width={32} height={32} color={t.textPrimary} strokeWidth={2} id="an-sum" />
         <text x={sumX} y={height / 2 + 5} textAnchor="middle" fontSize={16} fontWeight={700} fill={t.textPrimary}>+</text>
 
-        <line x1={sumX + 16} y1={height / 2} x2={normX - 32} y2={height / 2} stroke={t.textPrimary} strokeWidth={2} />
+        <SketchArrow points={[[sumX + 16, height / 2], [normX - 32, height / 2]]} color={t.textPrimary} arrowhead={false} id="an-sum-to-norm" />
 
         {/* LayerNorm */}
-        <rect x={normX - 32} y={height / 2 - 20} width={72} height={40} rx={6} fill={t.surfaceAlt} stroke={t.accentPrimary} strokeWidth={2} />
-        <text x={normX + 4} y={height / 2 + 4} textAnchor="middle" fontSize={11} fontWeight={700} fill={t.accentPrimary}>LayerNorm</text>
+        <SketchRect x={normX - 32} y={height / 2 - 20} width={72} height={40} color={t.accentPrimary} id="an-layernorm" />
+        <text x={normX + 4} y={height / 2 + 4} textAnchor="middle" fontSize={11.5} fontWeight={700} fontFamily={HAND_FONT} fill={t.accentPrimary}>LayerNorm</text>
 
-        <line x1={normX + 40} y1={height / 2} x2={outX - 4} y2={height / 2} stroke={t.accentPrimary} strokeWidth={2} markerEnd="url(#addnorm-arrow)" />
-        <defs>
-          <marker id="addnorm-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-            <path d="M0,0 L8,4 L0,8 Z" fill={t.accentPrimary} />
-          </marker>
-        </defs>
+        <SketchArrow points={[[normX + 40, height / 2], [outX - 4, height / 2]]} color={t.accentPrimary} id="an-out" />
       </svg>
       <div style={{ marginTop: 8, textAlign: 'center' }}>
         <VisualizationMath latex="\text{LayerNorm}(x + \text{Sublayer}(x))" />
       </div>
-      <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color: t.textMuted, marginTop: 4 }}>
+      <div className="nb-hand" style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size + 1, color: t.textMuted, marginTop: 4, fontFamily: HAND_FONT }}>
         Sublayer(x) is self-attention in one Add &amp; Norm, the feed-forward network in the other.
       </div>
     </VisualizationContainer>
