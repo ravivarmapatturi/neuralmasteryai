@@ -1,0 +1,78 @@
+---
+title: "Calling the LLM API in Practice"
+sidebar_position: 5.5
+description: "The client-side mechanics every production LLM integration needs: request parameters, streaming, retries and rate limits, and what to log on every call -- not prompt design, the plumbing around it."
+---
+
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+
+# Calling the LLM API in Practice
+
+[Prompt Engineering](/docs/llms-genai/prompt-engineering) covers *what* to put in the request — the instructions, examples, and structure that shape the model's behavior. This page covers the *plumbing around that request*: the parameters that aren't prompt text, how to consume a streamed response instead of blocking on the whole thing, what happens when the call fails, and what a production system actually needs to log on every single call. None of this is provider-specific trivia — every major hosted LLM API (OpenAI, Anthropic, Google) shares this same basic shape.
+
+## The Basic Request/Response Shape
+
+A chat-style completion call is a single HTTP POST: a list of role-tagged messages in, one role-tagged message out.
+
+```python
+import openai
+
+client = openai.OpenAI(api_key="...")
+
+response = client.chat.completions.create(
+    model="gpt-5",
+    messages=[
+        {"role": "system", "content": "You are a concise technical assistant."},
+        {"role": "user", "content": "Explain what a KV cache is in two sentences."},
+    ],
+    temperature=0.3,
+    max_tokens=200,
+)
+
+print(response.choices[0].message.content)
+print(response.usage.prompt_tokens, response.usage.completion_tokens)
+```
+
+The response carries more than just the generated text: `usage` reports real token counts for both sides of the call, and `finish_reason` tells you *why* generation stopped (`"stop"` — hit a stop sequence or the model naturally finished; `"length"` — hit `max_tokens` and got cut off mid-thought; `"content_filter"` — the provider's own safety filter intervened). Checking `finish_reason` before trusting the output is cheap and catches a real, common bug: silently truncated responses that look complete but aren't.
+
+## Key Parameters That Actually Matter
+
+- **`temperature`** (typically 0–2, default 1) scales the logits before softmax — see [Self-Attention: Query, Key, Value](/docs/deep-learning/attention-transformers#self-attention-query-key-value) for the same softmax mechanism applied here to next-token probabilities instead of attention weights. Low temperature (0–0.3) sharpens the distribution toward the highest-probability tokens — deterministic-feeling, good for extraction, classification, code. High temperature (0.7–1.2) flattens it — more varied, better for brainstorming or creative generation. Temperature 0 doesn't fully guarantee determinism across calls even on the same provider, due to floating-point non-associativity in batched GPU inference.
+- **`top_p`** (nucleus sampling, default 1) restricts sampling to the smallest set of tokens whose cumulative probability reaches `p`, instead of scaling the whole distribution. The two aren't meant to be tuned together — most guidance is to change one or the other, not both at once, since their combined effect is hard to reason about.
+- **`max_tokens`**: a hard ceiling on the *generated* portion only (the prompt itself doesn't count against it). Set too low, and a real answer gets silently cut off (check `finish_reason`, above); set far too high with no other limit, a runaway response costs real money with no cap.
+- **`stop`**: one or more strings that end generation immediately when produced, before `max_tokens` is reached — useful for structured formats where you know the exact terminator (e.g. stopping a single JSON object at `"}\n"`).
+
+<ELI5 title="Simple explanation: temperature, in one line">
+Temperature doesn't change what the model "knows" — it changes how much it's allowed to gamble on a less-likely next word instead of always picking the safest one.
+</ELI5>
+
+## Streaming Responses
+
+Waiting for the full response before showing anything is a real latency problem for long outputs — a 500-token answer might take several seconds to fully generate, all of it invisible to the user until the last token arrives. Streaming sends tokens incrementally as they're generated:
+
+```python
+stream = client.chat.completions.create(
+    model="gpt-5",
+    messages=[{"role": "user", "content": "Write a short paragraph about KV caches."}],
+    stream=True,
+)
+
+for chunk in stream:
+    delta = chunk.choices[0].delta.content
+    if delta:
+        print(delta, end="", flush=True)
+```
+
+Two things change under streaming that trip people up: `usage` (the real token counts) typically isn't available until the final chunk, not incrementally — so cost tracking has to wait for stream completion, not accumulate per-chunk. And error handling has to account for a connection that fails *partway through* a response, not just at the start — a half-received answer needs its own handling path, not just a blanket try/except around the whole call.
+
+## Retries, Rate Limits & Idempotency
+
+Three different failure categories need three different responses, not one blanket retry loop:
+
+- **Retryable** — `429` (rate limited) and `5xx` (transient provider-side failure). Retry with exponential backoff and jitter (e.g. wait `2^attempt` seconds plus a small random offset, capped at a handful of attempts) — jitter specifically matters because many clients retrying at the exact same fixed interval after a shared failure re-creates the same spike that caused the failure in the first place.
+- **Not retryable** — `400` (malformed request — a bad parameter, an over-length prompt) and `401`/`403` (auth). Retrying these wastes time and money reproducing the same guaranteed failure; fix the request instead.
+- **Ambiguous** — a timeout where the request may have actually succeeded server-side before the response was lost. For any call with side effects beyond generating text (e.g. one wired into a tool that writes data), this is exactly where an idempotency key — a client-generated unique ID sent with the request that the provider uses to detect and safely no-op a duplicate — prevents a retried timeout from double-executing a side effect.
+
+## What to Log on Every Call
+
+The four fields that make an LLM-backed system debuggable and its cost explicable after the fact, every single call, not just when something looks wrong: **model name** (pricing and behavior both vary by model, and silent model-routing changes are a real, recurring production surprise), **prompt and completion token counts** (the real `usage` numbers, not an estimate — this is what you're actually billed on and what [Cost/Latency Tradeoffs](/docs/llms-genai/evaluation-and-serving#costlatency-tradeoffs) is reasoning about at the system level), **latency** (time-to-first-token separately from total time, if streaming — they diagnose different problems), and **finish_reason** (silently-truncated responses are invisible otherwise). Without this, "why did our LLM costs spike last week" and "why did this one response look cut off" are both unanswerable after the fact.

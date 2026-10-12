@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, PillSelect } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
+import { SketchRect } from '../../components/notebook/RoughShape';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 type Strategy = 'fixed' | 'semantic' | 'recursive' | 'parent-child';
 
@@ -65,24 +68,35 @@ export default function ChunkingStrategiesDiagram() {
           const isBoundary = i === PARAGRAPH_BREAK_AFTER - 1;
           return (
             <g key={i}>
-              <rect x={x} y={10} width={unitW - 3} height={36} rx={4} fill={`${hue}${g % 2 === 0 ? '30' : '18'}`} stroke={hue} strokeWidth={1.25} />
+              {/* alternating opacity is real data (which group this unit
+                  belongs to), kept as a plain backing rect; SketchRect adds
+                  only the hand-drawn border, no fillColor -- same
+                  legibility fix as every other diagram converted this
+                  session. */}
+              <rect x={x} y={10} width={unitW - 3} height={36} rx={4} fill={`${hue}${g % 2 === 0 ? '30' : '18'}`} stroke="none" />
+              <SketchRect x={x} y={10} width={unitW - 3} height={36} color={hue} strokeWidth={1.25} roughness={1.2} id={`chunk-unit-${strategy}-${i}`} />
               <text x={x + (unitW - 3) / 2} y={31} textAnchor="middle" fontSize={7} fill={t.textSecondary}>{u}</text>
               {isBoundary && <line x1={x + unitW - 1} y1={4} x2={x + unitW - 1} y2={52} stroke={t.textMuted} strokeWidth={1} strokeDasharray="2 2" />}
             </g>
           );
         })}
         {strategy === 'fixed' && (
-          <text x={10 + 3.5 * unitW} y={62} fontSize={8} fill={t.accentDanger}>↑ mid-sentence cut</text>
+          <text x={10 + 3.5 * unitW} y={62} fontSize={8.5} fontFamily={HAND_FONT} fill={t.accentDanger}>↑ mid-sentence cut</text>
         )}
         {strategy === 'parent-child' && (
           <>
-            <text x={10} y={70} fontSize={9} fontWeight={700} fill={t.textMuted}>children (retrieved against):</text>
+            <text x={10} y={70} fontSize={9.5} fontWeight={700} fontFamily={HAND_FONT} fill={t.textMuted}>children (retrieved against):</text>
             {UNITS.map((_, i) => {
               const g = CHILD_GROUPS.findIndex((grp) => grp.includes(i));
               const x = 10 + i * unitW;
-              return <rect key={i} x={x} y={78} width={unitW - 3} height={20} rx={3} fill={`${chunkColor}${g % 2 === 0 ? '30' : '18'}`} stroke={chunkColor} strokeWidth={1} />;
+              return (
+                <g key={i}>
+                  <rect x={x} y={78} width={unitW - 3} height={20} rx={3} fill={`${chunkColor}${g % 2 === 0 ? '30' : '18'}`} stroke="none" />
+                  <SketchRect x={x} y={78} width={unitW - 3} height={20} color={chunkColor} strokeWidth={1} roughness={1.2} id={`chunk-child-${i}`} />
+                </g>
+              );
             })}
-            <text x={10} y={116} fontSize={9} fill={t.textMuted}>↑ full row above = the one parent passed to the LLM on any child match</text>
+            <text x={10} y={116} fontSize={9.5} fontFamily={HAND_FONT} fill={t.textMuted}>↑ full row above = the one parent passed to the LLM on any child match</text>
           </>
         )}
       </svg>
