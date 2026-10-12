@@ -1,6 +1,9 @@
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, VisualizationMath } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
+import SketchBox from '../../components/notebook/SketchBox';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 const CARDS = [
   { label: 'Hypothesis', latex: '\\hat{y} = w \\cdot x + b', color: 'accentSecondary' as const },
@@ -19,10 +22,12 @@ export default function LinearRegressionAtAGlance() {
     <VisualizationContainer footer="The whole page in four lines: the hypothesis produces a prediction, the cost function measures how wrong it is, the gradient says which direction reduces that cost, and the update rule is that direction applied to the weights -- every section below derives one of these four lines in full.">
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
         {CARDS.map((c) => (
-          <div key={c.label} style={{ background: t.surfaceAlt, border: `1.5px solid ${t[c.color]}`, borderRadius: 8, padding: '14px 12px', textAlign: 'center' }}>
-            <div style={{ fontSize: DIAGRAM_TYPE.label.size, fontWeight: 700, color: t[c.color], marginBottom: 8, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{c.label}</div>
-            <VisualizationMath latex={c.latex} />
-          </div>
+          <SketchBox key={c.label} color={t[c.color]} strokeWidth={1.5}>
+            <div style={{ background: t.surfaceAlt, padding: '14px 12px', textAlign: 'center' }}>
+              <div style={{ fontSize: DIAGRAM_TYPE.label.size, fontWeight: 700, fontFamily: HAND_FONT, color: t[c.color], marginBottom: 8, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{c.label}</div>
+              <VisualizationMath latex={c.latex} />
+            </div>
+          </SketchBox>
         ))}
       </div>
     </VisualizationContainer>
