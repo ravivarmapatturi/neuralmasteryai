@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { getConceptColor } from './diagramSystem';
+import { SketchArrow, SketchRect } from '../../components/notebook/RoughShape';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 type NodeKey = 'start' | 'predictable' | 'single-call' | 'unpredictable' | 'agent';
 
@@ -39,8 +42,9 @@ export default function WhenToUseAgentsDiagram() {
     const color = id === 'agent' ? noColor : isTerminal ? yesColor : t.textMuted;
     return (
       <g onClick={() => setActive(id)} onMouseEnter={() => setActive(id)} style={{ cursor: 'pointer' }}>
-        <rect x={n.x - 70} y={n.y - 16} width={140} height={40} rx={7} fill={isActive ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isActive ? 2.5 : 1.5} />
-        <text x={n.x} y={n.y + 4} textAnchor="middle" fontSize={8} fill={color}>{n.label}</text>
+        <rect x={n.x - 70} y={n.y - 16} width={140} height={40} rx={7} fill={isActive ? `${color}30` : t.surfaceAlt} stroke="none" />
+        <SketchRect x={n.x - 70} y={n.y - 16} width={140} height={40} color={color} strokeWidth={isActive ? 2.5 : 1.5} id={`wtu-${id}`} />
+        <text x={n.x} y={n.y + 4} textAnchor="middle" fontSize={8} fontFamily={HAND_FONT} fill={color}>{n.label}</text>
       </g>
     );
   }
@@ -48,10 +52,10 @@ export default function WhenToUseAgentsDiagram() {
   return (
     <VisualizationContainer footer={DESC[active]}>
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
-        <line x1={NODES.start.x} y1={NODES.start.y + 16} x2={NODES.predictable.x} y2={NODES.predictable.y - 16} stroke={t.textMuted} strokeWidth={1} />
-        <line x1={NODES.start.x} y1={NODES.start.y + 16} x2={NODES.unpredictable.x} y2={NODES.unpredictable.y - 16} stroke={t.textMuted} strokeWidth={1} />
-        <line x1={NODES.predictable.x} y1={NODES.predictable.y + 16} x2={NODES['single-call'].x} y2={NODES['single-call'].y - 16} stroke={t.textMuted} strokeWidth={1} />
-        <line x1={NODES.unpredictable.x} y1={NODES.unpredictable.y + 16} x2={NODES.agent.x} y2={NODES.agent.y - 16} stroke={t.textMuted} strokeWidth={1} />
+        <SketchArrow points={[[NODES.start.x, NODES.start.y + 16], [NODES.predictable.x, NODES.predictable.y - 16]]} color={t.textMuted} strokeWidth={1} arrowhead={false} id="wtu-arrow-1" />
+        <SketchArrow points={[[NODES.start.x, NODES.start.y + 16], [NODES.unpredictable.x, NODES.unpredictable.y - 16]]} color={t.textMuted} strokeWidth={1} arrowhead={false} id="wtu-arrow-2" />
+        <SketchArrow points={[[NODES.predictable.x, NODES.predictable.y + 16], [NODES['single-call'].x, NODES['single-call'].y - 16]]} color={t.textMuted} strokeWidth={1} arrowhead={false} id="wtu-arrow-3" />
+        <SketchArrow points={[[NODES.unpredictable.x, NODES.unpredictable.y + 16], [NODES.agent.x, NODES.agent.y - 16]]} color={t.textMuted} strokeWidth={1} arrowhead={false} id="wtu-arrow-4" />
         {(Object.keys(NODES) as NodeKey[]).map((k) => <Node key={k} id={k} />)}
       </svg>
     </VisualizationContainer>
