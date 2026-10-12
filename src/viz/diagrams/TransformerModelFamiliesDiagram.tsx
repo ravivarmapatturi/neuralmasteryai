@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, VizButton } from '../primitives';
 import { getConceptColor } from './diagramSystem';
+import { SketchArrow, SketchPath, SketchRect } from '../../components/notebook/RoughShape';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 type Family = 'bert' | 'gpt' | 'seq2seq' | 'vit' | 'multimodal';
 const FAMILIES: Record<Family, { label: string; architecture: string; objective: string; bestFor: string; examples: string[]; blocks: string[]; causal?: boolean }> = {
@@ -18,10 +21,32 @@ export default function TransformerModelFamiliesDiagram() {
   return <VisualizationContainer footer={`${f.label} is ${f.architecture}. Trained for ${f.objective}; strongest when you need ${f.bestFor}.`}>
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>{(Object.keys(FAMILIES) as Family[]).map(k => <VizButton key={k} variant={active === k ? 'primary' : 'secondary'} onClick={() => setActive(k)}>{FAMILIES[k].label}</VizButton>)}</div>
     <svg width="100%" viewBox="0 0 620 128" style={{ display: 'block' }}>
-      <defs><marker id="tmf-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill={t.textMuted} /></marker></defs>
-      {f.blocks.map((label, i) => { const x = start + i * (boxWidth + 25); const color = i === 0 ? getConceptColor(t, 'token') : i === f.blocks.length - 1 ? getConceptColor(t, 'output') : primary; const isCore = label.includes('encoder') || label.includes('decoder') || label.includes('projector'); return <g key={label}>{i > 0 && <line x1={x - 23} y1="54" x2={x - 3} y2="54" stroke={t.textMuted} strokeWidth="1.5" markerEnd="url(#tmf-arrow)" />}<rect x={x} y="28" width={boxWidth} height="52" rx="8" fill={isCore ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isCore ? 2.5 : 1.5}/><text x={x + boxWidth / 2} y="50" textAnchor="middle" fontSize="11" fontWeight="700" fill={color}>{label}</text>{f.causal && label.includes('decoder') && <text x={x + boxWidth / 2} y="68" textAnchor="middle" fontSize="9" fill={t.textMuted}>causal mask</text>}</g>; })}
-      {active === 'bert' && <path d={`M${start + boxWidth + 12} 24 C${start + boxWidth + 25} 4 ${start + boxWidth + 35} 4 ${start + boxWidth + 48} 24`} fill="none" stroke={getConceptColor(t, 'key')} strokeWidth="1.5" strokeDasharray="3 3" />}
-      <text x="310" y="112" textAnchor="middle" fontSize="10" fill={t.textMuted}>Architecture determines which tokens can exchange information and what the model is trained to output.</text>
+      {f.blocks.map((label, i) => {
+        const x = start + i * (boxWidth + 25);
+        const color = i === 0 ? getConceptColor(t, 'token') : i === f.blocks.length - 1 ? getConceptColor(t, 'output') : primary;
+        const isCore = label.includes('encoder') || label.includes('decoder') || label.includes('projector');
+        return (
+          <g key={label}>
+            {i > 0 && <SketchArrow points={[[x - 23, 54], [x - 3, 54]]} color={t.textMuted} strokeWidth={1.5} id={`tmf-arrow-${active}-${i}`} />}
+            {/* Plain backing rect for the core-block wash, SketchRect on top
+                for the hand-drawn border only -- same text-legibility fix
+                already applied to every diagram converted this session. */}
+            {isCore && <rect x={x} y={28} width={boxWidth} height={52} rx={8} fill={`${color}30`} stroke="none" />}
+            <SketchRect x={x} y={28} width={boxWidth} height={52} color={color} strokeWidth={isCore ? 2.5 : 1.5} id={`tmf-box-${active}-${i}`} />
+            <text x={x + boxWidth / 2} y={50} textAnchor="middle" fontSize={11.5} fontWeight={700} fontFamily={HAND_FONT} fill={color}>{label}</text>
+            {f.causal && label.includes('decoder') && <text x={x + boxWidth / 2} y={68} textAnchor="middle" fontSize={9.5} fontFamily={HAND_FONT} fill={t.textMuted}>causal mask</text>}
+          </g>
+        );
+      })}
+      {active === 'bert' && (
+        <SketchPath
+          d={`M${start + boxWidth + 12} 24 C${start + boxWidth + 25} 4 ${start + boxWidth + 35} 4 ${start + boxWidth + 48} 24`}
+          color={getConceptColor(t, 'key')}
+          strokeWidth={1.5}
+          id="tmf-bidir-curve"
+        />
+      )}
+      <text x={310} y={112} textAnchor="middle" fontSize={10.5} fontFamily={HAND_FONT} fill={t.textMuted}>Architecture determines which tokens can exchange information and what the model is trained to output.</text>
     </svg>
     <div style={{ marginTop: 7, fontSize: 12 }}><b>Representative models:</b> {f.examples.join(' · ')}</div>
   </VisualizationContainer>;

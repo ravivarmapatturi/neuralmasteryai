@@ -1,6 +1,9 @@
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
+import { SketchArrow, SketchEllipse, SketchRect } from '../../components/notebook/RoughShape';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 /** Self-attention draws Q, K, V from the same source; cross-attention draws
  * Q from the decoder's own (masked) self-attention output, but K and V from
@@ -26,37 +29,41 @@ export default function CrossAttentionDiagram() {
         <svg width="100%" viewBox={`0 0 ${panelW} ${panelH}`} style={{ display: 'block' }}>
           {crossWire ? (
             <>
-              <rect x={srcX - 32} y={20} width={64} height={30} rx={5} fill={t.surfaceAlt} stroke={t.textSecondary} strokeWidth={1.5} />
-              <text x={srcX} y={40} textAnchor="middle" fontSize={10} fontWeight={700} fill={t.textSecondary}>decoder</text>
-              <rect x={srcX - 32} y={panelH - 50} width={64} height={30} rx={5} fill={t.surfaceAlt} stroke={t.accentSecondary} strokeWidth={1.5} />
-              <text x={srcX} y={panelH - 30} textAnchor="middle" fontSize={10} fontWeight={700} fill={t.accentSecondary}>encoder</text>
+              <SketchRect x={srcX - 32} y={20} width={64} height={30} color={t.textSecondary} strokeWidth={1.5} id={`ca-decoder-${title}`} />
+              <text x={srcX} y={40} textAnchor="middle" fontSize={10.5} fontWeight={700} fontFamily={HAND_FONT} fill={t.textSecondary}>decoder</text>
+              <SketchRect x={srcX - 32} y={panelH - 50} width={64} height={30} color={t.accentSecondary} strokeWidth={1.5} id={`ca-encoder-${title}`} />
+              <text x={srcX} y={panelH - 30} textAnchor="middle" fontSize={10.5} fontWeight={700} fontFamily={HAND_FONT} fill={t.accentSecondary}>encoder</text>
 
-              <line x1={srcX + 32} y1={35} x2={attnX - 45} y2={srcY - 24} stroke={qColor} strokeWidth={2} />
+              <SketchArrow points={[[srcX + 32, 35], [attnX - 45, srcY - 24]]} color={qColor} strokeWidth={2} id={`ca-q-${title}`} />
               <text x={(srcX + attnX) / 2 - 20} y={srcY - 40} textAnchor="middle" fontSize={11} fontWeight={700} fill={qColor}>Q</text>
 
-              <line x1={srcX + 32} y1={panelH - 35} x2={attnX - 45} y2={srcY + 12} stroke={kColor} strokeWidth={2} />
+              <SketchArrow points={[[srcX + 32, panelH - 35], [attnX - 45, srcY + 12]]} color={kColor} strokeWidth={2} id={`ca-k-${title}`} />
               <text x={(srcX + attnX) / 2 - 20} y={panelH - 42} textAnchor="middle" fontSize={11} fontWeight={700} fill={kColor}>K</text>
 
-              <line x1={srcX + 32} y1={panelH - 25} x2={attnX - 45} y2={srcY + 20} stroke={vColor} strokeWidth={2} />
+              <SketchArrow points={[[srcX + 32, panelH - 25], [attnX - 45, srcY + 20]]} color={vColor} strokeWidth={2} id={`ca-v-${title}`} />
               <text x={(srcX + attnX) / 2 + 30} y={panelH - 18} textAnchor="middle" fontSize={11} fontWeight={700} fill={vColor}>V</text>
             </>
           ) : (
             <>
-              <circle cx={srcX} cy={srcY} r={28} fill={t.surfaceAlt} stroke={t.textSecondary} strokeWidth={1.5} />
+              <SketchEllipse cx={srcX} cy={srcY} width={56} height={56} color={t.textSecondary} strokeWidth={1.5} id={`ca-x-${title}`} />
               <text x={srcX} y={srcY + 4} textAnchor="middle" fontSize={11} fontWeight={700} fontFamily="monospace" fill={t.textSecondary}>X</text>
 
-              <line x1={srcX + 28} y1={srcY - 14} x2={attnX - 45} y2={srcY - 24} stroke={qColor} strokeWidth={2} />
+              <SketchArrow points={[[srcX + 28, srcY - 14], [attnX - 45, srcY - 24]]} color={qColor} strokeWidth={2} id={`ca-sq-${title}`} />
               <text x={(srcX + attnX) / 2} y={srcY - 34} textAnchor="middle" fontSize={11} fontWeight={700} fill={qColor}>Q</text>
-              <line x1={srcX + 28} y1={srcY} x2={attnX - 45} y2={srcY} stroke={kColor} strokeWidth={2} />
+              <SketchArrow points={[[srcX + 28, srcY], [attnX - 45, srcY]]} color={kColor} strokeWidth={2} id={`ca-sk-${title}`} />
               <text x={(srcX + attnX) / 2} y={srcY - 8} textAnchor="middle" fontSize={11} fontWeight={700} fill={kColor}>K</text>
-              <line x1={srcX + 28} y1={srcY + 14} x2={attnX - 45} y2={srcY + 24} stroke={vColor} strokeWidth={2} />
+              <SketchArrow points={[[srcX + 28, srcY + 14], [attnX - 45, srcY + 24]]} color={vColor} strokeWidth={2} id={`ca-sv-${title}`} />
               <text x={(srcX + attnX) / 2} y={srcY + 38} textAnchor="middle" fontSize={11} fontWeight={700} fill={vColor}>V</text>
             </>
           )}
 
-          <circle cx={attnX} cy={srcY} r={30} fill={`${attnColor}22`} stroke={attnColor} strokeWidth={2} />
-          <text x={attnX} y={srcY - 2} textAnchor="middle" fontSize={10} fontWeight={700} fill={attnColor}>Attn</text>
-          <text x={attnX} y={srcY + 12} textAnchor="middle" fontSize={9} fill={t.textMuted}>(Q,K,V)</text>
+          {/* Plain backing ellipse for the Attn node's wash, SketchEllipse
+              on top for the border only -- same text-legibility fix as
+              every other diagram converted this session. */}
+          <ellipse cx={attnX} cy={srcY} rx={30} ry={30} fill={`${attnColor}22`} stroke="none" />
+          <SketchEllipse cx={attnX} cy={srcY} width={60} height={60} color={attnColor} strokeWidth={2} id={`ca-attn-${title}`} />
+          <text x={attnX} y={srcY - 2} textAnchor="middle" fontSize={10.5} fontWeight={700} fontFamily={HAND_FONT} fill={attnColor}>Attn</text>
+          <text x={attnX} y={srcY + 12} textAnchor="middle" fontSize={9.5} fontFamily={HAND_FONT} fill={t.textMuted}>(Q,K,V)</text>
         </svg>
         <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color: t.textMuted, marginTop: 2 }}>
           Q from {qFrom}, K &amp; V from {kvFrom}
