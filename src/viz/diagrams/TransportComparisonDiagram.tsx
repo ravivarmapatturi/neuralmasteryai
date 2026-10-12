@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { getConceptColor } from './diagramSystem';
+import SketchBox from '../../components/notebook/SketchBox';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 /** stdio vs. Streamable HTTP -- click to compare the concrete framing
  * and connection rules each one actually follows. */
@@ -25,7 +28,9 @@ export default function TransportComparisonDiagram() {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {(http ? HTTP_RULES : STDIO_RULES).map((r) => (
-          <div key={r} style={{ padding: '0.4rem 0.65rem', borderRadius: 6, background: `${color}10`, fontSize: 9.5, color: t.textSecondary }}>{r}</div>
+          <SketchBox key={r} color={color} strokeWidth={1.2}>
+            <div style={{ padding: '0.4rem 0.65rem', borderRadius: 6, background: `${color}10`, fontSize: 9.5, color: t.textSecondary, fontFamily: HAND_FONT }}>{r}</div>
+          </SketchBox>
         ))}
       </div>
     </VisualizationContainer>

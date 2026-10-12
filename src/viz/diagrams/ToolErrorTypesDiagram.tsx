@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { getConceptColor } from './diagramSystem';
+import SketchBox from '../../components/notebook/SketchBox';
 
 /** Two genuinely different error mechanisms in MCP -- click to
  * compare a protocol-level JSON-RPC error (unknown tool, invalid
@@ -25,9 +26,11 @@ export default function ToolErrorTypesDiagram() {
           Tool execution error
         </button>
       </div>
-      <div style={{ fontFamily: 'monospace', fontSize: 8.5, padding: '0.6rem', borderRadius: 7, background: t.surfaceAlt, color: t.textSecondary, wordBreak: 'break-word' }}>
-        {execError ? execJson : protocolJson}
-      </div>
+      <SketchBox color={color} strokeWidth={1.3}>
+        <div style={{ fontFamily: 'monospace', fontSize: 8.5, padding: '0.6rem', borderRadius: 7, background: t.surfaceAlt, color: t.textSecondary, wordBreak: 'break-word' }}>
+          {execError ? execJson : protocolJson}
+        </div>
+      </SketchBox>
     </VisualizationContainer>
   );
 }
