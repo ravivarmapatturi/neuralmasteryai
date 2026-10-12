@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, PillSelect } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
+import SketchBox from '../../components/notebook/SketchBox';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 type Technique = 'hyde' | 'decomposition' | 'stepback' | 'multiquery';
 
@@ -53,17 +56,21 @@ export default function QueryTransformationDiagram() {
           { value: 'multiquery', label: 'Multi-query' },
         ]}
       />
-      <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 6, background: t.surfaceAlt, border: `1px solid ${t.border}`, fontSize: 11, fontFamily: 'monospace', color: origColor }}>
-        original: "{ORIGINAL}"
-      </div>
+      <SketchBox color={origColor} style={{ marginTop: 10 }}>
+        <div style={{ padding: '8px 12px', fontSize: 11, fontFamily: 'monospace', color: origColor }}>
+          original: "{ORIGINAL}"
+        </div>
+      </SketchBox>
       <div style={{ display: 'flex', justifyContent: 'center', margin: '6px 0' }}>
-        <div style={{ fontSize: 14, color: transformColor }}>↓ {config.label}</div>
+        <div style={{ fontSize: 14.5, fontFamily: HAND_FONT, color: transformColor }}>↓ {config.label}</div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {config.outputs.map((o, i) => (
-          <div key={i} style={{ padding: '8px 12px', borderRadius: 6, background: `${transformColor}18`, border: `1.5px solid ${transformColor}`, fontSize: 11, fontFamily: 'monospace', color: t.textSecondary }}>
-            {o}
-          </div>
+          <SketchBox key={i} color={transformColor}>
+            <div style={{ padding: '8px 12px', background: `${transformColor}18`, fontSize: 11, fontFamily: 'monospace', color: t.textSecondary }}>
+              {o}
+            </div>
+          </SketchBox>
         ))}
       </div>
       <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color: t.textMuted, marginTop: 8 }}>
