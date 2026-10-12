@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
+import { SketchArrow, SketchPath, SketchRect } from '../../components/notebook/RoughShape';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 type BlockDef = { key: string; label: string; concept: 'attention' | 'output' | 'embedding' | 'query'; desc: string };
 
@@ -51,8 +54,8 @@ export default function TransformerArchitectureDiagram() {
     const spanH = blocks.length * (boxH + gap) - gap;
     return (
       <>
-        <text x={x} y={16} textAnchor="middle" fontSize={12} fontWeight={700} fill={t.textPrimary}>{name}</text>
-        <text x={x} y={topPad - 6} textAnchor="middle" fontSize={9} fontFamily="monospace" fill={t.textMuted}>
+        <text x={x} y={16} textAnchor="middle" fontSize={12} fontWeight={700} fontFamily={HAND_FONT} fill={t.textPrimary}>{name}</text>
+        <text x={x} y={topPad - 6} textAnchor="middle" fontSize={9.5} fontFamily={HAND_FONT} fill={t.textMuted}>
           {name === 'ENCODER' ? 'input embedding + PE' : 'output embedding + PE'}
         </text>
         {blocks.map((b, i) => {
@@ -61,23 +64,32 @@ export default function TransformerArchitectureDiagram() {
           const isHovered = hovered?.key === b.key;
           return (
             <g key={b.key} onMouseEnter={() => setHovered(b)} onMouseLeave={() => setHovered(null)} style={{ cursor: 'pointer' }}>
-              <line x1={x} y1={i === 0 ? topPad - 2 : topPad + (i - 1) * (boxH + gap) + boxH} x2={x} y2={y} stroke={t.textMuted} strokeWidth={1.2} />
-              <rect x={x - boxW / 2} y={y} width={boxW} height={boxH} rx={5} fill={isHovered ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isHovered ? 2.5 : 1.25} />
-              <text x={x} y={y + boxH / 2 + 4} textAnchor="middle" fontSize={11} fontWeight={600} fill={color}>{b.label}</text>
+              <SketchArrow points={[[x, i === 0 ? topPad - 2 : topPad + (i - 1) * (boxH + gap) + boxH], [x, y]]} color={t.textMuted} strokeWidth={1.2} arrowhead={false} id={`arch-edge-${b.key}`} />
+              {/* Plain backing rect for the hover wash, SketchRect for the
+                  hand-drawn border only -- same legibility fix as every
+                  other diagram converted this session. */}
+              {isHovered && <rect x={x - boxW / 2} y={y} width={boxW} height={boxH} rx={5} fill={`${color}30`} stroke="none" />}
+              <SketchRect x={x - boxW / 2} y={y} width={boxW} height={boxH} color={color} strokeWidth={isHovered ? 2.5 : 1.25} id={`arch-box-${b.key}`} />
+              <text x={x} y={y + boxH / 2 + 4} textAnchor="middle" fontSize={11} fontWeight={600} fontFamily={HAND_FONT} fill={color}>{b.label}</text>
             </g>
           );
         })}
-        <line x1={x} y1={topPad + (blocks.length - 1) * (boxH + gap) + boxH} x2={x} y2={topPad + (blocks.length - 1) * (boxH + gap) + boxH + 18} stroke={t.textMuted} strokeWidth={1.2} markerEnd="url(#arch-arrow)" />
-        <text x={x} y={topPad + (blocks.length - 1) * (boxH + gap) + boxH + 30} textAnchor="middle" fontSize={9} fontFamily="monospace" fill={t.textMuted}>
+        <SketchArrow
+          points={[[x, topPad + (blocks.length - 1) * (boxH + gap) + boxH], [x, topPad + (blocks.length - 1) * (boxH + gap) + boxH + 18]]}
+          color={t.textMuted}
+          strokeWidth={1.2}
+          id={`arch-out-${name}`}
+        />
+        <text x={x} y={topPad + (blocks.length - 1) * (boxH + gap) + boxH + 30} textAnchor="middle" fontSize={9.5} fontFamily={HAND_FONT} fill={t.textMuted}>
           {name === 'ENCODER' ? 'encoder output' : 'to Linear + Softmax'}
         </text>
-        <path
+        <SketchPath
           d={`M ${x + sign * (boxW / 2 + 16)},${topPad} q ${sign * 8},0 ${sign * 8},${spanH / 2} q 0,${spanH / 2} ${-sign * 8},${spanH}`}
-          fill="none"
-          stroke={t.border}
+          color={t.border}
           strokeWidth={1.25}
+          id={`arch-brace-${name}`}
         />
-        <text x={x + sign * (boxW / 2 + 30)} y={topPad + spanH / 2 + 4} textAnchor="middle" fontSize={13} fontWeight={700} fill={t.textSecondary}>×6</text>
+        <text x={x + sign * (boxW / 2 + 30)} y={topPad + spanH / 2 + 4} textAnchor="middle" fontSize={13} fontWeight={700} fontFamily={HAND_FONT} fill={t.textSecondary}>×6</text>
       </>
     );
   }
@@ -89,29 +101,22 @@ export default function TransformerArchitectureDiagram() {
     <VisualizationContainer footer="Hover any sublayer to see what it does. The one arrow crossing between the stacks is cross-attention -- the decoder's only window into the encoder's representation of the input.">
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', justifyContent: 'center', flexWrap: 'wrap' }}>
         <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', maxWidth: width }}>
-          <defs>
-            <marker id="arch-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
-              <path d="M0,0 L7,3.5 L0,7 Z" fill={t.textMuted} />
-            </marker>
-            <marker id="arch-cross-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-              <path d="M0,0 L8,4 L0,8 Z" fill={getConceptColor(t, 'query')} />
-            </marker>
-          </defs>
-
           <Stack x={encX} blocks={ENCODER_BLOCKS} name="ENCODER" bracketSide="left" />
           <Stack x={decX} blocks={DECODER_BLOCKS} name="DECODER" bracketSide="right" />
 
-          {/* cross-attention wire: encoder output -> decoder's cross-attention block */}
-          <path
-            d={`M ${encX + boxW / 2},${encOutY - 4} C ${(encX + decX) / 2},${encOutY - 4} ${(encX + decX) / 2},${crossY} ${decX - boxW / 2 - 4},${crossY}`}
-            fill="none"
-            stroke={getConceptColor(t, 'query')}
-            strokeWidth={hovered?.key === 'd-cross' ? 2.5 : 1.5}
-            strokeDasharray="5 3"
-            opacity={hovered === null || hovered.key === 'd-cross' ? 0.9 : 0.25}
-            markerEnd="url(#arch-cross-arrow)"
-          />
-          <text x={(encX + decX) / 2} y={(encOutY + crossY) / 2 - 6} textAnchor="middle" fontSize={9} fontFamily="monospace" fill={getConceptColor(t, 'query')} opacity={hovered === null || hovered.key === 'd-cross' ? 1 : 0.3}>
+          {/* cross-attention wire: encoder output -> decoder's cross-attention
+              block. Dasharray dropped -- a sketchy hand-drawn stroke already
+              reads as organic/non-solid, same simplification used for every
+              other previously-dashed connector converted this session. */}
+          <g opacity={hovered === null || hovered.key === 'd-cross' ? 0.9 : 0.25}>
+            <SketchPath
+              d={`M ${encX + boxW / 2},${encOutY - 4} C ${(encX + decX) / 2},${encOutY - 4} ${(encX + decX) / 2},${crossY} ${decX - boxW / 2 - 4},${crossY}`}
+              color={getConceptColor(t, 'query')}
+              strokeWidth={hovered?.key === 'd-cross' ? 2.5 : 1.5}
+              id="arch-cross-wire"
+            />
+          </g>
+          <text x={(encX + decX) / 2} y={(encOutY + crossY) / 2 - 6} textAnchor="middle" fontSize={9.5} fontFamily={HAND_FONT} fill={getConceptColor(t, 'query')} opacity={hovered === null || hovered.key === 'd-cross' ? 1 : 0.3}>
             K, V
           </text>
         </svg>
