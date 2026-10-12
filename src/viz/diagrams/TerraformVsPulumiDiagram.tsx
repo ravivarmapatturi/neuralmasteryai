@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { getConceptColor } from './diagramSystem';
+import SketchBox from '../../components/notebook/SketchBox';
 
 /** Same declared infrastructure, two languages -- click to compare
  * Terraform's HCL against Pulumi's general-purpose-language approach,
@@ -21,11 +22,13 @@ export default function TerraformVsPulumiDiagram() {
           Pulumi (Python/TS/Go)
         </button>
       </div>
-      <div style={{ fontFamily: 'monospace', fontSize: 9.5, padding: '0.7rem', borderRadius: 7, background: t.surfaceAlt, color: t.textSecondary, whiteSpace: 'pre', overflowX: 'auto' }}>
-        {pulumi
-          ? 'for size in ["small", "large"]:\n    aws.ec2.Instance(f"node-{size}",\n        instance_type=size)'
-          : 'resource "aws_instance" "node" {\n  instance_type = var.size\n  # no native loop over sizes\n}'}
-      </div>
+      <SketchBox color={color} strokeWidth={1.3}>
+        <div style={{ fontFamily: 'monospace', fontSize: 9.5, padding: '0.7rem', background: t.surfaceAlt, color: t.textSecondary, whiteSpace: 'pre', overflowX: 'auto' }}>
+          {pulumi
+            ? 'for size in ["small", "large"]:\n    aws.ec2.Instance(f"node-{size}",\n        instance_type=size)'
+            : 'resource "aws_instance" "node" {\n  instance_type = var.size\n  # no native loop over sizes\n}'}
+        </div>
+      </SketchBox>
     </VisualizationContainer>
   );
 }
