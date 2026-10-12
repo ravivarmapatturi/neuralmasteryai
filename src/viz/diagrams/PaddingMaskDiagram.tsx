@@ -1,6 +1,7 @@
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, VisualizationMath } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
+import { SketchRect } from '../../components/notebook/RoughShape';
 
 const TOKENS = ['The', 'cat', 'sat', '<pad>', '<pad>'];
 
@@ -41,16 +42,22 @@ export default function PaddingMaskDiagram() {
             const y = labelH + r * (cellSize + 2);
             return (
               <g key={`${r}-${c}`}>
-                <rect
+                {/* Plain (non-rough) backing rect for the soft color wash --
+                    a rough.js hachure fill here would repeat the exact
+                    text-legibility bug already found and fixed on
+                    LoopGraphAnatomyDiagram (diagonal fill strokes
+                    colliding with the ✓/−∞ glyph). The SketchRect below
+                    draws only the hand-drawn border, no fill. */}
+                <rect x={x} y={y} width={cellSize} height={cellSize} rx={3} fill={blocked ? t.surfaceAlt : `${attnColor}22`} stroke="none" />
+                <SketchRect
                   x={x}
                   y={y}
                   width={cellSize}
                   height={cellSize}
-                  rx={3}
-                  fill={blocked ? t.surfaceAlt : `${attnColor}22`}
-                  stroke={blocked ? maskColor : attnColor}
-                  strokeOpacity={blocked ? 0.4 : 0.7}
-                  strokeWidth={1}
+                  color={blocked ? maskColor : attnColor}
+                  roughness={1.1}
+                  strokeWidth={blocked ? 1.2 : 1.5}
+                  id={`pad-cell-${r}-${c}`}
                 />
                 <text x={x + cellSize / 2} y={y + cellSize / 2 + 4} textAnchor="middle" fontSize={12} fontFamily="monospace" fontWeight={600} fill={blocked ? t.textMuted : t.textPrimary} opacity={blocked ? 0.6 : 1}>
                   {blocked ? '−∞' : '✓'}
