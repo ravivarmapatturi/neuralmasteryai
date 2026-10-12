@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { getConceptColor } from './diagramSystem';
+import { SketchArrow, SketchRect } from '../../components/notebook/RoughShape';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 type Stage = 'authn' | 'authz';
 
@@ -25,34 +28,31 @@ export default function AuthNvsAuthZDiagram() {
       }
     >
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
-        <defs>
-          <marker id="aa-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
-            <path d="M0,0 L7,3.5 L0,7 Z" fill={t.textMuted} />
-          </marker>
-        </defs>
-        <text x={30} y={30} fontSize={11} fill={t.textMuted}>Request arrives</text>
-        <line x1={140} y1={26} x2={190} y2={26} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#aa-arrow)" />
+        <text x={30} y={30} fontSize={11} fontFamily={HAND_FONT} fill={t.textMuted}>Request arrives</text>
+        <SketchArrow points={[[140, 26], [190, 26]]} color={t.textMuted} strokeWidth={1.5} id="aa-arrow-1" />
 
         <g onClick={() => setActive('authn')} onMouseEnter={() => setActive('authn')} style={{ cursor: 'pointer' }} opacity={active === 'authn' ? 1 : 0.4}>
-          <rect x={190} y={10} width={130} height={36} rx={8} fill={active === 'authn' ? `${authnColor}30` : t.surfaceAlt} stroke={authnColor} strokeWidth={active === 'authn' ? 2.5 : 1.5} />
-          <text x={255} y={32} textAnchor="middle" fontSize={10} fontWeight={700} fill={authnColor}>Authentication</text>
+          <rect x={190} y={10} width={130} height={36} rx={8} fill={active === 'authn' ? `${authnColor}30` : t.surfaceAlt} stroke="none" />
+          <SketchRect x={190} y={10} width={130} height={36} color={authnColor} strokeWidth={active === 'authn' ? 2.5 : 1.5} id="aa-authn" />
+          <text x={255} y={32} textAnchor="middle" fontSize={10} fontWeight={700} fontFamily={HAND_FONT} fill={authnColor}>Authentication</text>
         </g>
 
-        <line x1={320} y1={26} x2={370} y2={26} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#aa-arrow)" />
+        <SketchArrow points={[[320, 26], [370, 26]]} color={t.textMuted} strokeWidth={1.5} id="aa-arrow-2" />
 
         <g onClick={() => setActive('authz')} onMouseEnter={() => setActive('authz')} style={{ cursor: 'pointer' }} opacity={active === 'authz' ? 1 : 0.4}>
-          <rect x={370} y={10} width={130} height={36} rx={8} fill={active === 'authz' ? `${authzColor}30` : t.surfaceAlt} stroke={authzColor} strokeWidth={active === 'authz' ? 2.5 : 1.5} />
-          <text x={435} y={32} textAnchor="middle" fontSize={10} fontWeight={700} fill={authzColor}>Authorization</text>
+          <rect x={370} y={10} width={130} height={36} rx={8} fill={active === 'authz' ? `${authzColor}30` : t.surfaceAlt} stroke="none" />
+          <SketchRect x={370} y={10} width={130} height={36} color={authzColor} strokeWidth={active === 'authz' ? 2.5 : 1.5} id="aa-authz" />
+          <text x={435} y={32} textAnchor="middle" fontSize={10} fontWeight={700} fontFamily={HAND_FONT} fill={authzColor}>Authorization</text>
         </g>
 
-        <line x1={500} y1={26} x2={540} y2={26} stroke={t.accentPrimary} strokeWidth={1.5} markerEnd="url(#aa-arrow)" />
-        <text x={545} y={30} fontSize={10} fill={t.accentPrimary}>OK</text>
+        <SketchArrow points={[[500, 26], [540, 26]]} color={t.accentPrimary} strokeWidth={1.5} id="aa-arrow-3" />
+        <text x={545} y={30} fontSize={10} fontFamily={HAND_FONT} fill={t.accentPrimary}>OK</text>
 
-        <text x={255} y={65} textAnchor="middle" fontSize={9} fill={authnColor}>"who are you?"</text>
-        <text x={435} y={65} textAnchor="middle" fontSize={9} fill={authzColor}>"what can you do?"</text>
+        <text x={255} y={65} textAnchor="middle" fontSize={9} fontFamily={HAND_FONT} fill={authnColor}>"who are you?"</text>
+        <text x={435} y={65} textAnchor="middle" fontSize={9} fontFamily={HAND_FONT} fill={authzColor}>"what can you do?"</text>
 
-        <text x={30} y={100} fontSize={9} fill={t.textMuted} width={500}>A system can authenticate perfectly and still be badly broken if authorization is missing --</text>
-        <text x={30} y={114} fontSize={9} fill={t.textMuted}>e.g. any logged-in user able to delete any OTHER user's data.</text>
+        <text x={30} y={100} fontSize={9} fontFamily={HAND_FONT} fill={t.textMuted} width={500}>A system can authenticate perfectly and still be badly broken if authorization is missing --</text>
+        <text x={30} y={114} fontSize={9} fontFamily={HAND_FONT} fill={t.textMuted}>e.g. any logged-in user able to delete any OTHER user's data.</text>
       </svg>
     </VisualizationContainer>
   );
