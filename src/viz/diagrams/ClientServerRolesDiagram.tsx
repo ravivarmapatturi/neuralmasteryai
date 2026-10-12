@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { getConceptColor } from './diagramSystem';
+import SketchBox from '../../components/notebook/SketchBox';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 /** Who plays each role in practice -- click to see concrete examples
  * of MCP clients versus MCP servers. */
@@ -27,7 +30,9 @@ export default function ClientServerRolesDiagram() {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {EXAMPLES[role].map((e) => (
-          <div key={e} style={{ padding: '0.4rem 0.65rem', borderRadius: 6, background: `${color}10`, fontSize: 10, color: t.textSecondary }}>{e}</div>
+          <SketchBox key={e} color={color} strokeWidth={1.2}>
+            <div style={{ padding: '0.4rem 0.65rem', borderRadius: 6, background: `${color}10`, fontSize: 10, color: t.textSecondary, fontFamily: HAND_FONT }}>{e}</div>
+          </SketchBox>
         ))}
       </div>
     </VisualizationContainer>
