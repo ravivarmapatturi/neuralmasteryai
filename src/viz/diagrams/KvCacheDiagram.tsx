@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, PillSelect } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
+import { SketchRect } from '../../components/notebook/RoughShape';
 
 const STEPS = 5;
 
@@ -44,17 +45,26 @@ export default function KvCacheDiagram() {
           <g key={step}>
             <text x={4} y={20 + step * (cellSize + gap) + cellSize / 2 + 4} fontSize={9} fontFamily="monospace" fill={t.textMuted}>t={step}</text>
             {cells.map(({ tok, recomputed }) => (
-              <rect
-                key={tok}
-                x={40 + tok * (cellSize + gap)}
-                y={20 + step * (cellSize + gap)}
-                width={cellSize}
-                height={cellSize}
-                rx={4}
-                fill={recomputed ? `${recomputeColor}30` : `${cachedColor}18`}
-                stroke={recomputed ? recomputeColor : cachedColor}
-                strokeWidth={recomputed ? 2 : 1}
-              />
+              <g key={tok}>
+                <rect
+                  x={40 + tok * (cellSize + gap)}
+                  y={20 + step * (cellSize + gap)}
+                  width={cellSize}
+                  height={cellSize}
+                  rx={4}
+                  fill={recomputed ? `${recomputeColor}30` : `${cachedColor}18`}
+                  stroke="none"
+                />
+                <SketchRect
+                  x={40 + tok * (cellSize + gap)}
+                  y={20 + step * (cellSize + gap)}
+                  width={cellSize}
+                  height={cellSize}
+                  color={recomputed ? recomputeColor : cachedColor}
+                  strokeWidth={recomputed ? 2 : 1}
+                  id={`kvc-${step}-${tok}`}
+                />
+              </g>
             ))}
           </g>
         ))}

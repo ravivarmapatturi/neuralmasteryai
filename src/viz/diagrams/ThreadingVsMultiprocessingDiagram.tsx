@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, PillSelect } from '../primitives';
 import { getConceptColor } from './diagramSystem';
+import { SketchRect } from '../../components/notebook/RoughShape';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 type Workload = 'io' | 'cpu';
 type Model = 'threading' | 'multiprocessing';
@@ -58,13 +61,14 @@ export default function ThreadingVsMultiprocessingDiagram() {
         />
       </div>
       <svg width={WIDTH} height={HEIGHT} style={{ display: 'block' }}>
-        <rect x={10} y={20} width={barW} height={30} fill={color} rx={4} />
+        <rect x={10} y={20} width={barW} height={30} fill={`${color}30`} stroke="none" />
+        <SketchRect x={10} y={20} width={barW} height={30} color={color} strokeWidth={2} id="tvm-bar" />
         <text x={10} y={70} fontSize={13} fontFamily="monospace" fontWeight={700} fill={color}>
           {result.time.toFixed(0)}ms
         </text>
         <line x1={10} y1={90} x2={WIDTH - 10} y2={90} stroke={t.border} strokeWidth={1} />
-        <text x={10} y={104} fontSize={9} fill={t.textMuted}>0ms</text>
-        <text x={WIDTH - 10} y={104} textAnchor="end" fontSize={9} fill={t.textMuted}>{MAX_TIME.toFixed(0)}ms (fully sequential)</text>
+        <text x={10} y={104} fontSize={9} fontFamily={HAND_FONT} fill={t.textMuted}>0ms</text>
+        <text x={WIDTH - 10} y={104} textAnchor="end" fontSize={9} fontFamily={HAND_FONT} fill={t.textMuted}>{MAX_TIME.toFixed(0)}ms (fully sequential)</text>
       </svg>
     </VisualizationContainer>
   );

@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
+import { SketchArrow, SketchRect } from '../../components/notebook/RoughShape';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 export interface DiscoveryStep {
   name: string;
@@ -25,11 +28,6 @@ export default function DiscoverySequenceDiagram({ steps }: { steps: DiscoverySt
   return (
     <VisualizationContainer footer={steps[selected].constraint}>
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
-        <defs>
-          <marker id="disc-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
-            <path d="M0,0 L7,3.5 L0,7 Z" fill={t.textMuted} />
-          </marker>
-        </defs>
         {steps.map((s, i) => {
           const x = 20 + i * nodeW + nodeW / 2;
           const isSelected = selected === i;
@@ -37,14 +35,11 @@ export default function DiscoverySequenceDiagram({ steps }: { steps: DiscoverySt
           return (
             <g key={s.name}>
               {i > 0 && (
-                <line
-                  x1={20 + (i - 1) * nodeW + nodeW / 2 + 40}
-                  y1={y}
-                  x2={x - 40}
-                  y2={y}
-                  stroke={t.textMuted}
+                <SketchArrow
+                  points={[[20 + (i - 1) * nodeW + nodeW / 2 + 40, y], [x - 40, y]]}
+                  color={t.textMuted}
                   strokeWidth={1.5}
-                  markerEnd="url(#disc-arrow)"
+                  id={`disc-arrow-${i}`}
                 />
               )}
               <g
@@ -62,12 +57,13 @@ export default function DiscoverySequenceDiagram({ steps }: { steps: DiscoverySt
                 }}
                 style={{ cursor: 'pointer' }}
               >
-                <rect x={x - 40} y={y - 18} width={80} height={36} rx={8} fill={isSelected ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isSelected ? 2.5 : 1.5} />
-                <text x={x} y={y + 4} textAnchor="middle" fontSize={9.5} fontWeight={700} fill={color}>
+                <rect x={x - 40} y={y - 18} width={80} height={36} rx={8} fill={isSelected ? `${color}30` : t.surfaceAlt} stroke="none" />
+                <SketchRect x={x - 40} y={y - 18} width={80} height={36} color={color} strokeWidth={isSelected ? 2.5 : 1.5} id={`disc-step-${i}`} />
+                <text x={x} y={y + 4} textAnchor="middle" fontSize={9.5} fontWeight={700} fontFamily={HAND_FONT} fill={color}>
                   {s.name}
                 </text>
               </g>
-              <text x={x} y={y + 34} textAnchor="middle" fontSize={9} fill={t.textMuted}>
+              <text x={x} y={y + 34} textAnchor="middle" fontSize={9} fontFamily={HAND_FONT} fill={t.textMuted}>
                 {i + 1}
               </text>
             </g>
