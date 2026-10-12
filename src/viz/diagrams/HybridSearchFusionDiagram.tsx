@@ -3,6 +3,9 @@ import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import { RRF_DEFAULT_K as K, reciprocalRankFusion, rrfScoreForRank } from '../lib/rrf';
+import SketchBox from '../../components/notebook/SketchBox';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 const DENSE_RANKING = ['Doc B', 'Doc A', 'Doc D', 'Doc C'];
 const SPARSE_RANKING = ['Doc C', 'Doc B', 'Doc A', 'Doc D'];
@@ -28,19 +31,20 @@ export default function HybridSearchFusionDiagram() {
   function Column({ title, ranking, color }: { title: string; ranking: string[]; color: string }) {
     return (
       <div style={{ flex: 1 }}>
-        <div style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color, marginBottom: 6 }}>{title}</div>
+        <div style={{ textAlign: 'center', fontSize: 11.5, fontWeight: 700, fontFamily: HAND_FONT, color, marginBottom: 6 }}>{title}</div>
         {ranking.map((d, i) => (
-          <div
-            key={d}
-            onMouseEnter={() => setHovered(d)}
-            onMouseLeave={() => setHovered(null)}
-            style={{
-              padding: '5px 8px', marginBottom: 3, borderRadius: 5, fontSize: 11, fontFamily: 'monospace', textAlign: 'center', cursor: 'pointer',
-              background: hovered === d ? `${color}30` : t.surfaceAlt, border: `1.5px solid ${hovered === d ? color : t.border}`, color: t.textSecondary,
-            }}
-          >
-            #{i + 1} {d}
-          </div>
+          <SketchBox key={d} color={hovered === d ? color : t.border} strokeWidth={hovered === d ? 2 : 1.3} style={{ marginBottom: 5 }}>
+            <div
+              onMouseEnter={() => setHovered(d)}
+              onMouseLeave={() => setHovered(null)}
+              style={{
+                padding: '5px 8px', fontSize: 11, fontFamily: 'monospace', textAlign: 'center', cursor: 'pointer',
+                background: hovered === d ? `${color}30` : t.surfaceAlt, color: t.textSecondary,
+              }}
+            >
+              #{i + 1} {d}
+            </div>
+          </SketchBox>
         ))}
       </div>
     );
