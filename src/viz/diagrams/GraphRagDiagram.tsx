@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
+import { SketchArrow, SketchEllipse } from '../../components/notebook/RoughShape';
 
 const NODES = [
   { id: 'A', label: 'Acme Corp', x: 80, y: 60 },
@@ -35,7 +36,18 @@ export default function GraphRagDiagram() {
           const na = NODES.find((n) => n.id === a)!;
           const nb = NODES.find((n) => n.id === b)!;
           const isActive = selected && (a === selected || b === selected);
-          return <line key={i} x1={na.x} y1={na.y} x2={nb.x} y2={nb.y} stroke={isActive ? edgeColor : t.border} strokeWidth={isActive ? 2.5 : 1.25} opacity={selected && !isActive ? 0.3 : 1} />;
+          return (
+            <g key={i} opacity={selected && !isActive ? 0.3 : 1}>
+              <SketchArrow
+                points={[[na.x, na.y], [nb.x, nb.y]]}
+                color={isActive ? edgeColor : t.border}
+                strokeWidth={isActive ? 2.25 : 1.25}
+                roughness={1.4}
+                arrowhead={false}
+                id={`graphrag-edge-${a}-${b}`}
+              />
+            </g>
+          );
         })}
         {NODES.map((n) => {
           const isSelected = selected === n.id;
@@ -43,7 +55,11 @@ export default function GraphRagDiagram() {
           const dim = selected !== null && !isReachable;
           return (
             <g key={n.id} onClick={() => setSelected(n.id)} onMouseEnter={() => setSelected(n.id)} style={{ cursor: 'pointer' }} opacity={dim ? 0.3 : 1}>
-              <circle cx={n.x} cy={n.y} r={26} fill={isSelected ? `${nodeColor}30` : t.surfaceAlt} stroke={nodeColor} strokeWidth={isSelected ? 2.5 : 1.5} />
+              {/* plain backing circle carries the data-fill (selected highlight);
+                  SketchEllipse layered on top adds only the hand-drawn border,
+                  same text-legibility split used by every other converted diagram. */}
+              <circle cx={n.x} cy={n.y} r={26} fill={isSelected ? `${nodeColor}30` : t.surfaceAlt} stroke="none" />
+              <SketchEllipse cx={n.x} cy={n.y} width={52} height={52} color={nodeColor} strokeWidth={isSelected ? 2.25 : 1.5} roughness={1.3} id={`graphrag-node-${n.id}`} />
               <text x={n.x} y={n.y + 3} textAnchor="middle" fontSize={7.5} fill={t.textSecondary}>{n.label}</text>
             </g>
           );

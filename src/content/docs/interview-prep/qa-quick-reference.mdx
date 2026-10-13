@@ -112,6 +112,74 @@ Faithfulness (does the answer actually follow from the retrieved context, or doe
 More retrieved chunks means more context, and long contexts are exactly where "lost in the middle" recall degradation and context rot show up — past a point, irrelevant or redundant chunks dilute the model's attention on the ones that actually answer the query, rather than adding coverage.
 </QA>
 
+<QA q="What is Agentic RAG, and how is it different from standard RAG?">
+Standard RAG is one fixed retrieve-then-generate pass per query. In Agentic RAG, an agent decides whether to retrieve at all, what to search for, and how many times — it can issue a second retrieval call after seeing the first come back thin, or reformulate its own query, rather than being locked into exactly one retrieval step regardless of what the question needs. See [Advanced RAG Architectures](/docs/llms-genai/rag#advanced-rag-architectures).
+</QA>
+
+<QA q="What is Corrective RAG (CRAG)?">
+A grading step inserted right after retrieval: a lightweight evaluator checks whether the retrieved chunks are actually relevant and sufficient, and if not, falls back to rewriting the query, searching more broadly, or even general web search — instead of generating an answer from context that was never going to support one. See [Advanced RAG Architectures](/docs/llms-genai/rag#advanced-rag-architectures).
+</QA>
+
+<QA q="What is Self-RAG?">
+An approach where the LLM itself is trained to emit special reflection tokens during generation — deciding when retrieval is needed, critiquing whether retrieved passages are relevant, and assessing whether its own output is actually grounded in them — folding that judgment into the model's own token stream instead of a separate pipeline stage. See [Advanced RAG Architectures](/docs/llms-genai/rag#advanced-rag-architectures).
+</QA>
+
+<QA q="What is Adaptive RAG?">
+Routing each incoming query by complexity before deciding how to handle it — a simple factual lookup might skip retrieval entirely, a straightforward question gets one retrieval pass, and a genuinely complex one gets routed into decomposition or multi-hop retrieval. See [Query Transformation](/docs/llms-genai/rag#query-transformation).
+</QA>
+
+<QA q="What is RAPTOR?">
+A retrieval architecture that builds a tree of recursive summaries over the corpus — clustering related chunks, summarizing each cluster, then clustering and summarizing those summaries again going up several levels — so retrieval can pull a high-level summary for a broad question or a specific leaf chunk for a narrow one, instead of being stuck at one fixed granularity. See [Advanced RAG Architectures](/docs/llms-genai/rag#advanced-rag-architectures).
+</QA>
+
+<QA q="What is contextual retrieval, and how is it different from late chunking?">
+Both solve the same problem — a chunk embedded in isolation can't encode context that lives elsewhere in the document — but from opposite directions. Contextual retrieval has an LLM prepend a short, generated context blurb onto each chunk's text before it's embedded; late chunking instead embeds the whole document first with a long-context model and only pools token embeddings into chunks afterward, so the context gets baked in via attention rather than via added text. See [Chunking Strategies](/docs/llms-genai/rag#chunking-strategies).
+</QA>
+
+<QA q="What is Cache-Augmented Generation (CAG), and when would you use it instead of RAG?">
+Skipping retrieval entirely by preloading an entire (small enough) corpus directly into the model's KV cache, so the model attends over all of it on every query with no retrieval step at all. It only works when the corpus is genuinely small enough to fit, but when it does, it sidesteps every retrieval-quality failure mode by construction, since nothing was ever selectively retrieved to begin with. See [Advanced RAG Architectures](/docs/llms-genai/rag#advanced-rag-architectures).
+</QA>
+
+<QA q="What is HyDE (Hypothetical Document Embeddings)?">
+Instead of embedding and searching with the user's raw question, have the LLM first generate a hypothetical answer to it, then embed and search with that answer instead — a fabricated answer tends to sit much closer in embedding space to a real relevant document than a terse original question does. See [Query Transformation](/docs/llms-genai/rag#query-transformation).
+</QA>
+
+<QA q="What is late interaction (ColBERT), and how does it sit between a bi-encoder and a cross-encoder?">
+It keeps a separate embedding per token instead of pooling to one vector per document, and scores a query-document pair via MaxSim — for each query token, the single best-matching document token, summed. Document token embeddings stay precomputable and indexable like a bi-encoder's, but nothing gets collapsed away, so it recovers much of a cross-encoder's precision without the expensive joint forward pass. See [Re-ranking with Cross-Encoders](/docs/llms-genai/rag#re-ranking-with-cross-encoders).
+</QA>
+
+<QA q="What's the prompt injection risk specific to a RAG system, and how do you defend against it?">
+Because retrieved chunks come from documents, not from the user directly, a document containing text like "ignore previous instructions and..." gets fed straight into the model's context as if it were trusted input — an attacker who can get content into the indexed corpus can inject instructions the model may follow. Defenses include treating retrieved content as data rather than instructions in the prompt structure, output filtering, and restricting what actions a RAG-backed agent can take without separate confirmation.
+</QA>
+
+<QA q="How do you enforce multi-tenancy and per-user access control in a shared RAG index?">
+At retrieval time, via metadata filtering scoped to exactly what the requesting user is authorized to see — not by filtering the LLM's output afterward, since by then the model has already read documents it should never have had access to. See [Common Failure Modes](/docs/llms-genai/rag#common-failure-modes).
+</QA>
+
+<QA q="Why does document ingestion and parsing matter so much for RAG quality?">
+Every downstream step — chunking, embedding, retrieval — operates on whatever text ingestion produced, so a parsing failure here (a mangled PDF table, a dropped section heading) silently corrupts everything after it. Naive text extraction breaks badly on multi-column layouts and tables, which is why production ingestion pipelines usually run through a dedicated document-layout parser instead. See [The RAG Pipeline, End to End](/docs/llms-genai/rag#the-rag-pipeline-end-to-end).
+</QA>
+
+<QA q="What are multimodal embeddings, and how do they extend RAG beyond text?">
+Embedding models (CLIP-style architectures) that place images and text in the same shared vector space, so a text query can retrieve a relevant image, chart, or diagram directly by similarity — the basis of Multimodal RAG, used for questions that can only really be answered by looking at something visual in the source material. See [Advanced RAG Architectures](/docs/llms-genai/rag#advanced-rag-architectures).
+</QA>
+
+<QA q="What does production RAG observability track that offline evaluation metrics don't?">
+Offline metrics (faithfulness, context precision/recall) run against a fixed test set before shipping. Production observability tracks the same ideas continuously on live traffic — using an LLM judge at scale, alerting on drift in retrieval quality over time, and tracing individual queries end-to-end to debug a specific bad answer rather than just a rolled-up score. See [Evaluating RAG](/docs/llms-genai/rag#evaluating-rag).
+</QA>
+
+<QA q="When would you fine-tune an embedding model or reranker for RAG, instead of just using a bigger off-the-shelf one?">
+When your domain's vocabulary and notion of "relevant" genuinely differs from general web text — legal, medical, or highly technical corpora are the common case — and you have (or can weakly generate) labeled query-document relevance pairs to train on. Fine-tuning with contrastive/triplet loss, pulling truly relevant pairs closer and irrelevant ones apart, closes the gap between "generically similar" and "actually relevant for this corpus" in a way a bigger general-purpose model alone won't. See [Choosing an Embedding Model](/docs/llms-genai/rag#choosing-an-embedding-model).
+</QA>
+
+<QA q="What is semantic caching, and what's its main failure mode?">
+Embedding each incoming query and checking it against previously served queries by similarity rather than exact string match, reusing a cached retrieval or answer on a close-enough hit instead of re-running the full pipeline. The main failure mode is cache leakage: a similarity threshold set too loosely can serve one user's cached answer to a different, merely-similar query — a real risk in any multi-tenant system where that could cross a data boundary. See [RAG Optimization](/docs/llms-genai/rag#rag-optimization).
+</QA>
+
+<QA q="What's the difference between embedding mismatch and reranker failure as production bugs?">
+Embedding mismatch happens when a team swaps embedding models but doesn't fully re-embed the existing index, leaving old and new vectors geometrically incompatible in the same store — it looks like a model-quality problem but is really a migration problem. Reranker failure is a distinct category entirely: the reranker itself confidently pushes the wrong candidate to the top, which calls for recalibrating or swapping the reranker, not touching the retrieval stage it runs downstream of. See [Common Failure Modes](/docs/llms-genai/rag#common-failure-modes).
+</QA>
+
 ## AI Agents
 
 <QA q="What is an AI agent, and how is it different from a single LLM call?">

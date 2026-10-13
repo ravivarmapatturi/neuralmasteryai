@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, PillSelect } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
+import SketchBox from '../../components/notebook/SketchBox';
 
 const QUERY = 'canines that bark';
 const DOCS = [
@@ -37,9 +38,11 @@ export default function DenseVsSparseRetrievalDiagram() {
           return (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ width: 200, fontSize: 11, color: t.textSecondary, fontFamily: 'monospace' }}>"{d.text}"</div>
-              <div style={{ flex: 1, height: 16, background: t.surfaceAlt, borderRadius: 4, overflow: 'hidden' }}>
-                <div style={{ width: `${score * 100}%`, height: '100%', background: color, opacity: 0.8, transition: 'width 250ms' }} />
-              </div>
+              <SketchBox color={t.border} strokeWidth={1.2} style={{ flex: 1 }}>
+                <div style={{ height: 16, background: t.surfaceAlt, overflow: 'hidden' }}>
+                  <div style={{ width: `${score * 100}%`, height: '100%', background: color, opacity: 0.8, transition: 'width 250ms' }} />
+                </div>
+              </SketchBox>
               <div style={{ width: 40, textAlign: 'right', fontSize: 11, fontFamily: 'monospace', fontWeight: 700, color }}>{score.toFixed(2)}</div>
             </div>
           );

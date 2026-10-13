@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
+import { SketchEllipse } from '../../components/notebook/RoughShape';
 
 type Metric = 'faithfulness' | 'relevance' | 'precision' | 'recall';
 
@@ -70,7 +71,8 @@ export default function RagEvalMetricsDiagram() {
             const opacity = dotVisible(i) ? 1 : 0.15;
             return (
               <g key={i} opacity={opacity}>
-                <circle cx={p.x} cy={p.y} r={16} fill={`${dotColor(i)}30`} stroke={dotColor(i)} strokeWidth={2} />
+                <circle cx={p.x} cy={p.y} r={16} fill={`${dotColor(i)}30`} stroke="none" />
+                <SketchEllipse cx={p.x} cy={p.y} width={32} height={32} color={dotColor(i)} strokeWidth={2} roughness={1.3} id={`eval-dot-${i}`} />
                 <text x={p.x} y={p.y + 4} textAnchor="middle" fontSize={10} fontWeight={700} fill={dotColor(i)}>{i}</text>
               </g>
             );
