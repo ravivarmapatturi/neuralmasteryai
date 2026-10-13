@@ -1,0 +1,516 @@
+---
+title: "RAG Interview Questions — The Full Bank"
+sidebar_position: 5.3
+description: "117 RAG interview questions covering every major architecture, production deployment, security, and evaluation — click to reveal an answer, then check yourself."
+---
+
+import { QA } from '../../../components/content/ExpandableDepth';
+import { Remember } from '../../../components/content/Remember';
+
+# RAG Interview Questions — The Full Bank
+
+[RAG](/docs/llms-genai/rag) teaches the material. The [Q&A Quick Reference](/docs/interview-prep/qa-quick-reference) drills the core 28 questions most interviews actually ask. This page goes further — a deep, comprehensive bank covering the long tail of RAG research architectures, production deployment and cost, monitoring and incident debugging, security and multi-tenancy, and open-ended system-design scenarios, pulled from a dedicated 1,500+ question interview-prep repository and cross-checked against other recent interview-question roundups. The goal is coverage wide and deep enough that no reasonable RAG question — fundamentals, an obscure architecture name, or "walk me through debugging this production incident" — should catch you with nothing to say.
+
+This page assumes you already know everything on the `/docs/llms-genai/rag` page and the core 28 questions — it doesn't re-teach chunking or BM25 from scratch, it builds on top and goes sideways into territory those two pages don't cover.
+
+<Remember>You will not get asked all 117 of these in one interview. The point isn't memorizing every answer verbatim — it's recognizing the *shape* of question each category represents, so an unfamiliar specific question in a familiar category still gets a structured, confident answer instead of a blank.</Remember>
+
+## RAG Fundamentals & Strategy
+
+<QA q="You're asked to “design a production RAG system” cold, with no other context. What's the first move?">
+Don't start listing components. Ask clarifying questions first — what's the corpus (structured, unstructured, both), how fresh does it need to be, what's the query volume and latency budget, who are the users and what access-control boundaries exist between them, and what does "correct" mean for this domain (exact facts vs. synthesized judgment). The answer changes substantially based on these, and jumping straight to "I'd use Pinecone and GPT-4" without asking signals you've memorized a stack, not that you can design one.
+</QA>
+
+<QA q="What's the standard two-pipeline mental model for a RAG system, and why split it that way?">
+An offline (indexing) pipeline — ingest, chunk, embed, index — and an online (serving) pipeline — query understanding, retrieval, reranking, context assembly, generation, guardrails. Splitting them matters because they have completely different performance profiles: the offline pipeline is throughput-oriented and can tolerate latency (hours is fine), while the online pipeline is latency-critical and runs on every single user request. Conflating them in a design answer is a tell that you haven't actually built one.
+</QA>
+
+<QA q="A RAG answer is wrong even though the correct document exists somewhere in the corpus. How do you debug it?">
+Don't jump straight to changing prompts — localize the failure to a specific pipeline stage first. Check, in order: was the document actually ingested and indexed; did an access-control or metadata filter silently exclude it; did it get chunked in a way that split the relevant fact across a boundary; did the query transformation step drift away from the original intent; did it get retrieved but ranked too low to make the top-k; did it make the final context but get truncated or "lost in the middle"; or did the model have it in context and simply misread or ignored it. Each of these has a different fix, and guessing at a fix before localizing the stage wastes a debugging cycle.
+</QA>
+
+<QA q="In what scenarios is plain, unenhanced (“Naive”) RAG still the right choice over a more sophisticated architecture?">
+When the corpus is small-to-medium, queries are mostly single-fact lookups rather than multi-hop or synthesis questions, latency and cost need to stay minimal, and the team doesn't have the operational capacity to run and monitor a more complex pipeline. Naive RAG's real value is that its failure modes are simple and legible — when it's wrong, it's usually obviously wrong in a way that's easy to diagnose, which isn't true once you add agentic loops or multi-stage reranking.
+</QA>
+
+<QA q="Walk through the standard migration path as a RAG system matures, and the discipline that should govern each step.">
+Naive → Advanced (add hybrid search, reranking, query rewriting) → Modular (pluggable, routable components) → Agentic (an LLM decides the retrieval strategy per-query), each stage motivated by a specific, *measured* failure the previous stage couldn't fix — never by "agents are powerful" or "reranking always helps" in the abstract. The discipline: add one component at a time, measure its effect on a fixed probe/golden set, and only keep it if it moves the metric; a component justified by intuition rather than a measured plateau is usually premature.
+</QA>
+
+<QA q="Name the five most common RAG anti-patterns and their fixes.">
+(1) Over-chunking — splitting far smaller than needed "because smaller is more precise," without ever measuring that it helps; start around 512 tokens and measure first. (2) Premature agentification — reaching for an agentic loop before confirming the failure is actually a multi-hop problem a loop would fix. (3) Reranking everything — adding reranker latency/cost to every query when the first-stage retriever was never actually the bottleneck; only add it once dense retrieval demonstrably underperforms. (4) One shared index for all tenants with a filter bolted on — a security anti-pattern, not just a performance one; per-tenant namespace isolation is safer by construction. (5) No probe/golden set — shipping changes with no fixed evaluation set in CI, flying blind on whether a change helped or hurt.
+</QA>
+
+<QA q="RAG vs. fine-tuning vs. long-context stuffing — how do you actually decide between them for a given use case?">
+Ask what's actually changing: if the *facts* need to stay current or come from documents too numerous to bake into weights, that's RAG's job; if what needs to change is *tone, format, or a narrow skill* rather than facts, that's fine-tuning's job; if the corpus is small and bounded (a single long document or a handful of files) and you can afford the token cost of stuffing it into context every call, long-context avoids a retrieval step's precision risk entirely. These aren't mutually exclusive — production systems often combine a lightly fine-tuned model (for voice) with RAG (for facts), and reach for long-context or CAG only when the corpus genuinely fits.
+</QA>
+
+## Chunking & Preprocessing (Advanced)
+
+<QA q="How do you chunk source code differently from prose, and why does naive fixed-size chunking actively break code?">
+Code has semantic boundaries defined by its AST, not by sentences or paragraphs — the natural chunk unit is a function or method (preserving its signature, docstring, and body together), falling back to class-level chunks for small classes. Use a real parser (`tree-sitter`, or Python's own `ast` module) to find exact boundary positions rather than splitting on newlines, since a newline mid-expression isn't a semantic boundary at all; fixed-character chunking will routinely cut a function signature in half, which breaks both retrieval (the chunk no longer reads as "the function that does X") and any downstream code generation grounded in it.
+</QA>
+
+<QA q="How would you chunk a 200-page financial report with mixed prose, tables, and charts?">
+Content-type-aware chunking, not one strategy applied uniformly: detect text/table/image regions separately (a PDF layout tool can give you bounding boxes), chunk prose sections by header/paragraph boundaries with some overlap, extract tables and serialize them as Markdown rather than mixing table rows into surrounding prose text (they have different embedding characteristics and mixing them degrades both), and run charts/figures through a vision-capable model to generate a text description that gets embedded in place of the image. Every chunk should also carry page number and section-title metadata, since financial reports are often queried by location ("page 47, liquidity risk") as much as by content.
+</QA>
+
+<QA q="What are the real data sources a production ingestion pipeline has to handle, and why does matching the extraction method to the source matter?">
+PDFs (text-layer or scanned/OCR), live websites (often JS-rendered, which a plain HTML scraper won't see), databases via SQL, REST APIs, and SaaS tools like Notion via their own SDKs — each needs a genuinely different extraction tool, and using the wrong one doesn't degrade gracefully, it returns nothing (a web scraper on a PDF, or a PDF parser on a JS-rendered page). A production pipeline should validate that extraction actually produced non-empty text before proceeding — a blank result from what should be a text-bearing PDF usually means it's actually a scanned image and needs to be routed to OCR instead.
+</QA>
+
+<QA q="How do you choose between PDF extraction libraries (pypdf, pdfplumber, PyMuPDF) for a production pipeline?">
+By what the documents actually contain and what throughput you need: `pdfplumber` if the documents are table-heavy and you need structured table extraction (it's the slowest of the three, but the most accurate on tables); `PyMuPDF` if you need high throughput and layout-aware extraction at scale; `pypdf` if you need a pure-Python dependency with no compiled C libraries, for environments where that matters more than speed or table fidelity. None of the three handle scanned PDFs with no text layer — those need OCR regardless of which library you pick for the text-layer case.
+</QA>
+
+<QA q="A chunk exceeds the embedding model's max input length. What actually happens, and why is this a dangerous failure mode?">
+It doesn't error — it gets silently truncated, and the back half of the chunk is quietly dropped from the index with no warning anywhere in the pipeline. This is dangerous precisely because it's silent: a chunking strategy that occasionally produces oversized chunks (long tables, dense legal clauses, un-split long paragraphs) can be losing real content from the index indefinitely without anyone noticing, since nothing fails loudly — the system just retrieves worse on exactly the content that got truncated.
+</QA>
+
+## Embeddings & Vector Search (Advanced)
+
+<QA q="What is the query-document asymmetry problem in dense retrieval, and how do HyDE, INSTRUCTOR, and E5 each address it?">
+Queries are short, keyword-like phrases ("Python async error") while documents are long and descriptive prose — embedding both into the same space causes a real distributional mismatch, where the query vector often doesn't land close to a genuinely relevant document vector purely because of this length/style gap, not because they're semantically unrelated. HyDE sidesteps it by embedding a generated hypothetical *answer* instead of the raw query, putting the search vector into document-like space; INSTRUCTOR prepends a task-specific instruction ("Represent this query for searching technical documents") that shifts the embedding toward the target distribution; E5 trains with explicit `"query: "` / `"passage: "` prefixes so the model learns the asymmetry directly rather than relying on a prompt trick at inference time.
+</QA>
+
+<QA q="How do you handle retrieval for a low-resource language your embedding model wasn't trained well on?">
+Three options depending on budget: swap to a multilingual model (`multilingual-e5-large`, `LaBSE`) trained across 100+ languages with cross-lingual alignment — lower ceiling than a strong monolingual model but broad coverage out of the box; translate the query to the corpus's primary language before embedding, which is simple and high-quality but adds a translation API call's latency and cost on every query; or fine-tune a multilingual model on domain-specific cross-lingual pairs if off-the-shelf quality genuinely isn't enough. Whichever you pick, test on a real held-out set in the target language before shipping — multilingual model cards rarely reflect your specific domain's terminology.
+</QA>
+
+<QA q="How would you design the vector database layer for a RAG system holding 1 billion documents?">
+Three things become mandatory at that scale, not optional optimizations: quantization (IVF+PQ compresses a vector from ~3KB down to roughly 96 bytes — without it, 1B vectors need several terabytes of RAM, which no single machine has), sharding (partition the index across nodes by document type, time range, or an ID hash, fan out at query time, and merge with RRF), and tiered storage (hot, frequently-accessed segments in memory; cold segments on SSD with demand loading). At this scale, fully managed services get prohibitively expensive, and self-hosted Milvus or FAISS across a node fleet becomes the standard choice; budget 48–72 hours for a full from-scratch index build, with incremental indexing for ongoing updates.
+</QA>
+
+<QA q="When would you choose DiskANN over HNSW for a vector index?">
+Once the corpus is large enough that an in-memory HNSW graph becomes RAM-prohibitive — roughly past 100–200M vectors, and certainly in the 1B+ range, where HNSW's full-precision, fully-resident graph would need several terabytes of RAM. DiskANN keeps only PQ-compressed vectors in RAM for graph navigation and stores full-precision vectors on SSD, fetched only to re-rank a small final candidate set — published numbers show ~95% recall at low-single-digit-millisecond latency over a billion points on a single node with just tens of gigabytes of RAM. The cost is a small amount of added per-query latency from the SSD reads, which is fine for most RAG workloads but not for a sub-millisecond latency requirement.
+</QA>
+
+<QA q="What's the cold-start problem in vector database deployment, and how do you mitigate it?">
+After a restart or a new node joining, the index graph has to be loaded from disk into RAM before it can serve fast approximate search — until that finishes, queries either fall back to slow linear scan or fail outright. Mitigations: pre-warm with a batch of probe queries right after load, before accepting real traffic; never restart the primary node directly, scale via warm read replicas instead; memory-lock the index (`mlock`) so the OS can't page it out under memory pressure; and use memory-mapped index files so segments can be paged in lazily rather than requiring a full blocking deserialization at startup.
+</QA>
+
+<QA q="Serverless vs. provisioned vector database — what's the actual tradeoff, not just the marketing pitch?">
+Serverless (Pinecone Serverless, Zilliz Cloud Serverless) bills per operation and per-GB stored, so idle time costs almost nothing — ideal for bursty or intermittent traffic — but the first query to a cold namespace after inactivity can take hundreds of milliseconds to a couple of seconds while it loads into a shared worker, and that latency is architectural, not something you can tune away. Provisioned/dedicated deployments charge a fixed cost per node-hour regardless of utilization but stay warm with consistent low latency and no cold-start penalty. At high, steady query volume, provisioned is usually cheaper and more predictable; at low or spiky volume, serverless avoids paying for idle capacity you don't use.
+</QA>
+
+<QA q="Given the choice, should you fine-tune the reranker or the embedding model first?">
+The reranker, in nearly every case. It needs less labeled data (pairwise cross-encoder training is more data-efficient than bi-encoder contrastive training), and critically, it requires no re-indexing when it changes — it only rescores an already-retrieved candidate set, so you can iterate on it daily. An embedding fine-tune forces a full corpus re-embed before you can even evaluate the change in production, which is a far more expensive and slower feedback loop.
+</QA>
+
+<QA q="Why do hard negatives matter more than random negatives when fine-tuning an embedding model with contrastive loss?">
+Random negatives are usually trivially irrelevant to the query, so the model learns almost nothing from them — it already knew they didn't match. Hard negatives, mined via BM25 or the model's own current encodings, are lexically or semantically close to the query without actually being relevant, which is exactly the decision boundary the model actually needs to learn to improve. The catch is hard-negative mining can surface genuine false negatives — documents that are actually relevant but just weren't labeled as such — which poison training unless filtered out, typically by dropping any "negative" a cross-encoder scores suspiciously high.
+</QA>
+
+<QA q="What operationally happens after you deploy a newly fine-tuned embedding model into production?">
+Every vector in the entire corpus has to be regenerated, because old and new embeddings live in geometrically incompatible spaces — you cannot mix vectors from two model versions in one index without silently corrupting every similarity comparison involving one old and one new vector. In practice that means budgeting real compute and hours-to-days of pipeline time to re-embed the full corpus, building the new index alongside the old one and cutting over atomically (blue/green) rather than updating in place, and having a plan for documents that arrive during the migration window so they don't accidentally get embedded with the wrong model version.
+</QA>
+
+<QA q="What is catastrophic forgetting in the context of domain fine-tuning an embedding model, and how do you detect it?">
+It's when gradient updates optimized entirely for domain data overwrite general-purpose semantic representations the model learned during pretraining — the model gets measurably better on your domain but quietly worse at everything else. Detect it by holding out a general-domain eval slice (a BEIR subset, for example) alongside your domain eval set, and reporting recall/MRR/NDCG on both before and after fine-tuning; a healthy fine-tune shows a large domain gain with only minor general-slice drift, while a sharp general-slice drop signals forgetting rather than genuine adaptation.
+</QA>
+
+## Retrieval Architectures — The Research Catalogue
+
+This is the single richest category — a question on every named architecture a RAG-focused interview might drop on you, beyond the ones already covered on the main [RAG page](/docs/llms-genai/rag) (Agentic RAG, CRAG, Self-RAG, FLARE, RAPTOR, CAG, Multimodal RAG, SQL RAG, Code RAG, GraphRAG). You don't need to have *implemented* all of these — you need to recognize the name and state the one mechanism that actually distinguishes it.
+
+<QA q="What distinguishes Advanced RAG from Naive RAG, concretely?">
+Advanced RAG is Naive RAG plus a defined set of pre- and post-retrieval enhancements applied as a fixed pipeline: query rewriting/HyDE before search, hybrid dense+sparse retrieval instead of dense alone, and a reranking pass before generation. It's still a single fixed pass end to end — the thing that distinguishes it from Modular RAG isn't the techniques themselves, it's that Advanced RAG bakes them into one unchangeable sequence rather than exposing them as swappable, routable components.
+</QA>
+
+<QA q="What is Modular RAG, and what's the one thing that actually separates it from Advanced RAG?">
+Modular RAG restructures the pipeline into independently swappable components — a router that picks which retrieval strategy or data source to use per query, pluggable retrievers, a fusion module, memory — rather than one fixed sequence. The single distinguishing mechanism is the *routing/orchestration layer*: Advanced RAG always runs the same steps in the same order; Modular RAG decides, per query, which modules to invoke at all.
+</QA>
+
+<QA q="What is Speculative RAG, and when does its drafter/verifier split actually pay off?">
+A small, fast "drafter" model partitions retrieved documents into subsets and generates a candidate answer plus rationale from each subset in parallel; a larger "verifier" model then reads all the drafts and rationales (not the raw documents) and picks the best one — borrowing the same draft-then-verify shape as speculative decoding, but applied to RAG's retrieve-then-generate step instead of token generation. It pays off when you have enough traffic to amortize running two models and your corpus naturally partitions into genuinely distinguishable subsets; it doesn't help a low-traffic system, and it degrades if the subsets are too similar for the drafts to meaningfully disagree.
+</QA>
+
+<QA q="What is Long-context RAG, and when should you reach for it instead of standard chunked retrieval?">
+Instead of retrieving a small set of precise chunks, it stuffs a much larger span of raw document(s) — sometimes a coarse-selected document is fed in nearly whole — directly into a long-context model's window, trading retrieval precision for not having to get chunk boundaries exactly right. It's worth it when your corpus is small enough to plausibly fit (hundreds of documents, not hundreds of thousands), when precise chunk-boundary retrieval keeps failing on your content, or when prompt caching on a stable document set makes the token cost of repeated long-context calls cheap; it breaks down once the corpus genuinely exceeds what any context window — even a large one — can hold.
+</QA>
+
+<QA q="How does RAFT (Retrieval-Augmented Fine-Tuning) differ from standard supervised fine-tuning on QA pairs?">
+RAFT trains explicitly on retrieval's actual failure distribution: each training example includes the real golden document plus several distractor documents a retriever would plausibly surface, and critically, some fraction of examples omit the golden document entirely so the model also learns when *not* to trust the "retrieved" context and fall back to its own reasoning. Standard fine-tuning on clean QA pairs never exposes the model to distractors or to retrieval-miss scenarios at all, so it doesn't learn the specific skill RAFT targets: staying robust when retrieval is imperfect, which it always eventually is in production.
+</QA>
+
+<QA q="What is RAG-Fusion, and how is it different from plain multi-query retrieval?">
+Both generate several rephrasings of the query and retrieve for each — the difference is in how the results combine. Multi-query retrieval takes a simple union of the result sets; RAG-Fusion instead merges the *ranked lists* via Reciprocal Rank Fusion, so a document that ranks well across several of the rephrasings is rewarded for that consistency rather than just being counted once like everything else in the union.
+</QA>
+
+<QA q="What is Iterative / Multi-hop RAG, and what's the central risk that doesn't exist in single-shot retrieval?">
+It retrieves and reasons across several sequential hops — each hop's query is informed by what the previous hop found — to answer questions that need facts chained across documents a single retrieval pass would never connect. The central new risk is error accumulation: if an early hop retrieves a plausible-but-wrong intermediate fact, every subsequent hop inherits and compounds that error, so a chain of individually-90%-reliable hops can end up substantially less reliable end-to-end than any single hop in isolation.
+</QA>
+
+<QA q="What is HippoRAG, and why does it use Personalized PageRank instead of simple graph traversal (BFS/DFS)?">
+It builds a knowledge-graph-like index (inspired loosely by how the hippocampus indexes associative memory) and, at query time, seeds Personalized PageRank on the entities mentioned in the query to find the most relevant connected subgraph. PageRank over simple BFS/DFS because it naturally handles *multiple, weighted paths* to a candidate answer — a node reachable by several independent, meaningful routes accumulates more relevance score than one reachable by a single long accidental path, which a pure breadth/depth traversal has no way to express.
+</QA>
+
+<QA q="What is KAG (Knowledge-Augmented Generation), and what gap does it target that plain GraphRAG doesn't?">
+KAG adds "mutual indexing" (keeping the knowledge graph and the source text tightly linked so reasoning can fall back to raw text when the graph is incomplete) and logical-form-guided reasoning, where parts of a query are answered by deterministic logical operations over the graph rather than leaving everything to free-form LLM generation. The gap it targets is graph incompleteness and reasoning reliability: plain GraphRAG's community-summarization approach has no mechanism for formally verifiable multi-step reasoning, and nothing to fall back on when the graph itself simply doesn't contain a needed fact.
+</QA>
+
+<QA q="What do GraphReader and GNN-RAG have in common, and how do they differ from each other?">
+Both use a graph structure for multi-hop reasoning but push the exploration work onto something other than an LLM manually traversing edges. GraphReader has an agent explore the graph step by step and carry forward only compressed findings (so the full document never has to sit in context at once); GNN-RAG instead trains an actual graph neural network to do the retrieval/traversal itself and hands its output to the LLM only for final verbalization — a learned retrieval mechanism rather than an agentic exploration loop.
+</QA>
+
+<QA q="What is REALM, and what made it historically significant even though almost nobody deploys it unmodified today?">
+REALM trains its retriever *end-to-end*, jointly with the language model, through a latent-variable objective — the retriever learns directly from downstream task loss which documents are actually useful, rather than being frozen or trained separately. It's significant as the architecture that first proved joint retriever training was possible at all, but its asynchronous-index-refresh problem (the retriever's embeddings and the serving index drift apart during training) was awkward enough that most RAG research since moved toward frozen-retriever, prompted-generator designs instead.
+</QA>
+
+<QA q="What is RETRO, and how does chunked cross-attention let it scale to a trillion-token datastore?">
+RETRO retrieves nearest-neighbor chunks from a (frozen, unlearned) massive datastore and injects them into generation via chunked cross-attention — each output chunk attends to the retrieved neighbors of the *input* chunk immediately preceding it, rather than concatenating retrieved text into the prompt. Because the retriever is frozen (no joint training) and the datastore lookup is a cheap nearest-neighbor search rather than something requiring gradient updates, RETRO can scale its external datastore to sizes (trillions of tokens) that would be completely infeasible to encode into model weights.
+</QA>
+
+<QA q="What is Atlas, and why is retrieval especially valuable in the few-shot setting specifically?">
+Atlas jointly trains a retriever and a reader (Fusion-in-Decoder-style) and is evaluated specifically on how well it performs with very few labeled training examples. Retrieval is unusually powerful in the few-shot regime because it supplies the factual knowledge a model would otherwise need many labeled examples to memorize — with retrieval doing that work, the few available labeled examples can be spent entirely on teaching the model the *task* (how to read and answer), not on teaching it facts it can instead look up.
+</QA>
+
+<QA q="What is Fusion-in-Decoder, and why does it scale better than just concatenating all retrieved passages into one input?">
+Each retrieved passage is encoded *independently* by the encoder (cheap, and parallelizable), and only the decoder attends jointly across all of their encoded representations when generating the answer — evidence from different passages can only interact inside the decoder, never earlier. This scales far better than concatenation because the expensive quadratic self-attention cost of the encoder is paid per-passage rather than across the full concatenated length of all passages at once, letting FiD fuse far more passages than a single-encoder-over-everything approach could afford.
+</QA>
+
+<QA q="What is Tree-of-Thought RAG, and what does it add over a single ReAct-style retrieval loop?">
+It explores multiple reasoning branches in parallel, each potentially triggering its own conditional retrieval, and prunes weaker branches rather than committing to one linear think-retrieve-think chain the way ReAct does. It's worth the extra cost specifically for questions where the right reasoning path genuinely isn't obvious upfront and backtracking would otherwise mean restarting the whole chain — not for straightforward lookups where a linear loop was already going to work.
+</QA>
+
+<QA q="What is DPR (Dense Passage Retrieval), and what's its one foundational contribution to everything that followed?">
+DPR is the paper that established the now-default dense retrieval architecture: a bi-encoder, trained with contrastive loss to pull relevant query-passage pairs together in embedding space, compared by inner product (or cosine similarity) instead of hand-designed term-frequency heuristics like BM25. Its lasting contribution is proving that *learned* dense representations could outperform classical sparse retrieval on open-domain QA at all — essentially every dense-retrieval architecture discussed elsewhere on this page descends from this result.
+</QA>
+
+<QA q="What is WebGPT, and how is it different from simply prompting a model to use a search tool?">
+WebGPT's model weights themselves — not a prompt — encode when to search, click, and quote, learned via RLHF by training a reward model on human preferences between pairs of full browsing transcripts. Prompted tool use relies on an already-capable general model's in-context reasoning about when to call a tool; WebGPT instead fine-tunes the policy itself specifically for the browsing task, which was a meaningfully different (and at the time, novel) approach before general-purpose models got good enough at prompted tool use to make this specific route less common.
+</QA>
+
+<QA q="What is SURGE, and what specific failure does programmatic schema enforcement fix that “just ask the model for JSON” doesn't?">
+A standard RAG system asked to output structured JSON can produce a structurally valid response with semantically hallucinated field values — it has no mechanism distinguishing "I found this in the retrieved passage" from "I'm generating a plausible-sounding value." SURGE fixes this with a per-field gate: schema enforcement validated at the API/tool-call layer (not just requested in a prompt) combined with an NLI model that checks whether the cited passage actually entails each specific claimed field value, rather than just checking the output parses as valid JSON.
+</QA>
+
+<QA q="What is Recursive Document Summarization RAG, and how is it different from RAPTOR?">
+Both build a hierarchical tree of summaries, but the tree boundaries differ fundamentally: Recursive Document Summarization builds top-down *within* each source document (every node belongs to exactly one document, preserving provenance), while RAPTOR clusters chunks *across* document boundaries bottom-up by semantic similarity, so a single RAPTOR summary node can blend content from several unrelated source documents. Choose document-level recursive summarization when provenance matters (citing exactly which document a summary came from); choose RAPTOR when cross-document thematic clustering is the actual goal.
+</QA>
+
+<QA q="What is Search-R1, and how does it differ from prompted Agentic RAG?">
+Search-R1 trains the retrieve-or-reason decision itself via reinforcement learning against task reward, rather than relying on a frozen model's prompted judgment about when to search. It's the RL-trained analogue of what Agentic RAG does with prompting — same behavioral shape (deciding whether/when to search mid-reasoning), but the policy is learned from outcome reward instead of being a frozen model following in-context instructions.
+</QA>
+
+<QA q="What is Deep Research (as an architecture), and what's the one thing that actually distinguishes it from an agentic loop with a higher step limit?">
+The distinctive mechanism is *upfront decomposition into independently parallelizable sub-questions* — not simply running more search rounds in a loop. A single agentic loop with a higher iteration cap still processes searches sequentially within one growing shared context (hitting the same "lost in the middle" risk that long accumulated context always has); Deep Research instead splits the research brief into sub-questions narrow enough for dedicated sub-agents to research independently and in parallel, each in its own isolated context, merging findings only at the end.
+</QA>
+
+<QA q="What is MemoRAG, and how does it differ from RAPTOR?">
+MemoRAG generates a corpus-aware "draft" or clue *before* retrieval, from a model that has actually compressed the entire corpus — effectively asking "given everything this corpus contains, what would evidence supporting an answer to this query actually look like," rather than relying on the raw query's vocabulary alone to drive embedding similarity. RAPTOR, by contrast, builds its hierarchy once at index time and doesn't generate anything new per-query; MemoRAG's distinctive step happens at query time, informed by global corpus understanding the raw query alone wouldn't carry.
+</QA>
+
+<QA q="What is LongRAG, and how is it different from Long-context RAG?">
+LongRAG rebalances retrieval-unit *size*, not retrieval timing — it groups text into units roughly 30x larger than typical RAG chunks, deliberately making the retrieval problem easier (fewer, more distinguishable units to search among) at the cost of making the reading problem harder (the reader has to find and synthesize the answer within a much longer, less-targeted span). Long-context RAG is about stuffing a large span of raw text into the model at generation time; LongRAG is specifically about what size the *retrieval units themselves* should be.
+</QA>
+
+<QA q="What is VisRAG, and what's the one thing that separates it from every other architecture discussed here?">
+VisRAG treats the rendered page *image* as the sole unit of both retrieval and generation, with no text-extraction step anywhere in the pipeline — every other architecture, including standard Multimodal RAG and Table-Aware RAG, still extracts and normalizes content into text (or a text-adjacent structured form) at some point before embedding or generation. VisRAG instead bets entirely on a vision-language model's ability to perceive text, tables, figures, and layout jointly from raw pixels, for both deciding relevance and producing the final answer.
+</QA>
+
+<QA q="What is LazyGraphRAG, and why does it index for close to the cost of plain vector RAG when GraphRAG and LightRAG don't?">
+It defers all LLM-based summarization from index time to query time — instead of GraphRAG's "summarize every community whether or not it's ever queried," it only summarizes the specific subgraph a given query's relevance-testing loop actually surfaces. The index itself is built with zero LLM calls (just cheap, deterministic noun-phrase extraction and co-occurrence counting), which is exactly what keeps indexing cost comparable to plain vector RAG rather than paying GraphRAG's and LightRAG's substantial upfront LLM-extraction-and-clustering bill.
+</QA>
+
+<QA q="What is Astute RAG, and what does it do differently with the model's own prior knowledge?">
+It treats "what the model already knows" as an explicit, tagged, competing information source rather than an implicit fallback the model quietly leans on. Standard RAG conditions generation on retrieved passages and hopes the model's own judgment sensibly fills any gaps; Astute RAG instead deliberately elicits the model's internal knowledge, tags it exactly like an external retrieved passage, and runs both through the same explicit consolidation/conflict-resolution step — rather than one silently overriding the other with no visibility into which actually won.
+</QA>
+
+<QA q="What do Auto-RAG and DeepRAG have in common, and how do they differ from CoRAG?">
+Both make the retrieve-or-reason choice a first-class decision at *every* reasoning step — a step can resolve entirely from parametric memory with no retrieval call at all. CoRAG, by contrast, chains a sequence of retrieval steps where retrieval happens at every step of the chain by construction; its tunable dimension is chain *length* and what to retrieve at each hop, not whether to retrieve at all — a distinction that matters because Auto-RAG/DeepRAG can be meaningfully cheaper on queries that don't actually need external knowledge at every step.
+</QA>
+
+<QA q="What is CoRAG, and what does it mean that chain length is “an explicit, trained-in test-time compute knob”?">
+CoRAG fine-tunes a model specifically on retrieval-reasoning chains proven correct via rejection sampling, so the query-reformulation skill itself is optimized against outcome correctness rather than whatever a frozen model happens to produce when prompted to "think step by step and search." Because chain length is something the training process explicitly learned to vary, it becomes a tunable lever at inference time — you can trade more hops (more compute, better odds on hard questions) for fewer (cheaper, fine for easy ones) as a deliberate dial, not just an emergent side effect of prompting.
+</QA>
+
+<QA q="What is RQ-RAG, and how is it different from always applying one fixed query-rewriting technique like HyDE or Step-Back?">
+RQ-RAG is a fine-tuned, per-query action-selection policy expressed via special control tokens — rather than applying one hand-chosen transformation uniformly to every query, the model decides, per query, which of several operations (rewrite, decompose, disambiguate, or none) actually fits. A compound question gets decomposed, an ambiguous one gets disambiguated, an already-fine query passes through untouched — this per-query adaptivity is exactly what a single fixed prompted strategy applied to every query can't do.
+</QA>
+
+<QA q="What is REFRAG, and what third option does it introduce beyond “include a chunk fully” or “don't retrieve it”?">
+REFRAG compresses every retrieved chunk to a single dense embedding by default, with a lightweight RL-trained policy selectively "expanding" only the chunks it judges important back into full raw tokens for that specific query. Standard RAG only has two states per chunk — fully included, or not retrieved at all — while REFRAG adds a third: "included, but compressed, with the option to zoom in," which is what lets it extend effective usable context roughly 16x at a comparable latency budget, instead of forcing a flat tradeoff between context breadth and decoding speed.
+</QA>
+
+<QA q="What is Few-Shot Example RAG, and how does it differ from standard document RAG?">
+Instead of retrieving documents to ground a factual answer, it retrieves similar *past examples* (demonstrations) to populate a dynamic few-shot prompt for in-context learning — common in text-to-SQL and other structured-generation tasks where "show it a similar solved case" beats a static hand-picked few-shot set. The retrieval target is categorically different: not "facts relevant to this question" but "prior demonstrations whose pattern this new case should follow."
+</QA>
+
+<QA q="What is Agentic Web RAG, and how does it differ from corpus-based RAG beyond “it searches the internet”?">
+It replaces a fixed, pre-indexed corpus with live web search and page fetching as the retrieval mechanism, which introduces problems corpus-based RAG doesn't have at all: source quality and reliability vary per result and have to be actively assessed, citation tracking has to be a first-class architectural component (not an afterthought) since users need to verify claims against live, changing sources, and the fetch layer itself is a real security surface — an attacker-controlled page can attempt prompt injection or redirect the fetcher to internal/unintended endpoints, which a closed, pre-vetted corpus simply can't do.
+</QA>
+
+<QA q="What is Verifiable/Citation RAG, and why isn't “the model cited a source” the same thing as “the claim is actually grounded”?">
+A citation just means the model pointed at *some* passage near the claim — it doesn't guarantee that specific passage actually entails the specific claim being made next to it. Real verifiability requires checking at the claim level: citation precision (of the passages cited, how many genuinely support the claim), citation recall (of the claims made, how many have any supporting citation at all), and attribution accuracy (does the cited passage actually say what the response claims it says, checked via NLI entailment) — three genuinely separate failure modes a model can hit independently even while technically "citing sources."
+</QA>
+
+<QA q="What is Privacy-Preserving RAG, and what are the main technical levers for keeping a corpus's content from leaking through the system?">
+Techniques span the whole pipeline: on-device or federated embedding so raw sensitive text never leaves a trust boundary, differential privacy noise added to retrieval signals or training data, and strict output filtering/redaction for PII before a response is returned. The hard part in an interview answer isn't naming the techniques, it's being honest that most of them trade real quality or latency for privacy guarantees — there's no free version of this, and the right combination depends entirely on the actual threat model (internal misuse vs. external breach vs. regulatory compliance).
+</QA>
+
+<QA q="Why does standard RAG underperform specifically on tables, and what does Table-Aware RAG do differently?">
+Standard RAG treats a table as just another block of prose and chunks it by character count, which destroys the row/column structure that gives a table its meaning — a chunk boundary can split a row from its header, or merge unrelated rows together with no indication of which value belongs to which column. Table-Aware RAG's distinctive mechanism is structure-preserving linearization: explicitly parsing rows, columns, and headers into a structured representation first, then converting that structure back into text designed for retrieval and arithmetic reasoning — either full-table Markdown, or per-row chunks with the header re-attached to every single row so each chunk stays self-contained.
+</QA>
+
+<QA q="What is Streaming/Real-Time RAG, and what's the core mechanism that separates it from standard batch-indexed RAG?">
+The distinctive mechanism is continuous, incremental index updates as new data arrives, rather than periodic batch re-indexing — new documents (or events) become searchable within seconds to minutes instead of waiting for the next scheduled rebuild. This matters for use cases like live news, fast-moving incident response, or trading desks, where a correct answer five minutes ago can be actively wrong right now, and a standard nightly-rebuild RAG pipeline's staleness window is itself the failure mode.
+</QA>
+
+<QA q="What is LightRAG, and how does its dual-level retrieval differ from Microsoft GraphRAG's community-hierarchy approach?">
+LightRAG indexes at two levels simultaneously — fine-grained entity-level relationships for specific queries, and higher-level thematic summaries for broad ones — and lets a query mode choose which level (or both) to search, without needing GraphRAG's expensive community-detection clustering step at index time. The practical consequence is a meaningfully cheaper, faster index build, at the cost of GraphRAG's more thorough corpus-wide thematic coverage from pre-computed community summaries.
+</QA>
+
+## Agentic & Self-Correcting RAG (Beyond the Basics)
+
+<QA q="How do you prevent an agentic RAG loop from running forever (or effectively forever, on your bill)?">
+Combine four stopping conditions rather than relying on just one: a hard iteration cap as the absolute last resort (e.g. max 6 loops); a semantic-drift check that flags when the agent starts issuing near-duplicate retrieval queries (high cosine similarity to a prior query in the same loop signals it's spinning); a cheap sufficiency check, where a small model reads the accumulated context and outputs a simple yes/no on whether it's enough to answer; and a token/cost budget guard that stops before the context window or a spend limit is hit. In practice the sufficiency check fires most often in healthy operation — the hard cap and budget guard are safety nets for genuine edge cases, not the primary mechanism.
+</QA>
+
+<QA q="ReAct vs. Plan-and-Execute for agentic RAG — when do you reach for each?">
+ReAct interleaves reasoning and retrieval in a serial loop, where each observation informs the next step — highly adaptive, since it can change approach mid-loop, but every hop adds latency because steps can't run in parallel. Plan-and-Execute separates planning from execution: one call produces a full task list up front, then everything in it runs in parallel — faster when the task decomposes predictably, but brittle, since there's no replanning if the upfront plan turns out to be wrong partway through. Use ReAct when the query's scope is genuinely unknown and you need adaptive exploration; use Plan-and-Execute when the decomposition is predictable and latency matters more than adaptivity.
+</QA>
+
+<QA q="What does a Reflection/Correction agent actually catch that a single-pass RAG system misses?">
+It re-reads the retrieved chunk it just cited alongside the model's own draft answer and checks whether the chunk *actually* supports the specific claim being made — not just whether some chunk was retrieved at all, but whether this particular sentence is traceable to this particular chunk's text. A single-pass system has no mechanism to catch the case where a plausible-sounding number or fact simply wasn't in the retrieved context at all; a reflection agent flags that case and can trigger a more targeted re-retrieval before the draft ever reaches the user.
+</QA>
+
+<QA q="How do you make an agentic RAG system observable in production, given that failures can be two or three hops removed from the wrong final answer?">
+Instrument three things specifically: per-iteration traces (log each step's query, which tool was called, a summary of the result, and tokens used, with an iteration index, so you can replay the whole chain); the *terminal reason* the loop stopped (reached a real answer, hit the iteration cap, tripped the drift check, or exhausted budget — distinguishing "answered correctly" from "gave up" is not optional for debugging); and user-visible citations tracing which retrieved passages actually contributed to the final answer. Without per-iteration traces specifically, debugging a multi-hop agent is close to impossible, because the root cause is routinely several steps upstream of where the wrong answer actually surfaces.
+</QA>
+
+<QA q="How do you decide which agent framework to use for a given agentic RAG project?">
+Match the framework to what's actually hard about the use case, not to popularity — LlamaIndex if the core problem is RAG pipeline quality itself (chunking, indexing, retrieval); LangChain for general-purpose orchestration gluing together many different tool types; LangGraph or CrewAI when the design is genuinely multi-agent with distinct roles that need to converse or loop, and you want explicit, inspectable control over a cyclic execution graph; and for a single-agent, single-source system, consider skipping a framework entirely — a hand-rolled loop against the raw model API has less overhead and is easier to debug than an unnecessary abstraction layer.
+</QA>
+
+<QA q="Walk through a concrete example of why single-shot RAG fails on a genuinely compound question, and how an agentic version fixes it.">
+Take "my basement flooded from a burst pipe and my car got water damage, am I covered?" — single-shot RAG embeds the whole compound question once and runs one search, which creates three distinct failure points: if auto and homeowner's policies live in the same index, whichever has denser chunks near that embedding dominates the top-k and the other policy's relevant clause may not make the cut at all; even if both surface, nothing checks that the retrieved "water damage" clause actually addresses *flood* specifically (homeowner's policies typically exclude flood while covering other water damage — a distinction a single pass has no mechanism to check); and there's no re-query if the first pull is thin. An agentic version decomposes into policy-specific subqueries, retrieves each independently, and runs an explicit verification step checking for exactly this kind of nuance before synthesizing a final answer.
+</QA>
+
+## GraphRAG & Structured Data
+
+<QA q="What can a knowledge graph answer that a vector index fundamentally cannot, and vice versa?">
+A vector index retrieves by embedding similarity, which is excellent for open-ended semantic queries but has no mechanism for following explicit entity relationships across documents — it can't natively answer "who leads the company that acquired the company that made this product." A knowledge graph stores entities and typed relationships explicitly, enabling that kind of multi-hop structured traversal directly, but it's a worse fit for free-form "find me things that feel similar to this" queries a graph has no edges to represent. Production systems commonly run both: vector search to find semantic entry points into the graph, graph traversal for the relational reasoning once you're in.
+</QA>
+
+<QA q="How do you handle entity resolution when the same real-world entity shows up under different names across documents?">
+A tiered approach, cheapest first: normalize surface forms (lowercase, strip punctuation, expand known abbreviations); apply a curated alias table for known synonyms (ticker symbols, legal name variants); use embedding similarity to cluster candidate names above a cosine threshold (roughly 0.92 is a common starting point); and for genuinely ambiguous remaining cases, prompt an LLM with surrounding context to make the call. Assign each resolved cluster a single canonical node ID and store every surface form as an alias on it, so future documents referencing any variant resolve to the same node.
+</QA>
+
+<QA q="Why does source provenance on every graph edge matter operationally, not just for citation purposes?">
+Without knowing which source document produced a given edge, you can't incrementally update the graph when that document changes or gets deleted — you'd have no way to know which edges to remove, and would be forced to rebuild the entire graph from scratch on every single document change. With provenance tracked per edge, a document update becomes a targeted operation: delete that document's edges, re-extract from the new version, done — the difference between an incremental update pipeline and a full rebuild every time anything changes.
+</QA>
+
+<QA q="What's the difference between Microsoft GraphRAG's local search and global search modes, and when does each apply?">
+Local search behaves like standard knowledge-graph RAG: vector similarity finds entry-point entities, then it expands into their graph neighborhood to assemble context for one generation call — cheap and precise for entity-anchored questions. Global search instead map-reduces over pre-generated community summaries (computed once at index time via Leiden clustering): each relevant community summary independently produces a partial answer, and those partial answers get ranked and merged into one final response — costs more per query, but it's the only mode that can actually answer broad, thematic, corpus-wide questions, since the expensive summarization work was already paid for once upfront rather than repeated per query.
+</QA>
+
+<QA q="When do you choose a knowledge graph over pure vector retrieval, as a real design decision?">
+When queries genuinely require multi-hop reasoning across named entities, when you need to retrieve by relationship type rather than general topical similarity ("find all companies Apple acquired"), when entity deduplication materially affects answer quality because multiple documents refer to the same thing inconsistently, or when the domain already has a well-defined ontology (medical codes, legal concepts, product hierarchies) a graph can map onto directly. Stick with vector retrieval when queries are primarily free-form/semantic, the corpus lacks any clear entity structure to exploit, or build time is genuinely constrained — a graph you don't have time to build and maintain correctly is worse than no graph at all.
+</QA>
+
+## Conversational & Memory RAG
+
+<QA q="What's the “sliding window” memory problem, and how does compress-and-carry solve it?">
+A sliding window keeps only the last N turns verbatim — once it fills, older turns are simply dropped, and the system loses all memory of earlier conversation context, even context that might matter several turns later. Compress-and-carry periodically compresses older turns into a short running summary and carries that summary forward instead of the raw turns, so the context cost grows with summary length rather than linearly with session length — the tradeoff is the summary loses precision (exact quotes, fine phrasing nuance), which is why it's usually paired with a sliding window over the *most recent* few turns kept verbatim for immediate fidelity.
+</QA>
+
+<QA q="How does MemGPT's approach to memory differ from a standard application-managed sliding window or summary?">
+Standard approaches manage memory entirely outside the model — the application layer decides what to keep, archive, or drop. MemGPT instead gives the model explicit memory-management tools (append to working memory, search archival memory, insert into archival memory) and lets the model itself decide when to invoke them, the same way it decides when to call a retrieval tool. The upside is the model can reason about *what's actually worth remembering* in a way a fixed window or summary rule can't ("this constraint will matter several turns from now"); the downside is added latency from the memory tool calls themselves, and the risk of the model mismanaging memory if those tool prompts aren't specified carefully.
+</QA>
+
+<QA q="How would you implement cross-session personalization in a conversational RAG assistant without storing full transcripts?">
+After each session ends, run a lightweight extraction pass asking "what did we learn about this user's preferences, constraints, or domain knowledge this session," and store only those extracted facts in a per-user namespaced vector store — not the raw transcript. At the start of a new session, retrieve the most relevant stored facts for the opening query and inject them as a brief "user context" block in the system prompt. Storing semantic summaries rather than full transcripts is both cheaper and aligned with minimal-data-retention practice — you rarely actually need the verbatim history, just the durable facts it revealed.
+</QA>
+
+<QA q="What is conversational context drift, and what's the most common root cause?">
+It's when a multi-turn system's retrieval quality degrades specifically because follow-up queries lose the context that made them meaningful in isolation — "did it affect enterprise customers?" means nothing to a retriever without knowing what "it" refers to from three turns ago. The most common root cause is skipping query condensation/rewriting before retrieval: embedding the raw follow-up as-is, rather than first rewriting it into a self-contained query using the conversation history, almost guarantees the retriever searches on an under-specified or ambiguous version of what the user actually meant.
+</QA>
+
+## Multimodal & Specialized RAG
+
+<QA q="How does CLIP's training objective enable cross-modal retrieval without any manually labeled image-text pairs?">
+It trains contrastively on hundreds of millions of naturally co-occurring (image, alt-text) pairs scraped from the web — no manual labeling involved — with a loss that pulls each image's embedding close to its paired text embedding and pushes it away from the other images in the same training batch. Because both encoders are trained to land in the same shared vector space, a text query can be embedded and compared directly against image embeddings by ordinary cosine similarity at retrieval time, with no classification head or extra alignment step needed.
+</QA>
+
+<QA q="Early fusion vs. late fusion for multimodal RAG — which do production systems actually use, and why?">
+Early fusion combines raw multimodal inputs before encoding, requiring one architecture capable of processing both modalities jointly from the start. Late fusion encodes each modality independently with its own best-in-class encoder (text with a strong text embedder, images with CLIP) and combines the resulting vectors afterward — and this is what production systems overwhelmingly use, because it lets you swap in the best available encoder per modality without retraining anything else, index everything in one shared vector store with a single ANN query across modalities, and add a brand-new modality later (audio, say) by adding one new encoder rather than retraining the whole system.
+</QA>
+
+<QA q="How would you index a corpus of PDFs that mix prose, figures, and tables?">
+Parse each document and route by content type: text blocks chunked and embedded with a text encoder; figures extracted as images and embedded with CLIP (or captioned via a vision-language model and embedded as text, for cases where a text query is more likely than an image query); tables linearized to Markdown and embedded as text. Store everything in one index with a `modality` metadata field so retrieval can span all three at once from a single text query embedding — and flag any figure that has no surrounding caption text for manual review, since those are the hardest content type for a plain text query to ever surface via semantic similarity alone.
+</QA>
+
+## Evaluation & Testing (Advanced)
+
+<QA q="What does building a real golden evaluation dataset actually involve, beyond “write 20 questions”?">
+Real query sampling (drawn from actual production logs or a representative spread of query types, not just whatever's easy to think of), relevant-passage labeling (manual annotation is the gold standard but expensive; LLM-assisted labeling scales further but is noisier and needs spot-checking), measuring inter-annotator agreement if multiple people label (low agreement means your "ground truth" itself is ambiguous, which is useful information, not noise to ignore), and wiring the resulting set into CI so every pipeline change gets measured against it automatically rather than relying on someone remembering to run an eval manually before merging.
+</QA>
+
+<QA q="Beyond RAGAS, what other LLM-judge evaluation frameworks exist, and when would you reach for each?">
+ARES adds calibrated confidence intervals to judge scores at the cost of needing domain fine-tuning and a few hundred human labels — worth it when you need statistically defensible scores, not just a point estimate. RAGChecker gives claim-level diagnostics that separate retriever failure from generator failure, useful specifically when RAGAS or production has already flagged *that* something's wrong but not *which stage*. ConsJudge trains a judge model from judgment-consistency signals rather than human labels or a stronger reference model, useful if you want your own judge without depending on either. FaithJudge is a human-aligned hallucination-rate leaderboard, useful for picking a generator (or judge) model with an independent, pre-validated hallucination-rate comparison rather than trusting a vendor's own benchmark.
+</QA>
+
+<QA q="How do you measure citation quality in a verifiable RAG system, beyond “does it have citations at all”?">
+Three genuinely separate metrics, because they catch three different failure modes: citation precision (of the passages actually cited, what fraction genuinely support the claim next to them — measured via NLI entailment between the cited passage and the specific claim); citation recall (of the claims the response makes, what fraction have any citation at all — requires segmenting the response into atomic claims first); and attribution accuracy (does the cited passage actually say what the response claims it says, which is distinct from hallucination detection, since hallucination checks if *any* passage supports a claim, while attribution accuracy checks specifically whether *the cited one* does).
+</QA>
+
+<QA q="How do you evaluate RAG answers for open-ended questions where there's no single correct reference answer?">
+Automated exact-match metrics are useless here, so lean on two complementary LLM-judge patterns instead: rubric-based absolute scoring (define explicit dimensions — relevance, completeness, accuracy, citation quality — and have a strong judge model score each independently, which forces reproducibility and makes variance explainable) and pairwise preference (show the judge two responses — a baseline and a candidate — and ask which is better overall; pairwise judgments are empirically more reliable than absolute scores because they anchor the judge to a concrete comparison rather than an abstract scale). Always calibrate whichever you use against a small set of human-labeled examples before trusting it at scale.
+</QA>
+
+<QA q="How do you evaluate a RAG system when you have no ground-truth labels at all?">
+"You can't" is the wrong answer here. Reference-free LLM-as-judge techniques genuinely work for faithfulness specifically, because checking whether an answer's claims are supported by the retrieved context only needs the context and the answer — it never needed a gold reference answer in the first place. Combine that with behavioral signals from live traffic (regeneration rate, rephrase rate, escalation rate) to triangulate overall quality without any labeled data at all.
+</QA>
+
+<QA q="Your thumbs-up rate is 92%. Does that mean your RAG system is actually good?">
+Not necessarily, and taking it at face value is a real mistake — explicit feedback like thumbs typically comes from under 5% of users, and that sliver is heavily skewed toward either very angry or unusually engaged users, which says very little about the silent majority who never clicked anything. A more reliable read comes from composite implicit signals instead — no regeneration, no rephrase, no escalation within the session, taken together — rather than trusting one small, self-selected explicit metric.
+</QA>
+
+<QA q="Your offline eval scores improved after a change, but users are complaining more. What's going on?">
+Don't default to blaming the users or assuming the eval was wrong — this is the classic online/offline divergence, and it has a few concrete, checkable causes: the golden dataset is cleaner and narrower than real live traffic (distribution shift), the change may have overfit specifically to the fixed golden set without generalizing (Goodharting), or live traffic includes genuinely unanswerable questions that never show up in a curated offline set at all. Check the unanswerable-question rate and compare query distributions between the golden set and live traffic before concluding anything about the model itself regressed.
+</QA>
+
+<QA q="What should you actually log per request in a production RAG system, beyond the question and the final answer?">
+The full trace: the raw query and the rewritten/condensed version if query transformation ran, retrieved chunk IDs and their scores, reranked chunk IDs and scores if reranking ran, the final assembled prompt that actually went to the model, model parameters and token usage, and any sampled judge scores for that request. Without per-stage chunk IDs and scores specifically, you cannot localize a production failure to retrieval, reranking, or generation after the fact — you're stuck guessing.
+</QA>
+
+<QA q="Your LLM-judge scores dropped 5% overnight with no deploy on your side. What do you check first?">
+Don't assume your system broke — the drop could be coming from the *judge* itself. Providers silently update underlying judge models, and that alone can shift every score without any genuine change in your system's output quality. The fix is scoring a fixed sentinel set daily (same inputs, same expected scores, run every day regardless of anything else) — a shift in the sentinel set's scores isolates judge drift from a genuine system regression immediately, instead of you spending hours investigating a system problem that doesn't exist.
+</QA>
+
+<QA q="How would you know your RAG system's quality regressed after a deploy, in a real production setup?">
+Four layers, and naming all four (in order) is what separates a senior answer from "we have an eval set": a pre-deploy CI gate running the golden-dataset eval that blocks the deploy on any metric regression beyond threshold; a canary rollout to a small traffic slice, comparing guardrail metrics (latency, error rate, refusal rate) and judge scores canary-vs-control before full rollout; post-rollout online signals (regeneration rate, rephrase rate, thumbs ratio, escalation rate) watched against a pre-deploy baseline window; and trace-level triage when any signal fires — pulling the actual failing traces, localizing which stage broke using per-stage scores, and promoting those failures into the golden set so the exact same regression gets caught pre-deploy the next time around.
+</QA>
+
+## RAG in Production — Deployment & Scaling
+
+<QA q="Where does the money actually go in a RAG system's per-query cost, and which stage dominates?">
+At typical production scale, embedding and vector search together are a small fraction of cost (roughly 5% each), reranking (if used) a bit more, but LLM generation — input tokens plus output tokens — is overwhelmingly the dominant cost, often 80% combined between the two. That's exactly why prompt caching and model tiering (the two levers that directly attack generation cost) are usually the highest-ROI place to start cutting spend, not retrieval-side optimization, which is tempting to focus on but rarely where the actual money is.
+</QA>
+
+<QA q="How does prompt caching's economics actually work, and what has to stay true for it to pay off?">
+The provider caches the computed KV attention tensors for the static part of your prompt (a system prompt, a stable reference-document prefix) and charges a small fraction of the full input-token price on a cache hit instead of full price — the dollar amounts shift with pricing updates, but the ratio (a fraction of full price on a hit) is the stable fact worth remembering. It only pays off if your prompt prefix stays byte-identical across requests — even a whitespace difference busts the cache — and if there's enough request volume hitting that same prefix within the cache's TTL window (typically minutes) to actually benefit from it; a system with highly unique, rarely-repeated prompts gets little from this lever.
+</QA>
+
+<QA q="What is model tiering in a RAG pipeline, and when is it actually safe to downgrade to a cheaper model for a given stage?">
+Assigning each pipeline stage to the cheapest model that clears that stage's specific quality bar, rather than running the same large model everywhere — routing/classification, simple query rewrites, and binary relevance checks are all usually safe to downgrade to a small, fast model, while multi-document synthesis, complex reasoning chains, and ambiguous or nuance-sensitive generation stay on the larger model. The discipline that makes this safe: measure the quality regression empirically per stage rather than assuming a stage is "simple enough" — a stage that looks trivial can still have a real quality cliff on a cheaper model if you never checked.
+</QA>
+
+<QA q="Walk through how you'd actually reduce a RAG system's monthly LLM spend from, say, $10K to something meaningfully lower.">
+In rough ROI order: enable prompt caching on the static system prompt and any stable reference material first — this alone commonly cuts 70–95% of the cost on cached prefixes; set tight, type-specific `max_tokens` budgets rather than one generous default for every query; add a cheap classifier to route simple factual queries to a smaller model instead of your default large one; add a semantic query cache for genuinely high-frequency repeated questions; and consider compressing retrieved chunks with a small model before handing them to the large generation model. These five, stacked, typically cut cost 60–80% with limited quality impact — but each should be measured against your golden set individually, not assumed to be safe.
+</QA>
+
+<QA q="What's the difference between exact-match caching, semantic caching, and provider-side prompt caching in a RAG system?">
+Exact-match caching keys on the verbatim query string — only byte-identical repeats hit. Semantic caching embeds the incoming query and checks similarity against previously-served queries, so differently-phrased-but-equivalent questions can share a cached response, at the real cost of false-positive risk (similar embeddings, genuinely different intent). Provider-side prompt caching is a different thing entirely — it's server-side KV-tensor caching for a static prompt prefix, still runs real inference just more cheaply, versus the other two which skip inference entirely on a hit and return a stored response.
+</QA>
+
+<QA q="What's a cache stampede, and how do you prevent one in a RAG caching layer?">
+A popular cache entry expires (or the cache is cold after a restart), and many concurrent requests for that same key all miss simultaneously, each independently re-running the expensive underlying operation — generation, re-embedding, retrieval — wasting compute and potentially overwhelming the backend all at once. Standard preventions: request coalescing/single-flight (only the first miss actually recomputes; concurrent requests for the same key wait on that result instead of duplicating the work), a lock around the recompute-and-write step so only one caller repopulates the entry, probabilistic early expiration (recompute slightly before the real TTL, with increasing probability as expiry nears, to spread refreshes out instead of letting them all cliff-edge together), and proactive cache warming ahead of a known traffic spike or right after a deploy/restart.
+</QA>
+
+<QA q="When should you specifically avoid caching in a RAG system, even though caching is usually a clear win?">
+Four cases: when responses are genuinely personalized or user-context-dependent (a cached answer for one user is simply wrong for another); when the knowledge base updates more frequently than your cache TTL (you'd be serving stale answers by design); when the query distribution is long-tailed enough that nearly every query is unique (hit rate approaches zero, so the caching infrastructure adds complexity for essentially no benefit); and when a strict freshness SLA requires every answer to reflect the absolute latest documents, which any caching layer structurally works against.
+</QA>
+
+<QA q="What's a production “router + fallback” pattern for a RAG system, and what should the router itself cost?">
+A practical router has three parts: a rule-based pre-filter for deterministic cases (explicit entity codes route to an exact-match path, greetings route to a cached response), a lightweight classifier for genuine semantic intent classification on everything else, and confidence-based promotion — even if the router initially classifies a query as simple, if the retrieved results score poorly, it falls through to a more thorough tier automatically rather than returning a weak answer. The router itself should stay cheap and fast (under roughly 50ms added latency, a tiny fraction of a cent per call) to remain a net positive; track tier distribution as an ongoing KPI, since a creeping share of traffic landing in the expensive tier can mean either the router is miscategorizing or the real query mix has genuinely shifted.
+</QA>
+
+<QA q="What's the fan-out/fan-in pattern in RAG, and what's RAG-Fusion a special case of?">
+Multiple retrieval strategies (or query reformulations, or retrievers over different sub-corpora) run in parallel — fanning out — and their results get merged into one ranked list — fanning in — typically via Reciprocal Rank Fusion since it handles differently-scaled result lists without needing score calibration. RAG-Fusion is exactly this pattern specialized to one specific fan-out source: multiple LLM-generated rephrasings of the same query, rather than multiple genuinely different retrieval strategies or sub-corpora.
+</QA>
+
+## RAG in Production — Monitoring, Debugging & Incidents
+
+<QA q="What is “conversational context drift” as a distinct failure mode, and how do you detect it before it causes a bad answer?">
+It's specifically when a multi-turn system's retrieval degrades because a follow-up query has lost the context that made it meaningful, as opposed to a single-turn retrieval failure which has nothing to do with conversation history at all. Detect it proactively by monitoring the similarity between a condensed/rewritten follow-up query and the raw retrieval results it produces — a sharp drop in retrieved-result relevance scores right after a topic-shift-shaped follow-up is a strong leading indicator, worth catching before it ever reaches a visibly wrong answer.
+</QA>
+
+<QA q="Your RAG system's p99 latency just doubled with no obvious deploy. How do you debug it?">
+Localize before you guess: check whether it's a specific pipeline stage (a slow vector DB index after a cold start or node change, a reranker that started receiving a larger-than-usual candidate set, a prompt-caching cache-miss spike from a prefix that stopped matching) versus a traffic-mix shift (a sudden influx of queries that route to a more expensive tier or trigger more retrieval hops). Pull per-stage latency from your traces rather than only looking at end-to-end p99 — "it got slower" isn't actionable, "retrieval p99 tripled specifically" is.
+</QA>
+
+<QA q="What's the real difference between retrieval failure's observable symptoms and its root causes, and why does that distinction matter for debugging?">
+Symptoms are what users or monitoring actually see — irrelevant answers, "I don't know" responses, low confidence scores; root causes are what actually produced them — embedding-space mismatch between query and document vocabulary (the semantic gap problem), a chunking strategy that split the relevant fact across a boundary, a stale index missing recently-added content, or a mis-tuned top-k. The distinction matters because the same symptom can have several different root causes, and the fix for each is completely different — treating a symptom (e.g. "just add more context") without finding the actual root cause routinely makes things worse, not better.
+</QA>
+
+<QA q="What's cascading retrieval failure, and how is it different from a single, isolated retrieval miss?">
+It's when one technique's failure actively propagates and amplifies through the rest of the pipeline rather than staying contained — the canonical example is HyDE: if the generated hypothetical document is itself subtly wrong, the system doesn't just fail to retrieve the best chunk, it confidently retrieves chunks relevant to the *wrong* hypothetical, which can look more convincing (and be harder to catch) than a normal low-relevance-score miss. In multi-hop RAG the same shape shows up as a wrong intermediate fact at hop one actively steering every subsequent hop further from the correct answer, rather than each hop failing independently.
+</QA>
+
+<QA q="What's a stale index problem in production, and what's the actual fix — beyond “just re-index more often”?">
+A naive fix (more frequent full rebuilds) doesn't scale and still leaves a staleness window between rebuilds. The real fix is detecting exactly which documents changed — via a content hash or modification timestamp tracked per source document — and re-embedding only those, incrementally, continuously, rather than paying the cost and staleness window of a periodic full rebuild. Also worth naming explicitly: staleness interacts with other failure modes, since a stale index can produce a confident, well-formed, entirely outdated answer that looks indistinguishable from a correct one until someone checks the document's actual current version.
+</QA>
+
+<QA q="What causes embedding mismatch in production, and what are its observable symptoms?">
+Root causes span several dimensions: a domain shift the original embedding model was never trained for, a language the model has weak coverage of, an architecture change when swapping embedding models without fully re-embedding the existing index (leaving old and new vectors geometrically incompatible in the same store), or simple model-version drift over time. The symptom is usually subtle rather than catastrophic — retrieval quality silently degrades in a way that looks like "the model got worse at understanding queries" when it's actually a mismatch between how the query and the stored documents were embedded, not a quality regression in either encoder individually.
+</QA>
+
+## RAG in Production — Security & Compliance
+
+<QA q="Why does simple input sanitization fail as a defense against prompt injection in RAG, and why does hardening the system prompt also fail?">
+Sanitization fails because an attacker can rephrase malicious instructions in countless ways that never match a fixed filter pattern — "ignore previous instructions" gets blocked, but a thousand semantically-equivalent rewordings don't. System-prompt hardening fails for a more structural reason: when a retrieved document contains conflicting instructions, the model has no principled way to always weight the older, more abstract system prompt over the more recent, more specific instruction sitting right in its context — in practice, the more recent and specific instruction often wins, regardless of which one the system intended to be authoritative.
+</QA>
+
+<QA q="What does an actual defense-in-depth strategy against prompt injection in a RAG system look like, given no single defense fully solves it?">
+Layer multiple partial defenses rather than relying on one: structural separation (clearly delimit retrieved content from trusted instructions, e.g. with XML-style tags the model is prompted to treat context as data, never as commands), content filtering at ingestion (flag documents containing injection-like patterns without necessarily auto-blocking them, since false positives on legitimate content are a real cost), sandboxed extraction for any document-processing step that itself executes code or fetches further content, output inspection for signs an injection succeeded, and privilege separation so even a successful injection can't take an action beyond what that specific context should ever be allowed to do. The honest framing for an interview: this raises the cost and reduces the success rate of an attack, it does not eliminate the risk — claiming a "solved" defense is itself a red flag in an answer.
+</QA>
+
+<QA q="Design a RAG system over SharePoint-style documents that must respect existing, possibly-changing document permissions. Walk through it.">
+Seven steps, in order: clarify requirements first (single org or multi-tenant, how fresh must permission checks be — minutes or seconds, what scale of users/groups); ingestion via a connector that produces chunks plus embeddings plus resolved per-chunk ACL metadata; identity resolution where the user's group memberships get expanded at query time and cached with a short TTL; retrieval that pre-filters *inside* the ANN search itself on tenant and permission match, not after; a late-binding permission re-check against the authoritative source on the final top-k right before generation, failing closed on any gap; permission-awareness extended beyond retrieval itself (ACL-aware citations, permission-scoped cache keys, a zero-retention LLM endpoint); and an audit layer logging user, applied filter, and chunk IDs per query, plus periodic cross-tenant probe tests. Naming the two-gate model explicitly — a cheap metadata pre-filter plus an authoritative late-binding check — and the staleness window between them is what distinguishes a senior answer from "just add a metadata filter."
+</QA>
+
+<QA q="What's the risk of adding a pipeline stage — a reranker, a cache, a “related documents” feature — *after* the access-control filter has already run?">
+Any stage added after the ACL gate that touches document content can reintroduce a leak even though retrieval itself was correctly filtered — a reranker that re-queries the index for more candidates without reapplying the filter, a semantic cache that returns an answer generated under a different, broader-permission user's session, a "related documents" link-expansion step that follows references from an authorized chunk into an unauthorized one, or a summarization-memory layer that condensed an earlier, more-privileged session into context reused later. The principle worth stating explicitly: authorization has to be enforced at the *last* point document content enters the prompt, and every component between retrieval and generation has to be either ACL-aware itself or provably content-blind.
+</QA>
+
+<QA q="Why is filtering the LLM's output for restricted content the wrong place to enforce access control, versus filtering what gets retrieved?">
+By the time restricted content reaches the model it has already crossed the trust boundary — it may be logged or retained by the model provider regardless of what the final visible output ends up saying. Output filtering also depends on correctly recognizing and stripping every possible leak after the fact (often via a second LLM-as-guard), and that detection step is bypassable the same way any LLM behavior is bypassable. Filter what goes in — what gets retrieved — not what comes out.
+</QA>
+
+<QA q="A highly selective access-control filter is tanking retrieval recall for some users. What's happening, and how do you fix it?">
+When a user can legitimately see only a tiny slice of the corpus, HNSW's greedy graph traversal can get stranded in regions where almost no node satisfies the filter, since most of the graph's edges lead toward ineligible vectors the traversal has no reason to route around. Fixes: use a filterable-graph engine that builds extra links specifically to keep filtered traversal connected, fall back to brute-force scan below some match-ratio threshold where approximate search would otherwise fail, or move to per-tenant/per-permission-class index partitions so the permission boundary *is* the partition boundary rather than a predicate layered awkwardly on top of one shared graph.
+</QA>
+
+<QA q="What's the security risk of semantic caching specifically in a multi-tenant RAG system, beyond the obvious “wrong answer served”?">
+Beyond a naive cross-tenant leak (Tenant A's cached answer served to Tenant B's semantically-similar query), there are two subtler ones: a timing side-channel, where a cache hit (fast) versus a cache miss (slow) lets one tenant infer whether another tenant has previously queried a given topic, purely from response latency; and document-ID leakage in cache metadata, where an implementation that caches retrieved chunk IDs alongside the answer exposes *which documents are relevant to a topic* even if the answer text itself is withheld. The fix for all three is the same: namespace every cache key by tenant/user ID and include a hash of the current permission set in the key, not just the query embedding.
+</QA>
+
+<QA q="How do you handle a real-time permission change — a user loses access to a document mid-session — so a cached or in-flight answer doesn't leak it?">
+Three layers together: a short TTL on any cached permission data (5–60 seconds for sensitive data, with every cache read checking freshness against the TTL); a late-binding check on the final top-k that re-verifies the user's *current* permissions against the authoritative source right before generation, not against stale index metadata; and session/cache invalidation triggered by the permission-change event itself — when a revocation fires, invalidate active sessions that may hold a cached answer referencing the now-revoked document, and flush any semantic-cache entries whose source documents include it. Combined, this means a user who loses access mid-session gets blocked at their *next* query, not left holding a stale cached answer indefinitely.
+</QA>
+
+<QA q="How does tenant offboarding differ between a structurally-isolated deployment and a shared-index-with-filter deployment?">
+Structural isolation (a separate namespace, index, or cluster per tenant) makes offboarding trivial — drop the tenant's namespace or index, which doubles as a clean, demonstrable answer to a right-to-erasure request. A shared index requires a delete-by-filter pass across every chunk belonging to that tenant, plus real verification that the vectors are actually gone from both the live index *and* any backups or snapshots — an operation that's genuinely easy to get subtly wrong (partial deletes, lingering tombstones in the HNSW graph, or backups quietly retaining vectors the live system reports as deleted).
+</QA>
+
+## System Design / Scenario Questions
+
+<QA q="Design a RAG system for a legal document corpus where different law firms share the platform but must never see each other's documents, and every answer must cite its exact source.">
+Requirements first: strict per-tenant isolation (structural, not filter-based, given the sensitivity), citation at the passage level since legal answers are worthless without exact attribution, and an audit trail since this is a compliance-sensitive domain. Architecture: per-tenant index partitions (not a shared index with a filter — the stakes are too high for the HNSW-recall and leakage risks a shared index introduces), citation enforced via NLI-checked attribution at generation time rather than trusted model-reported citations, a late-binding permission check even within a single firm's own multi-user access tiers, and per-query audit logging of user, filter applied, and chunk IDs retrieved. The interview signal here is naming the isolation-model tradeoff explicitly (structural vs. shared-plus-filter) and justifying it against this specific domain's stakes, not defaulting to whichever is cheaper.
+</QA>
+
+<QA q="Your RAG system's answer quality has been stable for months, then degrades sharply this week with no deploy. Walk through your investigation.">
+Check, roughly in this order of likelihood and cheapness-to-check: has the source corpus itself changed in a way that broke a downstream assumption (a new document format, a schema change in an ingested database); has the embedding or generation model been silently updated on the provider side (providers do this without always announcing it clearly); has traffic mix shifted (a new, harder query distribution rather than an actual system regression); and has the index gone stale or partially corrupted (a failed incremental update left it partially out of sync). The point of the answer isn't getting the exact cause right blind — it's demonstrating a systematic elimination process rather than guessing at a fix and hoping.
+</QA>
+
+<QA q="How would you migrate a production RAG system to a new embedding model with zero user-facing downtime?">
+Blue/green, never in-place: build the new index fully from the new embedding model alongside the still-serving old index, verify the new index's quality against your golden set before any traffic touches it, then cut over atomically once validated — never partially update one index with a mix of old and new vectors, since they live in geometrically incompatible spaces and mixing them silently corrupts every similarity score involving one of each. Handle the migration window explicitly too: any document ingested while the rebuild is in progress needs to be embedded with *both* models (or the cutover needs to be fast enough that the window is negligible), or it risks landing in the wrong index with the wrong embedding version.
+</QA>
+
+<QA q="When would you choose Cache-Augmented Generation over RAG for a given use case, as an actual design decision rather than a trivia question?">
+CAG makes sense specifically when the corpus is small enough to fully fit in a model's KV cache budget and is relatively stable — a single product manual, a fixed set of policy documents — because it sidesteps every retrieval-quality failure mode by construction (there's no "wrong chunk retrieved" if nothing was ever selectively retrieved at all). It stops making sense the moment the corpus grows past the cache budget, updates frequently enough that cache invalidation becomes constant, or genuinely needs to scale beyond what any single context window can hold — at which point you're back to standard RAG, or a hybrid where a stable core knowledge base is cached and a fast-changing slice is retrieved.
+</QA>
+
+<QA q="How would you design retrieval for a corpus that will eventually reach billions of documents, from the start, without having to re-architect later?">
+A two-tier retrieval architecture from day one, even if the corpus is small initially: coarse retrieval combining BM25 (which scales to any corpus size via an inverted index) with quantized dense embeddings to pull a few thousand candidates from the full corpus cheaply, followed by a precise reranking pass (cross-encoder or ColBERT) over just that narrowed candidate set. Partition the index by a natural dimension (topic, date, document type) from the start so sharding is a configuration change later, not a rewrite — retrofitting partitioning onto a system designed as one flat index is far more painful than building it in from the first version.
+</QA>
+
+<QA q="A stakeholder asks “why don't we just fine-tune the model on all our documents instead of building RAG?” How do you answer that in an interview setting?">
+Walk through the real tradeoffs rather than just asserting RAG is better: fine-tuning bakes facts into weights, which means every single update to the knowledge base requires retraining — infeasible for anything that changes daily or weekly; fine-tuning also can't cite sources, since facts get blended into the weights with no traceable provenance back to a specific document, which matters enormously for trust and auditability; and fine-tuning on a large, diverse document set is actually quite data- and compute-expensive relative to RAG's "re-index the new document" update cost. RAG's answer to the same stakeholder: it updates by re-indexing, not retraining, it can cite its sources, and it scales to more documents than you'd ever want to fit into a single fine-tuning run — fine-tuning still has its place (tone, format, a narrow skill), just not as a substitute for keeping facts current.
+</QA>
+
+---
+
+Next: [Q&A Quick Reference](/docs/interview-prep/qa-quick-reference) for the shorter breadth-round drill, or back to [RAG](/docs/llms-genai/rag) for the full teaching page any of these answers builds on.
