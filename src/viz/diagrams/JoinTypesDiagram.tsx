@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, VizButton } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
+import SketchBox from '../../components/notebook/SketchBox';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 type JoinType = 'inner' | 'left' | 'right' | 'full';
 
@@ -62,25 +65,27 @@ function MiniTable({ title, columns, rows }: { title: string; columns: string[];
   const t = useVizTokens();
   return (
     <div>
-      <div style={{ fontSize: DIAGRAM_TYPE.secondaryLabel.size, fontWeight: 600, color: t.textMuted, marginBottom: 4 }}>{title}</div>
-      <table style={{ borderCollapse: 'collapse', fontSize: 12, fontFamily: 'monospace' }}>
-        <thead>
-          <tr>
-            {columns.map((col) => (
-              <th key={col} style={{ textAlign: 'left', padding: '4px 10px', borderBottom: `1.5px solid ${t.border}`, color: t.textSecondary, fontWeight: 600 }}>{col}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={i}>
-              {row.map((cell, j) => (
-                <td key={j} style={{ padding: '4px 10px', borderBottom: `1px solid ${t.border}`, color: t.textPrimary }}>{cell}</td>
+      <div style={{ fontSize: DIAGRAM_TYPE.secondaryLabel.size, fontWeight: 600, color: t.textMuted, marginBottom: 4, fontFamily: HAND_FONT }}>{title}</div>
+      <SketchBox color={t.border} strokeWidth={1.3}>
+        <table style={{ borderCollapse: 'collapse', fontSize: 12, fontFamily: 'monospace' }}>
+          <thead>
+            <tr>
+              {columns.map((col) => (
+                <th key={col} style={{ textAlign: 'left', padding: '4px 10px', borderBottom: `1.5px solid ${t.border}`, color: t.textSecondary, fontWeight: 600 }}>{col}</th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={i}>
+                {row.map((cell, j) => (
+                  <td key={j} style={{ padding: '4px 10px', borderBottom: `1px solid ${t.border}`, color: t.textPrimary }}>{cell}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </SketchBox>
     </div>
   );
 }
@@ -106,51 +111,53 @@ export default function JoinTypesDiagram() {
         <MiniTable title="orders" columns={['order_id', 'customer_id', 'item']} rows={ORDERS.map((o) => [o.order_id, o.customer_id, o.item])} />
       </div>
 
-      <div
-        style={{
-          fontFamily: 'monospace',
-          fontSize: 12.5,
-          background: t.surfaceAlt,
-          border: `1px solid ${t.border}`,
-          borderRadius: 6,
-          padding: '8px 12px',
-          marginBottom: 14,
-          color: t.textSecondary,
-        }}
-      >
-        SELECT c.name, o.item{'\n'}FROM customers c{'\n'}<span style={{ color: t.accentPrimary, fontWeight: 700 }}>{meta.sql}</span> orders o ON o.customer_id = c.id;
-      </div>
+      <SketchBox color={t.border} strokeWidth={1.3} style={{ marginBottom: 14 }}>
+        <div
+          style={{
+            fontFamily: 'monospace',
+            fontSize: 12.5,
+            background: t.surfaceAlt,
+            borderRadius: 6,
+            padding: '8px 12px',
+            color: t.textSecondary,
+          }}
+        >
+          SELECT c.name, o.item{'\n'}FROM customers c{'\n'}<span style={{ color: t.accentPrimary, fontWeight: 700 }}>{meta.sql}</span> orders o ON o.customer_id = c.id;
+        </div>
+      </SketchBox>
 
-      <div style={{ fontSize: DIAGRAM_TYPE.secondaryLabel.size, fontWeight: 600, color: t.textMuted, marginBottom: 4 }}>Result</div>
-      <table style={{ borderCollapse: 'collapse', fontSize: 12, fontFamily: 'monospace', width: '100%' }}>
-        <thead>
-          <tr>
-            {['c.id', 'c.name', 'o.order_id', 'o.item'].map((col) => (
-              <th key={col} style={{ textAlign: 'left', padding: '4px 10px', borderBottom: `1.5px solid ${t.border}`, color: t.textSecondary, fontWeight: 600 }}>{col}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={i}>
-              {[r.customerId, r.customerName, r.orderId, r.item].map((cell, j) => (
-                <td
-                  key={j}
-                  style={{
-                    padding: '4px 10px',
-                    borderBottom: `1px solid ${t.border}`,
-                    color: cell === null ? t.textMuted : t.textPrimary,
-                    fontStyle: cell === null ? 'italic' : 'normal',
-                    background: cell === null ? `${t.accentDanger}0F` : 'transparent',
-                  }}
-                >
-                  {cell === null ? 'NULL' : cell}
-                </td>
+      <div style={{ fontSize: DIAGRAM_TYPE.secondaryLabel.size, fontWeight: 600, color: t.textMuted, marginBottom: 4, fontFamily: HAND_FONT }}>Result</div>
+      <SketchBox color={t.border} strokeWidth={1.3} style={{ width: '100%' }}>
+        <table style={{ borderCollapse: 'collapse', fontSize: 12, fontFamily: 'monospace', width: '100%' }}>
+          <thead>
+            <tr>
+              {['c.id', 'c.name', 'o.order_id', 'o.item'].map((col) => (
+                <th key={col} style={{ textAlign: 'left', padding: '4px 10px', borderBottom: `1.5px solid ${t.border}`, color: t.textSecondary, fontWeight: 600 }}>{col}</th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i}>
+                {[r.customerId, r.customerName, r.orderId, r.item].map((cell, j) => (
+                  <td
+                    key={j}
+                    style={{
+                      padding: '4px 10px',
+                      borderBottom: `1px solid ${t.border}`,
+                      color: cell === null ? t.textMuted : t.textPrimary,
+                      fontStyle: cell === null ? 'italic' : 'normal',
+                      background: cell === null ? `${t.accentDanger}0F` : 'transparent',
+                    }}
+                  >
+                    {cell === null ? 'NULL' : cell}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </SketchBox>
     </VisualizationContainer>
   );
 }
