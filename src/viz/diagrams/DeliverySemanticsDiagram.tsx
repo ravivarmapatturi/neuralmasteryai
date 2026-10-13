@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, PillSelect } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
+import SketchBox from '../../components/notebook/SketchBox';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 type Mode = 'atmost' | 'atleast' | 'exactly';
 
@@ -70,20 +73,21 @@ export default function DeliverySemanticsDiagram() {
           </div>
         ))}
       </div>
-      <div
-        style={{
-          marginTop: 10,
-          padding: '8px 12px',
-          borderRadius: 8,
-          background: `${outcomeColor(script.steps[script.steps.length - 1].outcome)}18`,
-          border: `1px solid ${outcomeColor(script.steps[script.steps.length - 1].outcome)}`,
-          fontSize: 13,
-          fontWeight: 700,
-          color: outcomeColor(script.steps[script.steps.length - 1].outcome),
-        }}
-      >
-        Result: {script.verdict}
-      </div>
+      <SketchBox color={outcomeColor(script.steps[script.steps.length - 1].outcome)} strokeWidth={1.5} style={{ marginTop: 10 }}>
+        <div
+          style={{
+            padding: '8px 12px',
+            borderRadius: 8,
+            background: `${outcomeColor(script.steps[script.steps.length - 1].outcome)}18`,
+            fontSize: 13,
+            fontWeight: 700,
+            fontFamily: HAND_FONT,
+            color: outcomeColor(script.steps[script.steps.length - 1].outcome),
+          }}
+        >
+          Result: {script.verdict}
+        </div>
+      </SketchBox>
       <div style={{ fontSize: DIAGRAM_TYPE.secondaryLabel.size, color: t.textMuted, marginTop: 6 }}>
         Every mode is the same producer -&gt; queue -&gt; consumer pipeline -- what differs is only when the ack happens relative to processing.
       </div>

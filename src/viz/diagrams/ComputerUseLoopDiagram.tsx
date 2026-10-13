@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, VizButton, ControlRow } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
+import SketchBox from '../../components/notebook/SketchBox';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 type ActionKind = 'click' | 'type' | 'scroll' | 'screenshot';
 
@@ -97,26 +100,28 @@ export default function ComputerUseLoopDiagram() {
           const isCurrent = i === index;
           const isPast = i < index || (i === index && confirmed[i]);
           return (
-            <div
+            <SketchBox
               key={i}
-              style={{
-                flex: '1 1 90px',
-                minWidth: 90,
-                padding: '8px 6px',
-                borderRadius: 8,
-                textAlign: 'center',
-                fontSize: DIAGRAM_TYPE.secondaryLabel.size,
-                background: isCurrent ? `${color}20` : isPast ? t.surfaceAlt : t.surface,
-                border: `1.5px solid ${isCurrent ? color : s.consequential ? '#d9534f' : t.border}`,
-                opacity: isPast || isCurrent ? 1 : 0.55,
-              }}
+              color={isCurrent ? color : s.consequential ? '#d9534f' : t.border}
+              strokeWidth={1.5}
+              style={{ flex: '1 1 90px', minWidth: 90, opacity: isPast || isCurrent ? 1 : 0.55 }}
             >
-              <div style={{ fontSize: 16 }}>{ICON[s.kind]}</div>
-              <div style={{ marginTop: 2, fontWeight: isCurrent ? 700 : 500 }}>{s.label}</div>
-              {s.consequential && (
-                <div style={{ color: '#d9534f', fontWeight: 600, marginTop: 2 }}>consequential</div>
-              )}
-            </div>
+              <div
+                style={{
+                  padding: '8px 6px',
+                  borderRadius: 8,
+                  textAlign: 'center',
+                  fontSize: DIAGRAM_TYPE.secondaryLabel.size,
+                  background: isCurrent ? `${color}20` : isPast ? t.surfaceAlt : t.surface,
+                }}
+              >
+                <div style={{ fontSize: 16 }}>{ICON[s.kind]}</div>
+                <div style={{ marginTop: 2, fontWeight: isCurrent ? 700 : 500, fontFamily: HAND_FONT }}>{s.label}</div>
+                {s.consequential && (
+                  <div style={{ color: '#d9534f', fontWeight: 600, marginTop: 2, fontFamily: HAND_FONT }}>consequential</div>
+                )}
+              </div>
+            </SketchBox>
           );
         })}
       </div>

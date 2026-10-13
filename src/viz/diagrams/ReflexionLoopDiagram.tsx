@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, VizButton, ControlRow } from '../primitives';
 import { DIAGRAM_TYPE, DIAGRAM_RADIUS, getConceptColor } from './diagramSystem';
+import { SketchArrow, SketchRect } from '../../components/notebook/RoughShape';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 type NodeId = 'actor' | 'evaluator' | 'reflection';
 
@@ -65,36 +68,21 @@ export default function ReflexionLoopDiagram() {
         </span>
       </ControlRow>
       <svg width="100%" viewBox="0 0 380 260" style={{ marginTop: 10 }}>
-        <defs>
-          <marker id="rfx-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
-            <path d="M0,0 L7,3.5 L0,7 Z" fill={t.border} opacity={0.6} />
-          </marker>
-          <marker id="rfx-arrow-active" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
-            <path d="M0,0 L7,3.5 L0,7 Z" fill={color} />
-          </marker>
-        </defs>
         {edges.map(([a, b], idx) => {
           const active = idx <= activeEdgeIndex;
           const p1 = POS[a];
           const p2 = POS[b];
           return (
-            <line
-              key={`${a}-${b}`}
-              x1={p1.x}
-              y1={p1.y}
-              x2={p2.x}
-              y2={p2.y}
-              stroke={active ? color : t.border}
-              strokeWidth={active ? 2.5 : 1.5}
-              opacity={active ? 1 : 0.5}
-              markerEnd={active ? 'url(#rfx-arrow-active)' : 'url(#rfx-arrow)'}
-            />
+            <g key={`${a}-${b}`} opacity={active ? 1 : 0.5}>
+              <SketchArrow points={[[p1.x, p1.y], [p2.x, p2.y]]} color={active ? color : t.border} strokeWidth={active ? 2.5 : 1.5} id={`rfx-edge-${idx}`} />
+            </g>
           );
         })}
         {(Object.keys(POS) as NodeId[]).map((id) => {
           const p = POS[id];
           const isCurrent = frame.node === id;
           const isFailNode = id === 'evaluator' && frame.trial === 1 && isCurrent;
+          const nodeColor = isCurrent ? (isFailNode ? warn : color) : t.border;
           return (
             <g key={id}>
               <rect
@@ -104,17 +92,17 @@ export default function ReflexionLoopDiagram() {
                 height={36}
                 rx={DIAGRAM_RADIUS.node}
                 fill={isCurrent ? `${isFailNode ? warn : color}25` : t.surfaceAlt}
-                stroke={isCurrent ? (isFailNode ? warn : color) : t.border}
-                strokeWidth={isCurrent ? 2.5 : 1.5}
+                stroke="none"
               />
-              <text x={p.x} y={p.y + 4} textAnchor="middle" fontSize={DIAGRAM_TYPE.secondaryLabel.size} fontWeight={isCurrent ? 700 : 500} fill={isCurrent ? (isFailNode ? warn : color) : t.textPrimary}>
+              <SketchRect x={p.x - 60} y={p.y - 18} width={120} height={36} color={nodeColor} strokeWidth={isCurrent ? 2.5 : 1.5} id={`rfx-node-${id}`} />
+              <text x={p.x} y={p.y + 4} textAnchor="middle" fontSize={DIAGRAM_TYPE.secondaryLabel.size} fontWeight={isCurrent ? 700 : 500} fontFamily={HAND_FONT} fill={isCurrent ? (isFailNode ? warn : color) : t.textPrimary}>
                 {LABEL[id]}
               </text>
             </g>
           );
         })}
-        <text x={280} y={235} textAnchor="middle" fontSize={9} fill={t.textMuted}>episodic memory buffer</text>
-        <line x1={280} y1={222} x2={280} y2={218} stroke={t.textMuted} strokeWidth={1} strokeDasharray="2 2" />
+        <text x={280} y={235} textAnchor="middle" fontSize={9} fontFamily={HAND_FONT} fill={t.textMuted}>episodic memory buffer</text>
+        <SketchArrow points={[[280, 222], [280, 218]]} color={t.textMuted} strokeWidth={1} arrowhead={false} id="rfx-tick" />
       </svg>
     </VisualizationContainer>
   );
