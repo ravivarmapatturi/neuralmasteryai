@@ -9,6 +9,9 @@
 // (an embedding), circle = a scoring/computation step, and a distinct
 // bordered output box = the final score -- never reused for anything else.
 import type { VizTokens } from '../../theme/vizTokens';
+import { SketchArrow, SketchEllipse, SketchRect } from '../../components/notebook/RoughShape';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 export interface ShapeProps {
   x: number;
@@ -26,12 +29,13 @@ export interface ShapeProps {
 export function RectNode({ x, y, width, height, label, sublabel, color, t, strokeWidth = 1.5 }: ShapeProps) {
   return (
     <g>
-      <rect x={x} y={y} width={width} height={height} rx={6} fill={`${color}18`} stroke={color} strokeWidth={strokeWidth} />
-      <text x={x + width / 2} y={y + height / 2 + (sublabel ? -1 : 4)} textAnchor="middle" fontSize={10} fontWeight={600} fill={color}>
+      <rect x={x} y={y} width={width} height={height} rx={6} fill={`${color}18`} stroke="none" />
+      <SketchRect x={x} y={y} width={width} height={height} color={color} strokeWidth={strokeWidth} id={`rect-node-${x}-${y}`} />
+      <text x={x + width / 2} y={y + height / 2 + (sublabel ? -1 : 4)} textAnchor="middle" fontSize={10} fontWeight={600} fontFamily={HAND_FONT} fill={color}>
         {label}
       </text>
       {sublabel && (
-        <text x={x + width / 2} y={y + height / 2 + 12} textAnchor="middle" fontSize={7.5} fill={t.textMuted}>
+        <text x={x + width / 2} y={y + height / 2 + 12} textAnchor="middle" fontSize={7.5} fontFamily={HAND_FONT} fill={t.textMuted}>
           {sublabel}
         </text>
       )}
@@ -40,7 +44,15 @@ export function RectNode({ x, y, width, height, label, sublabel, color, t, strok
 }
 
 /** Cylinder: a STORED intermediate representation -- an embedding, a set
- * of token vectors -- data that gets kept around, not a live computation. */
+ * of token vectors -- data that gets kept around, not a live computation.
+ * Deliberately NOT converted to rough.js hand-drawn rendering like the
+ * other node shapes in this file -- its 3-part layered fill (dim bottom
+ * ellipse, bright top ellipse, mid-tone body) is real visual information
+ * forming the 3D-cylinder illusion, not decoration, and this exact shape
+ * already had one real, hand-tuned legibility bug fixed here (see the
+ * label-positioning comment below). Reshaping it under rough.js without a
+ * very careful dedicated pass (and re-verifying all 6 consumer diagrams)
+ * risks silently breaking that illusion or reintroducing the old bug. */
 export function CylinderNode({ x, y, width, height, label, color, strokeWidth = 1.5 }: Omit<ShapeProps, 't'>) {
   const rx = width / 2;
   const ry = Math.min(7, height * 0.22);
@@ -79,8 +91,9 @@ export function CircleNode({ x, y, width, label, color, t, strokeWidth = 2 }: Om
   const cy = y + r;
   return (
     <g>
-      <circle cx={cx} cy={cy} r={r} fill={t.surface} stroke={color} strokeWidth={strokeWidth} />
-      <text x={cx} y={cy + 3} textAnchor="middle" fontSize={8} fontWeight={700} fill={color}>
+      <circle cx={cx} cy={cy} r={r} fill={t.surface} stroke="none" />
+      <SketchEllipse cx={cx} cy={cy} width={width} height={width} color={color} strokeWidth={strokeWidth} id={`circle-node-${x}-${y}`} />
+      <text x={cx} y={cy + 3} textAnchor="middle" fontSize={8} fontWeight={700} fontFamily={HAND_FONT} fill={color}>
         {label}
       </text>
     </g>
@@ -93,8 +106,9 @@ export function CircleNode({ x, y, width, label, color, t, strokeWidth = 2 }: Om
 export function OutputNode({ x, y, width, height, label, color, strokeWidth = 2.5 }: Omit<ShapeProps, 't'>) {
   return (
     <g>
-      <rect x={x} y={y} width={width} height={height} rx={6} fill={`${color}30`} stroke={color} strokeWidth={strokeWidth} />
-      <text x={x + width / 2} y={y + height / 2 + 4} textAnchor="middle" fontSize={9.5} fontWeight={700} fill={color}>
+      <rect x={x} y={y} width={width} height={height} rx={6} fill={`${color}30`} stroke="none" />
+      <SketchRect x={x} y={y} width={width} height={height} color={color} strokeWidth={strokeWidth} id={`output-node-${x}-${y}`} />
+      <text x={x + width / 2} y={y + height / 2 + 4} textAnchor="middle" fontSize={9.5} fontWeight={700} fontFamily={HAND_FONT} fill={color}>
         {label}
       </text>
     </g>
@@ -116,7 +130,12 @@ export function FlowArrow({
   color: string;
   markerId: string;
 }) {
-  return <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={1.5} markerEnd={`url(#${markerId})`} />;
+  // markerId is kept in the prop signature so every existing call site
+  // (6 consumer diagrams) stays unchanged -- SketchArrow draws its own
+  // hand-drawn arrowhead and ignores it. Callers still safely render their
+  // own <ArrowMarker id={markerId} .../> inside <defs>; it's just unused
+  // dead markup now, not a conflict.
+  return <SketchArrow points={[[x1, y1], [x2, y2]]} color={color} strokeWidth={1.5} id={`flow-arrow-${markerId}-${x1}-${y1}-${x2}-${y2}`} />;
 }
 
 export function ArrowMarker({ id, color }: { id: string; color: string }) {
