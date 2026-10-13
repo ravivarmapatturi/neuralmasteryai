@@ -124,6 +124,7 @@ export default function Home() {
             maxWidth: 680,
             margin: '0 auto 2rem',
             lineHeight: 1.6,
+            fontFamily: 'var(--font-body)',
           }}
         >
           {hasProgress ? (
