@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, Slider, VizButton } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
+import { SketchArrow, SketchRect } from '../../components/notebook/RoughShape';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 const WIDTH = 560;
 const HEIGHT = 160;
@@ -67,11 +70,16 @@ export default function ProducerQueueConsumerDiagram() {
         </VizButton>
       </div>
       <svg width="100%" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} style={{ display: 'block' }}>
-        <rect x={10} y={50} width={110} height={50} rx={8} fill={`${producerColor}22`} stroke={producerColor} strokeWidth={1.5} />
-        <text x={65} y={80} textAnchor="middle" fontSize={12} fontWeight={700} fill={producerColor}>Producer</text>
+        <rect x={10} y={50} width={110} height={50} rx={8} fill={`${producerColor}22`} stroke="none" />
+        <SketchRect x={10} y={50} width={110} height={50} color={producerColor} strokeWidth={1.5} id="pqc-producer" />
+        <text x={65} y={80} textAnchor="middle" fontSize={12} fontWeight={700} fontFamily={HAND_FONT} fill={producerColor}>Producer</text>
 
-        <rect x={queueX} y={30} width={queueW} height={90} rx={8} fill={t.surfaceAlt} stroke={overflowing ? t.accentDanger : t.border} strokeWidth={overflowing ? 2 : 1.5} />
-        <text x={queueX + queueW / 2} y={22} textAnchor="middle" fontSize={12} fontWeight={700} fill={t.textSecondary}>Queue</text>
+        <rect x={queueX} y={30} width={queueW} height={90} rx={8} fill={t.surfaceAlt} stroke="none" />
+        <SketchRect x={queueX} y={30} width={queueW} height={90} color={overflowing ? t.accentDanger : t.border} strokeWidth={overflowing ? 2 : 1.5} id="pqc-queue" />
+        <text x={queueX + queueW / 2} y={22} textAnchor="middle" fontSize={12} fontWeight={700} fontFamily={HAND_FONT} fill={t.textSecondary}>Queue</text>
+        {/* Live-updating queue chips stay plain rects (real-time simulation
+            state redrawn every 150ms -- re-sketching each with rough.js on
+            every tick would be both wasteful and visually jittery). */}
         {Array.from({ length: visibleChips }, (_, i) => {
           const col = i % chipCols;
           const row = Math.floor(i / chipCols);
@@ -92,19 +100,12 @@ export default function ProducerQueueConsumerDiagram() {
           depth: {Math.round(depth)}{depth >= MAX_DEPTH ? '+' : ''}
         </text>
 
-        <rect x={WIDTH - 130} y={50} width={110} height={50} rx={8} fill={`${consumerColor}22`} stroke={consumerColor} strokeWidth={1.5} />
-        <text x={WIDTH - 75} y={80} textAnchor="middle" fontSize={12} fontWeight={700} fill={consumerColor}>Consumer</text>
+        <rect x={WIDTH - 130} y={50} width={110} height={50} rx={8} fill={`${consumerColor}22`} stroke="none" />
+        <SketchRect x={WIDTH - 130} y={50} width={110} height={50} color={consumerColor} strokeWidth={1.5} id="pqc-consumer" />
+        <text x={WIDTH - 75} y={80} textAnchor="middle" fontSize={12} fontWeight={700} fontFamily={HAND_FONT} fill={consumerColor}>Consumer</text>
 
-        <line x1={120} y1={75} x2={queueX - 6} y2={75} stroke={producerColor} strokeWidth={2} markerEnd="url(#pqc-arrow-p)" />
-        <line x1={queueX + queueW + 6} y1={75} x2={WIDTH - 130} y2={75} stroke={consumerColor} strokeWidth={2} markerEnd="url(#pqc-arrow-c)" />
-        <defs>
-          <marker id="pqc-arrow-p" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-            <path d="M0,0 L8,4 L0,8 Z" fill={producerColor} />
-          </marker>
-          <marker id="pqc-arrow-c" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-            <path d="M0,0 L8,4 L0,8 Z" fill={consumerColor} />
-          </marker>
-        </defs>
+        <SketchArrow points={[[120, 75], [queueX - 6, 75]]} color={producerColor} strokeWidth={2} id="pqc-arrow-p" />
+        <SketchArrow points={[[queueX + queueW + 6, 75], [WIDTH - 130, 75]]} color={consumerColor} strokeWidth={2} id="pqc-arrow-c" />
       </svg>
       <div style={{ fontSize: DIAGRAM_TYPE.secondaryLabel.size, color: t.textMuted, textAlign: 'center' }}>
         Live simulation -- queue depth updates in real time from the two rates above.

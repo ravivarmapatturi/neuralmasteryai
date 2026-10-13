@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE, DIAGRAM_ANIMATION } from './diagramSystem';
+import { SketchPath, SketchRect } from '../../components/notebook/RoughShape';
 
 interface Clause {
   key: string;
@@ -60,16 +61,19 @@ export default function SqlExecutionOrderDiagram() {
           const x2 = rightX;
           const y2 = ey + boxH / 2;
           return (
-            <path
+            <g
               key={`path-${c.key}`}
-              d={`M ${x1},${y1} C ${midX},${y1} ${midX},${y2} ${x2},${y2}`}
-              fill="none"
-              stroke={isActive ? t.accentPrimary : t.textMuted}
-              strokeWidth={isActive ? 2.5 : 1.25}
-              strokeOpacity={dim ? 0.18 : isActive ? 1 : 0.4}
-              style={{ transition: `all ${DIAGRAM_ANIMATION.normal}ms ${DIAGRAM_ANIMATION.easing}`, cursor: 'pointer' }}
+              opacity={dim ? 0.18 : isActive ? 1 : 0.4}
+              style={{ transition: `opacity ${DIAGRAM_ANIMATION.normal}ms ${DIAGRAM_ANIMATION.easing}`, cursor: 'pointer' }}
               onClick={() => setSelected(isActive ? null : c.key)}
-            />
+            >
+              <SketchPath
+                d={`M ${x1},${y1} C ${midX},${y1} ${midX},${y2} ${x2},${y2}`}
+                color={isActive ? t.accentPrimary : t.textMuted}
+                strokeWidth={isActive ? 2.5 : 1.25}
+                id={`sql-path-${c.key}`}
+              />
+            </g>
           );
         })}
 
@@ -84,7 +88,8 @@ export default function SqlExecutionOrderDiagram() {
               opacity={dim ? 0.35 : 1}
               onClick={() => setSelected(isActive ? null : c.key)}
             >
-              <rect x={leftX} y={wy} width={boxW} height={boxH} rx={8} fill={isActive ? `${t.accentPrimary}22` : t.surfaceAlt} stroke={isActive ? t.accentPrimary : t.border} strokeWidth={isActive ? 2 : 1.25} />
+              <rect x={leftX} y={wy} width={boxW} height={boxH} rx={8} fill={isActive ? `${t.accentPrimary}22` : t.surfaceAlt} stroke="none" />
+              <SketchRect x={leftX} y={wy} width={boxW} height={boxH} color={isActive ? t.accentPrimary : t.border} strokeWidth={isActive ? 2 : 1.25} id={`sql-w-${c.key}`} />
               <text x={leftX + 14} y={wy + boxH / 2 + 4} fontSize={12} fontFamily="monospace" fontWeight={700} fill={isActive ? t.accentPrimary : t.textPrimary}>{c.label}</text>
               <text x={leftX + boxW - 12} y={wy + boxH / 2 + 4} textAnchor="end" fontSize={DIAGRAM_TYPE.secondaryLabel.size} fill={t.textMuted}>{c.writtenOrder}</text>
             </g>
@@ -102,7 +107,8 @@ export default function SqlExecutionOrderDiagram() {
               opacity={dim ? 0.35 : 1}
               onClick={() => setSelected(isActive ? null : c.key)}
             >
-              <rect x={rightX} y={ey} width={boxW} height={boxH} rx={8} fill={isActive ? `${t.accentPrimary}22` : t.surfaceAlt} stroke={isActive ? t.accentPrimary : t.border} strokeWidth={isActive ? 2 : 1.25} />
+              <rect x={rightX} y={ey} width={boxW} height={boxH} rx={8} fill={isActive ? `${t.accentPrimary}22` : t.surfaceAlt} stroke="none" />
+              <SketchRect x={rightX} y={ey} width={boxW} height={boxH} color={isActive ? t.accentPrimary : t.border} strokeWidth={isActive ? 2 : 1.25} id={`sql-e-${c.key}`} />
               <text x={rightX + 14} y={ey + boxH / 2 + 4} fontSize={11} fontWeight={700} fill={isActive ? t.accentPrimary : t.textSecondary}>{c.execOrder}.</text>
               <text x={rightX + 36} y={ey + boxH / 2 + 4} fontSize={12} fontFamily="monospace" fontWeight={700} fill={isActive ? t.accentPrimary : t.textPrimary}>{c.label}</text>
             </g>

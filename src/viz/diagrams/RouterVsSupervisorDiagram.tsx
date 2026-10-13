@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, VizButton, ControlRow, PillSelect } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
+import SketchBox from '../../components/notebook/SketchBox';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 type Mode = 'router' | 'supervisor';
 
@@ -70,20 +73,20 @@ export default function RouterVsSupervisorDiagram() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
         {steps.map((s, i) => (
-          <div
-            key={i}
-            style={{
-              padding: '7px 10px',
-              borderRadius: 8,
-              fontSize: DIAGRAM_TYPE.secondaryLabel.size,
-              background: i === step ? `${color}20` : i < step ? t.surfaceAlt : t.surface,
-              border: `1.5px solid ${i === step ? color : t.border}`,
-              opacity: i <= step ? 1 : 0.45,
-              fontWeight: i === step ? 700 : 500,
-            }}
-          >
-            {i + 1}. {s.actor}
-          </div>
+          <SketchBox key={i} color={i === step ? color : t.border} strokeWidth={i === step ? 2 : 1.3} style={{ opacity: i <= step ? 1 : 0.45 }}>
+            <div
+              style={{
+                padding: '7px 10px',
+                borderRadius: 8,
+                fontSize: DIAGRAM_TYPE.secondaryLabel.size,
+                background: i === step ? `${color}20` : i < step ? t.surfaceAlt : t.surface,
+                fontWeight: i === step ? 700 : 500,
+                fontFamily: HAND_FONT,
+              }}
+            >
+              {i + 1}. {s.actor}
+            </div>
+          </SketchBox>
         ))}
       </div>
 
