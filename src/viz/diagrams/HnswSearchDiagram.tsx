@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, PlaybackControls } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
+import { SketchArrow, SketchEllipse } from '../../components/notebook/RoughShape';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 interface Node {
   id: number;
@@ -115,8 +118,8 @@ export default function HnswSearchDiagram() {
         Step {stepIdx + 1} of {SEARCH_PATH.length}
       </div>
       <svg width="100%" viewBox={`-10 -20 ${WIDTH + 20} ${LAYER_H * LAYER_IDS.length + 20}`} style={{ display: 'block' }}>
-        <line x1={QUERY_X} y1={-15} x2={QUERY_X} y2={LAYER_H * LAYER_IDS.length} stroke={queryColor} strokeWidth={1.5} strokeDasharray="4 3" opacity={0.6} />
-        <text x={QUERY_X} y={-6} textAnchor="middle" fontSize={10} fontWeight={700} fill={queryColor}>query</text>
+        <SketchArrow points={[[QUERY_X, -15], [QUERY_X, LAYER_H * LAYER_IDS.length]]} color={queryColor} strokeWidth={1.5} arrowhead={false} id="hnsw-query-line" />
+        <text x={QUERY_X} y={-6} textAnchor="middle" fontSize={10} fontWeight={700} fontFamily={HAND_FONT} fill={queryColor}>query</text>
 
         {LAYER_IDS.map((ids, li) => {
           const y = li * LAYER_H + 20;
@@ -124,25 +127,26 @@ export default function HnswSearchDiagram() {
           const isCurrentLayer = step.layer === li;
           return (
             <g key={li} opacity={li <= step.layer || (li === step.layer) ? 1 : 0.25}>
-              <text x={0} y={y - 24} fontSize={10} fontWeight={700} fill={t.textMuted}>{LAYER_LABELS[li]}</text>
+              <text x={0} y={y - 24} fontSize={10} fontWeight={700} fontFamily={HAND_FONT} fill={t.textMuted}>{LAYER_LABELS[li]}</text>
               {ids.map((id) =>
                 (adj.get(id) ?? []).filter((n) => n > id).map((n) => (
-                  <line key={`${id}-${n}`} x1={ALL_NODES[id].x} y1={y} x2={ALL_NODES[n].x} y2={y} stroke={t.border} strokeWidth={1.5} />
+                  <SketchArrow key={`${id}-${n}`} points={[[ALL_NODES[id].x, y], [ALL_NODES[n].x, y]]} color={t.border} strokeWidth={1.5} arrowhead={false} id={`hnsw-edge-${li}-${id}-${n}`} />
                 )),
               )}
               {ids.map((id) => {
                 const visited = isCurrentLayer && visitedByLayer.has(id);
                 const isCurrent = isCurrentLayer && id === step.nodeId;
+                const r = isCurrent ? 10 : 7;
                 return (
                   <g key={id}>
                     <circle
                       cx={ALL_NODES[id].x}
                       cy={y}
-                      r={isCurrent ? 10 : 7}
+                      r={r}
                       fill={isCurrent ? pathColor : visited ? `${pathColor}55` : t.surfaceAlt}
-                      stroke={isCurrent || visited ? pathColor : t.border}
-                      strokeWidth={isCurrent ? 2.5 : 1.5}
+                      stroke="none"
                     />
+                    <SketchEllipse cx={ALL_NODES[id].x} cy={y} width={r * 2} height={r * 2} color={isCurrent || visited ? pathColor : t.border} strokeWidth={isCurrent ? 2.5 : 1.5} id={`hnsw-node-${li}-${id}`} />
                     <text x={ALL_NODES[id].x} y={y + 22} textAnchor="middle" fontSize={9} fontFamily="monospace" fill={isCurrent ? pathColor : t.textMuted}>
                       {id}
                     </text>

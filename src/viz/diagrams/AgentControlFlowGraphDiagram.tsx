@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, Slider, PillSelect, VizButton, ControlRow } from '../primitives';
 import { DIAGRAM_TYPE, DIAGRAM_RADIUS, getConceptColor } from './diagramSystem';
+import { SketchArrow, SketchRect } from '../../components/notebook/RoughShape';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 type NodeId = 'START' | 'PLAN' | 'ACT' | 'CHECK' | 'HUMAN' | 'END';
 
@@ -53,15 +56,24 @@ function edgeKey(a: NodeId, b: NodeId): string {
   return `${a}->${b}`;
 }
 
-function edgePath(a: NodeId, b: NodeId): string {
+function edgePoints(a: NodeId, b: NodeId): [number, number][] {
   const p1 = POS[a];
   const p2 = POS[b];
   if (a === 'CHECK' && b === 'ACT') {
     // The cycle: a visible dip below the main row so it reads as a loop,
-    // not just a second line overlapping the forward edge.
-    return `M ${p1.x} ${p1.y + 18} C ${p1.x} ${p1.y + 70}, ${p2.x} ${p2.y + 70}, ${p2.x} ${p2.y + 18}`;
+    // not just a second line overlapping the forward edge. Sampled points
+    // tracing the same dip the original bezier curve drew, since
+    // SketchArrow (unlike SketchPath) draws a hand-drawn arrowhead, which
+    // every edge here needs.
+    return [
+      [p1.x, p1.y + 18],
+      [p1.x, p1.y + 70],
+      [(p1.x + p2.x) / 2, p1.y + 76],
+      [p2.x, p2.y + 70],
+      [p2.x, p2.y + 18],
+    ];
   }
-  return `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
+  return [[p1.x, p1.y], [p2.x, p2.y]];
 }
 
 export default function AgentControlFlowGraphDiagram() {
@@ -149,25 +161,11 @@ export default function AgentControlFlowGraphDiagram() {
           const key = edgeKey(a, b);
           const active = traversed.has(key);
           return (
-            <path
-              key={key}
-              d={edgePath(a, b)}
-              fill="none"
-              stroke={active ? color : t.border}
-              strokeWidth={active ? 2.5 : 1.5}
-              opacity={active ? 1 : 0.5}
-              markerEnd={active ? 'url(#agentflow-arrow-active)' : 'url(#agentflow-arrow)'}
-            />
+            <g key={key} opacity={active ? 1 : 0.5}>
+              <SketchArrow points={edgePoints(a, b)} color={active ? color : t.border} strokeWidth={active ? 2.5 : 1.5} id={`agentflow-${key}`} />
+            </g>
           );
         })}
-        <defs>
-          <marker id="agentflow-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-            <path d="M0,0 L8,4 L0,8 Z" fill={t.border} opacity={0.5} />
-          </marker>
-          <marker id="agentflow-arrow-active" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-            <path d="M0,0 L8,4 L0,8 Z" fill={color} />
-          </marker>
-        </defs>
         {(Object.keys(POS) as NodeId[]).map((id) => {
           const p = POS[id];
           const isCurrent = id === current.node;
@@ -181,15 +179,16 @@ export default function AgentControlFlowGraphDiagram() {
                 height={32}
                 rx={DIAGRAM_RADIUS.node}
                 fill={isCurrent ? `${color}25` : visited ? t.surfaceAlt : t.surface}
-                stroke={isCurrent ? color : t.border}
-                strokeWidth={isCurrent ? 2.5 : 1.5}
+                stroke="none"
               />
+              <SketchRect x={p.x - 55} y={p.y - 16} width={110} height={32} color={isCurrent ? color : t.border} strokeWidth={isCurrent ? 2.5 : 1.5} id={`agentflow-node-${id}`} />
               <text
                 x={p.x}
                 y={p.y + 4}
                 textAnchor="middle"
                 fontSize={DIAGRAM_TYPE.secondaryLabel.size}
                 fontWeight={isCurrent ? 700 : 500}
+                fontFamily={HAND_FONT}
                 fill={isCurrent ? color : t.textPrimary}
               >
                 {LABEL[id]}
