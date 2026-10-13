@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, VisualizationMath } from '../primitives';
 import { DIAGRAM_TYPE, DIAGRAM_RADIUS } from './diagramSystem';
+import { SketchArrow, SketchRect } from '../../components/notebook/RoughShape';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 // A real toy tree: 3 splits, each with real class counts. Gini impurity and
 // impurity reduction are computed live from those counts, then aggregated
@@ -74,12 +77,12 @@ export default function TreeImportanceDiagram() {
     <VisualizationContainer footer="Click a split to see its Gini-impurity reduction feed the aggregated bar chart below. income dominates because it's the root split, applied to all 100 samples -- credit_score barely moves the needle despite being a real split.">
       <svg width="100%" viewBox="0 0 700 300" style={{ display: 'block' }}>
         {/* edges */}
-        <line x1={nodePos.root.x} y1={nodePos.root.y + 20} x2={nodePos.left.x} y2={nodePos.left.y - 20} stroke={t.border} strokeWidth={1.5} />
-        <line x1={nodePos.root.x} y1={nodePos.root.y + 20} x2={nodePos.right.x} y2={nodePos.right.y - 20} stroke={t.border} strokeWidth={1.5} />
-        <line x1={nodePos.left.x} y1={nodePos.left.y + 20} x2={leafPos.leftleft.x} y2={leafPos.leftleft.y - 16} stroke={t.border} strokeWidth={1.5} />
-        <line x1={nodePos.left.x} y1={nodePos.left.y + 20} x2={leafPos.leftright.x} y2={leafPos.leftright.y - 16} stroke={t.border} strokeWidth={1.5} />
-        <line x1={nodePos.right.x} y1={nodePos.right.y + 20} x2={leafPos.rightleft.x} y2={leafPos.rightleft.y - 16} stroke={t.border} strokeWidth={1.5} />
-        <line x1={nodePos.right.x} y1={nodePos.right.y + 20} x2={leafPos.rightright.x} y2={leafPos.rightright.y - 16} stroke={t.border} strokeWidth={1.5} />
+        <SketchArrow points={[[nodePos.root.x, nodePos.root.y + 20], [nodePos.left.x, nodePos.left.y - 20]]} color={t.border} strokeWidth={1.5} arrowhead={false} id="tree-edge-rl" />
+        <SketchArrow points={[[nodePos.root.x, nodePos.root.y + 20], [nodePos.right.x, nodePos.right.y - 20]]} color={t.border} strokeWidth={1.5} arrowhead={false} id="tree-edge-rr" />
+        <SketchArrow points={[[nodePos.left.x, nodePos.left.y + 20], [leafPos.leftleft.x, leafPos.leftleft.y - 16]]} color={t.border} strokeWidth={1.5} arrowhead={false} id="tree-edge-ll" />
+        <SketchArrow points={[[nodePos.left.x, nodePos.left.y + 20], [leafPos.leftright.x, leafPos.leftright.y - 16]]} color={t.border} strokeWidth={1.5} arrowhead={false} id="tree-edge-lr" />
+        <SketchArrow points={[[nodePos.right.x, nodePos.right.y + 20], [leafPos.rightleft.x, leafPos.rightleft.y - 16]]} color={t.border} strokeWidth={1.5} arrowhead={false} id="tree-edge-rl2" />
+        <SketchArrow points={[[nodePos.right.x, nodePos.right.y + 20], [leafPos.rightright.x, leafPos.rightright.y - 16]]} color={t.border} strokeWidth={1.5} arrowhead={false} id="tree-edge-rr2" />
 
         {results.map((r) => {
           const pos = nodePos[r.id];
@@ -87,9 +90,10 @@ export default function TreeImportanceDiagram() {
           const color = colors[r.feature];
           return (
             <g key={r.id} onClick={() => setActive(isActive ? null : r.id)} style={{ cursor: 'pointer' }}>
-              <rect x={pos.x - 70} y={pos.y - 20} width={140} height={40} rx={DIAGRAM_RADIUS.node} fill={isActive ? `${color}22` : t.surfaceAlt} stroke={color} strokeWidth={isActive ? 2.5 : 1.5} />
+              <rect x={pos.x - 70} y={pos.y - 20} width={140} height={40} rx={DIAGRAM_RADIUS.node} fill={isActive ? `${color}22` : t.surfaceAlt} stroke="none" />
+              <SketchRect x={pos.x - 70} y={pos.y - 20} width={140} height={40} color={color} strokeWidth={isActive ? 2.5 : 1.5} id={`tree-node-${r.id}`} />
               <text x={pos.x} y={pos.y - 3} textAnchor="middle" fontSize={12} fontWeight={700} fontFamily="monospace" fill={color}>{r.feature}</text>
-              <text x={pos.x} y={pos.y + 12} textAnchor="middle" fontSize={10} fill={t.textMuted}>Gini {r.impParent.toFixed(3)} → {(r.reduction > 0 ? '−' : '+') + Math.abs(r.reduction).toFixed(3)}</text>
+              <text x={pos.x} y={pos.y + 12} textAnchor="middle" fontSize={10} fontFamily={HAND_FONT} fill={t.textMuted}>Gini {r.impParent.toFixed(3)} → {(r.reduction > 0 ? '−' : '+') + Math.abs(r.reduction).toFixed(3)}</text>
             </g>
           );
         })}
@@ -103,7 +107,7 @@ export default function TreeImportanceDiagram() {
           const pos = leafPos[leaf.id];
           return (
             <g key={leaf.id}>
-              <rect x={pos.x - 46} y={pos.y - 16} width={92} height={32} rx={6} fill="none" stroke={t.border} strokeWidth={1} strokeDasharray="3 2" />
+              <SketchRect x={pos.x - 46} y={pos.y - 16} width={92} height={32} color={t.border} strokeWidth={1} id={`tree-leaf-${leaf.id}`} />
               <text x={pos.x} y={pos.y + 4} textAnchor="middle" fontSize={10} fontFamily="monospace" fill={t.textSecondary}>[{leaf.counts[0]}, {leaf.counts[1]}]</text>
             </g>
           );

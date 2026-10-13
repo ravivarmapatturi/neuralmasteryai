@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, PillSelect } from '../primitives';
 import { getConceptColor } from './diagramSystem';
+import { SketchArrow } from '../../components/notebook/RoughShape';
+
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 type Pattern = 'short-poll' | 'long-poll' | 'webhook' | 'sse' | 'websocket';
 
@@ -73,14 +76,10 @@ export default function CommunicationPatternSequenceDiagram() {
         options={(Object.keys(LABELS) as Pattern[]).map((k) => ({ value: k, label: LABELS[k] }))}
       />
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8 }}>
-        <defs>
-          <marker id="cps-arrow-c" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill={cColor} /></marker>
-          <marker id="cps-arrow-s" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill={sColor} /></marker>
-        </defs>
-        <text x={cx} y={16} textAnchor="middle" fontSize={11} fontWeight={700} fill={cColor}>Client</text>
-        <text x={sx} y={16} textAnchor="middle" fontSize={11} fontWeight={700} fill={sColor}>Server</text>
-        <line x1={cx} y1={24} x2={cx} y2={height - 6} stroke={t.border} strokeWidth={1} />
-        <line x1={sx} y1={24} x2={sx} y2={height - 6} stroke={t.border} strokeWidth={1} />
+        <text x={cx} y={16} textAnchor="middle" fontSize={11} fontWeight={700} fontFamily={HAND_FONT} fill={cColor}>Client</text>
+        <text x={sx} y={16} textAnchor="middle" fontSize={11} fontWeight={700} fontFamily={HAND_FONT} fill={sColor}>Server</text>
+        <SketchArrow points={[[cx, 24], [cx, height - 6]]} color={t.border} strokeWidth={1} arrowhead={false} id="cps-lifeline-c" />
+        <SketchArrow points={[[sx, 24], [sx, height - 6]]} color={t.border} strokeWidth={1} arrowhead={false} id="cps-lifeline-s" />
         {messages.map((m, i) => {
           const y = 30 + i * rowH + 14;
           const fromX = m.from === 'C' ? cx : sx;
@@ -89,10 +88,10 @@ export default function CommunicationPatternSequenceDiagram() {
           const isNote = m.label.startsWith('(');
           return (
             <g key={i}>
-              {!isNote && <line x1={fromX} y1={y} x2={toX} y2={y} stroke={color} strokeWidth={1.5} markerEnd={`url(#cps-arrow-${m.from === 'C' ? 'c' : 's'})`} />}
-              {isNote && <line x1={fromX} y1={y} x2={toX} y2={y} stroke={t.textMuted} strokeWidth={1} strokeDasharray="2 3" />}
+              {!isNote && <SketchArrow points={[[fromX, y], [toX, y]]} color={color} strokeWidth={1.5} arrowhead={true} id={`cps-msg-${i}`} />}
+              {isNote && <SketchArrow points={[[fromX, y], [toX, y]]} color={t.textMuted} strokeWidth={1} arrowhead={false} id={`cps-note-${i}`} />}
               <rect x={Math.min(fromX, toX) + 8} y={y - 11} width={Math.abs(toX - fromX) - 16} height={15} fill={t.surface} />
-              <text x={(fromX + toX) / 2} y={y - 1} textAnchor="middle" fontSize={7.8} fill={isNote ? t.textMuted : color} fontStyle={isNote ? 'italic' : 'normal'}>{m.label}</text>
+              <text x={(fromX + toX) / 2} y={y - 1} textAnchor="middle" fontSize={7.8} fontFamily={HAND_FONT} fill={isNote ? t.textMuted : color} fontStyle={isNote ? 'italic' : 'normal'}>{m.label}</text>
             </g>
           );
         })}
