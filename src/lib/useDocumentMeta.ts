@@ -55,13 +55,13 @@ function upsertBreadcrumbJsonLd(crumbs: BreadcrumbItem[] | undefined, currentPag
       '@type': 'ListItem',
       position: i + 1,
       name: c.label,
-      item: base + c.href,
+      item: base + withTrailingSlash(c.href),
     })),
     {
       '@type': 'ListItem',
       position: crumbs.length + 1,
       name: currentPageName,
-      item: base + currentPath,
+      item: base + withTrailingSlash(currentPath),
     },
   ];
   const json = JSON.stringify({
@@ -90,13 +90,22 @@ function upsertBreadcrumbJsonLd(crumbs: BreadcrumbItem[] | undefined, currentPag
  * JS runs. Search engines that execute JS (Googlebot) see them fine; some
  * social-preview crawlers that don't will only see index.html's static
  * fallback tags. */
+/** GitHub Pages serves every prerendered route as <route>/index.html and
+ * 301-redirects "/docs/foo" to "/docs/foo/". A canonical or breadcrumb URL
+ * without the slash points search engines at a redirect, and Google then
+ * reports the page as "Page with redirect" instead of indexing it. */
+export function withTrailingSlash(path: string): string {
+  const [pathname, rest = ''] = path.split(/(?=[?#])/);
+  return (pathname.endsWith('/') ? pathname : `${pathname}/`) + rest;
+}
+
 export function useDocumentMeta(pageTitle: string | undefined, description?: string, breadcrumb?: BreadcrumbItem[]): void {
   useEffect(() => {
     const desc = description ?? DEFAULT_DESCRIPTION;
     const fullTitle = pageTitle ? `${pageTitle} — ${SITE_NAME}` : SITE_NAME;
     // No prefix to strip anymore -- the site serves from the domain's own
     // root now, so location.pathname already matches the route directly.
-    const canonical = SITE_URL.replace(/\/$/, '') + window.location.pathname;
+    const canonical = SITE_URL.replace(/\/$/, '') + withTrailingSlash(window.location.pathname);
 
     upsertMeta('name', 'description', desc);
     upsertMeta('property', 'og:title', fullTitle);

@@ -48,6 +48,10 @@ const urls = [
   }),
 ];
 
+// Every page is served at its trailing-slash URL (GitHub Pages redirects the
+// bare form), so list that form -- a sitemap entry that redirects isn't indexed.
+for (const u of urls) if (!u.loc.endsWith('/')) u.loc += '/';
+
 const body = urls
   .map((u) => `  <url>\n    <loc>${u.loc}</loc>${u.lastmod ? `\n    <lastmod>${u.lastmod}</lastmod>` : ''}\n  </url>`)
   .join('\n');

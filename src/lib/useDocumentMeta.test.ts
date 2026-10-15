@@ -69,7 +69,7 @@ describe('useDocumentMeta BreadcrumbList structured data (audit: "No structured 
     expect(items[0].name).toBe('Home')
     expect(items[0].item).toBe('https://neuralmasteryai.com/')
     expect(items[1].name).toBe('Deep Learning')
-    expect(items[1].item).toBe('https://neuralmasteryai.com/docs/deep-learning/roadmap')
+    expect(items[1].item).toBe('https://neuralmasteryai.com/docs/deep-learning/roadmap/')
     expect(items[2].name).toBe('Attention & Transformers')
   })
 
@@ -81,5 +81,15 @@ describe('useDocumentMeta BreadcrumbList structured data (audit: "No structured 
     expect(getJsonLd()).not.toBeNull()
     rerender({ crumb: undefined })
     expect(getJsonLd()).toBeNull()
+  })
+})
+
+describe('withTrailingSlash', () => {
+  it('adds the slash GitHub Pages serves every route with, and leaves the root and query alone', async () => {
+    const { withTrailingSlash } = await import('./useDocumentMeta')
+    expect(withTrailingSlash('/docs/agents/agent-fundamentals')).toBe('/docs/agents/agent-fundamentals/')
+    expect(withTrailingSlash('/practice/')).toBe('/practice/')
+    expect(withTrailingSlash('/')).toBe('/')
+    expect(withTrailingSlash('/docs/x#part')).toBe('/docs/x/#part')
   })
 })
