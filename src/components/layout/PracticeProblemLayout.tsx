@@ -1,4 +1,4 @@
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import Navbar from './Navbar';
 import PracticeWorkspace from '../practice/PracticeWorkspace';
@@ -6,6 +6,7 @@ import { getPageByRoute, legacyPracticeRedirect, normalizeRoute } from '../../li
 import { getPracticeProblem } from '../../lib/practiceProblem';
 import { useDocumentTitle } from '../../lib/useDocumentTitle';
 import { useDocumentMeta } from '../../lib/useDocumentMeta';
+import { isCurated } from '../../data/practiceCatalog';
 
 /**
  * PracticeProblemLayout handles practice problem routes (/practice/:slug).
@@ -21,6 +22,18 @@ export default function PracticeProblemLayout() {
 
   useDocumentTitle(page ? page.title : 'Practice Problem');
   useDocumentMeta(page?.title, page?.description);
+
+  // Problems outside the curated catalogue keep working URLs but must not be
+  // indexed (they're also not prerendered, so they serve with a 404 status).
+  const hidden = !movedTo && page?.problemId !== undefined && !isCurated(page.problemId);
+  useEffect(() => {
+    if (!hidden) return undefined;
+    const meta = document.createElement('meta');
+    meta.name = 'robots';
+    meta.content = 'noindex,follow';
+    document.head.appendChild(meta);
+    return () => meta.remove();
+  }, [hidden]);
 
   if (movedTo) return <Navigate to={movedTo} replace />;
 
