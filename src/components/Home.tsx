@@ -66,8 +66,11 @@ function buildSectionAccent(): Record<string, { groupKey: string; color: string 
  * inline card on what's supposed to be a Learn-focused page.
  */
 export default function Home() {
-  useDocumentTitle();
-  useDocumentMeta(undefined);
+  useDocumentTitle('Learn AI: free lessons from the maths to LLMs and agents');
+  useDocumentMeta(
+    'Learn AI: free lessons from the maths to LLMs and agents',
+    'A free, ordered path for learning AI: linear algebra and probability, classical ML, neural networks, transformers and LLMs, RAG and agents, with interactive diagrams and code you can run.',
+  );
   const sections = getSidebar();
   const flatPages = getFlatPages();
   const totalPages = flatPages.length;

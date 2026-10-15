@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 
-const SITE_NAME = 'Neural Mastery';
+const SITE_NAME = 'Neural Mastery AI';
 export const SITE_URL = 'https://neuralmasteryai.com/';
 export const DEFAULT_DESCRIPTION =
   'Learn AI and machine learning through real, computed, interactive visualizations, not static diagrams -- covering machine learning, deep learning, LLMs, and agents.';

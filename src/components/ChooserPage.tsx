@@ -33,10 +33,13 @@ function Arrow() {
  * functional pieces (LiveComputation, PracticePlayground, progress-aware
  * CTAs) are unchanged; only the frame around them changed. */
 export default function ChooserPage() {
-  useDocumentTitle('Learn it. Practice it. Achieve Mastery.');
+  // The homepage title and description are what people see in search
+  // results, so they say plainly what the site is ("learn AI", "practice")
+  // instead of a slogan.
+  useDocumentTitle('Learn AI by building it, free');
   useDocumentMeta(
-    'Learn AI deeply',
-    'Learn AI from first principles through computed visualizations and executable practice, from mathematics to LLMs and agents.',
+    'Learn AI by building it, free',
+    'Free lessons on AI from the maths up to LLMs and agents, plus coding problems you run in your browser against real tests. No sign-up, nothing to install.',
   );
 
   const pages = getFlatPages();

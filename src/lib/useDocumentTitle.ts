@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 
-const SITE_NAME = 'Neural Mastery';
+const SITE_NAME = 'Neural Mastery AI';
 
 /** Sets the browser tab title per route. index.html's static <title> (used
  * for the initial paint before React hydrates, and inherited verbatim by
