@@ -27,6 +27,14 @@ describe('routeFromMdxPath', () => {
     expect(routeFromMdxPath(file, CONTENT_ROOT)).toBe('/practice/dot-product')
   })
 
+  it('uses a curated problem\'s descriptive slug when one is given, the file id otherwise', () => {
+    const slugs = { 'll-queue-prob-1': 'reverse-a-singly-linked-list' }
+    const curated = path.join(CONTENT_ROOT, 'practice-problems', 'll-queue-prob-1.mdx')
+    const hidden = path.join(CONTENT_ROOT, 'practice-problems', 'agent-loop-prob-2.mdx')
+    expect(routeFromMdxPath(curated, CONTENT_ROOT, slugs)).toBe('/practice/reverse-a-singly-linked-list')
+    expect(routeFromMdxPath(hidden, CONTENT_ROOT, slugs)).toBe('/practice/agent-loop-prob-2')
+  })
+
   it('normalizes Windows backslash separators to forward slashes in the route', () => {
     // node:path's relative() returns backslash-separated paths on Windows
     // (exercised directly here via path.win32, regardless of host platform,

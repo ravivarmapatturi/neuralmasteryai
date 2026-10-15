@@ -70,10 +70,23 @@ function isPlaceholder(mdxPath) {
   return /^placeholder:\s*true\s*$/m.test(head);
 }
 
+// Practice shows only the curated catalogue (src/data/practiceCatalog.ts);
+// hidden problems stay reachable through the SPA but aren't prerendered or
+// indexed, and curated ones are written at their descriptive slug.
+const PRACTICE_SLUGS = JSON.parse(readFileSync(join(ROOT, 'src', 'data', 'practiceSlugs.generated.json'), 'utf8'));
+const TRACK_ROUTES = [...readFileSync(join(ROOT, 'src', 'data', 'practiceCatalog.ts'), 'utf8').matchAll(/^    slug: '([a-z0-9-]+)',$/gm)].map(
+  (m) => `/practice/track/${m[1]}`,
+);
+
+function isHiddenPractice(mdxPath) {
+  const rel = relative(CONTENT_ROOT, mdxPath).split('\\').join('/');
+  return rel.startsWith('practice-problems/') && !PRACTICE_SLUGS[rel.slice('practice-problems/'.length, -'.mdx'.length)];
+}
+
 function routesFromContentTree() {
   return walk(CONTENT_ROOT)
-    .filter((f) => !isPlaceholder(f))
-    .map((f) => routeFromMdxPath(f, CONTENT_ROOT));
+    .filter((f) => !isPlaceholder(f) && !isHiddenPractice(f))
+    .map((f) => routeFromMdxPath(f, CONTENT_ROOT, PRACTICE_SLUGS));
 }
 
 // App.tsx's non-/docs/* routes -- these aren't in the content tree at all,
@@ -126,7 +139,7 @@ async function main() {
   try {
     await waitForServer(`http://localhost:${PORT}${BASE}/`);
 
-    const routes = [...APP_ROUTES, ...routesFromContentTree()];
+    const routes = [...APP_ROUTES, ...TRACK_ROUTES, ...routesFromContentTree()];
     console.log(`prerender-for-pagefind: snapshotting ${routes.length} route(s)...`);
 
     // 208 routes taken one at a time (each waiting for full network-idle)

@@ -16,12 +16,15 @@ import { join, relative } from 'node:path';
  * route instead (see contentTree.ts's practiceRoute(), the same remap
  * applied at runtime; overview.mdx no longer exists on disk, superseded by
  * the real /practice list page, so it's never passed in here). */
-export function routeFromMdxPath(absoluteFilePath, contentRoot) {
+export function routeFromMdxPath(absoluteFilePath, contentRoot, practiceSlugs = {}) {
   const relPath = relative(contentRoot, absoluteFilePath).replace(/\.mdx$/, '');
   const posixPath = relPath.split('\\').join('/');
   const PRACTICE_PREFIX = 'practice-problems/';
   if (posixPath.startsWith(PRACTICE_PREFIX)) {
-    return `/practice/${posixPath.slice(PRACTICE_PREFIX.length)}`;
+    // Curated problems are served at a descriptive slug
+    // (src/data/practiceSlugs.generated.json), the rest at their file id.
+    const id = posixPath.slice(PRACTICE_PREFIX.length);
+    return `/practice/${practiceSlugs[id] ?? id}`;
   }
   return `/docs/${posixPath}`;
 }
