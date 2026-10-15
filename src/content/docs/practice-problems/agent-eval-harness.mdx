@@ -1,0 +1,79 @@
+---
+title: "Evaluate Your Agent"
+description: "Build an Agent, stage 11 of 12: 'It worked when I tried it' isn't an evaluation."
+difficulty: "hard"
+topic: "Build an Agent"
+sidebar_position: 2011
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Turning 'seems fine' into numbers
+
+An **eval harness**: the tool that turns "seems fine" into numbers you can track from one commit to the next.
+
+```text
+cases ─► run_agent ─► classify ─► report
+  pass_rate      0.333
+  tool_accuracy  0.667
+  avg_steps      2.33
+  failures       hallucinated: wrong_answer
+                 stuck: no_answer:loop_detected
+```
+
+## Outcome and trajectory are separate questions
+
+Every run is checked for two different things:
+
+- **Outcome:** did the final answer contain what it should?
+- **Trajectory:** did the agent call the right tools, in the right order?
+
+They come apart in instructive ways. A **"lucky"** run answers "3" without calling `add`. Today that's correct, but it means the model is guessing and not computing, and it'll guess wrong on 1847 × 23. A **"hallucinated"** run calls the right tool and then ignores the result. Each failure mode needs a different fix (prompting vs tool design), so the reason has to be recorded, not just pass/fail.
+
+The order of the checks matters: "no answer" is the most fundamental failure, so it's reported first.
+
+## The question every interviewer asks
+
+Every change to an agent (the prompt, the model version, a tool description) can quietly break something that used to work. Teams run a suite like this on every change, the way unit tests run on every commit. It's the most common gap interviewers probe in "I built an agent" projects: *how do you know it works?*
+
+## Substring matching is a weak judge
+
+Substring matching is a weak oracle: "it's not 3" contains "3". Real harnesses use exact or structured matches where they can, **LLM-as-judge** with a rubric for free text, and they run each case several times, because real models are non-deterministic (pass@k, and the mean with its variance). Scripted models make this stage deterministic, which is right for learning how a harness works and wrong for measuring a real model.
+
+> **Remember:** measure outcomes and trajectories separately, record why each case failed, and run the suite on every change.
+
+Next: the capstone. Put every stage together into one production-grade loop.
+
+## Reference solution
+
+Try the tests first. The reference is here so you can compare approaches after you've passed, or get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def evaluate_agent(cases):
+    if not cases:
+        raise ValueError("need at least one eval case")
+    passed = 0
+    right_tools = 0
+    total_steps = 0
+    failures = {}
+    for case in cases:
+        run = run_agent(case["task"], case["script"], max_steps=case.get("max_steps", 8))
+        total_steps += run["steps"]
+        tools_ok = run["tools_called"] == case["expected_tools"]
+        right_tools += tools_ok
+        if run["answer"] is None:
+            failures[case["name"]] = "no_answer:" + run["stop_reason"]
+        elif not tools_ok:
+            failures[case["name"]] = "wrong_tools"
+        elif case["expected_answer_contains"].lower() not in run["answer"].lower():
+            failures[case["name"]] = "wrong_answer"
+        else:
+            passed += 1
+    n = len(cases)
+    return {"pass_rate": round(passed / n, 3), "tool_accuracy": round(right_tools / n, 3),
+            "avg_steps": round(total_steps / n, 2), "failures": failures}
+```
+
+</Solution>

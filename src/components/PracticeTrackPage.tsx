@@ -1,94 +1,105 @@
 import { useMemo } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import Navbar from './layout/Navbar';
-import { getPracticeProblems, type DocPage } from '../lib/contentTree';
-import { findTrackBySlug } from '../lib/practiceTracks';
+import { getPageByRoute, getPracticeProblems } from '../lib/contentTree';
+import { CATALOG, LEGACY_TOPIC_TO_TRACK, findCatalogTrack } from '../data/practiceCatalog';
+import { slugifyTopic } from '../lib/practiceTracks';
+import { isSolved } from '../lib/mastery';
 import { useGamification } from '../contexts/GamificationContext';
-import { hasAward, pointsForDifficulty, SYSTEM_DESIGN_CHALLENGE_POINTS } from '../lib/gamification';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useDocumentMeta } from '../lib/useDocumentMeta';
 
-const DIFFICULTY_COLOR: Record<string, string> = {
-  easy: 'var(--nm-accent-primary)',
-  medium: 'var(--nm-accent-warn)',
-  hard: 'var(--nm-accent-danger)',
-};
+/** Old track URLs were slugs of the 54 raw topic strings
+ * (/practice/track/agent-loop-engineering); each now redirects to the
+ * curated track that absorbed it. */
+const LEGACY_SLUG_TO_TRACK: Record<string, string> = Object.fromEntries(
+  Object.entries(LEGACY_TOPIC_TO_TRACK).map(([topic, track]) => [slugifyTopic(topic), track]),
+);
 
-function isDesignChallenge(page: DocPage): boolean {
-  return !page.difficulty;
-}
-
-/** A dedicated screen for one practice track, reached by clicking a
- * card in "Practice Tracks" on /practice. Shows only that track's
- * real problems -- a real destination, not just an in-place filter. */
 export default function PracticeTrackPage() {
-  const { topicSlug } = useParams<{ topicSlug: string }>();
-  const problems = useMemo(() => getPracticeProblems(), []);
-  const track = useMemo(() => (topicSlug ? findTrackBySlug(problems, topicSlug) : undefined), [problems, topicSlug]);
-
+  const { topicSlug = '' } = useParams<{ topicSlug: string }>();
+  const track = findCatalogTrack(topicSlug);
   const { events } = useGamification();
 
-  useDocumentTitle(track ? `${track.label} — ${track.count} Practice Problems` : 'Track not found');
-  useDocumentMeta(
-    track ? track.label : 'Track not found',
-    track ? `${track.count} real, hands-on ${track.label} practice problems with working test suites and instant browser-based execution.` : 'This track does not exist.',
-  );
+  const pages = useMemo(() => {
+    if (!track) return [];
+    const byId = new Map(getPracticeProblems().map((p) => [p.problemId, p]));
+    return track.problems.flatMap((id) => {
+      const page = byId.get(id);
+      return page ? [page] : [];
+    });
+  }, [track]);
+
+  useDocumentTitle(track ? `${track.title}: practice track` : 'Practice track');
+  useDocumentMeta(track?.title ?? 'Practice track', track ? `${track.summary} ${pages.length} problems with real test cases.` : undefined);
 
   if (!track) {
-    return <Navigate to="/practice" replace />;
+    const moved = LEGACY_SLUG_TO_TRACK[topicSlug];
+    return <Navigate to={moved ? `/practice/track/${moved}` : '/practice'} replace />;
   }
 
-  const trackProblems = problems.filter((p) => p.topic === track.topic);
-  const solvedCount = trackProblems.filter((p) => hasAward(events, p.route, isDesignChallenge(p) ? 'design' : 'complete')).length;
+  const passed = pages.filter((p) => isSolved(p, events)).length;
+  const lesson = getPageByRoute(track.learnRoute);
+  const position = CATALOG.indexOf(track);
+  const nextTrack = CATALOG[position + 1];
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--nm-bg)' }}>
+    <div className="nb-theme" style={{ minHeight: '100vh' }}>
       <Navbar />
-      <section style={{ maxWidth: 900, margin: '0 auto', padding: '2.5rem 2rem 4rem' }}>
-        <Link to="/practice" style={{ fontSize: 13, fontWeight: 600, color: 'var(--nm-accent-primary)', textDecoration: 'none' }}>
-          ← All tracks
+      <main className="nm-landing-shell" style={{ maxWidth: 820, padding: 'clamp(2rem, 5vw, 3.5rem) 0 4rem' }}>
+        <Link to="/practice" className="nb-hand" style={{ color: 'var(--nb-cobalt)', textDecoration: 'none' }}>
+          ← all tracks
         </Link>
-
-        <h1 style={{ fontSize: 'clamp(1.5rem, 3.2vw, 2rem)', fontWeight: 800, color: 'var(--nm-text-primary)', margin: '0.75rem 0 0.4rem' }}>
-          {track.label}
+        <h1 className="nb-heading" style={{ fontSize: 'clamp(1.8rem, 4vw, 2.6rem)', margin: '0.75rem 0 0.75rem' }}>
+          {track.title}
         </h1>
-        <p style={{ fontSize: 13.5, color: 'var(--nm-text-muted)', margin: '0 0 2rem' }}>
-          {solvedCount} / {track.count} solved
+        <p className="nb-body" style={{ fontSize: '1.05rem', maxWidth: 640, margin: 0 }}>
+          {track.summary}
         </p>
+        <p style={{ margin: '1rem 0 0', fontSize: '0.9rem', color: 'var(--nb-ink-soft)' }}>
+          {track.level} · {pages.length} problems · {passed} passed
+          {lesson && (
+            <>
+              {' · '}
+              Background reading: <Link to={lesson.route} style={{ color: 'var(--nb-cobalt)' }}>{lesson.title}</Link>
+            </>
+          )}
+        </p>
+        {track.kind === 'project' && (
+          <p className="nb-body" style={{ margin: '1.25rem 0 0', padding: '0.8rem 1rem', borderLeft: '3px solid var(--nb-cobalt)', background: 'var(--nb-paper-alt)' }}>
+            This is one program built in stages. Each stage's starter code includes the finished code from the stages
+            before it, so you can start anywhere, but going in order is how it's meant to be read.
+          </p>
+        )}
 
-        <div style={{ borderRadius: 12, border: '1px solid var(--nm-border)', overflow: 'hidden' }}>
-          {trackProblems.map((p, i) => {
-            const design = isDesignChallenge(p);
-            const solved = hasAward(events, p.route, design ? 'design' : 'complete');
-            const points = design ? SYSTEM_DESIGN_CHALLENGE_POINTS : pointsForDifficulty(p.difficulty);
+        <ol style={{ margin: '2rem 0 0', padding: 0, listStyle: 'none', borderTop: '1px solid var(--nb-rule)' }}>
+          {pages.map((page, i) => {
+            const done = isSolved(page, events);
             return (
-              <Link
-                key={p.route}
-                to={p.route}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: 12,
-                  padding: '0.75rem 1rem',
-                  borderTop: i === 0 ? 'none' : '1px solid var(--nm-border)',
-                  textDecoration: 'none',
-                  background: solved ? 'color-mix(in srgb, var(--nm-accent-primary) 5%, transparent)' : 'transparent',
-                }}
-              >
-                <span style={{ fontSize: 13.5, color: 'var(--nm-text-primary)', fontWeight: 600 }}>{p.title.replace(/^Practice:\s*/, '')}</span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                  <span style={{ fontSize: 11.5, fontWeight: 700, color: design ? 'var(--nm-accent-secondary)' : DIFFICULTY_COLOR[p.difficulty ?? 'easy'] }}>
-                    {design ? 'Design' : p.difficulty}
+              <li key={page.route} style={{ borderBottom: '1px solid var(--nb-rule)' }}>
+                <Link
+                  to={page.route}
+                  className="nm-practice-track-row"
+                  style={{ display: 'grid', gridTemplateColumns: '2.2rem 1fr auto', gap: '1rem', padding: '0.8rem 0.25rem', textDecoration: 'none', alignItems: 'baseline' }}
+                >
+                  <span className="nb-hand" style={{ color: 'var(--nb-ink-soft)' }}>{String(i + 1).padStart(2, '0')}</span>
+                  <span style={{ color: 'var(--nb-ink)' }}>
+                    {page.title}
+                    {done && <span style={{ color: 'var(--nb-green)' }}> ✓ passed</span>}
                   </span>
-                  <span style={{ fontSize: 11.5, color: 'var(--nm-text-muted)' }}>{points} pts</span>
-                  <span style={{ fontSize: 13 }}>{solved ? '✓' : ''}</span>
-                </span>
-              </Link>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--nb-ink-soft)' }}>{page.difficulty}</span>
+                </Link>
+              </li>
             );
           })}
-        </div>
-      </section>
+        </ol>
+
+        {nextTrack && (
+          <p className="nb-body" style={{ marginTop: '2rem' }}>
+            Next track: <Link to={`/practice/track/${nextTrack.slug}`} style={{ color: 'var(--nb-cobalt)' }}>{nextTrack.title}</Link>
+          </p>
+        )}
+      </main>
     </div>
   );
 }

@@ -1,0 +1,80 @@
+---
+title: "Parse a Tool Call From Model Output"
+description: "Build an Agent, stage 1 of 12: Every agent starts here: the model replies with text, and your code has to decide whether that text is a tool call or a final answer."
+difficulty: "easy"
+topic: "Build an Agent"
+sidebar_position: 2001
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## The job: text in, decision out
+
+The first piece of an agent: a **parser** that turns a model reply into either "call this tool with these arguments" or "here's my final answer".
+
+```text
+model reply
+  └─► parse_tool_call(reply)
+        ├─ {"tool": ..., "arguments": ...}  → run a tool
+        ├─ None                             → final answer
+        └─ raises ValueError                → model slipped
+```
+
+## Extract first, then parse
+
+Real models don't return clean JSON. You'll see all three of these on the same day:
+
+```text
+{"tool": "get_weather", "arguments": {...}}
+
+Let me check the forecast first.
+{"tool": "get_weather", ...}
+
+Sure! ```json {"tool": "add", ...} ```
+```
+
+So the parser extracts first and parses second. Fences are the strongest signal, so check for them first. Otherwise take the outermost braces.
+
+## This is the agent's trust boundary
+
+This function is the trust boundary of the whole agent. Everything after it (validation, dispatch, the loop) assumes it gets a well-formed dict. If something is malformed, it has to fail **loudly and in one predictable way**, so the loop can catch that one exception type and recover. That's stage 5.
+
+## Where text parsing breaks down
+
+String-sniffing JSON out of prose is fragile. A final answer that quotes the word `"tool"` would be mistaken for a call. That's why the big model APIs moved to **native tool calling**: the model emits a structured `tool_use` block and nobody parses text. You still need this skill, though. Open-weights models, older endpoints and "JSON mode" fallbacks all hand you text.
+
+> **Remember:** extract, then parse, then validate the shape, and raise one exception type for every failure.
+
+Next: the dict you return can still have the *wrong arguments*. Stage 2 checks them against the tool's schema before anything runs.
+
+## Reference solution
+
+Try the tests first. The reference is here so you can compare approaches after you've passed, or get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def parse_tool_call(text):
+    if '"tool"' not in text:
+        return None  # no tool call -> this is the model's final answer
+    fence = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
+    if fence:
+        candidate = fence.group(1)
+    else:
+        start, end = text.find("{"), text.rfind("}")
+        if start == -1 or end < start:
+            raise ValueError("tool call has no JSON object")
+        candidate = text[start:end + 1]
+    try:
+        data = json.loads(candidate)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"invalid JSON in tool call: {e.msg}")
+    if not isinstance(data, dict) or not isinstance(data.get("tool"), str) or not data["tool"]:
+        raise ValueError("tool call needs a non-empty string 'tool'")
+    arguments = data.get("arguments", {})
+    if not isinstance(arguments, dict):
+        raise ValueError("'arguments' must be an object")
+    return {"tool": data["tool"], "arguments": arguments}
+```
+
+</Solution>

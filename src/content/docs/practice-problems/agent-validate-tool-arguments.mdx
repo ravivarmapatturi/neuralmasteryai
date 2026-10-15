@@ -1,0 +1,98 @@
+---
+title: "Validate Tool Arguments Against a Schema"
+description: "Build an Agent, stage 2 of 12: Models hallucinate arguments: wrong types, missing fields, extra fields they made up."
+difficulty: "easy"
+topic: "Build an Agent"
+sidebar_position: 2002
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## A schema check before anything runs
+
+A tiny JSON Schema validator: the check that runs **between** "the model asked for a tool" and "we actually run it".
+
+## Two passes, and the bool trap
+
+Tool definitions you send to a model include a schema like this:
+
+```json
+{"type": "object",
+ "properties": {"a": {"type": "number"},
+                "b": {"type": "number"}},
+ "required": ["a", "b"]}
+```
+
+The model is *supposed* to follow it. It often doesn't. Validation is two passes:
+
+1. **Required:** is every required name present?
+2. **Sent:** is every argument the model sent a known property, with the right type?
+
+The classic Python trap is `isinstance(True, int)`, which is `True`. If the model sends `{"a": true}`, a naive check calls it a number and your calculator returns `2` for `true + 1`. Check `bool` first.
+
+## Error messages are written for the model
+
+When you return a bad call to the model as a **specific** error, it can fix the call on its next turn:
+
+```text
+tool:  error: invalid arguments for 'add':
+       argument 'a' should be number, got string
+model: {"tool": "add",
+        "arguments": {"a": 2, "b": 3}}
+```
+
+Vague errors ("bad input") make models retry the same mistake. That's how loops start, and stage 6 catches them.
+
+## What this validator doesn't cover
+
+This handles flat schemas. Real JSON Schema also has nested objects, enums, min/max, patterns and `anyOf`. In production you'd use a library (`jsonschema`, Pydantic), or the provider's own **strict / structured outputs** mode, which constrains decoding so invalid arguments can't be produced in the first place.
+
+> **Remember:** never execute an unvalidated tool call, and write every error message for the model to read.
+
+Next: stage 3 puts parse + validate + execute together in a dispatcher that **never crashes the agent**.
+
+## Reference solution
+
+Try the tests first. The reference is here so you can compare approaches after you've passed, or get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+JSON_TYPE_NAMES = {str: "string", bool: "boolean", int: "integer", float: "number",
+                   list: "array", dict: "object", type(None): "null"}
+
+
+def _matches(value, expected):
+    if expected == "string":
+        return isinstance(value, str)
+    if expected == "boolean":
+        return isinstance(value, bool)
+    if expected == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if expected == "array":
+        return isinstance(value, list)
+    if expected == "object":
+        return isinstance(value, dict)
+    return False
+
+
+def validate_arguments(arguments, schema):
+    errors = []
+    properties = schema.get("properties", {})
+    for name in schema.get("required", []):
+        if name not in arguments:
+            errors.append(f"missing required argument '{name}'")
+    for name, value in arguments.items():
+        if name not in properties:
+            errors.append(f"unexpected argument '{name}'")
+            continue
+        expected = properties[name]["type"]
+        if not _matches(value, expected):
+            got = JSON_TYPE_NAMES.get(type(value), type(value).__name__)
+            errors.append(f"argument '{name}' should be {expected}, got {got}")
+    return errors
+```
+
+</Solution>

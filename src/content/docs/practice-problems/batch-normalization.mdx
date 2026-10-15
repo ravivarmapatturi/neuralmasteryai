@@ -15,7 +15,7 @@ import { Solution } from '../../../components/content/ExpandableDepth';
 
 $$\text{BatchNorm}(x)_{:,j} = \frac{x_{:,j} - \mu_j}{\sqrt{\sigma_j^2 + \epsilon}} \cdot \gamma_j + \beta_j$$
 
-BatchNorm normalizes each *feature* across the current mini-batch — the opposite axis from [LayerNorm](/practice/layer-normalization), which normalizes each *example* across its own features. That makes BatchNorm dependent on batch size and statistics (a poor fit for variable-length sequence models processed one token at a time), but it's still the standard, stabilizing choice in the CNN lineage.
+BatchNorm normalizes each *feature* across the current mini-batch — the opposite axis from [LayerNorm](/practice/layer-normalization-with-learnable-affine), which normalizes each *example* across its own features. That makes BatchNorm dependent on batch size and statistics (a poor fit for variable-length sequence models processed one token at a time), but it's still the standard, stabilizing choice in the CNN lineage.
 
 **Your task**: implement `batch_norm(x, gamma, beta, eps=1e-5)` for a 2D NumPy array `x` of shape `(batch, features)`, normalizing each column (feature) independently over the batch dimension.
 
@@ -47,12 +47,12 @@ def batch_norm(x, gamma, beta, eps=1e-5):
     return x_norm * gamma + beta
 ```
 
-The only real difference from [LayerNorm's implementation](/practice/layer-normalization) is `axis=0` instead of `axis=-1` — mean and variance get computed per-*column* (each feature, across every row in the batch) instead of per-row. That single axis flip is the entire conceptual difference between the two: same formula, different statistic-sharing group. It's also exactly why BatchNorm gets unstable with very small batches (a batch of 1 has zero variance to normalize by, same failure mode as LayerNorm's constant-row case) and why it needs running statistics tracked separately for inference, when there may be no real "batch" at all (a single request being served).
+The only real difference from [LayerNorm's implementation](/practice/layer-normalization-with-learnable-affine) is `axis=0` instead of `axis=-1` — mean and variance get computed per-*column* (each feature, across every row in the batch) instead of per-row. That single axis flip is the entire conceptual difference between the two: same formula, different statistic-sharing group. It's also exactly why BatchNorm gets unstable with very small batches (a batch of 1 has zero variance to normalize by, same failure mode as LayerNorm's constant-row case) and why it needs running statistics tracked separately for inference, when there may be no real "batch" at all (a single request being served).
 
-[NN Layers Reference](/docs/deep-learning/nn-layers-reference#normalization-layers) covers all four normalization variants (Batch/Layer/RMS/Group) side by side — worth comparing directly against [RMSNorm](/practice/rms-normalization) and [LayerNorm](/practice/layer-normalization) now that you've implemented all three.
+[NN Layers Reference](/docs/deep-learning/nn-layers-reference#normalization-layers) covers all four normalization variants (Batch/Layer/RMS/Group) side by side — worth comparing directly against [RMSNorm](/practice/rms-normalization) and [LayerNorm](/practice/layer-normalization-with-learnable-affine) now that you've implemented all three.
 
 </Solution>
 
 ---
 
-Next: [Categorical Cross-Entropy Loss From Scratch](/practice/categorical-cross-entropy)
+Next: [Categorical Cross-Entropy Loss From Scratch](/practice/categorical-cross-entropy-loss)

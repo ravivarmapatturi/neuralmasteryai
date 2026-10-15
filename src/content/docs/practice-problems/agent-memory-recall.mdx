@@ -1,0 +1,68 @@
+---
+title: "Long-Term Memory Recall"
+description: "Build an Agent, stage 9 of 12: Trimming (stage 7) throws old turns away."
+difficulty: "medium"
+topic: "Build an Agent"
+sidebar_position: 2009
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Memory that outlives the context window
+
+The **read path** of an agent's long-term memory. Facts get saved during a conversation, and later, for a new question, you pull back only the few that matter.
+
+```text
+query: "Which city is Priya in now:
+        Lima or Paris?"
+
+m4 turn 6  Priya moved from Lima to Paris  3
+m1 turn 1  Priya ... lives in Lima         2
+m5 turn 7  Weather in Paris was rainy      1
+                                 recall → [m4, m1, m5]
+```
+
+## Overlap first, recency second
+
+Score by **term overlap** after removing stopwords, then break ties by **recency**. Recency is the tie-break because memories go stale: "lives in Lima" (turn 1) and "moved to Paris" (turn 6) both match, and the newer fact is more likely true now.
+
+## Where you've seen this pattern
+
+This is the pattern behind ChatGPT's memory, Letta/MemGPT's archival memory and LangGraph's long-term store: write facts outside the context window and retrieve a few per turn. It's what lets an agent stay coherent across sessions without its context growing forever. It also pairs with stage 7: what you trim out of context can be saved as memory first.
+
+## Keywords miss what embeddings catch
+
+Keyword overlap is brittle. "Where does Priya **live**?" doesn't match "she **lives** in Lima" without stemming, and it misses synonyms entirely ("residence", "home"). Production memory uses **embeddings**, semantic vector search (see the RAG and vector-search tracks), usually combined with keyword scoring (hybrid search) plus recency decay. Retrieving a fact also isn't the same as resolving a conflict: the model still has to decide that "moved" overrides "lives".
+
+> **Remember:** retrieve a few relevant memories per turn, rank by relevance first and then recency, and never dump all memory into context.
+
+Next: stage 10 moves from reacting step by step to **planning** a whole multi-step job up front.
+
+## Reference solution
+
+Try the tests first. The reference is here so you can compare approaches after you've passed, or get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+STOPWORDS = {"a", "an", "and", "are", "did", "do", "does", "for", "i", "in", "is",
+             "it", "me", "my", "of", "on", "the", "to", "was", "what", "when",
+             "where", "which", "who", "with", "you", "your"}
+
+
+def _terms(text):
+    return {w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 1 and w not in STOPWORDS}
+
+
+def recall(memories, query, k=3):
+    query_terms = _terms(query)
+    scored = []
+    for m in memories:
+        score = len(query_terms & _terms(m["text"]))
+        if score > 0:
+            scored.append((-score, -m["turn"], m["id"]))
+    scored.sort()
+    return [memory_id for _, _, memory_id in scored[:k]]
+```
+
+</Solution>

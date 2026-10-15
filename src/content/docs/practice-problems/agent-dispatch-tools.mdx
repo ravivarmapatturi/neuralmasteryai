@@ -1,0 +1,62 @@
+---
+title: "Dispatch Tool Calls Without Crashing the Agent"
+description: "Build an Agent, stage 3 of 12: Tools fail all the time: a city with no data, a divide by zero, a tool name the model invented."
+difficulty: "easy"
+topic: "Build an Agent"
+sidebar_position: 2003
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## One function, four outcomes
+
+The **dispatcher**: the one function that turns a parsed tool call into a string the model will read next.
+
+```text
+dispatch({"tool": "divide", ...})
+  ├─ unknown tool?     → "error: unknown tool ..."
+  ├─ bad arguments?    → "error: invalid arguments ..."
+  ├─ tool raised?      → "error: divide raised
+  │                        ZeroDivisionError: ..."
+  └─ success           → "0.25"
+```
+
+## Everything comes back as a string
+
+Everything comes back as a **string**, because the model only reads text. Listing the available tools in the "unknown tool" error is deliberate: the model asked for something that doesn't exist, so you give it the menu.
+
+## Failures are normal in a real run
+
+In a real agent run, tool failures are normal. APIs time out, rows don't exist, users ask about Atlantis. If one exception escapes, the whole run dies and the user gets a stack trace. When the failure comes back as an observation, the model can apologise, retry with different arguments, or try another tool. Anthropic's and OpenAI's tool-use docs both recommend returning errors to the model (with an `is_error` flag) rather than raising.
+
+## Not every error should reach the model
+
+`except Exception` is a blunt tool. In production you'd separate **retryable** errors (timeouts, rate limits), which you retry with backoff *before* the model sees them, from **semantic** errors (bad city), which go to the model. You'd also put timeouts and permission checks around tools that touch the outside world.
+
+> **Remember:** the dispatcher's contract is "always returns a string". Every failure becomes information for the model.
+
+Next: you have parse, validate and dispatch. Stage 4 wires them into the actual **agent loop**.
+
+## Reference solution
+
+Try the tests first. The reference is here so you can compare approaches after you've passed, or get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def dispatch(call):
+    name, arguments = call["tool"], call["arguments"]
+    if name not in TOOLS:
+        available = ", ".join(sorted(TOOLS))
+        return f"error: unknown tool '{name}'. available tools: {available}"
+    errors = validate_arguments(arguments, TOOLS[name]["schema"])
+    if errors:
+        return f"error: invalid arguments for '{name}': " + "; ".join(errors)
+    try:
+        result = TOOLS[name]["fn"](**arguments)
+    except Exception as e:
+        return f"error: {name} raised {type(e).__name__}: {e}"
+    return result if isinstance(result, str) else json.dumps(result)
+```
+
+</Solution>

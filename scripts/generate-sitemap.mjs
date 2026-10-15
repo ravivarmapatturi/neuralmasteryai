@@ -3,7 +3,7 @@
 // sitemap.xml into dist/ at build time. Kept as a plain filesystem walk
 // rather than importing contentTree.ts directly, since that module relies
 // on Vite's import.meta.glob and isn't runnable under plain Node.
-import { writeFileSync, statSync, readdirSync } from 'node:fs';
+import { writeFileSync, statSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve, relative, join } from 'node:path';
 
 const SITE_URL = 'https://neuralmasteryai.com';
@@ -20,8 +20,18 @@ function walk(dir) {
   return out;
 }
 
-const files = walk(docsDir);
+// Only curated practice problems are listed, at their descriptive slugs
+// (src/data/practiceSlugs.generated.json, built from practiceCatalog.ts).
+// Hidden problems keep working URLs but aren't advertised to crawlers.
+const practiceSlugs = JSON.parse(readFileSync(resolve(import.meta.dirname, '..', 'src', 'data', 'practiceSlugs.generated.json'), 'utf8'));
+const trackSlugs = [...readFileSync(resolve(import.meta.dirname, '..', 'src', 'data', 'practiceCatalog.ts'), 'utf8').matchAll(/^    slug: '([a-z0-9-]+)',$/gm)].map((m) => m[1]);
+
+const files = walk(docsDir).filter((f) => {
+  const rel = relative(docsDir, f).replace(/\.mdx$/, '').split('\\').join('/');
+  return !rel.startsWith('practice-problems/') || practiceSlugs[rel.slice('practice-problems/'.length)];
+});
 const urls = [
+  ...trackSlugs.map((slug) => ({ loc: `${SITE_URL}/practice/track/${slug}`, lastmod: null })),
   { loc: `${SITE_URL}/`, lastmod: null },
   { loc: `${SITE_URL}/learn`, lastmod: null },
   { loc: `${SITE_URL}/practice`, lastmod: null },
@@ -32,7 +42,7 @@ const urls = [
     // its comment). overview.mdx no longer exists on disk (superseded by
     // the real /practice list page above), so it's never walked here.
     const loc = rel.startsWith('practice-problems/')
-      ? `${SITE_URL}/practice/${rel.slice('practice-problems/'.length)}`
+      ? `${SITE_URL}/practice/${practiceSlugs[rel.slice('practice-problems/'.length)]}`
       : `${SITE_URL}/docs/${rel}`;
     return { loc, lastmod: statSync(f).mtime.toISOString().slice(0, 10) };
   }),

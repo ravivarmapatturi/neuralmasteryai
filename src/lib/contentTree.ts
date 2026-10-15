@@ -1,6 +1,9 @@
 import { lazy, type ComponentType } from 'react';
 import pageMeta from '../data/pageMeta.generated.json';
 import lastUpdatedMap from '../data/lastUpdated.generated.json';
+import practiceSlugs from '../data/practiceSlugs.generated.json';
+import practiceDuplicates from '../data/practiceDuplicates.generated.json';
+import { CATALOG } from '../data/practiceCatalog';
 
 export interface DocFrontmatter {
   title?: string;
@@ -41,6 +44,10 @@ export interface DocPage {
   difficulty?: PracticeDifficulty;
   topic?: string;
   placeholder?: boolean;
+  /** Practice-problem-only: the problem's file id (e.g. "dl-nn-prob-1"),
+   * which keys its test data and saved code. Its URL uses the descriptive
+   * slug from practiceSlugs.generated.json instead when it has one. */
+  problemId?: string;
 }
 
 export interface SidebarSection {
@@ -111,7 +118,34 @@ const typedPageMeta = pageMeta as { pages: Record<string, PageMetaEntry>; catego
  * redirect that sends its old URL to /practice. */
 function practiceRoute(slug: string): string | null {
   const name = slug.slice(PRACTICE_PROBLEMS_PREFIX.length);
-  return name === 'overview' ? null : `/practice/${name}`;
+  return name === 'overview' ? null : `/practice/${PRACTICE_SLUGS[name] ?? name}`;
+}
+
+/** Curated problems get descriptive URLs ("dl-nn-prob-1" ->
+ * "dense-layer-forward-pass"); see scripts/practice/build-catalog.mjs. */
+const PRACTICE_SLUGS = practiceSlugs as Record<string, string>;
+const PRACTICE_ID_BY_SLUG = new Map(Object.entries(PRACTICE_SLUGS).map(([id, slug]) => [slug, id]));
+
+/** "/practice/dense-layer-forward-pass" or "dense-layer-forward-pass" -> "dl-nn-prob-1". */
+export function practiceIdForSlug(slugOrRoute: string): string {
+  const slug = normalizeRoute(slugOrRoute).replace(/^\/practice\//, '');
+  return PRACTICE_ID_BY_SLUG.get(slug) ?? slug;
+}
+
+/** The current URL for an old "/practice/<file-id>" route whose problem has
+ * since moved to a descriptive slug, or undefined when nothing moved. */
+export function legacyPracticeRedirect(route: string): string | undefined {
+  const name = normalizeRoute(route).replace(/^\/practice\//, '');
+  // A hidden copy of a curated problem goes to the curated version.
+  const curatedId = (practiceDuplicates as Record<string, string>)[name] ?? name;
+  const slug = PRACTICE_SLUGS[curatedId];
+  return slug && slug !== name ? `/practice/${slug}` : undefined;
+}
+
+/** Generated problem titles carry boilerplate ("Practice: Practice: X",
+ * "#092. X") that says nothing to a reader. */
+function cleanPracticeTitle(title: string): string {
+  return title.replace(/^(Practice:\s*)+/i, '').replace(/^#\d+\.\s*/, '');
 }
 
 function buildPages(): DocPage[] {
@@ -128,16 +162,20 @@ function buildPages(): DocPage[] {
     }
 
     let route = docsRoute;
+    let title = meta.title ?? titleCase(meta.slug.split('/').pop()!);
+    let problemId: string | undefined;
     if (meta.section === PRACTICE_PROBLEMS_SECTION) {
       const remapped = practiceRoute(meta.slug);
       if (!remapped) continue; // overview.mdx -- see practiceRoute's comment
       route = remapped;
+      title = cleanPracticeTitle(title);
+      problemId = meta.slug.slice(PRACTICE_PROBLEMS_PREFIX.length);
     }
 
     pages.push({
       slug: meta.slug,
       route,
-      title: meta.title ?? titleCase(meta.slug.split('/').pop()!),
+      title,
       description: meta.description ?? undefined,
       sidebarPosition: meta.sidebarPosition ?? 999,
       section: meta.section,
@@ -146,6 +184,7 @@ function buildPages(): DocPage[] {
       difficulty: meta.difficulty ?? undefined,
       topic: meta.topic ?? undefined,
       placeholder: meta.placeholder ?? false,
+      problemId,
     });
   }
   return pages;
@@ -158,8 +197,24 @@ const allPages = buildPages();
  * docs sidebar section (see getSidebar()'s own exclusion below), so
  * PracticeListPage and Home's "N+ problems" count read from here instead. */
 export function getPracticeProblems(): DocPage[] {
-  return allPages.filter((p) => p.section === PRACTICE_PROBLEMS_SECTION).sort((a, b) => a.sidebarPosition - b.sidebarPosition);
+  return curatedPractice;
 }
+
+/** Every practice page, curated or hidden -- for views derived from a
+ * learner's own history (profile identity, badges), where a problem they
+ * solved before it was hidden must still count. */
+export function getAllPracticeProblems(): DocPage[] {
+  return allPages.filter((p) => p.section === PRACTICE_PROBLEMS_SECTION);
+}
+
+/** The curated catalogue only (src/data/practiceCatalog.ts), in track
+ * order. Problems outside it keep their pages and URLs but are left out of
+ * every list, count and recommendation. */
+const curatedPractice: DocPage[] = (() => {
+  const byId = new Map<string, DocPage>();
+  for (const p of allPages) if (p.problemId) byId.set(p.problemId, p);
+  return CATALOG.flatMap((track) => track.problems.map((id) => byId.get(id)).filter((p): p is DocPage => Boolean(p)));
+})();
 
 export function getSidebar(): SidebarSection[] {
   const bySection = new Map<string, DocPage[]>();

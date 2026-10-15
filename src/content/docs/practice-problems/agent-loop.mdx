@@ -1,0 +1,69 @@
+---
+title: "The Agent Loop"
+description: "Build an Agent, stage 4 of 12: This is the loop behind ReAct, Claude Code and every 'agent' framework: ask the model, run the tool it picks, append the result, ask again, and stop when it answers."
+difficulty: "medium"
+topic: "Build an Agent"
+sidebar_position: 2004
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## The fifteen lines inside every agent
+
+The loop itself. Everything from stages 1–3 plugs in here:
+
+```text
+messages = [system, user task]
+repeat up to max_steps:
+    reply = llm(messages)                 ← the model decides what happens next
+    messages += assistant(reply)
+    call = parse_tool_call(reply)         ← stage 1
+    if call is None: return reply         ← final answer
+    messages += tool(dispatch(call))      ← stages 2 + 3
+give up: max_steps
+```
+
+## The model is stateless
+
+The model is **stateless**. It sees only the `messages` list you send on that call. So "the agent remembers the weather" really means "your loop appended the tool result, and the model read it on the next call." The scripted model in this sandbox enforces exactly that: `{last_tool_result}` in its reply is filled from the messages it actually received. Forget to append the result and the answer comes back with nothing in that slot.
+
+This is the **ReAct** pattern (Reason + Act, Yao et al. 2022): think, act, observe, repeat. Modern tool-calling APIs drop the explicit "Thought:" text, but the control flow is the same loop.
+
+## Frameworks are this loop plus plumbing
+
+This loop is what's inside Claude Code, the OpenAI Agents SDK, LangGraph's prebuilt ReAct agent and smolagents. Once you've written it, the frameworks stop looking like magic. They add state, persistence and nicer tool registration around these lines.
+
+## Three ways this loop still fails
+
+This loop trusts the model completely. One malformed reply and `parse_tool_call` raises straight through your loop. A model that keeps calling the same tool will burn every step. There's no limit on how big `messages` grows. The next three stages fix exactly those three failures.
+
+> **Remember:** the model only knows what's in `messages`. Your loop's job is to keep that list honest, and to stop.
+
+Next: stage 5 makes the loop survive bad replies instead of crashing.
+
+## Reference solution
+
+Try the tests first. The reference is here so you can compare approaches after you've passed, or get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def run_agent(task, script, max_steps=5):
+    llm = make_llm(script)
+    messages = [{"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": task}]
+    tools_called = []
+    for step in range(1, max_steps + 1):
+        reply = llm(messages)
+        messages.append({"role": "assistant", "content": reply})
+        call = parse_tool_call(reply)
+        if call is None:
+            return {"answer": reply, "steps": step, "tools_called": tools_called,
+                    "stop_reason": "final_answer"}
+        tools_called.append(call["tool"])
+        messages.append({"role": "tool", "content": dispatch(call)})
+    return {"answer": None, "steps": max_steps, "tools_called": tools_called,
+            "stop_reason": "max_steps"}
+```
+
+</Solution>

@@ -1,8 +1,8 @@
 import { Suspense } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import Navbar from './Navbar';
 import PracticeWorkspace from '../practice/PracticeWorkspace';
-import { getPageByRoute, normalizeRoute } from '../../lib/contentTree';
+import { getPageByRoute, legacyPracticeRedirect, normalizeRoute } from '../../lib/contentTree';
 import { getPracticeProblem } from '../../lib/practiceProblem';
 import { useDocumentTitle } from '../../lib/useDocumentTitle';
 import { useDocumentMeta } from '../../lib/useDocumentMeta';
@@ -17,8 +17,12 @@ export default function PracticeProblemLayout() {
   const route = normalizeRoute(location.pathname);
   const page = getPageByRoute(route);
 
+  const movedTo = legacyPracticeRedirect(route);
+
   useDocumentTitle(page ? page.title : 'Practice Problem');
   useDocumentMeta(page?.title, page?.description);
+
+  if (movedTo) return <Navigate to={movedTo} replace />;
 
   if (!page) {
     return (
@@ -31,7 +35,7 @@ export default function PracticeProblemLayout() {
     );
   }
 
-  const problemId = route.replace(/^\/practice\//, '').replace(/\/$/, '');
+  const problemId = page.problemId ?? route.replace(/^\/practice\//, '').replace(/\/$/, '');
   const structuredProblem = getPracticeProblem(problemId);
   const { Component } = page;
 

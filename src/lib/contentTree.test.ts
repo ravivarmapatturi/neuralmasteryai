@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getSidebar, getPageByRoute, getPracticeProblems, getFlatPages } from './contentTree'
+import { getSidebar, getPageByRoute, getPracticeProblems, getAllPracticeProblems, getFlatPages, legacyPracticeRedirect } from './contentTree'
 import { getPracticeProblem } from './practiceProblem'
 
 describe('contentTree: practice-problems -> /practice IA split', () => {
@@ -36,27 +36,46 @@ describe('contentTree: practice-problems -> /practice IA split', () => {
     expect(problems.some((p) => p.route === '/practice/overview')).toBe(false)
   })
 
-  it('every real practice problem carries a topic, and all but the 4 design challenges carry a difficulty', () => {
+  it('every curated practice problem carries a topic and a difficulty', () => {
     const problems = getPracticeProblems()
-    const withTopic = problems.filter((p) => p.topic)
-    const withDifficulty = problems.filter((p) => p.difficulty)
-    expect(withTopic.length).toBe(problems.length)
-    expect(problems.length - withDifficulty.length).toBe(4)
+    expect(problems.every((p) => p.topic)).toBe(true)
+    expect(problems.every((p) => p.difficulty)).toBe(true)
   })
 
-  it('every single practice problem in the platform resolves to a valid structured PracticeProblem definition for the IDE workspace', () => {
+  it('every curated practice problem resolves, by its public slug, to structured test data for the IDE workspace', () => {
     const problems = getPracticeProblems()
-    expect(problems.length).toBeGreaterThan(60)
+    expect(problems.length).toBeGreaterThan(200)
     for (const prob of problems) {
       const slug = prob.route.replace(/^\/practice\//, '')
       const structured = getPracticeProblem(slug)
       expect(structured).toBeDefined()
-      expect(structured!.id).toBe(slug)
+      expect(structured!.id).toBe(prob.problemId)
       expect(structured!.title).toBeTruthy()
       expect(structured!.functionName).toBeTruthy()
       expect(structured!.starterCode).toContain('def ')
-      expect(structured!.libraryPolicyText).toContain('Libraries allowed')
-      expect(structured!.bonusPoints).toBeGreaterThan(0)
+      expect(structured!.libraryPolicyText).toBeTruthy()
+      expect(structured!.testCases.length).toBeGreaterThan(1)
+    }
+  })
+
+  it('curated problems get descriptive URLs, and old file-id URLs and hidden duplicates redirect to them', () => {
+    expect(getPracticeProblems().some((p) => p.route === '/practice/reverse-a-singly-linked-list')).toBe(true)
+    expect(legacyPracticeRedirect('/practice/ll-queue-prob-1')).toBe('/practice/reverse-a-singly-linked-list')
+    expect(legacyPracticeRedirect('/practice/ds-algo-prob-1')).toBe('/practice/reverse-a-singly-linked-list')
+    expect(legacyPracticeRedirect('/practice/reverse-a-singly-linked-list')).toBeUndefined()
+    expect(legacyPracticeRedirect('/practice/agent-loop')).toBeUndefined()
+  })
+
+  it('hidden problems keep their pages but stay out of the curated list', () => {
+    expect(getPageByRoute('/practice/agent-loop-prob-2')).toBeDefined()
+    expect(getPracticeProblems().some((p) => p.problemId === 'agent-loop-prob-2')).toBe(false)
+    expect(getAllPracticeProblems().length).toBeGreaterThan(getPracticeProblems().length)
+  })
+
+  it('strips generator boilerplate from practice titles', () => {
+    for (const p of getAllPracticeProblems()) {
+      expect(p.title).not.toMatch(/^Practice:/)
+      expect(p.title).not.toMatch(/^#\d+\./)
     }
   })
 })

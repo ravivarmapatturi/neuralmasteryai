@@ -1,0 +1,67 @@
+---
+title: "Parallel Tool Calls With IDs"
+description: "Build an Agent, stage 8 of 12: Modern models ask for several tools in one turn (check Paris and Tokyo at once), and every result must carry the exact ID of the call it answers."
+difficulty: "medium"
+topic: "Build an Agent"
+sidebar_position: 2008
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Several calls in one reply
+
+The batch executor for **parallel tool calls**, where the model emits several calls in one reply:
+
+```text
+assistant:
+  tool_use  id=toolu_01  get_weather(Paris)
+  tool_use  id=toolu_02  get_weather(Tokyo)
+you:
+  tool_result  toolu_01  "18C, light rain"
+  tool_result  toolu_02  "24C, clear"
+```
+
+## IDs tie each result to its call
+
+Each result echoes the **id** of the call it answers. The model uses those ids to line up results with requests, and the APIs validate them strictly. Every call needs exactly one result with a matching id. A duplicate, a missing one or an extra one gets the request rejected.
+
+Two policies show up here that you'll meet again in real systems:
+- **Isolation:** each call succeeds or fails on its own. A failed divide shouldn't erase a successful weather lookup.
+- **Fan-out limit:** a confused model can emit 50 calls at once. Cap it, and tell the model why in plain words.
+
+## Parallel calls cut latency
+
+Parallel calls cut latency a lot. Two independent lookups take as long as the slower one, not the sum. Claude, GPT-4-class models and Gemini all emit them by default when calls are independent. Your stage-12 capstone uses this function directly.
+
+## Protocol-parallel isn't truly concurrent
+
+This runs calls one after another, so it's "parallel" only in the protocol sense. Real executors use `asyncio.gather` or a thread pool, with per-call timeouts. And running calls concurrently is only safe when they're **independent**: two calls that write to the same record need ordering. When steps depend on each other, you need a plan, which is stage 10.
+
+> **Remember:** one result per call, same order, matching ids, and each call fails on its own.
+
+Next: stage 9 gives the agent a long-term memory that outlives the context window.
+
+## Reference solution
+
+Try the tests first. The reference is here so you can compare approaches after you've passed, or get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def execute_tool_calls(calls, max_parallel=4):
+    results = []
+    seen = set()
+    for i, call in enumerate(calls, start=1):
+        call_id = call.get("id") or f"call_{i}"
+        if call_id in seen:
+            content = f"error: duplicate tool_call_id '{call_id}'"
+        elif i > max_parallel:
+            content = f"error: too many parallel tool calls (limit {max_parallel})"
+        else:
+            content = dispatch({"tool": call["tool"], "arguments": call.get("arguments", {})})
+        seen.add(call_id)
+        results.append({"role": "tool", "tool_call_id": call_id, "content": content})
+    return results
+```
+
+</Solution>

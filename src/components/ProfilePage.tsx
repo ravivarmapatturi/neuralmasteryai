@@ -12,7 +12,7 @@ import { useLeaderboard } from '../lib/useLeaderboard';
 import { levelForPoints } from '../lib/gamification';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useDocumentMeta } from '../lib/useDocumentMeta';
-import { getFlatPages, getPracticeProblems } from '../lib/contentTree';
+import { getFlatPages, getAllPracticeProblems } from '../lib/contentTree';
 import { useProgress } from '../contexts/ProgressContext';
 import { practiceStats } from '../lib/mastery';
 import { rankForLevel, nextRankTier } from '../lib/rankTiers';
@@ -43,7 +43,7 @@ export default function ProfilePage() {
   const levelPct = xpForNextLevel === 0 ? 1 : xpIntoLevel / xpForNextLevel;
 
   const learnPages = getFlatPages();
-  const problems = getPracticeProblems();
+  const problems = getAllPracticeProblems();
   const lessonsCompleted = countWithin(learnPages.map((page) => page.route));
   const stats = practiceStats(problems, events);
   const badgeStats = computeBadgeStats(events, points, streak, Boolean(user), problems);

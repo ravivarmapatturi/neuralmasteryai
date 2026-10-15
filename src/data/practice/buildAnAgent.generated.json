@@ -1,0 +1,3822 @@
+[
+ {
+  "id": "agent-parse-tool-call",
+  "title": "Parse a Tool Call From Model Output",
+  "difficulty": "easy",
+  "topic": "Build an Agent",
+  "estimatedTime": "10–15 min",
+  "functionName": "parse_tool_call",
+  "functionSignature": "parse_tool_call(text: str) -> dict | None",
+  "starterCode": "import json\nimport math\nimport re\n\n\ndef parse_tool_call(text):\n    \"\"\"Return {\"tool\": str, \"arguments\": dict} for a tool call, None for a final answer.\n    Raise ValueError for a malformed tool call.\"\"\"\n    # Your code here\n    pass\n",
+  "mission": "Every agent starts here: the model replies with text, and your code has to decide whether that text is a tool call or a final answer. Real models wrap JSON in prose and code fences, so a naive json.loads crashes on day one.",
+  "taskDescription": "Implement `parse_tool_call(text)`.\n\n- If `text` does not contain the substring `\"tool\"` (with the double quotes), it's a final answer: return `None`.\n- Otherwise find the JSON: if the text has a fenced code block (three backticks, optionally tagged json), use the fence's contents. If not, use everything from the first `{` to the last `}`.\n- Parse it. Return `{\"tool\": name, \"arguments\": args}`. A missing `arguments` key means `{}`.\n- Raise `ValueError` (not json's own JSONDecodeError) when the JSON is invalid, when `tool` is missing or empty, or when `arguments` isn't an object.",
+  "constraints": [
+   "Standard library only (`json` and `re` are already imported).",
+   "Raise exactly `ValueError` -- the agent loop in stage 5 catches that one type.",
+   "Hidden tests cover fences, missing arguments and malformed JSON."
+  ],
+  "testCases": [
+   {
+    "id": "plain-json",
+    "label": "Bare JSON tool call",
+    "input": {
+     "text": "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}"
+    },
+    "expectedOutput": {
+     "tool": "get_weather",
+     "arguments": {
+      "city": "Paris"
+     }
+    },
+    "hidden": false
+   },
+   {
+    "id": "prose-before",
+    "label": "Model thinks out loud before the JSON",
+    "input": {
+     "text": "Let me check the forecast first.\n{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\"}}"
+    },
+    "expectedOutput": {
+     "tool": "get_weather",
+     "arguments": {
+      "city": "Tokyo"
+     }
+    },
+    "hidden": false
+   },
+   {
+    "id": "final-answer",
+    "label": "No tool call means a final answer",
+    "input": {
+     "text": "It is 18C and raining in Paris."
+    },
+    "expectedOutput": null,
+    "hidden": false
+   },
+   {
+    "id": "fenced",
+    "label": "JSON inside a ```json fence",
+    "input": {
+     "text": "Sure!\n```json\n{\"tool\": \"add\", \"arguments\": {\"a\": 2, \"b\": 3}}\n```"
+    },
+    "expectedOutput": {
+     "tool": "add",
+     "arguments": {
+      "a": 2,
+      "b": 3
+     }
+    },
+    "hidden": false
+   },
+   {
+    "id": "no-arguments",
+    "label": "Missing arguments defaults to {}",
+    "input": {
+     "text": "{\"tool\": \"lookup_doc\"}"
+    },
+    "expectedOutput": {
+     "tool": "lookup_doc",
+     "arguments": {}
+    },
+    "hidden": true
+   },
+   {
+    "id": "trailing-comma",
+    "label": "Malformed JSON raises ValueError",
+    "input": {
+     "text": "{\"tool\": \"add\", \"arguments\": {\"a\": 1,}}"
+    },
+    "expectedOutput": null,
+    "hidden": true,
+    "expectError": "ValueError"
+   },
+   {
+    "id": "arguments-list",
+    "label": "arguments must be an object",
+    "input": {
+     "text": "{\"tool\": \"add\", \"arguments\": [1, 2]}"
+    },
+    "expectedOutput": null,
+    "hidden": true,
+    "expectError": "ValueError"
+   },
+   {
+    "id": "empty-tool",
+    "label": "Empty tool name raises ValueError",
+    "input": {
+     "text": "{\"tool\": \"\", \"arguments\": {}}"
+    },
+    "expectedOutput": null,
+    "hidden": true,
+    "expectError": "ValueError"
+   },
+   {
+    "id": "fence-wins",
+    "label": "A fence wins over braces in the surrounding prose",
+    "input": {
+     "text": "```\n{\"tool\": \"divide\", \"arguments\": {\"a\": 1, \"b\": 4}}\n```\nI will divide {a} by {b}."
+    },
+    "expectedOutput": {
+     "tool": "divide",
+     "arguments": {
+      "a": 1,
+      "b": 4
+     }
+    },
+    "hidden": true
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Check for the final-answer case first. Then work out which slice of the text to hand to json.loads.",
+   "strong": "re.search(r\"```(?:json)?\\s*(.*?)```\", text, re.DOTALL) finds a fence. Wrap json.loads in try/except json.JSONDecodeError and re-raise as ValueError.",
+   "concept": "Parsing is the trust boundary between a probabilistic model and deterministic code. Be strict, and make every failure the same predictable type."
+  },
+  "conceptConnections": [
+   {
+    "title": "ReAct agents in production",
+    "route": "/docs/agents/react-agent-production",
+    "description": "The Thought → Action → Observation loop, the tool-calling contract and parse-failure recovery."
+   },
+   {
+    "title": "Agent fundamentals: tool use",
+    "route": "/docs/agents/agent-fundamentals",
+    "description": "What makes something an agent, and how function calling actually works."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Build an Agent",
+  "stageNumber": 1,
+  "points": 10
+ },
+ {
+  "id": "agent-validate-tool-arguments",
+  "title": "Validate Tool Arguments Against a Schema",
+  "difficulty": "easy",
+  "topic": "Build an Agent",
+  "estimatedTime": "10–15 min",
+  "functionName": "validate_arguments",
+  "functionSignature": "validate_arguments(arguments: dict, schema: dict) -> list[str]",
+  "starterCode": "import json\nimport math\nimport re\n\n\ndef validate_arguments(arguments, schema):\n    \"\"\"Return a list of human-readable error strings ([] if the arguments are valid).\"\"\"\n    # Your code here\n    pass\n",
+  "mission": "Models hallucinate arguments: wrong types, missing fields, extra fields they made up. Check them against the tool's JSON Schema before you run anything, and produce error messages clear enough for the model to fix its own call.",
+  "taskDescription": "Implement `validate_arguments(arguments, schema)`. It returns a list of error strings, and `[]` means valid.\n\n`schema` looks like `{\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}`. Supported types are `string`, `number` (int or float), `integer`, `boolean`, `array` and `object`.\n\nProduce errors in this order:\n1. For each name in `required` order that's missing: `missing required argument 'city'`\n2. Then for each argument, in the order it appears in `arguments`:\n   - not in `properties`: `unexpected argument 'units'`\n   - wrong type: `argument 'a' should be number, got string`\n\nName the received type in JSON terms: string, boolean, integer, number, array, object or null.",
+  "constraints": [
+   "Watch out: in Python `True` is an `int`. A boolean is never a valid number or integer.",
+   "An `int` is a valid `number`, but a float is not a valid `integer`.",
+   "Error strings must match exactly, because the model reads them in stage 3."
+  ],
+  "testCases": [
+   {
+    "id": "valid",
+    "label": "Valid arguments",
+    "input": {
+     "arguments": {
+      "city": "Paris"
+     },
+     "schema": {
+      "type": "object",
+      "properties": {
+       "city": {
+        "type": "string"
+       },
+       "units": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "city"
+      ]
+     }
+    },
+    "expectedOutput": [],
+    "hidden": false
+   },
+   {
+    "id": "missing",
+    "label": "Missing required argument",
+    "input": {
+     "arguments": {},
+     "schema": {
+      "type": "object",
+      "properties": {
+       "city": {
+        "type": "string"
+       },
+       "units": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "city"
+      ]
+     }
+    },
+    "expectedOutput": [
+     "missing required argument 'city'"
+    ],
+    "hidden": false
+   },
+   {
+    "id": "wrong-type",
+    "label": "String where a number is required",
+    "input": {
+     "arguments": {
+      "a": "2",
+      "b": 3
+     },
+     "schema": {
+      "type": "object",
+      "properties": {
+       "a": {
+        "type": "number"
+       },
+       "b": {
+        "type": "number"
+       }
+      },
+      "required": [
+       "a",
+       "b"
+      ]
+     }
+    },
+    "expectedOutput": [
+     "argument 'a' should be number, got string"
+    ],
+    "hidden": false
+   },
+   {
+    "id": "unexpected",
+    "label": "Hallucinated extra argument",
+    "input": {
+     "arguments": {
+      "city": "Lima",
+      "country": "PE"
+     },
+     "schema": {
+      "type": "object",
+      "properties": {
+       "city": {
+        "type": "string"
+       },
+       "units": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "city"
+      ]
+     }
+    },
+    "expectedOutput": [
+     "unexpected argument 'country'"
+    ],
+    "hidden": false
+   },
+   {
+    "id": "int-is-number",
+    "label": "An int is a valid number",
+    "input": {
+     "arguments": {
+      "a": 2,
+      "b": 3.5
+     },
+     "schema": {
+      "type": "object",
+      "properties": {
+       "a": {
+        "type": "number"
+       },
+       "b": {
+        "type": "number"
+       }
+      },
+      "required": [
+       "a",
+       "b"
+      ]
+     }
+    },
+    "expectedOutput": [],
+    "hidden": true
+   },
+   {
+    "id": "bool-not-number",
+    "label": "True is not a number",
+    "input": {
+     "arguments": {
+      "a": true,
+      "b": 1
+     },
+     "schema": {
+      "type": "object",
+      "properties": {
+       "a": {
+        "type": "number"
+       },
+       "b": {
+        "type": "number"
+       }
+      },
+      "required": [
+       "a",
+       "b"
+      ]
+     }
+    },
+    "expectedOutput": [
+     "argument 'a' should be number, got boolean"
+    ],
+    "hidden": true
+   },
+   {
+    "id": "ordering",
+    "label": "Several errors in the specified order",
+    "input": {
+     "arguments": {
+      "b": "x",
+      "c": 1
+     },
+     "schema": {
+      "type": "object",
+      "properties": {
+       "a": {
+        "type": "number"
+       },
+       "b": {
+        "type": "number"
+       }
+      },
+      "required": [
+       "a",
+       "b"
+      ]
+     }
+    },
+    "expectedOutput": [
+     "missing required argument 'a'",
+     "argument 'b' should be number, got string",
+     "unexpected argument 'c'"
+    ],
+    "hidden": true
+   },
+   {
+    "id": "null",
+    "label": "null is reported as null",
+    "input": {
+     "arguments": {
+      "city": null
+     },
+     "schema": {
+      "type": "object",
+      "properties": {
+       "city": {
+        "type": "string"
+       },
+       "units": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "city"
+      ]
+     }
+    },
+    "expectedOutput": [
+     "argument 'city' should be string, got null"
+    ],
+    "hidden": true
+   },
+   {
+    "id": "integer-array-boolean",
+    "label": "integer, array and boolean types",
+    "input": {
+     "arguments": {
+      "k": 2.5,
+      "flags": "a,b",
+      "verbose": true
+     },
+     "schema": {
+      "type": "object",
+      "properties": {
+       "k": {
+        "type": "integer"
+       },
+       "flags": {
+        "type": "array"
+       },
+       "verbose": {
+        "type": "boolean"
+       }
+      },
+      "required": [
+       "k"
+      ]
+     }
+    },
+    "expectedOutput": [
+     "argument 'k' should be integer, got number",
+     "argument 'flags' should be array, got string"
+    ],
+    "hidden": true
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Do two passes: required names first, then the arguments the model actually sent.",
+   "strong": "Use isinstance(value, bool) checks before int checks. Map Python types to JSON names with a dict: {str: 'string', bool: 'boolean', int: 'integer', float: 'number', list: 'array', dict: 'object', type(None): 'null'}.",
+   "concept": "Validation errors are the model's feedback channel. Precise messages ('should be number, got string') let it self-correct on the next turn."
+  },
+  "conceptConnections": [
+   {
+    "title": "Agent fundamentals: tool use",
+    "route": "/docs/agents/agent-fundamentals",
+    "description": "What makes something an agent, and how function calling actually works."
+   },
+   {
+    "title": "ReAct agents in production",
+    "route": "/docs/agents/react-agent-production",
+    "description": "The Thought → Action → Observation loop, the tool-calling contract and parse-failure recovery."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": "agent-parse-tool-call",
+  "stage": "Build an Agent",
+  "stageNumber": 2,
+  "points": 10
+ },
+ {
+  "id": "agent-dispatch-tools",
+  "title": "Dispatch Tool Calls Without Crashing the Agent",
+  "difficulty": "easy",
+  "topic": "Build an Agent",
+  "estimatedTime": "10–15 min",
+  "functionName": "dispatch",
+  "functionSignature": "dispatch(call: dict) -> str",
+  "starterCode": "import json\nimport math\nimport re\n\n\ndef dispatch(call):\n    \"\"\"Run call[\"tool\"] with call[\"arguments\"]; always return a string observation.\"\"\"\n    # Your code here\n    pass\n\n\n# =============================================================================\n# PROVIDED BELOW -- the sandbox and your earlier stages. Read it, don't edit it.\n# =============================================================================\n# ---------------------------------------------------------------------------\n# The sandbox world your agent lives in (provided -- you don't edit this).\n# Four deterministic tools, each with a JSON-Schema-style argument spec,\n# exactly the shape you'd hand a real model's tool-calling API.\n# ---------------------------------------------------------------------------\nWEATHER = {\"paris\": \"18C, light rain\", \"tokyo\": \"24C, clear\", \"lima\": \"16C, overcast\"}\nDOCS = {\n    \"refund-policy\": \"Refunds are accepted within 30 days with a receipt.\",\n    \"shipping\": \"Standard shipping takes 3-5 business days.\",\n}\n\n\ndef add(a, b):\n    return a + b\n\n\ndef divide(a, b):\n    return a / b\n\n\ndef get_weather(city):\n    key = city.strip().lower()\n    if key not in WEATHER:\n        raise ValueError(f\"no weather data for {city}\")\n    return WEATHER[key]\n\n\ndef lookup_doc(doc_id):\n    if doc_id not in DOCS:\n        raise ValueError(f\"no document named {doc_id}\")\n    return DOCS[doc_id]\n\n\nNUM = {\"type\": \"number\"}\nTOOLS = {\n    \"add\": {\"fn\": add, \"schema\": {\"type\": \"object\", \"properties\": {\"a\": NUM, \"b\": NUM}, \"required\": [\"a\", \"b\"]}},\n    \"divide\": {\"fn\": divide, \"schema\": {\"type\": \"object\", \"properties\": {\"a\": NUM, \"b\": NUM}, \"required\": [\"a\", \"b\"]}},\n    \"get_weather\": {\"fn\": get_weather, \"schema\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}},\n    \"lookup_doc\": {\"fn\": lookup_doc, \"schema\": {\"type\": \"object\", \"properties\": {\"doc_id\": {\"type\": \"string\"}}, \"required\": [\"doc_id\"]}},\n}\n\n\n# --- Stage 2: validate_arguments (provided) ---\nJSON_TYPE_NAMES = {str: \"string\", bool: \"boolean\", int: \"integer\", float: \"number\",\n                   list: \"array\", dict: \"object\", type(None): \"null\"}\n\n\ndef _matches(value, expected):\n    if expected == \"string\":\n        return isinstance(value, str)\n    if expected == \"boolean\":\n        return isinstance(value, bool)\n    if expected == \"integer\":\n        return isinstance(value, int) and not isinstance(value, bool)\n    if expected == \"number\":\n        return isinstance(value, (int, float)) and not isinstance(value, bool)\n    if expected == \"array\":\n        return isinstance(value, list)\n    if expected == \"object\":\n        return isinstance(value, dict)\n    return False\n\n\ndef validate_arguments(arguments, schema):\n    errors = []\n    properties = schema.get(\"properties\", {})\n    for name in schema.get(\"required\", []):\n        if name not in arguments:\n            errors.append(f\"missing required argument '{name}'\")\n    for name, value in arguments.items():\n        if name not in properties:\n            errors.append(f\"unexpected argument '{name}'\")\n            continue\n        expected = properties[name][\"type\"]\n        if not _matches(value, expected):\n            got = JSON_TYPE_NAMES.get(type(value), type(value).__name__)\n            errors.append(f\"argument '{name}' should be {expected}, got {got}\")\n    return errors\n",
+  "mission": "Tools fail all the time: a city with no data, a divide by zero, a tool name the model invented. A production dispatcher turns every one of those into an observation the model can read. It never raises one that kills the run.",
+  "taskDescription": "Implement `dispatch(call)`, where `call` is `{\"tool\": name, \"arguments\": {...}}` (what stage 1 returns). Look the tool up in the provided `TOOLS` registry and always return a **string**:\n\n- Unknown tool: `error: unknown tool 'NAME'. available tools: add, divide, get_weather, lookup_doc` (names sorted, comma-separated)\n- Invalid arguments (use your stage-2 `validate_arguments`, provided below): `error: invalid arguments for 'NAME': ` followed by the errors joined with `; `\n- The tool raises: `error: NAME raised ExceptionType: message`\n- Success: the result itself if it's a string, otherwise `json.dumps(result)`",
+  "constraints": [
+   "Never let an exception escape `dispatch`.",
+   "Every return value is a `str`: the model only reads text.",
+   "`TOOLS[name]` is `{\"fn\": callable, \"schema\": dict}`, so call it as `fn(**arguments)`."
+  ],
+  "testCases": [
+   {
+    "id": "add",
+    "label": "Numeric result is serialized",
+    "input": {
+     "call": {
+      "tool": "add",
+      "arguments": {
+       "a": 2,
+       "b": 3
+      }
+     }
+    },
+    "expectedOutput": "5",
+    "hidden": false
+   },
+   {
+    "id": "weather",
+    "label": "String result is returned as-is",
+    "input": {
+     "call": {
+      "tool": "get_weather",
+      "arguments": {
+       "city": "Paris"
+      }
+     }
+    },
+    "expectedOutput": "18C, light rain",
+    "hidden": false
+   },
+   {
+    "id": "unknown",
+    "label": "Hallucinated tool name",
+    "input": {
+     "call": {
+      "tool": "search_web",
+      "arguments": {
+       "query": "x"
+      }
+     }
+    },
+    "expectedOutput": "error: unknown tool 'search_web'. available tools: add, divide, get_weather, lookup_doc",
+    "hidden": false
+   },
+   {
+    "id": "zero-division",
+    "label": "A tool that raises",
+    "input": {
+     "call": {
+      "tool": "divide",
+      "arguments": {
+       "a": 1,
+       "b": 0
+      }
+     }
+    },
+    "expectedOutput": "error: divide raised ZeroDivisionError: division by zero",
+    "hidden": false
+   },
+   {
+    "id": "invalid-args",
+    "label": "Arguments fail validation",
+    "input": {
+     "call": {
+      "tool": "add",
+      "arguments": {
+       "a": "two",
+       "b": 3
+      }
+     }
+    },
+    "expectedOutput": "error: invalid arguments for 'add': argument 'a' should be number, got string",
+    "hidden": true
+   },
+   {
+    "id": "value-error",
+    "label": "Tool raises ValueError",
+    "input": {
+     "call": {
+      "tool": "get_weather",
+      "arguments": {
+       "city": "Atlantis"
+      }
+     }
+    },
+    "expectedOutput": "error: get_weather raised ValueError: no weather data for Atlantis",
+    "hidden": true
+   },
+   {
+    "id": "float",
+    "label": "Float result",
+    "input": {
+     "call": {
+      "tool": "divide",
+      "arguments": {
+       "a": 1,
+       "b": 4
+      }
+     }
+    },
+    "expectedOutput": "0.25",
+    "hidden": true
+   },
+   {
+    "id": "missing-arg",
+    "label": "Missing argument is caught before running",
+    "input": {
+     "call": {
+      "tool": "lookup_doc",
+      "arguments": {}
+     }
+    },
+    "expectedOutput": "error: invalid arguments for 'lookup_doc': missing required argument 'doc_id'",
+    "hidden": true
+   },
+   {
+    "id": "multi-errors",
+    "label": "Multiple validation errors joined with '; '",
+    "input": {
+     "call": {
+      "tool": "add",
+      "arguments": {
+       "a": true
+      }
+     }
+    },
+    "expectedOutput": "error: invalid arguments for 'add': missing required argument 'b'; argument 'a' should be number, got boolean",
+    "hidden": true
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "There are three ways to fail before success: unknown name, bad arguments, and an exception at run time. Handle them in that order.",
+   "strong": "f\"error: {name} raised {type(e).__name__}: {e}\" inside `except Exception as e:`. Use json.dumps for non-string results, so 5 becomes \"5\" and 0.25 becomes \"0.25\".",
+   "concept": "An observation that says 'this failed, here's why' is useful context for the model. A crashed process is nothing at all."
+  },
+  "conceptConnections": [
+   {
+    "title": "ReAct agents in production",
+    "route": "/docs/agents/react-agent-production",
+    "description": "The Thought → Action → Observation loop, the tool-calling contract and parse-failure recovery."
+   },
+   {
+    "title": "Agent fundamentals: tool use",
+    "route": "/docs/agents/agent-fundamentals",
+    "description": "What makes something an agent, and how function calling actually works."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": "agent-validate-tool-arguments",
+  "stage": "Build an Agent",
+  "stageNumber": 3,
+  "points": 10
+ },
+ {
+  "id": "agent-loop",
+  "title": "The Agent Loop",
+  "difficulty": "medium",
+  "topic": "Build an Agent",
+  "estimatedTime": "15–20 min",
+  "functionName": "run_agent",
+  "functionSignature": "run_agent(task: str, script: list[str], max_steps: int = 5) -> dict",
+  "starterCode": "import json\nimport math\nimport re\n\n\ndef run_agent(task, script, max_steps=5):\n    \"\"\"Run the model/tool loop until a final answer or max_steps.\"\"\"\n    llm = make_llm(script)\n    messages = [{\"role\": \"system\", \"content\": SYSTEM_PROMPT},\n                {\"role\": \"user\", \"content\": task}]\n    tools_called = []\n    # Your loop here\n    pass\n\n\n# =============================================================================\n# PROVIDED BELOW -- the sandbox and your earlier stages. Read it, don't edit it.\n# =============================================================================\n# ---------------------------------------------------------------------------\n# The sandbox world your agent lives in (provided -- you don't edit this).\n# Four deterministic tools, each with a JSON-Schema-style argument spec,\n# exactly the shape you'd hand a real model's tool-calling API.\n# ---------------------------------------------------------------------------\nWEATHER = {\"paris\": \"18C, light rain\", \"tokyo\": \"24C, clear\", \"lima\": \"16C, overcast\"}\nDOCS = {\n    \"refund-policy\": \"Refunds are accepted within 30 days with a receipt.\",\n    \"shipping\": \"Standard shipping takes 3-5 business days.\",\n}\n\n\ndef add(a, b):\n    return a + b\n\n\ndef divide(a, b):\n    return a / b\n\n\ndef get_weather(city):\n    key = city.strip().lower()\n    if key not in WEATHER:\n        raise ValueError(f\"no weather data for {city}\")\n    return WEATHER[key]\n\n\ndef lookup_doc(doc_id):\n    if doc_id not in DOCS:\n        raise ValueError(f\"no document named {doc_id}\")\n    return DOCS[doc_id]\n\n\nNUM = {\"type\": \"number\"}\nTOOLS = {\n    \"add\": {\"fn\": add, \"schema\": {\"type\": \"object\", \"properties\": {\"a\": NUM, \"b\": NUM}, \"required\": [\"a\", \"b\"]}},\n    \"divide\": {\"fn\": divide, \"schema\": {\"type\": \"object\", \"properties\": {\"a\": NUM, \"b\": NUM}, \"required\": [\"a\", \"b\"]}},\n    \"get_weather\": {\"fn\": get_weather, \"schema\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}},\n    \"lookup_doc\": {\"fn\": lookup_doc, \"schema\": {\"type\": \"object\", \"properties\": {\"doc_id\": {\"type\": \"string\"}}, \"required\": [\"doc_id\"]}},\n}\n\n\n# ---------------------------------------------------------------------------\n# A scripted stand-in for the model (provided). It replies with `script`\n# in order, but it still READS the conversation: placeholders in a reply\n# are filled from the messages it was actually sent, so a loop that forgets\n# to feed results back gets a wrong answer -- just like a real model would.\n#   {last_tool_result}  -> content of the most recent \"tool\" message\n#   {last_feedback}     -> content of the most recent non-assistant message\n#   {context_size}      -> how many messages the model was sent this call\n# ---------------------------------------------------------------------------\nSYSTEM_PROMPT = (\n    \"You are a helpful agent. To use a tool, reply with JSON: \"\n    '{\"tool\": <name>, \"arguments\": {...}}. Otherwise reply with your final answer.'\n)\n\n\ndef make_llm(script):\n    replies = list(script)\n\n    def llm(messages):\n        if not replies:\n            raise RuntimeError(\"model script exhausted -- your loop called the model too many times\")\n        reply = replies.pop(0)\n        if \"{last_tool_result}\" in reply:\n            last = next((m[\"content\"] for m in reversed(messages) if m[\"role\"] == \"tool\"), \"\")\n            reply = reply.replace(\"{last_tool_result}\", last)\n        if \"{last_feedback}\" in reply:\n            last = next((m[\"content\"] for m in reversed(messages) if m[\"role\"] != \"assistant\"), \"\")\n            reply = reply.replace(\"{last_feedback}\", last)\n        if \"{context_size}\" in reply:\n            reply = reply.replace(\"{context_size}\", str(len(messages)))\n        return reply\n\n    return llm\n\n\ndef count_tokens(text):\n    \"\"\"Rough token estimate: ~4 characters per token (good enough for budgets).\"\"\"\n    return math.ceil(len(text) / 4)\n\n\n# --- Stage 1: parse_tool_call (provided) ---\ndef parse_tool_call(text):\n    if '\"tool\"' not in text:\n        return None  # no tool call -> this is the model's final answer\n    fence = re.search(r\"```(?:json)?\\s*(.*?)```\", text, re.DOTALL)\n    if fence:\n        candidate = fence.group(1)\n    else:\n        start, end = text.find(\"{\"), text.rfind(\"}\")\n        if start == -1 or end < start:\n            raise ValueError(\"tool call has no JSON object\")\n        candidate = text[start:end + 1]\n    try:\n        data = json.loads(candidate)\n    except json.JSONDecodeError as e:\n        raise ValueError(f\"invalid JSON in tool call: {e.msg}\")\n    if not isinstance(data, dict) or not isinstance(data.get(\"tool\"), str) or not data[\"tool\"]:\n        raise ValueError(\"tool call needs a non-empty string 'tool'\")\n    arguments = data.get(\"arguments\", {})\n    if not isinstance(arguments, dict):\n        raise ValueError(\"'arguments' must be an object\")\n    return {\"tool\": data[\"tool\"], \"arguments\": arguments}\n\n\n# --- Stage 2: validate_arguments (provided) ---\nJSON_TYPE_NAMES = {str: \"string\", bool: \"boolean\", int: \"integer\", float: \"number\",\n                   list: \"array\", dict: \"object\", type(None): \"null\"}\n\n\ndef _matches(value, expected):\n    if expected == \"string\":\n        return isinstance(value, str)\n    if expected == \"boolean\":\n        return isinstance(value, bool)\n    if expected == \"integer\":\n        return isinstance(value, int) and not isinstance(value, bool)\n    if expected == \"number\":\n        return isinstance(value, (int, float)) and not isinstance(value, bool)\n    if expected == \"array\":\n        return isinstance(value, list)\n    if expected == \"object\":\n        return isinstance(value, dict)\n    return False\n\n\ndef validate_arguments(arguments, schema):\n    errors = []\n    properties = schema.get(\"properties\", {})\n    for name in schema.get(\"required\", []):\n        if name not in arguments:\n            errors.append(f\"missing required argument '{name}'\")\n    for name, value in arguments.items():\n        if name not in properties:\n            errors.append(f\"unexpected argument '{name}'\")\n            continue\n        expected = properties[name][\"type\"]\n        if not _matches(value, expected):\n            got = JSON_TYPE_NAMES.get(type(value), type(value).__name__)\n            errors.append(f\"argument '{name}' should be {expected}, got {got}\")\n    return errors\n\n\n# --- Stage 3: dispatch (provided) ---\ndef dispatch(call):\n    name, arguments = call[\"tool\"], call[\"arguments\"]\n    if name not in TOOLS:\n        available = \", \".join(sorted(TOOLS))\n        return f\"error: unknown tool '{name}'. available tools: {available}\"\n    errors = validate_arguments(arguments, TOOLS[name][\"schema\"])\n    if errors:\n        return f\"error: invalid arguments for '{name}': \" + \"; \".join(errors)\n    try:\n        result = TOOLS[name][\"fn\"](**arguments)\n    except Exception as e:\n        return f\"error: {name} raised {type(e).__name__}: {e}\"\n    return result if isinstance(result, str) else json.dumps(result)\n",
+  "mission": "This is the loop behind ReAct, Claude Code and every 'agent' framework: ask the model, run the tool it picks, append the result, ask again, and stop when it answers. It's only about 15 lines, and the details are what separate a working agent from one that answers with stale or invented data.",
+  "taskDescription": "Implement `run_agent(task, script, max_steps=5)`.\n\n1. Create the model with `llm = make_llm(script)` (provided). It's a scripted stand-in for a real model.\n2. Start `messages` as `[{\"role\": \"system\", \"content\": SYSTEM_PROMPT}, {\"role\": \"user\", \"content\": task}]`.\n3. Each step: `reply = llm(messages)`, then append `{\"role\": \"assistant\", \"content\": reply}`.\n   - `parse_tool_call(reply)` is `None`: return `{\"answer\": reply, \"steps\": step, \"tools_called\": [...], \"stop_reason\": \"final_answer\"}`\n   - Otherwise record the tool name, run `dispatch(call)`, and append `{\"role\": \"tool\", \"content\": result}`.\n4. If `max_steps` model calls go by without a final answer, return `{\"answer\": None, \"steps\": max_steps, \"tools_called\": [...], \"stop_reason\": \"max_steps\"}`.\n\nSteps count from 1. In this stage you can assume every tool call parses.",
+  "constraints": [
+   "Feed every tool result back as a `tool` message. The scripted model fills `{last_tool_result}` from what you actually sent it.",
+   "Call the model exactly once per step. It raises if you call it more often than the script allows.",
+   "`tools_called` lists tool names in call order, including calls that returned errors."
+  ],
+  "testCases": [
+   {
+    "id": "direct-answer",
+    "label": "Model answers without tools",
+    "input": {
+     "task": "What is the capital of France?",
+     "script": [
+      "Paris is the capital of France."
+     ]
+    },
+    "expectedOutput": {
+     "answer": "Paris is the capital of France.",
+     "steps": 1,
+     "tools_called": [],
+     "stop_reason": "final_answer"
+    },
+    "hidden": false
+   },
+   {
+    "id": "one-tool",
+    "label": "One tool call, then an answer that uses its result",
+    "input": {
+     "task": "Weather in Paris?",
+     "script": [
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}",
+      "Right now Paris is {last_tool_result}."
+     ]
+    },
+    "expectedOutput": {
+     "answer": "Right now Paris is 18C, light rain.",
+     "steps": 2,
+     "tools_called": [
+      "get_weather"
+     ],
+     "stop_reason": "final_answer"
+    },
+    "hidden": false
+   },
+   {
+    "id": "max-steps",
+    "label": "Model never answers: stop at max_steps",
+    "input": {
+     "task": "Weather?",
+     "script": [
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}",
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\"}}",
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Lima\"}}"
+     ],
+     "max_steps": 2
+    },
+    "expectedOutput": {
+     "answer": null,
+     "steps": 2,
+     "tools_called": [
+      "get_weather",
+      "get_weather"
+     ],
+     "stop_reason": "max_steps"
+    },
+    "hidden": false
+   },
+   {
+    "id": "tool-error-fed-back",
+    "label": "Tool errors are observations too",
+    "input": {
+     "task": "Weather in Atlantis?",
+     "script": [
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Atlantis\"}}",
+      "Sorry: {last_tool_result}"
+     ]
+    },
+    "expectedOutput": {
+     "answer": "Sorry: error: get_weather raised ValueError: no weather data for Atlantis",
+     "steps": 2,
+     "tools_called": [
+      "get_weather"
+     ],
+     "stop_reason": "final_answer"
+    },
+    "hidden": false
+   },
+   {
+    "id": "latest-result",
+    "label": "The model sees the latest result, not the first",
+    "input": {
+     "task": "Paris and Tokyo?",
+     "script": [
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}",
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\"}}",
+      "Tokyo: {last_tool_result}"
+     ]
+    },
+    "expectedOutput": {
+     "answer": "Tokyo: 24C, clear",
+     "steps": 3,
+     "tools_called": [
+      "get_weather",
+      "get_weather"
+     ],
+     "stop_reason": "final_answer"
+    },
+    "hidden": true
+   },
+   {
+    "id": "one-step",
+    "label": "max_steps=1 with a tool call",
+    "input": {
+     "task": "2+3?",
+     "script": [
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 2, \"b\": 3}}"
+     ],
+     "max_steps": 1
+    },
+    "expectedOutput": {
+     "answer": null,
+     "steps": 1,
+     "tools_called": [
+      "add"
+     ],
+     "stop_reason": "max_steps"
+    },
+    "hidden": true
+   },
+   {
+    "id": "fenced-call",
+    "label": "Fenced tool call inside the loop",
+    "input": {
+     "task": "Shipping time?",
+     "script": [
+      "Checking.\n```json\n{\"tool\": \"lookup_doc\", \"arguments\": {\"doc_id\": \"shipping\"}}\n```",
+      "{last_tool_result}"
+     ]
+    },
+    "expectedOutput": {
+     "answer": "Standard shipping takes 3-5 business days.",
+     "steps": 2,
+     "tools_called": [
+      "lookup_doc"
+     ],
+     "stop_reason": "final_answer"
+    },
+    "hidden": true
+   },
+   {
+    "id": "three-tools",
+    "label": "Chained calls",
+    "input": {
+     "task": "Do some maths",
+     "script": [
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 2, \"b\": 3}}",
+      "{\"tool\": \"divide\", \"arguments\": {\"a\": 10, \"b\": 4}}",
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1, \"b\": 2}}",
+      "Last: {last_tool_result}"
+     ]
+    },
+    "expectedOutput": {
+     "answer": "Last: 3",
+     "steps": 4,
+     "tools_called": [
+      "add",
+      "divide",
+      "add"
+     ],
+     "stop_reason": "final_answer"
+    },
+    "hidden": true
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "for step in range(1, max_steps + 1): call the model, append its reply, then either return or run a tool and append the result.",
+   "strong": "The answer test fails if you forget messages.append({\"role\": \"tool\", \"content\": dispatch(call)}): the model never 'sees' the weather, so its reply comes back with an empty value.",
+   "concept": "An agent is a loop where the model decides the control flow. Your code only enforces the contract and the stopping conditions."
+  },
+  "conceptConnections": [
+   {
+    "title": "ReAct agents in production",
+    "route": "/docs/agents/react-agent-production",
+    "description": "The Thought → Action → Observation loop, the tool-calling contract and parse-failure recovery."
+   },
+   {
+    "title": "Loops and graphs",
+    "route": "/docs/agents/loops-and-graphs",
+    "description": "Why a while-loop agent becomes a graph, and which edges are real."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": "agent-dispatch-tools",
+  "stage": "Build an Agent",
+  "stageNumber": 4,
+  "points": 20
+ },
+ {
+  "id": "agent-error-recovery",
+  "title": "Recover From Malformed and Failing Tool Calls",
+  "difficulty": "medium",
+  "topic": "Build an Agent",
+  "estimatedTime": "15–20 min",
+  "functionName": "run_agent",
+  "functionSignature": "run_agent(task, script, max_steps=5, max_consecutive_errors=3) -> dict",
+  "starterCode": "import json\nimport math\nimport re\n\n\ndef run_agent(task, script, max_steps=5):\n    llm = make_llm(script)\n    messages = [{\"role\": \"system\", \"content\": SYSTEM_PROMPT},\n                {\"role\": \"user\", \"content\": task}]\n    tools_called = []\n    for step in range(1, max_steps + 1):\n        reply = llm(messages)\n        messages.append({\"role\": \"assistant\", \"content\": reply})\n        call = parse_tool_call(reply)\n        if call is None:\n            return {\"answer\": reply, \"steps\": step, \"tools_called\": tools_called,\n                    \"stop_reason\": \"final_answer\"}\n        tools_called.append(call[\"tool\"])\n        messages.append({\"role\": \"tool\", \"content\": dispatch(call)})\n    return {\"answer\": None, \"steps\": max_steps, \"tools_called\": tools_called,\n            \"stop_reason\": \"max_steps\"}\n# TODO (stage 5):\n#   - catch ValueError from parse_tool_call and feed the error back as a user message\n#   - count errors (parse errors + tool results starting with \"error:\")\n#   - stop with \"too_many_errors\" after max_consecutive_errors in a row\n#   - add \"errors\" to every returned dict, and accept max_consecutive_errors=3\n\n\n# =============================================================================\n# PROVIDED BELOW -- the sandbox and your earlier stages. Read it, don't edit it.\n# =============================================================================\n# ---------------------------------------------------------------------------\n# The sandbox world your agent lives in (provided -- you don't edit this).\n# Four deterministic tools, each with a JSON-Schema-style argument spec,\n# exactly the shape you'd hand a real model's tool-calling API.\n# ---------------------------------------------------------------------------\nWEATHER = {\"paris\": \"18C, light rain\", \"tokyo\": \"24C, clear\", \"lima\": \"16C, overcast\"}\nDOCS = {\n    \"refund-policy\": \"Refunds are accepted within 30 days with a receipt.\",\n    \"shipping\": \"Standard shipping takes 3-5 business days.\",\n}\n\n\ndef add(a, b):\n    return a + b\n\n\ndef divide(a, b):\n    return a / b\n\n\ndef get_weather(city):\n    key = city.strip().lower()\n    if key not in WEATHER:\n        raise ValueError(f\"no weather data for {city}\")\n    return WEATHER[key]\n\n\ndef lookup_doc(doc_id):\n    if doc_id not in DOCS:\n        raise ValueError(f\"no document named {doc_id}\")\n    return DOCS[doc_id]\n\n\nNUM = {\"type\": \"number\"}\nTOOLS = {\n    \"add\": {\"fn\": add, \"schema\": {\"type\": \"object\", \"properties\": {\"a\": NUM, \"b\": NUM}, \"required\": [\"a\", \"b\"]}},\n    \"divide\": {\"fn\": divide, \"schema\": {\"type\": \"object\", \"properties\": {\"a\": NUM, \"b\": NUM}, \"required\": [\"a\", \"b\"]}},\n    \"get_weather\": {\"fn\": get_weather, \"schema\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}},\n    \"lookup_doc\": {\"fn\": lookup_doc, \"schema\": {\"type\": \"object\", \"properties\": {\"doc_id\": {\"type\": \"string\"}}, \"required\": [\"doc_id\"]}},\n}\n\n\n# ---------------------------------------------------------------------------\n# A scripted stand-in for the model (provided). It replies with `script`\n# in order, but it still READS the conversation: placeholders in a reply\n# are filled from the messages it was actually sent, so a loop that forgets\n# to feed results back gets a wrong answer -- just like a real model would.\n#   {last_tool_result}  -> content of the most recent \"tool\" message\n#   {last_feedback}     -> content of the most recent non-assistant message\n#   {context_size}      -> how many messages the model was sent this call\n# ---------------------------------------------------------------------------\nSYSTEM_PROMPT = (\n    \"You are a helpful agent. To use a tool, reply with JSON: \"\n    '{\"tool\": <name>, \"arguments\": {...}}. Otherwise reply with your final answer.'\n)\n\n\ndef make_llm(script):\n    replies = list(script)\n\n    def llm(messages):\n        if not replies:\n            raise RuntimeError(\"model script exhausted -- your loop called the model too many times\")\n        reply = replies.pop(0)\n        if \"{last_tool_result}\" in reply:\n            last = next((m[\"content\"] for m in reversed(messages) if m[\"role\"] == \"tool\"), \"\")\n            reply = reply.replace(\"{last_tool_result}\", last)\n        if \"{last_feedback}\" in reply:\n            last = next((m[\"content\"] for m in reversed(messages) if m[\"role\"] != \"assistant\"), \"\")\n            reply = reply.replace(\"{last_feedback}\", last)\n        if \"{context_size}\" in reply:\n            reply = reply.replace(\"{context_size}\", str(len(messages)))\n        return reply\n\n    return llm\n\n\ndef count_tokens(text):\n    \"\"\"Rough token estimate: ~4 characters per token (good enough for budgets).\"\"\"\n    return math.ceil(len(text) / 4)\n\n\n# --- Stage 1: parse_tool_call (provided) ---\ndef parse_tool_call(text):\n    if '\"tool\"' not in text:\n        return None  # no tool call -> this is the model's final answer\n    fence = re.search(r\"```(?:json)?\\s*(.*?)```\", text, re.DOTALL)\n    if fence:\n        candidate = fence.group(1)\n    else:\n        start, end = text.find(\"{\"), text.rfind(\"}\")\n        if start == -1 or end < start:\n            raise ValueError(\"tool call has no JSON object\")\n        candidate = text[start:end + 1]\n    try:\n        data = json.loads(candidate)\n    except json.JSONDecodeError as e:\n        raise ValueError(f\"invalid JSON in tool call: {e.msg}\")\n    if not isinstance(data, dict) or not isinstance(data.get(\"tool\"), str) or not data[\"tool\"]:\n        raise ValueError(\"tool call needs a non-empty string 'tool'\")\n    arguments = data.get(\"arguments\", {})\n    if not isinstance(arguments, dict):\n        raise ValueError(\"'arguments' must be an object\")\n    return {\"tool\": data[\"tool\"], \"arguments\": arguments}\n\n\n# --- Stage 2: validate_arguments (provided) ---\nJSON_TYPE_NAMES = {str: \"string\", bool: \"boolean\", int: \"integer\", float: \"number\",\n                   list: \"array\", dict: \"object\", type(None): \"null\"}\n\n\ndef _matches(value, expected):\n    if expected == \"string\":\n        return isinstance(value, str)\n    if expected == \"boolean\":\n        return isinstance(value, bool)\n    if expected == \"integer\":\n        return isinstance(value, int) and not isinstance(value, bool)\n    if expected == \"number\":\n        return isinstance(value, (int, float)) and not isinstance(value, bool)\n    if expected == \"array\":\n        return isinstance(value, list)\n    if expected == \"object\":\n        return isinstance(value, dict)\n    return False\n\n\ndef validate_arguments(arguments, schema):\n    errors = []\n    properties = schema.get(\"properties\", {})\n    for name in schema.get(\"required\", []):\n        if name not in arguments:\n            errors.append(f\"missing required argument '{name}'\")\n    for name, value in arguments.items():\n        if name not in properties:\n            errors.append(f\"unexpected argument '{name}'\")\n            continue\n        expected = properties[name][\"type\"]\n        if not _matches(value, expected):\n            got = JSON_TYPE_NAMES.get(type(value), type(value).__name__)\n            errors.append(f\"argument '{name}' should be {expected}, got {got}\")\n    return errors\n\n\n# --- Stage 3: dispatch (provided) ---\ndef dispatch(call):\n    name, arguments = call[\"tool\"], call[\"arguments\"]\n    if name not in TOOLS:\n        available = \", \".join(sorted(TOOLS))\n        return f\"error: unknown tool '{name}'. available tools: {available}\"\n    errors = validate_arguments(arguments, TOOLS[name][\"schema\"])\n    if errors:\n        return f\"error: invalid arguments for '{name}': \" + \"; \".join(errors)\n    try:\n        result = TOOLS[name][\"fn\"](**arguments)\n    except Exception as e:\n        return f\"error: {name} raised {type(e).__name__}: {e}\"\n    return result if isinstance(result, str) else json.dumps(result)\n",
+  "mission": "Your stage-4 loop crashes the first time the model emits broken JSON, and production models do that a few times in every thousand calls. Feed the error back so the model can fix itself, but give up on a model that keeps failing.",
+  "taskDescription": "The starter code is your stage-4 loop. Extend it:\n\n- If `parse_tool_call` raises `ValueError` as `e`, don't crash. Append `{\"role\": \"user\", \"content\": f\"error: could not parse your tool call ({e}). Reply with a JSON tool call or a final answer.\"}` and continue to the next step.\n- A dispatch result that starts with `error:` also counts as an error.\n- Track `errors` (total) and consecutive errors. A successful tool result resets the consecutive count to 0.\n- After a step, if consecutive errors reach `max_consecutive_errors`, return with `\"stop_reason\": \"too_many_errors\"` and `\"steps\"` set to the current step.\n- Every returned dict now also includes `\"errors\"`, the total error count.",
+  "constraints": [
+   "Use the exact feedback message above. The scripted model echoes it back via `{last_feedback}`.",
+   "A parse error doesn't add anything to `tools_called`, but a tool that returns an error does.",
+   "`max_steps` still applies, and a final answer still wins immediately."
+  ],
+  "testCases": [
+   {
+    "id": "recovers",
+    "label": "Recovers from malformed JSON",
+    "input": {
+     "task": "1+2?",
+     "script": [
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1,}}",
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1, \"b\": 2}}",
+      "The sum is {last_tool_result}."
+     ]
+    },
+    "expectedOutput": {
+     "answer": "The sum is 3.",
+     "steps": 3,
+     "tools_called": [
+      "add"
+     ],
+     "errors": 1,
+     "stop_reason": "final_answer"
+    },
+    "hidden": false
+   },
+   {
+    "id": "feedback-visible",
+    "label": "The model receives your error message",
+    "input": {
+     "task": "1+2?",
+     "script": [
+      "{\"tool\": \"add\" \"arguments\": {}}",
+      "I saw: {last_feedback}"
+     ]
+    },
+    "expectedOutput": {
+     "answer": "I saw: error: could not parse your tool call (invalid JSON in tool call: Expecting ',' delimiter). Reply with a JSON tool call or a final answer.",
+     "steps": 2,
+     "tools_called": [],
+     "errors": 1,
+     "stop_reason": "final_answer"
+    },
+    "hidden": false
+   },
+   {
+    "id": "circuit-breaker",
+    "label": "Three failures in a row stops the run",
+    "input": {
+     "task": "Find flights",
+     "script": [
+      "{\"tool\": \"search_web\", \"arguments\": {\"query\": \"cheap flights\"}}",
+      "{\"tool\": \"search_web\", \"arguments\": {\"query\": \"cheap flights\"}}",
+      "{\"tool\": \"search_web\", \"arguments\": {\"query\": \"cheap flights\"}}",
+      "never reached"
+     ]
+    },
+    "expectedOutput": {
+     "answer": null,
+     "steps": 3,
+     "tools_called": [
+      "search_web",
+      "search_web",
+      "search_web"
+     ],
+     "errors": 3,
+     "stop_reason": "too_many_errors"
+    },
+    "hidden": false
+   },
+   {
+    "id": "reset",
+    "label": "A success resets the consecutive count",
+    "input": {
+     "task": "maths",
+     "script": [
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1,}}",
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1,}}",
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1, \"b\": 2}}",
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1,}}",
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1,}}",
+      "done"
+     ],
+     "max_steps": 8
+    },
+    "expectedOutput": {
+     "answer": "done",
+     "steps": 6,
+     "tools_called": [
+      "add"
+     ],
+     "errors": 4,
+     "stop_reason": "final_answer"
+    },
+    "hidden": false
+   },
+   {
+    "id": "tool-error-counts",
+    "label": "Tool errors count as errors",
+    "input": {
+     "task": "1/0?",
+     "script": [
+      "{\"tool\": \"divide\", \"arguments\": {\"a\": 1, \"b\": 0}}",
+      "Could not divide: {last_tool_result}"
+     ]
+    },
+    "expectedOutput": {
+     "answer": "Could not divide: error: divide raised ZeroDivisionError: division by zero",
+     "steps": 2,
+     "tools_called": [
+      "divide"
+     ],
+     "errors": 1,
+     "stop_reason": "final_answer"
+    },
+    "hidden": true
+   },
+   {
+    "id": "strict-breaker",
+    "label": "max_consecutive_errors=1",
+    "input": {
+     "task": "x",
+     "script": [
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1,}}",
+      "never"
+     ],
+     "max_consecutive_errors": 1
+    },
+    "expectedOutput": {
+     "answer": null,
+     "steps": 1,
+     "tools_called": [],
+     "errors": 1,
+     "stop_reason": "too_many_errors"
+    },
+    "hidden": true
+   },
+   {
+    "id": "happy-path",
+    "label": "Happy path reports zero errors",
+    "input": {
+     "task": "Weather in Lima?",
+     "script": [
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Lima\"}}",
+      "Lima: {last_tool_result}"
+     ]
+    },
+    "expectedOutput": {
+     "answer": "Lima: 16C, overcast",
+     "steps": 2,
+     "tools_called": [
+      "get_weather"
+     ],
+     "errors": 0,
+     "stop_reason": "final_answer"
+    },
+    "hidden": true
+   },
+   {
+    "id": "max-steps-wins",
+    "label": "max_steps still applies",
+    "input": {
+     "task": "x",
+     "script": [
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1,}}",
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1,}}",
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1, \"b\": 2}}",
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1,}}",
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1,}}"
+     ],
+     "max_steps": 5
+    },
+    "expectedOutput": {
+     "answer": null,
+     "steps": 5,
+     "tools_called": [
+      "add"
+     ],
+     "errors": 4,
+     "stop_reason": "max_steps"
+    },
+    "hidden": true
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Wrap the parse in try/except ValueError. Use try/except/else so the success path stays readable.",
+   "strong": "Keep two counters. errors only goes up. consecutive goes up on any error and resets to 0 on a non-error tool result. Check `consecutive >= max_consecutive_errors` at the end of each step.",
+   "concept": "Self-correction works because the error message is in context on the next call. A circuit breaker stops a model that can't self-correct from wasting money."
+  },
+  "conceptConnections": [
+   {
+    "title": "ReAct agents in production",
+    "route": "/docs/agents/react-agent-production",
+    "description": "The Thought → Action → Observation loop, the tool-calling contract and parse-failure recovery."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": "agent-loop",
+  "stage": "Build an Agent",
+  "stageNumber": 5,
+  "points": 20
+ },
+ {
+  "id": "agent-guardrails",
+  "title": "Guardrails: Loop Detection and Token Budgets",
+  "difficulty": "medium",
+  "topic": "Build an Agent",
+  "estimatedTime": "20–25 min",
+  "functionName": "run_agent",
+  "functionSignature": "run_agent(task, script, max_steps=8, max_consecutive_errors=3, max_tokens=None) -> dict",
+  "starterCode": "import json\nimport math\nimport re\n\n\ndef run_agent(task, script, max_steps=5, max_consecutive_errors=3):\n    llm = make_llm(script)\n    messages = [{\"role\": \"system\", \"content\": SYSTEM_PROMPT},\n                {\"role\": \"user\", \"content\": task}]\n    tools_called = []\n    errors = 0\n    consecutive = 0\n    for step in range(1, max_steps + 1):\n        reply = llm(messages)\n        messages.append({\"role\": \"assistant\", \"content\": reply})\n        try:\n            call = parse_tool_call(reply)\n        except ValueError as e:\n            errors += 1\n            consecutive += 1\n            messages.append({\"role\": \"user\", \"content\":\n                f\"error: could not parse your tool call ({e}). \"\n                \"Reply with a JSON tool call or a final answer.\"})\n        else:\n            if call is None:\n                return {\"answer\": reply, \"steps\": step, \"tools_called\": tools_called,\n                        \"errors\": errors, \"stop_reason\": \"final_answer\"}\n            tools_called.append(call[\"tool\"])\n            result = dispatch(call)\n            messages.append({\"role\": \"tool\", \"content\": result})\n            if result.startswith(\"error:\"):\n                errors += 1\n                consecutive += 1\n            else:\n                consecutive = 0\n        if consecutive >= max_consecutive_errors:\n            return {\"answer\": None, \"steps\": step, \"tools_called\": tools_called,\n                    \"errors\": errors, \"stop_reason\": \"too_many_errors\"}\n    return {\"answer\": None, \"steps\": max_steps, \"tools_called\": tools_called,\n            \"errors\": errors, \"stop_reason\": \"max_steps\"}\n# TODO (stage 6):\n#   - loop detection: 3 identical consecutive tool calls (tool + sorted-args JSON) -> \"loop_detected\"\n#   - token budget: before each model call, stop with \"token_budget\" if context tokens > max_tokens\n#   - add \"context_tokens\" to every returned dict; new defaults max_steps=8, max_tokens=None\n\n\n# =============================================================================\n# PROVIDED BELOW -- the sandbox and your earlier stages. Read it, don't edit it.\n# =============================================================================\n# ---------------------------------------------------------------------------\n# The sandbox world your agent lives in (provided -- you don't edit this).\n# Four deterministic tools, each with a JSON-Schema-style argument spec,\n# exactly the shape you'd hand a real model's tool-calling API.\n# ---------------------------------------------------------------------------\nWEATHER = {\"paris\": \"18C, light rain\", \"tokyo\": \"24C, clear\", \"lima\": \"16C, overcast\"}\nDOCS = {\n    \"refund-policy\": \"Refunds are accepted within 30 days with a receipt.\",\n    \"shipping\": \"Standard shipping takes 3-5 business days.\",\n}\n\n\ndef add(a, b):\n    return a + b\n\n\ndef divide(a, b):\n    return a / b\n\n\ndef get_weather(city):\n    key = city.strip().lower()\n    if key not in WEATHER:\n        raise ValueError(f\"no weather data for {city}\")\n    return WEATHER[key]\n\n\ndef lookup_doc(doc_id):\n    if doc_id not in DOCS:\n        raise ValueError(f\"no document named {doc_id}\")\n    return DOCS[doc_id]\n\n\nNUM = {\"type\": \"number\"}\nTOOLS = {\n    \"add\": {\"fn\": add, \"schema\": {\"type\": \"object\", \"properties\": {\"a\": NUM, \"b\": NUM}, \"required\": [\"a\", \"b\"]}},\n    \"divide\": {\"fn\": divide, \"schema\": {\"type\": \"object\", \"properties\": {\"a\": NUM, \"b\": NUM}, \"required\": [\"a\", \"b\"]}},\n    \"get_weather\": {\"fn\": get_weather, \"schema\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}},\n    \"lookup_doc\": {\"fn\": lookup_doc, \"schema\": {\"type\": \"object\", \"properties\": {\"doc_id\": {\"type\": \"string\"}}, \"required\": [\"doc_id\"]}},\n}\n\n\n# ---------------------------------------------------------------------------\n# A scripted stand-in for the model (provided). It replies with `script`\n# in order, but it still READS the conversation: placeholders in a reply\n# are filled from the messages it was actually sent, so a loop that forgets\n# to feed results back gets a wrong answer -- just like a real model would.\n#   {last_tool_result}  -> content of the most recent \"tool\" message\n#   {last_feedback}     -> content of the most recent non-assistant message\n#   {context_size}      -> how many messages the model was sent this call\n# ---------------------------------------------------------------------------\nSYSTEM_PROMPT = (\n    \"You are a helpful agent. To use a tool, reply with JSON: \"\n    '{\"tool\": <name>, \"arguments\": {...}}. Otherwise reply with your final answer.'\n)\n\n\ndef make_llm(script):\n    replies = list(script)\n\n    def llm(messages):\n        if not replies:\n            raise RuntimeError(\"model script exhausted -- your loop called the model too many times\")\n        reply = replies.pop(0)\n        if \"{last_tool_result}\" in reply:\n            last = next((m[\"content\"] for m in reversed(messages) if m[\"role\"] == \"tool\"), \"\")\n            reply = reply.replace(\"{last_tool_result}\", last)\n        if \"{last_feedback}\" in reply:\n            last = next((m[\"content\"] for m in reversed(messages) if m[\"role\"] != \"assistant\"), \"\")\n            reply = reply.replace(\"{last_feedback}\", last)\n        if \"{context_size}\" in reply:\n            reply = reply.replace(\"{context_size}\", str(len(messages)))\n        return reply\n\n    return llm\n\n\ndef count_tokens(text):\n    \"\"\"Rough token estimate: ~4 characters per token (good enough for budgets).\"\"\"\n    return math.ceil(len(text) / 4)\n\n\n# --- Stage 1: parse_tool_call (provided) ---\ndef parse_tool_call(text):\n    if '\"tool\"' not in text:\n        return None  # no tool call -> this is the model's final answer\n    fence = re.search(r\"```(?:json)?\\s*(.*?)```\", text, re.DOTALL)\n    if fence:\n        candidate = fence.group(1)\n    else:\n        start, end = text.find(\"{\"), text.rfind(\"}\")\n        if start == -1 or end < start:\n            raise ValueError(\"tool call has no JSON object\")\n        candidate = text[start:end + 1]\n    try:\n        data = json.loads(candidate)\n    except json.JSONDecodeError as e:\n        raise ValueError(f\"invalid JSON in tool call: {e.msg}\")\n    if not isinstance(data, dict) or not isinstance(data.get(\"tool\"), str) or not data[\"tool\"]:\n        raise ValueError(\"tool call needs a non-empty string 'tool'\")\n    arguments = data.get(\"arguments\", {})\n    if not isinstance(arguments, dict):\n        raise ValueError(\"'arguments' must be an object\")\n    return {\"tool\": data[\"tool\"], \"arguments\": arguments}\n\n\n# --- Stage 2: validate_arguments (provided) ---\nJSON_TYPE_NAMES = {str: \"string\", bool: \"boolean\", int: \"integer\", float: \"number\",\n                   list: \"array\", dict: \"object\", type(None): \"null\"}\n\n\ndef _matches(value, expected):\n    if expected == \"string\":\n        return isinstance(value, str)\n    if expected == \"boolean\":\n        return isinstance(value, bool)\n    if expected == \"integer\":\n        return isinstance(value, int) and not isinstance(value, bool)\n    if expected == \"number\":\n        return isinstance(value, (int, float)) and not isinstance(value, bool)\n    if expected == \"array\":\n        return isinstance(value, list)\n    if expected == \"object\":\n        return isinstance(value, dict)\n    return False\n\n\ndef validate_arguments(arguments, schema):\n    errors = []\n    properties = schema.get(\"properties\", {})\n    for name in schema.get(\"required\", []):\n        if name not in arguments:\n            errors.append(f\"missing required argument '{name}'\")\n    for name, value in arguments.items():\n        if name not in properties:\n            errors.append(f\"unexpected argument '{name}'\")\n            continue\n        expected = properties[name][\"type\"]\n        if not _matches(value, expected):\n            got = JSON_TYPE_NAMES.get(type(value), type(value).__name__)\n            errors.append(f\"argument '{name}' should be {expected}, got {got}\")\n    return errors\n\n\n# --- Stage 3: dispatch (provided) ---\ndef dispatch(call):\n    name, arguments = call[\"tool\"], call[\"arguments\"]\n    if name not in TOOLS:\n        available = \", \".join(sorted(TOOLS))\n        return f\"error: unknown tool '{name}'. available tools: {available}\"\n    errors = validate_arguments(arguments, TOOLS[name][\"schema\"])\n    if errors:\n        return f\"error: invalid arguments for '{name}': \" + \"; \".join(errors)\n    try:\n        result = TOOLS[name][\"fn\"](**arguments)\n    except Exception as e:\n        return f\"error: {name} raised {type(e).__name__}: {e}\"\n    return result if isinstance(result, str) else json.dumps(result)\n",
+  "mission": "The most expensive agent bug is the one that never errors: the model calls the same tool with the same arguments forever, and every call succeeds. Add the two guardrails every production agent has, repeat-call detection and a context budget.",
+  "taskDescription": "The starter is the stage-5 loop. Add:\n\n**Loop detection.** For every successfully parsed tool call, build a signature: the tool name followed by `json.dumps(arguments, sort_keys=True)`. If this call's signature equals the previous **two** calls' signatures (three identical in a row), don't run it. Return with `\"stop_reason\": \"loop_detected\"` and `\"steps\": step`. The repeated call isn't added to `tools_called`.\n\n**Token budget.** At the **start** of each step, before calling the model, compute `context_tokens = sum(count_tokens(m[\"content\"]) for m in messages)`. If `max_tokens` is set and `context_tokens > max_tokens`, return with `\"stop_reason\": \"token_budget\"` and `\"steps\": step - 1` (the model calls actually made).\n\nEvery returned dict also gets `\"context_tokens\"`, the sum over `messages` at the moment you return. Defaults change to `max_steps=8`.",
+  "constraints": [
+   "Parse errors don't add a signature and don't break a streak of identical calls.",
+   "`sort_keys=True` matters: `{\"a\": 1, \"b\": 2}` and `{\"b\": 2, \"a\": 1}` are the same call.",
+   "`count_tokens` is provided (about 4 characters per token)."
+  ],
+  "testCases": [
+   {
+    "id": "loop",
+    "label": "Same call three times in a row",
+    "input": {
+     "task": "Weather in Paris?",
+     "script": [
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}",
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}",
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}",
+      "never"
+     ]
+    },
+    "expectedOutput": {
+     "answer": null,
+     "steps": 3,
+     "tools_called": [
+      "get_weather",
+      "get_weather"
+     ],
+     "errors": 0,
+     "stop_reason": "loop_detected",
+     "context_tokens": 89
+    },
+    "hidden": false
+   },
+   {
+    "id": "not-a-loop",
+    "label": "Different arguments are not a loop",
+    "input": {
+     "task": "Weather everywhere",
+     "script": [
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}",
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\"}}",
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Lima\"}}",
+      "All three: {last_tool_result}"
+     ]
+    },
+    "expectedOutput": {
+     "answer": "All three: 16C, overcast",
+     "steps": 4,
+     "tools_called": [
+      "get_weather",
+      "get_weather",
+      "get_weather"
+     ],
+     "errors": 0,
+     "stop_reason": "final_answer",
+     "context_tokens": 98
+    },
+    "hidden": false
+   },
+   {
+    "id": "budget",
+    "label": "Context budget stops a long run",
+    "input": {
+     "task": "Read the shipping and refund docs, then summarise.",
+     "script": [
+      "{\"tool\": \"lookup_doc\", \"arguments\": {\"doc_id\": \"shipping\"}}",
+      "{\"tool\": \"lookup_doc\", \"arguments\": {\"doc_id\": \"refund-policy\"}}",
+      "Summary"
+     ],
+     "max_tokens": 75
+    },
+    "expectedOutput": {
+     "answer": null,
+     "steps": 2,
+     "tools_called": [
+      "lookup_doc",
+      "lookup_doc"
+     ],
+     "errors": 0,
+     "stop_reason": "token_budget",
+     "context_tokens": 102
+    },
+    "hidden": false
+   },
+   {
+    "id": "happy",
+    "label": "Happy path reports context_tokens",
+    "input": {
+     "task": "Weather in Tokyo?",
+     "script": [
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\"}}",
+      "Tokyo: {last_tool_result}"
+     ]
+    },
+    "expectedOutput": {
+     "answer": "Tokyo: 24C, clear",
+     "steps": 2,
+     "tools_called": [
+      "get_weather"
+     ],
+     "errors": 0,
+     "stop_reason": "final_answer",
+     "context_tokens": 61
+    },
+    "hidden": false
+   },
+   {
+    "id": "interrupted-streak",
+    "label": "An interrupted streak is not a loop",
+    "input": {
+     "task": "x",
+     "script": [
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}",
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1, \"b\": 2}}",
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}",
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}",
+      "ok"
+     ]
+    },
+    "expectedOutput": {
+     "answer": "ok",
+     "steps": 5,
+     "tools_called": [
+      "get_weather",
+      "add",
+      "get_weather",
+      "get_weather"
+     ],
+     "errors": 0,
+     "stop_reason": "final_answer",
+     "context_tokens": 103
+    },
+    "hidden": true
+   },
+   {
+    "id": "key-order",
+    "label": "Argument key order doesn't hide a loop",
+    "input": {
+     "task": "x",
+     "script": [
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1, \"b\": 2}}",
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1, \"b\": 2}}",
+      "{\"tool\": \"add\", \"arguments\": {\"b\": 2, \"a\": 1}}",
+      "never"
+     ]
+    },
+    "expectedOutput": {
+     "answer": null,
+     "steps": 3,
+     "tools_called": [
+      "add",
+      "add"
+     ],
+     "errors": 0,
+     "stop_reason": "loop_detected",
+     "context_tokens": 73
+    },
+    "hidden": true
+   },
+   {
+    "id": "tiny-budget",
+    "label": "Budget is checked before the first call",
+    "input": {
+     "task": "Summarise our refund policy for a customer.",
+     "script": [
+      "never"
+     ],
+     "max_tokens": 10
+    },
+    "expectedOutput": {
+     "answer": null,
+     "steps": 0,
+     "tools_called": [],
+     "errors": 0,
+     "stop_reason": "token_budget",
+     "context_tokens": 45
+    },
+    "hidden": true
+   },
+   {
+    "id": "still-recovers",
+    "label": "Error recovery from stage 5 still works",
+    "input": {
+     "task": "1+2?",
+     "script": [
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1,}}",
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1, \"b\": 2}}",
+      "= {last_tool_result}"
+     ]
+    },
+    "expectedOutput": {
+     "answer": "= 3",
+     "steps": 3,
+     "tools_called": [
+      "add"
+     ],
+     "errors": 1,
+     "stop_reason": "final_answer",
+     "context_tokens": 100
+    },
+    "hidden": true
+   },
+   {
+    "id": "parse-error-in-streak",
+    "label": "A parse error doesn't reset the streak",
+    "input": {
+     "task": "x",
+     "script": [
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}",
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}",
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1,}}",
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}",
+      "never"
+     ]
+    },
+    "expectedOutput": {
+     "answer": null,
+     "steps": 4,
+     "tools_called": [
+      "get_weather",
+      "get_weather"
+     ],
+     "errors": 1,
+     "stop_reason": "loop_detected",
+     "context_tokens": 136
+    },
+    "hidden": true
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Keep a list of recent signatures and compare the last three.",
+   "strong": "recent.append(sig); if recent[-3:] == [sig] * 3: return .... Put the token check as the first thing inside the for-loop.",
+   "concept": "The guardrails that matter in production are about money and time, not just correctness."
+  },
+  "conceptConnections": [
+   {
+    "title": "ReAct agents in production",
+    "route": "/docs/agents/react-agent-production",
+    "description": "The Thought → Action → Observation loop, the tool-calling contract and parse-failure recovery."
+   },
+   {
+    "title": "Loops and graphs",
+    "route": "/docs/agents/loops-and-graphs",
+    "description": "Why a while-loop agent becomes a graph, and which edges are real."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": "agent-error-recovery",
+  "stage": "Build an Agent",
+  "stageNumber": 6,
+  "points": 20
+ },
+ {
+  "id": "agent-context-trimming",
+  "title": "Trim Context Without Orphaning Tool Results",
+  "difficulty": "medium",
+  "topic": "Build an Agent",
+  "estimatedTime": "20–25 min",
+  "functionName": "trim_messages",
+  "functionSignature": "trim_messages(messages: list[dict], max_tokens: int) -> list[dict]",
+  "starterCode": "import json\nimport math\nimport re\n\n\ndef trim_messages(messages, max_tokens):\n    \"\"\"Keep pinned messages + the newest whole groups that fit max_tokens.\"\"\"\n    # Your code here\n    pass\n\n\n# =============================================================================\n# PROVIDED BELOW -- the sandbox and your earlier stages. Read it, don't edit it.\n# =============================================================================\n# ---------------------------------------------------------------------------\n# A scripted stand-in for the model (provided). It replies with `script`\n# in order, but it still READS the conversation: placeholders in a reply\n# are filled from the messages it was actually sent, so a loop that forgets\n# to feed results back gets a wrong answer -- just like a real model would.\n#   {last_tool_result}  -> content of the most recent \"tool\" message\n#   {last_feedback}     -> content of the most recent non-assistant message\n#   {context_size}      -> how many messages the model was sent this call\n# ---------------------------------------------------------------------------\nSYSTEM_PROMPT = (\n    \"You are a helpful agent. To use a tool, reply with JSON: \"\n    '{\"tool\": <name>, \"arguments\": {...}}. Otherwise reply with your final answer.'\n)\n\n\ndef make_llm(script):\n    replies = list(script)\n\n    def llm(messages):\n        if not replies:\n            raise RuntimeError(\"model script exhausted -- your loop called the model too many times\")\n        reply = replies.pop(0)\n        if \"{last_tool_result}\" in reply:\n            last = next((m[\"content\"] for m in reversed(messages) if m[\"role\"] == \"tool\"), \"\")\n            reply = reply.replace(\"{last_tool_result}\", last)\n        if \"{last_feedback}\" in reply:\n            last = next((m[\"content\"] for m in reversed(messages) if m[\"role\"] != \"assistant\"), \"\")\n            reply = reply.replace(\"{last_feedback}\", last)\n        if \"{context_size}\" in reply:\n            reply = reply.replace(\"{context_size}\", str(len(messages)))\n        return reply\n\n    return llm\n\n\ndef count_tokens(text):\n    \"\"\"Rough token estimate: ~4 characters per token (good enough for budgets).\"\"\"\n    return math.ceil(len(text) / 4)\n",
+  "mission": "Long agent runs outgrow the context window. Cut the wrong message and the API rejects your request ('tool result without a matching tool call'), or the model forgets what it was asked. Trim the way production agents do.",
+  "taskDescription": "Implement `trim_messages(messages, max_tokens)` and return the messages to keep, in their original order.\n\n- **Pinned, always kept:** the first message if its role is `system`, plus the first `user` message right after it (the task). With no system message, pin only `messages[0]` when it's a user message.\n- **Groups:** split the rest into atomic groups. An `assistant` message plus all the `tool` messages directly after it form one group. Every other message is its own group.\n- Walk the groups from **newest to oldest**, keeping each group whole while its tokens fit the remaining budget (`max_tokens` minus the pinned tokens). Stop at the first group that doesn't fit, and never skip it to keep an older one.\n- Tokens are `count_tokens(m[\"content\"])`, summed.",
+  "constraints": [
+   "Never return a `tool` message without the `assistant` message that requested it.",
+   "The kept history is one contiguous suffix of the conversation.",
+   "If the pinned messages alone exceed the budget, return just the pinned messages."
+  ],
+  "testCases": [
+   {
+    "id": "fits",
+    "label": "Everything fits: unchanged",
+    "input": {
+     "messages": [
+      {
+       "role": "system",
+       "content": "You are a helpful travel agent."
+      },
+      {
+       "role": "user",
+       "content": "Compare the weather in Paris and Tokyo for my trip."
+      },
+      {
+       "role": "assistant",
+       "content": "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}"
+      },
+      {
+       "role": "tool",
+       "content": "18C, light rain"
+      },
+      {
+       "role": "assistant",
+       "content": "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\"}}"
+      },
+      {
+       "role": "tool",
+       "content": "24C, clear"
+      },
+      {
+       "role": "assistant",
+       "content": "Paris is rainy and Tokyo is clear."
+      },
+      {
+       "role": "user",
+       "content": "And Lima?"
+      }
+     ],
+     "max_tokens": 1000
+    },
+    "expectedOutput": [
+     {
+      "role": "system",
+      "content": "You are a helpful travel agent."
+     },
+     {
+      "role": "user",
+      "content": "Compare the weather in Paris and Tokyo for my trip."
+     },
+     {
+      "role": "assistant",
+      "content": "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}"
+     },
+     {
+      "role": "tool",
+      "content": "18C, light rain"
+     },
+     {
+      "role": "assistant",
+      "content": "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\"}}"
+     },
+     {
+      "role": "tool",
+      "content": "24C, clear"
+     },
+     {
+      "role": "assistant",
+      "content": "Paris is rainy and Tokyo is clear."
+     },
+     {
+      "role": "user",
+      "content": "And Lima?"
+     }
+    ],
+    "hidden": false
+   },
+   {
+    "id": "drop-oldest-pair",
+    "label": "Oldest call and its result are dropped together",
+    "input": {
+     "messages": [
+      {
+       "role": "system",
+       "content": "You are a helpful travel agent."
+      },
+      {
+       "role": "user",
+       "content": "Compare the weather in Paris and Tokyo for my trip."
+      },
+      {
+       "role": "assistant",
+       "content": "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}"
+      },
+      {
+       "role": "tool",
+       "content": "18C, light rain"
+      },
+      {
+       "role": "assistant",
+       "content": "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\"}}"
+      },
+      {
+       "role": "tool",
+       "content": "24C, clear"
+      },
+      {
+       "role": "assistant",
+       "content": "Paris is rainy and Tokyo is clear."
+      },
+      {
+       "role": "user",
+       "content": "And Lima?"
+      }
+     ],
+     "max_tokens": 52
+    },
+    "expectedOutput": [
+     {
+      "role": "system",
+      "content": "You are a helpful travel agent."
+     },
+     {
+      "role": "user",
+      "content": "Compare the weather in Paris and Tokyo for my trip."
+     },
+     {
+      "role": "assistant",
+      "content": "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\"}}"
+     },
+     {
+      "role": "tool",
+      "content": "24C, clear"
+     },
+     {
+      "role": "assistant",
+      "content": "Paris is rainy and Tokyo is clear."
+     },
+     {
+      "role": "user",
+      "content": "And Lima?"
+     }
+    ],
+    "hidden": false
+   },
+   {
+    "id": "no-orphans",
+    "label": "A group that doesn't fit is dropped whole, never split",
+    "input": {
+     "messages": [
+      {
+       "role": "system",
+       "content": "You are a helpful travel agent."
+      },
+      {
+       "role": "user",
+       "content": "Compare the weather in Paris and Tokyo for my trip."
+      },
+      {
+       "role": "assistant",
+       "content": "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}"
+      },
+      {
+       "role": "tool",
+       "content": "18C, light rain"
+      },
+      {
+       "role": "assistant",
+       "content": "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\"}}"
+      },
+      {
+       "role": "tool",
+       "content": "24C, clear"
+      },
+      {
+       "role": "assistant",
+       "content": "Paris is rainy and Tokyo is clear."
+      },
+      {
+       "role": "user",
+       "content": "And Lima?"
+      }
+     ],
+     "max_tokens": 40
+    },
+    "expectedOutput": [
+     {
+      "role": "system",
+      "content": "You are a helpful travel agent."
+     },
+     {
+      "role": "user",
+      "content": "Compare the weather in Paris and Tokyo for my trip."
+     },
+     {
+      "role": "assistant",
+      "content": "Paris is rainy and Tokyo is clear."
+     },
+     {
+      "role": "user",
+      "content": "And Lima?"
+     }
+    ],
+    "hidden": false
+   },
+   {
+    "id": "pinned-only",
+    "label": "Budget smaller than the pinned messages",
+    "input": {
+     "messages": [
+      {
+       "role": "system",
+       "content": "You are a helpful travel agent."
+      },
+      {
+       "role": "user",
+       "content": "Compare the weather in Paris and Tokyo for my trip."
+      },
+      {
+       "role": "assistant",
+       "content": "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}"
+      },
+      {
+       "role": "tool",
+       "content": "18C, light rain"
+      },
+      {
+       "role": "assistant",
+       "content": "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\"}}"
+      },
+      {
+       "role": "tool",
+       "content": "24C, clear"
+      },
+      {
+       "role": "assistant",
+       "content": "Paris is rainy and Tokyo is clear."
+      },
+      {
+       "role": "user",
+       "content": "And Lima?"
+      }
+     ],
+     "max_tokens": 5
+    },
+    "expectedOutput": [
+     {
+      "role": "system",
+      "content": "You are a helpful travel agent."
+     },
+     {
+      "role": "user",
+      "content": "Compare the weather in Paris and Tokyo for my trip."
+     }
+    ],
+    "hidden": false
+   },
+   {
+    "id": "no-system",
+    "label": "No system message: pin only the task",
+    "input": {
+     "messages": [
+      {
+       "role": "user",
+       "content": "Compare the weather in Paris and Tokyo for my trip."
+      },
+      {
+       "role": "assistant",
+       "content": "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}"
+      },
+      {
+       "role": "tool",
+       "content": "18C, light rain"
+      },
+      {
+       "role": "assistant",
+       "content": "Paris is rainy and Tokyo is clear."
+      }
+     ],
+     "max_tokens": 26
+    },
+    "expectedOutput": [
+     {
+      "role": "user",
+      "content": "Compare the weather in Paris and Tokyo for my trip."
+     },
+     {
+      "role": "assistant",
+      "content": "Paris is rainy and Tokyo is clear."
+     }
+    ],
+    "hidden": true
+   },
+   {
+    "id": "contiguous",
+    "label": "Never skip a big group to keep an older small one",
+    "input": {
+     "messages": [
+      {
+       "role": "system",
+       "content": "You are a helpful travel agent."
+      },
+      {
+       "role": "user",
+       "content": "Compare the weather in Paris and Tokyo for my trip."
+      },
+      {
+       "role": "assistant",
+       "content": "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}"
+      },
+      {
+       "role": "tool",
+       "content": "18C, light rain"
+      },
+      {
+       "role": "assistant",
+       "content": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
+      {
+       "role": "user",
+       "content": "And Lima?"
+      }
+     ],
+     "max_tokens": 32
+    },
+    "expectedOutput": [
+     {
+      "role": "system",
+      "content": "You are a helpful travel agent."
+     },
+     {
+      "role": "user",
+      "content": "Compare the weather in Paris and Tokyo for my trip."
+     },
+     {
+      "role": "user",
+      "content": "And Lima?"
+     }
+    ],
+    "hidden": true
+   },
+   {
+    "id": "parallel-group",
+    "label": "Assistant with two tool results is one group",
+    "input": {
+     "messages": [
+      {
+       "role": "system",
+       "content": "You are a helpful travel agent."
+      },
+      {
+       "role": "user",
+       "content": "Compare the weather in Paris and Tokyo for my trip."
+      },
+      {
+       "role": "assistant",
+       "content": "two calls"
+      },
+      {
+       "role": "tool",
+       "content": "18C, light rain"
+      },
+      {
+       "role": "tool",
+       "content": "24C, clear"
+      },
+      {
+       "role": "assistant",
+       "content": "Paris is rainy and Tokyo is clear."
+      }
+     ],
+     "max_tokens": 34
+    },
+    "expectedOutput": [
+     {
+      "role": "system",
+      "content": "You are a helpful travel agent."
+     },
+     {
+      "role": "user",
+      "content": "Compare the weather in Paris and Tokyo for my trip."
+     },
+     {
+      "role": "assistant",
+      "content": "Paris is rainy and Tokyo is clear."
+     }
+    ],
+    "hidden": true
+   },
+   {
+    "id": "empty",
+    "label": "Empty conversation",
+    "input": {
+     "messages": [],
+     "max_tokens": 10
+    },
+    "expectedOutput": [],
+    "hidden": true
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Do it in three passes: pin, group, then a greedy walk from the end.",
+   "strong": "When grouping, a tool message joins the previous group if that group starts with an assistant message. Walk `reversed(groups)`, prepend fitting groups, and `break` on the first one that doesn't fit.",
+   "concept": "Context is the agent's working memory, and it has a hard limit. Trim along the conversation's structural boundaries, never through them."
+  },
+  "conceptConnections": [
+   {
+    "title": "Context engineering",
+    "route": "/docs/agents/context-engineering",
+    "description": "Deciding what the model sees on every call, and what gets cut."
+   },
+   {
+    "title": "ReAct agents in production",
+    "route": "/docs/agents/react-agent-production",
+    "description": "The Thought → Action → Observation loop, the tool-calling contract and parse-failure recovery."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": "agent-guardrails",
+  "stage": "Build an Agent",
+  "stageNumber": 7,
+  "points": 20
+ },
+ {
+  "id": "agent-parallel-tool-calls",
+  "title": "Parallel Tool Calls With IDs",
+  "difficulty": "medium",
+  "topic": "Build an Agent",
+  "estimatedTime": "15–20 min",
+  "functionName": "execute_tool_calls",
+  "functionSignature": "execute_tool_calls(calls: list[dict], max_parallel: int = 4) -> list[dict]",
+  "starterCode": "import json\nimport math\nimport re\n\n\ndef execute_tool_calls(calls, max_parallel=4):\n    \"\"\"Run a batch of tool calls; return one tool message per call, in order.\"\"\"\n    # Your code here\n    pass\n\n\n# =============================================================================\n# PROVIDED BELOW -- the sandbox and your earlier stages. Read it, don't edit it.\n# =============================================================================\n# ---------------------------------------------------------------------------\n# The sandbox world your agent lives in (provided -- you don't edit this).\n# Four deterministic tools, each with a JSON-Schema-style argument spec,\n# exactly the shape you'd hand a real model's tool-calling API.\n# ---------------------------------------------------------------------------\nWEATHER = {\"paris\": \"18C, light rain\", \"tokyo\": \"24C, clear\", \"lima\": \"16C, overcast\"}\nDOCS = {\n    \"refund-policy\": \"Refunds are accepted within 30 days with a receipt.\",\n    \"shipping\": \"Standard shipping takes 3-5 business days.\",\n}\n\n\ndef add(a, b):\n    return a + b\n\n\ndef divide(a, b):\n    return a / b\n\n\ndef get_weather(city):\n    key = city.strip().lower()\n    if key not in WEATHER:\n        raise ValueError(f\"no weather data for {city}\")\n    return WEATHER[key]\n\n\ndef lookup_doc(doc_id):\n    if doc_id not in DOCS:\n        raise ValueError(f\"no document named {doc_id}\")\n    return DOCS[doc_id]\n\n\nNUM = {\"type\": \"number\"}\nTOOLS = {\n    \"add\": {\"fn\": add, \"schema\": {\"type\": \"object\", \"properties\": {\"a\": NUM, \"b\": NUM}, \"required\": [\"a\", \"b\"]}},\n    \"divide\": {\"fn\": divide, \"schema\": {\"type\": \"object\", \"properties\": {\"a\": NUM, \"b\": NUM}, \"required\": [\"a\", \"b\"]}},\n    \"get_weather\": {\"fn\": get_weather, \"schema\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}},\n    \"lookup_doc\": {\"fn\": lookup_doc, \"schema\": {\"type\": \"object\", \"properties\": {\"doc_id\": {\"type\": \"string\"}}, \"required\": [\"doc_id\"]}},\n}\n\n\n# --- Stage 2: validate_arguments (provided) ---\nJSON_TYPE_NAMES = {str: \"string\", bool: \"boolean\", int: \"integer\", float: \"number\",\n                   list: \"array\", dict: \"object\", type(None): \"null\"}\n\n\ndef _matches(value, expected):\n    if expected == \"string\":\n        return isinstance(value, str)\n    if expected == \"boolean\":\n        return isinstance(value, bool)\n    if expected == \"integer\":\n        return isinstance(value, int) and not isinstance(value, bool)\n    if expected == \"number\":\n        return isinstance(value, (int, float)) and not isinstance(value, bool)\n    if expected == \"array\":\n        return isinstance(value, list)\n    if expected == \"object\":\n        return isinstance(value, dict)\n    return False\n\n\ndef validate_arguments(arguments, schema):\n    errors = []\n    properties = schema.get(\"properties\", {})\n    for name in schema.get(\"required\", []):\n        if name not in arguments:\n            errors.append(f\"missing required argument '{name}'\")\n    for name, value in arguments.items():\n        if name not in properties:\n            errors.append(f\"unexpected argument '{name}'\")\n            continue\n        expected = properties[name][\"type\"]\n        if not _matches(value, expected):\n            got = JSON_TYPE_NAMES.get(type(value), type(value).__name__)\n            errors.append(f\"argument '{name}' should be {expected}, got {got}\")\n    return errors\n\n\n# --- Stage 3: dispatch (provided) ---\ndef dispatch(call):\n    name, arguments = call[\"tool\"], call[\"arguments\"]\n    if name not in TOOLS:\n        available = \", \".join(sorted(TOOLS))\n        return f\"error: unknown tool '{name}'. available tools: {available}\"\n    errors = validate_arguments(arguments, TOOLS[name][\"schema\"])\n    if errors:\n        return f\"error: invalid arguments for '{name}': \" + \"; \".join(errors)\n    try:\n        result = TOOLS[name][\"fn\"](**arguments)\n    except Exception as e:\n        return f\"error: {name} raised {type(e).__name__}: {e}\"\n    return result if isinstance(result, str) else json.dumps(result)\n",
+  "mission": "Modern models ask for several tools in one turn (check Paris and Tokyo at once), and every result must carry the exact ID of the call it answers. Get the IDs wrong and the API rejects the request.",
+  "taskDescription": "Implement `execute_tool_calls(calls, max_parallel=4)`. Each call is `{\"id\": str (optional), \"tool\": str, \"arguments\": dict (optional)}`.\n\nReturn one `{\"role\": \"tool\", \"tool_call_id\": id, \"content\": str}` per call, **in the same order** as the calls:\n\n- A missing or empty `id` becomes `f\"call_{i}\"`, with `i` counting from 1 by position.\n- An id already used earlier in this batch (including generated ones) gets the content `error: duplicate tool_call_id 'ID'`, and that call isn't run.\n- Calls past position `max_parallel` get `error: too many parallel tool calls (limit N)` and aren't run.\n- Otherwise the content is `dispatch({\"tool\": ..., \"arguments\": ...})`. A missing `arguments` key means `{}`.\n\nOne failing call never stops the others.",
+  "constraints": [
+   "Results stay in call order, so the model can match them to its requests.",
+   "Check for a duplicate id before checking the parallel limit.",
+   "`dispatch` from stage 3 is provided."
+  ],
+  "testCases": [
+   {
+    "id": "two-cities",
+    "label": "Two calls in one turn",
+    "input": {
+     "calls": [
+      {
+       "id": "toolu_01",
+       "tool": "get_weather",
+       "arguments": {
+        "city": "Paris"
+       }
+      },
+      {
+       "id": "toolu_02",
+       "tool": "get_weather",
+       "arguments": {
+        "city": "Tokyo"
+       }
+      }
+     ]
+    },
+    "expectedOutput": [
+     {
+      "role": "tool",
+      "tool_call_id": "toolu_01",
+      "content": "18C, light rain"
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "toolu_02",
+      "content": "24C, clear"
+     }
+    ],
+    "hidden": false
+   },
+   {
+    "id": "generated-ids",
+    "label": "Missing ids are generated by position",
+    "input": {
+     "calls": [
+      {
+       "tool": "add",
+       "arguments": {
+        "a": 1,
+        "b": 2
+       }
+      },
+      {
+       "tool": "lookup_doc",
+       "arguments": {
+        "doc_id": "shipping"
+       }
+      }
+     ]
+    },
+    "expectedOutput": [
+     {
+      "role": "tool",
+      "tool_call_id": "call_1",
+      "content": "3"
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "call_2",
+      "content": "Standard shipping takes 3-5 business days."
+     }
+    ],
+    "hidden": false
+   },
+   {
+    "id": "independent-failure",
+    "label": "One failure doesn't stop the batch",
+    "input": {
+     "calls": [
+      {
+       "id": "a",
+       "tool": "divide",
+       "arguments": {
+        "a": 1,
+        "b": 0
+       }
+      },
+      {
+       "id": "b",
+       "tool": "add",
+       "arguments": {
+        "a": 2,
+        "b": 2
+       }
+      }
+     ]
+    },
+    "expectedOutput": [
+     {
+      "role": "tool",
+      "tool_call_id": "a",
+      "content": "error: divide raised ZeroDivisionError: division by zero"
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "b",
+      "content": "4"
+     }
+    ],
+    "hidden": false
+   },
+   {
+    "id": "duplicate",
+    "label": "Duplicate ids are rejected",
+    "input": {
+     "calls": [
+      {
+       "id": "x",
+       "tool": "add",
+       "arguments": {
+        "a": 1,
+        "b": 1
+       }
+      },
+      {
+       "id": "x",
+       "tool": "add",
+       "arguments": {
+        "a": 2,
+        "b": 2
+       }
+      }
+     ]
+    },
+    "expectedOutput": [
+     {
+      "role": "tool",
+      "tool_call_id": "x",
+      "content": "2"
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "x",
+      "content": "error: duplicate tool_call_id 'x'"
+     }
+    ],
+    "hidden": false
+   },
+   {
+    "id": "limit",
+    "label": "Calls beyond max_parallel are refused",
+    "input": {
+     "calls": [
+      {
+       "tool": "add",
+       "arguments": {
+        "a": 0,
+        "b": 0
+       }
+      },
+      {
+       "tool": "add",
+       "arguments": {
+        "a": 1,
+        "b": 1
+       }
+      },
+      {
+       "tool": "add",
+       "arguments": {
+        "a": 2,
+        "b": 2
+       }
+      },
+      {
+       "tool": "add",
+       "arguments": {
+        "a": 3,
+        "b": 3
+       }
+      },
+      {
+       "tool": "add",
+       "arguments": {
+        "a": 4,
+        "b": 4
+       }
+      }
+     ]
+    },
+    "expectedOutput": [
+     {
+      "role": "tool",
+      "tool_call_id": "call_1",
+      "content": "0"
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "call_2",
+      "content": "2"
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "call_3",
+      "content": "4"
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "call_4",
+      "content": "6"
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "call_5",
+      "content": "error: too many parallel tool calls (limit 4)"
+     }
+    ],
+    "hidden": true
+   },
+   {
+    "id": "empty",
+    "label": "No calls",
+    "input": {
+     "calls": []
+    },
+    "expectedOutput": [],
+    "hidden": true
+   },
+   {
+    "id": "no-arguments-key",
+    "label": "Missing arguments key",
+    "input": {
+     "calls": [
+      {
+       "id": "z",
+       "tool": "lookup_doc"
+      }
+     ]
+    },
+    "expectedOutput": [
+     {
+      "role": "tool",
+      "tool_call_id": "z",
+      "content": "error: invalid arguments for 'lookup_doc': missing required argument 'doc_id'"
+     }
+    ],
+    "hidden": true
+   },
+   {
+    "id": "generated-collision",
+    "label": "A generated id can collide with an explicit one",
+    "input": {
+     "calls": [
+      {
+       "id": "call_2",
+       "tool": "add",
+       "arguments": {
+        "a": 1,
+        "b": 1
+       }
+      },
+      {
+       "tool": "add",
+       "arguments": {
+        "a": 3,
+        "b": 3
+       }
+      }
+     ]
+    },
+    "expectedOutput": [
+     {
+      "role": "tool",
+      "tool_call_id": "call_2",
+      "content": "2"
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "call_2",
+      "content": "error: duplicate tool_call_id 'call_2'"
+     }
+    ],
+    "hidden": true
+   },
+   {
+    "id": "custom-limit",
+    "label": "max_parallel=1",
+    "input": {
+     "calls": [
+      {
+       "id": "p",
+       "tool": "get_weather",
+       "arguments": {
+        "city": "Lima"
+       }
+      },
+      {
+       "id": "q",
+       "tool": "get_weather",
+       "arguments": {
+        "city": "Paris"
+       }
+      }
+     ],
+     "max_parallel": 1
+    },
+    "expectedOutput": [
+     {
+      "role": "tool",
+      "tool_call_id": "p",
+      "content": "16C, overcast"
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "q",
+      "content": "error: too many parallel tool calls (limit 1)"
+     }
+    ],
+    "hidden": true
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Loop with enumerate(calls, start=1) and keep a set of ids you've already seen.",
+   "strong": "call_id = call.get('id') or f'call_{i}'. Duplicate check, then limit check, then dispatch. Add call_id to `seen` every time.",
+   "concept": "The tool_call_id is a foreign key between the model's request and your response. Treat it with the same care as a database key."
+  },
+  "conceptConnections": [
+   {
+    "title": "Agent fundamentals: tool use",
+    "route": "/docs/agents/agent-fundamentals",
+    "description": "What makes something an agent, and how function calling actually works."
+   },
+   {
+    "title": "ReAct agents in production",
+    "route": "/docs/agents/react-agent-production",
+    "description": "The Thought → Action → Observation loop, the tool-calling contract and parse-failure recovery."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": "agent-context-trimming",
+  "stage": "Build an Agent",
+  "stageNumber": 8,
+  "points": 20
+ },
+ {
+  "id": "agent-memory-recall",
+  "title": "Long-Term Memory Recall",
+  "difficulty": "medium",
+  "topic": "Build an Agent",
+  "estimatedTime": "15–20 min",
+  "functionName": "recall",
+  "functionSignature": "recall(memories: list[dict], query: str, k: int = 3) -> list[str]",
+  "starterCode": "import json\nimport math\nimport re\n\n\nSTOPWORDS = {\"a\", \"an\", \"and\", \"are\", \"did\", \"do\", \"does\", \"for\", \"i\", \"in\", \"is\",\n             \"it\", \"me\", \"my\", \"of\", \"on\", \"the\", \"to\", \"was\", \"what\", \"when\",\n             \"where\", \"which\", \"who\", \"with\", \"you\", \"your\"}\n\n\ndef recall(memories, query, k=3):\n    \"\"\"Return the ids of the k most relevant memories (score, then recency, then id).\"\"\"\n    # Your code here\n    pass\n",
+  "mission": "Trimming (stage 7) throws old turns away. Long-term memory keeps the important facts outside the context window and brings back only the ones relevant to the current question, newest first when facts conflict.",
+  "taskDescription": "Implement `recall(memories, query, k=3)`. Each memory is `{\"id\": str, \"turn\": int, \"text\": str}`.\n\n- **Terms** of a text: lowercase it, take `re.findall(r\"[a-z0-9]+\", ...)`, and drop single-character words (the \"s\" in \"user's\") and words in the provided `STOPWORDS` set. Use a set, so repeats count once.\n- **Score** of a memory: the number of query terms that also appear in the memory's terms.\n- Leave out memories that score 0.\n- Sort by score (high first), then `turn` (newer first), then `id` (alphabetical).\n- Return the ids of the top `k`.",
+  "constraints": [
+   "`STOPWORDS` is provided in the starter. Use it as-is.",
+   "Return a list of ids, not the memory dicts.",
+   "A query made only of stopwords recalls nothing."
+  ],
+  "testCases": [
+   {
+    "id": "conflict",
+    "label": "Newer fact outranks the older one",
+    "input": {
+     "memories": [
+      {
+       "id": "m1",
+       "turn": 1,
+       "text": "User's name is Priya and she lives in Lima."
+      },
+      {
+       "id": "m2",
+       "turn": 3,
+       "text": "Priya prefers vegetarian restaurants."
+      },
+      {
+       "id": "m3",
+       "turn": 4,
+       "text": "The user's flight to Tokyo departs on March 3."
+      },
+      {
+       "id": "m4",
+       "turn": 6,
+       "text": "Priya moved from Lima to Paris last month."
+      },
+      {
+       "id": "m5",
+       "turn": 7,
+       "text": "Weather in Paris was rainy during the last trip."
+      }
+     ],
+     "query": "Which city is Priya in now: Lima or Paris?"
+    },
+    "expectedOutput": [
+     "m4",
+     "m1",
+     "m5"
+    ],
+    "hidden": false
+   },
+   {
+    "id": "single",
+    "label": "One clear match",
+    "input": {
+     "memories": [
+      {
+       "id": "m1",
+       "turn": 1,
+       "text": "User's name is Priya and she lives in Lima."
+      },
+      {
+       "id": "m2",
+       "turn": 3,
+       "text": "Priya prefers vegetarian restaurants."
+      },
+      {
+       "id": "m3",
+       "turn": 4,
+       "text": "The user's flight to Tokyo departs on March 3."
+      },
+      {
+       "id": "m4",
+       "turn": 6,
+       "text": "Priya moved from Lima to Paris last month."
+      },
+      {
+       "id": "m5",
+       "turn": 7,
+       "text": "Weather in Paris was rainy during the last trip."
+      }
+     ],
+     "query": "When does the Tokyo flight leave?"
+    },
+    "expectedOutput": [
+     "m3"
+    ],
+    "hidden": false
+   },
+   {
+    "id": "nothing",
+    "label": "No overlap recalls nothing",
+    "input": {
+     "memories": [
+      {
+       "id": "m1",
+       "turn": 1,
+       "text": "User's name is Priya and she lives in Lima."
+      },
+      {
+       "id": "m2",
+       "turn": 3,
+       "text": "Priya prefers vegetarian restaurants."
+      },
+      {
+       "id": "m3",
+       "turn": 4,
+       "text": "The user's flight to Tokyo departs on March 3."
+      },
+      {
+       "id": "m4",
+       "turn": 6,
+       "text": "Priya moved from Lima to Paris last month."
+      },
+      {
+       "id": "m5",
+       "turn": 7,
+       "text": "Weather in Paris was rainy during the last trip."
+      }
+     ],
+     "query": "What's the GDP of Chile?"
+    },
+    "expectedOutput": [],
+    "hidden": false
+   },
+   {
+    "id": "k1",
+    "label": "k limits the result",
+    "input": {
+     "memories": [
+      {
+       "id": "m1",
+       "turn": 1,
+       "text": "User's name is Priya and she lives in Lima."
+      },
+      {
+       "id": "m2",
+       "turn": 3,
+       "text": "Priya prefers vegetarian restaurants."
+      },
+      {
+       "id": "m3",
+       "turn": 4,
+       "text": "The user's flight to Tokyo departs on March 3."
+      },
+      {
+       "id": "m4",
+       "turn": 6,
+       "text": "Priya moved from Lima to Paris last month."
+      },
+      {
+       "id": "m5",
+       "turn": 7,
+       "text": "Weather in Paris was rainy during the last trip."
+      }
+     ],
+     "query": "Priya Paris",
+     "k": 1
+    },
+    "expectedOutput": [
+     "m4"
+    ],
+    "hidden": false
+   },
+   {
+    "id": "recency-tie",
+    "label": "Equal scores: newest first",
+    "input": {
+     "memories": [
+      {
+       "id": "m1",
+       "turn": 1,
+       "text": "User's name is Priya and she lives in Lima."
+      },
+      {
+       "id": "m2",
+       "turn": 3,
+       "text": "Priya prefers vegetarian restaurants."
+      },
+      {
+       "id": "m3",
+       "turn": 4,
+       "text": "The user's flight to Tokyo departs on March 3."
+      },
+      {
+       "id": "m4",
+       "turn": 6,
+       "text": "Priya moved from Lima to Paris last month."
+      },
+      {
+       "id": "m5",
+       "turn": 7,
+       "text": "Weather in Paris was rainy during the last trip."
+      }
+     ],
+     "query": "PARIS?!"
+    },
+    "expectedOutput": [
+     "m5",
+     "m4"
+    ],
+    "hidden": true
+   },
+   {
+    "id": "id-tie",
+    "label": "Same score and turn: id order",
+    "input": {
+     "memories": [
+      {
+       "id": "b",
+       "turn": 2,
+       "text": "tea"
+      },
+      {
+       "id": "a",
+       "turn": 2,
+       "text": "tea"
+      }
+     ],
+     "query": "tea"
+    },
+    "expectedOutput": [
+     "a",
+     "b"
+    ],
+    "hidden": true
+   },
+   {
+    "id": "stopwords-only",
+    "label": "Stopword-only query",
+    "input": {
+     "memories": [
+      {
+       "id": "m1",
+       "turn": 1,
+       "text": "User's name is Priya and she lives in Lima."
+      },
+      {
+       "id": "m2",
+       "turn": 3,
+       "text": "Priya prefers vegetarian restaurants."
+      },
+      {
+       "id": "m3",
+       "turn": 4,
+       "text": "The user's flight to Tokyo departs on March 3."
+      },
+      {
+       "id": "m4",
+       "turn": 6,
+       "text": "Priya moved from Lima to Paris last month."
+      },
+      {
+       "id": "m5",
+       "turn": 7,
+       "text": "Weather in Paris was rainy during the last trip."
+      }
+     ],
+     "query": "what is it?"
+    },
+    "expectedOutput": [],
+    "hidden": true
+   },
+   {
+    "id": "empty",
+    "label": "No memories",
+    "input": {
+     "memories": [],
+     "query": "Paris"
+    },
+    "expectedOutput": [],
+    "hidden": true
+   },
+   {
+    "id": "repeat-terms",
+    "label": "Repeated query words count once",
+    "input": {
+     "memories": [
+      {
+       "id": "m1",
+       "turn": 1,
+       "text": "User's name is Priya and she lives in Lima."
+      },
+      {
+       "id": "m2",
+       "turn": 3,
+       "text": "Priya prefers vegetarian restaurants."
+      },
+      {
+       "id": "m3",
+       "turn": 4,
+       "text": "The user's flight to Tokyo departs on March 3."
+      },
+      {
+       "id": "m4",
+       "turn": 6,
+       "text": "Priya moved from Lima to Paris last month."
+      },
+      {
+       "id": "m5",
+       "turn": 7,
+       "text": "Weather in Paris was rainy during the last trip."
+      }
+     ],
+     "query": "paris paris paris vegetarian"
+    },
+    "expectedOutput": [
+     "m5",
+     "m4",
+     "m2"
+    ],
+    "hidden": true
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Write a helper that turns any text into its set of terms, then score with set intersection.",
+   "strong": "scored.append((-score, -turn, id)), then sort ascending. That one tuple gives all three tie-breaks.",
+   "concept": "Recency as the tie-break is how an agent prefers 'moved to Paris last month' over 'lives in Lima' when both match."
+  },
+  "conceptConnections": [
+   {
+    "title": "Context engineering",
+    "route": "/docs/agents/context-engineering",
+    "description": "Deciding what the model sees on every call, and what gets cut."
+   },
+   {
+    "title": "Agent fundamentals: tool use",
+    "route": "/docs/agents/agent-fundamentals",
+    "description": "What makes something an agent, and how function calling actually works."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": "agent-parallel-tool-calls",
+  "stage": "Build an Agent",
+  "stageNumber": 9,
+  "points": 20
+ },
+ {
+  "id": "agent-plan-and-execute",
+  "title": "Plan-and-Execute With Dependencies",
+  "difficulty": "hard",
+  "topic": "Build an Agent",
+  "estimatedTime": "25–30 min",
+  "functionName": "execute_plan",
+  "functionSignature": "execute_plan(plan: list[dict]) -> dict",
+  "starterCode": "import json\nimport math\nimport re\n\n\ndef execute_plan(plan):\n    \"\"\"Validate, topologically order and run a plan of tool steps.\"\"\"\n    # Your code here\n    pass\n\n\n# =============================================================================\n# PROVIDED BELOW -- the sandbox and your earlier stages. Read it, don't edit it.\n# =============================================================================\n# ---------------------------------------------------------------------------\n# The sandbox world your agent lives in (provided -- you don't edit this).\n# Four deterministic tools, each with a JSON-Schema-style argument spec,\n# exactly the shape you'd hand a real model's tool-calling API.\n# ---------------------------------------------------------------------------\nWEATHER = {\"paris\": \"18C, light rain\", \"tokyo\": \"24C, clear\", \"lima\": \"16C, overcast\"}\nDOCS = {\n    \"refund-policy\": \"Refunds are accepted within 30 days with a receipt.\",\n    \"shipping\": \"Standard shipping takes 3-5 business days.\",\n}\n\n\ndef add(a, b):\n    return a + b\n\n\ndef divide(a, b):\n    return a / b\n\n\ndef get_weather(city):\n    key = city.strip().lower()\n    if key not in WEATHER:\n        raise ValueError(f\"no weather data for {city}\")\n    return WEATHER[key]\n\n\ndef lookup_doc(doc_id):\n    if doc_id not in DOCS:\n        raise ValueError(f\"no document named {doc_id}\")\n    return DOCS[doc_id]\n\n\nNUM = {\"type\": \"number\"}\nTOOLS = {\n    \"add\": {\"fn\": add, \"schema\": {\"type\": \"object\", \"properties\": {\"a\": NUM, \"b\": NUM}, \"required\": [\"a\", \"b\"]}},\n    \"divide\": {\"fn\": divide, \"schema\": {\"type\": \"object\", \"properties\": {\"a\": NUM, \"b\": NUM}, \"required\": [\"a\", \"b\"]}},\n    \"get_weather\": {\"fn\": get_weather, \"schema\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}},\n    \"lookup_doc\": {\"fn\": lookup_doc, \"schema\": {\"type\": \"object\", \"properties\": {\"doc_id\": {\"type\": \"string\"}}, \"required\": [\"doc_id\"]}},\n}\n\n\n# --- Stage 2: validate_arguments (provided) ---\nJSON_TYPE_NAMES = {str: \"string\", bool: \"boolean\", int: \"integer\", float: \"number\",\n                   list: \"array\", dict: \"object\", type(None): \"null\"}\n\n\ndef _matches(value, expected):\n    if expected == \"string\":\n        return isinstance(value, str)\n    if expected == \"boolean\":\n        return isinstance(value, bool)\n    if expected == \"integer\":\n        return isinstance(value, int) and not isinstance(value, bool)\n    if expected == \"number\":\n        return isinstance(value, (int, float)) and not isinstance(value, bool)\n    if expected == \"array\":\n        return isinstance(value, list)\n    if expected == \"object\":\n        return isinstance(value, dict)\n    return False\n\n\ndef validate_arguments(arguments, schema):\n    errors = []\n    properties = schema.get(\"properties\", {})\n    for name in schema.get(\"required\", []):\n        if name not in arguments:\n            errors.append(f\"missing required argument '{name}'\")\n    for name, value in arguments.items():\n        if name not in properties:\n            errors.append(f\"unexpected argument '{name}'\")\n            continue\n        expected = properties[name][\"type\"]\n        if not _matches(value, expected):\n            got = JSON_TYPE_NAMES.get(type(value), type(value).__name__)\n            errors.append(f\"argument '{name}' should be {expected}, got {got}\")\n    return errors\n\n\n# --- Stage 3: dispatch (provided) ---\ndef dispatch(call):\n    name, arguments = call[\"tool\"], call[\"arguments\"]\n    if name not in TOOLS:\n        available = \", \".join(sorted(TOOLS))\n        return f\"error: unknown tool '{name}'. available tools: {available}\"\n    errors = validate_arguments(arguments, TOOLS[name][\"schema\"])\n    if errors:\n        return f\"error: invalid arguments for '{name}': \" + \"; \".join(errors)\n    try:\n        result = TOOLS[name][\"fn\"](**arguments)\n    except Exception as e:\n        return f\"error: {name} raised {type(e).__name__}: {e}\"\n    return result if isinstance(result, str) else json.dumps(result)\n",
+  "mission": "ReAct decides one step at a time, and pays a model call for every step. Plan-and-execute has the model write the whole plan once, then your code runs it: in dependency order, piping outputs into later steps, and skipping work that depends on a failure.",
+  "taskDescription": "Implement `execute_plan(plan)`. Each step is `{\"id\", \"tool\", \"arguments\", \"depends_on\": [ids]}`.\n\n1. **Validate first, run nothing on failure:** raise `ValueError` for duplicate step ids, a `depends_on` that names an unknown step, or a dependency cycle.\n2. **Order** the steps topologically (Kahn's algorithm). When several steps are ready, take the one that comes first in `plan`.\n3. **Run** each step in that order:\n   - If any dependency's status isn't `\"ok\"`, the step is `{\"status\": \"skipped\", \"output\": None}`.\n   - Otherwise substitute arguments. A string argument that is exactly `\"$<step id>\"` becomes that step's output, parsed with `json.loads` when possible (so `\"5\"` becomes `5`), or the raw string otherwise.\n   - Run it with `dispatch`. If the output starts with `error:`, the status is `\"error\"`, otherwise `\"ok\"`.\n4. Return `{\"order\": [ids in run order], \"results\": {id: {\"status\", \"output\"}}}`. Skipped steps appear in `order` too.",
+  "constraints": [
+   "Detect a cycle when no remaining step is ready, before executing anything.",
+   "Skipping is transitive: a step that depends on a skipped step is also skipped.",
+   "`$`-strings that don't name a step are passed through unchanged."
+  ],
+  "testCases": [
+   {
+    "id": "chain",
+    "label": "Output of one step feeds the next",
+    "input": {
+     "plan": [
+      {
+       "id": "s1",
+       "tool": "add",
+       "arguments": {
+        "a": 2,
+        "b": 3
+       },
+       "depends_on": []
+      },
+      {
+       "id": "s2",
+       "tool": "add",
+       "arguments": {
+        "a": "$s1",
+        "b": 10
+       },
+       "depends_on": [
+        "s1"
+       ]
+      }
+     ]
+    },
+    "expectedOutput": {
+     "order": [
+      "s1",
+      "s2"
+     ],
+     "results": {
+      "s1": {
+       "status": "ok",
+       "output": "5"
+      },
+      "s2": {
+       "status": "ok",
+       "output": "15"
+      }
+     }
+    },
+    "hidden": false
+   },
+   {
+    "id": "reorder",
+    "label": "Plan order isn't run order",
+    "input": {
+     "plan": [
+      {
+       "id": "total",
+       "tool": "add",
+       "arguments": {
+        "a": "$x",
+        "b": 1
+       },
+       "depends_on": [
+        "x"
+       ]
+      },
+      {
+       "id": "x",
+       "tool": "divide",
+       "arguments": {
+        "a": 9,
+        "b": 3
+       },
+       "depends_on": []
+      },
+      {
+       "id": "w",
+       "tool": "get_weather",
+       "arguments": {
+        "city": "Lima"
+       },
+       "depends_on": []
+      }
+     ]
+    },
+    "expectedOutput": {
+     "order": [
+      "x",
+      "total",
+      "w"
+     ],
+     "results": {
+      "x": {
+       "status": "ok",
+       "output": "3.0"
+      },
+      "total": {
+       "status": "ok",
+       "output": "4.0"
+      },
+      "w": {
+       "status": "ok",
+       "output": "16C, overcast"
+      }
+     }
+    },
+    "hidden": false
+   },
+   {
+    "id": "skip-on-failure",
+    "label": "Dependents of a failed step are skipped",
+    "input": {
+     "plan": [
+      {
+       "id": "s1",
+       "tool": "divide",
+       "arguments": {
+        "a": 1,
+        "b": 0
+       },
+       "depends_on": []
+      },
+      {
+       "id": "s2",
+       "tool": "add",
+       "arguments": {
+        "a": "$s1",
+        "b": 1
+       },
+       "depends_on": [
+        "s1"
+       ]
+      },
+      {
+       "id": "s3",
+       "tool": "get_weather",
+       "arguments": {
+        "city": "Tokyo"
+       },
+       "depends_on": []
+      }
+     ]
+    },
+    "expectedOutput": {
+     "order": [
+      "s1",
+      "s2",
+      "s3"
+     ],
+     "results": {
+      "s1": {
+       "status": "error",
+       "output": "error: divide raised ZeroDivisionError: division by zero"
+      },
+      "s2": {
+       "status": "skipped",
+       "output": null
+      },
+      "s3": {
+       "status": "ok",
+       "output": "24C, clear"
+      }
+     }
+    },
+    "hidden": false
+   },
+   {
+    "id": "cycle",
+    "label": "Cycles are rejected before anything runs",
+    "input": {
+     "plan": [
+      {
+       "id": "a",
+       "tool": "add",
+       "arguments": {
+        "a": 1,
+        "b": 1
+       },
+       "depends_on": [
+        "b"
+       ]
+      },
+      {
+       "id": "b",
+       "tool": "add",
+       "arguments": {
+        "a": 1,
+        "b": 1
+       },
+       "depends_on": [
+        "a"
+       ]
+      }
+     ]
+    },
+    "expectedOutput": null,
+    "hidden": false,
+    "expectError": "ValueError"
+   },
+   {
+    "id": "unknown-dep",
+    "label": "Unknown dependency",
+    "input": {
+     "plan": [
+      {
+       "id": "a",
+       "tool": "add",
+       "arguments": {
+        "a": 1,
+        "b": 1
+       },
+       "depends_on": [
+        "ghost"
+       ]
+      }
+     ]
+    },
+    "expectedOutput": null,
+    "hidden": true,
+    "expectError": "ValueError"
+   },
+   {
+    "id": "string-output",
+    "label": "Non-JSON outputs are passed as strings",
+    "input": {
+     "plan": [
+      {
+       "id": "doc",
+       "tool": "lookup_doc",
+       "arguments": {
+        "doc_id": "refund-policy"
+       },
+       "depends_on": []
+      },
+      {
+       "id": "w",
+       "tool": "get_weather",
+       "arguments": {
+        "city": "$doc"
+       },
+       "depends_on": [
+        "doc"
+       ]
+      }
+     ]
+    },
+    "expectedOutput": {
+     "order": [
+      "doc",
+      "w"
+     ],
+     "results": {
+      "doc": {
+       "status": "ok",
+       "output": "Refunds are accepted within 30 days with a receipt."
+      },
+      "w": {
+       "status": "error",
+       "output": "error: get_weather raised ValueError: no weather data for Refunds are accepted within 30 days with a receipt."
+      }
+     }
+    },
+    "hidden": true
+   },
+   {
+    "id": "transitive-skip",
+    "label": "Skips cascade",
+    "input": {
+     "plan": [
+      {
+       "id": "s1",
+       "tool": "get_weather",
+       "arguments": {
+        "city": "Atlantis"
+       },
+       "depends_on": []
+      },
+      {
+       "id": "s2",
+       "tool": "add",
+       "arguments": {
+        "a": 1,
+        "b": 1
+       },
+       "depends_on": [
+        "s1"
+       ]
+      },
+      {
+       "id": "s3",
+       "tool": "add",
+       "arguments": {
+        "a": 1,
+        "b": 1
+       },
+       "depends_on": [
+        "s2"
+       ]
+      }
+     ]
+    },
+    "expectedOutput": {
+     "order": [
+      "s1",
+      "s2",
+      "s3"
+     ],
+     "results": {
+      "s1": {
+       "status": "error",
+       "output": "error: get_weather raised ValueError: no weather data for Atlantis"
+      },
+      "s2": {
+       "status": "skipped",
+       "output": null
+      },
+      "s3": {
+       "status": "skipped",
+       "output": null
+      }
+     }
+    },
+    "hidden": true
+   },
+   {
+    "id": "duplicate-id",
+    "label": "Duplicate ids",
+    "input": {
+     "plan": [
+      {
+       "id": "a",
+       "tool": "add",
+       "arguments": {
+        "a": 1,
+        "b": 1
+       },
+       "depends_on": []
+      },
+      {
+       "id": "a",
+       "tool": "add",
+       "arguments": {
+        "a": 2,
+        "b": 2
+       },
+       "depends_on": []
+      }
+     ]
+    },
+    "expectedOutput": null,
+    "hidden": true,
+    "expectError": "ValueError"
+   },
+   {
+    "id": "diamond",
+    "label": "Diamond dependency",
+    "input": {
+     "plan": [
+      {
+       "id": "s1",
+       "tool": "add",
+       "arguments": {
+        "a": 1,
+        "b": 1
+       },
+       "depends_on": []
+      },
+      {
+       "id": "s2",
+       "tool": "add",
+       "arguments": {
+        "a": "$s1",
+        "b": 10
+       },
+       "depends_on": [
+        "s1"
+       ]
+      },
+      {
+       "id": "s3",
+       "tool": "add",
+       "arguments": {
+        "a": "$s1",
+        "b": 100
+       },
+       "depends_on": [
+        "s1"
+       ]
+      },
+      {
+       "id": "s4",
+       "tool": "add",
+       "arguments": {
+        "a": "$s2",
+        "b": "$s3"
+       },
+       "depends_on": [
+        "s2",
+        "s3"
+       ]
+      }
+     ]
+    },
+    "expectedOutput": {
+     "order": [
+      "s1",
+      "s2",
+      "s3",
+      "s4"
+     ],
+     "results": {
+      "s1": {
+       "status": "ok",
+       "output": "2"
+      },
+      "s2": {
+       "status": "ok",
+       "output": "12"
+      },
+      "s3": {
+       "status": "ok",
+       "output": "102"
+      },
+      "s4": {
+       "status": "ok",
+       "output": "114"
+      }
+     }
+    },
+    "hidden": true
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Do it in two phases: validate and order without calling any tool, then execute.",
+   "strong": "remaining = {id: set(depends_on)}. Repeatedly choose the first plan step whose set is empty, remove it from every other set, and raise if nothing is ready. For substitution, use try: json.loads(raw) except ValueError: raw.",
+   "concept": "A plan is a DAG. Validate the whole graph before any side effects happen, so a bad plan fails fast instead of halfway."
+  },
+  "conceptConnections": [
+   {
+    "title": "Plan-and-execute agents",
+    "route": "/docs/agents/plan-and-execute",
+    "description": "Plan once, execute many: when it beats ReAct and when it loses."
+   },
+   {
+    "title": "Loops and graphs",
+    "route": "/docs/agents/loops-and-graphs",
+    "description": "Why a while-loop agent becomes a graph, and which edges are real."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": "agent-memory-recall",
+  "stage": "Build an Agent",
+  "stageNumber": 10,
+  "points": 30
+ },
+ {
+  "id": "agent-eval-harness",
+  "title": "Evaluate Your Agent",
+  "difficulty": "hard",
+  "topic": "Build an Agent",
+  "estimatedTime": "20–25 min",
+  "functionName": "evaluate_agent",
+  "functionSignature": "evaluate_agent(cases: list[dict]) -> dict",
+  "starterCode": "import json\nimport math\nimport re\n\n\ndef evaluate_agent(cases):\n    \"\"\"Run run_agent over every case; return pass_rate, tool_accuracy, avg_steps, failures.\"\"\"\n    # Your code here\n    pass\n\n\n# =============================================================================\n# PROVIDED BELOW -- the sandbox and your earlier stages. Read it, don't edit it.\n# =============================================================================\n# ---------------------------------------------------------------------------\n# The sandbox world your agent lives in (provided -- you don't edit this).\n# Four deterministic tools, each with a JSON-Schema-style argument spec,\n# exactly the shape you'd hand a real model's tool-calling API.\n# ---------------------------------------------------------------------------\nWEATHER = {\"paris\": \"18C, light rain\", \"tokyo\": \"24C, clear\", \"lima\": \"16C, overcast\"}\nDOCS = {\n    \"refund-policy\": \"Refunds are accepted within 30 days with a receipt.\",\n    \"shipping\": \"Standard shipping takes 3-5 business days.\",\n}\n\n\ndef add(a, b):\n    return a + b\n\n\ndef divide(a, b):\n    return a / b\n\n\ndef get_weather(city):\n    key = city.strip().lower()\n    if key not in WEATHER:\n        raise ValueError(f\"no weather data for {city}\")\n    return WEATHER[key]\n\n\ndef lookup_doc(doc_id):\n    if doc_id not in DOCS:\n        raise ValueError(f\"no document named {doc_id}\")\n    return DOCS[doc_id]\n\n\nNUM = {\"type\": \"number\"}\nTOOLS = {\n    \"add\": {\"fn\": add, \"schema\": {\"type\": \"object\", \"properties\": {\"a\": NUM, \"b\": NUM}, \"required\": [\"a\", \"b\"]}},\n    \"divide\": {\"fn\": divide, \"schema\": {\"type\": \"object\", \"properties\": {\"a\": NUM, \"b\": NUM}, \"required\": [\"a\", \"b\"]}},\n    \"get_weather\": {\"fn\": get_weather, \"schema\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}},\n    \"lookup_doc\": {\"fn\": lookup_doc, \"schema\": {\"type\": \"object\", \"properties\": {\"doc_id\": {\"type\": \"string\"}}, \"required\": [\"doc_id\"]}},\n}\n\n\n# ---------------------------------------------------------------------------\n# A scripted stand-in for the model (provided). It replies with `script`\n# in order, but it still READS the conversation: placeholders in a reply\n# are filled from the messages it was actually sent, so a loop that forgets\n# to feed results back gets a wrong answer -- just like a real model would.\n#   {last_tool_result}  -> content of the most recent \"tool\" message\n#   {last_feedback}     -> content of the most recent non-assistant message\n#   {context_size}      -> how many messages the model was sent this call\n# ---------------------------------------------------------------------------\nSYSTEM_PROMPT = (\n    \"You are a helpful agent. To use a tool, reply with JSON: \"\n    '{\"tool\": <name>, \"arguments\": {...}}. Otherwise reply with your final answer.'\n)\n\n\ndef make_llm(script):\n    replies = list(script)\n\n    def llm(messages):\n        if not replies:\n            raise RuntimeError(\"model script exhausted -- your loop called the model too many times\")\n        reply = replies.pop(0)\n        if \"{last_tool_result}\" in reply:\n            last = next((m[\"content\"] for m in reversed(messages) if m[\"role\"] == \"tool\"), \"\")\n            reply = reply.replace(\"{last_tool_result}\", last)\n        if \"{last_feedback}\" in reply:\n            last = next((m[\"content\"] for m in reversed(messages) if m[\"role\"] != \"assistant\"), \"\")\n            reply = reply.replace(\"{last_feedback}\", last)\n        if \"{context_size}\" in reply:\n            reply = reply.replace(\"{context_size}\", str(len(messages)))\n        return reply\n\n    return llm\n\n\ndef count_tokens(text):\n    \"\"\"Rough token estimate: ~4 characters per token (good enough for budgets).\"\"\"\n    return math.ceil(len(text) / 4)\n\n\n# --- Stage 1: parse_tool_call (provided) ---\ndef parse_tool_call(text):\n    if '\"tool\"' not in text:\n        return None  # no tool call -> this is the model's final answer\n    fence = re.search(r\"```(?:json)?\\s*(.*?)```\", text, re.DOTALL)\n    if fence:\n        candidate = fence.group(1)\n    else:\n        start, end = text.find(\"{\"), text.rfind(\"}\")\n        if start == -1 or end < start:\n            raise ValueError(\"tool call has no JSON object\")\n        candidate = text[start:end + 1]\n    try:\n        data = json.loads(candidate)\n    except json.JSONDecodeError as e:\n        raise ValueError(f\"invalid JSON in tool call: {e.msg}\")\n    if not isinstance(data, dict) or not isinstance(data.get(\"tool\"), str) or not data[\"tool\"]:\n        raise ValueError(\"tool call needs a non-empty string 'tool'\")\n    arguments = data.get(\"arguments\", {})\n    if not isinstance(arguments, dict):\n        raise ValueError(\"'arguments' must be an object\")\n    return {\"tool\": data[\"tool\"], \"arguments\": arguments}\n\n\n# --- Stage 2: validate_arguments (provided) ---\nJSON_TYPE_NAMES = {str: \"string\", bool: \"boolean\", int: \"integer\", float: \"number\",\n                   list: \"array\", dict: \"object\", type(None): \"null\"}\n\n\ndef _matches(value, expected):\n    if expected == \"string\":\n        return isinstance(value, str)\n    if expected == \"boolean\":\n        return isinstance(value, bool)\n    if expected == \"integer\":\n        return isinstance(value, int) and not isinstance(value, bool)\n    if expected == \"number\":\n        return isinstance(value, (int, float)) and not isinstance(value, bool)\n    if expected == \"array\":\n        return isinstance(value, list)\n    if expected == \"object\":\n        return isinstance(value, dict)\n    return False\n\n\ndef validate_arguments(arguments, schema):\n    errors = []\n    properties = schema.get(\"properties\", {})\n    for name in schema.get(\"required\", []):\n        if name not in arguments:\n            errors.append(f\"missing required argument '{name}'\")\n    for name, value in arguments.items():\n        if name not in properties:\n            errors.append(f\"unexpected argument '{name}'\")\n            continue\n        expected = properties[name][\"type\"]\n        if not _matches(value, expected):\n            got = JSON_TYPE_NAMES.get(type(value), type(value).__name__)\n            errors.append(f\"argument '{name}' should be {expected}, got {got}\")\n    return errors\n\n\n# --- Stage 3: dispatch (provided) ---\ndef dispatch(call):\n    name, arguments = call[\"tool\"], call[\"arguments\"]\n    if name not in TOOLS:\n        available = \", \".join(sorted(TOOLS))\n        return f\"error: unknown tool '{name}'. available tools: {available}\"\n    errors = validate_arguments(arguments, TOOLS[name][\"schema\"])\n    if errors:\n        return f\"error: invalid arguments for '{name}': \" + \"; \".join(errors)\n    try:\n        result = TOOLS[name][\"fn\"](**arguments)\n    except Exception as e:\n        return f\"error: {name} raised {type(e).__name__}: {e}\"\n    return result if isinstance(result, str) else json.dumps(result)\n\n\n# --- Stage 6: run_agent (with guardrails) (provided) ---\ndef run_agent(task, script, max_steps=8, max_consecutive_errors=3, max_tokens=None):\n    llm = make_llm(script)\n    messages = [{\"role\": \"system\", \"content\": SYSTEM_PROMPT},\n                {\"role\": \"user\", \"content\": task}]\n    tools_called = []\n    errors = 0\n    consecutive = 0\n    recent_calls = []\n\n    def result(answer, steps, reason):\n        return {\"answer\": answer, \"steps\": steps, \"tools_called\": tools_called,\n                \"errors\": errors, \"stop_reason\": reason,\n                \"context_tokens\": sum(count_tokens(m[\"content\"]) for m in messages)}\n\n    for step in range(1, max_steps + 1):\n        if max_tokens is not None and sum(count_tokens(m[\"content\"]) for m in messages) > max_tokens:\n            return result(None, step - 1, \"token_budget\")\n        reply = llm(messages)\n        messages.append({\"role\": \"assistant\", \"content\": reply})\n        try:\n            call = parse_tool_call(reply)\n        except ValueError as e:\n            errors += 1\n            consecutive += 1\n            messages.append({\"role\": \"user\", \"content\":\n                f\"error: could not parse your tool call ({e}). \"\n                \"Reply with a JSON tool call or a final answer.\"})\n        else:\n            if call is None:\n                return result(reply, step, \"final_answer\")\n            signature = call[\"tool\"] + json.dumps(call[\"arguments\"], sort_keys=True)\n            recent_calls.append(signature)\n            if recent_calls[-3:] == [signature] * 3:\n                return result(None, step, \"loop_detected\")\n            tools_called.append(call[\"tool\"])\n            output = dispatch(call)\n            messages.append({\"role\": \"tool\", \"content\": output})\n            if output.startswith(\"error:\"):\n                errors += 1\n                consecutive += 1\n            else:\n                consecutive = 0\n        if consecutive >= max_consecutive_errors:\n            return result(None, step, \"too_many_errors\")\n    return result(None, max_steps, \"max_steps\")\n",
+  "mission": "'It worked when I tried it' isn't an evaluation. Build the harness that runs your agent over a suite of cases and reports the numbers teams actually track: task success, tool-call accuracy, steps, and why each failure failed.",
+  "taskDescription": "Implement `evaluate_agent(cases)`. Each case has `name`, `task`, `script`, `expected_answer_contains`, `expected_tools` (a list), and an optional `max_steps` (default 8).\n\nFor each case, call the provided `run_agent(case[\"task\"], case[\"script\"], max_steps=...)` (your stage-6 agent). Then classify it, checking in this order:\n1. `answer` is `None`: failure reason `\"no_answer:\" + stop_reason`\n2. `tools_called != expected_tools`: `\"wrong_tools\"`\n3. `expected_answer_contains` isn't in the answer (case-insensitive): `\"wrong_answer\"`\n4. Otherwise the case passed.\n\nReturn:\n```\n{\"pass_rate\": passed / n,                       rounded to 3 places\n \"tool_accuracy\": exact-tool-match cases / n,   rounded to 3 places\n \"avg_steps\": mean steps,                       rounded to 2 places\n \"failures\": {case name: reason}}\n```\nRaise `ValueError` for an empty list of cases.",
+  "constraints": [
+   "`tool_accuracy` counts every case whose tools match, including cases that failed for another reason.",
+   "Use `round()` exactly as specified. Floats are compared with a 1e-5 tolerance.",
+   "Don't re-implement the agent. Call the provided `run_agent`."
+  ],
+  "testCases": [
+   {
+    "id": "all-pass",
+    "label": "A passing suite",
+    "input": {
+     "cases": [
+      {
+       "name": "weather-paris",
+       "task": "Weather in Paris?",
+       "script": [
+        "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}",
+        "Paris: {last_tool_result}"
+       ],
+       "expected_answer_contains": "light rain",
+       "expected_tools": [
+        "get_weather"
+       ]
+      },
+      {
+       "name": "sum",
+       "task": "What is 1 + 2?",
+       "script": [
+        "{\"tool\": \"add\", \"arguments\": {\"a\": 1, \"b\": 2}}",
+        "It's {last_tool_result}."
+       ],
+       "expected_answer_contains": "3",
+       "expected_tools": [
+        "add"
+       ]
+      }
+     ]
+    },
+    "expectedOutput": {
+     "pass_rate": 1.0,
+     "tool_accuracy": 1.0,
+     "avg_steps": 2.0,
+     "failures": {}
+    },
+    "hidden": false
+   },
+   {
+    "id": "mixed",
+    "label": "Wrong answer vs wrong tools",
+    "input": {
+     "cases": [
+      {
+       "name": "weather-paris",
+       "task": "Weather in Paris?",
+       "script": [
+        "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}",
+        "Paris: {last_tool_result}"
+       ],
+       "expected_answer_contains": "light rain",
+       "expected_tools": [
+        "get_weather"
+       ]
+      },
+      {
+       "name": "hallucinated",
+       "task": "Weather in Tokyo?",
+       "script": [
+        "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\"}}",
+        "Tokyo is snowing."
+       ],
+       "expected_answer_contains": "clear",
+       "expected_tools": [
+        "get_weather"
+       ]
+      },
+      {
+       "name": "no-lookup",
+       "task": "Shipping time?",
+       "script": [
+        "Shipping takes 3-5 business days."
+       ],
+       "expected_answer_contains": "3-5",
+       "expected_tools": [
+        "lookup_doc"
+       ]
+      }
+     ]
+    },
+    "expectedOutput": {
+     "pass_rate": 0.333,
+     "tool_accuracy": 0.667,
+     "avg_steps": 1.67,
+     "failures": {
+      "hallucinated": "wrong_answer",
+      "no-lookup": "wrong_tools"
+     }
+    },
+    "hidden": false
+   },
+   {
+    "id": "no-answer",
+    "label": "A looping agent produces no answer",
+    "input": {
+     "cases": [
+      {
+       "name": "sum",
+       "task": "What is 1 + 2?",
+       "script": [
+        "{\"tool\": \"add\", \"arguments\": {\"a\": 1, \"b\": 2}}",
+        "It's {last_tool_result}."
+       ],
+       "expected_answer_contains": "3",
+       "expected_tools": [
+        "add"
+       ]
+      },
+      {
+       "name": "stuck",
+       "task": "Weather in Lima?",
+       "script": [
+        "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Lima\"}}",
+        "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Lima\"}}",
+        "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Lima\"}}",
+        "never"
+       ],
+       "expected_answer_contains": "overcast",
+       "expected_tools": [
+        "get_weather"
+       ]
+      }
+     ]
+    },
+    "expectedOutput": {
+     "pass_rate": 0.5,
+     "tool_accuracy": 0.5,
+     "avg_steps": 2.5,
+     "failures": {
+      "stuck": "no_answer:loop_detected"
+     }
+    },
+    "hidden": false
+   },
+   {
+    "id": "empty",
+    "label": "Empty suite is an error",
+    "input": {
+     "cases": []
+    },
+    "expectedOutput": null,
+    "hidden": false,
+    "expectError": "ValueError"
+   },
+   {
+    "id": "case-insensitive",
+    "label": "Answer match ignores case",
+    "input": {
+     "cases": [
+      {
+       "name": "caps",
+       "task": "Weather in Paris?",
+       "script": [
+        "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}",
+        "PARIS: {last_tool_result}"
+       ],
+       "expected_answer_contains": "LIGHT RAIN",
+       "expected_tools": [
+        "get_weather"
+       ]
+      }
+     ]
+    },
+    "expectedOutput": {
+     "pass_rate": 1.0,
+     "tool_accuracy": 1.0,
+     "avg_steps": 2.0,
+     "failures": {}
+    },
+    "hidden": true
+   },
+   {
+    "id": "per-case-max-steps",
+    "label": "max_steps per case",
+    "input": {
+     "cases": [
+      {
+       "name": "short",
+       "task": "Weather?",
+       "script": [
+        "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}",
+        "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\"}}",
+        "done"
+       ],
+       "expected_answer_contains": "done",
+       "expected_tools": [
+        "get_weather",
+        "get_weather"
+       ],
+       "max_steps": 2
+      }
+     ]
+    },
+    "expectedOutput": {
+     "pass_rate": 0.0,
+     "tool_accuracy": 1.0,
+     "avg_steps": 2.0,
+     "failures": {
+      "short": "no_answer:max_steps"
+     }
+    },
+    "hidden": true
+   },
+   {
+    "id": "right-answer-wrong-tools",
+    "label": "Right answer, wrong tools still fails",
+    "input": {
+     "cases": [
+      {
+       "name": "lucky",
+       "task": "1+2?",
+       "script": [
+        "It's 3."
+       ],
+       "expected_answer_contains": "3",
+       "expected_tools": [
+        "add"
+       ]
+      },
+      {
+       "name": "sum",
+       "task": "What is 1 + 2?",
+       "script": [
+        "{\"tool\": \"add\", \"arguments\": {\"a\": 1, \"b\": 2}}",
+        "It's {last_tool_result}."
+       ],
+       "expected_answer_contains": "3",
+       "expected_tools": [
+        "add"
+       ]
+      }
+     ]
+    },
+    "expectedOutput": {
+     "pass_rate": 0.5,
+     "tool_accuracy": 0.5,
+     "avg_steps": 1.5,
+     "failures": {
+      "lucky": "wrong_tools"
+     }
+    },
+    "hidden": true
+   },
+   {
+    "id": "thirds",
+    "label": "Rounding",
+    "input": {
+     "cases": [
+      {
+       "name": "sum",
+       "task": "What is 1 + 2?",
+       "script": [
+        "{\"tool\": \"add\", \"arguments\": {\"a\": 1, \"b\": 2}}",
+        "It's {last_tool_result}."
+       ],
+       "expected_answer_contains": "3",
+       "expected_tools": [
+        "add"
+       ]
+      },
+      {
+       "name": "hallucinated",
+       "task": "Weather in Tokyo?",
+       "script": [
+        "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\"}}",
+        "Tokyo is snowing."
+       ],
+       "expected_answer_contains": "clear",
+       "expected_tools": [
+        "get_weather"
+       ]
+      },
+      {
+       "name": "stuck",
+       "task": "Weather in Lima?",
+       "script": [
+        "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Lima\"}}",
+        "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Lima\"}}",
+        "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Lima\"}}",
+        "never"
+       ],
+       "expected_answer_contains": "overcast",
+       "expected_tools": [
+        "get_weather"
+       ]
+      }
+     ]
+    },
+    "expectedOutput": {
+     "pass_rate": 0.333,
+     "tool_accuracy": 0.667,
+     "avg_steps": 2.33,
+     "failures": {
+      "hallucinated": "wrong_answer",
+      "stuck": "no_answer:loop_detected"
+     }
+    },
+    "hidden": true
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Keep running counters (passed, right_tools, total_steps) and a failures dict while you loop over the cases.",
+   "strong": "The order of the checks is the spec. A run with no answer is 'no_answer:...' even when its tools also differ.",
+   "concept": "Separate trajectory metrics (did it call the right tools?) from outcome metrics (is the answer right?). An agent can get the right answer by luck, with the wrong tools."
+  },
+  "conceptConnections": [
+   {
+    "title": "Evaluating LLM, RAG and agent systems",
+    "route": "/docs/ai-evaluation/llm-rag-agent-evaluation",
+    "description": "Task success, tool-call accuracy and trajectory metrics for agents."
+   },
+   {
+    "title": "ReAct agents in production",
+    "route": "/docs/agents/react-agent-production",
+    "description": "The Thought → Action → Observation loop, the tool-calling contract and parse-failure recovery."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": "agent-plan-and-execute",
+  "stage": "Build an Agent",
+  "stageNumber": 11,
+  "points": 30
+ },
+ {
+  "id": "agent-capstone",
+  "title": "Capstone: A Production Agent Loop",
+  "difficulty": "hard",
+  "topic": "Build an Agent",
+  "estimatedTime": "45–60 min",
+  "functionName": "run_agent_v2",
+  "functionSignature": "run_agent_v2(task: str, script: list[str], config: dict) -> dict",
+  "starterCode": "import json\nimport math\nimport re\n\n\ndef parse_reply(text):\n    \"\"\"None for a final answer, else a list of {\"id\", \"tool\", \"arguments\"} calls.\n    Supports a single call or {\"tool_calls\": [...]}. Raise ValueError if malformed.\"\"\"\n    # Your code here\n    pass\n\n\ndef run_agent_v2(task, script, config):\n    \"\"\"The full loop: parallel calls, recovery, loop detection, trimming, budget, trace.\"\"\"\n    llm = make_llm(script)\n    messages = [{\"role\": \"system\", \"content\": SYSTEM_PROMPT},\n                {\"role\": \"user\", \"content\": task}]\n    # Your code here\n    pass\n\n\n# =============================================================================\n# PROVIDED BELOW -- the sandbox and your earlier stages. Read it, don't edit it.\n# =============================================================================\n# ---------------------------------------------------------------------------\n# The sandbox world your agent lives in (provided -- you don't edit this).\n# Four deterministic tools, each with a JSON-Schema-style argument spec,\n# exactly the shape you'd hand a real model's tool-calling API.\n# ---------------------------------------------------------------------------\nWEATHER = {\"paris\": \"18C, light rain\", \"tokyo\": \"24C, clear\", \"lima\": \"16C, overcast\"}\nDOCS = {\n    \"refund-policy\": \"Refunds are accepted within 30 days with a receipt.\",\n    \"shipping\": \"Standard shipping takes 3-5 business days.\",\n}\n\n\ndef add(a, b):\n    return a + b\n\n\ndef divide(a, b):\n    return a / b\n\n\ndef get_weather(city):\n    key = city.strip().lower()\n    if key not in WEATHER:\n        raise ValueError(f\"no weather data for {city}\")\n    return WEATHER[key]\n\n\ndef lookup_doc(doc_id):\n    if doc_id not in DOCS:\n        raise ValueError(f\"no document named {doc_id}\")\n    return DOCS[doc_id]\n\n\nNUM = {\"type\": \"number\"}\nTOOLS = {\n    \"add\": {\"fn\": add, \"schema\": {\"type\": \"object\", \"properties\": {\"a\": NUM, \"b\": NUM}, \"required\": [\"a\", \"b\"]}},\n    \"divide\": {\"fn\": divide, \"schema\": {\"type\": \"object\", \"properties\": {\"a\": NUM, \"b\": NUM}, \"required\": [\"a\", \"b\"]}},\n    \"get_weather\": {\"fn\": get_weather, \"schema\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}},\n    \"lookup_doc\": {\"fn\": lookup_doc, \"schema\": {\"type\": \"object\", \"properties\": {\"doc_id\": {\"type\": \"string\"}}, \"required\": [\"doc_id\"]}},\n}\n\n\n# ---------------------------------------------------------------------------\n# A scripted stand-in for the model (provided). It replies with `script`\n# in order, but it still READS the conversation: placeholders in a reply\n# are filled from the messages it was actually sent, so a loop that forgets\n# to feed results back gets a wrong answer -- just like a real model would.\n#   {last_tool_result}  -> content of the most recent \"tool\" message\n#   {last_feedback}     -> content of the most recent non-assistant message\n#   {context_size}      -> how many messages the model was sent this call\n# ---------------------------------------------------------------------------\nSYSTEM_PROMPT = (\n    \"You are a helpful agent. To use a tool, reply with JSON: \"\n    '{\"tool\": <name>, \"arguments\": {...}}. Otherwise reply with your final answer.'\n)\n\n\ndef make_llm(script):\n    replies = list(script)\n\n    def llm(messages):\n        if not replies:\n            raise RuntimeError(\"model script exhausted -- your loop called the model too many times\")\n        reply = replies.pop(0)\n        if \"{last_tool_result}\" in reply:\n            last = next((m[\"content\"] for m in reversed(messages) if m[\"role\"] == \"tool\"), \"\")\n            reply = reply.replace(\"{last_tool_result}\", last)\n        if \"{last_feedback}\" in reply:\n            last = next((m[\"content\"] for m in reversed(messages) if m[\"role\"] != \"assistant\"), \"\")\n            reply = reply.replace(\"{last_feedback}\", last)\n        if \"{context_size}\" in reply:\n            reply = reply.replace(\"{context_size}\", str(len(messages)))\n        return reply\n\n    return llm\n\n\ndef count_tokens(text):\n    \"\"\"Rough token estimate: ~4 characters per token (good enough for budgets).\"\"\"\n    return math.ceil(len(text) / 4)\n\n\n# --- Stage 2: validate_arguments (provided) ---\nJSON_TYPE_NAMES = {str: \"string\", bool: \"boolean\", int: \"integer\", float: \"number\",\n                   list: \"array\", dict: \"object\", type(None): \"null\"}\n\n\ndef _matches(value, expected):\n    if expected == \"string\":\n        return isinstance(value, str)\n    if expected == \"boolean\":\n        return isinstance(value, bool)\n    if expected == \"integer\":\n        return isinstance(value, int) and not isinstance(value, bool)\n    if expected == \"number\":\n        return isinstance(value, (int, float)) and not isinstance(value, bool)\n    if expected == \"array\":\n        return isinstance(value, list)\n    if expected == \"object\":\n        return isinstance(value, dict)\n    return False\n\n\ndef validate_arguments(arguments, schema):\n    errors = []\n    properties = schema.get(\"properties\", {})\n    for name in schema.get(\"required\", []):\n        if name not in arguments:\n            errors.append(f\"missing required argument '{name}'\")\n    for name, value in arguments.items():\n        if name not in properties:\n            errors.append(f\"unexpected argument '{name}'\")\n            continue\n        expected = properties[name][\"type\"]\n        if not _matches(value, expected):\n            got = JSON_TYPE_NAMES.get(type(value), type(value).__name__)\n            errors.append(f\"argument '{name}' should be {expected}, got {got}\")\n    return errors\n\n\n# --- Stage 3: dispatch (provided) ---\ndef dispatch(call):\n    name, arguments = call[\"tool\"], call[\"arguments\"]\n    if name not in TOOLS:\n        available = \", \".join(sorted(TOOLS))\n        return f\"error: unknown tool '{name}'. available tools: {available}\"\n    errors = validate_arguments(arguments, TOOLS[name][\"schema\"])\n    if errors:\n        return f\"error: invalid arguments for '{name}': \" + \"; \".join(errors)\n    try:\n        result = TOOLS[name][\"fn\"](**arguments)\n    except Exception as e:\n        return f\"error: {name} raised {type(e).__name__}: {e}\"\n    return result if isinstance(result, str) else json.dumps(result)\n\n\n# --- Stage 7: trim_messages (provided) ---\ndef trim_messages(messages, max_tokens):\n    # Pin the system prompt (if any) and the first user message: the task.\n    pinned_count = 0\n    if messages and messages[0][\"role\"] == \"system\":\n        pinned_count = 1\n    if len(messages) > pinned_count and messages[pinned_count][\"role\"] == \"user\":\n        pinned_count += 1\n    pinned, rest = messages[:pinned_count], messages[pinned_count:]\n\n    # Group the rest so an assistant message and the tool results that\n    # follow it are kept or dropped together.\n    groups = []\n    for m in rest:\n        if m[\"role\"] == \"tool\" and groups and groups[-1][0][\"role\"] == \"assistant\":\n            groups[-1].append(m)\n        else:\n            groups.append([m])\n\n    budget = max_tokens - sum(count_tokens(m[\"content\"]) for m in pinned)\n    kept = []\n    for group in reversed(groups):\n        cost = sum(count_tokens(m[\"content\"]) for m in group)\n        if cost > budget:\n            break\n        kept = group + kept\n        budget -= cost\n    return pinned + kept\n\n\n# --- Stage 8: execute_tool_calls (provided) ---\ndef execute_tool_calls(calls, max_parallel=4):\n    results = []\n    seen = set()\n    for i, call in enumerate(calls, start=1):\n        call_id = call.get(\"id\") or f\"call_{i}\"\n        if call_id in seen:\n            content = f\"error: duplicate tool_call_id '{call_id}'\"\n        elif i > max_parallel:\n            content = f\"error: too many parallel tool calls (limit {max_parallel})\"\n        else:\n            content = dispatch({\"tool\": call[\"tool\"], \"arguments\": call.get(\"arguments\", {})})\n        seen.add(call_id)\n        results.append({\"role\": \"tool\", \"tool_call_id\": call_id, \"content\": content})\n    return results\n",
+  "mission": "Put it all together: one loop that handles single and parallel tool calls, recovers from errors, detects loops, trims its context, enforces a real cost budget, and leaves a trace you could debug at 3am. This is the core of a real agent runtime, written by you.",
+  "taskDescription": "Implement `parse_reply(text)` and `run_agent_v2(task, script, config)`.\n\n**parse_reply** extends stage 1. Return `None` if the text has no `\"tool` substring. Extract the JSON the same way as stage 1. If it has a `tool_calls` list, each item is a call; otherwise the object itself is one call. Return a list of `{\"id\", \"tool\", \"arguments\"}` (`id` may be `None`). Raise `ValueError` on bad JSON or bad shape.\n\n**run_agent_v2.** `config` keys, all optional: `max_steps` (8), `max_consecutive_errors` (3), `max_tokens` (None), `context_limit` (None). Each step:\n1. `context = trim_messages(messages, context_limit)` if a limit is set, else `messages`. Its token cost is the sum of `count_tokens` over `context`. If `max_tokens` is set and the tokens already spent plus this cost would exceed it, return `\"token_budget\"` with `steps = step - 1`. Otherwise add the cost to the tokens spent, which accumulate across calls, and call `llm(context)`.\n2. Append the reply as an assistant message, then:\n   - Parse error: feedback exactly as in stage 5, count an error, and add `{\"step\", \"action\": \"parse_error\"}` to `trace`.\n   - Final answer: trace `{\"step\", \"action\": \"final_answer\"}`, then return.\n   - Calls: the signature is `json.dumps([[tool, arguments], ...], sort_keys=True)`. If it's the same as the last two signatures, trace `\"loop_detected\"` and return. Otherwise run `execute_tool_calls(calls)`, append every result message, add each tool name to `tools_called`, count the failed results as errors, and trace `{\"step\", \"action\": \"tools\", \"tools\": [...], \"failed\": n}`.\n3. Consecutive errors go up after a parse error, or after a tool step where **every** call failed. A tool step with at least one success resets them to 0. Stop with `\"too_many_errors\"` when they reach the limit.\n\nReturn `{\"answer\", \"steps\", \"stop_reason\", \"tools_called\", \"errors\", \"trace\"}`.",
+  "constraints": [
+   "Provided: `trim_messages` (stage 7) and `execute_tool_calls` (stage 8), plus `dispatch` and `validate_arguments`.",
+   "Token spend is cumulative: you pay for the whole context on every call.",
+   "The scripted model fills `{context_size}` with the number of messages you sent it, so trimming is visible to the tests."
+  ],
+  "testCases": [
+   {
+    "id": "single",
+    "label": "Single call then answer",
+    "input": {
+     "task": "Weather in Lima?",
+     "script": [
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Lima\"}}",
+      "Lima: {last_tool_result}"
+     ],
+     "config": {}
+    },
+    "expectedOutput": {
+     "answer": "Lima: 16C, overcast",
+     "steps": 2,
+     "stop_reason": "final_answer",
+     "tools_called": [
+      "get_weather"
+     ],
+     "errors": 0,
+     "trace": [
+      {
+       "step": 1,
+       "action": "tools",
+       "tools": [
+        "get_weather"
+       ],
+       "failed": 0
+      },
+      {
+       "step": 2,
+       "action": "final_answer"
+      }
+     ]
+    },
+    "hidden": false
+   },
+   {
+    "id": "parallel",
+    "label": "Parallel calls in one reply",
+    "input": {
+     "task": "Paris and Tokyo?",
+     "script": [
+      "{\"tool_calls\": [{\"id\": \"a\", \"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}, {\"id\": \"b\", \"tool\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\"}}]}",
+      "Last result: {last_tool_result}"
+     ],
+     "config": {}
+    },
+    "expectedOutput": {
+     "answer": "Last result: 24C, clear",
+     "steps": 2,
+     "stop_reason": "final_answer",
+     "tools_called": [
+      "get_weather",
+      "get_weather"
+     ],
+     "errors": 0,
+     "trace": [
+      {
+       "step": 1,
+       "action": "tools",
+       "tools": [
+        "get_weather",
+        "get_weather"
+       ],
+       "failed": 0
+      },
+      {
+       "step": 2,
+       "action": "final_answer"
+      }
+     ]
+    },
+    "hidden": false
+   },
+   {
+    "id": "trimmed",
+    "label": "Context limit trims what the model sees",
+    "input": {
+     "task": "Weather tour",
+     "script": [
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}",
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\"}}",
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Lima\"}}",
+      "I saw {context_size} messages; latest: {last_tool_result}"
+     ],
+     "config": {
+      "context_limit": 60
+     }
+    },
+    "expectedOutput": {
+     "answer": "I saw 4 messages; latest: 16C, overcast",
+     "steps": 4,
+     "stop_reason": "final_answer",
+     "tools_called": [
+      "get_weather",
+      "get_weather",
+      "get_weather"
+     ],
+     "errors": 0,
+     "trace": [
+      {
+       "step": 1,
+       "action": "tools",
+       "tools": [
+        "get_weather"
+       ],
+       "failed": 0
+      },
+      {
+       "step": 2,
+       "action": "tools",
+       "tools": [
+        "get_weather"
+       ],
+       "failed": 0
+      },
+      {
+       "step": 3,
+       "action": "tools",
+       "tools": [
+        "get_weather"
+       ],
+       "failed": 0
+      },
+      {
+       "step": 4,
+       "action": "final_answer"
+      }
+     ]
+    },
+    "hidden": false
+   },
+   {
+    "id": "budget",
+    "label": "Cumulative token budget",
+    "input": {
+     "task": "Weather tour",
+     "script": [
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}",
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\"}}",
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Lima\"}}",
+      "done"
+     ],
+     "config": {
+      "max_tokens": 150
+     }
+    },
+    "expectedOutput": {
+     "answer": null,
+     "steps": 2,
+     "stop_reason": "token_budget",
+     "tools_called": [
+      "get_weather",
+      "get_weather"
+     ],
+     "errors": 0,
+     "trace": [
+      {
+       "step": 1,
+       "action": "tools",
+       "tools": [
+        "get_weather"
+       ],
+       "failed": 0
+      },
+      {
+       "step": 2,
+       "action": "tools",
+       "tools": [
+        "get_weather"
+       ],
+       "failed": 0
+      }
+     ]
+    },
+    "hidden": false
+   },
+   {
+    "id": "recover",
+    "label": "Parse error recovery is traced",
+    "input": {
+     "task": "1+2?",
+     "script": [
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1,}}",
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1, \"b\": 2}}",
+      "= {last_tool_result}"
+     ],
+     "config": {}
+    },
+    "expectedOutput": {
+     "answer": "= 3",
+     "steps": 3,
+     "stop_reason": "final_answer",
+     "tools_called": [
+      "add"
+     ],
+     "errors": 1,
+     "trace": [
+      {
+       "step": 1,
+       "action": "parse_error"
+      },
+      {
+       "step": 2,
+       "action": "tools",
+       "tools": [
+        "add"
+       ],
+       "failed": 0
+      },
+      {
+       "step": 3,
+       "action": "final_answer"
+      }
+     ]
+    },
+    "hidden": true
+   },
+   {
+    "id": "parallel-loop",
+    "label": "Repeated parallel batch is a loop",
+    "input": {
+     "task": "x",
+     "script": [
+      "{\"tool_calls\": [{\"id\": \"a\", \"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}, {\"id\": \"b\", \"tool\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\"}}]}",
+      "{\"tool_calls\": [{\"id\": \"a\", \"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}, {\"id\": \"b\", \"tool\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\"}}]}",
+      "{\"tool_calls\": [{\"id\": \"a\", \"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}, {\"id\": \"b\", \"tool\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\"}}]}",
+      "never"
+     ],
+     "config": {}
+    },
+    "expectedOutput": {
+     "answer": null,
+     "steps": 3,
+     "stop_reason": "loop_detected",
+     "tools_called": [
+      "get_weather",
+      "get_weather",
+      "get_weather",
+      "get_weather"
+     ],
+     "errors": 0,
+     "trace": [
+      {
+       "step": 1,
+       "action": "tools",
+       "tools": [
+        "get_weather",
+        "get_weather"
+       ],
+       "failed": 0
+      },
+      {
+       "step": 2,
+       "action": "tools",
+       "tools": [
+        "get_weather",
+        "get_weather"
+       ],
+       "failed": 0
+      },
+      {
+       "step": 3,
+       "action": "loop_detected"
+      }
+     ]
+    },
+    "hidden": true
+   },
+   {
+    "id": "partial-failure",
+    "label": "Half-failed batch resets the breaker",
+    "input": {
+     "task": "x",
+     "script": [
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1,}}",
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1,}}",
+      "{\"tool_calls\": [{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Atlantis\"}}, {\"tool\": \"add\", \"arguments\": {\"a\": 1, \"b\": 1}}]}",
+      "{\"tool\": \"add\", \"arguments\": {\"a\": 1,}}",
+      "ok"
+     ],
+     "config": {}
+    },
+    "expectedOutput": {
+     "answer": "ok",
+     "steps": 5,
+     "stop_reason": "final_answer",
+     "tools_called": [
+      "get_weather",
+      "add"
+     ],
+     "errors": 4,
+     "trace": [
+      {
+       "step": 1,
+       "action": "parse_error"
+      },
+      {
+       "step": 2,
+       "action": "parse_error"
+      },
+      {
+       "step": 3,
+       "action": "tools",
+       "tools": [
+        "get_weather",
+        "add"
+       ],
+       "failed": 1
+      },
+      {
+       "step": 4,
+       "action": "parse_error"
+      },
+      {
+       "step": 5,
+       "action": "final_answer"
+      }
+     ]
+    },
+    "hidden": true
+   },
+   {
+    "id": "all-failed",
+    "label": "Fully failed batches trip the breaker",
+    "input": {
+     "task": "x",
+     "script": [
+      "{\"tool\": \"search_web\", \"arguments\": {\"query\": \"cheap flights\"}}",
+      "{\"tool\": \"search_web\", \"arguments\": {\"query\": \"cheap flights\"}}",
+      "never"
+     ],
+     "config": {
+      "max_consecutive_errors": 2
+     }
+    },
+    "expectedOutput": {
+     "answer": null,
+     "steps": 2,
+     "stop_reason": "too_many_errors",
+     "tools_called": [
+      "search_web",
+      "search_web"
+     ],
+     "errors": 2,
+     "trace": [
+      {
+       "step": 1,
+       "action": "tools",
+       "tools": [
+        "search_web"
+       ],
+       "failed": 1
+      },
+      {
+       "step": 2,
+       "action": "tools",
+       "tools": [
+        "search_web"
+       ],
+       "failed": 1
+      }
+     ]
+    },
+    "hidden": true
+   },
+   {
+    "id": "max-steps",
+    "label": "max_steps",
+    "input": {
+     "task": "x",
+     "script": [
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}",
+      "{\"tool\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\"}}"
+     ],
+     "config": {
+      "max_steps": 2
+     }
+    },
+    "expectedOutput": {
+     "answer": null,
+     "steps": 2,
+     "stop_reason": "max_steps",
+     "tools_called": [
+      "get_weather",
+      "get_weather"
+     ],
+     "errors": 0,
+     "trace": [
+      {
+       "step": 1,
+       "action": "tools",
+       "tools": [
+        "get_weather"
+       ],
+       "failed": 0
+      },
+      {
+       "step": 2,
+       "action": "tools",
+       "tools": [
+        "get_weather"
+       ],
+       "failed": 0
+      }
+     ]
+    },
+    "hidden": true
+   },
+   {
+    "id": "fenced-parallel",
+    "label": "Fenced parallel calls",
+    "input": {
+     "task": "x",
+     "script": [
+      "On it.\n```json\n{\"tool_calls\": [{\"id\": \"a\", \"tool\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}, {\"id\": \"b\", \"tool\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\"}}]}\n```",
+      "{last_tool_result}"
+     ],
+     "config": {}
+    },
+    "expectedOutput": {
+     "answer": "24C, clear",
+     "steps": 2,
+     "stop_reason": "final_answer",
+     "tools_called": [
+      "get_weather",
+      "get_weather"
+     ],
+     "errors": 0,
+     "trace": [
+      {
+       "step": 1,
+       "action": "tools",
+       "tools": [
+        "get_weather",
+        "get_weather"
+       ],
+       "failed": 0
+      },
+      {
+       "step": 2,
+       "action": "final_answer"
+      }
+     ]
+    },
+    "hidden": true
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Start from your stage-6 loop, swap parse_tool_call for parse_reply and dispatch for execute_tool_calls, then add trimming and the trace.",
+   "strong": "Write a small finish(answer, steps, reason) closure so all five exits return the same shape. A tool step counts toward consecutive errors only when step_failed == len(calls).",
+   "concept": "This is a minimal agent runtime: control flow, a protocol, budgets and observability. Frameworks wrap exactly these pieces."
+  },
+  "conceptConnections": [
+   {
+    "title": "ReAct agents in production",
+    "route": "/docs/agents/react-agent-production",
+    "description": "The Thought → Action → Observation loop, the tool-calling contract and parse-failure recovery."
+   },
+   {
+    "title": "Context engineering",
+    "route": "/docs/agents/context-engineering",
+    "description": "Deciding what the model sees on every call, and what gets cut."
+   },
+   {
+    "title": "Loops and graphs",
+    "route": "/docs/agents/loops-and-graphs",
+    "description": "Why a while-loop agent becomes a graph, and which edges are real."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": "agent-eval-harness",
+  "stage": "Build an Agent",
+  "stageNumber": 12,
+  "points": 30
+ }
+]

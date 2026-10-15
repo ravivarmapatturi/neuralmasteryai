@@ -38,12 +38,15 @@ const files = walk(CONTENT_ROOT);
 // route at all) so a prose link written against either the old or new URL
 // shape is checked against what the app will ACTUALLY render at, not just
 // "does a file exist at this literal path".
+const PRACTICE_SLUGS = JSON.parse(readFileSync(new URL('../src/data/practiceSlugs.generated.json', import.meta.url), 'utf8'));
 const validRoutes = new Set(['/practice']);
 for (const f of files) {
   const rel = relative(CONTENT_ROOT, f).replace(/\.mdx$/, '').split('\\').join('/');
   if (rel.startsWith('practice-problems/')) {
     const slug = rel.slice('practice-problems/'.length);
-    if (slug !== 'overview') validRoutes.add(`/practice/${slug}`);
+    // Curated problems are served at a descriptive slug
+    // (src/data/practiceSlugs.generated.json); every other one at its file id.
+    if (slug !== 'overview') validRoutes.add(`/practice/${PRACTICE_SLUGS[slug] ?? slug}`);
   } else {
     validRoutes.add(`/docs/${rel}`);
   }

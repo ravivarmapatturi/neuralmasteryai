@@ -11,6 +11,9 @@ import {
   BookOpenIcon,
 } from '../icons/PracticeIcons';
 import type { MasteryTier } from '../../lib/gamification';
+import { trackForProblem } from '../../data/practiceCatalog';
+import TrackStageMap from './TrackStageMap';
+import PlainMarkdown from './PlainMarkdown';
 
 const TwoPointersSlidingWindowExplorer = lazy(() => import('../../viz/TwoPointersSlidingWindowExplorer'));
 const GraphTreeTraversalExplorer = lazy(() => import('../../viz/GraphTreeTraversalExplorer'));
@@ -190,8 +193,10 @@ export default function ProblemPanel({
   const [activeTab, setActiveTab] = useState<'problem' | 'intuition'>('problem');
 
   const difficultyColor = DIFFICULTY_ACCENT[problem.difficulty] ?? 'var(--nm-accent-danger)';
-  const vectorOpSpec = getVectorOpSpec(problem);
-  const liveConcept = getLiveConceptForTopic(problem.topic, problem.title);
+  const track = trackForProblem(problem.id);
+  const projectTrack = track?.kind === 'project' ? track : undefined;
+  const vectorOpSpec = projectTrack ? null : getVectorOpSpec(problem);
+  const liveConcept = projectTrack ? null : getLiveConceptForTopic(problem.topic, problem.title);
   const dsaExplorer = !vectorOpSpec && !liveConcept ? getDsaExplorerForTopic(problem.topic) : null;
 
   const handleSelectHintLevel = (level: number) => {
@@ -370,7 +375,7 @@ export default function ProblemPanel({
                     border: '1px solid var(--nm-border)',
                   }}
                 >
-                  {problem.topic}
+                  {track?.title ?? problem.topic}
                 </span>
                 {' '}
 
@@ -474,8 +479,11 @@ export default function ProblemPanel({
               </div>
             )}
 
-            {/* Item B: Live Interactive Computation Visual at top of problem */}
-            {vectorOpSpec ? (
+            {/* Item B: Live Interactive Computation Visual at top of problem
+                (or, in a project track, where this stage sits in the build) */}
+            {projectTrack ? (
+              <TrackStageMap track={projectTrack} problemId={problem.id} />
+            ) : vectorOpSpec ? (
               <div style={{ marginBottom: 20 }}>
                 <VectorOpsPlayground spec={vectorOpSpec} />
               </div>
@@ -495,19 +503,10 @@ export default function ProblemPanel({
                   <GraphTreeTraversalExplorer />
                 </Suspense>
               </div>
-            ) : (
-              <div
-                style={{
-                  marginBottom: 20,
-                  padding: '14px 16px',
-                  borderRadius: 8,
-                  background: 'var(--nm-surface)',
-                  border: '1px solid var(--nm-border)',
-                }}
-              >
-                <StepByStepWalkthrough problem={problem} />
-              </div>
-            )}
+            ) : null}
+            {/* No step-by-step box up front: it printed the hints (often the
+                whole algorithm) before the learner had tried anything. They
+                stay behind "Need Help?" and in the Worked Intuition tab. */}
 
             {/* Mission Box: Whitespace and typographic discipline */}
             <div
@@ -528,7 +527,7 @@ export default function ProblemPanel({
                   marginBottom: 4,
                 }}
               >
-                Mission
+                Why it matters
               </div>
               <div style={{ fontSize: 13.5, lineHeight: 1.55, color: 'var(--nm-text-primary)' }}>
                 {problem.mission}
@@ -548,9 +547,9 @@ export default function ProblemPanel({
               <h3 style={{ fontSize: 12, fontWeight: 700, color: 'var(--nm-text-muted)', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Task
               </h3>
-              <p style={{ fontSize: 13.5, lineHeight: 1.6, margin: 0, color: 'var(--nm-text-primary)' }}>
-                {problem.taskDescription}
-              </p>
+              <div style={{ fontSize: 13.5, lineHeight: 1.6, margin: 0, color: 'var(--nm-text-primary)' }}>
+                <PlainMarkdown text={problem.taskDescription} />
+              </div>
             </div>
 
             {/* Expected Function Signature */}
@@ -664,10 +663,14 @@ export default function ProblemPanel({
               </div>
             )}
 
-            {/* Step-by-Step Walkthrough -- always present, mdxContent or not */}
-            <div style={{ marginTop: mdxContent && vectorOpSpec ? 16 : 0 }}>
-              <StepByStepWalkthrough problem={problem} />
-            </div>
+            {/* Step-by-Step Walkthrough -- present unless this is a project
+                track, whose written intuition page already walks the stage
+                (and whose hints stay behind the hint button, not up front) */}
+            {!projectTrack && (
+              <div style={{ marginTop: mdxContent && vectorOpSpec ? 16 : 0 }}>
+                <StepByStepWalkthrough problem={problem} />
+              </div>
+            )}
 
             {/* Related Skills: the concept links previously only shown on
                 the Description tab -- a learner reading the Worked
@@ -681,7 +684,7 @@ export default function ProblemPanel({
             )}
 
             {mdxContent ? (
-              <div style={{ marginTop: 22, paddingTop: 18, borderTop: '1px solid var(--nm-border)' }}>
+              <div className="prose nm-prose-compact" style={{ marginTop: 22, paddingTop: 18, borderTop: '1px solid var(--nm-border)' }}>
                 {mdxContent}
               </div>
             ) : (

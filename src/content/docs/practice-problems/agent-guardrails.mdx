@@ -1,0 +1,100 @@
+---
+title: "Guardrails: Loop Detection and Token Budgets"
+description: "Build an Agent, stage 6 of 12: The most expensive agent bug is the one that never errors: the model calls the same tool with the same arguments forever, and every call succeeds."
+difficulty: "medium"
+topic: "Build an Agent"
+sidebar_position: 2006
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Two guardrails tutorials skip
+
+Two guardrails that every production agent has, and that tutorials usually skip.
+
+**1. Repeat-call detection**
+
+```text
+step 1  get_weather(city="Paris")  ✓
+step 2  get_weather(city="Paris")  ✓  suspicious
+step 3  get_weather(city="Paris")  ✗  stop:
+                    loop_detected, not executed
+```
+
+Every call here *succeeds*, so stage 5's error breaker never fires. The model is stuck in a reasoning rut, and it will keep repeating the call until `max_steps`.
+
+**2. A context budget.** The model re-reads the entire `messages` list on every call, so cost grows with every step. You check the size *before* paying for the next call.
+
+## Signatures and a sliding window
+
+A **signature** makes "same call" precise. Use the tool name plus the arguments serialised with `sort_keys=True`, so `{"a":1,"b":2}` and `{"b":2,"a":1}` match. Comparing the last three signatures is a sliding window over the call history.
+
+The budget check sums `count_tokens` over every message. A real system would use the provider's tokenizer, or the `usage` field the API returns. About 4 characters per token is the standard rough estimate for English.
+
+## Runaway loops cost real money
+
+Runaway loops are the top cost incident in deployed agents. A loop that repeats a $0.02 call 500 times overnight becomes a line item in somebody's postmortem. Claude Code, Cursor and the OpenAI Agents SDK all ship turn limits and budget controls for this reason.
+
+## Stopping is the bluntest fix
+
+Stopping is the bluntest response. Better agents **intervene**: they tell the model "you've called this three times with the same result, try something different" and give it one more chance. And a hard budget stop throws away all the work so far. What you actually want is to keep running *within* the budget by cutting old context, which is stage 7.
+
+> **Remember:** an agent can fail by succeeding forever. Guard against repetition and against cost, not just errors.
+
+Next: stage 7 trims context to fit a budget without breaking the conversation's structure.
+
+## Reference solution
+
+Try the tests first. The reference is here so you can compare approaches after you've passed, or get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def run_agent(task, script, max_steps=8, max_consecutive_errors=3, max_tokens=None):
+    llm = make_llm(script)
+    messages = [{"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": task}]
+    tools_called = []
+    errors = 0
+    consecutive = 0
+    recent_calls = []
+
+    def result(answer, steps, reason):
+        return {"answer": answer, "steps": steps, "tools_called": tools_called,
+                "errors": errors, "stop_reason": reason,
+                "context_tokens": sum(count_tokens(m["content"]) for m in messages)}
+
+    for step in range(1, max_steps + 1):
+        if max_tokens is not None and sum(count_tokens(m["content"]) for m in messages) > max_tokens:
+            return result(None, step - 1, "token_budget")
+        reply = llm(messages)
+        messages.append({"role": "assistant", "content": reply})
+        try:
+            call = parse_tool_call(reply)
+        except ValueError as e:
+            errors += 1
+            consecutive += 1
+            messages.append({"role": "user", "content":
+                f"error: could not parse your tool call ({e}). "
+                "Reply with a JSON tool call or a final answer."})
+        else:
+            if call is None:
+                return result(reply, step, "final_answer")
+            signature = call["tool"] + json.dumps(call["arguments"], sort_keys=True)
+            recent_calls.append(signature)
+            if recent_calls[-3:] == [signature] * 3:
+                return result(None, step, "loop_detected")
+            tools_called.append(call["tool"])
+            output = dispatch(call)
+            messages.append({"role": "tool", "content": output})
+            if output.startswith("error:"):
+                errors += 1
+                consecutive += 1
+            else:
+                consecutive = 0
+        if consecutive >= max_consecutive_errors:
+            return result(None, step, "too_many_errors")
+    return result(None, max_steps, "max_steps")
+```
+
+</Solution>

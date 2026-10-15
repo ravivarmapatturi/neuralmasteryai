@@ -1,0 +1,96 @@
+---
+title: "Plan-and-Execute With Dependencies"
+description: "Build an Agent, stage 10 of 12: ReAct decides one step at a time, and pays a model call for every step."
+difficulty: "hard"
+topic: "Build an Agent"
+sidebar_position: 2010
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Running a plan someone else wrote
+
+The **executor** half of a plan-and-execute agent. The model has already written a plan:
+
+```text
+s1: divide(9, 3)                 s1 ──► s2 ──► s4
+s2: add($s1, 10)    depends s1     └──► s3 ──┘
+s3: add($s1, 100)   depends s1
+s4: add($s2, $s3)   depends s2, s3
+```
+
+Your code checks that the plan is a valid DAG, orders it, pipes outputs into later steps, and contains failures.
+
+## Kahn's algorithm, with a deterministic tie-break
+
+**Kahn's algorithm:** repeatedly take a step with no unfinished dependencies. If steps remain but none is ready, there's a cycle. Breaking ties by plan order makes runs **deterministic**, so the same plan always runs the same way, which you'll want when debugging.
+
+**Validate before side effects.** All checks happen before any tool runs. A plan with a cycle in step 9 shouldn't have already sent the email in step 1.
+
+**Failure containment.** A failed step poisons only what depends on it (transitively). Independent branches still finish, so you get partial results instead of nothing.
+
+## One planning call instead of one per step
+
+Compared with ReAct (stage 4), plan-and-execute makes **one** big model call to plan, then runs tools without calling the model between steps. That's cheaper and faster, and the plan is inspectable *before* anything runs, so a human can approve it. LangGraph's plan-and-execute template, LLMCompiler (which also runs independent branches in parallel) and Claude Code's todo lists all share this shape.
+
+## A frozen plan can't adapt
+
+The plan is frozen. If step 2 reveals something surprising ("that flight is sold out"), a pure executor can't adapt. Production systems add a **replanning** step: on failure or surprise, send the results so far back to the model and ask for a revised plan. That hybrid of planning up front and reacting when needed is how most serious agents work.
+
+> **Remember:** a plan is a DAG. Validate it whole, run it in order, contain failures, and know when to replan.
+
+Next: you've built a lot of agent. Stage 11 asks whether it's actually any good, and makes you **measure** it.
+
+## Reference solution
+
+Try the tests first. The reference is here so you can compare approaches after you've passed, or get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def execute_plan(plan):
+    by_id = {}
+    for step in plan:
+        if step["id"] in by_id:
+            raise ValueError(f"duplicate step id {step['id']}")
+        by_id[step["id"]] = step
+    for step in plan:
+        for dep in step.get("depends_on", []):
+            if dep not in by_id:
+                raise ValueError(f"step {step['id']} depends on unknown step {dep}")
+
+    # Kahn's algorithm; among ready steps, keep the plan's own order.
+    remaining = {s["id"]: set(s.get("depends_on", [])) for s in plan}
+    order = []
+    while remaining:
+        ready = [s["id"] for s in plan if s["id"] in remaining and not remaining[s["id"]]]
+        if not ready:
+            raise ValueError("plan has a dependency cycle")
+        nxt = ready[0]
+        order.append(nxt)
+        del remaining[nxt]
+        for deps in remaining.values():
+            deps.discard(nxt)
+
+    results = {}
+    for step_id in order:
+        step = by_id[step_id]
+        if any(results[d]["status"] != "ok" for d in step.get("depends_on", [])):
+            results[step_id] = {"status": "skipped", "output": None}
+            continue
+        arguments = {}
+        for name, value in step.get("arguments", {}).items():
+            if isinstance(value, str) and value.startswith("$") and value[1:] in by_id:
+                raw = results[value[1:]]["output"]
+                try:
+                    value = json.loads(raw)
+                except ValueError:
+                    value = raw
+            arguments[name] = value
+        output = dispatch({"tool": step["tool"], "arguments": arguments})
+        status = "error" if output.startswith("error:") else "ok"
+        results[step_id] = {"status": status, "output": output}
+    return {"order": order, "results": results}
+```
+
+</Solution>

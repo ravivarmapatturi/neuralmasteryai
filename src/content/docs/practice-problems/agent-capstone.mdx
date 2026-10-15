@@ -1,0 +1,146 @@
+---
+title: "Capstone: A Production Agent Loop"
+description: "Build an Agent, stage 12 of 12: Put it all together: one loop that handles single and parallel tool calls, recovers from errors, detects loops, trims its context, enforces a real cost budget, and leaves a trace you could debug at 3am."
+difficulty: "hard"
+topic: "Build an Agent"
+sidebar_position: 2012
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## The whole runtime, end to end
+
+Everything at once: the loop from stage 4, wired to every piece you've built.
+
+```text
+each step:
+  budget check (6)
+  trim_messages (7)
+  llm(context)
+  parse_reply (1, extended)
+    ├─ final answer      → return
+    ├─ parse error       → feedback (5)
+    └─ tool calls
+         loop check (6)
+         execute_tool_calls (8)
+           dispatch (3) → validate (2)
+         results → messages, trace
+```
+
+## What's new since stage 6
+
+Two things are new compared with stage 6:
+
+- **Cost is cumulative.** Stage 6 checked how big the context was. Here you track what you've **spent**: every model call bills the whole context it was sent. Trimming (stage 7) is what keeps that number under control on long runs, so the two guardrails work together.
+- **Partial failure.** With parallel calls, "the step failed" is ambiguous. The rule here is that a step counts as a failure only if **every** call in it failed, because one good result means the model is still making progress.
+
+The **trace** is a small structured log, one entry per step. When a user reports "the agent did something weird," the trace is what you read.
+
+## You can now read the framework source
+
+This is the shape of a real agent runtime. OpenAI's Agents SDK, LangGraph's prebuilt agent, smolagents and Claude Code's loop add persistence, streaming, async tools and human approval on top, but the core is these pieces: a protocol, control flow, budgets and observability. You can now read their source and recognise every part, which also makes you good at debugging them.
+
+## Where real runtimes go next
+
+It's still synchronous, in-memory and single-agent. The next steps in the real world: **async tools** with timeouts, **persistence** so a run survives a restart (LangGraph checkpointers), **human-in-the-loop** approval before irreversible tools, **streaming** partial output, and **multi-agent** orchestration, where one agent's tool is another agent.
+
+> **Remember:** an agent is a loop with a protocol, guardrails and a trace. You just built one.
+
+## Reference solution
+
+Try the tests first. The reference is here so you can compare approaches after you've passed, or get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def parse_reply(text):
+    """Return None (final answer) or a list of calls [{"id", "tool", "arguments"}]."""
+    if '"tool' not in text:
+        return None
+    fence = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
+    if fence:
+        candidate = fence.group(1)
+    else:
+        start, end = text.find("{"), text.rfind("}")
+        if start == -1 or end < start:
+            raise ValueError("tool call has no JSON object")
+        candidate = text[start:end + 1]
+    try:
+        data = json.loads(candidate)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"invalid JSON in tool call: {e.msg}")
+    if isinstance(data, dict) and isinstance(data.get("tool_calls"), list):
+        raw_calls = data["tool_calls"]
+    elif isinstance(data, dict):
+        raw_calls = [data]
+    else:
+        raise ValueError("tool call must be a JSON object")
+    calls = []
+    for raw in raw_calls:
+        if not isinstance(raw, dict) or not isinstance(raw.get("tool"), str) or not raw["tool"]:
+            raise ValueError("tool call needs a non-empty string 'tool'")
+        if not isinstance(raw.get("arguments", {}), dict):
+            raise ValueError("'arguments' must be an object")
+        calls.append({"id": raw.get("id"), "tool": raw["tool"], "arguments": raw.get("arguments", {})})
+    return calls
+
+
+def run_agent_v2(task, script, config):
+    max_steps = config.get("max_steps", 8)
+    max_errors = config.get("max_consecutive_errors", 3)
+    max_tokens = config.get("max_tokens")
+    context_limit = config.get("context_limit")
+    llm = make_llm(script)
+    messages = [{"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": task}]
+    tools_called, recent, trace = [], [], []
+    errors = consecutive = 0
+    total_tokens = 0
+
+    def finish(answer, steps, reason):
+        return {"answer": answer, "steps": steps, "stop_reason": reason,
+                "tools_called": tools_called, "errors": errors, "trace": trace}
+
+    for step in range(1, max_steps + 1):
+        context = trim_messages(messages, context_limit) if context_limit else messages
+        cost = sum(count_tokens(m["content"]) for m in context)
+        if max_tokens is not None and total_tokens + cost > max_tokens:
+            return finish(None, step - 1, "token_budget")
+        total_tokens += cost
+        reply = llm(context)
+        messages.append({"role": "assistant", "content": reply})
+        try:
+            calls = parse_reply(reply)
+        except ValueError as e:
+            errors += 1
+            consecutive += 1
+            trace.append({"step": step, "action": "parse_error"})
+            messages.append({"role": "user", "content":
+                f"error: could not parse your tool call ({e}). "
+                "Reply with a JSON tool call or a final answer."})
+        else:
+            if calls is None:
+                trace.append({"step": step, "action": "final_answer"})
+                return finish(reply, step, "final_answer")
+            signature = json.dumps([[c["tool"], c["arguments"]] for c in calls], sort_keys=True)
+            recent.append(signature)
+            if recent[-3:] == [signature] * 3:
+                trace.append({"step": step, "action": "loop_detected"})
+                return finish(None, step, "loop_detected")
+            results = execute_tool_calls(calls)
+            step_errors = 0
+            for call, res in zip(calls, results):
+                tools_called.append(call["tool"])
+                messages.append(res)
+                if res["content"].startswith("error:"):
+                    step_errors += 1
+            errors += step_errors
+            consecutive = consecutive + 1 if step_errors == len(results) else 0
+            trace.append({"step": step, "action": "tools",
+                          "tools": [c["tool"] for c in calls], "failed": step_errors})
+        if consecutive >= max_errors:
+            return finish(None, step, "too_many_errors")
+    return finish(None, max_steps, "max_steps")
+```
+
+</Solution>

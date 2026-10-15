@@ -1,3 +1,4 @@
+import practiceSlugs from '../data/practiceSlugs.generated.json';
 import { SECTION_META, SECTION_ORDER, getGroupForSubsection } from '../data/sectionMeta';
 
 // Pure, React-free gamification logic -- points, streaks, and weekly totals
@@ -297,10 +298,23 @@ function sectionDirFromPermalink(permalink: string): string | null {
 // on (see the module comment) extends naturally to a URL migration too.
 const OLD_PRACTICE_PROBLEMS_PREFIX = '/docs/practice-problems/';
 
+// Second migration (2026-10): curated problems moved from file-id URLs
+// ("/practice/dl-nn-prob-1") to descriptive ones ("/practice/dense-layer-
+// forward-pass"). Same fix, same place: rewrite on read so an old award
+// still counts and can't be earned twice.
+const PRACTICE_SLUGS = practiceSlugs as Record<string, string>;
+
 export function normalizePracticeProblemPermalink(permalink: string): string {
-  if (!permalink.startsWith(OLD_PRACTICE_PROBLEMS_PREFIX)) return permalink;
-  const slug = permalink.slice(OLD_PRACTICE_PROBLEMS_PREFIX.length);
-  return slug === 'overview' ? '/practice' : `/practice/${slug}`;
+  let route = permalink;
+  if (route.startsWith(OLD_PRACTICE_PROBLEMS_PREFIX)) {
+    const slug = route.slice(OLD_PRACTICE_PROBLEMS_PREFIX.length);
+    route = slug === 'overview' ? '/practice' : `/practice/${slug}`;
+  }
+  if (route.startsWith('/practice/')) {
+    const id = route.slice('/practice/'.length).replace(/\/$/, '');
+    if (PRACTICE_SLUGS[id]) return `/practice/${PRACTICE_SLUGS[id]}`;
+  }
+  return route;
 }
 
 export interface TopicBreakdownEntry {

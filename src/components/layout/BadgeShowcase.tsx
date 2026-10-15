@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useGamification } from '../../contexts/GamificationContext';
 import { BADGES, RARITY_CONFIGS, computeBadgeStats, type BadgeCategory } from '../../lib/badges';
-import { getPracticeProblems } from '../../lib/contentTree';
+import { getAllPracticeProblems } from '../../lib/contentTree';
 
 const CATEGORIES: { id: BadgeCategory | 'all'; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -18,7 +18,7 @@ export default function BadgeShowcase() {
   const { user } = useAuth();
   const isSignedIn = Boolean(user);
 
-  const problems = useMemo(() => getPracticeProblems(), []);
+  const problems = useMemo(() => getAllPracticeProblems(), []);
   const stats = useMemo(
     () => computeBadgeStats(events, totalXP, streak, isSignedIn, problems),
     [events, totalXP, streak, isSignedIn, problems],

@@ -49,13 +49,17 @@ export interface PracticePlaygroundProps {
   problemId: string;
   celebrateOnSuccess?: boolean;
   onRunSuccess?: (result: ExecutionResult) => void;
+  /** Credit a pass to this problem page instead of the page the playground
+   * is embedded on (e.g. the stage-1 preview on /practice). */
+  awardPermalink?: string;
 }
 
-export default function PracticePlayground({ problemId, celebrateOnSuccess = false, onRunSuccess }: PracticePlaygroundProps) {
+export default function PracticePlayground({ problemId, celebrateOnSuccess = false, onRunSuccess, awardPermalink }: PracticePlaygroundProps) {
   const problem = getPracticeProblem(problemId);
   const t = useVizTokens();
   const { awardProblemCompleted } = useGamification();
-  const permalink = normalizeRoute(useLocation().pathname);
+  const location = useLocation();
+  const permalink = awardPermalink ?? normalizeRoute(location.pathname);
   const panes = usePracticeSplitPanes();
 
   const [code, setCode] = useState(problem?.starterCode ?? '');
@@ -113,7 +117,7 @@ export default function PracticePlayground({ problemId, celebrateOnSuccess = fal
   }
 
   function handleRun() {
-    void runAgainst(problem!.testCases, 'run');
+    void runAgainst(problem!.testCases.filter((tc) => !tc.hidden), 'run');
   }
   function handleSubmit() {
     void runAgainst(problem!.testCases, 'submit');
@@ -211,6 +215,21 @@ export default function PracticePlayground({ problemId, celebrateOnSuccess = fal
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         {problem.testCases.map((tc, i) => {
           const cr = result?.caseResults.find((c) => c.testCaseId === tc.id);
+          // Hidden cases stay hidden: never listed before a submit, and
+          // after one only their label and pass/fail are shown.
+          if (tc.hidden && !cr) return null;
+          if (tc.hidden) {
+            return (
+              <div key={tc.id} style={{ padding: SPACING.sm, borderBottom: `1px solid ${t.border}`, fontSize: 12.5, display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span aria-hidden="true" style={{ display: 'inline-flex', width: 16, height: 16, alignItems: 'center', justifyContent: 'center', borderRadius: '50%', fontSize: 11, fontWeight: 700, color: t.background, background: cr!.passed ? t.accentPrimary : t.accentDanger }}>
+                  {cr!.passed ? '✓' : '✗'}
+                </span>
+                <span style={{ fontFamily: FONT_FAMILY, color: t.textSecondary }}>
+                  Hidden case: {tc.label}
+                </span>
+              </div>
+            );
+          }
           return (
             <div key={tc.id} style={{ padding: SPACING.sm, borderBottom: `1px solid ${t.border}`, fontSize: 12.5, fontFamily: 'ui-monospace, monospace' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
@@ -231,7 +250,7 @@ export default function PracticePlayground({ problemId, celebrateOnSuccess = fal
               </div>
               <div style={{ color: t.textSecondary }}>
                 <span style={{ color: t.textMuted }}>Expected: </span>
-                {JSON.stringify(tc.expectedOutput)}
+                {tc.expectError ? `raises ${tc.expectError}` : JSON.stringify(tc.expectedOutput)}
               </div>
               {cr && !cr.error && (
                 <div style={{ color: cr.passed ? t.accentPrimary : t.accentDanger }}>

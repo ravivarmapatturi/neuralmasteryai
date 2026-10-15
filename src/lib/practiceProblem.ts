@@ -1,4 +1,5 @@
-import { getPracticeProblems as getAllDocPracticeProblems } from './contentTree';
+import { getPageByRoute, practiceIdForSlug } from './contentTree';
+import buildAnAgentTrack from '../data/practice/buildAnAgent.generated.json';
 
 /**
  * The structured execution and learning metadata behind practice problems --
@@ -148711,8 +148712,16 @@ function createFallbackProblem(
   };
 }
 
-export function getPracticeProblem(problemId: string): PracticeProblem | undefined {
-  const cleanId = problemId.replace(/\/$/, '').replace(/^\/practice\//, '');
+/** The "Build an Agent" project track -- generated, test-verified data from
+ * scripts/practice/agent_track/build.py (every expected output is checked
+ * against a reference solution, and every starter is checked to fail). */
+const BUILD_AN_AGENT: Record<string, PracticeProblem> = Object.fromEntries(
+  (buildAnAgentTrack as unknown as PracticeProblem[]).map((p) => [p.id, p]),
+);
+
+export function getPracticeProblem(problemIdOrSlug: string): PracticeProblem | undefined {
+  const cleanId = practiceIdForSlug(problemIdOrSlug.replace(/\/$/, '').replace(/^\/practice\//, ''));
+  if (BUILD_AN_AGENT[cleanId]) return BUILD_AN_AGENT[cleanId];
   if (PRACTICE_PROBLEMS[cleanId]) {
     return PRACTICE_PROBLEMS[cleanId];
   }
@@ -148721,12 +148730,8 @@ export function getPracticeProblem(problemId: string): PracticeProblem | undefin
     return createFallbackProblem(cleanId);
   }
 
-  // Check if cleanId matches a real practice problem in contentTree
-  const allPractice = getAllDocPracticeProblems();
-  const matchedPage = allPractice.find(
-    (p) => p.slug.split('/').pop() === cleanId || p.route.endsWith(`/${cleanId}`),
-  );
-
+  // A real practice page with no structured data yet.
+  const matchedPage = getPageByRoute(`/practice/${cleanId}`);
   if (matchedPage) {
     return createFallbackProblem(
       cleanId,
@@ -148738,4 +148743,3 @@ export function getPracticeProblem(problemId: string): PracticeProblem | undefin
 
   return undefined;
 }
-

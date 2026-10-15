@@ -7,6 +7,8 @@ import { ThemeProvider } from '../theme/ThemeProvider'
 import { AuthProvider } from '../contexts/AuthContext'
 import { GamificationProvider } from '../contexts/GamificationContext'
 import { ProgressProvider } from '../contexts/ProgressContext'
+import { CATALOG } from '../data/practiceCatalog'
+import { getPracticeProblems } from '../lib/contentTree'
 
 const STORAGE_KEY = 'neural-mastery-gamification'
 
@@ -31,69 +33,39 @@ describe('PracticeListPage', () => {
     window.localStorage.clear()
   })
 
-  it('lists real practice problems with a real link to their /practice/<slug> detail page', () => {
+  it('states the real curated count, not every generated file', () => {
     renderList()
-    const link = screen.getByRole('link', { name: /Dot Product From Scratch/i })
-    expect(link).toHaveAttribute('href', '/practice/dot-product')
+    const total = getPracticeProblems().length
+    expect(screen.getByText(`${total} problems in ${CATALOG.length} tracks`)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Write the code. Pass the tests.')
+    expect(document.body.textContent).not.toMatch(/1549|1,549|Real, Hands-On/)
   })
 
-  it('shows the real solved count in the header, starting at 0 for a fresh visitor', () => {
+  it('lists every track, each linking to its own page', () => {
     renderList()
-    expect(screen.getByText(/^0 \/ \d+ solved$/)).toBeInTheDocument()
+    const list = screen.getByRole('list', { name: 'Practice tracks' })
+    for (const track of CATALOG) {
+      expect(list.querySelector(`a[href="/practice/track/${track.slug}"]`)).not.toBeNull()
+    }
   })
 
-  it('the H1 leads with the real, hands-on problem count, while the solved count reports total catalogue', () => {
-    renderList()
-    const solvedText = screen.getByText(/^\d+ \/ \d+ solved$/).textContent!
-    const total = Number(solvedText.split('/')[1].trim().split(' ')[0])
-    expect(total).toBeGreaterThan(0)
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/Practice AI — \d+ Real, Hands-On Problems$/)
-  })
-
-  it('reflects a real completed problem as Solved, and increments the header count', () => {
+  it('lists all 12 Build an Agent stages and marks a passed one', () => {
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify([{ permalink: '/practice/dot-product', kind: 'complete', date: '2026-09-10', points: 50 }]),
+      JSON.stringify([{ permalink: '/practice/agent-loop', kind: 'complete', date: '2026-10-15', points: 20 }]),
     )
     renderList()
-    expect(screen.getByText(/^1 \/ \d+ solved$/)).toBeInTheDocument()
-    const row = screen.getByRole('link', { name: /Dot Product From Scratch/i })
-    expect(row).toHaveTextContent('✓ Solved')
+    const stageLink = screen.getAllByRole('link', { name: /The Agent Loop/ })[0]
+    expect(stageLink).toHaveAttribute('href', '/practice/agent-loop')
+    expect(stageLink).toHaveTextContent('✓')
+    expect(screen.getByText(/you've passed 1/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Continue Build an Agent/ })).toBeInTheDocument()
   })
 
-  it('tags a system-design challenge as "Design" instead of an Easy/Medium/Hard label', () => {
+  it('search finds curated problems by title', async () => {
     renderList()
-    const row = screen.getByRole('link', { name: /A RAG System Over 100M Enterprise Documents/i })
-    expect(row).toHaveTextContent('Design')
-    expect(row).toHaveTextContent('100 pts') // SYSTEM_DESIGN_CHALLENGE_POINTS, not the flat 50
-  })
-
-  it('the search box filters the list by real title text', async () => {
-    renderList()
-    const user = userEvent.setup()
-    await user.type(screen.getByLabelText(/search practice problems/i), 'batch dot product')
-    expect(screen.getByRole('link', { name: /Batch Dot Product/i })).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /^Dot Product From Scratch/i })).not.toBeInTheDocument()
-  })
-
-  it('the difficulty filter narrows to real Hard-only problems', async () => {
-    renderList()
-    const user = userEvent.setup()
-    await user.selectOptions(screen.getByLabelText(/filter by difficulty/i), 'hard')
-    // A real Easy problem should now be filtered out.
-    expect(screen.queryByRole('link', { name: /^Dot Product From Scratch/i })).not.toBeInTheDocument()
-  })
-
-  it('renders "Practice Tracks" as unified real cards with inline progress, each linking to its own dedicated /practice/track/<slug> screen', () => {
-    renderList()
-    expect(screen.queryByText('Recommended next')).not.toBeInTheDocument()
-    expect(screen.queryByText('Topic Mastery')).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Practice Tracks' })).toBeInTheDocument()
-    // Every track card is a real link to a dedicated screen with live progress.
-    const trackLinks = screen.getAllByRole('link').filter((el) => el.getAttribute('href')?.startsWith('/practice/track/'))
-    expect(trackLinks.length).toBeGreaterThan(0)
-    for (const link of trackLinks) {
-      expect(link).toHaveTextContent(/\d+\/\d+ solved/)
-    }
+    await userEvent.type(screen.getByLabelText(/looking for a specific problem/i), 'linked list')
+    const results = screen.getByRole('list', { name: 'Search results' })
+    expect(results).toHaveTextContent('Reverse a Singly Linked List')
   })
 })
