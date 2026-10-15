@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { getSidebar } from '../lib/contentTree'
-import { completionFor, getGroupForSubsection, groupLandingRoute, sectionBreadcrumb, SECTION_META, SECTION_ORDER, timeEstimate, TOTAL_PAGES } from './sectionMeta'
+import { completionFor, getGroupForSubsection, groupLandingRoute, sectionBreadcrumb, SECTION_META, SECTION_ORDER } from './sectionMeta'
 import { getPageByRoute } from '../lib/contentTree'
 import { DOMAIN_ICON_BY_GROUP_KEY } from '../components/icons/DomainIcons'
 
@@ -97,27 +97,7 @@ describe('getGroupForSubsection', () => {
   })
 })
 
-describe('TOTAL_PAGES / timeEstimate / completionFor', () => {
-  it('TOTAL_PAGES is the sum of every group pageCount', () => {
-    const manualSum = SECTION_ORDER.reduce((sum, key) => sum + SECTION_META[key].pageCount, 0)
-    expect(TOTAL_PAGES).toBe(manualSum)
-  })
-
-  it('timeEstimate never collapses a nonzero page count to a zero-hour range', () => {
-    expect(timeEstimate(1)).not.toBe('0-0 hrs (1 pages)')
-    const [lo, hi] = timeEstimate(1).match(/\d+/g)!.map(Number)
-    expect(lo).toBeGreaterThanOrEqual(1)
-    expect(hi).toBeGreaterThanOrEqual(lo)
-  })
-
-  it('timeEstimate scales up for a larger page count', () => {
-    const small = timeEstimate(5)
-    const large = timeEstimate(50)
-    const smallLo = Number(small.match(/\d+/)![0])
-    const largeLo = Number(large.match(/\d+/)![0])
-    expect(largeLo).toBeGreaterThan(smallLo)
-  })
-
+describe('completionFor', () => {
   it('completionFor is 0 with no understood pages and caps at 1 even if every page in a group is marked understood plus extras', () => {
     const key = SECTION_ORDER[0]
     expect(completionFor(key, {})).toBe(0)

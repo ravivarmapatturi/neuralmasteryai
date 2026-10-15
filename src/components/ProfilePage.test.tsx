@@ -36,7 +36,7 @@ describe('ProfilePage', () => {
     expect(screen.getByRole('heading', { name: /Guest Learner/i })).toBeInTheDocument()
     expect(screen.getByText(/^Level 1$/)).toBeInTheDocument()
     expect(screen.getAllByText('0').length).toBeGreaterThan(0) // points and measured mastery start at zero
-    expect(screen.getByText(/sign in to sync/i)).toBeInTheDocument()
+    expect(screen.getByText(/sign in to keep it across devices/i)).toBeInTheDocument()
     // Real user report this guards against: a signed-in visitor sees a bare
     // "0 days" with no explanation and assumes it's a bug. A visitor who has
     // genuinely never earned an award gets the "start your streak" message,
@@ -88,14 +88,14 @@ describe('ProfilePage', () => {
 
   it('cross-links to /progress instead of duplicating the page-by-page checklist', () => {
     renderProfile()
-    const link = screen.getByRole('link', { name: /your Progress page/i })
+    const link = screen.getByText(/checklist and review queue are on/i).querySelector('a')
     expect(link).toHaveAttribute('href', '/progress')
   })
 
-  it('renders the pseudo-3D avatar and default Neural Learner title when no practice problems have been solved', () => {
+  it('renders the pseudo-3D avatar and no specialization title before any practice problem is solved', () => {
     renderProfile()
     expect(screen.getByTestId('pseudo-3d-avatar')).toBeInTheDocument()
-    expect(screen.getByText(/⚡ Neural Learner/i)).toBeInTheDocument()
+    expect(screen.queryByText(/most solves in/i)).not.toBeInTheDocument()
   })
 
   it('genuinely derives the learner identity title from real practice history', () => {
@@ -107,7 +107,7 @@ describe('ProfilePage', () => {
       ]),
     )
     renderProfile()
-    expect(screen.getByText(/⚡ Deep Learning Specialist/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Deep Learning Specialist · most solves in/i)).toBeInTheDocument()
   })
 
   it('shifts learner identity title when another track becomes dominant', () => {
@@ -121,15 +121,14 @@ describe('ProfilePage', () => {
       ]),
     )
     renderProfile()
-    expect(screen.getByText(/⚡ Transformer Architect/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Transformer Architect · most solves in/i)).toBeInTheDocument()
   })
 
   it('prominently renders all real stats in the player card', () => {
     renderProfile()
-    expect(screen.getByText('Pages Understood')).toBeInTheDocument()
-    expect(screen.getByText('Problems Solved')).toBeInTheDocument()
-    expect(screen.getByText('Catalog Solved Rate')).toBeInTheDocument()
-    expect(screen.getByText('Current Streak')).toBeInTheDocument()
-    expect(screen.getByText('Badges Earned')).toBeInTheDocument()
+    expect(screen.getByText('Pages understood')).toBeInTheDocument()
+    expect(screen.getByText('Problems solved')).toBeInTheDocument()
+    expect(screen.getByText('Streak')).toBeInTheDocument()
+    expect(screen.getAllByText('Badges')).toHaveLength(2) // stat label + the showcase heading
   })
 })

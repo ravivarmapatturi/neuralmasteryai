@@ -49,7 +49,6 @@ export default function ProfilePage() {
   const badgeStats = computeBadgeStats(events, points, streak, Boolean(user), problems);
   const unlockedBadgesCount = BADGES.filter((b) => b.checkUnlocked(badgeStats)).length;
   const identityInfo = computeLearnerTitle(problems, events);
-  const catalogSolvedPct = Math.round((stats.solved / Math.max(1, stats.total)) * 100);
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--nm-bg)' }}>
@@ -61,29 +60,14 @@ export default function ProfilePage() {
           aria-label="Player Card"
           style={{
             borderRadius: 16,
-            border: `1px solid color-mix(in srgb, ${rank.color} 30%, var(--nm-border))`,
-            background: `linear-gradient(145deg, color-mix(in srgb, ${rank.color} 7%, var(--nm-surface)) 0%, var(--nm-surface) 60%)`,
-            boxShadow: `0 12px 36px -6px color-mix(in srgb, ${rank.color} 15%, transparent)`,
+            border: '1px solid var(--nm-border)',
+            background: 'var(--nm-surface)',
             padding: '2rem',
             marginBottom: '2rem',
             position: 'relative',
             overflow: 'hidden',
           }}
         >
-          {/* Subtle Ambient Background Light */}
-          <div
-            style={{
-              position: 'absolute',
-              top: -60,
-              right: -60,
-              width: 280,
-              height: 280,
-              borderRadius: '50%',
-              background: `radial-gradient(circle, color-mix(in srgb, ${rank.color} 16%, transparent) 0%, transparent 70%)`,
-              pointerEvents: 'none',
-            }}
-          />
-
           <div
             style={{
               display: 'flex',
@@ -101,38 +85,11 @@ export default function ProfilePage() {
 
             {/* Profile Identity Details */}
             <div style={{ flex: '1 1 300px', minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
-                {/* Data-Derived Learner Title */}
-                <span
-                  style={{
-                    fontSize: 11.5,
-                    fontWeight: 800,
-                    letterSpacing: '0.06em',
-                    textTransform: 'uppercase',
-                    padding: '3px 10px',
-                    borderRadius: 20,
-                    background: `color-mix(in srgb, ${rank.color} 16%, transparent)`,
-                    color: rank.color,
-                    border: `1px solid color-mix(in srgb, ${rank.color} 36%, transparent)`,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                  }}
-                  title={
-                    identityInfo.topTrackLabel
-                      ? `Earned title based on ${identityInfo.topTrackSolves} problems solved in ${identityInfo.topTrackLabel}`
-                      : 'Solve practice problems to unlock specific specialization titles'
-                  }
-                >
-                  ⚡ {identityInfo.title}
-                </span>
-
-                {identityInfo.topTrackLabel && (
-                  <span style={{ fontSize: 11.5, color: 'var(--nm-text-muted)' }}>
-                    ({identityInfo.topTrackLabel} focus)
-                  </span>
-                )}
-              </div>
+              {identityInfo.topTrackLabel && (
+                <p style={{ fontSize: 12.5, color: 'var(--nm-text-muted)', margin: '0 0 6px' }}>
+                  {identityInfo.title} · most solves in {identityInfo.topTrackLabel}
+                </p>
+              )}
 
               {/* Editable Display Name */}
               {editingName ? (
@@ -220,7 +177,7 @@ export default function ProfilePage() {
               <p style={{ fontSize: 13, color: 'var(--nm-text-muted)', margin: 0 }}>
                 {user
                   ? `Synced across your devices (${user.email ?? 'Signed in'})`
-                  : 'Guest Mode (Signed Out) -- Tracked locally in this browser. Sign in to sync across devices.'}
+                  : 'Not signed in. Your progress is saved in this browser only; sign in to keep it across devices.'}
               </p>
             </div>
           </div>
@@ -316,7 +273,7 @@ export default function ProfilePage() {
                 background: 'color-mix(in srgb, var(--nm-surface) 80%, var(--nm-bg))',
               }}
             >
-              <div style={{ fontSize: 11.5, color: 'var(--nm-text-muted)', marginBottom: 4 }}>Pages Understood</div>
+              <div style={{ fontSize: 11.5, color: 'var(--nm-text-muted)', marginBottom: 4 }}>Pages understood</div>
               <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--nm-text-primary)' }}>
                 {lessonsCompleted}
                 <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--nm-text-muted)', marginLeft: 4 }}>
@@ -334,32 +291,9 @@ export default function ProfilePage() {
                 background: 'color-mix(in srgb, var(--nm-surface) 80%, var(--nm-bg))',
               }}
             >
-              <div style={{ fontSize: 11.5, color: 'var(--nm-text-muted)', marginBottom: 4 }}>Problems Solved</div>
+              <div style={{ fontSize: 11.5, color: 'var(--nm-text-muted)', marginBottom: 4 }}>Problems solved</div>
               <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--nm-text-primary)' }}>
                 {stats.solved}
-                <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--nm-text-muted)', marginLeft: 4 }}>
-                  / {problems.length}
-                </span>
-              </div>
-            </div>
-
-            {/* Success / Solved Rate */}
-            <div
-              style={{
-                padding: '0.9rem 1.1rem',
-                borderRadius: 10,
-                border: '1px solid var(--nm-border)',
-                background: 'color-mix(in srgb, var(--nm-surface) 80%, var(--nm-bg))',
-              }}
-            >
-              <div style={{ fontSize: 11.5, color: 'var(--nm-text-muted)', marginBottom: 4 }} title="Solved / Total Catalogue Problems">
-                Catalog Solved Rate
-              </div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: '#10b981' }}>
-                {catalogSolvedPct}%
-                <span style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--nm-text-muted)', marginLeft: 4 }}>
-                  ({stats.solved}/{stats.total})
-                </span>
               </div>
             </div>
 
@@ -372,7 +306,7 @@ export default function ProfilePage() {
                 background: 'color-mix(in srgb, var(--nm-surface) 80%, var(--nm-bg))',
               }}
             >
-              <div style={{ fontSize: 11.5, color: 'var(--nm-text-muted)', marginBottom: 4 }}>Current Streak</div>
+              <div style={{ fontSize: 11.5, color: 'var(--nm-text-muted)', marginBottom: 4 }}>Streak</div>
               <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--nm-text-primary)' }}>
                 {streak} day{streak === 1 ? '' : 's'}
               </div>
@@ -394,7 +328,7 @@ export default function ProfilePage() {
                 background: 'color-mix(in srgb, var(--nm-surface) 80%, var(--nm-bg))',
               }}
             >
-              <div style={{ fontSize: 11.5, color: 'var(--nm-text-muted)', marginBottom: 4 }}>Badges Earned</div>
+              <div style={{ fontSize: 11.5, color: 'var(--nm-text-muted)', marginBottom: 4 }}>Badges</div>
               <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--nm-accent-primary)' }}>
                 {unlockedBadgesCount}
                 <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--nm-text-muted)', marginLeft: 4 }}>
@@ -406,8 +340,8 @@ export default function ProfilePage() {
         </section>
 
         <p style={{ fontSize: 12.5, color: 'var(--nm-text-muted)', margin: '-0.5rem 0 2rem', lineHeight: 1.6 }}>
-          Want the detailed page-by-page checklist and spaced-repetition review queue? That still lives on{' '}
-          <Link to="/progress" style={{ color: 'var(--nm-accent-primary)' }}>your Progress page</Link>.
+          The page-by-page checklist and review queue are on{' '}
+          <Link to="/progress" style={{ color: 'var(--nm-accent-primary)' }}>Progress</Link>.
         </p>
 
         {/* --- Badges Showcase --- */}

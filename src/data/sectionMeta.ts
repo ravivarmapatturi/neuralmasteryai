@@ -30,7 +30,7 @@ export const SECTION_META: Record<string, SectionMetaEntry> = {
     label: 'Foundations',
     icon: '🧱',
     color: '#3DDC97',
-    description: 'Systems, Python, and math fundamentals — before any AI-specific content.',
+    description: 'Python, systems basics, and the math the rest of the site leans on.',
     pageCount: 19,
     difficulty: 'Beginner',
     prerequisites: 'None — this is the entry point.',
@@ -49,7 +49,7 @@ export const SECTION_META: Record<string, SectionMetaEntry> = {
     label: 'Models',
     icon: '🧠',
     color: '#5B8CFF',
-    description: 'Classical ML through modern LLMs — every model family covered in depth.',
+    description: 'Classical ML, deep learning, vision, NLP, speech, LLMs, graph ML, and RL.',
     pageCount: 83,
     difficulty: 'Intermediate → Advanced',
     prerequisites: 'Foundations',
@@ -69,7 +69,7 @@ export const SECTION_META: Record<string, SectionMetaEntry> = {
     label: 'Agents & Applications',
     icon: '🤖',
     color: '#F4B942',
-    description: 'Agentic systems, and where AI meets specific domains — science, healthcare, and beyond.',
+    description: 'Agents, and AI applied to science, healthcare, and other domains.',
     pageCount: 25,
     difficulty: 'Advanced',
     prerequisites: 'Models — especially LLMs & GenAI',
@@ -84,7 +84,7 @@ export const SECTION_META: Record<string, SectionMetaEntry> = {
     label: 'Systems & Infrastructure',
     icon: '🏗️',
     color: '#F45B5B',
-    description: 'Designing, building, and running production ML/AI systems at scale.',
+    description: 'Designing, shipping, and running ML systems: MLOps, databases, frameworks.',
     pageCount: 58,
     difficulty: 'Advanced',
     prerequisites: 'Agents & Applications',
@@ -101,7 +101,7 @@ export const SECTION_META: Record<string, SectionMetaEntry> = {
     label: 'Safety & Evaluation',
     icon: '🛡️',
     color: '#B15BFF',
-    description: 'Knowing whether a system is good, secure, and safe — not just whether it runs.',
+    description: 'Evaluation, security, alignment, and interpretability.',
     pageCount: 18,
     difficulty: 'Advanced',
     prerequisites: 'Systems & Infrastructure',
@@ -117,7 +117,7 @@ export const SECTION_META: Record<string, SectionMetaEntry> = {
     label: 'Research & Build',
     icon: '🔬',
     color: '#31C4D9',
-    description: 'Reading the literature, and building real things — from scratch, and as full projects.',
+    description: 'Reading papers, building models from scratch, and full projects.',
     // 77 originally included Practice Problems' own page count; those 54
     // pages moved to the real top-level /practice destination (see the
     // Learn/Practice IA split) and are no longer part of this group's own
@@ -146,7 +146,7 @@ export const SECTION_META: Record<string, SectionMetaEntry> = {
     label: 'Career',
     icon: '🎯',
     color: '#FF7A45',
-    description: 'Tying everything together into a learning path and interview readiness.',
+    description: 'Interview prep, roadmaps, and resources.',
     pageCount: 12,
     difficulty: 'All levels',
     prerequisites: 'Whatever you have covered so far',
@@ -177,7 +177,7 @@ export function getGroupForSubsection(dir: string): { key: string; meta: Section
  * routes; no page is ever generated at that literal path (confirmed: it
  * 404s). Real landing target is the group's first subsection's own
  * `landing` page if it declares one, else that subsection's roadmap --
- * the same fallback CurriculumBreakdown's per-subsection links already use
+ * the same fallback LearningPathList's per-topic links use
  * (`s.landing || /docs/${s.dir}/roadmap`), just applied once for the whole
  * group via its first subsection. */
 export function groupLandingRoute(key: string): string {
@@ -185,18 +185,19 @@ export function groupLandingRoute(key: string): string {
   return first.landing ?? `/docs/${first.dir}/roadmap`;
 }
 
-export const TOTAL_PAGES: number = SECTION_ORDER.reduce((sum, key) => sum + SECTION_META[key].pageCount, 0);
-
-/** "4-7 hrs (17 pages)" -- a 15-25 min/page range, not false precision. */
-export function timeEstimate(pageCount: number): string {
-  const lo = Math.round((pageCount * 15) / 60) || 1;
-  const hi = Math.round((pageCount * 25) / 60) || 1;
-  return `${lo}-${hi} hrs (${pageCount} pages)`;
+/** The routes (out of `routes`) that belong to a group, matched by folder
+ * the same way completionFor() matches. Use this for page counts shown to
+ * readers: it reflects what's on the site today, where `pageCount` is a
+ * hand-maintained number that drifts. */
+export function groupPageRoutes(key: string, routes: string[]): string[] {
+  const meta = SECTION_META[key];
+  const dirs = meta.folders ?? meta.subsections.map((s) => s.dir);
+  return routes.filter((route) => dirs.some((dir) => route.includes(`/docs/${dir}/`)));
 }
 
 /** Fraction (0..1) of a top-level group's pages marked understood --
  * matches a page's permalink against the group's folders/subsections, the
- * same "which pages count toward this group" logic LearningPathMap and
+ * same "which pages count toward this group" logic LearningPathList and
  * the progress dashboard both need. Only ever reads the map's KEYS (which
  * permalinks are present at all), never a value, so it accepts whatever
  * shape ProgressContext's understood-map happens to use -- a plain

@@ -1,22 +1,18 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import Navbar from './layout/Navbar';
-import BadgeShowcase from './layout/BadgeShowcase';
 import { getSidebar, getFlatPages, getPracticeProblems } from '../lib/contentTree';
 
 import { SECTION_META, SECTION_ORDER, completionFor } from '../data/sectionMeta';
 import { useProgress, REVIEW_INTERVALS_DAYS } from '../contexts/ProgressContext';
 import { useGamification } from '../contexts/GamificationContext';
 import { levelForPoints } from '../lib/gamification';
-import { rankForLevel } from '../lib/rankTiers';
 import { DomainIcon } from './icons/DomainIcons';
 import { practiceStats, isSolved, nextLesson, recommendedProblem, cleanPracticeTitle } from '../lib/mastery';
 import { getPracticeTracks, buildTopicLabels } from '../lib/practiceTracks';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useDocumentMeta } from '../lib/useDocumentMeta';
-import RankBadge from './RankBadge';
 import ConfirmDialog from './common/ConfirmDialog';
-import RankLadder from './RankLadder';
 
 /** Best-effort title lookup for a permalink -- falls back to the raw path
  * for the (should-be-rare) case a stored permalink no longer matches any
@@ -30,27 +26,19 @@ const TRACK_ACCENTS = [
 ];
 
 /**
- * The redesigned "Your Progress" mastery dashboard.
- *
- * Core structure (per spec v2 Part 3):
- * 1. "YOUR MASTERY" Hero: current tier, animated RankBadge, Level N, real XP bar,
- *    and a compact real stat row (curriculum pages, practice problems, design challenges, streak).
- * 2. "Next Best Action" card: concrete immediate next step derived from real curriculum & practice state.
- * 3. Two side-by-side sections:
- *    - Curriculum Progress: checkpoint cards per SECTION_ORDER group with completion % and next lesson.
- *    - Practice Progress: practiceStats() breakdown + per-topic Mastery Map agreeing with /practice numbers.
- * 4. Checkpoint Badges, Rank Ladder, Due for Review, and Detailed Section Checklist below.
+ * /progress: what you've done and what's next. A one-sentence summary, the
+ * next lesson or problem, lessons by section next to practice by track, the
+ * spaced-repetition queue, and the page-by-page checklist. Badges, rank and
+ * level live on /profile so this page stays a working tool.
  */
 export default function ProgressPage() {
   useDocumentTitle('Your Progress');
-  useDocumentMeta('Your Progress', 'Track your AI engineering progression -- level, rank tier, curriculum checkpoints, practice problem mastery map, and spaced repetition review.');
+  useDocumentMeta('Your Progress', 'Pages you have marked understood, practice problems solved, and pages due for review.');
 
   const { understood, isUnderstood, toggle, countWithin, reset, dueForReview, markReviewed } = useProgress();
   const { points, streak, events, awardReviewCompleted } = useGamification();
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
-  const { level, xpIntoLevel, xpForNextLevel } = levelForPoints(points);
-  const rank = rankForLevel(level);
-  const levelPct = xpForNextLevel === 0 ? 1 : Math.min(1, xpIntoLevel / xpForNextLevel);
+  const { level } = levelForPoints(points);
 
   const sections = getSidebar();
   const flatPages = useMemo(() => getFlatPages(), []);
@@ -112,162 +100,30 @@ export default function ProgressPage() {
       <Navbar />
 
       <section style={{ maxWidth: 1040, margin: '0 auto', padding: '2.5rem 1.5rem 3rem' }}>
-        {/* --- Top Hero: YOUR MASTERY --- */}
-        <div
-          style={{
-            background: 'linear-gradient(135deg, color-mix(in srgb, var(--nm-surface) 90%, var(--nm-bg)) 0%, var(--nm-surface) 100%)',
-            border: `1.5px solid color-mix(in srgb, ${rank.color} 35%, var(--nm-border))`,
-            borderRadius: 16,
-            padding: '2rem 1.75rem 1.5rem',
-            marginBottom: '1.75rem',
-            boxShadow: `0 8px 32px -4px color-mix(in srgb, ${rank.color} 15%, transparent)`,
-            position: 'relative',
-            overflow: 'hidden',
-          }}
-        >
-          <div
-            style={{
-              position: 'absolute',
-              top: -80,
-              right: -80,
-              width: 240,
-              height: 240,
-              borderRadius: '50%',
-              background: `radial-gradient(circle, color-mix(in srgb, ${rank.color} 18%, transparent) 0%, transparent 70%)`,
-              pointerEvents: 'none',
-            }}
-          />
+        <header style={{ marginBottom: '2rem' }}>
+          <h1 style={{ fontSize: 'clamp(1.6rem, 3.5vw, 2.1rem)', fontWeight: 800, color: 'var(--nm-text-primary)', margin: '0 0 0.6rem' }}>
+            Your progress
+          </h1>
+          <p style={{ fontSize: 15, lineHeight: 1.6, color: 'var(--nm-text-secondary)', margin: 0, maxWidth: 680 }}>
+            You've marked <strong>{totalDone}</strong> of {totalPages} pages understood and solved{' '}
+            <strong>{practice.solved}</strong> of {practice.total} practice problems
+            {systemDesignSolved > 0 ? <>, plus {systemDesignSolved} system design challenge{systemDesignSolved === 1 ? '' : 's'}</> : null}.
+            {streak > 0 ? <> You're on a {streak}-day streak.</> : null}
+          </p>
+          <p style={{ fontSize: 13, color: 'var(--nm-text-muted)', margin: '0.5rem 0 0' }}>
+            Level {level} · {points} points ·{' '}
+            <Link to="/profile" style={{ color: 'var(--nm-accent-primary)' }}>profile and badges</Link>
+          </p>
+        </header>
 
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: '1.25rem' }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 800,
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
-                  padding: '3px 10px',
-                  borderRadius: 20,
-                  background: `color-mix(in srgb, ${rank.color} 18%, transparent)`,
-                  color: rank.color,
-                  border: `1px solid color-mix(in srgb, ${rank.color} 35%, transparent)`,
-                }}
-              >
-                YOUR MASTERY
-              </span>
-            </div>
-
-            <Link
-              to="/profile"
-              style={{
-                fontSize: 13,
-                fontWeight: 600,
-                color: 'var(--nm-accent-primary)',
-                textDecoration: 'none',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-              }}
-            >
-              View Profile & Identity →
-            </Link>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-            <RankBadge tier={rank} size={64} />
-            <div style={{ minWidth: 200, flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-                <h1 style={{ fontSize: 'clamp(1.6rem, 3.5vw, 2.2rem)', fontWeight: 900, color: rank.color, margin: 0, letterSpacing: '-0.02em' }}>
-                  {rank.label}
-                </h1>
-                <span
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 700,
-                    padding: '2px 8px',
-                    borderRadius: 6,
-                    background: 'var(--nm-border)',
-                    color: 'var(--nm-text-secondary)',
-                  }}
-                >
-                  Level {level}
-                </span>
-              </div>
-
-              {/* Real XP progress to next level */}
-              <div style={{ marginTop: 10, maxWidth: 500 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--nm-text-muted)', marginBottom: 5 }}>
-                  <span>
-                    Level Progress: <strong>{xpIntoLevel}</strong> / {xpForNextLevel} XP
-                  </span>
-                  <span>{xpForNextLevel > xpIntoLevel ? `${xpForNextLevel - xpIntoLevel} XP to Level ${level + 1}` : 'Max Progress'}</span>
-                </div>
-                <div style={{ height: 8, borderRadius: 4, background: 'var(--nm-border)', overflow: 'hidden' }}>
-                  <div
-                    style={{
-                      width: `${levelPct * 100}%`,
-                      height: '100%',
-                      background: `linear-gradient(90deg, ${rank.color}, var(--nm-accent-primary))`,
-                      borderRadius: 4,
-                      transition: 'width 250ms ease',
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Compact real stat row */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-              gap: 10,
-              paddingTop: '1.25rem',
-              borderTop: '1px solid var(--nm-border)',
-            }}
-          >
-            <div style={{ padding: '8px 12px', borderRadius: 8, background: 'color-mix(in srgb, var(--nm-bg) 60%, transparent)' }}>
-              <div style={{ fontSize: 11, color: 'var(--nm-text-muted)', marginBottom: 2 }}>Curriculum</div>
-              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--nm-text-primary)' }}>
-                {totalDone} <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--nm-text-muted)' }}>/ {totalPages}</span>
-              </div>
-            </div>
-            <div style={{ padding: '8px 12px', borderRadius: 8, background: 'color-mix(in srgb, var(--nm-bg) 60%, transparent)' }}>
-              <div style={{ fontSize: 11, color: 'var(--nm-text-muted)', marginBottom: 2 }}>Practice Solved</div>
-              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--nm-text-primary)' }}>
-                {practice.solved} <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--nm-text-muted)' }}>/ {practice.total}</span>
-              </div>
-            </div>
-            <div style={{ padding: '8px 12px', borderRadius: 8, background: 'color-mix(in srgb, var(--nm-bg) 60%, transparent)' }}>
-              <div style={{ fontSize: 11, color: 'var(--nm-text-muted)', marginBottom: 2 }}>System Designs</div>
-              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--nm-text-primary)' }}>
-                {systemDesignSolved}
-              </div>
-            </div>
-            <div style={{ padding: '8px 12px', borderRadius: 8, background: 'color-mix(in srgb, var(--nm-bg) 60%, transparent)' }}>
-              <div style={{ fontSize: 11, color: 'var(--nm-text-muted)', marginBottom: 2 }}>Streak</div>
-              <div style={{ fontSize: 16, fontWeight: 800, color: '#f59e0b' }}>
-                {streak} <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--nm-text-muted)' }}>days</span>
-              </div>
-            </div>
-            <div style={{ padding: '8px 12px', borderRadius: 8, background: 'color-mix(in srgb, var(--nm-bg) 60%, transparent)' }}>
-              <div style={{ fontSize: 11, color: 'var(--nm-text-muted)', marginBottom: 2 }}>Total XP</div>
-              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--nm-accent-primary)' }}>
-                {points} <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--nm-text-muted)' }}>pts</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* --- Next Best Action Card --- */}
         {(recommendedProb || nextLessonDoc) && (
           <div
             style={{
-              padding: '1.25rem 1.5rem',
-              borderRadius: 14,
-              border: '1px solid color-mix(in srgb, var(--nm-accent-primary) 35%, var(--nm-border))',
-              background: 'linear-gradient(135deg, color-mix(in srgb, var(--nm-accent-primary) 8%, var(--nm-surface)) 0%, var(--nm-surface) 100%)',
+              padding: '1rem 1.25rem',
+              borderRadius: 10,
+              border: '1px solid var(--nm-border)',
+              borderLeft: '3px solid var(--nm-accent-primary)',
+              background: 'var(--nm-surface)',
               marginBottom: '2rem',
               display: 'flex',
               alignItems: 'center',
@@ -277,37 +133,26 @@ export default function ProgressPage() {
             }}
           >
             <div style={{ minWidth: 260, flex: 1 }}>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--nm-accent-primary)', marginBottom: 4 }}>
-                <span>🎯</span> Next Best Action
+              <div style={{ fontSize: 12.5, color: 'var(--nm-text-muted)', marginBottom: 2 }}>Up next</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--nm-text-primary)' }}>
+                {recommendedProb ? cleanPracticeTitle(recommendedProb.title) : nextLessonDoc?.title}
               </div>
-              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--nm-text-primary)', marginBottom: 4 }}>
+              <div style={{ fontSize: 13, color: 'var(--nm-text-secondary)', marginTop: 2 }}>
                 {recommendedProb
-                  ? `Practice: ${cleanPracticeTitle(recommendedProb.title)}`
-                  : `Curriculum: ${nextLessonDoc?.title}`}
-              </div>
-              <div style={{ fontSize: 13, color: 'var(--nm-text-secondary)', lineHeight: 1.4 }}>
-                {recommendedProb
-                  ? `Strengthen hands-on skills in ${recommendedProb.topic ? (topicLabels[recommendedProb.topic] ?? recommendedProb.topic) : 'AI engineering'} (${recommendedProb.difficulty ?? 'Challenge'}).`
-                  : `Advance your foundational knowledge in ${nextLessonDoc?.section}.`}
+                  ? `Practice problem${recommendedProb.topic ? ` · ${topicLabels[recommendedProb.topic] ?? recommendedProb.topic}` : ''}${recommendedProb.difficulty ? ` · ${recommendedProb.difficulty}` : ''}`
+                  : `Lesson · ${nextLessonDoc?.section}`}
               </div>
             </div>
 
             <Link
               to={recommendedProb ? recommendedProb.route : nextLessonDoc ? nextLessonDoc.route : '/practice'}
               className="nm-button nm-button-primary"
-              style={{
-                padding: '0.65rem 1.25rem',
-                fontSize: 13.5,
-                fontWeight: 700,
-                textDecoration: 'none',
-                flexShrink: 0,
-              }}
+              style={{ padding: '0.6rem 1.1rem', fontSize: 13.5, fontWeight: 700, textDecoration: 'none', flexShrink: 0 }}
             >
-              {recommendedProb ? 'Solve Problem →' : 'Continue Lesson →'}
+              {recommendedProb ? 'Open problem →' : 'Open lesson →'}
             </Link>
           </div>
         )}
-
         {/* --- Side-by-side Progress Sections --- */}
         <div
           style={{
@@ -332,7 +177,7 @@ export default function ProgressPage() {
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
                 <h2 style={{ fontSize: 16, fontWeight: 800, color: 'var(--nm-text-primary)', margin: 0 }}>
-                  Curriculum Progress
+                  Lessons
                 </h2>
                 <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--nm-text-muted)' }}>
                   {totalDone} / {totalPages} pages ({Math.round(overallPct * 100)}%)
@@ -344,7 +189,7 @@ export default function ProgressPage() {
             </div>
 
             <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--nm-text-muted)' }}>
-              Curriculum Checkpoints
+              By section
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -381,7 +226,7 @@ export default function ProgressPage() {
                     </div>
                   ) : (
                     <div style={{ fontSize: 11.5, color: '#10b981', fontWeight: 600 }}>
-                      ✓ Checkpoint Completed
+                      ✓ Done
                     </div>
                   )}
                 </div>
@@ -404,7 +249,7 @@ export default function ProgressPage() {
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
                 <h2 style={{ fontSize: 16, fontWeight: 800, color: 'var(--nm-text-primary)', margin: 0 }}>
-                  Practice Progress
+                  Practice
                 </h2>
                 <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--nm-text-muted)' }}>
                   {practice.solved} / {practice.total} solved ({Math.round(practicePct * 100)}%)
@@ -414,26 +259,17 @@ export default function ProgressPage() {
                 <div style={{ width: `${practicePct * 100}%`, height: '100%', background: '#10b981', transition: 'width 200ms ease' }} />
               </div>
 
-              {/* Difficulty breakdown pills */}
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 11.5, padding: '3px 8px', borderRadius: 6, background: 'rgba(16, 185, 129, 0.12)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.25)', fontWeight: 600 }}>
-                  Easy: {practice.easySolved}
-                </span>
-                <span style={{ fontSize: 11.5, padding: '3px 8px', borderRadius: 6, background: 'rgba(245, 158, 11, 0.12)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.25)', fontWeight: 600 }}>
-                  Medium: {practice.mediumSolved}
-                </span>
-                <span style={{ fontSize: 11.5, padding: '3px 8px', borderRadius: 6, background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.25)', fontWeight: 600 }}>
-                  Hard: {practice.hardSolved}
-                </span>
+              <div style={{ fontSize: 12.5, color: 'var(--nm-text-muted)' }}>
+                Easy {practice.easySolved} · Medium {practice.mediumSolved} · Hard {practice.hardSolved}
               </div>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--nm-text-muted)' }}>
-                Mastery Map (Tracks)
+                By track
               </span>
               <Link to="/practice" style={{ fontSize: 12, color: 'var(--nm-accent-primary)', textDecoration: 'none', fontWeight: 600 }}>
-                All Tracks →
+                All tracks →
               </Link>
             </div>
 
@@ -468,17 +304,6 @@ export default function ProgressPage() {
               ))}
             </div>
           </div>
-        </div>
-
-        {/* --- Checkpoint Badges Showcase & RL Reward Engine --- */}
-        <BadgeShowcase />
-
-        {/* --- Full 10-Tier Rank Ladder --- */}
-        <h2 style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--nm-text-muted)', marginBottom: '0.9rem' }}>
-          Rank ladder
-        </h2>
-        <div style={{ marginBottom: '2.5rem' }}>
-          <RankLadder level={level} />
         </div>
 
         {/* --- Due for review (Spaced Repetition) --- */}

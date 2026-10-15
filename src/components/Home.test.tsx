@@ -34,8 +34,8 @@ describe('Home', () => {
 
   it('shows the first-time-visitor hero when nothing is marked understood', () => {
     renderHome()
-    expect(screen.getByText('A platform to learn AI structurally, through visualizations.')).toBeInTheDocument()
-    expect(screen.getByText('Start Learning →')).toBeInTheDocument()
+    expect(screen.getByText('Learn AI from the ground up.')).toBeInTheDocument()
+    expect(screen.getByText('See the reading order →')).toBeInTheDocument()
     expect(screen.queryByText(/Welcome back/)).not.toBeInTheDocument()
   })
 
@@ -54,7 +54,7 @@ describe('Home', () => {
     renderHome()
 
     expect(screen.getByText(/Welcome back — you've understood 1 page\./)).toBeInTheDocument()
-    expect(screen.queryByText('A platform to learn AI structurally, through visualizations.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Learn AI from the ground up.')).not.toBeInTheDocument()
 
     // The continue CTA should point at some other real page in the same
     // group, not back at the one already marked understood.
@@ -97,7 +97,7 @@ describe('Home', () => {
 
     renderHome()
 
-    expect(screen.getByText('A platform to learn AI structurally, through visualizations.')).toBeInTheDocument()
+    expect(screen.getByText('Learn AI from the ground up.')).toBeInTheDocument()
     expect(screen.queryByText(/Welcome back/)).not.toBeInTheDocument()
   })
 

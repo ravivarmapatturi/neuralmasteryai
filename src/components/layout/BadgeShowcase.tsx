@@ -25,7 +25,7 @@ export default function BadgeShowcase() {
   );
 
   const [activeCategory, setActiveCategory] = useState<BadgeCategory | 'all'>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'unlocked' | 'locked'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'unlocked' | 'locked'>('unlocked');
 
   const unlockedBadges = useMemo(() => BADGES.filter((b) => b.checkUnlocked(stats)), [stats]);
   const unlockedCount = unlockedBadges.length;
@@ -53,27 +53,10 @@ export default function BadgeShowcase() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: 'var(--nm-text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span>🏆</span> Checkpoint Badges & Milestones
-          </h2>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: 'var(--nm-text-primary)' }}>Badges</h2>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--nm-text-muted)' }}>
-            Unlocked {unlockedCount} of {BADGES.length} checkpoint badges across 5 core progression tracks
+            You've earned {unlockedCount} of {BADGES.length}.
           </p>
-        </div>
-
-        {/* Progress pill */}
-        <div
-          style={{
-            background: 'color-mix(in srgb, var(--nm-accent-primary) 15%, transparent)',
-            border: '1px solid color-mix(in srgb, var(--nm-accent-primary) 30%, transparent)',
-            borderRadius: 20,
-            padding: '6px 14px',
-            fontSize: 12.5,
-            fontWeight: 700,
-            color: 'var(--nm-accent-primary)',
-          }}
-        >
-          {Math.round((unlockedCount / BADGES.length) * 100)}% Completed
         </div>
       </div>
 
@@ -149,7 +132,9 @@ export default function BadgeShowcase() {
               fontSize: 13,
             }}
           >
-            No badges matching current filter criteria.
+            {statusFilter === 'unlocked' && unlockedCount === 0
+              ? 'None yet. Marking a page understood or solving a practice problem earns the first one.'
+              : 'No badges match this filter.'}
           </div>
         ) : (
           filteredBadges.map((badge) => {

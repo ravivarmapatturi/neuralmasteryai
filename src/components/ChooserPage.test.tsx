@@ -25,20 +25,20 @@ function renderChooser() {
 }
 
 describe('ChooserPage', () => {
-  it('introduces the product with its learning loop and routes to both real destinations', () => {
+  it('introduces the product, says how a page works, and routes to both real destinations', () => {
     renderChooser()
     expect(screen.getByRole('heading', { name: /Learn it/i })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /One concept. A complete learning loop/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Read it, poke at it, then write it/i })).toBeInTheDocument()
     const learnLink = screen.getByRole('link', { name: /Explore the curriculum/i })
     const practiceLink = screen.getByRole('link', { name: /Try a coding problem/i })
     expect(learnLink).toHaveAttribute('href', '/learn')
     expect(practiceLink).toHaveAttribute('href', '/practice')
   })
 
-  it('uses verified page and problem counts as product proof', () => {
+  it('states exact page and problem counts, with no inflating "+"', () => {
     renderChooser()
-    expect(screen.getByText((_, el) => /^\d+\+learning pages$/i.test(el?.textContent ?? ''))).toBeInTheDocument()
-    expect(screen.getByText((_, el) => /^\d+\+coding problems$/i.test(el?.textContent ?? ''))).toBeInTheDocument()
+    expect(screen.getByText(/^\d+ pages and \d+ practice problems\. Free, no sign-up\.$/)).toBeInTheDocument()
+    expect(screen.queryByText(/\d+\+/)).not.toBeInTheDocument()
   })
 
   it('surfaces the actual curriculum domains rather than invented feature claims, linking to a REAL page -- not the bare SECTION_META key, which 404s', () => {

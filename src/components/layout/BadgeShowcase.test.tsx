@@ -29,9 +29,13 @@ describe('BadgeShowcase (spec v2 Part 4)', () => {
     window.localStorage.clear()
   })
 
-  it('renders all real badges with locked state and real progress for a brand-new learner', () => {
+  it('shows earned badges by default, and every badge with real progress under All', async () => {
     renderShowcase()
-    expect(screen.getByText(new RegExp(`Unlocked 0 of ${BADGES.length} checkpoint badges`))).toBeInTheDocument()
+    expect(screen.getByText(`You've earned 0 of ${BADGES.length}.`)).toBeInTheDocument()
+    // Only earned badges show by default -- a new learner sees an empty state, not a wall of locks
+    expect(screen.queryAllByText('LOCKED')).toHaveLength(0)
+    expect(screen.getByText(/None yet/)).toBeInTheDocument()
+    await userEvent.setup().click(screen.getByRole('button', { name: `All (${BADGES.length})` }))
     // Locked badges are shown with LOCKED tags
     const lockedPills = screen.getAllByText('LOCKED')
     expect(lockedPills.length).toBe(BADGES.length)
@@ -41,7 +45,7 @@ describe('BadgeShowcase (spec v2 Part 4)', () => {
     expect(progressLabels.length).toBeGreaterThan(0)
   })
 
-  it('displays unlocked badge with rarity tier when earned, alongside locked badges with progress', () => {
+  it('displays unlocked badge with rarity tier when earned, alongside locked badges with progress', async () => {
     // 50 XP -> unlocks "Curious Mind" (first-step)
     window.localStorage.setItem(
       STORAGE_KEY,
@@ -49,7 +53,8 @@ describe('BadgeShowcase (spec v2 Part 4)', () => {
     )
     renderShowcase()
 
-    expect(screen.getByText(new RegExp(`Unlocked 2 of ${BADGES.length} checkpoint badges`))).toBeInTheDocument()
+    expect(screen.getByText(`You've earned 2 of ${BADGES.length}.`)).toBeInTheDocument()
+    await userEvent.setup().click(screen.getByRole('button', { name: `All (${BADGES.length})` }))
     expect(screen.getByText('Curious Mind')).toBeInTheDocument()
     expect(screen.getByText('First Code')).toBeInTheDocument()
     // Unlocked badge displays rarity label
@@ -64,6 +69,7 @@ describe('BadgeShowcase (spec v2 Part 4)', () => {
   it('filters badges by category and status', async () => {
     const user = userEvent.setup()
     renderShowcase()
+    await user.click(screen.getByRole('button', { name: `All (${BADGES.length})` }))
 
     // Click "Learning" category tab
     await user.click(screen.getByRole('button', { name: 'Learning' }))
