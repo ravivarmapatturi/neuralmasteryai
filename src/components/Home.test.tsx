@@ -32,14 +32,14 @@ describe('Home', () => {
     window.localStorage.clear()
   })
 
-  it('shows the first-time-visitor hero when nothing is marked understood', () => {
+  it('opens straight onto the topic index for a first-time visitor, with no hero or continue line', () => {
     renderHome()
-    expect(screen.getByText('Learn AI from the ground up.')).toBeInTheDocument()
-    expect(screen.getByText('See the reading order →')).toBeInTheDocument()
-    expect(screen.queryByText(/Welcome back/)).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'All topics' })).toBeInTheDocument()
+    expect(screen.queryByText(/^Continue: /)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Attention Step-Through/)).not.toBeInTheDocument()
   })
 
-  it('swaps to a "welcome back" hero with a real continue link once a page is marked understood', () => {
+  it('adds a real continue link once a page is marked understood', () => {
     // A real page from the first (in SECTION_ORDER) group's first subsection,
     // so it's guaranteed to be the group nextUnstartedPage should skip past.
     const firstGroupKey = SECTION_ORDER[0]
@@ -52,9 +52,6 @@ describe('Home', () => {
     )
 
     renderHome()
-
-    expect(screen.getByText(/Welcome back — you've understood 1 page\./)).toBeInTheDocument()
-    expect(screen.queryByText('Learn AI from the ground up.')).not.toBeInTheDocument()
 
     // The continue CTA should point at some other real page in the same
     // group, not back at the one already marked understood.
@@ -86,7 +83,7 @@ describe('Home', () => {
     expect(continueLink.getAttribute('href')).not.toMatch(/\/roadmap$/)
   })
 
-  it('falls back to the first-time hero when the only marked entry is for a page that no longer exists', () => {
+  it('falls back to the first-time view when the only marked entry is for a page that no longer exists', () => {
     // Mirrors ProgressPage's own titleFor comment: a stored permalink can
     // stop matching any current page (renamed/removed content) -- that
     // shouldn't read as "you've understood 0 pages".
@@ -97,8 +94,7 @@ describe('Home', () => {
 
     renderHome()
 
-    expect(screen.getByText('Learn AI from the ground up.')).toBeInTheDocument()
-    expect(screen.queryByText(/Welcome back/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Continue: /)).not.toBeInTheDocument()
   })
 
   it('surfaces a due-for-review count and links to the progress page once one exists', () => {
@@ -112,7 +108,6 @@ describe('Home', () => {
 
     renderHome()
 
-    expect(screen.getByText(/1 page is due for review/)).toBeInTheDocument()
     const reviewLink = screen.getByText('Review 1 due page →')
     expect(reviewLink.closest('a')).toHaveAttribute('href', '/progress')
   })

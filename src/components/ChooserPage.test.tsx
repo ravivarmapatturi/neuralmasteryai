@@ -50,9 +50,9 @@ describe('ChooserPage', () => {
     )
   })
 
-  it('renders a real, working in-browser Python playground on the actual homescreen -- not just a static code preview', () => {
+  it('no longer embeds the practice playground (it lives on /practice)', () => {
     renderChooser()
-    expect(screen.getByRole('heading', { name: /Practice the algorithms you just learned/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Run/i })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /Practice the algorithms you just learned/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Run/i })).not.toBeInTheDocument()
   })
 })

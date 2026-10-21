@@ -180,25 +180,19 @@ test.describe('Visualization', () => {
     expect(errors.errors()).toEqual([]);
   });
 
-  test('home page playground demo executes Python and fires celebration', async ({ page }) => {
+  test('practice page playground runs Python in the browser and reports test results', async ({ page }) => {
     test.setTimeout(60000);
     const errors = collectConsoleErrors(page);
-    // The real homescreen is "/" (ChooserPage.tsx), not "/learn" (Home.tsx)
-    // -- see App.tsx routing. The live playground lives here.
-    await page.goto('');
-    await expect(page.locator('h1')).toBeVisible();
+    // Stage 1 of Build an Agent runs inline on /practice. Its starter is a
+    // stub, so the run reports failures -- what matters is that Pyodide
+    // loaded, executed the code and scored every visible case.
+    await page.goto('practice');
+    const playground = page.locator('.nm-practice-live');
+    await playground.scrollIntoViewIfNeeded();
+    await expect(playground).toBeVisible();
 
-    const playgroundSection = page.locator('.nm-practice-live');
-    await playgroundSection.scrollIntoViewIfNeeded();
-    await expect(playgroundSection).toBeVisible();
-
-    const runButton = playgroundSection.getByRole('button', { name: /Run/i });
-    await expect(runButton).toBeVisible();
-    await runButton.click();
-
-    // Pyodide loads and executes; verification cases pass and celebration toast fires
-    await expect(page.locator('text=Code Executed Successfully!')).toBeVisible({ timeout: 45000 });
-    await expect(page.locator('text=/All 3 test cases passed/i')).toBeVisible();
+    await playground.getByRole('button', { name: /Run/i }).click();
+    await expect(playground.locator('text=/\\d+\\/\\d+ passed/')).toBeVisible({ timeout: 45000 });
     expect(errors.errors()).toEqual([]);
   });
 });

@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import Navbar from './layout/Navbar';
 import LiveComputation from './home/LiveComputation';
-import PracticePlayground from './content/PracticePlayground';
+import WeeklyVisitors from './home/WeeklyVisitors';
 import AgentGraphSketch from './notebook/AgentGraphSketch';
 import { SketchUnderline } from './notebook/RoughShape';
 import { getFlatPages, getPracticeProblems } from '../lib/contentTree';
@@ -15,13 +15,13 @@ function Arrow() {
 }
 
 /** The public product landing page: what the site is, how a page works,
- * the seven sections, and one runnable practice problem.
+ * and the seven sections.
  *
  * Visual identity: the "notebook" design system (src/styles/notebook.css +
  * src/components/notebook/*) -- warm paper, hand-drawn rough.js illustrations,
  * colored annotation boxes -- piloted here and on
  * /docs/agents/loops-and-graphs before any wider sitewide rollout. All
- * functional pieces (LiveComputation, PracticePlayground, progress-aware
+ * functional pieces (LiveComputation, progress-aware
  * CTAs) are unchanged; only the frame around them changed. */
 export default function ChooserPage() {
   // The homepage title and description are what people see in search
@@ -48,9 +48,9 @@ export default function ChooserPage() {
             <div>
               <p className="nb-eyebrow">an AI course you can run</p>
               <h1 className="nb-heading" style={{ fontSize: 'clamp(2.4rem, 5vw, 4.1rem)', lineHeight: 1.05, margin: 0, position: 'relative' }}>
-                Learn it.<br />Code it.<br />
+                Learn it.<br />Practice it.<br />
                 <span style={{ color: 'var(--nb-teal)', position: 'relative', display: 'inline-block' }}>
-                  Test it.
+                  Achieve Mastery.
                   <svg viewBox="0 0 320 16" width="100%" style={{ position: 'absolute', left: 0, bottom: -8, height: 16 }} aria-hidden="true">
                     <SketchUnderline x={4} y={8} width={300} color="var(--nb-teal)" id="hero-underline" />
                   </svg>
@@ -74,7 +74,8 @@ export default function ChooserPage() {
                 </Link>
               </div>
               <p className="nb-hand" style={{ marginTop: '2rem', color: 'var(--nb-ink-soft)', fontSize: '1rem' }}>
-                {pages.length} pages and {problems.length} practice problems. Free, no sign-up.
+                {pages.length} pages and {problems.length} practice problems. Free, no sign-up.{' '}
+                <WeeklyVisitors />
               </p>
             </div>
             <div>
@@ -154,27 +155,6 @@ export default function ChooserPage() {
                   </Link>
                 );
               })}
-            </div>
-          </div>
-        </section>
-
-        <section style={{ padding: 'clamp(3rem, 6vw, 5rem) 0' }}>
-          <div className="nm-landing-shell" style={{ maxWidth: 900, textAlign: 'center', margin: '0 auto' }}>
-            <p className="nb-eyebrow" style={{ justifyContent: 'center' }}>learn it. then prove it.</p>
-            <h2 className="nb-heading" style={{ fontSize: 'clamp(1.6rem, 3vw, 2.3rem)', margin: '0 0 0.75rem' }}>
-              Practice the algorithms you just learned.
-            </h2>
-            <p className="nb-body" style={{ maxWidth: 600, margin: '0 auto' }}>
-              No sign-up or installation — hit <strong>▶ Run</strong> to run Python in your browser (via
-              Pyodide) and check it against test cases, not an LLM's opinion.
-            </p>
-            <div className="nm-practice-live">
-              <PracticePlayground problemId="fizz-buzz" celebrateOnSuccess />
-            </div>
-            <div className="nm-practice-live-foot">
-              <Link className="nm-button nm-button-primary" to="/practice" style={{ background: 'var(--nb-cobalt)' }}>
-                Browse {problems.length} problems <Arrow />
-              </Link>
             </div>
           </div>
         </section>
