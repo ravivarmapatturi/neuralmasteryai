@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
+import { countPageView } from './home/WeeklyVisitors';
 
 /**
  * Fires a real GA4 page_view on every client-side route change -- Firebase
@@ -24,6 +25,7 @@ export default function AnalyticsTracker() {
   const location = useLocation();
 
   useEffect(() => {
+    countPageView();
     const timer = setTimeout(() => {
       import('../lib/firebase').then(({ trackPageView, trackFeatureEvent }) => {
         trackPageView(location.pathname, document.title);

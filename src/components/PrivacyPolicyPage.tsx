@@ -62,7 +62,9 @@ export default function PrivacyPolicyPage() {
             <p>
               To count visits, the site also uses Cloudflare Web Analytics. It sets no cookies and doesn't fingerprint
               or track you across sites: it records the page, the referring site, your country, and your browser and
-              device type, and reports them only as totals.
+              device type, and reports them only as totals. The "people visited this week" line on the homepage
+              comes from our own small counter, which stores one number per day for visits and one for page views,
+              with nothing about who you are.
             </p>
 
             <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--nm-text-primary)', marginTop: '2rem', marginBottom: '0.75rem' }}>
