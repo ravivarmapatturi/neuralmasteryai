@@ -59,13 +59,18 @@ export default function PrivacyPolicyPage() {
               enable ad-related tracking (ad_storage, ad_user_data, ad_personalization) — this site runs no ads or
               remarketing, so there's no use for that data regardless of consent.
             </p>
+            <p>
+              To count visits, the site also uses Cloudflare Web Analytics. It sets no cookies and doesn't fingerprint
+              or track you across sites: it records the page, the referring site, your country, and your browser and
+              device type, and reports them only as totals.
+            </p>
 
             <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--nm-text-primary)', marginTop: '2rem', marginBottom: '0.75rem' }}>
               What we don't do
             </h2>
             <p>
               We don't sell your data. We don't share it with anyone beyond the Google/Firebase infrastructure the site itself
-              runs on. We don't run ads. We don't have a mailing list.
+              runs on and Cloudflare's visit counter. We don't run ads. We don't have a mailing list.
             </p>
 
             <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--nm-text-primary)', marginTop: '2rem', marginBottom: '0.75rem' }}>

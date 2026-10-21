@@ -27,6 +27,7 @@ describe('PrivacyPolicyPage', () => {
     expect(screen.getByText(/Firebase Authentication with Google/i)).toBeInTheDocument()
     expect(screen.getByText(/Cloud Firestore/i)).toBeInTheDocument()
     expect(screen.getByText(/Google Analytics \(GA4\)/i)).toBeInTheDocument()
+    expect(screen.getByText(/Cloudflare Web Analytics/i)).toBeInTheDocument()
     expect(screen.getByText(/denied by default/i)).toBeInTheDocument()
   })
 })
