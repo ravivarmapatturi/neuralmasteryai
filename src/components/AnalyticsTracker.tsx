@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { countPageView } from './home/WeeklyVisitors';
+import { countPageView } from './home/LiveStats';
 
 /**
  * Fires a real GA4 page_view on every client-side route change -- Firebase

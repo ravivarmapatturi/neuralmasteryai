@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import Navbar from './layout/Navbar';
 import LiveComputation from './home/LiveComputation';
-import WeeklyVisitors from './home/WeeklyVisitors';
+import { LiveStatsTicker } from './home/LiveStats';
 import AgentGraphSketch from './notebook/AgentGraphSketch';
 import { SketchUnderline } from './notebook/RoughShape';
 import { getFlatPages, getPracticeProblems } from '../lib/contentTree';
@@ -42,6 +42,7 @@ export default function ChooserPage() {
   return (
     <div className="nb-theme">
       <Navbar />
+      <LiveStatsTicker pages={pages.length} problems={problems.length} />
       <main>
         <section className="nb-ruled" style={{ borderBottom: '1px solid var(--nb-rule)', padding: 'clamp(3rem, 7vw, 6rem) 0' }}>
           <div className="nm-landing-shell nm-hero-grid">
@@ -74,8 +75,7 @@ export default function ChooserPage() {
                 </Link>
               </div>
               <p className="nb-hand" style={{ marginTop: '2rem', color: 'var(--nb-ink-soft)', fontSize: '1rem' }}>
-                {pages.length} pages and {problems.length} practice problems. Free, no sign-up.{' '}
-                <WeeklyVisitors />
+                {pages.length} pages and {problems.length} practice problems.
               </p>
             </div>
             <div>

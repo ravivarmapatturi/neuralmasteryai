@@ -185,3 +185,25 @@
     transform: translateY(-2px) rotate(-0.3deg);
   }
 }
+
+/* Homepage live-stats ticker (LiveStatsTicker in components/home/LiveStats.tsx). */
+.nm-ticker { display: flex; align-items: center; gap: 0.75rem; height: 2.4rem; padding: 0 1rem; border-bottom: 1px solid var(--nb-rule); background: var(--nb-paper-alt); color: var(--nb-ink); font-size: 0.9rem; overflow: hidden; }
+.nm-ticker-label { display: inline-flex; align-items: center; gap: 0.4rem; flex: none; font-weight: 700; color: var(--nb-green, var(--nb-teal)); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.75rem; }
+.nm-ticker-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: currentColor; animation: nm-ticker-pulse 2s ease-in-out infinite; }
+.nm-ticker-window { flex: 1; min-width: 0; overflow: hidden; mask-image: linear-gradient(90deg, transparent, #000 2rem, #000 calc(100% - 2rem), transparent); }
+.nm-ticker-track { display: flex; width: max-content; animation: nm-ticker-scroll 32s linear infinite; }
+.nm-ticker:hover .nm-ticker-track, .nm-ticker:focus-within .nm-ticker-track, .nm-ticker.is-paused .nm-ticker-track { animation-play-state: paused; }
+.nm-ticker-row { display: flex; flex: none; }
+.nm-ticker-item { padding: 0 1.5rem; white-space: nowrap; font-family: var(--font-body); }
+.nm-ticker-item::after { content: '·'; position: relative; left: 1.5rem; color: var(--nb-ink-soft); }
+.nm-ticker-toggle { flex: none; width: 1.9rem; height: 1.9rem; border: 1px solid var(--nb-rule); border-radius: 50%; background: var(--nb-paper); color: var(--nb-ink); cursor: pointer; font-size: 0.7rem; line-height: 1; }
+.nm-ticker-toggle:focus-visible { outline: 2px solid var(--nb-cobalt); outline-offset: 2px; }
+@keyframes nm-ticker-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes nm-ticker-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) {
+  .nm-ticker-track { animation: none; width: auto; flex-wrap: wrap; }
+  .nm-ticker-row[aria-hidden] { display: none; }
+  .nm-ticker-dot { animation: none; }
+  .nm-ticker-toggle { display: none; }
+  .nm-ticker-window { mask-image: none; }
+}

@@ -2,7 +2,8 @@
 //
 //   POST /hit   body "1" for the first page of a browser session, "0" after.
 //               Adds one page view, and one visit when the body is "1".
-//   GET  /      { "visits": 312, "pageViews": 1045, "days": 7 } for the last 7 days.
+//   GET  /      { "visits": 312, "pageViews": 1045, "todayVisits": 40, "todayViews": 150, "days": 7 }
+//               (the last 7 days, and today in UTC).
 //
 // It stores daily totals only (day, visits, views) in the D1 database
 // bound as DB (schema.sql). There are no cookies, IPs or user agents, and
@@ -13,7 +14,7 @@
 // Deploy from this folder: `npx wrangler@4 deploy`.
 
 const ALLOWED_ORIGINS = ['https://neuralmasteryai.com'];
-const CACHE_SECONDS = 300;
+const CACHE_SECONDS = 30;
 
 function cors(request) {
   const origin = request.headers.get('Origin');
@@ -42,14 +43,19 @@ async function hit(request, env) {
 
 async function weekly(request, env, ctx) {
   const cache = caches.default;
-  const key = new Request(new URL('/weekly', request.url).toString());
+  const key = new Request(new URL('/stats-v2', request.url).toString());
   let response = await cache.match(key);
   if (!response) {
     const since = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const row = await env.DB.prepare('SELECT COALESCE(SUM(visits), 0) AS visits, COALESCE(SUM(views), 0) AS views FROM daily WHERE day >= ?1')
-      .bind(since)
+    const row = await env.DB.prepare(
+      'SELECT COALESCE(SUM(visits), 0) AS visits, COALESCE(SUM(views), 0) AS views, ' +
+        'COALESCE(SUM(CASE WHEN day = ?2 THEN visits END), 0) AS todayVisits, ' +
+        'COALESCE(SUM(CASE WHEN day = ?2 THEN views END), 0) AS todayViews FROM daily WHERE day >= ?1',
+    )
+      .bind(since, today())
       .first();
-    response = new Response(JSON.stringify({ visits: row.visits, pageViews: row.views, days: 7 }), {
+    const body = { visits: row.visits, pageViews: row.views, todayVisits: row.todayVisits, todayViews: row.todayViews, days: 7 };
+    response = new Response(JSON.stringify(body), {
       headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${CACHE_SECONDS}` },
     });
     ctx.waitUntil(cache.put(key, response.clone()));

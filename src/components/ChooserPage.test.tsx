@@ -37,7 +37,7 @@ describe('ChooserPage', () => {
 
   it('states exact page and problem counts, with no inflating "+"', () => {
     renderChooser()
-    expect(screen.getByText(/^\d+ pages and \d+ practice problems\. Free, no sign-up\.$/)).toBeInTheDocument()
+    expect(screen.getByText(/^\d+ pages and \d+ practice problems\.$/)).toBeInTheDocument()
     expect(screen.queryByText(/\d+\+/)).not.toBeInTheDocument()
   })
 
