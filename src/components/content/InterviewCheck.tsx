@@ -257,8 +257,8 @@ export function BankScore() {
   return (
     <p style={{ fontSize: '0.92rem', color: 'var(--nm-text-muted)' }}>
       {counts.tried === 0
-        ? `${counts.total} questions. Each one is checked when you answer, and the worked answer opens after.`
-        : `You've answered ${counts.tried} of ${counts.total}, ${counts.firstTry} right on the first try. Saved in this browser only.`}
+        ? `${counts.total} checkable ${counts.total === 1 ? 'question' : 'questions'} on this page. Each is checked when you answer, and the worked answer opens after.`
+        : `You've answered ${counts.tried} of the ${counts.total} checkable questions, ${counts.firstTry} right on the first try. Saved in this browser only.`}
     </p>
   );
 }

@@ -65,7 +65,7 @@ describe('Calc and BankScore', () => {
         <Calc id="t-calc" q="Precision?" answer={0.3}>Worked calc</Calc>
       </>,
     )
-    expect(screen.getByText(/1 questions/)).toBeInTheDocument()
+    expect(screen.getByText(/1 checkable question on this page/)).toBeInTheDocument()
 
     await user.type(screen.getByLabelText('Your answer'), '0.25')
     await user.click(screen.getByRole('button', { name: 'Check' }))
@@ -76,6 +76,6 @@ describe('Calc and BankScore', () => {
     await user.click(screen.getByRole('button', { name: 'Check' }))
     expect(screen.getByRole('status')).toHaveTextContent('Right.')
     expect(screen.getByText('Worked calc')).toBeInTheDocument()
-    expect(screen.getByText(/answered 1 of 1, 0 right on the first try/)).toBeInTheDocument()
+    expect(screen.getByText(/answered 1 of the 1 checkable questions, 0 right on the first try/)).toBeInTheDocument()
   })
 })

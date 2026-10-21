@@ -16,7 +16,7 @@ Breadth rounds rarely ask "define overfitting" any more. They give you a symptom
 
 ## Overfitting, underfitting and validation
 
-<Choice id="cml-high-variance-tree" q="A decision tree with no depth limit scores 99% on training data and 71% on validation. What do you try first?" answer={0} options={[{"text": "Limit the tree: a maximum depth, or a minimum number of samples per leaf.", "why": "Yes. The gap between train and validation is variance, and capping the tree's size is the most direct way to reduce it."}, {"text": "Train for more epochs.", "why": "A decision tree isn't trained in epochs. It's grown once, until the stopping rules say stop."}, {"text": "Add more features so the tree has more to work with.", "why": "More features give an unconstrained tree more ways to memorise noise, so the gap usually widens."}, {"text": "Switch to a deeper model, such as a neural network.", "why": "Higher capacity makes a variance problem worse, not better."}]}>
+<Choice id={"cml-high-variance-tree"} q={"A decision tree with no depth limit scores 99% on training data and 71% on validation. What do you try first?"} answer={0} options={[{"text": "Limit the tree: a maximum depth, or a minimum number of samples per leaf.", "why": "The gap between train and validation is variance, and capping the tree's size is the most direct way to reduce it."}, {"text": "Train for more epochs.", "why": "A decision tree isn't trained in epochs. It's grown once, until the stopping rules say stop."}, {"text": "Add more features so the tree has more to work with.", "why": "More features give an unconstrained tree more ways to memorise noise, so the gap usually widens."}, {"text": "Switch to a deeper model, such as a neural network.", "why": "Higher capacity makes a variance problem worse, not better."}]}>
 
 A 28-point gap between training and validation is the textbook sign of **high variance**: the tree has memorised the training set. Constrain it (`max_depth`, `min_samples_leaf`, pruning), or average many trees (a random forest). More data also helps, if you can get it.
 
@@ -27,7 +27,7 @@ A 28-point gap between training and validation is the textbook sign of **high va
 
 </Choice>
 
-<Choice id="cml-high-bias" q="A 10-class image classifier gets 64% on training data and 63% on validation. People score 95% on the same task. What's the problem?" answer={2} options={[{"text": "The validation set is too small.", "why": "A small validation set makes the estimate noisy, but it can't explain training accuracy being 31 points below people."}, {"text": "Not enough training data.", "why": "More data mostly fixes variance. A model that can't fit the data it already has won't fit more of it."}, {"text": "High bias: the model is too simple to fit even the training data.", "why": "Right. Training and validation are both far below what's achievable, and close to each other."}, {"text": "High variance: it's overfitting.", "why": "Overfitting shows up as a large train-validation gap. Here the gap is one point."}]}>
+<Choice id={"cml-high-bias"} q={"A 10-class image classifier gets 64% on training data and 63% on validation. People score 95% on the same task. What's the problem?"} answer={2} options={[{"text": "The validation set is too small.", "why": "A small validation set makes the estimate noisy, but it can't explain training accuracy being 31 points below people."}, {"text": "Not enough training data.", "why": "More data mostly fixes variance. A model that can't fit the data it already has won't fit more of it."}, {"text": "High bias: the model is too simple to fit even the training data.", "why": "Training and validation are both far below what's achievable, and close to each other."}, {"text": "High variance: it's overfitting.", "why": "Overfitting shows up as a large train-validation gap. Here the gap is one point."}]}>
 
 Both numbers are low and close together: **high bias** (underfitting). Add capacity (a bigger model, better features), reduce regularisation, or train longer. Collecting more data is the classic wrong move here.
 
@@ -38,7 +38,7 @@ Both numbers are low and close together: **high bias** (underfitting). Add capac
 
 </Choice>
 
-<Calc id="cml-kfold-rows" q="You run 5-fold cross-validation on 10,000 rows. How many rows does each of the five models train on?" answer={8000.0} tolerance={0.0} unit="rows">
+<Calc id={"cml-kfold-rows"} q={"You run 5-fold cross-validation on 10,000 rows. How many rows does each of the five models train on?"} answer={8000.0} tolerance={0.0} unit={"rows"}>
 
 Each fold holds out one fifth for validation and trains on the other four fifths: 10,000 × 4/5 = **8,000** rows. Every row is used for validation exactly once across the five runs.
 
@@ -48,7 +48,7 @@ Each fold holds out one fifth for validation and trains on the other four fifths
 
 </Calc>
 
-<Choice id="cml-time-series-split" q="A demand forecast scores 0.92 R² with random 5-fold cross-validation and 0.55 in its first month in production. What's the most likely cause?" answer={3} options={[{"text": "Five folds is too few.", "why": "More folds give a more stable estimate of the same leaky number."}, {"text": "The model needs more regularisation.", "why": "Regularisation can help a little, but it doesn't explain a validation score that's this much better than reality."}, {"text": "Production data is always noisier.", "why": "Some drop is normal. A fall from 0.92 to 0.55 points at a validation method that doesn't match how the model is used."}, {"text": "Random folds let the model train on days after the ones it's tested on.", "why": "Right. With time series, random splits leak the future into training, so validation is far too optimistic."}]}>
+<Choice id={"cml-time-series-split"} q={"A demand forecast scores 0.92 R² with random 5-fold cross-validation and 0.55 in its first month in production. What's the most likely cause?"} answer={3} options={[{"text": "Five folds is too few.", "why": "More folds give a more stable estimate of the same leaky number."}, {"text": "The model needs more regularisation.", "why": "Regularisation can help a little, but it doesn't explain a validation score that's this much better than reality."}, {"text": "Production data is always noisier.", "why": "Some drop is normal. A fall from 0.92 to 0.55 points at a validation method that doesn't match how the model is used."}, {"text": "Random folds let the model train on days after the ones it's tested on.", "why": "With time series, random splits leak the future into training, so validation is far too optimistic."}]}>
 
 Validation has to mimic deployment. A forecaster always predicts the future from the past, so validate the same way: train on everything before a cut-off date and test on what follows (a rolling or expanding window). Random folds let neighbouring days, which are highly correlated, sit on both sides of the split.
 
@@ -59,7 +59,7 @@ Validation has to mimic deployment. A forecaster always predicts the future from
 
 </Choice>
 
-<Choice id="cml-leaky-feature" q="In a churn model, the most important feature by far is `account_closure_reason`. Validation AUC is 0.99. What do you conclude?" answer={1} options={[{"text": "The model is overfitting, so add regularisation.", "why": "Regularisation won't remove a feature that's a disguised copy of the label."}, {"text": "Target leakage: that field only gets filled in once a customer has churned.", "why": "Right. It's recorded at or after the moment you're trying to predict, so it won't exist when the model is used."}, {"text": "Drop the feature, because one feature shouldn't dominate.", "why": "Dropping it is right, but the reason is when it's recorded, not how important it looks."}, {"text": "It's a strong feature. Ship the model.", "why": "An AUC of 0.99 on churn is a warning, not a result. Ask when each feature becomes available."}]}>
+<Choice id={"cml-leaky-feature"} q={"In a churn model, the most important feature by far is `account_closure_reason`. Validation AUC is 0.99. What do you conclude?"} answer={1} options={[{"text": "The model is overfitting, so add regularisation.", "why": "Regularisation won't remove a feature that's a disguised copy of the label."}, {"text": "Target leakage: that field only gets filled in once a customer has churned.", "why": "It's recorded at or after the moment you're trying to predict, so it won't exist when the model is used."}, {"text": "Drop the feature, because one feature shouldn't dominate.", "why": "Dropping it is right, but the reason is when it's recorded, not how important it looks."}, {"text": "It's a strong feature. Ship the model.", "why": "An AUC of 0.99 on churn is a warning, not a result. Ask when each feature becomes available."}]}>
 
 For every feature, ask: **would I know this value at prediction time?** A closure reason is written when the account closes, which is the event being predicted. Remove it and anything derived from it, then expect validation AUC to fall to something believable.
 
@@ -70,7 +70,7 @@ For every feature, ask: **would I know this value at prediction time?** A closur
 
 </Choice>
 
-<Choice id="cml-smote-before-split" q="A colleague oversamples the minority class with SMOTE, then splits the data into train and test. Test recall is excellent. What's wrong?" answer={2} options={[{"text": "The test set is too small.", "why": "Its size isn't the issue. Its independence is."}, {"text": "Nothing. SMOTE is the standard fix for imbalance.", "why": "It can be a useful tool, but applied before the split it leaks information."}, {"text": "Synthetic points built from test examples' neighbours end up in training, so the test set is contaminated.", "why": "Right. Resample inside the training data only, and inside each cross-validation fold."}, {"text": "SMOTE should be applied to the test set too.", "why": "The test set should look like real traffic, imbalance included."}]}>
+<Choice id={"cml-smote-before-split"} q={"A colleague oversamples the minority class with SMOTE, then splits the data into train and test. Test recall is excellent. What's wrong?"} answer={2} options={[{"text": "The test set is too small.", "why": "Its size isn't the issue. Its independence is."}, {"text": "Nothing. SMOTE is the standard fix for imbalance.", "why": "It can be a useful tool, but applied before the split it leaks information."}, {"text": "Synthetic points built from test examples' neighbours end up in training, so the test set is contaminated.", "why": "Resample inside the training data only, and inside each cross-validation fold."}, {"text": "SMOTE should be applied to the test set too.", "why": "The test set should look like real traffic, imbalance included."}]}>
 
 SMOTE creates new minority points by interpolating between real ones. Done before splitting, a test example's near-copies land in training, and the model gets credit for recognising them. Split first, then resample only the training portion, ideally inside a pipeline so cross-validation does it per fold.
 
@@ -82,7 +82,7 @@ SMOTE creates new minority points by interpolating between real ones. Done befor
 
 ## Metrics and thresholds
 
-<Calc id="cml-precision" q="Out of 1,000 transactions, 20 are fraud. Your model flags 50 transactions, and 15 of those are fraud. What is its precision?" answer={0.3} tolerance={0.02}>
+<Calc id={"cml-precision"} q={"Out of 1,000 transactions, 20 are fraud. Your model flags 50 transactions, and 15 of those are fraud. What is its precision?"} answer={0.3} tolerance={0.02}>
 
 Precision = true positives ÷ everything flagged = 15 ÷ 50 = **0.3**. Of the transactions the model flags, 30% are fraud.
 
@@ -92,7 +92,7 @@ Precision = true positives ÷ everything flagged = 15 ÷ 50 = **0.3**. Of the tr
 
 </Calc>
 
-<Calc id="cml-recall" q="Same model: 20 frauds in the data, 15 of them flagged. What is its recall?" answer={0.75} tolerance={0.02}>
+<Calc id={"cml-recall"} q={"Same model: 20 frauds in the data, 15 of them flagged. What is its recall?"} answer={0.75} tolerance={0.02}>
 
 Recall = true positives ÷ all actual positives = 15 ÷ 20 = **0.75**. The model catches three quarters of the fraud.
 
@@ -102,7 +102,7 @@ Recall = true positives ÷ all actual positives = 15 ÷ 20 = **0.75**. The model
 
 </Calc>
 
-<Calc id="cml-f1" q="Same model, precision 0.3 and recall 0.75. What is its F1 score? (Three decimals is fine.)" answer={0.4285714285714285} tolerance={0.01}>
+<Calc id={"cml-f1"} q={"Same model, precision 0.3 and recall 0.75. What is its F1 score? (Three decimals is fine.)"} answer={0.4285714285714285} tolerance={0.01}>
 
 F1 is the harmonic mean: 2 × 0.3 × 0.75 ÷ (0.3 + 0.75) = 0.45 ÷ 1.05 = **0.429**. The harmonic mean is pulled towards the lower of the two, so a model can't score a high F1 by being good at only one of them.
 
@@ -112,7 +112,7 @@ F1 is the harmonic mean: 2 × 0.3 × 0.75 ÷ (0.3 + 0.75) = 0.45 ÷ 1.05 = **0.4
 
 </Calc>
 
-<Choice id="cml-accuracy-imbalance" q="1% of users are fraudulent and your model has 99% accuracy. What should you report instead?" answer={1} options={[{"text": "Accuracy is fine, because 99% is high.", "why": "Predicting \"not fraud\" for everyone also scores 99%."}, {"text": "Precision and recall at the threshold you'll use, plus PR-AUC.", "why": "Right. These focus on the rare class, which is the one you care about."}, {"text": "ROC-AUC alone.", "why": "ROC-AUC is useful, but with 1% positives it can look strong while precision at any usable threshold is poor."}, {"text": "Mean squared error.", "why": "That's a regression metric. It doesn't say how well the rare class is found."}]}>
+<Choice id={"cml-accuracy-imbalance"} q={"1% of users are fraudulent and your model has 99% accuracy. What should you report instead?"} answer={1} options={[{"text": "Accuracy is fine, because 99% is high.", "why": "Predicting \"not fraud\" for everyone also scores 99%."}, {"text": "Precision and recall at the threshold you'll use, plus PR-AUC.", "why": "These focus on the rare class, which is the one you care about."}, {"text": "ROC-AUC alone.", "why": "ROC-AUC is useful, but with 1% positives it can look strong while precision at any usable threshold is poor."}, {"text": "Mean squared error.", "why": "That's a regression metric. It doesn't say how well the rare class is found."}]}>
 
 With heavy imbalance, accuracy mostly measures the majority class. Report **precision and recall at your operating threshold**, and use **PR-AUC** to compare models, because it's dominated by performance on the rare class. ROC-AUC counts true negatives in its false-positive rate, and with 99 negatives per positive that rate stays small even when most flags are wrong.
 
@@ -122,7 +122,7 @@ With heavy imbalance, accuracy mostly measures the majority class. Report **prec
 
 </Choice>
 
-<Calc id="cml-base-rate" q="A test catches 99% of a rare condition and wrongly flags 1% of healthy people. The condition affects 1 in 1,000. If someone tests positive, what's the probability they have it? (As a decimal.)" answer={0.09016393442622951} tolerance={0.03}>
+<Calc id={"cml-base-rate"} q={"A test catches 99% of a rare condition and wrongly flags 1% of healthy people. The condition affects 1 in 1,000. If someone tests positive, what's the probability they have it? (As a decimal.)"} answer={0.09016393442622951} tolerance={0.03}>
 
 Out of 100,000 people, 100 have the condition and 99 of them test positive. Of the 99,900 healthy people, 1% (999) also test positive. So 99 ÷ (99 + 999) = **0.090**, about 9%. Even a very accurate test has low precision when the condition is rare. Bayes' rule is the formal version of this count.
 
@@ -133,7 +133,7 @@ Out of 100,000 people, 100 have the condition and 99 of them test positive. Of t
 
 </Calc>
 
-<Choice id="cml-threshold-capacity" q="The fraud team can review 200 cases a day. How do you choose the model's threshold?" answer={3} options={[{"text": "Pick the threshold that maximises F1.", "why": "Reasonable in the abstract, but it ignores the fixed limit of 200 reviews a day."}, {"text": "Use 0.5, the default.", "why": "Nothing about 0.5 relates to the team's capacity or the cost of fraud."}, {"text": "Pick the threshold that maximises accuracy.", "why": "With rare fraud that's close to flagging nothing."}, {"text": "Rank each day's transactions by score and send the top 200: the threshold follows from capacity.", "why": "Right. Then measure precision at 200, and recall, and improve the model to raise them."}]}>
+<Choice id={"cml-threshold-capacity"} q={"The fraud team can review 200 cases a day. How do you choose the model's threshold?"} answer={3} options={[{"text": "Pick the threshold that maximises F1.", "why": "Reasonable in the abstract, but it ignores the fixed limit of 200 reviews a day."}, {"text": "Use 0.5, the default.", "why": "Nothing about 0.5 relates to the team's capacity or the cost of fraud."}, {"text": "Pick the threshold that maximises accuracy.", "why": "With rare fraud that's close to flagging nothing."}, {"text": "Rank each day's transactions by score and send the top 200: the threshold follows from capacity.", "why": "Then measure precision at 200, and recall, and improve the model to raise them."}]}>
 
 When a person acts on each flag, the operational constraint sets the threshold. Rank by score and take the top k, then evaluate with **precision@k**. If the cost of missed fraud is known, compare it with the cost of a review to decide whether the team needs more capacity.
 
@@ -143,7 +143,7 @@ When a person acts on each flag, the operational constraint sets the threshold. 
 
 </Choice>
 
-<Choice id="cml-calibration" q="Your model has a ROC-AUC of 0.95, and its predicted probabilities will be used to set insurance prices. What else do you check?" answer={1} options={[{"text": "Nothing. 0.95 AUC is excellent.", "why": "A model can rank perfectly and still be wrong about the size of the risks."}, {"text": "Calibration: whether a predicted 20% risk really happens about 20% of the time.", "why": "Right. AUC only measures ranking. Pricing uses the probabilities themselves."}, {"text": "Accuracy at a 0.5 threshold.", "why": "Pricing doesn't threshold anything. It uses the probability directly."}, {"text": "Feature importance.", "why": "Useful for explaining the model, but it doesn't tell you whether the probabilities are right."}]}>
+<Choice id={"cml-calibration"} q={"Your model has a ROC-AUC of 0.95, and its predicted probabilities will be used to set insurance prices. What else do you check?"} answer={1} options={[{"text": "Nothing. 0.95 AUC is excellent.", "why": "A model can rank perfectly and still be wrong about the size of the risks."}, {"text": "Calibration: whether a predicted 20% risk really happens about 20% of the time.", "why": "AUC only measures ranking. Pricing uses the probabilities themselves."}, {"text": "Accuracy at a 0.5 threshold.", "why": "Pricing doesn't threshold anything. It uses the probability directly."}, {"text": "Feature importance.", "why": "Useful for explaining the model, but it doesn't tell you whether the probabilities are right."}]}>
 
 **AUC is about ranking, calibration is about the probabilities.** Check a reliability diagram (bucket the predictions, compare the average prediction with the observed rate in each bucket) or the Brier score. If the curve is off, fit Platt scaling or isotonic regression on held-out data. Boosted trees and naive Bayes are often poorly calibrated out of the box.
 
@@ -154,7 +154,7 @@ When a person acts on each flag, the operational constraint sets the threshold. 
 
 </Choice>
 
-<Calc id="cml-log-loss" q="A model predicts 0.9 for an example that turns out positive. What is the log loss for that one prediction? (Natural log.)" answer={0.10536051565782628} tolerance={0.02}>
+<Calc id={"cml-log-loss"} q={"A model predicts 0.9 for an example that turns out positive. What is the log loss for that one prediction? (Natural log.)"} answer={0.10536051565782628} tolerance={0.02}>
 
 Log loss for a positive is −ln(p) = −ln(0.9) = **0.105**. Compare with a confident miss: predicting 0.1 for the same positive costs −ln(0.1) = 2.30, more than twenty times as much. Log loss punishes confident wrong answers hard.
 
@@ -166,7 +166,7 @@ Log loss for a positive is −ln(p) = −ln(0.9) = **0.105**. Compare with a con
 
 ## Models and features
 
-<Choice id="cml-l1-sparse" q="You have 500 features and suspect only about 20 matter. You want a linear model that uses few of them. Which regularisation?" answer={1} options={[{"text": "Dropout.", "why": "That's a neural-network technique, not a way to make a linear model sparse."}, {"text": "L1 (lasso): it pushes many weights to exactly zero.", "why": "Right. L1 does feature selection as part of training."}, {"text": "L2 (ridge): it shrinks every weight.", "why": "Ridge shrinks weights towards zero but rarely makes them exactly zero, so all 500 stay in."}, {"text": "No regularisation, then drop features with small weights.", "why": "Unregularised weights are unstable when features are correlated, so small weights aren't a reliable signal."}]}>
+<Choice id={"cml-l1-sparse"} q={"You have 500 features and suspect only about 20 matter. You want a linear model that uses few of them. Which regularisation?"} answer={1} options={[{"text": "Dropout.", "why": "That's a neural-network technique, not a way to make a linear model sparse."}, {"text": "L1 (lasso): it pushes many weights to exactly zero.", "why": "L1 does feature selection as part of training."}, {"text": "L2 (ridge): it shrinks every weight.", "why": "Ridge shrinks weights towards zero but rarely makes them exactly zero, so all 500 stay in."}, {"text": "No regularisation, then drop features with small weights.", "why": "Unregularised weights are unstable when features are correlated, so small weights aren't a reliable signal."}]}>
 
 The L1 penalty's corners sit on the axes, so the optimum often lands where many weights are exactly zero. Use **elastic net** (L1 + L2) when the important features are correlated with each other: plain lasso tends to pick one of a correlated group arbitrarily.
 
@@ -176,7 +176,7 @@ The L1 penalty's corners sit on the axes, so the optimum often lands where many 
 
 </Choice>
 
-<Choice id="cml-scaling" q="Your features range from 0–1 (a ratio) to 0–1,000,000 (income). Which of these models doesn't care about the difference in scale?" answer={1} options={[{"text": "Logistic regression with L2 regularisation.", "why": "The penalty treats all weights equally, so the scale of each feature changes how hard it's penalised."}, {"text": "Gradient-boosted trees.", "why": "Right. A tree splits on thresholds within one feature at a time, so rescaling a feature doesn't change which split is best."}, {"text": "An SVM with an RBF kernel.", "why": "The kernel uses distances, so the large-scale feature dominates."}, {"text": "k-nearest neighbours.", "why": "Distances get dominated by income, so the ratio barely counts."}]}>
+<Choice id={"cml-scaling"} q={"Your features range from 0–1 (a ratio) to 0–1,000,000 (income). Which of these models doesn't care about the difference in scale?"} answer={1} options={[{"text": "Logistic regression with L2 regularisation.", "why": "The penalty treats all weights equally, so the scale of each feature changes how hard it's penalised."}, {"text": "Gradient-boosted trees.", "why": "A tree splits on thresholds within one feature at a time, so rescaling a feature doesn't change which split is best."}, {"text": "An SVM with an RBF kernel.", "why": "The kernel uses distances, so the large-scale feature dominates."}, {"text": "k-nearest neighbours.", "why": "Distances get dominated by income, so the ratio barely counts."}]}>
 
 Anything based on **distances, dot products or penalties on weights** needs standardised features: kNN, SVMs, regularised linear models, neural networks. Tree-based models don't, because each split only compares values within one feature.
 
@@ -186,7 +186,7 @@ Anything based on **distances, dot products or penalties on weights** needs stan
 
 </Choice>
 
-<Choice id="cml-impurity-importance" q="A random forest's built-in feature importance ranks `zip_code` (30,000 distinct values) at the top. Should you believe it?" answer={0} options={[{"text": "Not yet. Impurity-based importance favours features with many distinct values. Check with permutation importance on validation data.", "why": "Right. Many-valued features offer many split points, so they look useful even when they mostly fit noise."}, {"text": "Yes, if the forest has many trees.", "why": "More trees make the biased estimate more stable, not less biased."}, {"text": "No. Zip codes are never useful.", "why": "Location can be genuinely predictive. The question is whether this ranking measures that."}, {"text": "Yes. The forest found it most useful.", "why": "It found it most useful on the training data, which isn't the same as useful on new data."}]}>
+<Choice id={"cml-impurity-importance"} q={"A random forest's built-in feature importance ranks `zip_code` (30,000 distinct values) at the top. Should you believe it?"} answer={0} options={[{"text": "Not yet. Impurity-based importance favours features with many distinct values. Check with permutation importance on validation data.", "why": "Many-valued features offer many split points, so they look useful even when they mostly fit noise."}, {"text": "Yes, if the forest has many trees.", "why": "More trees make the biased estimate more stable, not less biased."}, {"text": "No. Zip codes are never useful.", "why": "Location can be genuinely predictive. The question is whether this ranking measures that."}, {"text": "Yes. The forest found it most useful.", "why": "It found it most useful on the training data, which isn't the same as useful on new data."}]}>
 
 Mean decrease in impurity is computed on training data and is biased towards high-cardinality and continuous features. **Permutation importance on held-out data** asks a cleaner question: how much worse does validation get when this feature is shuffled? If zip code still matters, consider target encoding (computed within folds) or grouping to region.
 
@@ -196,7 +196,7 @@ Mean decrease in impurity is computed on training data and is biased towards hig
 
 </Choice>
 
-<Choice id="cml-knn-dimensions" q="k-nearest neighbours works well on 5 features but poorly once you add 195 more mostly-irrelevant ones. Why?" answer={3} options={[{"text": "k is too small.", "why": "Changing k won't stop irrelevant features from dominating the distance."}, {"text": "kNN needs more training epochs.", "why": "kNN doesn't train. It stores the data and compares distances when it predicts."}, {"text": "The features need one-hot encoding.", "why": "Encoding doesn't address distance concentration."}, {"text": "In high dimensions, distances become similar for all points, and the irrelevant features drown out the useful ones.", "why": "Right. This is the curse of dimensionality, made worse by noise features."}]}>
+<Choice id={"cml-knn-dimensions"} q={"k-nearest neighbours works well on 5 features but poorly once you add 195 more mostly-irrelevant ones. Why?"} answer={3} options={[{"text": "k is too small.", "why": "Changing k won't stop irrelevant features from dominating the distance."}, {"text": "kNN needs more training epochs.", "why": "kNN doesn't train. It stores the data and compares distances when it predicts."}, {"text": "The features need one-hot encoding.", "why": "Encoding doesn't address distance concentration."}, {"text": "In high dimensions, distances become similar for all points, and the irrelevant features drown out the useful ones.", "why": "This is the curse of dimensionality, made worse by noise features."}]}>
 
 With many dimensions, the nearest and farthest neighbours end up at nearly the same distance, so "nearest" stops meaning much. Each irrelevant feature adds noise to every distance. Select features, reduce dimensions (PCA), or learn a metric. Or use a model that weights features, such as boosted trees.
 
@@ -206,7 +206,7 @@ With many dimensions, the nearest and farthest neighbours end up at nearly the s
 
 </Choice>
 
-<Choice id="cml-collinearity" q="Two features in a linear regression have a correlation of 0.98. Their coefficients flip sign between training runs on resampled data. What's happening?" answer={2} options={[{"text": "The model is underfitting.", "why": "Underfitting is about missing signal, and it doesn't make coefficients flip."}, {"text": "One of the features must be leaking the label.", "why": "Leakage would show up as unrealistically good validation scores, not as unstable signs."}, {"text": "Multicollinearity: the model can trade weight between the two almost freely, so individual coefficients are unstable.", "why": "Right. Predictions can still be fine. It's the coefficients you can't interpret."}, {"text": "The learning rate is too high.", "why": "Ordinary least squares has a closed-form solution, so there's no learning rate involved."}]}>
+<Choice id={"cml-collinearity"} q={"Two features in a linear regression have a correlation of 0.98. Their coefficients flip sign between training runs on resampled data. What's happening?"} answer={2} options={[{"text": "The model is underfitting.", "why": "Underfitting is about missing signal, and it doesn't make coefficients flip."}, {"text": "One of the features must be leaking the label.", "why": "Leakage would show up as unrealistically good validation scores, not as unstable signs."}, {"text": "Multicollinearity: the model can trade weight between the two almost freely, so individual coefficients are unstable.", "why": "Predictions can still be fine. It's the coefficients you can't interpret."}, {"text": "The learning rate is too high.", "why": "Ordinary least squares has a closed-form solution, so there's no learning rate involved."}]}>
 
 When two features carry nearly the same information, many combinations of their weights fit equally well, so small changes in the data swing them around. If you need interpretable coefficients, drop or combine one of them, or use ridge regression, which spreads the weight stably. The variance inflation factor (VIF) measures the problem directly.
 
@@ -216,7 +216,7 @@ When two features carry nearly the same information, many combinations of their 
 
 </Choice>
 
-<Choice id="cml-missing-informative" q="Income is missing for 30% of loan applicants, and applicants with missing income default twice as often. How do you handle it?" answer={3} options={[{"text": "Fill with the mean and say nothing else.", "why": "Mean imputation hides the fact that these applicants are different."}, {"text": "Drop the rows with missing income.", "why": "You'd throw away 30% of the data and the riskiest group, and the model would meet them in production anyway."}, {"text": "Drop the income feature.", "why": "Income is probably valuable for the 70% who report it."}, {"text": "Impute a value, and add a binary \"income was missing\" feature.", "why": "Right. The missingness itself is predictive, so give the model a way to use it."}]}>
+<Choice id={"cml-missing-informative"} q={"Income is missing for 30% of loan applicants, and applicants with missing income default twice as often. How do you handle it?"} answer={3} options={[{"text": "Fill with the mean and say nothing else.", "why": "Mean imputation hides the fact that these applicants are different."}, {"text": "Drop the rows with missing income.", "why": "You'd throw away 30% of the data and the riskiest group, and the model would meet them in production anyway."}, {"text": "Drop the income feature.", "why": "Income is probably valuable for the 70% who report it."}, {"text": "Impute a value, and add a binary \"income was missing\" feature.", "why": "The missingness itself is predictive, so give the model a way to use it."}]}>
 
 Here data is **not missing at random**. Not reporting income tells you something. Impute (the median, or a model-based estimate) so the model has a number, and add an indicator so it can learn that missingness matters. Gradient-boosted trees such as XGBoost and LightGBM handle missing values natively by learning which branch they go down.
 
@@ -228,7 +228,7 @@ Here data is **not missing at random**. Not reporting income tells you something
 
 ## Drift, monitoring and experiments
 
-<Choice id="cml-drift-no-labels" q="A model's real-world performance seems to have dropped, but true labels arrive 30 days late. What can you monitor today?" answer={3} options={[{"text": "Accuracy on the original test set.", "why": "That set hasn't changed, so its accuracy hasn't either."}, {"text": "Training loss.", "why": "Training loss describes the past training run, not today's traffic."}, {"text": "Nothing until the labels arrive.", "why": "Waiting 30 days to notice a problem is what monitoring is meant to avoid."}, {"text": "Input and prediction drift: compare today's feature and score distributions with the training data.", "why": "Right. They're early warnings that don't need labels."}]}>
+<Choice id={"cml-drift-no-labels"} q={"A model's real-world performance seems to have dropped, but true labels arrive 30 days late. What can you monitor today?"} answer={3} options={[{"text": "Accuracy on the original test set.", "why": "That set hasn't changed, so its accuracy hasn't either."}, {"text": "Training loss.", "why": "Training loss describes the past training run, not today's traffic."}, {"text": "Nothing until the labels arrive.", "why": "Waiting 30 days to notice a problem is what monitoring is meant to avoid."}, {"text": "Input and prediction drift: compare today's feature and score distributions with the training data.", "why": "They're early warnings that don't need labels."}]}>
 
 Monitor what you can see now: **feature distributions** (PSI, KS tests), the **prediction distribution**, and the volume of missing or out-of-range values. Drift doesn't always hurt performance, so treat it as a signal to investigate. When labels arrive, compute the real metrics and keep both views.
 
@@ -238,7 +238,7 @@ Monitor what you can see now: **feature distributions** (PSI, KS tests), the **p
 
 </Choice>
 
-<Calc id="cml-psi" q="A feature has two buckets. In training, 30% of rows fall in bucket A and 70% in B. This week it's 70% A and 30% B. What's the population stability index (PSI)? (Natural log.)" answer={0.6778382883097629} tolerance={0.02}>
+<Calc id={"cml-psi"} q={"A feature has two buckets. In training, 30% of rows fall in bucket A and 70% in B. This week it's 70% A and 30% B. What's the population stability index (PSI)? (Natural log.)"} answer={0.6778382883097629} tolerance={0.02}>
 
 PSI = Σ (actual − expected) × ln(actual ÷ expected) = (0.7 − 0.3) ln(0.7/0.3) + (0.3 − 0.7) ln(0.3/0.7) = 0.4 × 0.847 + 0.4 × 0.847 = **0.678**. A common rule of thumb: under 0.1 is stable, 0.1–0.25 is a moderate shift, over 0.25 is a big one. This is a big one.
 
@@ -248,7 +248,7 @@ PSI = Σ (actual − expected) × ln(actual ÷ expected) = (0.7 − 0.3) ln(0.7/
 
 </Calc>
 
-<Calc id="cml-ab-z" q="An A/B test: control converts 10% of 5,000 users, the variant converts 11% of 5,000. What's the two-proportion z-score? (Two decimals.)" answer={1.6310370902867062} tolerance={0.02}>
+<Calc id={"cml-ab-z"} q={"An A/B test: control converts 10% of 5,000 users, the variant converts 11% of 5,000. What's the two-proportion z-score? (Two decimals.)"} answer={1.6310370902867062} tolerance={0.02}>
 
 Pooled rate p = 0.105. Standard error = √(p(1−p)(1/5000 + 1/5000)) = √(0.105 × 0.895 × 0.0004) = 0.00613. z = 0.01 ÷ 0.00613 = **1.63**. That's below 1.96, so the lift isn't significant at the usual 5% level, two-sided. A one-point lift needs more users before you can trust it.
 
@@ -259,7 +259,7 @@ Pooled rate p = 0.105. Standard error = √(p(1−p)(1/5000 + 1/5000)) = √(0.1
 
 </Calc>
 
-<Choice id="cml-ab-peeking" q="A product manager checks the A/B dashboard every morning and plans to stop the test the first day p is below 0.05. What's the problem?" answer={3} options={[{"text": "The test should use a 0.01 threshold every time.", "why": "A stricter threshold reduces the problem but doesn't fix the reasoning. Use a sequential method designed for repeated looks."}, {"text": "Daily checks are fine as long as the test runs two weeks.", "why": "Duration doesn't help if the stopping decision is still taken at the first lucky crossing."}, {"text": "Nothing. p < 0.05 means the result is real.", "why": "That's only true for a single, pre-planned look."}, {"text": "Repeated looks raise the chance of a false positive well above 5%.", "why": "Right. Each look is another chance for noise to cross the line."}]}>
+<Choice id={"cml-ab-peeking"} q={"A product manager checks the A/B dashboard every morning and plans to stop the test the first day p is below 0.05. What's the problem?"} answer={3} options={[{"text": "The test should use a 0.01 threshold every time.", "why": "A stricter threshold reduces the problem but doesn't fix the reasoning. Use a sequential method designed for repeated looks."}, {"text": "Daily checks are fine as long as the test runs two weeks.", "why": "Duration doesn't help if the stopping decision is still taken at the first lucky crossing."}, {"text": "Nothing. p < 0.05 means the result is real.", "why": "That's only true for a single, pre-planned look."}, {"text": "Repeated looks raise the chance of a false positive well above 5%.", "why": "Each look is another chance for noise to cross the line."}]}>
 
 A p-value assumes you decided the sample size in advance and looked once. Stopping at the first significant look can push the false-positive rate several times above 5%. Either fix the sample size and look once, or use a method built for monitoring, such as group-sequential boundaries or always-valid (sequential) p-values.
 

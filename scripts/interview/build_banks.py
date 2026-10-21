@@ -74,12 +74,19 @@ def validate(slug, bank, seen):
 
 
 def shuffled(q):
+    # The component already says "Right." for the correct pick, so a reason
+    # that opens with "Right." or "Yes." would read twice.
+    options = [dict(o) for o in q["options"]]
+    options[q["answer"]]["why"] = re.sub(r"^(Right|Yes)\.\s*", "", options[q["answer"]]["why"])
+    q = dict(q, options=options)
     order = list(range(len(q["options"])))
     random.Random(q["id"]).shuffle(order)
     return [q["options"][i] for i in order], order.index(q["answer"])
 
 
 def worked_block(q):
+    if not q["follow"]:
+        return q["worked"].strip()
     lines = [q["worked"].strip(), "", "**Follow-ups you'll get**", ""]
     lines += [f"- **{a}** {b}" for a, b in q["follow"]]
     return "\n".join(lines)
@@ -89,11 +96,11 @@ def render_question(q):
     js = lambda v: json.dumps(v, ensure_ascii=False)  # noqa: E731
     if q["kind"] == "choice":
         options, answer = shuffled(q)
-        head = f'<Choice id={js(q["id"])} q={js(q["q"])} answer={{{answer}}} options={{{js(options)}}}>'
+        head = f'<Choice id={{{js(q["id"])}}} q={{{js(q["q"])}}} answer={{{answer}}} options={{{js(options)}}}>'
         tail = "</Choice>"
     else:
-        unit = f' unit={js(q["unit"])}' if q["unit"] else ""
-        head = f'<Calc id={js(q["id"])} q={js(q["q"])} answer={{{q["answer"]!r}}} tolerance={{{q["tol"]!r}}}{unit}>'
+        unit = f' unit={{{js(q["unit"])}}}' if q["unit"] else ""
+        head = f'<Calc id={{{js(q["id"])}}} q={{{js(q["q"])}}} answer={{{q["answer"]!r}}} tolerance={{{q["tol"]!r}}}{unit}>'
         tail = "</Calc>"
     return f"{head}\n\n{worked_block(q)}\n\n{tail}"
 
