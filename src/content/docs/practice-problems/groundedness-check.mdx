@@ -1,0 +1,69 @@
+---
+title: "Write a Check That Agrees With People"
+description: "Specify, Verify, Debug, stage 7 of 12: Support reviewed 200 conversations by hand and marked each answer grounded or not."
+difficulty: "medium"
+topic: "Specify, Verify, Debug"
+sidebar_position: 2107
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+The agent's eval was "does the answer cite something?" Almost every answer does, so it reported 97% grounded while customers were being told about a 60-day window that doesn't exist. A check that's easy to pass is worse than no check: it makes a broken system look healthy.
+
+## How to build an eval that means something
+
+This is the order Hamel Husain and others describe, and it's the opposite of how most teams start:
+
+1. **Read the data first.** Support read 200 conversations and wrote down what went wrong. No rubric existed before that.
+2. **Name the frequent failures.** Here: numbers that aren't in the cited source, citations to documents that weren't retrieved, and answers with no source at all.
+3. **Write one binary check per failure.** Pass/fail, not a 1–10 score. A score can't tell you which way to fix things.
+4. **Measure agreement with the people,** and keep adding the disagreements to your test set.
+
+Your function is step 3. The tests are the reviewers' labels, which is step 4.
+
+## Why this is still your job
+
+An LLM's answer has no single expected output, so "correct" has to be defined by someone who knows what a good answer is: here, the support team. Turning their judgment into a check that runs on every conversation is what an AI engineer does when an agent writes the bot. It's also the most common thing interviewers probe in the evaluation round: how do you evaluate output with no ground truth?
+
+## Where it stops working
+
+Exact string matching is strict. "$50.00" against "$50", or "thirty days", fails a correct answer. A real check normalises numbers and units first. More importantly, this rule only catches the failures the reviewers saw. An answer can cite correctly and still mislead ("you *can* get a refund" when the order is final sale). Keep sampling conversations for people to read, because the next failure mode won't be in your checks yet.
+
+## Remember
+
+Write the check from labelled failures, make it pass/fail, and measure it against the people who know.
+
+## In an interview
+
+**"How do you evaluate LLM output when there's no single right answer?"** Start from real outputs read by a domain expert, group the failures, and write a binary check per frequent failure. Then validate each check against human labels before trusting it at scale. Mention cost: deterministic checks first, an LLM judge only where a rule can't express the failure.
+
+Follow-ups you'll get:
+- *Why not just ask an LLM "is this grounded"?* You can, for the failures rules can't express. But a judge has its own biases, so you measure it the same way. Stage 8.
+- *How big does the labelled set need to be?* Big enough that each failure mode appears several times: usually a hundred or two to start, then grown from production disagreements.
+
+## Reference solution
+
+Try the tests first. The reference is here so you can compare approaches after you've passed, or get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+REFUSALS = ("i couldn't find", "i could not find", "i don't know", "i do not know")
+
+
+def is_grounded(trace):
+    answer = trace["answer"]
+    if any(phrase in answer.lower() for phrase in REFUSALS):
+        return True
+    retrieved = {doc["id"]: doc["text"] for doc in trace["retrieved"]}
+    cited = re.findall(r"\[([a-z0-9-]+)\]", answer)
+    if not cited or any(doc_id not in retrieved for doc_id in cited):
+        return False
+    sources = " ".join(retrieved[doc_id] for doc_id in cited)
+    for claim in re.findall(r"\$\d+(?:\.\d+)?|\b\d+ (?:days?|hours?|business days?)\b", answer):
+        if claim not in sources:
+            return False
+    return True
+```
+
+</Solution>

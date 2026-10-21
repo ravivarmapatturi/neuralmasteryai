@@ -1,0 +1,75 @@
+---
+title: "Retries Refund Twice"
+description: "Specify, Verify, Debug, stage 4 of 12: The refund endpoint passes every test the agent wrote."
+difficulty: "medium"
+topic: "Specify, Verify, Debug"
+sidebar_position: 2104
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+Look at the agent's `handle` and you won't find a bug. Each call checks the order, checks the amount, checks the balance, and refunds. It's correct for one call. Production doesn't make one call: the app retries anything slower than two seconds, so a slow database turns one refund into two.
+
+The fix isn't in the client. A client that times out can't know whether the server got the request, so it has to retry. Only the server can make that safe.
+
+## How idempotency keys work
+
+The client generates a key once per logical request and sends it with every retry. The server keeps a record of key → (request body, response):
+
+- **Key seen, same body:** it's a retry. Return the stored response and do nothing else.
+- **Key seen, different body:** a client bug. Reject it, and keep the original record.
+- **New key:** handle it normally, then store the result, *including errors*.
+
+That last point is the subtle one. Here, the retry of a rejected request must be rejected the same way, even though another refund changed the balance in between. If errors aren't remembered, a retry can succeed where the original failed, and the caller gets two different answers to one question.
+
+## Why this is still your job
+
+The agent wrote code for the function it was asked for. Nobody told it the client retries, because that fact lives in the mobile team's networking code and in a latency graph. Knowing how your system behaves under timeouts, retries and slow dependencies is the context an engineer brings. In a survey of 1,500 developers, weak debugging was the second most common thing seniors saw juniors struggle with, after over-reliance on AI.
+
+## Where it stops working
+
+This version keeps `seen` in memory, so a restart forgets every key, and two servers don't share it. In production the record goes in the same database transaction as the refund, with a unique constraint on the key, so two concurrent retries can't both get through. Keys also need an expiry, usually 24 hours, or the table grows forever.
+
+## Remember
+
+A retry must get the original answer. Store the result of every keyed request, errors included, before you return it.
+
+## In an interview
+
+**"What breaks when clients retry?"** Any operation with a side effect runs twice: charges, refunds, emails, counter increments. Idempotency keys fix that on the server. Then describe the storage: same transaction as the side effect, a unique index on the key, an expiry.
+
+Follow-ups you'll get:
+- *Can't you just check whether the order was already refunded?* That rejects a legitimate second partial refund. The key identifies the request, not the order.
+- *What if two retries arrive at the same moment?* Without a unique constraint, both see "key not found" and both refund. Insert the key first, inside the transaction, and let the second insert fail.
+
+## Reference solution
+
+Try the tests first. The reference is here so you can compare approaches after you've passed, or get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def handle(store, request):
+    key = request["idempotency_key"]
+    body = {"order_id": request["order_id"], "amount": request["amount"]}
+    if key in store["seen"]:
+        first_body, response = store["seen"][key]
+        if first_body != body:
+            return {"status": "error", "code": "idempotency_key_reused"}
+        return response
+    order = store["orders"].get(body["order_id"])
+    if order is None:
+        response = {"status": "error", "code": "unknown_order"}
+    elif body["amount"] <= 0:
+        response = {"status": "error", "code": "invalid_amount"}
+    elif store["refunded"].get(body["order_id"], 0) + body["amount"] > order["total"]:
+        response = {"status": "error", "code": "exceeds_order_total"}
+    else:
+        store["refunded"][body["order_id"]] = store["refunded"].get(body["order_id"], 0) + body["amount"]
+        store["next_id"] += 1
+        response = {"status": "ok", "refund_id": "rf-" + str(store["next_id"])}
+    store["seen"][key] = (body, response)
+    return response
+```
+
+</Solution>

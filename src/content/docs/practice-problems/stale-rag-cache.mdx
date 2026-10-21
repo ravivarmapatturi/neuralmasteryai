@@ -1,0 +1,56 @@
+---
+title: "Stale Answers After a Policy Change"
+description: "Specify, Verify, Debug, stage 5 of 12: On Monday the owner shortens the refund window to 14 days and updates the policy document."
+difficulty: "medium"
+topic: "Specify, Verify, Debug"
+sidebar_position: 2105
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+The stale answer looks like a retrieval problem, and the team spent Tuesday re-indexing. Retrieval was fine: it returned version 2 of the refund document the moment it was saved. The cache sat in front of everything and answered from Monday's copy, keyed by the question text alone.
+
+## What a cache key has to contain
+
+Everything the cached value depends on, and nothing else. A RAG answer depends on:
+
+- **the question,** normalised, so "What is the refund policy?" and "what is the refund policy" share an answer;
+- **the exact documents behind the answer,** by id *and version*, sorted so their order doesn't matter;
+- (in a real system) the prompt template and model version too, so a prompt change also invalidates.
+
+Two easy mistakes fail in opposite directions. Key on the question alone and you serve stale answers. Key on a global "documents last changed" timestamp and every edit to any document empties the whole cache, so the hit rate collapses. That's what the hidden tests check for.
+
+## Why this is still your job
+
+The agent built exactly the cache it was asked for: "cache answers so we don't call the model twice." Nobody said documents change, or how often, or that a wrong refund window is worse than a slow answer. Deciding what correctness means for a cache is a product decision. Being able to show *why* answers are stale, rather than re-indexing on a guess, is the debugging skill. "Your RAG answers are out of date" is a standard interview scenario for exactly this reason.
+
+## Where it stops working
+
+Version-in-the-key needs retrieval to run before the cache lookup, so you save the model call but not the retrieval call. If retrieval is the expensive part, you need explicit invalidation instead: on every document edit, delete the cache entries that used it, which means keeping a document → keys index. Semantic caches that match "similar" questions add another failure: two questions close in embedding space can need different answers ("refund for digital items" and "refund for physical items").
+
+## Remember
+
+A cache key names everything the answer depends on, including the version of every source.
+
+## In an interview
+
+**"Users say your RAG assistant gives out-of-date answers. How do you debug it?"** Split the pipeline and check each layer against the source of truth. Does the index hold the new version? Does retrieval return it for this question? Does the answer come from a cache, and what is the cache keyed on? Here the first two are fine and the third is the bug.
+
+Follow-ups you'll get:
+- *How do you invalidate when a document changes?* Either put the version in the key (simple, needs retrieval on every request) or keep a document → cache-entry index and delete on edit.
+- *Would you cache at all?* For a support bot with a few hundred common questions, yes. The hit rate pays for itself, as long as freshness is part of the key.
+
+## Reference solution
+
+Try the tests first. The reference is here so you can compare approaches after you've passed, or get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def cache_key(question, retrieved):
+    normalized = " ".join(question.lower().split()).rstrip("?.! ")
+    versions = ",".join(f"{doc['id']}@{doc['version']}" for doc in sorted(retrieved, key=lambda d: d["id"]))
+    return normalized + "|" + versions
+```
+
+</Solution>

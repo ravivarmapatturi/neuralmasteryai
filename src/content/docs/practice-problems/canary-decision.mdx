@@ -1,0 +1,68 @@
+---
+title: "Ship It or Roll It Back"
+description: "Specify, Verify, Debug, stage 11 of 12: The agent's new prompt goes to 10% of traffic."
+difficulty: "hard"
+topic: "Specify, Verify, Debug"
+sidebar_position: 2111
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+"It has fewer errors than production" is true and meaningless. Production served eight times as much traffic. Per request, the canary fails 1.2% of the time against production's 0.5%, and with 2,500 requests that gap is far too big to be chance.
+
+## The decision rule
+
+Write it down before the release, so nobody argues with the graph afterwards:
+
+1. **Wait for enough traffic.** With 300 requests, nine errors could be bad luck or a real bug. You can't tell, so don't decide.
+2. **Compare rates with a significance test.** The two-proportion z-test asks how many standard errors apart the two error rates are. Above 2.33 (about a 1-in-100 chance of a false alarm), roll back.
+3. **Guard the other metrics.** A canary can be just as correct and much slower. A p95 more than 20% worse is a rollback too.
+4. **Promote only with enough evidence that it's fine,** not just no evidence that it's broken.
+
+## Why this is still your job
+
+Agents ship more changes, faster, so more releases need this decision every day, and teams with high AI adoption report review and verification as the new bottleneck. Writing the rule once and applying it to every rollout is how you keep up. "How do you roll back safely?" is a standard production question for ML and LLM engineers: canary or blue-green release, with the decision based on metrics, not on retraining.
+
+## Where it stops working
+
+Checking a z-score every minute and stopping at the first significant one inflates false alarms. That's the "peeking" problem, and real canary systems use sequential tests built for it. Error rate and latency don't cover the failures that matter most for an LLM change: a prompt can be fast, error-free and wrong. Put your stage 7 groundedness check on the canary's traffic too.
+
+## Remember
+
+Compare rates, not counts, with a threshold chosen before you look, and wait until there's enough traffic to tell.
+
+## In an interview
+
+**"How would you roll out a new prompt or model safely?"** Canary it on a small share of traffic. Define the metrics and thresholds in advance (error rate, latency, an automated quality check). Use a statistical test that accounts for sample size, and automate the rollback, which should be a traffic shift, not a redeploy.
+
+Follow-ups you'll get:
+- *Why not A/B test for a week?* For a risky change, a canary limits the damage while you learn. An A/B test answers "which is better", a canary answers "is this safe". You often want both, in that order.
+- *The canary is fine on errors but users complain. What are you missing?* A quality signal. Sample canary conversations for human review and run your automated checks on them.
+
+## Reference solution
+
+Try the tests first. The reference is here so you can compare approaches after you've passed, or get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def canary_decision(control, canary, min_requests=500, enough_requests=2000, z_threshold=2.33,
+                    latency_ratio_limit=1.2):
+    if canary["requests"] < min_requests:
+        return {"decision": "keep_waiting", "z": None}
+    p_control = control["errors"] / control["requests"]
+    p_canary = canary["errors"] / canary["requests"]
+    pooled = (control["errors"] + canary["errors"]) / (control["requests"] + canary["requests"])
+    spread = math.sqrt(pooled * (1 - pooled) * (1 / control["requests"] + 1 / canary["requests"]))
+    z = 0.0 if spread == 0 else (p_canary - p_control) / spread
+    z = round(z, 2)
+    if z > z_threshold:
+        return {"decision": "rollback", "z": z}
+    if canary["p95_ms"] > latency_ratio_limit * control["p95_ms"]:
+        return {"decision": "rollback", "z": z}
+    if canary["requests"] >= enough_requests:
+        return {"decision": "promote", "z": z}
+    return {"decision": "keep_waiting", "z": z}
+```
+
+</Solution>

@@ -1,0 +1,75 @@
+---
+title: "Capstone: The Incident Review"
+description: "Specify, Verify, Debug, stage 12 of 12: It's the morning after the checkout incident."
+difficulty: "hard"
+topic: "Specify, Verify, Debug"
+sidebar_position: 2112
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+"The most recent change caused it" is the most common wrong answer in an incident review, because it's usually right. Here the checkout deploy at 14:00 is the most recent change, it's on the whiteboard, and it's innocent. Checkout failed because payments failed, and payments failed because the database deploy at 13:58 ran out of connections five minutes later.
+
+## The four facts
+
+Every postmortem needs the same four, each traceable to evidence:
+
+1. **What failed first.** The first error on a single timeline (stage 3), not the loudest service.
+2. **What changed there.** The last deploy *of that service* before the failure. Other services' deploys are noise for this question.
+3. **What to roll back to.** That service's previous deploy. Rolling back checkout would have changed nothing, and cost another twenty minutes.
+4. **Who was affected.** Distinct requests with errors, so support can contact the right customers and finance can check the right orders.
+
+And when the root service had no recent deploy, say so. An expired certificate or a traffic spike won't appear in deploy history. Inventing a trigger is worse than writing "none".
+
+## Why this is still your job
+
+This stage is the whole track in one function. You don't trust the obvious story, you put the evidence on one timeline, and you produce facts someone can act on. An agent will write any fix you ask for. In the morning review, the person who brings the right four facts, and can show where each came from, is the one people trust with the next incident. It's also the shape of the debugging round in ML and LLM interviews: a symptom, scattered evidence, and a request to reason your way to a cause.
+
+## Where it stops working
+
+This assumes deploys are the only changes. Config flags, feature toggles, data migrations and upstream provider changes cause just as many incidents, so in a real system "what changed" draws on all of them. It also assumes one root cause. Big incidents usually have a trigger (the deploy) and contributing causes (a pool size nobody revisited, an alert that didn't fire). The review should find both, and the action items should fix the contributing causes, not just revert the trigger.
+
+## Remember
+
+Bring evidence, not the timeline everyone remembers: first failure, the change in that service, the rollback target, and who was affected.
+
+## In an interview
+
+**"Tell me about debugging an incident."** Structure it as those four facts, in that order. Describe how you found the first failure, why you ruled out the obvious suspect, what you rolled back to and how fast, and the follow-ups that stop it happening again. Interviewers are listening for evidence-driven reasoning and for what you changed afterwards.
+
+Follow-ups you'll get:
+- *The rollback didn't fix it. Now what?* Then the deploy wasn't the cause, or not the only one. Go back to the timeline and look for non-deploy changes: config, traffic, data, an upstream provider.
+- *How do you make the next incident shorter?* Request IDs across services, deploy markers on every dashboard, an alert on the first failing dependency rather than on checkout, and a written rollback runbook.
+
+## Reference solution
+
+Try the tests first. The reference is here so you can compare approaches after you've passed, or get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def incident_review(deploys, lines):
+    first = first_failure(lines)
+    if first is None:
+        return None
+    failed_at = datetime.fromisoformat(first["time"].replace("Z", "+00:00"))
+    history = sorted((d for d in deploys if d["service"] == first["service"]),
+                     key=lambda d: datetime.fromisoformat(d["at"].replace("Z", "+00:00")))
+    before = [d for d in history if datetime.fromisoformat(d["at"].replace("Z", "+00:00")) <= failed_at]
+    affected = set()
+    for line in lines:
+        parts = line.split(" ")
+        try:
+            datetime.fromisoformat(parts[0].replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        fields = dict(p.partition("=")[::2] for p in parts[1:] if "=" in p)
+        if fields.get("level") == "ERROR" and fields.get("req"):
+            affected.add(fields["req"])
+    return {"root_service": first["service"], "first_failure_at": first["time"],
+            "trigger_deploy": before[-1]["id"] if before else None,
+            "rollback_to": before[-2]["id"] if len(before) >= 2 else None,
+            "affected_requests": len(affected)}
+```
+
+</Solution>

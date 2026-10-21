@@ -1,0 +1,78 @@
+---
+title: "Turn the Request Into Tests"
+description: "Specify, Verify, Debug, stage 1 of 12: The shop owner sends one paragraph about refunds."
+difficulty: "easy"
+topic: "Specify, Verify, Debug"
+sidebar_position: 2101
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+A coding agent will turn a paragraph into a working function faster than you can read the paragraph. What it can't do is notice what the paragraph leaves open. Does "within 30 days" include day 30? Is $5.00 "under $5"? Do the 30 days run from the order or from the delivery? The agent picks an answer, quietly, and the code is correct for the answer it picked.
+
+That's why this stage is about writing tests, not code. A test suite is the one form of a requirement that a machine can check, and it's how you find out which interpretation the agent chose.
+
+## How to write cases that catch things
+
+Take each rule and put one case on each side of its edge:
+
+| Rule | Just inside | Just outside |
+|---|---|---|
+| 30 days from delivery | day 30 | day 31 |
+| Under $5 isn't refundable | exactly $5.00 | $4.99 |
+| Digital, once downloaded | digital, not downloaded | digital, downloaded |
+| Final sale | (none) | final sale |
+
+Then choose your data so that a plausible misreading gives a different answer. If your orders are ordered and delivered on the same day, a version that counts from the order date passes every case. Put four days between them and it fails.
+
+## Why this is still your job
+
+In a 2026 survey of senior developers, two thirds said juniors over-rely on AI output they don't fully understand. Turning a request into precise acceptance tests is the cure: you can't write the day-30 case without deciding what day 30 means. It's also the fastest way to check an agent's work. Seven cases ran against six implementations here, where reading six diffs would have taken much longer.
+
+## Where it stops working
+
+Edge cases catch rule-shaped bugs. They don't catch a requirement nobody wrote down. Nothing in the owner's paragraph says *whose* calendar the 30 days use, and the next stage is exactly that bug. Tests encode your understanding of the rule, so if your understanding is wrong, the tests are wrong too.
+
+## Remember
+
+Put one case on each side of every boundary, and pick data that makes the wrong interpretation fail.
+
+## In an interview
+
+**"The AI wrote this function and the tests pass. Are you done?"** No. First ask who wrote the tests. If the agent wrote both, they share its interpretation. Then list the rule's boundaries and check that a case sits on each side of every one.
+
+Follow-ups you'll get:
+- *How many tests is enough?* Enough that each plausible misreading fails at least one. Count interpretations, not lines of code.
+- *What if the requirement is ambiguous?* Write the case anyway, mark the expected value as an assumption, and ask the owner. The test is how the question gets asked.
+
+## Reference solution
+
+Try the tests first. The reference is here so you can compare approaches after you've passed, or get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def order(ordered="2026-03-01", delivered="2026-03-05", digital=False, downloaded=False,
+          total=40.0, final_sale=False):
+    return {"ordered": ordered, "delivered": delivered, "digital": digital,
+            "downloaded": downloaded, "total": total, "final_sale": final_sale}
+
+
+def acceptance_cases():
+    return [
+        # The window runs from delivery, not from the order.
+        {"order": order(), "request_date": "2026-04-04", "expected": True},     # day 30 after delivery
+        {"order": order(), "request_date": "2026-04-05", "expected": False},    # day 31
+        {"order": order(), "request_date": "2026-03-05", "expected": True},     # same day
+        # Digital: fine until downloaded.
+        {"order": order(digital=True), "request_date": "2026-03-10", "expected": True},
+        {"order": order(digital=True, downloaded=True), "request_date": "2026-03-10", "expected": False},
+        # The $5 line: under $5 is out, exactly $5 is in.
+        {"order": order(total=4.99), "request_date": "2026-03-10", "expected": False},
+        {"order": order(total=5.0), "request_date": "2026-03-10", "expected": True},
+        # Final sale never.
+        {"order": order(final_sale=True), "request_date": "2026-03-10", "expected": False},
+    ]
+```
+
+</Solution>

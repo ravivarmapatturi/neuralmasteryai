@@ -28,8 +28,11 @@ const { CATALOG } = await import(`data:text/javascript;base64,${Buffer.from(code
 
 const pageMeta = JSON.parse(fs.readFileSync(path.join(ROOT, 'src/data/pageMeta.generated.json'), 'utf8')).pages;
 const structuredSrc = fs.readFileSync(path.join(ROOT, 'src/lib/practiceProblem.ts'), 'utf8');
-const agentTrack = JSON.parse(fs.readFileSync(path.join(ROOT, 'src/data/practice/buildAnAgent.generated.json'), 'utf8'));
-const agentIds = new Set(agentTrack.map((p) => p.id));
+// Project tracks: generated, already-descriptive ids, no boilerplate to clean.
+const projectTracks = ['buildAnAgent', 'specifyVerifyDebug'].flatMap((name) =>
+  JSON.parse(fs.readFileSync(path.join(ROOT, `src/data/practice/${name}.generated.json`), 'utf8')),
+);
+const agentIds = new Set(projectTracks.map((p) => p.id));
 const existingIds = new Set(fs.readdirSync(PROBLEM_DIR).filter((f) => f.endsWith('.mdx')).map((f) => f.slice(0, -4)));
 
 const errors = [];

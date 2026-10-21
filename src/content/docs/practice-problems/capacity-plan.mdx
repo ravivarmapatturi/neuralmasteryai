@@ -1,0 +1,65 @@
+---
+title: "Will It Hold 50 Requests a Second?"
+description: "Specify, Verify, Debug, stage 9 of 12: Black Friday is coming and the owner expects 50 support requests a second at peak."
+difficulty: "medium"
+topic: "Specify, Verify, Debug"
+sidebar_position: 2109
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+Every option on the list works. The agent can deploy any of them in minutes. The decision is which one meets the latency target at the lowest cost, and that's arithmetic most people skip in favour of a guess.
+
+## The three lines
+
+1. **Latency from tokens.** Reading the prompt (prefill) is fast and parallel. Writing the answer (decode) is slow and token by token. For Helpdesk, 1,800 input tokens cost a few hundredths of a second, while 250 output tokens cost about two seconds. Output length dominates.
+2. **Concurrency from Little's law.** Requests in flight = arrival rate × time each spends in the system. 50 per second × 1.85 seconds ≈ 92 requests being served at any moment.
+3. **Replicas from concurrency, with headroom.** Each replica holds a fixed number of concurrent sequences. Plan to run at about 70% of that, because traffic arrives in bursts and the p95 suffers first.
+
+The two shortcuts each pick a cheaper, wrong answer on the main test. Planning for mean latency instead of p95 picks the slow L4 setup, which misses the target for the slowest customers. Planning for 100% utilisation picks one H100 that's full before the first burst.
+
+## Why this is still your job
+
+"Design a RAG service for 50 requests per second" is a standard system-design question, and the interviewer is listening for exactly this chain: tokens → latency → concurrency → replicas → cost, with the numbers said out loud. An agent can provision what you choose. Choosing, and defending the choice to whoever pays the bill, is the job.
+
+## Where it stops working
+
+Real serving engines batch requests, so decode speed per sequence drops as concurrency rises. The flat numbers here are a first estimate. Measure the actual curve with a load test before committing. Caching common answers (stage 5), shorter answers, or a smaller model for easy questions can each cut the bill more than picking hardware does.
+
+## Remember
+
+Latency from token counts, concurrency from Little's law, replicas with headroom, and plan for p95, not the mean.
+
+## In an interview
+
+**"Design an LLM support bot for 50 requests a second."** After clarifying requirements, estimate tokens per request, turn them into latency (prefill plus decode), apply Little's law for concurrency, size replicas with headroom, and cost it monthly. Then say what you'd measure to replace the estimates.
+
+Follow-ups you'll get:
+- *How would you cut the cost in half?* Cache repeated questions, cap answer length, route easy questions to a smaller model, and use batch-friendly serving. Quantify each.
+- *What happens at 3× the forecast?* Replicas scale linearly. Queueing makes p95 degrade faster than the mean, so autoscale on queue depth, not CPU.
+
+## Reference solution
+
+Try the tests first. The reference is here so you can compare approaches after you've passed, or get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def plan_capacity(load, options, slo_p95_seconds, utilization=0.7, p95_factor=1.5):
+    best = None
+    for option in options:
+        latency = (load["input_tokens"] / option["prefill_tokens_per_s"]
+                   + load["output_tokens"] / option["decode_tokens_per_s"])
+        if latency * p95_factor > slo_p95_seconds:
+            continue
+        in_flight = load["requests_per_s"] * latency
+        replicas = max(1, math.ceil(in_flight / (option["max_concurrent"] * utilization)))
+        monthly = round(replicas * option["cost_per_hour"] * 730, 2)
+        candidate = {"option": option["name"], "replicas": replicas,
+                     "p95_seconds": round(latency * p95_factor, 2), "monthly_cost": monthly}
+        if best is None or (monthly, option["name"]) < (best["monthly_cost"], best["option"]):
+            best = candidate
+    return best
+```
+
+</Solution>

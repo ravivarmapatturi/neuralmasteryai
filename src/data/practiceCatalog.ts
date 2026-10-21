@@ -26,6 +26,8 @@ export interface CatalogTrack {
   kind: TrackKind;
   level: 'Beginner' | 'Intermediate' | 'Advanced';
   learnRoute: string;
+  /** Replaces the default "one program built in stages" note on a project track's page. */
+  note?: string;
   problems: string[];
 }
 
@@ -51,6 +53,31 @@ export const CATALOG: CatalogTrack[] = [
       'agent-plan-and-execute',
       'agent-eval-harness',
       'agent-capstone',
+    ],
+  },
+  {
+    slug: 'specify-verify-debug',
+    title: 'Specify, Verify, Debug',
+    summary:
+      'The work left when an agent writes the code: turn requests into tests, debug production failures, measure LLM output, and decide what ships.',
+    kind: 'project',
+    level: 'Intermediate',
+    learnRoute: '/docs/ai-evaluation/llm-rag-agent-evaluation',
+    note:
+      'One system, twelve situations. Helpdesk is a support bot whose code a coding agent wrote, and every stage is something that goes wrong with it, or a decision about it. Each stage stands on its own, and the capstone uses stage 3.',
+    problems: [
+      'request-to-tests',
+      'timezone-refund-window',
+      'first-failure-in-logs',
+      'idempotent-refunds',
+      'stale-rag-cache',
+      'retrieval-report',
+      'groundedness-check',
+      'trust-the-judge',
+      'capacity-plan',
+      'injection-tool-permissions',
+      'canary-decision',
+      'incident-review',
     ],
   },
   {
@@ -263,6 +290,7 @@ export const LEGACY_TOPIC_TO_TRACK: Record<string, string> = {
   'Advanced Data Structures for AI': 'coding-interview',
   'interview-prep': 'coding-interview',
   'Build an Agent': 'build-an-agent',
+  'Specify, Verify, Debug': 'specify-verify-debug',
 };
 
 const TRACK_BY_PROBLEM = new Map<string, CatalogTrack>();

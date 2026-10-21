@@ -1,0 +1,81 @@
+---
+title: "Measure Retrieval Before Tuning It"
+description: "Specify, Verify, Debug, stage 6 of 12: \"The bot gets order questions wrong.\" Someone proposes a bigger embedding model."
+difficulty: "medium"
+topic: "Specify, Verify, Debug"
+sidebar_position: 2106
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+"The bot gets order questions wrong" can mean three different things. The right document wasn't retrieved. It was retrieved but too far down the list. Or it was right there and the model ignored it. Each has a different fix, and a bigger embedding model only helps with the first two.
+
+## The two numbers
+
+- **recall@k**: of the documents that should have come back, how many are in the top k? This is what bounds your answer quality: if the refund document isn't in the context, the model can't quote it.
+- **MRR** (mean reciprocal rank): how high is the first relevant document? 1 means "always first", 0.5 means "usually second". It matters when you pass only a few documents to the model.
+
+Report them **per category**. Overall recall for Helpdesk is 0.75, which sounds acceptable. Split by category, policy and product questions get every relevant document, and order-status questions get a quarter of theirs. That points at one fix: order questions need the order-tracking system, not the policy index. It's a routing problem, and a bigger embedding model wouldn't touch it.
+
+## Why this is still your job
+
+An agent will happily tune the prompt for an hour if you ask it to. Knowing that the prompt can't fix a document that was never retrieved, and proving it with two numbers, is the judgment the evaluation round of an LLM interview tests. Hiring reports in 2026 list evaluation among the most requested skills in AI-engineer postings, and loops increasingly give it a round of its own.
+
+## Where it stops working
+
+These metrics are only as good as the labels. Seven questions is enough to find a broken category, not to compare two embedding models. For that you want a few hundred labelled queries drawn from real traffic. Recall@k also says nothing about whether the answer used the document correctly. That's generation quality, and the next two stages measure it.
+
+## Remember
+
+Measure retrieval separately from generation, and per kind of question. The prompt can't quote a document that never arrived.
+
+## In an interview
+
+**"How do you evaluate a RAG system?"** In two layers. Retrieval: recall@k and MRR (or nDCG) on labelled queries. Generation: faithfulness to the retrieved context and correctness of the answer. Then break both down by query type, because averages hide the category that's failing.
+
+Follow-ups you'll get:
+- *Where do labels come from?* Start with 50–100 real queries labelled by someone who knows the documents. Grow the set from production failures.
+- *Recall is fine but answers are still wrong. Now what?* Then it's generation: check whether the answer is supported by the context it was given. Stage 7.
+
+## Reference solution
+
+Try the tests first. The reference is here so you can compare approaches after you've passed, or get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def retrieval_report(results, labels, k):
+    per_query = []
+    unlabeled = 0
+    for row in results:
+        relevant = set(labels.get(row["query_id"], []))
+        if not relevant:
+            unlabeled += 1
+            continue
+        top = []
+        for doc in row["retrieved"]:
+            if doc not in top:
+                top.append(doc)
+        top = top[:k]
+        recall = len(relevant & set(top)) / len(relevant)
+        rr = 0.0
+        for rank, doc in enumerate(top, start=1):
+            if doc in relevant:
+                rr = 1 / rank
+                break
+        per_query.append((row["category"], recall, rr))
+
+    def summarise(rows):
+        return {"recall_at_k": round(sum(r for _, r, _ in rows) / len(rows), 3),
+                "mrr": round(sum(m for _, _, m in rows) / len(rows), 3),
+                "queries": len(rows)}
+
+    by_category = {}
+    for category in sorted({c for c, _, _ in per_query}):
+        by_category[category] = summarise([q for q in per_query if q[0] == category])
+    worst = min(by_category, key=lambda c: (by_category[c]["recall_at_k"], c)) if by_category else None
+    return {"overall": summarise(per_query) if per_query else None, "by_category": by_category,
+            "worst_category": worst, "unlabeled": unlabeled}
+```
+
+</Solution>

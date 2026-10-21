@@ -1,0 +1,71 @@
+---
+title: "Read the Logs Before the Code"
+description: "Specify, Verify, Debug, stage 3 of 12: At 14:03 checkout starts failing."
+difficulty: "medium"
+topic: "Specify, Verify, Debug"
+sidebar_position: 2103
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+During an incident, the service shouting loudest is usually the victim. Checkout logged four errors and is what customers see, but every one of its errors is "payment_failed": it called payments, which called the database, which ran out of connections a few seconds earlier. Open checkout's code first and you'll spend an hour on the wrong service.
+
+## How to find the first failure
+
+1. Put every service's logs on one timeline. The merged file arrives in delivery order, not time order, and services disagree on how they write time (`Z` against `+02:00`).
+2. Keep the errors. A warning a few seconds earlier ("slow_query") is a clue worth reading, but it isn't the failure.
+3. Take the earliest, with a fixed tie-break so the answer is reproducible.
+4. *Then* open code, starting with that service.
+
+String-sorting timestamps works until one service logs in a different offset. Parse them.
+
+## Why this is still your job
+
+An agent can write the fix once someone knows where the fault is. Finding the fault means deciding which evidence to trust, and that's the skill hiring managers now test directly: production debugging has become its own interview round for ML and LLM engineers. It's also the piece agents handle worst, because the context they'd need (which service calls which, what normal looks like) is in the system, not in the code.
+
+## Where it stops working
+
+"First error" assumes the first failure got logged at ERROR. Silent failures don't. A 2026 study of a production agent found that most incidents produced no error that reached a human, and people noticed them while thousands of automated checks stayed green. Clock skew between machines can also reorder events by a few hundred milliseconds. When the earliest errors are that close together, follow request IDs across services instead of trusting timestamps.
+
+## Remember
+
+The loudest service is downstream. Put everything on one timeline and start with the first failure.
+
+## In an interview
+
+**"Checkout is throwing 500s. Walk me through debugging it."** Don't start with checkout's code. Establish the timeline across services, find the first failure and the request ID that carries it, check what changed just before (deploys, config, traffic), and only then read code. Say out loud what you're ruling out.
+
+Follow-ups you'll get:
+- *The first error is in the database. Is the database the root cause?* Not yet. Ask why it ran out of connections. A deploy that leaks connections, or a traffic spike, would both look like this. Stage 12 is that question.
+- *What would make this faster next time?* One request ID propagated through every service, and logs shipped to one place with a single time format.
+
+## Reference solution
+
+Try the tests first. The reference is here so you can compare approaches after you've passed, or get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def first_failure(lines):
+    errors = []
+    for position, line in enumerate(lines):
+        fields = {}
+        parts = line.split(" ")
+        for part in parts[1:]:
+            if "=" in part:
+                key, _, value = part.partition("=")
+                fields[key] = value
+        try:
+            at = datetime.fromisoformat(parts[0].replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if fields.get("level") != "ERROR" or "svc" not in fields:
+            continue
+        errors.append((at, position, fields["svc"], fields.get("req"), parts[0]))
+    if not errors:
+        return None
+    at, _, service, request_id, raw_time = min(errors)
+    return {"service": service, "request_id": request_id, "time": raw_time}
+```
+
+</Solution>

@@ -1,0 +1,66 @@
+---
+title: "A Judge You Can Trust"
+description: "Specify, Verify, Debug, stage 8 of 12: The team wants to compare two prompts by asking an LLM which answer is better."
+difficulty: "hard"
+topic: "Specify, Verify, Debug"
+sidebar_position: 2108
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+Sixty percent agreement sounds like a judge that's somewhat useful. Swap the order of the answers and ask again, and two of those five verdicts flip. The judge wasn't reading those answers at all. It picked whichever came first, and on one pair that happened to be the one the human liked.
+
+## The two biases you can measure cheaply
+
+- **Position bias:** when two answers are close, LLM judges tend to prefer one slot, usually the first. Ask twice with the order swapped, and treat disagreement as a tie. The flip rate tells you how often the judge was guessing.
+- **Length (verbosity) bias:** judges tend to prefer longer answers. Swapping doesn't help, because the long answer is long in both slots. Pair 4 shows it: a cheerful, wrong, long answer beats a short, correct one in both runs. You catch this one with human labels, or by telling the judge to ignore length and checking that it does.
+
+Swap-checked agreement is lower than raw agreement here, and that's the point. It's the honest number. The raw number counted coin flips as wins.
+
+## Why this is still your job
+
+"Use an LLM to grade the LLM" is the default answer, and an agent will set it up in minutes. Whether that grade means anything is a measurement question the agent won't ask itself. Interviewers ask it directly ("what goes wrong with LLM-as-judge?"), and the expected answer names the biases and the controls.
+
+## Where it stops working
+
+Swapping controls for position only. It doesn't catch length bias, a judge preferring its own model family's style, or a judge that agrees with humans on easy pairs and fails on hard ones. Agreement on five pairs is an illustration. Before you trust a judge to choose between prompts, you want a hundred or more labelled pairs that include close calls.
+
+## Remember
+
+Evaluate the judge before you trust its numbers. Swap the order to expose position bias, and use human labels to catch the rest.
+
+## In an interview
+
+**"How would you use an LLM as a judge, and what can go wrong?"** Use pairwise comparison with a clear rubric. Run every pair in both orders and treat disagreement as a tie. Validate against human labels before relying on it. Name the known biases: position, verbosity, self-preference. Prefer binary questions ("does the answer contradict the document?") over 1–10 scores.
+
+Follow-ups you'll get:
+- *The judge agrees with humans 90% of the time. Good enough?* On which pairs? Check agreement on close calls separately. Easy pairs inflate the number.
+- *Why not average the two runs instead of calling it a tie?* For a binary pick, averaging a disagreement gives 50/50, which is a tie anyway. Calling it one keeps it out of your win rate.
+
+## Reference solution
+
+Try the tests first. The reference is here so you can compare approaches after you've passed, or get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def evaluate_judge(pairs):
+    raw_agree = swapped_agree = flips = 0
+    for pair in pairs:
+        q, a, b, human = pair["question"], pair["a"], pair["b"], pair["human"]
+        forward = "a" if judge(q, a, b) == "first" else "b"
+        backward = "b" if judge(q, b, a) == "first" else "a"
+        raw_agree += forward == human
+        if forward != backward:
+            flips += 1
+            verdict = "tie"
+        else:
+            verdict = forward
+        swapped_agree += verdict == human
+    n = len(pairs)
+    return {"raw_agreement": round(raw_agree / n, 3),
+            "swap_checked_agreement": round(swapped_agree / n, 3),
+            "position_flip_rate": round(flips / n, 3)}
+```
+
+</Solution>

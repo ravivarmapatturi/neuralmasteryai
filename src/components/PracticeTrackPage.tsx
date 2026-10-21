@@ -67,8 +67,8 @@ export default function PracticeTrackPage() {
         </p>
         {track.kind === 'project' && (
           <p className="nb-body" style={{ margin: '1.25rem 0 0', padding: '0.8rem 1rem', borderLeft: '3px solid var(--nb-cobalt)', background: 'var(--nb-paper-alt)' }}>
-            This is one program built in stages. Each stage's starter code includes the finished code from the stages
-            before it, so you can start anywhere, but going in order is how it's meant to be read.
+            {track.note ??
+              "This is one program built in stages. Each stage's starter code includes the finished code from the stages before it, so you can start anywhere, but going in order is how it's meant to be read."}
           </p>
         )}
 

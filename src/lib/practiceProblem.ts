@@ -1,5 +1,6 @@
 import { getPageByRoute, practiceIdForSlug } from './contentTree';
 import buildAnAgentTrack from '../data/practice/buildAnAgent.generated.json';
+import specifyVerifyDebugTrack from '../data/practice/specifyVerifyDebug.generated.json';
 
 /**
  * The structured execution and learning metadata behind practice problems --
@@ -148712,16 +148713,18 @@ function createFallbackProblem(
   };
 }
 
-/** The "Build an Agent" project track -- generated, test-verified data from
- * scripts/practice/agent_track/build.py (every expected output is checked
+/** The project tracks ("Build an Agent", "Specify, Verify, Debug") --
+ * generated, test-verified data from scripts/practice/agent_track/build.py
+ * and scripts/practice/svd_track/build.py (every expected output is checked
  * against a reference solution, and every starter is checked to fail). */
-const BUILD_AN_AGENT: Record<string, PracticeProblem> = Object.fromEntries(
-  (buildAnAgentTrack as unknown as PracticeProblem[]).map((p) => [p.id, p]),
+const PROJECT_TRACKS: Record<string, PracticeProblem> = Object.fromEntries(
+  [...(buildAnAgentTrack as unknown as PracticeProblem[]), ...(specifyVerifyDebugTrack as unknown as PracticeProblem[])]
+    .map((p) => [p.id, p]),
 );
 
 export function getPracticeProblem(problemIdOrSlug: string): PracticeProblem | undefined {
   const cleanId = practiceIdForSlug(problemIdOrSlug.replace(/\/$/, '').replace(/^\/practice\//, ''));
-  if (BUILD_AN_AGENT[cleanId]) return BUILD_AN_AGENT[cleanId];
+  if (PROJECT_TRACKS[cleanId]) return PROJECT_TRACKS[cleanId];
   if (PRACTICE_PROBLEMS[cleanId]) {
     return PRACTICE_PROBLEMS[cleanId];
   }

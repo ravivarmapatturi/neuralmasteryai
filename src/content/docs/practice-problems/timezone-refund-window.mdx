@@ -1,0 +1,61 @@
+---
+title: "The Code Is Right, the Rule Is Wrong"
+description: "Specify, Verify, Debug, stage 2 of 12: Your stage 1 suite is green and the code ships."
+difficulty: "easy"
+topic: "Specify, Verify, Debug"
+sidebar_position: 2102
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+Every test from stage 1 still passes, and the code is still wrong. Nobody wrote a bug. The requirement had a hole in it ("30 days" on whose calendar?), the agent filled it with the obvious choice (UTC), and the tests were written by someone who never thought to ask.
+
+This is the most common shape of failure when an agent writes correct code: **correct code for a wrong or incomplete spec.** You only find it from evidence outside the code, in this case three tickets with the same complaint.
+
+## How to fix it
+
+Store in UTC, decide in local time:
+
+```python
+local_start = utc_delivered + timedelta(hours=offset)
+local_end = utc_requested + timedelta(hours=offset)
+days = (local_end.date() - local_start.date()).days
+```
+
+Converting both moments before taking `.date()` matters. Subtracting the datetimes and dividing by 24 hours gives elapsed time, which is a different question ("how long ago") from the one customers ask ("which day").
+
+## Why this is still your job
+
+The agent can't read your support inbox, and it can't decide what your customers mean by "30 days". Reading three complaints, seeing the common thread (all far from UTC, all near midnight), and turning that into a precise rule is the work. Note what made the diagnosis quick: each ticket had a location and a local time. Ask for that evidence early.
+
+## Where it stops working
+
+Fixed offsets ignore daylight saving. Real code should store the customer's IANA zone (`Pacific/Honolulu`) and convert with `zoneinfo`, because an offset changes twice a year in most of Europe and North America. You also need a rule for customers who travel: the address the order shipped to is the usual answer.
+
+## Remember
+
+Store timestamps in UTC, and make calendar decisions on the customer's calendar.
+
+## In an interview
+
+**"The code passes its tests, but customers report wrong answers. How do you approach it?"** Treat the tickets as data. Find what the failing cases share (here: timezone and time of day), write a failing test from one real ticket, then decide whether the bug is in the code or in the spec. Here it's the spec.
+
+Follow-ups you'll get:
+- *Why not just compare in UTC everywhere?* Because the user's day boundary isn't UTC's. Use UTC for storage and ordering, local time for anything a person reads as a date.
+- *How would you have caught this before release?* Add a test per boundary in a far-from-UTC zone (Honolulu, Kiribati, India's half-hour offset). Timezone bugs hide in the zones your team doesn't live in.
+
+## Reference solution
+
+Try the tests first. The reference is here so you can compare approaches after you've passed, or get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def local_days_between(delivered_at, requested_at, tz_offset_hours):
+    offset = timedelta(hours=tz_offset_hours)
+    start = datetime.fromisoformat(delivered_at.replace("Z", "+00:00")) + offset
+    end = datetime.fromisoformat(requested_at.replace("Z", "+00:00")) + offset
+    return (end.date() - start.date()).days
+```
+
+</Solution>
