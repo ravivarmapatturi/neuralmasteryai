@@ -93,3 +93,17 @@ describe('withTrailingSlash', () => {
     expect(withTrailingSlash('/docs/x#part')).toBe('/docs/x/#part')
   })
 })
+
+describe('pageJsonLd', () => {
+  it('describes Learn pages as free articles, problems as exercises and tracks as courses', async () => {
+    const { pageJsonLd } = await import('./useDocumentMeta')
+    const doc = pageJsonLd('/docs/agents/agent-fundamentals', 'Agent Fundamentals', 'd')!
+    expect(doc['@type']).toEqual(['Article', 'LearningResource'])
+    expect(doc.url).toBe('https://neuralmasteryai.com/docs/agents/agent-fundamentals/')
+    expect(doc.isAccessibleForFree).toBe(true)
+    expect(pageJsonLd('/practice/agent-loop/', 'The Agent Loop', 'd')!['@type']).toBe('LearningResource')
+    expect(pageJsonLd('/practice/track/build-an-agent', 'Build an Agent', 'd')!['@type']).toBe('Course')
+    expect(pageJsonLd('/practice', 'Practice', 'd')).toBeNull()
+    expect(pageJsonLd('/', 'Home', 'd')).toBeNull()
+  })
+})

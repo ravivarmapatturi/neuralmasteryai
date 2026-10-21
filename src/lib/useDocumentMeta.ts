@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 const SITE_NAME = 'Neural Mastery AI';
 export const SITE_URL = 'https://neuralmasteryai.com/';
 export const DEFAULT_DESCRIPTION =
-  'Learn AI and machine learning through real, computed, interactive visualizations, not static diagrams -- covering machine learning, deep learning, LLMs, and agents.';
+  'Free lessons on AI from the maths up to LLMs and agents, plus coding problems you run in your browser against real tests. No sign-up, nothing to install.';
 // One real, static, branded image for the whole site (audit: "0 of 248
 // pages have og:image") -- see scripts/generate-og-image.mjs. Real,
 // per-page images are a larger follow-up, deliberately deferred.
@@ -94,6 +94,49 @@ function upsertBreadcrumbJsonLd(crumbs: BreadcrumbItem[] | undefined, currentPag
  * 301-redirects "/docs/foo" to "/docs/foo/". A canonical or breadcrumb URL
  * without the slash points search engines at a redirect, and Google then
  * reports the page as "Page with redirect" instead of indexing it. */
+const PAGE_JSON_LD_ID = 'nm-page-jsonld';
+const ORG_ID = `${SITE_URL}#organization`; // defined in index.html's static JSON-LD
+
+/** What kind of page this is, for search engines: a Learn page is a free
+ * article/learning resource, a practice problem is an exercise, a practice
+ * track is a course. Other routes (home, lists, profile) get none. */
+export function pageJsonLd(pathname: string, title: string, description: string): Record<string, unknown> | null {
+  const path = withTrailingSlash(pathname);
+  const url = SITE_URL.replace(/\/$/, '') + path;
+  const common = {
+    '@context': 'https://schema.org',
+    name: title,
+    description,
+    url,
+    inLanguage: 'en',
+    isAccessibleForFree: true,
+    publisher: { '@id': ORG_ID },
+  };
+  if (/^\/docs\/.+/.test(path)) {
+    return { ...common, '@type': ['Article', 'LearningResource'], headline: title.slice(0, 110), mainEntityOfPage: url, image: OG_IMAGE_URL, author: { '@id': ORG_ID } };
+  }
+  if (/^\/practice\/track\/[^/]+\/$/.test(path)) {
+    return { ...common, '@type': 'Course', provider: { '@id': ORG_ID } };
+  }
+  if (/^\/practice\/[^/]+\/$/.test(path)) {
+    return { ...common, '@type': 'LearningResource', learningResourceType: 'Coding exercise', interactivityType: 'active' };
+  }
+  return null;
+}
+
+function upsertPageJsonLd(data: Record<string, unknown> | null): void {
+  const existing = document.getElementById(PAGE_JSON_LD_ID);
+  if (!data) {
+    existing?.remove();
+    return;
+  }
+  const el = existing ?? document.createElement('script');
+  el.id = PAGE_JSON_LD_ID;
+  el.setAttribute('type', 'application/ld+json');
+  el.textContent = JSON.stringify(data);
+  if (!existing) document.head.appendChild(el);
+}
+
 export function withTrailingSlash(path: string): string {
   const [pathname, rest = ''] = path.split(/(?=[?#])/);
   return (pathname.endsWith('/') ? pathname : `${pathname}/`) + rest;
@@ -122,5 +165,6 @@ export function useDocumentMeta(pageTitle: string | undefined, description?: str
     upsertMeta('name', 'twitter:description', desc);
     upsertCanonical(canonical);
     upsertBreadcrumbJsonLd(breadcrumb, pageTitle ?? SITE_NAME, window.location.pathname);
+    upsertPageJsonLd(pageTitle ? pageJsonLd(window.location.pathname, pageTitle, desc) : null);
   }, [pageTitle, description, breadcrumb]);
 }
