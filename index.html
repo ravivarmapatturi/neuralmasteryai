@@ -64,7 +64,17 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <!-- Cloudflare Web Analytics: cookieless visit counts (see PrivacyPolicyPage). -->
-    <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "2ee8fe49276648fd98c179dcd7932adc"}'></script>
+    <!-- Cloudflare Web Analytics: cookieless visit counts (see PrivacyPolicyPage).
+         Production host only: elsewhere (localhost, CI) Cloudflare rejects the
+         report with a CORS error, which the smoke tests rightly flag. -->
+    <script>
+      if (location.hostname === 'neuralmasteryai.com') {
+        var cf = document.createElement('script');
+        cf.defer = true;
+        cf.src = 'https://static.cloudflareinsights.com/beacon.min.js';
+        cf.setAttribute('data-cf-beacon', '{"token": "2ee8fe49276648fd98c179dcd7932adc"}');
+        document.body.appendChild(cf);
+      }
+    </script>
   </body>
 </html>
