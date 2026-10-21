@@ -40,6 +40,10 @@ const files = walk(CONTENT_ROOT);
 // "does a file exist at this literal path".
 const PRACTICE_SLUGS = JSON.parse(readFileSync(new URL('../src/data/practiceSlugs.generated.json', import.meta.url), 'utf8'));
 const validRoutes = new Set(['/practice']);
+// Track pages: /practice/track/<slug> for every catalogue track (slugs read
+// from src/data/practiceCatalog.ts, the same list the app renders).
+const CATALOG_SRC = readFileSync(new URL('../src/data/practiceCatalog.ts', import.meta.url), 'utf8');
+for (const [, slug] of CATALOG_SRC.matchAll(/^    slug: '([a-z0-9-]+)',$/gm)) validRoutes.add(`/practice/track/${slug}`);
 for (const f of files) {
   const rel = relative(CONTENT_ROOT, f).replace(/\.mdx$/, '').split('\\').join('/');
   if (rel.startsWith('practice-problems/')) {
