@@ -17,6 +17,7 @@ export default function StreakBadge() {
     <Link
       to="/profile"
       title={`${streak} day streak`}
+      aria-label={`${streak} day streak`}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -31,7 +32,8 @@ export default function StreakBadge() {
         background: 'color-mix(in srgb, var(--nm-accent-warn) 10%, transparent)',
       }}
     >
-      {streak}-day streak
+      <span aria-hidden="true">🔥</span>
+      {streak}
     </Link>
   );
 }

@@ -108,7 +108,7 @@ function routesFromContentTree() {
 // audit 2026-10-07), the identical bug this list exists to prevent.
 const APP_ROUTES = ['/', '/learn', '/progress', '/practice', '/profile', '/leaderboard', '/about', '/privacy', '/terms'];
 // The blog list and every post (src/data/blogMeta.generated.json).
-const BLOG_ROUTES = ['/blog', ...JSON.parse(readFileSync(join(ROOT, 'src', 'data', 'blogMeta.generated.json'), 'utf8')).map((p) => `/blog/${p.slug}`)];
+const BLOG_ROUTES = ['/blog', '/blog/write', ...JSON.parse(readFileSync(join(ROOT, 'src', 'data', 'blogMeta.generated.json'), 'utf8')).map((p) => `/blog/${p.slug}`)];
 
 async function waitForServer(url, timeoutMs = 15000) {
   const start = Date.now();
