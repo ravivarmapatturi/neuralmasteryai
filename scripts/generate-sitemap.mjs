@@ -35,6 +35,11 @@ const urls = [
   { loc: `${SITE_URL}/`, lastmod: null },
   { loc: `${SITE_URL}/learn`, lastmod: null },
   { loc: `${SITE_URL}/practice`, lastmod: null },
+  { loc: `${SITE_URL}/blog`, lastmod: null },
+  ...JSON.parse(readFileSync(resolve(import.meta.dirname, '..', 'src', 'data', 'blogMeta.generated.json'), 'utf8')).map((p) => ({
+    loc: `${SITE_URL}/blog/${p.slug}`,
+    lastmod: p.date,
+  })),
   ...files.map((f) => {
     const rel = relative(docsDir, f).replace(/\.mdx$/, '').split('\\').join('/');
     // Practice-problem pages live at /practice/<slug>, not /docs/<slug> --

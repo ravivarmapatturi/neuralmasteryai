@@ -30,7 +30,7 @@ export default function TrainingServingSkewDiagram() {
       </div>
       {revealed && (
         <div style={{ textAlign: 'center', fontSize: 11, color: badColor, fontWeight: 700, marginTop: 8 }}>
-          ⚠ same feature name, different values -- skew
+          same feature name, different values -- skew
         </div>
       )}
     </VisualizationContainer>

@@ -56,7 +56,7 @@ export default function McpHeroStoryVisual() {
         {mode === 'without' ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ fontSize: '13px', color: '#f43f5e', fontWeight: 600, textAlign: 'center', marginBottom: '8px' }}>
-              ⚠️ Each AI App writes custom integration code for every single tool (12 custom clients to build & maintain)
+              Each AI App writes custom integration code for every single tool (12 custom clients to build & maintain)
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
               {['Claude Desktop', 'Cursor IDE', 'LangChain Agent'].map((app, i) => (
@@ -87,7 +87,7 @@ export default function McpHeroStoryVisual() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', justifyContent: 'center' }}>
               <div style={{ height: '2px', flex: 1, background: 'linear-gradient(90deg, transparent, #38bdf8)' }} />
               <div style={{ padding: '10px 20px', background: 'linear-gradient(135deg, #0284c7 0%, #7e22ce 100%)', borderRadius: '30px', color: '#ffffff', fontWeight: 800, fontSize: '14px', boxShadow: '0 0 20px rgba(168, 85, 247, 0.5)', border: '2px solid #ffffff' }}>
-                ⚡ Universal MCP Protocol (JSON-RPC 2.0)
+                Universal MCP Protocol (JSON-RPC 2.0)
               </div>
               <div style={{ height: '2px', flex: 1, background: 'linear-gradient(90deg, #7e22ce, transparent)' }} />
             </div>

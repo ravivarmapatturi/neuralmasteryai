@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { PersonIcon } from '../icons/UiIcons';
 
 /** Real, honest messages for the Firebase Auth error codes a visitor can
  * actually hit here -- never a bare "auth/email-already-in-use" code
@@ -221,7 +222,7 @@ export default function AuthButton() {
             padding: 0,
           }}
         >
-          👤
+          <PersonIcon />
         </button>
         {menuOpen && (
           <>

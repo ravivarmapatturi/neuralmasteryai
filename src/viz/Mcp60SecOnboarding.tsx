@@ -5,42 +5,42 @@ const SLIDES = [
   {
     step: 1,
     title: "1. The AI Isolation Problem",
-    icon: "🤖",
+    icon: "",
     description: "An AI agent needs to read real-time data from GitHub, Slack, and PostgreSQL, but has no standard connection to external software.",
     visual: "AI Agent ──?── GitHub | Slack | Postgres"
   },
   {
     step: 2,
     title: "2. External Systems Expose Capabilities",
-    icon: "🔌",
+    icon: "",
     description: "Tools and databases expose their operations as standardized Tools, Resources, or Prompts via an MCP Server.",
     visual: "GitHub / Postgres ──(Exposes)──> MCP Server [Tools, Resources, Prompts]"
   },
   {
     step: 3,
     title: "3. MCP Standardizes Discovery",
-    icon: "⚡",
+    icon: "",
     description: "The AI Host launches an MCP Client that automatically discovers available tools via JSON-RPC protocol messaging.",
     visual: "AI Host [MCP Client] ──initialize & tools/list──> MCP Server"
   },
   {
     step: 4,
     title: "4. The Host Connects to the Server",
-    icon: "🤝",
+    icon: "",
     description: "A 1:1 protocol channel (stdio or HTTP+SSE) is established. No custom glue code is needed for each unique tool.",
     visual: "MCP Client <====== 1:1 Transport (stdio / SSE) ======> MCP Server"
   },
   {
     step: 5,
     title: "5. The Model Executes Tool Calls",
-    icon: "🎯",
+    icon: "",
     description: "When the LLM decides to take an action, it formats a tools/call request with arguments for the server to execute.",
     visual: "LLM ──(tools/call)──> MCP Server ──(Executes SQL/API)──> System"
   },
   {
     step: 6,
     title: "6. Results Return to LLM Context",
-    icon: "🎉",
+    icon: "",
     description: "The server returns structured output in a standard content array format back into the LLM context loop.",
     visual: "MCP Server ──(content: [text])──> MCP Client ──> LLM Context"
   }
@@ -68,7 +68,7 @@ export default function Mcp60SecOnboarding({ onComplete }: { onComplete?: () => 
     <VisualizationContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
         <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#38bdf8', fontWeight: 700 }}>
-          ⚡ Learn MCP in 60 Seconds
+          Learn MCP in 60 Seconds
         </div>
         <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>
           Slide {slideIdx + 1} of {SLIDES.length}
@@ -138,7 +138,7 @@ export default function Mcp60SecOnboarding({ onComplete }: { onComplete?: () => 
             boxShadow: '0 2px 10px rgba(2, 132, 199, 0.3)'
           }}
         >
-          {isLast ? '🎉 Complete Story (+15 XP)' : 'Next →'}
+          {isLast ? 'Complete Story (+15 XP)' : 'Next →'}
         </button>
       </div>
     </VisualizationContainer>

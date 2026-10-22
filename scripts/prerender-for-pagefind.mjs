@@ -107,6 +107,8 @@ function routesFromContentTree() {
 // on the live site (real HTTP 404 status, confirmed via a real website
 // audit 2026-10-07), the identical bug this list exists to prevent.
 const APP_ROUTES = ['/', '/learn', '/progress', '/practice', '/profile', '/leaderboard', '/about', '/privacy', '/terms'];
+// The blog list and every post (src/data/blogMeta.generated.json).
+const BLOG_ROUTES = ['/blog', ...JSON.parse(readFileSync(join(ROOT, 'src', 'data', 'blogMeta.generated.json'), 'utf8')).map((p) => `/blog/${p.slug}`)];
 
 async function waitForServer(url, timeoutMs = 15000) {
   const start = Date.now();
@@ -139,7 +141,7 @@ async function main() {
   try {
     await waitForServer(`http://localhost:${PORT}${BASE}/`);
 
-    const routes = [...APP_ROUTES, ...TRACK_ROUTES, ...routesFromContentTree()];
+    const routes = [...APP_ROUTES, ...BLOG_ROUTES, ...TRACK_ROUTES, ...routesFromContentTree()];
     console.log(`prerender-for-pagefind: snapshotting ${routes.length} route(s)...`);
 
     // 208 routes taken one at a time (each waiting for full network-idle)

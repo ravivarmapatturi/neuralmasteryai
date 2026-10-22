@@ -83,7 +83,7 @@ export default function Home() {
             All topics
           </h1>
           <p style={{ fontSize: 14, color: 'var(--nm-text-muted)', margin: '0 0 2rem' }}>
-            Grouped by section, in the order they build on each other.
+            Grouped by section, in the order they build on each other. Open a topic to see its pages.
           </p>
           <div className="nm-learn-topics">
             {SECTION_ORDER.map((key) => {
@@ -98,8 +98,20 @@ export default function Home() {
                   <ul>
                     {topics.map((section) => (
                       <li key={section.id}>
-                        <Link to={section.pages[0].route}>{section.label}</Link>
-                        <span>{section.pages.length}</span>
+                        <details>
+                          <summary>
+                            <span className="nm-learn-topic-name">{section.label}</span>
+                            <span className="nm-learn-topic-count">{section.pages.length}</span>
+                          </summary>
+                          <ol>
+                            {section.pages.map((page) => (
+                              <li key={page.route}>
+                                <Link to={page.route}>{page.title}</Link>
+                                {isUnderstood(page.route) && <span aria-label="understood"> ✓</span>}
+                              </li>
+                            ))}
+                          </ol>
+                        </details>
                       </li>
                     ))}
                   </ul>

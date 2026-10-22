@@ -24,7 +24,7 @@ export default function PromotionWorkflowDiagram() {
             <span style={{ fontSize: 10.5, color: t.textMuted, fontFamily: HAND_FONT }}>Staging</span>
           </div>
         </SketchBox>
-        <div style={{ fontSize: 14, color }}>{gate === 'manual' ? '👤' : '⚙'} →</div>
+        <div style={{ fontSize: 14, color }}>{gate === 'manual' ? '' : ''} →</div>
         <SketchBox color={color} strokeWidth={2} style={{ flex: 1 }}>
           <div style={{ padding: '0.6rem', borderRadius: 8, background: `${color}18`, textAlign: 'center' }}>
             <span style={{ fontSize: 10.5, fontWeight: 700, color, fontFamily: HAND_FONT }}>Production</span>

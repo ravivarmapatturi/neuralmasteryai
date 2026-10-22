@@ -229,6 +229,7 @@ body {
   .nm-navbar-nav { gap: 0.15rem; }
   .nm-navbar-progress-link { display: none; }
   .nm-navbar-leaderboard-link { display: none; }
+  .nm-navbar-blog-link { display: none; }
   .nm-navbar-learn-link { display: none; }
   /* Learn/Leaderboard/Progress dropped from the row above are still
      reachable here (audit finding C4: previously no alternative existed
@@ -240,7 +241,7 @@ body {
      above -- trims it further here rather than dropping it, since the
      user specifically asked for Practice to read as new. */
   .nm-practice-link { gap: 3px !important; }
-  .nm-practice-badge { padding: 0.05rem 0.22rem !important; }
+  .nm-new-badge { padding: 0.05rem 0.22rem !important; }
   /* Real safety margin, not a hairline pass: an earlier version of this
      fix passed locally (377px against a 379px budget) but failed in CI at
      381px -- different Chromium builds/font metrics render this row a few
@@ -526,7 +527,16 @@ html, body {
 .nm-learn-topics { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 2rem 2.5rem; }
 .nm-learn-topics h3 { margin: 0 0 .6rem; padding-bottom: .4rem; border-bottom: 2px solid var(--section-color); color: var(--nm-text-primary); font: 700 1.05rem var(--font-body); }
 .nm-learn-topics ul { list-style: none; margin: 0; padding: 0; }
-.nm-learn-topics li { display: flex; justify-content: space-between; gap: 1rem; padding: .3rem 0; font-size: .95rem; }
-.nm-learn-topics li a { color: var(--nm-text-primary); text-decoration: none; }
-.nm-learn-topics li a:hover { color: var(--nm-accent-primary); text-decoration: underline; }
-.nm-learn-topics li span { color: var(--nm-text-muted); font-size: .8rem; font-variant-numeric: tabular-nums; }
+.nm-learn-topics > div > ul > li { padding: .15rem 0; font-size: .95rem; }
+.nm-learn-topics summary { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; padding: .2rem 0; cursor: pointer; list-style: none; color: var(--nm-text-primary); }
+.nm-learn-topics summary::-webkit-details-marker { display: none; }
+.nm-learn-topics summary::before { content: '▸'; flex: none; width: .9rem; color: var(--nm-text-muted); font-size: .75rem; transition: transform .12s ease; }
+.nm-learn-topics details[open] > summary::before { transform: rotate(90deg); }
+.nm-learn-topics summary:hover .nm-learn-topic-name { color: var(--nm-accent-primary); }
+.nm-learn-topic-name { flex: 1; }
+.nm-learn-topic-count { color: var(--nm-text-muted); font-size: .8rem; font-variant-numeric: tabular-nums; }
+.nm-learn-topics details ol { list-style: none; margin: .2rem 0 .6rem; padding: 0 0 0 .9rem; border-left: 2px solid color-mix(in srgb, var(--section-color) 40%, transparent); }
+.nm-learn-topics details ol li { padding: .18rem 0 .18rem .6rem; font-size: .88rem; line-height: 1.4; }
+.nm-learn-topics details ol a { color: var(--nm-text-secondary); text-decoration: none; }
+.nm-learn-topics details ol a:hover { color: var(--nm-accent-primary); text-decoration: underline; }
+@media (prefers-reduced-motion: reduce) { .nm-learn-topics summary::before { transition: none; } }

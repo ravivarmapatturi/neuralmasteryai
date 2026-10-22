@@ -31,8 +31,7 @@ export default function StreakBadge() {
         background: 'color-mix(in srgb, var(--nm-accent-warn) 10%, transparent)',
       }}
     >
-      <span aria-hidden="true">🔥</span>
-      {streak}
+      {streak}-day streak
     </Link>
   );
 }

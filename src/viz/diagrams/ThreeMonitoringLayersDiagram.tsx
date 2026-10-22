@@ -29,7 +29,7 @@ export default function ThreeMonitoringLayersDiagram() {
           return (
             <SelectableRow key={l.key} selected={isActive} label={l.label} onSelect={() => setActive(l.key)} onMouseEnter={() => setActive(l.key)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 0.85rem', borderRadius: 8, background: isActive ? `${c}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? c : t.border}` }}>
               <span style={{ fontSize: 12, fontWeight: isActive ? 700 : 500, color: isActive ? c : t.textPrimary }}>{l.label}</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c }}>{isBad ? '⚠ silently degraded' : '✓ 100% healthy'}</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: c }}>{isBad ? 'silently degraded' : '✓ 100% healthy'}</span>
             </SelectableRow>
           );
         })}

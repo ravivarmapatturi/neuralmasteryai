@@ -30,7 +30,7 @@ export default function CapTheoremDiagram() {
     >
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         <VizButton variant={partitioned ? 'primary' : 'secondary'} onClick={() => setPartitioned((p) => !p)}>
-          {partitioned ? '⚡ Partition active' : 'No partition'}
+          {partitioned ? 'Partition active' : 'No partition'}
         </VizButton>
         <VizButton variant={choice === 'cp' ? 'primary' : 'secondary'} onClick={() => setChoice('cp')}>
           CP
@@ -46,7 +46,7 @@ export default function CapTheoremDiagram() {
             <div style={{ padding: '8px 12px', background: `${okColor}18`, fontFamily: 'monospace', fontSize: 12 }}>{nodeA.data}</div>
           </SketchBox>
         </div>
-        <div style={{ fontSize: 20, color: partitioned ? errColor : t.textMuted }}>{partitioned ? '✗ ⚡ ✗' : '——'}</div>
+        <div style={{ fontSize: 20, color: partitioned ? errColor : t.textMuted }}>{partitioned ? '✗ ✗' : '——'}</div>
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontWeight: 700, color: nodeB.data === 'unavailable' ? errColor : okColor, fontFamily: HAND_FONT }}>Node B</div>
           <SketchBox color={nodeB.data === 'unavailable' ? errColor : okColor} strokeWidth={1.5} style={{ marginTop: 6 }}>

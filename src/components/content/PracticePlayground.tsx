@@ -108,7 +108,7 @@ export default function PracticePlayground({ problemId, celebrateOnSuccess = fal
         showRewardToast({
           title: 'Code Executed Successfully!',
           subtitle: `All ${res.caseResults.length} test cases passed in browser runtime`,
-          icon: '⚡',
+          icon: '',
           type: 'celebration',
         });
       }

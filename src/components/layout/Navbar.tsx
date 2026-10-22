@@ -4,6 +4,7 @@ import { useColorMode } from '../../theme/ThemeProvider';
 import SearchModal from './SearchModal';
 import AuthButton from './AuthButton';
 import StreakBadge from './StreakBadge';
+import { MoonIcon, SunIcon } from '../icons/UiIcons';
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform ?? navigator.userAgent);
 const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -155,8 +156,15 @@ export default function Navbar({
             style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--nm-text-primary)', textDecoration: 'none', fontSize: 14, fontFamily: "'Kalam', 'Comic Sans MS', cursive" }}
           >
             Practice
+          </Link>
+          <Link
+            to="/blog"
+            className="nm-navbar-blog-link"
+            style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--nm-text-primary)', textDecoration: 'none', fontSize: 14, fontFamily: "'Kalam', 'Comic Sans MS', cursive" }}
+          >
+            Blog
             <span
-              className="nm-practice-badge"
+              className="nm-new-badge"
               style={{
                 fontSize: 9.5,
                 fontWeight: 800,
@@ -226,7 +234,7 @@ export default function Navbar({
               cursor: 'pointer',
             }}
           >
-            {colorMode === 'dark' ? '☀' : '☾'}
+            {colorMode === 'dark' ? <SunIcon /> : <MoonIcon />}
           </button>
           <StreakBadge />
           <AuthButton />
@@ -273,6 +281,7 @@ export default function Navbar({
             {[
               { to: '/learn', label: 'Learn' },
               { to: '/practice', label: 'Practice' },
+              { to: '/blog', label: 'Blog' },
               { to: '/leaderboard', label: 'Leaderboard' },
               { to: '/progress', label: 'Progress' },
             ].map((item) => (

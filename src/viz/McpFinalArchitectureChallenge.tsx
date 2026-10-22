@@ -51,7 +51,7 @@ export default function McpFinalArchitectureChallenge({ onMastered }: { onMaster
   return (
     <VisualizationContainer>
       <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#a855f7', fontWeight: 700, marginBottom: '4px' }}>
-        🧠 Final Masterclass Challenge
+        Final Masterclass Challenge
       </div>
       <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', color: '#f8fafc', fontWeight: 800 }}>
         Assemble the Complete MCP Protocol Sequence
@@ -133,7 +133,7 @@ export default function McpFinalArchitectureChallenge({ onMastered }: { onMaster
 
       {status === 'success' && (
         <div style={{ marginTop: '16px', padding: '14px', borderRadius: '8px', background: 'rgba(16,185,129,0.15)', border: '1px solid #10b981', color: '#34d399', fontSize: '13px', fontWeight: 700 }}>
-          🎉 Perfect Architecture Assembly! You have mastered the Model Context Protocol lifecycle! (+50 XP)
+          Perfect Architecture Assembly! You have mastered the Model Context Protocol lifecycle! (+50 XP)
         </div>
       )}
 

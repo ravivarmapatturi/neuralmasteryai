@@ -31,6 +31,8 @@ function walk(dir) {
 }
 
 const files = walk(CONTENT_ROOT);
+// Blog posts link into Learn too, so their links are checked the same way.
+const BLOG_FILES = walk(join(import.meta.dirname, '..', 'src', 'content', 'blog'));
 
 // Build the same route set contentTree.ts derives from the file tree --
 // including its practice-problems remap (/docs/practice-problems/<slug> ->
@@ -39,7 +41,9 @@ const files = walk(CONTENT_ROOT);
 // shape is checked against what the app will ACTUALLY render at, not just
 // "does a file exist at this literal path".
 const PRACTICE_SLUGS = JSON.parse(readFileSync(new URL('../src/data/practiceSlugs.generated.json', import.meta.url), 'utf8'));
-const validRoutes = new Set(['/practice']);
+const validRoutes = new Set(['/practice', '/blog']);
+// Blog posts: /blog/<slug> for every src/content/blog/<slug>.mdx.
+for (const f of readdirSync(new URL('../src/content/blog/', import.meta.url))) if (f.endsWith('.mdx')) validRoutes.add(`/blog/${f.slice(0, -4)}`);
 // Track pages: /practice/track/<slug> for every catalogue track (slugs read
 // from src/data/practiceCatalog.ts, the same list the app renders).
 const CATALOG_SRC = readFileSync(new URL('../src/data/practiceCatalog.ts', import.meta.url), 'utf8');
@@ -57,7 +61,7 @@ for (const f of files) {
 }
 
 const LINK_PATTERNS = [
-  /\[[^\]]*\]\((\/docs\/[^)#\s]+|\/practice\/?[^)#\s]*)/g, // markdown [text](/docs/... or /practice...)
+  /\[[^\]]*\]\((\/docs\/[^)#\s]+|\/practice\/?[^)#\s]*|\/blog\/?[^)#\s]*)/g, // markdown [text](/docs/... or /practice...)
   /\bhref=["'](\/docs\/[^"'#]+|\/practice\/?[^"'#]*)["']/g, // JSX/HTML href="..."
   /\bto=["'](\/docs\/[^"'#]+|\/practice\/?[^"'#]*)["']/g, // react-router <Link to="...">
 ];
@@ -65,7 +69,7 @@ const LINK_PATTERNS = [
 let brokenCount = 0;
 const findings = [];
 
-for (const file of files) {
+for (const file of [...files, ...BLOG_FILES]) {
   const raw = readFileSync(file, 'utf8');
   const { content } = matter(raw);
   for (const pattern of LINK_PATTERNS) {

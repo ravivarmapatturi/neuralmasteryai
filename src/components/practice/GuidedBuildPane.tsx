@@ -153,7 +153,7 @@ export default function GuidedBuildPane({
             modeToggle
           ) : (
             <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', color: t.accentTeal }}>
-              🪜 GUIDED BUILD
+              GUIDED BUILD
             </span>
           )}
 
@@ -339,7 +339,7 @@ export default function GuidedBuildPane({
           >
             <div>
               <div style={{ fontSize: 13, fontWeight: 700, color: '#10b981', marginBottom: 2 }}>
-                🎉 All 5 Steps Completed & Verified!
+                All 5 Steps Completed & Verified!
               </div>
               <div style={{ fontSize: 12, color: 'var(--nm-text-secondary, #cbd5e1)' }}>
                 Your complete ReAct loop reference solution has been progressively assembled. Click <strong>▶ Run</strong> or <strong>Submit</strong> above to test against the Pyodide runtime.

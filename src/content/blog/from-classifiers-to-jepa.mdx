@@ -1,0 +1,142 @@
+---
+title: "From Image Classifiers to H-JEPA: Learning by Predicting What Matters"
+description: "How vision models went from needing a label on every image to world models that plan by predicting in their own representation space, and what the new H-JEPA paper adds."
+date: 2026-10-22
+tags: [self-supervised learning, JEPA, world models, computer vision]
+---
+
+# From Image Classifiers to H-JEPA: Learning by Predicting What Matters
+
+On 5 October 2026, researchers from Yann LeCun's group posted [H-JEPA](https://arxiv.org/abs/2610.06805), a stack of world models that plan at several time scales at once. On one simulated maze task, a three-level stack raised the success rate from 18% to 73% compared with a single level, while using less planning compute.
+
+H-JEPA is the latest step in a line of work that started with a simple complaint: to teach a network to see, you had to label millions of images by hand. This post follows that line from the start. Each step fixed a specific problem with the one before it, and you need most of them to see why H-JEPA is built the way it is.
+
+## 1. Supervised classification: learn what the labels ask for
+
+In 2012, AlexNet won the ImageNet challenge by a wide margin. It was trained on about 1.2 million images, each labelled with one of 1,000 classes, and it showed that a deep [convolutional network](/docs/deep-learning/cnns) trained this way learns features that are useful far beyond the 1,000 classes. For years the standard recipe for any vision task was to start from ImageNet weights and fine-tune.
+
+The recipe has two limits. Labels are expensive: every one of those 1.2 million images had to be looked at by a person. And the network learns only what the labels ask for. A model trained to say "dog" has no reason to learn how far away the dog is, or which way it's moving.
+
+## 2. Learning without labels: predict one part of the data from another
+
+The way out is to make the data supervise itself. Hide part of an input and train the model to predict it from the rest. No person is needed, because the answer is already in the data.
+
+Language models showed how well this works. Next-token prediction on raw text, with no labels at all, produced models that write, translate and reason. For images the same idea is harder, because it isn't obvious *what* to predict. Pixels are a poor target, for reasons that come up in section 5.
+
+## 3. Contrastive learning: two views of the same thing should match
+
+In 2020, SimCLR and MoCo made self-supervised learning competitive on ImageNet. The idea: take an image, make two random edits of it (crop, recolour, blur), and train an encoder so the two edited versions map to nearby embeddings while embeddings of *other* images are pushed away.
+
+It works, and the limits are worth knowing:
+
+- **It needs negatives.** The "push others away" term only works with many other images in each step, which means large batches or a memory bank.
+- **The augmentations are hand-chosen.** The model becomes insensitive to exactly the edits you picked. Recolouring teaches it to ignore colour, which is wrong if colour matters for your task.
+
+## 4. The collapse problem
+
+Why do contrastive methods need negatives at all? Drop them, keep only "make the two views match", and there's a trivial solution: output the same vector for every image. The loss is zero and the model has learned nothing. This is called **collapse**, and nearly every method after this point is defined by how it avoids it.
+
+Two families avoid collapse without negatives:
+
+- **BYOL (2020)** uses two networks. An online network, followed by a small predictor, tries to match the output of a target network. The target's weights are an exponential moving average (EMA) of the online network's, and gradients don't flow into it. In practice it doesn't collapse. Follow-up papers showed that the predictor and the slow-moving target are what prevent it.
+- **VICReg (2022)** makes the requirement explicit, with three terms. Variance: every embedding dimension must vary across the batch. Invariance: the two views must match. Covariance: dimensions must not be redundant copies of each other.
+
+Keep the EMA target network in mind. It comes back in JEPA.
+
+## 5. Masked autoencoders: predict the pixels
+
+Language models predict missing words, so why not predict missing patches of an image? Masked autoencoders (MAE, 2021) did exactly that. Hide 75% of an image's patches, encode the visible quarter, and reconstruct the hidden pixels. No augmentations to choose, no negatives, and it scales well.
+
+The limit is the target. Pixels contain a lot of detail that can't be predicted: the exact texture of grass, the noise in a dark photo. A model that reconstructs pixels has to spend capacity on that detail, even though it says little about what's in the picture. Words don't have this problem, because a word is already an abstraction.
+
+## 6. JEPA: predict the representation, not the pixels
+
+In 2022, LeCun's position paper *A Path Towards Autonomous Machine Intelligence* proposed the Joint-Embedding Predictive Architecture. Keep the masked-prediction idea from MAE, but predict the hidden part's **embedding** instead of its pixels. The model is then free to leave out whatever it can't predict.
+
+I-JEPA (2023) is the image version. It has three parts:
+
+1. A **context encoder** sees one large block of the image.
+2. A **target encoder** sees the whole image. Its outputs for a few other blocks are the prediction targets. Like BYOL's target network, its weights are an EMA of the context encoder's, and no gradient flows into it.
+3. A **predictor** takes the context embeddings plus the positions of the target blocks, and predicts the target encoder's embeddings for those blocks.
+
+The loss is the distance between predicted and actual embeddings. There's no pixel reconstruction and no hand-chosen augmentation. Here is the training step as a sketch in PyTorch:
+
+```python
+import torch
+import torch.nn.functional as F
+
+def ijepa_step(images, context_encoder, target_encoder, predictor, optimizer, ema=0.996):
+    patches = patchify(images)                       # (batch, n_patches, dim)
+    context_idx, target_idx = sample_blocks(patches.shape[1])
+
+    with torch.no_grad():                            # targets: no gradient
+        targets = target_encoder(patches)[:, target_idx]
+
+    context = context_encoder(patches[:, context_idx])
+    predicted = predictor(context, context_idx, target_idx)
+    loss = F.mse_loss(predicted, targets)            # distance in embedding space
+
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+
+    with torch.no_grad():                            # the target encoder trails slowly
+        for t, c in zip(target_encoder.parameters(), context_encoder.parameters()):
+            t.mul_(ema).add_(c, alpha=1 - ema)
+    return loss.item()
+```
+
+`patchify` and `sample_blocks` are left out. The second one matters: target blocks have to be large enough that predicting them needs an understanding of the scene, not just copying neighbouring texture.
+
+## 7. From pictures to video, and from video to planning
+
+Video is where predicting representations pays off most. The next second of a video is mostly predictable in its broad strokes (the ball keeps rolling) and unpredictable in its details (every blade of grass).
+
+- **V-JEPA (2024)** applied the recipe to video, masking regions across space and time.
+- **V-JEPA 2 (June 2025)** was pretrained on more than a million hours of video. Its action-conditioned version, **V-JEPA 2-AC**, was then trained on about 62 hours of robot video. The predictor learned what the next embedding will be *given an action*.
+
+That last change turns a representation learner into a **world model**: something you can ask "what happens if I do this?" Planning becomes search in embedding space. Encode the current camera image and an image of the goal, try candidate action sequences through the predictor, and execute the one whose predicted end state lands closest to the goal's embedding. Meta reported the robot picking and placing objects in labs it had never seen, without task-specific training.
+
+## 8. Removing the tricks
+
+Two ingredients in all of this were heuristics: the EMA target network and the gradient blocking that keep JEPAs from collapsing. They work, but they're fragile and add settings to tune.
+
+- **LeJEPA (November 2025)** replaced them with a single regulariser, SIGReg, which pushes the embeddings towards an isotropic Gaussian (spread evenly in every direction, so they can't collapse). The paper argues this is the distribution that minimises error on downstream tasks, and that it removes the need for the usual anti-collapse tricks.
+- **LeWorldModel (March 2026)** used the same idea to train a JEPA world model end-to-end from raw pixels, with just two loss terms: next-embedding prediction and the Gaussian regulariser.
+
+## 9. What H-JEPA adds
+
+A single world model predicts one step at a time. Planning a long task means chaining many predictions, and errors compound with every step. This is the same failure that makes multi-hop retrieval unreliable.
+
+H-JEPA stacks several action-conditioned JEPAs. Each level predicts further into the future, in its own latent space. Planning runs top-down: the top level plans towards the goal over long horizons, and its predictions become subgoals for the level below, which plans over shorter ones. When different parts of the world change at different speeds, the higher levels learn to drop fast, unpredictable detail and keep the slow, task-relevant state.
+
+The paper reports gains over a single-level JEPA in four simulated navigation and manipulation environments, including the maze result from the start of this post. It also shows that the approach carries over to real robot videos from the DROID dataset.
+
+## 10. Where this stands
+
+- **Most planning results are still in simulation.** The robot results are narrow, and none of these models is yet in wide practical use the way large language models are.
+- **Latent spaces are hard to inspect.** When a pixel model is wrong, you can look at its output. When a JEPA's prediction is wrong, you have a vector. Probing those vectors is an active research area.
+- **Language is the open question.** VL-JEPA (December 2025) predicts text *embeddings* instead of tokens. In a controlled comparison it matched a token-predicting model with half the trainable parameters, but it still needs a separate decoder to write text.
+
+## The line in one table
+
+| Step | What it predicts | How it avoids collapse | What it fixed |
+|---|---|---|---|
+| Supervised (AlexNet, 2012) | A human label | Labels | Learning features at all |
+| Contrastive (SimCLR, MoCo, 2020) | Which views match | Negatives | Needing labels |
+| BYOL (2020), VICReg (2022) | The other view's embedding | EMA target, or variance terms | Needing negatives |
+| MAE (2021) | Hidden pixels | Pixels can't collapse | Hand-chosen augmentations |
+| I-JEPA (2023) | Hidden parts' embeddings | EMA target, no gradient | Spending capacity on pixel detail |
+| V-JEPA 2-AC (2025) | Next embedding, given an action | EMA target | Planning, not only perception |
+| LeJEPA (2025), LeWorldModel (2026) | Same | Gaussian regulariser | Fragile training tricks |
+| H-JEPA (2026) | Embeddings at several horizons | Same | Long-horizon planning |
+
+## Further reading
+
+- On this site: [CNNs](/docs/deep-learning/cnns), [autoencoders](/docs/deep-learning/autoencoders), [attention and transformers](/docs/deep-learning/attention-transformers), [word embeddings](/docs/nlp/word-embeddings)
+- Assran et al., [Self-Supervised Learning from Images with a Joint-Embedding Predictive Architecture](https://arxiv.org/abs/2301.08243) (I-JEPA, 2023)
+- Meta AI, [V-JEPA 2 world model and benchmarks](https://ai.meta.com/blog/v-jepa-2-world-model-benchmarks/) (2025)
+- Balestriero and LeCun, [LeJEPA](https://arxiv.org/abs/2511.08544) (2025)
+- Maes et al., [LeWorldModel](https://arxiv.org/abs/2603.19312) (2026)
+- Chen et al., [VL-JEPA](https://arxiv.org/abs/2512.10942) (2025)
+- Zhang et al., [H-JEPA](https://arxiv.org/abs/2610.06805) (2026)

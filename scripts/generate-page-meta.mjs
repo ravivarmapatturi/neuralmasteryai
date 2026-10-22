@@ -63,4 +63,31 @@ for (const file of categoryFiles) {
 }
 
 writeFileSync(OUTPUT, JSON.stringify({ pages, categories }, null, 2) + '\n');
+
+// Blog posts (src/content/blog/<slug>.mdx): title, date, description and
+// reading time for the /blog list, newest first. Like the docs metadata,
+// this keeps the list page from importing every post's compiled component.
+const BLOG_ROOT = join(root, 'src', 'content', 'blog');
+const BLOG_OUTPUT = join(root, 'src', 'data', 'blogMeta.generated.json');
+const posts = existsSync(BLOG_ROOT)
+  ? readdirSync(BLOG_ROOT)
+      .filter((f) => f.endsWith('.mdx'))
+      .map((f) => {
+        const { data, content } = matter(readFileSync(join(BLOG_ROOT, f), 'utf8'));
+        const words = content.replace(/```[\s\S]*?```/g, ' ').replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+        const date = data.date instanceof Date ? data.date.toISOString().slice(0, 10) : String(data.date ?? '');
+        if (!data.title || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error(`blog/${f}: needs a title and a YYYY-MM-DD date`);
+        return {
+          slug: f.replace(/\.mdx$/, ''),
+          title: data.title,
+          description: data.description ?? null,
+          date,
+          tags: Array.isArray(data.tags) ? data.tags : [],
+          readingMinutes: Math.max(1, Math.round(words / 230)),
+        };
+      })
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.slug.localeCompare(b.slug)))
+  : [];
+writeFileSync(BLOG_OUTPUT, JSON.stringify(posts, null, 2) + '\n');
+console.log(`generate-page-meta: wrote ${posts.length} blog posts to src/data/blogMeta.generated.json`);
 console.log(`generate-page-meta: wrote ${Object.keys(pages).length} pages, ${Object.keys(categories).length} categories to ${existsSync(OUTPUT) ? 'src/data/pageMeta.generated.json' : OUTPUT}`);

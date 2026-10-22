@@ -43,10 +43,10 @@ export default function GilReleaseDiagram() {
               fontFamily: 'monospace',
             }}
           >
-            {code === 'python' ? 'holds GIL 🔒\nrunning bytecode' : 'in kernel\n(GIL released)'}
+            {code === 'python' ? 'holds GIL\nrunning bytecode' : 'in kernel\n(GIL released)'}
           </div>
         </div>
-        <div style={{ fontSize: 20 }}>{code === 'python' ? '🔒' : '🔓'}</div>
+        <div style={{ fontSize: 20 }}>{code === 'python' ? '' : ''}</div>
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontWeight: 700, color: colorB }}>Thread B</div>
           <div
@@ -61,7 +61,7 @@ export default function GilReleaseDiagram() {
               color: code === 'python' ? t.textMuted : t.textPrimary,
             }}
           >
-            {code === 'python' ? 'blocked,\nwaiting for GIL' : 'holds GIL 🔒\nrunning bytecode'}
+            {code === 'python' ? 'blocked,\nwaiting for GIL' : 'holds GIL\nrunning bytecode'}
           </div>
         </div>
       </div>

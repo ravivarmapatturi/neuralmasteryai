@@ -30,7 +30,7 @@ export default function ChooserPage() {
   useDocumentTitle('Learn AI by building it, free');
   useDocumentMeta(
     'Learn AI by building it, free',
-    'Free lessons on AI from the maths up to LLMs and agents, plus coding problems you run in your browser against real tests. No sign-up, nothing to install.',
+    'Free lessons on AI, from the maths up to LLMs and agents, with coding problems you run in your browser.',
   );
 
   const pages = getFlatPages();
@@ -47,7 +47,6 @@ export default function ChooserPage() {
         <section className="nb-ruled" style={{ borderBottom: '1px solid var(--nb-rule)', padding: 'clamp(3rem, 7vw, 6rem) 0' }}>
           <div className="nm-landing-shell nm-hero-grid">
             <div>
-              <p className="nb-eyebrow">an AI course you can run</p>
               <h1 className="nb-heading" style={{ fontSize: 'clamp(2.4rem, 5vw, 4.1rem)', lineHeight: 1.05, margin: 0, position: 'relative' }}>
                 Learn it.<br />Practice it.<br />
                 <span style={{ color: 'var(--nb-teal)', position: 'relative', display: 'inline-block' }}>
@@ -79,7 +78,6 @@ export default function ChooserPage() {
               </p>
             </div>
             <div>
-              <p className="nb-eyebrow" style={{ justifyContent: 'center' }}>running in your browser, not a video</p>
               <div
                 style={{
                   border: '1.5px solid var(--nb-rule)',
@@ -97,7 +95,6 @@ export default function ChooserPage() {
         <section style={{ padding: 'clamp(3rem, 6vw, 5rem) 0', borderBottom: '1px solid var(--nb-rule)' }}>
           <div className="nm-landing-shell nb-loop-grid">
             <div>
-              <p className="nb-eyebrow">how a page works</p>
               <h2 className="nb-heading" style={{ fontSize: 'clamp(1.6rem, 3vw, 2.3rem)', margin: '0 0 1.25rem' }}>
                 Read it, poke at it, then write it.
               </h2>
@@ -109,8 +106,8 @@ export default function ChooserPage() {
             </div>
             <div>
               <p className="nb-hand" style={{ textAlign: 'center', color: 'var(--nb-ink-soft)', fontSize: '0.9rem', margin: '0 0 0.25rem' }}>
-                a real graph-based agent, sketched →{' '}
-                <Link to="/docs/agents/loops-and-graphs" style={{ color: 'var(--nb-cobalt)' }}>see it interactive</Link>
+                The control loop of a graph-based agent.{' '}
+                <Link to="/docs/agents/loops-and-graphs" style={{ color: 'var(--nb-cobalt)' }}>Interactive version</Link>
               </p>
               <AgentGraphSketch />
             </div>
@@ -121,7 +118,6 @@ export default function ChooserPage() {
           <div className="nm-landing-shell">
             <div className="nm-section-heading-row">
               <div>
-                <p className="nb-eyebrow">what's covered</p>
                 <h2 className="nb-heading" style={{ fontSize: 'clamp(1.6rem, 3vw, 2.3rem)', margin: 0 }}>
                   Seven sections, in reading order. Start wherever you need to.
                 </h2>

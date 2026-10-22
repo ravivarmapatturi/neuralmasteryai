@@ -413,7 +413,7 @@ export default function CanvasAgentBuilder({
             onMouseDown={(e) => ((e.currentTarget as HTMLElement).style.transform = 'scale(0.97)')}
             onMouseUp={(e) => ((e.currentTarget as HTMLElement).style.transform = 'scale(1)')}
           >
-            <span>📐</span> Verify Architecture
+            Verify Architecture
           </button>
         </div>
       </div>
@@ -549,7 +549,7 @@ export default function CanvasAgentBuilder({
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 16 }}>{gradeResult.isCorrect ? '🎉' : '⚠️'}</span>
+              <span style={{ fontSize: 16 }}>{gradeResult.isCorrect ? '✓' : '✗'}</span>
               <span
                 style={{
                   fontSize: 13,
@@ -604,7 +604,7 @@ export default function CanvasAgentBuilder({
                       marginBottom: 4,
                     }}
                   >
-                    <span>⚠️</span> Architecture Anti-Pattern Detected
+                    Architecture Anti-Pattern Detected
                   </div>
                   <div>{gradeResult.commonMistakeFeedback}</div>
                 </div>

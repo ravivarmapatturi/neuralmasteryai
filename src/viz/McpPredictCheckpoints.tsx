@@ -50,7 +50,7 @@ export default function McpPredictCheckpoints({ onEarnXp }: { onEarnXp?: (xp: nu
   return (
     <VisualizationContainer>
       <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#10b981', fontWeight: 700, marginBottom: '4px' }}>
-        🧠 Predict Before Revealing — Retrieval Practice Checkpoint
+        Predict Before Revealing — Retrieval Practice Checkpoint
       </div>
       <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', color: '#f8fafc', fontWeight: 800 }}>
         Test Your MCP Knowledge & Reveal Wire Messages

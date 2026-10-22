@@ -33,10 +33,10 @@ const STEPS: StepDef[] = [
 ];
 
 const ICON: Record<ActionKind, string> = {
-  click: '🖱',
-  type: '⌨',
+  click: '',
+  type: '',
   scroll: '↕',
-  screenshot: '📷',
+  screenshot: '',
 };
 
 /** Steps through Anthropic's actual computer-use agent loop -- screenshot,

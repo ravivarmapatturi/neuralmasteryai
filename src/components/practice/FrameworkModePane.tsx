@@ -104,7 +104,7 @@ export default function FrameworkModePane({
               gap: 4,
             }}
           >
-            <span>🦜</span> LangGraph API
+            LangGraph API
           </span>
 
           <span style={{ fontSize: 11, color: saveStatus === 'saving' ? '#f59e0b' : '#10b981', fontWeight: 500 }}>
@@ -129,7 +129,7 @@ export default function FrameworkModePane({
               cursor: 'pointer',
             }}
           >
-            ✨ Fill Solution
+            Fill Solution
           </button>
 
           <button
@@ -207,7 +207,7 @@ export default function FrameworkModePane({
               boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
             }}
           >
-            {status === 'submitting' ? 'Submitting…' : '⚡ Submit'}
+            {status === 'submitting' ? 'Submitting…' : 'Submit'}
           </button>
 
           {onToggleFullscreen && (
@@ -247,8 +247,7 @@ export default function FrameworkModePane({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 16 }}>💡</span>
-          <div>
+                    <div>
             <strong style={{ color: '#38bdf8' }}>LangGraph API Educational Teaching Model:</strong>{' '}
             <span>{frameworkSpec.disclaimer}</span>
           </div>

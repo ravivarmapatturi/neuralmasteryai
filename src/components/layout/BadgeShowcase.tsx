@@ -171,19 +171,6 @@ export default function BadgeShowcase() {
                   overflow: 'hidden',
                 }}
               >
-                {/* Badge Icon */}
-                <div
-                  style={{
-                    fontSize: 28,
-                    lineHeight: 1,
-                    filter: isUnlocked ? 'drop-shadow(0 0 6px rgba(255, 255, 255, 0.35))' : 'grayscale(1) opacity(0.4)',
-                    flexShrink: 0,
-                    marginTop: 2,
-                  }}
-                >
-                  {badge.icon}
-                </div>
-
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                     <div

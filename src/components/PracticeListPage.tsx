@@ -46,7 +46,7 @@ export default function PracticeListPage() {
   const q = query.trim().toLowerCase();
   const matches = q ? rows.filter((r) => r.page.title.toLowerCase().includes(q) || r.track.title.toLowerCase().includes(q)).slice(0, 12) : [];
 
-  useDocumentTitle('Practice: AI engineering problems with real tests');
+  useDocumentTitle('Practice: AI engineering problems with tests');
   useDocumentMeta(
     'Practice',
     `${rows.length} hand-picked AI engineering problems in ${CATALOG.length} tracks. Write Python in your browser and run it against real test cases, starting with a 12-stage build of a tool-using agent.`,

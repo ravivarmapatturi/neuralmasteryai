@@ -17,11 +17,11 @@ const TYPE_CONFIG: Record<
   CanvasNodeType,
   { defaultIcon: string; defaultBadge: string; colorKey: 'accentPurple' | 'accentSecondary' | 'accentTeal' | 'accentWarn' | 'accentPrimary' }
 > = {
-  reasoner: { defaultIcon: '🧠', defaultBadge: 'LLM HUB', colorKey: 'accentPurple' },
-  tool: { defaultIcon: '🛠️', defaultBadge: 'EXTERNAL', colorKey: 'accentSecondary' },
-  memory: { defaultIcon: '💾', defaultBadge: 'STATE', colorKey: 'accentTeal' },
-  database: { defaultIcon: '🗄️', defaultBadge: 'PERSISTENCE', colorKey: 'accentWarn' },
-  final_answer: { defaultIcon: '🎯', defaultBadge: 'TERMINATION', colorKey: 'accentPrimary' },
+  reasoner: { defaultIcon: '', defaultBadge: 'LLM HUB', colorKey: 'accentPurple' },
+  tool: { defaultIcon: '', defaultBadge: 'EXTERNAL', colorKey: 'accentSecondary' },
+  memory: { defaultIcon: '', defaultBadge: 'STATE', colorKey: 'accentTeal' },
+  database: { defaultIcon: '', defaultBadge: 'PERSISTENCE', colorKey: 'accentWarn' },
+  final_answer: { defaultIcon: '', defaultBadge: 'TERMINATION', colorKey: 'accentPrimary' },
 };
 
 function CanvasNodeComponent({ id, data, selected }: NodeProps) {
@@ -129,7 +129,7 @@ function CanvasNodeComponent({ id, data, selected }: NodeProps) {
       {/* Header with Icon, Badge & Title */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 16 }}>{icon}</span>
+          {icon && <span style={{ fontSize: 16 }}>{icon}</span>}
           <span
             style={{
               fontSize: 9,

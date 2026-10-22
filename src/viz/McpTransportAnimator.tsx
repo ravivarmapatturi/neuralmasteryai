@@ -18,9 +18,9 @@ export default function McpTransportAnimator() {
       {/* Mode Switcher */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
         {[
-          { id: 'stdio', label: '💻 stdio (Local Subprocess)', color: '#38bdf8' },
-          { id: 'http', label: '🌐 Streamable HTTP (Remote POST)', color: '#a855f7' },
-          { id: 'sse', label: '📡 SSE (Server-Sent Events Stream)', color: '#10b981' }
+          { id: 'stdio', label: 'stdio (Local Subprocess)', color: '#38bdf8' },
+          { id: 'http', label: 'Streamable HTTP (Remote POST)', color: '#a855f7' },
+          { id: 'sse', label: 'SSE (Server-Sent Events Stream)', color: '#10b981' }
         ].map((t) => (
           <button
             key={t.id}

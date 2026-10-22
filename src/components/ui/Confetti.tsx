@@ -200,7 +200,7 @@ export function ConfettiCanvas() {
               animation: 'slideInUp 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
             }}
           >
-            <div style={{ fontSize: 28 }}>{t.icon ?? '🎉'}</div>
+            {t.icon && <div style={{ fontSize: 28 }}>{t.icon}</div>}
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, fontSize: 15, color: '#f3f4f6', display: 'flex', alignItems: 'center', gap: 6 }}>
                 {t.title}

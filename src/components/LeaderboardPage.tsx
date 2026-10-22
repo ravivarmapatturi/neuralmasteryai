@@ -85,7 +85,7 @@ export default function LeaderboardPage() {
               marginBottom: 12,
             }}
           >
-            🏆 Global Rankings & Progression
+            Global Rankings & Progression
           </div>
           <h1 style={{ fontSize: 'clamp(1.9rem, 4.2vw, 2.8rem)', fontWeight: 900, margin: '0 0 10px', letterSpacing: '-0.02em' }}>
             AI Engineering Leaderboard
@@ -124,7 +124,7 @@ export default function LeaderboardPage() {
                 transition: 'all 0.18s ease',
               }}
             >
-              🌐 All-Time
+              All-Time
             </button>
             <button
               type="button"
@@ -143,7 +143,7 @@ export default function LeaderboardPage() {
                 transition: 'all 0.18s ease',
               }}
             >
-              ⚡ This Week
+              This Week
             </button>
           </div>
         </div>

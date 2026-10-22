@@ -28,10 +28,7 @@ export function Remember({ children }: { children: ReactNode }) {
         background: `${t.accentWarn}14`,
       }}
     >
-      <span aria-hidden="true" style={{ fontSize: 18, lineHeight: '1.4', flexShrink: 0 }}>
-        📌
-      </span>
-      <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.5, color: t.textPrimary }}>{children}</div>
+            <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.5, color: t.textPrimary }}>{children}</div>
     </div>
   );
 }

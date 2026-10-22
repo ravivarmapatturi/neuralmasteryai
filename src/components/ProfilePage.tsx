@@ -169,7 +169,7 @@ export default function ProfilePage() {
                       lineHeight: 1.4,
                     }}
                   >
-                    ✎ Edit
+                    Edit
                   </button>
                 </h1>
               )}

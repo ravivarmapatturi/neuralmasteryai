@@ -6,7 +6,7 @@ export type Concept = 'algebra' | 'gradient' | 'attention' | 'llm' | 'rag' | 'ag
 
 export const concepts: Array<{ id: Concept; label: string; route: string; title: string; subtitle: string; stages: string[] }> = [
   { id: 'algebra', label: 'Linear algebra', route: '/docs/mathematics-for-ai/overview', title: 'A vector transforms', subtitle: 'Matrix multiplication is the first computation behind every model.', stages: ['vector', 'matrix', 'transform', 'result'] },
-  { id: 'gradient', label: 'Gradient descent', route: '/docs/machine-learning/linear-regression', title: 'Loss moves downhill', subtitle: 'A real update rule changes the parameters on each step.', stages: ['parameters', 'prediction', 'loss', 'gradient'] },
+  { id: 'gradient', label: 'Gradient descent', route: '/docs/machine-learning/linear-regression', title: 'Loss moves downhill', subtitle: 'The update rule changes the parameters on each step.', stages: ['parameters', 'prediction', 'loss', 'gradient'] },
   { id: 'attention', label: 'Attention', route: '/docs/deep-learning/attention-transformers', title: 'Tokens attend to tokens', subtitle: 'Q · Kᵀ / √d → softmax → weighted values, computed in the page.', stages: ['tokens', 'Q K V', 'scores', 'attention'] },
   { id: 'llm', label: 'LLM', route: '/docs/llms-genai/overview', title: 'Logits become a next-token distribution', subtitle: 'Softmax turns a model score vector into probabilities.', stages: ['prompt', 'tokens', 'logits', 'probabilities'] },
   { id: 'rag', label: 'RAG', route: '/docs/llms-genai/overview', title: 'A query retrieves context', subtitle: 'Embedding similarity ranks the documents before generation.', stages: ['query', 'embed', 'retrieve', 'context'] },
@@ -71,7 +71,7 @@ export default function LiveComputation({
   lockConcept,
   hideTabs = false,
   className = '',
-  titlePrefix = 'LIVE CONCEPT SYSTEM',
+  titlePrefix = '',
 }: LiveComputationProps = {}) {
   const [internalSelected, setInternalSelected] = useState<Concept>(lockConcept ?? initialConcept);
   const selected = lockConcept ?? internalSelected;
@@ -95,19 +95,19 @@ export default function LiveComputation({
   const attentionValues = attention.weights[0];
 
   return <section className={`nm-live-computation ${className}`.trim()} aria-labelledby="live-computation-heading">
-    <div className="nm-live-topbar"><span><i aria-hidden="true" /> live deterministic computation</span>{' '}<span>{reducedMotion ? 'motion paused' : `step ${activeStage + 1}/${concept.stages.length}`}</span></div>
+    <div className="nm-live-topbar"><span><i aria-hidden="true" /> {concept.label}</span>{' '}<span>{reducedMotion ? 'motion paused' : `step ${activeStage + 1}/${concept.stages.length}`}</span></div>
     <div className="nm-live-body">
-      <div className="nm-live-heading"><div><p>{titlePrefix}</p><h2 id="live-computation-heading">{concept.title}</h2><small>{concept.subtitle}</small></div><Link to={concept.route}>Open lesson →</Link></div>
+      <div className="nm-live-heading"><div>{titlePrefix && <p>{titlePrefix}</p>}<h2 id="live-computation-heading">{concept.title}</h2><small>{concept.subtitle}</small></div><Link to={concept.route}>Open lesson →</Link></div>
       <div className="nm-live-pipeline" aria-label={`${concept.label} computation stages`}>
         {concept.stages.map((stage, index) => <div className={index <= activeStage ? 'is-active' : ''} key={stage}><span>{String(index + 1).padStart(2, '0')}</span><strong>{stage}</strong></div>)}
       </div>
       <div className="nm-live-output" aria-live="polite">
         {selected === 'algebra' && <><div className="nm-vector-line">[2, −1] <b>×</b> <span>[[1, 2], [−.5, 1]]</span> <b>=</b> <strong>[0, −2]</strong></div><p>Computed matrix × vector transformation</p></>}
         {selected === 'gradient' && <><div className="nm-gradient-readout"><span>θ = {gradientX.toFixed(3)}</span><span>loss = {gradientLoss.toFixed(3)}</span><span>∂L/∂θ = {(2 * gradientX).toFixed(3)}</span></div><div className="nm-loss-track"><b style={{ left: `${50 + Math.min(40, gradientX * 10)}%` }} /></div><p>θ ← θ − 0.14 · ∂L/∂θ</p></>}
-        {selected === 'attention' && <><div className="nm-token-row">{tokenize('models learn relationships').map((token, index) => <span className={index === 0 ? 'is-query' : ''} key={token}>{token}</span>)}</div><Bars labels={tokenize('models learn relationships')} values={attentionValues} /><p>Real Q · Kᵀ / √d scores normalized with softmax</p></>}
+        {selected === 'attention' && <><div className="nm-token-row">{tokenize('models learn relationships').map((token, index) => <span className={index === 0 ? 'is-query' : ''} key={token}>{token}</span>)}</div><Bars labels={tokenize('models learn relationships')} values={attentionValues} /><p>Q · Kᵀ / √d scores normalized with softmax</p></>}
         {selected === 'llm' && <><div className="nm-token-row"><span className="is-query">attention</span><b>→</b><span>next token</span></div><Bars labels={['mechanism', 'layer', 'pattern', 'model']} values={llmProbabilities} /><p>Softmax(logits) → probability distribution</p></>}
         {selected === 'rag' && <><div className="nm-rag-trace"><span>What is RAG?</span><b>→ embed →</b><strong>top context</strong></div><Bars labels={['retrieval.md', 'rag-systems.md', 'agents.md']} values={retrieval} /><p>Cosine-like similarity scores ranked before context assembly</p></>}
-        {selected === 'agent' && <><div className="nm-agent-trace">{['goal', 'plan', 'search docs', 'observe'].map((step, index) => <span className={index <= activeStage ? 'is-active' : ''} key={step}>{step}</span>)}</div><p>Execution trace: the active node advances through a real agent loop.</p></>}
+        {selected === 'agent' && <><div className="nm-agent-trace">{['goal', 'plan', 'search docs', 'observe'].map((step, index) => <span className={index <= activeStage ? 'is-active' : ''} key={step}>{step}</span>)}</div><p>Each step lights up as the agent loop reaches it.</p></>}
       </div>
     </div>
     {!hideTabs && !lockConcept && (

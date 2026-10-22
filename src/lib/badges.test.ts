@@ -7,7 +7,6 @@ describe('BADGES definition & unlock logic', () => {
     expect(new Set(ids).size).toBe(BADGES.length);
     BADGES.forEach((b) => {
       expect(b.title).toBeTruthy();
-      expect(b.icon).toBeTruthy();
       expect(b.description).toBeTruthy();
       expect(b.rarity).toBeTruthy();
       expect(b.category).toBeTruthy();

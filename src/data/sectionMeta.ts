@@ -28,7 +28,7 @@ export interface SectionMetaEntry {
 export const SECTION_META: Record<string, SectionMetaEntry> = {
   '/docs/category/foundations': {
     label: 'Foundations',
-    icon: '🧱',
+    icon: '',
     color: '#3DDC97',
     description: 'Python, systems basics, and the math the rest of the site leans on.',
     pageCount: 19,
@@ -47,7 +47,7 @@ export const SECTION_META: Record<string, SectionMetaEntry> = {
   },
   '/docs/category/models': {
     label: 'Models',
-    icon: '🧠',
+    icon: '',
     color: '#5B8CFF',
     description: 'Classical ML, deep learning, vision, NLP, speech, LLMs, graph ML, and RL.',
     pageCount: 83,
@@ -67,7 +67,7 @@ export const SECTION_META: Record<string, SectionMetaEntry> = {
   },
   '/docs/category/agents--applications': {
     label: 'Agents & Applications',
-    icon: '🤖',
+    icon: '',
     color: '#F4B942',
     description: 'Agents, and AI applied to science, healthcare, and other domains.',
     pageCount: 25,
@@ -82,7 +82,7 @@ export const SECTION_META: Record<string, SectionMetaEntry> = {
   },
   '/docs/category/systems--infrastructure': {
     label: 'Systems & Infrastructure',
-    icon: '🏗️',
+    icon: '',
     color: '#F45B5B',
     description: 'Designing, shipping, and running ML systems: MLOps, databases, frameworks.',
     pageCount: 58,
@@ -99,7 +99,7 @@ export const SECTION_META: Record<string, SectionMetaEntry> = {
   },
   '/docs/category/safety--evaluation': {
     label: 'Safety & Evaluation',
-    icon: '🛡️',
+    icon: '',
     color: '#B15BFF',
     description: 'Evaluation, security, alignment, and interpretability.',
     pageCount: 18,
@@ -115,7 +115,7 @@ export const SECTION_META: Record<string, SectionMetaEntry> = {
   },
   '/docs/category/research--build': {
     label: 'Research & Build',
-    icon: '🔬',
+    icon: '',
     color: '#31C4D9',
     description: 'Reading papers, building models from scratch, and full projects.',
     // 77 originally included Practice Problems' own page count; those 54
@@ -144,7 +144,7 @@ export const SECTION_META: Record<string, SectionMetaEntry> = {
   },
   '/docs/category/career': {
     label: 'Career',
-    icon: '🎯',
+    icon: '',
     color: '#FF7A45',
     description: 'Interview prep, roadmaps, and resources.',
     pageCount: 12,

@@ -171,7 +171,7 @@ export default function McpPacketJourneyInspector() {
               cursor: 'pointer'
             }}
           >
-            {showRawJson ? '📋 Showing Raw JSON' : '🔍 Show Raw JSON'}
+            {showRawJson ? 'Showing Raw JSON' : 'Show Raw JSON'}
           </button>
 
           <button
@@ -187,7 +187,7 @@ export default function McpPacketJourneyInspector() {
               cursor: 'pointer'
             }}
           >
-            {isDebugMode ? '🐛 Debug Mode: ON' : '🐛 Debug Mode: OFF'}
+            {isDebugMode ? 'Debug Mode: ON' : 'Debug Mode: OFF'}
           </button>
         </div>
       </div>
@@ -241,7 +241,7 @@ export default function McpPacketJourneyInspector() {
       {isDebugMode && (
         <div style={{ padding: '12px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.08)', border: '1px solid #10b981' }}>
           <div style={{ fontSize: '12px', fontWeight: 700, color: '#10b981', marginBottom: '4px' }}>
-            🐛 Protocol Debug Trace (Step {currentStep.step})
+            Protocol Debug Trace (Step {currentStep.step})
           </div>
           <div style={{ display: 'flex', gap: '16px', fontSize: '11px', color: '#94a3b8', fontFamily: 'monospace', flexWrap: 'wrap' }}>
             {Object.entries(currentStep.debugInfo).map(([k, v]) => (

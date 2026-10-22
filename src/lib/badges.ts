@@ -82,7 +82,6 @@ export interface BadgeProgress {
 export interface Badge {
   id: string;
   title: string;
-  icon: string;
   description: string;
   category: BadgeCategory;
   rarity: BadgeRarity;
@@ -96,7 +95,6 @@ export const BADGES: Badge[] = [
   {
     id: 'first-step',
     title: 'Curious Mind',
-    icon: '🌱',
     description: 'Began your journey by marking your first curriculum lesson understood.',
     category: 'learning',
     rarity: 'common',
@@ -107,7 +105,6 @@ export const BADGES: Badge[] = [
   {
     id: 'deep-reader',
     title: 'Deep Reader',
-    icon: '📚',
     description: 'Marked 10 core lesson pages as thoroughly understood.',
     category: 'learning',
     rarity: 'uncommon',
@@ -118,7 +115,6 @@ export const BADGES: Badge[] = [
   {
     id: 'scholar',
     title: 'Neural Scholar',
-    icon: '🎓',
     description: 'Marked 50 curriculum lessons understood across modern AI.',
     category: 'learning',
     rarity: 'rare',
@@ -129,7 +125,6 @@ export const BADGES: Badge[] = [
   {
     id: 'polymath',
     title: 'AI Polymath',
-    icon: '🏛️',
     description: 'Marked 150 lessons understood covering foundations, models, and systems.',
     category: 'learning',
     rarity: 'epic',
@@ -140,7 +135,6 @@ export const BADGES: Badge[] = [
   {
     id: 'deep-diver',
     title: 'Deep Explorer',
-    icon: '🔍',
     description: 'Expanded 5 deep-dive concept breakdowns to master theoretical nuances.',
     category: 'learning',
     rarity: 'uncommon',
@@ -151,7 +145,6 @@ export const BADGES: Badge[] = [
   {
     id: 'spaced-memory',
     title: 'Active Recall',
-    icon: '🔄',
     description: 'Completed 5 scheduled spaced-repetition reviews.',
     category: 'learning',
     rarity: 'rare',
@@ -164,7 +157,6 @@ export const BADGES: Badge[] = [
   {
     id: 'first-code',
     title: 'First Code',
-    icon: '💻',
     description: 'Successfully solved your first hands-on practice problem.',
     category: 'practice',
     rarity: 'common',
@@ -175,7 +167,6 @@ export const BADGES: Badge[] = [
   {
     id: 'problem-solver',
     title: 'Code Ninja',
-    icon: '⚡',
     description: 'Successfully implemented 5 hands-on practice problems from scratch.',
     category: 'practice',
     rarity: 'uncommon',
@@ -186,7 +177,6 @@ export const BADGES: Badge[] = [
   {
     id: 'problem-veteran',
     title: 'Algorithmic Builder',
-    icon: '🛠️',
     description: 'Solved 25 interactive practice problems.',
     category: 'practice',
     rarity: 'rare',
@@ -197,7 +187,6 @@ export const BADGES: Badge[] = [
   {
     id: 'century-solver',
     title: 'Century Solver',
-    icon: '💯',
     description: 'Solved 100 hands-on practice problems across core AI architectures.',
     category: 'practice',
     rarity: 'epic',
@@ -208,7 +197,6 @@ export const BADGES: Badge[] = [
   {
     id: 'legend-solver',
     title: 'Legendary Implementer',
-    icon: '👑',
     description: 'Solved 250 problems spanning LLMs, classical ML, and agent systems.',
     category: 'practice',
     rarity: 'legendary',
@@ -219,7 +207,6 @@ export const BADGES: Badge[] = [
   {
     id: 'system-architect',
     title: 'System Architect',
-    icon: '🏗️',
     description: 'Completed a full end-to-end ML system design challenge.',
     category: 'practice',
     rarity: 'rare',
@@ -230,7 +217,6 @@ export const BADGES: Badge[] = [
   {
     id: 'principal-architect',
     title: 'Principal Architect',
-    icon: '🏢',
     description: 'Completed 5 production-scale ML system design challenges.',
     category: 'practice',
     rarity: 'epic',
@@ -243,7 +229,6 @@ export const BADGES: Badge[] = [
   {
     id: 'clean-coder',
     title: 'Independent Thinker',
-    icon: '💡',
     description: 'Solved 5 practice problems completely independently without opening hints.',
     category: 'difficulty',
     rarity: 'uncommon',
@@ -254,7 +239,6 @@ export const BADGES: Badge[] = [
   {
     id: 'iron-mind',
     title: 'Zero Hint Master',
-    icon: '🛡️',
     description: 'Solved 20 practice problems with zero hints used.',
     category: 'difficulty',
     rarity: 'rare',
@@ -265,7 +249,6 @@ export const BADGES: Badge[] = [
   {
     id: 'hard-first',
     title: 'Hard Problem Conqueror',
-    icon: '⚔️',
     description: 'Solved your first Hard-difficulty algorithmic or architecture challenge.',
     category: 'difficulty',
     rarity: 'rare',
@@ -276,7 +259,6 @@ export const BADGES: Badge[] = [
   {
     id: 'hard-ten',
     title: 'Titan of Complexity',
-    icon: '🌋',
     description: 'Solved 10 Hard-difficulty challenges from scratch.',
     category: 'difficulty',
     rarity: 'epic',
@@ -287,7 +269,6 @@ export const BADGES: Badge[] = [
   {
     id: 'hard-thirty',
     title: 'Grand Complexity Master',
-    icon: '🌌',
     description: 'Solved 30 Hard-difficulty challenges across transformers, kernels, and distributed AI.',
     category: 'difficulty',
     rarity: 'legendary',
@@ -300,7 +281,6 @@ export const BADGES: Badge[] = [
   {
     id: 'streak-3',
     title: '3-Day Spark',
-    icon: '🔥',
     description: 'Maintained a consistent learning streak for 3 consecutive days.',
     category: 'consistency',
     rarity: 'common',
@@ -311,7 +291,6 @@ export const BADGES: Badge[] = [
   {
     id: 'streak-7',
     title: '7-Day Titan',
-    icon: '⚡',
     description: 'Demonstrated dedication with a full 7-day learning streak.',
     category: 'consistency',
     rarity: 'uncommon',
@@ -322,7 +301,6 @@ export const BADGES: Badge[] = [
   {
     id: 'streak-14',
     title: 'Fortnight Flame',
-    icon: '🌟',
     description: 'Maintained a continuous daily learning streak for 14 straight days.',
     category: 'consistency',
     rarity: 'rare',
@@ -333,7 +311,6 @@ export const BADGES: Badge[] = [
   {
     id: 'streak-30',
     title: 'Monthly Marathon',
-    icon: '🏆',
     description: 'Achieved an unbroken 30-day streak of daily AI practice.',
     category: 'consistency',
     rarity: 'epic',
@@ -344,7 +321,6 @@ export const BADGES: Badge[] = [
   {
     id: 'streak-100',
     title: 'Centurion of Focus',
-    icon: '✨',
     description: 'Demonstrated world-class consistency with a 100-day unbroken streak.',
     category: 'consistency',
     rarity: 'mythic',
@@ -355,7 +331,6 @@ export const BADGES: Badge[] = [
   {
     id: 'welcome',
     title: 'Welcome Aboard',
-    icon: '👋',
     description: 'Signed in for the first time and synced your progress across devices.',
     category: 'consistency',
     rarity: 'common',
@@ -368,7 +343,6 @@ export const BADGES: Badge[] = [
   {
     id: 'xp-novice',
     title: 'Neural Novice',
-    icon: '🧠',
     description: 'Built core foundations across deep learning concepts.',
     category: 'mastery',
     rarity: 'common',
@@ -379,7 +353,6 @@ export const BADGES: Badge[] = [
   {
     id: 'xp-apprentice',
     title: 'Transformer Apprentice',
-    icon: '🚀',
     description: 'Gained momentum with deep conceptual understanding.',
     category: 'mastery',
     rarity: 'uncommon',
@@ -390,7 +363,6 @@ export const BADGES: Badge[] = [
   {
     id: 'xp-architect',
     title: 'Attention Architect',
-    icon: '🔮',
     description: 'Mastered multi-head attention and transformer mechanics.',
     category: 'mastery',
     rarity: 'rare',
@@ -401,7 +373,6 @@ export const BADGES: Badge[] = [
   {
     id: 'xp-master',
     title: 'Neural Master',
-    icon: '👑',
     description: 'Reached elite mastery status in AI & Machine Learning.',
     category: 'mastery',
     rarity: 'epic',
@@ -412,7 +383,6 @@ export const BADGES: Badge[] = [
   {
     id: 'xp-grandmaster',
     title: 'Grandmaster of AI',
-    icon: '🪐',
     description: 'Surpassed 5,000 XP in comprehensive AI engineering.',
     category: 'mastery',
     rarity: 'legendary',
@@ -423,7 +393,6 @@ export const BADGES: Badge[] = [
   {
     id: 'neural-luminary',
     title: 'Neural Luminary',
-    icon: '💠',
     description: 'Crossed 15,000 XP — true mastery of theory, practice, and systems.',
     category: 'mastery',
     rarity: 'mythic',

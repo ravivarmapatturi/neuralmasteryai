@@ -25,7 +25,7 @@ export default function McpMasterclassHud({ xp, completedItems }: { xp: number; 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <span style={{ fontSize: '14px', fontWeight: 800, color: '#f8fafc' }}>
-            ⚡ MCP MASTERCLASS HUD
+            MCP MASTERCLASS HUD
           </span>
           <span style={{ fontSize: '12px', padding: '2px 8px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.2)', color: '#34d399', border: '1px solid #10b981', fontWeight: 700 }}>
             +{xp} XP Earned

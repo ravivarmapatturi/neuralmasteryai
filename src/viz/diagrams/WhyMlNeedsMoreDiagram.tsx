@@ -26,7 +26,7 @@ export default function WhyMlNeedsMoreDiagram() {
         ))}
         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0.7rem', borderRadius: 6, background: revealed ? `${hiddenColor}15` : t.surfaceAlt, opacity: revealed ? 1 : 0.4 }}>
           <span style={{ fontSize: 11, color: revealed ? hiddenColor : t.textMuted }}>Model accuracy on real inputs</span>
-          <span style={{ fontSize: 10.5, fontWeight: 700, color: revealed ? hiddenColor : t.textMuted }}>{revealed ? '⚠ degrading, invisible to code CI' : '(not checked by code CI)'}</span>
+          <span style={{ fontSize: 10.5, fontWeight: 700, color: revealed ? hiddenColor : t.textMuted }}>{revealed ? 'degrading, invisible to code CI' : '(not checked by code CI)'}</span>
         </div>
       </div>
       <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color: t.textMuted, marginTop: 10 }}>

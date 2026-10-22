@@ -5,10 +5,10 @@ import { describe, expect, it } from 'vitest';
 import LiveComputation from './LiveComputation';
 
 describe('LiveComputation', () => {
-  it('starts on the real attention computation and links to its lesson', () => {
+  it('starts on the attention computation and links to its lesson', () => {
     render(<MemoryRouter><LiveComputation /></MemoryRouter>);
     expect(screen.getByRole('heading', { name: /Tokens attend to tokens/i })).toBeInTheDocument();
-    expect(screen.getByText(/Real Q · Kᵀ/i)).toBeInTheDocument();
+    expect(screen.getByText('Q · Kᵀ / √d scores normalized with softmax')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Open lesson/i })).toHaveAttribute('href', '/docs/deep-learning/attention-transformers');
   });
 

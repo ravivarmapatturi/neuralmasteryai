@@ -1,6 +1,6 @@
 /**
  * Seven line-art domain icons, one per top-level SECTION_META group,
- * replacing the plain emoji (🧱🧠🤖🏗️🛡️🔬🎯) used until now. Drawn in the
+ * replacing the plain emoji () used until now. Drawn in the
  * same visual grammar as every interactive diagram elsewhere on this site
  * (src/viz/diagrams/*.tsx): stroke-based, rounded line caps/joins, no
  * heavy fills, a single `color` prop instead of a fixed palette -- so a

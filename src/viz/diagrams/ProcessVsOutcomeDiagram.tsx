@@ -8,7 +8,7 @@ import { DIAGRAM_TYPE, DIAGRAM_RADIUS } from './diagramSystem';
 // factorization but contradicts its own work in the final line. Grading
 // each trace two different ways is real boolean logic on real content,
 // not a fabricated conclusion.
-const TRACE_A = { steps: ['91 is an odd number.', 'Odd numbers are not prime. ⚠ invalid rule -- oddness says nothing about primality'], answer: 'Not prime', outcomeCorrect: true, processValid: false };
+const TRACE_A = { steps: ['91 is an odd number.', 'Odd numbers are not prime. invalid rule -- oddness says nothing about primality'], answer: 'Not prime', outcomeCorrect: true, processValid: false };
 const TRACE_B = { steps: ['Test small primes: 91 / 7 = 13 exactly.', '91 = 7 × 13, a valid factorization.'], answer: 'Prime', outcomeCorrect: false, processValid: true };
 
 export default function ProcessVsOutcomeDiagram() {

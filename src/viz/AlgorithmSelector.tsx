@@ -5,10 +5,10 @@ import { VisualizationContainer, VisualizationHeader, VizButton } from './primit
 import { TREE, RESULTS, type TreeOption } from '../data/algorithmSelectorTree';
 
 const ROOT_ICONS: Record<string, string> = {
-  'Predict a number (regression)': '📈',
-  'Predict a category (classification)': '🏷️',
-  'Find groups in unlabeled data (clustering)': '🌀',
-  'Reduce/compress the number of features': '📉',
+  'Predict a number (regression)': '',
+  'Predict a category (classification)': '',
+  'Find groups in unlabeled data (clustering)': '',
+  'Reduce/compress the number of features': '',
 };
 
 interface PathStep {

@@ -20,10 +20,10 @@ export default function McpCapabilityMatrixWidget() {
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
         {[
-          { id: 'tools', label: '🛠️ Tools (Actions)', color: '#38bdf8' },
-          { id: 'resources', label: '📄 Resources (Data Feeds)', color: '#a855f7' },
-          { id: 'prompts', label: '📋 Prompts (Templates)', color: '#f59e0b' },
-          { id: 'sampling', label: '🔄 Sampling (LLM Feedback)', color: '#10b981' },
+          { id: 'tools', label: 'Tools (Actions)', color: '#38bdf8' },
+          { id: 'resources', label: 'Resources (Data Feeds)', color: '#a855f7' },
+          { id: 'prompts', label: 'Prompts (Templates)', color: '#f59e0b' },
+          { id: 'sampling', label: 'Sampling (LLM Feedback)', color: '#10b981' },
         ].map((tab) => (
           <button
             key={tab.id}

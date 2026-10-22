@@ -37,6 +37,7 @@ import { useGamification } from '../../contexts/GamificationContext';
 import { normalizeRoute, getFlatPages, getPageByRoute, getPracticeProblems } from '../../lib/contentTree';
 import { isSolved, recommendedProblem, relatedLesson } from '../../lib/mastery';
 import { getProblemAward, getMasteryTier } from '../../lib/gamification';
+import { MoonIcon, SunIcon } from '../icons/UiIcons';
 
 interface PracticeWorkspaceProps {
   problemId: string;
@@ -139,7 +140,7 @@ export default function PracticeWorkspace({ problemId, mdxContent }: PracticeWor
             transition: 'all 0.15s ease',
           }}
         >
-          <span>🎨</span> Canvas
+          Canvas
         </button>
       )}
       <button
@@ -163,7 +164,7 @@ export default function PracticeWorkspace({ problemId, mdxContent }: PracticeWor
           transition: 'all 0.15s ease',
         }}
       >
-        <span>🐍</span> Python
+        Python
       </button>
       {hasGuided && (
         <button
@@ -187,7 +188,7 @@ export default function PracticeWorkspace({ problemId, mdxContent }: PracticeWor
             transition: 'all 0.15s ease',
           }}
         >
-          <span>🪜</span> Guided
+          Guided
         </button>
       )}
       {hasFramework && (
@@ -212,7 +213,7 @@ export default function PracticeWorkspace({ problemId, mdxContent }: PracticeWor
             transition: 'all 0.15s ease',
           }}
         >
-          <span>🕸️</span> Framework
+          Framework
         </button>
       )}
     </div>
@@ -364,7 +365,7 @@ export default function PracticeWorkspace({ problemId, mdxContent }: PracticeWor
         showRewardToast({
           title: 'Problem Solved!',
           subtitle: `All ${res.caseResults.length} test cases passed. Real browser verification complete!`,
-          icon: '⚡',
+          icon: '',
           type: 'celebration',
         });
       }
@@ -633,7 +634,7 @@ export default function PracticeWorkspace({ problemId, mdxContent }: PracticeWor
               cursor: 'pointer',
             }}
           >
-            {colorMode === 'dark' ? '☀' : '☾'}
+            {colorMode === 'dark' ? <SunIcon /> : <MoonIcon />}
           </button>
 
           <AuthButton />

@@ -21,7 +21,7 @@ export default function FeatureFreshnessDiagram() {
       <Slider label={`Feature age: ${staleMin} min`} min={0} max={20} step={1} value={staleMin} onChange={setStaleMin} />
       <SketchBox color={isStale ? badColor : okColor} strokeWidth={1.5} style={{ marginTop: 10 }}>
         <div style={{ padding: '0.7rem', borderRadius: 9, background: isStale ? `${badColor}15` : `${okColor}15`, textAlign: 'center' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: isStale ? badColor : okColor, fontFamily: HAND_FONT }}>{isStale ? '⚠ stale -- defeats the point of real-time' : '✓ fresh'}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: isStale ? badColor : okColor, fontFamily: HAND_FONT }}>{isStale ? 'stale -- defeats the point of real-time' : '✓ fresh'}</div>
         </div>
       </SketchBox>
       <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color: t.textMuted, marginTop: 8 }}>

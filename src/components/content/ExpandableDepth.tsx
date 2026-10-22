@@ -8,10 +8,10 @@ import { SketchRect } from '../notebook/RoughShape';
 type Depth = 'eli5' | 'deeper' | 'solution' | 'qa';
 
 const DEPTH_META: Record<Depth, { icon: string; label: string }> = {
-  eli5: { icon: '💡', label: 'Simple Explanation' },
-  deeper: { icon: '🔬', label: 'Go deeper' },
-  solution: { icon: '🔑', label: 'Show solution' },
-  qa: { icon: '❓', label: 'Question' },
+  eli5: { icon: '', label: 'Simple Explanation' },
+  deeper: { icon: '', label: 'Go deeper' },
+  solution: { icon: '', label: 'Show solution' },
+  qa: { icon: '', label: 'Question' },
 };
 
 /**
@@ -108,7 +108,7 @@ function ExpandableDepth({
           color,
         }}
       >
-        <span aria-hidden="true">{meta.icon}</span>
+        {meta.icon && <span aria-hidden="true">{meta.icon}</span>}
         <span>{title ?? meta.label}</span>
         <span
           aria-hidden="true"

@@ -25,15 +25,12 @@ export default function AboutPage() {
           </h1>
           <div style={{ fontSize: 15, lineHeight: 1.75, color: 'var(--nm-text-secondary)' }}>
             <p>
-              Neural Mastery is an interactive AI engineering curriculum: learn AI from first principles through computed
-              visualizations and executable practice, from mathematics to LLMs and agents. Every explanation is paired with a
-              real, running computation you can change and re-run, not just a static diagram or a wall of prose — and every
-              practice problem runs real Python (via Pyodide, a real CPython-in-WebAssembly runtime) directly in your browser,
-              with real tests you actually pass or fail.
+              Neural Mastery teaches AI engineering from the maths up to LLMs and agents. Many lessons include a widget
+              you can change to see the computation respond, and the practice problems run Python in your browser (via
+              Pyodide) against test cases.
             </p>
             <p>
-              It's built and maintained by a single person, as a real, ongoing project rather than a finished product —
-              content and features ship continuously, and the site is genuinely still growing.
+              One person builds and maintains it, and new lessons, problems and blog posts are added regularly.
             </p>
             <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--nm-text-primary)', marginTop: '2rem', marginBottom: '0.75rem' }}>
               Questions, feedback, or found a bug?

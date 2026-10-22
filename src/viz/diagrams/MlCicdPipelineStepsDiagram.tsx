@@ -37,7 +37,7 @@ export default function MlCicdPipelineStepsDiagram() {
             >
               <span style={{ fontSize: 10, fontWeight: 700, color: c, width: 16 }}>{i + 1}</span>
               <span style={{ fontSize: 11, fontWeight: isActive ? 700 : 500, color: isActive ? c : t.textPrimary }}>{s.label}</span>
-              {isGate && <span style={{ marginLeft: 'auto', fontSize: 8.5, color: gateColor, fontWeight: 700 }}>⚠ can halt pipeline</span>}
+              {isGate && <span style={{ marginLeft: 'auto', fontSize: 8.5, color: gateColor, fontWeight: 700 }}>can halt pipeline</span>}
             </div>
           );
         })}

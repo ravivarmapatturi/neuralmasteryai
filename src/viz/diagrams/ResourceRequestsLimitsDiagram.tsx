@@ -31,7 +31,7 @@ export default function ResourceRequestsLimitsDiagram() {
         <text x={xFor(limitMB)} y={84} textAnchor="middle" fontSize={9} fill={dangerColor}>limit ({limitMB}MB)</text>
       </svg>
       <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color: oomKilled ? dangerColor : t.textMuted, fontWeight: oomKilled ? 700 : 400, marginTop: 4 }}>
-        {oomKilled ? '⚠ OOM-killed' : 'Running normally'}
+        {oomKilled ? 'OOM-killed' : 'Running normally'}
       </div>
     </VisualizationContainer>
   );

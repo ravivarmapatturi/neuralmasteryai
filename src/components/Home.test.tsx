@@ -36,7 +36,7 @@ describe('Home', () => {
     renderHome()
     expect(screen.getByRole('heading', { level: 1, name: 'All topics' })).toBeInTheDocument()
     expect(screen.queryByText(/^Continue: /)).not.toBeInTheDocument()
-    expect(screen.queryByText(/Attention Step-Through/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Sentence \(up to 12 tokens\)/)).not.toBeInTheDocument() // the old hero widget
   })
 
   it('adds a real continue link once a page is marked understood', () => {

@@ -13,7 +13,7 @@ import { SECTION_META, SECTION_ORDER, getGroupForSubsection } from '../data/sect
 // histories is a plain, safe set union (see mergeEvents) instead of a
 // bespoke reconciliation for a mutable counter.
 
-export type AwardKind = 'mark' | 'complete' | 'design' | 'flashcard' | 'signin' | 'review' | 'depth' | 'architecture';
+export type AwardKind = 'mark' | 'complete' | 'design' | 'flashcard' | 'signin' | 'review' | 'depth' | 'architecture' | 'blog';
 
 export interface AwardEvent {
   permalink: string;
@@ -114,6 +114,11 @@ export const REVIEW_COMPLETED_POINTS = 10;
  * First-expansion-only per block, same no-double-award contract as every
  * other award kind. */
 export const DEPTH_REVEAL_POINTS = 2;
+
+/** Reading a blog post to the end and marking it read. Same scale as
+ * marking a lesson understood: a post is about as long as a lesson. Once
+ * per post, like every other award. */
+export const BLOG_READ_POINTS = 10;
 
 /** Local (not UTC) calendar date as YYYY-MM-DD -- deliberately built from
  * Date's local getters, not toISOString() (which is UTC-based and would
@@ -401,6 +406,7 @@ export function computeRLValuation(
   else if (actionKind === 'design') immediateReward = SYSTEM_DESIGN_CHALLENGE_POINTS;
   else if (actionKind === 'architecture') immediateReward = ARCHITECTURE_COMPLETED_POINTS;
   else if (actionKind === 'flashcard') immediateReward = FLASHCARD_REVEAL_POINTS;
+  else if (actionKind === 'blog') immediateReward = BLOG_READ_POINTS;
 
   const streak = computeStreak(activeDates, today);
   const streakBonus = 1.0 + 0.1 * Math.min(streak, 7);

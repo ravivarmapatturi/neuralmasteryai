@@ -169,7 +169,7 @@ export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as O
               })}
               {/* minimum marker */}
               <text x={xScale(0)} y={yScale(0) + 4} textAnchor="middle" fontSize={14} fill={t.textPrimary}>
-                ★
+               
               </text>
               {/* start marker */}
               <rect x={xScale(start.x) - 4} y={yScale(start.y) - 4} width={8} height={8} fill={t.textSecondary} />

@@ -10,6 +10,7 @@ import {
   DAILY_SIGNIN_POINTS,
   REVIEW_COMPLETED_POINTS,
   DEPTH_REVEAL_POINTS,
+  BLOG_READ_POINTS,
   hasAward,
   totalPoints,
   weeklyPoints as computeWeeklyPoints,
@@ -107,6 +108,8 @@ interface GamificationContextValue {
   awardDepthRevealed: (id: string) => void;
   /** Awards points for correctly designing and verifying an agent architecture canvas. */
   awardArchitectureCompleted: (permalink: string, points?: number) => void;
+  /** Marking a blog post read (BlogPostPage): once per post. */
+  awardBlogRead: (slug: string) => void;
 }
 
 const GamificationContext = createContext<GamificationContextValue | null>(null);
@@ -326,7 +329,7 @@ export function GamificationProvider({ children }: { children: React.ReactNode }
         const todaySignInKey = `signin:${localDateString(new Date(Date.now()))}`;
         if (!hasAward(merged, todaySignInKey, 'signin')) {
           merged = [...merged, { permalink: todaySignInKey, kind: 'signin', date: localDateString(new Date(Date.now())), points: DAILY_SIGNIN_POINTS }];
-          showRewardToast({ title: 'Welcome Back!', subtitle: `Great work! Earned +${DAILY_SIGNIN_POINTS} XP`, xp: DAILY_SIGNIN_POINTS, icon: '👋' });
+          showRewardToast({ title: 'Welcome Back!', subtitle: `Great work! Earned +${DAILY_SIGNIN_POINTS} XP`, xp: DAILY_SIGNIN_POINTS, icon: '' });
           void import('../lib/firebase').then(({ trackFeatureEvent }) => trackFeatureEvent('daily_signin_reward', { points: DAILY_SIGNIN_POINTS }));
         }
         if (cancelled) return;
@@ -463,14 +466,15 @@ export function GamificationProvider({ children }: { children: React.ReactNode }
 
       // Celebratory Tada Confetti & Toast Notification
       const TOAST_BY_KIND: Record<AwardEvent['kind'], { title: string; icon: string }> = {
-        complete: { title: 'Problem Solved!', icon: '🎉' },
-        design: { title: 'Design Completed!', icon: '🏗️' },
-        mark: { title: 'Page Understood!', icon: '📖' },
-        signin: { title: 'Welcome Back!', icon: '👋' },
-        review: { title: 'Review Complete!', icon: '🔁' },
-        depth: { title: 'Went Deeper!', icon: '🔍' },
-        flashcard: { title: 'Flashcard Revealed!', icon: '💡' },
-        architecture: { title: 'Architecture Verified!', icon: '📐' },
+        complete: { title: 'Problem Solved!', icon: '' },
+        design: { title: 'Design Completed!', icon: '' },
+        mark: { title: 'Page Understood!', icon: '' },
+        signin: { title: 'Welcome Back!', icon: '' },
+        review: { title: 'Review Complete!', icon: '' },
+        depth: { title: 'Went Deeper!', icon: '' },
+        flashcard: { title: 'Flashcard Revealed!', icon: '' },
+        architecture: { title: 'Architecture Verified!', icon: '' },
+        blog: { title: 'Post Read', icon: '' },
       };
       const toastMeta = TOAST_BY_KIND[kind];
       showRewardToast({
@@ -487,7 +491,6 @@ export function GamificationProvider({ children }: { children: React.ReactNode }
           showRewardToast({
             title: `Badge Unlocked: ${b.title}`,
             subtitle: b.description,
-            icon: b.icon,
             type: 'badge',
           });
         }, 600);
@@ -511,6 +514,7 @@ export function GamificationProvider({ children }: { children: React.ReactNode }
     [award],
   );
   const awardDepthRevealed = useCallback((id: string) => award(id, 'depth', DEPTH_REVEAL_POINTS), [award]);
+  const awardBlogRead = useCallback((slug: string) => award(`/blog/${slug}`, 'blog', BLOG_READ_POINTS), [award]);
   const awardSystemDesignCompleted = useCallback(
     (permalink: string) => award(permalink, 'design', SYSTEM_DESIGN_CHALLENGE_POINTS),
     [award],
@@ -583,6 +587,7 @@ export function GamificationProvider({ children }: { children: React.ReactNode }
     awardReviewCompleted,
     awardDepthRevealed,
     awardArchitectureCompleted,
+    awardBlogRead,
   };
 
   return <GamificationContext.Provider value={value}>{children}</GamificationContext.Provider>;
