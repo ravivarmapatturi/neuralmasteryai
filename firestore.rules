@@ -52,5 +52,37 @@ service cloud.firestore {
       allow read: if true;
       allow write: if request.auth != null && request.auth.uid == userId;
     }
+
+    // Admins: the site owner, by verified email, plus anyone with an
+    // admins/{uid} document. Those documents are added by hand in the
+    // Firebase console: no client can write them. email_verified matters:
+    // the site also allows email/password sign-up, and an unverified
+    // account could claim any address.
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && (request.auth.token.email == 'ravivarmapatturi@gmail.com'
+            || exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    // An admin may read their own admins/{uid} entry (the editor uses it
+    // to decide whether to show itself). Nobody may write it from a client.
+    match /admins/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Blog posts written in the site's editor (src/lib/blogStore.ts).
+    // Anyone may read a published post. Drafts, and every write, are
+    // admin-only. Writes must keep the document's slug equal to its id,
+    // use a known status, and stay a sensible size.
+    match /blogPosts/{slug} {
+      allow read: if resource.data.status == 'published' || isAdmin();
+      allow create, update: if isAdmin()
+        && request.resource.data.slug == slug
+        && request.resource.data.status in ['draft', 'published']
+        && request.resource.data.title is string && request.resource.data.title.size() > 0
+        && request.resource.data.body is string && request.resource.data.body.size() < 200000;
+      allow delete: if isAdmin();
+    }
   }
 }

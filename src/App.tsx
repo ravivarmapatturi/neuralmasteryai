@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { MDXProvider } from '@mdx-js/react';
+import { mdxComponents } from './components/content/mdxComponents';
 import { ThemeProvider } from './theme/ThemeProvider';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProgressProvider } from './contexts/ProgressContext';
@@ -13,15 +14,13 @@ import PracticeTrackPage from './components/PracticeTrackPage';
 import ProgressPage from './components/ProgressPage';
 import BlogListPage from './components/BlogListPage';
 import BlogPostPage from './components/BlogPostPage';
+import BlogEditorPage from './components/BlogEditorPage';
 import ProfilePage from './components/ProfilePage';
 import LeaderboardPage from './components/LeaderboardPage';
 import AboutPage from './components/AboutPage';
 import PrivacyPolicyPage from './components/PrivacyPolicyPage';
 import TermsOfServicePage from './components/TermsOfServicePage';
 import NotFoundPage from './components/NotFoundPage';
-import ThemedImage from './components/ThemedImage';
-import MDXCodeBlock from './components/MDXCodeBlock';
-import MDXLink from './components/MDXLink';
 import AnalyticsTracker from './components/AnalyticsTracker';
 import Footer from './components/layout/Footer';
 import { ConfettiCanvas } from './components/ui/Confetti';
@@ -45,7 +44,7 @@ function PracticeProblemRedirect() {
 // `a` is overridden so internal doc links (the vast majority of links in
 // migrated content) get client-side, basename-aware navigation instead of
 // a full page reload to a base-path-less URL -- see MDXLink.tsx.
-const mdxComponents = { ThemedImage, pre: MDXCodeBlock, a: MDXLink };
+
 
 export default function App() {
   return (
@@ -75,6 +74,8 @@ export default function App() {
                       <Route path="/practice/track/:topicSlug" element={<PracticeTrackPage />} />
                       <Route path="/practice/:slug" element={<PracticeProblemLayout />} />
                       <Route path="/blog" element={<BlogListPage />} />
+                      <Route path="/blog/write" element={<BlogEditorPage />} />
+                      <Route path="/blog/write/:slug" element={<BlogEditorPage />} />
                       <Route path="/blog/:slug" element={<BlogPostPage />} />
                       <Route path="/progress" element={<ProgressPage />} />
                       <Route path="/profile" element={<ProfilePage />} />
