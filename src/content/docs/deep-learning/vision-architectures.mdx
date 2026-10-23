@@ -1,7 +1,7 @@
 ---
-title: "Vision Architectures: Transformers, Detection & Segmentation"
+title: "Vision Architectures, In Full Depth"
 sidebar_position: 7.5
-description: "Vision Transformer variants, plus detection and segmentation architectures built on attention instead of convolution -- what comes after image classification."
+description: "What comes after image classification: Vision Transformers and why plain attention gets expensive, Swin and DeiT, object detection from R-CNN to YOLO and DETR with IoU and non-max suppression written out, segmentation with U-Net, Mask R-CNN and Segment Anything, and how to choose."
 ---
 
 import ViTVariantsDiagram from '../../../viz/diagrams/ViTVariantsDiagram';
@@ -10,66 +10,278 @@ import TwoStageVsOneStageDetectionDiagram from '../../../viz/diagrams/TwoStageVs
 import DetrSetPredictionDiagram from '../../../viz/diagrams/DetrSetPredictionDiagram';
 import SemanticVsInstanceSegmentationDiagram from '../../../viz/diagrams/SemanticVsInstanceSegmentationDiagram';
 import UNetArchitectureDiagram from '../../../viz/diagrams/UNetArchitectureDiagram';
-import MaskRcnnBranchesDiagram from '../../../viz/diagrams/MaskRcnnBranchesDiagram';
-import VisionArchitectureSelectionDiagram from '../../../viz/diagrams/VisionArchitectureSelectionDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Vision Architectures: Transformers, Detection & Segmentation
+# Vision Architectures, In Full Depth
 
-[CNNs](/docs/deep-learning/cnns) covered image classification. Real vision systems usually need more: *where* is the object (detection), *which pixels* belong to it (segmentation), and increasingly, all of that built on attention rather than convolution.
+[Convolutional Neural Networks](/docs/deep-learning/cnns) answered one question about an image: what is in it? Most real vision systems need more. A self-driving car needs to know *where* every pedestrian is. A radiology tool needs *exactly which pixels* are tumour. A warehouse robot needs to tell *this* box from *that* box. This page covers the architectures built for those questions, and the shift from convolution to attention underneath them: how Vision Transformers work and why their cost grows so fast with image size, how Swin brought back locality, how object detectors evolved from two-stage pipelines to single passes and then to transformers that predict sets, the two calculations every detector depends on (IoU and non-max suppression), written out and checked, and how segmentation models label every pixel.
 
-## Vision Transformers, In More Depth
+<ELI5>
 
-[Attention & Transformers](/docs/deep-learning/attention-transformers) introduced the core ViT idea: split an image into patches, treat them as tokens, run a standard Transformer encoder. A few variants matter beyond the base design:
+Look at a photo of a busy street and answer three questions of increasing difficulty.
 
-- **ViT (Vision Transformer)** — the original: fixed-size non-overlapping patches, a learned `[CLS]` token whose final representation is used for classification, standard learned or sinusoidal positional embeddings. Needs large-scale pretraining data to beat CNNs, because it lacks convolution's built-in locality bias.
-- **DeiT (Data-efficient Image Transformer)** — trains a ViT effectively on much smaller datasets (ImageNet-scale rather than requiring hundreds of millions of images) using strong data augmentation and a **distillation token**: a second special token trained to match a CNN teacher's predictions, injecting some of CNN's inductive bias through distillation rather than architecture.
-- **Swin Transformer** — computes attention within local, non-overlapping windows (not globally across the whole image, which is what makes plain ViT quadratic in image size), and shifts the window boundaries between layers so information still flows across window edges over depth. This restores a CNN-like efficient, hierarchical structure (small windows early, effectively larger receptive field deeper) while keeping attention's flexibility — the standard backbone choice when ViT's full quadratic global attention is too expensive, e.g. for detection and segmentation on large images.
+"Is there a dog in this photo?" Yes. That's classification, one answer for the whole picture.
+
+"Where are the dogs?" Point at each one and draw a rectangle around it. That's detection: a box and a label for every object.
+
+"Colour in every pixel that belongs to a dog, and use a different colour for each dog." That's segmentation, the most precise answer, down to individual pixels.
+
+Each question needs the network to keep more information about *where* things are. Everything below is how architectures are built to keep that information and produce those answers.
+
+</ELI5>
+
+## 1. From Classification to Dense Prediction
+
+A classification network throws away location on purpose. Pooling and strided layers shrink the feature map step by step until global pooling collapses it into one vector, because "is there a cat" doesn't care where the cat is.
+
+Detection and segmentation are **dense prediction** tasks: the output is tied to positions in the image. That changes three things about the architecture:
+
+- **The backbone's job changes.** It still extracts features, but its intermediate feature maps, which still have spatial layout, become the useful output, not just the final vector.
+- **Scale matters.** A pedestrian can be 20 pixels tall or 500. Features at several resolutions are needed, which is why most detectors use a **feature pyramid**: high-resolution maps for small objects, low-resolution maps with large receptive fields for big ones.
+- **The output has structure.** A variable number of boxes, or a full-resolution label map, needs a different head and a different loss from a single class label.
+
+Before the heads, the backbones, because the biggest change in vision since 2020 happened there.
+
+## 2. Vision Transformers
+
+The **Vision Transformer** (ViT; Dosovitskiy et al., 2020) applies the transformer from [Attention & Transformers](/docs/deep-learning/attention-transformers) to images with almost no changes:
+
+1. **Patchify.** Cut the image into non-overlapping $P \times P$ patches, typically 16 × 16 pixels. A 224 × 224 image becomes $14 \times 14 = 196$ patches.
+2. **Embed.** Flatten each patch ($16 \times 16 \times 3 = 768$ numbers) and multiply by a learned matrix to get a token vector. This is exactly a convolution with kernel size and stride both equal to 16.
+3. **Add position.** Attention is blind to order, so a learned position embedding is added to each token.
+4. **Encode.** Run a standard transformer encoder. For classification, read the output of an extra learned `[CLS]` token, or average all patch outputs.
+
+Every patch attends to every other patch in the first layer, so a ViT can relate opposite corners of the image immediately, where a CNN needs many layers of growing receptive field. The price is that none of a CNN's built-in assumptions are there: no locality, no translation equivariance. A ViT has to learn them from data, which is why the original needed pretraining on hundreds of millions of images to beat ResNets.
+
+**The cost problem.** Self-attention compares every token with every other token, so its cost grows with the square of the number of tokens $N$. For an image of side $S$ and patch size $P$:
+
+$$
+N = \left(\frac{S}{P}\right)^2, \qquad \text{attention scores per head per layer} = N^2 = \left(\frac{S}{P}\right)^4
+$$
+
+Doubling the image side multiplies the attention cost by 16. That's fine for 224 × 224 classification and painful for detection and segmentation, which want high resolution (the numbers are computed in section 5's code).
 
 <ViTVariantsDiagram />
 
+### DeiT and Swin
+
+Two variants fixed the original ViT's two weaknesses.
+
+**DeiT** (Touvron et al., 2021) fixed the data problem. Trained on ImageNet's 1.3 million images alone, with heavy augmentation, regularization and a **distillation token** that learns to match a CNN teacher's predictions, a ViT matched strong CNNs without any giant private dataset. Much of ViT's data hunger turned out to be a training-recipe problem.
+
+**Swin Transformer** (Liu et al., 2021) fixed the cost problem by restoring locality. Attention is computed only within small windows of, say, 7 × 7 patches, so its cost grows *linearly* with image area. To let information cross window boundaries, every other layer **shifts** the window grid by half a window. Between stages, neighbouring patches are merged, halving resolution and doubling channels, which produces the multi-scale feature pyramid that detection and segmentation need. Swin is a transformer with a CNN's shape, and it became the standard transformer backbone for dense prediction.
+
 <SwinWindowAttentionDiagram />
 
-## Object Detection
+**Self-supervised backbones** are the other big shift. DINOv2 (2023) and DINOv3 (2025) from Meta train ViTs on very large image collections with no labels, by making the network's outputs for different crops of the same image agree. The resulting features work well across classification, detection, segmentation and depth estimation with only a small task-specific head, and have become a common default backbone.
 
-Locate *and* classify multiple objects in an image, output as bounding boxes plus class labels.
+**The limitation:** a backbone, however good, outputs features, not boxes or masks. The next two sections are about the heads that turn features into answers.
 
-- **R-CNN family (R-CNN → Fast R-CNN → Faster R-CNN)**: two-stage detectors — first propose candidate regions likely to contain an object (originally via a separate algorithm, then a learned **Region Proposal Network** in Faster R-CNN), then classify and refine each proposed region. Accurate, but slower than single-stage approaches because of the two-stage pipeline.
-- **YOLO (You Only Look Once)**: a single-stage detector — divides the image into a grid and predicts bounding boxes and class probabilities directly, in one forward pass, no separate proposal stage. Dramatically faster than R-CNN-family models, historically at some accuracy cost (though later YOLO versions have closed most of that gap), making it the standard choice for real-time detection.
-- **SSD (Single Shot Detector)**: similar single-stage philosophy to YOLO, predicting boxes at multiple feature-map scales simultaneously to handle objects of very different sizes in one pass.
+## 3. Object Detection: The Problem and Its Two Calculations
+
+A detector outputs, for each object, a **bounding box** $(x_1, y_1, x_2, y_2)$, a class label and a confidence score. The number of objects isn't known in advance. Two calculations are central to every detector.
+
+**Intersection over Union (IoU)** measures how well two boxes overlap:
+
+$$
+\text{IoU}(A, B) = \frac{\text{area}(A \cap B)}{\text{area}(A \cup B)}
+$$
+
+It is 1 for identical boxes and 0 for disjoint ones. It's used three ways: to decide during training which predictions match which ground-truth boxes, to decide whether a prediction counts as correct at evaluation (commonly IoU ≥ 0.5), and to remove duplicates.
+
+**Non-max suppression (NMS)** removes duplicates. Detectors that predict at many positions produce several overlapping boxes for each object. NMS sorts boxes by score, keeps the best, discards every remaining box that overlaps it by more than a threshold, and repeats.
+
+**Evaluation** uses **mean average precision (mAP)**: for each class, sort predictions by confidence, compute the precision-recall curve using IoU to decide which are correct, take the area under it, and average over classes. The COCO benchmark averages mAP over IoU thresholds from 0.5 to 0.95, which rewards tight boxes, not just roughly placed ones.
+
+## 4. Detector Families
+
+### Two-stage detectors: the R-CNN family
+
+**R-CNN** (Girshick et al., 2014) proposed about 2,000 candidate regions with a classical algorithm, cropped each one, and ran a CNN on every crop: accurate, and about a minute per image. **Fast R-CNN** ran the CNN once over the whole image and cropped the *feature map* instead. **Faster R-CNN** (Ren et al., 2015) replaced the classical proposal algorithm with a learned **Region Proposal Network** that shares the backbone. The two stages remain: first propose regions likely to contain an object, then classify each region and refine its box. Two-stage detectors were the accuracy leaders for years.
+
+### One-stage detectors: YOLO and SSD
+
+**YOLO** (Redmon et al., 2016) asked whether the proposal stage was necessary. It divides the image into a grid, and each cell directly predicts boxes, confidences and class probabilities, all in one forward pass. The first version ran at 45 frames per second, far faster than Faster R-CNN, with lower accuracy, especially for small objects. **SSD** (Liu et al., 2016) made the same move and predicted from several feature-map scales to handle object size. Successive YOLO versions, now mostly developed by companies such as Ultralytics, closed most of the accuracy gap and made one-stage detection the default for real-time use. Most use **anchors**, predefined box shapes at each position that predictions are expressed relative to, or the simpler anchor-free variants that predict box edges directly.
 
 <TwoStageVsOneStageDetectionDiagram />
 
-- **DETR (Detection Transformer)**: reformulates detection as a direct set-prediction problem using a Transformer encoder-decoder — a fixed set of learned "object queries" each attend over the image features and directly output one object's box and class, eliminating hand-designed components like anchor boxes and non-max suppression that every prior detector needed.
+### Set prediction: DETR
+
+Every detector so far produces many redundant candidates and relies on hand-designed steps (anchors, NMS) to clean them up. **DETR** (Carion et al., 2020) removes both. A CNN or transformer backbone produces image features; a transformer decoder takes a fixed number of learned **object queries** (100, say), and each query attends to the image and outputs one box and class, or "no object".
+
+Training uses **bipartite matching**: the Hungarian algorithm finds the one-to-one assignment between the 100 predictions and the ground-truth objects with the lowest total cost, and only matched predictions are trained toward boxes. Because each object is matched to exactly one query, the model learns not to produce duplicates, and NMS is unnecessary.
 
 <DetrSetPredictionDiagram />
 
-## Segmentation
+The original DETR trained slowly and struggled with small objects. Later work (Deformable DETR, DINO-DETR, and the real-time **RT-DETR** from 2023) fixed both, and transformer detectors now compete with YOLO models on speed as well as accuracy. The NMS-free idea also travelled the other way: YOLOv10 (2024) trained a one-to-one head so it too could skip NMS.
 
-Classify *every pixel*, not just draw a box around an object.
+## 5. IoU and NMS in Code
 
-- **Semantic segmentation**: every pixel gets a class label (e.g. "road," "car," "sky") — objects of the same class aren't distinguished from each other.
-- **Instance segmentation**: like semantic segmentation, but also distinguishes *individual instances* of the same class (this car vs. that car).
+Both calculations fit in a few lines. Here they are written out and checked against `torchvision`'s implementation, on three overlapping detections of one dog and one detection of a cat. The same script prints the token counts behind section 2's cost formula.
+
+```python
+import torch
+from torchvision.ops import nms
+
+def iou(a, b):
+    """Intersection over union of two boxes given as (x1, y1, x2, y2)."""
+    w = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    h = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = w * h
+    area = lambda r: (r[2] - r[0]) * (r[3] - r[1])
+    return inter / (area(a) + area(b) - inter)
+
+def non_max_suppression(boxes, scores, threshold=0.5):
+    """Keep the highest-scoring box, drop every box overlapping it by more than threshold, repeat."""
+    order = sorted(range(len(boxes)), key=lambda i: -scores[i])
+    keep = []
+    while order:
+        best = order.pop(0)
+        keep.append(best)
+        order = [i for i in order if iou(boxes[best], boxes[i]) <= threshold]
+    return keep
+
+# Three overlapping detections of one dog, and one detection of a cat elsewhere.
+boxes = [(10, 10, 110, 110), (15, 12, 112, 108), (8, 20, 100, 115), (200, 50, 260, 120)]
+scores = [0.92, 0.85, 0.60, 0.88]
+
+print("IoU of the two best dog boxes:", round(iou(boxes[0], boxes[1]), 3))
+print("ours: ", non_max_suppression(boxes, scores))
+print("torch:", nms(torch.tensor(boxes, dtype=torch.float), torch.tensor(scores), 0.5).tolist())
+
+# A ViT's token count: a 224x224 image in 16x16 patches, and the cost of global attention.
+for side in (224, 448, 896):
+    tokens = (side // 16) ** 2
+    print(f"{side}x{side} image -> {tokens:5d} patches -> {tokens**2:>12,} attention scores per head per layer")
+```
+
+```
+IoU of the two best dog boxes: 0.895
+ours:  [0, 3]
+torch: [0, 3]
+224x224 image ->   196 patches ->       38,416 attention scores per head per layer
+448x448 image ->   784 patches ->      614,656 attention scores per head per layer
+896x896 image ->  3136 patches ->    9,834,496 attention scores per head per layer
+```
+
+NMS kept box 0, the best dog, and box 3, the cat. The other two dog boxes overlapped box 0 with IoU above 0.5 and were dropped. The cat's box doesn't overlap the dog's at all, so it survived even though it was processed second. The bottom three lines are the quadratic cost in numbers: four times the pixels per side, 256 times the attention scores.
+
+<PredictFirst
+  question="Two people stand side by side in a crowd photo, and their true boxes overlap with IoU 0.6. The detector finds both with high scores. What does NMS with a 0.5 threshold do?"
+  options={[
+    'Keeps both, because they have different scores',
+    'Removes the lower-scoring person, because the boxes overlap by more than 0.5',
+    'Merges them into one larger box',
+    'Keeps both, because NMS only removes boxes of different classes',
+  ]}
+  correctIndex={1}
+  explanation="NMS can't tell a duplicate detection of one object from a correct detection of a second, overlapping object; it only sees the overlap. Crowded scenes are its known weakness, which is one motivation for DETR-style set prediction, where each object is matched to exactly one prediction and no overlap threshold is needed."
+/>
+
+## 6. Labelling Every Pixel
+
+### Segmentation
+
+Segmentation labels every pixel. There are three versions of the task:
+
+- **Semantic segmentation** gives every pixel a class ("road", "car", "sky"). Two adjacent cars are one blob of "car".
+- **Instance segmentation** separates individual objects: car 1, car 2, each with its own mask. Background regions like sky aren't labelled.
+- **Panoptic segmentation** combines them: every pixel gets a class, and countable objects also get an instance id.
 
 <SemanticVsInstanceSegmentationDiagram />
 
-- **U-Net**: an encoder-decoder architecture with an encoder that progressively downsamples (capturing context) and a decoder that progressively upsamples back to full resolution, with **skip connections** directly linking each encoder stage to its corresponding decoder stage — preserving fine spatial detail that pure downsampling would lose. Originally built for medical image segmentation (where training data is scarce and precise boundaries matter), U-Net's encoder-decoder-with-skip-connections pattern also became the backbone used inside diffusion models (see [Generative Models](/docs/deep-learning/generative-models)) for iterative image denoising — the same "preserve detail while processing at multiple scales" property applies there too.
+**U-Net** (Ronneberger, Fischer and Brox, 2015) is the canonical semantic-segmentation architecture, built for biomedical images where labelled data is scarce. An **encoder** downsamples step by step, gaining context and losing resolution. A **decoder** upsamples step by step back to full resolution. **Skip connections** copy each encoder stage's feature map across to the decoder stage of the same size, so the decoder combines "what this region is" (from deep, low-resolution features) with "exactly where its edges are" (from shallow, high-resolution ones). The output is a class score for every pixel, trained with per-pixel cross-entropy or a Dice loss.
 
 <UNetArchitectureDiagram />
 
-- **Mask R-CNN**: extends Faster R-CNN with a third output branch that predicts a pixel-level segmentation mask for each detected object, in addition to its box and class — the standard architecture for instance segmentation, unifying detection and segmentation in one model.
+The same shape turned out to suit any task that maps an image to an image. Diffusion models used a U-Net as their denoising network for years ([Generative Models](/docs/deep-learning/generative-models)), before transformer denoisers took over in the largest models.
 
-<MaskRcnnBranchesDiagram />
+**Mask R-CNN** (He et al., 2017) handles instance segmentation by extending Faster R-CNN with a third branch: for each detected box, a small network predicts a 28 × 28 binary mask, which is resized to the box. Detection finds and separates the instances; the mask branch outlines each. **Mask2Former** (2022) later unified semantic, instance and panoptic segmentation in one DETR-style architecture where each query predicts a mask and a class.
 
-## Choosing an Architecture
+**Promptable segmentation** changed how segmentation is used. Meta's **Segment Anything Model** (SAM, 2023) was trained on over a billion masks to segment whatever a user points at: a click, a box or a rough scribble returns a mask, for objects from categories it never saw labels for. SAM 2 (2024) extended it to video, tracking a mask across frames, and SAM 3 (2025) added segmenting every instance of a concept described in text. For many applications, segmentation is now a prompt to a foundation model rather than a model trained from scratch.
+
+<PredictFirst
+  question="A U-Net is trained without its skip connections, only the encoder and decoder. What gets worse first?"
+  options={[
+    'It can no longer tell what class a region is',
+    'Boundaries become blurry and small structures disappear, because fine spatial detail is lost in downsampling',
+    'Training becomes impossible because of vanishing gradients',
+    'Nothing, because the decoder learns to recover the detail',
+  ]}
+  correctIndex={1}
+  explanation="The deepest layers know what is in each region but at very low resolution. Upsampling alone cannot recreate the exact pixel positions of edges that were averaged away. The skip connections hand the decoder the high-resolution features from before downsampling, which is where boundary detail lives."
+/>
+
+<GoDeeper title="Go deeper: why detection losses are awkward, and how each family handles it">
+
+Classification has one prediction and one label. Detection has many predictions and a variable number of labels, so before any loss can be computed, each prediction must be **assigned** to a ground-truth object or to "background". The assignment rule defines the training problem.
+
+- **Anchor-based detectors** (Faster R-CNN, SSD, early YOLO) assign an anchor to an object if their IoU is above a threshold, often 0.5 to 0.7, and to background below a lower one. Many anchors match each object, so the model is trained to produce duplicates, and NMS removes them at inference.
+- **Anchor-free detectors** (FCOS, later YOLOs) assign positions inside or near an object's centre, with similar consequences.
+- **DETR** uses one-to-one Hungarian matching, so exactly one prediction is trained toward each object. That's what makes NMS unnecessary, and also why early DETR trained slowly: each object provides a gradient to only one query.
+
+The class imbalance is severe too: tens of thousands of background positions per image against a handful of objects. **Focal loss** (Lin et al., 2017) down-weights easy, confidently classified background examples so the rare object examples dominate training. It made one-stage detectors competitive with two-stage ones in accuracy.
+
+</GoDeeper>
+
+## 7. Choosing an Architecture
+
+The choice is mostly decided by three constraints: the task's output, the latency budget, and how much labelled data you have.
 
 | Need | Reach for |
 |---|---|
-| Best accuracy, compute isn't tightly constrained | ViT / Swin backbone |
-| Real-time detection | YOLO |
-| Highest-accuracy detection, latency less critical | Faster R-CNN, DETR |
-| Pixel-level medical/precise segmentation | U-Net |
-| Detect *and* segment individual object instances | Mask R-CNN |
+| Classification with plenty of data or a pretrained backbone | A ViT or ConvNeXt, fine-tuned from a strong pretrained checkpoint |
+| Classification with little data, on small devices | A CNN such as an EfficientNet or MobileNet |
+| Real-time detection | A current YOLO model or RT-DETR |
+| Highest-accuracy detection, latency less critical | A DETR-family detector on a strong backbone |
+| Semantic segmentation of a specialist domain (medical, satellite) | U-Net, or a pretrained backbone with a segmentation head |
+| Instance or panoptic segmentation | Mask R-CNN or Mask2Former |
+| Interactive or zero-shot masks | SAM-family models prompted with points, boxes or text |
 
-<VisionArchitectureSelectionDiagram />
+In practice the backbone is almost always pretrained, and the most consequential decision is which pretrained checkpoint to start from.
 
-Next: [Generative Models](/docs/deep-learning/generative-models) — GANs and diffusion models, the architectures that generate images rather than just understand them.
+## 8. When *Not* to Use These Architectures
+
+| Situation | Better choice |
+|---|---|
+| A plain ViT trained from scratch on a few thousand images | A pretrained ViT, or a CNN, whose built-in assumptions need less data |
+| Global attention on very high-resolution images | Windowed attention (Swin), a CNN backbone, or downsample first |
+| Detection where a box isn't enough, such as measuring an organ's area | Segmentation |
+| Segmentation labels you can't afford to draw by hand | Promptable models (SAM) to produce or speed up labels |
+| Densely packed, heavily overlapping objects with NMS | Set-prediction detectors, or tuned NMS thresholds per class |
+| A task that only needs "is it there" | Classification; detection heads add cost and labelling effort |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Dense prediction | Detection and segmentation keep spatial layout that classification throws away |
+| ViT | Patches as tokens, global attention from layer 1, needs data or pretraining |
+| Attention cost | $(S/P)^4$ scores per head per layer: double the side, 16 times the cost |
+| DeiT, Swin | DeiT fixed the data need with recipes; Swin fixed the cost with shifted windows |
+| IoU | Overlap over union; matches predictions to objects and defines a correct detection |
+| NMS | Keep the best box, drop overlaps, repeat; struggles in crowds |
+| Two-stage vs one-stage | Propose then classify (R-CNN) vs predict everything in one pass (YOLO) |
+| DETR | Learned queries, one-to-one matching, no anchors and no NMS |
+| U-Net | Encoder, decoder and skip connections that carry fine detail across |
+| Mask R-CNN, SAM | A mask per detected box; masks on demand from a prompt |
+
+---
+
+Next: [Autoencoders](/docs/deep-learning/autoencoders) and [Generative Models](/docs/deep-learning/generative-models), the architectures that generate images rather than only understand them.
+
+## Sources
+
+- Dosovitskiy et al., [An Image is Worth 16x16 Words](https://arxiv.org/abs/2010.11929) (2020)
+- Touvron et al., [Training data-efficient image transformers and distillation through attention](https://arxiv.org/abs/2012.12877) (2021)
+- Liu et al., [Swin Transformer](https://arxiv.org/abs/2103.14030) (2021)
+- Ren et al., [Faster R-CNN](https://arxiv.org/abs/1506.01497) (2015)
+- Redmon et al., [You Only Look Once](https://arxiv.org/abs/1506.02640) (2016)
+- Carion et al., [End-to-End Object Detection with Transformers](https://arxiv.org/abs/2005.12872) (2020)
+- Zhao et al., [DETRs Beat YOLOs on Real-time Object Detection](https://arxiv.org/abs/2304.08069) (2023)
+- Lin et al., [Focal Loss for Dense Object Detection](https://arxiv.org/abs/1708.02002) (2017)
+- Ronneberger, Fischer and Brox, [U-Net](https://arxiv.org/abs/1505.04597) (2015)
+- He et al., [Mask R-CNN](https://arxiv.org/abs/1703.06870) (2017)
+- Kirillov et al., [Segment Anything](https://arxiv.org/abs/2304.02643) (2023)
+- Oquab et al., [DINOv2](https://arxiv.org/abs/2304.07193) (2023)
