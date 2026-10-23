@@ -1,10 +1,11 @@
 import { Link } from 'react-router-dom';
 
 /** A post's topic tags. Each links to /blog filtered to that tag; the
- * active one is marked, and `showAll` adds an "All" link to clear it. */
-export function TagList({ tags, active, showAll }: { tags: string[]; active?: string | null; showAll?: boolean }) {
+ * active one is marked, and `showAll` adds an "All" link to clear it.
+ * `inline` is a quiet dot-separated line, for under a post's title. */
+export function TagList({ tags, active, showAll, variant = 'chips' }: { tags: string[]; active?: string | null; showAll?: boolean; variant?: 'chips' | 'inline' }) {
   return (
-    <ul className="nm-blog-tags">
+    <ul className={variant === 'inline' ? 'nm-blog-tags-inline' : 'nm-blog-tags'}>
       {showAll && (
         <li>
           <Link to="/blog" aria-current={!active ? 'page' : undefined}>

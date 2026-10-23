@@ -1,9 +1,10 @@
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import Navbar from './layout/Navbar';
 import NotFoundPage from './NotFoundPage';
 import { TagList } from './BlogTags';
-import BlogSeriesBox from './BlogSeriesBox';
+import BlogSeriesBox, { SeriesPager } from './BlogSeriesBox';
+import TableOfContents from './layout/TableOfContents';
 import { formatPostDate, getBlogComponent, getBlogPost } from '../lib/blog';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useDocumentMeta } from '../lib/useDocumentMeta';
@@ -18,6 +19,8 @@ import { BLOG_READ_POINTS, hasAward } from '../lib/gamification';
 export default function BlogPostPage() {
   const { slug = '' } = useParams();
   const filePost = getBlogPost(slug);
+  const articleRef = useRef<HTMLElement | null>(null);
+  const series = filePost?.series && filePost.part != null ? { series: filePost.series, part: filePost.part } : null;
   const Component = filePost ? getBlogComponent(slug) : undefined;
   const isAdmin = useIsAdmin();
   const [stored, setStored] = useState<StoredPost | null | undefined>(filePost ? null : undefined);
@@ -43,7 +46,16 @@ export default function BlogPostPage() {
     return (
       <div style={{ minHeight: '100vh', background: 'var(--nm-bg)' }}>
         <Navbar />
-        <p style={{ padding: '3rem 0', textAlign: 'center', color: 'var(--nm-text-muted)', fontSize: 14 }}>Loading…</p>
+        <p
+          style={{
+            padding: '3rem 0',
+            textAlign: 'center',
+            color: 'var(--nm-text-muted)',
+            fontSize: 14,
+          }}
+        >
+          Loading…
+        </p>
       </div>
     );
   }
@@ -55,35 +67,82 @@ export default function BlogPostPage() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--nm-bg)' }}>
       <Navbar />
-      <main style={{ maxWidth: 760, margin: '0 auto', padding: '2.5rem 1.5rem 4rem' }}>
-        <p style={{ margin: '0 0 0.5rem', fontSize: 14, color: 'var(--nm-text-muted)' }}>
-          <Link to="/blog" style={{ color: 'var(--nm-accent-primary)' }}>Blog</Link>
-          {date && <> · {formatPostDate(date)}</>} · {minutes} min read
-          {stored && stored.status !== 'published' && <> · Draft</>}
-          {stored && isAdmin && <> · <Link to={`/blog/write/${stored.slug}`} style={{ color: 'var(--nm-accent-primary)' }}>Edit</Link></>}
-        </p>
-        {(filePost?.tags ?? stored?.tags ?? []).length > 0 && (
-          <div style={{ margin: '0 0 1rem' }}>
-            <TagList tags={filePost?.tags ?? stored?.tags ?? []} />
+      <main className="nm-blog-shell">
+        <div className="nm-post-grid">
+          <div className="nm-post-main">
+            <p
+              style={{
+                margin: '0 0 0.5rem',
+                fontSize: 14,
+                color: 'var(--nm-text-muted)',
+              }}
+            >
+              <Link to="/blog" style={{ color: 'var(--nm-accent-primary)' }}>
+                Blog
+              </Link>
+              {date && <> · {formatPostDate(date)}</>} · {minutes} min read
+              {stored && stored.status !== 'published' && <> · Draft</>}
+              {stored && isAdmin && (
+                <>
+                  {' '}
+                  ·{' '}
+                  <Link to={`/blog/write/${stored.slug}`} style={{ color: 'var(--nm-accent-primary)' }}>
+                    Edit
+                  </Link>
+                </>
+              )}
+            </p>
+            {(filePost?.tags ?? stored?.tags ?? []).length > 0 && (
+              <div style={{ margin: '0 0 1.25rem' }}>
+                <TagList tags={filePost?.tags ?? stored?.tags ?? []} variant="inline" />
+              </div>
+            )}
+            {series && <BlogSeriesBox {...series} variant="inline" />}
+            <article className="prose" ref={articleRef}>
+              {Component ? (
+                <Suspense
+                  fallback={
+                    <div
+                      style={{
+                        padding: '3rem 0',
+                        textAlign: 'center',
+                        color: 'var(--nm-text-muted)',
+                        fontSize: 14,
+                      }}
+                    >
+                      Loading…
+                    </div>
+                  }
+                >
+                  <Component />
+                </Suspense>
+              ) : (
+                <>
+                  <h1>{stored!.title}</h1>
+                  <Markdown source={stored!.body} />
+                </>
+              )}
+            </article>
+            {series && <SeriesPager {...series} />}
+            <MarkReadButton slug={slug} />
+            <p
+              style={{
+                marginTop: '2rem',
+                paddingTop: '1.25rem',
+                borderTop: '1px solid var(--nm-border)',
+                fontSize: 14,
+              }}
+            >
+              <Link to="/blog" style={{ color: 'var(--nm-accent-primary)' }}>
+                ← All posts
+              </Link>
+            </p>
           </div>
-        )}
-        {filePost?.series && filePost.part != null && <BlogSeriesBox series={filePost.series} part={filePost.part} />}
-        <article className="prose">
-          {Component ? (
-            <Suspense fallback={<div style={{ padding: '3rem 0', textAlign: 'center', color: 'var(--nm-text-muted)', fontSize: 14 }}>Loading…</div>}>
-              <Component />
-            </Suspense>
-          ) : (
-            <>
-              <h1>{stored!.title}</h1>
-              <Markdown source={stored!.body} />
-            </>
-          )}
-        </article>
-        <MarkReadButton slug={slug} />
-        <p style={{ marginTop: '2rem', paddingTop: '1.25rem', borderTop: '1px solid var(--nm-border)', fontSize: 14 }}>
-          <Link to="/blog" style={{ color: 'var(--nm-accent-primary)' }}>← All posts</Link>
-        </p>
+          <aside className="nm-post-rail">
+            {series && <BlogSeriesBox {...series} variant="rail" />}
+            <TableOfContents contentRef={articleRef} />
+          </aside>
+        </div>
       </main>
     </div>
   );
@@ -97,7 +156,15 @@ function MarkReadButton({ slug }: { slug: string }) {
   return (
     <div style={{ marginTop: '2.5rem', textAlign: 'center' }}>
       {read ? (
-        <p style={{ fontSize: 15, color: 'var(--nm-accent-primary)', fontWeight: 600 }}>✓ Read · {BLOG_READ_POINTS} points earned</p>
+        <p
+          style={{
+            fontSize: 15,
+            color: 'var(--nm-accent-primary)',
+            fontWeight: 600,
+          }}
+        >
+          ✓ Read · {BLOG_READ_POINTS} points earned
+        </p>
       ) : (
         <button type="button" className="nm-button nm-button-secondary" onClick={() => awardBlogRead(slug)} style={{ padding: '0.65rem 1.4rem', fontSize: 15 }}>
           Mark as read · +{BLOG_READ_POINTS} points
