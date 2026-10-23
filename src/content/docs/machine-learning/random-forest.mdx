@@ -1,83 +1,260 @@
 ---
 title: "Random Forest & Extra Trees, In Full Depth"
 sidebar_position: 5.2
-description: "Bagging explained: why training many trees on bootstrap samples and averaging fixes a single decision tree's high variance -- Random Forest, derived."
+description: "Why averaging many decision trees works and when it doesn't: the variance of an average of correlated predictors derived, bagging and bootstrap samples, per-split feature sampling as decorrelation, Extra Trees, out-of-bag error, feature importance and its biases, the hyperparameters that matter, and a from-scratch forest checked against scikit-learn."
 ---
 
-
 import BaggingVarianceDiagram from '../../../viz/diagrams/BaggingVarianceDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Random Forest & Extra Trees, In Full Depth
 
-[Decision Trees](/docs/machine-learning/decision-tree) are high-variance: retrain on a slightly different sample and the tree structure can change completely. Random Forest fixes this with an idea that seems almost too simple to work: train many trees on randomized versions of the data, and average their predictions.
+[Decision Trees](/docs/machine-learning/decision-tree) ended on their main weakness: a deep tree fits its training data closely, so a slightly different sample produces a very different tree. Low bias, high variance. Random forests fix that by training many trees on randomized versions of the data and averaging them. This page derives exactly how much averaging helps, which turns out to depend on one number, the correlation between the trees, and shows that the two sources of randomness in a random forest are both ways of lowering that number. It then covers Extra Trees, the free validation estimate that bagging provides, how to read a forest's feature importances, and which settings matter.
 
-## The Core Idea: Bagging
+<ELI5>
 
-**Bagging** (Bootstrap AGGregatING): train $B$ independent trees, each on a **bootstrap sample** — a sample of size $n$ drawn *with replacement* from the original $n$ training examples (so each bootstrap sample contains duplicates and omits roughly a third of the original data on average). Average the predictions (regression) or take a majority vote (classification) across all $B$ trees.
+Ask one person to guess the number of sweets in a jar and they may be way off. Ask a hundred people and average their guesses, and the average is usually remarkably close, because one person's overestimate cancels another's underestimate.
 
-**Why averaging reduces variance — the actual math**: if each tree's prediction has variance $\sigma^2$ and the trees were *perfectly independent*, averaging $B$ of them gives variance $\sigma^2/B$ — variance shrinks directly with more trees. Trees aren't fully independent in practice (they're trained on overlapping, correlated data), so the real reduction is smaller than $1/B$, but the effect is still large and is the entire justification for the method. Real Monte Carlo simulation, not the formula alone:
+But that only works if people guess independently. If they all overhear the first person's guess and copy it, averaging a hundred copies is no better than one guess. A random forest is a crowd of decision trees, and most of its design is about stopping the trees from copying each other. Everything below is that idea made exact.
+
+</ELI5>
+
+## 1. How Much Averaging Helps
+
+Suppose we have $B$ models, each predicting the same quantity, each with variance $\sigma^2$, and every pair of them correlated with correlation $\rho$. What's the variance of their average? Write the average as $\bar{f} = \tfrac1B\sum_b f_b$ and expand:
+
+$$
+\operatorname{Var}(\bar{f}) = \frac{1}{B^2}\sum_{b=1}^{B}\sum_{b'=1}^{B}\operatorname{Cov}(f_b, f_{b'})
+$$
+
+There are $B$ terms where $b = b'$, each equal to $\sigma^2$, and $B^2 - B$ terms pairing two different models, each with covariance $\rho\sigma^2$:
+
+$$
+\operatorname{Var}(\bar{f}) = \frac{1}{B^2}\Big(B\sigma^2 + (B^2 - B)\rho\sigma^2\Big) = \rho\sigma^2 + \frac{1-\rho}{B}\sigma^2
+$$
+
+Read the two terms:
+
+- The second term, $\tfrac{1-\rho}{B}\sigma^2$, goes to zero as $B$ grows. Adding more models always helps, and never hurts, but with diminishing returns.
+- The first term, $\rho\sigma^2$, **doesn't depend on $B$ at all**. No matter how many models you average, the variance never falls below $\rho\sigma^2$.
+
+With independent models ($\rho = 0$) the variance falls like $\sigma^2/B$, all the way to zero. With identical models ($\rho = 1$) it stays at $\sigma^2$: averaging copies does nothing. Real ensembles are in between, and the floor $\rho\sigma^2$ is what limits them.
+
+Averaging doesn't change the bias: the average of $B$ models with the same expected prediction has that same expected prediction. So the recipe for a good ensemble follows directly from the formula: start with models that have **low bias** (so there's no bias to be stuck with), then make them as **uncorrelated** as possible (to lower the floor), then use **enough of them** (to kill the second term). Deep decision trees have very low bias and very high variance, which makes them the ideal ingredient. Drag the correlation in this Monte Carlo simulation and watch the floor move:
 
 <BaggingVarianceDiagram />
 
-This is the same bias-variance logic from [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics#bias-variance-tradeoff): individual deep trees have low bias but high variance; averaging trades a small amount of bias for a large reduction in variance.
+How do you get many different trees from one dataset? That's what bagging does.
 
-## Random Forest's Extra Ingredient: Feature Randomness
+## 2. Many Trees From One Dataset
 
-Bagging alone isn't enough — if one feature is very strong, *every* bootstrap-sampled tree will likely pick it for the first split, making the trees highly correlated with each other (and correlated trees don't reduce variance nearly as much when averaged, per the math above).
+### The Core Idea: Bagging
 
-**Random Forest's fix**: at *each split*, restrict the tree to a random subset of features (commonly $\sqrt{d}$ features out of $d$ total, for classification) rather than considering all of them. This deliberately handicaps each individual tree, forcing different trees to discover different, less-correlated splitting patterns — which is precisely what makes the ensemble average more powerful than any single tree in it.
+We don't have $B$ independent training sets, only one. **Bootstrap aggregating** (bagging, Breiman 1996) simulates them. For each of $B$ trees:
 
-## Extra Trees: One More Layer of Randomness
+1. Draw a **bootstrap sample**: $n$ examples chosen uniformly *with replacement* from the $n$ training examples. Some examples appear two or three times; others not at all.
+2. Grow a deep tree on it, with little or no pruning.
 
-**Extremely Randomized Trees (Extra Trees)** push the idea further: instead of searching for the *optimal* threshold for each candidate feature (as in a standard tree, see [Decision Tree — How a Split Is Chosen](/docs/machine-learning/decision-tree#how-a-split-is-chosen)), pick the threshold **randomly** and just choose the best among those random candidates. Also typically skips bootstrap sampling, training each tree on the full dataset instead.
+Then predict with the average of the trees (regression) or by averaging their predicted class probabilities and taking the largest (classification; scikit-learn uses this "soft" vote rather than counting hard votes).
 
-- **More randomness → more bias, less variance** than Random Forest — individual trees are worse, but the ensemble can be competitive or better, and training is faster (no per-split optimal-threshold search).
-- **Practical rule of thumb**: try Random Forest first; reach for Extra Trees specifically when training speed matters or when Random Forest is visibly overfitting even with feature randomness.
+How different are the bootstrap samples? The chance a given example is never picked in $n$ draws is
 
-## Out-of-Bag (OOB) Error: Free Validation
+$$
+\left(1 - \frac{1}{n}\right)^n \;\xrightarrow{\;n\to\infty\;}\; e^{-1} \approx 0.368
+$$
 
-Since each bootstrap sample leaves out roughly 37% of the data ($\left(1-\frac{1}{n}\right)^n \to e^{-1} \approx 0.368$ as $n\to\infty$ — see [Probability & Statistics](/docs/mathematics-for-ai/probability-statistics)), each tree has a natural, unused validation set: the examples it never saw. Averaging each example's prediction across only the trees that *didn't* train on it gives an honest performance estimate — **without needing a separate held-out validation set** (see [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals#train-validation-test-splits)). This is close to free — it falls directly out of the bagging procedure already being run.
+so each tree sees about 63% of the distinct examples, with the rest of its sample made of duplicates. Each tree is trained on a different, overlapping slice of the data, and because deep trees are so sensitive to their data, the trees come out genuinely different.
 
-## Feature Importance
+But not different enough. Every bootstrap sample is drawn from the same data, so the trees share a lot. If one feature is much stronger than the rest, almost every tree will split on it at the root and on similar features near the top, and the trees' predictions end up strongly correlated. The floor $\rho\sigma^2$ stays high. Random forests attack $\rho$ directly.
 
-Random Forests provide a natural feature importance score: sum up the impurity reduction (see [Decision Tree — Gini](/docs/machine-learning/decision-tree#how-a-split-is-chosen)) every time a feature is used to split, across every tree, and normalize. Features that consistently produce strong, high-impurity-reduction splits across many trees score higher — a practical, if imperfect, tool for understanding which inputs actually drive predictions (imperfect because it's biased toward high-cardinality/continuous features, similar to the single-tree bias noted in [Decision Tree — Strengths and Weaknesses](/docs/machine-learning/decision-tree#strengths-and-weaknesses)).
+## 3. Random Forests: Decorrelating the Trees
 
-## Random Forest vs. a Single Tree
+Breiman's **random forest** (2001) adds one rule to bagging: **at every split, consider only a random subset of $m$ features**, drawn fresh at each node, instead of all $d$. The best split is chosen among those $m$.
 
-| | Single Decision Tree | Random Forest |
+That handicaps each tree. Sometimes the strongest feature isn't among the $m$ candidates, and the tree has to split on something weaker. Each individual tree gets *worse*: its error and variance go up. But different trees are now forced down different paths, so their errors overlap less, and $\rho$ falls. Whether the forest improves depends on which effect wins in $\rho\sigma^2$.
+
+The experiment in Section 8 measures both on the same data. With 300 bagged trees (all 10 features available at every split), a single tree's test error is 10.45 and the average correlation between trees' errors is 0.37. With random feature sampling ($m = 3$), a single tree is clearly worse at 14.33, but the correlation drops to 0.27. The formula predicts forest errors of about $0.37 \times 10.45 \approx 3.9$ and $0.27 \times 14.33 \approx 3.9$ (the $\tfrac{1}{B}$ term is negligible at $B = 300$), and the measured errors are 3.86 and 3.79. The formula is close, and the trade worked: worse trees, better forest.
+
+**Choosing $m$.** Small $m$ means less correlation but weaker trees; $m = d$ is plain bagging. The classic defaults are $m = \sqrt{d}$ for classification and $m = d/3$ for regression (Breiman's recommendations). scikit-learn uses $\sqrt{d}$ for `RandomForestClassifier`, but `RandomForestRegressor` defaults to all features ($m = d$), which is plain bagging of deep trees unless you change it. Treat $m$ (`max_features`) as the main hyperparameter to tune.
+
+<PredictFirst
+  question="You double the number of trees in a random forest from 500 to 1,000. What happens to the test error?"
+  options={[
+    'It drops by about half, since variance falls like 1/B',
+    'It changes very little: at B = 500 the error is already near the floor ρσ² that more trees cannot lower',
+    'It rises, because more trees means more overfitting',
+    'It depends on the learning rate',
+  ]}
+  correctIndex={1}
+  explanation="The ensemble variance is ρσ² + (1 - ρ)σ²/B. At B = 500 the second term is already tiny, so doubling B barely moves the total. And more trees never cause overfitting: they just make the average converge. To improve further you have to lower ρ (smaller max_features) or σ² and the bias (tree settings, more data)."
+/>
+
+<GoDeeper title="Go deeper: Breiman's bound in terms of strength and correlation">
+
+Breiman's 2001 paper gives the classification version of the same story. Define the **margin** of the forest on an example as the fraction of trees voting for the right class minus the largest fraction voting for any wrong class. The **strength** $s$ of the forest is the expected margin, a measure of how accurate individual trees are. He proved an upper bound on the generalization error:
+
+$$
+PE^* \le \frac{\bar{\rho}\,(1 - s^2)}{s^2}
+$$
+
+where $\bar{\rho}$ is the mean correlation between trees' margin functions. Lower correlation and higher strength both tighten it, and feature sampling trades one for the other, exactly as with the variance formula. He also showed that as the number of trees grows, the forest's error converges almost surely to a limit, which is the precise sense in which "adding trees can't make a random forest overfit". The forest can still overfit through its trees (fully grown trees on very noisy data), which is what `min_samples_leaf` and `max_depth` control.
+
+</GoDeeper>
+
+## 4. Extra Trees: Even More Randomness
+
+**Extremely Randomized Trees** (Geurts, Ernst and Wehenkel, 2006) push the same idea further. At each split, for each of the $m$ candidate features, they draw **one random threshold** uniformly between the feature's minimum and maximum in the node, instead of searching for the best threshold (see [how a split is chosen](/docs/machine-learning/decision-tree#how-a-split-is-chosen)). Then they pick the best of those $m$ random splits. By default they also skip bootstrapping and train each tree on the full training set.
+
+The effect on the formula: random thresholds make each tree noisier (higher $\sigma^2$, slightly higher bias) and the trees more different from each other (lower $\rho$). Skipping the threshold search also makes training faster, since there's no sort-and-sweep over every candidate value. The results are often close to a random forest's, sometimes better and sometimes worse; in Section 8 they're slightly worse (3.96 against 3.77). A side effect worth knowing: because thresholds are random, Extra Trees produce smoother prediction surfaces than the staircase of a regular forest.
+
+## 5. Out-of-Bag Error: Validation for Free
+
+Each tree never saw about 37% of the training examples. For any example $i$, take only the trees whose bootstrap sample missed it (about $0.37B$ of them), and average their predictions. That's a prediction for example $i$ from a forest that never trained on it. Doing this for every example and scoring the results gives the **out-of-bag (OOB) error**.
+
+It's an honest held-out estimate that costs nothing extra: no separate validation set, no refitting. In Section 8 the OOB error is 3.75 for the bagged forest and 3.87 for the random forest, against test errors of 3.86 and 3.79, the same within the noise of a 500-example test set. Two caveats. The OOB forest for each example has only about 37% of the trees, so with a small $B$ it's slightly pessimistic. And OOB error is only as honest as the bootstrap: rows that aren't independent (several per patient, time series) leak through it exactly as they do through random cross-validation folds (see [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals#train-validation-test-splits)). In scikit-learn, pass `oob_score=True`.
+
+## 6. What the Forest Relied On
+
+### Feature Importance
+
+A forest of 300 trees can't be read rule by rule, so importance scores are the main way to ask what it learned. There are two common kinds, and they can disagree.
+
+**Impurity importance** (scikit-learn's `feature_importances_`): for each feature, add up the impurity decrease of every split that uses it, weighted by the number of training examples reaching the split, across all trees, then normalize to sum to 1. It's free to compute, but it inherits the biases described on the [Decision Trees page](/docs/machine-learning/decision-tree#strengths-and-weaknesses): it's computed on training data, so splits that fit noise still earn credit, and features with many possible thresholds get more chances to earn it.
+
+**Permutation importance** (Breiman 2001): on held-out data, shuffle one feature's values, breaking its relationship with the target, and measure how much the score gets worse. A feature the model doesn't really rely on can be shuffled with no loss.
+
+Section 8 compares them on data where the truth is known: features $x_1$ to $x_5$ matter and $x_6$ to $x_{10}$ are pure noise. Impurity importance gives each noise feature about 0.02 to 0.03, so together they collect over 10% of the total. Permutation importance on the test set gives them all essentially zero. Both rank the real features similarly.
+
+One more caveat applies to both. When two features are strongly correlated, the forest uses them interchangeably, so the credit is split between them, and each looks less important than the information it carries. Shuffling one of them barely hurts, because the other covers for it. Importance measures the model's reliance on a feature *given the others*, not whether the feature matters in the world. For more careful attribution, see SHAP in [Classical Interpretability](/docs/interpretability/classical-interpretability).
+
+## 7. The Settings That Matter
+
+Random forests are known for working well with defaults, which is a large part of their popularity. The few settings worth tuning, in order:
+
+| Setting (scikit-learn) | What it controls | Guidance |
 |---|---|---|
-| Variance | High | Much lower (averaging) |
-| Bias | Low (if deep) | Slightly higher |
-| Interpretability | High — can read the exact rules | Low — hundreds of trees, no single readable logic |
-| Training cost | Cheap | $B\times$ a single tree (parallelizable) |
-| Overfitting risk | High if unconstrained | Much lower |
+| `max_features` | Features per split, $m$: the bias-correlation trade | The most important one. Try $\sqrt{d}$, $d/3$, $d/2$, $d$ |
+| `min_samples_leaf` | Leaf size, so tree depth and variance | 1 (default) to 5 for classification; larger for noisy regression |
+| `n_estimators` | Number of trees $B$ | More is never worse, only slower. A few hundred is usually enough; check that OOB error has flattened |
+| `max_samples` | Size of each bootstrap sample | Smaller samples decorrelate trees and train faster on large data |
+| `class_weight` | Reweighting classes | `"balanced_subsample"` for imbalanced classification |
 
-## Minimal Implementation
+Forests also need very little preprocessing: no scaling, and mixed feature types are fine once categories are encoded. What they can't do is extrapolate. Like the trees they're made of, a forest's prediction for an input beyond the training range is a constant, the average of the edge leaves, so a forest trained on prices up to 2024 will predict a flat line into 2025.
+
+## 8. Minimal Implementation
+
+A random forest from scratch, using scikit-learn's single decision tree as the building block (the tree itself is built from scratch on the [Decision Trees page](/docs/machine-learning/decision-tree)): bootstrap samples, per-split feature sampling via `max_features`, averaging, and out-of-bag predictions. It runs on Friedman's synthetic benchmark, where the target depends on 5 of 10 features through nonlinear terms and an interaction, so we know the truth:
 
 ```python
 import numpy as np
+from sklearn.datasets import make_friedman1
+from sklearn.ensemble import ExtraTreesRegressor, RandomForestRegressor
+from sklearn.tree import DecisionTreeRegressor
 
-class SimpleRandomForest:
-    def __init__(self, n_trees=100, max_features="sqrt"):
-        self.n_trees = n_trees
-        self.max_features = max_features
-        self.trees = []
+def fit_forest(X, y, n_trees, max_features, seed=0):
+    """Bagging + per-split feature sampling; also returns out-of-bag predictions."""
+    rng = np.random.default_rng(seed)
+    n = len(y)
+    trees, oob_sum, oob_cnt = [], np.zeros(n), np.zeros(n)
+    for b in range(n_trees):
+        idx = rng.integers(0, n, n)                        # bootstrap sample
+        tree = DecisionTreeRegressor(max_features=max_features, random_state=b).fit(X[idx], y[idx])
+        out = np.setdiff1d(np.arange(n), idx)              # the ~37% this tree never saw
+        oob_sum[out] += tree.predict(X[out]); oob_cnt[out] += 1
+        trees.append(tree)
+    oob_mse = np.mean((oob_sum / oob_cnt - y)[oob_cnt > 0] ** 2)
+    return trees, oob_mse
 
-    def fit(self, X, y, tree_fit_fn):
-        n, d = X.shape
-        k = int(np.sqrt(d)) if self.max_features == "sqrt" else d
-        for _ in range(self.n_trees):
-            # Bootstrap sample
-            idx = np.random.choice(n, size=n, replace=True)
-            X_boot, y_boot = X[idx], y[idx]
-            # Random feature subset considered at each split is handled
-            # inside tree_fit_fn; k is passed through for that purpose.
-            tree = tree_fit_fn(X_boot, y_boot, max_features=k)
-            self.trees.append(tree)
+def forest_predict(trees, X):
+    return np.mean([t.predict(X) for t in trees], axis=0)
 
-    def predict(self, X, tree_predict_fn):
-        preds = np.array([tree_predict_fn(tree, X) for tree in self.trees])
-        return np.round(preds.mean(axis=0))  # majority vote via mean+round for binary labels
+# Friedman #1: y = 10 sin(pi x1 x2) + 20 (x3 - 0.5)^2 + 10 x4 + 5 x5 + noise; x6..x10 are pure noise
+X, y = make_friedman1(n_samples=1500, n_features=10, noise=1.0, random_state=0)
+X_tr, y_tr, X_te, y_te = X[:1000], y[:1000], X[1000:], y[1000:]
+mse = lambda p: np.mean((p - y_te) ** 2)
+
+single = DecisionTreeRegressor(random_state=0).fit(X_tr, y_tr)
+print(f"single deep tree:            test MSE {mse(single.predict(X_te)):.2f}")
+for name, m in [("bagging (all 10 features)", 1.0), ("random forest (3 features)", 3)]:
+    trees, oob = fit_forest(X_tr, y_tr, 300, m)
+    errors = np.array([t.predict(X_te) - y_te for t in trees])     # each tree's errors on the test set
+    rho = np.corrcoef(errors).mean()                                  # average correlation between trees
+    print(f"{name:27s}  test MSE {mse(forest_predict(trees, X_te)):.2f}   OOB MSE {oob:.2f}   "
+          f"one tree {np.mean(errors ** 2):.2f}   tree-tree correlation {rho:.2f}")
+
+sk = RandomForestRegressor(n_estimators=300, max_features=3, oob_score=True, random_state=0).fit(X_tr, y_tr)
+et = ExtraTreesRegressor(n_estimators=300, max_features=3, random_state=0).fit(X_tr, y_tr)
+print(f"scikit-learn random forest:  test MSE {mse(sk.predict(X_te)):.2f}")
+print(f"scikit-learn extra trees:    test MSE {mse(et.predict(X_te)):.2f}")
+
+# Impurity importance vs. permutation importance on held-out data
+from sklearn.inspection import permutation_importance
+perm = permutation_importance(sk, X_te, y_te, n_repeats=10, random_state=0).importances_mean
+print("feature:      " + " ".join(f"x{j + 1:<5}" for j in range(10)))
+print("impurity:     " + " ".join(f"{v:.3f} " for v in sk.feature_importances_))
+print("permutation:  " + " ".join(f"{v:.3f} " for v in perm / perm.sum()))
 ```
 
-Next: [Boosting: AdaBoost & Gradient Boosting](/docs/machine-learning/boosting) — building an ensemble sequentially instead of in parallel, where each new tree specifically targets the previous ensemble's mistakes.
+Output (scikit-learn 1.7):
+
+```
+single deep tree:            test MSE 9.41
+bagging (all 10 features)    test MSE 3.86   OOB MSE 3.75   one tree 10.45   tree-tree correlation 0.37
+random forest (3 features)   test MSE 3.79   OOB MSE 3.87   one tree 14.33   tree-tree correlation 0.27
+scikit-learn random forest:  test MSE 3.77
+scikit-learn extra trees:    test MSE 3.96
+feature:      x1     x2     x3     x4     x5     x6     x7     x8     x9     x10   
+impurity:     0.179  0.187  0.076  0.343  0.095  0.022  0.024  0.026  0.024  0.024 
+permutation:  0.228  0.240  0.049  0.397  0.086  0.000  -0.000  0.000  -0.001  0.001 
+```
+
+What it shows, section by section:
+
+- **Averaging works (Section 1).** One deep tree has a test error of 9.41; 300 bagged trees, 3.86. That's a 59% reduction from averaging alone.
+- **The variance formula holds (Sections 1 and 3).** $\rho\sigma^2$ predicts about 3.9 for both forests; the measured errors are 3.86 and 3.79. Feature sampling made each tree worse (10.45 to 14.33) and the forest better, by cutting correlation from 0.37 to 0.27.
+- **The from-scratch forest matches the library**: 3.79 against scikit-learn's 3.77, with the small difference from different random draws.
+- **OOB error tracks test error (Section 5)** without any held-out data.
+- **Impurity importance credits noise (Section 6)**: features 6 to 10 are pure noise, yet together they get 12% of impurity importance and essentially 0% of permutation importance.
+
+## 9. When *Not* to Use a Random Forest
+
+| Situation | Better choice |
+|---|---|
+| You need the highest accuracy on tabular data and can tune | [Gradient boosting](/docs/machine-learning/xgboost-lightgbm-catboost), which usually edges out forests when tuned |
+| Predictions must extrapolate beyond the training range | Linear models or explicit trend models; forests predict a constant past the edge |
+| The model must be read and audited rule by rule | A single pruned [tree](/docs/machine-learning/decision-tree) or a linear model |
+| Very high-dimensional sparse data (text) | Linear models; random feature subsets rarely contain the few informative sparse features |
+| Tight memory or latency budgets | Hundreds of deep trees are large and slow to evaluate; boosted shallow trees or linear models are smaller |
+| You need well-calibrated probabilities | Calibrate the forest's outputs, or use logistic regression; forest probabilities tend to be pulled away from 0 and 1 |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| The formula | $\operatorname{Var}(\text{average}) = \rho\sigma^2 + \tfrac{1-\rho}{B}\sigma^2$ |
+| The floor | $\rho\sigma^2$: more models can't beat it; only lower correlation can |
+| Ingredients | Low-bias, high-variance, decorrelated models; deep trees fit |
+| Bagging | Each tree on a bootstrap sample, about 63% of distinct examples |
+| Random forest | Also a random subset of $m$ features at each split, to lower $\rho$ |
+| The trade | Each tree gets worse, the forest gets better |
+| Defaults | $m = \sqrt{d}$ for classification; scikit-learn's regressor defaults to all features (plain bagging) |
+| More trees | Never overfits, only converges; check OOB error has flattened |
+| Extra Trees | Random thresholds too; faster, smoother, often similar accuracy |
+| OOB error | Each example scored by the trees that never saw it; free validation |
+| Importance | Impurity importance credits noise; prefer permutation importance on held-out data |
+| Limits | Can't extrapolate; less readable; usually just behind tuned boosting |
+
+---
+
+Next: [Boosting: AdaBoost & Gradient Boosting](/docs/machine-learning/boosting), which builds the ensemble sequentially, each new tree fitted to the mistakes of the trees before it, attacking bias rather than variance.
+
+## Sources
+
+- L. Breiman, [Bagging Predictors](https://doi.org/10.1007/BF00058655), *Machine Learning*, 1996
+- L. Breiman, [Random Forests](https://doi.org/10.1023/A:1010933404324), *Machine Learning*, 2001
+- P. Geurts, D. Ernst and L. Wehenkel, [Extremely Randomized Trees](https://doi.org/10.1007/s10994-006-6226-1), *Machine Learning*, 2006
+- J. H. Friedman, [Multivariate Adaptive Regression Splines](https://doi.org/10.1214/aos/1176347963), *Annals of Statistics*, 1991 (the Friedman #1 benchmark)
+- C. Strobl, A.-L. Boulesteix, A. Zeileis and T. Hothorn, [Bias in Random Forest Variable Importance Measures](https://doi.org/10.1186/1471-2105-8-25), *BMC Bioinformatics*, 2007
+- T. Hastie, R. Tibshirani and J. Friedman, [The Elements of Statistical Learning](https://hastie.su.domains/ElemStatLearn/), 2nd ed., Chapter 15
+- scikit-learn, [Forests of randomized trees](https://scikit-learn.org/stable/modules/ensemble.html#forest) user guide
