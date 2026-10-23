@@ -1,174 +1,387 @@
 ---
 title: "Logistic Regression, In Full Depth"
 sidebar_position: 4.9
-description: "Why logistic regression predicts a probability, not a number -- the sigmoid, the real loss function that makes training work, and why it's the right one."
+description: "Logistic regression derived: the sigmoid and what the weights mean as log-odds, cross-entropy as the Bernoulli likelihood, why squared error fails, the gradient and the Hessian step by step, Newton's method, separable data, softmax for many classes, calibration, and a from-scratch implementation checked against scikit-learn."
 ---
 
-import __migratedImg0 from './img/sigmoid.png';
-import __migratedImg1 from './img/decision-boundary.png';
-
-
+import sigmoidLight from './img/sigmoid-light.png';
+import sigmoidDark from './img/sigmoid.png';
+import boundaryLight from './img/decision-boundary-light.png';
+import boundaryDark from './img/decision-boundary.png';
 import LogisticRegressionStudio from '../../../viz/LogisticRegressionStudio';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Logistic Regression, In Full Depth
 
-Despite the name, logistic regression is a *classification* algorithm, not a regression one — it predicts a probability, then a class. It's the natural next step after [Linear Regression](/docs/machine-learning/linear-regression): same linear core, adapted to output something that behaves like a probability.
+[Linear Regression](/docs/machine-learning/linear-regression) predicts a number. Many questions want a yes or no instead: will this email be spam, will this patient be readmitted, will this student pass. Logistic regression answers them with the same linear core, $\mathbf{w}^T\mathbf{x} + b$, passed through one extra function that turns it into a probability. Despite the name, it's a classification method. This page derives it in full: the sigmoid and what the weights mean, the loss that comes out of the probability model and why squared error is the wrong one, the gradient and the curvature, how the solvers use them, what happens when the classes can be perfectly separated, the extension to many classes, and whether the probabilities can be trusted.
 
 <ELI5>
 
-Imagine sorting emails into "spam" or "not spam." You don't want a flat yes/no — you want a confidence, like "92% sure this is spam," so obviously-spam and borderline cases can be treated differently. Logistic regression does exactly that: it takes the same "weighted sum of features" idea as linear regression, but instead of outputting a raw number that could be anything, it squashes that number into a value between 0 and 1 that behaves like a real probability. Only after that does it draw a line — probability above 50%, call it spam; below, call it not spam.
+Imagine sorting emails into "spam" and "not spam". A flat yes or no throws information away; you'd rather hear "92% sure this is spam", so obvious spam and borderline cases can be treated differently.
 
-Everything below is that same idea, made exact: the actual squashing function, the actual loss that makes training it work, and why that loss — not the obvious one — is the right choice.
+Logistic regression adds up evidence the way linear regression does: each word or feature adds or subtracts a few points. Then, instead of reporting the raw score, which could be anything from minus a thousand to plus a thousand, it squeezes the score into a number between 0 and 1 that behaves like a probability. Only at the very end does it draw a line: above 50%, call it spam. Everything below is that idea made exact.
 
 </ELI5>
 
-## What Is Logistic Regression?
+## 1. From a Score to a Probability
 
-Linear regression predicts an unbounded real number. That's wrong for classification — if you're predicting "is this email spam?", you want an output between 0 and 1 that behaves like a probability, not a number that could be -40 or +1000.
+Linear regression's output is an unbounded number. For a yes-or-no target coded as $y \in \{0, 1\}$, fitting a straight line directly (the "linear probability model") gives predictions like $-0.3$ or $1.4$, which can't be probabilities, and a single extreme example can tilt the line enough to move every other prediction.
 
-Logistic regression fixes this with one change: take the linear regression output and squash it through the **sigmoid function**.
+Logistic regression keeps the linear score
+
+$$
+z = \mathbf{w}^T\mathbf{x} + b
+$$
+
+and models the *probability* of class 1 as a smooth, S-shaped function of it:
+
+$$
+\hat{p} = P(y = 1 \mid \mathbf{x}) = \sigma(z)
+$$
+
+The score can be anything; the probability can't. The sections below derive the function $\sigma$, the loss used to fit $\mathbf{w}$ and $b$, and how they're solved. The studio uses the study-hours story from the linear regression page, now predicting pass or fail: drag $w$ and $b$ and watch the curve and the accuracy respond.
 
 <PredictFirst
-  question="In Gradient Descent Lab mode, both loss functions start from the same deliberately bad (w, b). Which one gets stuck?"
+  question="In the studio's Gradient Descent Lab mode, both loss functions start from the same deliberately bad (w, b). Which one gets stuck?"
   options={[
-    'Cross-Entropy gets stuck; MSE (naive) escapes fine',
-    'MSE (naive) gets stuck; Cross-Entropy escapes fine',
+    'Cross-entropy gets stuck; squared error escapes',
+    'Squared error gets stuck; cross-entropy escapes',
     'Both get stuck equally',
-    'Neither gets stuck -- both converge at the same rate',
+    'Neither gets stuck: both converge at the same rate',
   ]}
   correctIndex={1}
-  explanation="MSE-on-sigmoid's gradient carries an extra factor of the sigmoid's own derivative, p̂(1-p̂), which is at most 0.25 and shrinks toward 0 the more confidently wrong a prediction is -- exactly the region the bad starting point sits in. Cross-entropy's gradient has no such factor, so it keeps pushing at full strength regardless of how saturated the current prediction is. Run it below and watch MSE's step log flatline while Cross-Entropy keeps moving."
+  explanation="The squared-error gradient carries an extra factor of the sigmoid's slope, p̂(1 - p̂), which is at most 0.25 and shrinks toward 0 the more confidently wrong a prediction is: exactly where the bad starting point sits. Cross-entropy's gradient has no such factor (Section 4 derives why), so it keeps pushing at full strength. Run it and watch the squared-error step log flatline."
 />
-
-Same study-hours story as [Linear Regression](/docs/machine-learning/linear-regression#what-is-linear-regression), now predicting pass/fail instead of a score. Drag $w$ and $b$ and watch the sigmoid curve — and the accuracy — respond live:
 
 <LogisticRegressionStudio />
 
-## The Sigmoid Function
+## 2. The Sigmoid and the Log-Odds
 
-$$\sigma(z) = \frac{1}{1 + e^{-z}}, \qquad z = \mathbf{w}^T\mathbf{x} + b$$
+### The Sigmoid Function
 
-<img src={__migratedImg0} alt="The sigmoid function, mapping any real number to (0, 1), with a decision threshold at z=0" style={{maxWidth: '100%'}} />
+The function is the **logistic sigmoid**:
 
-Read directly off the curve: as $z \to +\infty$, $\sigma(z) \to 1$; as $z \to -\infty$, $\sigma(z) \to 0$; at $z=0$, $\sigma(z) = 0.5$ exactly. No matter what real number $z = \mathbf{w}^T\mathbf{x}+b$ comes out of the linear part, $\sigma(z)$ always lands in $(0,1)$ — a valid probability. The full hypothesis:
+$$
+\sigma(z) = \frac{1}{1 + e^{-z}}
+$$
 
-$$\hat{p} = \sigma(\mathbf{w}^T\mathbf{x} + b)$$
+<ThemedImage alt="The sigmoid curve rising from 0 to 1, crossing 0.5 at z = 0, with predict class 0 to the left and predict class 1 to the right" sources={{light: sigmoidLight, dark: sigmoidDark}} />
 
-$\hat{p}$ is interpreted as $P(y=1 \mid \mathbf{x})$. To get an actual class prediction, threshold it — conventionally $\hat{y} = 1$ if $\hat{p} \geq 0.5$, else $\hat{y} = 0$ (equivalently: predict class 1 whenever $z \geq 0$).
+Read it off the formula. As $z \to +\infty$, $e^{-z} \to 0$ and $\sigma(z) \to 1$. As $z \to -\infty$, $e^{-z}$ blows up and $\sigma(z) \to 0$. At $z = 0$, $\sigma(0) = \tfrac{1}{2}$. It's symmetric, $\sigma(-z) = 1 - \sigma(z)$, steepest at $z = 0$, and flattens out in both tails. To turn the probability into a class, threshold it: predict 1 when $\hat{p} \ge 0.5$, which is the same as predicting 1 when $z \ge 0$.
 
-**Try it yourself:** [implement the sigmoid activation from scratch](/practice/sigmoid-activation), against real test cases.
+**Why this function and not some other S-curve?** Invert it. Solve $p = 1/(1 + e^{-z})$ for $z$:
 
-## Why Not Just Use MSE Loss?
+$$
+1 + e^{-z} = \frac{1}{p} \;\;\Rightarrow\;\; e^{-z} = \frac{1-p}{p} \;\;\Rightarrow\;\; z = \log\frac{p}{1-p}
+$$
 
-You could plug $\hat{p}$ into the same [MSE cost function](/docs/machine-learning/linear-regression#2-the-cost-function-mean-squared-error) from linear regression. It would technically run — but the resulting cost surface is **non-convex** in $(\mathbf{w}, b)$ when combined with the sigmoid, full of local minima that gradient descent can get stuck in. Logistic regression uses a different loss specifically chosen to stay convex.
+The quantity $p/(1-p)$ is the **odds** (a probability of 0.75 is odds of 3 to 1), and its logarithm is the **log-odds** or **logit**. So the model is
 
-Don't take that on faith — switch the Studio above to **Gradient Descent Lab** mode and toggle the **Loss function** between Cross-Entropy and MSE (naive). Both start from the same deliberately bad initialization: Cross-Entropy steadily escapes it; MSE-on-sigmoid gets stuck almost immediately and barely moves for hundreds of steps — the loss landscape panel shows exactly why: a visibly bumpier, flatter-near-the-wrong-answer surface instead of cross-entropy's clean bowl.
+$$
+\log\frac{P(y=1 \mid \mathbf{x})}{P(y=0 \mid \mathbf{x})} = \mathbf{w}^T\mathbf{x} + b
+$$
 
-## The Cost Function: Binary Cross-Entropy
+Logistic regression is *linear regression on the log-odds*. The log-odds range over all real numbers, so a linear function is a natural model for them, and the sigmoid is simply the function that converts log-odds back into a probability.
 
-$$J(\mathbf{w}, b) = -\frac{1}{n}\sum_{i=1}^n \left[y^{(i)}\log(\hat{p}^{(i)}) + (1-y^{(i)})\log(1-\hat{p}^{(i)})\right]$$
+**What a weight means.** Increase feature $j$ by one unit, holding the others fixed. The log-odds go up by exactly $w_j$, so the odds are multiplied by $e^{w_j}$, the **odds ratio**. In the example in Section 9, the fitted weight on hours studied is 1.19, so each extra hour multiplies the odds of passing by $e^{1.19} = 3.29$. That's the same multiplier everywhere, but its effect on the *probability* isn't: going from 4 to 6 hours moves the pass probability from 0.22 to 0.75, while going from 9 to 11 hours barely moves it, because the curve is already flat near 1. Weights are constant on the log-odds scale, not the probability scale.
 
-This looks intimidating but is simple per-example: only one of the two terms is ever "active," because $y^{(i)}$ is either 0 or 1.
+**Try it yourself:** [implement the sigmoid from scratch](/practice/sigmoid-activation), against real test cases.
 
-- If $y^{(i)} = 1$: the second term vanishes ($1-y^{(i)}=0$), leaving $-\log(\hat{p}^{(i)})$. This is small when $\hat{p}^{(i)}$ is close to 1 (correct, confident) and blows up toward $+\infty$ as $\hat{p}^{(i)} \to 0$ (confidently wrong) — exactly the penalty behavior you want.
-- If $y^{(i)} = 0$: the first term vanishes, leaving $-\log(1-\hat{p}^{(i)})$ — small when $\hat{p}^{(i)}$ is close to 0, blowing up as $\hat{p}^{(i)} \to 1$.
+## 3. The Loss Comes From the Probability Model
 
-**This is exactly cross-entropy** from [Probability & Statistics](/docs/mathematics-for-ai/probability-statistics#entropy-cross-entropy-and-kl-divergence), specialized to two classes — and it's not an arbitrary design choice: minimizing this loss is precisely Maximum Likelihood Estimation for a Bernoulli-distributed target (see [MLE vs MAP](/docs/mathematics-for-ai/probability-statistics#mle-vs-map)). Unlike MSE-on-sigmoid, this cost function *is* convex in $(\mathbf{w}, b)$, so gradient descent is guaranteed to find the global minimum.
+### The Cost Function: Binary Cross-Entropy
+
+The model says each label is a coin flip with probability $\hat{p}^{(i)}$ of landing on 1. The standard way to fit a probability model is to choose the parameters that make the observed labels most likely, which gives the loss directly (the full derivation is in the box below):
+
+$$
+J(\mathbf{w}, b) = -\frac{1}{n}\sum_{i=1}^n \left[y^{(i)}\log\hat{p}^{(i)} + \left(1-y^{(i)}\right)\log\left(1-\hat{p}^{(i)}\right)\right]
+$$
+
+Only one term is active for each example, because $y^{(i)}$ is 0 or 1:
+
+- If $y^{(i)} = 1$, the loss is $-\log\hat{p}^{(i)}$: near 0 when the model says $\hat{p} \approx 1$, and growing without limit as $\hat{p} \to 0$. Saying "0.1% chance" about something that happened costs $-\log 0.001 \approx 6.9$; saying 50% costs 0.69.
+- If $y^{(i)} = 0$, the loss is $-\log(1 - \hat{p}^{(i)})$, the mirror image.
+
+This is **binary cross-entropy**, the two-class case of the cross-entropy from [Probability & Statistics](/docs/mathematics-for-ai/probability-statistics#entropy-cross-entropy-and-kl-divergence). It's also called **log loss**.
 
 <GoDeeper title="Go deeper: derive cross-entropy from the Bernoulli likelihood">
 
-Same move as [Linear Regression's Gaussian-noise derivation](/docs/machine-learning/linear-regression#2-the-cost-function-mean-squared-error), with a different distribution. A single label $y^{(i)} \in \{0,1\}$ is Bernoulli-distributed with parameter $\hat{p}^{(i)}$ — the compact way to write "probability $\hat{p}^{(i)}$ that $y^{(i)}=1$, probability $1-\hat{p}^{(i)}$ that $y^{(i)}=0$" as one formula is:
+Same move as [linear regression's Gaussian-noise derivation](/docs/machine-learning/linear-regression#2-the-cost-function-mean-squared-error), with a different distribution. A single label $y \in \{0,1\}$ with $P(y = 1) = \hat{p}$ has the Bernoulli distribution, which can be written as one formula covering both cases:
 
-$$P\left(y^{(i)} \mid x^{(i)}\right) = \left(\hat{p}^{(i)}\right)^{y^{(i)}} \left(1-\hat{p}^{(i)}\right)^{1-y^{(i)}}$$
+$$
+P\left(y \mid \mathbf{x}\right) = \hat{p}^{\,y}\,(1-\hat{p})^{1-y}
+$$
 
-Check it: when $y^{(i)}=1$, the second factor becomes $(\cdot)^0=1$, leaving just $\hat{p}^{(i)}$; when $y^{(i)}=0$, the first factor vanishes the same way, leaving $1-\hat{p}^{(i)}$ — exactly the two cases, folded into one expression.
+Check it: when $y = 1$ the second factor is $(\cdot)^0 = 1$, leaving $\hat{p}$; when $y = 0$ the first factor disappears, leaving $1 - \hat{p}$.
 
-For $n$ independent examples, the likelihood is the product across all of them, and the log-likelihood turns that product into a sum:
+For $n$ independent examples the likelihood is the product of these, and the logarithm turns the product into a sum:
 
-$$\log L(\mathbf{w}, b) = \sum_{i=1}^{n}\left[y^{(i)}\log\hat{p}^{(i)} + \left(1-y^{(i)}\right)\log\left(1-\hat{p}^{(i)}\right)\right]$$
+$$
+\log L(\mathbf{w}, b) = \sum_{i=1}^{n}\left[y^{(i)}\log\hat{p}^{(i)} + \left(1-y^{(i)}\right)\log\left(1-\hat{p}^{(i)}\right)\right]
+$$
 
-Maximizing $\log L$ is identical to minimizing $-\log L$, and dividing by the constant $n$ doesn't move the minimizer — so minimizing $-\frac{1}{n}\log L(\mathbf{w},b)$ is *exactly* $J(\mathbf{w},b)$ as written above. Binary cross-entropy isn't a separately invented penalty that happens to look reasonable; it *is* the negative log-likelihood of the Bernoulli model, the direct analogue of how Gaussian noise produces squared error.
+Maximizing $\log L$ is the same as minimizing $-\log L$, and dividing by $n$ doesn't move the minimum, so minimizing $-\tfrac{1}{n}\log L$ is exactly minimizing $J$. Cross-entropy isn't an invented penalty that happens to behave well; it is the negative log-likelihood of the model, the direct analogue of how Gaussian noise produces squared error (see [MLE vs MAP](/docs/mathematics-for-ai/probability-statistics#mle-vs-map)).
 
 </GoDeeper>
 
-## Deriving the Gradient
+### Why Not Just Use MSE Loss?
 
-This is where something elegant happens. Working through the chain rule — differentiating the log-loss with respect to $z$, then $z$ with respect to $w_j$ — the sigmoid's own derivative ($\sigma'(z) = \sigma(z)(1-\sigma(z))$) cancels almost entirely against terms from the log-loss derivative, leaving:
+Plugging $\hat{p}$ into squared error, $\tfrac{1}{n}\sum(\hat{p}^{(i)} - y^{(i)})^2$, runs, but it trains badly, for two reasons you can see in the derivative.
 
-$$\frac{\partial J}{\partial w_j} = \frac{1}{n}\sum_{i=1}^n \left(\hat{p}^{(i)} - y^{(i)}\right)x_j^{(i)}$$
+By the chain rule, the gradient of $(\hat{p} - y)^2$ with respect to the score $z$ is
+
+$$
+\frac{\partial}{\partial z}(\hat{p} - y)^2 = 2(\hat{p} - y)\cdot\sigma'(z) = 2(\hat{p} - y)\,\hat{p}(1 - \hat{p})
+$$
+
+using $\sigma'(z) = \hat{p}(1-\hat{p})$ (derived in Section 4). The factor $\hat{p}(1-\hat{p})$ is at most 0.25 and goes to zero in both tails. So when the model is *confidently wrong*, say $\hat{p} = 0.001$ for an example with $y = 1$, the error term is nearly 1 but the gradient is multiplied by about 0.001. The examples that most need correcting barely move the weights. That's the flat-lining the studio's Gradient Descent Lab shows.
+
+The second problem is the shape of the surface. Composing the sigmoid with squared error gives a **non-convex** function of $\mathbf{w}$: it has flat plateaus and, with many examples, can have many local minima (Auer, Herbster and Warmuth, 1996, constructed cases with exponentially many). Cross-entropy, as the next section proves, is convex, so there is one minimum and any descent method finds it.
+
+## 4. The Gradient and the Curvature
+
+### Deriving the Gradient
+
+Working through the chain rule from the loss to the score to the weights, the sigmoid's derivative cancels against the log-loss derivative and leaves something very simple:
+
+$$
+\frac{\partial J}{\partial w_j} = \frac{1}{n}\sum_{i=1}^n \left(\hat{p}^{(i)} - y^{(i)}\right)x_j^{(i)} \qquad\qquad \frac{\partial J}{\partial b} = \frac{1}{n}\sum_{i=1}^n \left(\hat{p}^{(i)} - y^{(i)}\right)
+$$
+
+or, for all weights at once, $\nabla_{\mathbf{w}}J = \tfrac{1}{n}X^T(\hat{\mathbf{p}} - \mathbf{y})$.
 
 <GoDeeper title="Go deeper: watch the cancellation happen, term by term">
 
-Work with one example at a time — drop the $(i)$ superscript and the $\frac1n$ average, and restore both at the end. Let $\ell = -\left[y\log\hat{p} + (1-y)\log(1-\hat{p})\right]$, with $\hat{p}=\sigma(z)$ and $z=\mathbf{w}^T\mathbf{x}+b$. Three chain-rule steps: $\ell \to \hat{p} \to z \to w_j$.
+Work with one example at a time: drop the $(i)$ and the $\tfrac1n$, and restore both at the end. Let $\ell = -\left[y\log\hat{p} + (1-y)\log(1-\hat{p})\right]$, with $\hat{p}=\sigma(z)$ and $z=\mathbf{w}^T\mathbf{x}+b$. The chain is $\ell \to \hat{p} \to z \to w_j$.
 
-**Step 1 — $\dfrac{\partial \ell}{\partial \hat{p}}$:** differentiate each log term directly ($\frac{d}{dp}\log p = \frac1p$; $\frac{d}{dp}\log(1-p) = \frac{-1}{1-p}$):
+**Step 1, $\partial \ell/\partial \hat{p}$:** differentiate each log term ($\tfrac{d}{dp}\log p = \tfrac1p$ and $\tfrac{d}{dp}\log(1-p) = \tfrac{-1}{1-p}$):
 
-$$\frac{\partial \ell}{\partial \hat{p}} = -\frac{y}{\hat{p}} + \frac{1-y}{1-\hat{p}}$$
+$$
+\frac{\partial \ell}{\partial \hat{p}} = -\frac{y}{\hat{p}} + \frac{1-y}{1-\hat{p}}
+$$
 
-**Step 2 — $\dfrac{\partial \hat{p}}{\partial z} = \sigma'(z)$:** worth deriving this once too, from $\sigma(z) = (1+e^{-z})^{-1}$:
+**Step 2, $\partial \hat{p}/\partial z = \sigma'(z)$:** from $\sigma(z) = (1+e^{-z})^{-1}$,
 
-$$\sigma'(z) = -(1+e^{-z})^{-2}\cdot(-e^{-z}) = \frac{e^{-z}}{(1+e^{-z})^2} = \underbrace{\frac{1}{1+e^{-z}}}_{\sigma(z)}\cdot\underbrace{\frac{e^{-z}}{1+e^{-z}}}_{1-\sigma(z)} = \hat{p}(1-\hat{p})$$
+$$
+\sigma'(z) = \frac{e^{-z}}{(1+e^{-z})^2} = \underbrace{\frac{1}{1+e^{-z}}}_{\sigma(z)}\cdot\underbrace{\frac{e^{-z}}{1+e^{-z}}}_{1-\sigma(z)} = \hat{p}(1-\hat{p})
+$$
 
-**Step 3 — multiply and watch it collapse:**
+**Step 3, multiply:**
 
-$$\frac{\partial \ell}{\partial z} = \frac{\partial \ell}{\partial \hat{p}}\cdot\frac{\partial \hat{p}}{\partial z} = \left(-\frac{y}{\hat{p}}+\frac{1-y}{1-\hat{p}}\right)\hat{p}(1-\hat{p}) = -y(1-\hat{p}) + (1-y)\hat{p} = -y+y\hat{p}+\hat{p}-y\hat{p} = \hat{p}-y$$
+$$
+\frac{\partial \ell}{\partial z} = \left(-\frac{y}{\hat{p}}+\frac{1-y}{1-\hat{p}}\right)\hat{p}(1-\hat{p}) = -y(1-\hat{p}) + (1-y)\hat{p} = \hat{p}-y
+$$
 
-The $\hat{p}$ in the denominator of the first term cancels exactly against the $\hat{p}$ multiplied in from $\sigma'(z)$; same for $(1-\hat{p})$ in the second term. Everything the log-loss derivative and the sigmoid derivative each contributed disappears, leaving the strikingly plain $\hat{p}-y$ — that's the "elegant" cancellation the prose above promises, not a hand-wave.
+The $\hat{p}$ in the first denominator cancels against the $\hat{p}$ from $\sigma'(z)$, and $(1-\hat{p})$ cancels in the second term. What's left is the plain prediction error.
 
-**Step 4 — finish the chain:** $\dfrac{\partial z}{\partial w_j} = x_j$ (identical to linear regression), so $\dfrac{\partial \ell}{\partial w_j} = (\hat{p}-y)x_j$. Restore the $(i)$ superscripts, sum over $n$ examples, divide by $n$ — exactly the formula above.
+**Step 4:** $\partial z/\partial w_j = x_j$, so $\partial \ell/\partial w_j = (\hat{p}-y)x_j$. Restore the sum over examples and the $\tfrac1n$.
 
 </GoDeeper>
 
-**This is the identical formula shape as linear regression's gradient** (see [Linear Regression — Section 3](/docs/machine-learning/linear-regression#3-deriving-the-gradient-step-by-step)) — "error times input," summed over examples — even though the loss function and the model's output are completely different. This isn't a coincidence: it's a general property of combining a sigmoid/softmax output with cross-entropy loss (the same clean gradient shape reappears in [neural network classifiers](/docs/deep-learning/training-deep-networks) and in LLM next-token prediction).
+**The same shape as linear regression.** Compare the [linear regression gradient](/docs/machine-learning/linear-regression#3-deriving-the-gradient-step-by-step): "prediction minus target, times input". The loss and the output function are both different, yet the gradient has the same form. That isn't a coincidence. Linear and logistic regression are both **generalized linear models**, each with its "canonical" link function (identity for Gaussian targets, logit for Bernoulli ones), and every GLM with its canonical link has this gradient. The same cancellation happens for softmax with cross-entropy (Section 7), which is why the output layer of every neural network classifier, and every language model's next-token loss, has a gradient of "predicted probabilities minus one-hot target".
 
-The gradient descent update is then identical in form to linear regression's:
+**Convexity, proved.** Differentiate once more to get the Hessian, the matrix of second derivatives. Since $\partial(\hat{p} - y)/\partial z = \sigma'(z) = \hat{p}(1-\hat{p})$:
 
-$$w_j \leftarrow w_j - \alpha \cdot \frac{1}{n}\sum_i \left(\hat{p}^{(i)} - y^{(i)}\right)x_j^{(i)}$$
+$$
+H = \nabla^2_{\mathbf{w}}J = \frac{1}{n}\sum_{i=1}^n \hat{p}^{(i)}\left(1-\hat{p}^{(i)}\right)\mathbf{x}^{(i)}\mathbf{x}^{(i)T} = \frac{1}{n}X^TSX
+$$
 
-## The Decision Boundary
+where $S$ is the diagonal matrix with entries $\hat{p}^{(i)}(1 - \hat{p}^{(i)})$, all positive. For any vector $\mathbf{v}$, $\mathbf{v}^TH\mathbf{v} = \tfrac1n\sum_i \hat{p}^{(i)}(1-\hat{p}^{(i)})(\mathbf{v}^T\mathbf{x}^{(i)})^2 \ge 0$, so the Hessian is positive semidefinite everywhere, and $J$ is convex. Any point where the gradient is zero is a global minimum. Notice that $y$ doesn't appear in $H$ at all; the curvature depends only on how confident the current predictions are.
 
-Because $z = \mathbf{w}^T\mathbf{x}+b$ is linear, and the threshold is at $z=0$, the boundary between predicted classes is a **straight line** (or a flat hyperplane in higher dimensions):
+## 5. Solving It
 
-<img src={__migratedImg1} alt="Logistic regression decision boundary separating two classes in 2D feature space" style={{maxWidth: '100%'}} />
+Unlike linear regression, setting $X^T(\hat{\mathbf{p}} - \mathbf{y}) = 0$ has no closed-form solution, because $\hat{\mathbf{p}}$ depends on $\mathbf{w}$ through the sigmoid. There are two families of solver.
 
-This is the central limitation of plain logistic regression: it can only separate classes that are (approximately) linearly separable. Data that needs a curved boundary requires either engineered polynomial features, or a fundamentally different model (see [SVM](/docs/machine-learning/supervised-learning#support-vector-machines) with a kernel, or a neural network).
+**Gradient descent**, $\mathbf{w} \leftarrow \mathbf{w} - \eta\,\tfrac1n X^T(\hat{\mathbf{p}} - \mathbf{y})$, exactly as for linear regression. Simple, and the only option at very large scale, where it's run stochastically (see [SGD Classifier & Regressor](/docs/machine-learning/sgd-classifier-regressor)). It needs a learning rate and can take thousands of steps.
 
-## Regularized Logistic Regression
+**Newton's method** uses the curvature as well: approximate $J$ by a quadratic around the current point and jump to that quadratic's minimum,
 
-Exactly like linear regression, logistic regression overfits with too many features relative to data — and the same fix applies directly: add an L2 (or L1) penalty to $J(\mathbf{w}, b)$ above, identical in form to [Ridge](/docs/machine-learning/ridge-regression#the-ridge-cost-function) or [Lasso](/docs/machine-learning/lasso-regression#the-lasso-cost-function)'s penalty term. This is in fact the *default* behavior in most libraries (e.g. scikit-learn regularizes logistic regression by default) — unregularized logistic regression is the exception, not the norm, in practice.
+$$
+\mathbf{w} \leftarrow \mathbf{w} - H^{-1}\nabla_{\mathbf{w}}J
+$$
 
-## Multi-Class: Softmax Regression
+No learning rate, and near the optimum the number of correct digits roughly doubles each step (quadratic convergence). In Section 9 it reaches a gradient of $10^{-8}$ in seven steps where gradient descent used twenty thousand. Rearranged, each Newton step is a weighted least-squares problem with weights $S$, which is why statisticians call it **iteratively reweighted least squares (IRLS)**; it's how R's `glm` fits logistic regression. The cost is forming and solving with the $d \times d$ Hessian, $O(nd^2 + d^3)$ per step, which is fine for hundreds of features and too slow for millions.
 
-For more than two classes, the sigmoid generalizes to the **softmax function**, and binary cross-entropy generalizes to categorical cross-entropy — the exact loss used to train every classifier's output layer in [Deep Learning](/docs/deep-learning/roadmap), including next-token prediction in every LLM (see [Training Pipeline](/docs/llms-genai/training-pipeline)).
+**Quasi-Newton methods** sit in between: L-BFGS builds an approximation of the inverse Hessian from the last few gradients, getting most of Newton's speed at gradient-descent cost per step. It's scikit-learn's default solver for `LogisticRegression`. For L1-penalized models scikit-learn uses `liblinear` or `saga`, which handle the non-smooth penalty.
 
-**Try it yourself:** [implement a numerically stable softmax from scratch](/practice/softmax), against real test cases.
+## 6. What the Model Can Separate
 
-## Minimal Implementation
+### The Decision Boundary
+
+The predicted class flips where $\hat{p} = 0.5$, which is where $z = \mathbf{w}^T\mathbf{x} + b = 0$. That's a straight line in two dimensions, and a flat hyperplane in general. More than that, every probability level is a straight line: $\hat{p} = 0.9$ wherever $z = \log 9 \approx 2.2$, a line parallel to the boundary. The weight vector $\mathbf{w}$ points across them, from low probability to high, and its length sets how quickly the probability changes as you cross:
+
+<ThemedImage alt="Two classes of points in 2-D with logistic regression's parallel straight-line contours of equal probability, the thick p = 0.5 line being the decision boundary" sources={{light: boundaryLight, dark: boundaryDark}} />
+
+This is plain logistic regression's central limitation: it can only draw straight boundaries. If the classes are separated by a curve (one class inside a circle, say), the model can't represent it unless you add features that make the boundary linear in a new space, such as $x_1^2$, $x_2^2$ and $x_1x_2$. The model stays linear in its *parameters*, the same point the [linear regression page](/docs/machine-learning/linear-regression#1-the-hypothesis) makes about polynomial features. Otherwise you need a different model: a [kernel SVM](/docs/machine-learning/support-vector-machines), trees, or a neural network.
+
+**The opposite problem: perfectly separable data.** If some straight line puts every class-1 example on one side and every class-0 example on the other, the unpenalized loss has *no minimum*. Take any separating $\mathbf{w}$ and multiply it by 2: every $z$ doubles in size, every $\hat{p}$ moves closer to the right answer, and the loss goes down. It keeps going down as $\lVert\mathbf{w}\rVert \to \infty$, approaching zero but never reaching it. Gradient descent keeps growing the weights forever; Newton's method fails because the Hessian becomes singular. Albert and Anderson (1984) characterized exactly when a finite maximum-likelihood estimate exists. Section 9 shows the weight on a separable toy dataset climbing from 2.2 to 3.6 to 5.0 as the number of steps grows tenfold each time. It's common in practice, with many features or rare classes, and the cure is the same as for overfitting.
+
+### Regularized Logistic Regression
+
+Add a penalty on the weights, exactly as in [Ridge](/docs/machine-learning/ridge-regression#the-ridge-cost-function) or [Lasso](/docs/machine-learning/lasso-regression#the-lasso-cost-function):
+
+$$
+J_{\text{reg}}(\mathbf{w}, b) = J(\mathbf{w}, b) + \frac{\lambda}{2}\lVert\mathbf{w}\rVert_2^2
+$$
+
+The penalty grows without limit as the weights do, so even on separable data there's now a finite minimum. It also adds $\lambda I$ to the Hessian, making the objective strictly convex with a unique solution. As with linear models, the L2 version shrinks all weights and the L1 version selects features.
+
+This is the default in scikit-learn: `LogisticRegression()` uses an L2 penalty with `C=1.0`, where `C` is the *inverse* strength, $C = 1/(n\lambda)$ in this page's notation. Smaller `C` means stronger regularization. Because the penalty is on by default, the coefficients are shrunk even when you didn't ask for it; for unpenalized maximum likelihood (for instance, to report odds ratios), pass `penalty=None`, and expect a failure to converge if the data is separable.
+
+## 7. More Than Two Classes
+
+### Multi-Class: Softmax Regression
+
+With $K$ classes, give each class its own weight vector and score, $z_k = \mathbf{w}_k^T\mathbf{x} + b_k$, and turn the $K$ scores into $K$ probabilities with the **softmax**:
+
+$$
+\hat{p}_k = \frac{e^{z_k}}{\sum_{m=1}^{K} e^{z_m}}
+$$
+
+Every $\hat{p}_k$ is positive and they sum to 1. With $K = 2$, $\hat{p}_1 = e^{z_1}/(e^{z_0} + e^{z_1}) = \sigma(z_1 - z_0)$, so binary logistic regression is softmax with one score fixed at 0. The loss is the negative log-probability of the true class, **categorical cross-entropy**, $\ell = -\log\hat{p}_y$, and the same cancellation as Section 4 gives
+
+$$
+\frac{\partial \ell}{\partial z_k} = \hat{p}_k - \mathbb{1}[k = y]
+$$
+
+"Predicted probability minus one-hot target", the multi-class version of $\hat{p} - y$. This exact layer and loss sit at the output of most neural network classifiers and every language model, where the "classes" are the tokens in the vocabulary (see [Training Pipeline](/docs/llms-genai/training-pipeline)). In practice softmax is computed after subtracting the largest score from all of them, which doesn't change the result but prevents $e^{z}$ from overflowing.
+
+The alternative is **one-vs-rest**: fit $K$ separate binary models, each class against all others, and predict the class with the highest probability. It's simpler but the $K$ probabilities don't sum to 1. scikit-learn's `LogisticRegression` fits the softmax ("multinomial") version for multi-class targets with its default solver.
+
+**Try it yourself:** [implement a numerically stable softmax](/practice/softmax), against real test cases.
+
+## 8. Are the Probabilities Any Good?
+
+A classifier's probabilities are **calibrated** if, among all examples it scores at 0.8, about 80% are positive. Logistic regression tends to be well calibrated when its assumptions roughly hold, because maximum likelihood directly rewards getting the probabilities right: Niculescu-Mizil and Caruana (2005) found it among the best-calibrated classifiers out of the box, while methods like naive Bayes, SVMs and boosted trees needed recalibration. There are three common ways to lose that:
+
+- **Strong regularization** pulls all probabilities toward the base rate, making the model under-confident.
+- **Resampling the training data** (oversampling the rare class, SMOTE) changes the class balance the model believes in, so its probabilities are wrong for the real population (see [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals#sampling-strategies)).
+- **A misspecified model**: if the true log-odds aren't linear in the features, the probabilities will be systematically off in some regions.
+
+Check calibration with a reliability diagram (see [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics#classification-metrics)), and choose the decision threshold from the costs of each kind of mistake rather than defaulting to 0.5: with calibrated probabilities, if a false negative costs ten times a false positive, the cost-minimizing threshold is $1/11 \approx 0.09$.
+
+## 9. Minimal Implementation
+
+Gradient descent, Newton's method from Section 5, and scikit-learn's unpenalized fit, on 400 students whose pass probability follows a known logistic curve (true $w = 1.2$, $b = -6$, so 50% at 5 hours). Then a separable toy dataset, to watch Section 6's runaway weight:
 
 ```python
 import numpy as np
+from sklearn.linear_model import LogisticRegression
 
 def sigmoid(z):
     return 1 / (1 + np.exp(-z))
 
-def fit_logistic_regression(X, y, lr=0.1, epochs=1000):
+def fit_gradient_descent(X, y, lr=0.1, epochs=5000):
     n, d = X.shape
-    w = np.zeros(d)
-    b = 0.0
+    w, b = np.zeros(d), 0.0
     for _ in range(epochs):
-        z = X @ w + b
-        p_hat = sigmoid(z)
-        error = p_hat - y                   # identical shape to linear regression's gradient
-        dw = (1 / n) * X.T @ error
-        db = (1 / n) * np.sum(error)
-        w -= lr * dw
-        b -= lr * db
+        error = sigmoid(X @ w + b) - y          # p_hat - y, Section 4
+        w -= lr * X.T @ error / n
+        b -= lr * error.mean()
     return w, b
 
-def predict(X, w, b, threshold=0.5):
-    return (sigmoid(X @ w + b) >= threshold).astype(int)
+def fit_newton(X, y, steps=7):
+    Xb = np.column_stack([np.ones(len(X)), X])  # bias as a column of ones
+    theta = np.zeros(Xb.shape[1])
+    for k in range(steps):
+        p = sigmoid(Xb @ theta)
+        grad = Xb.T @ (p - y) / len(y)
+        H = Xb.T @ (Xb * (p * (1 - p))[:, None]) / len(y)   # X^T S X / n, Section 5
+        theta -= np.linalg.solve(H, grad)
+        print(f"  newton step {k + 1}: |gradient| = {np.linalg.norm(grad):.1e}")
+    return theta[1:], theta[0]
+
+# Hours studied -> passed, generated from a known logistic model
+rng = np.random.default_rng(0)
+hours = rng.uniform(0, 10, 400)
+p_true = sigmoid(1.2 * (hours - 5))             # true w = 1.2, b = -6
+passed = (rng.random(400) < p_true).astype(float)
+X = hours[:, None]
+
+w_gd, b_gd = fit_gradient_descent(X, passed, lr=0.05, epochs=20000)
+w_nt, b_nt = fit_newton(X, passed)
+sk = LogisticRegression(penalty=None).fit(X, passed)
+print(f"gradient descent: w={w_gd[0]:.3f} b={b_gd:.3f}")
+print(f"newton (7 steps): w={w_nt[0]:.3f} b={b_nt:.3f}")
+print(f"scikit-learn:     w={sk.coef_[0, 0]:.3f} b={sk.intercept_[0]:.3f}   (true w=1.2, b=-6)")
+print(f"odds ratio per extra hour: {np.exp(w_nt[0]):.2f}")
+print(f"P(pass | 4 h) = {sigmoid(w_nt[0] * 4 + b_nt):.3f},  P(pass | 6 h) = {sigmoid(w_nt[0] * 6 + b_nt):.3f}")
+
+# Perfectly separable data: the unpenalized weight never settles
+Xs = np.array([[1.0], [2.0], [3.0], [6.0], [7.0], [8.0]])
+ys = np.array([0, 0, 0, 1, 1, 1], dtype=float)
+for epochs in [1000, 10000, 100000]:
+    w, b = fit_gradient_descent(Xs, ys, lr=0.5, epochs=epochs)
+    print(f"separable, {epochs:>6} epochs: w={w[0]:.2f}")
+print(f"separable, scikit-learn default (L2, C=1): w={LogisticRegression().fit(Xs, ys).coef_[0, 0]:.2f}")
 ```
 
-Next: [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics) for precision/recall/ROC-AUC — the metrics that actually matter for judging a classifier, since accuracy alone is misleading on imbalanced data.
+Output (scikit-learn 1.7):
+
+```
+  newton step 1: |gradient| = 1.4e+00
+  newton step 2: |gradient| = 3.3e-01
+  newton step 3: |gradient| = 1.0e-01
+  newton step 4: |gradient| = 2.5e-02
+  newton step 5: |gradient| = 2.8e-03
+  newton step 6: |gradient| = 4.4e-05
+  newton step 7: |gradient| = 1.0e-08
+gradient descent: w=1.189 b=-6.018
+newton (7 steps): w=1.190 b=-6.024
+scikit-learn:     w=1.191 b=-6.024   (true w=1.2, b=-6)
+odds ratio per extra hour: 3.29
+P(pass | 4 h) = 0.221,  P(pass | 6 h) = 0.754
+separable,   1000 epochs: w=2.18
+separable,  10000 epochs: w=3.55
+separable, 100000 epochs: w=5.04
+separable, scikit-learn default (L2, C=1): w=1.04
+```
+
+All three fits agree with each other and land close to the true parameters; the remaining gap is sampling noise from 400 coin flips. Newton's gradient norm shows the quadratic convergence of Section 5: the exponent roughly doubles from step 4 to step 7, going from $10^{-2}$ to $10^{-8}$ in three steps, while gradient descent needed 20,000 steps to get as close. The odds ratio of 3.29 per hour and the jump from 22% to 75% between 4 and 6 hours are Section 2's interpretation in numbers. On the separable data the unpenalized weight keeps growing with every tenfold increase in steps, exactly as Section 6 predicts; scikit-learn's default L2 penalty gives a finite answer.
+
+## 10. When *Not* to Use Logistic Regression
+
+| Situation | Better choice |
+|---|---|
+| The boundary between classes is strongly curved, and you can't engineer features that straighten it | Trees and boosting ([XGBoost, LightGBM, CatBoost](/docs/machine-learning/xgboost-lightgbm-catboost)), a [kernel SVM](/docs/machine-learning/support-vector-machines), or a neural network |
+| Complex interactions between many features | Gradient-boosted trees, which find interactions automatically |
+| Raw images, audio or text | Neural networks that learn the features; logistic regression is often their final layer |
+| Perfectly or nearly separable data and you need unpenalized estimates | Firth's penalized likelihood, or report the separation; plain maximum likelihood doesn't exist |
+| An ordered outcome (low, medium, high) | Ordinal logistic regression, which uses the ordering |
+| Very many features and few examples, without regularization | Always regularize; L1 if you also want feature selection |
+
+As a **baseline**, though, it's hard to beat: fast, convex, well calibrated, and interpretable through odds ratios. Fit it first; a more complex model has to earn its place by beating it on held-out data.
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Model | $P(y = 1 \mid \mathbf{x}) = \sigma(\mathbf{w}^T\mathbf{x} + b)$, a linear model for the log-odds |
+| Sigmoid | $1/(1 + e^{-z})$; its inverse is the logit $\log\frac{p}{1-p}$ |
+| Weights | $+1$ unit of $x_j$ multiplies the odds by $e^{w_j}$, the odds ratio |
+| Loss | Binary cross-entropy, the negative log-likelihood of a Bernoulli model |
+| Not squared error | Its gradient has a $\hat{p}(1-\hat{p})$ factor that vanishes when confidently wrong; non-convex |
+| Gradient | $\tfrac1n X^T(\hat{\mathbf{p}} - \mathbf{y})$, the same shape as linear regression |
+| Hessian | $\tfrac1n X^TSX$ with $S = \operatorname{diag}(\hat{p}(1-\hat{p}))$: convex |
+| Solvers | Gradient descent at scale; Newton/IRLS for small $d$; L-BFGS by default |
+| Boundary | Straight: $\mathbf{w}^T\mathbf{x} + b = 0$; every probability level is a parallel line |
+| Separable data | Weights diverge without a penalty; regularize |
+| scikit-learn | L2 penalty on by default; `C` is the inverse strength |
+| Many classes | Softmax, with gradient $\hat{p}_k - \mathbb{1}[k = y]$ |
+| Probabilities | Usually well calibrated; resampling and strong regularization break that |
+
+---
+
+Next: [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics), for precision, recall, ROC and calibration: how to judge a classifier when accuracy alone misleads.
+
+## Sources
+
+- D. R. Cox, [The Regression Analysis of Binary Sequences](https://doi.org/10.1111/j.2517-6161.1958.tb00292.x), *Journal of the Royal Statistical Society B*, 1958
+- P. McCullagh and J. A. Nelder, *Generalized Linear Models*, 2nd ed., Chapman & Hall, 1989
+- A. Albert and J. A. Anderson, [On the Existence of Maximum Likelihood Estimates in Logistic Regression Models](https://doi.org/10.1093/biomet/71.1.1), *Biometrika*, 1984
+- D. Firth, [Bias Reduction of Maximum Likelihood Estimates](https://doi.org/10.1093/biomet/80.1.27), *Biometrika*, 1993
+- P. Auer, M. Herbster and M. K. Warmuth, [Exponentially Many Local Minima for Single Neurons](https://papers.nips.cc/paper/1995/hash/3806734b256c27e41ec2c6bffa26d9e7-Abstract.html), NeurIPS 1995
+- A. Niculescu-Mizil and R. Caruana, [Predicting Good Probabilities with Supervised Learning](https://doi.org/10.1145/1102351.1102430), ICML 2005
+- T. Hastie, R. Tibshirani and J. Friedman, [The Elements of Statistical Learning](https://hastie.su.domains/ElemStatLearn/), 2nd ed., Section 4.4
+- scikit-learn, [Logistic regression](https://scikit-learn.org/stable/modules/linear_model.html#logistic-regression) user guide
