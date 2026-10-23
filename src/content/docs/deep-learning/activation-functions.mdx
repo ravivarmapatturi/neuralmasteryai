@@ -1,78 +1,263 @@
 ---
 title: "Activation Functions, In Full Depth"
 sidebar_position: 3.5
-description: "ReLU, sigmoid, GELU, and the rest cataloged by real tradeoffs -- why the field's default activation choice has actually shifted over time, not just formulas."
+description: "Why networks need a nonlinearity, the four properties that decide which one to use, and every common activation from sigmoid and tanh through the ReLU family to GELU, SiLU and the SwiGLU gates in current language models, with values, slopes, dying ReLU and stable softmax computed and shown."
 ---
 
 import ActivationFunctionsDiagram from '../../../viz/diagrams/ActivationFunctionsDiagram';
-
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Activation Functions, In Full Depth
 
-[Neural Network Fundamentals](/docs/deep-learning/neural-network-fundamentals) explained *why* nonlinear activations are necessary at all — without one, stacking linear layers collapses into a single linear function, no matter how deep. This page catalogs the actual functions used in practice, their tradeoffs, and why the field's default choice has shifted over time.
+[Neural Network Fundamentals](/docs/deep-learning/neural-network-fundamentals) showed why a network needs a nonlinearity between its layers: without one, any stack of linear layers collapses into a single linear layer, and depth buys nothing. That page used tanh and moved on. This one is about the choice itself. It sets out the four properties that decide whether an activation trains well, then goes through the functions in the order the field adopted them: the saturating sigmoid and tanh, the ReLU family that made deep networks trainable, and the smooth, gated functions (GELU, SiLU, SwiGLU) inside today's transformers. It finishes with the functions that work on whole vectors, softmax above all. Values and slopes are computed rather than asserted, and the two classic failures, dead ReLUs and softmax overflow, are shown happening.
+
+<ELI5>
+
+Think of each neuron as a person deciding how loudly to pass on a message. A linear neuron just repeats whatever it heard, scaled up or down. A team of people who only repeat can never do anything a single repeater couldn't.
+
+An activation function is each person's rule for reacting. "Stay silent unless the message is positive, then pass it on unchanged" is ReLU. "Pass on a squashed version between -1 and 1" is tanh. The rule bends the message, and bending is what lets a team of people represent complicated ideas.
+
+But the rule also decides how well the person can learn from feedback. If someone's rule makes them deaf to small changes, nobody can correct them. Everything below is about choosing rules that bend the message *and* stay responsive to correction.
+
+</ELI5>
 
 <ActivationFunctionsDiagram />
 
-## The Core Tradeoffs to Judge Any Activation By
+## 1. What an Activation Has to Do
 
-- **Saturation**: does the function flatten out (near-zero gradient) for large inputs? Saturating functions cause vanishing gradients in deep networks (see [Training Deep Networks](/docs/deep-learning/training-deep-networks#vanishing-exploding-gradients)).
-- **Zero-centered output**: is the output centered around 0, or always positive? Non-zero-centered activations (like sigmoid) can slow convergence because gradients on the next layer's weights end up all-same-sign.
-- **Computational cost**: a cheap function (ReLU: one comparison) matters when it's evaluated billions of times per training step.
-- **Dead units**: can the function get permanently stuck outputting zero (or a constant) for some inputs, with zero gradient to ever recover?
+A neuron computes $z = \mathbf{w}^\top \mathbf{x} + b$ and outputs $\phi(z)$. The activation $\phi$ has two jobs that pull against each other.
 
-## Historical / Saturating Functions
+**On the forward pass**, it must be nonlinear, so stacked layers can represent curved decision boundaries. Almost any nonlinear function will do for this; even a simple kink is enough, as ReLU shows.
 
-**Binary Step**: $f(z) = 1$ if $z \geq 0$ else $0$. Not differentiable at zero and has zero gradient everywhere else — unusable for gradient-based training. Included only because it's the original (1950s-era) perceptron activation, conceptually the ancestor of everything below.
+**On the backward pass**, its slope $\phi'(z)$ multiplies every gradient that flows through it ([backpropagation](/docs/deep-learning/neural-network-fundamentals) has $\delta = (W^\top \delta_\text{above}) \odot \phi'(z)$ at every layer). Over many layers those slopes multiply together. If they're usually small, gradients vanish; if they're zero, learning stops entirely for that unit. Most of the history of activation functions is about this second job.
 
-**Sigmoid**: $\sigma(z) = \frac{1}{1+e^{-z}}$ (see [Logistic Regression](/docs/machine-learning/logistic-regression#the-sigmoid-function) for the full derivation). Smooth, output in $(0,1)$ — but saturates hard at both ends (gradient $\to 0$ for $|z|$ large) and isn't zero-centered. Rarely used in hidden layers today; still standard for a binary classifier's *output* layer, where you specifically want a probability.
+### The Core Tradeoffs to Judge Any Activation By
 
-**Tanh**: $\tanh(z) = \frac{e^z - e^{-z}}{e^z+e^{-z}}$, output in $(-1,1)$. Same saturation problem as sigmoid, but zero-centered — a real improvement, which made it the default hidden-layer activation before ReLU took over.
+Four properties decide how well an activation trains:
 
-**Try it yourself:** [implement the sigmoid activation from scratch](/practice/sigmoid-activation), against real test cases.
+- **Saturation.** Does the slope fall towards zero for large inputs? A saturating function passes almost no gradient once a unit's input is far from zero, causing [vanishing gradients](/docs/deep-learning/training-deep-networks#vanishing-exploding-gradients) in deep networks.
+- **Zero-centred output.** Are the outputs centred around 0, or always positive? If a layer's inputs are all positive, the gradients of each neuron's weights all share the sign of that neuron's error, so the weights can only all increase or all decrease together at each step, which zig-zags towards the optimum slowly.
+- **Dead regions.** Is there a region where the slope is exactly zero? A unit whose input stays there receives no gradient and can never recover.
+- **Cost and smoothness.** A comparison is cheaper than an exponential, which matters when the function runs billions of times per step. A smooth function (no corners) gives the optimizer better-behaved curvature, which tends to matter at very large scale.
 
-## The ReLU Family
+No function wins on all four, which is why there are several in use.
 
-**ReLU** (Rectified Linear Unit): $f(z) = \max(0, z)$. The modern default: trivially cheap, doesn't saturate for $z>0$, and empirically trains faster than sigmoid/tanh in deep networks. Its flaw: the **dying ReLU problem** — if a neuron's weights drift so its input is always negative, its output and gradient are permanently 0, and it can never recover via gradient descent (the gradient through it is exactly 0, so no update ever fixes it).
+## 2. The Saturating Functions
 
-**Leaky ReLU**: $f(z) = z$ if $z>0$ else $\alpha z$ (small $\alpha$, e.g. 0.01) — allows a small negative-side gradient specifically to fix dying ReLU, at negligible extra cost.
+### Historical / Saturating Functions
 
-**PReLU** (Parametric ReLU): same shape as Leaky ReLU, but $\alpha$ is a *learned* parameter rather than fixed — lets the network decide per-channel how much negative-side leak is useful.
+**The step function**, $f(z) = 1$ if $z \ge 0$ else $0$, was the original perceptron's activation. Its slope is zero everywhere except at 0, where it is undefined, so gradient descent can't train it at all. It's the ancestor of everything below and used by nothing.
 
-**ELU** (Exponential Linear Unit): $f(z) = z$ if $z>0$ else $\alpha(e^z - 1)$. Smoothly saturates on the negative side (rather than Leaky ReLU's straight line) toward $-\alpha$, which pushes mean activations closer to zero — empirically speeds up convergence — at the cost of computing an exponential.
+**Sigmoid**, $\sigma(z) = \dfrac{1}{1 + e^{-z}}$, is a smooth step: it squashes any input into $(0, 1)$, and its derivative has a convenient form:
 
-**SELU** (Scaled ELU): ELU with specific fixed constants ($\alpha \approx 1.6733$, scale $\approx 1.0507$) chosen so that, under specific initialization and architecture conditions, activations self-normalize (maintain roughly zero mean, unit variance) across layers without needing explicit BatchNorm/LayerNorm.
+$$
+\sigma'(z) = \sigma(z)\,\big(1 - \sigma(z)\big)
+$$
 
-## The Modern Default: Smooth Gated Units
+That derivative peaks at $0.25$ at $z = 0$ and is close to zero once $|z|$ exceeds about 4. So sigmoid saturates at both ends, and its outputs are always positive, failing two of the four tests. It was the standard hidden-layer activation through the 1990s, and it is why deep networks were then thought to be untrainable. It remains the right choice for one job: the **output** of a binary classifier, where you want a probability ([Logistic Regression](/docs/machine-learning/logistic-regression#the-sigmoid-function) derives it).
 
-**GELU** (Gaussian Error Linear Unit): $f(z) = z \cdot \Phi(z)$, where $\Phi$ is the standard normal CDF — intuitively, "multiply the input by the probability a standard Gaussian is less than the input." Smooth everywhere (no sharp elbow like ReLU), slightly negative for small negative $z$, then approaches linear for large $z$. **The standard activation in Transformers** (BERT, GPT-family, and most modern LLMs use GELU in their feed-forward blocks — see [Attention & Transformers](/docs/deep-learning/attention-transformers#the-full-transformer-block)) because the smoothness empirically helps optimization at scale compared to ReLU's hard kink.
+**Tanh**, $\tanh(z) = \dfrac{e^z - e^{-z}}{e^z + e^{-z}} = 2\sigma(2z) - 1$, is a rescaled sigmoid with range $(-1, 1)$ and derivative $1 - \tanh^2(z)$, which peaks at $1$. It is zero-centred and has four times sigmoid's peak slope, a real improvement, but it still saturates at both ends. It was the default hidden activation before ReLU, and survives inside LSTM and GRU cells, where bounded outputs are part of the design.
 
-**Swish / SiLU**: $f(z) = z \cdot \sigma(z)$ — same "gate the input by a sigmoid of itself" idea as GELU, using the exact sigmoid instead of the Gaussian CDF. Very similar shape and behavior to GELU in practice; the choice between them is often more about convention/library defaults than a meaningful performance difference.
+## 3. Rectifiers
 
-**Mish**: $f(z) = z \cdot \tanh(\text{softplus}(z))$ — another smooth, self-gated activation in the same family as GELU/Swish, used in some modern CNN architectures (e.g. YOLO variants).
+### The ReLU Family
 
-## Auxiliary Functions
+**ReLU** (rectified linear unit), $f(z) = \max(0, z)$, changed deep learning around 2010 to 2012 (Nair and Hinton, 2010; Glorot et al., 2011; AlexNet, 2012). Its slope is exactly 1 for every positive input, so gradients pass through active units without shrinking, however deep the network. It costs one comparison. And its outputs are exactly zero for about half of inputs, giving sparse activations that are cheap and, empirically, easy to learn with. AlexNet reported training several times faster with ReLU than with tanh.
 
-**Softplus**: $f(z) = \log(1+e^z)$ — a smooth approximation of ReLU (no sharp corner at 0), used as a building block inside Mish above and occasionally as an activation itself when smoothness at zero specifically matters.
+Its flaw is the other half of the same property: for $z < 0$ the slope is exactly 0. A unit whose input is negative for *every* training example outputs 0 and receives no gradient, so nothing ever moves its weights back. This is the **dying ReLU** problem. It's usually triggered by a large update, often from a learning rate that's too high, that pushes a unit's bias far negative. Section 6 shows it happening.
 
-**Softsign**: $f(z) = \frac{z}{1+|z|}$ — a cheaper (no exponential), zero-centered alternative to tanh with similar S-shape but different tail behavior (approaches ±1 polynomially rather than exponentially).
+The fixes keep ReLU's positive side and change the negative side:
 
-**Identity**: $f(z) = z$ — used at a regression output layer (where you want the raw linear value, not squashed into a bounded range — see [Linear Regression](/docs/machine-learning/linear-regression)), and conceptually as the "no activation" baseline.
+- **Leaky ReLU**: $f(z) = z$ for $z > 0$, else $\alpha z$ with a small fixed $\alpha$ such as 0.01. The negative-side slope is small but not zero, so a unit can always recover.
+- **PReLU** (parametric ReLU): the same shape with $\alpha$ learned, often per channel (He et al., 2015).
+- **ELU**: $f(z) = z$ for $z > 0$, else $\alpha(e^z - 1)$. It bends smoothly towards $-\alpha$, pushing mean activations closer to zero, at the cost of an exponential.
+- **SELU**: ELU scaled by fixed constants ($\alpha \approx 1.6733$, $\lambda \approx 1.0507$) chosen so that, with LeCun-normal initialization in a plain feed-forward network, activations keep zero mean and unit variance through the layers without normalization layers (Klambauer et al., 2017). The guarantee needs those exact conditions, so SELU is rarely used outside them.
 
-**Softmax**: unlike every function above, softmax operates on a *whole vector* at once, not element-by-element: $\text{softmax}(\mathbf{z})_i = \frac{e^{z_i}}{\sum_j e^{z_j}}$ — converts a vector of raw scores into a probability distribution that sums to 1. This is the standard output-layer activation for multi-class classification (see [Logistic Regression — Softmax Regression](/docs/machine-learning/logistic-regression#multi-class-softmax-regression)) and is exactly what turns an LLM's raw output scores into a probability distribution over the next token.
+**The limitation of the ReLU family** is its corner at zero. It hasn't stopped ReLU from training excellent CNNs, but at transformer scale smooth activations have consistently trained slightly better.
 
-**Try it yourself:** [implement a numerically stable softmax from scratch](/practice/softmax), against real test cases.
+## 4. Smooth and Gated: GELU, SiLU and SwiGLU
 
-## Quick Reference
 
-| Function | Range | Zero-centered? | Saturates? | Typical use |
+The functions used in today's transformers share one idea: multiply the input by a smooth **gate** between 0 and 1 that depends on the input itself. Large positive inputs pass nearly unchanged, large negative inputs are nearly blocked, and the transition is smooth.
+
+**GELU** (Gaussian error linear unit; Hendrycks and Gimpel, 2016):
+
+$$
+\operatorname{GELU}(z) = z \cdot \Phi(z)
+$$
+
+where $\Phi$ is the standard normal cumulative distribution function. It's slightly negative for small negative inputs (its minimum is about $-0.17$, near $z = -0.75$), smooth everywhere, and close to the identity for large $z$. BERT and the GPT-2 and GPT-3 family used it.
+
+**SiLU**, also called **Swish** (Ramachandran et al., 2017; Elfwing et al., 2018):
+
+$$
+\operatorname{SiLU}(z) = z \cdot \sigma(z)
+$$
+
+The same idea with the sigmoid as the gate. Its shape is very close to GELU's, with a minimum of about $-0.28$, and the two are largely interchangeable.
+
+**Gated linear units** take the gate idea one step further: instead of gating $z$ by a function of itself, compute two separate projections of the input and use one to gate the other. **SwiGLU** (Shazeer, 2020) does this inside a transformer's feed-forward block:
+
+$$
+\operatorname{FFN}_\text{SwiGLU}(\mathbf{x}) = W_2\big(\operatorname{SiLU}(W_1 \mathbf{x}) \odot W_3 \mathbf{x}\big)
+$$
+
+The network learns *what* to pass ($W_3\mathbf{x}$) separately from *how much* to pass ($\operatorname{SiLU}(W_1\mathbf{x})$). Shazeer found GLU variants gave consistently better language-modelling quality at equal compute. Since the third matrix adds parameters, the hidden width is usually cut from $4d$ to about $\tfrac{8}{3}d$ to keep the total the same. **SwiGLU is the feed-forward activation in most current open language models**, including the Llama, Mistral, Qwen and DeepSeek families. **Mish**, $z \cdot \tanh(\operatorname{softplus}(z))$, is another smooth self-gated function, used in some YOLO detectors.
+
+<PredictFirst
+  question="GELU's slope at z = -1 is about -0.08. What does a negative slope mean for a unit whose input is -1?"
+  options={[
+    'The unit is dead and receives no gradient',
+    'Increasing the input slightly would decrease the output, so the gradient still flows, with its sign flipped',
+    'The gradient explodes',
+    'It is a numerical error; activation slopes are never negative',
+  ]}
+  correctIndex={1}
+  explanation="GELU dips below zero for moderately negative inputs and comes back up towards zero, so its slope is negative there. Unlike ReLU's flat zero, a nonzero slope means gradient still reaches the unit's weights, so it can't die the way a ReLU unit can."
+/>
+
+## 5. Functions on Whole Vectors
+
+### Auxiliary Functions
+
+Some functions used in networks aren't hidden-layer activations, but they play the same role at specific points.
+
+**Identity**, $f(z) = z$: the output of a regression network, where you want an unbounded number ([Linear Regression](/docs/machine-learning/linear-regression)).
+
+**Softplus**, $\log(1 + e^z)$: a smooth version of ReLU whose output is always positive. Used where a quantity must be positive, such as a predicted standard deviation, and inside Mish. Its derivative is exactly the sigmoid.
+
+**Softsign**, $z / (1 + |z|)$: a tanh-like S-curve with no exponential, whose tails approach $\pm 1$ more slowly.
+
+**Softmax** works on a whole vector at once:
+
+$$
+\operatorname{softmax}(\mathbf{z})_i = \frac{e^{z_i}}{\sum_j e^{z_j}}
+$$
+
+It turns a vector of raw scores (**logits**) into a probability distribution: every output positive, all summing to 1, with the largest score getting the largest share. It's the output of every multi-class classifier ([softmax regression](/docs/machine-learning/logistic-regression#multi-class-softmax-regression)), the step that turns a language model's scores over its vocabulary into next-token probabilities, and the step that turns attention scores into attention weights.
+
+Two practical facts about softmax. First, adding the same constant to every score doesn't change the result, since it multiplies the numerator and denominator by the same factor. That's what makes the **stable** implementation possible: subtract the largest score before exponentiating, so the largest exponent is $e^0 = 1$ and nothing overflows (section 6 shows the naive version failing). Second, softmax paired with cross-entropy loss has the gradient $\mathbf{p} - \mathbf{y}$ with respect to the logits, which is why libraries fuse them into one numerically stable operation, such as PyTorch's `cross_entropy`, which takes raw logits.
+
+## 6. Computing Them
+
+One script computes each activation's value and slope at five points (the slopes come from autograd, not from formulas), then shows dying ReLU and softmax overflow happening:
+
+```python
+import numpy as np
+import torch
+import torch.nn.functional as F
+
+z = torch.tensor([-3.0, -1.0, 0.0, 1.0, 3.0], requires_grad=True)
+acts = {"sigmoid": torch.sigmoid, "tanh": torch.tanh, "relu": F.relu,
+        "leaky_relu": lambda x: F.leaky_relu(x, 0.01), "gelu": F.gelu, "silu": F.silu}
+print("z:              ", z.tolist())
+for name, f in acts.items():
+    y = f(z)
+    (grad,) = torch.autograd.grad(y.sum(), z)          # slope at each point, by autograd
+    print(f"{name:10s} f(z): {np.round(y.tolist(), 3)}   f'(z): {np.round(grad.tolist(), 3)}")
+
+# Dying ReLU: after one huge update pushes the biases negative, how many units never fire again?
+torch.manual_seed(0)
+layer = torch.nn.Linear(100, 1000)
+x = torch.randn(10_000, 100)
+for shift in (0.0, -2.0, -5.0):
+    with torch.no_grad():
+        dead = ((layer(x) + shift) <= 0).all(dim=0).float().mean().item()
+    print(f"bias shifted by {shift:5.1f}: {dead:.1%} of ReLU units output 0 on all 10,000 inputs")
+
+# Softmax must subtract the max: the naive version overflows for large scores.
+scores = np.array([1000.0, 1001.0, 1002.0])
+with np.errstate(over="ignore", invalid="ignore"):
+    naive = np.exp(scores) / np.exp(scores).sum()
+stable = np.exp(scores - scores.max()) / np.exp(scores - scores.max()).sum()
+print("naive softmax:", naive, "  stable softmax:", stable.round(4))
+```
+
+```
+z:               [-3.0, -1.0, 0.0, 1.0, 3.0]
+sigmoid    f(z): [0.047 0.269 0.5   0.731 0.953]   f'(z): [0.045 0.197 0.25  0.197 0.045]
+tanh       f(z): [-0.995 -0.762  0.     0.762  0.995]   f'(z): [0.01 0.42 1.   0.42 0.01]
+relu       f(z): [0. 0. 0. 1. 3.]   f'(z): [0. 0. 0. 1. 1.]
+leaky_relu f(z): [-0.03 -0.01  0.    1.    3.  ]   f'(z): [0.01 0.01 0.01 1.   1.  ]
+gelu       f(z): [-0.004 -0.159  0.     0.841  2.996]   f'(z): [-0.012 -0.083  0.5    1.083  1.012]
+silu       f(z): [-0.142 -0.269  0.     0.731  2.858]   f'(z): [-0.088  0.072  0.5    0.928  1.088]
+bias shifted by   0.0: 0.0% of ReLU units output 0 on all 10,000 inputs
+bias shifted by  -2.0: 12.9% of ReLU units output 0 on all 10,000 inputs
+bias shifted by  -5.0: 100.0% of ReLU units output 0 on all 10,000 inputs
+naive softmax: [nan nan nan]   stable softmax: [0.09   0.2447 0.6652]
+```
+
+Reading the numbers:
+
+- **Saturation is visible in the slopes.** At $z = \pm 3$, sigmoid's slope is 0.045 and tanh's 0.01. At $z = 0$, sigmoid's best is 0.25 while tanh reaches 1: the factor-of-four advantage from section 2.
+- **ReLU's slope is exactly 0 or 1.** Leaky ReLU keeps 0.01 on the negative side. GELU and SiLU have slopes slightly *above* 1 for some positive inputs and near zero or slightly negative for negative ones: the smooth dip below zero.
+- **Dying ReLU is a cliff.** Shifting every bias by $-2$, about three and a half standard deviations of this layer's pre-activations, leaves 12.9% of 1,000 units silent on all 10,000 inputs. Those units get zero gradient from every example and will never train again. At $-5$, the whole layer is dead.
+- **The naive softmax fails completely** on scores around 1,000, because $e^{1000}$ overflows to infinity and infinity divided by infinity is undefined. Subtracting the maximum gives the correct probabilities.
+
+<GoDeeper title="Go deeper: why ReLU networks are piecewise linear">
+
+A ReLU network computes a **piecewise-linear** function. Each ReLU is linear on either side of zero, so for any given input every unit is either "on" (identity) or "off" (zero), and the whole network reduces to one linear function of the input. Moving the input far enough to switch some unit on or off moves you into a different linear piece.
+
+The number of pieces is what gives depth its power. Montúfar et al. (2014) showed that the number of linear regions a ReLU network can carve its input into grows exponentially with depth, but only polynomially with width. A deep, narrow network can represent functions with vastly more pieces than a shallow, wide one with the same number of units. That's one precise sense in which depth is more efficient than width.
+
+It also explains a visible difference in the [Neural Network Fundamentals](/docs/deep-learning/neural-network-fundamentals) playground: ReLU networks draw decision boundaries out of straight segments, while tanh networks draw smooth curves.
+
+</GoDeeper>
+
+## 7. Choosing One
+
+| Function | Range | Zero-centred? | Saturates? | Typical use |
 |---|---|---|---|---|
-| Sigmoid | (0, 1) | No | Both ends | Binary output layer |
-| Tanh | (-1, 1) | Yes | Both ends | Legacy RNN hidden layers |
-| ReLU | [0, ∞) | No | Negative side only | CNN hidden layers (classic default) |
-| Leaky ReLU / PReLU | (-∞, ∞) | Roughly | No | Fixing dying ReLU |
-| ELU / SELU | (-α, ∞) | Roughly | Negative side (smoothly) | Self-normalizing nets |
-| GELU | (-~0.17, ∞) | Roughly | No | Transformers (default) |
-| Swish / SiLU | (-~0.28, ∞) | Roughly | No | Transformers, modern CNNs |
-| Softmax | (0,1), sums to 1 | N/A (vector) | N/A | Multi-class output layer |
+| Sigmoid | $(0, 1)$ | No | Both ends | Binary output layer, gates inside LSTMs |
+| Tanh | $(-1, 1)$ | Yes | Both ends | RNN and LSTM hidden states |
+| ReLU | $[0, \infty)$ | No | Negative side is flat | CNN hidden layers, the classic default |
+| Leaky ReLU / PReLU | $(-\infty, \infty)$ | Roughly | No | ReLU networks with dying-unit problems |
+| ELU / SELU | $(-\alpha, \infty)$ | Roughly | Negative side, smoothly | Self-normalizing plain networks |
+| GELU | about $[-0.17, \infty)$ | Roughly | No | BERT and GPT-2/3 style transformers |
+| SiLU / Swish | about $[-0.28, \infty)$ | Roughly | No | Modern CNNs, and inside SwiGLU |
+| SwiGLU | unbounded | Roughly | No | Feed-forward blocks of current LLMs |
+| Softmax | $(0, 1)$, sums to 1 | Not applicable | Not applicable | Multi-class outputs, attention weights |
 
-Next: [Loss Functions](/docs/deep-learning/loss-functions) — what each of these activations gets paired with to actually train a network.
+The practical defaults: **ReLU** for CNNs and plain MLPs, **SwiGLU** (or GELU) for transformers, **sigmoid** for a binary output, **softmax** for a multi-class output, **identity** for regression outputs.
+
+## 8. When *Not* to Use Each
+
+| Situation | Better choice |
+|---|---|
+| Sigmoid or tanh in the hidden layers of a deep feed-forward network | ReLU-family or GELU/SiLU, which don't saturate for positive inputs |
+| Many ReLU units dead early in training | Lower the learning rate first, then consider Leaky ReLU or GELU |
+| Softmax plus a separate log for the loss | A fused cross-entropy on logits, which is numerically stable |
+| SELU in a network with normalization layers, dropout or attention | ReLU or GELU; SELU's guarantee needs plain layers and LeCun init |
+| Bounded activation on a regression output | Identity, so predictions can take any value |
+| Softmax for multi-label outputs (several labels can be true at once) | An independent sigmoid per label |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Why nonlinearity | Without it, stacked layers collapse into one linear layer |
+| The backward-pass job | Every slope multiplies every gradient that passes through |
+| Four properties | Saturation, zero-centring, dead regions, cost and smoothness |
+| Sigmoid, tanh | Saturate at both ends; peak slopes 0.25 and 1; fine as outputs and gates |
+| ReLU | Slope 1 when active, cheap, sparse; can die when its input stays negative |
+| Leaky, PReLU, ELU | Nonzero negative side so units can recover |
+| GELU, SiLU | Smooth self-gating $z \cdot \text{gate}(z)$; transformer standard |
+| SwiGLU | One projection gates another; the feed-forward activation of most current LLMs |
+| Softmax | Scores to probabilities; subtract the max for stability; fuse with cross-entropy |
+
+---
+
+Next: [Loss Functions](/docs/deep-learning/loss-functions), what these outputs are compared against to produce the training signal.
+
+## Sources
+
+- Nair and Hinton, [Rectified Linear Units Improve Restricted Boltzmann Machines](https://www.cs.toronto.edu/~fritz/absps/reluICML.pdf) (2010)
+- Glorot, Bordes and Bengio, [Deep Sparse Rectifier Neural Networks](https://proceedings.mlr.press/v15/glorot11a.html) (2011)
+- He et al., [Delving Deep into Rectifiers](https://arxiv.org/abs/1502.01852) (2015), PReLU
+- Clevert, Unterthiner and Hochreiter, [Fast and Accurate Deep Network Learning by Exponential Linear Units](https://arxiv.org/abs/1511.07289) (2015)
+- Klambauer et al., [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515) (2017)
+- Hendrycks and Gimpel, [Gaussian Error Linear Units](https://arxiv.org/abs/1606.08415) (2016)
+- Ramachandran, Zoph and Le, [Searching for Activation Functions](https://arxiv.org/abs/1710.05941) (2017)
+- Shazeer, [GLU Variants Improve Transformer](https://arxiv.org/abs/2002.05202) (2020)
+- Montúfar et al., [On the Number of Linear Regions of Deep Neural Networks](https://arxiv.org/abs/1402.1869) (2014)
