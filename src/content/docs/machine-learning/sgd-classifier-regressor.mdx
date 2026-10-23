@@ -24,11 +24,15 @@ Stochastic gradient descent is the spoonful method. Instead of measuring the mod
 
 Every linear model in this section makes its prediction the same way. It computes a **score**
 
-$$s = \mathbf{w}^T\mathbf{x} + b$$
+$$
+s = \mathbf{w}^T\mathbf{x} + b
+$$
 
 and then either reports $s$ directly (regression) or reports its sign (classification). What separates linear regression from logistic regression from a linear SVM is not the model. It's the training objective, which always has the same two-part shape:
 
-$$J(\mathbf{w}, b) = \underbrace{\frac{1}{n}\sum_{i=1}^{n} L\!\left(y^{(i)},\, s^{(i)}\right)}_{\text{how wrong on the data}} \;+\; \underbrace{\alpha\, R(\mathbf{w})}_{\text{how complex}}$$
+$$
+J(\mathbf{w}, b) = \underbrace{\frac{1}{n}\sum_{i=1}^{n} L\!\left(y^{(i)},\, s^{(i)}\right)}_{\text{how wrong on the data}} \;+\; \underbrace{\alpha\, R(\mathbf{w})}_{\text{how complex}}
+$$
 
 $L$ is a loss that measures how bad the score $s^{(i)}$ is for the true label $y^{(i)}$. $R$ is a penalty on the weights, and $\alpha \ge 0$ sets how much it counts. Choose the pair and you've chosen the model:
 
@@ -53,23 +57,31 @@ That's the whole idea behind `SGDClassifier` and `SGDRegressor`: not a new model
 
 Batch gradient descent, as derived on the [Linear Regression page](/docs/machine-learning/linear-regression#6-gradient-descent), updates the weights using the gradient of the full objective. Ignore the penalty for a moment and write the data term as an average of per-example losses, $L_i(\mathbf{w}) = L(y^{(i)}, \mathbf{w}^T\mathbf{x}^{(i)} + b)$:
 
-$$J(\mathbf{w}) = \frac{1}{n}\sum_{i=1}^{n} L_i(\mathbf{w}) \qquad\Rightarrow\qquad \nabla J(\mathbf{w}) = \frac{1}{n}\sum_{i=1}^{n} \nabla L_i(\mathbf{w})$$
+$$
+J(\mathbf{w}) = \frac{1}{n}\sum_{i=1}^{n} L_i(\mathbf{w}) \qquad\Rightarrow\qquad \nabla J(\mathbf{w}) = \frac{1}{n}\sum_{i=1}^{n} \nabla L_i(\mathbf{w})
+$$
 
 The gradient of an average is the average of the gradients. Every batch step therefore touches all $n$ examples. With ten million rows, that's ten million gradient evaluations for one small move.
 
 **The stochastic step.** Pick one index $i$ uniformly at random and use that single example's gradient instead:
 
-$$\mathbf{w} \leftarrow \mathbf{w} - \eta\, \nabla L_i(\mathbf{w})$$
+$$
+\mathbf{w} \leftarrow \mathbf{w} - \eta\, \nabla L_i(\mathbf{w})
+$$
 
 Here $\eta$ is the step size (the learning rate). This looks like a crude approximation, but take its expected value over the random choice of $i$. Each index has probability $1/n$:
 
-$$\mathbb{E}_i\!\left[\nabla L_i(\mathbf{w})\right] = \sum_{i=1}^{n} \frac{1}{n}\,\nabla L_i(\mathbf{w}) = \nabla J(\mathbf{w})$$
+$$
+\mathbb{E}_i\!\left[\nabla L_i(\mathbf{w})\right] = \sum_{i=1}^{n} \frac{1}{n}\,\nabla L_i(\mathbf{w}) = \nabla J(\mathbf{w})
+$$
 
 The single-example gradient is an **unbiased estimate** of the true gradient. On any one step it may point in a poor direction, but on average it points exactly where batch gradient descent would. The cost of a step drops from $n$ gradient evaluations to one.
 
 **The price is variance.** How far a single gradient strays from the average is measured by its variance, $\sigma^2 = \mathbb{E}_i\lVert \nabla L_i - \nabla J \rVert^2$. Averaging $B$ examples drawn independently (a **mini-batch**) divides it by $B$:
 
-$$\operatorname{Var}\!\left[\frac{1}{B}\sum_{k=1}^{B}\nabla L_{i_k}\right] = \frac{\sigma^2}{B}$$
+$$
+\operatorname{Var}\!\left[\frac{1}{B}\sum_{k=1}^{B}\nabla L_{i_k}\right] = \frac{\sigma^2}{B}
+$$
 
 So the batch size is a dial between cost per step ($B$ gradient evaluations) and noise per step ($\sigma^2/B$). $B = 1$ is pure SGD; $B = n$ is batch gradient descent; deep learning mostly lives in between, at batch sizes of 32 to a few thousand, because a GPU computes 256 gradients in roughly the time it takes to compute one (see [Optimizers: Gradient Descent Variants](/docs/deep-learning/optimizers#gradient-descent-variants-by-batch-size)). scikit-learn's SGD estimators use $B = 1$.
 
@@ -81,29 +93,39 @@ The unbiased estimate tells us the direction is right on average. It says nothin
 
 Every loss in the table depends on $\mathbf{w}$ only through the score $s = \mathbf{w}^T\mathbf{x} + b$. That gives the chain rule a fixed shape:
 
-$$\nabla_{\mathbf{w}} L = \frac{\partial L}{\partial s}\cdot\frac{\partial s}{\partial \mathbf{w}} = \frac{\partial L}{\partial s}\,\mathbf{x} \qquad\qquad \frac{\partial L}{\partial b} = \frac{\partial L}{\partial s}$$
+$$
+\nabla_{\mathbf{w}} L = \frac{\partial L}{\partial s}\cdot\frac{\partial s}{\partial \mathbf{w}} = \frac{\partial L}{\partial s}\,\mathbf{x} \qquad\qquad \frac{\partial L}{\partial b} = \frac{\partial L}{\partial s}
+$$
 
 So the update for every model is "some scalar, times the input vector". Only the scalar $g = \partial L/\partial s$ changes. Work it out for each loss.
 
 **Squared error**, $L = \tfrac12 (s - y)^2$:
 
-$$g = s - y$$
+$$
+g = s - y
+$$
 
 The residual itself. This is the per-example version of the [linear regression gradient](/docs/machine-learning/linear-regression#3-deriving-the-gradient-step-by-step); the factor $\tfrac12$ just cancels the 2 from differentiating the square.
 
 **Log loss**, $L = \log(1 + e^{-ys})$. Differentiate the outer log, then the exponent:
 
-$$g = \frac{1}{1 + e^{-ys}}\cdot e^{-ys}\cdot(-y) = \frac{-y\,e^{-ys}}{1 + e^{-ys}}$$
+$$
+g = \frac{1}{1 + e^{-ys}}\cdot e^{-ys}\cdot(-y) = \frac{-y\,e^{-ys}}{1 + e^{-ys}}
+$$
 
 Divide the top and bottom by $e^{-ys}$:
 
-$$g = \frac{-y}{1 + e^{ys}}$$
+$$
+g = \frac{-y}{1 + e^{ys}}
+$$
 
 Read the size of that number. When the margin $ys$ is large and positive (confidently right), $e^{ys}$ is huge and $g \approx 0$: the example barely moves the weights. When the margin is large and negative (confidently wrong), $e^{ys} \approx 0$ and $g \approx -y$: a full-strength correction toward the right label. Written with labels in $\{0, 1\}$ and $p = \sigma(s)$, the same quantity is $p - y$, the form derived on the [Logistic Regression page](/docs/machine-learning/logistic-regression#deriving-the-gradient).
 
 **Hinge**, $L = \max(0,\, 1 - ys)$. This has a corner at $ys = 1$, where no derivative exists. Away from the corner:
 
-$$g = \begin{cases} -y & \text{if } ys < 1 \\ 0 & \text{if } ys > 1 \end{cases}$$
+$$
+g = \begin{cases} -y & \text{if } ys < 1 \\ 0 & \text{if } ys > 1 \end{cases}
+$$
 
 At the corner itself any value between $-y$ and $0$ is a valid **subgradient** (a slope of a line that touches the function there without crossing it), and implementations just pick one. The rule is blunt: an example on the correct side of the margin, by at least 1, contributes nothing at all. Only examples inside the margin or on the wrong side move the weights, which is the SGD view of why an SVM depends only on its support vectors.
 
@@ -137,7 +159,9 @@ Add the penalty back. The per-example objective SGD actually samples is $L_i(\ma
 
 **L2.** With $R = \tfrac12\lVert\mathbf{w}\rVert_2^2$, the gradient is $\alpha\mathbf{w}$, and the step becomes
 
-$$\mathbf{w} \leftarrow \mathbf{w} - \eta\left(g\,\mathbf{x} + \alpha\mathbf{w}\right) = (1 - \eta\alpha)\,\mathbf{w} - \eta\, g\,\mathbf{x}$$
+$$
+\mathbf{w} \leftarrow \mathbf{w} - \eta\left(g\,\mathbf{x} + \alpha\mathbf{w}\right) = (1 - \eta\alpha)\,\mathbf{w} - \eta\, g\,\mathbf{x}
+$$
 
 Before each data-driven correction, every weight is multiplied by a number slightly less than one. That's why the L2 penalty is also called **weight decay**: left alone, the weights shrink geometrically toward zero, and only consistent pressure from the data keeps a weight large. The bias $b$ is normally left out of the penalty, since shrinking the intercept toward zero would just bias predictions toward zero.
 
@@ -145,7 +169,9 @@ Before each data-driven correction, every weight is multiplied by a number sligh
 
 The fix is to clip instead of subtract: after the data step, move each weight toward zero by the penalty amount, but stop at zero rather than crossing it:
 
-$$w_j \leftarrow \operatorname{sign}(w_j)\,\max\!\left(0,\; \lvert w_j\rvert - \eta\alpha\right)$$
+$$
+w_j \leftarrow \operatorname{sign}(w_j)\,\max\!\left(0,\; \lvert w_j\rvert - \eta\alpha\right)
+$$
 
 This is the **soft-thresholding** operator, the same one that appears in lasso's coordinate descent. Tsuruoka, Tsujii and Ananiadou (2009) refined it further by tracking the total penalty each weight *should* have received so far and applying the difference, which handles weights that sit at zero for many steps and then receive a gradient. That cumulative-penalty method is what scikit-learn uses for `penalty='l1'` and `'elasticnet'`.
 
@@ -159,7 +185,9 @@ With batch gradient descent and a small enough fixed learning rate, the gradient
 
 To converge to the exact minimum, the step size has to decay. Robbins and Monro (1951) gave the conditions a schedule $\eta_t$ needs:
 
-$$\sum_{t=1}^{\infty} \eta_t = \infty \qquad\text{and}\qquad \sum_{t=1}^{\infty} \eta_t^2 < \infty$$
+$$
+\sum_{t=1}^{\infty} \eta_t = \infty \qquad\text{and}\qquad \sum_{t=1}^{\infty} \eta_t^2 < \infty
+$$
 
 The first says the steps can't shrink so fast that the total distance traveled is finite; otherwise SGD could stall before reaching the minimum. The second says they must shrink fast enough that the accumulated noise (which scales with $\eta_t^2$) stays bounded. $\eta_t = c/t$ satisfies both, since the harmonic series diverges while $\sum 1/t^2 = \pi^2/6$. A constant step fails the second condition; $\eta_t = c/t^2$ fails the first.
 
@@ -178,7 +206,9 @@ For a strongly convex objective (L2-penalized squared error or log loss, with $\
 
 There's a second way to beat the noise cloud. Keep a fairly large step size, so SGD moves quickly, but report the *running average* of all the weights it has visited rather than the last one:
 
-$$\bar{\mathbf{w}}_t = \frac{1}{t}\sum_{k=1}^{t}\mathbf{w}_k$$
+$$
+\bar{\mathbf{w}}_t = \frac{1}{t}\sum_{k=1}^{t}\mathbf{w}_k
+$$
 
 If the iterates are bouncing around $\mathbf{w}^*$ in a roughly symmetric cloud, their average sits much closer to $\mathbf{w}^*$ than any single iterate does, the same way the mean of many noisy measurements beats any one measurement. Polyak and Juditsky (1992) proved that averaging with a slowly decaying step (for example $\eta_t \propto t^{-1/2}$) achieves the best possible asymptotic rate, matching what an ideally tuned $1/t$ schedule would get, without needing to know the curvature to tune it.
 

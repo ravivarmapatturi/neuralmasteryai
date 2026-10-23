@@ -25,11 +25,15 @@ A machine learning model is a very good memorizer. The whole workflow below exis
 
 A model is trained on examples, but nobody cares how it does on those examples. We already know their answers. What matters is how it does on the next example, drawn from the same source but never seen. Write that precisely. If examples $(\mathbf{x}, y)$ come from some distribution $\mathcal{D}$ and $L$ measures how wrong a prediction is, the quantity we care about is the **expected risk**:
 
-$$R(f) = \mathbb{E}_{(\mathbf{x}, y) \sim \mathcal{D}}\big[L(y, f(\mathbf{x}))\big]$$
+$$
+R(f) = \mathbb{E}_{(\mathbf{x}, y) \sim \mathcal{D}}\big[L(y, f(\mathbf{x}))\big]
+$$
 
 We can't compute it, because we don't have $\mathcal{D}$. We only have $n$ samples from it, and the obvious estimate is the average loss on them, the **empirical risk**:
 
-$$\hat{R}(f) = \frac{1}{n}\sum_{i=1}^{n} L\big(y^{(i)}, f(\mathbf{x}^{(i)})\big)$$
+$$
+\hat{R}(f) = \frac{1}{n}\sum_{i=1}^{n} L\big(y^{(i)}, f(\mathbf{x}^{(i)})\big)
+$$
 
 For a model $f$ chosen *without looking at* these $n$ samples, $\hat{R}(f)$ is an unbiased estimate of $R(f)$: each term is an independent draw of the loss, and an average of independent draws has the right expected value. Training breaks that. The training algorithm picks the $f$ that makes $\hat{R}$ small *on these particular samples*, including their noise, so the training error of the chosen model is biased downward. A model with enough capacity can drive it to zero by memorizing (a 1-nearest-neighbour classifier always gets 100% training accuracy). The gap between training error and true error is the **generalization gap**, and it's what [overfitting](/docs/machine-learning/model-evaluation-metrics#bias-variance-tradeoff) means.
 
@@ -62,7 +66,9 @@ The validation score of the *winning* candidate is biased upward for the same re
 
 **How big should each set be?** A test score is an estimate with its own uncertainty. For accuracy $p$ measured on $n_{\text{test}}$ independent examples, the standard error is
 
-$$\text{SE} = \sqrt{\frac{p(1-p)}{n_{\text{test}}}}$$
+$$
+\text{SE} = \sqrt{\frac{p(1-p)}{n_{\text{test}}}}
+$$
 
 With $p = 0.95$ and 114 test examples (the example in Section 7), that's about 0.02, so a 95% interval is roughly $\pm 0.04$: the "true" accuracy could plausibly be anywhere from 91% to 99%. Two models whose test accuracies differ by a point on a test set that size are not distinguishable. Common splits are 60/20/20 or 70/15/15 on small datasets; with millions of examples, a test set of 10,000 already gives a standard error of a fraction of a percent, and the rest can go to training.
 
@@ -70,7 +76,9 @@ With $p = 0.95$ and 114 test examples (the example in Section 7), that's about 0
 
 A single validation set wastes data and gives a noisy score. **k-fold cross-validation** fixes both. Split the training data into $k$ equal folds. For each fold $j$, train on the other $k-1$ folds and score on fold $j$, giving a score $s_j$. Report the average:
 
-$$\text{CV}_k = \frac{1}{k}\sum_{j=1}^{k} s_j$$
+$$
+\text{CV}_k = \frac{1}{k}\sum_{j=1}^{k} s_j
+$$
 
 Every example is used for validation exactly once and for training $k-1$ times. The average of $k$ scores is less noisy than one, and the spread of the $s_j$ shows how much the score depends on which examples happen to be held out. The cost is $k$ training runs instead of one. $k = 5$ or $10$ is standard; Hastie, Tibshirani and Friedman recommend these values because each training set is close to the full size, so the estimate isn't too pessimistic, while the folds are different enough that the average isn't too noisy. Toggle between a fixed split and the fold rotation:
 
@@ -164,13 +172,17 @@ Resampling the data, covered next, is the other common response, and the one mos
 
 **Bootstrap sampling** draws $n$ examples *with replacement* from $n$. Some examples appear twice or more and some not at all. The probability a given example is never drawn is
 
-$$\left(1 - \frac{1}{n}\right)^n \;\xrightarrow{\;n \to \infty\;}\; e^{-1} \approx 0.368$$
+$$
+\left(1 - \frac{1}{n}\right)^n \;\xrightarrow{\;n \to \infty\;}\; e^{-1} \approx 0.368
+$$
 
 so each bootstrap sample contains about 63.2% of the distinct examples, and the other 36.8% (the "out-of-bag" examples) are a free validation set. Bagging and [Random Forests](/docs/machine-learning/random-forest#the-core-idea-bagging) train each tree on a bootstrap sample; the bootstrap is also the general-purpose way to put a confidence interval on any statistic, including a test score (Efron, 1979).
 
 **Oversampling and SMOTE.** To balance classes, you can duplicate minority examples (random oversampling) or drop majority ones (undersampling). SMOTE (Chawla et al., 2002) creates new synthetic minority examples instead: pick a minority example $\mathbf{x}_i$, pick one of its $k$ nearest minority neighbours $\mathbf{x}_{nn}$, and interpolate:
 
-$$\mathbf{x}_{\text{new}} = \mathbf{x}_i + \lambda\,(\mathbf{x}_{nn} - \mathbf{x}_i), \qquad \lambda \sim \text{Uniform}(0, 1)$$
+$$
+\mathbf{x}_{\text{new}} = \mathbf{x}_i + \lambda\,(\mathbf{x}_{nn} - \mathbf{x}_i), \qquad \lambda \sim \text{Uniform}(0, 1)
+$$
 
 Two cautions. First, resampling must happen **only inside training folds**. Oversample before splitting and copies (or interpolations) of the same example end up on both sides, which is leakage. Second, resampling changes the class balance the model believes in, so its predicted probabilities are no longer calibrated: van den Goorbergh et al. (2022) found that for logistic regression, random over- and undersampling and SMOTE all produced badly miscalibrated risk estimates without improving discrimination. If you need probabilities, prefer class weights or no correction plus a tuned threshold.
 
