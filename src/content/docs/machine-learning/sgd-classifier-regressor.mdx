@@ -1,42 +1,361 @@
 ---
 title: "SGD Classifier & Regressor, In Full Depth"
 sidebar_position: 5.8
-description: "Linear Regression, Ridge, Lasso, and Logistic Regression unified as one framing: the same SGD engine, differing only by which loss and penalty you plug in."
+description: "Linear regression, ridge, lasso, logistic regression and linear SVMs as one model trained by one loop: why a single random example gives an unbiased gradient, the update rule for each loss and penalty, learning-rate schedules, scaling, online learning, and a from-scratch implementation."
 ---
 
-
 import SgdLossPenaltyDiagram from '../../../viz/diagrams/SgdLossPenaltyDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # SGD Classifier & Regressor, In Full Depth
 
-Not a new algorithm — a **framing**. `SGDClassifier`/`SGDRegressor` (as named in libraries like scikit-learn) are the same linear model family covered throughout this section, unified by training them all with the same generic engine: [mini-batch stochastic gradient descent](/docs/deep-learning/optimizers#gradient-descent-variants-by-batch-size).
+[Linear Regression](/docs/machine-learning/linear-regression) derived gradient descent from scratch, and [Logistic Regression](/docs/machine-learning/logistic-regression) did the same for a classifier. Both computed the gradient over the *whole* dataset before taking a single step. This page covers what happens when you take a step after every example instead: why that still points downhill on average, the exact update rule for each loss and penalty, how the step size has to shrink for the method to converge, and why one training loop is enough to fit linear regression, ridge, lasso, logistic regression and a linear SVM. `SGDClassifier` and `SGDRegressor` in scikit-learn are that loop with the loss and penalty exposed as settings.
 
-## The Unifying Idea
+<ELI5>
 
-Every linear model on this site — [Linear Regression](/docs/machine-learning/linear-regression), [Ridge](/docs/machine-learning/ridge-regression), [Lasso](/docs/machine-learning/lasso-regression), [Logistic Regression](/docs/machine-learning/logistic-regression), even linear [SVM](/docs/machine-learning/support-vector-machines#the-optimization-problem) — has the same underlying shape: a linear function $\mathbf{w}^T\mathbf{x}+b$, paired with a loss function, optionally paired with a regularization penalty. What actually differs between them is just **which loss** and **which penalty** get plugged in:
+You're cooking a large pot of soup and want to know if it needs salt. You could pour the whole pot into a bowl and taste it all, which is accurate but slow. Or you can taste one spoonful, adjust a little, stir, and taste another spoonful. Each spoonful is a slightly noisy sample of the whole pot, but on average it tells you the truth, and you get to adjust hundreds of times while the first cook is still pouring.
 
-| Model | Loss | Penalty |
+Stochastic gradient descent is the spoonful method. Instead of measuring the model's error on every example before each correction, it measures the error on one example (or a small handful), corrects a little, and moves on. Everything below is that idea made exact: why one spoonful is an honest sample, how big each correction should be, and why the corrections have to get smaller over time.
+
+</ELI5>
+
+## 1. One Model, Many Losses
+
+Every linear model in this section makes its prediction the same way. It computes a **score**
+
+$$s = \mathbf{w}^T\mathbf{x} + b$$
+
+and then either reports $s$ directly (regression) or reports its sign (classification). What separates linear regression from logistic regression from a linear SVM is not the model. It's the training objective, which always has the same two-part shape:
+
+$$J(\mathbf{w}, b) = \underbrace{\frac{1}{n}\sum_{i=1}^{n} L\!\left(y^{(i)},\, s^{(i)}\right)}_{\text{how wrong on the data}} \;+\; \underbrace{\alpha\, R(\mathbf{w})}_{\text{how complex}}$$
+
+$L$ is a loss that measures how bad the score $s^{(i)}$ is for the true label $y^{(i)}$. $R$ is a penalty on the weights, and $\alpha \ge 0$ sets how much it counts. Choose the pair and you've chosen the model:
+
+| Model | Loss $L(y, s)$ | Penalty $R(\mathbf{w})$ |
 |---|---|---|
-| [Linear Regression](/docs/machine-learning/linear-regression) | Squared error | None |
-| [Ridge](/docs/machine-learning/ridge-regression) | Squared error | L2 |
-| [Lasso](/docs/machine-learning/lasso-regression) | Squared error | L1 |
-| [Logistic Regression](/docs/machine-learning/logistic-regression) | Log loss | L2 (default) |
-| Linear [SVM](/docs/machine-learning/support-vector-machines) | Hinge loss | L2 |
+| [Linear Regression](/docs/machine-learning/linear-regression) | Squared error $\tfrac12(s - y)^2$ | None |
+| [Ridge](/docs/machine-learning/ridge-regression) | Squared error | L2: $\tfrac12\lVert\mathbf{w}\rVert_2^2$ |
+| [Lasso](/docs/machine-learning/lasso-regression) | Squared error | L1: $\lVert\mathbf{w}\rVert_1$ |
+| [Elastic Net](/docs/machine-learning/elastic-net) | Squared error | A mix of L1 and L2 |
+| [Logistic Regression](/docs/machine-learning/logistic-regression) | Log loss $\log(1 + e^{-ys})$ | L2 (usually) |
+| Linear [SVM](/docs/machine-learning/support-vector-machines#the-optimization-problem) | Hinge $\max(0,\, 1 - ys)$ | L2 |
 
-An "SGD Classifier/Regressor" is exactly this table, implemented as **one generic training loop** — pick a loss, pick a penalty, and SGD optimizes whichever combination you chose. The exact same loop, the exact same data, three different (loss, penalty) pairs plugged in:
+(For the classification losses, the labels are written as $y \in \{-1, +1\}$, which makes $ys$ positive exactly when the prediction has the right sign. The product $ys$ is called the **margin**.)
 
-<SgdLossPenaltyDiagram /> This is why the [gradient descent derivation from Linear Regression](/docs/machine-learning/linear-regression#3-deriving-the-gradient-step-by-step) and the [gradient derivation from Logistic Regression](/docs/machine-learning/logistic-regression#deriving-the-gradient) look structurally identical — they're literally the same training procedure with a different loss plugged in.
+Each row has its own dedicated solver elsewhere: the normal equation for linear regression, coordinate descent for lasso, L-BFGS for logistic regression, a quadratic-programming solver for SVMs. But all of them are minimizing an objective of the shape above, and one generic algorithm can minimize any of them as long as it can compute the gradient of $L$ and $R$. The diagram below runs that one loop on the same data with three different (loss, penalty) pairs:
 
-## Why This Framing Matters in Practice
+<SgdLossPenaltyDiagram />
 
-- **Scales to huge datasets**: closed-form solutions (like the [normal equation](/docs/machine-learning/linear-regression#5-the-closed-form-solution-normal-equation)) don't scale past a modest number of features, and even batch gradient descent requires holding meaningful chunks of data in memory. SGD updates on one example or mini-batch at a time (see [Optimizers — Gradient Descent Variants](/docs/deep-learning/optimizers#gradient-descent-variants-by-batch-size)), so it scales to datasets far larger than memory, streaming through the data incrementally.
-- **Online learning**: because SGD naturally processes data incrementally, an SGD-framed model can keep learning from new data arriving after deployment, without retraining from scratch — a genuinely different capability from the batch/closed-form methods elsewhere in this section.
-- **One implementation, many models**: a library only needs to implement the SGD loop once, then expose loss/penalty as configuration — which is exactly why scikit-learn (and similar libraries) implement `SGDClassifier`/`SGDRegressor` as configurable wrappers rather than reimplementing near-identical training loops per model.
+That's the whole idea behind `SGDClassifier` and `SGDRegressor`: not a new model, one optimizer with a menu. The limitation, which the rest of the page has to deal with, is that the optimizer is a noisy one. The next section shows where the noise comes from and why it doesn't break anything.
 
-## Practical Considerations
+## 2. From the Full Gradient to One Example
 
-- **Feature scaling matters** — like [KNN](/docs/machine-learning/k-nearest-neighbors#distance-metrics), SGD-trained models converge much better when features are standardized first, since a badly-scaled feature can dominate the gradient and destabilize the learning rate choice (see [Calculus & Optimization — Learning Rate Schedules](/docs/mathematics-for-ai/calculus-optimization#learning-rate-schedules-warmup)).
-- **Learning rate schedule matters more here than for the closed-form versions** of these same models — see [LR Scheduling](/docs/deep-learning/initialization-regularization-scheduling#learning-rate-scheduling) for the standard shapes (constant, invscaling, adaptive) libraries expose for SGD-trained linear models.
-- **When to reach for it over the closed-form/batch version**: dataset too large for memory, need online/incremental learning, or you specifically want to swap losses/penalties without switching model classes entirely.
+Batch gradient descent, as derived on the [Linear Regression page](/docs/machine-learning/linear-regression#6-gradient-descent), updates the weights using the gradient of the full objective. Ignore the penalty for a moment and write the data term as an average of per-example losses, $L_i(\mathbf{w}) = L(y^{(i)}, \mathbf{w}^T\mathbf{x}^{(i)} + b)$:
 
-This completes the classical linear/margin/generative classifier family. Next: [Deep Learning](/docs/deep-learning/roadmap) — where the same "linear function + loss + gradient descent" recipe gets stacked into many layers.
+$$J(\mathbf{w}) = \frac{1}{n}\sum_{i=1}^{n} L_i(\mathbf{w}) \qquad\Rightarrow\qquad \nabla J(\mathbf{w}) = \frac{1}{n}\sum_{i=1}^{n} \nabla L_i(\mathbf{w})$$
+
+The gradient of an average is the average of the gradients. Every batch step therefore touches all $n$ examples. With ten million rows, that's ten million gradient evaluations for one small move.
+
+**The stochastic step.** Pick one index $i$ uniformly at random and use that single example's gradient instead:
+
+$$\mathbf{w} \leftarrow \mathbf{w} - \eta\, \nabla L_i(\mathbf{w})$$
+
+Here $\eta$ is the step size (the learning rate). This looks like a crude approximation, but take its expected value over the random choice of $i$. Each index has probability $1/n$:
+
+$$\mathbb{E}_i\!\left[\nabla L_i(\mathbf{w})\right] = \sum_{i=1}^{n} \frac{1}{n}\,\nabla L_i(\mathbf{w}) = \nabla J(\mathbf{w})$$
+
+The single-example gradient is an **unbiased estimate** of the true gradient. On any one step it may point in a poor direction, but on average it points exactly where batch gradient descent would. The cost of a step drops from $n$ gradient evaluations to one.
+
+**The price is variance.** How far a single gradient strays from the average is measured by its variance, $\sigma^2 = \mathbb{E}_i\lVert \nabla L_i - \nabla J \rVert^2$. Averaging $B$ examples drawn independently (a **mini-batch**) divides it by $B$:
+
+$$\operatorname{Var}\!\left[\frac{1}{B}\sum_{k=1}^{B}\nabla L_{i_k}\right] = \frac{\sigma^2}{B}$$
+
+So the batch size is a dial between cost per step ($B$ gradient evaluations) and noise per step ($\sigma^2/B$). $B = 1$ is pure SGD; $B = n$ is batch gradient descent; deep learning mostly lives in between, at batch sizes of 32 to a few thousand, because a GPU computes 256 gradients in roughly the time it takes to compute one (see [Optimizers: Gradient Descent Variants](/docs/deep-learning/optimizers#gradient-descent-variants-by-batch-size)). scikit-learn's SGD estimators use $B = 1$.
+
+**Why the noise is often worth it.** Early in training, almost every example agrees on the rough direction to move, so one example is nearly as informative as all of them. SGD makes $n$ updates in the time batch gradient descent makes one, and in a single pass through the data it typically gets most of the way to the minimum. Léon Bottou's analysis of large-scale learning makes the point precisely: once data is plentiful, the limiting factor is computation, not data, and an optimizer that reaches a good-enough solution cheaply beats one that reaches a perfect solution expensively, because the model's statistical error dwarfs the remaining optimization error anyway.
+
+The unbiased estimate tells us the direction is right on average. It says nothing about how to turn a score into a gradient for each loss in the table, which is what the next section works out.
+
+## 3. The Update Rule for Each Loss
+
+Every loss in the table depends on $\mathbf{w}$ only through the score $s = \mathbf{w}^T\mathbf{x} + b$. That gives the chain rule a fixed shape:
+
+$$\nabla_{\mathbf{w}} L = \frac{\partial L}{\partial s}\cdot\frac{\partial s}{\partial \mathbf{w}} = \frac{\partial L}{\partial s}\,\mathbf{x} \qquad\qquad \frac{\partial L}{\partial b} = \frac{\partial L}{\partial s}$$
+
+So the update for every model is "some scalar, times the input vector". Only the scalar $g = \partial L/\partial s$ changes. Work it out for each loss.
+
+**Squared error**, $L = \tfrac12 (s - y)^2$:
+
+$$g = s - y$$
+
+The residual itself. This is the per-example version of the [linear regression gradient](/docs/machine-learning/linear-regression#3-deriving-the-gradient-step-by-step); the factor $\tfrac12$ just cancels the 2 from differentiating the square.
+
+**Log loss**, $L = \log(1 + e^{-ys})$. Differentiate the outer log, then the exponent:
+
+$$g = \frac{1}{1 + e^{-ys}}\cdot e^{-ys}\cdot(-y) = \frac{-y\,e^{-ys}}{1 + e^{-ys}}$$
+
+Divide the top and bottom by $e^{-ys}$:
+
+$$g = \frac{-y}{1 + e^{ys}}$$
+
+Read the size of that number. When the margin $ys$ is large and positive (confidently right), $e^{ys}$ is huge and $g \approx 0$: the example barely moves the weights. When the margin is large and negative (confidently wrong), $e^{ys} \approx 0$ and $g \approx -y$: a full-strength correction toward the right label. Written with labels in $\{0, 1\}$ and $p = \sigma(s)$, the same quantity is $p - y$, the form derived on the [Logistic Regression page](/docs/machine-learning/logistic-regression#deriving-the-gradient).
+
+**Hinge**, $L = \max(0,\, 1 - ys)$. This has a corner at $ys = 1$, where no derivative exists. Away from the corner:
+
+$$g = \begin{cases} -y & \text{if } ys < 1 \\ 0 & \text{if } ys > 1 \end{cases}$$
+
+At the corner itself any value between $-y$ and $0$ is a valid **subgradient** (a slope of a line that touches the function there without crossing it), and implementations just pick one. The rule is blunt: an example on the correct side of the margin, by at least 1, contributes nothing at all. Only examples inside the margin or on the wrong side move the weights, which is the SGD view of why an SVM depends only on its support vectors.
+
+**The rest of the menu**, briefly:
+
+| Loss | $g = \partial L/\partial s$ | What it buys |
+|---|---|---|
+| `perceptron`: $\max(0, -ys)$ | $-y$ if $ys < 0$, else $0$ | The 1958 perceptron. No margin, only fixes mistakes |
+| `squared_hinge`: $\max(0, 1 - ys)^2$ | $-2y\max(0, 1-ys)$ | Smooth version of hinge |
+| `modified_huber` | Quadratic near the margin, linear when badly wrong | Tolerant of outliers and still gives probability estimates |
+| `huber` (regression) | $s - y$ when $\lvert s - y\rvert \le \epsilon$, else $\epsilon\,\operatorname{sign}(s - y)$ | Squared error for small residuals, absolute for outliers |
+| `epsilon_insensitive` (regression) | $0$ inside a tube of width $\epsilon$, $\pm 1$ outside | Linear [SVR](/docs/machine-learning/support-vector-machines) |
+
+That's the full set the scikit-learn estimators accept. Each one plugs into the same two lines, $\mathbf{w} \leftarrow \mathbf{w} - \eta\, g\,\mathbf{x}$ and $b \leftarrow b - \eta\, g$. The penalty term is what's still missing.
+
+<PredictFirst
+  question="An SGDClassifier with loss='hinge' is training, and the current example is classified correctly with margin ys = 3. How much does this example change the weights (ignoring the penalty)?"
+  options={[
+    'A lot, because correct examples reinforce the boundary',
+    'A little, proportional to how confident the prediction is',
+    'Not at all: the hinge gradient is exactly zero when ys > 1',
+    'It pushes the weights away, to widen the margin',
+  ]}
+  correctIndex={2}
+  explanation="The hinge loss max(0, 1 - ys) is flat once ys > 1, so its gradient is zero and the example contributes nothing. Only examples with ys < 1 (inside the margin or misclassified) move the weights. Log loss is different: its gradient -y / (1 + e^(ys)) is small but never exactly zero, so every example has some pull."
+/>
+
+## 4. The Penalty Inside the Update
+
+Add the penalty back. The per-example objective SGD actually samples is $L_i(\mathbf{w}) + \alpha R(\mathbf{w})$, so each step subtracts the penalty's gradient too.
+
+**L2.** With $R = \tfrac12\lVert\mathbf{w}\rVert_2^2$, the gradient is $\alpha\mathbf{w}$, and the step becomes
+
+$$\mathbf{w} \leftarrow \mathbf{w} - \eta\left(g\,\mathbf{x} + \alpha\mathbf{w}\right) = (1 - \eta\alpha)\,\mathbf{w} - \eta\, g\,\mathbf{x}$$
+
+Before each data-driven correction, every weight is multiplied by a number slightly less than one. That's why the L2 penalty is also called **weight decay**: left alone, the weights shrink geometrically toward zero, and only consistent pressure from the data keeps a weight large. The bias $b$ is normally left out of the penalty, since shrinking the intercept toward zero would just bias predictions toward zero.
+
+**L1.** With $R = \lVert\mathbf{w}\rVert_1$, the subgradient is $\alpha\operatorname{sign}(\mathbf{w})$, a constant-size pull toward zero for each weight. The naive update $w_j \leftarrow w_j - \eta\alpha\operatorname{sign}(w_j) - \eta g x_j$ has a problem that matters a lot in practice: a weight that should be exactly zero almost never lands exactly on zero. It overshoots back and forth across zero by about $\eta\alpha$ every step, so you lose the sparsity that was the reason for choosing L1 (see [Lasso: Why L1 Produces Exact Zeros](/docs/machine-learning/lasso-regression#why-l1-produces-exact-zeros-and-l2-doesnt)).
+
+The fix is to clip instead of subtract: after the data step, move each weight toward zero by the penalty amount, but stop at zero rather than crossing it:
+
+$$w_j \leftarrow \operatorname{sign}(w_j)\,\max\!\left(0,\; \lvert w_j\rvert - \eta\alpha\right)$$
+
+This is the **soft-thresholding** operator, the same one that appears in lasso's coordinate descent. Tsuruoka, Tsujii and Ananiadou (2009) refined it further by tracking the total penalty each weight *should* have received so far and applying the difference, which handles weights that sit at zero for many steps and then receive a gradient. That cumulative-penalty method is what scikit-learn uses for `penalty='l1'` and `'elasticnet'`.
+
+**Elastic net** applies both: a fraction `l1_ratio` of $\alpha$ as the clipped L1 step and the rest as weight decay. scikit-learn's default `l1_ratio` is 0.15, applied only when `penalty='elasticnet'`.
+
+With loss and penalty both in the update, the loop is complete except for one number: $\eta$. Choosing it is where SGD differs most from batch gradient descent.
+
+## 5. The Step Size Has to Shrink
+
+With batch gradient descent and a small enough fixed learning rate, the gradient goes to zero at the minimum and so do the steps; the algorithm stops on its own. SGD doesn't get that. At the minimum $\mathbf{w}^*$ the *average* gradient is zero, but each individual example's gradient is not; the examples disagree with each other, which is what the variance $\sigma^2$ measures. With a constant $\eta$ the weights keep getting kicked around $\mathbf{w}^*$ forever, settling into a cloud whose size grows with $\eta\sigma^2$.
+
+To converge to the exact minimum, the step size has to decay. Robbins and Monro (1951) gave the conditions a schedule $\eta_t$ needs:
+
+$$\sum_{t=1}^{\infty} \eta_t = \infty \qquad\text{and}\qquad \sum_{t=1}^{\infty} \eta_t^2 < \infty$$
+
+The first says the steps can't shrink so fast that the total distance traveled is finite; otherwise SGD could stall before reaching the minimum. The second says they must shrink fast enough that the accumulated noise (which scales with $\eta_t^2$) stays bounded. $\eta_t = c/t$ satisfies both, since the harmonic series diverges while $\sum 1/t^2 = \pi^2/6$. A constant step fails the second condition; $\eta_t = c/t^2$ fails the first.
+
+For a strongly convex objective (L2-penalized squared error or log loss, with $\alpha > 0$), the $1/t$ rate is also the best possible order: with $\eta_t = 1/(\alpha t)$, the expected gap $\mathbb{E}[J(\mathbf{w}_t)] - J(\mathbf{w}^*)$ shrinks like $O(1/t)$. That's the theory behind the schedules scikit-learn exposes through `learning_rate`:
+
+| `learning_rate` | Schedule | Default for |
+|---|---|---|
+| `'optimal'` | $\eta_t = \dfrac{1}{\alpha\,(t + t_0)}$, with $t_0$ chosen by a heuristic due to Bottou | `SGDClassifier` |
+| `'invscaling'` | $\eta_t = \eta_0 / t^{\,p}$, `power_t` $= p$ | `SGDRegressor` ($\eta_0 = 0.01$, $p = 0.25$) |
+| `'constant'` | $\eta_t = \eta_0$ | |
+| `'adaptive'` | $\eta_0$ until the loss stops improving, then divide by 5 | |
+
+`'optimal'` ties the step size to $\alpha$, which is why changing `alpha` on an `SGDClassifier` changes both the regularization and the speed of learning. The $t_0$ offset keeps the first steps from being enormous (with $t_0 = 0$ the first step would be $1/\alpha = 10{,}000$ at the default $\alpha = 10^{-4}$). `SGDClassifier`'s default `eta0` is 0, so the `'constant'`, `'invscaling'` and `'adaptive'` schedules require you to set `eta0` yourself.
+
+<GoDeeper title="Go deeper: averaging the iterates instead of shrinking the step">
+
+There's a second way to beat the noise cloud. Keep a fairly large step size, so SGD moves quickly, but report the *running average* of all the weights it has visited rather than the last one:
+
+$$\bar{\mathbf{w}}_t = \frac{1}{t}\sum_{k=1}^{t}\mathbf{w}_k$$
+
+If the iterates are bouncing around $\mathbf{w}^*$ in a roughly symmetric cloud, their average sits much closer to $\mathbf{w}^*$ than any single iterate does, the same way the mean of many noisy measurements beats any one measurement. Polyak and Juditsky (1992) proved that averaging with a slowly decaying step (for example $\eta_t \propto t^{-1/2}$) achieves the best possible asymptotic rate, matching what an ideally tuned $1/t$ schedule would get, without needing to know the curvature to tune it.
+
+In scikit-learn this is `average=True` (or `average=10` to start averaging after 10 samples). It costs one extra weight vector and is often the single most effective setting for online learning, because it makes the result far less sensitive to the step size. The online-learning example in Section 8 uses it.
+
+</GoDeeper>
+
+A good schedule handles the noise. It doesn't handle a different problem: features on very different scales make the right step size different for every weight, and a single $\eta$ can't be right for all of them.
+
+## 6. Why Feature Scaling Is Not Optional
+
+Look at the update again: weight $j$ moves by $\eta\, g\, x_j$. If feature 1 is measured in metres (values around 1) and feature 2 in millimetres (values around 1000), weight 2 receives updates a thousand times larger for the same error $g$, while the weight it *needs* is a thousand times smaller. Any $\eta$ small enough to keep weight 2 stable is far too small for weight 1 to learn anything.
+
+Geometrically, the loss surface becomes a long, thin valley. Its curvature along one direction is about $10^6$ times its curvature along the other (curvature scales with the feature's variance, $1000^2$). The usable step size is limited by the steepest direction, and progress along the shallow direction is correspondingly slow. Batch methods with second-order information (L-BFGS, Newton) partly correct for this; plain SGD has no defence against it.
+
+The fix is to standardize each feature to mean 0 and variance 1 before training, so every weight sees updates of comparable size. On the dataset in Section 8, multiplying one feature by 1000 drops `SGDClassifier`'s test accuracy from 0.913 to 0.807, and standardizing restores it. scikit-learn's own documentation for SGD puts this first in its practical tips, and recommends putting the scaler in a `Pipeline` so it's fit only on training data (fitting it on everything is a form of [data leakage](/docs/machine-learning/ml-workflow-fundamentals#data-leakage)).
+
+Scaling also matters for the penalty. An L2 penalty treats all weights alike, so if one feature's natural weight is a thousand times smaller than another's because of units, the penalty is effectively regularizing them very differently. After standardization, "large weight" means the same thing for every feature.
+
+With scaling, a schedule and the loss-penalty menu, SGD is a complete batch training method. Its most distinctive use, though, is the case where there is no batch.
+
+## 7. Online and Out-of-Core Learning
+
+Nothing in the update rule requires the dataset to exist all at once. Each step needs one example, and the example can be discarded afterwards. That makes two things possible that the closed-form and batch solvers in this section can't do.
+
+**Out-of-core learning.** If the training set is 500 GB on disk, read it in chunks that fit in memory, update on each chunk, and move on. Memory use is the size of one chunk plus one weight vector, regardless of how big the data is. In scikit-learn this is `partial_fit`, which runs a single pass over the data you pass in and keeps the model's state between calls.
+
+**Online learning.** If data arrives continuously (clicks, transactions, sensor readings), keep calling `partial_fit` as it arrives. The model updates in seconds instead of being retrained overnight, and if the world drifts, a constant or slowly decaying step size lets it follow. This is a deliberate trade: the Robbins–Monro conditions in Section 5 assume a fixed distribution to converge to. When the distribution moves, you *want* the step size to stay above zero, so the model keeps forgetting old data at a controlled rate. Large-scale click-through-rate systems were long built exactly this way: logistic regression on hashed sparse features, updated online (McMahan et al. 2013 describe Google's version, which uses an adaptive per-coordinate step size called FTRL-Proximal).
+
+Three practical details matter with `partial_fit`:
+
+- **Pass `classes` on the first call.** A chunk may not contain every label, so the classifier has to be told the full set up front.
+- **The scaler has to be online too**, or fit on an early representative sample. `StandardScaler` also has a `partial_fit`.
+- **Shuffle when you can.** SGD's unbiasedness argument in Section 2 assumes examples arrive in random order. If a stream arrives sorted (all of Monday, then all of Tuesday), each stretch of updates pulls the weights toward that stretch. For a fixed dataset, `fit` reshuffles every epoch by default (`shuffle=True`).
+
+## 8. Minimal Implementation
+
+Here is the whole loop in plain NumPy: one function per loss's scalar gradient $g$ from Section 3, L2 weight decay from Section 4, and a decaying step size from Section 5. Labels are in $\{-1, +1\}$ for classification.
+
+```python
+import numpy as np
+
+# Gradient of each loss with respect to the score s = w.x + b
+def d_loss(loss, y, s):
+    if loss == "squared_error":           # L = (s - y)^2 / 2
+        return s - y
+    if loss == "log_loss":                # L = log(1 + exp(-y s)), y in {-1, +1}
+        return -y / (1.0 + np.exp(y * s))
+    if loss == "hinge":                   # L = max(0, 1 - y s)
+        return -y if y * s < 1 else 0.0
+    raise ValueError(loss)
+
+def sgd_fit(X, y, loss, alpha=1e-4, epochs=20, eta0=0.01, seed=0):
+    rng = np.random.default_rng(seed)
+    n, d = X.shape
+    w, b = np.zeros(d), 0.0
+    t = 0
+    for _ in range(epochs):
+        for i in rng.permutation(n):      # one example at a time, reshuffled every epoch
+            t += 1
+            eta = eta0 / (1 + eta0 * alpha * t)   # a decaying step size
+            g = d_loss(loss, y[i], X[i] @ w + b)
+            w = (1 - eta * alpha) * w - eta * g * X[i]   # L2 penalty = weight decay
+            b -= eta * g
+    return w, b
+
+# Data: two classes in 2-D, standardized
+rng = np.random.default_rng(42)
+X = np.vstack([rng.normal([-1, -1], 1.0, (500, 2)), rng.normal([1.5, 1], 1.0, (500, 2))])
+y = np.r_[-np.ones(500), np.ones(500)]
+X = (X - X.mean(0)) / X.std(0)
+
+for loss in ["log_loss", "hinge"]:
+    w, b = sgd_fit(X, y, loss)
+    acc = np.mean(np.sign(X @ w + b) == y)
+    print(f"{loss:9s} w={np.round(w, 3)} b={b:+.3f} train accuracy={acc:.3f}")
+
+# Regression: same loop, squared error
+Xr = rng.normal(size=(1000, 3))
+yr = Xr @ np.array([2.0, -1.0, 0.5]) + 3.0 + rng.normal(0, 0.1, 1000)
+w, b = sgd_fit(Xr, yr, "squared_error", epochs=10)
+print(f"squared   w={np.round(w, 3)} b={b:+.3f}  (true w=[2, -1, 0.5], b=3)")
+```
+
+Output:
+
+```
+log_loss  w=[3.509 2.429] b=-0.048 train accuracy=0.940
+hinge     w=[2.348 1.627] b=-0.059 train accuracy=0.940
+squared   w=[ 2.005 -0.999  0.49 ] b=+3.007  (true w=[2, -1, 0.5], b=3)
+```
+
+The same function trains a logistic regression, a linear SVM and a linear regression; only the string changes. The two classifiers find boundaries pointing in the same direction (the ratio of the two weights is about 1.44 in both), but at different scales: log loss keeps pushing confident examples further, so its weights keep growing until the penalty balances them, while hinge stops caring once every example clears the margin. The regression recovers the true coefficients to within the noise.
+
+The library versions add the rest of this page: every loss, L1 and elastic-net penalties, the schedules in Section 5, averaging and early stopping. This second script uses them to check two claims made above, the effect of scaling (Section 6) and online learning with `partial_fit` (Section 7):
+
+```python
+import numpy as np
+from sklearn.linear_model import SGDClassifier, LogisticRegression
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import make_pipeline
+from sklearn.datasets import make_classification
+
+X, y = make_classification(n_samples=20000, n_features=20, n_informative=8, random_state=0)
+X[:, 0] *= 1000                      # one feature on a much larger scale
+Xtr, Xte, ytr, yte = X[:15000], X[15000:], y[:15000], y[15000:]
+
+raw = SGDClassifier(loss="log_loss", random_state=0).fit(Xtr, ytr)
+scaled = make_pipeline(StandardScaler(), SGDClassifier(loss="log_loss", random_state=0)).fit(Xtr, ytr)
+exact = make_pipeline(StandardScaler(), LogisticRegression()).fit(Xtr, ytr)
+print(f"SGD, raw features:    {raw.score(Xte, yte):.3f}")
+print(f"SGD, standardized:    {scaled.score(Xte, yte):.3f}")
+print(f"LogisticRegression:   {exact.score(Xte, yte):.3f}")
+
+# Online learning: the data arrives in chunks, the model never sees it all at once
+scaler = StandardScaler().fit(Xtr[:1000])          # fit scaling on the first chunk only
+online = SGDClassifier(loss="log_loss", average=True, random_state=0)
+for start in range(0, 15000, 1000):
+    chunk = slice(start, start + 1000)
+    online.partial_fit(scaler.transform(Xtr[chunk]), ytr[chunk], classes=[0, 1])
+    if start in (0, 2000, 6000, 14000):
+        print(f"after {start + 1000:>5} examples: test accuracy {online.score(scaler.transform(Xte), yte):.3f}")
+```
+
+Output (scikit-learn 1.7):
+
+```
+SGD, raw features:    0.807
+SGD, standardized:    0.913
+LogisticRegression:   0.911
+after  1000 examples: test accuracy 0.899
+after  3000 examples: test accuracy 0.908
+after  7000 examples: test accuracy 0.908
+after 15000 examples: test accuracy 0.908
+```
+
+Standardized SGD matches the dedicated `LogisticRegression` solver; the same model on unscaled features loses ten points of accuracy. The online model, which never held more than 1,000 rows in memory, gets within half a point of both.
+
+## 9. When *Not* to Use SGD
+
+SGD is the right tool when the data is large or arriving continuously. On small and medium problems it adds tuning (step size, schedule, epochs, scaling) that a dedicated solver doesn't need.
+
+| Situation | Better choice |
+|---|---|
+| Fewer than about 100,000 rows that fit in memory | The model's own solver: `LinearRegression`, `Ridge`, `Lasso`, `LogisticRegression` (L-BFGS), `LinearSVC`. Exact or near-exact, almost no tuning |
+| You need the precise optimum, e.g. for reporting coefficients | A batch solver. SGD's answer is only as good as its schedule and stopping rule |
+| Lasso path or cross-validated $\alpha$ on modest data | `LassoCV` / `ElasticNetCV` with coordinate descent and warm starts |
+| The relationship isn't linear | Trees and boosting ([XGBoost, LightGBM, CatBoost](/docs/machine-learning/xgboost-lightgbm-catboost)), or a neural network |
+| Features can't be scaled sensibly (heavy-tailed, mixed units) and you won't preprocess | Tree models, which ignore feature scale |
+| Ill-conditioned problems where plain SGD crawls | Adaptive or momentum methods (see [Optimizers](/docs/deep-learning/optimizers)), or second-order batch methods |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| The framing | One linear score, a loss and a penalty; pick the pair and you've picked the model |
+| Why one example works | $\mathbb{E}_i[\nabla L_i] = \nabla J$: the single-example gradient is unbiased |
+| The cost | Variance $\sigma^2$ per step, divided by $B$ for a mini-batch of size $B$ |
+| Every update | $\mathbf{w} \leftarrow \mathbf{w} - \eta\,g\,\mathbf{x}$, with $g = \partial L/\partial s$ the only loss-specific part |
+| Hinge vs. log loss | Hinge ignores examples beyond the margin; log loss never quite lets go |
+| L2 penalty | Weight decay: multiply by $(1 - \eta\alpha)$ every step |
+| L1 penalty | Clip toward zero, don't cross it, or the sparsity is lost |
+| Step size | Must decay ($\sum\eta_t = \infty$, $\sum\eta_t^2 < \infty$) to converge; $1/t$ is the classic choice |
+| Averaging | `average=True` reports the mean iterate; robust to the step size |
+| Scaling | Standardize features, inside a pipeline, every time |
+| Online | `partial_fit` on chunks; pass `classes` the first time |
+
+---
+
+Next: [Survival Analysis](/docs/machine-learning/survival-analysis) for modelling time until an event, or [Deep Learning](/docs/deep-learning/roadmap), where the same score-loss-gradient loop is stacked into many layers and mini-batch SGD with momentum and adaptive steps becomes the default optimizer.
+
+## Sources
+
+- H. Robbins and S. Monro, [A Stochastic Approximation Method](https://doi.org/10.1214/aoms/1177729586), *Annals of Mathematical Statistics*, 1951
+- L. Bottou, [Large-Scale Machine Learning with Stochastic Gradient Descent](https://leon.bottou.org/publications/pdf/compstat-2010.pdf), COMPSTAT 2010
+- L. Bottou, F. E. Curtis and J. Nocedal, [Optimization Methods for Large-Scale Machine Learning](https://arxiv.org/abs/1606.04838), *SIAM Review*, 2018
+- B. T. Polyak and A. B. Juditsky, [Acceleration of Stochastic Approximation by Averaging](https://doi.org/10.1137/0330046), *SIAM Journal on Control and Optimization*, 1992
+- Y. Tsuruoka, J. Tsujii and S. Ananiadou, [Stochastic Gradient Descent Training for L1-regularized Log-linear Models with Cumulative Penalty](https://aclanthology.org/P09-1054/), ACL 2009
+- H. B. McMahan et al., [Ad Click Prediction: a View from the Trenches](https://research.google/pubs/ad-click-prediction-a-view-from-the-trenches/), KDD 2013
+- scikit-learn, [Stochastic Gradient Descent](https://scikit-learn.org/stable/modules/sgd.html) user guide and [`SGDClassifier`](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.SGDClassifier.html) reference
