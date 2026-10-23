@@ -1,7 +1,7 @@
 ---
-title: "NN Layers Reference"
+title: "Neural Network Layers, In Full Depth"
 sidebar_position: 8.9
-description: "The reference catalog of every reusable layer type -- Dense, Embedding, and beyond -- that every architecture on this site is actually built from."
+description: "The reusable layers every architecture is built from, each with what it computes, its input and output shapes, its parameter count formula and where it is used, checked against PyTorch: linear, embedding, convolutional, recurrent, attention, normalization and utility layers."
 ---
 
 import CoreBuildingBlocksDiagram from '../../../viz/diagrams/CoreBuildingBlocksDiagram';
@@ -10,70 +10,251 @@ import TransposedConvUpsampleDiagram from '../../../viz/diagrams/TransposedConvU
 import RecurrentLayersCatalogDiagram from '../../../viz/diagrams/RecurrentLayersCatalogDiagram';
 import AttentionLayersCatalogDiagram from '../../../viz/diagrams/AttentionLayersCatalogDiagram';
 import NormalizationAxisDiagram from '../../../viz/diagrams/NormalizationAxisDiagram';
-import RegularizationUtilityCatalogDiagram from '../../../viz/diagrams/RegularizationUtilityCatalogDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# NN Layers Reference
+# Neural Network Layers, In Full Depth
 
-Every architecture in this section is built from a small set of reusable layer types. This page is the reference catalog — what each layer does and where it's actually used — for looking up a specific layer rather than reading a full architecture page.
+The architecture pages in this section, from [CNNs](/docs/deep-learning/cnns) to [Attention & Transformers](/docs/deep-learning/attention-transformers), each explain one design and why it works. This page looks at the same material the other way round. Every one of those architectures is assembled from about fifteen reusable layer types, and once you know what each layer computes, what shape goes in and out, and how many parameters it holds, any architecture diagram becomes readable and any model's size can be estimated on paper. For each layer this page gives the operation, the shapes, the parameter formula and where it's used, and one script at the end checks every number against PyTorch.
 
-## Core Building Blocks
+<ELI5>
 
-- **Dense / Linear / Fully-Connected layer**: `y = Wx + b` — every input connects to every output. The most basic learnable transformation; used as the final classification head in almost every architecture, and as the feed-forward sublayer inside Transformer blocks (see [Attention & Transformers](/docs/deep-learning/attention-transformers)).
-- **Embedding layer**: a lookup table mapping discrete tokens (words, categories) to dense learned vectors — the first layer of essentially every NLP/LLM model, converting token IDs into something a network can actually compute over.
-- **Flatten**: reshapes a multi-dimensional tensor (e.g. a CNN's final feature map) into a 1D vector, the standard bridge between convolutional/spatial layers and a dense classification head.
+Think of a kitchen. Every recipe in a cookbook, from soup to cake, is built from the same few actions: chop, mix, heat, strain, season. Once you know exactly what each action does, you can read any recipe, guess how long it will take, and invent your own.
+
+Neural network layers are those actions. A linear layer mixes everything together. A convolution looks at small neighbourhoods. A recurrent layer reads one step at a time and remembers. Attention lets every item look at every other item. Normalization keeps the numbers at a steady scale. Every architecture is a recipe that strings these together. Everything below is each action made exact: what goes in, what comes out, and what it costs.
+
+</ELI5>
+
+## 1. How to Read a Layer
+
+Three questions describe any layer completely enough to use it.
+
+- **What does it compute?** The formula from input to output.
+- **What shapes does it take and return?** Tensors have a fixed layout per layer type, and most bugs in model code are shape mismatches. PyTorch's conventions are used throughout: batch first, then channels, then spatial or time dimensions for convolutions (`(B, C, H, W)`), and batch, sequence, features for sequence layers (`(B, T, D)`).
+- **How many parameters does it have?** That decides the model's memory footprint and, together with input size, its compute.
+
+A useful distinction runs through the whole page: some layers have **weights shared across positions** (convolutions, recurrent cells, attention projections), so their parameter count doesn't depend on the input size, and some don't. And some layers have **no parameters at all** (pooling, dropout, softmax, flatten): they're fixed operations that change shape or behaviour but learn nothing.
+
+## 2. Core Building Blocks
+
+**Linear (dense, fully connected).** Every input feature connects to every output feature:
+
+$$
+y = W x + b, \qquad W \in \mathbb{R}^{d_\text{out} \times d_\text{in}}
+$$
+
+Input `(B, d_in)` (or any shape ending in `d_in`), output `(B, d_out)`. Parameters: $d_\text{in} d_\text{out} + d_\text{out}$. It's the most general learnable transformation and the most expensive per input: it assumes nothing about structure. It appears as the classification head of almost every network and as the two-layer feed-forward network inside every transformer block, which holds about two-thirds of a transformer's parameters.
+
+**Embedding.** A lookup table from integer ids to learned vectors. Row $i$ of a $V \times d$ matrix is the vector for token $i$. Input `(B, T)` integers, output `(B, T, d)`. Parameters: $V d$. Mathematically it's a linear layer applied to a one-hot vector, implemented as an index because multiplying by one-hot vectors would be wasteful. It's the first layer of every language model, and in large-vocabulary models it can be a large fraction of all parameters.
+
+**Flatten** reshapes `(B, C, H, W)` into `(B, C·H·W)`, the bridge from spatial feature maps to a linear head. No parameters. Modern CNNs usually use global average pooling instead (section 3), which doesn't tie the head's size to the image size.
 
 <CoreBuildingBlocksDiagram />
 
-## Convolutional Layers
+## 3. Convolutional and Pooling Layers
 
-- **Conv1D**: convolution along a single axis (time or sequence) — used for audio, time series, and text convolutions.
-- **Conv2D**: the standard image convolution, sliding a 2D filter across height and width — the core layer of every CNN in [CNNs](/docs/deep-learning/cnns).
-- **Conv3D**: convolution across height, width, *and* an additional axis (depth, or time in video) — used for volumetric data (medical CT/MRI scans) and video.
-- **Depthwise Separable Convolution**: factors a standard convolution into a depthwise (per-channel, spatial-only) step and a pointwise (1×1, channel-mixing) step — see [CNNs](/docs/deep-learning/cnns#the-architecture-lineage)'s MobileNet entry for why this is dramatically cheaper.
-- **Transposed Convolution (Deconvolution)**: the operation that *upsamples* rather than downsamples — learns to expand a smaller feature map back to a larger spatial size, used in the decoder half of U-Net (see [Vision Architectures](/docs/deep-learning/vision-architectures)) and in GAN/diffusion generators (see [Generative Models](/docs/deep-learning/generative-models)).
-- **Pooling (Max/Average)**: downsamples a feature map by taking the max or average value in each local region — reduces spatial size and parameter count in the layers that follow.
+### Convolutional Layers
+
+A convolution slides a small learned filter across an input with spatial or temporal structure, computing a weighted sum of each window. The filter is the same at every position. [CNNs](/docs/deep-learning/cnns) derives it; here are the variants side by side.
+
+| Layer | Input | Slides over | Parameters | Typical use |
+|---|---|---|---|---|
+| Conv1d | `(B, C_in, T)` | time / sequence | $k\, C_\text{in} C_\text{out} + C_\text{out}$ | audio, sensor data, character-level text |
+| Conv2d | `(B, C_in, H, W)` | height, width | $k^2 C_\text{in} C_\text{out} + C_\text{out}$ | images, spectrograms |
+| Conv3d | `(B, C_in, D, H, W)` | depth or time, height, width | $k^3 C_\text{in} C_\text{out} + C_\text{out}$ | CT and MRI volumes, video |
+| Depthwise Conv2d | `(B, C, H, W)` | height, width, per channel | $k^2 C + C$ | MobileNet-style efficient networks |
+| ConvTranspose2d | `(B, C_in, H, W)` | upsamples | $k^2 C_\text{in} C_\text{out} + C_\text{out}$ | U-Net decoders, GAN generators |
+
+Output spatial size for a convolution with kernel $k$, padding $p$ and stride $s$ is $\lfloor (n + 2p - k)/s \rfloor + 1$; with $k = 3$, $p = 1$, $s = 1$ the size is unchanged.
+
+**Depthwise separable convolution** is a depthwise convolution (one filter per channel, `groups=C` in PyTorch) followed by a 1 × 1 pointwise convolution that mixes channels. It costs roughly $1/C_\text{out} + 1/k^2$ of a standard convolution; [CNNs](/docs/deep-learning/cnns) derives this. A **1 × 1 convolution** on its own is a linear layer applied at every position: it mixes channels without looking at neighbours, and is the standard way to change the channel count cheaply.
 
 <ConvolutionalLayersCatalogDiagram />
 
+**Transposed convolution** goes the other way: it maps each input position to a $k \times k$ patch of output, with stride $s$ spacing those patches apart, so the output is larger than the input. With $k = 2$, $s = 2$ it exactly doubles height and width. It's learned upsampling, used in decoders and generators. Overlapping patches (when $k$ isn't a multiple of $s$) can produce **checkerboard artefacts**, which is why many decoders instead upsample with fixed interpolation followed by an ordinary convolution.
+
 <TransposedConvUpsampleDiagram />
 
-## Recurrent Layers
+**Pooling** summarizes windows with no parameters. Max pooling keeps the largest value, average pooling the mean; with a 2 × 2 window and stride 2 both halve height and width. **Global average pooling** averages each channel over the entire map, turning `(B, C, H, W)` into `(B, C)` whatever the image size.
 
-- **RNN cell**: the basic recurrent unit, `h_t = f(h_{t-1}, x_t)` — see [Sequence Models](/docs/deep-learning/sequence-models) for the full mechanics and why it struggles with long sequences.
-- **LSTM cell**: adds a gated cell state that explicitly controls what's remembered/forgotten — see [Sequence Models](/docs/deep-learning/sequence-models#lstm-and-gru).
-- **GRU cell**: a simplified two-gate alternative to LSTM, fewer parameters, often comparable performance.
+## 4. Recurrent Layers
+
+A recurrent layer reads a sequence one step at a time, keeping a hidden state $h_t$ that summarizes everything seen so far. The same weights are applied at every step. [Sequence Models](/docs/deep-learning/sequence-models) explains them in depth.
+
+- **RNN cell**: $h_t = \tanh(W_x x_t + W_h h_{t-1} + b)$. Parameters $h(d_\text{in} + h) + h$ (PyTorch keeps two bias vectors, adding another $h$). Its gradient through time is a product of the same matrix over and over, so it vanishes or explodes over long sequences.
+- **LSTM**: adds a separate cell state and three gates (forget, input, output) that decide what to erase, write and expose, plus a candidate update. Four sets of weights, so roughly four times an RNN's parameters: $4\,[h(d_\text{in} + h) + 2h]$ in PyTorch.
+- **GRU**: merges the cell and hidden state and uses two gates (update and reset) plus a candidate: three sets of weights, $3\,[h(d_\text{in} + h) + 2h]$, about three-quarters of an LSTM, often with similar accuracy.
+
+Input `(B, T, d_in)`, output `(B, T, h)` for the per-step hidden states, plus the final state. Recurrent layers process steps sequentially, which makes them slow to train on long sequences compared with attention; their constant memory per step is why the idea has returned in [state-space models](/docs/deep-learning/linear-attention-and-state-space-models).
 
 <RecurrentLayersCatalogDiagram />
 
-## Attention & Transformer Layers
+## 5. Attention and Transformer Layers
 
-- **Self-Attention layer**: computes Query/Key/Value projections and attention-weighted output over a sequence — see [Attention & Transformers](/docs/deep-learning/attention-transformers#self-attention-query-key-value) for the full math.
-- **Multi-Head Attention layer**: runs several attention computations in parallel and concatenates them — see [Attention & Transformers](/docs/deep-learning/attention-transformers#multi-head-attention).
-- **Cross-Attention layer**: queries from one sequence attend to keys/values from another — the mechanism connecting encoder and decoder in encoder-decoder Transformers (see [Attention & Transformers](/docs/deep-learning/attention-transformers#cross-attention)) and connecting image features to text tokens in VLMs.
-- **Positional Encoding layer**: injects order information into an otherwise order-blind attention computation — sinusoidal, learned, or RoPE (see [Attention & Transformers](/docs/deep-learning/attention-transformers#positional-encoding)).
-- **Transformer Block**: the composed unit — self-attention → add & norm → feed-forward → add & norm — stacked to build every Transformer-based model.
+**Self-attention** lets every position read from every other. Three linear projections turn the input $X$ into queries, keys and values, and each output is a weighted average of the values, weighted by query-key similarity:
+
+$$
+\operatorname{Attention}(Q, K, V) = \operatorname{softmax}\!\left(\frac{Q K^\top}{\sqrt{d_k}}\right) V
+$$
+
+**Multi-head attention** runs $h$ such computations in parallel on $d/h$-dimensional slices and concatenates them, then applies an output projection. Its parameters are those four $d \times d$ projections plus biases: $4d^2 + 4d$, independent of the number of heads and of sequence length. Its compute and memory, though, grow with the square of the sequence length $T$, because of the $T \times T$ score matrix. Input and output are both `(B, T, d)`.
+
+**Cross-attention** is the same layer with queries from one sequence and keys and values from another: decoder tokens reading an encoder's output in translation, or text tokens reading image features in a vision-language model.
+
+**Positional encoding.** Attention is order-blind, so position must be injected: added sinusoidal or learned vectors in early transformers, or **RoPE** (rotary position embedding), which rotates queries and keys by position-dependent angles inside attention and is used by most current language models. RoPE has no parameters.
+
+**The transformer block** composes these: attention, then a feed-forward network (two linear layers with a nonlinearity, typically expanding to $4d$ or using a gated SwiGLU variant), each wrapped in a residual connection and a normalization. One block with $d = 4096$ and a $4d$ feed-forward layer has about $4d^2 + 8d^2 = 12 d^2 \approx 201$ million parameters, which is the rule of thumb for estimating transformer sizes. [Attention & Transformers](/docs/deep-learning/attention-transformers) derives every piece.
 
 <AttentionLayersCatalogDiagram />
 
-## Normalization Layers
+## 6. Keeping Activations at a Steady Scale
 
-- **Batch Normalization**: normalizes each feature's activations across the current mini-batch, then applies a learned scale and shift — stabilizes and speeds up training of deep CNNs, standard in the CNN lineage. Dependent on batch size/statistics, which makes it a poor fit for architectures processing variable-length sequences one token at a time.
-- **Layer Normalization**: normalizes across a single example's features instead of across the batch — batch-size-independent, which is exactly why it's the default in Transformers rather than BatchNorm.
-- **RMSNorm**: a simplified LayerNorm that only rescales by the root-mean-square of activations (no mean-centering, no learned bias) — cheaper to compute with comparable training stability, and the current default normalization in most modern LLMs (LLaMA and successors).
-- **Group Normalization**: normalizes within groups of channels rather than the whole batch or the whole layer — a middle ground used when batch sizes are too small for BatchNorm to be stable (common in diffusion model U-Nets, see [Generative Models](/docs/deep-learning/generative-models)).
+### Normalization Layers
+
+All normalization layers subtract a mean, divide by a standard deviation, then apply a learned per-feature scale $\gamma$ and shift $\beta$. They differ only in **which values share a mean and standard deviation**:
+
+| Layer | Statistics computed over | Parameters | Used in |
+|---|---|---|---|
+| BatchNorm | each channel, across the batch and spatial positions | $2C$ (plus running statistics, not learned) | CNNs |
+| LayerNorm | each example's features | $2d$ | Transformers, RNNs |
+| RMSNorm | each example's features, no mean subtraction, no shift | $d$ | Most current LLMs |
+| GroupNorm | groups of channels within each example | $2C$ | Small-batch vision, diffusion U-Nets |
+| InstanceNorm | each channel of each example | $0$ or $2C$ | Style transfer |
 
 <NormalizationAxisDiagram />
 
-## Regularization & Utility Layers
+The practical rule follows from the grouping. **BatchNorm** depends on the other examples in the batch, so it behaves differently in training (batch statistics) and inference (running averages), and becomes unreliable with small batches. Everything else normalizes within one example, so it behaves identically at any batch size and in both modes, which is why sequence models and generative models use LayerNorm, RMSNorm or GroupNorm. [Training Deep Networks](/docs/deep-learning/training-deep-networks) explains why normalization makes deep training stable.
 
-- **Dropout**: randomly zeroes a fraction of activations during training, forcing the network not to rely on any single unit — see [Initialization, Regularization & LR Scheduling](/docs/deep-learning/initialization-regularization-scheduling) for the full mechanics and why it's turned off at inference time.
-- **Softmax**: converts a vector of raw scores into a probability distribution (non-negative, sums to 1) — the standard final-layer activation for multi-class classification, and the operation that turns attention scores into attention weights.
-- **Residual / Skip Connection**: adds a layer's input back to its output, `y = F(x) + x` — not a layer with its own parameters, but the connectivity pattern that makes very deep networks trainable (see [Training Deep Networks](/docs/deep-learning/training-deep-networks) and [CNNs](/docs/deep-learning/cnns#the-architecture-lineage)'s ResNet entry).
+<PredictFirst
+  question="A model is trained with BatchNorm at batch size 256, then deployed to score one image at a time, but someone forgot to call model.eval(). What happens?"
+  options={[
+    'Nothing, because BatchNorm has no effect at inference',
+    'Predictions become erratic, because each image is normalized using statistics of a batch of one',
+    'The model runs faster, because running statistics are skipped',
+    'It errors out, because BatchNorm needs at least two examples',
+  ]}
+  correctIndex={1}
+  explanation="In training mode BatchNorm normalizes with the current batch's statistics. With one image, each channel's mean is just that image's own mean, so the features the model learned to rely on are largely normalized away. In eval mode it uses the running averages from training. (In PyTorch, a 2D BatchNorm in training mode with a single image still runs, because the spatial positions supply many values per channel; a 1D BatchNorm with one example raises an error.)"
+/>
 
-<RegularizationUtilityCatalogDiagram />
+## 7. Regularization and Utility Layers
 
-## Graph Layers
+- **Dropout** zeros each activation with probability $p$ during training and scales survivors by $1/(1-p)$; at inference it does nothing. No parameters. It must be switched off with `model.eval()`.
+- **Softmax** turns a vector of scores into a probability distribution: $\operatorname{softmax}(z)_i = e^{z_i} / \sum_j e^{z_j}$. No parameters. It's the last step of a classifier (usually folded into the cross-entropy loss for numerical stability) and the step that turns attention scores into weights.
+- **Activation functions** (ReLU, GELU, SiLU) are elementwise nonlinearities with no parameters; [Activation Functions](/docs/deep-learning/activation-functions) compares them.
+- **Residual connection** $y = x + F(x)$ isn't a layer with weights but a wiring pattern. It requires $F$'s output shape to match its input, which is why residual architectures keep a constant width within each stage. [Training Deep Networks](/docs/deep-learning/training-deep-networks) shows why it keeps gradients alive.
 
-- **Graph Convolution layer**: aggregates each node's neighbor features (normalized weighted average) — see [Advanced Architectures](/docs/deep-learning/advanced-architectures#graph-neural-networks-gnns) for GCN, GraphSAGE, and GAT, the three main variants of this layer type.
+**Graph layers** generalize convolution to irregular neighbourhoods: each node's new features are an aggregation of its neighbours' features, transformed by shared weights. GCN, GraphSAGE and GAT are the main variants, covered in [Advanced Architectures](/docs/deep-learning/advanced-architectures).
 
-Deep Learning architecture catalog complete. Next: [LLMs & GenAI](/docs/llms-genai/roadmap) — where these building blocks and architectures become ChatGPT-class production systems, or back to the [Deep Learning Roadmap](/docs/deep-learning/roadmap) for the full checklist.
+## 8. Every Layer, Checked
+
+One script builds each layer above in PyTorch, runs a batch of 8 through it, and prints the input shape, output shape and parameter count. Each count can be checked against the formulas in the sections above.
+
+```python
+import torch
+import torch.nn as nn
+
+torch.manual_seed(0)
+B = 8                                                   # batch size
+layers = [
+    ("Linear(512, 256)",              nn.Linear(512, 256),                         torch.randn(B, 512)),
+    ("Embedding(32000, 512)",         nn.Embedding(32000, 512),                    torch.randint(0, 32000, (B, 16))),
+    ("Conv1d(64, 128, k=5)",          nn.Conv1d(64, 128, 5, padding=2),            torch.randn(B, 64, 100)),
+    ("Conv2d(3, 64, k=3)",            nn.Conv2d(3, 64, 3, padding=1),              torch.randn(B, 3, 32, 32)),
+    ("Conv2d depthwise(64, k=3)",     nn.Conv2d(64, 64, 3, padding=1, groups=64),  torch.randn(B, 64, 32, 32)),
+    ("ConvTranspose2d(64, 32, k=2,s=2)", nn.ConvTranspose2d(64, 32, 2, stride=2),  torch.randn(B, 64, 16, 16)),
+    ("MaxPool2d(2)",                  nn.MaxPool2d(2),                             torch.randn(B, 64, 32, 32)),
+    ("LSTM(128, 256)",                nn.LSTM(128, 256, batch_first=True),         torch.randn(B, 20, 128)),
+    ("GRU(128, 256)",                 nn.GRU(128, 256, batch_first=True),          torch.randn(B, 20, 128)),
+    ("MultiheadAttention(512, 8)",    nn.MultiheadAttention(512, 8, batch_first=True), torch.randn(B, 16, 512)),
+    ("LayerNorm(512)",                nn.LayerNorm(512),                           torch.randn(B, 16, 512)),
+    ("RMSNorm(512)",                  nn.RMSNorm(512),                             torch.randn(B, 16, 512)),
+    ("BatchNorm2d(64)",               nn.BatchNorm2d(64),                          torch.randn(B, 64, 32, 32)),
+    ("GroupNorm(8 groups, 64)",       nn.GroupNorm(8, 64),                         torch.randn(B, 64, 32, 32)),
+    ("Dropout(0.1)",                  nn.Dropout(0.1),                             torch.randn(B, 512)),
+]
+for name, layer, x in layers:
+    if isinstance(layer, nn.MultiheadAttention):
+        y = layer(x, x, x)[0]                           # self-attention: queries, keys, values all from x
+    elif isinstance(layer, (nn.LSTM, nn.GRU)):
+        y = layer(x)[0]                                 # the per-step outputs
+    else:
+        y = layer(x)
+    params = sum(p.numel() for p in layer.parameters())
+    print(f"{name:34s} {str(tuple(x.shape)):18s} -> {str(tuple(y.shape)):18s} {params:>12,} params")
+```
+
+Output (PyTorch 2.5):
+
+```
+Linear(512, 256)                   (8, 512)           -> (8, 256)                131,328 params
+Embedding(32000, 512)              (8, 16)            -> (8, 16, 512)         16,384,000 params
+Conv1d(64, 128, k=5)               (8, 64, 100)       -> (8, 128, 100)            41,088 params
+Conv2d(3, 64, k=3)                 (8, 3, 32, 32)     -> (8, 64, 32, 32)           1,792 params
+Conv2d depthwise(64, k=3)          (8, 64, 32, 32)    -> (8, 64, 32, 32)             640 params
+ConvTranspose2d(64, 32, k=2,s=2)   (8, 64, 16, 16)    -> (8, 32, 32, 32)           8,224 params
+MaxPool2d(2)                       (8, 64, 32, 32)    -> (8, 64, 16, 16)               0 params
+LSTM(128, 256)                     (8, 20, 128)       -> (8, 20, 256)            395,264 params
+GRU(128, 256)                      (8, 20, 128)       -> (8, 20, 256)            296,448 params
+MultiheadAttention(512, 8)         (8, 16, 512)       -> (8, 16, 512)          1,050,624 params
+LayerNorm(512)                     (8, 16, 512)       -> (8, 16, 512)              1,024 params
+RMSNorm(512)                       (8, 16, 512)       -> (8, 16, 512)                512 params
+BatchNorm2d(64)                    (8, 64, 32, 32)    -> (8, 64, 32, 32)             128 params
+GroupNorm(8 groups, 64)            (8, 64, 32, 32)    -> (8, 64, 32, 32)             128 params
+Dropout(0.1)                       (8, 512)           -> (8, 512)                      0 params
+```
+
+Checking a few against the formulas: the Conv1d has $5 \cdot 64 \cdot 128 + 128 = 41{,}088$. The depthwise convolution has $9 \cdot 64 + 64 = 640$, against $9 \cdot 64 \cdot 64 + 64 = 36{,}928$ for a full 3 × 3 convolution of the same width. The LSTM has $4\,[256 \cdot (128 + 256) + 2 \cdot 256] = 395{,}264$ and the GRU exactly three-quarters of that. Multi-head attention has $4 \cdot 512^2 + 4 \cdot 512 = 1{,}050{,}624$, whatever the number of heads. And the embedding table alone holds 16 million parameters, more than everything else in the list combined.
+
+<GoDeeper title="Go deeper: parameters are not compute">
+
+Parameter counts tell you memory. Compute depends on how often each parameter is used per input.
+
+- A **linear layer** uses each weight once per input vector: about $2\, d_\text{in} d_\text{out}$ floating-point operations per token.
+- An **embedding** uses one row per token, so its millions of parameters cost almost nothing to apply.
+- A **convolution** reuses each weight at every output position: a Conv2d's cost is its parameter count times $H_\text{out} W_\text{out}$, times 2. The 1,792-parameter Conv2d above does about 1.8 million multiply-adds per 32 × 32 image.
+- **Attention** has a cost that no parameter count shows: computing and applying the $T \times T$ scores costs about $4 T^2 d$ operations per layer, which overtakes the projections' $8 T d^2$ once the sequence is longer than about twice the model width.
+
+That's why a model's parameter count predicts its memory well and its speed only roughly, and why long-context models are bottlenecked by attention rather than by their weights.
+
+</GoDeeper>
+
+## 9. When *Not* to Reach for a Layer
+
+| Situation | Better choice |
+|---|---|
+| Linear layer on raw image pixels | A convolution; a linear layer ignores spatial structure and needs vastly more parameters |
+| BatchNorm with tiny batches or sequences | LayerNorm, RMSNorm or GroupNorm |
+| Transposed convolution producing checkerboard artefacts | Interpolation followed by a convolution |
+| LSTM on long sequences when training speed matters | Attention, or a state-space layer that trains in parallel |
+| Full attention on very long sequences | Windowed, sparse or linear attention, or a state-space model |
+| Flatten before the head of a CNN that must accept any image size | Global average pooling |
+
+## Remember
+
+| Layer | Parameters | In one line |
+|---|---|---|
+| Linear | $d_\text{in} d_\text{out} + d_\text{out}$ | Every input to every output |
+| Embedding | $V d$ | Lookup table from ids to vectors |
+| Conv2d | $k^2 C_\text{in} C_\text{out} + C_\text{out}$ | Shared filter over spatial windows |
+| Depthwise + pointwise | about $k^2 C + C_\text{in} C_\text{out}$ | Spatial then channel mixing, much cheaper |
+| ConvTranspose | $k^2 C_\text{in} C_\text{out} + C_\text{out}$ | Learned upsampling |
+| Pooling, dropout, softmax | $0$ | Fixed operations |
+| LSTM / GRU | $4$ / $3 \times [h(d+h) + 2h]$ | Sequential hidden state with gates |
+| Multi-head attention | $4d^2 + 4d$ | Every position reads every other; cost grows with $T^2$ |
+| LayerNorm / RMSNorm | $2d$ / $d$ | Normalize within one example |
+| BatchNorm | $2C$ | Normalize across the batch; differs in train and eval |
+
+---
+
+Deep Learning architecture catalogue complete. Next: [LLMs & GenAI](/docs/llms-genai/roadmap), where these building blocks become production language models, or back to the [Deep Learning Roadmap](/docs/deep-learning/roadmap).
+
+## Sources
+
+- PyTorch documentation, [torch.nn](https://pytorch.org/docs/stable/nn.html), for each layer's definition and shapes
+- Dumoulin and Visin, [A guide to convolution arithmetic for deep learning](https://arxiv.org/abs/1603.07285) (2016)
+- Hochreiter and Schmidhuber, [Long Short-Term Memory](https://www.bioinf.jku.at/publications/older/2604.pdf) (1997); Cho et al., [the GRU](https://arxiv.org/abs/1406.1078) (2014)
+- Vaswani et al., [Attention Is All You Need](https://arxiv.org/abs/1706.03762) (2017)
+- Ioffe and Szegedy, [Batch Normalization](https://arxiv.org/abs/1502.03167) (2015); Ba et al., [Layer Normalization](https://arxiv.org/abs/1607.06450) (2016); Wu and He, [Group Normalization](https://arxiv.org/abs/1803.08494) (2018); Zhang and Sennrich, [RMSNorm](https://arxiv.org/abs/1910.07467) (2019)
+- Su et al., [RoFormer: Rotary Position Embedding](https://arxiv.org/abs/2104.09864) (2021)
+- Odena, Dumoulin and Olah, [Deconvolution and Checkerboard Artifacts](https://distill.pub/2016/deconv-checkerboard/) (2016)
