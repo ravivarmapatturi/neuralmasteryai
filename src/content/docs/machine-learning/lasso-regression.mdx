@@ -1,98 +1,297 @@
 ---
 title: "Lasso Regression, In Full Depth"
 sidebar_position: 4.7
-description: "Why Lasso's L1 penalty drives weights to exactly zero (automatic feature selection) while Ridge's L2 penalty never does -- the real geometric reason."
+description: "Why lasso's L1 penalty sets weights to exactly zero while ridge's L2 penalty never does: the one-feature solution compared with ridge and best-subset, the geometry, the optimality conditions, coordinate descent with soft-thresholding, the regularization path, choosing lambda, and when lasso's selection can't be trusted."
 ---
 
-import __migratedImg0 from './img/lasso-path.png';
-
-
+import lassoPathLight from './img/lasso-path-light.png';
+import lassoPathDark from './img/lasso-path.png';
 import LassoRegressionStudio from '../../../viz/LassoRegressionStudio';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Lasso Regression, In Full Depth
 
-[Ridge Regression](/docs/machine-learning/ridge-regression) shrinks every weight toward zero but never eliminates any of them. Lasso uses a different penalty that can drive weights to *exactly* zero — turning regularization into automatic feature selection.
+[Ridge Regression](/docs/machine-learning/ridge-regression) shrinks every weight toward zero but keeps all of them. Lasso changes one thing, the shape of the penalty, from squared weights to absolute values, and that change makes it set many weights to *exactly* zero. Regularization becomes feature selection. This page derives why: first for a single feature, where the whole effect is visible in one formula, then geometrically, then through the optimality conditions that the standard solver is built on. It finishes with how to choose the penalty, what the selection can and can't be trusted for, and a solver that matches scikit-learn to ten decimal places.
 
-## What Is Lasso Regression?
+<ELI5>
 
-Same hypothesis as [Linear Regression](/docs/machine-learning/linear-regression) — $\hat{y} = \mathbf{w}^T\mathbf{x} + b$ — with a different penalty than Ridge added to the cost function. "Lasso" stands for **L**east **A**bsolute **S**hrinkage and **S**election **O**perator — the name is a description of exactly what it does.
+You're packing for a trip and the airline charges a flat fee for every item in your bag, however small. A pair of socks costs the same fee as a coat. Under that rule, you leave behind anything that isn't worth the fee, and your bag ends up with fewer things, each of them clearly useful.
 
-## The Lasso Cost Function
+Ridge regression is like an airline that charges by weight: you keep everything but pack lighter versions. Lasso is the flat-fee airline. Each feature has to justify a fixed cost to stay in the model, and features that don't are dropped completely. Everything below is that rule made exact.
 
-$$J_{\text{lasso}}(\mathbf{w}, b) = \frac{1}{n}\sum_{i=1}^n \left(\hat{y}^{(i)} - y^{(i)}\right)^2 + \lambda \sum_{j=1}^d |w_j|$$
+</ELI5>
 
-The only change from [Ridge](/docs/machine-learning/ridge-regression#the-ridge-cost-function) is the penalty term: $\lambda \sum |w_j|$ — the **L1 norm** of the weights (sum of absolute values, see [Linear Algebra — Norms](/docs/mathematics-for-ai/linear-algebra)) instead of the L2 norm (sum of squares).
+## 1. What Lasso Is
 
-## Why L1 Produces Exact Zeros (and L2 Doesn't)
+### The Lasso Cost Function
 
-This is the single most important thing to understand about Lasso, and it comes down to the *shape* of the penalty, not just its magnitude.
+Same hypothesis as [Linear Regression](/docs/machine-learning/linear-regression), $\hat{y} = \mathbf{w}^T\mathbf{x} + b$, and the same squared-error cost, plus a penalty on the **L1 norm** of the weights, the sum of their absolute values. Written the way scikit-learn and glmnet define it, with centered data so the intercept drops out:
 
-$|w_j|$ has a constant derivative of $\pm 1$ (technically undefined exactly at $w_j = 0$ — a **subgradient**, see below) for any nonzero $w_j$, no matter how small. $w_j^2$'s derivative is $2w_j$, which shrinks toward zero *as $w_j$ shrinks toward zero* — the penalty's pull weakens exactly when it would matter most for actually reaching zero.
+$$
+J_{\text{lasso}}(\mathbf{w}) = \frac{1}{2n}\sum_{i=1}^{n}\left(y^{(i)} - \mathbf{w}^T\mathbf{x}^{(i)}\right)^2 + \lambda\sum_{j=1}^{d}\lvert w_j\rvert
+$$
 
-Concretely: near $w_j = 0$, Ridge's penalty gradient vanishes, so the pull toward zero becomes negligible — weights approach zero asymptotically but essentially never land on it exactly. Lasso's penalty gradient stays constant magnitude all the way to zero, so it can push a small weight the rest of the way to *exactly* 0 and keep it there once the data's own pull (the MSE gradient) is weaker than that constant penalty pull.
+The only change from [ridge's cost](/docs/machine-learning/ridge-regression#the-ridge-cost-function) is $\lvert w_j\rvert$ in place of $w_j^2$ (and the $\tfrac{1}{2n}$ scaling, which only changes the units of $\lambda$). Robert Tibshirani introduced it in 1996 and named it the **Least Absolute Shrinkage and Selection Operator**: it shrinks, and it selects.
 
-## The Subgradient at Zero
+As with ridge, the intercept isn't penalized and the features must be standardized, because the penalty charges every weight in the same units. Unlike ridge, there's no closed-form solution for the general case: $\lvert w\rvert$ has a corner at zero, so setting a derivative to zero doesn't work directly. But there *is* a closed form when there's only one feature, or when the features are uncorrelated, and it shows exactly what lasso does.
 
-$|w_j|$ isn't differentiable at exactly $w_j = 0$ — the slope jumps from $-1$ to $+1$. Optimizing Lasso by plain gradient descent as written doesn't quite work at that point; two standard approaches:
+## 2. One Feature: Lasso, Ridge and Best Subset Side by Side
 
-- **Subgradient**: use any value in $[-1, 1]$ as a stand-in derivative at $w_j=0$ (commonly 0), and take (slower) subgradient descent steps.
-- **Coordinate descent** (the standard approach in practice): optimize one weight at a time, holding the others fixed. For a single weight, the optimal update has a closed form — the **soft-thresholding operator**:
+Take a single standardized feature ($\tfrac1n\sum x_i^2 = 1$). Let $z = \tfrac1n\sum x_i y_i$, which is exactly the least-squares weight in this case. Expanding the squared error and dropping terms that don't involve $w$, the lasso cost becomes a one-variable function:
 
-$$w_j \leftarrow \text{sign}(\rho_j) \cdot \max(|\rho_j| - \lambda, 0)$$
+$$
+J(w) = \tfrac12 w^2 - zw + \lambda\lvert w\rvert + \text{const} = \tfrac12 (w - z)^2 + \lambda\lvert w\rvert + \text{const}
+$$
 
-where $\rho_j$ is the OLS-optimal value for $w_j$ given the other weights fixed. Read directly: if $\rho_j$'s magnitude is smaller than $\lambda$, $w_j$ gets set to *exactly* zero. If it's larger, $w_j$ shrinks by exactly $\lambda$ toward zero, keeping its sign. This closed-form "shrink or zero it" rule, applied to one coordinate at a time until convergence, is what actual Lasso solvers (like scikit-learn's) use — not naive gradient descent.
+Minimize it case by case:
 
-## The Regularization Path
+- If $w \gt  0$, the derivative is $w - z + \lambda$, which is zero at $w = z - \lambda$. That's consistent with $w \gt  0$ only if $z \gt  \lambda$.
+- If $w \lt  0$, the derivative is $w - z - \lambda$, zero at $w = z + \lambda$, consistent only if $z \lt  -\lambda$.
+- If $\lvert z\rvert \le \lambda$, neither case works, and the minimum is at the corner, $w = 0$.
 
-Compare directly against [Ridge's path](/docs/machine-learning/ridge-regression#the-regularization-path) — same synthetic data, same range of $\lambda$:
+Together:
 
-<img src={__migratedImg0} alt="Lasso regularization path — coefficients hit exactly zero at different thresholds as regularization strength increases" style={{maxWidth: '100%'}} />
+$$
+\hat{w}_{\text{lasso}} = \operatorname{sign}(z)\,\max\big(\lvert z\rvert - \lambda,\; 0\big) \;=\; S(z, \lambda)
+$$
 
-Notice the qualitative difference from Ridge's curve: coefficients here go flat at *exactly* zero and stay there, at different $\lambda$ thresholds for different features — Lasso is silently doing feature selection as $\lambda$ increases, keeping only the features whose signal is strong enough to survive the penalty.
+This is the **soft-thresholding** operator. It does two things at once: it subtracts $\lambda$ from the size of every weight (shrinkage), and it sets every weight smaller than $\lambda$ to exactly zero (selection). The same calculation for the other two classic methods, with the same feature and the same $z$:
+
+| Method | Penalty | One-feature solution | What it does |
+|---|---|---|---|
+| Least squares | none | $z$ | Nothing |
+| Ridge | $\tfrac{\lambda}{2}w^2$ | $\dfrac{z}{1 + \lambda}$ | Scales every weight down by the same fraction; never zero |
+| Lasso | $\lambda\lvert w\rvert$ | $S(z, \lambda)$ | Subtracts $\lambda$; zero if $\lvert z\rvert \le \lambda$ |
+| Best subset | a fixed cost per nonzero weight | $z$ if $\lvert z\rvert \gt  \sqrt{2\lambda}$, else $0$ | Keeps or kills, no shrinkage (hard threshold) |
+
+Lasso sits between ridge and best subset. Like best subset, it selects. Like ridge, it's continuous: a small change in the data moves $z$ a little, and the weight moves a little, rather than jumping between 0 and $z$. And it's convex, so it can be solved efficiently, while best-subset selection over $d$ features means searching $2^d$ subsets. The price of the continuity is that lasso also shrinks the weights it keeps, by $\lambda$ each. Section 6 deals with that bias.
+
+When the features are uncorrelated (an orthonormal design), the full multi-feature lasso solution is exactly this formula applied to each feature's least-squares weight separately. With correlated features it isn't, but the soft-threshold survives as the building block of the solver in Section 4.
+
+## 3. Why Exact Zeros
+
+### Why L1 Produces Exact Zeros (and L2 Doesn't)
+
+The one-feature result has a simple explanation in terms of slopes. Near zero, the ridge penalty $w^2$ is flat: its derivative $2w$ shrinks as $w$ shrinks, so the pull toward zero fades just when it would matter. Once a weight is small, the data's pull (however weak) always wins, and the weight settles at a small nonzero value. The lasso penalty $\lvert w\rvert$ has slope $\pm 1$ all the way down. Its pull toward zero is just as strong for a weight of 0.001 as for a weight of 10. If the data's pull on a weight is weaker than $\lambda$, the penalty wins outright and the weight goes to zero and stays there.
+
+**The geometry.** The same thing can be seen by writing the penalty as a constraint. Minimizing squared error plus $\lambda\lVert\mathbf{w}\rVert_1$ gives the same solutions as minimizing squared error subject to $\lVert\mathbf{w}\rVert_1 \le t$, for some budget $t$ that depends on $\lambda$. In two dimensions, the L1 budget $\lvert w_1\rvert + \lvert w_2\rvert \le t$ is a diamond with corners on the axes; the L2 budget $w_1^2 + w_2^2 \le t^2$ is a disc. The squared error's contours are ellipses centred on the least-squares solution. The solution is where the smallest ellipse first touches the allowed region. A disc has no corners, so the touching point is almost never on an axis: both weights are nonzero. A diamond's corners stick out toward the ellipses, so the first contact is very often a corner, where one weight is exactly zero. In $d$ dimensions the L1 ball has $2d$ corners and many edges and faces where several coordinates are zero, so sparse solutions become even more likely as $d$ grows.
+
+The slope argument and the geometric argument are the same fact seen two ways. To compute anything with it, we need the condition the solution satisfies.
+
+## 4. The Optimality Condition and the Solver
+
+### The Subgradient at Zero
+
+$\lvert w\rvert$ has no derivative at $w = 0$: the slope jumps from $-1$ to $+1$. Convex analysis handles this with the **subgradient**: at a corner, any slope between the two one-sided slopes counts. For $\lvert w\rvert$:
+
+$$
+\partial\lvert w\rvert = \begin{cases} \{+1\} & w \gt  0 \\ [-1,\; 1] & w = 0 \\ \{-1\} & w \lt  0 \end{cases}
+$$
+
+A convex function is at its minimum exactly when zero is one of its subgradients. Apply that to the lasso cost. The gradient of the squared-error part with respect to $w_j$ is $-\tfrac1n\mathbf{x}_j^T\mathbf{r}$, where $\mathbf{r} = \mathbf{y} - X\mathbf{w}$ is the residual and $\mathbf{x}_j$ the $j$-th feature column. So the lasso solution satisfies, for every feature $j$:
+
+$$
+\frac{1}{n}\mathbf{x}_j^T\mathbf{r} = \lambda\operatorname{sign}(w_j) \quad \text{if } w_j \text{ is nonzero}, \qquad\qquad \left\lvert\frac{1}{n}\mathbf{x}_j^T\mathbf{r}\right\rvert \le \lambda \quad \text{if } w_j = 0
+$$
+
+These are the **KKT conditions** for the lasso, and they say something concrete. Every feature in the model has a correlation with the remaining residual of exactly $\pm\lambda$: they're all "tied" at the boundary. Every feature left out has a correlation of at most $\lambda$ in size: not enough to pay the entry fee. Two useful consequences follow:
+
+- **The largest useful $\lambda$.** At $\mathbf{w} = 0$, the residual is $\mathbf{y}$ itself. All weights stay at zero as long as every $\lvert\tfrac1n\mathbf{x}_j^T\mathbf{y}\rvert \le \lambda$, so $\lambda_{\max} = \max_j \lvert\tfrac1n\mathbf{x}_j^T\mathbf{y}\rvert$. Above it, the model is empty. Solvers start their path there.
+- **A checkable certificate.** Given any candidate $\mathbf{w}$, compute the residual and check the two conditions. If they hold, $\mathbf{w}$ is optimal.
+
+**Coordinate descent.** Gradient descent struggles here, because subgradient steps don't land on exactly zero. The standard solver instead optimizes one weight at a time, holding the others fixed. With the others fixed, the problem in $w_j$ is the one-feature problem from Section 2, where $z$ becomes the correlation of feature $j$ with the residual *excluding* feature $j$'s own contribution:
+
+$$
+\rho_j = \frac{1}{n}\mathbf{x}_j^T\Big(\mathbf{y} - \sum_{k \,:\, k \text{ other than } j} w_k\mathbf{x}_k\Big), \qquad w_j \leftarrow \frac{S(\rho_j, \lambda)}{\tfrac1n\lVert\mathbf{x}_j\rVert^2}
+$$
+
+(The denominator is 1 for a standardized feature.) Sweep over $j = 1, \dots, d$ and repeat until nothing changes. Each update can only lower the cost, and because the non-smooth part $\lambda\sum\lvert w_j\rvert$ splits into one term per coordinate, cycling converges to the global minimum (Tseng, 2001). It's fast in practice because most updates are cheap: a weight that's zero and whose $\lvert\rho_j\rvert$ stays below $\lambda$ just stays zero. Friedman, Hastie and Tibshirani's glmnet (2010) added **warm starts**, solving for a decreasing sequence of $\lambda$ values from $\lambda_{\max}$ and starting each solve from the previous answer, which makes computing the entire path about as cheap as a single fit. scikit-learn's `Lasso` uses the same algorithm. The [Elastic Net page](/docs/machine-learning/elastic-net) derives the update in full; lasso is the case with no L2 term.
+
+## 5. Watching Features Enter and Leave
+
+### The Regularization Path
+
+Here's the lasso path on the diabetes dataset (442 patients, 10 standardized measurements), the same data as [ridge's path](/docs/machine-learning/ridge-regression#the-regularization-path). Read it right to left, from large $\lambda$ to small:
+
+<ThemedImage alt="Lasso regularization path on the diabetes dataset: coefficient curves that are exactly zero for large lambda and enter one at a time as lambda decreases, with piecewise-linear segments" sources={{light: lassoPathLight, dark: lassoPathDark}} />
+
+At $\lambda_{\max} \approx 45$ every weight is zero. bmi enters first, because it has the largest correlation with the target; then s5, then bp, and so on, each entering when its correlation with the current residual reaches $\lambda$, as the KKT conditions require. The curves are piecewise linear in $\lambda$, with a kink each time a feature enters or leaves. (That's a theorem, not an accident of this dataset: between kinks the active set is fixed, and the KKT equations are linear in $\lambda$. Efron, Hastie, Johnstone and Tibshirani's LARS algorithm, 2004, computes the path by jumping from kink to kink.)
+
+Look at s1 and s2, the two cholesterol measurements with correlation 0.90. At the far left (almost no penalty), they have large weights of opposite sign, as in least squares. Moving right, s2's weight falls to *exactly* zero near $\lambda \approx 0.26$ while s1 stays in. Lasso has picked one of the pair. That's the behaviour Section 7 warns about.
+
+Compared with ridge's path, which shrinks smoothly and never holds a weight at zero, the difference is visible at a glance: flat segments at zero, and features entering one at a time.
 
 <PredictFirst
-  question="Using the exact same correlated-feature dataset as the Ridge Studio, what will happen to the irrelevant feature (x3, true weight 0) as λ increases in Lasso?"
+  question="Using the same correlated-feature dataset as the Ridge Studio, what will happen to the irrelevant feature (x3, true weight 0) as λ increases in Lasso?"
   options={[
     'It shrinks smoothly but never quite reaches zero, like in Ridge',
-    'It hits exactly zero at a fairly low λ and gets dropped from the model entirely',
-    'It grows larger, since Lasso favors sparse, high-magnitude coefficients',
-    'Nothing changes -- λ only affects the informative features',
+    'It hits exactly zero at a fairly low λ and is dropped from the model entirely',
+    'It grows larger, since lasso favours sparse, high-magnitude weights',
+    'Nothing changes: λ only affects the informative features',
   ]}
   correctIndex={1}
-  explanation="L1's penalty gradient stays constant magnitude all the way to zero (unlike L2's, which weakens as the weight shrinks), so once the data's pull for a genuinely irrelevant feature is weaker than that constant penalty, coordinate descent snaps it to exactly 0 and keeps it there. Try it below: x3 typically zeroes out before any other feature."
+  explanation="An irrelevant feature's correlation with the residual is small, so by the KKT condition it is zero as soon as λ exceeds that correlation. That happens early, at a small λ, while the informative features still have correlations well above it. Try it below: x3 usually reaches zero before any other feature."
 />
 
-Try the real coordinate-descent solver below — same dataset, same λ range as the Ridge Studio, so the two paths are directly comparable:
+The studio runs the real coordinate-descent solver on the same synthetic dataset as the Ridge Studio, so the two paths are directly comparable:
 
 <LassoRegressionStudio />
 
-## When to Use Lasso Over Ridge
+## 6. Choosing λ, and the Shrinkage Bias
 
-- You suspect many features are irrelevant, and want the model to identify and drop them automatically
-- You want a sparse, more interpretable model — fewer nonzero coefficients means a simpler story about what actually drives predictions
-- **Caveat**: when features are highly correlated, Lasso tends to arbitrarily keep one and zero out the others, rather than spreading weight across them the way Ridge does — this can make Lasso's feature selection less stable than it looks (rerunning on a slightly different data sample can pick a different feature from the correlated group).
+$\lambda$ is chosen by cross-validation (see [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals#train-validation-test-splits)). Thanks to warm starts, computing the whole path for each fold is cheap, so `LassoCV` evaluates about 100 values of $\lambda$ from $\lambda_{\max}$ down to $\lambda_{\max}/1000$.
 
-## Minimal Implementation
+The $\lambda$ with the lowest cross-validated error often keeps more features than you'd expect, because a few weak features each improve prediction slightly. If the goal is a small model, the **one-standard-error rule** is the standard alternative: take the largest $\lambda$ whose cross-validated error is within one standard error of the minimum. The two models are statistically indistinguishable in error, and the second is sparser. On the diabetes data (Section 8), the minimum keeps 9 of 10 features and the one-SE rule keeps 6, for a 2% higher error.
 
-Coordinate descent with soft-thresholding, matching the derivation above:
+**The shrinkage bias.** Section 2 showed that lasso subtracts $\lambda$ from every surviving weight. Features that are clearly important still get shrunk, so their weights are biased toward zero, and since cross-validation picks $\lambda$ to balance selection and shrinkage together, it tends to choose a $\lambda$ too small for clean selection (to limit the shrinkage), which lets extra features in. Two common fixes:
+
+- **Refit:** use lasso only to choose the features, then fit ordinary least squares on the selected ones. (Hastie, Tibshirani and Tibshirani, 2020, found this "relaxed lasso" family competitive with best-subset selection across a wide range of settings.)
+- **Adaptive lasso** (Zou, 2006): weight each feature's penalty by $1/\lvert\hat{w}_j\rvert$ from an initial fit, so large effects are penalized less.
+
+<GoDeeper title="Go deeper: when does lasso pick the right features?">
+
+Lasso always returns *some* set of features. Whether it's the *true* set, when there is one, depends on the data, and the answer is more restrictive than many users assume.
+
+Suppose the data really comes from a sparse linear model: only the features in a set $S$ have nonzero weights. Zhao and Yu (2006) and, independently, Meinshausen and Bühlmann (2006) showed that lasso can recover exactly $S$ (with high probability, for a suitable $\lambda$, as $n$ grows) only if the irrelevant features aren't too well explained by the relevant ones. Formally, with $X_S$ the relevant columns and $X_{S^c}$ the rest, the **irrepresentable condition** requires
+
+$$
+\left\lVert X_{S^c}^T X_S\,(X_S^T X_S)^{-1}\operatorname{sign}(\mathbf{w}_S)\right\rVert_\infty \lt  1
+$$
+
+In words: regress each irrelevant feature on the relevant ones; the resulting coefficients, combined with the signs of the true weights, must stay below 1 in size. If an irrelevant feature is highly correlated with a combination of relevant ones, it can steal their correlation with the residual, and lasso will select it (or drop a relevant one) no matter how much data you collect.
+
+Two practical consequences. First, with strongly correlated features, lasso's chosen set is a good *predictive* set but not a reliable answer to "which variables really matter". Second, if selection is the goal, check its stability: rerun on bootstrap resamples and look at how often each feature is chosen. Meinshausen and Bühlmann's **stability selection** (2010) formalizes this, keeping only features selected in a large fraction of resamples.
+
+A Bayesian aside: lasso is the most probable (MAP) estimate under independent Laplace priors $p(w_j) \propto e^{-\lvert w_j\rvert/b}$, the same way [ridge is MAP under Gaussian priors](/docs/machine-learning/ridge-regression). But the full posterior under a Laplace prior puts zero probability on any weight being exactly zero, so the sparsity is a property of the point estimate, not of the Bayesian model (Park and Casella, 2008).
+
+</GoDeeper>
+
+## 7. Lasso or Ridge?
+
+### When to Use Lasso Over Ridge
+
+| Use lasso when | Use ridge when |
+|---|---|
+| You suspect many features are irrelevant | Most features carry some signal |
+| You want a small, readable model | You want every feature kept with a controlled weight |
+| Features are mostly uncorrelated | Features come in correlated groups |
+| You need to cut the cost of collecting features at prediction time | Prediction accuracy is the only goal (ridge often predicts slightly better when signal is spread out) |
+
+**The caveat that matters most:** when features are highly correlated, lasso keeps one of the group, more or less arbitrarily, and zeros the rest. The [Elastic Net page](/docs/machine-learning/elastic-net) measures this directly: across 200 bootstrap resamples of data with two near-duplicate features, lasso dropped one of them in 32% of resamples and split the weight unevenly the rest of the time. Read lasso's selected set as "a set of features that predicts well", not "the features that matter".
+
+A second limit: when there are more features than examples ($d \gt  n$), lasso selects at most $n$ features before it saturates. With 100 patients and 20,000 gene measurements, it can never keep more than 100 genes. Elastic net doesn't have this ceiling.
+
+## 8. Minimal Implementation
+
+Coordinate descent with soft-thresholding, exactly the update from Section 4, with the residual kept up to date incrementally so each update costs $O(n)$. It runs on the diabetes data and is checked against scikit-learn at three values of $\lambda$:
 
 ```python
 import numpy as np
+from sklearn.datasets import load_diabetes
+from sklearn.linear_model import Lasso, LassoCV
 
-def soft_threshold(rho, lam):
-    return np.sign(rho) * max(abs(rho) - lam, 0)
+def soft_threshold(z, t):
+    return np.sign(z) * max(abs(z) - t, 0.0)
 
-def fit_lasso(X, y, lam=1.0, epochs=200):
+def fit_lasso(X, y, lam, sweeps=1000, tol=1e-10):
+    """Minimize (1/2n)||y - Xw||^2 + lam*||w||_1 by coordinate descent.
+    Assumes standardized columns and centered y."""
     n, d = X.shape
     w = np.zeros(d)
-    for _ in range(epochs):
+    r = y.copy()                                   # residual for w = 0
+    col_sq = (X ** 2).sum(0) / n
+    for _ in range(sweeps):
+        biggest_change = 0.0
         for j in range(d):
-            residual = y - X @ w + w[j] * X[:, j]   # error if w_j were 0
-            rho = X[:, j] @ residual
-            z = (X[:, j] ** 2).sum()
-            w[j] = soft_threshold(rho, lam * n / 2) / z if z > 0 else 0
+            old = w[j]
+            rho = X[:, j] @ r / n + col_sq[j] * old    # correlation with residual excluding j
+            w[j] = soft_threshold(rho, lam) / col_sq[j]
+            r -= X[:, j] * (w[j] - old)
+            biggest_change = max(biggest_change, abs(w[j] - old))
+        if biggest_change < tol:
+            break
     return w
+
+data = load_diabetes()
+X = (data.data - data.data.mean(0)) / data.data.std(0)
+y = data.target - data.target.mean()
+names = data.feature_names
+
+lam_max = np.max(np.abs(X.T @ y)) / len(y)
+print(f"lambda_max = {lam_max:.2f}  (every weight is zero at or above this)")
+
+for lam in [10.0, 2.0, 0.5]:
+    ours = fit_lasso(X, y, lam)
+    ref = Lasso(alpha=lam, fit_intercept=False, tol=1e-12, max_iter=100000).fit(X, y).coef_
+    kept = [nm for nm, v in zip(names, ours) if v != 0]
+    print(f"lambda={lam:<4} max |ours - sklearn| = {np.max(np.abs(ours - ref)):.1e}  kept {len(kept)}: {kept}")
+
+cv = LassoCV(cv=5, random_state=0).fit(X, y)
+print(f"LassoCV: lambda = {cv.alpha_:.3f}, nonzero weights = {np.sum(cv.coef_ != 0)} of {X.shape[1]}")
+
+# One-standard-error rule: the largest lambda whose CV error is within 1 SE of the best
+mean, se = cv.mse_path_.mean(1), cv.mse_path_.std(1) / np.sqrt(cv.mse_path_.shape[1])
+best = mean.argmin()
+lam_1se = cv.alphas_[mean <= mean[best] + se[best]].max()
+w_1se = fit_lasso(X, y, lam_1se)
+print(f"1-SE rule: lambda = {lam_1se:.2f}, nonzero weights = {np.sum(w_1se != 0)}, "
+      f"CV MSE {mean[cv.alphas_ == lam_1se][0]:.0f} vs best {mean[best]:.0f}")
 ```
 
-Next: [Elastic Net](/docs/machine-learning/elastic-net) — combining both penalties to get Ridge's stability with Lasso's feature selection.
+Output (scikit-learn 1.7):
+
+```
+lambda_max = 45.16  (every weight is zero at or above this)
+lambda=10.0 max |ours - sklearn| = 2.1e-11  kept 4: ['bmi', 'bp', 's3', 's5']
+lambda=2.0  max |ours - sklearn| = 6.1e-11  kept 7: ['sex', 'bmi', 'bp', 's1', 's3', 's5', 's6']
+lambda=0.5  max |ours - sklearn| = 5.9e-10  kept 8: ['sex', 'bmi', 'bp', 's1', 's3', 's4', 's5', 's6']
+LassoCV: lambda = 0.079, nonzero weights = 9 of 10
+1-SE rule: lambda = 3.93, nonzero weights = 6, CV MSE 3055 vs best 2992
+```
+
+The formula for $\lambda_{\max}$ from the KKT conditions gives 45.16, matching where the path in Section 5 starts. The thirty-line solver agrees with scikit-learn to within $10^{-9}$ at every $\lambda$. The selected sets grow as $\lambda$ falls, as the path showed; at $\lambda = 2$ the model keeps s1 but not s2, lasso's choice within the correlated pair. Cross-validation's best $\lambda$ keeps 9 of 10 features, and the one-standard-error rule cuts that to 6 for a 2% increase in cross-validated error.
+
+## 9. When *Not* to Use Lasso
+
+| Situation | Better choice |
+|---|---|
+| Correlated groups of features, and you want stable selection | [Elastic Net](/docs/machine-learning/elastic-net) |
+| Signal spread thinly over many features | [Ridge](/docs/machine-learning/ridge-regression), which usually predicts better here |
+| You need to know *which* variables truly matter (scientific claims) | Stability selection, or a designed study; lasso's set is predictive, not causal, and can be unstable |
+| You need confidence intervals for the selected weights | Post-selection inference methods; naive intervals after lasso are too narrow |
+| More features than examples, and more than $n$ might matter | Elastic Net |
+| Nonlinear effects or interactions | Tree ensembles ([Random Forest](/docs/machine-learning/random-forest), [XGBoost, LightGBM, CatBoost](/docs/machine-learning/xgboost-lightgbm-catboost)) |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Cost | $\tfrac{1}{2n}\lVert\mathbf{y} - X\mathbf{w}\rVert^2 + \lambda\lVert\mathbf{w}\rVert_1$; standardize features first |
+| One feature | $\hat{w} = S(z, \lambda)$: subtract $\lambda$, zero if $\lvert z\rvert \le \lambda$ |
+| Versus ridge and subset | Ridge scales, best subset hard-thresholds, lasso soft-thresholds |
+| Why zeros | The L1 slope stays $\pm 1$ down to zero; the L1 ball has corners on the axes |
+| KKT | Active features: correlation with residual $= \pm\lambda$; inactive: at most $\lambda$ |
+| $\lambda_{\max}$ | $\max_j \lvert\tfrac1n\mathbf{x}_j^T\mathbf{y}\rvert$; above it the model is empty |
+| Solver | Coordinate descent with soft-thresholding, warm-started along a path |
+| Path | Piecewise linear; features enter one at a time |
+| Choosing λ | Cross-validation; the one-SE rule for a sparser model |
+| Bias | Survivors are shrunk by $\lambda$; refit or use the adaptive lasso |
+| Caveat | Picks one of a correlated group; at most $n$ features when $d \gt  n$ |
+
+---
+
+Next: [Elastic Net](/docs/machine-learning/elastic-net), which adds a little of ridge's penalty to fix lasso's instability with correlated features.
+
+## Sources
+
+- R. Tibshirani, [Regression Shrinkage and Selection via the Lasso](https://doi.org/10.1111/j.2517-6161.1996.tb02080.x), *Journal of the Royal Statistical Society B*, 1996
+- B. Efron, T. Hastie, I. Johnstone and R. Tibshirani, [Least Angle Regression](https://doi.org/10.1214/009053604000000067), *Annals of Statistics*, 2004
+- J. Friedman, T. Hastie and R. Tibshirani, [Regularization Paths for Generalized Linear Models via Coordinate Descent](https://doi.org/10.18637/jss.v033.i01), *Journal of Statistical Software*, 2010
+- P. Zhao and B. Yu, [On Model Selection Consistency of Lasso](https://jmlr.org/papers/v7/zhao06a.html), *JMLR*, 2006
+- N. Meinshausen and P. Bühlmann, [Stability Selection](https://doi.org/10.1111/j.1467-9868.2010.00740.x), *Journal of the Royal Statistical Society B*, 2010
+- H. Zou, [The Adaptive Lasso and Its Oracle Properties](https://doi.org/10.1198/016214506000000735), *JASA*, 2006
+- T. Park and G. Casella, [The Bayesian Lasso](https://doi.org/10.1198/016214508000000337), *JASA*, 2008
+- T. Hastie, R. Tibshirani and R. Tibshirani, [Best Subset, Forward Stepwise or Lasso?](https://doi.org/10.1214/19-STS733), *Statistical Science*, 2020
+- T. Hastie, R. Tibshirani and M. Wainwright, [Statistical Learning with Sparsity](https://hastie.su.domains/StatLearnSparsity/), 2015
+- scikit-learn, [Lasso](https://scikit-learn.org/stable/modules/linear_model.html#lasso) user guide
