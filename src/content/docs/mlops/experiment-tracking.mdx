@@ -1,100 +1,315 @@
 ---
-title: "Experiment Tracking"
+title: "Experiment Tracking, In Full Depth"
 sidebar_position: 5
-description: "MLflow's Tracking, Projects, Models, and Registry -- what every experiment needs to answer (code, data, params, result) to be reproducible later."
+description: "What a training run must record to be reproducible, how MLflow models experiments, runs, params, metrics and artifacts, a real tracked sweep, why picking the best of many runs inflates the score, and how a run becomes a registered model."
 ---
 
 import SevenAnswersChecklistDiagram from '../../../viz/diagrams/SevenAnswersChecklistDiagram';
 import RunComparisonChartDiagram from '../../../viz/diagrams/RunComparisonChartDiagram';
-import MlflowFourComponentsDiagram from '../../../viz/diagrams/MlflowFourComponentsDiagram';
-import ModelRegistryStageDiagram from '../../../viz/diagrams/ModelRegistryStageDiagram';
 import HyperparameterSweepDiagram from '../../../viz/diagrams/HyperparameterSweepDiagram';
-import TrackingToolComparisonDiagram from '../../../viz/diagrams/TrackingToolComparisonDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Experiment Tracking
+# Experiment Tracking, In Full Depth
 
-Training a model without tracking the experiment is running an experiment you can't reproduce, compare, or explain later. "It got 94% accuracy" is worthless without knowing which code, which data, which hyperparameters, and which environment produced that number.
+[Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning) made the data reproducible: every dataset has a version you can name and fetch again. A trained model depends on more than its data, though. It also depends on the code, the hyperparameters, the library versions, the hardware and the random seed. This page covers the practice of recording all of that for every training run: what a run has to record, how a tracking system stores it, a real tracked hyperparameter sweep you can run, the statistical trap in picking the best run, and how the chosen run becomes a versioned model that deployment can refer to by name.
 
-## What Every Experiment Needs to Answer
+<ELI5>
 
-- **Code**: which git commit trained this model?
-- **Data**: which version of which dataset (see [Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning))?
-- **Model**: what architecture, what hyperparameters?
-- **Params**: learning rate, batch size, epochs, regularization — everything that isn't the data or the architecture but still changes the result.
-- **Metrics**: loss curves, accuracy, precision/recall, whatever the task's evaluation metric is — logged over training time, not just the final number.
-- **Environment**: package versions, hardware (GPU type/count), random seeds.
-- **Result**: the trained model artifact itself, retrievable later.
+A chemist keeps a lab notebook. Every time they mix something, they write down what went in, how much, at what temperature, and what came out. If a mixture turns out well, they can make it again next month, and if it goes wrong, they can see what was different. Without the notebook they have a good result and no idea how to repeat it.
 
-Answer all seven for every run, automatically, or six months from now nobody — including you — can explain why the production model behaves the way it does.
+Training a model is the same kind of work, done hundreds of times a week by a program. Experiment tracking is the lab notebook, filled in automatically by the training code itself, so that every result can be explained, compared and repeated.
+
+Everything below is that idea made exact: what goes in the notebook, how it is stored, and how you read it without fooling yourself.
+
+</ELI5>
+
+## 1. What Is Experiment Tracking?
+
+**The problem.** A teammate says the new model gets 94% accuracy. That number answers almost none of the questions that matter. Which commit of the training code produced it? Which version of the data? Was it measured on the validation set or the test set? Was the learning rate 0.001 or 0.01? Was it the third attempt or the fortieth? If the model behaves badly in production in six months, can anyone rebuild it exactly to find out why?
+
+In a notebook or a terminal, the answers live in someone's memory, a scrollback buffer, or a file called `model_final_v2_really.pkl`. Those disappear. The usual result is a team that can't reproduce its own best model and can't explain why the production model differs from the one in the slide deck.
+
+**What experiment tracking is, precisely:** a system that records, for every training run, the inputs that determined it (code version, data version, configuration, environment) and the outputs it produced (metrics over time, the trained model, plots and other files), stores them in one queryable place, and lets you compare runs side by side. The training script writes these records itself, with a few lines of logging code, so nothing depends on anyone remembering to write it down.
+
+**What it isn't:**
+
+- **Not data versioning.** Tracking records *which* data version a run used. Storing and versioning the data itself is the job of tools like DVC or a lakehouse table format, covered in the previous page.
+- **Not orchestration.** Tracking doesn't schedule or chain training steps. [Pipeline Orchestration](/docs/mlops/pipeline-orchestration) does that, and a pipeline's training step logs to the tracker.
+- **Not monitoring.** Tracking covers training time. Watching a deployed model's live behaviour is [Monitoring & Drift](/docs/mlops/monitoring-and-drift).
+
+The tracker's job is narrower than any of those, and the next section makes it precise: the exact list of things a run must record.
+
+## 2. The Seven Things a Run Must Record
+
+A run is reproducible and explainable when it answers seven questions:
 
 <SevenAnswersChecklistDiagram />
 
-<RunComparisonChartDiagram />
+| Question | What to record | Why it matters |
+|---|---|---|
+| **Code** | The git commit hash, and whether the working tree had uncommitted changes | The same config on different code is a different experiment |
+| **Data** | The dataset's version or content hash, and the split used | Most "the model got worse" investigations end at a data change |
+| **Model** | The architecture and its size | Needed to rebuild the model before loading weights |
+| **Params** | Every hyperparameter: learning rate, batch size, epochs, regularization, tokenizer settings | The values you will compare runs on |
+| **Metrics** | Training and validation metrics, logged per step or epoch, not only the final value | A curve shows overfitting and instability that a final number hides |
+| **Environment** | Package versions, Python version, GPU type and count, random seeds | Library upgrades and different hardware change results |
+| **Result** | The trained model file and any evaluation plots | So the exact artifact can be retrieved, not retrained |
 
-## MLflow
+The rule that makes this work is that **the training code records these automatically**. A run that depends on a human filling in a spreadsheet will, sooner or later, be missing the one field you need. In practice most of the list can be captured without thought: a tracking library reads the git commit and the package versions itself, and the remaining items are a handful of logging calls.
 
-The must-know tool in this space, open source and framework-agnostic. Four components:
+**The limitation:** recording a data version is only useful if that version can still be fetched. If training read from a table that has since been overwritten, the run's record points at something that no longer exists. Tracking depends on data versioning; it doesn't replace it.
 
-- **MLflow Tracking**: logs params, metrics, and artifacts for each run via a few lines of code (`mlflow.log_param`, `mlflow.log_metric`, `mlflow.log_artifact`), viewable in a comparison UI across runs.
-- **MLflow Projects**: packages code in a reusable, reproducible format (an `MLproject` file declaring entry points and dependencies) so a run can be repeated exactly, by you or someone else.
-- **MLflow Models**: a standard format for packaging a trained model so it can be loaded and served by many different tools without custom glue code per framework.
-- **MLflow Model Registry**: a central store for model versions with stage transitions (Staging → Production → Archived) and lineage back to the run that produced each version — see [Feature Stores & Model Registry](/docs/mlops/feature-stores-and-model-registry).
+With the list fixed, the next question is how a tracking system stores it so that thousands of runs stay searchable.
 
-<MlflowFourComponentsDiagram />
+## 3. The Data Model: Experiments, Runs, Params, Metrics, Artifacts
 
-<ModelRegistryStageDiagram />
+Every mainstream tracker uses roughly the same structure. MLflow's is the clearest, and it's the open-source default, so this page uses its names.
 
-A typical loop: wrap a training script in `with mlflow.start_run():`, log everything inside it, and every run becomes a permanent, comparable, queryable record instead of a lost terminal scrollback.
+- An **experiment** is a named group of runs that try to solve the same problem, such as `fraud-detection` or `breast-cancer-logreg`. You compare runs within an experiment.
+- A **run** is one execution of training code. It has an ID, a start and end time, a status (running, finished, failed) and **tags**, free-form key-value labels such as the git commit or the person who started it.
+- **Params** are the run's inputs: key-value pairs that are written once and can't change afterwards. Logging `learning_rate` twice with different values is an error, which is the right behaviour: a run had exactly one configuration.
+- **Metrics** are the run's outputs, and each one is a time series. Every logged value carries a `step` (an epoch or batch number) and a timestamp, so `val_loss` is a curve, not a single number. A query for "the run's `val_loss`" returns the latest value.
+- **Artifacts** are files: the model, a confusion-matrix image, a sample of predictions, the exact config file. They go to an artifact store (a local folder, S3, GCS or Azure Blob), while params, metrics and tags go to a database. The split matters: the database stays small and fast to query, and the large files sit in cheap object storage.
+- **Inputs** record which datasets a run consumed, with a name, a digest of the contents and where it came from, so the data question from section 2 is answered by a record rather than a comment.
+
+Since MLflow 3 there is one more first-class object: the **logged model**. A model is no longer just a file inside a run's artifacts. It has its own ID and can have metrics, parameters and traces attached to it directly, which matters for generative AI work where one model is evaluated many times after training. For classical training you can think of it as "the model artifact, with an identity".
+
+The reason this structure works is that params are the axes you search along and metrics are the values you rank by. A query like "every run in `fraud-detection` with `batch_size = 64`, sorted by `val_auc`" is cheap because both live in indexed database columns. The next section produces exactly such a set of runs and queries it.
+
+## 4. Logging a Real Run
+
+Here is a complete, runnable sweep. It trains a logistic-regression classifier on scikit-learn's breast-cancer dataset at four regularization strengths and logs each as a run. It uses MLflow 3.17 and a local SQLite file as the tracking store, so it needs no server:
 
 ```python
 import mlflow
+from sklearn.datasets import load_breast_cancer
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score, roc_auc_score
 
-mlflow.set_experiment("fraud-detection")
+mlflow.set_tracking_uri("sqlite:///mlflow.db")
+mlflow.set_experiment("breast-cancer-logreg")
 
-with mlflow.start_run():
-    mlflow.log_param("learning_rate", 0.001)
-    mlflow.log_param("batch_size", 64)
+X, y = load_breast_cancer(return_X_y=True, as_frame=True)
+X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.25, random_state=0, stratify=y)
 
-    for epoch in range(num_epochs):
-        train_loss, val_accuracy = train_one_epoch(model, data)
-        mlflow.log_metric("train_loss", train_loss, step=epoch)
-        mlflow.log_metric("val_accuracy", val_accuracy, step=epoch)
+for C in [0.01, 0.1, 1.0, 10.0]:
+    with mlflow.start_run(run_name=f"C={C}"):
+        mlflow.log_params({"C": C, "max_iter": 1000, "seed": 0})
+        mlflow.log_input(mlflow.data.from_pandas(X_train, name="breast-cancer-train"), context="training")
 
-    mlflow.sklearn.log_model(model, "model", registered_model_name="fraud-detector")
+        model = make_pipeline(StandardScaler(), LogisticRegression(C=C, max_iter=1000))
+        model.fit(X_train, y_train)
+
+        mlflow.log_metrics({
+            "val_accuracy": accuracy_score(y_val, model.predict(X_val)),
+            "val_auc": roc_auc_score(y_val, model.predict_proba(X_val)[:, 1]),
+        })
+        mlflow.sklearn.log_model(model, name="model", input_example=X_val.head(2))
+
+runs = mlflow.search_runs(order_by=["metrics.val_auc DESC"])
+print(runs[["tags.mlflow.runName", "params.C", "metrics.val_accuracy", "metrics.val_auc"]].round(4).to_string(index=False))
 ```
 
-```bash
-mlflow ui   # local comparison UI at :5000, reads the same run store
+Running it prints:
+
 ```
+tags.mlflow.runName params.C  metrics.val_accuracy  metrics.val_auc
+              C=1.0      1.0                 0.958           0.9952
+             C=10.0     10.0                 0.951           0.9943
+              C=0.1      0.1                 0.958           0.9929
+             C=0.01     0.01                 0.951           0.9849
+```
+
+A few details are doing more work than they look:
+
+- **`with mlflow.start_run()`** opens a run and closes it when the block ends. If training raises an exception, the run is marked failed rather than left open, so crashed runs are visible instead of silently missing.
+- **`log_input`** stores a digest of the training frame. If someone later trains on a modified copy of the data with the same name, the digests differ and the two runs are visibly not comparable.
+- **`log_model` with `input_example`** saves the model along with a *signature*: the column names and types it expects. A deployment can then reject a request with the wrong columns instead of returning nonsense.
+- **`search_runs`** returns an ordinary pandas DataFrame, so the comparison is code, not a screenshot of a UI.
+
+Each param is recorded once; each metric is a series. In a neural network you would call `mlflow.log_metric("val_loss", value, step=epoch)` inside the training loop, and the UI (`mlflow ui`, or `mlflow server` for a shared team instance) draws the curves:
+
+<RunComparisonChartDiagram />
+
+For the most common frameworks you can skip most of the logging calls: `mlflow.autolog()` patches scikit-learn, PyTorch Lightning, XGBoost, LightGBM and others to log their parameters, metrics and model automatically. Autologging is a good default, as long as you check once what it records for your framework and add the data input and anything else it misses.
+
+The output table invites an obvious next step: pick the top row. That step has a trap in it.
+
+## 5. Comparing Runs Without Fooling Yourself
+
+The sweep above found that `C=1.0` has the highest validation AUC. But look at the numbers: 0.9952, 0.9943 and 0.9929 differ in the third decimal place, on a validation set of 143 examples. Some of that difference is the particular 143 examples, not the models.
+
+This becomes a real problem as the number of runs grows. Every validation score is a measurement with noise. When you pick the maximum of many noisy measurements, you systematically pick one whose noise happened to be positive, so **the best validation score overstates how good the chosen model really is**.
+
+You can see the size of the effect directly. Suppose every configuration you try is truly 90% accurate, and you measure each on 500 validation examples. Each measured accuracy then has a standard deviation of
+
+$$\sigma = \sqrt{\frac{p(1-p)}{n}} = \sqrt{\frac{0.9 \times 0.1}{500}} \approx 0.0134$$
+
+and the best of $k$ such measurements is, on average, about $\mu + c_k\,\sigma$, where $c_k$ is the expected maximum of $k$ standard normal draws: about 1.54 for $k=10$, 2.51 for $k=100$ and 3.24 for $k=1000$. It grows roughly like $\sqrt{2 \ln k}$, slowly but without limit. A simulation confirms it:
 
 ```python
-from mlflow.tracking import MlflowClient
+import numpy as np
 
+rng = np.random.default_rng(0)
+true_acc, n_val = 0.90, 500          # every config is truly 90% accurate
+for k in [1, 10, 100, 1000]:
+    # validation accuracy of k configs, each measured on its own noisy 500-example sample
+    best = rng.binomial(n_val, true_acc, size=(2000, k)).max(axis=1) / n_val
+    print(f"best of {k:>4}: mean reported accuracy {best.mean():.3f}")
+```
+
+```
+best of    1: mean reported accuracy 0.900
+best of   10: mean reported accuracy 0.920
+best of  100: mean reported accuracy 0.932
+best of 1000: mean reported accuracy 0.941
+```
+
+None of the 1,000 configurations is better than any other, yet the "winner" reports 94.1%. The extra 4 points are pure selection. (Real runs share one validation set, which correlates their errors and shrinks the effect somewhat, but it doesn't remove it.)
+
+<PredictFirst
+  question="A team runs a 400-configuration sweep and the best run scores 0.912 validation AUC. What number should they report as the model's expected performance?"
+  options={[
+    '0.912, because that is the measured validation AUC of the chosen run',
+    'The AUC of the chosen model on a held-out test set that played no part in the sweep',
+    'The average validation AUC across all 400 runs',
+    '0.912 minus a fixed 1% safety margin',
+  ]}
+  correctIndex={1}
+  explanation="The best of 400 validation scores is biased upward, because selection picked the run whose noise happened to be positive. The average of all runs describes the sweep, not the chosen model. Only data that took no part in choosing gives an unbiased estimate, so evaluate the one chosen model once on a held-out test set and report that."
+/>
+
+The practical rules follow from the maths:
+
+- **Keep a test set that the sweep never sees.** Choose on validation, then evaluate the single chosen model once on test, and report that number. Log it to the run as `test_auc` so the record says which number is which.
+- **Treat small differences as ties.** If two runs differ by less than the noise, prefer the simpler, cheaper or faster one. Repeating the top few configurations with different seeds shows how much the score moves on its own.
+- **Record the failures too.** The tracker should hold all 400 runs, not just the winner. "We tried 400 things" is part of what the result means.
+
+Choosing the right run is half the reproducibility problem. The other half is being able to rebuild it.
+
+## 6. Reproducing a Run
+
+Tracking records what happened. Reproducing a run means running it again and getting the same model, which takes four things to line up.
+
+**Code.** When a script runs inside a git repository, MLflow tags the run with `mlflow.source.git.commit`. That commit only describes the code if the working tree was clean, so a useful habit is to refuse to start a non-exploratory run with uncommitted changes, or to log the diff as an artifact when there are some.
+
+**Data.** The data input's digest identifies the exact training set. Rebuilding requires the versioned dataset to still exist, which is the link back to data versioning.
+
+**Environment.** MLflow saves a `requirements.txt` and a `python_env.yaml` alongside every logged model, inferred from the packages actually imported. For full fidelity, train inside a container image and log the image's digest as a tag; [Containers](/docs/mlops/containers) covers why a digest, not a tag like `latest`, pins an image.
+
+**Randomness.** Shuffling, initialization, dropout and data augmentation all draw random numbers. Set and log seeds for Python's `random`, NumPy and your framework. On CPUs that is usually enough for bit-identical results.
+
+<GoDeeper title="Go deeper: why GPU training is often not bit-reproducible">
+
+Seeding isn't sufficient on GPUs. Many GPU kernels sum floating-point numbers in an order that depends on thread scheduling, and floating-point addition isn't associative: $(a + b) + c$ can differ from $a + (b + c)$ in the last bits. Those last-bit differences grow over thousands of training steps, so two runs with the same seed can end with measurably different weights.
+
+PyTorch lets you trade speed for determinism: `torch.use_deterministic_algorithms(True)` makes operations that have no deterministic implementation raise an error instead of running nondeterministically, and some CUDA operations also need the environment variable `CUBLAS_WORKSPACE_CONFIG=:4096:8`. Setting `torch.backends.cudnn.benchmark = False` stops cuDNN from choosing different convolution algorithms on different runs. Even then, results can differ across GPU models, driver versions and numbers of GPUs, because those change the kernels themselves.
+
+The practical standard for most teams is therefore *statistical* reproducibility: re-running gives a model whose metrics fall within the normal seed-to-seed spread. Measure that spread once by training the same configuration with three to five seeds, and log it. It's also the noise level that tells you which differences between runs (section 5) are real.
+
+</GoDeeper>
+
+**The limitation:** reproducibility costs something at every step: clean commits, versioned data that is kept, container builds, slower deterministic kernels. Exploratory work in a notebook doesn't need all of it. The full discipline is for runs whose model might ship, which is exactly the set that the next step, registration, singles out.
+
+## 7. From Run to Registered Model
+
+A sweep produces dozens of logged models. Deployment needs one, referred to by a stable name, with a way to change which one without editing the serving code. That is the **model registry**.
+
+A **registered model** is a name, such as `breast-cancer-classifier`. Each time you register a logged model under that name, it becomes a new **version**: 1, 2, 3, and so on, each linked back to the run that produced it, so lineage runs from the deployed model to its code, data and params. An **alias** is a movable label pointing at one version, such as `champion` for the one serving production traffic or `challenger` for the one being tested against it.
+
+Continuing the example, register the best run's model and point the `champion` alias at it:
+
+```python
+import mlflow
+from mlflow import MlflowClient
+
+mlflow.set_tracking_uri("sqlite:///mlflow.db")
 client = MlflowClient()
-client.transition_model_version_stage(name="fraud-detector", version=3, stage="Production")
+
+best = mlflow.search_runs(experiment_names=["breast-cancer-logreg"],
+                          order_by=["metrics.val_auc DESC"], max_results=1).iloc[0]
+model_uri = f"runs:/{best.run_id}/model"
+version = mlflow.register_model(model_uri, "breast-cancer-classifier")
+client.set_registered_model_alias("breast-cancer-classifier", "champion", version.version)
+
+champion = mlflow.sklearn.load_model("models:/breast-cancer-classifier@champion")
+mv = client.get_model_version_by_alias("breast-cancer-classifier", "champion")
+print("version:", mv.version, "| from run:", mv.run_id == best.run_id, "| C =", champion[-1].C)
 ```
 
-## Alternatives
-
-- **Weights & Biases (W&B)**: a hosted, more polished experiment-tracking UI with strong visualization (live loss curves, hyperparameter sweep dashboards, model/dataset lineage) — the most common choice in research-heavy teams.
-
-```python
-import wandb
-
-wandb.init(project="fraud-detection", config={"learning_rate": 0.001, "batch_size": 64})
-
-for epoch in range(num_epochs):
-    train_loss, val_accuracy = train_one_epoch(model, data)
-    wandb.log({"train_loss": train_loss, "val_accuracy": val_accuracy, "epoch": epoch})
 ```
+Successfully registered model 'breast-cancer-classifier'.
+Created version '1' of model 'breast-cancer-classifier'.
+version: 1 | from run: True | C = 1.0
+```
+
+The serving code loads `models:/breast-cancer-classifier@champion` and never mentions a version number. Promoting version 2 means moving the alias, and rolling back means moving it back. Both are a single API call, recorded with who made it and when.
+
+**If you've seen older MLflow tutorials,** they move versions between fixed *stages* (None, Staging, Production, Archived) with `transition_model_version_stage`. Stages were deprecated in MLflow 2.9 in favour of aliases and tags, because four fixed stages couldn't express real setups: several production environments, champion and challenger at once, or per-region models. Use aliases for "which version is deployed where" and tags for status such as `validation_status = passed`.
+
+The registry is where tracking hands over to the rest of the lifecycle. [Feature Stores & Model Registry](/docs/mlops/feature-stores-and-model-registry) covers what a registry should enforce before a version may take the `champion` alias, and [CI/CD for ML](/docs/mlops/cicd-and-ml-cicd) automates the checks.
+
+## 8. Sweeps at Scale
+
+The sweep in section 4 tried four values of one parameter. Real searches cover several parameters, and the way you choose points matters more than the tool.
 
 <HyperparameterSweepDiagram />
 
-- **Neptune**: similar hosted tracking focus, with strong support for tracking large numbers of metadata fields per run and team collaboration features.
-- **Comet**: another hosted alternative, notable for built-in model monitoring that extends past training into production.
+- **Grid search** tries every combination. With 5 values for each of 4 parameters that's $5^4 = 625$ runs, and most of them vary parameters that barely affect the result.
+- **Random search** samples combinations at random. Bergstra and Bengio showed in 2012 that, for the same budget, it usually finds better configurations than a grid, because when only a few parameters matter, random sampling tries many more distinct values of those few.
+- **Bayesian optimization** (as in Optuna's default sampler) fits a model of score as a function of the parameters to the runs so far, and picks the next point where improvement looks most likely. It suits expensive runs where each choice should count.
+- **Early stopping of bad runs** (successive halving, Hyperband, Optuna's pruners) stops runs whose intermediate metrics are clearly behind, so the budget goes to promising ones.
 
-All three solve the same core problem as MLflow Tracking (log everything, compare runs, never lose a result) with different UI/hosting/collaboration tradeoffs — MLflow remains the default because it's open source, self-hostable, and the closest thing to an industry standard.
+Each trial is logged as its own run, typically as a child of one parent run for the sweep, so the whole search can be inspected and section 5's caution applies to all of it. Search learning rates and regularization strengths on a log scale, since $10^{-4}$ and $10^{-3}$ differ as much in effect as $10^{-2}$ and $10^{-1}$.
 
-<TrackingToolComparisonDiagram />
+## 9. Choosing a Tracker
 
-Next: [Pipeline Orchestration](/docs/mlops/pipeline-orchestration) — once individual experiments are tracked, the next problem is stitching the steps around them into a repeatable, scheduled pipeline.
+| Tool | Hosting | Strengths | Things to know |
+|---|---|---|---|
+| **MLflow** | Open source, self-hosted; also managed on Databricks, AWS SageMaker and Azure ML | Tracking, registry, model packaging and LLM tracing in one; vendor-neutral | You run and secure the server yourself unless you use a managed version |
+| **Weights & Biases** | Hosted service, or self-managed for enterprises | Polished live dashboards, sweeps, reports for sharing results | Commercial; acquired by CoreWeave in 2025 |
+| **Comet** | Hosted or self-hosted | Experiment tracking plus Opik, its open-source LLM evaluation and tracing tool | Smaller ecosystem |
+| **TensorBoard** | Local files | Free, built into TensorFlow and supported by PyTorch | Visualizes curves; no registry, weak run search |
+
+One more entry is a lesson rather than an option. **Neptune.ai**, a widely used hosted tracker, was acquired by OpenAI in December 2025 and shut its hosted service down in March 2026, after which customer data was deleted. Teams had about three months to export years of run history. Whatever you choose, make sure you can export runs and models in a usable form, and do it periodically. Being able to self-host is one reason MLflow remains the default choice.
+
+The bigger choice is not which tracker, but whether everything goes through one. A team where half the runs are in W&B, a quarter in MLflow and the rest in notebooks has three partial notebooks, which is close to having none.
+
+## 10. When *Not* to Use a Full Tracking Setup
+
+| Situation | Better choice |
+|---|---|
+| A one-off analysis or a quick prototype nobody will deploy | A notebook with a fixed seed, committed to git. Add tracking when the work might ship |
+| Calling a hosted LLM API with prompts, no training | Prompt and evaluation tracking (MLflow's GenAI tracing and evaluation, or a dedicated LLM eval tool); see [LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops) |
+| Comparing two runs that differ by less than seed-to-seed noise | Repeat both with several seeds before trusting the ranking; logging more won't settle it |
+| Strict regulatory reproducibility for an audited model | Tracking plus pinned container digests, retained versioned data and a documented approval trail; tracking alone isn't an audit record |
+| You only need curves while debugging one training job | TensorBoard or printed logs; a registry adds nothing yet |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| The goal | Every result can be explained, compared and rebuilt |
+| Seven answers | Code, data, model, params, metrics, environment, result, recorded by the code itself |
+| Data model | Experiments group runs; params are fixed inputs; metrics are time series; artifacts are files |
+| Logging | `start_run`, `log_params`, `log_metrics`, `log_input`, `log_model`; or `autolog()` |
+| The selection trap | The best of $k$ noisy scores is biased up by about $\sqrt{2 \ln k}\,\sigma$; report a held-out test score |
+| Reproducibility | Clean commit, versioned data, pinned environment, logged seeds; GPU runs are reproducible only statistically |
+| Registry | Registered model, numbered versions, movable aliases like `@champion`; stages are deprecated |
+| Choosing a tool | One tracker for everything, and keep the ability to export |
+
+---
+
+Next: [Pipeline Orchestration](/docs/mlops/pipeline-orchestration) turns the single tracked script into a scheduled pipeline of steps, from data to a registered model, and [Feature Stores & Model Registry](/docs/mlops/feature-stores-and-model-registry) covers the registry in more depth.
+
+## Sources
+
+- MLflow, [Tracking documentation](https://mlflow.org/docs/latest/ml/tracking/) and [Model Registry](https://mlflow.org/docs/latest/ml/model-registry/), including the deprecation of stages in favour of aliases
+- MLflow, [MLflow 3 and the LoggedModel entity](https://mlflow.org/docs/latest/genai/mlflow-3/)
+- J. Bergstra and Y. Bengio, [Random Search for Hyper-Parameter Optimization](https://www.jmlr.org/papers/v13/bergstra12a.html), JMLR 13 (2012)
+- PyTorch, [Reproducibility](https://pytorch.org/docs/stable/notes/randomness.html)
+- Neptune.ai, [Acquisition and shutdown transition hub](https://docs.neptune.ai/transition_hub)

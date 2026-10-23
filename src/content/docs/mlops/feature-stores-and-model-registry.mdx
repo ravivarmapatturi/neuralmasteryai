@@ -1,99 +1,332 @@
 ---
-title: "Feature Stores & Model Registry"
+title: "Feature Stores & Model Registry, In Full Depth"
 sidebar_position: 13
-description: "Training-serving skew explained, then its fix: feature stores (offline/online, freshness) for data consistency, and model registries for version lineage."
+description: "Training-serving skew and the point-in-time leakage bug, how a feature store's offline and online stores fix both, a working Feast example, and how a model registry gates and traces which model version serves traffic."
 ---
 
 import TrainingServingSkewDiagram from '../../../viz/diagrams/TrainingServingSkewDiagram';
 import OfflineVsOnlineStoreDiagram from '../../../viz/diagrams/OfflineVsOnlineStoreDiagram';
 import FeatureFreshnessDiagram from '../../../viz/diagrams/FeatureFreshnessDiagram';
-import FeastArchitectureDiagram from '../../../viz/diagrams/FeastArchitectureDiagram';
-import ModelRegistryStageDiagram from '../../../viz/diagrams/ModelRegistryStageDiagram';
 import LineageChainDiagram from '../../../viz/diagrams/LineageChainDiagram';
 import PromotionWorkflowDiagram from '../../../viz/diagrams/PromotionWorkflowDiagram';
-import RegistryToolComparisonDiagram from '../../../viz/diagrams/RegistryToolComparisonDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Feature Stores & Model Registry
+# Feature Stores & Model Registry, In Full Depth
 
-Two related problems that both come from the same root cause — training and serving are different systems, built at different times, and easy to let drift apart. A feature store keeps the *data* consistent between them; a model registry keeps the *model versions* organized and traceable.
+[Experiment Tracking](/docs/mlops/experiment-tracking) ended with a trained model registered under a name. Two problems are still open between that model and production. The model was trained on features computed by one piece of code, and in production the features will be computed by another, so they can quietly disagree. And of the many registered versions, something has to decide which one serves traffic, check it before it does, and record why. This page covers both: the skew and leakage bugs that feature stores exist to prevent, how a feature store works, a running Feast example, and the model registry that controls which version is live.
 
-## The Training-Serving Skew Problem
+<ELI5>
 
-A model is trained on features computed one way (often in a batch job, in Python, over historical data) and served in production where features must be computed another way (often in real time, in a different language/service, under a tight latency budget). If those two computations ever disagree — even subtly, e.g. a rolling average computed over a slightly different window — the model sees different feature distributions in production than it was trained on, and accuracy silently degrades. This is **training-serving skew**, and it's one of the most common, hardest-to-notice production ML bugs.
+Imagine a restaurant where the head chef writes a recipe while testing it at home, and the line cooks make it at work from memory. At home, "a pinch of salt" meant one thing; at work it means another. The dish the customers get is not the dish that was tested, and nobody notices until the reviews come in.
+
+A feature store is the shared recipe card. The same written definition is used when testing the dish (training) and when cooking it for customers (serving), so they can't drift apart. A model registry is the menu board: it says which version of each dish is being served tonight, who approved it, and which tested recipe it came from.
+
+Everything below is those two ideas made exact.
+
+</ELI5>
+
+## 1. Two Systems That Must Agree
+
+A model sees the world only through its features. During training, those features are usually computed in a batch job: Python or SQL over months of historical data in a warehouse, with no time pressure. During serving, the same features must be computed for one user, now, within a latency budget of a few milliseconds, often by a different service written in a different language by a different team.
+
+That arrangement produces two distinct bugs. The first is that the two computations disagree about what a feature *is*. The second, subtler one, is that the training computation uses information that wouldn't have been available at prediction time. Both make a model look good in evaluation and do worse in production, and neither raises an error.
+
+### The Training-Serving Skew Problem
+
+**Training-serving skew** is any difference between the features a model was trained on and the features it receives in production. Typical causes:
+
+- **Different code.** The training pipeline computes "average transaction amount over 7 days" in SQL with `AVG()`, which ignores nulls; the serving service computes it in Java and treats missing amounts as zero.
+- **Different windows.** Training uses calendar days; serving uses a rolling 168 hours. Close, but not the same number.
+- **Different freshness.** Training uses values as of the transaction; serving uses a value last updated six hours ago by a nightly job.
+- **Different preprocessing.** A scaler or vocabulary was refit after training, so serving maps inputs differently.
 
 <TrainingServingSkewDiagram />
 
-## Feature Stores
+The model has no way to know. It receives numbers in the expected range and returns confident predictions; they are just worse. Google's "Rules of Machine Learning" lists skew among the most common sources of production quality problems, and its advice is the principle a feature store implements: compute features with the same code in both places, or log the features used at serving time and train on those.
 
-A feature store is the fix: a central system that computes features once and serves them consistently to both training and serving.
+**The limitation of discipline alone:** asking two teams to "keep the logic in sync" works until the first change made to only one side. The fix has to be structural, which is where the second bug also comes in.
 
-- **Offline store**: large-scale, historical feature values, used for generating training datasets — typically backed by a data warehouse or lake.
-- **Online store**: low-latency, current feature values, used for real-time inference — typically backed by Redis or a similarly fast key-value store.
+## 2. Point-in-Time Correctness
+
+The second bug happens entirely inside training. A training row is a labelled event: "this transaction, at this time, turned out to be fraud". The features attached to it must be the values that were known *at that time*, because those are the only values the model will have when it predicts in production.
+
+The easy way to build a training set gets this wrong. Here are three labelled events and a feature table of daily snapshots, joined two ways:
+
+```python
+import pandas as pd
+
+features = pd.DataFrame({
+    "user_id":           [42, 42, 42, 7, 7],
+    "feature_time":      pd.to_datetime(["2026-10-01", "2026-10-05", "2026-10-09", "2026-10-02", "2026-10-08"]),
+    "avg_txn_amount_7d": [31.0, 48.5, 220.0, 12.0, 15.5],
+})
+labels = pd.DataFrame({
+    "user_id":    [42, 42, 7],
+    "label_time": pd.to_datetime(["2026-10-06", "2026-10-10", "2026-10-03"]),
+    "is_fraud":   [0, 1, 0],
+})
+
+# Wrong: join today's latest value onto every historical label
+latest = features.sort_values("feature_time").groupby("user_id").tail(1)
+naive = labels.merge(latest[["user_id", "avg_txn_amount_7d"]], on="user_id")
+
+# Right: for each label, the latest feature value at or before the label's time
+pit = pd.merge_asof(labels.sort_values("label_time"), features.sort_values("feature_time"),
+                    left_on="label_time", right_on="feature_time", by="user_id", direction="backward")
+
+print("naive:\n", naive.sort_values("label_time").to_string(index=False))
+print("point-in-time:\n", pit[["user_id", "label_time", "is_fraud", "avg_txn_amount_7d"]].to_string(index=False))
+```
+
+```text
+naive:
+  user_id label_time  is_fraud  avg_txn_amount_7d
+       7 2026-10-03         0               15.5
+      42 2026-10-06         0              220.0
+      42 2026-10-10         1              220.0
+point-in-time:
+  user_id label_time  is_fraud  avg_txn_amount_7d
+       7 2026-10-03         0               12.0
+      42 2026-10-06         0              48.5
+      42 2026-10-10         1              220.0
+```
+
+Look at user 42's row on October 6. The naive join gave it 220.0, a value computed on October 9, after the fraud spree that the 220.0 reflects. In training, the model learns that a high 7-day average goes with this user, using a number from the future. In production, it will never have that number in time. This is **label leakage through time**, and models trained with it show excellent offline metrics that collapse on deployment.
+
+The correct operation is an **as-of join**: for each label, take the most recent feature value whose timestamp is at or before the label's timestamp. Formally, for an entity $e$ with label time $t$, the feature value used is
+
+$$x_e(t) = v_{e,\,j^*} \quad\text{where}\quad j^* = \arg\max_j \{\, \tau_{e,j} : \tau_{e,j} \le t \,\}$$
+
+with $\tau_{e,j}$ the timestamps of that entity's feature values. Getting this right by hand for dozens of features, each with its own update schedule, is tedious and easy to get wrong, which is one of the main reasons feature stores exist.
+
+<PredictFirst
+  question="A churn model scores 0.94 AUC offline but 0.71 in production. Its strongest feature is 'support tickets in the last 30 days', built by joining each customer's current ticket count onto historical labels. What is the most likely cause?"
+  options={[
+    'The model is overfitting and needs more regularization',
+    'Leakage: customers who churned filed tickets around the time they left, after the moment the prediction should have been made',
+    'Production traffic has a different class balance, which lowers AUC',
+    'The serving infrastructure is too slow and times out',
+  ]}
+  correctIndex={1}
+  explanation="Joining current values onto past labels lets each training row see the future. Customers about to churn often file tickets in their last weeks, so the 'current' count encodes the outcome itself. Offline, the feature looks predictive; in production, at prediction time, those tickets haven't been filed yet. A point-in-time (as-of) join fixes it. Class balance alone does not change AUC much, and overfitting rarely produces a gap this large."
+/>
+
+Both bugs have the same structural fix: one definition of each feature, with timestamps, served to training by an as-of join and to production by a fast lookup.
+
+## 3. How a Feature Store Works
+
+### Feature Stores
+
+A **feature store** is a system that holds feature definitions and feature values, and serves them consistently to training and to production. It has four parts.
+
+**A registry of feature definitions.** Each feature belongs to a **feature view**: a named group of features about one **entity** (a user, a merchant, a device), computed from one source, with a timestamp column. The definition is code, kept in git and reviewed like code.
+
+**An offline store** holds the full history of feature values, typically as tables in a warehouse or lake (BigQuery, Snowflake, Redshift, Parquet or Iceberg files). It answers the training question: "give me these features, as of each of these timestamps, for these entities". That's the as-of join from section 2, run at scale.
+
+**An online store** holds only the latest value per entity, in a low-latency key-value database (Redis, DynamoDB, Bigtable, or SQLite for local work). It answers the serving question: "give me these features for user 42, now", in a few milliseconds.
 
 <OfflineVsOnlineStoreDiagram />
 
-- **Feature freshness**: how recently a feature's value was computed — critical for online serving (a stale "user's last-hour click count" defeats the point of a real-time feature).
+**Materialization** copies the latest values from the offline store into the online store on a schedule, so the two hold the same numbers. For features that must be fresher than any schedule allows, a streaming job writes to both directly.
 
-<FeatureFreshnessDiagram />
+The guarantee follows from the structure: training and serving read values produced by one definition, so they agree by construction rather than by two teams staying in sync. The offline store's timestamps make point-in-time joins automatic.
 
-- The core guarantee a feature store provides: the *same* feature definition and computation logic produces both the offline training data and the online serving values, eliminating skew by construction rather than by discipline.
+Notice what a feature store doesn't do. In most designs it doesn't *compute* complex features itself; a batch or streaming job does that and writes the results in. The store's job is to make sure that whatever was computed is served identically to both sides.
 
-**Feast** is the standard open-source feature store — defines feature views once, backs them with both an offline and online store, and serves consistent values to both training pipelines and live inference.
+## 4. A Working Feature Store with Feast
 
-<FeastArchitectureDiagram />
+[Feast](https://feast.dev) is the most widely used open-source feature store. Here is a complete local setup using Feast 0.67, with Parquet files as the offline store and SQLite as the online store. The repository configuration, `feature_store.yaml`:
 
-Defining a feature view once, then the exact same definition serving both sides of the training/serving skew problem above:
+```yaml
+project: fraud
+registry: data/registry.db
+provider: local
+online_store:
+  type: sqlite
+  path: data/online.db
+offline_store:
+  type: file
+entity_key_serialization_version: 3
+```
+
+The feature definitions, `definitions.py`:
 
 ```python
-from feast import FeatureView, Field, FileSource
+from datetime import timedelta
+from feast import Entity, FeatureView, Field, FileSource
 from feast.types import Float32
 
-txn_source = FileSource(path="data/transactions.parquet", timestamp_field="event_timestamp")
+user = Entity(name="user", join_keys=["user_id"])
+
+user_stats = FileSource(path="data/user_stats.parquet", timestamp_field="event_timestamp")
 
 user_features = FeatureView(
-    name="user_transaction_features",
-    source=txn_source,
+    name="user_features",
+    entities=[user],
+    ttl=timedelta(days=30),
     schema=[Field(name="avg_txn_amount_7d", dtype=Float32)],
+    source=user_stats,
 )
 ```
 
-```bash
-feast apply                     # registers the feature view, provisions the online store
-feast materialize-incremental $(date -u +"%Y-%m-%dT%H:%M:%S")   # backfills the online store up to now
+`data/user_stats.parquet` holds the same five snapshots as section 2. Running `feast apply` registers the definitions and creates the online table:
+
+```text
+Created feature view user_features
+Created sqlite table fraud_user_features
 ```
+
+Now use the store from both sides:
 
 ```python
-# Training: pull a point-in-time-correct historical dataset from the offline store
-training_df = store.get_historical_features(entity_df=entities, features=["user_transaction_features:avg_txn_amount_7d"]).to_df()
+import pandas as pd
+from feast import FeatureStore
 
-# Serving: the same feature, looked up in the online store with millisecond latency
-features = store.get_online_features(features=["user_transaction_features:avg_txn_amount_7d"], entity_rows=[{"user_id": 42}]).to_dict()
+store = FeatureStore(repo_path="repo")
+
+# Training: one row per labelled event, each with the time the prediction would have been made
+labels = pd.DataFrame({
+    "user_id": [42, 42, 7],
+    "event_timestamp": pd.to_datetime(["2026-10-06", "2026-10-10", "2026-10-03"], utc=True),
+    "is_fraud": [0, 1, 0],
+})
+train = store.get_historical_features(entity_df=labels, features=["user_features:avg_txn_amount_7d"]).to_df()
+print(train.sort_values("event_timestamp").to_string(index=False))
+
+# Serving: load the latest values into the online store, then look one up
+store.materialize_incremental(end_date=pd.Timestamp("2026-10-23", tz="UTC"))
+online = store.get_online_features(features=["user_features:avg_txn_amount_7d"], entity_rows=[{"user_id": 42}]).to_dict()
+print(online)
 ```
 
-## Model Registry
-
-Once a model is trained (see [Experiment Tracking](/docs/mlops/experiment-tracking)), the registry is where trained versions live as first-class, tracked objects rather than files scattered across a filesystem.
-
-- **Model versions**: every registered model gets a version number, tied back to the exact experiment run (code, data, params) that produced it.
-
-```python
-mlflow.register_model(model_uri=f"runs:/{run_id}/model", name="fraud-detector")
-# -> registers a new, auto-incrementing version (e.g. v4) linked back to that exact run
+```text
+ user_id           event_timestamp  is_fraud  avg_txn_amount_7d
+       7 2026-10-03 00:00:00+00:00         0               12.0
+      42 2026-10-06 00:00:00+00:00         0               48.5
+      42 2026-10-10 00:00:00+00:00         1              220.0
+{'user_id': [42], 'avg_txn_amount_7d': [220.0]}
 ```
-- **Stages**: a lifecycle a version moves through — commonly `None → Staging → Production → Archived` — so "what's actually serving traffic right now" is always a single, unambiguous answer.
 
-<ModelRegistryStageDiagram />
+The training frame matches the hand-written as-of join exactly: user 42's October 6 row gets 48.5, not the future 220.0. The online lookup returns 220.0, the latest value, because that's what the model should see if user 42 transacts today. One definition produced both.
 
-- **Lineage**: a registered model version traces back to its training run, which traces back to its data version — the full chain needed to answer "why did this specific prediction happen" months later.
+Two details worth noticing:
+
+- **`ttl=timedelta(days=30)`** bounds how far back the as-of join will look. A label with no feature value in the previous 30 days gets a null rather than a stale value from a year ago, and the online store treats older values as expired.
+- **`materialize_incremental`** copies only values newer than the last materialization. In production a scheduler runs it every few minutes or hours, which determines how fresh the online features are.
+
+## 5. Freshness: How Old Can a Feature Be?
+
+Every online feature has an age: the time since its value was computed. A nightly job gives features up to 24 hours old. A materialization every 15 minutes gives up to 15 minutes, plus the time the upstream job took.
+
+<FeatureFreshnessDiagram />
+
+Whether that matters depends on what the feature measures. A user's country barely changes, and a day-old value is fine. "Number of transactions in the last 10 minutes" is useless if it's an hour old, because fraud happens in bursts and the burst is the signal. A rough rule: a feature's maximum acceptable age should be small compared with the window it describes.
+
+Freshness also has a training-side consequence that is easy to miss. If production features are typically 30 minutes old, a perfectly point-in-time-correct training set, which uses values exactly as of each label, is slightly *too* fresh. The model learns from features fresher than it will ever get. Teams that care about this either log the actual served features and train on those logs, or deliberately shift the as-of join back by the typical serving delay.
+
+<GoDeeper title="Go deeper: streaming features and on-demand transformations">
+
+When a feature must be seconds fresh, batch materialization is too slow. The usual architecture adds a stream processor (Flink, Spark Structured Streaming, or a managed equivalent) that reads events from Kafka or Kinesis, maintains windowed aggregates, and writes them to the online store as they change, while also appending them to the offline store so training sees the same values. Feast supports this with push sources: the streaming job pushes rows, and Feast writes them to both stores.
+
+Some features can't be precomputed at all because they depend on the request itself, such as "this transaction's amount divided by the user's 7-day average". Feast calls these **on-demand feature views**: a Python transformation that runs at request time on the request data and stored features, and runs identically when building training data. The skew principle is the same: one piece of code, used in both paths.
+
+The cost is operational. A streaming pipeline is a long-running distributed system with its own failure modes (late events, reprocessing after outages, exactly-once writes), and it should be reserved for features whose value demonstrably depends on being fresh.
+
+</GoDeeper>
+
+That completes the data side. The second half of the problem is the model itself: which trained version is serving, and how it got there.
+
+## 6. The Model Registry
+
+A **model registry** is the system of record for trained models that may be deployed. [Experiment Tracking](/docs/mlops/experiment-tracking#7-from-run-to-registered-model) showed the mechanics: a registered model has a name, each registration creates a numbered version linked to its training run, and aliases such as `@champion` point at the version in use. This section is about what a registry is *for* in a team.
+
+**One answer to "what is serving right now?"** The serving system loads `models:/fraud-detector@champion`, and the registry is the only place that alias is set. There is no copy of a model file on a server that someone updated by hand.
+
+**Lineage.** Each version links to the run that produced it, the run records the code commit and the data version, and the data version can be fetched. When an incident report references a specific prediction, that chain answers which model made it, how that model was built, and from what.
 
 <LineageChainDiagram />
 
-- **Promotion workflow**: moving a model from Staging to Production is a deliberate, often gated action (manual approval, or automated if it passes the regression checks from [CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd)) — not an implicit side effect of training finishing.
+**Metadata that travels with the model.** Each version carries its signature (input and output schema), its evaluation results, tags such as `validation_status`, and a description. A model card, covered in [Legal, Licensing & Governance](/docs/mlops/legal-licensing-and-governance), belongs here too.
+
+**Access control and audit.** Who may register, who may move `@champion`, and a log of every change with who made it and when. In regulated settings, that log is part of what an auditor asks for.
+
+If you learned the registry from older material, it will describe fixed *stages* (Staging, Production, Archived). MLflow deprecated those in version 2.9 in favour of aliases and tags, and managed registries such as Databricks Unity Catalog never used them. The idea of moving a version through checks is unchanged; the mechanism is now a movable label.
+
+## 7. Promotion: The Gate Between Training and Traffic
+
+Training finishing should never, by itself, change what serves traffic. Promotion is a separate, deliberate step, and the registry is where it's enforced.
 
 <PromotionWorkflowDiagram />
 
-**MLflow Model Registry** is the most common open-source option, integrated directly with MLflow Tracking. **SageMaker Model Registry** is the AWS-managed equivalent, integrated with the rest of the SageMaker training/deployment flow (see [Cloud Computing for ML](/docs/mlops/cloud-computing)).
+A typical gate for moving `@champion` to a new version checks, in order:
 
-<RegistryToolComparisonDiagram />
+1. **Schema.** The new version's signature matches what the serving system sends. A renamed column fails here, not in production.
+2. **Quality against the current champion.** On the same held-out evaluation set, the challenger must match or beat the champion on the primary metric, and must not regress beyond a set tolerance on important slices: per region, per customer segment, per device type. A model that improves the average by hurting one segment badly should not pass silently.
+3. **Operational limits.** Latency at the 99th percentile, memory, and model size within what the serving infrastructure can hold.
+4. **Feature availability.** Every feature the model uses exists in the online store with acceptable freshness. A model trained on a feature that serving can't provide is the skew problem again.
+5. **Approval.** Automatic for low-risk models that pass every check; a named human for high-risk ones.
 
-Next: [Deployment Strategies](/docs/mlops/deployment-strategies) — how a model actually moves from "Production" in the registry to serving real traffic, safely.
+[CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd) automates checks 1 to 4 as a pipeline triggered by registration. Passing the gate usually doesn't send a version straight to 100% of traffic either; [Deployment Strategies](/docs/mlops/deployment-strategies) covers shadow and canary releases that test it on live traffic first.
+
+<PredictFirst
+  question="A new fraud model beats the champion on overall AUC (0.931 vs 0.927) but drops recall on card-not-present transactions from 0.81 to 0.66. The gate only checks overall AUC. What happens, and what should the gate do?"
+  options={[
+    'It is promoted, which is correct, because overall AUC is the primary metric',
+    'It is promoted, and the gate should also check per-slice metrics so a large regression on an important slice blocks promotion',
+    'It is blocked, because any metric decrease blocks promotion',
+    'It is blocked, because AUC gains under 1% are never significant',
+  ]}
+  correctIndex={1}
+  explanation="An aggregate metric can rise while an important subgroup gets much worse. Card-not-present fraud may be a small share of transactions but a large share of losses. A gate that only checks the overall number promotes this model. Gates should check the primary metric overall plus tolerances on the slices the business cares about, and fail on a large regression in any of them."
+/>
+
+## 8. Tools
+
+**Feature stores:**
+
+| Tool | Type | Notes |
+|---|---|---|
+| **Feast** | Open source | Pluggable offline and online stores; you run the materialization jobs |
+| **Hopsworks** | Open source and managed | Feature store with its own compute and storage, strong on streaming features |
+| **Databricks Feature Engineering** | Managed, in Unity Catalog | Feature tables are Delta tables; Databricks acquired Tecton in 2025 |
+| **SageMaker Feature Store** | Managed, AWS | Online and offline stores integrated with SageMaker training |
+| **Vertex AI Feature Store** | Managed, Google Cloud | Serves features directly from BigQuery tables |
+
+**Model registries:** MLflow Model Registry (open source, and the basis of the managed registries on Databricks and elsewhere), Unity Catalog models on Databricks, SageMaker Model Registry, Vertex AI Model Registry, Azure ML's registry, and the W&B Registry. The concepts on this page (versions, aliases, lineage, gated promotion) map onto all of them; the main difference is which identity and permission system they plug into.
+
+## 9. When *Not* to Use a Feature Store
+
+| Situation | Better choice |
+|---|---|
+| Batch predictions only: score everything nightly, write results to a table | Compute features and predictions in the same batch job. There is no separate serving path to skew against |
+| One model, a few features, one team | A shared feature-computation library imported by both the training and serving code, plus logging of served features |
+| Features come entirely from the request (text, an image, form fields) | No feature store needed; keep preprocessing in the model artifact itself, e.g. a scikit-learn `Pipeline` or a model-side tokenizer |
+| LLM applications using retrieval | A vector database and a document pipeline; see [LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops) |
+| No one owns the platform | A feature store is infrastructure someone has to run, monitor and upgrade. Without an owner it becomes a second source of skew |
+
+And a registry is worth having from the first model that serves real users, even if it is just MLflow on one machine. The cost is small, and the first incident without lineage is expensive.
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Training-serving skew | Features computed differently in training and serving; silent and common |
+| Point-in-time leakage | Joining later values onto earlier labels lets training see the future |
+| As-of join | For each label, the latest feature value at or before the label's time |
+| Feature store | One definition per feature; offline store for training, online store for serving |
+| Materialization | Copies latest values offline to online; its schedule sets freshness |
+| Freshness | A feature's acceptable age should be small next to the window it measures |
+| Model registry | Named, versioned models with lineage, metadata, access control and audit |
+| Promotion gate | Schema, quality overall and per slice, operational limits, feature availability, approval |
+
+---
+
+Next: [Deployment Strategies](/docs/mlops/deployment-strategies) covers how a promoted version reaches real traffic safely, through shadow, canary and A/B releases.
+
+## Sources
+
+- Feast, [Documentation](https://docs.feast.dev/), including [point-in-time joins](https://docs.feast.dev/getting-started/concepts/point-in-time-joins)
+- M. Zinkevich, [Rules of Machine Learning: Best Practices for ML Engineering](https://developers.google.com/machine-learning/guides/rules-of-ml), Google (rules 29 and 31 on training-serving skew)
+- D. Sculley et al., [Hidden Technical Debt in Machine Learning Systems](https://papers.nips.cc/paper/2015/hash/86df7dcfd896fcaf2674f757a2463eba-Abstract.html), NeurIPS 2015
+- MLflow, [Model Registry](https://mlflow.org/docs/latest/ml/model-registry/)
