@@ -1,9 +1,8 @@
 ---
-title: "Training Deep Networks"
+title: "Training Deep Networks, In Full Depth"
 sidebar_position: 4
-description: "The techniques that make a genuinely deep network trainable at all -- normalization, residual connections, and the vanishing-gradient problem they fix."
+description: "Why depth makes networks hard to train and the fixes that make it work: vanishing and exploding gradients derived, normalization layers, residual connections, dropout, gradient clipping and mixed precision, with a measured 50-layer experiment."
 ---
-
 
 import TrainingLossCurveMp4 from './img/training-loss-curve.mp4';
 import TrainingLossCurveWebm from './img/training-loss-curve.webm';
@@ -11,60 +10,327 @@ import NormalizationAxisDiagram from '../../../viz/diagrams/NormalizationAxisDia
 import VanishingGradientDiagram from '../../../viz/diagrams/VanishingGradientDiagram';
 import AddNormDiagram from '../../../viz/diagrams/AddNormDiagram';
 import LrScheduleDiagram from '../../../viz/diagrams/LrScheduleDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Training Deep Networks
+# Training Deep Networks, In Full Depth
 
-Making a network *deep* (many layers) makes it more expressive, but also much harder to train — this page covers the techniques that make deep training actually work.
+The pages before this one picked the pieces of a training loop one at a time: [activation functions](/docs/deep-learning/activation-functions), [loss functions](/docs/deep-learning/loss-functions), [optimizers](/docs/deep-learning/optimizers) and [initialization and learning-rate schedules](/docs/deep-learning/initialization-regularization-scheduling). Every one of them works for a network with three layers. This page is about what goes wrong at fifty layers, or five hundred: why the gradient that reaches the first layer can be zero or astronomically large, derived from the chain rule, and the handful of ideas that fixed it. Those are normalization layers, residual connections, gradient clipping and mixed precision. Together they are the reason a modern language model with a hundred stacked blocks trains at all.
+
+<ELI5>
+
+Think of the telephone game. A message is whispered down a line of fifty people. If each person speaks a little too quietly, the last person hears nothing. If each person exaggerates a little, the last person hears nonsense. Either way the message is lost, and the longer the line, the worse it gets.
+
+Training a deep network is the telephone game played backwards: the "how wrong were we" signal starts at the output and is passed back through every layer to reach the first one. Each layer either shrinks or grows it a little, and fifty small shrinks make nothing.
+
+The fixes are what you'd do in the game. Make sure each person speaks at a steady volume (normalization). Run a wire from the end of the line straight to every person, so they hear the original message as well as their neighbour's version (residual connections). And if someone starts shouting, turn them down (gradient clipping). Everything below is that idea made exact.
+
+</ELI5>
 
 <video autoPlay loop muted playsInline width="100%" style={{maxWidth: 700, display: "block", margin: "0 auto"}}>
   <source src={TrainingLossCurveWebm} type="video/webm" />
   <source src={TrainingLossCurveMp4} type="video/mp4" />
 </video>
-<p style={{textAlign: "center", fontSize: "0.9em", opacity: 0.75}}>What "training" looks like in practice: loss dropping fastest early on, noisier and slower as it approaches a floor — every technique below exists to make this curve drop faster, more smoothly, or further</p>
+<p style={{textAlign: "center", fontSize: "0.9em", opacity: 0.75}}>A healthy training run: the loss falls fastest early, then more slowly and noisily towards a floor. Everything on this page is about getting a deep network to produce this curve instead of a flat line or a spike.</p>
 
-## Loss Functions
+## 1. Why Depth Is Worth the Trouble
 
-- **Cross-entropy**: the standard loss for classification — measures how far the predicted probability distribution is from the true one (see [Probability & Statistics](/docs/mathematics-for-ai/probability-statistics)). This is also the loss behind next-token prediction in every LLM.
-- **MSE**: standard for regression.
-- **Contrastive / triplet loss**: used when the goal is learning good *embeddings* rather than direct predictions — pulls similar examples together and pushes dissimilar ones apart in embedding space. Core to how modern embedding models (used for RAG retrieval) are trained.
+A network with one wide hidden layer can, in principle, approximate any reasonable function. That is the universal approximation theorem, and it says nothing about how wide the layer must be. For many functions that matter, a shallow network needs exponentially more units than a deep one to represent the same thing.
 
-## Normalization
+Depth lets a network build features out of features. In an image model, early layers detect edges, middle layers combine edges into textures and parts, and late layers combine parts into objects. In a language model, early blocks resolve which word a token is, later ones resolve what it refers to and what the sentence is doing. Each layer only has to learn a small step, and the steps compose. That reuse is why deep networks generalize better per parameter than wide shallow ones.
 
-- **Batch Normalization**: normalizes each layer's activations across the *batch* dimension during training, stabilizing and speeding up training significantly. Introduces a dependency on batch statistics, which complicates things at inference time (running averages are used instead).
-- **Layer Normalization**: normalizes across the *feature* dimension for each individual example, independent of batch size. This independence is why Transformers use LayerNorm instead of BatchNorm — sequence models often deal with variable-length inputs and small/variable batch sizes.
-- **RMSNorm**: a simplified LayerNorm variant that skips re-centering (mean subtraction) and only rescales by the root-mean-square — cheaper to compute, used in most modern LLMs (LLaMA, etc.) with no meaningful quality loss.
+**The cost** is that training uses gradient descent, and gradient descent needs the gradient of the loss with respect to *every* weight, including the first layer's. To get it, the error signal has to travel back through every layer above. The next section shows exactly what happens to it on the way.
 
-Same tensor, different axis normalized over — click a norm type to see exactly which cells get grouped together:
+## 2. The Gradient Is a Product
 
-<NormalizationAxisDiagram />
+Write a plain deep network as a chain of layers. Layer $l$ takes the previous activation $h_{l-1}$ and computes:
 
-## Regularization for Deep Nets
+$$
+h_l = \phi(W_l h_{l-1})
+$$
 
-- **Dropout**: randomly zero out a fraction of neurons each training step, forcing the network to not over-rely on any single neuron — effectively training an ensemble of sub-networks that share weights.
-- Standard L1/L2 weight regularization still applies (see [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics)), though it's used more sparingly in very large models where data volume itself is often the main regularizer.
+where $W_l$ is the layer's weight matrix and $\phi$ is the activation function. The loss $L$ depends on the first layer's output $h_1$ only through every layer above it. The chain rule says the gradient arriving at layer 1 is the gradient at the top, multiplied by one **Jacobian** per layer: the matrix of how much each output of a layer moves when each input moves.
 
-## Vanishing & Exploding Gradients
+$$
+\frac{\partial L}{\partial h_1} = \frac{\partial L}{\partial h_n} \cdot \prod_{l=2}^{n} \frac{\partial h_l}{\partial h_{l-1}}
+$$
 
-In a deep network, gradients are a *product* of many layers' local derivatives (chain rule). If those derivatives are consistently < 1, the gradient shrinks toward zero as it propagates back through many layers ("vanishing") — early layers barely learn. If consistently > 1, gradients blow up ("exploding"), causing unstable, diverging training.
+where each layer's Jacobian is
 
-**Fixes**: careful initialization (He/Xavier), normalization layers, gradient clipping, and — most importantly — residual connections.
+$$
+\frac{\partial h_l}{\partial h_{l-1}} = \operatorname{diag}\big(\phi'(W_l h_{l-1})\big)\, W_l
+$$
 
-Drag $w_h$ below and watch the same product-of-Jacobians mechanism either vanish or explode as it's carried back through more steps:
+Each factor has two parts: the activation's slope $\phi'$ at that layer, and the weight matrix itself. Nothing about this product keeps it near 1. Suppose, roughly, that each factor scales the gradient by the same amount $a$. After $n$ layers:
+
+$$
+\left\lVert \frac{\partial L}{\partial h_1} \right\rVert \approx a^{\,n-1} \left\lVert \frac{\partial L}{\partial h_n} \right\rVert
+$$
+
+With $a = 0.8$ and 50 layers, $0.8^{49} \approx 1.8 \times 10^{-5}$. With $a = 1.2$, $1.2^{49} \approx 7.6 \times 10^{3}$. A per-layer factor that looks harmless becomes enormous or negligible through repetition. This is the whole problem; everything else on the page is a way of keeping $a$ close to 1 or of routing around the product.
+
+### Vanishing & Exploding Gradients
+
+**Vanishing gradients** happen when the factors are consistently below 1. The sigmoid is the classic cause: its slope $\sigma'(z) = \sigma(z)(1-\sigma(z))$ is at most $0.25$, at $z = 0$, and near zero for large $|z|$. Even with perfect weights, each sigmoid layer multiplies the gradient by a quarter or less. Twenty layers give $0.25^{20} \approx 10^{-12}$. The first layers receive almost no learning signal, so they stay near their random initial values while the top layers learn. The network behaves like a shallow one sitting on top of a fixed random feature extractor.
+
+**Exploding gradients** happen when the factors are consistently above 1, usually because the weights are too large. Gradients grow layer by layer until one update throws the weights so far that the loss jumps to a huge value or `NaN`. Recurrent networks are especially prone to both, because they apply *the same* weight matrix at every time step, so the product is a power of one matrix and its largest eigenvalue decides everything ([Sequence Models](/docs/deep-learning/sequence-models) covers that case).
+
+Drag the weight below and watch the same product either vanish or explode as it is carried back through more steps:
 
 <VanishingGradientDiagram />
 
-## Residual (Skip) Connections
+<PredictFirst
+  question="A 30-layer network uses sigmoid activations with well-scaled weights. Roughly how much smaller is the gradient at layer 1 than at layer 30, from the activation slopes alone?"
+  options={[
+    'About 30 times smaller',
+    'About 4 times smaller',
+    'At least 0.25 to the power 29, around 10^-17 or smaller',
+    'The same size, because the weights are well scaled',
+  ]}
+  correctIndex={2}
+  explanation="The sigmoid's slope is at most 0.25, so every layer the gradient passes through multiplies it by 0.25 or less, whatever the weights are. Twenty-nine such factors give 0.25^29, about 3 × 10^-18. Good weight scaling cannot fix a factor that comes from the activation itself, which is why deep networks switched to ReLU-family activations."
+/>
 
-Instead of a layer computing $y = f(x)$, a residual block computes $y = x + f(x)$ — the input is added directly to the output. This gives gradients a direct path backward that bypasses $f$ entirely, largely solving the vanishing gradient problem and enabling networks with hundreds of layers (ResNet) or dozens of Transformer blocks (every modern LLM) to train successfully. This is one of the single most important architectural ideas in deep learning.
+**What fixes it, in order of history:** activations whose slope is 1 over half their range (ReLU), initialization that keeps each layer's scale near 1 (He, Xavier; derived on [the initialization page](/docs/deep-learning/initialization-regularization-scheduling)), normalization layers that reset the scale inside the network, and residual connections that add a path the product doesn't touch. The first two are about starting well. The next section is about staying well once the weights start moving.
+
+## 3. Normalization Layers
+
+Good initialization keeps activations at a sensible scale *at step 0*. Training then changes every weight, and the scale of each layer's inputs drifts as the layers below it change. A layer that was tuned for inputs with standard deviation 1 now sees inputs with standard deviation 7. Normalization layers solve this by measuring the scale of the activations as they flow and rescaling them every time.
+
+All of them follow one recipe. Take a group of numbers $x_1, \dots, x_m$, compute their mean $\mu$ and variance $\sigma^2$, standardize, then let the network undo it if it wants:
+
+$$
+\hat{x}_i = \frac{x_i - \mu}{\sqrt{\sigma^2 + \epsilon}}, \qquad y_i = \gamma\, \hat{x}_i + \beta
+$$
+
+$\epsilon$ is a small constant that prevents division by zero. $\gamma$ and $\beta$ are learned per feature, so the layer can choose any scale and shift it needs; what it can no longer do is drift there by accident. The variants differ only in **which numbers form the group**.
+
+<NormalizationAxisDiagram />
+
+**Batch Normalization** (Ioffe and Szegedy, 2015) groups each feature across the examples in the batch. For feature $j$, $\mu$ and $\sigma$ are the mean and spread of feature $j$ over the 64 or 256 examples in this batch. It made very deep convolutional networks train much faster and tolerate higher learning rates. Its cost is a dependency on the batch: statistics from a batch of 4 are noisy, and at inference time there may be a batch of 1. So BatchNorm keeps running averages of $\mu$ and $\sigma$ during training and uses those at inference, which means the network behaves differently in the two modes, a frequent source of bugs (forgetting `model.eval()` is the classic one).
+
+**Layer Normalization** (Ba, Kiros and Hinton, 2016) groups all the features *of one example*. Each token's vector is normalized by its own mean and spread, so nothing depends on the batch size, sequence length, or which other examples are present, and training and inference behave identically. That independence is why Transformers use LayerNorm: they handle variable-length sequences, small batches, and generation one token at a time.
+
+**RMSNorm** (Zhang and Sennrich, 2019) drops the mean subtraction and $\beta$ and divides by the root-mean-square only:
+
+$$
+y_i = \gamma\, \frac{x_i}{\sqrt{\tfrac{1}{m}\sum_j x_j^2 + \epsilon}}
+$$
+
+The authors found the re-centring contributed little, and removing it saves computation. Most current open language models (the Llama, Qwen, Mistral and DeepSeek families among them) use RMSNorm.
+
+**Where it goes matters too.** The original Transformer normalized *after* adding the residual ("post-norm"). Almost all modern models normalize the input to each sub-layer *before* it ("pre-norm"), which keeps the residual path itself untouched. The next section explains why that path matters so much.
+
+**The limitation:** normalization controls the *scale* of activations, but the gradient still has to pass through every layer's Jacobian on its way down. In very deep plain networks, even with BatchNorm, accuracy got *worse* as layers were added, and not from overfitting: training error rose too. Something else was needed.
+
+## 4. Residual Connections
+
+He, Zhang, Ren and Sun saw exactly that in 2015: a 56-layer plain network had higher *training* error than a 20-layer one. A deeper network can always represent the shallower one (set the extra layers to the identity), so this was an optimization failure, not a capacity limit. Their fix, the **residual block**, changes one line. Instead of a layer computing $y = F(x)$, it computes:
+
+$$
+y = x + F(x)
+$$
+
+The input skips over the layer and is added to its output. $F$ now only has to learn the *change* to make, the residual, and learning "change nothing" means pushing $F$'s weights towards zero, which is easy.
+
+The bigger effect is on the gradient. Differentiate:
+
+$$
+\frac{\partial y}{\partial x} = I + \frac{\partial F}{\partial x}
+$$
+
+Through a stack of residual blocks, the product of Jacobians from section 2 becomes a product of $(I + J_l)$ terms. Expanding it, one of the terms is just $I$: a path from the loss to the first layer that passes through no weight matrices and no activation slopes at all. However small the $J_l$ get, the gradient arriving at layer 1 contains the top gradient unchanged. That is the "wire to every person" from the telephone game.
 
 <AddNormDiagram />
 
-## Learning Rate Schedules & Gradient Clipping
+ResNets with 152 layers won ImageNet in 2015, and a 1,001-layer version trained the following year. Every Transformer block uses two residual connections, one around attention and one around the feed-forward layer, which is why the stack of blocks in a language model is often called the **residual stream**: each block reads from it and adds its contribution back.
 
-- **Warmup + decay**: start small, ramp up, then decay — covered in [Calculus & Optimization](/docs/mathematics-for-ai/calculus-optimization); essential for training stability in Transformers specifically.
-- **Gradient clipping**: rescale the gradient if its norm exceeds a threshold, preventing a single bad batch from destabilizing training — near-universal in large-scale training runs.
-- **Mixed precision training**: use lower-precision (fp16/bf16) numbers for most computation to speed up training and reduce memory, while keeping certain operations (like the loss) in higher precision to avoid numerical instability.
+**The limitation of residuals** is that the stream keeps growing: every block adds to it, so its variance rises with depth. Pre-norm puts a normalization at the input to each block so the blocks see a stable scale, and many models also scale down the initial weights of each block's output layer by about $1/\sqrt{\text{depth}}$ (GPT-2 did this) so the sum doesn't start out large.
+
+<PredictFirst
+  question="In the experiment below, a 50-layer ReLU network with He initialization has a first-layer gradient about 7 times smaller than its last layer's. What happens when residual connections and LayerNorm are added?"
+  options={[
+    'The first layer gradient becomes zero, because LayerNorm removes the scale',
+    'The gradients at layers 1, 25 and 50 come out within a factor of about 1.5 of each other',
+    'The gradient explodes at layer 1',
+    'Nothing changes, because He initialization already solved it',
+  ]}
+  correctIndex={1}
+  explanation="The identity path in each residual block carries the gradient from the top to the bottom without passing through any weights, and pre-norm keeps the scale each block sees stable. The measured norms come out at 4.8, 4.0 and 3.4: nearly flat across 50 layers."
+/>
+
+## 5. Measuring It: a 50-Layer Experiment
+
+The claims above are measurable in a few lines. This builds four 50-layer networks, 256 units wide, runs one batch through each, and prints the norm of the gradient of the weights at layers 1, 25 and 50:
+
+```python
+import torch
+import torch.nn as nn
+
+torch.manual_seed(0)
+DEPTH, WIDTH = 50, 256
+
+class Block(nn.Module):
+    def __init__(self, act, std, residual=False):
+        super().__init__()
+        self.linear = nn.Linear(WIDTH, WIDTH)
+        nn.init.normal_(self.linear.weight, std=std)
+        nn.init.zeros_(self.linear.bias)
+        self.norm = nn.LayerNorm(WIDTH) if residual else nn.Identity()
+        self.act, self.residual = act, residual
+
+    def forward(self, x):
+        out = self.act(self.linear(self.norm(x)))
+        return x + out if self.residual else out
+
+def grad_norms(act, std, residual=False):
+    torch.manual_seed(0)
+    blocks = [Block(act, std, residual) for _ in range(DEPTH)]
+    net = nn.Sequential(*blocks, nn.Linear(WIDTH, 1))
+    loss = net(torch.randn(64, WIDTH)).pow(2).mean()
+    loss.backward()
+    return [blocks[i].linear.weight.grad.norm().item() for i in (0, 24, 49)]
+
+he = (2 / WIDTH) ** 0.5
+for name, args in [("sigmoid, std 0.05",            (torch.sigmoid, 0.05)),
+                   ("tanh, std 0.15 (too big)",     (torch.tanh, 0.15)),
+                   ("ReLU, He init",                (torch.relu, he)),
+                   ("ReLU, He init, residual + LN", (torch.relu, he / DEPTH ** 0.5, True))]:
+    g = grad_norms(*args)
+    print(f"{name:30s} layer 1: {g[0]:9.2e}   layer 25: {g[1]:9.2e}   layer 50: {g[2]:9.2e}")
+```
+
+Output (PyTorch 2.5, CPU):
+
+```
+sigmoid, std 0.05              layer 1:  0.00e+00   layer 25:  6.02e-19   layer 50:  5.25e-01
+tanh, std 0.15 (too big)       layer 1:  3.06e+04   layer 25:  1.30e+02   layer 50:  6.25e-01
+ReLU, He init                  layer 1:  4.87e-01   layer 25:  1.35e+00   layer 50:  3.49e+00
+ReLU, He init, residual + LN   layer 1:  4.80e+00   layer 25:  4.03e+00   layer 50:  3.44e+00
+```
+
+Each row is one section of this page:
+
+- **Sigmoid** vanishes completely. By layer 25 the gradient is $10^{-19}$; at layer 1 it has underflowed to exactly zero in 32-bit floats. Those layers will never learn.
+- **tanh with weights too large** explodes in the other direction. Each layer multiplies the gradient by roughly $0.15 \times \sqrt{256} = 2.4$, so layer 1 sees a gradient 50,000 times larger than layer 50. One step at a learning rate that suits layer 50 would wreck layer 1.
+- **ReLU with He initialization** is usable: the spread is a factor of 7 over 50 layers. This is the best a plain network gets.
+- **Residual plus LayerNorm** is almost flat: 4.8, 4.0, 3.4. The branch weights were scaled down by $1/\sqrt{50}$, as described above, so the stream starts at a sensible size.
+
+## 6. Regularization for Deep Nets
+
+A network that trains well can also memorize. Large networks have far more parameters than training examples, and once the gradient flows they will happily fit noise. Regularization pushes them towards solutions that generalize.
+
+**Dropout** (Srivastava et al., 2014) sets each activation to zero with probability $p$ at every training step, and scales the survivors by $1/(1-p)$ so the expected value is unchanged. No unit can rely on any particular other unit being present, so the network learns redundant, spread-out features. One way to see it: each step trains a different random sub-network, and all of them share weights, so the final network acts like an average over an enormous ensemble. At inference dropout is switched off. Typical rates are 0.1 in Transformers and up to 0.5 in older fully connected layers.
+
+**Weight decay** shrinks every weight a little towards zero at each step. With Adam it should be applied directly to the weights, not added to the gradient, which is the difference between Adam with L2 and AdamW ([Optimizers](/docs/deep-learning/optimizers) covers why).
+
+**Data is the strongest regularizer.** Very large language models are often trained with little or no dropout, because they see each token about once: there is nothing to memorize when no example repeats. Augmentation (crops, flips and colour jitter for images) manufactures more data where it is scarce.
+
+Label smoothing, early stopping, stochastic depth and the rest of the toolkit are covered on [the regularization page](/docs/deep-learning/initialization-regularization-scheduling).
+
+## 7. Keeping the Updates Stable
+
+Healthy gradients are necessary but not sufficient. A single bad batch, an outlier, or the early chaos of training can still produce one update large enough to undo hours of progress. Three techniques keep updates in bounds.
+
+**Gradient clipping by norm.** Before the optimizer step, compute the norm of the whole gradient vector $g$ across every parameter. If it exceeds a threshold $c$, scale it down:
+
+$$
+g \leftarrow g \cdot \min\!\left(1, \frac{c}{\lVert g \rVert}\right)
+$$
+
+The direction is unchanged; only the step length is capped. A threshold of 1.0 is the common default in language-model training. In PyTorch it is one line, placed between `loss.backward()` and `optimizer.step()`:
+
+```python
+grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+```
+
+Logging the norm it returns is one of the most useful training diagnostics: steady, slow-moving norms mean healthy training; sudden spikes come before loss spikes.
+
+**Learning-rate warmup and decay.** At step 0 the weights are random and Adam's running estimates of gradient scale are empty, so large steps are dangerous. Warmup raises the learning rate linearly from near zero over the first few hundred or thousand steps; afterwards it decays, usually along a cosine, so late training takes small careful steps.
 
 <LrScheduleDiagram />
 
-Next: [Convolutional Neural Networks](/docs/deep-learning/cnns) — the architecture that made deep learning work for images.
+**Mixed precision.** Most of the arithmetic is done in 16-bit floats, which halves memory traffic and runs several times faster on tensor cores, while a 32-bit master copy of the weights receives the updates. There are two 16-bit formats, and they fail differently:
+
+```python
+import torch
+for t in (torch.float32, torch.float16, torch.bfloat16):
+    f = torch.finfo(t); print(f'{str(t):15s} max {f.max:.2e}  smallest normal {f.tiny:.2e}  eps {f.eps:.1e}')
+print(torch.tensor(1e-8, dtype=torch.float16).item(), torch.tensor(1e-8, dtype=torch.bfloat16).item())
+```
+
+```
+torch.float32   max 3.40e+38  smallest normal 1.18e-38  eps 1.2e-07
+torch.float16   max 6.55e+04  smallest normal 6.10e-05  eps 9.8e-04
+torch.bfloat16  max 3.39e+38  smallest normal 1.18e-38  eps 7.8e-03
+0.0 1.0011717677116394e-08
+```
+
+`float16` has more precision but a tiny range: a gradient of $10^{-8}$ becomes 0, and anything above 65,504 overflows. Training in it needs **loss scaling**: multiply the loss by a large factor before `backward()` so small gradients stay representable, then divide it back out before the update. `bfloat16` keeps float32's range with less precision, so small gradients survive and no loss scaling is needed. That is why most large-model training uses bfloat16 on hardware that supports it.
+
+<GoDeeper title="Go deeper: what to look at when a deep network won't train">
+
+Most failures show up in three numbers you can log every step: the loss, the global gradient norm (returned by `clip_grad_norm_`), and the learning rate.
+
+- **Loss flat from the start.** Gradients are vanishing or the learning rate is far too small. Check per-layer gradient norms, as in section 5; if early layers are near zero, look at activations (sigmoid or tanh deep in the network), initialization, or a missing residual path.
+- **Loss becomes `NaN` within the first steps.** Usually exploding gradients or a numerical problem: a learning rate too high without warmup, `log(0)` in a hand-written loss, or float16 overflow. Lower the learning rate, add warmup and clipping, compute the loss in float32.
+- **Loss spikes late in training, then partially recovers.** Common in large Transformer runs. Gradient-norm spikes usually come first. Clipping, a lower peak learning rate, and normalizing queries and keys inside attention all reduce them; large runs also restart from a checkpoint before the spike and skip the offending batches.
+- **Training loss fine, validation loss rising.** Not an optimization problem at all; this is overfitting, and section 6 applies.
+
+A cheap first check for any new model: train on a single small batch until the loss is near zero. A network that can't memorize 32 examples has a bug, not a regularization problem.
+
+</GoDeeper>
+
+## 8. Putting It Together: a Modern Block
+
+Every idea on this page appears in one Transformer block as it is written today (Llama-style, pre-norm):
+
+$$
+\begin{aligned}
+h &= x + \operatorname{Attention}(\operatorname{RMSNorm}(x)) \\
+y &= h + \operatorname{FFN}(\operatorname{RMSNorm}(h))
+\end{aligned}
+$$
+
+Two residual connections keep a clean gradient path through the whole stack. Each sub-layer normalizes its own input, so it sees a stable scale however large the residual stream has grown. The feed-forward layer uses a smooth ReLU-family activation (SwiGLU) whose slope doesn't collapse. Training adds AdamW with weight decay, warmup then cosine decay, clipping at 1.0, and bfloat16 arithmetic. None of these is exotic; together they are what makes depth trainable.
+
+## 9. When *Not* to Use These Techniques
+
+| Situation | What to do instead |
+|---|---|
+| BatchNorm with batches of 1 to 8, or sequence models | LayerNorm, RMSNorm or GroupNorm; BatchNorm's statistics are too noisy |
+| Dropout in a model trained for one pass over huge data | Usually leave it out; there is nothing to memorize, and it slows learning |
+| A shallow network (2 to 4 layers) | Plain layers with He initialization; residuals and normalization add little |
+| Clipping to hide a real bug | Find the cause first; a gradient norm that always hits the threshold means the threshold or learning rate is wrong |
+| float16 without loss scaling | Use bfloat16, or enable automatic loss scaling (`torch.amp.GradScaler`) |
+| Comparing models with and without dropout using training loss | Compare validation loss; dropout raises training loss by design |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| The problem | The gradient at layer 1 is a product of one Jacobian per layer above it |
+| Vanishing | Factors below 1 multiply to nothing; sigmoid's slope is at most 0.25 |
+| Exploding | Factors above 1 multiply to overflow; weights too large are the usual cause |
+| Normalization | Standardize a group of activations, then learn scale and shift; the variants differ in the group |
+| BatchNorm vs LayerNorm | Across the batch vs across one example's features; Transformers use the latter, often as RMSNorm |
+| Residuals | $y = x + F(x)$ gives the gradient an identity path through the whole stack |
+| Dropout | Zero random activations during training; an implicit ensemble |
+| Clipping | Cap the gradient's norm, keep its direction; log the norm every step |
+| Mixed precision | bfloat16 keeps float32's range; float16 needs loss scaling |
+
+---
+
+Next: [Convolutional Neural Networks](/docs/deep-learning/cnns), the architecture that made deep learning work for images, and the first place residual connections were used at scale.
+
+## Sources
+
+- Glorot and Bengio, [Understanding the difficulty of training deep feedforward neural networks](https://proceedings.mlr.press/v9/glorot10a.html) (2010)
+- Ioffe and Szegedy, [Batch Normalization](https://arxiv.org/abs/1502.03167) (2015)
+- Ba, Kiros and Hinton, [Layer Normalization](https://arxiv.org/abs/1607.06450) (2016)
+- Zhang and Sennrich, [Root Mean Square Layer Normalization](https://arxiv.org/abs/1910.07467) (2019)
+- He, Zhang, Ren and Sun, [Deep Residual Learning for Image Recognition](https://arxiv.org/abs/1512.03385) (2015) and [Identity Mappings in Deep Residual Networks](https://arxiv.org/abs/1603.05027) (2016)
+- Srivastava et al., [Dropout: A Simple Way to Prevent Neural Networks from Overfitting](https://jmlr.org/papers/v15/srivastava14a.html) (2014)
+- Pascanu, Mikolov and Bengio, [On the difficulty of training recurrent neural networks](https://arxiv.org/abs/1211.5063) (2013), the origin of gradient-norm clipping
+- Micikevicius et al., [Mixed Precision Training](https://arxiv.org/abs/1710.03740) (2017)
+- Xiong et al., [On Layer Normalization in the Transformer Architecture](https://arxiv.org/abs/2002.04745) (2020), on pre-norm vs post-norm
