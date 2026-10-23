@@ -1,103 +1,338 @@
 ---
 title: "Decision Trees, In Full Depth"
 sidebar_position: 5.1
-description: "How a tree learns a nested sequence of yes/no splits instead of a boundary through feature space -- the real splitting criteria, derived, not just named."
+description: "How a decision tree learns nested yes/no splits: Gini, entropy and variance reduction derived, why misclassification rate is the wrong split criterion, the greedy CART algorithm and its cost, leaf values, cost-complexity pruning, instability, and a from-scratch implementation checked against scikit-learn."
 ---
 
-import __migratedImg0 from './img/tree-decision-regions.png';
-
-
+import regionsLight from './img/tree-decision-regions-light.png';
+import regionsDark from './img/tree-decision-regions.png';
 import DecisionBoundaryPlayground from '../../../viz/DecisionBoundaryPlayground';
 import treeStructureDark from './img/tree-structure.png';
 import treeStructureLight from './img/tree-structure-light.png';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Decision Trees, In Full Depth
 
-Every model covered so far — [Linear](/docs/machine-learning/linear-regression), [Ridge/Lasso](/docs/machine-learning/ridge-regression), [Logistic Regression](/docs/machine-learning/logistic-regression) — draws a straight (or smoothly curved) boundary through feature space. A decision tree draws something completely different: a sequence of yes/no questions, splitting the data into rectangular regions.
+Every model so far, from [linear regression](/docs/machine-learning/linear-regression) to [logistic regression](/docs/machine-learning/logistic-regression), computes a weighted sum of the features and draws one smooth boundary. A decision tree does something entirely different: it asks a sequence of yes/no questions about one feature at a time, and each answer narrows down the prediction. This page derives how a tree chooses its questions (the impurity measures, and why the obvious one doesn't work), the greedy algorithm that grows it and what it costs, what each leaf predicts, how to stop a tree from memorizing its training data, and why trees are unstable, which is the reason the next three pages exist.
 
-## What Is a Decision Tree?
+<ELI5>
 
-A tree is a nested set of if/else rules learned directly from data, ending in a prediction:
+Think of the game Twenty Questions. You're trying to guess an animal. A good first question is "Does it live in water?" because it splits the possibilities roughly in half, whatever the answer. A bad first question is "Is it a platypus?" because it almost always gets "no" and you've learned nearly nothing.
 
-<ThemedImage alt="A depth-2 decision tree asking sequential yes/no questions" sources={{light: treeStructureLight, dark: treeStructureDark}} />
+A decision tree plays Twenty Questions with data. To predict whether a student passes, it might ask "Studied more than 5 hours?" then "Attended most lectures?" and so on, until the group of students who gave the same answers is mostly one outcome. Choosing good questions, the ones that sort the data most cleanly, is the whole algorithm. Everything below is that game made exact.
 
-Each internal node asks a single-feature question ("Hours Studied > 5?"), each branch is an answer, and each leaf is a prediction. To predict for a new example, walk down from the root, answering each question, until reaching a leaf.
+</ELI5>
 
-## Why the Boundary Looks Like a Staircase
+## 1. What a Tree Is
 
-Because every split tests exactly one feature against a threshold, the resulting decision regions are always **axis-aligned rectangles** — never diagonal, never curved:
+A tree is a set of nested if/else rules learned from data:
 
-<img src={__migratedImg0} alt="Decision tree decision regions — an axis-aligned staircase boundary, contrasted with logistic regression's single straight line" style={{maxWidth: '100%'}} />
+<ThemedImage alt="A depth-2 decision tree asking sequential yes/no questions about single features, ending in leaf predictions" sources={{light: treeStructureLight, dark: treeStructureDark}} />
 
-Compare this directly to [Logistic Regression's single straight boundary](/docs/machine-learning/logistic-regression#the-decision-boundary). A tree can carve out *any* shape given enough splits (it's far more flexible), but that flexibility is exactly why trees overfit so easily — a deep enough tree can wall off every individual training point into its own tiny region, memorizing noise rather than learning a real pattern.
+Each **internal node** tests one feature against a threshold ("hours studied ≤ 5?"). Each branch is an answer. Each **leaf** holds a prediction. To predict for a new example, start at the root, follow the answers down, and return the leaf's value. A tree of depth $D$ asks at most $D$ questions per prediction, so predictions are very fast.
 
-Click to place points and drag **Max depth** up to watch the staircase get finer — real Gini-impurity splits, computed live:
+In the language of the [overview](/docs/machine-learning/overview), the hypothesis class is **piecewise-constant functions on axis-aligned boxes**. The tests carve the feature space into rectangular regions $R_1, \dots, R_M$, one per leaf, and the model predicts a constant $c_m$ in each:
+
+$$
+f(\mathbf{x}) = \sum_{m=1}^{M} c_m\,\mathbb{1}[\mathbf{x} \in R_m]
+$$
+
+Learning a tree means choosing the regions and the constants. Choosing the constants is easy (Section 4). Choosing the regions is the hard part, and it starts with a way to score a split.
+
+## 2. Measuring How Mixed a Node Is
+
+### How a Split Is Chosen
+
+A split is good if the two groups it creates are each more "pure", more dominated by one class, than the group before. That needs a number for how mixed a node is. Let $p_k$ be the fraction of the node's training examples in class $k$.
+
+**Misclassification rate.** The obvious measure is the error you'd make predicting the majority class: $E = 1 - \max_k p_k$. It's what we ultimately care about, but it's a poor guide for growing a tree. Take a node with 40 examples of each class, and two candidate splits:
+
+| Split | Left child | Right child | Misclassification | Gini |
+|---|---|---|---|---|
+| A | 30 vs 10 | 10 vs 30 | $\tfrac{10 + 10}{80} = 0.25$ | $0.375$ |
+| B | 20 vs 40 | 20 vs 0 | $\tfrac{20 + 0}{80} = 0.25$ | $0.333$ |
+
+Misclassification scores them the same. But split B is more useful: it has produced a perfectly pure node of 20 examples, which needs no further splitting, while A has left two nodes that both still need work. A criterion that can't see the difference will often find that no single split improves it at all, and stop growing too early, even when two splits in a row would separate the classes perfectly.
+
+**Gini impurity** is
+
+$$
+G = 1 - \sum_{k} p_k^2 = \sum_k p_k(1 - p_k)
+$$
+
+It has a concrete reading: pick a random example from the node and label it randomly according to the node's class proportions; $G$ is the probability that the label is wrong. It's 0 for a pure node and largest when classes are evenly mixed (0.5 for two classes). For the table: in split A each child has proportions $(0.75, 0.25)$, so $G = 1 - 0.75^2 - 0.25^2 = 0.375$, and the weighted average is 0.375. In split B, the left child has $(\tfrac13, \tfrac23)$, so $G = 1 - \tfrac19 - \tfrac49 = \tfrac49$; the right child is pure, $G = 0$. Weighted by size, $\tfrac{60}{80}\cdot\tfrac49 + \tfrac{20}{80}\cdot 0 = 0.333$. Gini prefers B.
+
+**Entropy** is the alternative, from [information theory](/docs/mathematics-for-ai/probability-statistics#entropy-cross-entropy-and-kl-divergence):
+
+$$
+H = -\sum_k p_k\log_2 p_k
+$$
+
+measured in bits: 0 for a pure node, 1 bit for an even two-class split.
+
+**Why Gini and entropy work and misclassification doesn't.** For two classes, plot each measure against $p$, the fraction in class 1. Misclassification is a tent, $\min(p, 1-p)$: two straight lines. Gini, $2p(1-p)$, and entropy are *strictly concave*: curved downward everywhere. The weighted impurity of two children is a weighted average of points on the curve, and the parent's impurity is the curve at the weighted average of their $p$ values. For a strictly concave curve, the curve at an average is always *above* the average of the curve (Jensen's inequality), unless the children have identical proportions. So with Gini or entropy, any split that changes the class proportions at all strictly reduces impurity. On the straight segments of the tent, the curve and the chord coincide: a split whose children keep the same majority class as the parent improves misclassification by exactly zero, however much purer one child becomes. And between splits like A and B, misclassification counts only how many minority examples remain, not how they're spread, so it can't prefer the split that finishes part of the job.
+
+**The split score.** The decrease in impurity from parent $P$ to children $L$ and $R$, weighted by how many examples go each way:
+
+$$
+\Delta = I(P) - \frac{n_L}{n_P}I(L) - \frac{n_R}{n_P}I(R)
+$$
+
+With entropy as $I$, $\Delta$ is called **information gain**. Gini and entropy rarely disagree about the best split; Gini avoids computing logarithms and is scikit-learn's default.
+
+**Regression trees** have no classes. The impurity is the variance of the targets in the node, $I = \tfrac{1}{n}\sum_i (y_i - \bar{y})^2$, which is the mean squared error of predicting the node's mean. The split score is then the reduction in squared error, and the same machinery applies.
+
+## 3. Growing the Tree: Greedy Recursive Splitting
+
+Finding the tree that minimizes training error for a given number of leaves is NP-complete (Hyafil and Rivest, 1976), so every practical algorithm grows the tree **greedily**, one split at a time, never revisiting earlier choices. This is CART (Breiman, Friedman, Olshen and Stone, 1984), the algorithm scikit-learn implements:
+
+1. At the current node, for every feature and every candidate threshold, compute the impurity decrease $\Delta$.
+2. Take the split with the largest $\Delta$, and send each example left or right.
+3. Repeat on each child.
+4. Stop at a node when it's pure, when a size or depth limit is reached, or when no split improves impurity.
+5. Each leaf predicts a constant (Section 4).
+
+**Which thresholds?** Between two consecutive distinct values of a feature, every threshold sends the same examples left and right, so only the $n - 1$ midpoints between sorted values need checking. Naively, scoring each threshold costs $O(n)$ to count classes on each side, giving $O(n^2)$ per feature. The standard trick removes that: sort the feature once, then sweep the threshold from left to right, moving one example from the right child's class counts to the left child's at each step. Each threshold then costs $O(1)$ to score, and one feature costs $O(n\log n)$ for the sort. A full level of the tree costs $O(d\, n\log n)$ for $d$ features, and a balanced tree of depth $D$ costs $O(D\,d\,n\log n)$ to grow. The implementation in Section 8 uses this sweep.
+
+**Categorical features** with $q$ unordered levels could be split $2^{q-1} - 1$ ways. For two classes (and for regression) there's a shortcut: sort the levels by their proportion of class 1 (or mean target) and treat them as ordered; the best split is guaranteed to be one of the $q - 1$ splits along that order (a result in Breiman et al., 1984). scikit-learn's trees need categories encoded as numbers; LightGBM and CatBoost handle them natively.
+
+**Greedy has a blind spot.** A split is judged only by its immediate improvement. If two features matter only *together* (an XOR pattern: class 1 when exactly one of $x_1$, $x_2$ is high), no single split on either feature improves impurity much, so the greedy algorithm may never find the pair. Deeper trees and randomness (Section 7's ensembles) partly compensate.
+
+<PredictFirst
+  question="A node holds 50 examples of each class. Split A gives children (40, 10) and (10, 40). Split B gives (50, 20) and (0, 30). Which split does Gini impurity prefer?"
+  options={[
+    'A, because both children are 80% pure',
+    'B, because it creates a perfectly pure child',
+    'Neither: both have the same misclassification rate, so Gini scores them equally',
+    'It cannot be decided without the feature values',
+  ]}
+  correctIndex={1}
+  explanation="Split A: each child has Gini 1 - 0.8² - 0.2² = 0.32, weighted 0.32. Split B: the left child (50, 20) has Gini 1 - (5/7)² - (2/7)² ≈ 0.408, weighted by 70/100 gives 0.286; the right child is pure. Total 0.286, lower than 0.32, so Gini prefers B. Both splits misclassify 20 of 100, which is why misclassification rate can't tell them apart."
+/>
+
+## 4. What Each Leaf Predicts
+
+Each leaf predicts the constant that minimizes the loss over its training examples. For squared error, minimize $\sum_{i \in \text{leaf}}(y_i - c)^2$ over $c$: the derivative is $-2\sum_i (y_i - c)$, which is zero at
+
+$$
+c = \frac{1}{n_{\text{leaf}}}\sum_{i \in \text{leaf}} y_i
+$$
+
+the mean of the leaf's targets. (For absolute error it would be the median, which is what `criterion="absolute_error"` uses.) For classification, the leaf stores its class proportions: `predict_proba` returns them, and `predict` returns the most common class, the constant that minimizes misclassification in that leaf.
+
+Those proportions are crude probabilities. A leaf with 3 examples, all of one class, reports 100% confidence on 3 data points. Deep trees therefore give overconfident, poorly calibrated probabilities, another reason single trees are rarely used alone for probability estimates.
+
+## 5. The Staircase Boundary
+
+### Why the Boundary Looks Like a Staircase
+
+Because every test compares one feature with a threshold, every region boundary is parallel to an axis. A tree's decision boundary is a staircase of horizontal and vertical segments, never a diagonal or a curve:
+
+<ThemedImage alt="Two interleaved half-moon classes with a depth-4 tree's staircase boundary in solid lines and logistic regression's straight dashed boundary" sources={{light: regionsLight, dark: regionsDark}} />
+
+On these two interleaved half-moons, logistic regression's single straight line gets 85% of the training points right, while a depth-4 tree's staircase gets 94%. Two consequences follow from the shape:
+
+- **Diagonal boundaries are expensive.** If the true boundary is $x_1 = x_2$, a tree needs many small steps to approximate it, where a linear model needs one line. Rotating or combining features first (for example adding $x_1 - x_2$) can help a tree a lot.
+- **Any shape is reachable, given enough steps.** With enough depth, the staircase can wall off every individual training point. Training error goes to zero and the tree has memorized the data, including its noise.
+
+Click to place points and raise **Max depth** to watch the staircase get finer, with real Gini splits computed live:
 
 <DecisionBoundaryPlayground defaultMode="tree" />
 
-## How a Split Is Chosen
+The second consequence is the central practical problem with trees.
 
-At each node, the tree tries every feature and every possible threshold, and picks whichever split makes the resulting two groups **most pure** — as unmixed in class labels as possible.
+## 6. Stopping a Tree From Memorizing
 
-**Gini Impurity** (classification): $G = 1 - \sum_{c} p_c^2$, where $p_c$ is the fraction of examples in class $c$ at that node. $G=0$ means perfectly pure (one class only); $G$ is maximized when classes are evenly mixed. A split is scored by the *weighted average* Gini of its two resulting children — lower is better.
+An unconstrained tree grows until every leaf is pure. On the breast-cancer data in Section 8, that's a tree with 100% training accuracy and 90.6% test accuracy. There are two ways to control it.
 
-**Entropy / Information Gain** (the alternative criterion): $H = -\sum_c p_c \log_2 p_c$ — the same [entropy](/docs/mathematics-for-ai/probability-statistics#entropy-cross-entropy-and-kl-divergence) used throughout information theory. **Information gain** is the reduction in entropy from parent to children: $IG = H(\text{parent}) - \sum_{\text{child}} \frac{n_{\text{child}}}{n_{\text{parent}}} H(\text{child})$. Gini and entropy nearly always pick similar splits in practice; Gini is slightly cheaper to compute (no logarithm) and is the more common default.
+**Stop early (pre-pruning).** Limit `max_depth`, require `min_samples_leaf` examples in every leaf, or require a minimum impurity decrease per split. Simple and fast, but short-sighted: a split that looks useless may enable a very useful one below it (the XOR problem again), and an early stop never finds out.
 
-**For regression**, the criterion switches to variance reduction — minimize the weighted average of each child's variance (equivalently, MSE — see [Linear Regression](/docs/machine-learning/linear-regression#2-the-cost-function-mean-squared-error)), since there's no "class" to measure impurity over.
+**Grow fully, then prune back (post-pruning).** CART's answer is **cost-complexity pruning**. For a tree $T$ with $\lvert T\rvert$ leaves and training error $R(T)$, define a penalized cost
 
-## The Full Algorithm (Recursive Partitioning)
+$$
+R_\alpha(T) = R(T) + \alpha\,\lvert T\rvert
+$$
 
-1. At the current node, try every (feature, threshold) pair; compute the impurity reduction each split would give.
-2. Pick the split with the best (largest) impurity reduction.
-3. Partition the data into the two children accordingly.
-4. Recurse on each child, until a stopping condition: max depth reached, a node is already pure, or too few examples remain to split further.
-5. Each final leaf predicts the majority class (classification) or the mean target value (regression) of the training examples that landed there.
+where $\alpha \ge 0$ is a price per leaf. For each $\alpha$, there's a unique smallest subtree of the full tree that minimizes $R_\alpha$, and as $\alpha$ grows these subtrees are nested: the optimal tree only ever loses branches. The sequence can be computed by **weakest-link pruning**. For each internal node $t$, compare keeping its whole branch $T_t$ against collapsing it into a single leaf. Collapsing raises the error from $R(T_t)$ to $R(t)$ and removes $\lvert T_t\rvert - 1$ leaves, so it's worth it once
 
-This greedy, one-split-at-a-time process is why trees train fast — there's no gradient descent, no iterative optimization loop, just repeated exhaustive search over a shrinking dataset.
+$$
+\alpha \ge \frac{R(t) - R(T_t)}{\lvert T_t\rvert - 1}
+$$
 
-## Controlling Overfitting
+Collapse the node where this ratio is smallest (the branch that buys the least error reduction per leaf), record that $\alpha$, and repeat until only the root is left. That gives a short list of candidate trees, one per critical $\alpha$, and cross-validation picks among them. In scikit-learn, `cost_complexity_pruning_path` returns the critical values and `ccp_alpha` applies one. In Section 8, pruning cuts the tree from 16 leaves to 6 and raises test accuracy from 90.6% to 91.8%.
 
-An unconstrained tree will grow until every leaf is perfectly pure — which usually means memorizing the training set. The standard controls:
+<GoDeeper title="Go deeper: why the full-tree feature importances mislead">
 
-- **Max depth**: hard cap on how many questions deep the tree can go.
-- **Min samples per leaf / per split**: refuse to split a node with too few examples, or produce a leaf with too few.
-- **Min impurity decrease**: refuse a split that doesn't improve purity by at least some threshold.
-- **Pruning**: grow the full tree first, then remove branches that don't improve validation performance (see [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals#train-validation-test-splits)) — a post-hoc alternative to constraining growth upfront.
+Trees report a **feature importance** for free: the total impurity decrease contributed by splits on each feature, weighted by the number of examples reaching those splits, normalized to sum to 1. It's useful, but biased in two ways worth knowing before you read it.
 
-A single, well-pruned tree is rarely the strongest model on its own — its real value, as the next page covers, is as the *building block* inside ensembles like [Random Forest](/docs/machine-learning/random-forest) and [Gradient Boosting](/docs/machine-learning/boosting).
+**It favours features with many possible split points.** A continuous feature, or a categorical one with many levels, offers hundreds of thresholds; a binary feature offers one. With more chances, some threshold on the many-valued feature will reduce impurity by luck, even if the feature is pure noise. Strobl et al. (2007) demonstrated this with random-noise features of varying cardinality: the high-cardinality noise features were ranked as important. Conditional-inference trees (Hothorn, Hornik and Zeileis, 2006) fix the selection bias by choosing the split variable with a significance test first.
 
-## Strengths and Weaknesses
+**It's computed on training data.** A deep tree's splits near the leaves fit noise, and the impurity they "remove" counts toward importance even though it doesn't generalize. Permutation importance on held-out data avoids this: shuffle one feature's values in the validation set and measure how much the score drops. See [Classical Interpretability](/docs/interpretability/classical-interpretability) for permutation importance and SHAP.
 
-- **Interpretable**: you can print the tree and read the exact decision logic — hard to match with any other model class.
-- **No feature scaling needed**: splits only compare a feature to a threshold, so scale/units don't matter (unlike [Linear Regression](/docs/machine-learning/linear-regression) or [KNN](/docs/machine-learning/supervised-learning#k-nearest-neighbors)).
-- **Handles nonlinear relationships and feature interactions** natively, unlike plain linear/logistic regression.
-- **High variance**: small changes in training data can produce a completely different tree structure — this instability is exactly what ensembling (next page) fixes.
-- **Biased toward features with more possible split points** (e.g. continuous features over binary ones) unless explicitly corrected.
+</GoDeeper>
 
-## Minimal Implementation
+## 7. What Trees Are Good and Bad At
 
-A single split decision, implementing the Gini criterion directly:
+### Strengths and Weaknesses
+
+| Strengths | Weaknesses |
+|---|---|
+| **Readable.** A shallow tree can be printed and checked by a domain expert, rule by rule | **High variance.** A small change in the data can change the root split, and then everything below it |
+| **No scaling needed.** Splits compare a feature with a threshold, so units and monotone transformations don't matter | **Axis-aligned.** Diagonal or smooth boundaries need many splits |
+| **Nonlinearity and interactions for free.** A split below another split is an interaction | **Greedy.** Can miss features that only matter in combination |
+| **Mixed feature types**, and missing values in some implementations | **Poor probabilities.** Leaf proportions from few examples are overconfident |
+| **Fast** to train, $O(D\,d\,n\log n)$, and to predict, $O(D)$ | **Can't extrapolate.** Predictions outside the training range stay at the edge leaf's constant |
+
+The first weakness deserves numbers. In Section 8, the same depth-1 tree (a single split) was fitted to 100 bootstrap resamples of the training data. The root split was on "worst perimeter" in 52 of them, "worst concave points" in 31, and three other features in the rest. If the very first question changes that often, everything below it changes too. That instability is high variance in the sense of the [bias-variance trade-off](/docs/machine-learning/model-evaluation-metrics#bias-variance-tradeoff): a deep tree has low bias, since it can fit almost anything, and high variance, since what it fits depends heavily on the particular sample.
+
+High variance with low bias is exactly the situation averaging is good at fixing. Average many trees grown on different resamples and the variance shrinks while the bias stays low. That's the [random forest](/docs/machine-learning/random-forest). Alternatively, use many *shallow* trees, each correcting the errors of the ones before. That's [boosting](/docs/machine-learning/boosting). Single trees are rarely the strongest model; they're the building block of the strongest tabular models there are.
+
+## 8. Minimal Implementation
+
+A complete CART classifier in plain NumPy: Gini impurity, the sorted sweep from Section 3, recursive growth with a depth limit, and majority-class leaves. It's compared against scikit-learn at several depths on the breast-cancer data, followed by cost-complexity pruning and the instability experiment:
 
 ```python
 import numpy as np
+from sklearn.datasets import load_breast_cancer
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.tree import DecisionTreeClassifier
 
-def gini(y):
-    p = np.bincount(y) / len(y)
-    return 1 - np.sum(p ** 2)
+def gini(counts):
+    p = counts / counts.sum()
+    return 1.0 - np.sum(p ** 2)
 
-def best_split(X, y):
-    best_feat, best_thresh, best_score = None, None, np.inf
-    n_features = X.shape[1]
-    for feat in range(n_features):
-        for thresh in np.unique(X[:, feat]):
-            left = y[X[:, feat] <= thresh]
-            right = y[X[:, feat] > thresh]
-            if len(left) == 0 or len(right) == 0:
-                continue
-            weighted_gini = (len(left) * gini(left) + len(right) * gini(right)) / len(y)
-            if weighted_gini < best_score:
-                best_feat, best_thresh, best_score = feat, thresh, weighted_gini
-    return best_feat, best_thresh
+def best_split(X, y, n_classes):
+    """Best (feature, threshold) by weighted Gini, scanning each sorted feature once."""
+    n = len(y)
+    best = (None, None, gini(np.bincount(y, minlength=n_classes)))   # must beat the parent
+    for j in range(X.shape[1]):
+        order = np.argsort(X[:, j])
+        xs, ys = X[order, j], y[order]
+        left = np.zeros(n_classes)
+        right = np.bincount(ys, minlength=n_classes).astype(float)
+        for i in range(n - 1):                     # move one example from right to left
+            left[ys[i]] += 1; right[ys[i]] -= 1
+            if xs[i] == xs[i + 1]:
+                continue                           # can't split between equal values
+            score = ((i + 1) * gini(left) + (n - i - 1) * gini(right)) / n
+            if score < best[2]:
+                best = (j, (xs[i] + xs[i + 1]) / 2, score)
+    return best[:2]
+
+def grow(X, y, n_classes, depth, max_depth):
+    counts = np.bincount(y, minlength=n_classes)
+    if depth == max_depth or counts.max() == len(y):
+        return counts.argmax()                     # leaf: majority class
+    j, t = best_split(X, y, n_classes)
+    if j is None:
+        return counts.argmax()
+    mask = X[:, j] <= t
+    return (j, t, grow(X[mask], y[mask], n_classes, depth + 1, max_depth),
+                  grow(X[~mask], y[~mask], n_classes, depth + 1, max_depth))
+
+def predict_one(node, x):
+    while isinstance(node, tuple):
+        j, t, left, right = node
+        node = left if x[j] <= t else right
+    return node
+
+X, y = load_breast_cancer(return_X_y=True)
+X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.3, stratify=y, random_state=0)
+
+print("depth  ours: train  test   sklearn: train  test")
+for d in [1, 2, 4, 8, None]:
+    ours = grow(X_tr, y_tr, 2, 0, d if d is not None else 10**9)
+    acc = lambda Xs, ys: np.mean([predict_one(ours, x) == t for x, t in zip(Xs, ys)])
+    sk = DecisionTreeClassifier(max_depth=d, random_state=0).fit(X_tr, y_tr)
+    print(f"{str(d):>5}       {acc(X_tr, y_tr):.3f}  {acc(X_te, y_te):.3f}            "
+          f"{sk.score(X_tr, y_tr):.3f}  {sk.score(X_te, y_te):.3f}")
+
+# Cost-complexity pruning: choose alpha by cross-validation on the training set
+path = DecisionTreeClassifier(random_state=0).cost_complexity_pruning_path(X_tr, y_tr)
+alphas = path.ccp_alphas[:-1]
+cv = [cross_val_score(DecisionTreeClassifier(ccp_alpha=a, random_state=0), X_tr, y_tr, cv=5).mean() for a in alphas]
+a_best = alphas[int(np.argmax(cv))]
+pruned = DecisionTreeClassifier(ccp_alpha=a_best, random_state=0).fit(X_tr, y_tr)
+full = DecisionTreeClassifier(random_state=0).fit(X_tr, y_tr)
+print(f"full tree: {full.get_n_leaves()} leaves, test {full.score(X_te, y_te):.3f}")
+print(f"pruned (alpha={a_best:.4f}): {pruned.get_n_leaves()} leaves, test {pruned.score(X_te, y_te):.3f}")
+
+# Instability: which feature does the root split on, across bootstrap resamples?
+rng = np.random.default_rng(0)
+names = load_breast_cancer().feature_names
+roots = [str(names[DecisionTreeClassifier(max_depth=1, random_state=0).fit(X_tr[i], y_tr[i]).tree_.feature[0]])
+         for i in (rng.integers(0, len(y_tr), len(y_tr)) for _ in range(100))]
+vals, cnts = np.unique(roots, return_counts=True)
+for v, c in sorted(zip(vals, cnts), key=lambda kv: -kv[1]):
+    print(f"root split on {str(v)}: {c} of 100 resamples")
 ```
 
-Next: [Random Forest & Extra Trees](/docs/machine-learning/random-forest) — averaging many trees together to fix the single-tree instability problem above.
+Output (scikit-learn 1.7):
+
+```
+depth  ours: train  test   sklearn: train  test
+    1       0.932  0.889            0.932  0.889
+    2       0.942  0.906            0.942  0.906
+    4       0.990  0.912            0.990  0.906
+    8       1.000  0.918            1.000  0.906
+ None       1.000  0.918            1.000  0.906
+full tree: 16 leaves, test 0.906
+pruned (alpha=0.0088): 6 leaves, test 0.918
+root split on worst perimeter: 52 of 100 resamples
+root split on worst concave points: 31 of 100 resamples
+root split on worst radius: 8 of 100 resamples
+root split on mean concave points: 5 of 100 resamples
+root split on worst area: 4 of 100 resamples
+```
+
+Reading the results:
+
+- **The from-scratch tree matches scikit-learn exactly at depths 1 and 2**, same accuracy on both sets. From depth 4 the two differ slightly on the test set while agreeing on training accuracy. Both are correct: at deeper nodes several splits often tie (or nearly tie) on Gini, and the two implementations break ties differently (scikit-learn visits features in a randomized order). Different tied splits give the same training fit and slightly different test results, a small instance of the instability in Section 7.
+- **Depth trades training fit for test accuracy.** Training accuracy climbs to 100% by depth 8; test accuracy stops improving after depth 2 to 4. The unconstrained tree has memorized the training set.
+- **Pruning helps and simplifies.** Cross-validated cost-complexity pruning cuts the tree from 16 leaves to 6 and gains 1.2 points of test accuracy. A 6-leaf tree is also something a clinician could read.
+- **The root is unstable**: five different features win the first split across 100 resamples.
+
+## 9. When *Not* to Use a Single Decision Tree
+
+| Situation | Better choice |
+|---|---|
+| You need the best accuracy on tabular data | An ensemble: [Random Forest](/docs/machine-learning/random-forest) or [gradient boosting](/docs/machine-learning/xgboost-lightgbm-catboost) |
+| The relationship is smooth or roughly linear | [Linear](/docs/machine-learning/linear-regression) or [logistic](/docs/machine-learning/logistic-regression) regression; a tree approximates a line with a staircase |
+| You need predictions outside the training range (trends, forecasting) | A model that extrapolates: linear models, or [time series methods](/docs/machine-learning/time-series-forecasting) |
+| You need calibrated probabilities | Logistic regression, or an ensemble with calibration |
+| The data is small and noisy | A heavily pruned tree at most; prefer regularized linear models or a forest |
+| Raw images, audio or text | Neural networks |
+
+Use a single tree when the model must be read and checked by people, as a quick first look at which features and thresholds matter, or as a component inside an ensemble.
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Model | Piecewise-constant on axis-aligned boxes, one constant per leaf |
+| Gini | $1 - \sum_k p_k^2$: chance a random label drawn from the node's proportions is wrong |
+| Entropy | $-\sum_k p_k\log_2 p_k$; its decrease is information gain |
+| Not misclassification | It's piecewise linear, so many useful splits score zero; Gini and entropy are strictly concave |
+| Regression | Impurity is variance; leaves predict the mean |
+| Growing | Greedy CART: best split by impurity decrease, recurse, stop |
+| Cost | Sort once per feature, sweep thresholds: $O(d\,n\log n)$ per level |
+| Boundary | A staircase; diagonals need many steps |
+| Overfitting | Unconstrained trees reach 100% training accuracy |
+| Pruning | Minimize $R(T) + \alpha\lvert T\rvert$; weakest-link sequence, $\alpha$ by cross-validation |
+| Weakness | High variance: the root split changes between resamples |
+| The fix | Average many trees (forests) or add many small ones (boosting) |
+
+---
+
+Next: [Random Forest & Extra Trees](/docs/machine-learning/random-forest), which averages many decorrelated trees to remove the instability above.
+
+## Sources
+
+- L. Breiman, J. H. Friedman, R. A. Olshen and C. J. Stone, *Classification and Regression Trees*, Wadsworth, 1984
+- J. R. Quinlan, [Induction of Decision Trees](https://doi.org/10.1007/BF00116251), *Machine Learning*, 1986
+- L. Hyafil and R. L. Rivest, [Constructing Optimal Binary Decision Trees is NP-Complete](https://doi.org/10.1016/0020-0190(76)90095-8), *Information Processing Letters*, 1976
+- C. Strobl, A.-L. Boulesteix, A. Zeileis and T. Hothorn, [Bias in Random Forest Variable Importance Measures](https://doi.org/10.1186/1471-2105-8-25), *BMC Bioinformatics*, 2007
+- T. Hothorn, K. Hornik and A. Zeileis, [Unbiased Recursive Partitioning: A Conditional Inference Framework](https://doi.org/10.1198/106186006X133933), *Journal of Computational and Graphical Statistics*, 2006
+- T. Hastie, R. Tibshirani and J. Friedman, [The Elements of Statistical Learning](https://hastie.su.domains/ElemStatLearn/), 2nd ed., Section 9.2
+- scikit-learn, [Decision Trees](https://scikit-learn.org/stable/modules/tree.html) user guide
