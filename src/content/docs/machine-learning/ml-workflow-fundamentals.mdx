@@ -1,61 +1,317 @@
 ---
-title: "ML Workflow Fundamentals"
+title: "ML Workflow Fundamentals, In Full Depth"
 sidebar_position: 3
-description: "Most real-world model failures trace back to workflow mistakes, not bad algorithms -- learning types, train/val/test splits, data leakage, feature engineering."
+description: "Most real-world model failures are workflow mistakes, not bad algorithms: what generalization means, why you need train, validation and test sets, how cross-validation works, how data leakage inflates results (with a demonstration on pure noise), missing data, imbalanced classes and resampling."
 ---
-
 
 import SplitCrossValidationDiagram from '../../../viz/diagrams/SplitCrossValidationDiagram';
 import DataLeakageDiagram from '../../../viz/diagrams/DataLeakageDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# ML Workflow Fundamentals
+# ML Workflow Fundamentals, In Full Depth
 
-Before any algorithm, there's a workflow — and most real-world model failures trace back to a mistake in this workflow, not a bad algorithm choice.
+The [Machine Learning Overview](/docs/machine-learning/overview) described what models do. This page is about the procedure around them: how data is split, how a model is tuned and compared, and how its final score is measured. Every algorithm later in this section assumes this procedure is done right. When it isn't, a model can report 87% accuracy on data that is pure noise, which Section 4 explains and Section 7 demonstrates. Most models that disappoint in production were not bad algorithms; they were measured wrongly.
 
-## Types of Learning
+<ELI5>
 
-- **Supervised learning**: you have labeled examples (input → correct output) and train a model to predict the output for new inputs. Covers classification (discrete labels) and regression (continuous values).
-- **Unsupervised learning**: no labels — the model finds structure on its own (clusters, compressed representations).
-- **Semi-supervised learning**: a small amount of labeled data plus a large amount of unlabeled data, common when labeling is expensive.
-- **Self-supervised learning**: labels are generated automatically from the data itself (e.g. "predict the next word" — no human labeling needed). This is how every modern LLM is pretrained.
+A teacher wants to know whether a student understands algebra. If the teacher hands out the exam questions as homework the week before, the student can memorize the answers and score 100% without understanding anything. The score is real, but it measures memory, not algebra.
 
-## Train / Validation / Test Splits
+A machine learning model is a very good memorizer. The whole workflow below exists to keep the exam questions away from it: to set aside examples it never learns from, so that its score on them measures what it learned rather than what it saw. Everything below is that idea made exact, including the surprising number of ways the exam questions leak into the homework.
 
-- **Training set**: what the model learns from.
-- **Validation set**: used to tune hyperparameters and pick between model candidates, without touching the test set.
-- **Test set**: touched exactly once, at the very end, to report an unbiased estimate of real-world performance.
+</ELI5>
 
-**Cross-validation** (commonly k-fold): instead of a single train/validation split, split the data into $k$ folds, train $k$ times (each time holding out a different fold for validation), and average the results. Gives a more reliable performance estimate on smaller datasets, at the cost of $k\times$ the training time. Toggle between a fixed split and real fold rotation:
+## 1. The Goal Is Generalization
+
+A model is trained on examples, but nobody cares how it does on those examples. We already know their answers. What matters is how it does on the next example, drawn from the same source but never seen. Write that precisely. If examples $(\mathbf{x}, y)$ come from some distribution $\mathcal{D}$ and $L$ measures how wrong a prediction is, the quantity we care about is the **expected risk**:
+
+$$R(f) = \mathbb{E}_{(\mathbf{x}, y) \sim \mathcal{D}}\big[L(y, f(\mathbf{x}))\big]$$
+
+We can't compute it, because we don't have $\mathcal{D}$. We only have $n$ samples from it, and the obvious estimate is the average loss on them, the **empirical risk**:
+
+$$\hat{R}(f) = \frac{1}{n}\sum_{i=1}^{n} L\big(y^{(i)}, f(\mathbf{x}^{(i)})\big)$$
+
+For a model $f$ chosen *without looking at* these $n$ samples, $\hat{R}(f)$ is an unbiased estimate of $R(f)$: each term is an independent draw of the loss, and an average of independent draws has the right expected value. Training breaks that. The training algorithm picks the $f$ that makes $\hat{R}$ small *on these particular samples*, including their noise, so the training error of the chosen model is biased downward. A model with enough capacity can drive it to zero by memorizing (a 1-nearest-neighbour classifier always gets 100% training accuracy). The gap between training error and true error is the **generalization gap**, and it's what [overfitting](/docs/machine-learning/model-evaluation-metrics#bias-variance-tradeoff) means.
+
+The fix follows directly from the argument: to estimate $R(f)$ honestly, use examples that played no part in choosing $f$. Everything else on this page is a consequence of that one rule, applied carefully. Its limitation is that "played no part" is stricter than it sounds; the sections below are mostly about the ways data gets used without anyone noticing.
+
+## 2. Types of Learning
+
+Before splitting data, it helps to be clear what the labels are, because that decides what "the right answer" means and what a split has to preserve.
+
+- **Supervised learning**: every example has an input and a correct output, and the model learns to predict the output. Classification when the output is a category (spam or not), regression when it's a number (a price). Most of this section is supervised; see [Supervised Learning](/docs/machine-learning/supervised-learning).
+- **Unsupervised learning**: no labels. The model finds structure in the inputs alone, such as clusters or a compressed representation. See [Unsupervised Learning](/docs/machine-learning/unsupervised-learning).
+- **Semi-supervised learning**: a few labeled examples and many unlabeled ones, common when labeling needs an expert (medical images, legal documents). The unlabeled data helps the model learn what inputs look like.
+- **Self-supervised learning**: the labels are made from the data itself. "Predict the next word" needs no human annotator, because the next word is already in the text. Every modern large language model is pretrained this way (see [the LLM training pipeline](/docs/llms-genai/training-pipeline)).
+
+The generalization rule applies to all four. Even in unsupervised learning, a choice like the number of clusters is a choice made by looking at data, and judging it on the same data overstates how good it is.
+
+## 3. Splitting the Data
+
+### Train / Validation / Test Splits
+
+Building a model involves two different kinds of choice. The training algorithm chooses the **parameters** (the weights). You choose the **hyperparameters** (how much regularization, how deep a tree, which features, which algorithm). Both are fitted to data, so by the rule in Section 1, both need data they haven't seen to be judged honestly. That's why there are three sets, not two:
+
+- **Training set**: the model's parameters are fitted on it.
+- **Validation set**: each candidate (a hyperparameter setting, an algorithm) is scored on it, and the best is chosen.
+- **Test set**: the single chosen model is scored on it once, at the end, and that number is what you report.
+
+The validation score of the *winning* candidate is biased upward for the same reason training error is biased downward: you picked the candidate whose validation score was highest, and part of what made it highest is luck. Compare 50 settings and the best one's score is the maximum of 50 noisy numbers. The test set exists to measure the winner on data that played no part in picking it.
+
+**Using the test set once is a rule, not a guideline.** Each time you look at a test score and change something because of it, the test set becomes part of the selection process and the next test score is biased too. Dwork et al. (2015) showed how quickly repeated adaptive reuse of a holdout set can produce models that overfit it. On a public benchmark, years of papers tuning against the same test set have a similar effect: Recht et al. (2019) built a fresh test set for ImageNet following the original procedure, and every model scored lower on it, typically by 11 to 14 points of accuracy.
+
+**How big should each set be?** A test score is an estimate with its own uncertainty. For accuracy $p$ measured on $n_{\text{test}}$ independent examples, the standard error is
+
+$$\text{SE} = \sqrt{\frac{p(1-p)}{n_{\text{test}}}}$$
+
+With $p = 0.95$ and 114 test examples (the example in Section 7), that's about 0.02, so a 95% interval is roughly $\pm 0.04$: the "true" accuracy could plausibly be anywhere from 91% to 99%. Two models whose test accuracies differ by a point on a test set that size are not distinguishable. Common splits are 60/20/20 or 70/15/15 on small datasets; with millions of examples, a test set of 10,000 already gives a standard error of a fraction of a percent, and the rest can go to training.
+
+### Cross-Validation
+
+A single validation set wastes data and gives a noisy score. **k-fold cross-validation** fixes both. Split the training data into $k$ equal folds. For each fold $j$, train on the other $k-1$ folds and score on fold $j$, giving a score $s_j$. Report the average:
+
+$$\text{CV}_k = \frac{1}{k}\sum_{j=1}^{k} s_j$$
+
+Every example is used for validation exactly once and for training $k-1$ times. The average of $k$ scores is less noisy than one, and the spread of the $s_j$ shows how much the score depends on which examples happen to be held out. The cost is $k$ training runs instead of one. $k = 5$ or $10$ is standard; Hastie, Tibshirani and Friedman recommend these values because each training set is close to the full size, so the estimate isn't too pessimistic, while the folds are different enough that the average isn't too noisy. Toggle between a fixed split and the fold rotation:
 
 <SplitCrossValidationDiagram />
 
-## Data Leakage
+Cross-validation replaces the validation set, not the test set. The usual workflow is: hold out a test set, run cross-validation on the remaining data to choose hyperparameters, refit the chosen configuration on all of it, then score the test set once.
 
-Data leakage is when information from outside the training set — often from the future, or from the test set — sneaks into training and makes a model look far better than it will perform in production. Common causes:
+**The splits have to match how the model will be used.** Random folds assume examples are independent. When they aren't, use a splitter that respects the structure:
 
-- Normalizing/scaling the *entire* dataset before splitting (test set statistics leak into training)
-- Using a feature that's only available *after* the event you're predicting (e.g. using "was this transaction refunded" to predict fraud)
-- Duplicate or near-duplicate rows split across train and test
+| Data | Why random folds fail | Use |
+|---|---|---|
+| Imbalanced classes | A fold may contain few or no positives | `StratifiedKFold`: each fold keeps the class proportions |
+| Several rows per patient, user or device | The model recognizes the patient, not the condition | `GroupKFold`: all of a group's rows go in the same fold |
+| Time series | Training on the future to predict the past | `TimeSeriesSplit`: always validate on later data than you train on |
 
-**This is one of the most common real-world ML bugs** — a model with suspiciously excellent validation metrics is the first thing to double-check for leakage, not celebrate. Real logistic regression, real accuracy, with and without a genuinely leaky feature:
+<PredictFirst
+  question="A dataset has 10 X-ray images from each of 200 patients. You split the 2,000 images randomly into 5 folds. What will cross-validation report, compared with the accuracy on new patients?"
+  options={[
+    'About the same, since every image is only used for validation once',
+    'Higher: images of the same patient land on both sides of the split, so the model can recognize the patient',
+    'Lower: random folds waste data',
+    'It depends only on the number of folds',
+  ]}
+  correctIndex={1}
+  explanation="With random folds, almost every validation image has 9 siblings from the same patient in the training folds. The model can score well by matching anatomy, scanner artifacts or other patient-specific features rather than learning the condition. A new patient has no siblings in training, so real accuracy is lower. Grouping the folds by patient (GroupKFold) measures the right thing."
+/>
+
+## 4. Keeping Information Where It Belongs
+
+### Data Leakage
+
+Data leakage is any way information that won't be available at prediction time gets into training or model selection. It makes the measured score higher than the real one, sometimes by a little and sometimes enormously. Kapoor and Narayanan (2023) surveyed published ML-based science and found leakage affecting hundreds of papers across 17 fields, in many cases enough to overturn the paper's conclusion. The causes fall into three groups.
+
+**Preprocessing on all the data before splitting.** Scaling, imputation, feature selection, dimensionality reduction and target encoding all compute something from the data. If that computation sees the validation or test rows, their information is baked into the training features. Scaling is usually a small leak. Feature selection can be a catastrophic one: on data with thousands of features and few rows, choosing the features most correlated with the label *using all rows* finds features that happen to be correlated in the validation rows too, by chance. The demonstration in Section 7 does exactly this on random noise and gets 87% cross-validated accuracy, where the true answer is 50%. This exact mistake appears in published genomics studies; Hastie, Tibshirani and Friedman use it as their example of the wrong way to do cross-validation.
+
+**Features that come from the future or from the label.** A fraud model that uses "was this transaction refunded" will look excellent, because refunds happen after fraud is discovered. At prediction time the field is empty. Subtler versions: an ID that was assigned in order of diagnosis, a "last updated" timestamp that changes when a case is closed, a hospital's choice of test that reveals what the doctor already suspected. A useful check: for each feature, ask when its value becomes known, and drop it if the answer is "after the moment we need the prediction."
+
+**Rows that are not independent.** Duplicates or near-duplicates split across train and test, several rows from the same person (as in the checkpoint above), or time series split randomly. The model is tested on examples it has effectively already seen.
+
+Toggle the leaky feature on and off in this real logistic regression:
 
 <DataLeakageDiagram />
 
-## Feature Engineering & Selection
+**The defence is structural.** Put every step that learns from data inside a pipeline that is fitted only on training folds; split by group or by time when rows aren't independent; and treat a result that looks too good as a bug to find, not a result to report. Kaufman et al. (2012), who gave leakage its standard definition, also note the most reliable warning sign: a feature that is far more predictive than domain knowledge says it should be.
 
-- **Feature engineering**: transforming raw data into inputs that make patterns easier for a model to find — e.g. extracting "day of week" from a timestamp, or computing a ratio between two raw columns.
-- **Feature selection**: removing irrelevant or redundant features to reduce overfitting and training cost. Methods range from simple correlation filtering to wrapper methods that search feature subsets directly to model-based importance — see [Classical Interpretability](/docs/interpretability/classical-interpretability) for the real depth on that last one: permutation importance and SHAP, with real formulas, real code, and why SHAP's game-theoretic grounding gives it a guarantee heuristic importance methods don't have.
+## 5. Feature Engineering & Selection
 
-## Handling Messy Data
+Once the split is honest, the next lever is the inputs themselves.
 
-- **Missing data**: drop rows/columns, impute with mean/median/mode, or use model-based imputation. The right choice depends on *why* data is missing (missing at random vs. systematically).
-- **Outliers**: can be genuine signal (fraud) or noise (sensor error) — investigate before removing.
-- **Imbalanced classes**: when one class vastly outnumbers another (e.g. 1% fraud rate). A naive model can get 99% accuracy by always predicting "not fraud" — which is useless. Addressed with resampling, class weighting, or better metrics (see [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics)).
+**Feature engineering** turns raw data into inputs that make the pattern easier to find. A linear model can't learn "weekend" from a Unix timestamp, but it learns it immediately from a `day_of_week` column. A ratio (debt to income) often predicts better than either raw number. Logarithms tame heavy-tailed quantities like income and prices. Good features come from understanding the domain, and for tabular data they still matter more than the choice of algorithm.
 
-## Sampling Strategies
+**Feature selection** removes inputs that are irrelevant or redundant, which reduces overfitting and cost. The methods differ in how they decide:
 
-- **Stratified sampling**: preserves class proportions across train/validation/test splits — critical for imbalanced data.
-- **Bootstrap sampling**: sampling with replacement, used inside bagging methods like Random Forests and for estimating confidence intervals via the bootstrap method.
-- **SMOTE** (Synthetic Minority Oversampling): generates synthetic examples of the minority class by interpolating between existing ones, rather than just duplicating them.
+- **Filter methods** score each feature on its own, such as by correlation with the label or mutual information. Fast, but blind to features that only help in combination.
+- **Wrapper methods** search over feature subsets and score each subset by training a model (forward selection, recursive feature elimination). Better, much more expensive, and easy to overfit the validation set with.
+- **Embedded methods** let the model do it: [lasso](/docs/machine-learning/lasso-regression) drives irrelevant coefficients to exactly zero; tree ensembles report importances. See [Classical Interpretability](/docs/interpretability/classical-interpretability) for permutation importance and SHAP.
 
-Next: [Supervised Learning](/docs/machine-learning/supervised-learning) — the algorithms that turn this workflow into predictions.
+Every one of these looks at the labels, so every one is a fitted step that belongs inside the cross-validation loop. That's the lesson of Section 4 applied to the most common place it gets broken.
+
+## 6. Cleaning and Rebalancing the Data
+
+Real data has holes, extreme values and lopsided classes. Each needs a decision, and each decision is another fitted step.
+
+### Handling Messy Data
+
+**Missing values.** What to do depends on *why* values are missing, which Rubin (1976) classified into three cases:
+
+| Mechanism | Meaning | Example | Consequence |
+|---|---|---|---|
+| MCAR: missing completely at random | Missingness is unrelated to anything | A sensor drops 1% of readings at random | Dropping rows loses data but doesn't bias results |
+| MAR: missing at random | Missingness depends on *observed* variables | Older patients skip an online form more often, and age is recorded | Imputation from the observed variables can correct for it |
+| MNAR: missing not at random | Missingness depends on the missing value itself | High earners decline to state income | No imputation fully fixes it; the fact of missingness is information |
+
+The practical toolkit: drop a column that is mostly empty; impute numeric values with the median (robust to outliers) and categories with the most frequent value or an explicit "missing" category; or use a model-based imputer that predicts each missing value from the others. In MAR and MNAR cases, add a binary **missingness indicator** per column, so the model can learn that "income not given" is itself predictive. Gradient-boosted tree libraries handle missing values natively by learning which branch to send them down.
+
+The imputer's statistics (the medians) are computed from data, so the imputer is fitted inside the pipeline like everything else.
+
+**Outliers.** An extreme value can be an error (a height of 1,750 cm) or the most important thing in the dataset (a fraudulent transaction). Investigate before removing. If they're errors, fix or drop them; if they're real but hurt a squared-error model, use a robust loss (Huber), a transformation (log), or a model that doesn't care about scale (trees).
+
+**Imbalanced classes.** With 1% fraud, a model that always says "not fraud" is 99% accurate and useless. Three responses, in order of preference:
+
+1. **Measure with the right metric**: precision, recall, PR-AUC, or a cost-weighted metric, not accuracy (see [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics#classification-metrics)).
+2. **Weight the classes** in the loss (`class_weight="balanced"` in scikit-learn), so each positive counts as much as many negatives.
+3. **Choose the decision threshold** for the actual costs instead of using 0.5 (see [threshold optimization](/docs/machine-learning/model-evaluation-metrics#threshold-optimization)).
+
+Resampling the data, covered next, is the other common response, and the one most often misused.
+
+### Sampling Strategies
+
+**Stratified sampling** splits so each part keeps the original class proportions. With 1% positives and a 100-example test set, a random split might give zero positives or three; stratification guarantees one. Use it by default for classification splits.
+
+**Bootstrap sampling** draws $n$ examples *with replacement* from $n$. Some examples appear twice or more and some not at all. The probability a given example is never drawn is
+
+$$\left(1 - \frac{1}{n}\right)^n \;\xrightarrow{\;n \to \infty\;}\; e^{-1} \approx 0.368$$
+
+so each bootstrap sample contains about 63.2% of the distinct examples, and the other 36.8% (the "out-of-bag" examples) are a free validation set. Bagging and [Random Forests](/docs/machine-learning/random-forest#the-core-idea-bagging) train each tree on a bootstrap sample; the bootstrap is also the general-purpose way to put a confidence interval on any statistic, including a test score (Efron, 1979).
+
+**Oversampling and SMOTE.** To balance classes, you can duplicate minority examples (random oversampling) or drop majority ones (undersampling). SMOTE (Chawla et al., 2002) creates new synthetic minority examples instead: pick a minority example $\mathbf{x}_i$, pick one of its $k$ nearest minority neighbours $\mathbf{x}_{nn}$, and interpolate:
+
+$$\mathbf{x}_{\text{new}} = \mathbf{x}_i + \lambda\,(\mathbf{x}_{nn} - \mathbf{x}_i), \qquad \lambda \sim \text{Uniform}(0, 1)$$
+
+Two cautions. First, resampling must happen **only inside training folds**. Oversample before splitting and copies (or interpolations) of the same example end up on both sides, which is leakage. Second, resampling changes the class balance the model believes in, so its predicted probabilities are no longer calibrated: van den Goorbergh et al. (2022) found that for logistic regression, random over- and undersampling and SMOTE all produced badly miscalibrated risk estimates without improving discrimination. If you need probabilities, prefer class weights or no correction plus a tuned threshold.
+
+<GoDeeper title="Go deeper: nested cross-validation">
+
+Section 3 said the validation score of the best candidate is optimistic, because you selected it for being high. If there's no separate test set (common with small datasets, where holding out 20% is expensive), how do you get an honest estimate of the *whole procedure*, tuning included?
+
+**Nested cross-validation** wraps the tuning inside an outer loop. The outer loop splits the data into $k_{\text{out}}$ folds. For each outer fold, run a full inner cross-validation on the remaining data to pick hyperparameters, refit with them, and score on the held-out outer fold. The outer scores estimate how well "tune by inner CV, then fit" performs on new data. The hyperparameters chosen in different outer folds may differ, and that's expected: you're evaluating the procedure, not one model.
+
+How much does it matter? Varma and Simon (2006) showed that reporting the inner CV score of the selected model can be strongly optimistic: in their simulations on data with no signal, it reported error rates well below the true 50%, while nested CV was nearly unbiased. Cawley and Talbot (2010) showed the optimism grows with how many hyperparameter settings you compare and shrinks with the dataset size, so the problem is worst exactly where people skip the test set: small data and big search spaces. In scikit-learn, nesting is one line: pass a `GridSearchCV` object to `cross_val_score`.
+
+</GoDeeper>
+
+## 7. Minimal Implementation
+
+Two short scripts. The first is the leakage demonstration promised in Section 4. The data is pure noise: 5,000 random features, random labels, so no model can honestly beat 50%. The only difference between the two scores is *where* feature selection happens.
+
+```python
+import numpy as np
+from sklearn.feature_selection import SelectKBest, f_classif
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import cross_val_score, StratifiedKFold
+from sklearn.pipeline import make_pipeline
+
+# Pure noise: 100 examples, 5,000 random features, random labels.
+# No model can do better than 50% on data like this.
+rng = np.random.default_rng(0)
+X = rng.normal(size=(100, 5000))
+y = rng.integers(0, 2, size=100)
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
+
+# Wrong: pick the 20 features most correlated with y using ALL rows, then cross-validate
+X_selected = SelectKBest(f_classif, k=20).fit_transform(X, y)
+leaky = cross_val_score(LogisticRegression(), X_selected, y, cv=cv)
+
+# Right: selection happens inside each training fold, as part of the model
+pipe = make_pipeline(SelectKBest(f_classif, k=20), LogisticRegression())
+honest = cross_val_score(pipe, X, y, cv=cv)
+
+print(f"selection outside CV: {leaky.mean():.2f} accuracy")
+print(f"selection inside CV:  {honest.mean():.2f} accuracy")
+```
+
+Output:
+
+```
+selection outside CV: 0.87 accuracy
+selection inside CV:  0.50 accuracy
+```
+
+Same data, same model, same folds. Selecting features on all 100 rows found 20 that are correlated with the labels by chance *in every fold*, including the validation folds, and cross-validation dutifully reported that. Inside the pipeline, the selection in each fold sees only that fold's training rows, and the score falls to chance, which is the truth.
+
+The second script is the whole workflow from Sections 3 to 6 on a real dataset (breast-cancer diagnosis, 569 examples), with 5% of values deleted to make imputation necessary:
+
+```python
+import numpy as np
+from sklearn.datasets import load_breast_cancer
+from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import GridSearchCV, train_test_split
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+
+X, y = load_breast_cancer(return_X_y=True)
+rng = np.random.default_rng(0)
+X[rng.random(X.shape) < 0.05] = np.nan               # knock out 5% of values
+
+# 1. Split off the test set first, stratified, and don't look at it again
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, stratify=y, random_state=0)
+
+# 2. Every step that learns from data lives in the pipeline
+pipe = make_pipeline(SimpleImputer(strategy="median", add_indicator=True),
+                     StandardScaler(),
+                     LogisticRegression(max_iter=5000))
+
+# 3. Tune on the training set only, with 5-fold cross-validation
+search = GridSearchCV(pipe, {"logisticregression__C": [0.01, 0.1, 1, 10, 100]}, cv=5)
+search.fit(X_train, y_train)
+print("best C:", search.best_params_["logisticregression__C"])
+print(f"cross-validated accuracy: {search.best_score_:.3f}")
+
+# 4. One look at the test set, at the end
+print(f"test accuracy: {search.score(X_test, y_test):.3f} on {len(y_test)} examples")
+```
+
+Output (scikit-learn 1.7):
+
+```
+best C: 0.1
+cross-validated accuracy: 0.958
+test accuracy: 0.956 on 114 examples
+```
+
+The imputer's medians and the scaler's means are recomputed inside every fold from that fold's training rows, so no validation row ever influences them. `GridSearchCV` refits the best configuration on the full training set, and the test set is touched once. The cross-validated and test scores agree closely, which is what an honest workflow looks like. By the formula in Section 3, the test score's standard error is about 0.02, so "95.6%" means "somewhere around 92% to 99%."
+
+## 8. When *Not* to Use a Random Split
+
+Everything above assumes examples are independent draws from one fixed distribution. When that's false, a random split gives a confident wrong answer.
+
+| Situation | What goes wrong with a random split | Do instead |
+|---|---|---|
+| Time series or any data where the future must be predicted from the past | Training on later data to predict earlier data; trends leak backward | Split by time; validate with a rolling or expanding window (`TimeSeriesSplit`); see [Time Series Forecasting](/docs/machine-learning/time-series-forecasting) |
+| Several rows per person, device, document or site | The model recognizes the entity, not the pattern | Split by group (`GroupKFold`) |
+| The deployment population differs from the training data (new hospital, new country) | The test set is easier than reality | Hold out whole sites or regions; test on data from the target setting |
+| Near-duplicate rows (scraped web data, augmented images) | Copies on both sides of the split | Deduplicate before splitting, or group near-duplicates |
+| Very small datasets (tens of examples) | Any single split is too noisy to trust | Repeated or nested cross-validation, and report the spread, not just the mean |
+| Data that changes after deployment | Yesterday's test score doesn't describe tomorrow | Monitor live performance; see [MLOps](/docs/mlops/overview) |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| The goal | Low error on examples the model hasn't seen, not on the ones it trained on |
+| Training error | Biased downward, because the model was chosen to make it small |
+| Three sets | Train fits parameters, validation chooses hyperparameters, test is scored once |
+| Test set reuse | Every look that changes a decision turns the test set into a validation set |
+| Uncertainty | Accuracy on $n$ test examples has standard error $\sqrt{p(1-p)/n}$ |
+| Cross-validation | $k$ folds, each held out once; replaces the validation set, not the test set |
+| Splits | Stratify classes, group related rows, split time series by time |
+| Leakage | Anything unavailable at prediction time that reaches training or selection |
+| The defence | Every fitted step (imputer, scaler, selector, resampler) inside the pipeline |
+| Missing data | Ask why it's missing; add a missingness indicator when it's informative |
+| Imbalance | Fix the metric and the threshold first; resampling distorts probabilities |
+| Bootstrap | Each sample holds about 63.2% of distinct examples; the rest are out-of-bag |
+
+---
+
+Next: [Supervised Learning](/docs/machine-learning/supervised-learning), the algorithms that turn this workflow into predictions, and [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics) for what to measure once the split is honest.
+
+## Sources
+
+- T. Hastie, R. Tibshirani and J. Friedman, [The Elements of Statistical Learning](https://hastie.su.domains/ElemStatLearn/), 2nd ed., Chapter 7 (model assessment, cross-validation, "the wrong and right way to do cross-validation")
+- S. Kaufman, S. Rosset, C. Perlich and O. Stitelman, [Leakage in Data Mining: Formulation, Detection, and Avoidance](https://doi.org/10.1145/2382577.2382579), *ACM TKDD*, 2012
+- S. Kapoor and A. Narayanan, [Leakage and the Reproducibility Crisis in Machine-Learning-Based Science](https://doi.org/10.1016/j.patter.2023.100804), *Patterns*, 2023
+- S. Varma and R. Simon, [Bias in Error Estimation When Using Cross-Validation for Model Selection](https://doi.org/10.1186/1471-2105-7-91), *BMC Bioinformatics*, 2006
+- G. C. Cawley and N. L. C. Talbot, [On Over-fitting in Model Selection and Subsequent Selection Bias in Performance Evaluation](https://jmlr.org/papers/v11/cawley10a.html), *JMLR*, 2010
+- C. Dwork et al., [The Reusable Holdout: Preserving Validity in Adaptive Data Analysis](https://doi.org/10.1126/science.aaa9375), *Science*, 2015
+- B. Recht, R. Roelofs, L. Schmidt and V. Shankar, [Do ImageNet Classifiers Generalize to ImageNet?](https://arxiv.org/abs/1902.10811), ICML 2019
+- D. B. Rubin, [Inference and Missing Data](https://doi.org/10.1093/biomet/63.3.581), *Biometrika*, 1976
+- N. V. Chawla, K. W. Bowyer, L. O. Hall and W. P. Kegelmeyer, [SMOTE: Synthetic Minority Over-sampling Technique](https://doi.org/10.1613/jair.953), *JAIR*, 2002
+- R. van den Goorbergh et al., [The Harm of Class Imbalance Corrections for Risk Prediction Models](https://doi.org/10.1093/jamia/ocac093), *JAMIA*, 2022
+- B. Efron, [Bootstrap Methods: Another Look at the Jackknife](https://doi.org/10.1214/aos/1176344552), *Annals of Statistics*, 1979
+- scikit-learn, [Common pitfalls and recommended practices](https://scikit-learn.org/stable/common_pitfalls.html) and [Cross-validation](https://scikit-learn.org/stable/modules/cross_validation.html)
