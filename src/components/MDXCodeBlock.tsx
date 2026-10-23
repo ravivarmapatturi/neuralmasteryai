@@ -14,7 +14,14 @@ interface CodeChildProps {
 export default function MDXCodeBlock({ children }: { children?: React.ReactNode }) {
   if (isValidElement<CodeChildProps>(children) && typeof children.props.children === 'string') {
     const lang = children.props.className?.replace('language-', '') || 'text';
-    return <VisualizationCode code={children.props.children.replace(/\n$/, '')} lang={lang} />;
+    // VisualizationCode only sets a top margin (it's also used inside
+    // widgets), so a fenced block in prose otherwise touched the paragraph
+    // after it. The wrapper gives prose code blocks room on both sides.
+    return (
+      <div className="nm-prose-code">
+        <VisualizationCode code={children.props.children.replace(/\n$/, '')} lang={lang} />
+      </div>
+    );
   }
   return <pre>{children}</pre>;
 }
