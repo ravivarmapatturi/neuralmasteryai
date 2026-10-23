@@ -1,54 +1,290 @@
 ---
-title: "Neural Network Fundamentals"
+title: "Neural Network Fundamentals, In Full Depth"
 sidebar_position: 3
-description: "Perceptrons to MLPs: activation functions, forward pass and backprop by hand, plus a live playground training a real network on toy 2D datasets."
+description: "From one neuron to a trained network: the perceptron and why it can't learn XOR, multi-layer networks, activations, the forward pass, backpropagation derived and written by hand in NumPy with a gradient check, initialization, mini-batch training, and a live playground."
 ---
 
-
 import NeuralNetworkPlayground from '../../../viz/NeuralNetworkPlayground';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Neural Network Fundamentals
+# Neural Network Fundamentals, In Full Depth
 
-A neural network is a stack of the linear algebra and calculus from [Mathematics for AI](/docs/mathematics-for-ai/roadmap), arranged so the whole thing can learn from data.
+[Logistic Regression](/docs/machine-learning/logistic-regression) draws one straight line through the data and turns the distance from it into a probability. That's a single artificial neuron, and it has a hard limit: some patterns can't be separated by any straight line. This page builds neural networks from that neuron up. It shows exactly where one neuron fails, how stacking neurons into layers with a nonlinearity between them fixes it, what the forward pass computes, how **backpropagation** gets the gradient of the loss with respect to every weight using nothing but the chain rule, and how all of it fits in about forty lines of NumPy, checked against a numerical derivative and trained on the problem a single neuron can't solve. It ends with initialization and mini-batch training, the two decisions every training run makes before it starts.
 
-## The Perceptron and MLPs
+<ELI5>
 
-A single perceptron computes $y = \sigma(\mathbf{w}^T \mathbf{x} + b)$ — a weighted sum of inputs, plus a bias, passed through a nonlinear activation $\sigma$. Stack layers of these ("multi-layer perceptron," MLP) and you get a **universal function approximator** — with enough neurons, an MLP can approximate any continuous function, which is the theoretical justification for why neural networks work at all.
+Imagine you're sorting fruit with a single rule: "if it's heavier than 150 grams, it's an orange; otherwise it's a lemon". One rule, one threshold, one straight cut. It works until the fruit stops cooperating, say, small oranges and big lemons, where weight alone can't separate them.
 
-## Activation Functions
+So you hire a small team. One person judges weight, one judges colour, one judges how bumpy the skin is. Each gives a score. A manager combines their scores and makes the final call. The team can learn shapes of decisions that no single rule could.
 
-Without a nonlinear activation, stacking linear layers is pointless — any composition of linear functions is still just a linear function. The nonlinearity is what gives depth its power.
+A neural network is that team, with many people in layers, and backpropagation is how the team learns: after each wrong answer, every member is told exactly how much their score contributed to the mistake, and adjusts a little. Everything below is that idea made exact.
 
-- **Sigmoid** $\sigma(x) = \frac{1}{1+e^{-x}}$: squashes to $(0,1)$, historically popular but suffers from vanishing gradients at extremes.
-- **Tanh**: squashes to $(-1,1)$, zero-centered (a minor training advantage over sigmoid).
-- **ReLU** $\max(0, x)$: the modern default — cheap to compute, doesn't saturate for positive inputs, but can "die" (output zero forever) if a neuron's weights drift so its input is always negative.
-- **GELU / SwiGLU**: smoother variants used in modern Transformers (GPT, LLaMA-family models) — empirically train better than plain ReLU at scale.
+</ELI5>
 
-See [Activation Functions, In Full Depth](/docs/deep-learning/activation-functions) for the complete catalog — Leaky ReLU, ELU, SELU, Swish, Mish, Softplus, and the specific tradeoffs (saturation, zero-centering, dead units) that decide which one to reach for.
+## 1. One Neuron
 
-## Forward Pass and Backpropagation
+A single artificial neuron takes an input vector $\mathbf{x}$, computes a weighted sum plus a bias, and passes it through an **activation function** $\phi$:
 
-**Forward pass**: input flows through each layer's linear transform + activation, producing a prediction, which is compared to the true value via a loss function.
+$$
+a = \phi(\mathbf{w}^\top \mathbf{x} + b)
+$$
 
-**Backpropagation**: apply the chain rule (see [Calculus & Optimization](/docs/mathematics-for-ai/calculus-optimization)) working *backward* from the loss, computing how much each weight in every layer contributed to the error. Every deep learning framework (PyTorch, TensorFlow) automates this via **autograd** — you write the forward pass, and the framework builds the computation graph needed to compute gradients automatically.
+With $\phi$ as the sigmoid, this is exactly logistic regression. With $\phi$ as a step function (output 1 if the sum is positive, else 0), it is Rosenblatt's 1958 **perceptron**, the first learning machine. Either way, the decision boundary, the set of inputs where $\mathbf{w}^\top \mathbf{x} + b = 0$, is a straight line in two dimensions, or a flat hyperplane in more.
 
-Worth doing by hand once: for a tiny 2-layer network, write out $\frac{\partial L}{\partial W_1}$ using the chain rule on paper. It demystifies what `.backward()` is actually doing.
+**The limitation, made concrete.** XOR outputs 1 when exactly one of two inputs is 1:
 
-Or skip the pen and paper and watch it happen: the playground below is a real forward/backward pass, hand-written the same way (no `.backward()`, no autograd library), training live on a toy 2D dataset.
+| $x_1$ | $x_2$ | XOR |
+|---|---|---|
+| 0 | 0 | 0 |
+| 0 | 1 | 1 |
+| 1 | 0 | 1 |
+| 1 | 1 | 0 |
+
+Plot the four points and the two 1s sit on opposite corners of the square, as do the two 0s. No single straight line puts both 1s on one side and both 0s on the other. A single neuron can never learn XOR, however long it trains. Minsky and Papert's 1969 book *Perceptrons* made this kind of limit famous, and it helped stall neural network research for over a decade.
+
+The fix is not a better neuron. It's more of them, arranged in layers.
+
+## 2. Layers: the Multi-Layer Perceptron
+
+Put several neurons side by side and they form a **layer**: each sees the same input and computes its own weighted sum. Written for the whole layer at once, with a weight matrix $W$ whose rows are the neurons' weight vectors:
+
+$$
+\mathbf{h} = \phi(W_1 \mathbf{x} + \mathbf{b}_1)
+$$
+
+Feed the layer's outputs $\mathbf{h}$ into another layer and you have a **multi-layer perceptron** (MLP). The layers between input and output are **hidden layers**, because their values are never given in the data; the network invents them.
+
+Why does this solve XOR? Each hidden neuron draws its own line. One can learn "at least one input is on" (OR), another "both inputs are on" (AND). In the space of those two hidden values, XOR is simply "OR but not AND", which a single output neuron *can* separate with a straight line. The hidden layer has transformed the problem into one that is linearly separable. That is the whole idea of deep learning in miniature: **each layer re-represents the data so that the next layer's job is easier.**
+
+
+How far does this go? The **universal approximation theorem** (Cybenko, 1989; Hornik, 1991) says an MLP with a single hidden layer and a non-polynomial activation can approximate any continuous function on a bounded region as closely as you like, given enough hidden units. It's a statement about what networks *can represent*, not about whether training will find those weights, or how many units it takes. In practice, deeper networks represent the same functions with far fewer units, which is why networks got deep rather than wide.
+
+## 3. Why the Nonlinearity Is Essential
+
+
+Remove $\phi$ and stack two layers:
+
+$$
+W_2 (W_1 \mathbf{x} + \mathbf{b}_1) + \mathbf{b}_2 = (W_2 W_1)\,\mathbf{x} + (W_2 \mathbf{b}_1 + \mathbf{b}_2)
+$$
+
+That's a single linear layer with weights $W_2 W_1$. Any number of linear layers collapses into one, and one linear layer can't learn XOR. The nonlinearity between layers is what makes depth add expressive power.
+
+The common choices, each covered in [Activation Functions](/docs/deep-learning/activation-functions):
+
+- **Sigmoid** $\sigma(z) = 1/(1 + e^{-z})$ squashes to $(0, 1)$. Natural for an output probability, poor in hidden layers because its slope is at most 0.25 and nearly zero for large $|z|$, which shrinks gradients layer after layer.
+- **Tanh** squashes to $(-1, 1)$ and is centred on zero, which helps the next layer learn, but saturates the same way.
+- **ReLU** $\max(0, z)$ has slope exactly 1 for positive inputs, so gradients pass through undiminished, and it costs one comparison. It became the default for deep networks after 2010. Its weakness is "dead" units whose input is always negative and so never receive a gradient.
+- **GELU** and **SiLU/Swish** are smooth versions of ReLU used in transformers; gated variants such as **SwiGLU** are standard in current language models.
+
+## 4. The Forward Pass and the Loss
+
+Training needs a number that says how wrong the network is. The **forward pass** computes it, layer by layer. For a network with one hidden layer doing binary classification:
+
+$$
+\begin{aligned}
+\mathbf{z}_1 &= W_1 \mathbf{x} + \mathbf{b}_1 \\
+\mathbf{h} &= \tanh(\mathbf{z}_1) \\
+z_2 &= W_2 \mathbf{h} + b_2 \\
+p &= \sigma(z_2) \\
+L &= -\big[\,y \log p + (1-y)\log(1-p)\,\big]
+\end{aligned}
+$$
+
+$p$ is the predicted probability that the label is 1, and $L$ is the **binary cross-entropy** loss: small when $p$ is close to the true label $y$, large and growing without bound as a confident prediction turns out wrong. ([Loss Functions](/docs/deep-learning/loss-functions) covers why this loss and not squared error.) Over a dataset, the loss is the average over examples.
+
+Training means changing $W_1, \mathbf{b}_1, W_2, b_2$ to make $L$ smaller. Gradient descent does that, if we know $\partial L / \partial \theta$ for every parameter $\theta$. Computing those derivatives efficiently is backpropagation.
+
+## 5. Backpropagation, Derived
+
+
+Backpropagation is the chain rule applied systematically from the loss back to the inputs, reusing each intermediate result. The trick that makes it efficient: compute the gradient with respect to each layer's *pre-activation* once, and every weight gradient in that layer follows from it.
+
+**Output layer.** Differentiate $L$ with respect to $z_2$. Using $\partial L/\partial p = -y/p + (1-y)/(1-p)$ and $\partial p / \partial z_2 = p(1-p)$, the terms cancel to something remarkably simple:
+
+$$
+\frac{\partial L}{\partial z_2} = p - y
+$$
+
+The error signal at the output is just *prediction minus target*. (The same simplification happens for softmax with cross-entropy, which is a large part of why these pairings are standard.) Call it $\delta_2$. The output weights' gradients follow from $z_2 = W_2 \mathbf{h} + b_2$:
+
+$$
+\frac{\partial L}{\partial W_2} = \delta_2\, \mathbf{h}^\top, \qquad \frac{\partial L}{\partial b_2} = \delta_2
+$$
+
+**Into the hidden layer.** $z_2$ depends on $\mathbf{h}$ through $W_2$, so the error flows back through the same weights, transposed:
+
+$$
+\frac{\partial L}{\partial \mathbf{h}} = W_2^\top \delta_2
+$$
+
+**Through the activation.** $\mathbf{h} = \tanh(\mathbf{z}_1)$ elementwise, and $\tanh'(z) = 1 - \tanh^2(z)$, so
+
+$$
+\delta_1 = \frac{\partial L}{\partial \mathbf{z}_1} = \big(W_2^\top \delta_2\big) \odot \big(1 - \mathbf{h}^2\big)
+$$
+
+where $\odot$ is elementwise multiplication.
+
+**Hidden weights.** Exactly as for the output layer:
+
+$$
+\frac{\partial L}{\partial W_1} = \delta_1\, \mathbf{x}^\top, \qquad \frac{\partial L}{\partial \mathbf{b}_1} = \delta_1
+$$
+
+That's the whole algorithm, and it generalizes to any depth: each layer receives an error signal $\delta$ from above, multiplies by its local activation slope, produces its weight gradients as $\delta$ times its input, and passes $W^\top \delta$ down to the layer below. The cost of the backward pass is about twice the forward pass, regardless of the number of parameters. Computing each derivative separately by perturbing weights one at a time would cost a forward pass *per parameter*, which for a billion-parameter model would be hopeless.
+
+<PredictFirst
+  question="In a network trained with sigmoid output and cross-entropy loss, an example has label 1 and the network predicts p = 0.9. What is the error signal at the output pre-activation, ∂L/∂z?"
+  options={[
+    '0.9',
+    '-0.1',
+    '0.1',
+    '-2.3, the log of 0.1',
+  ]}
+  correctIndex={1}
+  explanation="For sigmoid with cross-entropy, ∂L/∂z = p − y = 0.9 − 1 = −0.1. The negative sign means increasing z would lower the loss, so gradient descent will push z, and with it p, upwards. The small magnitude reflects that the prediction was already nearly right."
+/>
+
+## 6. Everything in Forty Lines
+
+Here is the network from sections 4 and 5, trained on XOR with plain NumPy: no autograd, every gradient written by hand from the formulas above. Before training, it checks one backprop gradient against a **finite-difference** estimate, nudging a weight up and down by a tiny amount and measuring how the loss changes. This check is how you verify any hand-written gradient.
+
+```python
+import numpy as np
+
+rng = np.random.default_rng(1)
+X = np.array([[0, 0], [0, 1], [1, 0], [1, 1]], dtype=float)
+y = np.array([[0], [1], [1], [0]], dtype=float)           # XOR: not separable by any single line
+
+# 2 inputs -> 4 hidden units (tanh) -> 1 output (sigmoid)
+W1, b1 = rng.normal(0, 1, (2, 4)), np.zeros(4)
+W2, b2 = rng.normal(0, 1, (4, 1)), np.zeros(1)
+sigmoid = lambda z: 1 / (1 + np.exp(-z))
+
+def forward(X):
+    h = np.tanh(X @ W1 + b1)                              # hidden layer
+    p = sigmoid(h @ W2 + b2)                              # output probability
+    return h, p
+
+def loss(p):                                              # binary cross-entropy
+    return -np.mean(y * np.log(p) + (1 - y) * np.log(1 - p))
+
+def backward(X, h, p):
+    n = len(X)
+    dz2 = (p - y) / n                                     # dL/d(output pre-activation) for sigmoid + BCE
+    dW2, db2 = h.T @ dz2, dz2.sum(0)
+    dh = dz2 @ W2.T                                       # chain rule back into the hidden layer
+    dz1 = dh * (1 - h ** 2)                               # tanh'(z) = 1 - tanh(z)^2
+    dW1, db1 = X.T @ dz1, dz1.sum(0)
+    return dW1, db1, dW2, db2
+
+# Check one backprop gradient against a finite difference before trusting it.
+h, p = forward(X)
+analytic = backward(X, h, p)[0][0, 0]
+eps = 1e-6
+W1[0, 0] += eps; up = loss(forward(X)[1]); W1[0, 0] -= 2 * eps; down = loss(forward(X)[1]); W1[0, 0] += eps
+print(f"dL/dW1[0,0]: backprop {analytic:.6f}   finite difference {(up - down) / (2 * eps):.6f}")
+
+for step in range(2001):
+    h, p = forward(X)
+    dW1, db1, dW2, db2 = backward(X, h, p)
+    for param, grad in ((W1, dW1), (b1, db1), (W2, dW2), (b2, db2)):
+        param -= 1.0 * grad                               # gradient descent, learning rate 1.0
+    if step in (0, 200, 2000):
+        print(f"step {step:4d}  loss {loss(p):.4f}  predictions {p.ravel().round(3)}")
+```
+
+```
+dL/dW1[0,0]: backprop -0.029283   finite difference -0.029283
+step    0  loss 0.6712  predictions [0.5   0.659 0.464 0.554]
+step  200  loss 0.0149  predictions [0.003 0.984 0.983 0.023]
+step 2000  loss 0.0012  predictions [0.    0.999 0.999 0.002]
+```
+
+The backprop gradient matches the numerical one to six decimal places, so the derivation is right. Training then does what a single neuron can't: the predictions converge to 0, 1, 1, 0. The loss falls fast at first and then slowly, the shape of almost every training curve.
+
+One honest detail: the same code with random seed 0 instead of 1 stops at a loss of about 0.35, correctly classifying two of the four points and stuck at 0.5 on the others. Training a network is non-convex optimization, and from some starting points gradient descent settles somewhere bad. Larger networks, better initialization and optimizers with momentum make such traps much rarer in practice, but it's worth seeing once that "the loss went down" doesn't guarantee "the problem is solved".
+
+Every deep learning framework automates exactly this. You write the forward pass; **autograd** records each operation as it runs and, when you call `.backward()`, walks the record in reverse applying each operation's local derivative, as in section 5.
+
+## 7. See It Train
+
+The playground below runs the same algorithm, a hand-written forward and backward pass, live in your browser on small 2D datasets.
 
 <NeuralNetworkPlayground />
 
-**What to try**: start with **Blobs** (linearly separable — even a single hidden layer solves it almost instantly), then switch to **XOR** and watch a 1-hidden-layer network fail to separate it no matter how long you train — the textbook demonstration of why depth matters, made concrete. Then add a second hidden layer and watch it succeed. Try **Circles** and **Moons** with `tanh` vs. `ReLU` and see which converges faster for each shape.
+**What to try.** Start with **Blobs**, which is linearly separable, so even one hidden neuron solves it almost instantly. Switch to **XOR** and watch a network with too few hidden units fail, then add units or a second layer and watch the boundary bend to fit. Try **Circles** and **Moons** with tanh and then ReLU, and compare how quickly each converges and the shapes of the boundaries they draw: tanh draws smooth curves, ReLU draws piecewise-straight ones, because a ReLU network is a piecewise-linear function.
 
-## Weight Initialization
+## 8. Where the Weights Start
 
-Starting all weights at zero (or the same value) breaks training — every neuron in a layer would compute the identical gradient and stay identical forever ("symmetry"). Good initialization schemes address this and also control the scale of activations/gradients as they pass through many layers:
+### Weight Initialization
 
-- **Xavier/Glorot initialization**: scales initial weights based on the number of input and output units — designed to keep activation variance roughly constant across layers, works well with sigmoid/tanh.
-- **He initialization**: similar idea, tuned for ReLU-family activations (which zero out half their inputs on average, so need larger initial variance to compensate).
+Where the weights start matters, for two reasons.
 
-## Gradient Descent Variants in Practice
+**Symmetry.** If every weight in a layer starts at the same value, every neuron computes the same output and receives the same gradient, so they stay identical forever: a layer of 100 neurons behaves like one. Random initialization breaks the symmetry.
 
-Full batch, mini-batch, and stochastic gradient descent were covered in [Calculus & Optimization](/docs/mathematics-for-ai/calculus-optimization) — in deep learning, mini-batch SGD (usually with the Adam optimizer) is essentially universal. The batch size you choose is a genuine tradeoff: larger batches give more stable gradient estimates and better hardware utilization, but smaller batches often generalize slightly better and let you fit larger models in limited GPU memory.
+**Scale.** A neuron's pre-activation is a sum of $n_\text{in}$ terms $w_i x_i$. If the weights have variance $\sigma^2$ and the inputs have unit variance, the sum has variance about $n_\text{in}\sigma^2$. Too large, and activations grow layer after layer until tanh saturates or values overflow; too small, and they shrink to nothing. Choosing $\sigma^2$ so that variance stays near 1 gives the two standard schemes:
 
-Next: [Training Deep Networks](/docs/deep-learning/training-deep-networks) — the techniques that make it possible to train networks dozens or hundreds of layers deep.
+- **Xavier/Glorot**: $\operatorname{Var}(w) = 1/n_\text{in}$, or $2/(n_\text{in} + n_\text{out})$ to balance the forward and backward passes. Designed for tanh and sigmoid.
+- **He**: $\operatorname{Var}(w) = 2/n_\text{in}$. ReLU zeroes about half its inputs, halving the variance, so the weights need twice as much to compensate. The default for ReLU-family networks.
+
+[Initialization, Regularization and Scheduling](/docs/deep-learning/initialization-regularization-scheduling) derives both, and [Training Deep Networks](/docs/deep-learning/training-deep-networks) measures what bad scale does to a 50-layer network's gradients.
+
+## 9. Training in Mini-Batches
+
+The XOR example computed the gradient over the whole dataset at every step. Real datasets have millions of examples, and computing the exact gradient before every update would be slow. **Mini-batch gradient descent** estimates the gradient from a random batch of, typically, 32 to a few thousand examples, updates the weights, and moves on to the next batch. One pass over the whole dataset is an **epoch**.
+
+The batch gradient is a noisy but unbiased estimate of the true gradient, and the noise is partly useful: it helps the optimizer escape sharp, poorly generalizing minima. Batch size trades against three things. Larger batches give smoother gradients and use the hardware better; smaller batches use less memory and often generalize slightly better; and the best learning rate grows with batch size. In practice nearly everything is trained with mini-batches and an adaptive optimizer such as AdamW, covered in [Optimizers](/docs/deep-learning/optimizers).
+
+<GoDeeper title="Go deeper: why backpropagation is reverse-mode differentiation">
+
+There are two ways to apply the chain rule through a computation with many inputs and one output.
+
+**Forward mode** pushes derivatives along with values from inputs to output. Each pass gives the derivative of every quantity with respect to *one* input. Getting the gradient with respect to $n$ parameters takes $n$ passes.
+
+**Reverse mode** first runs the computation forward, storing intermediate values, then pushes derivatives backward from the output. One backward pass gives the derivative of the *one* output with respect to *every* input.
+
+Neural network training has millions or billions of inputs (the parameters) and one output (the loss), so reverse mode wins by a factor of the parameter count. Backpropagation, as popularized by Rumelhart, Hinton and Williams in 1986, is reverse-mode automatic differentiation applied to neural networks. Its cost is memory: the forward pass's intermediate values must be kept until the backward pass uses them, which is why training needs far more memory than inference, and why techniques such as activation checkpointing trade recomputation for memory.
+
+</GoDeeper>
+
+## 10. When *Not* to Use a Neural Network
+
+| Situation | Better choice |
+|---|---|
+| Small tabular datasets, hundreds to tens of thousands of rows | Gradient-boosted trees, which usually win on tabular data and need less tuning |
+| The relationship is close to linear | Linear or logistic regression: interpretable, fast, hard to overfit |
+| You must explain each prediction to a regulator | An interpretable model, or a network with careful explanation tooling |
+| Very little labelled data and no pretrained model | Simpler models, or more data, before a network |
+| Images, audio, text, or any large unstructured data | A neural network, and usually a pretrained one |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Neuron | Weighted sum plus bias through an activation; one straight decision boundary |
+| XOR | A single neuron can't separate it; one hidden layer can |
+| Layers | Each layer re-represents the data so the next layer's job is easier |
+| Nonlinearity | Without it, any stack of layers collapses to one linear layer |
+| Forward pass | Compute activations layer by layer, then the loss |
+| Output error | For sigmoid or softmax with cross-entropy, $\partial L/\partial z = p - y$ |
+| Backprop | $\delta_l = (W_{l+1}^\top \delta_{l+1}) \odot \phi'(\mathbf{z}_l)$, then $\partial L/\partial W_l = \delta_l\, \mathbf{a}_{l-1}^\top$ |
+| Gradient check | Compare backprop with a finite difference before trusting it |
+| Initialization | Random to break symmetry; Xavier for tanh, He for ReLU, to keep variance steady |
+| Mini-batches | Noisy, cheap gradient estimates; one pass over the data is an epoch |
+
+---
+
+Next: [Activation Functions](/docs/deep-learning/activation-functions) in full, then [Loss Functions](/docs/deep-learning/loss-functions), [Optimizers](/docs/deep-learning/optimizers), and [Training Deep Networks](/docs/deep-learning/training-deep-networks) for what changes when networks get deep.
+
+## Sources
+
+- Rosenblatt, [The Perceptron: A Probabilistic Model for Information Storage and Organization in the Brain](https://psycnet.apa.org/doi/10.1037/h0042519) (1958)
+- Minsky and Papert, *Perceptrons* (MIT Press, 1969)
+- Rumelhart, Hinton and Williams, [Learning representations by back-propagating errors](https://www.nature.com/articles/323533a0) (Nature, 1986)
+- Cybenko, [Approximation by superpositions of a sigmoidal function](https://link.springer.com/article/10.1007/BF02551274) (1989)
+- Glorot and Bengio, [Understanding the difficulty of training deep feedforward neural networks](https://proceedings.mlr.press/v9/glorot10a.html) (2010)
+- He et al., [Delving Deep into Rectifiers](https://arxiv.org/abs/1502.01852) (2015)
+- Goodfellow, Bengio and Courville, [Deep Learning](https://www.deeplearningbook.org/), chapter 6 (2016)
