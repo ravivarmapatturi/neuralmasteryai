@@ -1,102 +1,201 @@
 ---
-title: "LLMs & GenAI Overview"
+title: "LLMs and Generative AI, The Big Picture"
 sidebar_position: 1
-description: "How the Transformer becomes a system like GPT or Claude: pretraining, alignment, prompting, RAG, and efficient production serving, stage by stage."
+description: "How a transformer becomes a system like Claude or GPT, stage by stage: pretraining, post-training, prompting and retrieval, evaluation and serving, with the compute arithmetic that explains why models are trained far past the Chinchilla optimum, and when an LLM is the wrong tool."
 ---
 
-
 import GenAiPipelineOverviewDiagram from '../../../viz/diagrams/GenAiPipelineOverviewDiagram';
-import CapabilityCostLatencyTradeoffDiagram from '../../../viz/diagrams/CapabilityCostLatencyTradeoffDiagram';
-import AlignmentPipelineDiagram from '../../../viz/diagrams/AlignmentPipelineDiagram';
 import FrozenWeightsVsFineTuningDiagram from '../../../viz/diagrams/FrozenWeightsVsFineTuningDiagram';
+import AlignmentPipelineDiagram from '../../../viz/diagrams/AlignmentPipelineDiagram';
 import ScalingLawsGlanceDiagram from '../../../viz/diagrams/ScalingLawsGlanceDiagram';
-import WhereCostGoesDiagram from '../../../viz/diagrams/WhereCostGoesDiagram';
-import EvaluationThroughlineDiagram from '../../../viz/diagrams/EvaluationThroughlineDiagram';
-import ModalityGeneralizationDiagram from '../../../viz/diagrams/ModalityGeneralizationDiagram';
-import AgenticExtensionDiagram from '../../../viz/diagrams/AgenticExtensionDiagram';
-import GenAiSectionMapDiagram from '../../../viz/diagrams/GenAiSectionMapDiagram';
+import CapabilityCostLatencyTradeoffDiagram from '../../../viz/diagrams/CapabilityCostLatencyTradeoffDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# LLMs & GenAI Overview
+# LLMs and Generative AI, The Big Picture
 
-This is where the Transformer architecture from [Deep Learning](/docs/deep-learning/roadmap) turns into systems like GPT, Claude, and LLaMA: how they're built internally, how they're trained to be helpful and aligned, how to prompt and ground them effectively, and how to serve them efficiently in production.
+[Deep Learning](/docs/deep-learning/attention-transformers) ended with the transformer: an architecture that turns a sequence of tokens into a prediction of the next one. This section is about how that architecture becomes a system people actually use, such as Claude, GPT, Gemini or Llama: how it is trained in two very different phases, how its behaviour is changed afterwards without retraining, how its quality is measured, and how it is served to millions of people at a cost that makes sense. This page is the map. It follows a model through its life from raw text to production, gives the compute arithmetic that explains several otherwise puzzling decisions, and links each stage to the page that covers it in depth.
 
-## The Pipeline, End to End
+<ELI5>
 
-A frontier LLM isn't the output of one training run — it's the end of a pipeline where each stage does a distinct job, and each stage is its own page in this section:
+Imagine training a new assistant. First they read an enormous library, every kind of book, for years. They come out knowing a great deal and able to continue any sentence you start, but they don't yet know how to be helpful: ask them a question and they might reply with three more questions, because that's what the page they read looked like.
+
+So next you coach them on the job. You show examples of good answers, then ask them to try and tell them which of their answers were better. Now they answer questions directly and politely.
+
+Finally they start work. You give them reference material for each task, check their work regularly, and organize their day so they can help many people at once.
+
+Reading the library is pretraining, coaching is post-training, and the job is prompting, retrieval and serving. Everything below is those three stages made exact.
+
+</ELI5>
+
+## 1. The Pipeline, End to End
+
+A production language model is the end of a pipeline, and each stage has a different job, cost and set of tools:
 
 <GenAiPipelineOverviewDiagram />
 
-[Foundation Model Internals](/docs/llms-genai/foundation-model-internals) covers the architecture that makes the model run at all (tokenization, attention variants, MoE, sampling). [Training Pipeline](/docs/llms-genai/training-pipeline) covers turning that architecture into weights, in two very different phases: pretraining (learn language and world knowledge from raw text, self-supervised) and post-training (SFT, RLHF, DPO, GRPO — turn a raw next-token predictor into something that follows instructions and reflects human preferences). Everything after that — [Prompt Engineering](/docs/llms-genai/prompt-engineering), [RAG](/docs/llms-genai/rag) — happens with the weights already frozen.
+1. **Architecture.** A decoder-only transformer, plus the details that matter at scale: tokenization, attention variants, mixture-of-experts layers, the KV cache. [Foundation Model Internals](/docs/llms-genai/foundation-model-internals).
+2. **Pretraining.** Predict the next token on trillions of tokens of text and code. This is where knowledge and general ability come from, and where almost all the compute goes.
+3. **Post-training.** Supervised fine-tuning on examples of good behaviour, then preference optimization and reinforcement learning, turn a text predictor into an assistant that follows instructions, reasons step by step and declines harmful requests. [Training Pipeline](/docs/llms-genai/training-pipeline) covers both training phases.
+4. **Use without retraining.** [Prompting](/docs/llms-genai/prompt-engineering), [retrieval](/docs/llms-genai/rag) and [tool use](/docs/agents/agent-fundamentals) change what the model does at inference time, with the weights frozen.
+5. **Evaluation and serving.** Measuring quality on your task, and running the model fast and cheaply. [Evaluation and Serving](/docs/llms-genai/evaluation-and-serving).
 
-## Capability, Cost, and Latency Are Always in Tension
+Most people who build with LLMs work only in stages 4 and 5, with a model someone else trained. Understanding stages 1 to 3 still matters, because they explain what the model can and can't do, and why.
 
-Before any of the pipeline stages, one axis shapes almost every downstream decision: bigger models are more capable, and also slower and more expensive to serve, with no free point in that space:
+## 2. Pretraining: Where Ability Comes From
 
-<CapabilityCostLatencyTradeoffDiagram />
+Pretraining has one objective: given the tokens so far, predict the next one. The loss is cross-entropy on that prediction, averaged over trillions of tokens. It sounds too simple to produce reasoning, translation and coding, but predicting the next token of a proof, a program or a conversation well requires modelling whatever produced it. The model is forced to learn grammar, facts, and patterns of reasoning, because they reduce the loss.
 
-This is the same tension [ML System Design](/docs/ml-system-design/overview#the-tradeoff-space-every-design-sits-in) covers in general terms, specialized to LLMs specifically — and it's why model-size selection is one of the highest-leverage decisions in [Evaluation & Serving](/docs/llms-genai/evaluation-and-serving#costlatency-tradeoffs).
+**Data matters as much as size.** Pretraining corpora are filtered web pages, books, code, scientific papers and, increasingly, synthetic text written by earlier models. Deduplication, quality filtering and the mixture of sources change the result as much as adding parameters does, and the best-performing open models spend a large share of their engineering effort on the data pipeline rather than the architecture.
 
-## Two Ways to Change What a Model Does
-
-A recurring decision in this whole section: does changing the model's behavior require touching its weights, or not?
-
-<FrozenWeightsVsFineTuningDiagram />
-
-Prompting, RAG, and tool use all operate entirely at inference time — zero training cost, instantly reversible, limited by what fits in a context window. Fine-tuning (full or PEFT — LoRA, QLoRA, DoRA) actually updates weights — more durable behavior change, but real training cost, and a new artifact to version and serve. In practice, most production systems reach for the frozen-weights options first (they're cheaper to iterate on and to roll back) and only fine-tune once prompting/RAG have demonstrably hit a ceiling.
-
-## Why Post-Training Exists at All
-
-Pretraining alone produces a model that continues text plausibly, not one that's reliably helpful — post-training is specifically the fix for that gap:
-
-<AlignmentPipelineDiagram />
-
-Each stage narrows a specific failure of the one before it: SFT teaches the *format* of being a helpful assistant (answer directly, follow instructions) from curated examples; RLHF/DPO/GRPO then teach *preference* — which of several acceptable responses is actually better — from comparison data, since "better" is much harder to specify with direct examples than "correct." [Training Pipeline](/docs/llms-genai/training-pipeline) covers every stage's mechanics in full, including the newer, cheaper alternatives to full RLHF.
-
-## Why Scale Works (And Why It's Not Free)
-
-Pretraining loss falls predictably as model size and data scale up together — a real, measured empirical relationship, not a hand-wave:
+**Scaling laws** made pretraining predictable. Kaplan et al. (2020) and then Hoffmann et al. (2022, "Chinchilla") found that the loss falls as a smooth power law in model size and training data, so the result of a large run can be forecast from small ones. Chinchilla's specific finding was that for a fixed compute budget, parameters and tokens should grow together, at roughly **20 training tokens per parameter**. Many earlier models were too large for the data they were trained on.
 
 <ScalingLawsGlanceDiagram />
 
-The **Chinchilla** result (covered in depth in [Training Pipeline](/docs/llms-genai/training-pipeline#scaling-laws-and-the-chinchilla-result)) showed that for a fixed compute budget, model size and training data need to scale *together* — a smaller model trained compute-optimally on more data beats a larger, undertrained one at the same cost. But scale isn't free at the other end either:
+**The limitation:** a pretrained model is a superb text predictor and a poor assistant. It continues text in whatever style the prompt suggests, and it has absorbed the internet's errors along with its knowledge.
 
-<WhereCostGoesDiagram />
+## 3. Post-Training: From Predictor to Assistant
 
-Training is a large one-time cost; inference is a recurring cost paid on every single request, forever — which is exactly why [Evaluation & Serving](/docs/llms-genai/evaluation-and-serving) devotes so much attention to batching, speculative decoding, and Paged Attention. At scale, the aggregate cost of serving a model typically dwarfs the one-time cost of training it.
+Post-training fixes specific failures of the pretrained model, in stages:
 
-## Evaluation Runs Through Every Stage, Not Just the End
+<AlignmentPipelineDiagram />
 
-"Does this model work" isn't one question asked once at the end — it's asked differently at every stage:
+- **Supervised fine-tuning (SFT)** trains on curated examples of prompts and ideal responses. It teaches the *format* of being an assistant: answer the question, follow the instruction, use the conversation structure.
+- **Preference optimization** teaches *which* of several acceptable responses is better, from human or AI comparisons. RLHF trains a reward model on comparisons and optimizes the policy against it; DPO and its relatives optimize directly on the comparison data without a separate reward model.
+- **Reinforcement learning with verifiable rewards** trains on tasks whose answers can be checked automatically, such as mathematics with known answers or code with tests. Methods like GRPO reward the model for reaching correct answers, which is how **reasoning models** learn to think at length before answering.
 
-<EvaluationThroughlineDiagram />
+Post-training uses a tiny fraction of pretraining's compute, but it decides most of what a user experiences: tone, helpfulness, honesty, refusal behaviour, and much of the reasoning ability of current models.
 
-Perplexity and loss curves during pretraining, preference-model accuracy during RLHF, benchmark suites and LLM-as-judge once serving — see [Evaluation & Serving](/docs/llms-genai/evaluation-and-serving) for the serving-time methods, and treat any of them the way [ML System Design](/docs/ml-system-design/overview#offline-metrics-are-a-proxy-not-the-goal) treats an offline metric: a proxy to validate, not a guarantee.
+## 4. Changing Behaviour Without Retraining
 
-## One Architecture, Many Modalities
+Once a model is trained, there are two ways to change what it does for your application, and the choice recurs throughout this section:
 
-Attention doesn't care whether a token represents a word or an image patch — the same mechanism generalizes with only the input embedding changed:
+<FrozenWeightsVsFineTuningDiagram />
 
-<ModalityGeneralizationDiagram />
+- **Leave the weights frozen.** Prompting, retrieval-augmented generation and tool use all work at inference time. No training cost, instant to change, easy to roll back, and limited only by what fits in the context window.
+- **Fine-tune.** Update the weights, fully or with parameter-efficient methods such as LoRA that train small add-on matrices. Durable behaviour change, but a training cost, a new model to version and serve, and the risk of losing general ability.
 
-[Multimodal & Generative Models](/docs/llms-genai/multimodal-generative-models) covers what changes when the modality isn't text: vision-language models, VLAs for robotics, and diffusion models as the dominant non-autoregressive alternative for images.
+The practical order is almost always the same: write a good prompt, add retrieval if the model lacks your information, add tools if it must act, and fine-tune only when you've measured that those have hit a ceiling, typically for a consistent style or format at scale, or to make a smaller, cheaper model do one narrow job well.
 
-## From Answering to Acting
+<PredictFirst
+  question="A support assistant keeps giving outdated refund rules that changed last month. What is the first fix to try?"
+  options={[
+    'Fine-tune the model on the new refund policy',
+    'Retrieve the current policy document into the prompt for refund questions',
+    'Switch to a larger model',
+    'Lower the temperature',
+  ]}
+  correctIndex={1}
+  explanation="The model is missing current information, not ability. Retrieval puts the up-to-date policy in front of it on every relevant request, and updating the document updates the behaviour immediately. Fine-tuning would bake in this month's rules and need repeating whenever they change; a larger model doesn't know about last month's change either."
+/>
 
-RAG is the natural end of "extend the model without retraining it" — but it's still one retrieval-then-generate pass. The next step past that is deciding, autonomously, *whether* and *how* to act:
+## 5. Capability, Cost and Latency
 
-<AgenticExtensionDiagram />
+Every decision in this section trades three things against each other: how capable the model is, what each request costs, and how long it takes.
 
-That's where this section hands off to [Agents](/docs/agents/roadmap) — tool use, multi-step planning, and multi-agent coordination, all still built on the same frozen-or-fine-tuned model this section covers.
+<CapabilityCostLatencyTradeoffDiagram />
 
-## How This Section Fits Together
+Larger models are more capable and slower and more expensive per token. Longer prompts give the model more information and cost more on every call. Reasoning models think before answering, which improves hard problems and multiplies the tokens generated. There's no free point; the right one depends on the product. A real-time autocomplete wants a small fast model; an overnight contract review can afford the largest. [ML System Design](/docs/ml-system-design/overview#the-tradeoff-space-every-design-sits-in) treats the same trade-off in general terms, and [Evaluation and Serving](/docs/llms-genai/evaluation-and-serving#costlatency-tradeoffs) covers the levers that move it.
 
-<GenAiSectionMapDiagram />
+## 6. The Arithmetic of Training and Serving
 
-Follow the [roadmap](/docs/llms-genai/roadmap) for the full ordered path, or jump straight to a topic:
+Two rules of thumb for a dense transformer with $N$ parameters explain a lot. Training costs about $6N$ floating-point operations per training token (2 for the forward pass, 4 for the backward pass), and running the trained model costs about $2N$ per token processed or generated. So training on $D$ tokens costs
 
-- [Foundation Model & Transformer Internals](/docs/llms-genai/foundation-model-internals) — tokenization, embeddings, KV cache, MoE, architecture families
-- [Training Pipeline](/docs/llms-genai/training-pipeline) — pretraining, SFT, RLHF, DPO, GRPO, PEFT/LoRA, distillation, quantization
-- [Prompt Engineering](/docs/llms-genai/prompt-engineering) — few-shot, chain-of-thought, ReAct, prompt injection defenses
-- [Retrieval-Augmented Generation (RAG)](/docs/llms-genai/rag) — chunking, hybrid search, re-ranking, GraphRAG, evaluation
-- [Evaluation & Serving](/docs/llms-genai/evaluation-and-serving) — benchmarks, LLM-as-judge, batching, speculative decoding, Paged Attention
-- [Multimodal & Generative Models](/docs/llms-genai/multimodal-generative-models) — VLMs, VLAs, diffusion models
+$$
+C_\text{train} \approx 6ND
+$$
+
+and serving catches up with that after $3D$ tokens, since $6ND / 2N = 3D$. Putting in numbers for an 8-billion-parameter model:
+
+```python
+# Rules of thumb for a dense transformer with N parameters:
+#   training costs about 6 FLOPs per parameter per training token (forward 2, backward 4)
+#   generating or reading one token at inference costs about 2 FLOPs per parameter
+def train_flops(n_params, n_tokens):
+    return 6 * n_params * n_tokens
+
+N = 8e9                                    # an 8-billion-parameter model
+chinchilla_tokens = 20 * N                 # Chinchilla's compute-optimal ratio: ~20 tokens per parameter
+llama3_tokens = 15e12                      # Llama 3 8B was trained on about 15 trillion tokens
+
+for name, D in [("Chinchilla-optimal", chinchilla_tokens), ("Llama 3 8B actual", llama3_tokens)]:
+    print(f"{name:20s} {D/1e12:6.2f}T tokens  {D/N:6.0f} tokens/param  training {train_flops(N, D):.1e} FLOPs")
+
+# How many tokens must be served before inference has used as much compute as training did?
+breakeven = train_flops(N, llama3_tokens) / (2 * N)
+print(f"inference matches training compute after {breakeven/1e12:.0f}T tokens served")
+print(f"at 1 billion tokens a day that is {breakeven / 1e9 / 365:.0f} years; at 100 billion a day, {breakeven / 100e9:.0f} days")
+```
+
+```
+Chinchilla-optimal     0.16T tokens      20 tokens/param  training 7.7e+21 FLOPs
+Llama 3 8B actual     15.00T tokens    1875 tokens/param  training 7.2e+23 FLOPs
+inference matches training compute after 45T tokens served
+at 1 billion tokens a day that is 123 years; at 100 billion a day, 450 days
+```
+
+Llama 3 8B was trained on about 94 times as many tokens as Chinchilla's compute-optimal ratio suggests. That isn't a mistake. Chinchilla minimizes *training* compute for a given quality. But a popular model is served for years, and serving cost depends on model size, not training length. Training a smaller model for much longer gets the same quality from a model that is cheaper on every one of the trillions of tokens it will ever serve. Once total inference is counted, "overtraining" small models is the economical choice, and almost every widely deployed open model since 2023 has done it.
+
+The second line makes the same point from the other side: at large-provider volumes, inference compute overtakes training compute within about a year, and then keeps growing. That's why [serving optimizations](/docs/llms-genai/evaluation-and-serving) such as batching, KV-cache management, speculative decoding and quantization get so much engineering attention.
+
+## 7. Evaluation Runs Through Every Stage
+
+"Is the model good?" is asked at every stage, differently each time. During pretraining, loss and perplexity on held-out text track progress. During post-training, preference win rates and capability benchmarks do. In an application, what matters is your own evaluation set: real inputs from your task, graded by code where possible and by calibrated model judges or people where not, with error bars that tell you whether a change is real. Public benchmarks are useful for shortlisting models and a poor guide to how they'll do on your task. [Evaluation and Serving](/docs/llms-genai/evaluation-and-serving) covers how to build and read an evaluation.
+
+## 8. Beyond Text, and Beyond Answering
+
+Two extensions build on everything above.
+
+**Other modalities.** Attention doesn't care whether a token stands for a word, an image patch or a slice of audio. Vision-language models feed image features into a language model as tokens; diffusion models generate images and video by learning to remove noise step by step. [Multimodal and Generative Models](/docs/llms-genai/multimodal-generative-models) covers both.
+
+**Acting.** Retrieval is one look-up before one answer. The next step is letting the model decide, repeatedly, whether and how to act: call tools, run code, delegate. That's [Agents](/docs/agents/overview), built on the same frozen or fine-tuned models this section describes.
+
+<GoDeeper title="Go deeper: what it means for a language model to know something">
+
+A pretrained model's knowledge is stored implicitly in its weights, as whatever made predicting the training text easier. Three consequences follow, and they explain much of the practical advice in this section.
+
+- **It has a cutoff.** It knows nothing that happened after its training data was collected, and can't tell you so unless asked. Retrieval and tools are the fix for current information.
+- **It doesn't know what it doesn't know.** Fluent text is the training objective; a confident wrong answer and a correct one can look identical. That's why grounding answers in retrieved sources, and checking them, matters.
+- **Rare facts are weaker than common ones.** Information that appeared many times in training is recalled reliably; something seen once or twice may be half-remembered or mixed up with a similar fact. Your company's internal details are, from the model's point of view, facts it has never seen.
+
+Post-training improves calibration (models trained to say "I don't know" do so more often) but doesn't remove these limits, which is why the frozen-weights tools in section 4 exist.
+
+</GoDeeper>
+
+## 9. When *Not* to Use an LLM
+
+| Situation | Better choice |
+|---|---|
+| A structured prediction with labelled tabular data | A classical model such as gradient-boosted trees: cheaper, faster, easier to explain |
+| Exact arithmetic, lookups or rules | Plain code, or give the model a tool that does it |
+| Answers that must be identical every time and fully auditable | Deterministic software, with the model only for the language-heavy parts |
+| Very high volume of a narrow, simple task | A small fine-tuned or distilled model, or a classifier |
+| Facts that change often | Retrieval into a frozen model, not fine-tuning |
+| Latency under tens of milliseconds | A small specialist model or no model |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Pipeline | Architecture, pretraining, post-training, use without retraining, evaluation and serving |
+| Pretraining | Next-token prediction on trillions of tokens; where knowledge and ability come from |
+| Scaling laws | Loss falls predictably with size and data; Chinchilla: about 20 tokens per parameter |
+| Post-training | SFT for format, preference optimization for quality, RL with verifiable rewards for reasoning |
+| Frozen vs fine-tuned | Prompt, retrieve and use tools first; fine-tune when measured to be necessary |
+| Compute | Training about $6ND$; inference about $2N$ per token; serving overtakes training at scale |
+| Overtraining | Small models trained far past Chinchilla are cheaper to serve for the same quality |
+| Evaluation | Your own eval set, with error bars, decides; benchmarks only shortlist |
+
+---
+
+Follow the [roadmap](/docs/llms-genai/roadmap) for the full path, or start with [Foundation Model Internals](/docs/llms-genai/foundation-model-internals) and the [Training Pipeline](/docs/llms-genai/training-pipeline).
+
+## Sources
+
+- Kaplan et al., [Scaling Laws for Neural Language Models](https://arxiv.org/abs/2001.08361) (2020)
+- Hoffmann et al., [Training Compute-Optimal Large Language Models](https://arxiv.org/abs/2203.15556) (2022)
+- Ouyang et al., [Training language models to follow instructions with human feedback](https://arxiv.org/abs/2203.02155) (2022)
+- Rafailov et al., [Direct Preference Optimization](https://arxiv.org/abs/2305.18290) (2023)
+- DeepSeek-AI, [DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning](https://arxiv.org/abs/2501.12948) (2025)
+- Meta, [The Llama 3 Herd of Models](https://arxiv.org/abs/2407.21783) (2024)
+- Sardana et al., [Beyond Chinchilla-Optimal: Accounting for Inference in Language Model Scaling Laws](https://arxiv.org/abs/2401.00448) (2023)
