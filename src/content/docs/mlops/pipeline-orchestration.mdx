@@ -1,7 +1,7 @@
 ---
-title: "Pipeline Orchestration"
+title: "Pipeline Orchestration, In Full Depth"
 sidebar_position: 6
-description: "DAGs, tasks, retries, and Airflow's real architecture -- turning a trained model from one script into a pipeline that recovers cleanly at 3am."
+description: "Why a training pipeline needs an orchestrator, the DAG model, scheduling and logical dates, retries with backoff, idempotent tasks, caching and backfills, a real Airflow 3 pipeline with a quality gate, and how Prefect and Dagster differ."
 ---
 
 import MlLifecyclePipelineDiagram from '../../../viz/diagrams/MlLifecyclePipelineDiagram';
@@ -9,119 +9,378 @@ import DagDependencyDiagram from '../../../viz/diagrams/DagDependencyDiagram';
 import RetryBackoffDiagram from '../../../viz/diagrams/RetryBackoffDiagram';
 import PipelineCachingDiagram from '../../../viz/diagrams/PipelineCachingDiagram';
 import BackfillDiagram from '../../../viz/diagrams/BackfillDiagram';
-import AirflowConceptMapDiagram from '../../../viz/diagrams/AirflowConceptMapDiagram';
-import OrchestratorComparisonDiagram from '../../../viz/diagrams/OrchestratorComparisonDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Pipeline Orchestration
+# Pipeline Orchestration, In Full Depth
 
-A trained model isn't produced by one script — it's produced by a sequence of steps that each depend on the last, need to run on a schedule, and need to recover cleanly when one of them fails at 3am. That's a pipeline orchestration problem, not a training problem.
+[Experiment Tracking](/docs/mlops/experiment-tracking) made a single training run recordable and repeatable. A production model, though, is not produced by one run that someone starts by hand. It is produced by a chain of steps (fetch data, validate it, build features, train, evaluate, register) that has to run every night, survive a flaky database at 3am, and tell a person exactly which step broke. This page covers the system that runs that chain: the graph model every orchestrator uses, how scheduling and dates work, why tasks must be safe to re-run, retries, caching and backfills, a working Airflow 3 pipeline with a quality gate, and how Prefect and Dagster approach the same problem differently.
 
-## The ML Lifecycle as a Pipeline
+<ELI5>
 
+Think of a kitchen preparing a dinner service. The vegetables have to be chopped before the soup is made, the soup has to be made before it's served, and the bread can be baked at the same time as the soup because neither needs the other. If the oven fails, you don't throw away the chopped vegetables and start again; you fix the oven and carry on from the bread.
+
+A head chef who keeps track of all that, and knows what's done, what's waiting and what failed, is an orchestrator. A pipeline orchestrator does the same for the steps that produce a model: it knows the order, runs what's ready, retries what failed for a passing reason, and shows you where things stopped.
+
+Everything below is that head chef made exact.
+
+</ELI5>
+
+## 1. What Is Pipeline Orchestration?
+
+**The problem.** A first version of a retraining job is usually one script, run by `cron` at 2am:
+
+```bash
+0 2 * * * python retrain.py >> retrain.log 2>&1
 ```
-Validation → Preprocessing → Feature Engineering → Training → Evaluation → Registry → Deployment → Monitoring → Retraining
-```
 
-Each stage takes the previous stage's output as input. Running this by hand (or as one giant script) works exactly once — a real system needs to run this on a schedule, retry the step that failed without re-running everything before it, and show a human which step broke.
+It works until something goes wrong, and then every weakness shows at once. If the feature query times out at step 3, the whole script fails and tomorrow's run starts from step 1, even though steps 1 and 2 were fine. Nobody is told unless they read the log. If the data for Tuesday was bad and has been fixed, there's no clean way to rerun "Tuesday" specifically. If two runs overlap because one ran long, they write over each other's files. And the only record of what ran is a growing text file.
 
 <MlLifecyclePipelineDiagram />
 
-## Core Concepts
+**What an orchestrator is, precisely:** a system that runs a set of tasks with declared dependencies, on a schedule or in response to events, and tracks the state of every task in every run. From that state it can start tasks as soon as their inputs are ready, retry failures, skip work that's already done, rerun a chosen date range, alert on failure, and show the history.
 
-- **DAG (Directed Acyclic Graph)**: the pipeline as a graph of steps with dependencies — step C can't start until steps A and B finish, and there are no cycles. This is the data structure every orchestrator is built around.
+**What it isn't:**
+
+- **Not the compute.** The orchestrator decides *what runs when*. The actual work runs on workers it dispatches to: local processes, a Celery pool, Kubernetes pods, a Spark cluster, or a managed training service.
+- **Not a message queue.** A queue moves many small, independent jobs as fast as possible; an orchestrator manages a few large, dependent steps with history. [Message Queues & Async Processing](/docs/mlops/message-queues-and-async-processing) covers the queue side, and some orchestrators use a queue internally.
+- **Not a data processing engine.** Airflow shouldn't do the joins itself; it should tell the warehouse or Spark to do them.
+
+The common structure behind every orchestrator is a graph, so that comes first.
+
+## 2. The Pipeline as a Graph
+
+A pipeline is a **directed acyclic graph** (DAG). Each node is a **task**, one unit of work. Each edge says "this task needs that one to finish first". *Directed* means edges have a direction; *acyclic* means you can never follow edges back to where you started, because a task can't depend on its own output.
 
 <DagDependencyDiagram />
 
-- **Task / Operator**: a single unit of work in the DAG (e.g. "run this Python function," "run this SQL query," "run this Docker container").
-- **Scheduling**: run the DAG on a cron-like schedule (nightly retraining) or trigger it on an event (new data landed).
-- **Retries**: if a task fails (a flaky API call, a transient network error), retry it automatically before escalating to a human.
+In the diagram, `extract` and `validate` can run in parallel, `merge` waits for both, and `train` waits for `merge`. That's all the scheduler needs to know: at any moment, a task is **ready** when all its upstream tasks have succeeded. Running ready tasks as soon as there's capacity gives the shortest possible run, which is the length of the longest dependency path (the **critical path**), not the sum of all tasks.
+
+Formally, the order in which tasks can run is a **topological sort** of the graph: an ordering where every task comes after all the tasks it depends on. A graph has one if and only if it has no cycles, which is why orchestrators reject cyclic pipelines when they load them, before anything runs.
+
+Two choices matter when you split work into tasks:
+
+- **Tasks should be coarse enough to be worth tracking.** "Train the model" is a task; "compute one column" isn't. Each task has scheduling overhead of a second or more, and its own retry and log.
+- **Tasks should be the unit you'd want to retry or rerun.** If a failure halfway through a task forces you to redo something expensive, split there.
+
+The graph says what order tasks run in. When the whole graph runs, and for which period of data, is the next question.
+
+## 3. Schedules and the Logical Date
+
+A schedule is usually a cron expression or a preset: `@daily`, `@hourly`, `0 2 * * 1` (2am every Monday). A pipeline can also run on an **event**, such as a new file landing or an upstream pipeline publishing a new dataset.
+
+The concept that confuses almost everyone at first is the **logical date** (Airflow's term; older material calls it `execution_date`). A scheduled run is about a *period of data*, not about the moment it happens to start. The daily run that processes October 22's transactions has logical date October 22, even though it can only start after October 22 has ended, at or after midnight on October 23.
+
+Why separate the two? Because the run's *meaning* shouldn't depend on when it happened to start. If the scheduler was down for a day, or you rerun October 22 next month, the run still processes October 22's data and writes October 22's output. Tasks read the logical date (Airflow passes it as `ds`, `"2026-10-22"`) and use it to choose their input and output paths, never `datetime.now()`.
+
+**The limitation:** time-based schedules assume data arrives on time. If the upstream export lands at 3am one night and 5am the next, a 2am schedule trains on incomplete data. Event-based triggering, or a sensor that waits for the data, handles that; section 8 shows both.
+
+Once runs are tied to dates, the next problem is what happens when one of them runs twice.
+
+## 4. Idempotent Tasks
+
+An orchestrator will run the same task for the same date more than once. A retry after a timeout, a manual rerun after a fix, a backfill, a worker that died after doing the work but before reporting success: all of these re-execute a task. So the most important property a task can have is **idempotency**: running it twice with the same inputs leaves the world in the same state as running it once.
+
+Compare two ways of writing a day's features:
+
+- **Not idempotent:** `INSERT INTO features SELECT ... WHERE day = '2026-10-22'`. Run it twice and every row is duplicated, so the model trains on double-counted data.
+- **Idempotent:** delete-then-insert the partition for that day inside one transaction, or write to `s3://features/day=2026-10-22/` and overwrite the whole folder. Run it twice and the result is identical.
+
+The rules that follow:
+
+- **Write outputs to a location determined by the logical date**, and overwrite it rather than append.
+- **Derive inputs from the logical date too**, not from "the latest file" or the current time.
+- **Make external side effects safe to repeat.** If a task sends an alert or registers a model, check whether it already did for this run, or pass an idempotency key the receiving system deduplicates on. [Production Reliability](/docs/mlops/production-reliability#idempotency-and-distributed-locks) covers idempotency keys in depth.
+
+Idempotency is what makes the next two features, retries and backfills, safe to use. Without it, every retry risks corrupting data.
+
+## 5. Retries and Backoff
+
+Many failures are **transient**: a network timeout, a database at its connection limit, a spot instance reclaimed, a rate limit. The same task, run again a little later, succeeds. Orchestrators retry failed tasks a configured number of times before marking them failed and alerting anyone.
 
 <RetryBackoffDiagram />
 
-- **Caching**: skip re-running a step whose inputs haven't changed since the last successful run — the same principle as a build system, applied to a data pipeline.
+How long to wait between attempts matters. Retrying immediately often hits the same overloaded service. **Exponential backoff** waits longer after each failure:
+
+$$\text{delay}_n = \min\left(d_{\max},\; d_0 \cdot 2^{\,n}\right)$$
+
+for attempt $n = 0, 1, 2, \ldots$ With $d_0 = 30$ s, the waits are 30 s, 60 s, 120 s, 240 s. If many tasks failed at the same moment, say because a shared database restarted, they would all retry at the same moments too and knock it over again. **Jitter** fixes that by randomizing each delay, for example drawing uniformly between 0 and $\text{delay}_n$, which spreads the retries out.
+
+Retries cost something: a task that fails 3 times with backoff can delay the pipeline by several minutes before anyone hears about it. And retrying only helps when the failure is transient.
+
+<PredictFirst
+  question="A training pipeline's evaluation task fails because the new model's AUC is below the required threshold. The task is configured with retries=3. What happens, and is that right?"
+  options={[
+    'It retries 3 times and one attempt will probably pass, because training is random',
+    'It retries 3 times, fails 4 times with the same result, and delays the alert: deterministic failures should not be retried',
+    'The orchestrator detects the failure is permanent and skips the retries automatically',
+    'It retries the whole pipeline from the extract task, which is the correct behaviour',
+  ]}
+  correctIndex={1}
+  explanation="A retry reruns the same task with the same inputs. Evaluation of a fixed model on fixed data gives the same AUC every time, so all four attempts fail identically, and the alert arrives later than it should. Orchestrators can't tell transient failures from permanent ones; you tell them, by setting retries only on tasks whose failures can be transient (network, quota, preemption) and retries=0 on checks like quality gates."
+/>
+
+Retries recover from a failure *within* a run. Caching avoids repeating work *across* runs.
+
+## 6. Caching and Backfills
+
+**Caching** skips a task whose inputs haven't changed since a successful earlier run, and reuses the stored result. It is the same idea as a build system like `make`: if the source file is older than the compiled output, don't recompile.
 
 <PipelineCachingDiagram />
 
-- **Backfilling**: run the pipeline for a range of past dates, e.g. after fixing a bug in a transformation step, without hand-rerunning each day individually.
+The question is what counts as "the same inputs". A good cache key includes the task's code version, its parameters and a fingerprint of its input data. Leaving one out produces stale results: change the feature code but key only on the input data, and the cache will keep serving features built by the old code. Prefect computes keys from task inputs by default and lets you choose a policy; Dagster tracks whether an asset's code or upstream data changed since it was last materialized; Airflow has no built-in result caching, and pipelines get the same effect by checking whether the output for the logical date already exists.
+
+**Backfilling** runs the pipeline for a range of past logical dates. You need it when you add a new pipeline that should cover history, or when a bug in a transformation is fixed and the affected days must be recomputed.
 
 <BackfillDiagram />
 
-## Airflow
+A backfill is just many ordinary runs with different logical dates, so it is only correct if tasks are idempotent and read their data from the logical date (sections 3 and 4). A task that reads "the latest data" will backfill 30 copies of today. Limit how many backfill runs execute at once, too, or 30 parallel runs will overload the warehouse that serves the normal pipeline.
 
-The most widely used orchestrator, and the one whose vocabulary shows up everywhere else:
-
-- **DAG**: a Python file defining the pipeline structure.
-- **Task**: one node in the DAG.
-- **Operator**: the type of work a task does (`PythonOperator`, `BashOperator`, `KubernetesPodOperator`, etc.).
-- **Scheduler**: the process that decides when each DAG run should trigger.
-- **Executor**: the process that actually runs tasks (locally, on Celery workers, or on Kubernetes pods, depending on configuration).
-- **Sensor**: a special task type that waits for a condition (a file landing in S3, a partition appearing in a table) before letting downstream tasks proceed.
-- **XCom**: Airflow's mechanism for passing small pieces of data between tasks in the same DAG run.
-
-Airflow's model — DAGs as Python code, a scheduler, pluggable executors — is old enough (originally built at Airbnb) to be the de facto lingua franca; most job postings asking for "pipeline orchestration experience" mean Airflow specifically.
-
-<AirflowConceptMapDiagram />
-
-A real DAG covering the training slice of the lifecycle above (validation → preprocessing → training → evaluation), using Airflow's modern TaskFlow API:
-
-```python
-from airflow.decorators import dag, task
-from datetime import datetime
-
-@dag(schedule="@nightly", start_date=datetime(2026, 1, 1), catchup=False)
-def retrain_fraud_model():
-    @task(retries=3, retry_delay=300)
-    def validate_data():
-        return check_schema_and_ranges("s3://data/fraud/latest")
-
-    @task
-    def preprocess(validated_path: str):
-        return build_features(validated_path)
-
-    @task
-    def train(feature_path: str):
-        return run_training(feature_path)  # logs to MLflow, see Experiment Tracking
-
-    @task
-    def evaluate(run_id: str):
-        if not beats_production_benchmark(run_id):
-            raise ValueError("candidate did not beat production -- stopping before registry/deploy")
-
-    evaluate(train(preprocess(validate_data())))
-
-retrain_fraud_model()
-```
-
-```bash
-airflow dags trigger retrain_fraud_model              # run it now, outside the schedule
-airflow tasks test retrain_fraud_model validate_data 2026-01-15   # run one task in isolation, for debugging
-airflow dags backfill retrain_fraud_model -s 2026-01-01 -e 2026-01-07   # rerun a past date range
-```
-
-## Alternatives
-
-- **Prefect**: a newer orchestrator with a lower-friction Python-native API (decorate a normal function with `@flow`/`@task` rather than building an explicit DAG object), stronger dynamic/conditional workflow support, and a more modern UI.
+Here is caching and retrying in practice, using Prefect 3.9. The fetch task fails twice like a flaky API, then succeeds; the feature task is cached on its inputs:
 
 ```python
 from prefect import flow, task
+from prefect.cache_policies import INPUTS
 
-@task(retries=3)
-def validate_data():
-    return check_schema_and_ranges("s3://data/fraud/latest")
+calls = {"fetch": 0}
 
-@task
-def train(feature_path: str):
-    return run_training(feature_path)
+@task(retries=3, retry_delay_seconds=1)
+def fetch_rows(day: str) -> int:
+    calls["fetch"] += 1
+    if calls["fetch"] < 3:                       # fail twice, like a flaky upstream API
+        raise ConnectionError("upstream timed out")
+    return 569
 
-@flow
-def retrain_fraud_model():
-    validated = validate_data()
-    train(validated)   # same dependency graph, no explicit DAG object -- inferred from the call order
+@task(cache_policy=INPUTS)                       # same inputs -> reuse the stored result
+def build_features(day: str, rows: int) -> str:
+    print(f"computing features for {day}")
+    return f"features/{day}.parquet"
+
+@flow(log_prints=True)
+def retrain(day: str):
+    rows = fetch_rows(day)
+    path = build_features(day, rows)
+    print(f"{day}: {rows} rows -> {path} (fetch attempts: {calls['fetch']})")
+
+if __name__ == "__main__":
+    retrain("2026-10-22")
+    calls["fetch"] = 2                           # second run: upstream healthy
+    retrain("2026-10-22")                        # build_features is a cache hit
 ```
-- **Dagster**: orchestration built around **software-defined assets** rather than tasks — you declare the data assets a pipeline produces and their dependencies, and Dagster infers the DAG, with strong built-in data quality and lineage tracking.
 
-Airflow remains the safest default to learn first because of its ubiquity; Prefect and Dagster are the ones to reach for on a new project where Airflow's more verbose, less Pythonic API is a real cost.
+The relevant log lines:
 
-<OrchestratorComparisonDiagram />
+```text
+Task run 'fetch_rows-cd8' - Task run failed with exception: ConnectionError('upstream timed out') - Retry 1/3 will start 1 second(s) from now
+Task run 'fetch_rows-cd8' - Task run failed with exception: ConnectionError('upstream timed out') - Retry 2/3 will start 1 second(s) from now
+Task run 'fetch_rows-cd8' - Finished in state Completed()
+Task run 'build_features-a39' - computing features for 2026-10-22
+Flow run 'transparent-antelope' - 2026-10-22: 569 rows -> features/2026-10-22.parquet (fetch attempts: 3)
+Task run 'fetch_rows-d6d' - Finished in state Completed()
+Task run 'build_features-a43' - Finished in state Cached(type=COMPLETED)
+```
 
-Next: [Message Queues & Async Processing](/docs/mlops/message-queues-and-async-processing) — the mechanism underneath Celery workers (and streaming pipelines generally) that this page only referenced in passing.
+The second run never printed "computing features": the task was skipped because its inputs matched a stored result.
+
+## 7. A Real Pipeline in Airflow
+
+### Airflow
+
+[Apache Airflow](https://airflow.apache.org) is the most widely used orchestrator, created at Airbnb in 2014 and now an Apache project. Airflow 3, released in April 2025, was its biggest change in years, and the current release is 3.3. If you learned Airflow 2, the main differences are:
+
+- **The Task SDK.** DAG code imports from `airflow.sdk` (`from airflow.sdk import dag, task`), and tasks talk to Airflow through an API instead of directly to its database, so task code can run in separate environments or even other languages.
+- **An API server** replaces the old webserver and serves both the UI and the task execution API. A separate **DAG processor** parses DAG files, so a slow or broken file can't stall the scheduler.
+- **DAG versioning:** the UI shows which version of a DAG's code each run used.
+- **Assets** (renamed from datasets) let one pipeline trigger when another publishes data.
+- **Backfills are run by the scheduler** and managed from the UI or `airflow backfill create`, and `catchup` defaults to `False`.
+
+The parts of a running Airflow deployment: the **scheduler** decides which task instances are ready; the **executor** hands them to workers (local processes, a Celery pool, or one Kubernetes pod per task); the **DAG processor** loads DAG files; the **API server** serves the UI; and a **metadata database** (PostgreSQL in production) holds the state of every run.
+
+Here is the retraining pipeline from this page as a complete Airflow 3 DAG, with a quality gate as its last step:
+
+```python
+from datetime import timedelta
+from pathlib import Path
+
+import pendulum
+
+from airflow.sdk import dag, task
+
+WORK = Path("/tmp/retrain")   # in production: object storage, e.g. s3://ml-artifacts/retrain/
+MIN_AUC = 0.98                # the bar a candidate must clear before it may be registered
+
+
+@dag(schedule="@daily", start_date=pendulum.datetime(2026, 10, 1, tz="UTC"), catchup=False,
+     default_args={"retries": 2, "retry_delay": timedelta(minutes=5)})
+def retrain_classifier():
+
+    @task
+    def extract(ds=None) -> str:
+        from sklearn.datasets import load_breast_cancer
+        df = load_breast_cancer(as_frame=True).frame
+        path = WORK / ds / "raw.parquet"           # one folder per logical date: reruns overwrite, never append
+        path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(path)
+        return str(path)
+
+    @task
+    def validate(path: str) -> str:
+        import pandas as pd
+        df = pd.read_parquet(path)
+        assert len(df) > 500, f"only {len(df)} rows"
+        assert df.isna().sum().sum() == 0, "nulls in input"
+        assert set(df["target"].unique()) == {0, 1}, "unexpected labels"
+        return path
+
+    @task
+    def train(path: str) -> dict:
+        import pandas as pd
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.metrics import roc_auc_score
+        from sklearn.model_selection import train_test_split
+        from sklearn.pipeline import make_pipeline
+        from sklearn.preprocessing import StandardScaler
+        df = pd.read_parquet(path)
+        X, y = df.drop(columns="target"), df["target"]
+        X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.25, random_state=0, stratify=y)
+        model = make_pipeline(StandardScaler(), LogisticRegression(max_iter=1000)).fit(X_tr, y_tr)
+        return {"auc": round(roc_auc_score(y_te, model.predict_proba(X_te)[:, 1]), 4)}
+
+    @task(retries=0)   # a failed quality bar is not transient: retrying can't fix it
+    def gate(result: dict) -> dict:
+        if result["auc"] < MIN_AUC:
+            raise ValueError(f"AUC {result['auc']} below {MIN_AUC}: not registering")
+        print(f"candidate passes with AUC {result['auc']}")
+        return result
+
+    gate(train(validate(extract())))
+
+
+retrain_classifier()
+```
+
+What each part does:
+
+- **`@dag`** declares the pipeline: run daily from October 1, don't automatically create runs for missed past dates (`catchup=False`), and retry every task twice, five minutes apart, unless it says otherwise.
+- **`@task`** turns a function into a task. Calling one task with another's return value, as in the last line, both passes the data and declares the dependency, so the graph is `extract → validate → train → gate`.
+- **Return values are passed as XComs**, Airflow's mechanism for small values between tasks. They're stored in the metadata database, so pass *paths* to data, never the data itself.
+- **`ds`** is the logical date, and the output path is built from it, which makes `extract` idempotent.
+- **Heavy imports live inside the task functions,** because the DAG processor parses DAG files often and top-level imports of scikit-learn would slow every parse.
+
+Running it locally with `airflow dags test retrain_classifier 2026-10-22` executes all four tasks in order in one process. The run succeeds and the gate logs:
+
+```text
+candidate passes with AUC 0.9952
+```
+
+Raising `MIN_AUC` to `0.999` and running again shows the gate doing its job: `extract`, `validate` and `train` succeed, the gate fails once with no retries, and the run is marked failed:
+
+```text
+ValueError: AUC 0.9952 below 0.999: not registering
+```
+
+The other commands you'll use day to day are `airflow tasks test retrain_classifier train 2026-10-22`, which runs one task in isolation for debugging, and `airflow backfill create --dag-id retrain_classifier --from-date 2026-10-01 --to-date 2026-10-07`, which queues a backfill.
+
+## 8. Triggering on Data, Not Time
+
+A schedule runs at a time whether or not the data is ready. Two mechanisms tie runs to data instead.
+
+**Sensors** are tasks that wait for a condition: a file existing in object storage, a partition appearing in a table, an external job finishing. The downstream tasks start only when the sensor succeeds. Sensors should run in **deferrable** mode, where the waiting is handed to a lightweight trigger process instead of holding a worker slot for hours.
+
+**Asset-based scheduling** inverts the relationship. The producing pipeline declares that a task updates an asset, say `Asset("s3://features/user_daily")`, and the consuming pipeline uses `schedule=[that asset]`, so it runs whenever the asset is updated. The feature pipeline and the training pipeline stay separate, owned by different teams, yet training starts as soon as fresh features exist.
+
+<GoDeeper title="Go deeper: assets as the primary abstraction (Dagster)">
+
+Airflow's model is *tasks*: you describe the steps, and data is something the steps happen to produce. Dagster starts from the other end. You declare **software-defined assets**, the tables, files and models the pipeline should produce, and each asset's function declares which assets it needs by naming them as parameters. Dagster builds the graph from those names:
+
+```python
+from dagster import asset, materialize
+
+@asset
+def raw_transactions() -> list[dict]:
+    return [{"user": 42, "amount": 31.0}, {"user": 42, "amount": 66.0}, {"user": 7, "amount": 12.0}]
+
+@asset
+def user_features(raw_transactions: list[dict]) -> dict:
+    totals = {}
+    for row in raw_transactions:
+        totals.setdefault(row["user"], []).append(row["amount"])
+    return {user: sum(v) / len(v) for user, v in totals.items()}
+
+@asset
+def training_set(user_features: dict) -> int:
+    return len(user_features)
+
+if __name__ == "__main__":
+    result = materialize([raw_transactions, user_features, training_set])
+    print("success:", result.success)
+    print("user_features:", result.output_for_node("user_features"))
+```
+
+```text
+success: True
+user_features: {42: 48.5, 7: 12.0}
+```
+
+Because Dagster knows *what* each asset is rather than only *how* to run a step, it can answer questions a task graph can't easily answer: which assets are stale because their upstream data or their code changed, what the lineage of a model is, and which downstream assets a broken table affects. It also attaches data quality checks to assets directly. The cost is a different mental model, and less of the existing operator ecosystem than Airflow has.
+
+</GoDeeper>
+
+## 9. Choosing an Orchestrator
+
+| Tool | Model | Strong at | Things to know |
+|---|---|---|---|
+| **Airflow** | Tasks in a DAG, scheduled by logical date | Ubiquity, a huge set of provider integrations, mature operations; managed as AWS MWAA, Google Cloud Composer and Astronomer | Heavier to run; dynamic, data-dependent graphs are possible but less natural |
+| **Prefect** | Python functions as flows and tasks; the graph is whatever the code calls | Low ceremony, dynamic workflows, caching and retries on plain functions | The graph isn't known before the run, so less static validation |
+| **Dagster** | Software-defined assets | Lineage, freshness, asset-level data checks | A different mental model; smaller integration library |
+| **Kubeflow Pipelines** | Containerized steps on Kubernetes | ML pipelines where every step is a container with its own resources, including GPUs | Requires Kubernetes and its operational cost |
+| **Flyte, Metaflow, ZenML** | ML-focused workflow frameworks | Typed data passing, versioned executions, moving from laptop to cluster | Smaller communities than Airflow |
+
+Managed cloud options (SageMaker Pipelines, Vertex AI Pipelines, Azure ML pipelines) suit teams already committed to one cloud's ML platform.
+
+<PredictFirst
+  question="A team's training pipeline must start whenever the separate feature pipeline, owned by another team, finishes writing a new day's features, which happens anywhere between 1am and 6am. Which design fits best?"
+  options={[
+    'Schedule training at 6am every day, after the latest possible finish',
+    'Have the feature pipeline call the training script directly at its end',
+    'Have training scheduled on the feature asset, so it runs whenever that asset is updated',
+    'Run training every 10 minutes and let it fail when features are missing',
+  ]}
+  correctIndex={2}
+  explanation="A fixed 6am schedule wastes up to five hours on most days and breaks the day features run late. Calling training from the feature pipeline couples two teams' code. Polling every 10 minutes creates noise and failed runs. Asset- or data-aware scheduling lets the producer declare 'this data was updated' and the consumer start on that event, while each pipeline stays independently owned."
+/>
+
+## 10. When *Not* to Use an Orchestrator
+
+| Situation | Better choice |
+|---|---|
+| One script, run occasionally by a person | Run it by hand; record the run with experiment tracking |
+| A single scheduled job with no dependencies, where a missed run doesn't matter | `cron`, a Kubernetes CronJob, or a cloud scheduler, with an alert on failure |
+| Thousands of small independent jobs per minute, such as per-request inference | A message queue with workers; see [Message Queues & Async Processing](/docs/mlops/message-queues-and-async-processing) |
+| Continuous, low-latency processing of an event stream | A stream processor such as Flink or Kafka Streams; an orchestrator thinks in batches |
+| Real-time model serving | A serving system; see [APIs & Model Serving](/docs/mlops/model-serving). Orchestrators produce models, they don't answer requests |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Orchestrator | Runs dependent tasks on a schedule or event, and tracks the state of every run |
+| DAG | Tasks and dependencies with no cycles; ready tasks run in parallel |
+| Logical date | A run is about a period of data, not the moment it started |
+| Idempotency | Re-running a task gives the same result; write date-keyed outputs and overwrite |
+| Retries | Exponential backoff with jitter, only for failures that can be transient |
+| Caching | Skip a task when its code, parameters and inputs are unchanged |
+| Backfill | Many ordinary runs over past dates; safe only with idempotent, date-driven tasks |
+| Airflow 3 | `airflow.sdk` Task SDK, API server, DAG versioning, assets, scheduler-run backfills |
+| Data-aware triggers | Sensors wait for data; asset schedules start a pipeline when its input updates |
+
+---
+
+Next: [Message Queues & Async Processing](/docs/mlops/message-queues-and-async-processing) covers the queue and worker model that sits underneath Airflow's Celery executor and most asynchronous ML systems.
+
+## Sources
+
+- Apache Airflow, [Documentation](https://airflow.apache.org/docs/apache-airflow/stable/index.html) and [Upgrading to Airflow 3](https://airflow.apache.org/docs/apache-airflow/stable/installation/upgrading_to_airflow3.html)
+- Prefect, [Documentation: tasks, retries and caching](https://docs.prefect.io/v3/concepts/caching)
+- Dagster, [Software-defined assets](https://docs.dagster.io/guides/build/assets)
+- M. Brooker, [Exponential Backoff And Jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/), AWS Architecture Blog

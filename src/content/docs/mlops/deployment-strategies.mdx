@@ -1,46 +1,88 @@
 ---
-title: "Deployment Strategies"
+title: "Deployment Strategies, In Full Depth"
 sidebar_position: 14
-description: "Blue-Green, Canary, Shadow, and A/B deployment -- every real strategy for shrinking the blast radius of shipping a new model to production traffic."
+description: "How to release a new model without betting all traffic on it: blue-green, canary with automated analysis, shadow and A/B testing, why a small canary can't see small regressions, how many users an A/B test needs, why peeking breaks it, and validated Kubernetes manifests for each."
 ---
 
 import BlueGreenCutoverDiagram from '../../../viz/diagrams/BlueGreenCutoverDiagram';
 import CanaryRampDiagram from '../../../viz/diagrams/CanaryRampDiagram';
 import ShadowDeploymentDiagram from '../../../viz/diagrams/ShadowDeploymentDiagram';
 import CanaryVsAbPurposeDiagram from '../../../viz/diagrams/CanaryVsAbPurposeDiagram';
-import StrategyComparisonMatrixDiagram from '../../../viz/diagrams/StrategyComparisonMatrixDiagram';
 import ComposedStrategyDiagram from '../../../viz/diagrams/ComposedStrategyDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Deployment Strategies
+# Deployment Strategies, In Full Depth
 
-Instantly swapping 100% of production traffic from the old model to a new one is the riskiest possible way to deploy — if the new model is subtly broken, every user hits it at once, with no easy way to isolate whether the model is actually the cause. Every strategy below exists to reduce that blast radius.
+[Feature Stores & Model Registry](/docs/mlops/feature-stores-and-model-registry) ended with a model version that passed every offline check and was promoted in the registry. Offline checks run on historical data, though, and production traffic is never quite the same: new users, new devices, new kinds of fraud, a feature that behaves differently under load. This page covers how to put a new model in front of real traffic while limiting the damage if it's wrong: the four standard strategies (blue-green, canary, shadow and A/B), the statistics that decide how long each must run to tell you anything, and validated Kubernetes manifests for each.
 
-## Blue-Green Deployment
+<ELI5>
 
-Run two complete, identical production environments — "blue" (currently live) and "green" (the new version). Deploy the new model fully into green, verify it's healthy, then switch the router/load balancer to send all traffic to green in one atomic cutover. Blue stays running, untouched, as an instant rollback target — if green misbehaves, flip traffic back to blue immediately. The cost is running two full production environments simultaneously, even if briefly.
+A restaurant changing its menu has choices. It can switch the whole menu overnight and keep the old kitchen ready in case it goes badly (blue-green). It can offer the new dish to one table in twenty first, and widen it if nobody complains (canary). It can have the chef secretly cook the new dish alongside every order, taste it in the back, and serve only the old one (shadow). Or it can serve half the tables each version for a month and count which half orders dessert more often (A/B test).
+
+Each answers a different question, at a different cost. Deployment strategies are those choices made precise for software.
+
+Everything below is how each one works, and how long it has to run before its answer means anything.
+
+</ELI5>
+
+## 1. Why Deployment Needs a Strategy
+
+The simplest deployment replaces the old model with the new one for all traffic at once. If the new model is broken, every user meets it at the same moment. If it's subtly worse, say it flags 3% more legitimate transactions as fraud, there may be no clear before-and-after to see, because everything changed at once, including traffic patterns that happened to shift the same hour.
+
+A **deployment strategy** is a way of releasing a new version that controls two things: **how much traffic** is exposed to it while it's unproven (the *blast radius*), and **what evidence** you collect before exposing more. All four standard strategies trade those against cost and time.
+
+Models raise the stakes compared with ordinary code, for a reason that runs through this whole page: a broken model usually doesn't crash. It returns HTTP 200 with a confident, wrong number. So "is it healthy?" can't stop at error rates and latency; it has to include what the model is predicting.
+
+Every strategy relies on two pieces of infrastructure: a way to **route traffic** between versions (a Kubernetes Service, a service mesh, a gateway or a load balancer), and **metrics split by version** ([Observability](/docs/mlops/observability#8-whats-different-for-ml-and-llm-systems)). Without the second, none of them can tell you anything.
+
+## 2. Blue-Green: Switch Everything, Keep the Old One Running
+
+Run two complete copies of the service. **Blue** serves all traffic now. **Green** has the new version, fully deployed, warmed up and health-checked, but receives no traffic. Release by switching the router from blue to green in one step. Blue stays running, untouched, so rolling back is switching back.
 
 <BlueGreenCutoverDiagram />
 
-On [Kubernetes](/docs/mlops/kubernetes), this is two Deployments with different labels, and the Service's `selector` is what actually determines which one is "live" — the cutover is a one-line patch, not a redeploy:
+On Kubernetes, blue and green are two Deployments whose pods carry `version: blue` and `version: green` labels, and the Service's selector decides which receives traffic:
 
-```bash
-# Both deployments already running -- model-api-blue (live) and model-api-green (new version, verified healthy)
-kubectl get deployments -l app=model-api
-
-# Cut over: repoint the Service's selector from blue to green
-kubectl patch service model-api -p '{"spec":{"selector":{"app":"model-api","version":"green"}}}'
-
-# Instant rollback if green misbehaves -- flip the selector straight back
-kubectl patch service model-api -p '{"spec":{"selector":{"app":"model-api","version":"blue"}}}'
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-api
+spec:
+  selector:
+    app: model-api
+    version: blue          # the live colour; cut over by changing this one value
+  ports:
+    - port: 80
+      targetPort: 8080
 ```
 
-## Canary Deployment
+The cutover is then a one-field change, `version: green`, applied through your normal [GitOps](/docs/mlops/cicd-and-ml-cicd#6-delivery-gitops-and-promotion) flow or with `kubectl patch`. New connections go to green within seconds.
 
-Route a small percentage of traffic (e.g. 5%) to the new model while the rest continues to hit the old one, then gradually increase that percentage as metrics stay healthy — 5% → 25% → 50% → 100%. If the canary's metrics degrade at any point, roll back by routing traffic away from it, having only affected a small fraction of users. This is the standard approach when a gradual, metric-gated rollout is more valuable than an instant switch.
+**Why use it:** the switch and the rollback are instant and simple, and both versions are fully warmed up, which matters for models that take minutes to load weights into GPU memory.
+
+**The limitation:** it changes 100% of traffic at once, so it protects you from the new version *failing to start*, not from it being *wrong*. A subtly worse model reaches every user the moment you switch. It also needs double capacity during the switch, which for a GPU-backed model can mean twice the most expensive part of the bill. Blue-green is the right base layer; to limit exposure to a wrong model you need to switch gradually.
+
+## 3. Canary: Expose a Little, Measure, Expand
+
+### Canary Deployment
+
+A **canary** release sends a small share of traffic, say 5%, to the new version and the rest to the old one, then increases the share in steps (5%, 25%, 50%, 100%) as long as the new version's metrics stay healthy. If they degrade, traffic goes back to the old version, having affected only the canary's share of users.
 
 <CanaryRampDiagram />
 
-Plain Kubernetes has no percentage-based traffic split (a Service load-balances evenly across whatever Pods match its selector — the closest you get natively is a coarse approximation via replica ratio, e.g. 1 canary Pod alongside 19 stable Pods ≈ 5%). **Argo Rollouts** is the standard tool for real percentage-based, metric-gated canaries on Kubernetes:
+The name comes from canaries in coal mines, which showed the presence of gas before the miners were affected.
+
+The metrics a model canary should compare, **canary against stable over the same period**, are:
+
+- **Service health:** error rate and latency percentiles.
+- **Prediction distribution:** the share of transactions flagged, the mean score, the distribution of predicted classes. A model that suddenly flags three times as many transactions is suspect even before any labels arrive.
+- **Business guardrails where they're fast enough:** for example, the rate of customers abandoning checkout after a fraud challenge.
+
+Comparing against the stable version *at the same time* matters, because it cancels out everything that affects both equally: time of day, a marketing campaign, a slow database.
+
+Plain Kubernetes can only approximate a percentage by replica count: with 19 stable pods and 1 canary pod, about 5% of requests reach the canary. Exact weights need a traffic router (Istio, Linkerd, NGINX, or the Gateway API), and automated promotion needs a controller. **Argo Rollouts** and **Flagger** are the standard controllers. Here is an Argo Rollouts canary with automatic analysis: it ramps in steps and queries Prometheus every 5 minutes, and rolls back on its own if the canary's error rate goes above 0.4% twice:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -49,16 +91,6 @@ metadata:
   name: model-api
 spec:
   replicas: 20
-  strategy:
-    canary:
-      steps:
-        - setWeight: 5
-        - pause: { duration: 10m }
-        - setWeight: 25
-        - pause: { duration: 10m }
-        - setWeight: 50
-        - pause: { duration: 10m }
-        - setWeight: 100
   selector:
     matchLabels:
       app: model-api
@@ -69,22 +101,118 @@ spec:
     spec:
       containers:
         - name: model-api
-          image: my-registry/my-model-api:2.0
+          image: ghcr.io/acme/fraud-api@sha256:3f1c9a0d6e2b4c8f7a5e1d0b9c8a7f6e5d4c3b2a1f0e9d8c7b6a5f4e3d2c1b0a
+          ports:
+            - containerPort: 8080
+  strategy:
+    canary:
+      canaryMetadata:              # labels on canary pods, so metrics can be split by role
+        labels: { role: canary }
+      stableMetadata:
+        labels: { role: stable }
+      analysis:                    # runs in the background for the whole rollout
+        templates:
+          - templateName: canary-error-rate
+        startingStep: 1
+      steps:
+        - setWeight: 5
+        - pause: { duration: 30m }
+        - setWeight: 25
+        - pause: { duration: 15m }
+        - setWeight: 50
+        - pause: { duration: 15m }
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: canary-error-rate
+spec:
+  metrics:
+    - name: error-rate
+      interval: 5m
+      failureLimit: 1              # a second failed measurement aborts and rolls back
+      successCondition: result[0] < 0.004
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring:9090
+          query: |
+            sum(rate(http_requests_total{app="model-api",role="canary",status=~"5.."}[5m]))
+              / sum(rate(http_requests_total{app="model-api",role="canary"}[5m]))
 ```
 
-```bash
-kubectl argo rollouts get rollout model-api --watch   # live view of the canary ramp
-kubectl argo rollouts promote model-api                # manually advance past a pause step
-kubectl argo rollouts abort model-api                  # roll back immediately if metrics degrade
+The image is referenced by digest, so the rollout can only ever run the exact image that passed CI (the digest shown is an example). Validated against the Kubernetes, Argo Rollouts and Istio schemas with `kubeconform -strict`, this file and the other two manifests on this page report:
+
+```text
+Summary: 4 resources found in 3 files - Valid: 4, Invalid: 0, Errors: 0, Skipped: 0
 ```
 
-## Shadow Deployment
+The step durations in that file aren't arbitrary, and the next section shows why they have to be long.
 
-Send production traffic to *both* the old and new model, but only ever return the old model's response to the user — the new model's predictions are logged and compared offline, invisibly. This is the safest possible way to validate a new model against real production traffic, because it can never affect what a real user sees, at the cost of extra compute (running two models on every request) and not testing real-world *feedback* to the new model's own outputs.
+## 4. How Long a Canary Must Run
+
+A canary only protects you if it can *detect* a bad version while the bad version is still small. Detection is a statistical question, and small canaries see very little traffic.
+
+Suppose the stable model returns errors on 0.2% of requests, a bad canary on 0.6% (three times worse), and the service handles 600 requests a minute. At each canary weight and duration, how many requests does the canary see, how many errors would a bad canary produce, and how strong is the evidence? A one-sided binomial test asks how likely that many errors would be if the canary were really as good as stable:
+
+```python
+from scipy.stats import binomtest
+
+# Stable model: 0.2% of requests error. A bad canary: 0.6%. Traffic: 600 requests/min.
+p_stable, p_bad, rpm = 0.002, 0.006, 600
+
+for weight in [0.01, 0.05, 0.25]:
+    for minutes in [10, 30]:
+        n = int(rpm * weight * minutes)               # requests the canary actually served
+        expected_errors = round(n * p_bad)
+        # one-sided test: is the canary's error rate above the stable rate?
+        p = binomtest(expected_errors, n, p_stable, alternative="greater").pvalue
+        print(f"weight {weight:>4.0%}, {minutes:>2} min: {n:>5} requests, {expected_errors:>2} errors, p = {p:.3f}")
+```
+
+```text
+weight   1%, 10 min:    60 requests,  0 errors, p = 1.000
+weight   1%, 30 min:   180 requests,  1 errors, p = 0.303
+weight   5%, 10 min:   300 requests,  2 errors, p = 0.122
+weight   5%, 30 min:   900 requests,  5 errors, p = 0.036
+weight  25%, 10 min:  1500 requests,  9 errors, p = 0.004
+weight  25%, 30 min:  4500 requests, 27 errors, p = 0.000
+```
+
+A canary three times worse than stable is **invisible** at 1% for 10 minutes: it serves 60 requests and is expected to produce no errors at all. At 5% for 10 minutes, its 2 errors are entirely consistent with a healthy version. Only around 5% for 30 minutes, or 25% for 10, does the evidence become convincing.
+
+The general rule: to see a rate difference of size $\Delta p$ against a base rate $p$, the canary needs roughly
+
+$$n \approx \frac{(z_\alpha + z_\beta)^2 \, p(1-p)}{\Delta p^2}$$
+
+requests, where $z_\alpha$ and $z_\beta$ come from the false-alarm rate and detection probability you want. The count grows with the inverse *square* of the difference: halving the regression you want to catch quadruples the traffic needed.
+
+What follows for real rollouts:
+
+- **Give the first step enough time** for the expected number of bad events to be meaningful, which for rare events like errors often means 30 minutes or more at low traffic. That's why the first pause in the manifest above is the longest.
+- **Use more sensitive signals.** Prediction-distribution metrics, such as the share of transactions flagged, involve every request rather than the rare ones that error, so they shift detectably much sooner.
+- **Accept what a canary can't do.** It catches large, fast regressions. A model that is 2% worse on a metric whose labels arrive in a month is not detectable in a canary at all; that's what shadow tests and A/B tests are for.
+
+<PredictFirst
+  question="A team's canary step is 1% of traffic for 10 minutes on a service with 600 requests a minute, gated on error rate. A new model ships that errors on 0.6% of requests instead of 0.2%. What is the most likely outcome?"
+  options={[
+    'The canary catches it, because the error rate tripled',
+    'The canary passes, because it served about 60 requests and a bad version would produce no errors in that time',
+    'The canary fails on latency instead',
+    'The canary rolls back after one failed analysis run',
+  ]}
+  correctIndex={1}
+  explanation="At 1% of 600 requests a minute for 10 minutes, the canary serves about 60 requests. With a 0.6% error rate, the expected number of errors is 0.36, so the most likely count is zero, which looks exactly like a healthy version. The gate passes and the next step sends more traffic to a bad model. Small canaries need longer pauses, higher weights, or signals that involve every request, such as the prediction distribution."
+/>
+
+## 5. Shadow: Real Traffic, Zero User Risk
+
+### Shadow Deployment
+
+In a **shadow** (or *mirrored*) deployment, every request goes to the current model, whose response is returned to the user, and a copy goes to the new model, whose response is logged and discarded. Users never see the new model's output, so it can't hurt them, yet it is tested on exactly the traffic it will face.
 
 <ShadowDeploymentDiagram />
 
-A service mesh (Istio) implements this via traffic mirroring at the routing layer, rather than any change to application code — `mirror` sends a copy of the request to the shadow service, and its response is discarded:
+A service mesh can mirror traffic without any change to the application. In Istio it's a few lines of a VirtualService:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -97,32 +225,189 @@ spec:
   http:
     - route:
         - destination:
-            host: model-api-stable
+            host: model-api-stable     # users only ever get this response
       mirror:
-        host: model-api-shadow
+        host: model-api-shadow         # gets a copy; its response is discarded
       mirrorPercentage:
         value: 100.0
 ```
 
-## A/B Testing
+What a shadow run tells you:
 
-Similar to canary in mechanics (split traffic between two versions), but different in *purpose*: canary is about rollout safety (is the new model behaving correctly, technically), A/B testing is about business impact (does the new model produce a *better outcome* — more conversions, more engagement — not just "doesn't crash"). A/B tests are typically run for a fixed, pre-committed duration with statistical significance testing on the outcome metric, rather than being cut short the moment things look fine.
+- **Operational behaviour under real load:** latency, memory, GPU utilization, error rate.
+- **Agreement with the current model:** what share of requests get the same decision, and *which* requests differ. The disagreements are the most useful output, because they're exactly where the two models make different bets, and they can be reviewed or labelled first.
+- **Offline accuracy on live inputs,** once labels for the shadowed period arrive.
+
+What it can't tell you:
+
+- **The effect of the new model's decisions.** If the new model blocks a transaction the old one approved, in shadow mode the transaction still goes through, and you never see what would have happened. For recommendation or ranking models, where the model's output changes what users do next, a shadow test can't measure the outcome at all.
+
+Two practical warnings. Shadowing doubles inference cost for the mirrored share, so mirror a sample when the model is expensive. And the shadow must have **no side effects**: if the model service writes to a database, sends a notification or calls a payment API, the shadow copy will do it too, unless it's built to run in a read-only mode.
+
+Shadow testing answers "does it behave and agree as expected?". To answer "does it make things better?", the new model's decisions have to reach users, which brings us to A/B testing.
+
+## 6. A/B Testing: Measuring Whether It Is Better
+
+### A/B Testing
+
+An **A/B test** (an *online controlled experiment*) randomly assigns users to the current model (A, the control) or the new one (B, the treatment), runs for a fixed, pre-planned period, and compares an outcome metric that matters to the business: conversion rate, revenue per user, fraud losses, retention.
 
 <CanaryVsAbPurposeDiagram />
 
-## Choosing Between Them
+Mechanically, an A/B test looks like a canary at 50%. Its purpose is different. A canary asks **"is it safe?"** and wants an answer in minutes, from health metrics. An A/B test asks **"is it better?"** and needs days or weeks, because business outcomes are noisy and slow.
 
-| Strategy | Answers | Cost |
-|---|---|---|
-| Blue-Green | "Is the new version safe to fully cut over to?" | Double infrastructure, briefly |
-| Canary | "Is the new version safe, at gradually increasing scale?" | Extra rollout time and monitoring |
-| Shadow | "How does the new model behave on real traffic, with zero user risk?" | Extra compute, no outcome feedback |
-| A/B Test | "Does the new model actually perform better on the metric that matters?" | Statistical rigor, longer time to a decision |
+Three things make an A/B test valid:
 
-<StrategyComparisonMatrixDiagram />
+- **Randomize by user, not by request.** If the same user sees model A on one request and model B on the next, their behaviour mixes both effects. Assign by hashing a stable user ID, so each user stays in one arm for the whole test.
+- **Decide the sample size before starting.** The size needed depends on the base rate and the smallest effect worth detecting.
+- **Look at the result once, at the planned end** (or use a method built for repeated looks; see below).
 
-In practice these compose: shadow-test a genuinely new model architecture first, canary-roll it once shadow metrics look good, and layer an A/B test on top if the real question is business impact rather than technical correctness.
+**How many users?** For a conversion rate $p_A$ and a hoped-for rate $p_B$, a standard two-sided test at significance $\alpha$ and power $1-\beta$ needs about
+
+$$n \approx \frac{\left(z_{1-\alpha/2}\sqrt{2\bar p(1-\bar p)} + z_{1-\beta}\sqrt{p_A(1-p_A) + p_B(1-p_B)}\right)^2}{(p_B - p_A)^2}$$
+
+users per arm, with $\bar p$ the average of the two rates. Computed for a 5% base rate:
+
+```python
+from math import ceil
+from scipy.stats import norm
+
+def n_per_arm(p_base, lift, alpha=0.05, power=0.8):
+    """Users per arm to detect an absolute lift in a conversion rate (two-sided z-test)."""
+    p_new = p_base + lift
+    z_a, z_b = norm.ppf(1 - alpha / 2), norm.ppf(power)
+    p_bar = (p_base + p_new) / 2
+    num = (z_a * (2 * p_bar * (1 - p_bar)) ** 0.5 + z_b * (p_base * (1 - p_base) + p_new * (1 - p_new)) ** 0.5) ** 2
+    return ceil(num / lift ** 2)
+
+for lift in [0.010, 0.005, 0.002]:
+    print(f"base 5.0% -> {5 + lift * 100:.1f}%: {n_per_arm(0.05, lift):>7,} users per arm")
+```
+
+```text
+base 5.0% -> 6.0%:   8,158 users per arm
+base 5.0% -> 5.5%:  31,234 users per arm
+base 5.0% -> 5.2%: 189,938 users per arm
+```
+
+Detecting a lift from 5.0% to 5.2%, the size of improvement a mature model typically delivers, takes about 190,000 users in each arm. Teams with less traffic than that can't measure small improvements by A/B testing, however long they wait for significance to "arrive".
+
+**Peeking breaks the test.** It's tempting to check the dashboard daily and stop as soon as the result is significant. This simulation runs 2,000 A/B tests in which A and B are *identical*, so every "significant" result is a false positive, and compares one look at the planned end with a look every day:
+
+```python
+import numpy as np
+from scipy.stats import norm
+
+rng = np.random.default_rng(0)
+n_experiments, n_per_day, days, p = 2000, 1000, 20, 0.05      # A and B are IDENTICAL: any "win" is false
+
+false_fixed = false_peek = 0
+for _ in range(n_experiments):
+    a = rng.binomial(n_per_day, p, days).cumsum()      # cumulative conversions, arm A
+    b = rng.binomial(n_per_day, p, days).cumsum()      # arm B
+    n = n_per_day * np.arange(1, days + 1)
+    pooled = (a + b) / (2 * n)
+    z = (b / n - a / n) / np.sqrt(pooled * (1 - pooled) * 2 / n)
+    significant = np.abs(z) > norm.ppf(0.975)
+    false_fixed += significant[-1]          # look once, at the planned end
+    false_peek += significant.any()         # look every day, stop at the first "significant" day
+
+print(f"false positive rate, one look at day {days}: {false_fixed / n_experiments:.1%}")
+print(f"false positive rate, daily peeking:      {false_peek / n_experiments:.1%}")
+```
+
+```text
+false positive rate, one look at day 20: 4.4%
+false positive rate, daily peeking:      22.0%
+```
+
+With one look, the false-positive rate is about the 5% the test promises. With daily peeking and stopping at the first significant day, it's 22%: more than one in five "winning" models is no better at all. Each look is another chance for noise to cross the line, and stopping on the first crossing keeps the false alarms.
+
+<GoDeeper title="Go deeper: tests built for repeated looks, and variance reduction">
+
+Sometimes stopping early is genuinely valuable, for example to end an experiment that is clearly harming users. **Sequential tests** are designed for it. Group-sequential designs fix a small number of planned interim looks and spend the overall $\alpha$ across them, using stricter thresholds early (O'Brien-Fleming boundaries are the classic choice). **Always-valid** methods such as mixture sequential probability ratio tests give confidence intervals that stay correct no matter how often you look, at the cost of needing somewhat more data at the end. Most commercial experimentation platforms offer one of these.
+
+The other lever is **variance reduction**. CUPED, introduced at Microsoft, adjusts each user's outcome using the same metric measured before the experiment: $Y' = Y - \theta(X - \bar X)$, with $\theta = \operatorname{Cov}(X, Y)/\operatorname{Var}(X)$. Pre-period behaviour explains much of each user's outcome, so removing it shrinks the variance by a factor of $1 - \rho^2$, where $\rho$ is the correlation between pre- and in-period values. With $\rho = 0.7$, variance roughly halves, and so does the required sample size.
+
+For ranking and recommendation models, **interleaving** is a much more sensitive alternative: each user sees one list that mixes results from both models, and clicks are credited to the model that contributed the clicked item. It often detects differences with one to two orders of magnitude less traffic than an A/B test, though it measures preference rather than downstream business metrics.
+
+</GoDeeper>
+
+## 7. Choosing and Combining Strategies
+
+| Strategy | Question it answers | Exposure to users | Typical duration | Main cost |
+|---|---|---|---|---|
+| **Blue-green** | Does the new version start and run? | All at once, instantly reversible | Minutes | Double capacity during the switch |
+| **Canary** | Is it safe at growing scale? | Small, then growing | Tens of minutes to hours | Rollout time; detects only large regressions |
+| **Shadow** | How does it behave and agree on real traffic? | None | Hours to days | Double inference cost; no outcome data |
+| **A/B test** | Is it better on the metric that matters? | Half (or a set share) for the whole test | Days to weeks | Traffic and time; statistical discipline |
+
+The strategies aren't alternatives; they answer different questions and are usually used in sequence.
 
 <ComposedStrategyDiagram />
 
-Next: [Monitoring & Drift Detection](/docs/mlops/monitoring-and-drift) — every strategy above depends on having monitoring good enough to actually tell "safe" from "not" during rollout.
+A typical path for a new fraud model:
+
+1. **Shadow** for a few days. Check latency and memory, measure agreement with the current model, and send the disagreements for review.
+2. **Canary** at 5%, 25% and 50%, with automated analysis on health and prediction-distribution metrics, rolling back automatically on a breach.
+3. **A/B test** at 50% for a pre-planned period if the real question is business impact, for example fraud losses against customer friction.
+4. **Full rollout**, keeping the old version available for fast rollback until the new one has run for a full business cycle.
+
+A routine retrain of an existing model on fresh data, by contrast, often goes straight to a short canary, because its behaviour is expected to be close to the current model's and the [CI gate](/docs/mlops/cicd-and-ml-cicd#4-a-model-gate-that-accounts-for-noise) has already compared them offline.
+
+<PredictFirst
+  question="A team wants to know whether a new recommendation model increases purchases. They run it in shadow mode for two weeks and find it agrees with the current model on only 60% of top recommendations. What can they conclude about purchases?"
+  options={[
+    'It will increase purchases, because it recommends different items',
+    'It will decrease purchases, because low agreement means it is worse',
+    'Nothing about purchases: shadow mode never shows its recommendations to users, so their effect on behaviour is unobserved',
+    'Purchases will stay the same, because shadow traffic matches real traffic',
+  ]}
+  correctIndex={2}
+  explanation="In shadow mode the new model's output is discarded, so no user ever acts on its recommendations. Agreement tells you the models differ a lot, which is a reason to test carefully, but not which is better. Measuring an effect on behaviour requires the recommendations to reach users: an A/B test, or for ranking, interleaving."
+/>
+
+## 8. Rollback and Version Compatibility
+
+Every strategy assumes rollback is fast and safe. Two things quietly break that assumption for ML systems.
+
+**Schema and feature changes.** If the new model needs a feature the old one didn't, and the feature pipeline was changed to produce it *instead of* the old one, rolling back the model leaves it without its inputs. Deploy changes in a compatible order: first make the pipeline produce both the old and new features, then roll out the model, and only remove the old feature once the old model can no longer come back.
+
+**Stateful or downstream effects.** A model whose decisions are written somewhere (blocked accounts, sent emails, cached recommendations) leaves those effects behind when it's rolled back. Rollback stops new damage; it doesn't undo what was done. Strategies that limit exposure (shadow first, small canary) matter most for exactly these models.
+
+The rule that follows: test the rollback, not just the rollout. A deployment process where rollback has never been exercised is a process where it might not work when it's needed.
+
+## 9. When *Not* to Use These Strategies
+
+| Situation | Better choice |
+|---|---|
+| Batch scoring that writes a table nightly | Compare the new model's output table with the old one's offline before swapping which table downstream jobs read; no traffic routing involved |
+| Very low traffic, where a canary or A/B test can't reach statistical power | A longer shadow period plus offline evaluation on labelled live data, and a human review of disagreements |
+| An urgent fix for a model that is actively causing harm | Roll back to the last good version immediately, using blue-green or the registry alias; investigate afterwards |
+| Comparing many model variants at once | Multi-armed bandits, which shift traffic toward better variants as evidence arrives, if you can accept less precise effect estimates |
+| Changes that can't be split by user, such as a marketplace pricing model where users interact | Switchback experiments that alternate the whole market between versions over time, or region-level randomization |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| The problem | A bad model usually returns 200 OK with wrong answers, so releases must limit exposure and gather evidence |
+| Blue-green | Two full environments; instant switch and rollback; doesn't limit exposure to a wrong model |
+| Canary | Small, growing share of traffic with automated analysis against stable at the same time |
+| Canary limits | Needed traffic grows with $1/\Delta p^2$; small canaries miss small or rare regressions |
+| Shadow | Mirror real traffic; compare behaviour and agreement; no user risk and no outcome data |
+| A/B test | Randomize by user, size the test in advance, look once; measures whether it is better |
+| Peeking | Stopping at the first significant day turned a 5% false-positive rate into 22% |
+| In practice | Shadow, then canary, then A/B if impact matters; keep rollback fast and tested |
+
+---
+
+Next: [Monitoring & Drift Detection](/docs/mlops/monitoring-and-drift) covers what to watch once the new model is serving all traffic, because a model that was better at launch can drift into being worse.
+
+## Sources
+
+- R. Kohavi, D. Tang and Y. Xu, [Trustworthy Online Controlled Experiments](https://experimentguide.com/), Cambridge University Press (2020)
+- A. Deng, Y. Xu, R. Kohavi and T. Walker, [Improving the Sensitivity of Online Controlled Experiments by Utilizing Pre-Experiment Data (CUPED)](https://exp-platform.com/Documents/2013-02-CUPED-ImprovingSensitivityOfControlledExperiments.pdf), WSDM 2013
+- Argo Rollouts, [Canary strategy](https://argo-rollouts.readthedocs.io/en/stable/features/canary/) and [Analysis](https://argo-rollouts.readthedocs.io/en/stable/features/analysis/)
+- Istio, [Traffic mirroring](https://istio.io/latest/docs/tasks/traffic-management/mirroring/)
+- D. Sato, [Canary Release](https://martinfowler.com/bliki/CanaryRelease.html) and M. Fowler, [Blue Green Deployment](https://martinfowler.com/bliki/BlueGreenDeployment.html), martinfowler.com

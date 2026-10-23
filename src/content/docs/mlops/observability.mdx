@@ -1,108 +1,406 @@
 ---
-title: "Observability"
+title: "Observability, In Full Depth"
 sidebar_position: 16
-description: "Logs, metrics, and traces -- the three pillars that let you actually debug why a system misbehaved, not just get alerted that it did."
+description: "Logs, metrics and traces made precise: structured logs with trace IDs, Prometheus metric types and cardinality, OpenTelemetry spans, an instrumented model API you can run, how percentiles are estimated from histograms, and SLO burn-rate alerts tested with promtool."
 ---
 
 import MonitoringVsObservabilityDiagram from '../../../viz/diagrams/MonitoringVsObservabilityDiagram';
 import StructuredLogsDiagram from '../../../viz/diagrams/StructuredLogsDiagram';
-import LogStackComparisonDiagram from '../../../viz/diagrams/LogStackComparisonDiagram';
-import MetricsAggregationDiagram from '../../../viz/diagrams/MetricsAggregationDiagram';
 import PrometheusGrafanaFlowDiagram from '../../../viz/diagrams/PrometheusGrafanaFlowDiagram';
 import TraceWaterfallDiagram from '../../../viz/diagrams/TraceWaterfallDiagram';
 import ThreePillarsIncidentDiagram from '../../../viz/diagrams/ThreePillarsIncidentDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Observability
+# Observability, In Full Depth
 
-Monitoring tells you *that* something is wrong (a metric crossed a threshold, an alert fired). Observability is what lets you actually figure out *why* — by giving you enough raw, queryable signal about the system's internal state to debug a problem you didn't anticipate in advance. The three pillars below are the standard decomposition of what that raw signal is made of.
+[Monitoring & Drift](/docs/mlops/monitoring-and-drift) watches whether a model's inputs and predictions still look like what it was trained on. That's one question about one component. A model in production is also a service: requests arrive, features are fetched, the model runs, results go back, and any of those steps can be slow or broken. This page covers how to see inside that service: the three kinds of signal (logs, metrics, traces) and what each is good for, a model API instrumented with all three that you can run, how latency percentiles are really computed, and how to turn all of it into alerts that wake someone only when users are actually affected.
+
+<ELI5>
+
+A car's dashboard has a few lights: engine, oil, battery. When one comes on, you know *something* is wrong. That is monitoring. A mechanic needs more: they plug in a diagnostic reader that shows what every sensor reported over the last trip, which component sent which error, and in what order. That lets them find a problem nobody thought to put a light on for.
+
+Observability is building your software so that the diagnostic reader exists. Every request leaves a record of where it went, how long each step took, and what happened, so when something goes wrong in a way you never predicted, you can still find out why.
+
+Everything below is how that record is made, stored and read.
+
+</ELI5>
+
+## 1. What Is Observability?
+
+**The problem.** A dashboard shows the fraud-scoring API's latency doubled at 14:32. That's a fact, but it's not an explanation. Was it the API code, the feature store it calls, the model server, the database behind the feature store, or one customer sending huge requests? A dashboard of pre-chosen charts can only answer questions someone thought of in advance, and incidents are, almost by definition, the questions nobody thought of.
 
 <MonitoringVsObservabilityDiagram />
 
-## Logs
+**Observability, precisely:** the property of a system that lets you answer new questions about its internal state from the signals it already emits, without shipping new code. The term comes from control theory, where a system is observable if its internal state can be inferred from its outputs. In software it means emitting signals that are detailed and connected enough to explore after the fact.
 
-Structured, timestamped records of discrete events — a request came in, a model version loaded, an exception was thrown. "Structured" is the operative word for production systems: unstructured free-text logs are fine to `grep` by hand, but structured logs (JSON, with consistent fields) are what makes logs queryable and aggregatable at scale.
+**Monitoring** is the subset you decide on in advance: specific metrics, dashboards and alerts for known failure modes. You need both. Monitoring tells you *that* something is wrong and wakes you up; observability lets you find out *why*.
+
+The signals come in three kinds, each with a different cost and a different job. They're usually called the three pillars: logs, metrics and traces. Each of the next three sections covers one.
+
+## 2. Logs: What Happened
+
+A **log** is a timestamped record of one event: a request was served, a model version was loaded, an exception was raised. Logs carry the most detail of the three signals and cost the most to store and search.
 
 <StructuredLogsDiagram />
 
-- **ELK stack (Elasticsearch, Logstash, Kibana)**: the classic self-hosted logging stack — Logstash ingests and processes logs, Elasticsearch indexes and stores them, Kibana visualizes and queries them.
-- **OpenSearch**: an open-source fork of Elasticsearch (post-license-change), largely API-compatible, increasingly the default when avoiding Elastic's licensing terms matters.
-- **Loki**: a log aggregation system built by Grafana Labs, designed to be cheaper to run than Elasticsearch by indexing only metadata (labels) rather than full log content — pairs naturally with Grafana/Prometheus.
+**Structure them.** A line like `Prediction for user 42 took 15ms, flagged` is easy for a person to read and hard for a machine to query. The same event as JSON, with consistent field names, can be filtered and aggregated: "all flagged predictions from model version 7 in the last hour, grouped by user". In production, log one JSON object per line, to standard output, and let the platform collect it.
 
-<LogStackComparisonDiagram />
+**Include a trace ID.** The single most useful field in a log line is the ID of the trace (section 4) the event belongs to. It is what lets you go from "this request was slow" to "here are all the log lines it produced, across every service".
 
-## Metrics
+**Choose levels deliberately.** `ERROR` for something that needs attention, `WARNING` for something unexpected but handled, `INFO` for normal significant events, `DEBUG` off in production. A service that logs every request at `INFO` with full payloads will produce more data than anyone can afford to keep.
 
-Numeric measurements aggregated over time — request rate, error rate, latency, GPU utilization, model prediction distribution. Unlike logs, metrics are cheap to store at high volume because they're pre-aggregated, which is exactly what makes them good for dashboards and alerting rather than deep forensic debugging.
+**Never log secrets or raw personal data.** Logs are copied to many systems and kept for months. Log a user ID, not the user's card number or the full text they submitted, unless you have a specific reason and a retention policy for it.
 
-<MetricsAggregationDiagram />
+**The limitation:** logs describe individual events. To know how *often* something happens, or whether it's getting worse, you'd have to count log lines, which is slow and expensive at volume. That's what metrics are for.
 
-- **Prometheus**: the standard open-source metrics collection system — services expose a `/metrics` endpoint, Prometheus scrapes it on an interval and stores a time series; its query language (PromQL) is what most alerting rules and dashboards are built on.
-- **Grafana**: the standard visualization layer on top of Prometheus (and Loki, and most other data sources) — dashboards, alerting, and exploration, decoupled from whichever backend actually stores the data.
+## 3. Metrics: How Much, How Often
+
+A **metric** is a number measured repeatedly over time, stored as a time series. Metrics are pre-aggregated: instead of storing a record for each of a million requests, you store "requests so far: 1,000,000" every 15 seconds. That makes them cheap enough to keep for a long time and fast enough to alert on.
+
+[Prometheus](https://prometheus.io), the standard open-source metrics system, defines the three types you'll use most:
+
+- **Counter:** a value that only goes up, like `predictions_total`. You never look at the raw value; you ask for its rate, such as requests per second over the last 5 minutes.
+- **Gauge:** a value that goes up and down, like GPU memory in use or the queue length.
+- **Histogram:** counts of observations falling into fixed buckets, like "how many requests took at most 10 ms, at most 25 ms, at most 50 ms". Latency is almost always a histogram, for reasons section 6 makes exact.
+
+Each series can have **labels**, key-value pairs that split it: `predictions_total{model_version="7", outcome="flag"}`. Every unique combination of label values is a separate time series that Prometheus stores.
 
 <PrometheusGrafanaFlowDiagram />
 
-Instrumenting the FastAPI serving endpoint from [APIs & Model Serving](/docs/mlops/model-serving) to expose exactly the metrics a `/metrics` scrape needs:
+Prometheus **pulls** metrics: each service exposes a plain-text `/metrics` endpoint, and Prometheus scrapes it every 15 to 60 seconds and stores the values. Grafana then draws dashboards from queries written in PromQL, Prometheus's query language.
 
-```python
-from prometheus_client import Counter, Histogram, make_asgi_app
+**Cardinality is the cost to watch.** Since each label combination is its own series, a label with many possible values multiplies storage. `model_version` with 3 values is fine. `user_id` with 2 million values creates 2 million series per metric and can take a Prometheus server down. Put high-cardinality details in logs and traces, never in metric labels.
 
-PREDICTIONS = Counter("model_predictions_total", "Total predictions served", ["model_version"])
-LATENCY = Histogram("model_predict_latency_seconds", "Prediction latency")
+**The limitation:** a metric tells you latency went up, but it can't tell you *where* in a request the time went when the request crosses several services. That needs a trace.
 
-app.mount("/metrics", make_asgi_app())  # Prometheus scrapes this
+## 4. Traces: Where the Time Went
 
-@app.post("/v1/predict")
-@LATENCY.time()
-def predict(req: PredictRequest):
-    PREDICTIONS.labels(model_version="3").inc()
-    return PredictResponse(prediction=model.predict([req.features])[0])
-```
-
-The PromQL a dashboard or alert would actually run against that data — p95 latency, and an alert rule on error rate:
-
-```
-# p95 prediction latency over the last 5 minutes
-histogram_quantile(0.95, rate(model_predict_latency_seconds_bucket[5m]))
-```
-
-```yaml
-groups:
-  - name: model-api
-    rules:
-      - alert: HighErrorRate
-        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
-        for: 10m
-        annotations:
-          summary: "model-api error rate above 5% for 10 minutes"
-```
-
-## Traces
-
-A trace follows a single request across every service it touches, recording how long each step took — essential the moment a system is more than one service, because "the API was slow" could mean the API, the feature store, the model server, or a downstream database, and only a trace shows which one.
+A **trace** is the record of one request's path through the system. It is made of **spans**: each span is one operation, with a name, a start time, a duration, attributes, and the ID of its parent span. The spans of one request share a **trace ID**, and the parent links form a tree.
 
 <TraceWaterfallDiagram />
 
-- **OpenTelemetry**: the current standard, vendor-neutral instrumentation framework for generating traces (and metrics, and logs) — instrument once, export to whichever backend you choose.
-- **Jaeger**: a common open-source backend for storing and visualizing traces, frequently paired with OpenTelemetry instrumentation.
+Laid out on a timeline, the tree is a waterfall: the outer request span covers everything, and the child spans show which part took the time. If the feature-store call takes 120 ms of a 140 ms request, the problem is in the feature store, not the model.
+
+For a trace to cross services, each service must pass the trace context to the next. The standard way is the W3C `traceparent` HTTP header, which carries the trace ID and the current span ID. The receiving service reads it and makes its spans children of the caller's span. Every mainstream HTTP client and server library can do this automatically once instrumented.
+
+[OpenTelemetry](https://opentelemetry.io) (OTel) is the vendor-neutral standard for producing all three signals. You instrument code once with its API, and an exporter sends the data to whichever backend you use: Jaeger or Grafana Tempo for traces, Prometheus for metrics, Loki or Elasticsearch for logs, or a commercial platform. The **OpenTelemetry Collector** usually sits in between, receiving, batching, filtering and forwarding signals, so changing backends doesn't mean changing application code.
+
+**Sampling.** Tracing every request at high volume is expensive. **Head sampling** decides at the start of a request whether to keep its trace, say 1 in 100. **Tail sampling**, done in the Collector, waits until the trace is complete and keeps all the slow or failed ones plus a sample of the rest, which is usually what you want, at the cost of buffering traces in memory.
+
+With all three signals defined, the next step is producing them from a real service.
+
+## 5. Instrumenting a Model API
+
+Here is a small fraud-scoring endpoint instrumented with all three signals: Prometheus metrics, OpenTelemetry spans, and JSON logs that carry the trace ID. Spans go to an in-memory exporter so the script can print them; in production you'd export to a Collector instead.
 
 ```python
+import json, logging, time
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from prometheus_client import Counter, Histogram, generate_latest
+from pydantic import BaseModel
 
-tracer = trace.get_tracer(__name__)
+# --- tracing: keep finished spans in memory so we can print them
+exporter = InMemorySpanExporter()
+provider = TracerProvider()
+provider.add_span_processor(SimpleSpanProcessor(exporter))
+trace.set_tracer_provider(provider)
+tracer = trace.get_tracer("fraud-api")
 
-@app.post("/v1/predict")
-def predict(req: PredictRequest):
-    with tracer.start_as_current_span("feature-lookup"):
-        features = fetch_features(req.user_id)
-    with tracer.start_as_current_span("model-inference"):
-        prediction = model.predict([features])[0]
-    return PredictResponse(prediction=prediction)
+# --- metrics
+PREDICTIONS = Counter("predictions_total", "Predictions served", ["model_version", "outcome"])
+LATENCY = Histogram("predict_latency_seconds", "Prediction latency", ["model_version"],
+                    buckets=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5])
+
+# --- structured logs: one JSON object per line, carrying the trace id
+class JsonFormatter(logging.Formatter):
+    def format(self, record):
+        return json.dumps({"level": record.levelname, "msg": record.getMessage(), **getattr(record, "fields", {})})
+log = logging.getLogger("fraud-api")
+handler = logging.StreamHandler(); handler.setFormatter(JsonFormatter())
+log.addHandler(handler); log.setLevel(logging.INFO)
+
+MODEL_VERSION = "7"
+app = FastAPI()
+
+class Request(BaseModel):
+    user_id: int
+    amount: float
+
+@app.post("/predict")
+def predict(req: Request):
+    start = time.perf_counter()
+    with tracer.start_as_current_span("predict") as span:
+        span.set_attribute("model.version", MODEL_VERSION)
+        with tracer.start_as_current_span("feature_lookup"):
+            time.sleep(0.012)                      # stands in for an online-store read
+            avg_7d = 48.5
+        with tracer.start_as_current_span("model_inference"):
+            time.sleep(0.003)
+            score = min(1.0, req.amount / (avg_7d * 10))
+        outcome = "flag" if score > 0.5 else "pass"
+        trace_id = format(span.get_span_context().trace_id, "032x")
+    LATENCY.labels(MODEL_VERSION).observe(time.perf_counter() - start)
+    PREDICTIONS.labels(MODEL_VERSION, outcome).inc()
+    log.info("prediction", extra={"fields": {"trace_id": trace_id, "user_id": req.user_id,
+                                             "model_version": MODEL_VERSION, "score": round(score, 3), "outcome": outcome}})
+    return {"score": score, "outcome": outcome}
+
+client = TestClient(app)
+client.post("/predict", json={"user_id": 42, "amount": 31.0})
+client.post("/predict", json={"user_id": 42, "amount": 900.0})
+
+print("\n--- the second request's trace (span, duration ms)")
+spans = exporter.get_finished_spans()
+last = [s for s in spans if s.context.trace_id == spans[-1].context.trace_id]
+by_id = {s.context.span_id: s for s in last}
+def depth(s):
+    return 0 if s.parent is None or s.parent.span_id not in by_id else 1 + depth(by_id[s.parent.span_id])
+for s in sorted(last, key=lambda s: s.start_time):
+    print(f"{'  ' * depth(s)}{s.name:<{24 - 2 * depth(s)}} {(s.end_time - s.start_time) / 1e6:5.1f}")
+
+print("\n--- part of GET /metrics")
+for line in generate_latest().decode().splitlines():
+    if line.startswith("predictions_total{") or "le=\"0.025\"" in line or line.startswith("predict_latency_seconds_count"):
+        print(line)
 ```
 
-## Why All Three, Not Just One
+Running it with FastAPI 0.161, `prometheus_client` 0.24 and the OpenTelemetry SDK 1.45 prints:
 
-Each pillar answers a different question a real incident needs: metrics tell you *something* degraded and roughly when (a dashboard spike), traces tell you *where* in a multi-service request path it happened, and logs tell you *exactly what* happened at that point (the specific error, the specific input). Alerting is usually built on metrics (cheap, fast to query); root-causing an actual incident usually means pivoting from a metric spike into the traces and logs around that same time window.
+```text
+{"level": "INFO", "msg": "prediction", "trace_id": "4ad86085fe9da244f8d03946d0d9f4e1", "user_id": 42, "model_version": "7", "score": 0.064, "outcome": "pass"}
+{"level": "INFO", "msg": "prediction", "trace_id": "fd72b26ecd89db0266fa7709919545ec", "user_id": 42, "model_version": "7", "score": 1.0, "outcome": "flag"}
+
+--- the second request's trace (span, duration ms)
+POST /predict             17.8
+  fastapi.dependencies     0.1
+  fastapi.endpoint        15.8
+    predict               15.4
+      feature_lookup      12.1
+      model_inference      3.1
+  fastapi.serialization    0.0
+
+--- part of GET /metrics
+predictions_total{model_version="7",outcome="pass"} 1.0
+predictions_total{model_version="7",outcome="flag"} 1.0
+predict_latency_seconds_bucket{le="0.025",model_version="7"} 2.0
+predict_latency_seconds_count{model_version="7"} 2.0
+```
+
+Read the three outputs together, the way you would during an incident:
+
+- **The log line** for the flagged request carries trace ID `fd72b2...`. Searching the trace backend for that ID gives the waterfall.
+- **The trace** shows the request took 17.8 ms, and 12.1 ms of that was the feature lookup, not the model. The outer `POST /predict` and `fastapi.*` spans were produced by FastAPI itself: recent FastAPI releases emit request spans whenever an OpenTelemetry tracer provider is configured. On older versions, the `opentelemetry-instrumentation-fastapi` package adds them.
+- **The metrics** count predictions by version and outcome, and the histogram has put both requests in the `le="0.025"` bucket, meaning they took at most 25 ms. The labels are low-cardinality on purpose: `user_id` appears in the log, never in a metric label.
+
+The histogram raises a question worth answering properly: how do you get a 95th-percentile latency out of bucket counts?
+
+## 6. Percentiles from Histograms
+
+Averages hide what users feel. If 95 requests take 20 ms and 5 take 2 seconds, the mean is 119 ms, which describes no actual request. Latency is described by **percentiles**: the p95 is the value 95% of requests are faster than. The slow tail, p99 and above, is often where the problems are.
+
+A server can't keep every latency value to compute exact percentiles, and percentiles from separate servers can't be averaged into a correct overall percentile. Histograms solve both problems. Every server keeps counts per bucket, the counts can simply be added across servers, and the percentile is estimated from the total.
+
+Prometheus's `histogram_quantile` does the estimate. For the $q$-th quantile of $N$ observations, it finds the first bucket whose cumulative count reaches $qN$, then interpolates linearly inside that bucket:
+
+$$\hat{x}_q = \ell + (u - \ell)\,\frac{qN - c_\ell}{c_u - c_\ell}$$
+
+where $\ell$ and $u$ are the bucket's lower and upper bounds and $c_\ell$, $c_u$ are the cumulative counts at those bounds. Linear interpolation assumes observations are spread evenly inside the bucket, which is rarely true, so **the estimate can only be as precise as the buckets around the percentile you care about**.
+
+The same calculation in Python, on 100,000 simulated latencies with a 40 ms median, compared with the true value:
+
+```python
+import numpy as np
+
+rng = np.random.default_rng(0)
+latencies = rng.lognormal(mean=np.log(0.040), sigma=0.5, size=100_000)   # seconds, median 40 ms
+
+def histogram_quantile(q, bounds, latencies):
+    """Prometheus's estimate: find the bucket holding the q-th observation, interpolate linearly inside it."""
+    counts = [(latencies <= b).sum() for b in bounds]          # cumulative, like the _bucket{le=...} series
+    rank = q * len(latencies)
+    i = next(i for i, c in enumerate(counts) if c >= rank)
+    lo, lo_count = (0.0, 0) if i == 0 else (bounds[i - 1], counts[i - 1])
+    return lo + (bounds[i] - lo) * (rank - lo_count) / (counts[i] - lo_count)
+
+true_p95 = np.quantile(latencies, 0.95)
+for name, bounds in {"coarse": [0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
+                     "fine":   [0.025, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1, 0.25, 0.5, 1.0]}.items():
+    print(f"{name:6} buckets: estimated p95 = {histogram_quantile(0.95, bounds, latencies) * 1000:5.1f} ms")
+print(f"true p95             = {true_p95 * 1000:5.1f} ms")
+```
+
+```text
+coarse buckets: estimated p95 =  97.2 ms
+fine   buckets: estimated p95 =  90.9 ms
+true p95             =  90.7 ms
+```
+
+With coarse buckets the true p95 sits inside the wide 50 to 100 ms bucket and the estimate is off by 6.5 ms. Adding buckets between 50 and 100 ms brings it within 0.2 ms. The practical rule: **put bucket boundaries densely around your latency target**, because that's where the answer has to be accurate. Prometheus also supports **native histograms**, which choose exponentially spaced buckets automatically and give good accuracy everywhere at a modest storage cost.
+
+<PredictFirst
+  question="Your latency SLO is '99% of requests under 300 ms'. The histogram's buckets are 100 ms, 500 ms and 1 s. The dashboard says p99 is 410 ms. What can you conclude?"
+  options={[
+    'p99 is 410 ms, so the SLO is being missed by 110 ms',
+    'Only that p99 is somewhere between 100 ms and 500 ms; the 410 is an interpolation inside that bucket, so you cannot tell whether the SLO is met',
+    'p99 is under 300 ms, because interpolation always overestimates',
+    'The histogram is broken, since p99 cannot fall between bucket boundaries',
+  ]}
+  correctIndex={1}
+  explanation="histogram_quantile only knows how many requests fell in each bucket. Inside the 100 to 500 ms bucket it assumes an even spread and interpolates, so 410 ms is an estimate that could be badly wrong in either direction. To check a 300 ms target, add a bucket boundary at 300 ms: the fraction of requests in le=0.3 is then counted exactly, with no interpolation at all."
+/>
+
+That last point leads straight into how alerting should work: count requests against the threshold directly.
+
+## 7. SLOs, Error Budgets and Alerts That Mean Something
+
+An alert on "CPU above 80%" fires when the machine is busy, whether or not anyone is affected, and doesn't fire when users get errors from a service with idle CPUs. Good alerts are tied to what users experience. The tools for that come from Google's site reliability engineering practice.
+
+- A **service level indicator** (SLI) is a measured ratio of good events to all events, such as "the fraction of prediction requests answered in under 100 ms".
+- A **service level objective** (SLO) is a target for it over a window: "99% of requests under 100 ms over 30 days".
+- The **error budget** is what the SLO allows to go wrong: 1% of requests. Over 30 days of steady traffic that is the equivalent of $0.01 \times 30 \times 24 \times 60 = 432$ minutes of total failure.
+
+The **burn rate** is how fast you're spending the budget, relative to spending it evenly over the window. A burn rate of 1 uses exactly the whole budget in 30 days. A burn rate of 14.4 uses $14.4 \times \frac{1\text{ h}}{720\text{ h}} = 2\%$ of the 30-day budget in one hour, and all of it in about two days. Google's SRE workbook suggests paging a person when the burn rate exceeds 14.4 over the last hour, and confirming over the last 5 minutes so the alert stops promptly once the problem is fixed. Slower burns raise a ticket instead of a page.
+
+Here is that alert for the fraud API, written as Prometheus rules. Because the histogram has a bucket at exactly 100 ms, the slow fraction is counted, not estimated:
+
+```yaml
+groups:
+  - name: fraud-api-slo
+    rules:
+      # Fraction of requests slower than 100 ms, over two windows
+      - record: fraud_api:slow_ratio:rate5m
+        expr: |
+          1 - sum(rate(predict_latency_seconds_bucket{le="0.1"}[5m]))
+            / sum(rate(predict_latency_seconds_count[5m]))
+      - record: fraud_api:slow_ratio:rate1h
+        expr: |
+          1 - sum(rate(predict_latency_seconds_bucket{le="0.1"}[1h]))
+            / sum(rate(predict_latency_seconds_count[1h]))
+      # SLO: 99% of requests under 100 ms, so the error budget is 1%.
+      # Page when the budget burns 14.4x faster than allowed, on both windows.
+      - alert: FraudApiLatencyBudgetBurn
+        expr: fraud_api:slow_ratio:rate1h > 14.4 * 0.01 and fraud_api:slow_ratio:rate5m > 14.4 * 0.01
+        labels:
+          severity: page
+        annotations:
+          summary: "fraud-api is burning its latency error budget 14x too fast"
+```
+
+Alert rules are code, so test them. Prometheus's `promtool` runs rules against synthetic series. This test feeds in 100 requests a minute, 20 of them slow, and expects the page to be firing after 70 minutes:
+
+```yaml
+rule_files: [rules.yml]
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      # 100 requests a minute; from minute 0 on, 20 of them take longer than 100 ms
+      - series: 'predict_latency_seconds_count'
+        values: '0+100x90'
+      - series: 'predict_latency_seconds_bucket{le="0.1"}'
+        values: '0+80x90'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: FraudApiLatencyBudgetBurn
+        exp_alerts:
+          - exp_labels: { severity: page }
+            exp_annotations: { summary: "fraud-api is burning its latency error budget 14x too fast" }
+```
+
+Both checks pass with Prometheus 3.5's `promtool`:
+
+```text
+$ promtool check rules rules.yml
+Checking rules.yml
+  SUCCESS: 3 rules found
+
+$ promtool test rules tests.yml
+  SUCCESS
+```
+
+<GoDeeper title="Go deeper: why two windows, and why not alert on a single bad minute">
+
+A single short window is noisy. With a 5-minute window, one brief spike fires a page that resolves by itself before anyone has opened a laptop, and a team that is paged for nothing learns to ignore pages. A single long window is slow to start and slow to stop: with only a 1-hour window, the alert keeps firing for up to an hour after the problem is fixed, because the bad minutes are still inside the window.
+
+Requiring both, a long window above the threshold *and* a short window above it, gets the best of each. The long window means a significant share of the budget really has been spent; the short window means it is still being spent now. The SRE workbook pairs them as 1 hour and 5 minutes at burn rate 14.4 for pages, 6 hours and 30 minutes at 6 for pages, and 3 days and 6 hours at 1 for tickets.
+
+The same idea applies to model quality where labels arrive fast enough. A fraud model whose confirmed-fraud recall is an SLI can have its own budget and burn-rate alert. Where labels arrive weeks later, proxy signals from [Monitoring & Drift](/docs/mlops/monitoring-and-drift) stand in.
+
+</GoDeeper>
+
+## 8. What's Different for ML and LLM Systems
+
+Everything so far applies to any service. ML services need a few more signals, because a model can fail while returning fast, well-formed, wrong answers.
+
+- **Label everything with the model version.** When two versions run side by side during a canary (see [Deployment Strategies](/docs/mlops/deployment-strategies)), every metric must be splittable by version, or a regression in one is averaged away by the other.
+- **Record the prediction distribution.** A counter of outcomes, or a histogram of scores, shows a model that suddenly flags 30% of transactions instead of 2%, long before any labels arrive.
+- **Log what the model saw.** Logging the features used for a sample of requests, keyed by trace ID, makes it possible to reproduce a bad prediction later and to measure training-serving skew (see [Feature Stores & Model Registry](/docs/mlops/feature-stores-and-model-registry)).
+- **Track the model's dependencies separately.** Feature store latency and error rate, GPU utilization and memory, and batch queue depth each get their own metrics, so the trace waterfall has something to point at.
+
+LLM applications add their own signals: time to first token and tokens per second for user-visible latency, input and output tokens per request (which is also cost), cache hit rates, and for agents a trace with one span per model call and tool call. OpenTelemetry's **GenAI semantic conventions** standardize the attribute names for these (`gen_ai.request.model`, `gen_ai.usage.input_tokens` and so on), and tools such as MLflow Tracing, Langfuse and Arize Phoenix build on them. [LLM Hosting & Serving Patterns](/docs/mlops/llm-hosting-and-serving-patterns) covers LLM serving metrics in more depth.
+
+## 9. Using All Three in an Incident
+
+Each signal answers a different question, and an investigation moves between them in a typical order.
 
 <ThreePillarsIncidentDiagram />
 
-Next: [GPU/AI Infrastructure & Distributed Training](/docs/mlops/gpu-and-distributed-training) — the hardware layer everything above is ultimately monitoring.
+1. **A metric-based alert fires:** the latency budget is burning. Metrics say *that* it's happening and *since when*: 14:32.
+2. **Look at traces from that window,** filtered to slow ones. They say *where*: in most slow requests, the feature-lookup span grew from 12 ms to 140 ms.
+3. **Look at the feature store's logs** for the trace IDs of those requests. They say *what*: connection pool exhausted, after a deploy at 14:30 that halved the pool size.
+
+That path works only if the signals are connected: shared service names and model-version labels across all three, trace IDs in logs, and timestamps from synchronized clocks. Instrumenting each signal separately, with different names in each, leaves three disconnected tools. Designing for the connections is most of what "building for observability" means.
+
+## 10. Tools
+
+| Need | Open source | Notes |
+|---|---|---|
+| Instrumentation | OpenTelemetry SDKs and Collector | One API for all three signals; send to any backend |
+| Metrics | Prometheus; Thanos or Mimir for long-term, multi-cluster storage | Pull-based scraping, PromQL, Alertmanager for routing alerts |
+| Dashboards | Grafana | Reads Prometheus, Loki, Tempo, Elasticsearch and most other sources |
+| Logs | Grafana Loki; Elasticsearch or OpenSearch | Loki indexes only labels, so it's cheaper but slower for free-text search |
+| Traces | Grafana Tempo; Jaeger | Both accept OpenTelemetry data |
+| LLM traces | MLflow Tracing, Langfuse, Arize Phoenix | Prompt, response, token and tool-call spans |
+
+Commercial platforms (Datadog, New Relic, Honeycomb, Grafana Cloud, and the cloud providers' own) combine storage and UI for all three signals. With OpenTelemetry instrumentation, moving between them is a Collector configuration change rather than a rewrite.
+
+## 11. When *Not* to Build Full Observability
+
+| Situation | Better choice |
+|---|---|
+| A batch job that runs nightly and either succeeds or fails | Job status from the orchestrator, a duration metric and an alert on failure; per-request tracing adds nothing |
+| A single service with no downstream calls | Metrics and structured logs; distributed tracing pays off once a request crosses services |
+| A prototype with no users | Print statements and the framework's request log; instrument before the first real users |
+| Tracking model accuracy and data drift | That's model monitoring: see [Monitoring & Drift](/docs/mlops/monitoring-and-drift). Observability is how the service behaves; monitoring covers whether the predictions are still right |
+| Logging every request payload "just in case" | Sample, redact and set retention. Full payload logs are a cost and a privacy liability |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Observability | Being able to answer new questions about a system from the signals it already emits |
+| Logs | Detailed events; structured JSON with a trace ID; no secrets |
+| Metrics | Cheap pre-aggregated time series: counters, gauges, histograms; keep labels low-cardinality |
+| Traces | One request's tree of timed spans across services, linked by a trace ID |
+| OpenTelemetry | Instrument once, export to any backend through the Collector |
+| Percentiles | Estimated from histogram buckets by interpolation; put bucket boundaries at your targets |
+| SLOs | Alert on error-budget burn rate over a long and a short window, not on CPU |
+| ML additions | Model-version labels, prediction distributions, sampled feature logs |
+
+---
+
+Next: [GPU/AI Infrastructure & Distributed Training](/docs/mlops/gpu-and-distributed-training) covers the hardware layer that many of these metrics ultimately describe.
+
+## Sources
+
+- OpenTelemetry, [Documentation](https://opentelemetry.io/docs/) and [Semantic conventions for generative AI](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
+- Prometheus, [Histograms and summaries](https://prometheus.io/docs/practices/histograms/) and [Unit testing rules](https://prometheus.io/docs/prometheus/latest/configuration/unit_testing_rules/)
+- W3C, [Trace Context](https://www.w3.org/TR/trace-context/)
+- B. Beyer et al., [The Site Reliability Workbook: Alerting on SLOs](https://sre.google/workbook/alerting-on-slos/), Google
+- C. Sridharan, [Distributed Systems Observability](https://www.oreilly.com/library/view/distributed-systems-observability/9781492033431/), O'Reilly (2018)

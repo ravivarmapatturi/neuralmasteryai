@@ -1,42 +1,239 @@
 ---
-title: "Infrastructure as Code"
+title: "Infrastructure as Code, In Full Depth"
 sidebar_position: 11
-description: "Terraform's real workflow -- providers, state, and modules -- for defining infrastructure in version-controlled files instead of clicking it together by hand."
+description: "Declaring infrastructure in reviewed files: how Terraform's plan and apply reconcile config with state, drift and forced replacement shown on a real run, remote state and locking, modules and environments, immutable infrastructure, and Terraform vs OpenTofu vs Pulumi."
 ---
 
 import TerraformWorkflowDiagram from '../../../viz/diagrams/TerraformWorkflowDiagram';
-import TerraformCoreConceptsDiagram from '../../../viz/diagrams/TerraformCoreConceptsDiagram';
 import StateDriftDiagram from '../../../viz/diagrams/StateDriftDiagram';
 import RemoteStateLockingDiagram from '../../../viz/diagrams/RemoteStateLockingDiagram';
 import ImmutableVsConfigMgmtDiagram from '../../../viz/diagrams/ImmutableVsConfigMgmtDiagram';
-import TerraformAnsibleSplitDiagram from '../../../viz/diagrams/TerraformAnsibleSplitDiagram';
-import TerraformVsPulumiDiagram from '../../../viz/diagrams/TerraformVsPulumiDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Infrastructure as Code
+# Infrastructure as Code, In Full Depth
 
-Clicking through a cloud console to create a VPC, three subnets, an EKS cluster, and an S3 bucket works exactly once. Doing it again for staging, again for a disaster recovery region, and again in eight months when nobody remembers the exact settings used, doesn't. Infrastructure as Code (IaC) fixes this the same way version-controlled application code fixed "whose laptop has the real version": infrastructure is defined in files, reviewed like code, and applied by a tool — not clicked together by hand.
+[Kubernetes](/docs/mlops/kubernetes) showed how to describe the *workloads* you want running, declaratively, and let a controller make it so. The cluster itself, and everything around it (networks, storage buckets, GPU node pools, databases, permissions), also has to come from somewhere. This page covers defining that infrastructure in version-controlled files: the declarative model, how Terraform computes and applies changes, what its state file is and why it causes most of the trouble, a real run showing drift and forced replacement, modules and environments, the immutable-infrastructure approach, and how Terraform, OpenTofu and Pulumi compare.
 
-## Terraform
+<ELI5>
 
-The dominant IaC tool, cloud-agnostic (one tool, many providers):
+An architect doesn't build a house by telling builders "put a wall here, now a window there" one instruction at a time. They draw a blueprint. The builders compare the blueprint with what's already standing and do whatever is missing. If the owner wants a bigger kitchen, the architect changes the blueprint, and the builders work out what to knock down and what to add.
+
+Infrastructure as code is the blueprint for cloud resources. You write down what should exist, a tool compares that with what does exist, shows you the difference, and then makes it so. The blueprint lives in git, so every change is reviewed and every past version is kept.
+
+Everything below is how that comparison works and where it goes wrong.
+
+</ELI5>
+
+## 1. What Is Infrastructure as Code?
+
+**The problem.** A team sets up its training environment by clicking through a cloud console: a network, three subnets, a Kubernetes cluster with a GPU node pool, a bucket for model artifacts, a few permission policies. It works. Six months later they need the same thing in a second region for disaster recovery, and a staging copy for testing. Nobody remembers every setting. The person who clicked has left. Someone changed a firewall rule by hand during an incident and never wrote it down. The "same" environment, rebuilt, behaves differently.
+
+**Infrastructure as code (IaC), precisely:** defining infrastructure in machine-readable files that are kept in version control, reviewed like application code, and applied by a tool that creates, changes or deletes real resources to match them. The files are the source of truth; the console becomes read-only in practice.
+
+The benefits all follow from "infrastructure is now text in git":
+
+- **Reproducible.** Staging and production come from the same files with different inputs, so they differ only where you said they should.
+- **Reviewable.** A change to a security group is a pull request, with a diff, a reviewer and a record, instead of an untracked click.
+- **Recoverable.** If a region fails, you apply the same files elsewhere.
+- **Self-documenting.** The answer to "what does production look like?" is a directory, not a person.
+
+There are two ways to write those files, and the difference shapes everything after it.
+
+## 2. Declarative vs Imperative
+
+An **imperative** script lists steps: create a bucket, then enable versioning, then attach a policy. Run it twice and the second run fails because the bucket exists, or creates a duplicate. To change something, you write a new script for the change, and you have to know the current state to write it correctly.
+
+A **declarative** configuration describes the end state: a bucket named `acme-model-artifacts-prod` should exist, with versioning on and public access blocked. The tool works out the steps. Run it twice and the second run does nothing, because the end state already holds. To change something, you edit the description and the tool computes the difference.
+
+This is the same idea as a Kubernetes manifest, and the same idea as idempotent pipeline tasks in [Pipeline Orchestration](/docs/mlops/pipeline-orchestration#4-idempotent-tasks): describe the result, make applying it safe to repeat. Terraform, OpenTofu, CloudFormation, Bicep and Pulumi are all declarative in this sense, even when, like Pulumi, you write the description in a general-purpose language.
+
+Declaring an end state only works if the tool can tell what currently exists. How Terraform does that is the core of the next section.
+
+## 3. How Terraform Works
+
+[Terraform](https://developer.hashicorp.com/terraform) is the most widely used IaC tool, and its model is shared by its open-source fork OpenTofu. A configuration is a directory of `.tf` files written in HCL (HashiCorp Configuration Language), made of a few kinds of block:
+
+- **Providers** are plugins that know how to talk to one platform's API: `hashicorp/aws`, `hashicorp/google`, `hashicorp/kubernetes`, and thousands more, including SaaS tools. `terraform init` downloads the ones you declare.
+- **Resources** are the things to manage: `resource "aws_s3_bucket" "artifacts" { ... }`. Each has a type (from a provider), a local name, and arguments.
+- **Variables** are inputs, such as the environment name or the GPU count, so one configuration serves several environments.
+- **Outputs** expose values after apply, such as a bucket ARN or a cluster endpoint, for people, CI jobs or other configurations.
+- **Modules** are reusable bundles of resources with their own variables and outputs (section 6).
+
+Terraform reads every resource, works out the references between them (a versioning setting refers to its bucket, so the bucket comes first) and builds a dependency graph, much like an orchestrator's DAG. Independent resources are created in parallel.
+
+Then comes the workflow that everything else is built on:
 
 <TerraformWorkflowDiagram />
 
-<TerraformCoreConceptsDiagram />
+1. **`terraform plan`** compares three things: the **configuration** (what you declared), the **state** (Terraform's record of what it created last time, with each resource's real ID), and the **real infrastructure** (what the provider APIs report now, read during a "refresh"). It prints the actions needed to make reality match the configuration: create, update in place, replace, or destroy.
+2. **`terraform apply`** performs those actions, ideally from a saved plan file, so exactly what was reviewed is what runs.
+3. **The state is updated** with the new IDs and attributes.
 
-- **Providers**: plugins that let Terraform talk to a specific platform (AWS, GCP, Azure, Kubernetes, even SaaS tools like Datadog) — declare a provider block once, then define resources against it.
-- **Resources**: the actual infrastructure being declared — `resource "aws_instance" "training_node" { ... }` — Terraform's core building block.
-- **Variables**: parameterize a configuration (instance type, region, environment name) so the same Terraform code deploys dev, staging, and prod with different inputs.
-- **Outputs**: values exposed after `apply` (a generated endpoint URL, a resource ID) — consumed by other Terraform configs or by humans/CI.
-- **Modules**: reusable, parameterized bundles of resources — package "a standard VPC" or "a standard ML training cluster" once, reuse it across projects instead of copy-pasting the underlying resources.
-- **State**: Terraform's record of what it last created — the mechanism that lets it compute a diff between "what's declared" and "what actually exists" and apply only the changes needed.
+**The state file** is why Terraform can manage resources at all. The configuration says `aws_s3_bucket.artifacts`; the state says that name corresponds to the real bucket `acme-model-artifacts-prod` with a given ARN. Without that mapping Terraform couldn't tell "this bucket needs updating" from "this bucket needs creating". It also means the state file is critical, often contains secrets in plain text, and must never be edited by hand or lost.
 
-A real, complete `main.tf` -- provider, a variable, a GPU training instance resource, and an output -- followed by the actual workflow that turns it into running infrastructure:
+## 4. A Real Plan: Changes, Drift and Replacement
+
+To see the workflow without a cloud account, here is a configuration that uses the `local` provider. Its one resource is a file describing a training cluster, standing in for a cloud resource, and the instance type is chosen from the GPU count:
 
 ```hcl
 terraform {
   required_providers {
-    aws = { source = "hashicorp/aws", version = "~> 5.0" }
+    local = { source = "hashicorp/local", version = "~> 2.5" }
+  }
+}
+
+variable "environment" {
+  type    = string
+  default = "dev"
+}
+
+variable "gpu_count" {
+  type    = number
+  default = 1
+}
+
+# Stands in for a cloud resource: a config file describing a training cluster
+resource "local_file" "training_cluster" {
+  filename = "${path.module}/out/${var.environment}-cluster.json"
+  content = jsonencode({
+    environment = var.environment
+    gpus        = var.gpu_count
+    instance    = var.gpu_count > 4 ? "p5.48xlarge" : "g6e.xlarge"
+  })
+}
+
+output "cluster_file" {
+  value = local_file.training_cluster.filename
+}
+```
+
+**First plan.** After `terraform init`, `terraform plan -out=tfplan` (Terraform 1.16) shows one resource to create, with its computed content:
+
+```text
+  # local_file.training_cluster will be created
+  + resource "local_file" "training_cluster" {
+      + content              = jsonencode(
+            {
+              + environment = "dev"
+              + gpus        = 1
+              + instance    = "g6e.xlarge"
+            }
+        )
+      + filename             = "./out/dev-cluster.json"
+      + id                   = (known after apply)
+      ...
+    }
+
+Plan: 1 to add, 0 to change, 0 to destroy.
+```
+
+**Apply, then plan again.** `terraform apply tfplan` creates the file. Running `terraform plan` a second time does nothing, which is the declarative guarantee:
+
+```text
+No changes. Your infrastructure matches the configuration.
+
+Terraform has compared your real infrastructure against your configuration
+and found no differences, so no changes are needed.
+```
+
+**Drift.** Now someone changes the resource outside Terraform, the equivalent of a console click during an incident, by overwriting the file with `{"gpus":8}`. The next plan refreshes, notices the real object no longer matches what state recorded, and plans to put it back:
+
+```text
+local_file.training_cluster: Refreshing state... [id=21b5908698071c60bcfff9894e3fcfc207fcb40f]
+  # local_file.training_cluster will be created
+Plan: 1 to add, 0 to change, 0 to destroy.
+```
+
+<StateDriftDiagram />
+
+**Drift** is any difference between real infrastructure and what Terraform last applied. Terraform only sees it when someone runs a plan, so teams run a scheduled plan (for example nightly in CI) and alert if it isn't empty. The plan's fix is to overwrite the manual change. If the manual change was right, the fix is to put it into the configuration, not to keep reverting it.
+
+**Forced replacement.** Finally, a legitimate change: `terraform plan -var gpu_count=8`. Changing a resource's content in this provider can't be done in place, so Terraform plans to destroy and recreate it, and says which attribute forces that:
+
+```text
+  # local_file.training_cluster must be replaced
+              ~ gpus        = 1 -> 8
+              ~ instance    = "g6e.xlarge" -> "p5.48xlarge"
+            } # forces replacement
+Plan: 1 to add, 0 to change, 1 to destroy.
+```
+
+Cloud resources behave the same way. Some arguments can be updated in place (tags, an autoscaling group's size); others force replacement (a database's engine, many resources' names, a subnet's address range). **Reading the plan for `must be replaced` is the most important review step in IaC**, because replacing a database or a bucket destroys its contents.
+
+<PredictFirst
+  question="A pull request renames the local name of a production database resource from aws_db_instance.main to aws_db_instance.primary, with no other changes. What does terraform plan show?"
+  options={[
+    'No changes, because the real database is identical',
+    'An in-place update renaming the database',
+    'Destroy aws_db_instance.main and create aws_db_instance.primary, because state tracks resources by address',
+    'An error, because resource names cannot be changed',
+  ]}
+  correctIndex={2}
+  explanation="State maps each resource address (type plus local name) to a real object. A renamed address looks like one resource deleted from the config and a new one added, so the plan is to destroy the existing database and create an empty one. The fix is a moved block (moved { from = aws_db_instance.main  to = aws_db_instance.primary }), which tells Terraform the address changed and the object did not. This is exactly why plans must be read before apply."
+/>
+
+## 5. Remote State and Locking
+
+On a laptop, state lives in a file called `terraform.tfstate`. That breaks as soon as two people or a CI job manage the same infrastructure: each has their own copy, each thinks it knows what exists, and both apply. Two rules fix it.
+
+**Store state remotely**, in a backend everyone uses: an S3 bucket, Google Cloud Storage, Azure Blob Storage, or HCP Terraform. Turn on versioning for the bucket so a corrupted state can be rolled back, encrypt it, and restrict who can read it, because state contains every attribute of every resource, including generated passwords.
+
+**Lock state during writes**, so two applies can't run at once:
+
+<RemoteStateLockingDiagram />
+
+If two applies run concurrently against the same state, each computes its plan from the same starting point and each writes its result, so one overwrites the other's record and resources become orphaned or duplicated. With a lock, the second apply waits or fails until the first finishes.
+
+For years the standard AWS setup was an S3 bucket for state plus a DynamoDB table for locks. Since Terraform 1.10, the S3 backend can lock with a lock file in the bucket itself (`use_lockfile = true`), and DynamoDB-based locking is deprecated. Older tutorials still show the DynamoDB table; new setups don't need it.
+
+**Split state by blast radius.** One state file for everything means every plan touches everything and every mistake can reach everything. Separate states for the network, the shared cluster and each application's resources limit how much a bad apply can damage, and keep plans fast.
+
+## 6. Modules and Environments
+
+A **module** is a directory of Terraform files with inputs and outputs that you can call from another configuration. It's the unit of reuse: a team writes "an artifact bucket the way we do them" once, and every project calls it instead of copying the resources.
+
+Here's a small module that creates a versioned, private S3 bucket for model artifacts:
+
+```hcl
+variable "name" { type = string }
+variable "environment" { type = string }
+
+resource "aws_s3_bucket" "this" {
+  bucket = "${var.name}-${var.environment}"
+  tags   = { environment = var.environment, managed_by = "terraform" }
+}
+
+resource "aws_s3_bucket_versioning" "this" {
+  bucket = aws_s3_bucket.this.id
+  versioning_configuration { status = "Enabled" } # every model artifact version is kept
+}
+
+resource "aws_s3_bucket_public_access_block" "this" {
+  bucket                  = aws_s3_bucket.this.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+output "bucket_arn" { value = aws_s3_bucket.this.arn }
+```
+
+And a root configuration that uses it, with remote state, locking, and a validated environment variable:
+
+```hcl
+terraform {
+  required_version = ">= 1.10"
+  required_providers {
+    aws = { source = "hashicorp/aws", version = "~> 6.0" }
+  }
+  backend "s3" {
+    bucket       = "acme-terraform-state"
+    key          = "ml-platform/prod/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true # S3-native state locking; no DynamoDB table needed
   }
 }
 
@@ -44,59 +241,130 @@ provider "aws" {
   region = "us-east-1"
 }
 
-variable "instance_type" {
-  description = "GPU instance size for the training node"
-  type        = string
-  default     = "g5.xlarge"
-}
-
-resource "aws_instance" "training_node" {
-  ami           = "ami-0abcdef1234567890"
-  instance_type = var.instance_type
-  tags = {
-    Name = "ml-training-node"
+variable "environment" {
+  type = string
+  validation {
+    condition     = contains(["dev", "staging", "prod"], var.environment)
+    error_message = "environment must be dev, staging or prod."
   }
 }
 
-output "training_node_ip" {
-  value = aws_instance.training_node.public_ip
+module "model_artifacts" {
+  source      = "./modules/artifact_store"
+  name        = "acme-model-artifacts"
+  environment = var.environment
+}
+
+output "artifact_bucket_arn" {
+  value = module.model_artifacts.bucket_arn
 }
 ```
 
-```bash
-terraform init                                    # downloads the aws provider plugin, sets up the backend
-terraform plan -out=tfplan                        # shows exactly what would change, before anything runs
-terraform apply tfplan                            # creates the instance, writes its state to the state file
+With the AWS provider v6.70 installed, `terraform fmt -check` passes and `terraform validate` reports:
 
-terraform plan -var="instance_type=g5.2xlarge"    # re-plan against a different variable value
-terraform destroy                                 # tears everything this config created back down
+```text
+Success! The configuration is valid.
 ```
 
-<StateDriftDiagram />
+and a plan with `-var environment=qa` stops with `Error: Invalid value for variable` before touching anything. Validation catches typos, but not mistakes that only the cloud API can detect, such as a bucket name already taken; those appear at plan or apply time.
 
-- **Remote state**: storing that state file in a shared, locked backend (S3 + DynamoDB for locking is the classic AWS pattern) instead of a local file — required the moment more than one person or CI job touches the same infrastructure, to avoid two concurrent applies corrupting state.
+**Environments.** There are two common ways to get dev, staging and prod from the same code. Terraform **workspaces** keep several states for one configuration and switch between them; they're simple, but every environment then shares the same backend and the same code version, and it's easy to apply to the wrong one. **A directory per environment** (`envs/dev`, `envs/prod`), each a small root configuration that calls shared modules with its own variables and its own state, is more explicit and lets production pin an older module version while dev tries a new one. Most teams with real production systems use directories.
 
-<RemoteStateLockingDiagram />
+<GoDeeper title="Go deeper: pinning, upgrades, and the lock file">
 
-- **Workspaces**: Terraform's built-in mechanism for managing multiple instances of the same configuration (e.g. one workspace per environment) without duplicating the code.
+Two kinds of version matter in a Terraform setup, and both should be pinned.
 
-## Immutable Infrastructure vs. Configuration Management
+**Provider versions** are constrained in `required_providers`. `~> 6.0` allows any 6.x release but not 7.0, since major versions may remove or change resource arguments. When `terraform init` resolves the constraint, it records the exact chosen version and its checksums in `.terraform.lock.hcl`. Commit that file: it guarantees that CI and every engineer use the identical provider build, and it changes only when someone runs `terraform init -upgrade` on purpose, producing a reviewable diff.
 
-Two different philosophies for keeping infrastructure in a known state:
+**Module versions** are pinned in the `source`, for example a git tag (`git::https://...//modules/artifact_store?ref=v1.4.0`) or a registry version argument. Without a pin, a module change merged by another team silently changes your next plan.
 
-- **Configuration management** (Ansible, Chef, Puppet): describe the desired *configuration* of a long-lived server, and the tool mutates it into that state — install this package, set this config file, restart this service. The server itself persists and gets updated in place.
-- **Immutable infrastructure**: never mutate a running server — build a new image/container with the change baked in, and replace the old instance entirely. This is the model containers and most cloud-native infrastructure default to today, because it eliminates an entire class of "it drifted from what the config says it should be" bugs.
+Upgrades then become ordinary pull requests: bump the version, run `plan` in every environment, read the diff, apply in dev, then staging, then prod. A major provider upgrade usually comes with an upgrade guide listing renamed arguments, which turn into plan diffs or validation errors you can fix before anything is applied.
+
+</GoDeeper>
+
+## 7. Immutable Infrastructure and Configuration Management
+
+Terraform creates and changes resources. What runs *on* a server is a separate question, with two schools of thought.
 
 <ImmutableVsConfigMgmtDiagram />
 
-Terraform itself is agnostic to this distinction (it provisions infrastructure either way) — Ansible is commonly used *alongside* Terraform, with Terraform provisioning the VM and Ansible configuring what runs on it, though the immutable-infrastructure trend has pushed more of that configuration into the container image itself instead.
+**Configuration management** (Ansible, Chef, Puppet) keeps long-lived servers and brings them into the desired state: install this package, write this config file, restart this service. When something changes, the tool updates the running server in place. The weakness is that servers accumulate history: manual fixes, half-finished upgrades, packages nobody remembers. Two servers configured "the same" slowly stop being the same.
 
-<TerraformAnsibleSplitDiagram />
+**Immutable infrastructure** never changes a running server. To change anything, you build a new image (a container image, or a VM image with a tool like Packer) with the change baked in, start new instances from it, and delete the old ones. What's running is always exactly an image you built and tested, and rolling back means starting the previous image.
 
-## Pulumi
+For ML systems, immutable infrastructure is the norm: a training job or a model server runs as a container from an image with a pinned digest (see [Containers](/docs/mlops/containers)), on nodes that are themselves created from a standard image and replaced rather than patched. Configuration management still has a place for systems that can't easily be replaced, such as long-lived on-premises GPU servers, or a database host with local disks.
 
-An alternative to Terraform's own HCL language: define infrastructure in a general-purpose language (Python, TypeScript, Go) instead of a domain-specific config format — appealing when infrastructure logic needs real programming constructs (loops, conditionals, functions) that HCL makes awkward. Terraform remains the more common default; Pulumi is worth knowing as the answer to "what if I want to write infrastructure in Python."
+The two combine with Terraform naturally. Terraform declares the infrastructure (the node pool, its machine image, its size), and changing the image is a plan that replaces the nodes. Ansible, where it's used, runs after Terraform to configure what Terraform created.
 
-<TerraformVsPulumiDiagram />
+## 8. IaC in a Team Workflow
 
-Next: [CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd) — once infrastructure is code, it deploys through the same automated pipelines as everything else.
+The files are only half of IaC; the other half is how changes reach production. The standard workflow puts Terraform behind the same review process as application code:
+
+1. An engineer changes `.tf` files on a branch and opens a pull request.
+2. CI runs `terraform fmt -check`, `terraform validate`, a policy check, and `terraform plan` for each affected environment, and posts the plan as a comment on the pull request.
+3. A reviewer reads the plan, not just the code, looking especially for `must be replaced` and `destroy`.
+4. After merge, CI applies the *saved* plan from step 2, so what runs is exactly what was reviewed. If the infrastructure changed since the plan, apply fails rather than doing something different.
+5. Nobody, ideally, has credentials to change production by hand except in a documented break-glass procedure.
+
+**Policy as code** adds automatic rules to step 2: no public buckets, every resource tagged with a cost centre, GPU instances only in approved regions and sizes. Tools such as Open Policy Agent (with Conftest), Checkov and HCP Terraform's Sentinel read the plan as JSON and fail the pipeline if a rule is broken.
+
+<PredictFirst
+  question="During an outage, an engineer raises a GPU node pool's maximum size from 4 to 12 in the cloud console, and it fixes the problem. The pool is managed by Terraform with max_size = 4. What happens on the next normal terraform apply, and what should the engineer have done afterwards?"
+  options={[
+    'Nothing, because Terraform only applies changes made in the configuration',
+    'The apply sets max_size back to 4, possibly recreating the outage; the engineer should have put max_size = 12 into the configuration through a pull request',
+    'The apply fails with a drift error until someone deletes the state file',
+    'Terraform adopts 12 automatically, because the real value is newer',
+  ]}
+  correctIndex={1}
+  explanation="Terraform makes reality match the configuration. A manual change is drift, and the next apply reverts it, here to the size that caused the outage. Emergency console changes are sometimes the right call, but they must be followed straight away by the same change in code, so the configuration again describes what should exist. A scheduled drift-detection plan catches the ones people forget."
+/>
+
+## 9. Choosing a Tool
+
+| Tool | Language | Licence and owner | Best fit |
+|---|---|---|---|
+| **Terraform** | HCL | Business Source License since 2023; HashiCorp, part of IBM since 2025 | The default across clouds; largest provider and module ecosystem |
+| **OpenTofu** | HCL, Terraform-compatible | Open source (MPL 2.0), a Linux Foundation project | Teams that want a drop-in, openly governed Terraform; adds features such as client-side state encryption |
+| **Pulumi** | Python, TypeScript, Go, C#, Java, YAML | Open-source engine, commercial cloud service | Infrastructure that needs real programming constructs, or teams that want to share code and tests with the application |
+| **AWS CloudFormation / CDK** | YAML/JSON; CDK in TypeScript, Python and others | AWS | AWS-only shops that want state managed by the cloud itself |
+| **Azure Bicep, Google Cloud Infrastructure Manager** | Bicep; Terraform | Microsoft; Google | Single-cloud setups that prefer the provider's own tooling |
+
+**Pulumi** is worth understanding because it shows that "declarative" is about the model, not the syntax. A Pulumi program in Python can use loops, functions and classes to *build* a description of resources, but the engine still compares that description with state and computes a plan, exactly like Terraform. The trade-off is that a general-purpose language makes it easy to write infrastructure code that is clever and hard to review.
+
+For most ML teams the choice matters less than the practice: one tool, everything in it, plans reviewed, no hand changes.
+
+## 10. When *Not* to Use Infrastructure as Code
+
+| Situation | Better choice |
+|---|---|
+| Exploring a new cloud service for an afternoon | Click in the console of a sandbox account, then write the IaC once you know what you need |
+| Fully managed platforms where you create almost nothing yourself | The platform's own project configuration; IaC for a single notebook workspace adds ceremony |
+| Things that change many times a day, like model deployments or Kubernetes workloads | Deployment pipelines and Kubernetes manifests (GitOps); keep Terraform for the slower-moving platform underneath |
+| Configuration inside a running application, such as feature flags or model thresholds | An application config system or feature-flag service, not infrastructure state |
+| Secrets | A secrets manager; reference secrets from IaC, never write their values into `.tf` files |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| IaC | Infrastructure declared in reviewed, versioned files and applied by a tool |
+| Declarative | Describe the end state; the tool computes the steps; reapplying changes nothing |
+| Plan and apply | Compare config, state and reality; show the diff; apply exactly the reviewed plan |
+| State | Maps resource addresses to real objects; remote, locked, versioned, access-restricted |
+| Drift | Real infrastructure changed outside IaC; detect with scheduled plans, fix in code |
+| Replacement | Some changes destroy and recreate; read every `must be replaced` |
+| Modules | Reusable resource bundles; pin their versions and the provider lock file |
+| Immutable infrastructure | Replace from a new image instead of changing a running server |
+| Team workflow | Pull request, CI plan as a comment, policy checks, apply the saved plan |
+
+---
+
+Next: [CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd) applies the same plan-review-apply discipline to code and models, and automates the checks a model must pass before it ships.
+
+## Sources
+
+- HashiCorp, [Terraform documentation](https://developer.hashicorp.com/terraform/docs), including [the S3 backend and S3 state locking](https://developer.hashicorp.com/terraform/language/backend/s3) and [refactoring with moved blocks](https://developer.hashicorp.com/terraform/language/modules/develop/refactoring)
+- OpenTofu, [Documentation](https://opentofu.org/docs/)
+- Pulumi, [Concepts](https://www.pulumi.com/docs/iac/concepts/)
+- K. Morris, [Infrastructure as Code](https://infrastructure-as-code.com/book/), O'Reilly

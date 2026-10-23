@@ -1,119 +1,419 @@
 ---
-title: "CI/CD & ML CI/CD"
+title: "CI/CD & ML CI/CD, In Full Depth"
 sidebar_position: 12
-description: "CI vs. CD, and why ML pipelines need drift checks and model regression tests on top of every ordinary code check -- syntactically fine can still be wrong."
+description: "Continuous integration and delivery for ML systems: why code tests aren't enough when data and models change too, the tests an ML repo needs, a statistically sound model gate with a paired bootstrap, a linted GitHub Actions workflow, GitOps delivery, and continuous training."
 ---
 
 import CiVsCdDiagram from '../../../viz/diagrams/CiVsCdDiagram';
 import GitOpsReconciliationDiagram from '../../../viz/diagrams/GitOpsReconciliationDiagram';
-import WhyMlNeedsMoreDiagram from '../../../viz/diagrams/WhyMlNeedsMoreDiagram';
 import MlCicdPipelineStepsDiagram from '../../../viz/diagrams/MlCicdPipelineStepsDiagram';
-import ModelRegressionGateDiagram from '../../../viz/diagrams/ModelRegressionGateDiagram';
 import AutomatedRetrainLoopDiagram from '../../../viz/diagrams/AutomatedRetrainLoopDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# CI/CD & ML CI/CD
+# CI/CD & ML CI/CD, In Full Depth
 
-Continuous Integration and Continuous Deployment automate the path from "code changed" to "that change is safely running in production." ML systems need everything regular CI/CD does, plus checks that don't exist in ordinary software at all — because a model can be *syntactically* fine and still be *wrong*.
+[Infrastructure as Code](/docs/mlops/infrastructure-as-code) put the platform behind pull requests and reviewed plans. This page does the same for the things that run on it: application code, training code and the models themselves. It covers what continuous integration and delivery mean precisely, why a machine learning system needs more checks than ordinary software, the four kinds of test an ML repository should have (all of them run here), a model gate that accounts for evaluation noise, a complete workflow that passes `actionlint`, delivery with GitOps, and how retraining itself becomes a pipeline.
 
-## CI vs. CD
+<ELI5>
 
-- **CI (Continuous Integration)**: on every push/PR, automatically test, build, and lint the code, and scan it for known vulnerabilities — catching breakage before it merges, not after.
-- **CD (Continuous Deployment/Delivery)**: on a successful CI run (often only from the main branch), automatically deploy the change, run post-deploy checks, and roll it out to production — removing manual, error-prone release steps.
+A bakery tests every new batch of flour before it goes into bread, and tastes a loaf from every batch before it goes on the shelf. It doesn't wait for customers to complain. If the flour fails, the bread is never made; if the loaf tastes wrong, it never reaches the shelf.
+
+CI/CD is that routine for software, done by machines on every change. For ML there's a twist: the bread can come out wrong even when the recipe is unchanged, because the flour (the data) changed. So the checks have to cover the recipe, the flour and the finished loaf.
+
+Everything below is what those checks are and how they are wired together.
+
+</ELI5>
+
+## 1. What Is CI/CD?
+
+**Continuous integration (CI)** means every change is merged into the main branch frequently, and every proposed change is automatically built and tested before it merges. The point is to catch breakage when it's one small change old, not after weeks of changes have piled up.
+
+**Continuous delivery (CD)** means every change that passes CI produces an artifact (a container image, a model package) that *could* be released at any moment with one approved action. **Continuous deployment** goes one step further: changes that pass every check are released automatically, with no human step. Both are called CD; the difference is whether a person presses the final button.
 
 <CiVsCdDiagram />
 
-**GitHub Actions** is the most common CI engine — YAML workflows triggered by git events. **Argo CD** is a common CD tool specifically for Kubernetes: it continuously reconciles a cluster's actual state to match what's declared in a git repo ("GitOps") — deploying by merging a PR rather than running `kubectl apply` by hand.
+The mechanism is a **pipeline**: a sequence of jobs triggered by a git event (a pull request opened, a commit pushed to `main`, a tag created), each of which must succeed before the next starts. GitHub Actions, GitLab CI, Jenkins, CircleCI and Buildkite all implement this model; the examples here use GitHub Actions, the most common.
 
-<GitOpsReconciliationDiagram />
+**Why it works:** the pipeline makes the safe path the easy path. Nobody has to remember to run the tests, build the image the same way, or skip deploying on a Friday when tests fail; the pipeline does it identically every time.
 
-A real GitHub Actions CI workflow — lint, test, and build a container image on every push:
+**The limitation:** CI can only catch what the tests check. In ordinary software, the code is most of what can change, so testing the code covers most risks. In ML it doesn't, which is the next section.
+
+## 2. Why ML Needs More Than Code Checks
+
+A conventional service's behaviour is determined by its code and configuration. A model-backed service's behaviour is determined by three things that change independently:
+
+| What changes | Example | Caught by code tests? |
+|---|---|---|
+| **Code** | A refactor of the feature pipeline | Yes, if the tests are good |
+| **Data** | An upstream team changes a column's units from dollars to cents | No: the code is unchanged |
+| **Model** | Retraining on this week's data produces weights that are worse on one segment | No: the code and schema are unchanged |
+
+A model can be wrong while every unit test passes, the container builds, and the API returns well-formed JSON with confident numbers in it. That's why ML pipelines add checks on data and on model quality, and why retraining is a trigger for the pipeline just like a code change.
+
+Google's widely cited description of MLOps maturity puts it in levels. At **level 0**, a data scientist trains a model by hand and hands over a file. At **level 1**, the *training pipeline* is automated, so models are retrained and validated by a pipeline rather than a person. At **level 2**, that training pipeline itself goes through CI/CD: changes to training code are tested, and the pipeline is redeployed automatically. Most teams are somewhere between 0 and 1, and the jump to 1 is where most of the reliability comes from.
+
+<MlCicdPipelineStepsDiagram />
+
+The full chain, from a commit to a model serving traffic:
+
+1. **Code checks:** lint, unit tests, integration tests.
+2. **Data checks:** the training data meets its contract (schema, ranges, class balance, no leakage between splits).
+3. **Training:** a run that logs to the [experiment tracker](/docs/mlops/experiment-tracking).
+4. **Model checks:** behaviour tests and a comparison with the current production model, the *champion*.
+5. **Packaging and registration:** an image and a [registry](/docs/mlops/feature-stores-and-model-registry) version.
+6. **Progressive delivery:** a shadow or canary release ([Deployment Strategies](/docs/mlops/deployment-strategies)).
+7. **Post-deploy checks:** [observability](/docs/mlops/observability) confirms the new version is healthy before rollout completes.
+
+The next two sections make steps 1, 2 and 4 concrete.
+
+## 3. Testing an ML Repository
+
+An ML repository needs four kinds of tests, and they run at different speeds and stages.
+
+**Unit tests for feature code.** Feature transformations are ordinary functions, and their edge cases are where production bugs come from: a new user with no history, a zero denominator, a missing value. Here's a feature and its tests:
+
+```python
+import numpy as np
+import pandas as pd
+
+
+def amount_ratio(amount: pd.Series, avg_7d: pd.Series) -> pd.Series:
+    """Transaction amount relative to the user's 7-day average; 0 history means ratio 1."""
+    safe_avg = avg_7d.where(avg_7d > 0, amount)          # no history: compare the amount with itself
+    return (amount / safe_avg).replace([np.inf, -np.inf], 1.0).fillna(1.0)
+```
+
+```python
+import pandas as pd
+
+from features import amount_ratio
+
+
+def test_ratio_against_history():
+    assert amount_ratio(pd.Series([100.0]), pd.Series([50.0])).tolist() == [2.0]
+
+
+def test_no_history_is_neutral():
+    # a new user has avg_7d = 0; the feature must not be inf or NaN
+    assert amount_ratio(pd.Series([80.0, 0.0]), pd.Series([0.0, 0.0])).tolist() == [1.0, 1.0]
+```
+
+The second test exists because a naive `amount / avg_7d` returns infinity for new users, and infinity silently becomes a very large number in many models.
+
+**Data contract tests.** These assert what training data must look like. They fail when an upstream change breaks an assumption, before any training time is spent:
+
+```python
+from train import load_split
+
+
+def test_training_data_contract():
+    X_tr, X_te, y_tr, _ = load_split()
+    assert X_tr.shape[1] == 30
+    assert not X_tr.isna().any().any()
+    assert set(y_tr.unique()) == {0, 1}
+    assert 0.3 < y_tr.mean() < 0.8                          # class balance has not collapsed
+    assert len(set(X_tr.index) & set(X_te.index)) == 0     # no row in both splits
+```
+
+In production the same idea scales up with a validation library (Great Expectations, Pandera, or the checks in your data platform), run against each new data snapshot; see [Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning).
+
+**Model behaviour tests.** A single accuracy number misses failures a person would spot immediately. Behaviour tests, popularized by the CheckList paper for NLP models, check properties the model must have: a minimum quality bar, **invariance** (changes that shouldn't matter don't change the output) and **directional expectations** (changes that should push the prediction one way do):
+
+```python
+import pytest
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import roc_auc_score
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+
+from train import load_split
+
+
+@pytest.fixture(scope="module")
+def fitted():
+    X_tr, X_te, y_tr, y_te = load_split()
+    model = make_pipeline(StandardScaler(), LogisticRegression(max_iter=1000)).fit(X_tr, y_tr)
+    return model, X_te, y_te
+
+
+def test_minimum_quality(fitted):
+    model, X_te, y_te = fitted
+    assert roc_auc_score(y_te, model.predict_proba(X_te)[:, 1]) > 0.97
+
+
+def test_invariant_to_row_order(fitted):
+    model, X_te, _ = fitted
+    shuffled = X_te.sample(frac=1.0, random_state=1)
+    assert (model.predict(shuffled) == model.predict(X_te.loc[shuffled.index])).all()
+
+
+def test_directional_larger_tumour_raises_risk(fitted):
+    # in this dataset target 1 = benign, so a larger "worst radius" should lower P(benign)
+    model, X_te, _ = fitted
+    row = X_te.iloc[[0]].copy()
+    bigger = row.copy()
+    bigger["worst radius"] *= 1.5
+    assert model.predict_proba(bigger)[0, 1] < model.predict_proba(row)[0, 1]
+```
+
+All three test files pass, along with the linter:
+
+```text
+$ ruff check .
+All checks passed!
+$ pytest -q
+......                                                                   [100%]
+6 passed in 5.67s
+```
+
+These use a small model trained inside the test, so they run on every pull request in seconds. **The fourth kind**, comparing a freshly trained candidate against the production champion, needs a real training run and real evaluation data, and it's subtle enough to need its own section.
+
+## 4. A Model Gate That Accounts for Noise
+
+The obvious gate is "the candidate's metric must be at least the champion's". It fails in both directions. Evaluation sets are finite, so the measured metric has noise: on a 171-example test set, two equally good models can differ by several thousandths of AUC just from which examples happen to be in the set. A strict "must beat" gate therefore blocks good models at random. A loose gate with a fixed tolerance, meanwhile, lets a model slip through that is genuinely worse but got lucky on this sample.
+
+The fix is to measure the *uncertainty* of the difference and gate on that. The **paired bootstrap** does it without any distributional assumptions:
+
+1. Score both models on the same evaluation set.
+2. Draw a resample $S^*$ of the evaluation rows, with replacement, the same size as the original.
+3. Compute the difference on that resample, $\Delta^* = \text{AUC}_{\text{new}}(S^*) - \text{AUC}_{\text{old}}(S^*)$.
+4. Repeat $B$ times (2,000 is plenty). The 2.5th and 97.5th percentiles of the $\Delta^*$ values form a 95% confidence interval for the true difference.
+
+*Paired* means each resample is used for both models. Since the two models mostly agree on which examples are easy and which are hard, pairing cancels most of the shared noise, so the interval for the difference is much narrower than you'd get by bootstrapping each model separately.
+
+The gate then asks a precise question: **could the candidate plausibly be more than a tolerated amount worse?** If the lower end of the interval is below $-\delta$ (here $\delta = 0.005$ AUC), block; otherwise pass.
+
+```python
+"""Exit 0 only if the candidate is not worse than the champion, judged with a paired bootstrap."""
+import sys
+
+import joblib
+import numpy as np
+from sklearn.metrics import roc_auc_score
+
+from train import load_split
+
+MAX_DROP = 0.005        # tolerated AUC loss
+N_BOOT = 2000
+
+_, X_te, _, y_te = load_split()
+y = y_te.to_numpy()
+p_new = joblib.load(sys.argv[1]).predict_proba(X_te)[:, 1]
+p_old = joblib.load(sys.argv[2]).predict_proba(X_te)[:, 1]
+
+rng = np.random.default_rng(0)
+diffs = []
+for _ in range(N_BOOT):
+    i = rng.integers(0, len(y), len(y))                 # resample the SAME rows for both models
+    if y[i].min() == y[i].max():
+        continue
+    diffs.append(roc_auc_score(y[i], p_new[i]) - roc_auc_score(y[i], p_old[i]))
+lo, hi = np.percentile(diffs, [2.5, 97.5])
+
+print(f"candidate AUC {roc_auc_score(y, p_new):.4f}  champion AUC {roc_auc_score(y, p_old):.4f}")
+print(f"difference 95% CI: [{lo:+.4f}, {hi:+.4f}]")
+if lo < -MAX_DROP:
+    print(f"FAIL: the candidate may be more than {MAX_DROP} AUC worse")
+    sys.exit(1)
+print("PASS")
+```
+
+With a champion trained at regularization strength `C=1.0`, two candidates (`C=0.3` and `C=0.001`) give:
+
+```text
+$ python gate.py candidate_a.joblib champion.joblib     # C=0.3
+candidate AUC 0.9942  champion AUC 0.9956
+difference 95% CI: [-0.0045, +0.0006]
+PASS
+
+$ python gate.py candidate_b.joblib champion.joblib     # C=0.001
+candidate AUC 0.9737  champion AUC 0.9956
+difference 95% CI: [-0.0406, -0.0073]
+FAIL: the candidate may be more than 0.005 AUC worse
+```
+
+Candidate A measured slightly lower than the champion, but the interval shows the difference is within noise and can't be worse than the tolerance, so it passes. A strict "must beat" gate would have blocked it. Candidate B is clearly worse, and the gate exits with code 1, which is exactly what stops a CI job.
+
+<PredictFirst
+  question="Your evaluation set doubles from 5,000 to 10,000 examples, and nothing else changes. What happens to the width of the paired-bootstrap confidence interval for the AUC difference?"
+  options={[
+    'It stays the same, because the bootstrap already resamples',
+    'It halves, because the error is proportional to 1/n',
+    'It shrinks by roughly a factor of 1.4, because sampling error scales with 1/sqrt(n)',
+    'It doubles, because there are more examples to disagree on',
+  ]}
+  correctIndex={2}
+  explanation="The bootstrap estimates the sampling variability of the metric, and for averages and statistics like AUC that variability falls roughly with the square root of the sample size. Doubling n divides the standard error by about sqrt(2), so the interval narrows by about 1.4x. To halve the interval you need about four times the data, which is why gates on small evaluation sets can only detect large regressions."
+/>
+
+<GoDeeper title="Go deeper: gate on slices, and on more than one metric">
+
+An aggregate metric can hold steady while an important subgroup gets much worse, because the subgroup is a small share of the evaluation set. Production gates therefore run the same comparison per slice: per region, per customer segment, per device type, or per class for a multi-class model. Each slice gets its own tolerance, and a large regression on any slice the business cares about fails the gate.
+
+Running many comparisons raises the chance that one fails by luck. With 20 slices, each tested at a 5% false-alarm rate, you'd expect one false failure per run. Two standard remedies: widen each slice's interval (a Bonferroni-style correction uses a $1 - 0.05/k$ interval for $k$ slices), or require a regression to exceed a practically meaningful size *and* be statistically clear before it blocks.
+
+Gates should also cover non-accuracy properties that matter in production: latency on representative inputs, model size, calibration (do predicted probabilities match observed rates?), and, where it applies, fairness metrics across protected groups. The champion-versus-candidate structure is the same for all of them.
+
+</GoDeeper>
+
+## 5. The Workflow, End to End
+
+Here are all the checks wired into one GitHub Actions workflow. Pull requests run the tests and the gate; pushes to `main` additionally build and publish an image:
 
 ```yaml
-name: CI
-on: [push, pull_request]
+name: ml-ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+          cache: pip
       - run: pip install -r requirements.txt
       - run: ruff check .
-      - run: pytest tests/ --cov=src
+      - run: pytest -q                       # unit, data-contract and model-behaviour tests
 
-  build:
+  train-and-gate:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/build-push-action@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Fetch the current champion
+        run: python scripts/fetch_champion.py --alias champion --out src/champion.joblib
+      - name: Train the candidate
+        working-directory: src
+        run: python train.py 1.0 candidate.joblib
+      - name: Gate against the champion
+        working-directory: src
+        run: python gate.py candidate.joblib champion.joblib   # exit code 1 stops the workflow here
+      - uses: actions/upload-artifact@v7
+        with:
+          name: candidate-model
+          path: src/candidate.joblib
+
+  build-image:
+    needs: train-and-gate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7
         with:
           push: true
-          tags: my-registry/my-model-api:${{ github.sha }}
+          tags: ghcr.io/${{ github.repository }}/fraud-api:${{ github.sha }}
 ```
 
-Argo CD's side of GitOps is a `kubectl apply` on its own Application resource, not a deploy script — Argo CD then continuously reconciles the cluster toward whatever's in the target repo/path from that point on:
+`actionlint` 1.7.12, the standard linter for workflow files, reports no problems with it. A few details carry most of the safety:
 
-```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: model-api
-spec:
-  source:
-    repoURL: https://github.com/my-org/model-api-manifests
-    path: overlays/prod
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: prod
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-```
+- **`needs:`** chains the jobs, so a failing test means no training, and a failing gate means no image.
+- **`permissions:`** starts at read-only for the whole workflow and grants `packages: write` only to the job that pushes. A compromised dependency in the test job can't publish anything.
+- **The image is tagged with the commit SHA**, never only `latest`, so every running container traces back to exactly one commit.
+- **`fetch_champion.py`** stands for whatever loads the current production model from your registry, for example `models:/fraud-detector@champion` in MLflow.
 
-## Why ML CI/CD Needs More Than Code Checks
+Real training rarely fits on a hosted CI runner. The usual pattern is for the CI job to *start* a training run on the platform that has the GPUs (a Kubernetes job, a managed training service, an orchestrator pipeline), wait for it, and then run the gate on its output. The structure of the workflow stays the same.
 
-Regular CI/CD assumes: if the code passes tests and builds, it's safe to ship. That assumption breaks for ML, because the artifact that actually matters — the trained model — is a function of code *and* data, and "passes unit tests" says nothing about whether the model is still accurate on real inputs. ML CI/CD adds:
+**Supply-chain hygiene** belongs here too. Pin third-party actions to a full commit SHA rather than a movable tag in security-sensitive repositories, because a tag can be repointed to malicious code. Authenticate to clouds with short-lived OIDC tokens issued per run rather than long-lived access keys stored as secrets. And scan the built image for known vulnerabilities before it's pushed.
 
-<WhyMlNeedsMoreDiagram />
+## 6. Delivery: GitOps and Promotion
 
-- **Drift checks**: does the incoming data still look like the data the model was trained/validated on? (See [Monitoring & Drift Detection](/docs/mlops/monitoring-and-drift) for the actual math.) A code change can pass every test and still ship a model quietly degrading against data that's moved.
-- **Model regression testing**: run the candidate model against a fixed, held-out benchmark dataset and assert its metrics haven't dropped below a threshold — the ML equivalent of a regression test suite, because a model "passing" isn't binary the way a function returning the right value is.
+Building an image is the end of CI. Getting it into a running cluster is delivery, and for Kubernetes the dominant pattern is **GitOps**.
 
-<ModelRegressionGateDiagram />
+<GitOpsReconciliationDiagram />
 
-- **Automated retraining triggers**: a pipeline that retrains automatically on a schedule, or when drift crosses a threshold, and only promotes the new model if it beats the current production model on the benchmark — closing the loop from [Pipeline Orchestration](/docs/mlops/pipeline-orchestration) and [Deployment Strategies](/docs/mlops/deployment-strategies) into something that runs itself.
+In GitOps, the desired state of each environment (which image version runs, how many replicas, which config) lives in a git repository of manifests. A controller in the cluster, typically Argo CD or Flux, watches that repository and continuously makes the cluster match it. Deploying is a commit that changes the image tag in the manifests; rolling back is reverting that commit. Nobody runs `kubectl apply` by hand, and the cluster's state is always explained by a commit.
+
+GitOps has two properties that suit ML well:
+
+- **Drift correction.** If someone edits a deployment by hand, the controller reverts it, the same way a Terraform plan reverts drift.
+- **An audit trail for free.** "Which model version was serving at 14:00 last Tuesday?" is answered by the git history of the manifest repository.
+
+The CI pipeline's last step is then to open (or directly make) a commit to the manifests repository that bumps the image tag for staging. Promotion to production is another commit, gated by a review or by automated checks in staging, and the rollout itself uses a progressive strategy from [Deployment Strategies](/docs/mlops/deployment-strategies). Argo Rollouts and Flagger extend the GitOps controllers with canary analysis: they shift traffic in steps and roll back automatically if error rates or latency get worse.
+
+<PredictFirst
+  question="A team deploys with Argo CD, which watches a manifests repo. During an incident, an engineer runs kubectl set image to roll the model server back to the previous version. Ten minutes later the bad version is back. Why?"
+  options={[
+    'Kubernetes restarted the pods and pulled the latest image',
+    'Argo CD saw the cluster no longer matched git and reconciled it back to the version in the manifests',
+    'The rollback command only affects one replica',
+    'The image registry overwrote the previous version',
+  ]}
+  correctIndex={1}
+  explanation="With automated sync and self-heal enabled, the GitOps controller treats git as the source of truth and reverts any manual change to the cluster. The correct rollback is a git revert of the commit that introduced the bad version, which the controller then applies. Teams usually document this in their incident runbook, because the manual instinct actively fights the system."
+/>
+
+## 7. Continuous Training
+
+Section 2 said models can go bad without any code change. The response is to make retraining itself automatic, which is the core of level 1 maturity: **continuous training** (CT).
 
 <AutomatedRetrainLoopDiagram />
 
-## What a Real ML CI/CD Pipeline Checks, End to End
+A retraining pipeline is triggered in one of three ways:
 
-1. Code passes lint/unit/integration tests (standard CI).
-2. New/changed data passes validation (schema, ranges — see [Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning)).
-3. A training run completes and logs to the experiment tracker (see [Experiment Tracking](/docs/mlops/experiment-tracking)).
-4. The resulting model beats the current production model's metrics on a fixed benchmark — otherwise the pipeline stops here, automatically.
-5. The model is registered (see [Feature Stores & Model Registry](/docs/mlops/feature-stores-and-model-registry)) and containerized (see [Containers](/docs/mlops/containers)).
-6. The new version is deployed using a safe rollout strategy (see [Deployment Strategies](/docs/mlops/deployment-strategies)), not an instant full-traffic swap.
-7. Post-deploy monitoring confirms the new version is healthy before the rollout completes.
+- **On a schedule,** such as nightly or weekly. Simple and predictable, and wasteful when nothing changed.
+- **On new data,** when a new labelled batch arrives, using the data-aware triggers in [Pipeline Orchestration](/docs/mlops/pipeline-orchestration#8-triggering-on-data-not-time).
+- **On a monitoring signal,** when [drift or a quality metric](/docs/mlops/monitoring-and-drift) crosses a threshold.
 
-<MlCicdPipelineStepsDiagram />
+Whatever the trigger, the pipeline ends with the same gate as the CI workflow: the retrained candidate is compared with the champion and registered only if it passes. Automatic retraining without a gate is automatic degradation, because one bad week of data produces a model that is shipped without anyone looking.
 
-Every step above exists because skipping it has a specific, real failure mode — a pipeline that only does step 1 is doing software CI/CD wearing an ML costume. Steps 3-4 (train, then gate on the benchmark) as an actual job, not just a description:
+Two cautions specific to CT. First, training on recent data can make the model learn its own past behaviour: a fraud model that blocked certain transactions never sees whether they were fraud, so its next version is trained on a biased sample. Keeping a small fraction of traffic unaffected by the model, or labelling a random sample, keeps an unbiased view. Second, the gate's evaluation set must itself be refreshed, or every new model is judged against last year's world.
 
-```yaml
-  train-and-gate:
-    needs: test
-    runs-on: [self-hosted, gpu]
-    steps:
-      - uses: actions/checkout@v4
-      - run: python train.py --config configs/prod.yaml   # logs to the experiment tracker as it runs
-      - run: python evaluate.py --run-id ${{ steps.train.outputs.run_id }} --benchmark data/benchmark.parquet
-      # evaluate.py exits non-zero if the candidate's metrics don't beat production's --
-      # a failing step here stops the workflow before anything downstream (register, deploy) runs
-```
+## 8. When *Not* to Build Full ML CI/CD
 
-Next: [Feature Stores & Model Registry](/docs/mlops/feature-stores-and-model-registry) — the systems that make steps 2 and 5 above actually queryable and reusable, not just "it happened once."
+| Situation | Better choice |
+|---|---|
+| A one-off analysis or a model that runs once | A notebook, a fixed seed and experiment tracking; no pipeline to maintain |
+| A model retrained a few times a year by one person | Standard code CI plus a documented, scripted manual gate; automate when frequency or team size grows |
+| Using a hosted LLM API with prompts, no training | Prompt and eval regression tests in CI; see [LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops) and [ML & LLM Testing](/docs/mlops/ml-and-llm-testing) |
+| Evaluation data is too small to detect the regressions you care about | Collect more labelled evaluation data first; a gate on noise is a coin flip |
+| Very large models whose training takes days | CI for the code and a smoke-test training run on a small subset; full retraining gated separately in the training platform |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| CI | Every change built and tested automatically before it merges |
+| Delivery vs deployment | Always releasable vs released automatically |
+| Three things change | Code, data and model; code tests only cover the first |
+| Four kinds of test | Feature unit tests, data contracts, model behaviour, champion comparison |
+| Model gate | Paired bootstrap interval of the difference; fail if it may be worse than a tolerance |
+| Noise | Interval width scales with $1/\sqrt{n}$; small eval sets only catch large regressions |
+| Workflow safety | `needs:` chains, least-privilege permissions, SHA-tagged images, OIDC, pinned actions |
+| GitOps | Git holds each environment's desired state; a controller reconciles; roll back with a revert |
+| Continuous training | Scheduled, data- or drift-triggered retraining, always ending in the gate |
+
+---
+
+Next: [Feature Stores & Model Registry](/docs/mlops/feature-stores-and-model-registry) covers the registry the gate promotes into, and [Deployment Strategies](/docs/mlops/deployment-strategies) covers how a promoted model reaches live traffic safely.
+
+## Sources
+
+- D. Sato, A. Wider and C. Windheuser, [Continuous Delivery for Machine Learning](https://martinfowler.com/articles/cd4ml.html), martinfowler.com
+- Google Cloud, [MLOps: Continuous delivery and automation pipelines in machine learning](https://cloud.google.com/architecture/mlops-continuous-delivery-and-automation-pipelines-in-machine-learning)
+- M. T. Ribeiro et al., [Beyond Accuracy: Behavioral Testing of NLP Models with CheckList](https://aclanthology.org/2020.acl-main.442/), ACL 2020
+- E. Breck et al., [The ML Test Score: A Rubric for ML Production Readiness](https://research.google/pubs/the-ml-test-score-a-rubric-for-ml-production-readiness-and-technical-debt-reduction/), IEEE Big Data 2017
+- B. Efron and R. Tibshirani, *An Introduction to the Bootstrap*, Chapman & Hall (1993)
+- GitHub, [Security hardening for GitHub Actions](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions); Argo CD, [Documentation](https://argo-cd.readthedocs.io/)
