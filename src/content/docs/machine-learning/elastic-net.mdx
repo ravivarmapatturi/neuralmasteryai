@@ -58,11 +58,11 @@ The L2 column shows the fix. Its unique minimum is the even split, $(2, 2)$. Add
 
 ## 3. Why the L2 Term Groups Correlated Features
 
-**The duplicate case, proved.** Suppose $\mathbf{x}_1 = \mathbf{x}_2$, and suppose some optimal solution had $w_1 \ne w_2$ with both weights of the same sign. Replace both weights by their average $m = (w_1 + w_2)/2$. Then:
+**The duplicate case, proved.** Suppose $\mathbf{x}_1 = \mathbf{x}_2$, and suppose some optimal solution had $w_1$ and $w_2$ different, with both weights of the same sign. Replace both weights by their average $m = (w_1 + w_2)/2$. Then:
 
 - The **fit is unchanged**, since predictions depend only on $w_1 + w_2 = 2m$.
 - The **L1 term is unchanged**, since $\lvert w_1\rvert + \lvert w_2\rvert = \lvert w_1 + w_2\rvert = 2\lvert m\rvert$ when the signs agree.
-- The **L2 term strictly decreases**. Write $w_1 = m + \delta$ and $w_2 = m - \delta$ with $\delta \ne 0$:
+- The **L2 term strictly decreases**. Write $w_1 = m + \delta$ and $w_2 = m - \delta$ with $\delta$ nonzero:
 
 $$
 w_1^2 + w_2^2 = (m+\delta)^2 + (m-\delta)^2 = 2m^2 + 2\delta^2 \;>\; 2m^2 = m^2 + m^2
@@ -98,7 +98,7 @@ The L1 term still does the selecting: a feature whose correlation with the resid
 
 Elastic net has no closed-form solution (the L1 term has a corner at zero), but it has a very simple **coordinate descent** algorithm: optimize one weight at a time while holding all the others fixed, and cycle through the weights until nothing changes. It's the same strategy as [lasso's solver](/docs/machine-learning/lasso-regression#the-subgradient-at-zero), and the derivation is worth doing once by hand.
 
-Fix every weight except $w_j$. Let $\mathbf{r}_{-j} = \mathbf{y} - \sum_{k \ne j} w_k \mathbf{x}_k$ be the residual from all the *other* features (here $\mathbf{x}_k$ means the $k$-th feature column). As a function of $w_j$ alone, the objective is
+Fix every weight except $w_j$. Let $\mathbf{r}_{-j} = \mathbf{y} - \sum_{k \,:\, k \text{ other than } j} w_k \mathbf{x}_k$ be the residual from all the *other* features (here $\mathbf{x}_k$ means the $k$-th feature column). As a function of $w_j$ alone, the objective is
 
 $$
 J(w_j) = \frac{1}{2n}\lVert\mathbf{r}_{-j} - w_j\mathbf{x}_j\rVert^2 + \lambda\alpha\lvert w_j\rvert + \frac{\lambda(1-\alpha)}{2}w_j^2 + \text{const}

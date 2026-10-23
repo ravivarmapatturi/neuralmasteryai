@@ -1,107 +1,310 @@
 ---
 title: "Ridge Regression, In Full Depth"
 sidebar_position: 4.6
-description: "Why correlated features break plain linear regression, and how penalizing large weights directly in the loss function fixes it -- L2 regularization derived."
+description: "Why correlated features make least-squares weights explode, and how an L2 penalty fixes it: the variance blow-up derived, the ridge gradient and closed form, what ridge does to each direction of the data via the SVD, the bias-variance trade, the Bayesian view, choosing lambda by leave-one-out, and a from-scratch implementation."
 ---
 
-import __migratedImg0 from './img/ridge-path.png';
-
-
+import ridgePathLight from './img/ridge-path-light.png';
+import ridgePathDark from './img/ridge-path.png';
 import RidgeRegressionStudio from '../../../viz/RidgeRegressionStudio';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Ridge Regression, In Full Depth
 
-Ordinary linear regression (see [Linear Regression](/docs/machine-learning/linear-regression)) has a failure mode: when features are highly correlated, or there are more features than examples, $(X^TX)^{-1}$ becomes unstable — small changes in the data cause huge swings in the fitted weights. Ridge regression fixes this by penalizing large weights directly in the loss function.
+[Linear Regression](/docs/machine-learning/linear-regression) ended with a warning: when features are correlated, $X^TX$ is close to singular, and the least-squares weights become unstable. This page makes that warning exact, then derives the fix. Ridge regression adds a penalty on the size of the weights. The sections below show how much correlated features inflate the variance of the ordinary weights, how the penalty changes the gradient and the closed-form solution, what it does to each direction in the data, why trading a little bias for less variance is a good deal, and how to choose the penalty's strength.
 
-## What Is Ridge Regression?
+<ELI5>
 
-Ridge is linear regression with one addition: a penalty term that discourages weights from growing large. The hypothesis is identical to plain linear regression — $\hat{y} = \mathbf{w}^T\mathbf{x} + b$ — only the *cost function* changes.
+Imagine two friends who always go everywhere together, and you're trying to work out how much each one contributes to the noise in a room. Since they're always together, you can't tell. One answer is "Alex makes all the noise and Sam is silent"; another is "Alex makes twice the noise and Sam makes negative noise"; they all explain what you heard equally well. Plain linear regression picks one of these answers almost at random, and a slightly different recording would give a wildly different one.
 
-**Why penalize large weights at all?** A model with huge, wildly-swinging coefficients has usually latched onto noise in the training data rather than a real signal — a hallmark of overfitting (see [Model Evaluation & Metrics — Bias-Variance Tradeoff](/docs/machine-learning/model-evaluation-metrics#bias-variance-tradeoff)). Shrinking the weights trades a small amount of bias for a large reduction in variance, which usually wins on unseen data.
+Ridge regression adds one rule: prefer answers where nobody's contribution is extreme. Among all the explanations that fit about equally well, that rule picks the calm one, "they each make about half", and it picks the same one every time. Everything below is that rule made exact.
 
-## The Ridge Cost Function
+</ELI5>
 
-$$J_{\text{ridge}}(\mathbf{w}, b) = \underbrace{\frac{1}{n}\sum_{i=1}^n \left(\hat{y}^{(i)} - y^{(i)}\right)^2}_{\text{same MSE as OLS}} + \underbrace{\lambda \sum_{j=1}^d w_j^2}_{\text{L2 penalty}}$$
+## 1. Why Least Squares Becomes Unstable
 
-The first term is exactly the [MSE cost function](/docs/machine-learning/linear-regression#2-the-cost-function-mean-squared-error) from plain linear regression. The second term — $\lambda \sum w_j^2$, the squared L2 norm of the weight vector (see [Linear Algebra — Norms](/docs/mathematics-for-ai/linear-algebra)) — is new. $\lambda \geq 0$ controls the tradeoff: $\lambda = 0$ recovers plain OLS exactly; larger $\lambda$ shrinks weights more aggressively toward zero. Note the bias $b$ is *not* penalized — only shrinking the feature weights makes sense, since $b$ just sets the overall output level.
+Start from the [normal equation](/docs/machine-learning/linear-regression#5-the-closed-form-solution-normal-equation), $\hat{\mathbf{w}} = (X^TX)^{-1}X^T\mathbf{y}$, and assume the data really comes from a linear model with noise: $\mathbf{y} = X\mathbf{w}^* + \boldsymbol{\epsilon}$, where each noise term has mean 0 and variance $\sigma^2$. Substitute:
 
-## Deriving the Gradient
+$$
+\hat{\mathbf{w}} = (X^TX)^{-1}X^T(X\mathbf{w}^* + \boldsymbol{\epsilon}) = \mathbf{w}^* + (X^TX)^{-1}X^T\boldsymbol{\epsilon}
+$$
 
-The MSE part of the gradient is unchanged from [Linear Regression — Section 3](/docs/machine-learning/linear-regression#3-deriving-the-gradient-step-by-step). The new penalty term adds $\frac{\partial}{\partial w_j}\left(\lambda w_j^2\right) = 2\lambda w_j$:
+The estimate is the truth plus a noise term, so it's unbiased. How much it wobbles is the covariance of that noise term, which works out to
 
-$$\frac{\partial J_{\text{ridge}}}{\partial w_j} = \underbrace{\frac{2}{n}\sum_{i=1}^n \left(\hat{y}^{(i)} - y^{(i)}\right) x_j^{(i)}}_{\text{OLS gradient}} + 2\lambda w_j$$
+$$
+\operatorname{Cov}(\hat{\mathbf{w}}) = \sigma^2 (X^TX)^{-1}
+$$
 
-The gradient descent update becomes:
+Everything depends on $(X^TX)^{-1}$. Make it concrete with two standardized features (mean 0, variance 1) whose correlation is $\rho$. Then $X^TX = n\begin{bmatrix}1 & \rho\\ \rho & 1\end{bmatrix}$, and inverting a 2×2 matrix gives
 
-$$w_j \leftarrow w_j - \alpha\left(\frac{2}{n}\sum_i \left(\hat{y}^{(i)} - y^{(i)}\right)x_j^{(i)} + 2\lambda w_j\right) = w_j(1 - 2\alpha\lambda) - \alpha \cdot (\text{OLS gradient term})$$
+$$
+(X^TX)^{-1} = \frac{1}{n(1-\rho^2)}\begin{bmatrix}1 & -\rho\\ -\rho & 1\end{bmatrix}
+$$
 
-Written this way, the mechanism is obvious: every single update step first shrinks $w_j$ by a factor of $(1 - 2\alpha\lambda)$ *before* applying the usual OLS correction. This is why ridge is sometimes called "weight decay" in the deep learning literature (see [Training Deep Networks — Regularization](/docs/deep-learning/training-deep-networks)) — it's the exact same mechanism.
+So each weight has variance
 
-## The Closed-Form Solution
+$$
+\operatorname{Var}(\hat{w}_1) = \frac{\sigma^2}{n}\cdot\frac{1}{1-\rho^2}
+$$
 
-Ridge has a closed form too, a small modification of the [normal equation](/docs/machine-learning/linear-regression#5-the-closed-form-solution-normal-equation):
+The factor $1/(1-\rho^2)$ is the **variance inflation factor**. With uncorrelated features it's 1. At $\rho = 0.9$ it's 5.3; at $\rho = 0.99$ it's 50. The weights' standard deviation grows by $\sqrt{50} \approx 7$ times, with the same data size and the same noise. The off-diagonal $-\rho$ says something else: the two estimates are strongly *negatively* correlated. When noise pushes $\hat{w}_1$ up, it pushes $\hat{w}_2$ down by about the same amount, so their sum (which is what the predictions depend on) stays stable while the individual weights swing to opposite extremes.
 
-$$\mathbf{w} = (X^TX + \lambda I)^{-1}X^T\mathbf{y}$$
+With more features than examples ($d > n$), it gets worse: $X^TX$ has rank at most $n$, so it's singular, and there are infinitely many weight vectors that fit the training data exactly. Least squares has no answer at all.
 
-This is *why* ridge regression exists mathematically, not just statistically: adding $\lambda I$ to $X^TX$ before inverting guarantees the matrix is invertible, even when $X^TX$ alone is singular or near-singular (highly correlated features, or more features than examples). Plain OLS can fail outright in that situation; ridge never does, for any $\lambda > 0$.
+The predictions may still be fine in the first case. But weights with a standard deviation of 7 are useless to interpret, and they make the model fragile: a new input whose two correlated features happen to disagree slightly gets multiplied by two huge opposite-signed weights. The fix is to stop letting the weights get large.
 
-## The Regularization Path
+## 2. Penalizing Large Weights
 
-As $\lambda$ increases from 0, every weight shrinks smoothly toward zero — but critically, **never exactly reaches zero** (except in the limit $\lambda \to \infty$):
+### The Ridge Cost Function
 
-<img src={__migratedImg0} alt="Ridge regularization path — coefficients shrink smoothly toward zero as regularization strength increases" style={{maxWidth: '100%'}} />
+Ridge keeps the hypothesis $\hat{y} = \mathbf{w}^T\mathbf{x} + b$ and changes only the cost. It adds the squared L2 norm of the weights:
 
-Compare this to [Lasso's path](/docs/machine-learning/lasso-regression#the-regularization-path) — the visual difference between the two curves *is* the core conceptual difference between L2 and L1 regularization.
+$$
+J_{\text{ridge}}(\mathbf{w}, b) = \underbrace{\sum_{i=1}^n \left(\hat{y}^{(i)} - y^{(i)}\right)^2}_{\text{squared error}} + \underbrace{\lambda \sum_{j=1}^d w_j^2}_{\text{L2 penalty}}
+$$
+
+The first term is the [squared-error cost](/docs/machine-learning/linear-regression#2-the-cost-function-mean-squared-error) from linear regression, written as a sum (the form scikit-learn's `Ridge` uses; with a mean instead, $\tfrac1n\sum$, the same model corresponds to $\lambda$ divided by $n$). The second term is new. $\lambda \ge 0$ sets the trade-off: $\lambda = 0$ is ordinary least squares, and larger $\lambda$ makes large weights more expensive.
+
+Three details matter in practice:
+
+- **The intercept $b$ is not penalized.** It only shifts every prediction up or down; shrinking it toward zero would bias predictions toward zero for no benefit. Implementations center $X$ and $\mathbf{y}$, solve for $\mathbf{w}$ without an intercept, and recover $b = \bar{y} - \bar{\mathbf{x}}^T\mathbf{w}$.
+- **Features must be on comparable scales.** The penalty charges $w_j^2$ the same for every feature. A feature measured in millimetres needs a weight 1000 times smaller than the same feature in metres, so it would be penalized a million times less. Standardize first.
+- **Why squared weights, not absolute values?** The squared penalty is smooth, which gives a closed-form solution (Section 3). Absolute values give [Lasso](/docs/machine-learning/lasso-regression), which behaves very differently, as Section 6 shows.
+
+This formula was introduced to statistics by Hoerl and Kennard in 1970; the same idea had been used for ill-posed inverse problems by Tikhonov in the 1940s and 60s, which is why the general method is also called **Tikhonov regularization**.
+
+## 3. The Gradient and the Closed Form
+
+### Deriving the Gradient
+
+Work with centered data, so $b$ drops out. The squared-error part of the gradient is the [linear regression gradient](/docs/machine-learning/linear-regression#3-deriving-the-gradient-step-by-step), and the penalty adds $\frac{\partial}{\partial w_j}\lambda w_j^2 = 2\lambda w_j$. For one weight:
+
+$$
+\frac{\partial J_{\text{ridge}}}{\partial w_j} = 2\sum_{i=1}^n \left(\hat{y}^{(i)} - y^{(i)}\right) x_j^{(i)} + 2\lambda w_j
+$$
+
+and for all of them at once, $\nabla_{\mathbf{w}} J = 2X^T(X\mathbf{w} - \mathbf{y}) + 2\lambda\mathbf{w}$. A gradient descent step with learning rate $\eta$ is then
+
+$$
+\mathbf{w} \leftarrow \mathbf{w} - \eta\left(2X^T(X\mathbf{w} - \mathbf{y}) + 2\lambda\mathbf{w}\right) = (1 - 2\eta\lambda)\,\mathbf{w} - 2\eta X^T(X\mathbf{w} - \mathbf{y})
+$$
+
+Written that way, the mechanism is visible: every step first multiplies every weight by $(1 - 2\eta\lambda)$, a number slightly below 1, and then applies the ordinary least-squares correction. The weights decay toward zero unless the data keeps pushing them up. That's why the same penalty is called **weight decay** in deep learning (see [Training Deep Networks](/docs/deep-learning/training-deep-networks)).
+
+### The Closed-Form Solution
+
+Because $J_{\text{ridge}}$ is convex and smooth, set the gradient to zero and solve:
+
+$$
+2X^T(X\mathbf{w} - \mathbf{y}) + 2\lambda\mathbf{w} = 0 \;\;\Rightarrow\;\; X^TX\mathbf{w} + \lambda\mathbf{w} = X^T\mathbf{y} \;\;\Rightarrow\;\; (X^TX + \lambda I)\,\mathbf{w} = X^T\mathbf{y}
+$$
+
+$$
+\hat{\mathbf{w}}_{\text{ridge}} = (X^TX + \lambda I)^{-1}X^T\mathbf{y}
+$$
+
+The only change from the normal equation is $+\lambda I$, and it's exactly what fixes Section 1. $X^TX$ is symmetric with eigenvalues $\mu_1, \dots, \mu_d \ge 0$; a zero or tiny eigenvalue is what makes it singular or unstable. Adding $\lambda I$ adds $\lambda$ to every eigenvalue without changing the eigenvectors (since $(X^TX + \lambda I)\mathbf{v} = (\mu + \lambda)\mathbf{v}$ whenever $X^TX\mathbf{v} = \mu\mathbf{v}$). Every eigenvalue becomes at least $\lambda > 0$, so the matrix is always invertible, even when $d > n$, and its condition number drops from $\mu_{\max}/\mu_{\min}$ to $(\mu_{\max} + \lambda)/(\mu_{\min} + \lambda)$. Hoerl and Kennard named the method after this picture: adding a "ridge" of $\lambda$ down the diagonal.
+
+What adding $\lambda$ to each eigenvalue does to the *fitted model* is clearer through the SVD.
+
+## 4. What Ridge Does to Each Direction
+
+Write the centered data matrix by its singular value decomposition, $X = UDV^T$ (see [Linear Algebra: SVD](/docs/mathematics-for-ai/linear-algebra#singular-value-decomposition-svd)). The columns $\mathbf{v}_j$ of $V$ are the principal directions of the data, and the singular values $d_1 \ge d_2 \ge \dots$ measure how spread out the data is along each one. Substitute into the ridge solution. Since $X^TX = VD^2V^T$ and $X^T\mathbf{y} = VDU^T\mathbf{y}$:
+
+$$
+\hat{\mathbf{w}}_{\text{ridge}} = V(D^2 + \lambda I)^{-1}DU^T\mathbf{y} = \sum_{j=1}^{d} \mathbf{v}_j\,\frac{d_j}{d_j^2 + \lambda}\,\mathbf{u}_j^T\mathbf{y}
+$$
+
+Compare least squares, the $\lambda = 0$ case, which has $\frac{1}{d_j}$ in the same place. Ridge's coefficient along direction $j$ is least squares' coefficient multiplied by a **shrinkage factor**:
+
+$$
+\frac{d_j^2}{d_j^2 + \lambda}
+$$
+
+Read it for the two kinds of direction:
+
+- **Directions where the data is spread out** ($d_j^2 \gg \lambda$): the factor is close to 1. Ridge leaves them almost untouched. The data pins these down well, so there's little noise to remove.
+- **Directions where the data barely varies** ($d_j^2 \ll \lambda$): the factor is close to 0. These are exactly the directions that caused trouble in Section 1. With two correlated features, the direction "$x_1$ minus $x_2$" has almost no spread, and least squares divides by its tiny $d_j$, amplifying noise. Ridge nearly ignores it.
+
+So ridge is not shrinking weights blindly. It shrinks hardest in the directions where the data carries the least information. The total amount of shrinkage gives a useful measure of model complexity, the **effective degrees of freedom**:
+
+$$
+\operatorname{df}(\lambda) = \sum_{j=1}^{d}\frac{d_j^2}{d_j^2 + \lambda}
+$$
+
+At $\lambda = 0$ it's $d$, one degree of freedom per weight, as in least squares. As $\lambda \to \infty$ it falls smoothly to 0. A ridge model with $\operatorname{df} = 3.2$ is about as flexible as a least-squares model with three or four features, even if it uses all of them.
+
+## 5. Trading Bias for Variance
+
+Ridge is biased: unlike least squares, its expected weights are not the true weights. Substituting $\mathbf{y} = X\mathbf{w}^* + \boldsymbol{\epsilon}$ as in Section 1 gives an expectation that is not $\mathbf{w}^*$:
+
+$$
+\mathbb{E}[\hat{\mathbf{w}}_{\text{ridge}}] = (X^TX + \lambda I)^{-1}X^TX\,\mathbf{w}^*
+$$
+
+which, by the SVD argument above, is the true weight vector shrunk toward zero along each direction. In exchange, its covariance is smaller:
+
+$$
+\operatorname{Cov}(\hat{\mathbf{w}}_{\text{ridge}}) = \sigma^2(X^TX + \lambda I)^{-1}X^TX(X^TX + \lambda I)^{-1}
+$$
+
+Along direction $j$, the variance goes from $\sigma^2/d_j^2$ for least squares to $\sigma^2 d_j^2/(d_j^2 + \lambda)^2$. For a small $d_j$ that's a huge reduction.
+
+What matters for a model's error is the sum: mean squared error equals bias squared plus variance (see [Model Evaluation: Bias-Variance Tradeoff](/docs/machine-learning/model-evaluation-metrics#bias-variance-tradeoff)). At $\lambda = 0$ the bias is zero and the variance is whatever it is. Increasing $\lambda$ a little adds bias that grows like $\lambda^2$ (it starts flat) while removing variance that falls like $\lambda$ (it starts steep). So a small enough $\lambda > 0$ always reduces the total. Hoerl and Kennard proved exactly this in 1970: **there always exists some $\lambda > 0$ for which ridge has lower mean squared error than least squares**, whatever the true weights are. The catch is that the best $\lambda$ depends on the unknown $\mathbf{w}^*$ and $\sigma^2$, so it has to be estimated from data (Section 7).
+
+<GoDeeper title="Go deeper: ridge is the MAP estimate under a Gaussian prior">
+
+The penalty can look arbitrary. It isn't: it's what you get from a Bayesian prior that says weights are probably small.
+
+Assume Gaussian noise, $y^{(i)} \mid \mathbf{x}^{(i)}, \mathbf{w} \sim \mathcal{N}(\mathbf{w}^T\mathbf{x}^{(i)}, \sigma^2)$, as in the [MLE derivation on the Linear Regression page](/docs/machine-learning/linear-regression#2-the-cost-function-mean-squared-error). Add a prior on each weight: $w_j \sim \mathcal{N}(0, \tau^2)$, independently. By Bayes' rule the posterior is proportional to likelihood times prior, and its negative logarithm is, up to constants that don't involve $\mathbf{w}$:
+
+$$
+-\log p(\mathbf{w} \mid X, \mathbf{y}) = \frac{1}{2\sigma^2}\sum_{i=1}^{n}\left(y^{(i)} - \mathbf{w}^T\mathbf{x}^{(i)}\right)^2 + \frac{1}{2\tau^2}\sum_{j=1}^{d}w_j^2 + \text{const}
+$$
+
+Multiply through by $2\sigma^2$, which doesn't move the minimum:
+
+$$
+\sum_{i=1}^{n}\left(y^{(i)} - \mathbf{w}^T\mathbf{x}^{(i)}\right)^2 + \frac{\sigma^2}{\tau^2}\sum_{j=1}^{d}w_j^2
+$$
+
+That's the ridge cost with $\lambda = \sigma^2/\tau^2$. The most probable weights under this prior (the **MAP** estimate, see [Probability & Statistics: MLE vs MAP](/docs/mathematics-for-ai/probability-statistics#mle-vs-map)) are the ridge weights. The ratio has a sensible reading: noisy data (large $\sigma^2$) or a strong belief that weights are small (small $\tau^2$) both call for a large $\lambda$. Because the posterior is Gaussian, its mean equals its mode, so ridge is also the posterior mean; Bayesian linear regression adds the posterior covariance on top, giving uncertainty for each weight.
+
+</GoDeeper>
+
+## 6. Watching the Weights Shrink
+
+### The Regularization Path
+
+Fitting ridge for a whole range of $\lambda$ values and plotting each weight gives the **regularization path**. Here it is for the classic diabetes dataset (442 patients, 10 standardized measurements, predicting disease progression a year later):
+
+<ThemedImage alt="Ridge regularization path on the diabetes dataset: ten coefficient curves that shrink smoothly toward zero as lambda increases on a log scale, with s1 and s2 starting at large opposite values" sources={{light: ridgePathLight, dark: ridgePathDark}} />
+
+At the left, $\lambda$ is tiny and the weights are the least-squares ones. Two stand out: s1 at about −38 and s5 at about +36, with s2 at +23. s1 and s2 are two cholesterol measurements with a correlation of 0.90, the situation from Section 1: least squares has given them large weights of opposite sign that mostly cancel. As $\lambda$ grows, s1's weight collapses toward zero much faster than the rest, because it lives mostly in a low-spread direction that ridge shrinks hardest. By $\lambda \approx 10$ the opposing pair has largely been resolved, while well-determined weights like bmi barely move until $\lambda$ is in the hundreds.
+
+Two properties of the path are characteristic of ridge. It's **smooth**: weights change continuously, with no kinks. And weights approach zero only in the limit $\lambda \to \infty$; a weight can cross zero on the way, but none is held at exactly zero over a range of $\lambda$. Compare [Lasso's path](/docs/machine-learning/lasso-regression#the-regularization-path), where weights hit zero and stay there. That difference is the whole practical difference between L2 and L1: ridge keeps every feature with a controlled weight; lasso selects.
 
 <PredictFirst
-  question="In the Studio below, set λ=0 and push Correlation to ~0.98. What happens to x1's and x2's individual coefficients?"
+  question="In the Studio below, set λ = 0 and push Correlation to about 0.98. What happens to the coefficients of x1 and x2?"
   options={[
     'Both shrink toward zero',
-    'They swing to opposite extremes (one very high, one very low) while their sum stays roughly stable',
+    'They swing to opposite extremes while their sum stays roughly stable',
     'They become exactly equal to each other',
-    'Nothing changes -- correlation between features does not affect OLS',
+    'Nothing changes: correlation between features does not affect least squares',
   ]}
   correctIndex={1}
-  explanation="With two nearly-identical features, infinitely many (w1, w2) combinations fit the data almost equally well as long as w1+w2 stays near the true combined effect -- so ordinary least squares has no reason to prefer one specific split over another, and tiny noise in the data pushes it to an arbitrary, unstable one. Now drag λ up and watch the two coefficients settle back toward each other."
+  explanation="This is the variance inflation from Section 1. With correlation 0.98, the factor 1/(1 - ρ²) is about 25, and the two estimates are strongly negatively correlated: noise that raises one lowers the other. Their sum, which the predictions depend on, stays stable. Now raise λ and watch the two coefficients come back toward each other."
 />
 
-Try it on a real (small, synthetic) multicollinear dataset — drag $\lambda$ from 0 and watch two deliberately correlated features fight over shared credit, then settle down:
+Drag $\lambda$ up from 0 on a small synthetic dataset with two deliberately correlated features and watch them stop fighting over shared credit:
 
 <RidgeRegressionStudio />
 
-## Choosing λ
+## 7. Choosing λ
 
-$\lambda$ is a hyperparameter, not learned from the training data directly — it's chosen via cross-validation (see [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals#train-validation-test-splits)): train with several candidate $\lambda$ values, and pick whichever generalizes best on a held-out validation set.
+$\lambda$ is a hyperparameter: it can't be learned by minimizing the training cost, because $\lambda = 0$ always gives the lowest training error. It's chosen by how well the model predicts held-out data, using cross-validation (see [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals#train-validation-test-splits)). Search a grid on a log scale, say 50 to 100 values from $10^{-3}$ to $10^{3}$ times a sensible scale, because the path changes on a log scale.
 
-## When to Use Ridge
+Ridge has a special shortcut. Its predictions are a linear function of $\mathbf{y}$: $\hat{\mathbf{y}} = H\mathbf{y}$ with the **hat matrix** $H = X(X^TX + \lambda I)^{-1}X^T$. For any model of that form, the leave-one-out residual (the error on example $i$ from a model trained on the other $n-1$ examples) can be computed from a single fit on all the data:
 
-- Many correlated features (ridge handles multicollinearity gracefully — plain OLS coefficients become unstable, ridge's don't)
-- More features than examples, or close to it
-- You want to keep *all* features in the model, just with controlled magnitude (contrast with [Lasso](/docs/machine-learning/lasso-regression), which drops features entirely)
+$$
+y^{(i)} - \hat{y}^{(i)}_{-i} = \frac{y^{(i)} - \hat{y}^{(i)}}{1 - H_{ii}}
+$$
 
-## Minimal Implementation
+where $H_{ii}$ is the $i$-th diagonal entry of $H$, the **leverage** of example $i$. So exact leave-one-out cross-validation costs one fit per $\lambda$ instead of $n$, and with the SVD from Section 4 computed once, every $\lambda$ on the grid is almost free. That's what scikit-learn's `RidgeCV` does by default. Golub, Heath and Wahba (1979) proposed a smoothed variant, **generalized cross-validation**, which replaces each $H_{ii}$ by their average $\operatorname{df}(\lambda)/n$.
+
+The scale must come from training data only: put `StandardScaler` and the ridge model in one pipeline, so the scaling inside each fold doesn't see the held-out examples.
+
+## 8. Minimal Implementation
+
+The closed form computed through the SVD, as in Section 4, which is both cheaper across many $\lambda$ values and more numerically stable than inverting $X^TX + \lambda I$. The data has two features with correlation 0.99:
 
 ```python
 import numpy as np
+from sklearn.linear_model import Ridge, RidgeCV
 
-def fit_ridge(X, y, lam=1.0, lr=0.01, epochs=1000):
-    n, d = X.shape
-    w = np.zeros(d)
-    b = 0.0
-    for _ in range(epochs):
-        y_hat = X @ w + b
-        error = y_hat - y
-        dw = (2 / n) * X.T @ error + 2 * lam * w   # OLS gradient + ridge penalty
-        db = (2 / n) * np.sum(error)                # bias is never penalized
-        w -= lr * dw
-        b -= lr * db
+def fit_ridge(X, y, lam):
+    """Minimize ||y - Xw - b||^2 + lam * ||w||^2 via the SVD (Section 4)."""
+    x_mean, y_mean = X.mean(0), y.mean()
+    Xc, yc = X - x_mean, y - y_mean            # center, so b drops out of the penalty
+    U, d, Vt = np.linalg.svd(Xc, full_matrices=False)
+    w = Vt.T @ ((d / (d**2 + lam)) * (U.T @ yc))
+    b = y_mean - x_mean @ w
     return w, b
 
-# Closed form, for comparison
-def fit_ridge_normal_equation(X, y, lam=1.0):
-    d = X.shape[1]
-    return np.linalg.inv(X.T @ X + lam * np.eye(d)) @ X.T @ y
+rng = np.random.default_rng(1)
+n = 50
+z = rng.normal(size=n)
+X = np.column_stack([z + 0.1 * rng.normal(size=n),   # x1 and x2: correlation about 0.99
+                     z + 0.1 * rng.normal(size=n),
+                     rng.normal(size=n)])
+y = 2 * X[:, 0] + 2 * X[:, 1] + 1 * X[:, 2] + rng.normal(size=n)
+print(f"corr(x1, x2) = {np.corrcoef(X[:, 0], X[:, 1])[0, 1]:.3f}")
+
+w, b = fit_ridge(X, y, lam=5.0)
+ref = Ridge(alpha=5.0).fit(X, y)
+print("from scratch:", np.round(w, 3), round(b, 3))
+print("scikit-learn:", np.round(ref.coef_, 3), round(ref.intercept_, 3))
+
+# Refit on 500 bootstrap resamples: how much do the coefficients move?
+for lam in [0.0, 5.0]:
+    W = np.array([fit_ridge(X[i], y[i], lam)[0] for i in (rng.integers(0, n, n) for _ in range(500))])
+    print(f"lambda={lam:<4} mean w = {np.round(W.mean(0), 2)}  std of w = {np.round(W.std(0), 2)}")
+
+# Choose lambda by efficient leave-one-out cross-validation
+cv = RidgeCV(alphas=np.logspace(-3, 3, 61)).fit(X, y)
+print(f"RidgeCV picked lambda = {cv.alpha_:.2f}")
 ```
 
-Next: [Lasso Regression](/docs/machine-learning/lasso-regression) — the L1 alternative that drops features entirely instead of just shrinking them.
+Output (scikit-learn 1.7):
+
+```
+corr(x1, x2) = 0.990
+from scratch: [1.952 1.797 1.025] -0.208
+scikit-learn: [1.952 1.797 1.025] -0.208
+lambda=0.0  mean w = [2.74 1.25 1.06]  std of w = [1.08 1.14 0.14]
+lambda=5.0  mean w = [1.93 1.79 1.02]  std of w = [0.11 0.11 0.12]
+RidgeCV picked lambda = 1.26
+```
+
+The six-line SVD solver matches scikit-learn exactly. The bootstrap rows are Section 1 and Section 5 in numbers. With $\lambda = 0$ (least squares), the two correlated weights have a standard deviation of about 1.1 across resamples, against 0.14 for the uncorrelated $x_3$: an eightfold inflation, close to the $\sqrt{50} \approx 7$ the formula predicts. Their means (2.74 and 1.25) are unbiased on average but any single fit can be far off. With $\lambda = 5$, both standard deviations drop to 0.11, the same as the uncorrelated feature's, and both weights settle near the true value of 2, slightly shrunk. Leave-one-out cross-validation chose $\lambda \approx 1.3$, a milder penalty than 5, because on this data the predictions (which depend on the sum) were already fine.
+
+## 9. When *Not* to Use Ridge
+
+| Situation | Better choice |
+|---|---|
+| Many features are irrelevant and you want them removed | [Lasso](/docs/machine-learning/lasso-regression), which sets weights to exactly zero |
+| Correlated groups of features, and you also want selection | [Elastic Net](/docs/machine-learning/elastic-net) |
+| Few features, little correlation, plenty of data | Plain [least squares](/docs/machine-learning/linear-regression): the variance is already small, and unbiased weights are easier to report |
+| You need unbiased coefficient estimates with standard errors | Least squares, or collect data that breaks the correlation; ridge's estimates are deliberately biased |
+| Nonlinear relationships or interactions | Kernel ridge regression, trees and boosting ([XGBoost, LightGBM, CatBoost](/docs/machine-learning/xgboost-lightgbm-catboost)) |
+| Features on very different scales that you can't standardize | Tree models, which don't depend on scale; a ridge penalty without scaling penalizes features by their units |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| The problem | $\operatorname{Cov}(\hat{\mathbf{w}}) = \sigma^2(X^TX)^{-1}$ explodes when features are correlated |
+| Inflation factor | Two features with correlation $\rho$: variance multiplied by $1/(1-\rho^2)$, 50 at $\rho = 0.99$ |
+| Cost | Squared error $+\;\lambda\lVert\mathbf{w}\rVert_2^2$; intercept not penalized; standardize first |
+| Gradient | Adds $2\lambda\mathbf{w}$: every step multiplies weights by $(1 - 2\eta\lambda)$, i.e. weight decay |
+| Closed form | $(X^TX + \lambda I)^{-1}X^T\mathbf{y}$; adding $\lambda$ to every eigenvalue makes it always invertible |
+| Via the SVD | Direction $j$ shrunk by $d_j^2/(d_j^2 + \lambda)$: least-informative directions shrink most |
+| Complexity | $\operatorname{df}(\lambda) = \sum d_j^2/(d_j^2+\lambda)$, from $d$ down to 0 |
+| Bias-variance | Some $\lambda > 0$ always beats least squares on MSE (Hoerl and Kennard, 1970) |
+| Bayesian view | MAP estimate under a $\mathcal{N}(0, \tau^2)$ prior, with $\lambda = \sigma^2/\tau^2$ |
+| Path | Smooth; weights shrink toward zero but none is held at exactly zero |
+| Choosing λ | Leave-one-out CV in one fit per λ: residual $/ (1 - H_{ii})$ |
+
+---
+
+Next: [Lasso Regression](/docs/machine-learning/lasso-regression), the L1 alternative that removes features instead of only shrinking them, then [Elastic Net](/docs/machine-learning/elastic-net), which combines the two.
+
+## Sources
+
+- A. E. Hoerl and R. W. Kennard, [Ridge Regression: Biased Estimation for Nonorthogonal Problems](https://doi.org/10.1080/00401706.1970.10488634), *Technometrics*, 1970
+- A. N. Tikhonov, Solution of Incorrectly Formulated Problems and the Regularization Method, *Soviet Mathematics Doklady*, 1963
+- G. H. Golub, M. Heath and G. Wahba, [Generalized Cross-Validation as a Method for Choosing a Good Ridge Parameter](https://doi.org/10.1080/00401706.1979.10489751), *Technometrics*, 1979
+- T. Hastie, R. Tibshirani and J. Friedman, [The Elements of Statistical Learning](https://hastie.su.domains/ElemStatLearn/), 2nd ed., Section 3.4.1 (ridge regression, the SVD view, effective degrees of freedom)
+- B. Efron, T. Hastie, I. Johnstone and R. Tibshirani, [Least Angle Regression](https://doi.org/10.1214/009053604000000067), *Annals of Statistics*, 2004 (source of the diabetes dataset)
+- scikit-learn, [Ridge regression and classification](https://scikit-learn.org/stable/modules/linear_model.html#ridge-regression-and-classification) and [`RidgeCV`](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.RidgeCV.html)
