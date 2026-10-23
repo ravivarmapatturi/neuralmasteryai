@@ -1,72 +1,314 @@
 ---
-title: "Convolutional Neural Networks (CNNs)"
+title: "Convolutional Neural Networks, In Full Depth"
 sidebar_position: 5
-description: "Convolution and pooling derived from the assumption that makes them work: nearby pixels are related, and patterns matter regardless of position."
+description: "Convolution derived from two assumptions about images, with the output-size and parameter formulas, a convolution written from scratch and checked against PyTorch, pooling and receptive fields, a measured CNN-versus-MLP experiment on shifted digits, and the architecture lineage from LeNet to ConvNeXt."
 ---
 
 import ConvolutionOperationDiagram from '../../../viz/diagrams/ConvolutionOperationDiagram';
 import PoolingOperationDiagram from '../../../viz/diagrams/PoolingOperationDiagram';
 import ReceptiveFieldGrowthDiagram from '../../../viz/diagrams/ReceptiveFieldGrowthDiagram';
 import CnnArchitectureLineageDiagram from '../../../viz/diagrams/CnnArchitectureLineageDiagram';
-import InceptionModuleDiagram from '../../../viz/diagrams/InceptionModuleDiagram';
 import ResNetSkipConnectionDiagram from '../../../viz/diagrams/ResNetSkipConnectionDiagram';
 import DepthwiseSeparableConvDiagram from '../../../viz/diagrams/DepthwiseSeparableConvDiagram';
-import CnnApplicationsDiagram from '../../../viz/diagrams/CnnApplicationsDiagram';
 import CnnVsVitDiagram from '../../../viz/diagrams/CnnVsVitDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Convolutional Neural Networks (CNNs)
+# Convolutional Neural Networks, In Full Depth
 
-Before Transformers took over vision too, CNNs were — and largely still are — the default architecture for image data, because they bake in an assumption that fits images perfectly: nearby pixels are related, and patterns are useful no matter where they appear in the image.
+[Neural Network Fundamentals](/docs/deep-learning/neural-network-fundamentals) built networks from fully connected layers, where every input connects to every unit, and [Training Deep Networks](/docs/deep-learning/training-deep-networks) showed how to make them deep. Point that design at a photograph and it fails on sheer size: one layer would need hundreds of billions of weights, and it would have to learn "cat" separately for every position a cat could appear in. Convolutional neural networks (CNNs) fix both problems by building two facts about images into the layer itself. This page derives the convolution from those two facts, gives the formulas for output size, parameters and receptive field, writes a convolution by hand and checks it against PyTorch, measures what the design buys on shifted digits, and walks the architecture lineage from LeNet to ConvNeXt, ending with where Vision Transformers took over.
 
-## Convolution and Pooling
+<ELI5>
 
-A **convolution** slides a small learnable filter (e.g. 3×3) across the image, computing a weighted sum at each position — detecting local patterns like edges or textures. Because the same filter is reused across the whole image, CNNs need far fewer parameters than a fully-connected layer would for the same input size, and they naturally handle patterns regardless of where they appear in the image ("translation invariance").
+Imagine searching a large photo for a tiny picture of a bicycle, using a small magnifying glass. You slide the glass across the photo, one spot at a time, and at each spot ask the same question: "does what I see here look like a bicycle?" You don't need a separate rule for the top-left corner and the bottom-right; the same question works everywhere.
+
+A convolution is that magnifying glass. A small pattern detector, a few pixels wide, slides across the image and reports at every position how strongly it matches. The network learns many such detectors: early ones look for edges, later ones look at the edge maps and find corners and textures, and later still, eyes, wheels and faces.
+
+Everything below is that idea made exact: what the detector computes, how big its output is, and why sliding one small detector beats connecting every pixel to everything.
+
+</ELI5>
+
+## 1. Two Facts About Images
+
+A fully connected layer makes no assumptions: any input can matter to any output, in any combination. For a 224 × 224 colour image (150,528 numbers) mapped to a layer of the same spatial size with 64 channels, that means $150{,}528 \times 3{,}211{,}264 \approx 4.8 \times 10^{11}$ weights. That's too many to store, and far too many to learn from any real dataset.
+
+Images have structure that makes most of those weights pointless:
+
+1. **Locality.** A pixel is strongly related to its neighbours and weakly related to pixels far away. Edges, textures and small parts are local patterns, a few pixels across.
+2. **Translation equivariance.** A pattern means the same thing wherever it appears. An edge detector that works in the top-left corner should work in the bottom-right.
+
+Build these into a layer and you get a convolution. **Locality** says each output should depend only on a small window of inputs, say 3 × 3. **Translation equivariance** says the weights applied to that window should be the same at every position: one small filter, shared across the image. The rest of this page follows from those two decisions.
+
+## 2. The Convolution Operation
+
+### Convolution and Pooling
+
+A convolutional layer holds a small grid of weights, the **kernel** or **filter**. For a single-channel image $X$ and a $k \times k$ kernel $K$, the output at position $(i, j)$ is the weighted sum of the window there, plus a bias:
+
+$$
+Y_{i,j} = \sum_{u=0}^{k-1} \sum_{v=0}^{k-1} K_{u,v}\, X_{i+u,\; j+v} + b
+$$
+
+Slide the window one step and compute the next output. The full output is a **feature map**: a grid saying how strongly the filter's pattern appears at each position. (Strictly this is cross-correlation; a mathematical convolution flips the kernel first. Since the kernel is learned, the flip makes no difference, and every deep learning library computes the unflipped version and calls it convolution.)
 
 <ConvolutionOperationDiagram />
 
-**Pooling** (typically max-pooling) downsamples the feature map, keeping the strongest activation in each local region — reduces spatial size and adds a small amount of positional robustness.
+**Channels.** A colour image has 3 input channels, and a layer usually produces many output channels. Each output channel has its own filter of shape $k \times k \times C_\text{in}$, which reads all input channels at each position and sums everything into one number. A layer with $C_\text{out}$ filters therefore has
+
+$$
+\text{parameters} = k \cdot k \cdot C_\text{in} \cdot C_\text{out} + C_\text{out}
+$$
+
+For the layer above, 64 filters of size $3 \times 3 \times 3$: $3 \cdot 3 \cdot 3 \cdot 64 + 64 = 1{,}792$ parameters, against the fully connected layer's $4.8 \times 10^{11}$. The parameter count doesn't depend on the image size at all.
+
+**Output size.** With input size $n$, kernel size $k$, **padding** $p$ (zeros added around the border) and **stride** $s$ (how far the window moves each step):
+
+$$
+n_\text{out} = \left\lfloor \frac{n + 2p - k}{s} \right\rfloor + 1
+$$
+
+A 3 × 3 kernel with $p = 1$ and $s = 1$ keeps the size unchanged ("same" padding), which is why that combination is everywhere. Stride 2 roughly halves each side and is the common way to downsample.
+
+### Writing one by hand
+
+Here's a single-channel convolution in NumPy, applied with a **Sobel** filter, a classic hand-designed edge detector, to an image whose right half is bright. The result is compared with PyTorch's `conv2d`.
+
+```python
+import numpy as np
+import torch
+import torch.nn.functional as F
+
+def conv2d(image, kernel, stride=1, padding=0):
+    """Plain 2D convolution (cross-correlation, as deep learning libraries define it), one channel."""
+    image = np.pad(image, padding)
+    k = kernel.shape[0]
+    out_h = (image.shape[0] - k) // stride + 1
+    out_w = (image.shape[1] - k) // stride + 1
+    out = np.zeros((out_h, out_w))
+    for i in range(out_h):
+        for j in range(out_w):
+            patch = image[i * stride:i * stride + k, j * stride:j * stride + k]
+            out[i, j] = np.sum(patch * kernel)            # one weighted sum per position
+    return out
+
+image = np.zeros((6, 6)); image[:, 3:] = 1.0              # dark left half, bright right half
+sobel_x = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=float)   # responds to left-to-right change
+
+ours = conv2d(image, sobel_x, padding=1)
+theirs = F.conv2d(torch.tensor(image)[None, None], torch.tensor(sobel_x)[None, None], padding=1)[0, 0].numpy()
+print(ours.astype(int))
+print("matches torch:", np.allclose(ours, theirs))
+
+dense = (224 * 224 * 3) * (224 * 224 * 64)                # every input value to every output value
+conv = 3 * 3 * 3 * 64 + 64                                # 64 filters of 3x3x3, plus biases
+print(f"224x224x3 -> 224x224x64: dense {dense:,} weights, 3x3 conv {conv:,} weights")
+```
+
+```
+[[ 0  0  3  3  0 -3]
+ [ 0  0  4  4  0 -4]
+ [ 0  0  4  4  0 -4]
+ [ 0  0  4  4  0 -4]
+ [ 0  0  4  4  0 -4]
+ [ 0  0  3  3  0 -3]]
+matches torch: True
+224x224x3 -> 224x224x64: dense 483,385,147,392 weights, 3x3 conv 1,792 weights
+```
+
+Read the feature map. It is zero over flat regions, where the left and right columns of the window cancel, and large in columns 2 and 3, exactly where the image changes from dark to bright: the filter found the vertical edge. The negative values in the last column are an artefact worth knowing: zero padding puts a "dark" border next to the bright region, so the filter sees a bright-to-dark edge that isn't in the image. The corners read 3 rather than 4 for the same reason. Padding choices visibly affect a network's behaviour at the borders.
+
+A CNN doesn't use hand-designed filters like Sobel. It starts with random kernels and learns them by gradient descent, exactly like any other weights. The first layer of a trained image network nonetheless learns filters that look much like edge and colour-blob detectors.
+
+**The limitation of one layer** is that a 3 × 3 filter only ever sees a 3 × 3 window. An edge is local; a face isn't. The next section is how CNNs see larger things without larger filters.
+
+## 3. Pooling and the Receptive Field
+
+**Pooling** downsamples a feature map by summarizing small windows. **Max pooling** with a 2 × 2 window and stride 2 keeps the largest value in each window, halving the height and width. It has no parameters. It does two jobs: it cuts the computation for later layers by four, and it makes the output insensitive to small shifts, because a feature that moves by one pixel within a pooling window produces the same maximum.
 
 <PoolingOperationDiagram />
 
-**Receptive field**: how much of the original image a given neuron "sees," which grows as you stack more convolutional layers — deeper layers see larger, more abstract patterns (edges → textures → parts → objects).
+Modern networks often downsample with stride-2 convolutions instead of pooling, and end with **global average pooling**, which averages each channel over the whole map into one number, before the final classifier.
+
+**The receptive field** of a unit is the region of the input image that can affect it. One 3 × 3 convolution has a receptive field of 3 × 3. Stack two, and each unit in the second layer sees a 3 × 3 window of first-layer units, each of which sees 3 × 3 pixels: 5 × 5 in total. For $L$ stacked $k \times k$ convolutions with stride 1:
+
+$$
+r = 1 + L\,(k - 1)
+$$
+
+Downsampling multiplies the growth: after a stride-2 step, each later layer's step of $k - 1$ counts double in input pixels. This is why a CNN builds a hierarchy. Early layers see a few pixels and learn edges; middle layers combine edges into textures and parts; late layers see most of the image and respond to whole objects.
 
 <ReceptiveFieldGrowthDiagram />
 
-## The Architecture Lineage
+## 4. Equivariance, Invariance and What They Buy
+
+The two facts from section 1 have precise names, and they're different properties:
+
+- A convolution is **translation-equivariant**: shift the input and the feature map shifts by the same amount. The edge detector fires wherever the edge is.
+- Pooling, and especially global pooling at the end, makes the network approximately **translation-invariant**: shift the input and the final answer doesn't change.
+
+A fully connected network has neither. It learns "a 7 with its stroke in columns 4 to 6" as a different pattern from "a 7 with its stroke in columns 6 to 8". Here is that difference measured. Two networks of about the same size are trained on scikit-learn's 8 × 8 handwritten digits, then tested on the original test digits and on the same digits moved two pixels to the right:
+
+```python
+import numpy as np
+import torch
+import torch.nn as nn
+from sklearn.datasets import load_digits
+from sklearn.model_selection import train_test_split
+
+torch.manual_seed(0)
+digits = load_digits()                                    # 1,797 handwritten digits, 8x8 pixels
+X = torch.tensor(digits.images / 16.0, dtype=torch.float32)[:, None]   # shape (n, 1, 8, 8)
+y = torch.tensor(digits.target)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=0)
+X_shifted = torch.roll(X_test, shifts=2, dims=3)          # the same test digits, moved 2 pixels right
+
+models = {
+    "MLP": nn.Sequential(nn.Flatten(), nn.Linear(64, 64), nn.ReLU(), nn.Linear(64, 10)),
+    "CNN": nn.Sequential(nn.Conv2d(1, 16, 3, padding=1), nn.ReLU(),
+                         nn.Conv2d(16, 32, 3, padding=1), nn.ReLU(),
+                         nn.AdaptiveMaxPool2d(1), nn.Flatten(), nn.Linear(32, 10)),
+}
+for name, model in models.items():
+    opt = torch.optim.Adam(model.parameters(), lr=1e-2)
+    for epoch in range(150):
+        opt.zero_grad()
+        nn.functional.cross_entropy(model(X_train), y_train).backward()
+        opt.step()
+    with torch.no_grad():
+        acc = (model(X_test).argmax(1) == y_test).float().mean().item()
+        acc_shift = (model(X_shifted).argmax(1) == y_test).float().mean().item()
+    params = sum(p.numel() for p in model.parameters())
+    print(f"{name}: {params:5,} parameters   test accuracy {acc:.3f}   shifted 2px {acc_shift:.3f}")
+```
+
+```
+MLP: 4,810 parameters   test accuracy 0.972   shifted 2px 0.165
+CNN: 5,130 parameters   test accuracy 0.985   shifted 2px 0.954
+```
+
+On digits positioned like the training data, both networks do well. Move them two pixels and the MLP collapses to 16.5%, barely above guessing among ten classes, because every weight it learned was tied to a position. The CNN keeps 95%: its filters detect the same strokes wherever they are, and the global max pool reports *whether* each stroke is present, not where. Nothing in the CNN's training data showed shifted digits; the robustness comes from the architecture. That is what an **inductive bias** is: an assumption built into the model that lets it generalize in a particular way without having to learn it from data.
+
+<PredictFirst
+  question="A CNN uses only convolutions with padding and no pooling, and outputs a feature map the same size as its input. You shift the input image 3 pixels right. What happens to the output feature map?"
+  options={[
+    'It stays the same, because convolutions are translation-invariant',
+    'It shifts 3 pixels right, apart from effects at the borders',
+    'It changes unpredictably, because the weights are position-specific',
+    'It shifts 3 pixels left',
+  ]}
+  correctIndex={1}
+  explanation="Convolution is equivariant, not invariant: the same filter is applied at every position, so moving the input moves the response by the same amount. Invariance (the output not changing) needs a step that discards position, such as pooling over the whole map. Padding means the border pixels are the exception."
+/>
+
+## 5. The Architecture Lineage
+
+### The Architecture Lineage
+
+Thirty years of CNN design can be read as a sequence of answers to one question: how do you get more depth and capacity without the network becoming untrainable or too expensive?
 
 <CnnArchitectureLineageDiagram />
 
-- **LeNet** (1998) — the original proof-of-concept CNN, for digit recognition; two conv/pool stages feeding two fully-connected layers, tiny by modern standards but the template everything below descends from.
-- **AlexNet** (2012) — the breakthrough that kicked off the deep learning boom: a deeper CNN trained on GPUs at ImageNet scale, using ReLU (faster convergence than sigmoid/tanh), dropout, and data augmentation to control overfitting.
-- **ZFNet** (2013) — mostly a tuned AlexNet with smaller first-layer filters and a stride reduction, notable for pairing the architecture with deconvolution-based visualizations that made it possible to actually *see* what early CNN filters were learning.
-- **VGGNet** (2014) — replaced AlexNet's large filters with a deep stack of uniform 3×3 convolutions, showing that depth built from small, simple filters (two 3×3 layers have the same receptive field as one 5×5 layer, with fewer parameters and an extra nonlinearity) outperforms shallower networks with larger filters.
-- **GoogLeNet / Inception** (2014) — introduced the **Inception module**: run several filter sizes (1×1, 3×3, 5×5) and a pooling branch in parallel at each stage and concatenate their outputs, letting the network pick the useful scale rather than committing to one; 1×1 convolutions are used as cheap dimensionality reduction before the expensive larger filters.
-
-<InceptionModuleDiagram />
-
-- **ResNet** (2015) — introduced residual/skip connections (see [Training Deep Networks](/docs/deep-learning/training-deep-networks)): each block learns a residual `F(x)` added back to its input, `y = F(x) + x`, so a block can default to the identity function if depth isn't helping. This solved the degradation problem (very deep plain networks got *worse*, not just harder to train) and enabled networks over 100 layers deep for the first time.
+- **LeNet-5** (LeCun et al., 1998) read handwritten digits on bank cheques: two convolution-and-pooling stages, then fully connected layers. It's the template every later CNN follows.
+- **AlexNet** (Krizhevsky, Sutskever and Hinton, 2012) won the ImageNet competition by a wide margin, cutting top-5 error from about 26% to about 15%, and started the deep learning boom. The ideas were LeNet's; what was new was scale (60 million parameters, 1.2 million training images), GPUs to train it, ReLU activations instead of saturating sigmoids, dropout, and data augmentation.
+- **VGGNet** (Simonyan and Zisserman, 2014) used nothing but 3 × 3 convolutions, stacked 16 to 19 layers deep. Two 3 × 3 layers see a 5 × 5 region (section 3's formula) with $2 \cdot 9 = 18$ weights per channel pair instead of 25, plus an extra nonlinearity. Small filters, stacked deep, became the default.
+- **GoogLeNet / Inception** (Szegedy et al., 2014) ran 1 × 1, 3 × 3 and 5 × 5 convolutions and pooling in parallel in each block and concatenated the results, so the network could use whichever scale helped. Its lasting contribution is the **1 × 1 convolution** as a cheap channel mixer: reducing 256 channels to 64 before an expensive 3 × 3 cuts that layer's cost by four.
+- **ResNet** (He et al., 2015) added **skip connections**: each block computes $y = x + F(x)$. Plain networks deeper than about 20 layers had *higher training error* than shallower ones, an optimization failure; with skips, 152-layer networks trained easily and won ImageNet 2015. [Training Deep Networks](/docs/deep-learning/training-deep-networks) derives why the identity path keeps gradients alive.
 
 <ResNetSkipConnectionDiagram />
 
-- **DenseNet** (2016) — pushes the skip-connection idea further: every layer receives the concatenated feature maps of *all* preceding layers, not just the previous one — maximizes feature reuse and gradient flow, at the cost of higher memory usage from all those concatenations.
-- **MobileNet** (2017) — built for phones/edge devices using **depthwise separable convolutions**: a standard convolution is factored into a depthwise convolution (one filter per input channel, spatial-only) followed by a 1×1 pointwise convolution (mixes channels) — roughly the same representational power at a fraction of the multiply-adds.
+- **DenseNet** (Huang et al., 2017) fed every layer the concatenated outputs of all earlier layers in its block, maximizing feature reuse at the cost of memory.
+- **MobileNet** (Howard et al., 2017) targeted phones with the **depthwise separable convolution**, covered in the next section.
+- **EfficientNet** (Tan and Le, 2019) scaled depth, width and input resolution *together* with one compound coefficient, rather than growing one dimension at a time, and found much better accuracy per unit of compute.
+- **ConvNeXt** (Liu et al., 2022) took a ResNet and applied, one by one, the design choices of Vision Transformers: larger 7 × 7 depthwise kernels, LayerNorm instead of BatchNorm, GELU, fewer activations and norms, an inverted bottleneck, and modern training recipes. The result matched Swin Transformers of the same size. Much of the transformer's advantage in vision came from training recipes and design details, not attention itself.
+
+## 6. Making Convolutions Cheap
+
+A standard convolution does two jobs at once: it looks at a spatial window, and it mixes all input channels together. Its cost per output position is $k^2 \cdot C_\text{in} \cdot C_\text{out}$ multiplications.
+
+A **depthwise separable convolution** splits the jobs:
+
+1. A **depthwise** convolution applies one $k \times k$ filter to each input channel separately: spatial filtering, no channel mixing. Cost: $k^2 \cdot C_\text{in}$.
+2. A **pointwise** 1 × 1 convolution mixes channels at each position: no spatial extent. Cost: $C_\text{in} \cdot C_\text{out}$.
 
 <DepthwiseSeparableConvDiagram />
-- **EfficientNet** (2019) — systematically scales depth, width, and input resolution *together* via **compound scaling** (a single coefficient balances all three, rather than arbitrarily increasing one) for the best accuracy-per-FLOP tradeoff of the classic CNN lineage.
-- **ConvNeXt** (2022) — takes a plain ResNet and modernizes it with design choices borrowed from Vision Transformers (larger kernel sizes, fewer activation functions, LayerNorm instead of BatchNorm, an inverted bottleneck) — shows a "pure" CNN can match ViT-era accuracy without attention at all, once trained with modern recipes.
 
-## Applications
+The ratio of the separable cost to the standard cost is
 
-- **Image classification**: assign a single label to an image.
-- **Object detection**: locate and classify multiple objects within an image (bounding boxes) — see [Vision Architectures](/docs/deep-learning/vision-architectures) for the R-CNN/YOLO/SSD lineage built for this specifically.
-- **Segmentation**: classify *every pixel* — used in medical imaging, autonomous driving; see [Vision Architectures](/docs/deep-learning/vision-architectures) for U-Net, Mask R-CNN, and the segmentation-specific model families.
+$$
+\frac{k^2 C_\text{in} + C_\text{in} C_\text{out}}{k^2 C_\text{in} C_\text{out}} = \frac{1}{C_\text{out}} + \frac{1}{k^2}
+$$
 
-<CnnApplicationsDiagram />
+With $k = 3$ and $C_\text{out} = 256$ that's about $0.115$: nearly nine times cheaper, for a small loss in accuracy. MobileNet and its successors run real-time vision on phones with it, and ConvNeXt uses large depthwise kernels because they're cheap.
 
-## Why Vision Moved Toward Transformers Too
+<GoDeeper title="Go deeper: what a CNN layer costs, and why compute is not just parameters">
 
-CNNs' locality assumption is also a limitation — capturing long-range relationships between distant parts of an image requires many stacked layers. Vision Transformers (covered in depth in [Vision Architectures](/docs/deep-learning/vision-architectures)) instead split an image into patches and apply self-attention across all of them directly, letting any patch attend to any other patch from the very first layer. In practice, ViTs need more data to train well than CNNs (they lack CNNs' built-in locality bias), but they now match or beat CNNs at scale.
+Parameters and compute are different budgets in a CNN. A convolution's parameters don't depend on the image size, but its multiply-adds do: $H_\text{out} \cdot W_\text{out} \cdot k^2 \cdot C_\text{in} \cdot C_\text{out}$.
+
+So the early layers, which run at full resolution with few channels, have few parameters but much of the compute. The late layers, at low resolution with many channels, hold most of the parameters but less of the compute. VGG-16 has 138 million parameters, most of them in its fully connected layers at the end, while the bulk of its roughly 15 billion multiply-adds per image are in the convolutions near the input.
+
+Two practical consequences: doubling the input resolution roughly quadruples compute without changing the parameter count, which is the lever EfficientNet scales; and reducing early-layer cost (a stride-2 "stem" that downsamples aggressively at the start) is the most effective way to speed up a CNN.
+
+</GoDeeper>
+
+## 7. What CNNs Are Used For
+
+The same convolutional backbone serves several tasks; what changes is the head on top and the labels:
+
+- **Classification**: one label per image. The backbone's final feature map is pooled to a vector and passed to a linear classifier.
+- **Object detection**: a box and label for every object. Detection heads predict boxes at each position of one or more feature maps (YOLO, SSD, Faster R-CNN, and the transformer-based DETR family).
+- **Segmentation**: a label for every pixel. Encoder-decoder networks such as U-Net downsample to gather context, then upsample back to full resolution, with skip connections carrying fine detail across.
+- **Feature extraction**: a network pretrained on a large dataset becomes a starting point for a new task with little data, either fine-tuned or used as a fixed feature extractor ([transfer learning](/docs/computer-vision/vision-fundamentals)).
+
+[Vision Architectures](/docs/deep-learning/vision-architectures) covers the detection and segmentation families in depth.
+
+## 8. Why Vision Moved Toward Transformers Too
+
+The inductive bias that makes CNNs efficient also limits them. A convolution only relates nearby pixels, so two distant parts of an image can only interact after many layers have grown the receptive field to cover both.
+
+The **Vision Transformer** (ViT; Dosovitskiy et al., 2020) cuts the image into 16 × 16 patches, treats each patch as a token, and applies self-attention, so every patch can attend to every other from the first layer. With no locality or equivariance built in, ViTs need much more data to learn what CNNs get for free: trained on ImageNet's 1.3 million images alone, the original ViT trailed comparable ResNets, while pretrained on 300 million images it surpassed them.
 
 <CnnVsVitDiagram />
 
-Next: [Sequence Models](/docs/deep-learning/sequence-models) — the architectures built for data where order matters: text, time series, audio.
+The result today is a mix. Transformers and hybrids dominate large-scale vision and vision-language models, where data is plentiful. CNNs remain strong and often preferable for small datasets, real-time and on-device inference, and dense prediction at high resolution, where attention's cost grows with the square of the number of patches. And, as ConvNeXt showed, the gap between the two is smaller than the early benchmarks suggested once both are trained with the same care.
+
+## 9. When *Not* to Use a CNN
+
+| Situation | Better choice |
+|---|---|
+| Tabular data with no spatial structure | Gradient-boosted trees or an MLP; locality and translation mean nothing for columns |
+| Very large image datasets, or vision-language models | A Vision Transformer or hybrid, which can learn more from more data |
+| Relationships between distant parts matter from the start | Attention, or a CNN with attention blocks added |
+| Data on graphs or irregular meshes | A graph neural network, which generalizes the convolution to arbitrary neighbourhoods |
+| Position itself carries the meaning (where on the form a field appears) | Add positional information explicitly; pure convolution plus global pooling throws it away |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Two assumptions | Locality and translation equivariance give small, shared filters |
+| Convolution | A $k \times k$ weighted sum at every position, producing a feature map |
+| Parameters | $k^2 C_\text{in} C_\text{out} + C_\text{out}$, independent of image size |
+| Output size | $\lfloor (n + 2p - k)/s \rfloor + 1$; 3 × 3 with padding 1 keeps the size |
+| Pooling | Summarize windows; halves size, adds tolerance to small shifts |
+| Receptive field | $1 + L(k-1)$ for stacked stride-1 layers; grows faster with downsampling |
+| Equivariant vs invariant | Convolution moves with the input; global pooling stops caring where |
+| Lineage | LeNet, AlexNet, VGG, Inception, ResNet, MobileNet, EfficientNet, ConvNeXt |
+| Depthwise separable | Spatial then channel mixing; about $1/C_\text{out} + 1/k^2$ of the cost |
+| CNN vs ViT | CNNs learn more from less data; transformers scale further with more |
+
+---
+
+Next: [Sequence Models](/docs/deep-learning/sequence-models), the architectures built for data where order matters: text, time series and audio.
+
+## Sources
+
+- LeCun, Bottou, Bengio and Haffner, [Gradient-Based Learning Applied to Document Recognition](http://yann.lecun.com/exdb/publis/pdf/lecun-01a.pdf) (1998)
+- Krizhevsky, Sutskever and Hinton, [ImageNet Classification with Deep Convolutional Neural Networks](https://papers.nips.cc/paper/2012/hash/c399862d3b9d6b76c8436e924a68c45b-Abstract.html) (2012)
+- Simonyan and Zisserman, [Very Deep Convolutional Networks for Large-Scale Image Recognition](https://arxiv.org/abs/1409.1556) (2014)
+- Szegedy et al., [Going Deeper with Convolutions](https://arxiv.org/abs/1409.4842) (2014)
+- He, Zhang, Ren and Sun, [Deep Residual Learning for Image Recognition](https://arxiv.org/abs/1512.03385) (2015)
+- Howard et al., [MobileNets](https://arxiv.org/abs/1704.04861) (2017)
+- Tan and Le, [EfficientNet](https://arxiv.org/abs/1905.11946) (2019)
+- Dosovitskiy et al., [An Image is Worth 16x16 Words](https://arxiv.org/abs/2010.11929) (2020)
+- Liu et al., [A ConvNet for the 2020s](https://arxiv.org/abs/2201.03545) (2022)
+- Dumoulin and Visin, [A guide to convolution arithmetic for deep learning](https://arxiv.org/abs/1603.07285) (2016)
