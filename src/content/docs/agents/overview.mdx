@@ -1,91 +1,206 @@
 ---
-title: "Agents Overview"
+title: "AI Agents, The Big Picture"
 sidebar_position: 1
-description: "What actually makes an AI system an agent rather than a chatbot: architectures, tool use, memory, and multi-agent coordination, from first principles."
+description: "What makes an AI system an agent rather than a chatbot or a pipeline, the loop every agent runs, tools and memory, architectures, the MCP and A2A protocols, multi-agent systems, how agents fail, why their cost grows faster than their step count, and when not to build one."
 ---
 
-
-import AgentCapabilityLadderDiagram from '../../../viz/diagrams/AgentCapabilityLadderDiagram';
 import PerceiveReasonActLoopDiagram from '../../../viz/diagrams/PerceiveReasonActLoopDiagram';
-import ToolMemoryPillarsDiagram from '../../../viz/diagrams/ToolMemoryPillarsDiagram';
 import ArchitectureSpectrumDiagram from '../../../viz/diagrams/ArchitectureSpectrumDiagram';
 import McpVsA2aScopeDiagram from '../../../viz/diagrams/McpVsA2aScopeDiagram';
-import CoordinationPatternsDiagram from '../../../viz/diagrams/CoordinationPatternsDiagram';
 import AgentFailureModesDiagram from '../../../viz/diagrams/AgentFailureModesDiagram';
-import WhenToUseAgentsDiagram from '../../../viz/diagrams/WhenToUseAgentsDiagram';
 import AutonomySpectrumDiagram from '../../../viz/diagrams/AutonomySpectrumDiagram';
-import AgentSectionMapDiagram from '../../../viz/diagrams/AgentSectionMapDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Agents Overview
+# AI Agents, The Big Picture
 
-How LLMs go from answering questions to taking actions, using tools, and coordinating with each other. This section covers what actually makes something an "agent" rather than a chatbot, the concrete architectures for structuring an agent's reasoning loop, the emerging protocols that let agents talk to tools and to each other, and what changes once more than one agent is involved.
+[LLMs & GenAI](/docs/llms-genai/overview) ended with a model that answers questions well: prompted, grounded in your documents, served efficiently. This section is about what happens when the model stops only answering and starts *doing*: searching, running code, editing files, calling other systems and other agents, several steps in a row, deciding each step from the result of the last. This page is the map. It explains what separates an agent from a chatbot or a fixed pipeline, the loop every agent runs, the two capabilities everything else rests on, how architectures and protocols organize that loop, how agents fail, why a long agent run costs far more than its step count suggests, and when an agent is the wrong tool. Each part links to the page that covers it in depth.
 
-## From a Single Call to an Agent
+<ELI5>
 
-"Agent" isn't a single capability — it's a ladder, and where a system sits on it determines what it can and can't do on its own:
+A calculator answers exactly what you type. A knowledgeable friend on the phone answers questions from what they know. A capable assistant sitting at your computer can do the task: open the files, look things up, try something, see that it failed, try something else, and tell you when it's done.
 
-<AgentCapabilityLadderDiagram />
+An AI agent is the third one. The underlying model is the same knowledgeable friend; what makes it an agent is being allowed to act, seeing what happened, and choosing the next step itself. That freedom is what makes agents useful, and also what makes them slower, more expensive and harder to trust than a single answer. Everything below is that trade-off made exact.
 
-A plain LLM call answers one prompt and stops. A chatbot holds a conversation but still can't act on the world. An agent adds a loop: the model can decide to call a tool, observe what comes back, and decide what to do next — see [Agent Fundamentals](/docs/agents/agent-fundamentals) for exactly how that loop and tool-calling work in detail.
+</ELI5>
 
-## The Loop at the Center of Everything
+## 1. From a Single Call to an Agent
 
-Every agent, regardless of architecture, is running some version of the same cycle:
+There is a ladder of LLM systems, and each rung adds one thing:
+
+1. **A single call** answers one prompt and stops.
+2. **A chatbot** keeps the conversation in context, so it can answer follow-ups, but it still only produces text.
+3. **A workflow** chains several model calls and tools along a path your code fixes in advance: classify, then retrieve, then draft, then check.
+4. **An agent** puts the model in a loop where *the model chooses* which tool to call next, sees the result, and decides again, until it judges the task done.
+
+
+The line between rungs 3 and 4 is the important one. In a workflow, you can draw the flowchart before it runs, test each box, and predict the cost. In an agent, the flowchart is written at run time by the model. That's what lets an agent handle tasks whose steps can't be known in advance (debug this failing test, research this question, reconcile these two spreadsheets), and it's exactly what makes agents harder to test, bound and trust.
+
+[Agent Fundamentals](/docs/agents/agent-fundamentals) builds this loop in code, including tool calling message by message.
+
+## 2. The Loop at the Center of Everything
+
+Every agent, whatever framework it's built with, runs a version of one cycle:
 
 <PerceiveReasonActLoopDiagram />
 
-**Perceive** — take in the current state (a user request, a tool result, an observation). **Reason** — decide what to do about it, given everything so far. **Act** — take an action (call a tool, respond, hand off to another agent) that changes the state and feeds the next perceive step. The architectures below are all different answers to "how exactly should this loop be structured?"
+- **Perceive**: take in the current state: the user's request, the latest tool result, an error message.
+- **Reason**: decide what to do next given everything so far. In practice this is a model call whose input is the whole history.
+- **Act**: call a tool, ask the user, hand off to another agent, or give the final answer. The action changes the state, and the result feeds the next cycle.
 
-## The Two Load-Bearing Pieces: Tools and Memory
+Two facts about this loop explain most of what follows. First, **the model's only memory is its context**: each cycle re-sends the whole history, so history grows and so does cost (section 7). Second, **every cycle is a chance to go wrong**: a wrong tool, a wrong argument, a misread result. Over many cycles, small per-step error rates compound, which [Agent Fundamentals](/docs/agents/agent-fundamentals) quantifies.
 
-Everything an agent can *do* comes down to two capabilities, both covered in depth in [Agent Fundamentals](/docs/agents/agent-fundamentals):
+## 3. Tools and Memory
 
-<ToolMemoryPillarsDiagram />
+Everything an agent can do rests on two capabilities.
 
-Without well-designed tools, an agent has reasoning but no way to act. Without memory, an agent can act but can't accumulate context beyond a single conversation or a single context window's worth of history.
+**Tools** are how it acts. A tool is a function your code runs on the model's request: search, query a database, read or write a file, run code, send a message. The model sees each tool's name, description and argument schema, and chooses. Tool design (clear descriptions, tight schemas, error messages the model can act on, compact results) is the single biggest lever on agent quality. A model with poorly described tools behaves like a capable person given a drawer of unlabelled keys.
 
-## Architectures: Different Answers to "How Should the Loop Run?"
+**Memory** is how it keeps what matters. Short-term memory is the context window: precise, but finite and paid for on every call. Long-term memory is an external store the agent writes to and searches through tools, which turns remembering into a retrieval problem. Deciding what goes into the window at each step is a discipline of its own: [Context Engineering](/docs/agents/context-engineering).
+
+## 4. Architectures: How Should the Loop Run?
+
+Given the loop, there are several ways to structure it, and they trade flexibility against predictability:
 
 <ArchitectureSpectrumDiagram />
 
-[Agent Architectures](/docs/agents/agent-architectures) covers ReAct (interleave reasoning and action, react to each result), Plan-and-Execute (commit to a full plan upfront, execute it, replan on failure), and reflection (critique and revise your own output) in detail — each trades reliability, cost, and latency differently, and the right choice depends on how predictable the task is upfront.
+- **ReAct** interleaves reasoning and acting one step at a time, reacting to each result. Flexible and the default for most agents. [ReAct in Production](/docs/agents/react-agent-production).
+- **Plan-and-execute** writes a plan first, executes it step by step, and replans when something fails. More predictable, better for long tasks with a clear structure. [Plan-and-Execute](/docs/agents/plan-and-execute).
+- **Reflection** adds a critique step: the agent (or a second model) checks the output and revises it. Better quality, more cost. [Reflection](/docs/agents/reflection-self-critique).
+- **Graphs** make the control flow explicit: nodes for steps, edges for transitions, some chosen by the model and some fixed by code. Most production agents end up here, because it lets you fix the parts you can and leave to the model only the parts you must. [Loops and Graphs](/docs/agents/loops-and-graphs).
 
-## Standardizing Connections: MCP and A2A
+[Agent Architectures](/docs/agents/agent-architectures) compares them, along with the durable-execution machinery (checkpoints, retries) that long-running agents need.
 
-Once an agent needs to talk to tools *and* to other agents, ad hoc integration code doesn't scale — two emerging protocols standardize each side of that:
+## 5. Protocols: MCP and A2A
+
+Once an agent needs many tools, and other teams' agents, writing custom integration code for each pair stops scaling. Two open protocols standardize the connections, and both are now hosted by the Agentic AI Foundation:
 
 <McpVsA2aScopeDiagram />
 
-[MCP](/docs/agents/mcp/overview) standardizes agent-to-*tool* connections (a database, a file system, an API) so tools and applications can be built independently. [A2A](/docs/agents/a2a/overview) standardizes agent-to-*agent* connections, which need to support longer-running, statesful, potentially cross-organization interactions that a simple function call doesn't fit.
+- **[MCP (Model Context Protocol)](/docs/agents/mcp/overview)** connects an agent to *tools and data*. A company wraps a system once in an MCP server, and every MCP-speaking application can use it. Its 2026-07-28 revision made it stateless, so remote servers scale like ordinary web services. The [protocol deep dive](/docs/agents/mcp/protocol-deep-dive) covers the wire format.
+- **[A2A (Agent2Agent)](/docs/agents/a2a/overview)** connects an agent to *other agents*, possibly in other organizations: discovery through Agent Cards, work as long-running tasks with states, results as artifacts. It reached version 1.0 in early 2026.
 
-## When One Agent Isn't Enough
+They're complementary: an agent uses MCP to reach its tools and A2A to delegate to peers.
 
-<CoordinationPatternsDiagram />
+## 6. When One Agent Isn't Enough
 
-[Multi-Agent Systems](/docs/agents/multi-agent-systems) covers hierarchical (orchestrator delegates to sub-agents), peer-to-peer, and blackboard coordination patterns — each trading ease of debugging against flexibility, and each introducing its own conflict-resolution problem once more than one agent can act on shared state.
+Some tasks benefit from several agents: an orchestrator that breaks a research question into parts and hands each to a sub-agent with its own fresh context, or specialist agents with different tools and permissions. [Multi-Agent Systems](/docs/agents/multi-agent-systems) covers the coordination patterns (orchestrator and workers, pipelines, peers with handoffs) and [Single vs Multi-Agent](/docs/agents/single-vs-multi-agent) covers the decision. The honest summary: multiple agents help when sub-tasks are genuinely independent and parallel, and they multiply cost and failure points everywhere else. Start with one agent and split only when you can name what the split buys.
 
-## How Agentic Systems Actually Fail
+## 7. Why Agents Cost More Than Their Step Count
+
+Section 2 noted that each cycle re-sends the whole history. That makes an agent's input tokens grow with the *square* of its step count. If the fixed part of the prompt (system prompt and tool descriptions) is $S$ tokens and each step adds $P$ tokens of tool call and result, call $i$ sends $S + (i - 1)P$ tokens, and a run of $n$ steps sends in total
+
+$$
+\text{input tokens} = \sum_{i=1}^{n} \big(S + (i-1)P\big) = nS + P\,\frac{n(n-1)}{2}
+$$
+
+The second term dominates for long runs. With illustrative numbers:
+
+```python
+# Why a long agent run costs more than its steps suggest: every model call re-sends the whole history.
+SYSTEM_AND_TOOLS = 6_000      # tokens: system prompt plus tool descriptions, sent on every call
+PER_STEP = 1_500              # tokens each step adds: the model's tool call plus the tool's result
+PRICE_IN = 3.00 / 1e6         # dollars per input token (an illustrative mid-tier price)
+CACHED_IN = 0.30 / 1e6        # dollars per input token read from the provider's prompt cache
+
+def input_tokens(steps):
+    # call i sees the fixed prefix plus everything the previous i-1 steps added
+    return sum(SYSTEM_AND_TOOLS + PER_STEP * (i - 1) for i in range(1, steps + 1))
+
+for steps in (1, 10, 50, 100):
+    total = input_tokens(steps)
+    new = SYSTEM_AND_TOOLS + PER_STEP * (steps - 1)          # with caching, each token is paid in full once
+    cached_cost = new * PRICE_IN + (total - new) * CACHED_IN
+    print(f"{steps:3d} steps: {total:>10,} input tokens  ${total * PRICE_IN:6.2f} uncached  ${cached_cost:5.2f} with caching")
+```
+
+```
+  1 steps:      6,000 input tokens  $  0.02 uncached  $ 0.02 with caching
+ 10 steps:    127,500 input tokens  $  0.38 uncached  $ 0.09 with caching
+ 50 steps:  2,137,500 input tokens  $  6.41 uncached  $ 0.86 with caching
+100 steps:  8,025,000 input tokens  $ 24.07 uncached  $ 2.82 with caching
+```
+
+Ten times the steps, from 10 to 100, costs about 63 times as much uncached. **Prompt caching** is what makes long agents affordable: providers charge a fraction of the normal price for input that repeats a previously sent prefix, and an agent's history is almost entirely repeated prefix. (Real pricing also charges a premium to write to the cache, omitted here.) It only works if the prefix stays byte-for-byte identical, which is why stable tool lists and append-only histories matter. The other levers are fewer steps (better tools), smaller steps (compact tool results), and compaction (summarizing old history), all in [Context Engineering](/docs/agents/context-engineering).
+
+<PredictFirst
+  question="An agent's typical run doubles from 30 steps to 60 steps, with the same tools and per-step size. Without caching, roughly how does its input-token cost change?"
+  options={[
+    'It doubles',
+    'It roughly triples to quadruples, because each call re-sends a longer history',
+    'It stays the same, because the system prompt is fixed',
+    'It halves, because later steps are cheaper',
+  ]}
+  correctIndex={1}
+  explanation="Total input tokens are nS + P·n(n−1)/2. When the per-step term dominates, doubling n roughly quadruples the cost; with a large fixed prompt S the factor is somewhat lower, so between three and four times in practice. This is why long agent runs need caching and compaction."
+/>
+
+## 8. How Agents Fail
+
+Most production agent failures fall into a few recurring modes, each fixed at the layer where it starts:
 
 <AgentFailureModesDiagram />
 
-Most production agent failures cluster into a small set of recurring modes — tool misuse from ambiguous schemas, runaway loops that never converge, context windows silently overflowing with stale history, and multi-agent coordination producing contradictory results. Each is addressed at the layer it originates from (tool design, loop structure, memory management, coordination pattern) rather than by a single fix.
+- **Tool misuse**: wrong tool, malformed or plausible-but-wrong arguments. Fixed with better descriptions, tighter schemas, validation before execution, and error messages the model can act on.
+- **Loops and wandering**: repeating the same call, or searching aimlessly. Fixed with step, token and time limits and repetition detection, which don't depend on the model's judgement.
+- **Context rot**: the window fills with stale results and the agent loses track of the goal. Fixed with compact results, summarization and offloading.
+- **Premature success**: the agent declares the task done when it isn't. Fixed with verification steps that check the result (run the tests, re-read the record) rather than trusting the claim.
+- **Injection and overreach**: content the agent reads tells it to do something harmful, or a confused agent takes an action nobody intended. Fixed with least-privilege tools and human approval for irreversible actions, not with better prompts.
 
-## Is This Even an Agent Problem?
-
-Not every LLM-powered feature needs an agent — a lot of tasks are better served by a single call or a fixed pipeline:
-
-<WhenToUseAgentsDiagram />
-
-The moment a task's steps can't be fully predicted upfront — the right next action depends on what a previous step actually returned — is the moment a fixed pipeline stops working and an agentic loop earns its complexity.
-
-## How Much Autonomy Should an Agent Have?
+## 9. How Much Autonomy?
 
 <AutonomySpectrumDiagram />
 
-More autonomy means less human-in-the-loop friction but higher blast radius when the agent is wrong — a coding agent that can read files is lower-risk than one that can also run `rm -rf` or push to production, independent of how capable its underlying model is. Scoping what an agent is *allowed* to do is as much a design decision as how it reasons.
+Autonomy is a dial, not a switch. At one end the agent only proposes and a person approves every action; at the other it acts freely within a sandbox. More autonomy means less friction and a larger blast radius when it's wrong. The setting should depend on what the tools can do, not on how capable the model seems: an agent that can only read is low-risk at any capability; one that can push to production, move money or email customers needs approval gates however good its track record. Scoping what an agent is *allowed* to do is a design decision as important as how it reasons.
 
-## How This Section Fits Together
+<GoDeeper title="Go deeper: what changed to make agents practical">
 
-<AgentSectionMapDiagram />
+The agent loop is old; ReAct described it in 2022. What changed between then and now is mostly in the models and the plumbing around them:
 
-Start with [Agent Fundamentals](/docs/agents/agent-fundamentals) for the tool-calling and memory mechanics, move to [Agent Architectures](/docs/agents/agent-architectures) for how to structure the reasoning loop, then [MCP](/docs/agents/mcp/overview) and [A2A](/docs/agents/a2a/overview) for the protocols standardizing connections, and [Multi-Agent Systems](/docs/agents/multi-agent-systems) for what changes once more than one agent is coordinating. See the [roadmap](/docs/agents/roadmap) for the full ordered path through this section.
+- **Native tool calling.** Models fine-tuned to emit structured, schema-valid tool calls replaced parsing actions out of free text, cutting malformed calls dramatically.
+- **Longer, more reliable context.** Agents accumulate history quickly; windows of hundreds of thousands of tokens, and models that use them well, let a single run span hours of work.
+- **Reasoning models.** Models trained with reinforcement learning to think before answering plan better and recover from errors more often, which raises per-step reliability where it compounds most.
+- **Training on agentic tasks.** Current models are trained on multi-step tool use itself, such as fixing real repository issues, so the loop is behaviour they've practised rather than improvised.
+- **Standard protocols and caching.** MCP and A2A removed integration work, and prompt caching made long histories affordable.
+
+The result is that coding agents, research agents and computer-use agents now complete tasks that take a person hours, while still needing the guard rails in sections 8 and 9.
+
+</GoDeeper>
+
+## 10. When *Not* to Build an Agent
+
+| Situation | Better choice |
+|---|---|
+| The steps are known in advance | A workflow in code: cheaper, testable, predictable |
+| One lookup or one transformation answers it | A single call, with retrieval if needed |
+| Latency must be under a second or two | A single call; every loop iteration is a full model round trip |
+| The action is irreversible and high-stakes | An agent that proposes, with a person or deterministic check that approves |
+| You can't tell whether the result is right | Build the verification first; an unverifiable agent can't be improved |
+| Several agents for a task one agent could do | One agent; split only for real parallelism or isolation |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Agent | A model in a loop that chooses actions, observes results and decides again |
+| Workflow vs agent | Your code fixes the path vs the model writes it at run time |
+| The loop | Perceive, reason, act; the whole history is re-sent each cycle |
+| Tools and memory | Tools let it act; memory is the context window plus stores reached by tools |
+| Architectures | ReAct, plan-and-execute, reflection, explicit graphs |
+| Protocols | MCP for tools and data, A2A for other agents |
+| Cost | Input tokens grow as $nS + Pn(n-1)/2$; caching and compaction keep it affordable |
+| Failure | Tool misuse, loops, context rot, false success, injection; fix each at its layer |
+| Autonomy | Set by what the tools can do, not by how smart the model seems |
+
+---
+
+Start with [Agent Fundamentals](/docs/agents/agent-fundamentals), then [Context Engineering](/docs/agents/context-engineering) and [Agent Architectures](/docs/agents/agent-architectures). The [roadmap](/docs/agents/roadmap) lists the full path through this section.
+
+## Sources
+
+- Anthropic, [Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents) (2024)
+- Yao et al., [ReAct: Synergizing Reasoning and Acting in Language Models](https://arxiv.org/abs/2210.03629) (2022)
+- Model Context Protocol, [Specification, revision 2026-07-28](https://modelcontextprotocol.io/specification/latest)
+- A2A Project, [Agent2Agent Protocol Specification](https://a2a-protocol.org/latest/specification/)
+- Anthropic, [Prompt caching](https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching) (API documentation)
+- Jimenez et al., [SWE-bench: Can Language Models Resolve Real-World GitHub Issues?](https://arxiv.org/abs/2310.06770) (2023)
