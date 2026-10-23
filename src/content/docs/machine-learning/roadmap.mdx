@@ -1,66 +1,232 @@
 ---
-title: "Machine Learning — Roadmap"
+title: "Machine Learning Roadmap"
 sidebar_position: 2
-description: "Classical ML end to end: workflow fundamentals, supervised/unsupervised algorithms, evaluation metrics, hyperparameter tuning, and conformal prediction."
+description: "An ordered path through classical machine learning: what to learn in each stage and why it comes in that order, what you should be able to do before moving on (with a runnable checkpoint), how to choose an algorithm for a new problem, and the common problems with their standard fixes."
 ---
 
-
 import AlgorithmSelector from '../../../viz/AlgorithmSelector';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Machine Learning — Roadmap
+# Machine Learning Roadmap
 
-Classical ML: the algorithms, the workflow around them, and the problems that show up constantly in practice.
+The [overview](/docs/machine-learning/overview) explained what machine learning is and why every algorithm is a model, a loss and an optimizer. This page is the order to learn it in. The section has more than thirty pages, and reading them in sidebar order would put clustering before you know how to evaluate a model, and gradient boosting before you know what a gradient step does. Below, the material is arranged in six stages, each with the reason it comes where it does, what you should be able to do at the end of it, and a concrete check. After the stages come a guide to choosing an algorithm for a new problem, and the problems that come up on almost every real project, with their standard fixes.
 
-Not sure which algorithm fits your problem? Answer a few questions:
+<ELI5>
+
+Learning to cook, you don't start with a soufflé. You learn to use a knife and control heat, then a few simple dishes that use those skills, then dishes that combine them. Each step uses the ones before, and skipping ahead means failing at the soufflé without knowing whether the problem was the eggs or the oven.
+
+This roadmap is that order for machine learning. The early stages are the knife and the heat: how to split data honestly, and how one simple model is fitted. Everything later uses them.
+
+</ELI5>
+
+## 1. Why the Order Matters
+
+Most of the section's ideas are introduced once, in the simplest setting, and then reused. A few dependencies decide the order:
+
+- **Evaluation comes before algorithms.** Every result on every later page is a held-out score. If you don't yet know why the score must come from data the model never saw, every comparison you make will be optimistic, and you won't know it. So the workflow page is first.
+- **Linear regression is the template.** The cost function, the gradient derived by hand, gradient descent, the closed-form solution and the bias-variance trade-off all appear there in their simplest form. Ridge, lasso, logistic regression, SGD, and even neural networks reuse those pieces, so they're far easier once it's done.
+- **Trees need impurity and variance; ensembles need trees.** Random forests are an argument about averaging away the variance of single trees, and boosting is gradient descent applied to trees. Neither makes sense without the single tree first.
+- **Unsupervised methods are hard to evaluate.** With no labels, "is this clustering good?" has no single answer. It's much easier to think about once supervised evaluation is second nature.
+
+The stages below follow those dependencies. Each ends with what you should be able to do, which is a better test of readiness than having read the pages.
+
+## 2. The Stages
+
+### Stage 1: The workflow
+
+Read [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals). It covers the three data splits and why the test set is used once, cross-validation and when random folds are wrong (grouped and time-ordered data), data leakage, missing values, imbalanced classes and resampling.
+
+**You're ready to move on when** you can explain why feature selection on the full dataset before cross-validation produces a high score on pure noise, and you put every fitted step (scaler, imputer, selector) inside a pipeline without thinking about it.
+
+### Stage 2: Linear models, derived by hand
+
+Read in order: [Linear Regression](/docs/machine-learning/linear-regression), [Ridge](/docs/machine-learning/ridge-regression), [Lasso](/docs/machine-learning/lasso-regression), [Elastic Net](/docs/machine-learning/elastic-net), [Logistic Regression](/docs/machine-learning/logistic-regression). Then [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics), now that you have regressors and classifiers to evaluate.
+
+This is the most important stage, and the one to slow down on. Derive the linear regression gradient on paper. Then derive logistic regression's and see it come out with the same shape. Understand why correlated features make least-squares weights unstable and how each penalty responds.
+
+**You're ready when** you can fit linear regression three ways (normal equation, gradient descent, a library) and get the same answer, which the checkpoint in Section 3 asks you to do; when you can say what an L1 penalty does that an L2 penalty doesn't, and why; and when you can choose between accuracy, precision, recall and ROC-AUC for a given problem and set a decision threshold from the costs of each kind of error.
+
+### Stage 3: Trees and ensembles
+
+Read [Decision Trees](/docs/machine-learning/decision-tree), [Random Forest & Extra Trees](/docs/machine-learning/random-forest), [Boosting](/docs/machine-learning/boosting), then [XGBoost, LightGBM & CatBoost](/docs/machine-learning/xgboost-lightgbm-catboost).
+
+Trees are a completely different hypothesis class from linear models: piecewise-constant, axis-aligned, able to capture interactions automatically, indifferent to feature scale. Ensembles are the payoff: bagging averages away a deep tree's variance, and boosting builds a strong model by repeatedly fitting small trees to the remaining errors. For tabular data, gradient boosting is the model most practitioners reach for first.
+
+**You're ready when** you can explain why a single deep tree overfits and why averaging many of them helps, what each new tree in gradient boosting is fitted to, and which hyperparameters (learning rate, number of trees, depth) trade off against each other.
+
+### Stage 4: The rest of the supervised toolkit
+
+[Support Vector Machines](/docs/machine-learning/support-vector-machines), [k-Nearest Neighbours](/docs/machine-learning/k-nearest-neighbors), [Naive Bayes, LDA & QDA](/docs/machine-learning/naive-bayes-lda-qda), and the [SGD](/docs/machine-learning/sgd-classifier-regressor) framing that connects the linear models. Each brings one idea the earlier stages don't: the margin and the kernel trick, the curse of dimensionality, and the generative approach (model how each class produces data, then apply Bayes' rule).
+
+Then tuning and uncertainty: [Hyperparameter Optimization](/docs/machine-learning/hyperparameter-optimization) and [Uncertainty Estimation & Conformal Prediction](/docs/machine-learning/uncertainty-estimation-and-conformal-prediction).
+
+**You're ready when** you can explain the kernel trick without code, say why k-NN degrades with many features, tune a model with random search or Bayesian optimization inside cross-validation, and wrap any model's predictions in a conformal interval with a coverage guarantee.
+
+### Stage 5: Unsupervised learning
+
+The [Unsupervised Learning](/docs/machine-learning/unsupervised-learning) hub, then clustering ([k-means & hierarchical](/docs/machine-learning/kmeans-hierarchical-clustering), [DBSCAN & HDBSCAN](/docs/machine-learning/dbscan-hdbscan), [GMMs & spectral](/docs/machine-learning/gmm-spectral-clustering)), dimensionality reduction ([PCA & SVD](/docs/machine-learning/pca-svd), [ICA, t-SNE & UMAP](/docs/machine-learning/ica-tsne-umap)), and [anomaly detection](/docs/machine-learning/anomaly-detection).
+
+**You're ready when** you can say which clustering method suits which cluster shape, why k-means needs scaled features and a chosen $k$, what the principal components of a dataset are in terms of its covariance matrix, and why distances in a t-SNE plot shouldn't be read literally.
+
+### Stage 6: Problems with their own structure
+
+Pick by need: [time series forecasting](/docs/machine-learning/time-series-forecasting) (ordered data, where random splits leak the future), [survival analysis](/docs/machine-learning/survival-analysis) (time until an event, with censored observations), [recommender systems](/docs/machine-learning/recommender-systems) and [learning to rank](/docs/machine-learning/learning-to-rank) (predicting preferences and orderings), [topic modeling](/docs/machine-learning/topic-modeling) and [association rules](/docs/machine-learning/association-rules). Each one changes the evaluation, not just the model, which is why they come last.
+
+## 3. A Checkpoint for Stage 2
+
+Here is the Stage 2 check, worked. Fit linear regression on the diabetes dataset (442 patients, 10 measurements) three ways: a library, the normal equation, and batch gradient descent written by hand. They should agree. If you can write the last two yourself and explain every line, Stage 2 has done its job.
+
+<PredictFirst
+  question="Gradient descent with learning rate 0.1 runs for 5,000 steps on standardized diabetes features. How close will its coefficients be to the exact least-squares solution?"
+  options={[
+    'Identical to many decimal places: 5,000 steps is plenty for a convex problem',
+    'Still noticeably off: the problem is ill-conditioned, so some directions converge very slowly',
+    'It diverges, because the learning rate is too high',
+    'It depends only on the number of features',
+  ]}
+  correctIndex={1}
+  explanation="Convex means it will get there, not that it will get there quickly. The diabetes features include highly correlated pairs, so the curvature in the flattest direction is about 440 times smaller than in the steepest. The learning rate is capped by the steepest direction, so progress along the flattest one is slow. The output below shows it still well off at 5,000 steps and exact at 200,000."
+/>
+
+```python
+import numpy as np
+from sklearn.datasets import load_diabetes
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
+
+X, y = load_diabetes(return_X_y=True)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=0)
+
+# 1. scikit-learn, as the reference
+sk = LinearRegression().fit(X_train, y_train)
+theta_sk = np.r_[sk.intercept_, sk.coef_]
+
+# 2. Normal equation (a column of ones for the intercept), solved rather than inverted
+A = np.column_stack([np.ones(len(X_train)), X_train])
+theta_ne = np.linalg.solve(A.T @ A, A.T @ y_train)
+print(f"normal equation vs scikit-learn: largest gap {np.abs(theta_ne - theta_sk).max():.1e}")
+
+# 3. Batch gradient descent on standardized features, mapped back to original units
+mu, sd = X_train.mean(0), X_train.std(0)
+Z = (X_train - mu) / sd
+eig = np.linalg.eigvalsh(Z.T @ Z / len(Z))
+print(f"curvature: largest {eig.max():.2f}, smallest {eig.min():.4f}, ratio {eig.max() / eig.min():.0f}; "
+      f"learning rate must stay below {2 / eig.max():.2f}")
+w, b = np.zeros(Z.shape[1]), 0.0
+for step in range(1, 200001):
+    err = Z @ w + b - y_train
+    w -= 0.1 * Z.T @ err / len(y_train)
+    b -= 0.1 * err.mean()
+    if step in (5000, 200000):
+        theta_gd = np.r_[b - (w / sd) @ mu, w / sd]
+        print(f"gradient descent, {step:>6} steps vs scikit-learn: largest gap {np.abs(theta_gd - theta_sk).max():.1e}")
+
+rmse = np.sqrt(np.mean((sk.predict(X_test) - y_test) ** 2))
+baseline = np.sqrt(np.mean((y_train.mean() - y_test) ** 2))
+print(f"test RMSE {rmse:.1f}, against {baseline:.1f} for always predicting the training mean")
+```
+
+Output (scikit-learn 1.7):
+
+```
+normal equation vs scikit-learn: largest gap 2.4e-11
+curvature: largest 4.14, smallest 0.0094, ratio 443; learning rate must stay below 0.48
+gradient descent,   5000 steps vs scikit-learn: largest gap 4.9e+00
+gradient descent, 200000 steps vs scikit-learn: largest gap 4.2e-11
+test RMSE 56.4, against 70.5 for always predicting the training mean
+```
+
+Every line of output is a Stage 2 idea:
+
+- The normal equation matches the library to $10^{-11}$, because both compute the same exact minimum. It uses `np.linalg.solve` rather than inverting $X^TX$, for the numerical reasons on the [Linear Regression page](/docs/machine-learning/linear-regression#5-the-closed-form-solution-normal-equation).
+- The curvature line explains the learning rate. Gradient descent on squared error is stable only when the learning rate is below $2/\mu_{\max}$, where $\mu_{\max}$ is the largest eigenvalue of $\tfrac1n Z^TZ$. Here that limit is 0.48; try 0.5 and the weights blow up.
+- The ratio of 443 between the steepest and flattest directions is why 5,000 steps aren't enough (coefficients still off by about 5, on coefficients in the hundreds) and 200,000 are. That ratio comes from correlated features, the problem [Ridge](/docs/machine-learning/ridge-regression) addresses.
+- The last line is the honest score: an error of 56 on held-out patients, against 70 for a model that ignores the features. Without that baseline, 56 means nothing.
+
+## 4. Choosing an Algorithm for a New Problem
+
+After the stages, the question in practice is which algorithm to try. There's no universally best one (see the [no-free-lunch discussion](/docs/machine-learning/overview)), but a few properties of the problem narrow it quickly:
+
+| What you know about the problem | Start with | Why |
+|---|---|---|
+| Tabular data, prediction accuracy matters most | Gradient boosting (LightGBM, XGBoost, CatBoost) | Handles nonlinearity, interactions, missing values and mixed feature types with little preprocessing |
+| You must explain each prediction or report effects | Logistic or linear regression, possibly with L1 | Each weight has a direct reading; odds ratios for classification |
+| Very few examples (tens to hundreds) | Regularized linear models, naive Bayes | Small hypothesis classes keep estimation error down |
+| Huge data, or data arriving continuously | SGD-trained linear models | One pass, constant memory, online updates |
+| High-dimensional sparse features (text as word counts) | Linear models (logistic regression, linear SVM), naive Bayes | Linear boundaries work well in very high dimensions |
+| Images, audio, raw text | Deep learning, or a pretrained model's embeddings plus a linear model | Classical models can't learn features from raw signals |
+| No labels, want groups | k-means for round, similar-sized clusters; HDBSCAN for arbitrary shapes and noise | Different assumptions about cluster shape |
+| No labels, want a 2-D picture | PCA first; UMAP or t-SNE for visual structure | PCA preserves global variance; UMAP and t-SNE preserve neighbourhoods |
+| Rare events to flag, few labelled examples | Isolation forest or other anomaly detectors | Model "normal" instead of the rare class |
+
+Whatever you choose, the procedure is the same: a trivial baseline first (the majority class, the mean), then the simplest reasonable model, then more complex ones, each scored by the same cross-validation. Keep the simplest model that's statistically as good as the best. The selector below walks the same reasoning as a short series of questions, with links to the relevant pages:
 
 <AlgorithmSelector />
 
-## 1. [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals)
-- [x] Supervised vs unsupervised vs semi-supervised vs self-supervised learning
-- [x] Train / validation / test splits, cross-validation
-- [x] Data leakage — what it is and how it silently ruins models
-- [x] Feature engineering & feature selection
-- [x] Handling missing data, outliers, imbalanced classes
-- [x] Sampling strategies (stratified, bootstrap, SMOTE)
+## 5. Common Problems and Their Standard Fixes
 
-## 2. [Supervised Learning](/docs/machine-learning/supervised-learning)
-- [x] Linear & logistic regression (and their assumptions)
-- [x] Decision trees, Random Forests, Gradient Boosting (XGBoost, LightGBM)
-- [x] Support Vector Machines
-- [x] k-Nearest Neighbors
-- [x] Naive Bayes
-- [x] Ensemble methods: bagging vs boosting vs stacking
-- [x] [Survival analysis](/docs/machine-learning/survival-analysis): Kaplan-Meier, Cox Proportional Hazards, censoring
-- [x] [Recommender systems](/docs/machine-learning/recommender-systems): matrix factorization, two-tower embeddings, retrieval->rank->re-rank
-- [x] [Learning-to-rank](/docs/machine-learning/learning-to-rank): pointwise/pairwise/listwise, NDCG/MRR
+Some problems come up on almost every project, whatever the algorithm. Each has a standard first response, covered in depth on the linked page:
 
-## 3. [Unsupervised Learning](/docs/machine-learning/unsupervised-learning)
-- [x] k-Means, hierarchical clustering, DBSCAN
-- [x] Dimensionality reduction: PCA, t-SNE, UMAP
-- [x] Anomaly detection
+| Problem | How it shows up | Standard fixes |
+|---|---|---|
+| Class imbalance | High accuracy, useless recall on the rare class | Better metrics (PR-AUC, recall at a fixed precision), class weights, a tuned threshold; resampling only inside training folds ([workflow](/docs/machine-learning/ml-workflow-fundamentals#handling-messy-data)) |
+| Overfitting on small data | Training score far above validation score | Regularization, simpler models, cross-validated tuning, more data ([bias-variance](/docs/machine-learning/model-evaluation-metrics#bias-variance-tradeoff)) |
+| Data leakage | A validation score that is too good to be true | Fitted steps inside pipelines; group or time splits; drop features known only after the event ([leakage](/docs/machine-learning/ml-workflow-fundamentals#data-leakage)) |
+| Many features, few examples | Unstable weights, distances that stop meaning anything | Feature selection, L1, PCA ([curse of dimensionality](/docs/machine-learning/k-nearest-neighbors#the-curse-of-dimensionality)) |
+| Uncalibrated probabilities | "90% confident" predictions that are right 70% of the time | Calibration curves, Platt or isotonic recalibration ([evaluation](/docs/machine-learning/model-evaluation-metrics#classification-metrics)) |
+| Concept drift after deployment | Live performance decays over weeks | Monitoring, scheduled retraining, online learning ([SGD](/docs/machine-learning/sgd-classifier-regressor)) |
+| Slow training on large tabular data | Hours per experiment | Histogram-based boosting (LightGBM, `HistGradientBoosting`), subsampling for exploration |
+| Stakeholders need explanations | "Why did it reject this application?" | Interpretable models first; SHAP or permutation importance for complex ones ([interpretability](/docs/interpretability/classical-interpretability)) |
 
-## 4. [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics)
-- [x] Bias-variance tradeoff, underfitting vs overfitting
-- [x] Regularization: L1, L2, dropout, early stopping
-- [x] Classification metrics: precision, recall, F1, ROC-AUC, PR-AUC
-- [x] Regression metrics: MSE, MAE, R²
-- [x] Calibration, threshold optimization (cost-based, not just default 0.5)
-- [x] Statistical significance of model improvements
+<GoDeeper title="Go deeper: what to practise, not just read">
 
-## 4.5. [Hyperparameter Optimization](/docs/machine-learning/hyperparameter-optimization)
-- [x] Grid vs. random search -- the real distinct-values-tried argument, not just intuition
-- [x] Bayesian optimization: Gaussian Process surrogate, the real Expected Improvement formula
-- [x] Successive halving and Hyperband
+Reading the derivations is necessary but not sufficient; the stages stick when you implement the core pieces yourself against tests. A short list that covers Stages 1 and 2, in order:
 
-## 4.6. [Uncertainty Estimation & Conformal Prediction](/docs/machine-learning/uncertainty-estimation-and-conformal-prediction)
-- [x] Prediction intervals (quantile regression) and ensemble-based uncertainty
-- [x] Conformal prediction: the real score-function/calibration-quantile recipe and the real coverage theorem
-- [x] Why conformal prediction's guarantee holds regardless of model quality -- and what that does and doesn't buy you
+1. [Standardize a dataset](/practice/standardize-dataset), the step every distance- and gradient-based model needs.
+2. [Mean squared error](/practice/mean-squared-error), then [one gradient descent step](/practice/gradient-descent-step) and a [numerical gradient check](/practice/numerical-gradient), which is how you verify any gradient you derive by hand.
+3. [The sigmoid](/practice/sigmoid-activation), its [derivative](/practice/sigmoid-derivative), and a [numerically stable softmax](/practice/softmax): the pieces of logistic and softmax regression.
+4. [Categorical cross-entropy](/practice/categorical-cross-entropy-loss), the loss for every classifier from Stage 2 onward.
+5. For Stage 5: the [k-means assignment step](/practice/kmeans-assignment-step) and [update step](/practice/kmeans-update-step).
 
-## 5. Common Problems & Their State-of-the-Art Solutions
-- [x] **Class imbalance** → resampling, class weighting, focal loss
-- [x] **Overfitting on small data** → regularization, data augmentation, transfer learning
-- [x] **Concept drift in production** → monitoring, periodic retraining, online learning
-- [x] **Curse of dimensionality** → feature selection, PCA, regularization
-- [x] **Slow training on huge tabular data** → gradient boosting libraries (XGBoost/LightGBM), distributed training
-- [x] **Explainability** → SHAP, LIME, feature importance
+Then take one public tabular dataset you care about and run the whole workflow on it: a baseline, a regularized linear model, a gradient-boosted model, honest cross-validation, and a test score reported once. That single end-to-end project teaches more about leakage and evaluation than any number of tutorials.
+
+</GoDeeper>
+
+## 6. When *Not* to Follow This Order
+
+The stages are a default for someone learning the field. Some situations call for a different route:
+
+| Situation | Better route |
+|---|---|
+| You have a specific tabular problem to solve this week | Stage 1, then [XGBoost, LightGBM & CatBoost](/docs/machine-learning/xgboost-lightgbm-catboost) and [Model Evaluation](/docs/machine-learning/model-evaluation-metrics); return to the derivations later |
+| Your goal is deep learning or LLMs | Stages 1 and 2 (they're the foundation of training any network), then [Deep Learning](/docs/deep-learning/overview); come back for trees when you meet tabular data |
+| Your data is time-ordered | Read [time series forecasting](/docs/machine-learning/time-series-forecasting) right after Stage 1; its evaluation rules override the default splits |
+| You're preparing for interviews | Stage 2's derivations and Stage 3's ensembles are asked most; pair them with the practice problems above |
+| You already know the algorithms but your models disappoint in production | Re-read Stage 1 and [Model Evaluation](/docs/machine-learning/model-evaluation-metrics) before anything else; the cause is usually there |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Order | Workflow, linear models, trees and ensembles, the rest of supervised, unsupervised, special structures |
+| Why workflow first | Every later result is a held-out score; leakage makes all of them optimistic |
+| Why linear models next | Cost, gradient, regularization and bias-variance all appear there in their simplest form |
+| Readiness | Judge by what you can do (derive, implement, choose), not by pages read |
+| Stage 2 check | Normal equation, gradient descent and a library agree on linear regression |
+| Learning rate | Stable below $2/\mu_{\max}$; slow when the curvature ratio is large |
+| Choosing | Gradient boosting for tabular accuracy, linear models for explanation and tiny data, deep learning for raw signals |
+| Procedure | Baseline, simple model, complex models, one cross-validation for all, keep the simplest that ties |
+
+---
+
+Next: [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals), Stage 1.
+
+## Sources
+
+- T. Hastie, R. Tibshirani and J. Friedman, [The Elements of Statistical Learning](https://hastie.su.domains/ElemStatLearn/), 2nd ed., Springer, 2009
+- G. James, D. Witten, T. Hastie, R. Tibshirani and J. Taylor, [An Introduction to Statistical Learning, with Applications in Python](https://www.statlearning.com/), Springer, 2023
+- P. Domingos, [A Few Useful Things to Know About Machine Learning](https://doi.org/10.1145/2347736.2347755), *Communications of the ACM*, 2012
+- L. Grinsztajn, E. Oyallon and G. Varoquaux, [Why Do Tree-Based Models Still Outperform Deep Learning on Typical Tabular Data?](https://arxiv.org/abs/2207.08815), NeurIPS 2022 Datasets and Benchmarks
+- B. Efron, T. Hastie, I. Johnstone and R. Tibshirani, [Least Angle Regression](https://doi.org/10.1214/009053604000000067), *Annals of Statistics*, 2004 (the diabetes dataset)
+- scikit-learn, [Choosing the right estimator](https://scikit-learn.org/stable/machine_learning_map.html)
