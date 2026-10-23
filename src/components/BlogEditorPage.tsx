@@ -176,7 +176,7 @@ export default function BlogEditorPage() {
             <input id="post-tags" style={field} value={tags} onChange={(e) => setTags(e.target.value)} />
 
             <label style={{ ...label, marginTop: '0.9rem' }} htmlFor="post-body">
-              Text, in Markdown: ## headings, **bold**, [links](https://…), lists, tables, ```code```, and $maths$
+              Text, in Markdown: ## headings, **bold**, [links](https://…), lists, tables, ```code```, and $$maths$$ (a single $ is just a dollar sign)
             </label>
             <textarea id="post-body" style={{ ...field, minHeight: 460, fontFamily: 'var(--font-mono, monospace)', fontSize: 14, lineHeight: 1.6 }} value={body} onChange={(e) => setBody(e.target.value)} />
 

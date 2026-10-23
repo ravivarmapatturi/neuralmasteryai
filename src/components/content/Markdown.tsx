@@ -10,7 +10,14 @@ import { toJsxRuntime } from 'hast-util-to-jsx-runtime';
 import type { Root } from 'hast';
 import { mdxComponents } from './mdxComponents';
 
-const processor = unified().use(remarkParse).use(remarkGfm).use(remarkMath).use(remarkRehype).use(rehypeKatex);
+// singleDollarTextMath off: in a blog post "$5" means money, so maths needs
+// $$...$$ (inline or on its own line). MDX pages keep single-dollar maths.
+const processor = unified()
+  .use(remarkParse)
+  .use(remarkGfm)
+  .use(remarkMath, { singleDollarTextMath: false })
+  .use(remarkRehype)
+  .use(rehypeKatex);
 
 /**
  * Renders markdown written in the blog editor with the same plugins

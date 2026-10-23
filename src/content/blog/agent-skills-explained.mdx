@@ -1,0 +1,126 @@
+---
+title: "Agent Skills, Explained: What They Are and How They Differ From MCP"
+description: "Agent Skills became a vendor-neutral standard on 22 October 2026. Here is what a skill is, how agents load them without filling their context, and where they fit next to MCP."
+date: 2026-10-23
+tags: [agents, agent skills, MCP, context engineering]
+---
+
+# Agent Skills, Explained: What They Are and How They Differ From MCP
+
+On 22 October 2026, Anthropic [donated Agent Skills](https://www.anthropic.com/news/donating-agent-skills-to-the-agentic-ai-foundation) to the Agentic AI Foundation, the Linux Foundation group that already looks after MCP. The standard was published in December 2025. Since then more than 70 agent platforms have adopted it, including ChatGPT, Cursor, GitHub Copilot and VS Code, and Anthropic counts about a million published skills and nearly 280 million installs.
+
+If you've used agents, you've probably seen skills mentioned next to MCP and wondered how the two differ. This post explains what a skill is, the loading trick that makes skills cheap, and where they fit.
+
+## 1. The problem skills solve
+
+A capable model still doesn't know *your* way of doing things: your release checklist, your report format, the five steps your team follows before touching the billing database. There have been three ways to teach it:
+
+- **Put it in the system prompt.** It works, but every instruction is sent on every call, whether it's needed or not, and fifty sets of instructions crowd out everything else.
+- **Fine-tune the model.** Slow and expensive, and you need a new training run every time the procedure changes.
+- **Retrieve documents (RAG).** Good for facts, weaker for procedures, and the retriever might not fetch the step-by-step guide at the moment it's needed.
+
+A skill is a fourth option: a packaged procedure the agent can pull in only when the task calls for it.
+
+## 2. What a skill is
+
+A skill is a folder with one required file, `SKILL.md`:
+
+```
+release-notes/
+├── SKILL.md        # required: name, description, instructions
+├── scripts/        # optional: code the agent can run
+├── references/     # optional: longer docs, read on demand
+└── assets/         # optional: templates, schemas, examples
+```
+
+`SKILL.md` starts with a short header (YAML frontmatter), followed by plain Markdown instructions:
+
+```markdown
+---
+name: release-notes
+description: Writes release notes from the git log since the last tag, grouped into
+  features, fixes and breaking changes. Use when the user asks for release notes,
+  a changelog, or a summary of what changed in a release.
+---
+
+# Writing release notes
+
+1. Run `scripts/commits_since_tag.sh` to list commits since the last tag.
+2. Group them: features, fixes, breaking changes. Drop merge commits and chores.
+3. Write one line per change, starting with a verb.
+4. Put breaking changes first, each with a one-line migration note.
+5. Use the layout in `assets/template.md`.
+```
+
+The [specification](https://agentskills.io/specification) keeps the header small. Two fields are required:
+
+- `name`: up to 64 characters, lowercase letters, numbers and single hyphens, matching the folder name.
+- `description`: up to 1,024 characters, saying what the skill does *and when to use it*.
+
+Optional fields cover the licence, environment requirements, free-form metadata and an experimental list of pre-approved tools.
+
+## 3. Progressive disclosure: why skills are cheap
+
+The design idea worth remembering is that an agent loads a skill in three stages:
+
+1. **At startup**, only each skill's `name` and `description`, about 100 tokens per skill.
+2. **When a task matches**, the full `SKILL.md` body. The spec recommends keeping it under 5,000 tokens and 500 lines.
+3. **Only if needed**, the files in `scripts/`, `references/` and `assets/`.
+
+Compare that with the system-prompt approach. With 50 skills, the agent carries about 50 × 100 = 5,000 tokens of descriptions. Putting all 50 sets of instructions in the system prompt instead could mean up to 50 × 5,000 = 250,000 tokens on every call, more than many models can hold at all. And because an agent re-sends its context on every turn, tokens that are always loaded are paid for again and again. We looked at how much that adds up in [the previous post on agent memory and cost](/blog/do-agents-need-a-memory-system).
+
+This is the same principle as good [context engineering](/docs/agents/context-engineering): give the model what this step needs, not everything it might ever need.
+
+## 4. How the agent picks a skill
+
+There's no separate router. The model reads the descriptions it was given at startup and decides, as part of its normal reasoning, whether a skill fits the task. That's why the spec insists the description says *when* to use the skill. Compare:
+
+- **Weak:** "Helps with PDFs."
+- **Strong:** "Extracts text and tables from PDF files, fills PDF forms, and merges multiple PDFs. Use when working with PDF documents or when the user mentions PDFs, forms, or document extraction."
+
+If the description doesn't match how users phrase requests, the skill simply never activates, which is the most common reason a skill seems not to work.
+
+## 5. Skills and MCP: different layers
+
+They're often mentioned together because both came from Anthropic and both now sit in the same foundation. But they solve different problems:
+
+| | MCP | Agent Skills |
+|---|---|---|
+| What it provides | A connection to an external system | Know-how for a task |
+| What it contains | A server exposing tools, resources and prompts over a protocol | A folder: instructions, plus optional scripts and files |
+| Example | "Here is a `query_database` tool" | "Before changing billing tables, check the backup, run the migration on staging, then..." |
+| Runs where | In a separate server process, local or remote | Inside the agent: it reads the instructions and runs the scripts itself |
+| Cost in context | Tool definitions, usually always loaded | About 100 tokens per skill until one is used |
+
+In short, MCP is how an agent reaches other systems, and a skill is how it knows the steps of a task. The two combine naturally. A skill's instructions can tell the agent which MCP tools to use, in which order, and what to check in between. See the [MCP overview](/docs/agents/mcp/overview) for how the protocol side works.
+
+## 6. Where skills stop working
+
+- **A skill is code you install.** Scripts in a skill run with your agent's permissions. A careless or malicious skill can mislead the agent or run harmful commands, the same supply-chain risk as installing any package. Anthropic's proposed roadmap for the standard includes security guidance for skill authors and installers, but for now, read a skill before you install it, as you would a script from the internet.
+- **Most skills are untested.** With a million published, quality varies a lot. The honest way to know whether a skill helps is to run your task with and without it and compare the results: an eval. Our [AI evaluation](/docs/ai-evaluation/evaluation-fundamentals) pages cover how.
+- **Activation is a judgement call.** The model decides from the description, so two overlapping skills can confuse it, and a vague description can leave a good skill unused.
+
+## 7. Writing your first skill
+
+1. Pick one task you explain to the agent repeatedly.
+2. Write the `description` first: what it does, and the words a user would actually say when they need it.
+3. Write the steps as you'd explain them to a new colleague, with an example of good output.
+4. Move anything long (reference tables, full templates) into `references/` or `assets/`, and keep `SKILL.md` short.
+5. Validate the format with the spec's `skills-ref validate ./your-skill` tool, then test it: run the task a few times with and without the skill.
+
+## Summary
+
+| Question | Short answer |
+|---|---|
+| What is a skill? | A folder with a `SKILL.md` (name, description, instructions) plus optional scripts and files |
+| Why not just a system prompt? | Skills load in stages, so 50 skills cost about 5,000 tokens until one is needed |
+| How is it chosen? | The model matches the task against each skill's description |
+| Skills or MCP? | Both: MCP connects to systems, skills teach procedures |
+| Main risk | Skills include code. Read them before installing, and test them with evals |
+
+## Further reading
+
+- On this site: [MCP overview](/docs/agents/mcp/overview), [context engineering](/docs/agents/context-engineering), [evaluation fundamentals](/docs/ai-evaluation/evaluation-fundamentals)
+- [Agent Skills specification](https://agentskills.io/specification)
+- Anthropic, [Donating Agent Skills to the Agentic AI Foundation](https://www.anthropic.com/news/donating-agent-skills-to-the-agentic-ai-foundation) (22 October 2026)
+- Simon Willison, [notes on the donation](https://simonwillison.net/2026/Oct/22/donating-agent-skills/)

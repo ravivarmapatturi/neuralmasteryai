@@ -15,6 +15,7 @@ For every stage this:
 import copy
 import json
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -117,6 +118,13 @@ def build_stage(stage, prev_id):
     }
 
 
+def escape_money(text):
+    """remark-math reads text between two $ signs as maths, so "$5 ... $50" in
+    prose would render as a formula. Escape a $ before a digit, outside code."""
+    parts = re.split(r"(```.*?```|`[^`\n]*`)", text, flags=re.S)
+    return "".join(p if p.startswith("`") else re.sub(r"(?<![\\$])\$(?=\d)", r"\\$", p) for p in parts)
+
+
 def mdx_for(stage):
     desc = stage["mission"].split(". ")[0].rstrip(".") + "."
     solution = stage["solution"].strip()
@@ -130,7 +138,7 @@ sidebar_position: {2100 + stage['n']}
 
 import {{ Solution }} from '../../../components/content/ExpandableDepth';
 
-{stage['intuition'].strip()}
+{escape_money(stage['intuition'].strip())}
 
 ## Reference solution
 

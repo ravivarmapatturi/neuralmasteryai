@@ -29,4 +29,10 @@ describe('Markdown (editor-written blog posts)', () => {
     expect(container.querySelector('img')).toBeNull()
     expect(container.textContent).toContain('Hello')
   })
+
+  it('treats a single $ as money and $$...$$ as maths', () => {
+    const { container } = renderMd('It cost $5 then $10. Energy is $$E = mc^2$$.')
+    expect(container.textContent).toContain('$5 then $10')
+    expect(container.querySelectorAll('.katex').length).toBe(1)
+  })
 })

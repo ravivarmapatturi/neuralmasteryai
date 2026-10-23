@@ -1,0 +1,116 @@
+---
+title: "Do AI Agents Need a Memory System? What Two New Papers Found"
+description: "MemoryTax found that a strong model searching its raw history beat memory frameworks, and TurnCost found that an agent's bill grows with its turns, not with the size of tool output."
+date: 2026-10-23
+tags: [agents, agent memory, LLM cost, prompt caching]
+---
+
+# Do AI Agents Need a Memory System? What Two New Papers Found
+
+Two papers this week caught the attention of people who build agents. [MemoryTax](https://arxiv.org/abs/2610.29823) (21 October 2026) tested agent memory on a 419-turn conversation. With Claude Opus 5.5, an agent that simply *searched the raw conversation* scored 99%, while the best memory framework scored 95% and cost more to set up. [TurnCost](https://arxiv.org/abs/2610.15093) looked at 600 coding-agent sessions and found that the number of turns explains most of a session's cost, while the size of tool outputs explains almost none of it.
+
+Both results push against common habits: adding a memory framework by default, and compressing tool output to save money. This post explains how agents remember, what each paper measured, and what to change in practice.
+
+## 1. Why agents forget
+
+A language model has no memory between calls. Everything it knows about the conversation so far has to be in the prompt you send it, the *context window*. An agent works in a loop of think, call a tool, read the result, think again, and each pass through the loop is a new call with the history attached.
+
+That leaves two problems:
+
+- **Long histories don't fit, or fit badly.** Even when they fit, models recall facts from the middle of a long context less reliably than facts at the start or end.
+- **Re-sending history costs money on every turn.** Section 4 shows how much.
+
+## 2. Four ways to remember
+
+| Approach | How it works | Cost to set up |
+|---|---|---|
+| **Full context** | Send the whole history every time | None |
+| **Retrieval over history** | Index past turns (for example with BM25, the keyword ranking used in [RAG](/docs/llms-genai/rag)), fetch the relevant ones per question | Cheap: build an index |
+| **Memory frameworks** | An LLM reads the history and writes structured memories: facts (Mem0) or a knowledge graph over time (Zep) | Expensive: an LLM call for each chunk of history |
+| **Agentic search** | Give the agent tools such as file search and file reading over the raw transcript, and let it look things up itself | None up front. It pays per question, in tool calls |
+
+Memory frameworks became popular because early models were bad at finding things in long, messy histories. The question MemoryTax asks is whether that's still true.
+
+## 3. What MemoryTax found
+
+The study used one long conversation from the LoCoMo benchmark: 419 turns over 19 sessions, with 152 questions about it. It compared the four approaches above across three models. The agentic-search runs used three coding agents (Pi, Codex and Claude Code) pointed at the raw transcript.
+
+A selection of the accuracy results:
+
+| Method | GPT-4o-mini | Claude Opus 5.5 |
+|---|---|---|
+| Full context | 74% | 95% |
+| Mem0 (memory framework) | 78% | 95% |
+| Zep (memory framework) | 43% | 87% |
+| Pi (agentic search) | 63% | 99% |
+
+Three findings stand out.
+
+**Memory helps weak models and taxes strong ones.** With the small GPT-4o-mini, Mem0 beat full context, because the model struggled to find answers in a long history on its own. With Opus 5.5, searching the raw history won outright: 99% for about \$6.95 per run of all the questions, against \$17.84 for full context. Building Mem0's memory alone cost \$25.88 with Opus 5.5. The paper calls this the **memory tax**: paying to build memory a strong model doesn't need. At LoCoMo's 152 questions, Mem0's build cost never pays for itself. It would take 372 to 596 questions on the same history, depending on the model.
+
+**A memory is only as good as whoever wrote it.** Because retrieval doesn't call a model, the authors could swap the model that *reads* a memory store independently of the one that *wrote* it. On the Zep graph written by GPT-4o-mini, all three readers scored 43–45%. On the graph written by Opus 5.5, they scored 66–87%. A stronger reader can't recover what a weaker writer left out. Choosing a memory framework is really choosing which model's judgement gets frozen into your data.
+
+**Raw history keeps everything.** Agentic search never summarises, so nothing is lost. The cost is that the agent has to be good at searching, which strong models now are.
+
+Where it stops working: this is one conversation with one run per setting, so small differences may not hold up. The history fits in every model's context window, so the result may differ when it doesn't. And the judge was a lenient GPT-4o-mini rubric. Treat it as a strong hint, not a law.
+
+## 4. Why turns cost more than tokens
+
+TurnCost studied 600 sessions of coding agents (OpenHands and SWE-agent, on two open-weight models) fixing real software issues. The key is how providers bill a growing conversation.
+
+On every turn, the agent re-sends the entire conversation so far. With **prefix caching**, the part the provider has already seen is billed at a discount, often about 10% of the normal input price. Only the newest bit, usually the latest tool output, is billed in full. In TurnCost's corpus, 98.6% of all input tokens were served from the cache.
+
+That changes where the money goes. Each turn re-sends the whole cached history, so the cheap cached tokens add up turn after turn, and the number of turns dominates. In the paper's analysis, turn count alone explained 84% of the variation in session cost, and the average size of tool outputs explained 4%. Median tool outputs were only 118–286 tokens, which is why compressing them barely helps.
+
+Here is a small model you can run, using the same billing rule:
+
+```python
+def session_cost(turns, system=6000, output=300, observation=200,
+                 price_in=1.0, price_cached=0.1, price_out=5.0, cache=True):
+    """Dollars per session, with prices in dollars per million tokens.
+    Each turn re-sends the whole conversation so far. With prefix caching,
+    everything except the newest tool observation is a cache hit."""
+    total, context = 0.0, system
+    for turn in range(turns):
+        new = context if (turn == 0 or not cache) else observation
+        cached = context - new
+        total += (price_cached * cached + price_in * new + price_out * output) / 1e6
+        context += output + observation
+    return total
+
+print(session_cost(40))                   # 0.135
+print(session_cost(40, cache=False))      # 0.690
+print(session_cost(40, observation=100))  # 0.124: halving tool output saves 8%
+print(session_cost(30))                   # 0.095: ten fewer turns saves 30%
+```
+
+Two lessons fall out of it:
+
+- **Without caching, the same session costs about five times as much.** TurnCost found that pricing a session as if nothing were cached overstates real costs by about 7×. If you estimate agent costs from list input prices, your estimate is probably wrong by that much.
+- **Cutting turns beats shrinking outputs.** In this example, ten fewer turns saves almost four times as much as halving every tool output.
+
+The paper also tested handing tool output to a cheaper model to summarise. That increased total cost in half of the settings tested, and simply truncating long outputs did as well or better in all 20 comparisons. The authors are careful to say this is about cost only: they didn't measure whether fewer turns or truncated outputs change task success.
+
+## 5. What to do with this
+
+- **Try search before memory.** With a strong model, give the agent search tools over the raw history first, and add a memory framework only if you measure a gain.
+- **Count the memory build in the cost.** Compare cost per question including the setup, not just per-query cost.
+- **Pick the writer carefully.** If you do use structured memory, the model that writes it sets the ceiling. A cheap writer saves money once and costs accuracy forever.
+- **Reduce turns.** Batch tool calls, return the information the next step needs in one result, and let the agent call tools in parallel.
+- **Keep the prompt prefix stable.** Caching only works if the start of the prompt is byte-for-byte identical between calls. A timestamp at the top of the system prompt breaks it for everything after.
+- **Price with the cache.** Estimate costs from cached and uncached token counts, not from list prices.
+
+## The two papers in one table
+
+| | MemoryTax | TurnCost |
+|---|---|---|
+| Question | Do agents need a memory system? | What drives an agent's cost? |
+| Data | One 419-turn conversation, 152 questions, three models | 600 coding-agent sessions, two scaffolds, two models |
+| Main finding | Strong models do best searching raw history, and memory caps accuracy at the writer's level | Turn count explains 84% of cost variation, tool-output size 4% |
+| Caveat | One conversation, one run per setting | Cost only, not task success |
+
+## Further reading
+
+- On this site: [agent memory](/docs/agents/agent-fundamentals), [context engineering](/docs/agents/context-engineering), [caching strategies](/docs/mlops/caching-strategies), [AI cost engineering](/docs/mlops/ai-cost-engineering), and the practice stage on [stale RAG caches](/practice/stale-rag-cache)
+- Peng, [MemoryTax: The Bitter Lesson of Agent Memory](https://arxiv.org/abs/2610.29823) (2026)
+- Kumar and Pandey, [TurnCost: Turns, Not Observations](https://arxiv.org/abs/2610.15093) (2026)

@@ -2,6 +2,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import Navbar from './layout/Navbar';
 import NotFoundPage from './NotFoundPage';
+import { TagList } from './BlogTags';
 import { formatPostDate, getBlogComponent, getBlogPost } from '../lib/blog';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useDocumentMeta } from '../lib/useDocumentMeta';
@@ -60,6 +61,11 @@ export default function BlogPostPage() {
           {stored && stored.status !== 'published' && <> · Draft</>}
           {stored && isAdmin && <> · <Link to={`/blog/write/${stored.slug}`} style={{ color: 'var(--nm-accent-primary)' }}>Edit</Link></>}
         </p>
+        {(filePost?.tags ?? stored?.tags ?? []).length > 0 && (
+          <div style={{ margin: '0 0 1rem' }}>
+            <TagList tags={filePost?.tags ?? stored?.tags ?? []} />
+          </div>
+        )}
         <article className="prose">
           {Component ? (
             <Suspense fallback={<div style={{ padding: '3rem 0', textAlign: 'center', color: 'var(--nm-text-muted)', fontSize: 14 }}>Loading…</div>}>
