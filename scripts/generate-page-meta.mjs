@@ -84,6 +84,8 @@ const posts = existsSync(BLOG_ROOT)
           date,
           tags: Array.isArray(data.tags) ? data.tags : [],
           readingMinutes: Math.max(1, Math.round(words / 230)),
+          series: typeof data.series === 'string' ? data.series : null,
+          part: typeof data.part === 'number' ? data.part : null,
         };
       })
       .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.slug.localeCompare(b.slug)))

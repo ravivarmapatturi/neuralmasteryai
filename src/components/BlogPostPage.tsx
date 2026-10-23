@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import Navbar from './layout/Navbar';
 import NotFoundPage from './NotFoundPage';
 import { TagList } from './BlogTags';
+import BlogSeriesBox from './BlogSeriesBox';
 import { formatPostDate, getBlogComponent, getBlogPost } from '../lib/blog';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useDocumentMeta } from '../lib/useDocumentMeta';
@@ -66,6 +67,7 @@ export default function BlogPostPage() {
             <TagList tags={filePost?.tags ?? stored?.tags ?? []} />
           </div>
         )}
+        {filePost?.series && filePost.part != null && <BlogSeriesBox series={filePost.series} part={filePost.part} />}
         <article className="prose">
           {Component ? (
             <Suspense fallback={<div style={{ padding: '3rem 0', textAlign: 'center', color: 'var(--nm-text-muted)', fontSize: 14 }}>Loading…</div>}>

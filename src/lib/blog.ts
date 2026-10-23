@@ -10,6 +10,9 @@ export interface BlogPost {
   date: string;
   tags: string[];
   readingMinutes: number;
+  /** A series slug from src/data/blogSeries.ts, with this post's part number. */
+  series: string | null;
+  part: number | null;
 }
 
 const POSTS = blogMeta as BlogPost[];
@@ -37,4 +40,9 @@ export function getBlogComponent(slug: string): ComponentType | undefined {
 /** "22 October 2026" */
 export function formatPostDate(date: string): string {
   return new Date(`${date}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
+/** Published parts of a series, by part number. */
+export function getSeriesPosts(series: string): BlogPost[] {
+  return POSTS.filter((post) => post.series === series && post.part != null).sort((a, b) => (a.part ?? 0) - (b.part ?? 0));
 }
