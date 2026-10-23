@@ -1,72 +1,300 @@
 ---
 title: "Elastic Net, In Full Depth"
 sidebar_position: 4.8
-description: "Elastic Net derived: combining Ridge's graceful handling of correlated features with Lasso's automatic feature selection in one penalty."
+description: "Elastic net derived: why lasso picks arbitrarily among correlated features, how adding an L2 term fixes it (with a proof for duplicate features), the coordinate-descent update step by step, the augmented-data view, choosing the two hyperparameters, and a from-scratch implementation checked against scikit-learn."
 ---
 
-
 import ElasticNetStudio from '../../../viz/ElasticNetStudio';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Elastic Net, In Full Depth
 
-[Ridge](/docs/machine-learning/ridge-regression) handles correlated features gracefully but never drops any. [Lasso](/docs/machine-learning/lasso-regression) drops features automatically but picks unstably among correlated ones. Elastic Net combines both penalties to get most of the benefit of each.
+[Ridge Regression](/docs/machine-learning/ridge-regression) adds an L2 penalty and handles correlated features gracefully, but it never sets a weight to exactly zero. [Lasso Regression](/docs/machine-learning/lasso-regression) adds an L1 penalty and selects features automatically, but when features are correlated it picks among them almost at random. This page derives the model that adds both penalties: why lasso's choice is unstable, why a little L2 fixes it (with a short proof), the coordinate-descent update that solves it, how to choose its two hyperparameters, and when it's the wrong tool.
 
-## What Is Elastic Net?
+<ELI5>
 
-Same hypothesis as [Linear Regression](/docs/machine-learning/linear-regression), with *both* the L2 (Ridge) and L1 (Lasso) penalties added together:
+Imagine a manager splitting a bonus between team members, and two of them always work as a pair, doing exactly the same work. A manager following Lasso's rule wants to reward as few people as possible, so they give the whole bonus to one of the pair and nothing to the other, and which one wins depends on trivia like who spoke first in a meeting. Ask again next month and the other one might get it all.
 
-$$J_{\text{elastic}}(\mathbf{w}, b) = \frac{1}{n}\sum_{i=1}^n\left(\hat{y}^{(i)} - y^{(i)}\right)^2 + \lambda\left(\alpha\sum_{j=1}^d|w_j| + (1-\alpha)\sum_{j=1}^d w_j^2\right)$$
+A manager following Ridge's rule never gives anyone zero, even people who did nothing. Elastic net is a manager who still gives nothing to people who did nothing, but who splits the pair's bonus evenly because they did the same work. Everything below is that rule made exact: the penalty that produces it, why it works, and how to compute it.
 
-Two hyperparameters now: $\lambda$ controls overall regularization strength (same role as in Ridge/Lasso), and $\alpha \in [0, 1]$ controls the *mix* between the two penalty types. $\alpha = 1$ recovers pure Lasso; $\alpha = 0$ recovers pure Ridge; anything in between blends them.
+</ELI5>
 
-## Why Mix the Two Penalties?
+## 1. The Objective
 
-**The correlated-features problem, concretely**: suppose two features are near-duplicates of each other (highly correlated). Lasso's L1 penalty, left alone, tends to arbitrarily pick one and zero out the other — small changes in the data (a different train/test split, a different random seed) can flip which one survives, making the model's selected feature set unstable and hard to trust.
+Elastic net keeps the hypothesis of [Linear Regression](/docs/machine-learning/linear-regression), $\hat{y} = \mathbf{w}^T\mathbf{x} + b$, and adds both penalties to the squared-error cost. Written the way scikit-learn and glmnet write it:
 
-The L2 term fixes this specifically: Ridge's penalty doesn't have Lasso's "pick one, zero the rest" behavior — it spreads weight across correlated features roughly evenly. Adding even a little L2 penalty (small but nonzero $(1-\alpha)$) alongside the L1 term stabilizes *which* features get selected, while the L1 term still does the actual work of zeroing out genuinely irrelevant features.
+$$
+J(\mathbf{w}) = \frac{1}{2n}\sum_{i=1}^{n}\left(y^{(i)} - \mathbf{w}^T\mathbf{x}^{(i)}\right)^2 \;+\; \lambda\left(\alpha\,\lVert\mathbf{w}\rVert_1 + \frac{1-\alpha}{2}\,\lVert\mathbf{w}\rVert_2^2\right)
+$$
 
-## Gradient
+where $\lVert\mathbf{w}\rVert_1 = \sum_j \lvert w_j\rvert$ and $\lVert\mathbf{w}\rVert_2^2 = \sum_j w_j^2$. The intercept $b$ is left out of the penalty (and out of the formula, by centering $y$ and each feature first).
 
-Simply the sum of the [Ridge](/docs/machine-learning/ridge-regression#deriving-the-gradient) and [Lasso](/docs/machine-learning/lasso-regression#the-subgradient-at-zero) gradient terms, weighted by $\alpha$:
+There are two hyperparameters:
 
-$$\frac{\partial J_{\text{elastic}}}{\partial w_j} = \underbrace{\frac{2}{n}\sum_i\left(\hat{y}^{(i)} - y^{(i)}\right)x_j^{(i)}}_{\text{OLS gradient}} + \lambda\alpha \cdot \text{sign}(w_j) + \lambda(1-\alpha)\cdot 2w_j$$
+- $\lambda \ge 0$ sets the overall strength of regularization, as in ridge and lasso.
+- $\alpha \in [0, 1]$ sets the **mix**. $\alpha = 1$ is pure lasso, $\alpha = 0$ is pure ridge, and anything in between is a blend.
 
-In practice, Elastic Net is solved with the same coordinate-descent + soft-thresholding approach as Lasso (see [Lasso — Coordinate Descent](/docs/machine-learning/lasso-regression#the-subgradient-at-zero)), just with a rescaled threshold that accounts for the added L2 term. Try it on the exact same synthetic correlated dataset as the Ridge and Lasso studios — drag α between the two extremes and watch the regularization path itself change shape, not just the numbers:
+The $\tfrac{1}{2n}$ in front of the error and the $\tfrac12$ on the L2 term are there to make the derivative clean in Section 4; they don't change which $\mathbf{w}$ is optimal, only the scale at which $\lambda$ is measured. One naming trap: scikit-learn calls the overall strength `alpha` and the mix `l1_ratio`, so its `alpha` is this page's $\lambda$ and its `l1_ratio` is this page's $\alpha$. Zou and Hastie, who introduced the method in 2005, used two separate strengths $\lambda_1$ for L1 and $\lambda_2$ for L2; that's the same model with $\lambda_1 = \lambda\alpha$ and $\lambda_2 = \lambda(1-\alpha)$.
+
+The objective is easy to write down. Why it's worth having two penalties instead of one takes a closer look at what lasso does wrong.
+
+## 2. What Lasso Does With Correlated Features
+
+Take the extreme case: two features that are exact copies, $\mathbf{x}_1 = \mathbf{x}_2$. The prediction depends only on the sum $w_1 + w_2$, since $w_1 x_1 + w_2 x_2 = (w_1 + w_2)x_1$. Say the data wants that sum to be 4. Look at what each penalty charges for different ways of splitting it:
+
+| Split $(w_1, w_2)$ | L1: $\lvert w_1\rvert + \lvert w_2\rvert$ | L2: $w_1^2 + w_2^2$ |
+|---|---|---|
+| $(4, 0)$ | 4 | 16 |
+| $(3, 1)$ | 4 | 10 |
+| $(2, 2)$ | 4 | **8** |
+| $(0, 4)$ | 4 | 16 |
+
+The L1 penalty is the same for every split with both weights positive. Lasso is indifferent: there are infinitely many optimal solutions, and which one a solver returns depends on details like the order it visits the features. With features that are highly correlated but not identical, the tie is broken by noise in the data, so a different train/test split or a few extra rows can move all the weight from one feature to the other. The selected set of features, often the reason for using lasso in the first place, isn't stable.
+
+Lasso has a second limitation that matters when there are more features than examples ($d > n$, common in genomics and text): it selects at most $n$ nonzero features before it saturates (Efron et al., 2004; Tibshirani, 2013 makes the condition precise). With 100 patients and 20,000 genes, lasso can never pick more than 100 genes, even if 300 matter.
+
+The L2 column shows the fix. Its unique minimum is the even split, $(2, 2)$. Adding even a small L2 term breaks lasso's tie in favour of sharing, which the next section proves in general.
+
+## 3. Why the L2 Term Groups Correlated Features
+
+**The duplicate case, proved.** Suppose $\mathbf{x}_1 = \mathbf{x}_2$, and suppose some optimal solution had $w_1 \ne w_2$ with both weights of the same sign. Replace both weights by their average $m = (w_1 + w_2)/2$. Then:
+
+- The **fit is unchanged**, since predictions depend only on $w_1 + w_2 = 2m$.
+- The **L1 term is unchanged**, since $\lvert w_1\rvert + \lvert w_2\rvert = \lvert w_1 + w_2\rvert = 2\lvert m\rvert$ when the signs agree.
+- The **L2 term strictly decreases**. Write $w_1 = m + \delta$ and $w_2 = m - \delta$ with $\delta \ne 0$:
+
+$$
+w_1^2 + w_2^2 = (m+\delta)^2 + (m-\delta)^2 = 2m^2 + 2\delta^2 \;>\; 2m^2 = m^2 + m^2
+$$
+
+So averaging lowers $J$, which contradicts the assumption that the unequal solution was optimal. With any $\alpha < 1$, the optimum gives exact duplicates exactly equal weights. (If the signs disagreed, averaging would lower the L1 term too, so that case can't be optimal either.)
+
+More generally, the L2 term makes $J$ **strictly convex**: the squared error is convex, the L1 term is convex, and $\tfrac{1-\alpha}{2}\lambda\lVert\mathbf{w}\rVert^2$ is strictly convex whenever $\lambda(1-\alpha) > 0$. A strictly convex function has exactly one minimizer. Lasso's ambiguity is gone, so the solution no longer depends on solver details or on tiny perturbations of the data.
+
+**Near-duplicates.** Zou and Hastie proved a quantitative version, called the **grouping effect**. With standardized features whose correlation is $\rho$, and both weights of the same sign, the solution satisfies (in their $\lambda_1, \lambda_2$ notation, with unscaled squared error)
+
+$$
+\frac{\lvert w_i - w_j\rvert}{\lVert\mathbf{y}\rVert_1} \;\le\; \frac{1}{\lambda_2}\sqrt{2(1-\rho)}
+$$
+
+As $\rho \to 1$, the right side goes to zero and the two weights are forced together. Lasso is the case $\lambda_2 = 0$, where the bound says nothing.
+
+The L1 term still does the selecting: a feature whose correlation with the residual is too weak to overcome $\lambda\alpha$ still gets a weight of exactly zero, as Section 4 shows. Elastic net selects *groups* of correlated features together, in or out, rather than one arbitrary representative. The cost of this, covered in Section 6, is a second hyperparameter and some extra shrinkage.
+
+<PredictFirst
+  question="Features x1 and x2 are exact copies. Lasso gives (w1, w2) = (4, 0). You switch to elastic net with a small L2 component, so the total weight the data wants stays near 4. What will elastic net give?"
+  options={[
+    '(4, 0), the same as lasso',
+    'About (2, 2): equal weights, slightly shrunk',
+    '(0, 0): the L2 term removes both',
+    '(4, 4): each copy gets the full weight',
+  ]}
+  correctIndex={1}
+  explanation="Any split with w1 + w2 = 4 has the same fit and the same L1 penalty, but the L2 penalty w1^2 + w2^2 is smallest at the even split. So elastic net puts equal weight on the two copies. The extra L2 shrinkage pulls the total a little below what lasso would give."
+/>
+
+## 4. Solving It: Coordinate Descent, Step by Step
+
+Elastic net has no closed-form solution (the L1 term has a corner at zero), but it has a very simple **coordinate descent** algorithm: optimize one weight at a time while holding all the others fixed, and cycle through the weights until nothing changes. It's the same strategy as [lasso's solver](/docs/machine-learning/lasso-regression#the-subgradient-at-zero), and the derivation is worth doing once by hand.
+
+Fix every weight except $w_j$. Let $\mathbf{r}_{-j} = \mathbf{y} - \sum_{k \ne j} w_k \mathbf{x}_k$ be the residual from all the *other* features (here $\mathbf{x}_k$ means the $k$-th feature column). As a function of $w_j$ alone, the objective is
+
+$$
+J(w_j) = \frac{1}{2n}\lVert\mathbf{r}_{-j} - w_j\mathbf{x}_j\rVert^2 + \lambda\alpha\lvert w_j\rvert + \frac{\lambda(1-\alpha)}{2}w_j^2 + \text{const}
+$$
+
+Expand the squared norm, keeping only the terms that involve $w_j$:
+
+$$
+\frac{1}{2n}\lVert\mathbf{r}_{-j} - w_j\mathbf{x}_j\rVert^2 = \text{const} - w_j\,\underbrace{\frac{\mathbf{x}_j^T\mathbf{r}_{-j}}{n}}_{\rho_j} + \frac{w_j^2}{2}\,\underbrace{\frac{\mathbf{x}_j^T\mathbf{x}_j}{n}}_{c_j}
+$$
+
+$\rho_j$ is how strongly feature $j$ correlates with what the other features haven't explained. $c_j$ is the feature's mean square (exactly 1 for a standardized feature). Collect the quadratic terms:
+
+$$
+J(w_j) = -\rho_j w_j + \frac{1}{2}\big(c_j + \lambda(1-\alpha)\big)w_j^2 + \lambda\alpha\lvert w_j\rvert + \text{const}
+$$
+
+This is a one-dimensional parabola plus a V-shape. Away from zero, $\lvert w_j\rvert$ has derivative $\operatorname{sign}(w_j)$, so setting the derivative to zero gives:
+
+- If $w_j > 0$: $\;-\rho_j + (c_j + \lambda(1-\alpha))w_j + \lambda\alpha = 0$, so $w_j = \dfrac{\rho_j - \lambda\alpha}{c_j + \lambda(1-\alpha)}$, which is positive only when $\rho_j > \lambda\alpha$.
+- If $w_j < 0$: by symmetry, $w_j = \dfrac{\rho_j + \lambda\alpha}{c_j + \lambda(1-\alpha)}$, negative only when $\rho_j < -\lambda\alpha$.
+- If $\lvert\rho_j\rvert \le \lambda\alpha$: neither case is consistent, and the minimum sits at the corner, $w_j = 0$. (At zero, the subgradient of $\lvert w_j\rvert$ is any value in $[-1, 1]$, which is exactly enough to absorb $\lvert\rho_j\rvert \le \lambda\alpha$.)
+
+All three cases are one formula, using the **soft-thresholding** operator $S(z, t) = \operatorname{sign}(z)\max(\lvert z\rvert - t, 0)$:
+
+$$
+w_j \leftarrow \frac{S(\rho_j,\; \lambda\alpha)}{c_j + \lambda(1-\alpha)}
+$$
+
+Read each penalty's role straight off it. The **L1 part** sits in the numerator: it subtracts $\lambda\alpha$ from the feature's correlation and clips at zero, which is what produces exact zeros. The **L2 part** sits in the denominator: it divides by something larger than $c_j$, shrinking every surviving weight proportionally, the way ridge does. Set $\alpha = 1$ and the update is lasso's; set $\alpha = 0$ and it's coordinate descent for ridge.
+
+**One update by hand.** Take a standardized feature ($c_j = 1$) with $\rho_j = 0.30$, and $\lambda = 0.2$. Compare what each method does with it:
+
+| Method | Numerator | Denominator | New $w_j$ |
+|---|---|---|---|
+| No penalty ($\lambda = 0$) | $0.30$ | $1$ | $0.300$ |
+| Ridge ($\alpha = 0$) | $0.30$ | $1 + 0.2 = 1.2$ | $0.250$ |
+| Lasso ($\alpha = 1$) | $S(0.30, 0.2) = 0.10$ | $1$ | $0.100$ |
+| Elastic net ($\alpha = 0.5$) | $S(0.30, 0.1) = 0.20$ | $1 + 0.1 = 1.1$ | $0.182$ |
+
+Now a weaker feature with $\rho_j = 0.08$: ridge gives it $0.08/1.2 = 0.067$, but lasso and elastic net both have thresholds above 0.08 (0.2 and 0.1), so both set it to exactly zero. That's the whole behaviour in two rows: weak features are removed outright, strong ones are kept and shrunk, and elastic net's shrinkage of the strong ones sits between ridge's and lasso's.
+
+Each update can only lower $J$, and since $J$ is convex, cycling through the coordinates converges to the global minimum (Tseng, 2001, proved this for objectives of the form "smooth convex function plus a separable non-smooth one"). Friedman, Hastie and Tibshirani's glmnet (2010) made this fast with two tricks: updating the residual incrementally rather than recomputing it, and computing a whole **regularization path** from large $\lambda$ to small, starting each solve from the previous solution (warm starts). The largest useful $\lambda$ is the one where every weight is zero: $\lambda_{\max} = \max_j \lvert\mathbf{x}_j^T\mathbf{y}\rvert / (n\alpha)$, directly from the threshold condition above.
+
+Drag $\alpha$ between the two extremes on the same correlated dataset the ridge and lasso studios use, and watch the regularization path change shape:
 
 <ElasticNetStudio />
 
-## Choosing λ and α
+<GoDeeper title="Go deeper: elastic net is lasso on augmented data">
 
-Both are hyperparameters selected via cross-validation (see [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals#train-validation-test-splits)) — typically a 2D grid search over candidate $(\lambda, \alpha)$ pairs, since the best mix depends entirely on how correlated the actual features are and how many are truly irrelevant.
+There's a neat way to see that elastic net can't run into lasso's $n$-feature ceiling. Use Zou and Hastie's two-strength form, $\lVert\mathbf{y} - X\mathbf{w}\rVert^2 + \lambda_2\lVert\mathbf{w}\rVert_2^2 + \lambda_1\lVert\mathbf{w}\rVert_1$, and stack $d$ extra "fake" rows under the data:
 
-## Ridge vs. Lasso vs. Elastic Net
+$$
+X^* = \begin{bmatrix} X \\ \sqrt{\lambda_2}\, I_d \end{bmatrix} \in \mathbb{R}^{(n+d)\times d}, \qquad \mathbf{y}^* = \begin{bmatrix} \mathbf{y} \\ \mathbf{0} \end{bmatrix}
+$$
+
+The squared error on the augmented data splits into the two blocks of rows:
+
+$$
+\lVert\mathbf{y}^* - X^*\mathbf{w}\rVert^2 = \lVert\mathbf{y} - X\mathbf{w}\rVert^2 + \lVert\mathbf{0} - \sqrt{\lambda_2}\,\mathbf{w}\rVert^2 = \lVert\mathbf{y} - X\mathbf{w}\rVert^2 + \lambda_2\lVert\mathbf{w}\rVert^2
+$$
+
+So elastic net on $(X, \mathbf{y})$ is *exactly* lasso on $(X^*, \mathbf{y}^*)$. Two consequences follow. First, any lasso solver can fit an elastic net. Second, the augmented problem has $n + d$ rows, so the "at most as many features as rows" ceiling becomes $n + d \ge d$, which never binds: elastic net can select all $d$ features if the data supports it. And $X^*$ always has full column rank (the identity block guarantees it), which is the matrix-algebra reason the solution is unique.
+
+Zou and Hastie also observed that this "naive" elastic net shrinks twice, once from each penalty, and proposed rescaling the solution by $(1 + \lambda_2)$ to undo the extra ridge shrinkage. scikit-learn and glmnet do not rescale; they return the naive solution and let cross-validation choose $\lambda$ to compensate.
+
+</GoDeeper>
+
+## 5. Choosing λ and α
+
+Both are hyperparameters, so both are chosen by cross-validation on the training data (see [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals#train-validation-test-splits)). The usual procedure is a small grid over $\alpha$ and a full path over $\lambda$ for each:
+
+1. Standardize the features (inside a pipeline, so validation folds don't leak into the scaling). Both penalties treat all weights alike, so unscaled features are penalized according to their units rather than their importance.
+2. Pick a handful of mixes, for example $\alpha \in \{0.1, 0.5, 0.7, 0.9, 0.95, 0.99, 1\}$. The scikit-learn documentation suggests this kind of grid, weighted towards lasso, because the path changes most as $\alpha$ approaches 1.
+3. For each $\alpha$, compute the path over about 100 values of $\lambda$ on a log scale from $\lambda_{\max}$ down to $\lambda_{\max}/1000$, with warm starts. This costs little more than a single fit.
+4. Pick the $(\lambda, \alpha)$ with the best cross-validated error, or use the **one-standard-error rule**: the largest $\lambda$ whose error is within one standard error of the best, which gives a sparser model that is statistically indistinguishable.
+
+`ElasticNetCV(l1_ratio=[...], cv=5)` does steps 2 to 4 in one call (without the one-standard-error option; glmnet's `cv.glmnet` reports both `lambda.min` and `lambda.1se`).
+
+A rough guide to what the chosen $\alpha$ tells you: close to 1 means the data looks like lasso's ideal, a few independent relevant features. A moderate value means relevant features come in correlated groups. Close to 0 means most features carry some signal and sparsity isn't helping, in which case plain ridge is simpler.
+
+## 6. Ridge vs. Lasso vs. Elastic Net
 
 | | Ridge (L2) | Lasso (L1) | Elastic Net (L1 + L2) |
 |---|---|---|---|
-| Drives weights to exactly 0? | No | Yes | Yes |
-| Handles correlated features? | Yes, spreads weight | Poorly, picks one arbitrarily | Yes, more stable than pure Lasso |
-| Produces a sparse model? | No | Yes | Yes |
-| Hyperparameters to tune | 1 ($\lambda$) | 1 ($\lambda$) | 2 ($\lambda$, $\alpha$) |
-| Good default when unsure? | If you don't need feature selection | If features are mostly independent | Generally the safest default of the three |
+| Sets weights to exactly 0? | No | Yes | Yes |
+| Correlated features | Shares weight among them | Picks one, unstably | Shares weight, and selects or drops the group together |
+| Unique solution? | Yes | Not always | Yes (for $\alpha < 1$) |
+| Max features selected when $d > n$ | All (no selection) | At most $n$ | Up to $d$ |
+| Hyperparameters | $\lambda$ | $\lambda$ | $\lambda$, $\alpha$ |
+| Solver | Closed form or iterative | Coordinate descent, LARS | Coordinate descent |
 
-## Minimal Implementation
+Elastic net is the safest default of the three when you want a sparse model and don't know how correlated the features are, because it degrades gracefully into either neighbour: if the data wants lasso, cross-validation picks $\alpha$ near 1. The price is one more hyperparameter to search and, for the same sparsity, slightly more shrinkage of the surviving weights.
+
+## 7. Minimal Implementation
+
+The coordinate-descent update from Section 4, in NumPy. The residual is updated incrementally, the way glmnet does it, so each update costs $O(n)$ instead of $O(nd)$:
 
 ```python
 import numpy as np
+from sklearn.linear_model import ElasticNet, Lasso
 
-def soft_threshold(rho, lam):
-    return np.sign(rho) * max(abs(rho) - lam, 0)
+def soft_threshold(z, t):
+    return np.sign(z) * max(abs(z) - t, 0.0)
 
-def fit_elastic_net(X, y, lam=1.0, alpha=0.5, epochs=200):
+def fit_elastic_net(X, y, lam=0.1, alpha=0.5, sweeps=500):
+    """Minimize (1/2n)||y - Xw||^2 + lam*alpha*||w||_1 + (lam*(1-alpha)/2)*||w||^2.
+    Assumes the columns of X are standardized and y is centered (so no intercept)."""
     n, d = X.shape
     w = np.zeros(d)
-    for _ in range(epochs):
+    r = y - X @ w                                  # current residual
+    for _ in range(sweeps):
         for j in range(d):
-            residual = y - X @ w + w[j] * X[:, j]
-            rho = X[:, j] @ residual
-            z = (X[:, j] ** 2).sum() + n * lam * (1 - alpha)   # L2 term adds to denominator
-            w[j] = soft_threshold(rho, lam * alpha * n / 2) / z if z > 0 else 0
+            r += X[:, j] * w[j]                    # residual without feature j
+            rho = X[:, j] @ r / n
+            w[j] = soft_threshold(rho, lam * alpha) / (X[:, j] @ X[:, j] / n + lam * (1 - alpha))
+            r -= X[:, j] * w[j]                    # put feature j back
     return w
+
+rng = np.random.default_rng(0)
+n = 200
+z = rng.normal(size=n)
+X = np.column_stack([z + 0.05 * rng.normal(size=n),    # x0 and x1: near-duplicates
+                     z + 0.05 * rng.normal(size=n),
+                     rng.normal(size=(n, 4))])          # x2..x5: noise
+y = 3 * z + rng.normal(size=n)
+X = (X - X.mean(0)) / X.std(0)
+y = y - y.mean()
+
+ours = fit_elastic_net(X, y, lam=0.1, alpha=0.5)
+ref = ElasticNet(alpha=0.1, l1_ratio=0.5, fit_intercept=False, tol=1e-10, max_iter=100000).fit(X, y).coef_
+print("from scratch:", np.round(ours, 3))
+print("scikit-learn:", np.round(ref, 3))
+
+# Stability: refit on 200 bootstrap resamples and count how weight is shared between x0 and x1
+lasso_split, enet_split = [], []
+for b in range(200):
+    idx = rng.integers(0, n, n)
+    wl = Lasso(alpha=0.1, fit_intercept=False).fit(X[idx], y[idx]).coef_
+    we = ElasticNet(alpha=0.1, l1_ratio=0.5, fit_intercept=False).fit(X[idx], y[idx]).coef_
+    lasso_split.append(wl[0] / (wl[0] + wl[1]))
+    enet_split.append(we[0] / (we[0] + we[1]))
+for name, s in [("lasso", lasso_split), ("elastic net", enet_split)]:
+    s = np.array(s)
+    print(f"{name:11s} share of weight on x0: mean {s.mean():.2f}, std {s.std():.2f}, "
+          f"resamples where one of the pair is exactly 0: {np.mean((s == 0) | (s == 1)):.0%}")
 ```
 
-The linear model family is complete: [Linear Regression](/docs/machine-learning/linear-regression) → Ridge → Lasso → Elastic Net, each one relaxing an assumption of the last. Next: [Logistic Regression](/docs/machine-learning/logistic-regression) — the same linear machinery, adapted for classification instead of regression.
+Output (scikit-learn 1.7):
+
+```
+from scratch: [ 1.352  1.465  0.101  0.     0.1   -0.   ]
+scikit-learn: [ 1.352  1.465  0.101  0.     0.1   -0.   ]
+lasso       share of weight on x0: mean 0.17, std 0.19, resamples where one of the pair is exactly 0: 32%
+elastic net share of weight on x0: mean 0.48, std 0.01, resamples where one of the pair is exactly 0: 0%
+```
+
+The twenty-line implementation matches scikit-learn to three decimals. The two near-duplicate features share the weight (1.35 and 1.47, summing to about the true 3 minus shrinkage), two of the four noise features are set to exactly zero, and the other two get small weights of about 0.1, which a larger $\lambda$ would remove.
+
+The bootstrap experiment is the point of the page in numbers. Across 200 resamples of the same data, lasso put on average only 17% of the pair's weight on $x_0$, with a standard deviation of 0.19, and in 32% of resamples dropped one of the two features entirely. Elastic net split the weight almost exactly in half every time (0.48, standard deviation 0.01) and never dropped either. If you were reading the coefficients to decide which measurement matters, lasso's answer would change from one resample to the next; elastic net's wouldn't.
+
+## 8. When *Not* to Use Elastic Net
+
+| Situation | Better choice |
+|---|---|
+| You don't need a sparse model, just stable predictions with correlated features | [Ridge](/docs/machine-learning/ridge-regression): one hyperparameter, closed-form solution |
+| Few features, mostly uncorrelated, and you want the simplest sparse model | [Lasso](/docs/machine-learning/lasso-regression); elastic net would choose $\alpha \approx 1$ anyway |
+| You need valid p-values or confidence intervals for the selected coefficients | Penalized estimates are biased and post-selection inference is hard; use a pre-registered model, or selective-inference methods |
+| You know the group structure in advance (e.g. dummy columns for one categorical variable) | Group lasso, which selects predefined groups explicitly |
+| The relationship is nonlinear or has interactions | Tree ensembles ([Random Forest](/docs/machine-learning/random-forest), [boosting](/docs/machine-learning/xgboost-lightgbm-catboost)) |
+| Millions of rows that don't fit in memory | `SGDRegressor(penalty="elasticnet")`; see [SGD Classifier & Regressor](/docs/machine-learning/sgd-classifier-regressor) |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Objective | Squared error $+\;\lambda\big(\alpha\lVert\mathbf{w}\rVert_1 + \tfrac{1-\alpha}{2}\lVert\mathbf{w}\rVert_2^2\big)$ |
+| Two knobs | $\lambda$ = how much regularization, $\alpha$ = how much of it is L1 |
+| Naming | scikit-learn's `alpha` is $\lambda$; its `l1_ratio` is $\alpha$ |
+| Lasso's flaw | Indifferent between splits of correlated features, so it picks one unstably |
+| The fix | L2 makes the objective strictly convex: one solution, equal weights for duplicates |
+| Grouping | Correlated features enter or leave the model together |
+| Update | $w_j \leftarrow S(\rho_j, \lambda\alpha)\,/\,(c_j + \lambda(1-\alpha))$: L1 thresholds, L2 shrinks |
+| $d > n$ | Lasso selects at most $n$ features; elastic net has no such ceiling |
+| Tuning | Grid over $\alpha$, path over $\lambda$, standardized features, cross-validation |
+
+---
+
+Next: [Logistic Regression](/docs/machine-learning/logistic-regression), the same linear machinery and the same penalties adapted for classification. The linear regression family is now complete: [Linear Regression](/docs/machine-learning/linear-regression), [Ridge](/docs/machine-learning/ridge-regression), [Lasso](/docs/machine-learning/lasso-regression), and Elastic Net.
+
+## Sources
+
+- H. Zou and T. Hastie, [Regularization and Variable Selection via the Elastic Net](https://doi.org/10.1111/j.1467-9868.2005.00503.x), *Journal of the Royal Statistical Society B*, 2005
+- J. Friedman, T. Hastie and R. Tibshirani, [Regularization Paths for Generalized Linear Models via Coordinate Descent](https://doi.org/10.18637/jss.v033.i01), *Journal of Statistical Software*, 2010
+- P. Tseng, [Convergence of a Block Coordinate Descent Method for Nondifferentiable Minimization](https://doi.org/10.1023/A:1017501703105), *Journal of Optimization Theory and Applications*, 2001
+- B. Efron, T. Hastie, I. Johnstone and R. Tibshirani, [Least Angle Regression](https://doi.org/10.1214/009053604000000067), *Annals of Statistics*, 2004
+- R. J. Tibshirani, [The Lasso Problem and Uniqueness](https://doi.org/10.1214/13-EJS815), *Electronic Journal of Statistics*, 2013
+- T. Hastie, R. Tibshirani and M. Wainwright, [Statistical Learning with Sparsity](https://hastie.su.domains/StatLearnSparsity/), 2015, Chapters 2 and 4
+- scikit-learn, [Elastic-Net](https://scikit-learn.org/stable/modules/linear_model.html#elastic-net) user guide
