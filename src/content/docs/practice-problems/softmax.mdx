@@ -1,15 +1,11 @@
 ---
-title: "Practice: Softmax Activation"
-sidebar_position: 8
+title: "Softmax Activation"
 description: "Implement a numerically stable softmax from scratch -- the standard multi-class output layer, and why the naive formula overflows on large inputs."
 difficulty: medium
 topic: deep-learning
 ---
 
 import RunnableCode from '../../../components/content/RunnableCode';
-import { Solution } from '../../../components/content/ExpandableDepth';
-
-# Numerically Stable Softmax From Scratch
 
 **Difficulty: Medium** · Concept: [Activation Functions — Auxiliary Functions](/docs/deep-learning/activation-functions#auxiliary-functions)
 
@@ -34,24 +30,6 @@ assert abs(softmax([0, 0, 0])[0] - 1 / 3) < 1e-9
 assert max(abs(p - 1 / 3) for p in softmax([1000, 1000, 1000])) < 1e-9
 assert abs(softmax([1, 2])[0] - 0.2689414213699951) < 1e-9`}
 />
-
-<Solution>
-
-```python
-import math
-
-def softmax(z):
-    m = max(z)
-    exps = [math.exp(zi - m) for zi in z]
-    total = sum(exps)
-    return [e / total for e in exps]
-```
-
-**The trick**: subtract the maximum value in `z` from every element before exponentiating. This doesn't change the mathematical result — $\frac{e^{z_i - m}}{\sum_j e^{z_j - m}} = \frac{e^{z_i}e^{-m}}{\sum_j e^{z_j}e^{-m}} = \frac{e^{z_i}}{\sum_j e^{z_j}}$, since the $e^{-m}$ factor cancels top and bottom — but it changes the *numerics* completely: after subtracting the max, the largest exponent being computed is always `exp(0) = 1`, and every other exponent is `exp(negative number)`, which safely underflows toward 0 instead of overflowing. This is exactly why `softmax([1000, 1000, 1000])` still works above (every element becomes `exp(0)`, giving the correct uniform `[1/3, 1/3, 1/3]`) instead of crashing.
-
-This is not a toy edge case — real transformer attention logits and LLM output logits routinely reach magnitudes in the hundreds or thousands before softmax, so every production softmax implementation (PyTorch's, NumPy's, JAX's) does exactly this max-subtraction internally. [Attention & Transformers](/docs/deep-learning/attention-transformers) uses this same softmax to turn raw attention scores into attention weights.
-
-</Solution>
 
 ---
 

@@ -1,15 +1,11 @@
 ---
-title: "Practice: Practice: Validate a Binary Search Tree"
-sidebar_position: 29
+title: "Validate a Binary Search Tree"
 description: "Implement is_valid_bst(root) in a real sandbox -- the classic trap where local parent-child checks look fine but miss a deeper ancestor violation."
 difficulty: medium
 topic: interview-prep
 ---
 
 import RunnableCode from '../../../components/content/RunnableCode';
-import { Solution } from '../../../components/content/ExpandableDepth';
-
-# Validate a Binary Search Tree
 
 **Difficulty: Medium** · Pattern: Tree DFS · Concept: [Algorithms & Data Structures — Core Data Structures](/docs/mathematics-for-ai/algorithms-data-structures#core-data-structures)
 
@@ -45,23 +41,6 @@ assert is_valid_bst(single_node) == True
 assert is_valid_bst(equal_values) == False
 assert is_valid_bst(None) == True`}
 />
-
-<Solution>
-
-```python
-def is_valid_bst(root, low=float('-inf'), high=float('inf')):
-    if root is None:
-        return True
-    if not (low < root.val < high):
-        return False
-    return is_valid_bst(root.left, low, root.val) and is_valid_bst(root.right, root.val, high)
-```
-
-The fix is carrying a **valid range** down through the recursion, tightened at every step, instead of only ever comparing a node to its immediate children. The root starts with the widest possible range, $(-\infty, \infty)$. Descending left, the upper bound tightens to the parent's value (everything in a left subtree must stay below every ancestor it's a left descendant of, not just its direct parent); descending right, the lower bound tightens the same way. `sneaky_invalid_tree`'s `4` gets checked against the range `(5, \infty)` — not `(-\infty, 8)`, which is what a children-only check would effectively use — because by the time recursion reaches it, both the constraint from its immediate parent (`8`) *and* the inherited constraint from the root (`5`) are active simultaneously. That's exactly why it correctly fails: `4` violates the inherited lower bound of `5`, even though `4 < 8` (its immediate parent check) looks fine in isolation.
-
-`equal_values` (`TreeNode(2, TreeNode(2), None)`) tests the *strict* inequality — a real BST implementation choice worth being deliberate about: some definitions allow duplicates on one side, this one (matching `low < root.val < high` rather than `<=`) doesn't, and the test locks that choice in explicitly rather than leaving it ambiguous.
-
-</Solution>
 
 ---
 

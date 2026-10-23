@@ -1,15 +1,11 @@
 ---
-title: "Practice: Practice: Numerical Gradient via Finite Differences"
-sidebar_position: 18
+title: "Numerical Gradient via Finite Differences"
 description: "Implement a numerical gradient via central-difference finite differences -- how you sanity-check a hand-derived analytic gradient, real runnable code."
 difficulty: medium
 topic: mathematics-for-ai
 ---
 
 import RunnableCode from '../../../components/content/RunnableCode';
-import { Solution } from '../../../components/content/ExpandableDepth';
-
-# Numerical Gradient via Finite Differences
 
 **Difficulty: Medium** · Concept: [Calculus & Optimization — Derivatives and Gradients](/docs/mathematics-for-ai/calculus-optimization#derivatives-and-gradients)
 
@@ -35,26 +31,6 @@ assert abs(numerical_gradient(lambda x: x[0] * x[1], [2.0, 5.0])[0] - 5.0) < 1e-
 assert abs(numerical_gradient(lambda x: x[0] * x[1], [2.0, 5.0])[1] - 2.0) < 1e-3
 assert abs(numerical_gradient(lambda x: 5.0, [1.0])[0] - 0.0) < 1e-3`}
 />
-
-<Solution>
-
-```python
-def numerical_gradient(f, x, h=1e-5):
-    grad = []
-    for i in range(len(x)):
-        x_plus = list(x)
-        x_plus[i] += h
-        x_minus = list(x)
-        x_minus[i] -= h
-        grad.append((f(x_plus) - f(x_minus)) / (2 * h))
-    return grad
-```
-
-For each dimension `i`, hold every other coordinate fixed and nudge only `x[i]` by `+h` and `-h` — that isolates $\partial f/\partial x_i$ specifically, exactly matching what a partial derivative means (rate of change with respect to *one* variable, everything else held constant). Copying `x` into `x_plus`/`x_minus` rather than mutating it in place matters: mutating and restoring is error-prone (easy to forget to undo the change before moving to the next dimension), while fresh copies can't leak state between iterations.
-
-`f(x[0]**2 + x[1]**2)` at `[3, 4]` gives `[6, 8]` — matching the exact analytic gradient $\nabla(x_0^2+x_1^2) = (2x_0, 2x_1) = (6, 8)$, which is the point: central differences approximate the true derivative closely enough (error $O(h^2)$, versus a one-sided/forward difference's $O(h)$) that this is a legitimate correctness check for an analytic implementation, not just a rough estimate. In practice this is exactly how you'd have verified [One Gradient Descent Step's](/practice/gradient-descent-step) `dw`/`db` were implemented correctly, before ever trusting them in a training loop.
-
-</Solution>
 
 ---
 

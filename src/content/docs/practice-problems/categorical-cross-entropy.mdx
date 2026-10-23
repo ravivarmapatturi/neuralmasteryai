@@ -1,15 +1,11 @@
 ---
-title: "Practice: Practice: Categorical Cross-Entropy Loss From Scratch"
-sidebar_position: 50
+title: "Categorical Cross-Entropy Loss From Scratch"
 description: "Implement categorical cross-entropy loss from scratch with NumPy, numerically safe -- the standard classification loss behind next-token prediction itself."
 difficulty: easy
 topic: deep-learning
 ---
 
 import RunnableCode from '../../../components/content/RunnableCode';
-import { Solution } from '../../../components/content/ExpandableDepth';
-
-# Categorical Cross-Entropy Loss From Scratch
 
 **Difficulty: Easy** · Concept: [Loss Functions — Classification Losses](/docs/deep-learning/loss-functions#classification-losses)
 
@@ -32,23 +28,6 @@ def categorical_cross_entropy(y_pred, y_true_idx, eps=1e-12):
 assert categorical_cross_entropy(np.array([[1.0, 0.0], [0.0, 1.0]]), np.array([0, 1])) < 1e-9
 assert categorical_cross_entropy(np.array([[0.0, 1.0]]), np.array([0])) > 20`}
 />
-
-<Solution>
-
-```python
-import numpy as np
-
-def categorical_cross_entropy(y_pred, y_true_idx, eps=1e-12):
-    n = y_pred.shape[0]
-    p = np.clip(y_pred[np.arange(n), y_true_idx], eps, 1.0)
-    return -np.mean(np.log(p))
-```
-
-`y_pred[np.arange(n), y_true_idx]` is NumPy's fancy indexing doing the "gather the true class's probability, per row" step in one line — `np.arange(n)` picks row `0, 1, 2, ...` and `y_true_idx` picks the column within each of those rows, so the result is exactly `[y_pred[0, y_true_idx[0]], y_pred[1, y_true_idx[1]], ...]`, one probability per example.
-
-The `eps` clip is not defensive boilerplate: `log(0)` is `-inf` in floating point, and a model that's initially very wrong (assigning near-zero probability to the correct class, the third test case above) really can produce a probability that underflows to exactly `0.0`. Clipping to `[eps, 1.0]` keeps the loss a real, large, finite number instead of `-inf` or `nan` — the same numerical-safety instinct as [softmax's max-subtraction trick](/practice/softmax), applied to the other end of the pipeline.
-
-</Solution>
 
 ---
 

@@ -1,44 +1,7 @@
 ---
-title: "Practice: Flatten Binary Tree to Linked List"
-description: "Implement Trees: Flatten Binary Tree to Linked List in the Data Structures & Algorithms track of the 1,000+ problem Neural Mastery AI Engineering curriculum."
+title: "Flatten Binary Tree to Linked List"
+description: "Implement Flatten Binary Tree to Linked List with a post-order recursive approach -- processing the right subtree first is what enables doing this with only O(h) extra space."
 difficulty: "medium"
 topic: "data-structures-algorithms"
-sidebar_position: 102
 ---
 
-import PracticePlayground from '../../../components/content/PracticePlayground';
-import { Solution } from '../../../components/content/ExpandableDepth';
-
-# Trees: Flatten Binary Tree to Linked List
-
-**Rank #102** · Difficulty: **Medium** · Stage: **Stage 2: Data Structures & Algorithmic Foundations** · Category: **Data Structures & Algorithms**
-
-## Overview
-
-Implement `flatten(root)` -- in-place tree-to-list conversion in preorder. The post-order recursive approach processes right subtree first, enabling O(1) extra space.
-
-## Task
-
-Implement the function `flatten(root)`. Flatten the binary tree in-place into a linked list following preorder traversal (using `right` pointers, `left` always None). Return the modified root.
-
-<PracticePlayground problemId="ds-algo-prob-42" />
-
-<Solution>
-
-```python
-def flatten(root):
-    if not root:
-        return None
-    left_tail = flatten(root['left'])
-    right_tail = flatten(root['right'])
-    if root['left']:
-        saved_right = root['right']
-        root['right'] = root['left']
-        root['left'] = None
-        left_tail['right'] = saved_right
-    return right_tail or left_tail or root
-```
-
-Recursively flatten both subtrees first, then re-wire: left subtree goes to the right of root, with its tail pointing to the original right subtree. O(n) time, O(h) stack space.
-
-</Solution>

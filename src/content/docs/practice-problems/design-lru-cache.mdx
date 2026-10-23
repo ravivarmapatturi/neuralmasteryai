@@ -1,15 +1,11 @@
 ---
-title: "Practice: Practice: Design an LRU Cache"
-sidebar_position: 38
+title: "Design an LRU Cache"
 description: "Implement an LRU cache from scratch in a real Python sandbox -- get/put in O(1), where every access reorders which key gets evicted next."
 difficulty: hard
 topic: interview-prep
 ---
 
 import RunnableCode from '../../../components/content/RunnableCode';
-import { Solution } from '../../../components/content/ExpandableDepth';
-
-# Design an LRU Cache
 
 **Difficulty: Hard** · Pattern: Design · Concept: [General Coding (DSA) — Core Patterns to Drill](/docs/interview-prep/dsa-coding#core-patterns-to-drill)
 
@@ -31,7 +27,6 @@ import { Solution } from '../../../components/content/ExpandableDepth';
         """Insert/update key. Evict the LRU key first if over capacity."""
         pass
 
-
 lru = LRUCache(2)
 `}
   tests={`assert lru.put(10, 100) is None
@@ -44,43 +39,6 @@ assert lru.get(10) == -1
 assert lru.get(30) == 300
 assert lru.get(40) == 400`}
 />
-
-<Solution>
-
-```python
-class LRUCache:
-    def __init__(self, capacity):
-        self.capacity = capacity
-        self.cache = {}          # key -> value
-        self.order = []          # keys, least-recently-used first
-
-    def get(self, key):
-        if key not in self.cache:
-            return -1
-        self.order.remove(key)
-        self.order.append(key)   # move to most-recently-used end
-        return self.cache[key]
-
-    def put(self, key, value):
-        if key in self.cache:
-            self.order.remove(key)
-        elif len(self.cache) >= self.capacity:
-            lru_key = self.order.pop(0)   # evict the least-recently-used key
-            del self.cache[lru_key]
-        self.cache[key] = value
-        self.order.append(key)
-
-
-lru = LRUCache(2)
-```
-
-`order` is the entire mechanism: it's a plain list where position encodes recency, oldest at the front. Every `get` on a present key, and every `put` on a key already present, **removes and re-appends** that key — pushing it to the fresh end and correctly implying every other key just became relatively "older" without touching them directly. When `put` needs room, `order.pop(0)` is by construction the least-recently-used key, since nothing older could still be at the front after every access keeps re-freshening whatever it touches.
-
-Trace the test sequence: with `capacity=2`, after `put(10)` and `put(20)`, `get(10)` moves `10` to the back (`order = [20, 10]`) — so when `put(30)` needs to evict, it's `20` that goes, *not* `10`, even though `10` was inserted first. That's the entire point of "least recently *used*," not "least recently inserted" — `get`ting a key protects it from eviction just as much as re-`put`ting it does.
-
-One real caveat worth knowing: `list.remove()` and `list.pop(0)` are both $O(n)$, so this implementation is correct but not the textbook $O(1)$-per-operation LRU cache — a true $O(1)$ version needs a doubly linked list (for $O(1)$ removal from the middle) paired with a hash map from key to that list node, so a key's position can be found and relocated without scanning. The eviction *policy* here is exactly right; the *data structure* backing `order` is the part a production implementation would swap out.
-
-</Solution>
 
 ---
 

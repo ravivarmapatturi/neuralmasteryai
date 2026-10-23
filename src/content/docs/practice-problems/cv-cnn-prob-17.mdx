@@ -1,30 +1,17 @@
 ---
-title: "Practice: Anchor Box Coordinate Generator for Object Detection"
-description: "Master Anchor Box Coordinate Generator for Object Detection in the Computer Vision & CNN Architectures track of the 1,000+ problem Neural Mastery AI Engineering curriculum."
+title: "Anchor Box Coordinate Generator for Object Detection"
+description: "Synthesize candidate prior bounding boxes (anchors) across a spatial grid for single-stage and two-stage object detectors."
 difficulty: "medium"
 topic: "Computer Vision & CNN Architectures"
 ---
 
-import PracticePlayground from '../../../components/content/PracticePlayground';
 import { Solution } from '../../../components/content/ExpandableDepth';
-
-# #907. Anchor Box Coordinate Generator for Object Detection
-
-**Track**: Computer Vision & CNN Architectures | **Rank**: #907 of 1072 | **Points**: 60 XP
-
-## Overview
-
-Synthesize candidate prior bounding boxes (anchors) across a spatial grid for single-stage and two-stage object detectors.
-
-## Task
-
-Implement `generate_anchor_boxes(...)`. For each cell `(r, c)` in `[0..feature_map_h - 1] x [0..feature_map_w - 1]`, the center in image coordinates is `cy = (r + 0.5) * stride`, `cx = (c + 0.5) * stride`. For each scale `s` in `scales` and aspect ratio `ar` in `aspect_ratios`: width `w = base_size * s * sqrt(ar)`, height `h = base_size * s / sqrt(ar)`. The box is `[cx - w/2, cy - h/2, cx + w/2, cy + h/2]`. Round each coordinate to 2 decimal places.
-
-<PracticePlayground problemId="cv-cnn-prob-17" />
 
 <Solution>
 
 ```python
+import math
+
 def generate_anchor_boxes(feature_map_h: int, feature_map_w: int, stride: int, base_size: int, aspect_ratios: list[float], scales: list[float]) -> list[list[float]]:
     boxes = []
     for r in range(feature_map_h):

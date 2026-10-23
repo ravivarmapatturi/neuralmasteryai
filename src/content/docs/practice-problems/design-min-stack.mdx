@@ -1,15 +1,11 @@
 ---
-title: "Practice: Practice: Design a Min Stack"
-sidebar_position: 23
+title: "Design a Min Stack"
 description: "Design a MinStack with O(1) push/pop/top/get_min -- the trick is maintaining a running minimum incrementally, not rescanning the stack each call."
 difficulty: medium
 topic: interview-prep
 ---
 
 import RunnableCode from '../../../components/content/RunnableCode';
-import { Solution } from '../../../components/content/ExpandableDepth';
-
-# Design a Min Stack
 
 **Difficulty: Medium** · Pattern: Design · Concept: [General Coding (DSA) — Core Patterns to Drill](/docs/interview-prep/dsa-coding#core-patterns-to-drill)
 
@@ -41,7 +37,6 @@ Here: a stack that supports the usual `push`/`pop`/`top`, plus `get_min()` — r
         """Return the current minimum value in the stack. O(1)."""
         pass
 
-
 ms = MinStack()
 `}
   tests={`assert ms.push(5) is None
@@ -56,39 +51,6 @@ assert ms.pop() == 3
 assert ms.get_min() == 5
 assert ms.top() == 5`}
 />
-
-<Solution>
-
-```python
-class MinStack:
-    def __init__(self):
-        self.stack = []      # the actual values, in push order
-        self.min_stack = []  # min_stack[i] = min of stack[0..i]
-
-    def push(self, val):
-        self.stack.append(val)
-        current_min = val if not self.min_stack else min(val, self.min_stack[-1])
-        self.min_stack.append(current_min)
-
-    def pop(self):
-        self.min_stack.pop()
-        return self.stack.pop()
-
-    def top(self):
-        return self.stack[-1]
-
-    def get_min(self):
-        return self.min_stack[-1]
-
-
-ms = MinStack()
-```
-
-The trick is a **second stack, kept in lockstep with the first**, where `min_stack[i]` always holds the minimum of everything pushed so far, up to and including position `i` — not just the single overall minimum, but a *complete history* of what the minimum was at every point in time. That history is exactly what makes `pop()` cheap: popping the top of `min_stack` alongside the top of `stack` correctly "un-computes" the minimum back to what it was one push ago, with no rescanning. Every operation touches only the top of one or both stacks — $O(1)$ across the board, at the cost of $O(n)$ extra space for the second stack (a real, standard time/space tradeoff, not a free lunch).
-
-This same "maintain a running derived value in lockstep with the main structure, instead of recomputing it on demand" shape reappears constantly in Design problems — a running sum, a running max, a frequency count kept current instead of recounted.
-
-</Solution>
 
 ---
 

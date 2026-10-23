@@ -1,13 +1,11 @@
 ---
 title: "Parallel Sum Reduction (WebGPU)"
-sidebar_position: 42
 description: "Write a real WGSL compute shader that sums an array using shared memory and a tree reduction -- runs on a real GPU in your browser, graded against real output."
 difficulty: medium
 topic: mlops
 ---
 
 import RunnableWebGPU from '../../../components/content/RunnableWebGPU';
-import { Solution } from '../../../components/content/ExpandableDepth';
 
 **Difficulty: Medium** · Concept: [GPU/AI Infrastructure — The CUDA Programming Model](/docs/mlops/gpu-and-distributed-training#the-cuda-programming-model-sms-warps-blocks-kernels)
 
@@ -56,46 +54,6 @@ fn main(@builtin(local_invocation_id) local_id: vec3<u32>) {
     { name: 'full 256-element workgroup boundary: 256 ones -> 256', input: Array(256).fill(1), expected: 256 },
   ]}
 />
-
-<Solution>
-
-```wgsl
-@group(0) @binding(0) var<storage, read> input: array<f32>;
-@group(0) @binding(1) var<storage, read_write> output: array<f32>;
-var<workgroup> shared_data: array<f32, 256>;
-
-@compute @workgroup_size(256)
-fn main(@builtin(local_invocation_id) local_id: vec3<u32>) {
-  let tid = local_id.x;
-
-  if (tid < arrayLength(&input)) {
-    shared_data[tid] = input[tid];
-  } else {
-    shared_data[tid] = 0.0;
-  }
-
-  workgroupBarrier();
-
-  var stride = 128u;
-  while (stride > 0u) {
-    if (tid < stride) {
-      shared_data[tid] = shared_data[tid] + shared_data[tid + stride];
-    }
-    workgroupBarrier();
-    stride = stride / 2u;
-  }
-
-  if (tid == 0u) {
-    output[0] = shared_data[0];
-  }
-}
-```
-
-**The bounds check matters as much as the reduction itself**: `shared_data` is always sized 256 (WGSL's `var<workgroup>` needs a compile-time-constant size), but a real test case's `input` can be shorter — the single-element test case is exactly this. Without the `tid < arrayLength(&input)` guard, 255 threads would read past the end of `input`, and whatever garbage (or a driver-dependent default) ends up in `shared_data` would silently corrupt the sum. Zeroing out-of-range slots is what makes `shared_data[0..255]` always sum to the correct total regardless of how many elements the real input actually has.
-
-**Why the loop halves `stride` instead of halving the thread count directly**: it's the same effect, expressed as "which threads are still active this round" rather than physically shrinking anything — `stride` starting at 128 (half of 256) and halving each round is what produces the classic reduction tree: round 1 combines pairs 128 apart, round 2 combines pairs 64 apart, and so on down to `stride = 1`, at which point `shared_data[0]` holds the total of everything. Each `workgroupBarrier()` is a genuine synchronization point, not decoration — remove any one of them and this becomes a real, silent race condition (some threads read a neighbor's shared-memory slot before that neighbor has written this round's value), the exact bug class real GPU code has to guard against that single-threaded Python code never encounters.
-
-</Solution>
 
 ---
 

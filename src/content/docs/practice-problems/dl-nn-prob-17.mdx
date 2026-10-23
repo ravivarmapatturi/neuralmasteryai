@@ -7,17 +7,11 @@ topic: "Deep Learning & Neural Networks"
 
 import { Solution } from '../../../components/content/ExpandableDepth';
 
-## Overview
-
-Mitigate exploding gradients in deep neural networks and recurrent models by scaling down gradients when their L2 norm exceeds a threshold.
-
-## Task
-
-Implement `grad_clip_by_norm(grads, max_norm)`: compute the global L2 norm `norm = sqrt(sum(g_i^2))`. If `norm > max_norm`, scale each gradient element by `max_norm / norm`; otherwise leave gradients unchanged. Return `{'clipped_grads': [...], 'global_norm': norm}` with all numbers rounded to 6 decimal places.
-
 <Solution>
 
 ```python
+import math
+
 def grad_clip_by_norm(grads: list[float], max_norm: float) -> dict:
     global_norm = math.sqrt(sum(g ** 2 for g in grads))
     if global_norm <= max_norm or global_norm == 0.0:

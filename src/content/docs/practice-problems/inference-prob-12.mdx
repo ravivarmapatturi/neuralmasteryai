@@ -4,12 +4,3 @@ description: "Manage non-contiguous physical memory allocation for LLM key-value
 difficulty: "medium"
 topic: "LLM Inference & Decoding"
 ---
-
-## Overview
-
-Manage non-contiguous physical memory allocation for LLM key-value caches using PagedAttention virtual memory mapping. Autoregressive language models generate sequences token by token, evaluating next-token probability distributions at each decoding step.
-
-## Task
-
-Implement `allocate_paged_blocks(seq_len, new_tokens, block_table, free_blocks, block_size)`. Calculate total tokens `total_tokens = seq_len + new_tokens`. Total physical blocks needed is `ceil(total_tokens / block_size)`. If existing `len(block_table)` is insufficient, allocate additional blocks from the front of `free_blocks`. If not enough free blocks remain, raise `MemoryError`. Calculate `internal_fragmentation_tokens` (unused token slots in the last block). Return a dict with `block_table`, `remaining_free_blocks`, and `internal_fragmentation_tokens`.
-

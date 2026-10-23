@@ -1,56 +1,11 @@
 ---
-title: "Practice: ReAct Agent Execution Loop"
-sidebar_position: 71
+title: "ReAct Agent Execution Loop"
 description: "Implement a ReAct (Reason + Act) agent loop parsing thoughts, actions, tool execution, and observations."
 difficulty: hard
 topic: agents
 ---
 
-import PracticePlayground from '../../../components/content/PracticePlayground';
-import { Solution } from '../../../components/content/ExpandableDepth';
-
-# ReAct Agent Execution Loop
-
 **Difficulty: Hard** · Topic: Agents & Applications · Concept: [Agent Fundamentals](/docs/agents/agent-fundamentals)
 
 The ReAct (Reason + Act) paradigm interleaves reasoning traces (`Thought:`) with task-specific action invocations (`Action:`, `Action Input:`). Implement a ReAct step executor that parses agent text outputs, calls registered tool handlers, and appends `Observation:` results.
 
-<PracticePlayground problemId="react-agent-loop" />
-
-<Solution>
-
-```python
-import re
-
-def react_agent_step(agent_output, tool_registry):
-    """
-    Parses agent_output for Action: <tool_name> and Action Input: <input_str>.
-    Executes tool in tool_registry and returns dict with status and observation string.
-    """
-    if "Final Answer:" in agent_output:
-        final_ans = agent_output.split("Final Answer:")[1].strip()
-        return {"status": "finished", "final_answer": final_ans, "observation": None}
-
-    action_match = re.search(r"Action:\s*([^\n]+)", agent_output)
-    input_match = re.search(r"Action Input:\s*([^\n]+)", agent_output)
-
-    if not action_match or not input_match:
-        return {"status": "error", "observation": "Error: Invalid ReAct format. Missing Action or Action Input."}
-
-    action = action_match.group(1).strip()
-    action_input = input_match.group(1).strip()
-
-    if action not in tool_registry:
-        return {"status": "error", "observation": f"Error: Tool '{action}' not found in registry."}
-
-    try:
-        tool_fn = tool_registry[action]
-        result = tool_fn(action_input)
-        return {"status": "continue", "observation": f"Observation: {result}"}
-    except Exception as e:
-        return {"status": "error", "observation": f"Error executing tool '{action}': {str(e)}"}
-```
-
-ReAct parses structured LLM text generation using regular expressions. If `Final Answer:` is present, the agent terminates. Otherwise, it extracts the target action and input, executes the registered function, and returns `Observation: <result>` to feed back into the next LLM prompt context.
-
-</Solution>

@@ -1,73 +1,10 @@
 ---
-title: "Practice: Micro-Autograd Computational Graph Engine"
-sidebar_position: 69
+title: "Micro-Autograd Computational Graph Engine"
 description: "Implement a micro automatic differentiation engine that computes gradients along a scalar computation graph."
 difficulty: hard
 topic: deep-learning
 ---
 
-import PracticePlayground from '../../../components/content/PracticePlayground';
-import { Solution } from '../../../components/content/ExpandableDepth';
-
-# Micro-Autograd Computational Graph Engine
-
 **Difficulty: Hard** · Topic: Deep Learning · Concept: [Backpropagation & Autograd](/docs/deep-learning/neural-network-fundamentals)
 
 Automatic differentiation is the core mechanism enabling neural network training. In this challenge, you will implement a scalar autograd engine that tracks forward mathematical operations and executes topological reverse-mode backpropagation to compute analytical gradients.
-
-<PracticePlayground problemId="micro-autograd" />
-
-<Solution>
-
-```python
-class Value:
-    def __init__(self, data, _children=()):
-        self.data = float(data)
-        self.grad = 0.0
-        self._backward = lambda: None
-        self._prev = set(_children)
-
-    def __add__(self, other):
-        other = other if isinstance(other, Value) else Value(other)
-        out = Value(self.data + other.data, (self, other))
-        def _backward():
-            self.grad += out.grad
-            other.grad += out.grad
-        out._backward = _backward
-        return out
-
-    def __mul__(self, other):
-        other = other if isinstance(other, Value) else Value(other)
-        out = Value(self.data * other.data, (self, other))
-        def _backward():
-            self.grad += self.data * out.grad if self is other else other.data * out.grad
-            if self is not other:
-                other.grad += self.data * out.grad
-        out._backward = _backward
-        return out
-
-    def relu(self):
-        out = Value(max(0.0, self.data), (self,))
-        def _backward():
-            self.grad += (out.data > 0) * out.grad
-        out._backward = _backward
-        return out
-
-    def backward(self):
-        topo = []
-        visited = set()
-        def build_topo(v):
-            if v not in visited:
-                visited.add(v)
-                for child in v._prev:
-                    build_topo(child)
-                topo.append(v)
-        build_topo(self)
-        self.grad = 1.0
-        for node in reversed(topo):
-            node._backward()
-```
-
-Reverse-mode autograd builds a Directed Acyclic Graph (DAG) during the forward pass. `backward()` performs a topological sort over nodes, sets the output node's seed gradient to 1.0, and iterates backwards calling `_backward()` to accumulate gradients via the chain rule.
-
-</Solution>

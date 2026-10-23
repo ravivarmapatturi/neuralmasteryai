@@ -1,22 +1,6 @@
 ---
-title: "Practice: Chunked Prefill Scheduler"
-description: "Master Chunked Prefill Scheduler in the LLM Inference & Decoding track of the 1,000+ problem Neural Mastery AI Engineering curriculum."
+title: "Chunked Prefill Scheduler"
+description: "Prevent inter-token latency spikes using Sarathi-style chunked prefill co-scheduling."
 difficulty: "hard"
 topic: "LLM Inference & Decoding"
 ---
-
-import PracticePlayground from '../../../components/content/PracticePlayground';
-
-# #054. Chunked Prefill Scheduler
-
-**Track**: LLM Inference & Decoding | **Rank**: #54 of 1072 | **Points**: 90 XP
-
-## Overview
-
-Prevent inter-token latency spikes using Sarathi-style chunked prefill co-scheduling. Autoregressive language models generate sequences token by token, evaluating next-token probability distributions at each decoding step.
-
-## Task
-
-Implement `schedule_chunked_prefill(prefill_requests, decode_requests, chunk_budget)`. Give strict priority to `decode_requests` (allocating 1 token per decode request). If `len(decode_requests) > chunk_budget`, raise `ValueError`. Subtract decode count from `chunk_budget` to obtain remaining budget. In FIFO order, allocate tokens from the remaining budget to `prefill_requests`: each prefill request processes up to its remaining needed prompt tokens or the remaining budget. If a prefill request completes all prompt tokens, add its ID to `promoted_to_decode_ids`. Return dict containing `scheduled_decode_ids`, `scheduled_prefill_chunks`, `promoted_to_decode_ids`, and `remaining_budget`.
-
-<PracticePlayground problemId="inference-prob-24" />

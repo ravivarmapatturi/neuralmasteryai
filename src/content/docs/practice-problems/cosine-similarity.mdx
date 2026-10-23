@@ -1,15 +1,11 @@
 ---
-title: "Practice: Practice: Cosine Similarity From Scratch"
-sidebar_position: 19
+title: "Cosine Similarity From Scratch"
 description: "Implement cosine similarity from scratch -- the standard way every embedding and vector-search comparison on this site measures directional alignment."
 difficulty: easy
 topic: nlp
 ---
 
 import RunnableCode from '../../../components/content/RunnableCode';
-import { Solution } from '../../../components/content/ExpandableDepth';
-
-# Cosine Similarity From Scratch
 
 **Difficulty: Easy** · Concept: [Word Embeddings — The Distributional Hypothesis](/docs/nlp/word-embeddings#the-core-idea-the-distributional-hypothesis)
 
@@ -33,24 +29,6 @@ assert abs(cosine_similarity([1, 0], [-1, 0]) - (-1.0)) < 1e-9
 assert abs(cosine_similarity([3, 4], [6, 8]) - 1.0) < 1e-9
 assert abs(cosine_similarity([1, 2, 3], [4, 5, 6]) - 32 / (14 ** 0.5 * 77 ** 0.5)) < 1e-9`}
 />
-
-<Solution>
-
-```python
-import math
-
-def cosine_similarity(a, b):
-    dot = sum(x * y for x, y in zip(a, b))
-    norm_a = math.sqrt(sum(x ** 2 for x in a))
-    norm_b = math.sqrt(sum(y ** 2 for y in b))
-    return dot / (norm_a * norm_b)
-```
-
-The numerator is exactly [Dot Product](/practice/dot-product); the denominator normalizes by each vector's own length (its L2 norm), which is what strips magnitude out of the comparison entirely — `[3, 4]` and `[6, 8]` are the same direction scaled by 2, and both give a cosine similarity of exactly `1.0` despite one vector being twice as long as the other. `[1, 0]` vs `[0, 1]` (perpendicular) gives `0.0`, and `[1, 0]` vs `[-1, 0]` (opposite) gives `-1.0` — the three landmark values worth having memorized.
-
-In practice you'd use `numpy`'s vectorized dot/norm, or for embedding search at scale, an approximate-nearest-neighbor index (see [Vector Databases](/docs/databases/roadmap)) that never computes most pairwise similarities explicitly at all — but the definition here is exactly what those systems are optimizing around.
-
-</Solution>
 
 ---
 

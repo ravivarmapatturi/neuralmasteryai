@@ -1,30 +1,17 @@
 ---
-title: "Practice: Layer Normalization Forward Pass"
-description: "Master Layer Normalization Forward Pass in the Deep Learning & Neural Networks track of the 1,000+ problem Neural Mastery AI Engineering curriculum."
+title: "Layer Normalization Forward Pass"
+description: "Normalize activations across the channel/feature dimension independently per sample, as standard in Transformers and RNNs."
 difficulty: "medium"
 topic: "Deep Learning & Neural Networks"
 ---
 
-import PracticePlayground from '../../../components/content/PracticePlayground';
 import { Solution } from '../../../components/content/ExpandableDepth';
-
-# #873. Layer Normalization Forward Pass
-
-**Track**: Deep Learning & Neural Networks | **Rank**: #873 of 1072 | **Points**: 60 XP
-
-## Overview
-
-Normalize activations across the channel/feature dimension independently per sample, as standard in Transformers and RNNs.
-
-## Task
-
-Implement `layer_norm_forward(x, gamma, beta, eps=1e-5)`: for each sample row `x[i]` of length `D`, compute mean `mu_i = (1/D) * sum(x[i])` and variance `sigma_i^2 = (1/D) * sum((x[i][j] - mu_i)^2)`. Normalize each entry `x_hat[i][j] = (x[i][j] - mu_i) / sqrt(sigma_i^2 + eps)` and apply affine parameters `y[i][j] = gamma[j] * x_hat[i][j] + beta[j]`. Round each value to 4 decimal places.
-
-<PracticePlayground problemId="dl-nn-prob-13" />
 
 <Solution>
 
 ```python
+import math
+
 def layer_norm_forward(x: list[list[float]], gamma: list[float], beta: list[float], eps: float = 1e-5) -> list[list[float]]:
     N = len(x)
     D = len(x[0])

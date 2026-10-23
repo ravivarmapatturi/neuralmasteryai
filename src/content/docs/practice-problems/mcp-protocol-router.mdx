@@ -1,77 +1,11 @@
 ---
-title: "Practice: MCP Protocol JSON-RPC Tool Router"
-sidebar_position: 73
+title: "MCP Protocol JSON-RPC Tool Router"
 description: "Implement a Model Context Protocol (MCP) JSON-RPC 2.0 message handler and tool validator."
 difficulty: medium
 topic: agents
 ---
 
-import PracticePlayground from '../../../components/content/PracticePlayground';
-import { Solution } from '../../../components/content/ExpandableDepth';
-
-# MCP Protocol JSON-RPC Tool Router
-
 **Difficulty: Medium** · Topic: Agents & Applications · Concept: [Model Context Protocol (MCP)](/docs/agents/mcp/overview)
 
 Model Context Protocol (MCP) standardizes agent tool integration over JSON-RPC 2.0. Implement an MCP message router that processes `tools/list` and `tools/call` JSON-RPC requests according to the MCP specification.
 
-<PracticePlayground problemId="mcp-protocol-router" />
-
-<Solution>
-
-```python
-import json
-
-def mcp_router(request_json_str, registered_tools):
-    """
-    Parses JSON-RPC 2.0 MCP request and routes to tools/list or tools/call handler.
-    Returns JSON-RPC response string.
-    """
-    try:
-        req = json.loads(request_json_str)
-    except Exception:
-        return json.dumps({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}})
-
-    req_id = req.get("id")
-    method = req.get("method")
-    params = req.get("params", {})
-
-    if method == "tools/list":
-        tool_list = [
-            {"name": name, "description": tool["description"], "inputSchema": tool.get("schema", {})}
-            for name, tool in registered_tools.items()
-        ]
-        return json.dumps({"jsonrpc": "2.0", "id": req_id, "result": {"tools": tool_list}})
-
-    elif method == "tools/call":
-        name = params.get("name")
-        arguments = params.get("arguments", {})
-
-        if name not in registered_tools:
-            return json.dumps({
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "error": {"code": -32601, "message": f"Tool '{name}' not found"}
-            })
-
-        try:
-            fn = registered_tools[name]["function"]
-            output = fn(**arguments)
-            return json.dumps({
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {"content": [{"type": "text", "text": str(output)}]}
-            })
-        except Exception as e:
-            return json.dumps({
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {"content": [{"type": "text", "text": f"Error: {str(e)}"}], "isError": True}
-            })
-
-    return json.dumps({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": "Method not found"}})
-```
-
-The MCP server parses JSON-RPC 2.0 messages. For `tools/list`, it returns available tool schemas. For `tools/call`, it validates arguments against the registered function, executes the handler, and encapsulates output in MCP's standard `content` array format.
-
-</Solution>

@@ -1,15 +1,11 @@
 ---
-title: "Practice: Practice: SwiGLU MLP Block From Scratch"
-sidebar_position: 51
+title: "SwiGLU MLP Block From Scratch"
 description: "Implement the SwiGLU feedforward block from scratch with NumPy -- the gated MLP used in LLaMA, Mistral, and Gemma's transformer blocks."
 difficulty: medium
 topic: llms-genai
 ---
 
 import RunnableCode from '../../../components/content/RunnableCode';
-import { Solution } from '../../../components/content/ExpandableDepth';
-
-# SwiGLU MLP Block From Scratch
 
 **Difficulty: Medium** · Concept: [Foundation Model Internals — The MLP Block: SwiGLU](/docs/llms-genai/foundation-model-internals#the-mlp-block-swiglu)
 
@@ -38,26 +34,6 @@ assert silu(np.array([100.0]))[0] > 99.9
 assert swiglu_mlp(np.random.RandomState(0).randn(2, 8), np.random.RandomState(1).randn(8, 16), np.random.RandomState(2).randn(8, 16), np.random.RandomState(3).randn(16, 8)).shape == (2, 8)
 assert np.allclose(swiglu_mlp(np.random.RandomState(0).randn(2, 8), np.zeros((8, 16)), np.random.RandomState(2).randn(8, 16), np.random.RandomState(3).randn(16, 8)), 0.0)`}
 />
-
-<Solution>
-
-```python
-import numpy as np
-
-def silu(x):
-    return x / (1 + np.exp(-x))
-
-def swiglu_mlp(x, W1, W3, W2):
-    return (silu(x @ W1) * (x @ W3)) @ W2
-```
-
-`silu(x) = x * sigmoid(x)` is written here as `x / (1 + exp(-x))` — `sigmoid(x) = 1/(1+exp(-x))`, so `x * sigmoid(x) = x / (1+exp(-x))`, the same formula with one fewer intermediate array. SiLU behaves like a smooth ReLU: it's `~0` for very negative inputs and `~x` (identity) for very positive ones (confirmed by `silu(100) ≈ 100` above), but unlike ReLU it's smooth and non-monotonic near 0, which empirically trains better in practice.
-
-The *gating* is the real structural idea, separate from which activation is used: `silu(x @ W1)` produces a per-unit "how much of this feature to let through" signal (bounded roughly `[0, ∞)` but effectively acting like a soft gate near 0), which multiplies elementwise against a completely separately-learned projection `x @ W3` — the network learns both *what* signal to compute and *how much* of it to pass along, using two independent sets of weights rather than one linear layer immediately squashed by a fixed nonlinearity. When the gate is entirely zero (the `W1_zero` test case), the whole block outputs zero regardless of `W3`/`W2` — a direct, testable confirmation that the gate really is gating, not just adding.
-
-[Foundation Model Internals](/docs/llms-genai/foundation-model-internals#the-mlp-block-swiglu) covers where this MLP block sits inside a full transformer layer, alongside attention and normalization.
-
-</Solution>
 
 ---
 

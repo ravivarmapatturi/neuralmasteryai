@@ -1,52 +1,7 @@
 ---
-title: "Practice: Fisher's Linear Discriminant Analysis Projection"
-description: "Master Fisher's Linear Discriminant Analysis Projection in the Classical Machine Learning track of the 1,000+ problem Neural Mastery AI Engineering curriculum."
+title: "Fisher's Linear Discriminant Analysis Projection"
+description: "Derive Fisher's optimal 1D discriminant projection vector for two Gaussian classes."
 difficulty: "hard"
 topic: "Classical Machine Learning"
 ---
 
-import PracticePlayground from '../../../components/content/PracticePlayground';
-import { Solution } from '../../../components/content/ExpandableDepth';
-
-# #828. Classical Machine Learning Module 6: Problem 28
-
-**Track**: Classical Machine Learning | **Rank**: #828 of 1072 | **Points**
-
-## Overview
-
-Derive Fisher's optimal 1D discriminant projection vector for two Gaussian classes.
-
-## Task
-
-Implement `lda_projection_vector(class0, class1)`: compute class mean vectors `m0, m1`, within-class scatter matrix `S_w`, invert `S_w`, multiply by `m1 - m0`, and normalize `w` to unit length.
-
-<PracticePlayground problemId="class-ml-prob-28" />
-
-<Solution>
-
-```python
-import math
-
-def lda_projection_vector(class0, class1):
-    m0 = [sum(pt[j] for pt in class0) / len(class0) for j in range(2)]
-    m1 = [sum(pt[j] for pt in class1) / len(class1) for j in range(2)]
-    Sw = [[0.0, 0.0], [0.0, 0.0]]
-    for pt in class0:
-        d = [pt[0] - m0[0], pt[1] - m0[1]]
-        Sw[0][0] += d[0] * d[0]; Sw[0][1] += d[0] * d[1]
-        Sw[1][0] += d[1] * d[0]; Sw[1][1] += d[1] * d[1]
-    for pt in class1:
-        d = [pt[0] - m1[0], pt[1] - m1[1]]
-        Sw[0][0] += d[0] * d[0]; Sw[0][1] += d[0] * d[1]
-        Sw[1][0] += d[1] * d[0]; Sw[1][1] += d[1] * d[1]
-    det = Sw[0][0] * Sw[1][1] - Sw[0][1] * Sw[1][0]
-    invSw = [[Sw[1][1] / det, -Sw[0][1] / det], [-Sw[1][0] / det, Sw[0][0] / det]]
-    diff = [m1[0] - m0[0], m1[1] - m0[1]]
-    w = [invSw[0][0] * diff[0] + invSw[0][1] * diff[1], invSw[1][0] * diff[0] + invSw[1][1] * diff[1]]
-    norm = math.sqrt(w[0] ** 2 + w[1] ** 2)
-    return [round(w[0] / norm, 4), round(w[1] / norm, 4)]
-```
-
-Compute class centroids and total within-class scatter, invert the 2x2 scatter matrix, project along the mean difference direction, and scale to unit norm.
-
-</Solution>

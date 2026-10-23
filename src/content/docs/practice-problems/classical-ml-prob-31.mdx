@@ -1,47 +1,7 @@
 ---
-title: "Practice: Naive Bayes Maximum A Posteriori Predictor"
-sidebar_position: 271
+title: "Naive Bayes Maximum A Posteriori Predictor"
 description: "Curriculum Problem 271 (Stage 5: Classical Machine Learning & Optimization): Master Classical ML."
 difficulty: medium
 topic: classical-ml
 ---
 
-import PracticePlayground from '../../../components/content/PracticePlayground';
-import { Solution } from '../../../components/content/ExpandableDepth';
-
-# Classical ML Module 31: Problem 271
-
-**Rank #271** · Difficulty: **Medium** · Stage: **Stage 5: Classical Machine Learning & Optimization** · Category: **Classical ML**
-
-## Overview
-
-Classify a sample using categorical Naive Bayes log-likelihood scoring.
-
-## Task
-
-Implement `naive_bayes_predict(class_priors, feature_probs, sample)`: for each class, compute `log(prior) + sum(log(P(x_i | c)))`. Return the class label with the highest log posterior (tie-break alphabetically).
-
-<PracticePlayground problemId="classical-ml-prob-31" />
-
-<Solution>
-
-```python
-import math
-
-def naive_bayes_predict(class_priors, feature_probs, sample):
-    best_class = None
-    best_log_post = float('-inf')
-    for c, prior in sorted(class_priors.items()):
-        log_p = math.log(prior) if prior > 0 else -1e9
-        for feat_idx, val in enumerate(sample):
-            prob = feature_probs.get(c, {}).get(feat_idx, {}).get(val, 1e-6)
-            log_p += math.log(max(1e-9, prob))
-        if log_p > best_log_post:
-            best_log_post = log_p
-            best_class = c
-    return best_class
-```
-
-Under conditional independence assumptions, multiplying feature probabilities turns into a sum of log-likelihoods for numerically stable classification.
-
-</Solution>

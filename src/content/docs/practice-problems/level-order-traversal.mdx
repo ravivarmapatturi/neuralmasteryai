@@ -1,15 +1,11 @@
 ---
-title: "Practice: Practice: Level-Order Traversal (BFS)"
-sidebar_position: 28
+title: "Level-Order Traversal (BFS)"
 description: "BFS on a binary tree in a real Python sandbox -- visit every node top-to-bottom, left-to-right, exactly the order BFS naturally produces from the root."
 difficulty: easy
 topic: interview-prep
 ---
 
 import RunnableCode from '../../../components/content/RunnableCode';
-import { Solution } from '../../../components/content/ExpandableDepth';
-
-# Level-Order Traversal (BFS)
 
 **Difficulty: Easy** · Pattern: Tree BFS · Concept: [Algorithms & Data Structures — Core Data Structures](/docs/mathematics-for-ai/algorithms-data-structures#core-data-structures)
 
@@ -41,32 +37,6 @@ assert level_order(tree_b) == [1, 2]
 assert level_order(tree_c) == [5]
 assert level_order(None) == []`}
 />
-
-<Solution>
-
-```python
-from collections import deque
-
-def level_order(root):
-    if root is None:
-        return []
-    result = []
-    queue = deque([root])
-    while queue:
-        node = queue.popleft()
-        result.append(node.val)
-        if node.left:
-            queue.append(node.left)
-        if node.right:
-            queue.append(node.right)
-    return result
-```
-
-Exactly [Shortest Path's](/practice/shortest-path-bfs) BFS loop, specialized to a tree: a node's "neighbors" are just its `left` and `right` children (never revisited, since a tree has no cycles — no `visited` set needed here, unlike general-graph BFS). Because nodes are enqueued in the order they're discovered, and every node at depth $d$ gets enqueued before any node at depth $d+1$, the queue naturally drains in level order — `tree_a`'s `[1, 2, 3, 4, 5]` reflects the root first, then both depth-1 children left-to-right, then both depth-2 children left-to-right, with no extra bookkeeping needed to track which level is "current."
-
-A recursive **pre/in/post-order** traversal (DFS-shaped: visit node, then recurse into subtrees in some order) would produce a completely different sequence — those explore one branch all the way down before backing up, while level-order explicitly needs BFS's breadth-first character. Picking the right traversal for a tree problem is really "is this fundamentally a BFS question (shortest/shallowest/level-by-level) or a DFS question (does order along one path matter)" — the exact same judgment call as on general graphs.
-
-</Solution>
 
 ---
 

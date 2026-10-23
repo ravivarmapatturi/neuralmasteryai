@@ -1,55 +1,7 @@
 ---
-title: "Practice: Levenberg-Marquardt Damped Least Squares Step"
-sidebar_position: 180
+title: "Levenberg-Marquardt Damped Least Squares Step"
 description: "Curriculum Problem 180 (Stage 3: Mathematics & Numerical Computing): Master Mathematics / numerical computing."
 difficulty: hard
 topic: math-numerical
 ---
 
-import PracticePlayground from '../../../components/content/PracticePlayground';
-import { Solution } from '../../../components/content/ExpandableDepth';
-
-# Mathematics Module 60: Problem 180
-
-**Rank #180** · Difficulty: **Hard** · Stage: **Stage 3: Mathematics & Numerical Computing** · Category: **Math & Numerical**
-
-## Overview
-
-Compute the damped Gauss-Newton parameter update step for nonlinear least-squares regression.
-
-## Task
-
-Implement `levenberg_marquardt_step(J, r, damping=0.01)`: for m x n Jacobian J and residual vector r of length m, form the normal equations matrix `H = J^T * J + damping * I_n` and gradient `g = -J^T * r`. Solve `H * delta = g` for step `delta`. Return `delta` rounded to 4 decimals.
-
-<PracticePlayground problemId="math-num-prob-60" />
-
-<Solution>
-
-```python
-def levenberg_marquardt_step(J, r, damping=0.01):
-    m = len(J)
-    n = len(J[0])
-    JTJ = [[sum(J[k][i] * J[k][j] for k in range(m)) for j in range(n)] for i in range(n)]
-    for i in range(n):
-        JTJ[i][i] += damping
-    rhs = [-sum(J[k][i] * r[k] for k in range(m)) for i in range(n)]
-    aug = [list(JTJ[i]) + [1.0 if i == j else 0.0 for j in range(n)] for i in range(n)]
-    for col in range(n):
-        pivot = max(range(col, n), key=lambda r_idx: abs(aug[r_idx][col]))
-        if abs(aug[pivot][col]) < 1e-9:
-            return [0.0] * n
-        aug[col], aug[pivot] = aug[pivot], aug[col]
-        pv = aug[col][col]
-        aug[col] = [x / pv for x in aug[col]]
-        for r_idx in range(n):
-            if r_idx != col:
-                f = aug[r_idx][col]
-                aug[r_idx] = [aug[r_idx][c] - f * aug[col][c] for c in range(2 * n)]
-    inv_mat = [[aug[i][n + j] for j in range(n)] for i in range(n)]
-    delta = [sum(inv_mat[i][j] * rhs[j] for j in range(n)) for i in range(n)]
-    return [round(float(v), 4) for v in delta]
-```
-
-Forms regularized normal equations and solves for descent delta via Gauss-Jordan elimination.
-
-</Solution>

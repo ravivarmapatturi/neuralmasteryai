@@ -4,12 +4,3 @@ description: "Reduce latency and API expenditure by caching recurring LLM prompt
 difficulty: "medium"
 topic: "LLM Application Engineering"
 ---
-
-## Overview
-
-Reduce latency and API expenditure by caching recurring LLM prompt responses with LRU eviction and TTL invalidation. In production LLM application engineering, reliable system components, deterministic interfaces, and defensive validation are paramount for production stability and cost efficiency.
-
-## Task
-
-Implement `simulate_prompt_cache(operations, capacity=100, default_ttl_sec=3600)`. Process operations in order. Normalize prompts by stripping leading/trailing whitespace, collapsing internal whitespace, and lowercasing. For `'get'`: check if prompt exists in cache; if expired (`timestamp > expire_timestamp`), delete entry, increment `expired` and `misses`; if valid, refresh LRU access and increment `hits`; if not found, increment `misses`. For `'set'`: store response with `expire_timestamp = timestamp + ttl`. If key exists, overwrite and refresh LRU; if inserting causes `size > capacity`, evict the least recently used item (`evictions += 1`). Return `{'hits': int, 'misses': int, 'evictions': int, 'expired': int, 'final_keys': list[str]}`. Raise `ValueError` if `capacity <= 0` or `default_ttl_sec <= 0`.
-

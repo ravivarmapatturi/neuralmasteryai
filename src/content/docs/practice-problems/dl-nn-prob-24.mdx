@@ -1,30 +1,17 @@
 ---
-title: "Practice: Layer Normalization Backward Pass"
-description: "Master Layer Normalization Backward Pass in the Deep Learning & Neural Networks track of the 1,000+ problem Neural Mastery AI Engineering curriculum."
+title: "Layer Normalization Backward Pass"
+description: "Compute exact analytical gradients for Layer Normalization without numerical differentiation."
 difficulty: "hard"
 topic: "Deep Learning & Neural Networks"
 ---
 
-import PracticePlayground from '../../../components/content/PracticePlayground';
 import { Solution } from '../../../components/content/ExpandableDepth';
-
-# #884. Layer Normalization Backward Pass
-
-**Track**: Deep Learning & Neural Networks | **Rank**: #884 of 1072 | **Points**: 90 XP
-
-## Overview
-
-Compute exact analytical gradients for Layer Normalization without numerical differentiation.
-
-## Task
-
-Implement `layer_norm_backward(dout, x, gamma, eps=1e-5)`: given upstream gradient `dout` and input `x`, compute `dbeta = sum_i(dout_i)` and `dgamma = sum_i(dout_i * x_hat_i)`. For each sample `i`, compute the gradient w.r.t input `x_i` as `dx_ij = (1 / (D * sqrt(var + eps))) * (D * dxhat_j - sum(dxhat) - x_hat_j * sum(dxhat * x_hat))`, where `dxhat_j = dout_ij * gamma_j`. Return `{'dx': dx, 'dgamma': dgamma, 'dbeta': dbeta}` rounded to 4 decimal places.
-
-<PracticePlayground problemId="dl-nn-prob-24" />
 
 <Solution>
 
 ```python
+import math
+
 def layer_norm_backward(dout: list[list[float]], x: list[list[float]], gamma: list[float], eps: float = 1e-5) -> dict:
     N = len(x)
     D = len(x[0])

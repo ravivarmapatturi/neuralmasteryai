@@ -1,22 +1,6 @@
 ---
-title: "Practice: Production LLM Application Gateway"
-description: "Master Production LLM Application Gateway in the LLM Application Engineering track of the 1,000+ problem Neural Mastery AI Engineering curriculum."
+title: "Production LLM Application Gateway"
+description: "Unify production LLM infrastructure into a resilient gateway pipeline covering rate limiting, caching, guardrails, and intelligent routing."
 difficulty: "hard"
 topic: "LLM Application Engineering"
 ---
-
-import PracticePlayground from '../../../components/content/PracticePlayground';
-
-# #090. Production LLM Application Gateway
-
-**Track**: LLM Application Engineering | **Rank**: #90 of 1072 | **Points**: 90 XP
-
-## Overview
-
-Unify production LLM infrastructure into a resilient gateway pipeline covering rate limiting, caching, guardrails, and intelligent routing. In production LLM application engineering, reliable system components, deterministic interfaces, and defensive validation are paramount for production stability and cost efficiency.
-
-## Task
-
-Implement `process_llm_gateway_request(request, cache_store, rate_limits, routing_table)`. Execute the request lifecycle: 1) Rate limiting: if `rate_limits[client_id]['remaining'] <= 0`, return `{'status': 'rate_limited', 'stage': 'rate_limit', 'provider': None, 'response': None, 'cached': False}`. 2) Cache lookup: normalize prompt (lowercase, collapsed whitespace); if present in `cache_store`, return `{'status': 'success', 'stage': 'cache', 'provider': 'cache', 'response': cache_store[norm_prompt], 'cached': True}`. 3) Guardrails: if any phrase in `request.get('blocked_keywords', [])` appears case-insensitively in `prompt`, return `{'status': 'blocked', 'stage': 'guardrail', 'provider': None, 'response': None, 'cached': False}`. 4) Routing & Execution: select provider from `routing_table` based on `request.get('tier', 'standard')`, decrement client rate limit quota, and return `{'status': 'success', 'stage': 'provider', 'provider': provider, 'response': f'Generated: {prompt}', 'cached': False}`. Raise `ValueError` if `client_id` or `prompt` is missing.
-
-<PracticePlayground problemId="llm-app-prob-30" />

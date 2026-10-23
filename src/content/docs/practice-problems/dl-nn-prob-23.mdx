@@ -7,17 +7,11 @@ topic: "Deep Learning & Neural Networks"
 
 import { Solution } from '../../../components/content/ExpandableDepth';
 
-## Overview
-
-Execute an end-to-end training iteration: forward pass with ReLU, Softmax cross-entropy, backpropagation, and gradient updates.
-
-## Task
-
-Implement `two_layer_mlp_train_step(...)`: for batch `x` and targets `y`, compute hidden activations `a1 = ReLU(x @ w1 + b1)`. Compute logits `z2 = a1 @ w2 + b2` and softmax probabilities `p`. Compute cross-entropy loss `-(1/N) sum(log(p_i[y_i]))`. Backpropagate gradients: `dlogits = (p - one_hot(y)) / N`, `dw2 = a1.T @ dlogits`, `db2 = sum(dlogits)`. Backpropagate through ReLU: `da1 = dlogits @ w2.T`, `dz1 = da1 * (z1 > 0)`, `dw1 = x.T @ dz1`, `db1 = sum(dz1)`. Update parameters using SGD: `param_new = param - lr * dparam`. Return `{'loss': ..., 'w1': ..., 'b1': ..., 'w2': ..., 'b2': ...}` with all floats rounded to 4 decimals.
-
 <Solution>
 
 ```python
+import math
+
 def two_layer_mlp_train_step(x: list[list[float]], y: list[int], w1: list[list[float]], b1: list[float], w2: list[list[float]], b2: list[float], lr: float = 0.1) -> dict:
     N = len(x)
     D_in = len(w1)

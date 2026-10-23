@@ -1,58 +1,11 @@
 ---
-title: "Practice: MCP Server Tool Handler"
-sidebar_position: 74
+title: "MCP Server Tool Handler"
 description: "Build an MCP Server tool execution handler with parameter validation and structured result output."
 difficulty: medium
 topic: agents
 ---
 
-import PracticePlayground from '../../../components/content/PracticePlayground';
-import { Solution } from '../../../components/content/ExpandableDepth';
-
-# MCP Server Tool Handler
-
 **Difficulty: Medium** · Topic: Agents & Applications · Concept: [Model Context Protocol (MCP)](/docs/agents/mcp/overview)
 
 In the Model Context Protocol, MCP Servers expose executable tools with JSON schema definitions. Implement a server-side tool execution handler `handle_tool_call(tool_name, arguments, registered_tools)` that verifies argument presence, executes the registered python function, and packages outputs into the standard MCP `content` object format `{"content": [{"type": "text", "text": "..."}], "isError": false}`.
 
-<PracticePlayground problemId="mcp-server-tool-handler" />
-
-<Solution>
-
-```python
-def handle_tool_call(tool_name, arguments, registered_tools):
-    """
-    Executes registered MCP server tool and formats standard MCP response payload.
-    """
-    if tool_name not in registered_tools:
-        return {
-            "content": [{"type": "text", "text": f"Tool '{tool_name}' is not registered."}],
-            "isError": True
-        }
-    
-    tool = registered_tools[tool_name]
-    required_args = tool.get("required", [])
-    for arg in required_args:
-        if arg not in arguments:
-            return {
-                "content": [{"type": "text", "text": f"Missing required parameter '{arg}' for tool '{tool_name}'."}],
-                "isError": True
-            }
-            
-    try:
-        fn = tool["function"]
-        result = fn(**arguments)
-        return {
-            "content": [{"type": "text", "text": str(result)}],
-            "isError": False
-        }
-    except Exception as e:
-        return {
-            "content": [{"type": "text", "text": f"Execution error: {str(e)}"}],
-            "isError": True
-        }
-```
-
-MCP Servers encapsulate tool execution logic safely. When an MCP Client requests `tools/call`, the server validates the incoming parameters against registered tool schemas, invokes the handler function safely, and packages all output strings or exceptions inside standard MCP `content` array payloads.
-
-</Solution>

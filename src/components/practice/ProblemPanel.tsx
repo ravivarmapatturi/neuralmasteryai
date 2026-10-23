@@ -7,13 +7,13 @@ import LiveComputation, { getLiveConceptForTopic } from '../home/LiveComputation
 import {
   ClockIcon,
   SparkleIcon,
-  ZapIcon,
   BookOpenIcon,
 } from '../icons/PracticeIcons';
 import type { MasteryTier } from '../../lib/gamification';
 import { trackForProblem } from '../../data/practiceCatalog';
 import TrackStageMap from './TrackStageMap';
 import PlainMarkdown from './PlainMarkdown';
+import { formatPy, formatPyArgs } from '../../lib/pyFormat';
 
 const TwoPointersSlidingWindowExplorer = lazy(() => import('../../viz/TwoPointersSlidingWindowExplorer'));
 const GraphTreeTraversalExplorer = lazy(() => import('../../viz/GraphTreeTraversalExplorer'));
@@ -40,73 +40,25 @@ function getDsaExplorerForTopic(topic?: string): DsaExplorer | null {
  * slice of problems and must never be shown as a stand-in for problems
  * they don't actually match). */
 function StepByStepWalkthrough({ problem }: { problem: PracticeProblem }) {
+  // Ordered as you'd explain it: the idea, how to turn it into code, then
+  // the detail people get wrong. Each comes from the problem's own hints; a
+  // missing one is left out rather than filled with generic text.
+  const parts = [
+    { label: 'The idea', text: problem.hints?.concept },
+    { label: 'Approach', text: problem.hints?.small },
+    { label: 'Watch out for', text: problem.hints?.strong },
+  ].filter((part): part is { label: string; text: string } => Boolean(part.text));
+  if (parts.length === 0) return null;
   return (
-    <div>
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 700,
-          textTransform: 'uppercase',
-          letterSpacing: '0.06em',
-          color: 'var(--nm-accent-secondary)',
-          marginBottom: 10,
-        }}
-      >
-        How to Solve This, Step by Step
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div
-          style={{
-            padding: '10px 12px',
-            borderRadius: 6,
-            background: 'var(--nm-surface-alt)',
-            border: '1px solid var(--nm-border)',
-            borderLeft: '3px solid var(--nm-accent-secondary)',
-          }}
-        >
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--nm-accent-secondary)', marginBottom: 3 }}>
-            Step 1: Frame the Goal &amp; Invariants
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {parts.map((part) => (
+        <section key={part.label}>
+          <h3 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 4px', color: 'var(--nm-text-primary)' }}>{part.label}</h3>
+          <div style={{ fontSize: 13.5, lineHeight: 1.6, color: 'var(--nm-text-primary)' }}>
+            <PlainMarkdown text={part.text} />
           </div>
-          <div style={{ fontSize: 12.5, color: 'var(--nm-text-primary)', lineHeight: 1.5 }}>
-            {problem.hints?.small ?? 'Identify the exact inputs and return shapes expected by the signature.'}
-          </div>
-        </div>
-
-        <div
-          style={{
-            padding: '10px 12px',
-            borderRadius: 6,
-            background: 'var(--nm-surface-alt)',
-            border: '1px solid var(--nm-border)',
-            borderLeft: '3px solid var(--nm-accent-teal)',
-          }}
-        >
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--nm-accent-teal)', marginBottom: 3 }}>
-            Step 2: Implementation Walkthrough
-          </div>
-          <div style={{ fontSize: 12.5, color: 'var(--nm-text-primary)', lineHeight: 1.5 }}>
-            {problem.hints?.strong ?? 'Iterate through the required operations and accumulate or transform intermediate values.'}
-          </div>
-        </div>
-
-        <div
-          style={{
-            padding: '10px 12px',
-            borderRadius: 6,
-            background: 'var(--nm-surface-alt)',
-            border: '1px solid var(--nm-border)',
-            borderLeft: '3px solid var(--nm-accent-purple)',
-          }}
-        >
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--nm-accent-purple)', marginBottom: 3 }}>
-            Step 3: Core Concept &amp; Numerical Properties
-          </div>
-          <div style={{ fontSize: 12.5, color: 'var(--nm-text-primary)', lineHeight: 1.5 }}>
-            {problem.hints?.concept ?? `Fundamental computation applied in ${problem.topic}.`}
-          </div>
-        </div>
-      </div>
+        </section>
+      ))}
     </div>
   );
 }
@@ -417,27 +369,8 @@ export default function ProblemPanel({
                 )}
               </div>
 
-              {/* Clean Library Policy Banner (No rainbow gradient) */}
               {problem.libraryPolicyText && (
-                <div
-                  style={{
-                    marginTop: 14,
-                    padding: '8px 12px',
-                    borderRadius: 6,
-                    background: 'var(--nm-surface-alt)',
-                    border: '1px solid var(--nm-border)',
-                    borderLeft: '3px solid var(--nm-accent-secondary)',
-                    color: 'var(--nm-text-secondary)',
-                    fontSize: 12,
-                    fontWeight: 500,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                  }}
-                >
-                  <ZapIcon size={14} color="var(--nm-accent-secondary)" />
-                  <span>{problem.libraryPolicyText}</span>
-                </div>
+                <p style={{ margin: '12px 0 0', fontSize: 12.5, color: 'var(--nm-text-muted)' }}>{problem.libraryPolicyText}</p>
               )}
             </div>
 
@@ -508,31 +441,10 @@ export default function ProblemPanel({
                 whole algorithm) before the learner had tried anything. They
                 stay behind "Need Help?" and in the Worked Intuition tab. */}
 
-            {/* Mission Box: Whitespace and typographic discipline */}
-            <div
-              style={{
-                borderLeft: '3px solid var(--nm-accent-secondary)',
-                padding: '8px 14px',
-                background: 'color-mix(in srgb, var(--nm-accent-secondary) 6%, var(--nm-surface))',
-                marginBottom: 20,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.06em',
-                  color: 'var(--nm-accent-secondary)',
-                  marginBottom: 4,
-                }}
-              >
-                Why it matters
-              </div>
-              <div style={{ fontSize: 13.5, lineHeight: 1.55, color: 'var(--nm-text-primary)' }}>
-                {problem.mission}
-              </div>
-            </div>
+            {/* The one-line summary of what to compute. It used to sit in a
+                "Why it matters" box, but it states the goal, not a reason,
+                so it now reads as a plain lead line above the task. */}
+            <p style={{ margin: '0 0 20px', fontSize: 15, lineHeight: 1.55, color: 'var(--nm-text-secondary)' }}>{problem.mission}</p>
 
             {/* Related Skills -- the Mission box above already states why
                 this problem matters, so this no longer repeats that same
@@ -601,16 +513,16 @@ export default function ProblemPanel({
                         boxSizing: 'border-box',
                       }}
                     >
-                      <div style={{ fontWeight: 600, color: 'var(--nm-text-secondary)', marginBottom: 4, fontFamily: 'inherit' }}>
+                      <div style={{ fontWeight: 600, color: 'var(--nm-text-secondary)', marginBottom: 4, fontFamily: 'var(--font-sans)' }}>
                         Example {idx + 1}: {tc.label}
                       </div>
                       <div style={{ color: 'var(--nm-text-primary)', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                         <span style={{ color: 'var(--nm-text-muted)' }}>Input: </span>
-                        {JSON.stringify(tc.input)}
+                        <span style={{ whiteSpace: 'pre', display: 'inline-block', verticalAlign: 'top', maxWidth: '100%', overflowX: 'auto' }}>{formatPyArgs(tc.input)}</span>
                       </div>
                       <div style={{ color: 'var(--nm-accent-primary)', marginTop: 3, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                         <span style={{ color: 'var(--nm-text-muted)' }}>Output: </span>
-                        {tc.expectError ? `Raises ${tc.expectError}` : JSON.stringify(tc.expectedOutput)}
+                        <span style={{ whiteSpace: 'pre', display: 'inline-block', verticalAlign: 'top', maxWidth: '100%', overflowX: 'auto' }}>{tc.expectError ? `Raises ${tc.expectError}` : formatPy(tc.expectedOutput)}</span>
                       </div>
                       {tc.description && (
                         <div style={{ color: 'var(--nm-text-muted)', fontSize: 12, marginTop: 4, fontFamily: 'sans-serif', overflowWrap: 'break-word' }}>
@@ -647,20 +559,6 @@ export default function ProblemPanel({
           <div>
             {vectorOpSpec && (
               <VectorOpsPlayground spec={vectorOpSpec} />
-            )}
-
-            {!mdxContent && (
-              <div style={{ marginTop: vectorOpSpec ? 16 : 0, marginBottom: 18, lineHeight: 1.6, color: 'var(--nm-text-primary)', fontSize: 13.5 }}>
-                <h3 style={{ fontSize: 15, fontWeight: 700, margin: '0 0 6px', color: 'var(--nm-text-primary)' }}>
-                  Worked Intuition &amp; Problem Walkthrough
-                </h3>
-                <p style={{ margin: '0 0 10px', color: 'var(--nm-text-secondary)', fontSize: 13 }}>
-                  {problem.mission}
-                </p>
-                <div style={{ fontSize: 12.5, color: 'var(--nm-text-muted)', lineHeight: 1.5 }}>
-                  {problem.taskDescription}
-                </div>
-              </div>
             )}
 
             {/* Step-by-Step Walkthrough -- present unless this is a project

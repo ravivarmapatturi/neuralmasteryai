@@ -1,13 +1,11 @@
 ---
 title: "Sample Mean and Variance From Scratch"
-sidebar_position: 16
 description: "Implement sample_mean_and_variance(data) from scratch -- the population mean and variance every summary statistic on this site builds on."
 difficulty: easy
 topic: mathematics-for-ai
 ---
 
 import RunnableCode from '../../../components/content/RunnableCode';
-import { Solution } from '../../../components/content/ExpandableDepth';
 
 **Difficulty: Easy** · Concept: [Probability & Statistics — Expectation, Variance, Covariance](/docs/mathematics-for-ai/probability-statistics#expectation-variance-covariance)
 
@@ -26,22 +24,6 @@ assert sample_mean_and_variance([1, 1, 1, 1]) == (1.0, 0.0)
 assert sample_mean_and_variance([1, 2, 3, 4, 5]) == (3.0, 2.0)
 assert sample_mean_and_variance([10]) == (10.0, 0.0)`}
 />
-
-<Solution>
-
-```python
-def sample_mean_and_variance(data):
-    n = len(data)
-    mean = sum(data) / n
-    variance = sum((x - mean) ** 2 for x in data) / n
-    return mean, variance
-```
-
-Two passes over the data, each a direct transcription of a formula: the mean needs to be known before any deviation can be measured, so it has to be computed first and can't be folded into the same pass as the variance sum. `[1, 1, 1, 1]` and `[10]` both correctly give variance `0.0` — no spread at all when every value is identical (or there's only one value), exactly what "average squared deviation from the mean" should produce.
-
-One thing worth knowing even though it isn't tested here: NumPy's `np.var` also defaults to this population form (`ddof=0`), but `pandas`' `.var()` defaults to the **sample** variance instead (divide by $n-1$, Bessel's correction — an unbiased estimator of the *population* variance when your data is itself a random sample from some larger population). Mixing the two up silently is a real, easy-to-make bug when moving between NumPy and pandas code.
-
-</Solution>
 
 ---
 

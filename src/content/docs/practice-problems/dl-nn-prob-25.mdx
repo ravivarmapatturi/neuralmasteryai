@@ -1,30 +1,17 @@
 ---
-title: "Practice: AdamW Optimizer with Decoupled Weight Decay"
-description: "Master AdamW Optimizer with Decoupled Weight Decay in the Deep Learning & Neural Networks track of the 1,000+ problem Neural Mastery AI Engineering curriculum."
+title: "AdamW Optimizer with Decoupled Weight Decay"
+description: "Fix weight decay generalization in adaptive gradient methods using Loshchilov and Hutter's decoupled AdamW algorithm."
 difficulty: "hard"
 topic: "Deep Learning & Neural Networks"
 ---
 
-import PracticePlayground from '../../../components/content/PracticePlayground';
 import { Solution } from '../../../components/content/ExpandableDepth';
-
-# #885. AdamW Optimizer with Decoupled Weight Decay
-
-**Track**: Deep Learning & Neural Networks | **Rank**: #885 of 1072 | **Points**: 90 XP
-
-## Overview
-
-Fix weight decay generalization in adaptive gradient methods using Loshchilov and Hutter's decoupled AdamW algorithm.
-
-## Task
-
-Implement `adamw_optimizer_step(...)`: update moments: `m_t = beta1 * m + (1 - beta1) * grad`, `v_t = beta2 * v + (1 - beta2) * grad^2`. Correct bias: `m_hat = m_t / (1 - beta1^t)`, `v_hat = v_t / (1 - beta2^t)`. Apply decoupled weight decay directly to parameter: `param = param * (1 - lr * weight_decay) - lr * m_hat / (sqrt(v_hat) + eps)`. Return `{'param': ..., 'm': ..., 'v': ...}` rounded to 6 decimal places.
-
-<PracticePlayground problemId="dl-nn-prob-25" />
 
 <Solution>
 
 ```python
+import math
+
 def adamw_optimizer_step(param: list[float], grad: list[float], m: list[float], v: list[float], t: int, lr: float = 0.001, beta1: float = 0.9, beta2: float = 0.999, eps: float = 1e-8, weight_decay: float = 0.01) -> dict:
     new_p = []
     new_m = []

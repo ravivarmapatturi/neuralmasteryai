@@ -1,15 +1,11 @@
 ---
-title: "Practice: Sigmoid Activation Function"
-sidebar_position: 7
+title: "Sigmoid Activation Function"
 description: "Implement the sigmoid activation from scratch using math.exp -- the same function behind Logistic Regression's output and binary classifier heads."
 difficulty: easy
 topic: deep-learning
 ---
 
 import RunnableCode from '../../../components/content/RunnableCode';
-import { Solution } from '../../../components/content/ExpandableDepth';
-
-# Sigmoid Activation From Scratch
 
 **Difficulty: Easy** · Concept: [Activation Functions — Historical / Saturating Functions](/docs/deep-learning/activation-functions#historical-saturating-functions)
 
@@ -33,21 +29,6 @@ assert abs(sigmoid(-2) - 0.11920292202211755) < 1e-9
 assert 0 < sigmoid(20) < 1
 assert 0 < sigmoid(-20) < 1e-6`}
 />
-
-<Solution>
-
-```python
-import math
-
-def sigmoid(z):
-    return 1 / (1 + math.exp(-z))
-```
-
-A direct transcription of the formula. The reason this is worth an explicit exercise despite being one line: notice it's exactly the shape you'd expect from the concept page's description — at `z = 0` it's exactly `0.5` (the function's midpoint), and it saturates toward 0 and 1 as `z` moves away from 0 in either direction, but never actually reaches them — which is precisely the saturation behavior that causes vanishing gradients in deep networks when sigmoid is used in hidden layers.
-
-One thing worth knowing even though it isn't tested here: for very large negative `z` (roughly below -709), `math.exp(-z)` overflows a Python float. A numerically robust version branches on the sign of `z` to always exponentiate a negative number — see [Numerically Stable Softmax](/practice/softmax) next for exactly that technique applied to the vector case.
-
-</Solution>
 
 ---
 

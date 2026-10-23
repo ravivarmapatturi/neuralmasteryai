@@ -1,15 +1,9 @@
 ---
-title: "Practice: Multi-Head Self-Attention From Scratch"
-sidebar_position: 68
+title: "Multi-Head Self-Attention From Scratch"
 description: "Implement multi-head self-attention projections, scaled dot-product matrix multiplication, and output concatenation in pure NumPy."
 difficulty: hard
 topic: deep-learning
 ---
-
-import PracticePlayground from '../../../components/content/PracticePlayground';
-import { Solution } from '../../../components/content/ExpandableDepth';
-
-# Multi-Head Self-Attention From Scratch
 
 **Difficulty: Hard** · Topic: Deep Learning · Concept: [Attention & Transformers](/docs/deep-learning/attention-transformers)
 
@@ -17,42 +11,3 @@ $$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{Q K^T}{\sqrt{d_k}}\right
 
 Multi-Head Attention allows a transformer model to jointly attend to information from different representation subspaces at different positions. In this challenge, you will implement the core tensor projections, scaled dot-product matrix operations, and multi-head split/concatenation steps from scratch using Python/NumPy.
 
-<PracticePlayground problemId="multi-head-attention" />
-
-<Solution>
-
-```python
-import numpy as np
-
-def multi_head_attention(Q, K, V, d_model, num_heads):
-    """
-    Q, K, V: 2D arrays of shape (seq_len, d_model)
-    d_model: total embedding dimension
-    num_heads: number of attention heads
-    Returns: output array of shape (seq_len, d_model)
-    """
-    seq_len, _ = Q.shape
-    d_k = d_model // num_heads
-
-    # Reshape Q, K, V into (num_heads, seq_len, d_k)
-    Q_h = Q.reshape(seq_len, num_heads, d_k).swapaxes(0, 1)
-    K_h = K.reshape(seq_len, num_heads, d_k).swapaxes(0, 1)
-    V_h = V.reshape(seq_len, num_heads, d_k).swapaxes(0, 1)
-
-    # Scaled Dot-Product Attention per head
-    scores = np.matmul(Q_h, K_h.swapaxes(1, 2)) / np.sqrt(d_k)
-    # Softmax along last dimension
-    exp_scores = np.exp(scores - np.max(scores, axis=-1, keepdims=True))
-    attn_weights = exp_scores / np.sum(exp_scores, axis=-1, keepdims=True)
-
-    # Context matrix per head
-    head_out = np.matmul(attn_weights, V_h)  # (num_heads, seq_len, d_k)
-
-    # Concatenate heads back to (seq_len, d_model)
-    out = head_out.swapaxes(0, 1).reshape(seq_len, d_model)
-    return out
-```
-
-`multi_head_attention` splits the embedding dimension `d_model` across `num_heads` heads of size `d_k = d_model // num_heads`. The scaled dot-product attention computes pairwise similarity between queries and keys divided by $\sqrt{d_k}$ for numerical stability, applies softmax across key dimensions, and multiplies by values $V$.
-
-</Solution>

@@ -1,15 +1,11 @@
 ---
-title: "Practice: Practice: LoRA Linear Layer Forward Pass From Scratch"
-sidebar_position: 56
+title: "LoRA Linear Layer Forward Pass From Scratch"
 description: "Implement a LoRA-adapted linear layer's forward pass from scratch with NumPy -- the low-rank adapter behind most efficient LLM fine-tuning today."
 difficulty: medium
 topic: llms-genai
 ---
 
 import RunnableCode from '../../../components/content/RunnableCode';
-import { Solution } from '../../../components/content/ExpandableDepth';
-
-# LoRA Linear Layer Forward Pass From Scratch
 
 **Difficulty: Medium** · Concept: [Training Pipeline — Parameter-Efficient Fine-Tuning (PEFT)](/docs/llms-genai/training-pipeline#parameter-efficient-fine-tuning-peft)
 
@@ -33,24 +29,6 @@ assert np.allclose(lora_linear(np.random.RandomState(2).randn(3, 4), np.random.R
 assert lora_linear(np.random.RandomState(2).randn(3, 4), np.random.RandomState(9).randn(6, 4), np.random.RandomState(8).randn(2, 4), np.random.RandomState(7).randn(6, 2), 4, 2).shape == (3, 6)
 assert np.allclose(lora_linear(np.random.RandomState(2).randn(3, 4), np.random.RandomState(9).randn(6, 4), np.random.RandomState(8).randn(2, 4), np.random.RandomState(7).randn(6, 2), 8, 2) - (np.random.RandomState(2).randn(3, 4) @ np.random.RandomState(9).randn(6, 4).T), 2 * (lora_linear(np.random.RandomState(2).randn(3, 4), np.random.RandomState(9).randn(6, 4), np.random.RandomState(8).randn(2, 4), np.random.RandomState(7).randn(6, 2), 4, 2) - (np.random.RandomState(2).randn(3, 4) @ np.random.RandomState(9).randn(6, 4).T)))`}
 />
-
-<Solution>
-
-```python
-import numpy as np
-
-def lora_linear(x, W0, A, B, alpha, r):
-    scaling = alpha / r
-    base = x @ W0.T
-    delta = (x @ A.T) @ B.T * scaling
-    return base + delta
-```
-
-The frozen base term `x @ W0.T` is just an ordinary linear layer — nothing about LoRA changes it. The adapter term factors what *would* be a full `(out, in)` update matrix into two much smaller pieces multiplied together: `x @ A.T` projects the input down to the small rank-`r` space (`(batch, r)`), and `@ B.T` projects it back up to the output dimension. A full-rank update matrix would need `out * in` parameters; `A` and `B` together need only `r*(in + out)` — with `r` far smaller than either dimension, that's a huge reduction, and it's the entire reason LoRA is *parameter-efficient*.
-
-`B` starting at all zeros (the first test) is not an arbitrary choice — real LoRA training initializes `B` to zero specifically so that, before any adapter training happens, `delta` is exactly zero and the adapted model behaves identically to the frozen base model. `alpha/r` is a fixed scaling factor decoupled from `r` itself, which is why doubling `alpha` (last test) doubles the adapter's contribution directly rather than needing to also change `r` — in practice this lets you tune how strongly the adapter influences the output independently of how large you made it.
-
-</Solution>
 
 ---
 

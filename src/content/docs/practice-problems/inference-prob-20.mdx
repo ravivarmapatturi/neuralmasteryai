@@ -1,22 +1,6 @@
 ---
-title: "Practice: Statistical Green-List Watermarking"
-description: "Master Statistical Green-List Watermarking in the LLM Inference & Decoding track of the 1,000+ problem Neural Mastery AI Engineering curriculum."
+title: "Statistical Green-List Watermarking"
+description: "Embed detectable, tamper-resistant statistical watermarks into LLM generated text."
 difficulty: "medium"
 topic: "LLM Inference & Decoding"
 ---
-
-import PracticePlayground from '../../../components/content/PracticePlayground';
-
-# #050. Statistical Green-List Watermarking
-
-**Track**: LLM Inference & Decoding | **Rank**: #50 of 1072 | **Points**: 60 XP
-
-## Overview
-
-Embed detectable, tamper-resistant statistical watermarks into LLM generated text. Autoregressive language models generate sequences token by token, evaluating next-token probability distributions at each decoding step.
-
-## Task
-
-Implement `apply_kirchenbauer_watermark(logits, previous_token, vocab_size, gamma=0.5, delta=2.0)`. Generate hash seed `h = (\text{previous\_token} \times 31337 + 1013) \pmod{2147483647}`. For each vocabulary token `v \in [0, \text{vocab\_size}-1]`, compute `v_{hash} = (v \times 1664525 + h) \pmod{2147483647}`. Partition vocabulary by sorting `(v_{hash}, v)` ascending and taking the first `\text{round}(\gamma \times \text{vocab\_size})` tokens as the green list. Add `delta` to logits of green list tokens. Return dict with `watermarked_logits` (rounded to 4 decimals), `green_list_size`, and sorted `green_list_tokens`. Raise `ValueError` if arguments are out of range or `len(logits) != vocab_size`.
-
-<PracticePlayground problemId="inference-prob-20" />

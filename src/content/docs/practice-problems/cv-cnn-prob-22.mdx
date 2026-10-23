@@ -1,30 +1,17 @@
 ---
-title: "Practice: Squeeze-and-Excitation Channel Attention Block"
-description: "Master Squeeze-and-Excitation Channel Attention Block in the Computer Vision & CNN Architectures track of the 1,000+ problem Neural Mastery AI Engineering curriculum."
+title: "Squeeze-and-Excitation Channel Attention Block"
+description: "Dynamically recalibrate channel-wise feature responses by explicitly modeling interdependencies between channels."
 difficulty: "hard"
 topic: "Computer Vision & CNN Architectures"
 ---
 
-import PracticePlayground from '../../../components/content/PracticePlayground';
 import { Solution } from '../../../components/content/ExpandableDepth';
-
-# #912. Squeeze-and-Excitation Channel Attention Block
-
-**Track**: Computer Vision & CNN Architectures | **Rank**: #912 of 1072 | **Points**: 90 XP
-
-## Overview
-
-Dynamically recalibrate channel-wise feature responses by explicitly modeling interdependencies between channels.
-
-## Task
-
-Implement `squeeze_and_excitation(...)`:\n1. Squeeze: Global average pool each channel across `H x W` to obtain vector `z` of length `C`.\n2. Excitation stage 1: Compute `s1 = relu(w1 @ z)` where `s1[r] = max(0.0, sum(w1[r][c] * z[c]))`.\n3. Excitation stage 2: Compute `s2 = sigmoid(w2 @ s1)` where `s2[c] = 1.0 / (1.0 + exp(-sum(w2[c][r] * s1[r])))`.\n4. Scale: Multiply each channel `features[c]` by scalar `s2[c]`. Round all elements to 4 decimal places.
-
-<PracticePlayground problemId="cv-cnn-prob-22" />
 
 <Solution>
 
 ```python
+import math
+
 def squeeze_and_excitation(features: list[list[list[float]]], w1: list[list[float]], w2: list[list[float]]) -> list[list[list[float]]]:
     C = len(features)
     H = len(features[0])

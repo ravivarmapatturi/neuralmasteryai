@@ -1,22 +1,6 @@
 ---
-title: "Practice: Inference Latency & Arithmetic Intensity Profiler"
-description: "Master Inference Latency & Arithmetic Intensity Profiler in the LLM Inference & Decoding track of the 1,000+ problem Neural Mastery AI Engineering curriculum."
+title: "Inference Latency & Arithmetic Intensity Profiler"
+description: "Profile serving latency distributions, compute TTFT/TPOT metrics, and diagnose roofline bottlenecks."
 difficulty: "hard"
 topic: "LLM Inference & Decoding"
 ---
-
-import PracticePlayground from '../../../components/content/PracticePlayground';
-
-# #060. Inference Latency & Arithmetic Intensity Profiler
-
-**Track**: LLM Inference & Decoding | **Rank**: #60 of 1072 | **Points**: 90 XP
-
-## Overview
-
-Profile serving latency distributions, compute TTFT/TPOT metrics, and diagnose roofline bottlenecks. Autoregressive language models generate sequences token by token, evaluating next-token probability distributions at each decoding step.
-
-## Task
-
-Implement `profile_inference_performance(prefill_latency_ms, decode_latencies_ms, input_tokens, generated_tokens, gpu_memory_bandwidth_gb_s, model_params_b)`. Calculate TTFT (`prefill_latency_ms`), TPOT (mean of `decode_latencies_ms`), `total_latency_ms` (`prefill + sum(decodes)`), and throughput (total tokens / total time in seconds). Compute `theoretical_min_tpot_ms` based on memory bandwidth: `(2 \times \text{model\_params\_b} / \text{gpu\_memory\_bandwidth\_gb\_s}) \times 1000`. Classify `primary_bottleneck`: if `tpot_ms <= 2.5 * theoretical_min_tpot_ms`, label `'memory_bandwidth_bound'`; otherwise label `'compute_or_overhead_bound'`. Return dict with all computed metrics rounded to 2 decimal places. Raise `ValueError` on non-positive metrics or empty decode latencies.
-
-<PracticePlayground problemId="inference-prob-30" />

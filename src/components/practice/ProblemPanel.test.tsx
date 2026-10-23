@@ -67,7 +67,7 @@ describe('ProblemPanel', () => {
     expect(link).toHaveAttribute('href', '/docs/mathematics-for-ai/overview');
   });
 
-  it('renders the mechanically-generated step-by-step walkthrough in the Worked Intuition tab', async () => {
+  it('shows the hints in the Worked Intuition tab as idea, approach and pitfall, in that order', async () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter>
@@ -75,15 +75,14 @@ describe('ProblemPanel', () => {
       </MemoryRouter>,
     );
 
-    const intuitionTab = screen.getByRole('button', { name: /Worked Intuition/i });
-    await user.click(intuitionTab);
+    await user.click(screen.getByRole('button', { name: /Worked Intuition/i }));
 
-    expect(screen.getByText(/How to Solve This, Step by Step/i)).toBeInTheDocument();
-    expect(screen.getByText(/Step 1: Frame the Goal & Invariants/i)).toBeInTheDocument();
-    expect(screen.getByText('Consider looping over zip(a, b).')).toBeInTheDocument();
-    expect(screen.getByText(/Step 2: Implementation Walkthrough/i)).toBeInTheDocument();
-    expect(screen.getByText('Multiply a[i] * b[i] and accumulate to total.')).toBeInTheDocument();
-    expect(screen.getByText(/Step 3: Core Concept & Numerical Properties/i)).toBeInTheDocument();
+    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(headings.slice(0, 3)).toEqual(['The idea', 'Approach', 'Watch out for']);
     expect(screen.getByText('Inner products reflect geometric alignment.')).toBeInTheDocument();
+    expect(screen.getByText('Consider looping over zip(a, b).')).toBeInTheDocument();
+    expect(screen.getByText('Multiply a[i] * b[i] and accumulate to total.')).toBeInTheDocument();
+    // The templated "Step 1: Frame the Goal & Invariants" labels are gone.
+    expect(screen.queryByText(/Frame the Goal/i)).not.toBeInTheDocument();
   });
 });

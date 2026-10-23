@@ -42,6 +42,14 @@ describe('Pedagogical Test Failure Diagnostics (diagnoseFailure)', () => {
     expect(diag).toBe('Expected a list but your function returned a number.');
   });
 
+  it('says None, not "a object", when the function returned nothing', () => {
+    expect(diagnoseFailure([1, 2], null)).toBe('Your function returned None. Check that it ends with a return statement.');
+  });
+
+  it('names a dict as a dict', () => {
+    expect(diagnoseFailure([1, 2], { a: 1 })).toBe('Expected a list but your function returned a dict.');
+  });
+
   it('detects array length mismatch', () => {
     const diag = diagnoseFailure([1, 2, 3], [1, 2]);
     expect(diag).toBe('Expected 3 elements but got 2.');

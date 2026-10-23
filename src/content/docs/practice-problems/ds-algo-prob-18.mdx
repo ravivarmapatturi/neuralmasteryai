@@ -1,49 +1,7 @@
 ---
-title: "Practice: Clone Graph"
-description: "Implement Graphs: Clone Graph in the Data Structures & Algorithms track of the 1,000+ problem Neural Mastery AI Engineering curriculum."
+title: "Clone Graph"
+description: "Implement Clone Graph via BFS -- the adjacency-list representation makes both DFS and BFS solutions straightforward, and this is the base pattern for any \"duplicate this connected structure\" problem."
 difficulty: "easy"
 topic: "data-structures-algorithms"
-sidebar_position: 78
 ---
 
-import PracticePlayground from '../../../components/content/PracticePlayground';
-import { Solution } from '../../../components/content/ExpandableDepth';
-
-# Graphs: Clone Graph
-
-**Rank #78** · Difficulty: **Easy** · Stage: **Stage 2: Data Structures & Algorithmic Foundations** · Category: **Data Structures & Algorithms**
-
-## Overview
-
-Implement `clone_graph(adj, start)` -- graph cloning via BFS. The adjacency-list representation makes both DFS and BFS solutions straightforward.
-
-## Task
-
-Implement the function `clone_graph(adj, start)`. `adj` is a dict `{node_id: [neighbor_ids]}`. Return a new adjacency dict that is a deep clone.
-
-<PracticePlayground problemId="ds-algo-prob-18" />
-
-<Solution>
-
-```python
-from collections import deque
-
-def clone_graph(adj, start):
-    if not adj:
-        return {}
-    cloned = {}
-    q = deque([start])
-    cloned[start] = []
-    while q:
-        node = q.popleft()
-        for nbr in adj[node]:
-            if nbr not in cloned:
-                cloned[nbr] = []
-                q.append(nbr)
-            cloned[node].append(nbr)
-    return cloned
-```
-
-BFS from start, building the cloned adjacency list. Track visited nodes in `cloned` to avoid revisiting. O(V+E) time and space.
-
-</Solution>

@@ -1,30 +1,17 @@
 ---
-title: "Practice: Region of Interest (RoI) Max Pooling Layer"
-description: "Master Region of Interest (RoI) Max Pooling Layer in the Computer Vision & CNN Architectures track of the 1,000+ problem Neural Mastery AI Engineering curriculum."
+title: "Region of Interest (RoI) Max Pooling Layer"
+description: "Convert non-uniform candidate bounding region feature maps into fixed spatial dimension representations for classification and regression heads."
 difficulty: "hard"
 topic: "Computer Vision & CNN Architectures"
 ---
 
-import PracticePlayground from '../../../components/content/PracticePlayground';
 import { Solution } from '../../../components/content/ExpandableDepth';
-
-# #919. Region of Interest (RoI) Max Pooling Layer
-
-**Track**: Computer Vision & CNN Architectures | **Rank**: #919 of 1072 | **Points**: 90 XP
-
-## Overview
-
-Convert non-uniform candidate bounding region feature maps into fixed spatial dimension representations for classification and regression heads.
-
-## Task
-
-Implement `roi_max_pool(...)`. Given `roi = [x1, y1, x2, y2]` and `output_size = [out_h, out_w]`: let `roi_w = max(1, x2 - x1 + 1)` and `roi_h = max(1, y2 - y1 + 1)`. For bin `(ph, pw)` where `0 <= ph < out_h` and `0 <= pw < out_w`:\n- `r_start = y1 + floor(ph * roi_h / out_h)`, `r_end = y1 + ceil((ph + 1) * roi_h / out_h)`\n- `c_start = x1 + floor(pw * roi_w / out_w)`, `c_end = x1 + ceil((pw + 1) * roi_w / out_w)`\nCompute the maximum element in `feature_map[r][c]` over these ranges and round each to 4 decimal places.
-
-<PracticePlayground problemId="cv-cnn-prob-29" />
 
 <Solution>
 
 ```python
+import math
+
 def roi_max_pool(feature_map: list[list[float]], roi: list[int], output_size: list[int]) -> list[list[float]]:
     x1, y1, x2, y2 = roi
     out_h, out_w = output_size

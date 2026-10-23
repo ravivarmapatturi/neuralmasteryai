@@ -4,12 +4,3 @@ description: "Implement a real, back-of-envelope GPU memory estimator MLOps engi
 difficulty: "medium"
 topic: "MLOps & Data Systems"
 ---
-
-## Overview
-
-Implement a real, back-of-envelope GPU memory estimator MLOps engineers actually use to pick a batch size before a training run OOMs.
-
-## Task
-
-Implement `estimate_batch_memory_gb(num_params, batch_size, seq_len, hidden_dim, bytes_per_param=4.0)`. Model weight memory (with Adam's 2 extra moment buffers, i.e. 3x weights total) is `num_params * bytes_per_param * 3`. Activation memory (a common simplified estimate) is `batch_size * seq_len * hidden_dim * bytes_per_param * 2` (forward + backward). Return `(weight_memory + activation_memory) / (1024**3)` (bytes to GB).
-

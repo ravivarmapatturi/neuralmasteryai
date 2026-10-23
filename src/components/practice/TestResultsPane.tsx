@@ -1,3 +1,4 @@
+import { formatPy, formatPyArgs } from '../../lib/pyFormat';
 import { useState, useEffect } from 'react';
 import type { PracticeTestCase } from '../../lib/practiceProblem';
 import type { ExecutionResult } from '../../lib/execution/types';
@@ -43,10 +44,12 @@ export function diagnoseFailure(
     return null;
   }
 
+  // A Python None arrives as JSON null (typeof 'object' in JS), so check it
+  // before the type comparisons below would call it "an object".
+  if ((actual === undefined || actual === null) && expected !== undefined && expected !== null) {
+    return 'Your function returned None. Check that it ends with a return statement.';
+  }
   if (expected === undefined || actual === undefined) {
-    if (expected !== undefined && actual === undefined) {
-      return 'Expected a return value, but your function returned None / undefined.';
-    }
     return null;
   }
 
@@ -62,13 +65,11 @@ export function diagnoseFailure(
   const isExpArr = Array.isArray(expected);
   const isActArr = Array.isArray(actual);
   if (isExpArr !== isActArr) {
-    const expType = isExpArr ? 'list' : typeof expected;
-    const actType = isActArr ? 'list' : typeof actual;
-    return `Expected a ${expType} but your function returned a ${actType}.`;
+    return `Expected ${pyTypeName(expected)} but your function returned ${pyTypeName(actual)}.`;
   }
 
   if (typeof expected !== typeof actual) {
-    return `Expected a ${typeof expected} but your function returned a ${typeof actual}.`;
+    return `Expected ${pyTypeName(expected)} but your function returned ${pyTypeName(actual)}.`;
   }
 
   // 4. Off-by-a-small-amount on a single number
@@ -312,19 +313,19 @@ export default function TestResultsPane({
 
                     <div style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--nm-text-secondary)' }}>
                       <span style={{ color: 'var(--nm-text-muted)' }}>Input: </span>
-                      {JSON.stringify(tc.input)}
+                      <span style={{ whiteSpace: 'pre', display: 'inline-block', verticalAlign: 'top', maxWidth: '100%', overflowX: 'auto' }}>{formatPyArgs(tc.input)}</span>
                     </div>
 
                     <div style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--nm-text-secondary)' }}>
                       <span style={{ color: 'var(--nm-text-muted)' }}>Expected: </span>
-                      {tc.expectError ? `Raises ${tc.expectError}` : JSON.stringify(tc.expectedOutput)}
+                      <span style={{ whiteSpace: 'pre', display: 'inline-block', verticalAlign: 'top', maxWidth: '100%', overflowX: 'auto' }}>{tc.expectError ? `Raises ${tc.expectError}` : formatPy(tc.expectedOutput)}</span>
                     </div>
 
                     {caseResult && (
                       <div style={{ fontFamily: 'ui-monospace, monospace', marginTop: 2 }}>
                         <span style={{ color: 'var(--nm-text-muted)' }}>Actual: </span>
                         <span style={{ color: caseResult.passed ? 'var(--nm-accent-primary)' : 'var(--nm-accent-danger)', fontWeight: 600 }}>
-                          {JSON.stringify(caseResult.actualOutput)}
+                          <span style={{ whiteSpace: 'pre', display: 'inline-block', verticalAlign: 'top', maxWidth: '100%', overflowX: 'auto' }}>{formatPy(caseResult.actualOutput)}</span>
                         </span>
                       </div>
                     )}
@@ -490,19 +491,19 @@ export default function TestResultsPane({
 
                       <div style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--nm-text-secondary)' }}>
                         <span style={{ color: 'var(--nm-text-muted)' }}>Input: </span>
-                        {JSON.stringify(tc.input)}
+                        <span style={{ whiteSpace: 'pre', display: 'inline-block', verticalAlign: 'top', maxWidth: '100%', overflowX: 'auto' }}>{formatPyArgs(tc.input)}</span>
                       </div>
 
                       <div style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--nm-text-secondary)' }}>
                         <span style={{ color: 'var(--nm-text-muted)' }}>Expected: </span>
-                        {JSON.stringify(tc.expectedOutput)}
+                        <span style={{ whiteSpace: 'pre', display: 'inline-block', verticalAlign: 'top', maxWidth: '100%', overflowX: 'auto' }}>{formatPy(tc.expectedOutput)}</span>
                       </div>
 
                       {caseResult && (
                         <div style={{ fontFamily: 'ui-monospace, monospace', marginTop: 4 }}>
                           <span style={{ color: 'var(--nm-text-muted)' }}>Actual: </span>
                           <span style={{ color: caseResult.passed ? 'var(--nm-accent-primary)' : 'var(--nm-accent-danger)' }}>
-                            {JSON.stringify(caseResult.actualOutput)}
+                            <span style={{ whiteSpace: 'pre', display: 'inline-block', verticalAlign: 'top', maxWidth: '100%', overflowX: 'auto' }}>{formatPy(caseResult.actualOutput)}</span>
                           </span>
                         </div>
                       )}
@@ -722,6 +723,18 @@ export default function TestResultsPane({
       </div>
     </div>
   );
+}
+
+
+/** A value's type as a Python learner would name it, with its article. */
+function pyTypeName(value: unknown): string {
+  if (value === null || value === undefined) return 'None';
+  if (Array.isArray(value)) return 'a list';
+  if (typeof value === 'number') return Number.isInteger(value) ? 'a number' : 'a float';
+  if (typeof value === 'string') return 'a string';
+  if (typeof value === 'boolean') return 'a bool';
+  if (typeof value === 'object') return 'a dict';
+  return `a ${typeof value}`;
 }
 
 function tabBtnStyle(active: boolean) {

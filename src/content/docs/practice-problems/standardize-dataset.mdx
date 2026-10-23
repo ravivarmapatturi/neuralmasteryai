@@ -1,5 +1,5 @@
 ---
-title: "Practice: Practice: Standardize a Dataset (Z-Score Normalization)"
+title: "Standardize a Dataset (Z-Score Normalization)"
 sidebar_position: 16.5
 description: "Implement z-score normalization from scratch in a real Python sandbox -- the standard feature-scaling step before gradient descent or any distance-based method."
 difficulty: medium
@@ -7,9 +7,6 @@ topic: mathematics-for-ai
 ---
 
 import RunnableCode from '../../../components/content/RunnableCode';
-import { Solution } from '../../../components/content/ExpandableDepth';
-
-# Standardize a Dataset (Z-Score Normalization)
 
 **Difficulty: Medium** · Concept: [Probability & Statistics — Expectation, Variance, Covariance](/docs/mathematics-for-ai/probability-statistics#expectation-variance-covariance)
 
@@ -28,7 +25,6 @@ A direct, higher-stakes application of [Sample Mean and Variance](/practice/samp
     except exc_type:
         return True
 
-
 def standardize(data):
     """Return z-scores (x - mean) / std for every value in data.
     Raise ValueError if data has zero variance."""
@@ -40,33 +36,6 @@ assert all(abs(a - b) < 1e-9 for a, b in zip(standardize([1, 2, 3, 4, 5]), [-1.4
 assert all(abs(a - b) < 1e-9 for a, b in zip(standardize([-2, -1, 0, 1, 2]), [-1.4142135623730951, -0.7071067811865476, 0.0, 0.7071067811865476, 1.4142135623730951]))
 assert check_raises(ValueError, standardize, [10, 10, 10]) == True`}
 />
-
-<Solution>
-
-```python
-def check_raises(exc_type, func, *args):
-    try:
-        func(*args)
-        return False
-    except exc_type:
-        return True
-
-
-def standardize(data):
-    n = len(data)
-    mean = sum(data) / n
-    variance = sum((x - mean) ** 2 for x in data) / n
-    if variance == 0:
-        raise ValueError("cannot standardize a dataset with zero variance")
-    std = variance ** 0.5
-    return [(x - mean) / std for x in data]
-```
-
-The mean/variance computation is exactly [Sample Mean and Variance](/practice/sample-mean-and-variance) — this problem builds directly on top of it rather than being unrelated. The `if variance == 0: raise ValueError` guard is the entire point of calling this "Medium" rather than a trivial one-line extension: without it, `[10, 10, 10]` would compute `std = 0.0` and every z-score would come out as `0/0` — Python raises `ZeroDivisionError` for plain floats there, not a silently wrong number, but that's still the *wrong* error for a caller to have to catch (it doesn't say anything about *why* — a real dataset with no variation is a meaningful, nameable failure case, not a generic arithmetic accident).
-
-The `check_raises` helper in the starter code exists purely so this exception-raising behavior can actually be tested with a plain `assert` — no `try`/`except` is allowed inside a single-line test assertion, so wrapping the call-and-catch logic in a small reusable function is the standard workaround. This is the same reason [TreeNode](/practice/level-order-traversal)'s class definition ships as given infrastructure in tree problems rather than something the learner writes: it's scaffolding for testing the real exercise, not part of the exercise itself.
-
-</Solution>
 
 ---
 

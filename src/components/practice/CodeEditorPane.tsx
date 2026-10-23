@@ -79,15 +79,15 @@ export default function CodeEditorPane({
           justifyContent: 'space-between',
 
           padding: '6px 12px',
-          borderBottom: '1px solid var(--nm-border, rgba(255,255,255,0.1))',
-          background: 'rgba(15, 23, 42, 0.8)',
+          borderBottom: `1px solid ${EDITOR_CHROME.border}`,
+          background: EDITOR_CHROME.bar,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {modeToggle ? (
             modeToggle
           ) : (
-            <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: t.accentTeal }}>
+            <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: EDITOR_CHROME.label }}>
               Python3
             </span>
           )}
@@ -99,7 +99,7 @@ export default function CodeEditorPane({
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {isBusy && onStop && (
-            <button type="button" onClick={onStop} style={btnStyle(t, 'secondary')}>
+            <button type="button" onClick={onStop} style={btnStyle('secondary')}>
               Stop
             </button>
           )}
@@ -108,7 +108,7 @@ export default function CodeEditorPane({
             type="button"
             onClick={onReset}
             disabled={isBusy}
-            style={btnStyle(t, 'secondary', isBusy)}
+            style={btnStyle('secondary', isBusy)}
             title="Reset code template"
           >
             Reset
@@ -118,7 +118,7 @@ export default function CodeEditorPane({
             type="button"
             onClick={handleFormatCode}
             disabled={isBusy}
-            style={btnStyle(t, 'secondary', isBusy)}
+            style={btnStyle('secondary', isBusy)}
             title="Format Code"
           >
             Format
@@ -128,7 +128,7 @@ export default function CodeEditorPane({
             type="button"
             onClick={onRun}
             disabled={isBusy}
-            style={btnStyle(t, 'secondary', isBusy)}
+            style={btnStyle('secondary', isBusy)}
             title="Run visible test cases (Ctrl/Cmd + Enter)"
           >
             {status === 'running' ? 'Running…' : '▶ Run'}
@@ -138,7 +138,7 @@ export default function CodeEditorPane({
             type="button"
             onClick={onSubmit}
             disabled={isBusy}
-            style={btnStyle(t, 'primary', isBusy)}
+            style={btnStyle('primary', isBusy)}
             title="Submit to system test suite (Ctrl/Cmd + Shift + Enter)"
           >
             {status === 'submitting' ? 'Submitting…' : 'Submit'}
@@ -148,7 +148,7 @@ export default function CodeEditorPane({
             <button
               type="button"
               onClick={onToggleFullscreen}
-              style={btnStyle(t, 'secondary')}
+              style={btnStyle('secondary')}
               title={isFullscreen ? 'Exit Fullscreen Mode' : 'Fullscreen Code Editor'}
             >
               {isFullscreen ? '↙' : '⤢'}
@@ -190,7 +190,20 @@ export default function CodeEditorPane({
   );
 }
 
-function btnStyle(t: ReturnType<typeof useVizTokens>, variant: 'primary' | 'secondary', disabled = false) {
+/** The editor is always dark (like most code editors), in both site themes,
+ * so its toolbar uses fixed dark-surface colours rather than theme tokens:
+ * theme text colours are dark ink in light mode, which made the toolbar
+ * buttons invisible on this bar. */
+const EDITOR_CHROME = {
+  bar: '#0f172a',
+  border: 'rgba(148, 163, 184, 0.28)',
+  label: '#5eead4',
+  text: '#e2e8f0',
+  buttonBorder: 'rgba(148, 163, 184, 0.45)',
+  buttonHover: 'rgba(148, 163, 184, 0.14)',
+} as const;
+
+function btnStyle(variant: 'primary' | 'secondary', disabled = false) {
   return {
     cursor: disabled ? 'not-allowed' : 'pointer',
     padding: '4px 10px',
@@ -198,9 +211,9 @@ function btnStyle(t: ReturnType<typeof useVizTokens>, variant: 'primary' | 'seco
     fontSize: 12,
     fontFamily: FONT_FAMILY,
     fontWeight: 600,
-    border: `1px solid ${variant === 'primary' ? t.accentPrimary : t.border}`,
-    background: variant === 'primary' ? t.accentPrimary : 'transparent',
-    color: variant === 'primary' ? t.background : t.textPrimary,
+    border: `1px solid ${variant === 'primary' ? '#16a34a' : EDITOR_CHROME.buttonBorder}`,
+    background: variant === 'primary' ? '#16a34a' : 'transparent',
+    color: variant === 'primary' ? '#ffffff' : EDITOR_CHROME.text,
     opacity: disabled ? 0.6 : 1,
     transition: 'all 0.15s ease',
   } as const;

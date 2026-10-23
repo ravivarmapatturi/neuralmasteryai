@@ -7,17 +7,11 @@ topic: "Deep Learning & Neural Networks"
 
 import { Solution } from '../../../components/content/ExpandableDepth';
 
-## Overview
-
-Stabilize deep network training by standardizing mini-batch feature distributions across samples.
-
-## Task
-
-Implement `batch_norm1d_forward(...)`: in `training=True` mode, compute sample mean `mu_B` and variance `sigma_B^2` across batch rows `N` for each feature column. Update running statistics: `running_mean = (1 - momentum) * running_mean + momentum * mu_B` and `running_var = (1 - momentum) * running_var + momentum * sigma_B^2`. Normalize inputs using `mu_B` and `sigma_B^2`. In `training=False` mode, use `running_mean` and `running_var` directly without updating them. Return `{'out': out, 'running_mean': ..., 'running_var': ...}`.
-
 <Solution>
 
 ```python
+import math
+
 def batch_norm1d_forward(x: list[list[float]], gamma: list[float], beta: list[float], running_mean: list[float], running_var: list[float], eps: float = 1e-5, momentum: float = 0.1, training: bool = True) -> dict:
     N = len(x)
     D = len(x[0])
