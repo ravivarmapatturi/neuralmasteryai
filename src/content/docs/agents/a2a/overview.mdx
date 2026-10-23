@@ -1,59 +1,320 @@
 ---
-title: "A2A (Agent-to-Agent)"
+title: "A2A (Agent-to-Agent), In Full Depth"
 sidebar_position: 1
-description: "A2A lets an AI agent delegate multi-step tasks to other agents, possibly owned by different organizations -- a different problem than MCP's tool access."
+description: "How one AI agent delegates work to another it doesn't control: why tool protocols aren't enough, Agent Cards and discovery, tasks and their states, messages, parts and artifacts, streaming and push notifications, security, and a working client and agent built from scratch on the A2A 1.0 shapes."
 ---
 
 import McpVsA2aScopeDiagram from '../../../../viz/diagrams/McpVsA2aScopeDiagram';
 import AgentCardDiagram from '../../../../viz/diagrams/AgentCardDiagram';
-import CapabilityMatchingDiagram from '../../../../viz/diagrams/CapabilityMatchingDiagram';
 import TaskLifecycleDiagram from '../../../../viz/diagrams/TaskLifecycleDiagram';
 import DelegationSequenceDiagram from '../../../../viz/diagrams/DelegationSequenceDiagram';
 import CrossOrgInteropDiagram from '../../../../viz/diagrams/CrossOrgInteropDiagram';
-import ProtocolStackDiagram from '../../../../viz/diagrams/ProtocolStackDiagram';
+import PredictFirst from '../../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../../components/content/ExpandableDepth';
 
-# A2A (Agent-to-Agent)
+# A2A (Agent-to-Agent), In Full Depth
 
-MCP standardizes how an agent talks to *tools*. A2A standardizes how an agent talks to *other agents* — a different problem, because agents (unlike tools) have their own reasoning, state, and potentially different owners/organizations entirely.
+[The Model Context Protocol](/docs/agents/mcp/overview) standardizes how an agent reaches *tools*: functions it calls, with arguments it chooses, that return a result. A growing share of work instead involves an agent handing a whole job to *another agent*: a travel agent asking an airline's booking agent for seats, a company's procurement agent asking a supplier's sales agent for a quote. That other agent has its own model, its own reasoning, its own owner, and it may take minutes or days. The **Agent2Agent protocol (A2A)** is the open standard for that conversation. This page explains why delegation needs a different protocol from tool calling, then covers the protocol piece by piece: how agents advertise themselves with Agent Cards, how work is modelled as tasks with explicit states, what messages and artifacts carry, how long-running work streams progress, how agents authenticate, and a working agent and client built from scratch on the A2A 1.0 message shapes.
 
-## Why Agents Need a Different Protocol Than Tools
+<ELI5>
 
-A tool call is typically stateless and synchronous: call a function, get a result. An agent-to-agent interaction is closer to delegating a task to a colleague: the receiving agent might need to ask clarifying questions, take a while to complete a multi-step task, or report partial progress — none of which fits a simple function-call model well.
+Using a tool is like using a calculator: you press the buttons, it gives an answer immediately, and it never asks you anything back.
+
+Delegating to an agent is like hiring a contractor to redo your kitchen. First you find one, by reading what they say they're good at. You describe the job. They might come back with questions ("which tiles did you want?"). The work takes weeks, so they send updates, and at the end you get finished results, not just a yes or no. The contractor works for a different company, so you never see how they do it inside, and you both need some way to check who you're dealing with.
+
+A2A is the shared paperwork for hiring contractors: the business card, the job ticket with its status, the progress updates and the handover of results. Everything below is that paperwork made exact.
+
+</ELI5>
+
+## 1. Why Agents Need a Different Protocol Than Tools
+
+A tool call has a simple shape: the caller sends a name and arguments, the tool runs, a result comes back, and nothing persists. The tool has no judgement; the caller decides everything.
+
+Delegating to another agent breaks every part of that shape:
+
+- **The receiver has judgement.** It decides how to do the work, may decline it, and may need more information before it can start.
+- **The work takes time.** Booking a trip or processing a claim can take minutes or days, longer than any HTTP request should stay open.
+- **There's a conversation.** The receiving agent may ask clarifying questions mid-task, and the client may add details later.
+- **The output is substantial.** A report, a set of files, structured data: results with parts and types, not a single return value.
+- **The parties don't trust each other by default.** The two agents can belong to different organizations, run on different models and frameworks, and must not need to see each other's internals.
 
 <McpVsA2aScopeDiagram />
 
-## Agent Cards / Capability Discovery
+You *could* wrap a remote agent as an MCP tool, and for quick, simple delegations people do. But you'd be rebuilding task tracking, clarification, progress reporting and long-running state on top of a function-call protocol. A2A makes those first-class.
 
-For one agent to delegate work to another, it first needs to know what that agent *can do*. A2A defines a way for agents to publish an **agent card** — a description of their capabilities, similar in spirit to an API's OpenAPI spec, but describing what tasks an agent can be trusted to handle rather than literal function signatures:
+**History.** Google announced A2A in April 2025 with about fifty partner companies and donated it to the Linux Foundation that June. Version 1.0, the first stable release, followed in early 2026, and in August 2026 the project moved to the **Agentic AI Foundation**, the same foundation that hosts MCP. The two are designed to be used together: MCP between an agent and its tools, A2A between agents.
+
+## 2. Discovery: the Agent Card
+
+Before delegating, a client agent has to find out what a remote agent can do and how to talk to it. Every A2A agent publishes an **Agent Card**, a JSON document, conventionally at a well-known address on its domain:
+
+```
+https://{agent-domain}/.well-known/agent-card.json
+```
+
+A card describes:
+
+- **Identity**: name, description, version, and the provider organization.
+- **Interfaces**: one or more endpoint URLs, each with the protocol binding it speaks (JSON-RPC, gRPC, or plain HTTP+JSON) and the protocol version.
+- **Capabilities**: whether it supports streaming, push notifications, and an extended card for authenticated callers.
+- **Security**: the authentication schemes it accepts (API keys, HTTP auth, OAuth 2.0, OpenID Connect, mutual TLS) and which are required.
+- **Skills**: the things it can do, each with an id, a natural-language description, tags, example requests, and accepted input and output media types.
 
 <AgentCardDiagram />
 
-A card typically names the agent, describes its skills in natural language (not just a function signature), and states what input/output modes it supports. A delegating agent (or the orchestrator choosing on its behalf) matches a task's requirements against published cards to find a capable agent — the same shape as a hiring manager reading a résumé for relevant skills, not a compiler checking a type signature:
+**Skills are described in prose, on purpose.** An MCP tool advertises a JSON Schema, because a model must fill in exact arguments. An A2A skill advertises a description and examples, because the client sends a request in natural language (plus any files or data) and the remote agent works out what to do with it. Choosing an agent from cards is closer to reading a résumé than checking a type signature: often the client's own model reads the candidate cards and picks one.
 
-<CapabilityMatchingDiagram />
+**Discovery beyond one URL.** If you know the agent's domain, the well-known path is enough. Organizations with many agents typically run a **registry**, a catalogue of approved cards that clients search by skill or tag, much like the MCP server registries in [the MCP deep dive](/docs/agents/mcp/protocol-deep-dive). A card can expose a public subset and offer an **extended card** with more skills to authenticated callers, and v1.0 cards can be **signed**, so a client can check a card really was published by the organization it claims.
 
-## Task Delegation
+## 3. Tasks and Their States
 
-A2A defines how one agent hands a task to another: sending the task description, receiving updates as the task progresses, and getting the final result back. Because a delegated task can be long-running and may need clarification partway through, A2A models it as a task with real states, not a single call-and-return:
+The unit of work in A2A is the **task**. The client sends a message; the agent either answers directly with a message (for something quick and stateless) or creates a task, gives it an id, and reports its state. Tasks are stateful and can be revisited: the client can fetch a task by id, send more messages into it, or cancel it.
+
+A task is always in one of a fixed set of states:
+
+| State | Meaning | Terminal? |
+|---|---|---|
+| `TASK_STATE_SUBMITTED` | Received, not yet started | No |
+| `TASK_STATE_WORKING` | In progress | No |
+| `TASK_STATE_INPUT_REQUIRED` | Paused: the agent needs more information from the client | No (interrupted) |
+| `TASK_STATE_AUTH_REQUIRED` | Paused: the agent needs the user to authorize something | No (interrupted) |
+| `TASK_STATE_COMPLETED` | Finished successfully | Yes |
+| `TASK_STATE_FAILED` | Finished with an error | Yes |
+| `TASK_STATE_CANCELED` | Cancelled by the client | Yes |
+| `TASK_STATE_REJECTED` | The agent declined to do it | Yes |
 
 <TaskLifecycleDiagram />
 
-A task moves from `submitted` to `working`, may pause at `input-required` if the receiving agent needs clarification before it can continue, and eventually resolves to `completed` or `failed`. Concretely, that looks like a sequence of messages rather than one blocking call:
+The two **interrupted** states are what make delegation a conversation. When a booking agent needs a passport number, it doesn't fail and it doesn't guess: it moves the task to `INPUT_REQUIRED` with a message saying what it needs. The client answers by sending a new message *with the same task id*, and the task resumes. `AUTH_REQUIRED` works the same way for permissions, such as the user approving access to their calendar.
+
+Related tasks share a **context id**, the equivalent of a conversation thread, so an agent can connect "book the flight" to the earlier "find me flights to Lisbon".
+
+**The limitation** of tasks as described so far is that the client has to keep asking "is it done yet?". For long work, the next section's delivery options matter.
+
+## 4. Messages, Parts and Artifacts
+
+Three structures carry content:
+
+- A **message** is one turn of communication: a `role` (`ROLE_USER` for the client, `ROLE_AGENT` for the remote agent), a `messageId`, optionally the `taskId` and `contextId` it belongs to, and a list of parts. Messages carry instructions, questions and status updates.
+- A **part** is one piece of content, holding exactly one of `text`, `raw` (file bytes, base64 in JSON), `url` (a link to a file) or `data` (arbitrary structured JSON), plus an optional `mediaType` such as `image/png` or `application/json`. Mixing parts lets one message carry a sentence, a PDF and a JSON object together.
+- An **artifact** is a *result*: an output the task produced, with an `artifactId`, an optional name and description, and its own parts. A research task's report, a generated spreadsheet, the booked itinerary. Artifacts are kept separate from messages so a client can tell "the agent said something" from "the agent delivered something".
+
+A `SendMessage` request carries a message and optional configuration; the response contains either a message or a task:
+
+```json
+{
+  "message": {
+    "messageId": "9b1c...",
+    "role": "ROLE_USER",
+    "parts": [{ "text": "Convert 120 USD to EUR" }]
+  },
+  "configuration": { "acceptedOutputModes": ["text/plain"] }
+}
+```
+
+```json
+{
+  "task": {
+    "id": "3f6a...",
+    "contextId": "c21d...",
+    "status": { "state": "TASK_STATE_COMPLETED" },
+    "artifacts": [{ "artifactId": "result", "parts": [{ "text": "120 USD = 103.20 EUR" }] }]
+  }
+}
+```
+
+**Transport bindings.** The same operations can travel three ways, and an agent lists in its card which it supports: **JSON-RPC 2.0** over HTTP (the method names are `SendMessage`, `GetTask`, `CancelTask` and so on), **gRPC**, or **HTTP+JSON**, a REST-style mapping (`POST /message:send`, `GET /tasks/{id}`). Versions before 1.0 used lower-case method names such as `message/send`, which you'll still see in older code and articles.
+
+## 5. Delivering Results Over Time
+
+A task that finishes in a second can simply be returned from `SendMessage`. For longer work A2A offers three delivery patterns, which a client chooses based on the agent's capabilities and its own situation:
+
+1. **Polling.** Send the message, get back a task in `WORKING`, then call `GetTask` periodically. Simple, works everywhere, wasteful for long tasks.
+2. **Streaming.** `SendStreamingMessage` (or `SubscribeToTask` to attach to an existing task) returns a server-sent events stream. Each event carries a task, a message, a **status update** or an **artifact update**, and artifacts can arrive in chunks as they're produced. The stream ends when the task reaches a terminal or interrupted state. This suits a user watching progress live.
+3. **Push notifications.** The client registers a webhook URL for the task (`CreateTaskPushNotificationConfig`), and the agent POSTs updates to it as they happen. The client needn't hold a connection open for hours or days, which suits server-to-server work and tasks that wait on humans.
 
 <DelegationSequenceDiagram />
 
-## Built for Agents That Don't Share Code
+Push notifications reverse the direction of trust: the *agent* now sends requests to the *client*. The client must authenticate those incoming calls (the configuration carries credentials for this), and the agent must make sure it only POSTs to URLs it has reason to trust, or it can be turned into a tool for attacking internal addresses (server-side request forgery).
 
-This design — capability discovery via cards, stateful tasks instead of blocking calls — is what lets A2A work across agents built by *different teams or organizations*, using *different underlying models or frameworks*, as long as they both speak A2A:
+<PredictFirst
+  question="A client delegates a claims-processing task that waits on a human adjuster and typically takes two days. The client is a backend service. Which delivery pattern fits best?"
+  options={[
+    'Keep a SendStreamingMessage stream open for the two days',
+    'Register a push-notification webhook and let the agent call back on each status change',
+    'Call SendMessage again every few seconds to restart the task',
+    'Use GetTask once, immediately after submission',
+  ]}
+  correctIndex={1}
+  explanation="A stream held open for days breaks on every network blip and ties up a connection. Push notifications let the agent call the client's webhook when the state actually changes, so nothing is held open. Polling GetTask every few minutes would also work, but wastes requests; calling SendMessage again would create new tasks."
+/>
+
+## 6. Built for Agents That Don't Share Code
+
+A2A treats every agent as **opaque**. The client never sees the remote agent's prompt, model, tools, memory or reasoning, only what the agent chooses to send in messages and artifacts. That's a deliberate design choice:
+
+- **Organizations can collaborate without exposing internals.** A supplier can offer a quoting agent without revealing its pricing logic.
+- **Any framework, any model.** An agent built with one framework on one company's model can delegate to an agent built with another on another, as long as both speak A2A.
+- **Each side keeps control of its own security.** The remote agent applies its own authorization to each request; the client decides what data to share.
 
 <CrossOrgInteropDiagram />
 
-That cross-boundary case is the one MCP doesn't need to solve: an MCP server and client are usually deployed together by the same application. A2A has to work even when Agent A's team has never seen Agent B's code and never will.
+That cross-boundary case is the one MCP's design doesn't centre on. An MCP server exposes its capabilities in detail (exact tools and schemas) to whatever host connects. An A2A agent exposes only a description of what it will do, and keeps how it does it to itself.
 
-## How A2A Relates to Multi-Agent Systems
+## 7. Security
 
-[Multi-agent systems](/docs/agents/multi-agent-systems) covers *architectural patterns* for coordinating multiple agents (orchestrator/sub-agent, peer-to-peer, etc.) — A2A is one concrete protocol for implementing the communication layer those patterns need, particularly relevant when the agents involved aren't all built and controlled by the same team, and can't simply share a Python process and call each other's functions directly:
+Agents acting for different organizations need the same security as any business-to-business API, plus some agent-specific care.
 
-<ProtocolStackDiagram />
+- **Authentication is standard HTTP.** The card declares the schemes the agent accepts, and the client obtains credentials out of band (an API key, an OAuth token) and sends them in HTTP headers on every request, never inside the A2A payload. Production deployments use HTTPS throughout.
+- **Authorization is the agent's job.** Being able to call an agent isn't the same as being allowed every skill. The remote agent should check, per request and per task, that the caller may do this with this data.
+- **In-task authorization.** When a task needs extra permission partway through (access to a user's mailbox, approval for a payment), the agent moves the task to `AUTH_REQUIRED` and the client arranges for the user to grant it, rather than the agent receiving broad credentials in advance.
+- **Messages are untrusted input.** A remote agent's text goes into your agent's context, so it can carry prompt injection just like a web page. Treat what comes back as data, check artifacts before acting on them, and don't let a remote agent's message trigger irreversible actions without your own checks. [AI Security](/docs/ai-security/overview) covers the defences.
+- **Verify who you're talking to.** Signed Agent Cards and TLS tell a client that a card and endpoint really belong to the organization they claim.
 
-Agent protocols section complete. Next: [Multi-Agent Systems](/docs/agents/multi-agent-systems) — the coordination patterns these protocols enable.
+## 8. A Working Agent and Client
+
+Here is a complete, if tiny, A2A exchange in one Python file using only the standard library: a currency-conversion agent that serves an Agent Card and a JSON-RPC endpoint, and a client agent that discovers it, delegates, answers its clarifying question, and checks the task later. The message shapes follow A2A 1.0; a real deployment would use an official SDK, which also handles streaming, push notifications and authentication.
+
+```python
+import json, threading, urllib.request, uuid
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+# ---------------- The remote agent: a currency-conversion agent run by "another team" ----------------
+CARD = {
+    "name": "FX Agent", "description": "Converts amounts between currencies at today's rate.",
+    "version": "1.0.0",
+    "supportedInterfaces": [{"url": "http://127.0.0.1:8766/a2a", "protocolBinding": "JSONRPC", "protocolVersion": "1.0"}],
+    "capabilities": {"streaming": False, "pushNotifications": False},
+    "defaultInputModes": ["text/plain"], "defaultOutputModes": ["text/plain"],
+    "skills": [{"id": "convert", "name": "Convert currency",
+                "description": "Convert an amount from one currency to another, e.g. '120 USD to EUR'.",
+                "tags": ["finance", "currency"], "examples": ["How much is 50 GBP in JPY?"]}],
+}
+RATES = {("USD", "EUR"): 0.86, ("GBP", "JPY"): 201.5}
+TASKS = {}                                  # task id -> task; a real agent keeps these in a database
+
+def handle_message(message):
+    task = TASKS.get(message.get("taskId")) or {"id": str(uuid.uuid4()), "contextId": str(uuid.uuid4()), "history": []}
+    TASKS[task["id"]] = task
+    task["history"].append(message)
+    words = " ".join(p["text"] for m in task["history"] for p in m["parts"]).upper().split()
+    amount = next((w for w in words if w.replace(".", "").isdigit()), None)
+    codes = [w for w in words if len(w) == 3 and w.isalpha() and w not in ("AND", "THE", "HOW")]
+    if amount is None or len(codes) < 2:      # can't finish: ask the client, keep the task open
+        task["status"] = {"state": "TASK_STATE_INPUT_REQUIRED", "message": {"role": "ROLE_AGENT",
+                          "parts": [{"text": "Which currency should I convert to?"}]}}
+    else:
+        rate = RATES[(codes[0], codes[1])]
+        task["status"] = {"state": "TASK_STATE_COMPLETED"}
+        task["artifacts"] = [{"artifactId": "result", "parts": [{"text": f"{amount} {codes[0]} = {float(amount) * rate:.2f} {codes[1]}"}]}]
+    return {"task": task}
+
+class Agent(BaseHTTPRequestHandler):
+    def do_GET(self):                       # discovery: the agent card at a well-known path
+        if self.path == "/.well-known/agent-card.json":
+            self.send(200, CARD)
+    def do_POST(self):                      # everything else: JSON-RPC
+        req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        if req["method"] == "SendMessage":
+            result = handle_message(req["params"]["message"])
+        elif req["method"] == "GetTask":
+            result = TASKS[req["params"]["id"]]
+        self.send(200, {"jsonrpc": "2.0", "id": req["id"], "result": result})
+    def send(self, status, body):
+        data = json.dumps(body).encode()
+        self.send_response(status); self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+    def log_message(self, *a): pass
+
+server = ThreadingHTTPServer(("127.0.0.1", 8766), Agent)
+threading.Thread(target=server.serve_forever, daemon=True).start()
+
+# ---------------- The client agent: discovers the FX agent and delegates to it ----------------
+def get(url):
+    return json.load(urllib.request.urlopen(url))
+
+def rpc(url, method, params, id=[0]):
+    id[0] += 1
+    body = json.dumps({"jsonrpc": "2.0", "id": id[0], "method": method, "params": params}).encode()
+    req = urllib.request.Request(url, body, {"Content-Type": "application/json", "A2A-Version": "1.0"})
+    return json.load(urllib.request.urlopen(req))["result"]
+
+card = get("http://127.0.0.1:8766/.well-known/agent-card.json")
+print("found:", card["name"], "| skills:", [s["id"] for s in card["skills"]])
+endpoint = card["supportedInterfaces"][0]["url"]
+
+def user_message(text, task_id=None):
+    msg = {"messageId": str(uuid.uuid4()), "role": "ROLE_USER", "parts": [{"text": text}]}
+    return {"message": {**msg, **({"taskId": task_id} if task_id else {})}}
+
+task = rpc(endpoint, "SendMessage", user_message("Convert 120 USD please"))["task"]
+print(task["status"]["state"], "->", task["status"]["message"]["parts"][0]["text"])
+
+task = rpc(endpoint, "SendMessage", user_message("EUR", task_id=task["id"]))["task"]   # same task, continued
+print(task["status"]["state"], "->", task["artifacts"][0]["parts"][0]["text"])
+print("GetTask later:", rpc(endpoint, "GetTask", {"id": task["id"]})["status"]["state"])
+server.shutdown()
+```
+
+Output:
+
+```
+found: FX Agent | skills: ['convert']
+TASK_STATE_INPUT_REQUIRED -> Which currency should I convert to?
+TASK_STATE_COMPLETED -> 120 USD = 103.20 EUR
+GetTask later: TASK_STATE_COMPLETED
+```
+
+Follow it against the sections above. The client read the card before doing anything (section 2). The first request lacked a target currency, so the agent didn't guess: it created a task and paused it in `INPUT_REQUIRED` with a question (section 3). The client answered by sending a message with the *same task id*, and the task resumed and completed with an artifact holding the result (section 4). Afterwards, `GetTask` could fetch the finished task by id. The client never saw how the agent parsed the request or where its exchange rates came from (section 6).
+
+<GoDeeper title="Go deeper: when to wrap an agent as a tool instead">
+
+Not every agent-to-agent call needs A2A. Many systems expose a sub-agent to an orchestrator as a single tool: `research(question) -> report`. That's simpler and often right.
+
+Prefer **a tool call** (plain function calling or MCP) when the sub-agent is yours, in your codebase or deployment; when it answers in seconds; when it never needs to ask a question back; and when its output fits in one result.
+
+Prefer **A2A** when the other agent belongs to another team or organization and you can't or shouldn't see its internals; when work runs long and needs progress reporting or callbacks; when the agent may need clarification or user authorization mid-task; when results are rich (files, multiple artifacts); and when you want any compliant agent to be swappable for another.
+
+Many real systems use both: an orchestrator calls its own sub-agents as tools and delegates to outside partners over A2A. [Multi-Agent Systems](/docs/agents/multi-agent-systems) covers the coordination patterns either way.
+
+</GoDeeper>
+
+## 9. How A2A Relates to Multi-Agent Systems
+
+[Multi-agent systems](/docs/agents/multi-agent-systems) are about *architecture*: how to divide a job between agents (an orchestrator with specialists, a pipeline, peers that hand off to each other) and when doing so beats one agent. A2A is one *communication layer* for implementing those designs, most useful when the agents run as separate services. If all your agents live in one Python process under one team, a framework's in-process handoffs are simpler. When they run as separate services, are written by separate teams, or belong to separate companies, a shared protocol saves every pair from inventing its own.
+
+## 10. When *Not* to Use A2A
+
+| Situation | Better choice |
+|---|---|
+| Giving an agent access to an API or database | MCP or plain tool calling; there's no second agent |
+| Sub-agents in the same process, owned by one team | Your framework's in-process handoffs or calls |
+| A quick, stateless question to another agent | Wrap it as a tool; A2A's task model is overhead |
+| A fixed pipeline of model calls | A workflow in code, with no agents to discover |
+| Partners whose agents you can't authenticate or hold accountable | Don't delegate sensitive work to them over any protocol |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| The problem | Delegating to an agent with its own judgement, timeline and owner, not calling a function |
+| MCP vs A2A | MCP connects an agent to tools; A2A connects agents to agents; they're used together |
+| Agent Card | JSON at `/.well-known/agent-card.json`: identity, endpoints, auth, skills described in prose |
+| Task | Stateful unit of work with an id; revisitable, cancellable, grouped by context |
+| States | Submitted, working, input-required, auth-required, then completed, failed, canceled or rejected |
+| Content | Messages for communication, artifacts for results, parts of text, files or data |
+| Delivery | Poll with `GetTask`, stream with SSE, or receive push notifications at a webhook |
+| Opaque agents | Neither side sees the other's model, prompt, tools or memory |
+| Security | Standard HTTP auth from the card, per-request authorization, remote messages are untrusted |
+
+---
+
+Next: [Multi-Agent Systems](/docs/agents/multi-agent-systems), the coordination patterns these protocols enable.
+
+## Sources
+
+- A2A Project, [Agent2Agent Protocol Specification, version 1.0](https://a2a-protocol.org/latest/specification/)
+- Google Developers Blog, [Announcing the Agent2Agent Protocol (A2A)](https://developers.googleblog.com/en/a2a-a-new-era-of-agent-interoperability/) (April 2025)
+- Linux Foundation, [Linux Foundation Launches the Agent2Agent Protocol Project](https://www.linuxfoundation.org/press/linux-foundation-launches-the-agent2agent-protocol-project-to-enable-secure-intelligent-communication-between-ai-agents) (June 2025)
+- Axios, [Google-backed agentic A2A protocol gets a new home](https://axios.com/2026/08/17/a2a-agentic-ai-foundation-open-ai-standards) (August 2026)
+- [JSON-RPC 2.0 Specification](https://www.jsonrpc.org/specification)
