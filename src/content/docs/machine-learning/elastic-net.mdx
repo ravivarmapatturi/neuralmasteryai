@@ -52,7 +52,7 @@ Take the extreme case: two features that are exact copies, $\mathbf{x}_1 = \math
 
 The L1 penalty is the same for every split with both weights positive. Lasso is indifferent: there are infinitely many optimal solutions, and which one a solver returns depends on details like the order it visits the features. With features that are highly correlated but not identical, the tie is broken by noise in the data, so a different train/test split or a few extra rows can move all the weight from one feature to the other. The selected set of features, often the reason for using lasso in the first place, isn't stable.
 
-Lasso has a second limitation that matters when there are more features than examples ($d > n$, common in genomics and text): it selects at most $n$ nonzero features before it saturates (Efron et al., 2004; Tibshirani, 2013 makes the condition precise). With 100 patients and 20,000 genes, lasso can never pick more than 100 genes, even if 300 matter.
+Lasso has a second limitation that matters when there are more features than examples ($d \gt  n$, common in genomics and text): it selects at most $n$ nonzero features before it saturates (Efron et al., 2004; Tibshirani, 2013 makes the condition precise). With 100 patients and 20,000 genes, lasso can never pick more than 100 genes, even if 300 matter.
 
 The L2 column shows the fix. Its unique minimum is the even split, $(2, 2)$. Adding even a small L2 term breaks lasso's tie in favour of sharing, which the next section proves in general.
 
@@ -65,12 +65,12 @@ The L2 column shows the fix. Its unique minimum is the even split, $(2, 2)$. Add
 - The **L2 term strictly decreases**. Write $w_1 = m + \delta$ and $w_2 = m - \delta$ with $\delta$ nonzero:
 
 $$
-w_1^2 + w_2^2 = (m+\delta)^2 + (m-\delta)^2 = 2m^2 + 2\delta^2 \;>\; 2m^2 = m^2 + m^2
+w_1^2 + w_2^2 = (m+\delta)^2 + (m-\delta)^2 = 2m^2 + 2\delta^2 \;\gt \; 2m^2 = m^2 + m^2
 $$
 
-So averaging lowers $J$, which contradicts the assumption that the unequal solution was optimal. With any $\alpha < 1$, the optimum gives exact duplicates exactly equal weights. (If the signs disagreed, averaging would lower the L1 term too, so that case can't be optimal either.)
+So averaging lowers $J$, which contradicts the assumption that the unequal solution was optimal. With any $\alpha \lt  1$, the optimum gives exact duplicates exactly equal weights. (If the signs disagreed, averaging would lower the L1 term too, so that case can't be optimal either.)
 
-More generally, the L2 term makes $J$ **strictly convex**: the squared error is convex, the L1 term is convex, and $\tfrac{1-\alpha}{2}\lambda\lVert\mathbf{w}\rVert^2$ is strictly convex whenever $\lambda(1-\alpha) > 0$. A strictly convex function has exactly one minimizer. Lasso's ambiguity is gone, so the solution no longer depends on solver details or on tiny perturbations of the data.
+More generally, the L2 term makes $J$ **strictly convex**: the squared error is convex, the L1 term is convex, and $\tfrac{1-\alpha}{2}\lambda\lVert\mathbf{w}\rVert^2$ is strictly convex whenever $\lambda(1-\alpha) \gt  0$. A strictly convex function has exactly one minimizer. Lasso's ambiguity is gone, so the solution no longer depends on solver details or on tiny perturbations of the data.
 
 **Near-duplicates.** Zou and Hastie proved a quantitative version, called the **grouping effect**. With standardized features whose correlation is $\rho$, and both weights of the same sign, the solution satisfies (in their $\lambda_1, \lambda_2$ notation, with unscaled squared error)
 
@@ -118,8 +118,8 @@ $$
 
 This is a one-dimensional parabola plus a V-shape. Away from zero, $\lvert w_j\rvert$ has derivative $\operatorname{sign}(w_j)$, so setting the derivative to zero gives:
 
-- If $w_j > 0$: $\;-\rho_j + (c_j + \lambda(1-\alpha))w_j + \lambda\alpha = 0$, so $w_j = \dfrac{\rho_j - \lambda\alpha}{c_j + \lambda(1-\alpha)}$, which is positive only when $\rho_j > \lambda\alpha$.
-- If $w_j < 0$: by symmetry, $w_j = \dfrac{\rho_j + \lambda\alpha}{c_j + \lambda(1-\alpha)}$, negative only when $\rho_j < -\lambda\alpha$.
+- If $w_j \gt  0$: $\;-\rho_j + (c_j + \lambda(1-\alpha))w_j + \lambda\alpha = 0$, so $w_j = \dfrac{\rho_j - \lambda\alpha}{c_j + \lambda(1-\alpha)}$, which is positive only when $\rho_j \gt  \lambda\alpha$.
+- If $w_j \lt  0$: by symmetry, $w_j = \dfrac{\rho_j + \lambda\alpha}{c_j + \lambda(1-\alpha)}$, negative only when $\rho_j \lt  -\lambda\alpha$.
 - If $\lvert\rho_j\rvert \le \lambda\alpha$: neither case is consistent, and the minimum sits at the corner, $w_j = 0$. (At zero, the subgradient of $\lvert w_j\rvert$ is any value in $[-1, 1]$, which is exactly enough to absorb $\lvert\rho_j\rvert \le \lambda\alpha$.)
 
 All three cases are one formula, using the **soft-thresholding** operator $S(z, t) = \operatorname{sign}(z)\max(\lvert z\rvert - t, 0)$:
@@ -186,8 +186,8 @@ A rough guide to what the chosen $\alpha$ tells you: close to 1 means the data l
 |---|---|---|---|
 | Sets weights to exactly 0? | No | Yes | Yes |
 | Correlated features | Shares weight among them | Picks one, unstably | Shares weight, and selects or drops the group together |
-| Unique solution? | Yes | Not always | Yes (for $\alpha < 1$) |
-| Max features selected when $d > n$ | All (no selection) | At most $n$ | Up to $d$ |
+| Unique solution? | Yes | Not always | Yes (for $\alpha \lt  1$) |
+| Max features selected when $d \gt  n$ | All (no selection) | At most $n$ | Up to $d$ |
 | Hyperparameters | $\lambda$ | $\lambda$ | $\lambda$, $\alpha$ |
 | Solver | Closed form or iterative | Coordinate descent, LARS | Coordinate descent |
 
@@ -282,7 +282,7 @@ The bootstrap experiment is the point of the page in numbers. Across 200 resampl
 | The fix | L2 makes the objective strictly convex: one solution, equal weights for duplicates |
 | Grouping | Correlated features enter or leave the model together |
 | Update | $w_j \leftarrow S(\rho_j, \lambda\alpha)\,/\,(c_j + \lambda(1-\alpha))$: L1 thresholds, L2 shrinks |
-| $d > n$ | Lasso selects at most $n$ features; elastic net has no such ceiling |
+| $d \gt  n$ | Lasso selects at most $n$ features; elastic net has no such ceiling |
 | Tuning | Grid over $\alpha$, path over $\lambda$, standardized features, cross-validation |
 
 ---

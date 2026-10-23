@@ -50,7 +50,7 @@ $$
 
 The factor $1/(1-\rho^2)$ is the **variance inflation factor**. With uncorrelated features it's 1. At $\rho = 0.9$ it's 5.3; at $\rho = 0.99$ it's 50. The weights' standard deviation grows by $\sqrt{50} \approx 7$ times, with the same data size and the same noise. The off-diagonal $-\rho$ says something else: the two estimates are strongly *negatively* correlated. When noise pushes $\hat{w}_1$ up, it pushes $\hat{w}_2$ down by about the same amount, so their sum (which is what the predictions depend on) stays stable while the individual weights swing to opposite extremes.
 
-With more features than examples ($d > n$), it gets worse: $X^TX$ has rank at most $n$, so it's singular, and there are infinitely many weight vectors that fit the training data exactly. Least squares has no answer at all.
+With more features than examples ($d \gt  n$), it gets worse: $X^TX$ has rank at most $n$, so it's singular, and there are infinitely many weight vectors that fit the training data exactly. Least squares has no answer at all.
 
 The predictions may still be fine in the first case. But weights with a standard deviation of 7 are useless to interpret, and they make the model fragile: a new input whose two correlated features happen to disagree slightly gets multiplied by two huge opposite-signed weights. The fix is to stop letting the weights get large.
 
@@ -104,7 +104,7 @@ $$
 \hat{\mathbf{w}}_{\text{ridge}} = (X^TX + \lambda I)^{-1}X^T\mathbf{y}
 $$
 
-The only change from the normal equation is $+\lambda I$, and it's exactly what fixes Section 1. $X^TX$ is symmetric with eigenvalues $\mu_1, \dots, \mu_d \ge 0$; a zero or tiny eigenvalue is what makes it singular or unstable. Adding $\lambda I$ adds $\lambda$ to every eigenvalue without changing the eigenvectors (since $(X^TX + \lambda I)\mathbf{v} = (\mu + \lambda)\mathbf{v}$ whenever $X^TX\mathbf{v} = \mu\mathbf{v}$). Every eigenvalue becomes at least $\lambda > 0$, so the matrix is always invertible, even when $d > n$, and its condition number drops from $\mu_{\max}/\mu_{\min}$ to $(\mu_{\max} + \lambda)/(\mu_{\min} + \lambda)$. Hoerl and Kennard named the method after this picture: adding a "ridge" of $\lambda$ down the diagonal.
+The only change from the normal equation is $+\lambda I$, and it's exactly what fixes Section 1. $X^TX$ is symmetric with eigenvalues $\mu_1, \dots, \mu_d \ge 0$; a zero or tiny eigenvalue is what makes it singular or unstable. Adding $\lambda I$ adds $\lambda$ to every eigenvalue without changing the eigenvectors (since $(X^TX + \lambda I)\mathbf{v} = (\mu + \lambda)\mathbf{v}$ whenever $X^TX\mathbf{v} = \mu\mathbf{v}$). Every eigenvalue becomes at least $\lambda \gt  0$, so the matrix is always invertible, even when $d \gt  n$, and its condition number drops from $\mu_{\max}/\mu_{\min}$ to $(\mu_{\max} + \lambda)/(\mu_{\min} + \lambda)$. Hoerl and Kennard named the method after this picture: adding a "ridge" of $\lambda$ down the diagonal.
 
 What adding $\lambda$ to each eigenvalue does to the *fitted model* is clearer through the SVD.
 
@@ -151,7 +151,7 @@ $$
 
 Along direction $j$, the variance goes from $\sigma^2/d_j^2$ for least squares to $\sigma^2 d_j^2/(d_j^2 + \lambda)^2$. For a small $d_j$ that's a huge reduction.
 
-What matters for a model's error is the sum: mean squared error equals bias squared plus variance (see [Model Evaluation: Bias-Variance Tradeoff](/docs/machine-learning/model-evaluation-metrics#bias-variance-tradeoff)). At $\lambda = 0$ the bias is zero and the variance is whatever it is. Increasing $\lambda$ a little adds bias that grows like $\lambda^2$ (it starts flat) while removing variance that falls like $\lambda$ (it starts steep). So a small enough $\lambda > 0$ always reduces the total. Hoerl and Kennard proved exactly this in 1970: **there always exists some $\lambda > 0$ for which ridge has lower mean squared error than least squares**, whatever the true weights are. The catch is that the best $\lambda$ depends on the unknown $\mathbf{w}^*$ and $\sigma^2$, so it has to be estimated from data (Section 7).
+What matters for a model's error is the sum: mean squared error equals bias squared plus variance (see [Model Evaluation: Bias-Variance Tradeoff](/docs/machine-learning/model-evaluation-metrics#bias-variance-tradeoff)). At $\lambda = 0$ the bias is zero and the variance is whatever it is. Increasing $\lambda$ a little adds bias that grows like $\lambda^2$ (it starts flat) while removing variance that falls like $\lambda$ (it starts steep). So a small enough $\lambda \gt  0$ always reduces the total. Hoerl and Kennard proved exactly this in 1970: **there always exists some $\lambda \gt  0$ for which ridge has lower mean squared error than least squares**, whatever the true weights are. The catch is that the best $\lambda$ depends on the unknown $\mathbf{w}^*$ and $\sigma^2$, so it has to be estimated from data (Section 7).
 
 <GoDeeper title="Go deeper: ridge is the MAP estimate under a Gaussian prior">
 
@@ -291,7 +291,7 @@ The six-line SVD solver matches scikit-learn exactly. The bootstrap rows are Sec
 | Closed form | $(X^TX + \lambda I)^{-1}X^T\mathbf{y}$; adding $\lambda$ to every eigenvalue makes it always invertible |
 | Via the SVD | Direction $j$ shrunk by $d_j^2/(d_j^2 + \lambda)$: least-informative directions shrink most |
 | Complexity | $\operatorname{df}(\lambda) = \sum d_j^2/(d_j^2+\lambda)$, from $d$ down to 0 |
-| Bias-variance | Some $\lambda > 0$ always beats least squares on MSE (Hoerl and Kennard, 1970) |
+| Bias-variance | Some $\lambda \gt  0$ always beats least squares on MSE (Hoerl and Kennard, 1970) |
 | Bayesian view | MAP estimate under a $\mathcal{N}(0, \tau^2)$ prior, with $\lambda = \sigma^2/\tau^2$ |
 | Path | Smooth; weights shrink toward zero but none is held at exactly zero |
 | Choosing λ | Leave-one-out CV in one fit per λ: residual $/ (1 - H_{ii})$ |

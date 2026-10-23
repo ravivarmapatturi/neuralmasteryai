@@ -124,7 +124,7 @@ Read the size of that number. When the margin $ys$ is large and positive (confid
 **Hinge**, $L = \max(0,\, 1 - ys)$. This has a corner at $ys = 1$, where no derivative exists. Away from the corner:
 
 $$
-g = \begin{cases} -y & \text{if } ys < 1 \\ 0 & \text{if } ys > 1 \end{cases}
+g = \begin{cases} -y & \text{if } ys \lt  1 \\ 0 & \text{if } ys \gt  1 \end{cases}
 $$
 
 At the corner itself any value between $-y$ and $0$ is a valid **subgradient** (a slope of a line that touches the function there without crossing it), and implementations just pick one. The rule is blunt: an example on the correct side of the margin, by at least 1, contributes nothing at all. Only examples inside the margin or on the wrong side move the weights, which is the SGD view of why an SVM depends only on its support vectors.
@@ -133,7 +133,7 @@ At the corner itself any value between $-y$ and $0$ is a valid **subgradient** (
 
 | Loss | $g = \partial L/\partial s$ | What it buys |
 |---|---|---|
-| `perceptron`: $\max(0, -ys)$ | $-y$ if $ys < 0$, else $0$ | The 1958 perceptron. No margin, only fixes mistakes |
+| `perceptron`: $\max(0, -ys)$ | $-y$ if $ys \lt  0$, else $0$ | The 1958 perceptron. No margin, only fixes mistakes |
 | `squared_hinge`: $\max(0, 1 - ys)^2$ | $-2y\max(0, 1-ys)$ | Smooth version of hinge |
 | `modified_huber` | Quadratic near the margin, linear when badly wrong | Tolerant of outliers and still gives probability estimates |
 | `huber` (regression) | $s - y$ when $\lvert s - y\rvert \le \epsilon$, else $\epsilon\,\operatorname{sign}(s - y)$ | Squared error for small residuals, absolute for outliers |
@@ -186,12 +186,12 @@ With batch gradient descent and a small enough fixed learning rate, the gradient
 To converge to the exact minimum, the step size has to decay. Robbins and Monro (1951) gave the conditions a schedule $\eta_t$ needs:
 
 $$
-\sum_{t=1}^{\infty} \eta_t = \infty \qquad\text{and}\qquad \sum_{t=1}^{\infty} \eta_t^2 < \infty
+\sum_{t=1}^{\infty} \eta_t = \infty \qquad\text{and}\qquad \sum_{t=1}^{\infty} \eta_t^2 \lt  \infty
 $$
 
 The first says the steps can't shrink so fast that the total distance traveled is finite; otherwise SGD could stall before reaching the minimum. The second says they must shrink fast enough that the accumulated noise (which scales with $\eta_t^2$) stays bounded. $\eta_t = c/t$ satisfies both, since the harmonic series diverges while $\sum 1/t^2 = \pi^2/6$. A constant step fails the second condition; $\eta_t = c/t^2$ fails the first.
 
-For a strongly convex objective (L2-penalized squared error or log loss, with $\alpha > 0$), the $1/t$ rate is also the best possible order: with $\eta_t = 1/(\alpha t)$, the expected gap $\mathbb{E}[J(\mathbf{w}_t)] - J(\mathbf{w}^*)$ shrinks like $O(1/t)$. That's the theory behind the schedules scikit-learn exposes through `learning_rate`:
+For a strongly convex objective (L2-penalized squared error or log loss, with $\alpha \gt  0$), the $1/t$ rate is also the best possible order: with $\eta_t = 1/(\alpha t)$, the expected gap $\mathbb{E}[J(\mathbf{w}_t)] - J(\mathbf{w}^*)$ shrinks like $O(1/t)$. That's the theory behind the schedules scikit-learn exposes through `learning_rate`:
 
 | `learning_rate` | Schedule | Default for |
 |---|---|---|
@@ -371,7 +371,7 @@ SGD is the right tool when the data is large or arriving continuously. On small 
 | Hinge vs. log loss | Hinge ignores examples beyond the margin; log loss never quite lets go |
 | L2 penalty | Weight decay: multiply by $(1 - \eta\alpha)$ every step |
 | L1 penalty | Clip toward zero, don't cross it, or the sparsity is lost |
-| Step size | Must decay ($\sum\eta_t = \infty$, $\sum\eta_t^2 < \infty$) to converge; $1/t$ is the classic choice |
+| Step size | Must decay ($\sum\eta_t = \infty$, $\sum\eta_t^2 \lt  \infty$) to converge; $1/t$ is the classic choice |
 | Averaging | `average=True` reports the mean iterate; robust to the step size |
 | Scaling | Standardize features, inside a pipeline, every time |
 | Online | `partial_fit` on chunks; pass `classes` the first time |
