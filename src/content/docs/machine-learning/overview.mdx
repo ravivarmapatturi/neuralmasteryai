@@ -1,31 +1,238 @@
 ---
-title: "Machine Learning Overview"
+title: "Machine Learning, In Full Depth: The Overview"
 sidebar_position: 1
-description: "The classical ML toolkit in full derivation depth -- when gradient-boosted trees still beat a neural net, and the evaluation discipline every model needs."
+description: "What learning from data means, made precise: the three choices every algorithm makes (model, loss, optimizer), empirical risk minimization and why it can fail, the no-free-lunch theorem, when classical ML beats deep learning, a six-model comparison on real data, and how this section is organized."
 ---
 
-# Machine Learning Overview
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-Before neural networks, there was — and still is — a large, battle-tested toolkit of algorithms that fit models directly to data: a line through points, a tree of yes/no splits, a boundary that maximizes margin. This section covers that toolkit in full depth: not just *how* each algorithm works, but the derivation behind it, when to actually reach for it over a deep net, and the workflow and evaluation discipline that applies no matter which algorithm you pick. [Deep Learning](/docs/deep-learning/overview) picks up from here — most of what makes a deep network trainable at all (loss functions, regularization, gradient descent) is introduced here first, in its simplest, most transparent form.
+# Machine Learning, In Full Depth: The Overview
 
-## Why classical ML still matters
+This section covers classical machine learning: fitting a line through points, splitting data with a tree of yes/no questions, drawing the widest possible boundary between classes, finding clusters with no labels at all. These methods came before deep learning, and they're still the right tool for much of the data businesses actually have. This page sets up the frame that every later page uses. It defines what "learning" means precisely, shows that every algorithm in the section is three choices (a model, a loss and an optimizer), explains why minimizing error on your data isn't the same as doing well on new data, runs six standard algorithms on one real dataset to show what that looks like, and says when machine learning is the wrong approach altogether. [Mathematics for AI](/docs/mathematics-for-ai/overview) covers the calculus and linear algebra the derivations use.
 
-Deep learning gets the attention, but for tabular data — spreadsheets, databases, most real business data — gradient-boosted trees ([XGBoost, LightGBM & CatBoost](/docs/machine-learning/xgboost-lightgbm-catboost)) routinely beat neural networks, train in minutes instead of hours, and don't need a GPU. Linear and logistic regression remain the default first model for almost any new problem, specifically *because* they're interpretable — every weight has a direct, explainable meaning, which a deep network's millions of parameters generally don't offer. Knowing this toolkit isn't a historical detour before "the real stuff" — it's the right tool for a large fraction of real problems, and the conceptual foundation (loss functions, gradients, bias-variance, regularization) that every later section builds on.
+<ELI5>
 
-## How this section is organized
+A child learning to tell cats from dogs isn't given a rulebook. They see lots of animals, someone says "cat" or "dog", and eventually they can name animals they've never seen before. Nobody wrote down the rule; it was learned from examples.
 
-**Start here**: [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals) — train/validation/test splits, data leakage, feature engineering. The discipline in this page applies to literally everything else in this section (and in Deep Learning); skipping it is the single most common way real projects go wrong, independent of which algorithm you end up using.
+Machine learning is that, done by a computer: show it examples with answers, let it adjust a set of numbers until its answers on those examples are good, and then use it on new examples. The hard part, and most of this section, is making sure "good on the examples" turns into "good on new ones". Everything below is that idea made exact.
 
-**[Supervised Learning](/docs/machine-learning/supervised-learning)** — learning a mapping from inputs to known outputs. One hub page surveying every algorithm in depth: linear/ridge/lasso/elastic-net regression, logistic regression, decision trees, Random Forest/Extra Trees, AdaBoost/Gradient Boosting, XGBoost/LightGBM/CatBoost, SVMs, k-NN, Naive Bayes/LDA/QDA, the SGD training framework, plus the structurally different problems of time series forecasting, survival analysis, and recommender systems/learning-to-rank — each with its own full derivation page linked inline.
+</ELI5>
 
-**[Unsupervised Learning](/docs/machine-learning/unsupervised-learning)** — finding structure with no labels at all: clustering (k-Means, hierarchical, DBSCAN/HDBSCAN, GMM, spectral), dimensionality reduction (PCA, Kernel PCA, ICA, t-SNE, UMAP), association rule mining, topic modeling, and anomaly detection. Same pattern — one survey page, each topic linking to its own full-depth derivation.
+## 1. What "Learning" Means
 
-**[Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics)** — bias-variance tradeoff, regularization, and the actual metrics (precision/recall/F1, ROC-AUC, RMSE/MAE, and more) for judging whether any model above is actually good. Read this *after* at least one algorithm from Supervised or Unsupervised Learning — the metrics make more sense once you've seen a model actually produce predictions to evaluate.
+Tom Mitchell's 1997 definition is still the clearest: a program **learns** from experience $E$ with respect to a task $T$ and performance measure $P$ if its performance at $T$, measured by $P$, improves with $E$. For a spam filter, $T$ is labelling emails, $P$ is the fraction labelled correctly, and $E$ is a pile of emails people have already labelled.
 
-## How to actually use this section
+Make that precise for the most common case, **supervised learning**. There's an unknown process that produces pairs $(\mathbf{x}, y)$: an input and the right answer for it. Formally they come from some probability distribution $\mathcal{D}$. We get $n$ examples drawn from it,
 
-If you're new to ML entirely: Workflow Fundamentals → Supervised Learning (read linear regression's full derivation on [its own page](/docs/machine-learning/linear-regression) — it's the one algorithm worth deriving completely by hand before moving on) → Model Evaluation. If you already know the basics and need a specific algorithm, the two hub pages are written to be jumped into directly — every algorithm section links straight to its full-depth page.
+$$
+S = \left\{(\mathbf{x}^{(1)}, y^{(1)}), \dots, (\mathbf{x}^{(n)}, y^{(n)})\right\}
+$$
 
-**Prerequisite**: the derivations lean on calculus and linear algebra — see [Mathematics for AI](/docs/mathematics-for-ai/overview) if a gradient or a matrix operation feels unfamiliar.
+and want a function $f$ that predicts $y$ from $\mathbf{x}$ well on *future* pairs from the same process. "Well" is measured by a loss $L(y, f(\mathbf{x}))$, and the quantity we actually care about is the **expected risk**, the average loss on new data:
 
-See the [roadmap](/docs/machine-learning/roadmap) for the full ordered path through this section.
+$$
+R(f) = \mathbb{E}_{(\mathbf{x}, y) \sim \mathcal{D}}\big[L(y, f(\mathbf{x}))\big]
+$$
+
+That's the target. The difficulty is that we can't compute it, because we don't know $\mathcal{D}$. We only have the $n$ samples. Everything in this section is a way of getting close to the best $R(f)$ using only $S$.
+
+**Unsupervised learning** drops the $y$: there are only inputs, and the goal is to find structure in them, such as groups, a lower-dimensional description, or unusual points. It's harder to state as a single quantity to minimize, which is part of why it's harder to evaluate. The same three choices below still apply.
+
+The definition says what we want. It doesn't say how to search for it, which is where every algorithm makes the same three decisions.
+
+## 2. Every Algorithm Is Three Choices
+
+Look inside any algorithm in this section and you'll find the same three parts:
+
+1. **A model**, more precisely a **hypothesis class** $\mathcal{F}$: the set of functions the algorithm is allowed to choose from. Straight lines. Trees of depth at most 10. Sums of 500 trees. The class fixes what the algorithm *can* express before it sees any data.
+2. **A loss** $L$, plus usually a penalty on complexity: what counts as a bad prediction, and how much.
+3. **An optimizer**: the procedure that searches $\mathcal{F}$ for the function with low loss. A closed-form formula, gradient descent, coordinate descent, greedy splitting.
+
+With those three named, most of the section's algorithms fit in one table:
+
+| Algorithm | Model (hypothesis class) | Loss | Optimizer |
+|---|---|---|---|
+| [Linear regression](/docs/machine-learning/linear-regression) | $\mathbf{w}^T\mathbf{x} + b$ | Squared error | Normal equation or gradient descent |
+| [Ridge](/docs/machine-learning/ridge-regression), [Lasso](/docs/machine-learning/lasso-regression) | $\mathbf{w}^T\mathbf{x} + b$ | Squared error + L2 or L1 penalty | Closed form; coordinate descent |
+| [Logistic regression](/docs/machine-learning/logistic-regression) | $\sigma(\mathbf{w}^T\mathbf{x} + b)$ | Cross-entropy | Newton / L-BFGS |
+| [Linear SVM](/docs/machine-learning/support-vector-machines) | $\operatorname{sign}(\mathbf{w}^T\mathbf{x} + b)$ | Hinge + L2 | Quadratic programming |
+| [Decision tree](/docs/machine-learning/decision-tree) | Axis-aligned piecewise-constant regions | Impurity (Gini, entropy, squared error) | Greedy recursive splitting |
+| [Gradient boosting](/docs/machine-learning/boosting) | Sum of many small trees | Any differentiable loss | Gradient descent in function space |
+| [k-nearest neighbours](/docs/machine-learning/k-nearest-neighbors) | The training set itself | None at training time | None: store the data |
+| [k-means](/docs/machine-learning/kmeans-hierarchical-clustering#k-means) (unsupervised) | $k$ centroids | Squared distance to nearest centroid | Alternate assignment and update |
+
+This is more than bookkeeping. When an algorithm misbehaves, the table tells you where to look. A model that can't fit the training data has a hypothesis class that's too small (a straight line for a curved relationship) or an optimizer that hasn't finished. A model that fits training data perfectly and fails on new data has a class that's too large for the amount of data, and needs a penalty or more data. A model that optimizes the wrong thing (accuracy on a dataset with 1% positives) has the wrong loss. And the same choices can be mixed: the [SGD page](/docs/machine-learning/sgd-classifier-regressor) shows one optimizer training five of these models by swapping the loss and penalty.
+
+## 3. Minimizing Error on the Data You Have
+
+Since $R(f)$ can't be computed, the natural move is to replace the expectation over $\mathcal{D}$ by an average over the sample, the **empirical risk**, and minimize that instead:
+
+$$
+\hat{f} = \arg\min_{f \in \mathcal{F}} \; \hat{R}(f), \qquad \hat{R}(f) = \frac{1}{n}\sum_{i=1}^{n} L\big(y^{(i)}, f(\mathbf{x}^{(i)})\big)
+$$
+
+This is **empirical risk minimization** (ERM), and most supervised algorithms are some version of it. For a fixed $f$, $\hat{R}(f)$ is an unbiased estimate of $R(f)$. But ERM doesn't evaluate a fixed $f$; it *searches* for the $f$ that makes $\hat{R}$ smallest, and that search exploits the particular sample, noise included. How far the result can be from the best possible depends on two things pulling in opposite directions. Write $f^*$ for the best function in the class. Then the excess risk of what we learned splits into two parts:
+
+$$
+R(\hat{f}) - R_{\text{best possible}} = \underbrace{R(\hat{f}) - R(f^*)}_{\text{estimation error}} + \underbrace{R(f^*) - R_{\text{best possible}}}_{\text{approximation error}}
+$$
+
+- **Approximation error** comes from the class being too small: the best straight line is still a poor fit to a curve. It shrinks as $\mathcal{F}$ grows.
+- **Estimation error** comes from having only $n$ examples to choose with: the bigger the class, the more functions there are that fit this sample by luck, and the further the chosen one can be from $f^*$. It grows with the size of $\mathcal{F}$ and shrinks with $n$.
+
+This is the **bias-variance trade-off** in its general form (see [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics#bias-variance-tradeoff) for the version for squared error). Vapnik's statistical learning theory makes it quantitative: for a class of "capacity" $h$ (the VC dimension), with high probability the gap between empirical and true risk is at most on the order of $\sqrt{h\log n / n}$, so it closes as data grows and widens as the class grows. The practical tools all come from this decomposition. **Regularization** (ridge, lasso, tree depth limits, early stopping) shrinks the effective class. **Cross-validation** estimates $R$ honestly so you can choose how much regularization to use. **More data** shrinks estimation error directly.
+
+<PredictFirst
+  question="A 1-nearest-neighbour classifier predicts each new point's label by copying the label of the closest training point. What is its training error, and what does that tell you?"
+  options={[
+    'High, because it ignores most of the data',
+    "Zero (each training point's nearest neighbour is itself), which says nothing about its error on new data",
+    'Zero, which proves it will also be perfect on new data',
+    'The same as its test error, since it has no parameters to overfit',
+  ]}
+  correctIndex={1}
+  explanation="Every training point is its own nearest neighbour, so 1-NN reproduces every training label: zero empirical risk. Its hypothesis class is enormous (any labelling of the training points), so the estimation error term is large, and its error on new data can be much higher. Zero training error is evidence of capacity, not of learning."
+/>
+
+The decomposition explains why no single algorithm wins everywhere, which is the next point.
+
+## 4. No Algorithm Is Best for Everything
+
+It's tempting to look for the best algorithm. Wolpert's **no-free-lunch theorems** (1996) say there isn't one: averaged over every possible relationship between inputs and outputs, every learning algorithm has the same expected performance on unseen data. An algorithm that does better than average on some problems must do worse than average on others.
+
+That sounds bleak, but the resolution is practical. Real problems are not drawn uniformly from all possible relationships. Nearby inputs usually have similar outputs. Effects are often roughly additive. Many features are irrelevant. Each algorithm bets on some of these regularities, its **inductive bias**: linear models bet on additivity, trees on axis-aligned thresholds and interactions, nearest neighbours on smoothness, convolutional networks on spatial locality. An algorithm does well when its bet matches the data. Choosing a model is choosing which bet to make, and the only reliable test is to try several on held-out data, which Section 6 does.
+
+## 5. Classical ML or Deep Learning?
+
+Deep learning dominates when the input is raw perception or language: pixels, audio, text. Those inputs have a structure (spatial, temporal, sequential) that neural network architectures are designed to exploit, and there are usually huge amounts of data. Classical methods can't learn useful features from raw pixels.
+
+For **tabular data**, rows and columns as in a spreadsheet or a database table, the picture reverses. Grinsztajn, Oyallon and Varoquaux (2022) benchmarked tree-based models against deep architectures on 45 tabular datasets and found tree ensembles (XGBoost, random forests) still outperformed them on medium-sized data, while training far faster. Their analysis pointed to three reasons: tabular targets are often irregular functions that trees fit easily and neural networks smooth over; tabular data has many uninformative features, which trees ignore more robustly; and the columns have individual meanings, so the rotation-invariance of standard networks is a handicap rather than a help. Newer tabular foundation models have narrowed the gap on small datasets, but gradient-boosted trees remain the default to beat (see [XGBoost, LightGBM & CatBoost](/docs/machine-learning/xgboost-lightgbm-catboost)).
+
+Classical methods also win when you need to explain a prediction (a linear model's weights and a short tree's splits can be read directly), when data is small, when training must be cheap or fast, or when the model must run on modest hardware. And the ideas carry over: loss functions, gradient descent, regularization, bias and variance, cross-validation, and calibration are all introduced in this section in their simplest form, and every one reappears in [Deep Learning](/docs/deep-learning/overview).
+
+## 6. Minimal Implementation: Six Models on One Dataset
+
+The best way to see Sections 3 to 5 is to run several algorithms with very different biases on the same data, measured the same honest way. The data is the Wisconsin breast-cancer dataset: 569 tumours, 30 measurements of cell nuclei each, labelled benign or malignant. Every model is scored by 5-fold cross-validation, with scaling inside the pipeline where the model needs it (see [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals)):
+
+```python
+import time
+import numpy as np
+from sklearn.datasets import load_breast_cancer
+from sklearn.dummy import DummyClassifier
+from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import StratifiedKFold, cross_val_score
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
+
+X, y = load_breast_cancer(return_X_y=True)     # 569 tumours, 30 measurements, benign or malignant
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
+
+models = {
+    "always predict majority": DummyClassifier(),
+    "logistic regression":     make_pipeline(StandardScaler(), LogisticRegression()),
+    "k-nearest neighbours":    make_pipeline(StandardScaler(), KNeighborsClassifier()),
+    "SVM (RBF kernel)":        make_pipeline(StandardScaler(), SVC()),
+    "random forest":           RandomForestClassifier(random_state=0),
+    "gradient boosting":       HistGradientBoostingClassifier(random_state=0),
+}
+for name, model in models.items():
+    start = time.perf_counter()
+    scores = cross_val_score(model, X, y, cv=cv)
+    print(f"{name:24s} accuracy {scores.mean():.3f} ± {scores.std():.3f}   ({time.perf_counter() - start:.2f} s)")
+```
+
+Output (scikit-learn 1.7; timings from one run on one machine):
+
+```
+always predict majority  accuracy 0.627 ± 0.004   (0.01 s)
+logistic regression      accuracy 0.979 ± 0.014   (0.10 s)
+k-nearest neighbours     accuracy 0.965 ± 0.021   (0.05 s)
+SVM (RBF kernel)         accuracy 0.977 ± 0.007   (0.02 s)
+random forest            accuracy 0.965 ± 0.015   (0.73 s)
+gradient boosting        accuracy 0.970 ± 0.009   (0.61 s)
+```
+
+Four things to take from it:
+
+- **The baseline matters.** Predicting "benign" for everything scores 62.7%, because 62.7% of the tumours are benign. Any accuracy has to be read against that number, not against zero.
+- **The simplest model won.** Logistic regression, a straight boundary, scored highest. This dataset's classes are close to linearly separable once the features are standardized, so the linear model's bet matches the data and its small class keeps estimation error low. Section 4 in action.
+- **The differences are inside the noise.** The spread across folds (±0.01 to ±0.02) is as large as the gaps between the five real models. On 569 examples, these five are statistically indistinguishable; a ranking would need repeated cross-validation or a larger dataset (see [statistical significance of improvements](/docs/machine-learning/model-evaluation-metrics#statistical-significance-of-improvements)).
+- **Cost differs more than accuracy.** The ensembles took several times longer for no gain here. On a large, messy tabular dataset with nonlinear effects and interactions, the ranking would likely flip toward gradient boosting, which is why you run the comparison rather than assume it.
+
+The standard workflow follows directly: start with a trivial baseline and a simple model, add complexity only when held-out performance says it pays, and keep the simplest model that's statistically as good as the best.
+
+## 7. How This Section Is Organized
+
+The section follows the three choices and the generalization problem.
+
+**Start with the discipline.** [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals) covers train, validation and test splits, cross-validation, data leakage, missing data and imbalanced classes. Most real projects that fail do so here, whatever the algorithm.
+
+**Supervised learning**, learning from labelled examples. The [Supervised Learning](/docs/machine-learning/supervised-learning) hub surveys every algorithm, and each has its own full-depth page:
+
+- *Linear models*: [linear regression](/docs/machine-learning/linear-regression) (the one to derive completely by hand first), [ridge](/docs/machine-learning/ridge-regression), [lasso](/docs/machine-learning/lasso-regression), [elastic net](/docs/machine-learning/elastic-net), [logistic regression](/docs/machine-learning/logistic-regression), and the [SGD](/docs/machine-learning/sgd-classifier-regressor) framing that trains them all.
+- *Trees and ensembles*: [decision trees](/docs/machine-learning/decision-tree), [random forests](/docs/machine-learning/random-forest), [boosting](/docs/machine-learning/boosting), [XGBoost, LightGBM & CatBoost](/docs/machine-learning/xgboost-lightgbm-catboost).
+- *Margins, neighbours and generative classifiers*: [SVMs](/docs/machine-learning/support-vector-machines), [k-nearest neighbours](/docs/machine-learning/k-nearest-neighbors), [naive Bayes, LDA & QDA](/docs/machine-learning/naive-bayes-lda-qda).
+- *Problems with their own structure*: [time series forecasting](/docs/machine-learning/time-series-forecasting), [survival analysis](/docs/machine-learning/survival-analysis), [recommender systems](/docs/machine-learning/recommender-systems), [learning to rank](/docs/machine-learning/learning-to-rank).
+
+**Unsupervised learning**, finding structure without labels. The [Unsupervised Learning](/docs/machine-learning/unsupervised-learning) hub covers clustering ([k-means & hierarchical](/docs/machine-learning/kmeans-hierarchical-clustering), [DBSCAN & HDBSCAN](/docs/machine-learning/dbscan-hdbscan), [GMMs & spectral clustering](/docs/machine-learning/gmm-spectral-clustering)), dimensionality reduction ([PCA & SVD](/docs/machine-learning/pca-svd), [ICA, t-SNE & UMAP](/docs/machine-learning/ica-tsne-umap)), [association rules](/docs/machine-learning/association-rules), [topic modeling](/docs/machine-learning/topic-modeling) and [anomaly detection](/docs/machine-learning/anomaly-detection).
+
+**Judging and tuning models.** [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics) (read it after your first algorithm, when there are predictions to evaluate), [Hyperparameter Optimization](/docs/machine-learning/hyperparameter-optimization), and [Uncertainty Estimation & Conformal Prediction](/docs/machine-learning/uncertainty-estimation-and-conformal-prediction).
+
+If you're new to machine learning, read in this order: Workflow Fundamentals, Linear Regression, Logistic Regression, Model Evaluation, Decision Trees, then whatever your problem needs. The [roadmap](/docs/machine-learning/roadmap) lays out the full path.
+
+<GoDeeper title="Go deeper: the two cultures">
+
+In 2001 Leo Breiman, who invented random forests and co-invented CART trees, wrote an essay arguing that statistics had split into two cultures. The **data modelling** culture assumes the data comes from a known stochastic model (say, linear with Gaussian noise), fits its parameters, and draws conclusions from them: this coefficient is significantly positive. The **algorithmic modelling** culture treats the process as unknown and judges a model only by how well it predicts held-out data.
+
+This section uses both, and it matters which one you're in. When you report a logistic regression's odds ratios as findings about the world, you're in the first culture, and the model's assumptions (linearity in the log-odds, independent observations, no omitted confounders) are what make the conclusions valid. When you pick gradient boosting because it scored best in cross-validation, you're in the second, and the model's internals may mean nothing at all. Good prediction does not imply correct explanation: a model can predict hospital readmission well by using a feature that is a consequence of illness rather than a cause of it. Breiman's point was that prediction accuracy is an honest, checkable standard; the caution that goes with it is that it answers "what will happen?" and not "what would happen if we intervened?", which needs causal methods.
+
+</GoDeeper>
+
+## 8. When *Not* to Use Machine Learning
+
+Machine learning is a way to build software from examples. It's the wrong way when the examples, or the need for them, aren't there:
+
+| Situation | Better choice |
+|---|---|
+| The rule is known and stable (tax brackets, unit conversions, validation of a form) | Write the rule. It's exact, testable and explainable; a model can only approximate it |
+| Very few labelled examples and no way to get more | Domain rules or simple heuristics; or a pretrained model used as-is |
+| Errors are unacceptable and must be guaranteed absent | Deterministic logic with formal checks. Every learned model has a nonzero error rate |
+| You need to know the effect of an intervention (will this drug, price or policy change the outcome?) | A randomized experiment or causal inference; predictive models find correlations |
+| The future won't resemble the training data (a new market, a rule change) | Collect new data first; a model is only as good as the match between its training and use distributions |
+| The input is images, audio or free text | [Deep learning](/docs/deep-learning/overview), or a pretrained model with a classical model on its embeddings |
+| A large language model with a good prompt already does the task well enough | Use it, and measure it like any other model (see [AI Evaluation](/docs/ai-evaluation/overview)) |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Learning | Improving at a task, by a measure, with experience (Mitchell) |
+| The target | Expected risk $R(f)$, the average loss on new data from the same process |
+| What we can compute | Empirical risk $\hat{R}(f)$ on the $n$ examples we have |
+| Every algorithm | A model (hypothesis class), a loss, and an optimizer |
+| ERM's catch | Searching for the lowest training error overfits the sample |
+| Two errors | Approximation (class too small) vs. estimation (class too big for $n$) |
+| Remedies | Regularize, cross-validate, get more data |
+| No free lunch | No algorithm wins everywhere; each bets on some structure in the data |
+| Tabular data | Tree ensembles are the default to beat; deep learning for raw perception and text |
+| Workflow | Baseline first, simple model next, complexity only when held-out data says so |
+| Not ML | Known rules, no data, causal questions, or a future unlike the past |
+
+---
+
+Next: the [Machine Learning Roadmap](/docs/machine-learning/roadmap) for the ordered path through this section, then [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals), the discipline every model needs.
+
+## Sources
+
+- T. M. Mitchell, *Machine Learning*, McGraw-Hill, 1997, Chapter 1
+- V. N. Vapnik, [An Overview of Statistical Learning Theory](https://doi.org/10.1109/72.788640), *IEEE Transactions on Neural Networks*, 1999
+- D. H. Wolpert, [The Lack of A Priori Distinctions Between Learning Algorithms](https://doi.org/10.1162/neco.1996.8.7.1341), *Neural Computation*, 1996
+- L. Breiman, [Statistical Modeling: The Two Cultures](https://doi.org/10.1214/ss/1009213726), *Statistical Science*, 2001
+- P. Domingos, [A Few Useful Things to Know About Machine Learning](https://doi.org/10.1145/2347736.2347755), *Communications of the ACM*, 2012
+- L. Grinsztajn, E. Oyallon and G. Varoquaux, [Why Do Tree-Based Models Still Outperform Deep Learning on Typical Tabular Data?](https://arxiv.org/abs/2207.08815), NeurIPS 2022 Datasets and Benchmarks
+- S. Shalev-Shwartz and S. Ben-David, [Understanding Machine Learning: From Theory to Algorithms](https://www.cs.huji.ac.il/~shais/UnderstandingMachineLearning/), Cambridge University Press, 2014, Chapters 2 to 6
+- W. H. Wolberg, W. N. Street and O. L. Mangasarian, [Breast Cancer Wisconsin (Diagnostic)](https://doi.org/10.24432/C5DW2B), UCI Machine Learning Repository, 1995
