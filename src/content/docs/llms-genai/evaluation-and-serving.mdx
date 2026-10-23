@@ -1,53 +1,350 @@
 ---
-title: "Evaluation & Serving"
+title: "LLM Evaluation and Serving, In Full Depth"
 sidebar_position: 7
-description: "Evaluating LLMs beyond perplexity and benchmarks -- LLM-as-judge, position bias -- plus serving: continuous batching, speculative decoding, and cost tradeoffs."
+description: "How to tell whether an LLM system is good, and how to run it fast and cheaply: eval sets and confidence intervals, LLM-as-judge and its biases, then the serving side, with KV-cache memory worked out, continuous batching, PagedAttention, speculative decoding derived, quantization and guardrails."
 ---
-
 
 import JudgePositionBiasDiagram from '../../../viz/diagrams/JudgePositionBiasDiagram';
 import ContinuousBatchingDiagram from '../../../viz/diagrams/ContinuousBatchingDiagram';
 import SpeculativeDecodingDiagram from '../../../viz/diagrams/SpeculativeDecodingDiagram';
 import PagedAttentionDiagram from '../../../viz/diagrams/PagedAttentionDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Evaluation & Serving
+# LLM Evaluation and Serving, In Full Depth
 
-An LLM system isn't done when it works once — it needs measurable evaluation and a serving setup that's fast and affordable enough to actually run in production.
+[Calling the LLM API](/docs/llms-genai/calling-the-llm-api) got a model answering; [RAG](/docs/llms-genai/rag) gave it your data. Two questions decide whether that system can go to production. **Is it good?** That means measuring quality in a way you can trust enough to make decisions with, which is harder for open-ended text than for a classifier. **Can you afford to run it?** That means generating tokens fast enough for users and cheaply enough for the business, which is a memory problem more than a compute problem. This page covers both: how to build an eval set and read its results with error bars, how LLM judges work and where they're biased, then how inference actually runs on a GPU, why the KV cache dominates it, and the techniques serving engines use (continuous batching, PagedAttention, speculative decoding, quantization) with the arithmetic behind each.
 
-## Evaluation
+<ELI5>
 
-**Perplexity**: an intrinsic measure of how well a model predicts held-out text — lower is better, but it doesn't directly measure usefulness or correctness for real tasks, only how "unsurprised" the model is by real text.
+Think of a new restaurant. Before opening, the chef has to know the food is good. Tasting one dish isn't enough: they need a set of dishes cooked many times and judged the same way, and the judges need to be fair (not always preferring whichever plate came first).
 
-**Benchmark suites** (MMLU, HellaSwag, and many others): standardized test sets covering knowledge and reasoning across many domains. Useful for comparing models broadly, but easy to over-index on — a model can score well on benchmarks while still failing on your specific use case, and benchmark contamination (test data leaking into training data) is an ongoing concern industry-wide.
+Then the restaurant has to serve hundreds of people a night without a three-hour wait. The trick isn't a faster stove. It's how the kitchen is organized: start the next order the moment a burner frees up instead of waiting for a whole table to finish, use counter space efficiently, and let a junior cook prepare the obvious parts so the head chef only checks them.
 
-**LLM-as-judge**: use a strong LLM to evaluate another model's outputs against criteria (helpfulness, correctness, tone) — scales far better than human evaluation for iterating quickly, though it inherits whatever biases the judge model has and works best combined with periodic human spot-checks.
+Evaluation is the tasting; serving is running the kitchen. Everything below is those two ideas made exact.
+
+</ELI5>
+
+## 1. Why LLM Evaluation Is Hard
+
+For a classifier, evaluation is mechanical: compare predicted labels with true labels and compute accuracy. An LLM's output is open-ended text, and that breaks the mechanism in three ways:
+
+- **Many right answers.** "The meeting moved to Tuesday" and "It's now on Tuesday" are both correct. String comparison calls one of them wrong.
+- **Quality has several dimensions.** An answer can be correct but too long, polite but wrong, or right but unsupported by the documents it was supposed to use.
+- **Outputs vary run to run.** Sampling makes the same prompt produce different answers, so one run is one sample from a distribution.
+
+So LLM evaluation needs three decisions: *what* to test on, *how* to grade each answer, and *how much* to trust the resulting number. The rest of the evaluation half of this page takes them in order.
+
+## 2. What to Evaluate On
+
+### Evaluation
+
+**Public benchmarks** answer "how capable is this model in general?" They are standard question sets with automatic grading: knowledge and reasoning (MMLU-Pro, GPQA Diamond), mathematics (AIME problems), coding (SWE-bench Verified, LiveCodeBench), and agentic tasks. They're useful for shortlisting models. They are a poor guide to your application, for two reasons. Your task isn't theirs: a model that tops a mathematics benchmark may still mangle your invoice-extraction format. And benchmarks **saturate and leak**: once top models score near 100% (as happened to MMLU), the benchmark stops separating them, and benchmark questions published on the web can end up in training data, which inflates scores. That's why benchmarks keep being replaced, and why some (LiveBench, LiveCodeBench) use only questions written after a model's training cutoff.
+
+**Your own eval set** answers "is *my system* good at *my task*?", and it is the most valuable artifact in an LLM project. It is a list of inputs your system will really see, each with what a good output must contain:
+
+- **Start from real traffic.** Logged user questions, support tickets, documents. Invented examples are cleaner than reality and miss its failure modes.
+- **Cover the hard cases deliberately.** Ambiguous requests, questions the documents don't answer (the right answer is "I don't know"), adversarial inputs, long inputs.
+- **Write down what "correct" means** for each item: an exact answer, a list of facts that must appear, or a rubric.
+- **Keep growing it.** Every production failure becomes a new test case, so it can't silently come back.
+
+Fifty well-chosen examples are enough to start catching regressions. Section 4 shows why they aren't enough to detect small improvements.
+
+**Perplexity**, the exponential of the average next-token loss on held-out text, measures how well a model predicts text. It's essential when training a model and nearly useless for judging an application: a lower-perplexity model isn't necessarily more helpful, honest or correct on your task.
+
+## 3. Grading: Code, Judges and People
+
+Each answer needs a grade. There are three kinds of grader, and good eval suites use all three, cheapest first.
+
+**Code-based graders** are exact, fast and free: exact match for short answers, regular expressions, JSON-schema validation for structured output, running unit tests for generated code, checking that every citation points to a real retrieved document. Use them wherever the requirement can be checked mechanically.
+
+**LLM-as-judge** uses a strong model to grade outputs against a rubric. It handles what code can't (is the answer faithful to the source? is the tone appropriate?) at a small fraction of human cost. Studies such as Zheng et al. (2023) found strong judges agree with human raters about as often as humans agree with each other. A judge prompt should give a specific rubric, ask for reasoning before the verdict, and output a constrained score or label that code can parse.
+
+Judges have measurable biases:
+
+- **Position bias**: in pairwise comparisons ("which is better, A or B?"), judges tend to favour whichever answer is shown in a particular position.
+- **Verbosity bias**: longer answers get higher scores, even when the extra length adds nothing.
+- **Self-preference**: a model tends to rate outputs from itself or its own family more highly.
 
 <JudgePositionBiasDiagram />
 
-**Evaluating for hallucination, toxicity, bias**: typically a mix of automated classifiers, curated adversarial test sets, and human review — this isn't a solved problem, and production systems generally layer several imperfect checks rather than relying on one.
+The standard countermeasures are mechanical. Run every pairwise comparison twice with the order swapped and count only consistent verdicts. Score against a rubric rather than "which is better". Use a judge from a different model family than the system being judged. And **calibrate the judge**: have people grade a sample of a hundred or so items and measure how often the judge agrees with them, before trusting it on the rest.
 
-## Serving & Inference Optimization
+**Human review** remains the ground truth for subjective quality and for calibrating everything else. It's slow and expensive, so it's spent where it counts: building the eval set, calibrating judges, and periodically reviewing samples of production traffic.
 
-**Batching**: process multiple requests' forward passes together to better utilize GPU compute — the core lever for serving throughput. **Continuous batching** (dynamically adding new requests to a running batch as others finish) further improves GPU utilization over static batching.
+**Safety evaluation** (hallucination, toxicity, bias, prompt injection) uses the same three graders on purpose-built test sets: adversarial prompts, questions with no answer in the context, injected instructions in retrieved documents. No single check is reliable, so production systems layer several.
+
+## 4. How Much to Trust the Number
+
+Suppose prompt v2 scores 70% on your 50-question eval set and v1 scored 68%. Ship v2? The difference is one question. Before deciding, you need to know how much the score would move just by chance.
+
+An accuracy measured on $n$ independent questions has a standard error of about
+
+$$
+\text{SE} = \sqrt{\frac{p\,(1-p)}{n}}
+$$
+
+For $p = 0.7$ and $n = 50$ that's $0.065$, so a 95% interval is roughly $\pm 13$ points. Differences of a few points are invisible at that size. Since the standard error shrinks as $1/\sqrt{n}$, halving it takes four times as many questions.
+
+Two techniques make evals much more sensitive. **Compare paired results**: both systems answer the *same* questions, so analyse the per-question difference rather than two separate accuracies; shared difficulty cancels out. And **bootstrap the interval**: resample the questions with replacement many times and take the spread of the resulting means, which works for any metric, not just accuracy.
+
+```python
+import random
+
+def grade_two_systems(n, seed):
+    """Simulated pass/fail grades on n shared questions. Difficulty is shared, so the two systems'
+    results are correlated, and 10% of grades are coin flips. v2 is truly better: 71.6% vs 68%."""
+    rng = random.Random(seed)
+    v1, v2 = [], []
+    for _ in range(n):
+        difficulty = rng.random()
+        v1.append(int(difficulty < 0.70 if rng.random() > 0.1 else rng.random() < 0.5))
+        v2.append(int(difficulty < 0.74 if rng.random() > 0.1 else rng.random() < 0.5))
+    return v1, v2
+
+def bootstrap_ci(xs, rng, n=10_000):
+    means = sorted(sum(rng.choices(xs, k=len(xs))) / len(xs) for _ in range(n))
+    return means[int(0.025 * n)], means[int(0.975 * n)]
+
+rng = random.Random(0)
+for n in (50, 1000):
+    v1, v2 = grade_two_systems(n, seed=n)
+    diffs = [b - a for a, b in zip(v1, v2)]          # paired: same question, both systems
+    lo, hi = bootstrap_ci(diffs, rng)
+    print(f"n={n:4d}  v1 {sum(v1)/n:.3f}  v2 {sum(v2)/n:.3f}  "
+          f"difference {sum(diffs)/n:+.3f}, 95% CI [{lo:+.3f}, {hi:+.3f}]")
+```
+
+Output:
+
+```
+n=  50  v1 0.680  v2 0.700  difference +0.020, 95% CI [-0.040, +0.100]
+n=1000  v1 0.639  v2 0.684  difference +0.045, 95% CI [+0.021, +0.069]
+```
+
+v2 really is better here, by construction. With 50 questions the interval for the difference runs from $-4$ to $+10$ points: the data can't rule out that v2 is worse. With 1,000 it runs from $+2$ to $+7$, and the improvement is real. Two other details are worth noticing. v1's own score moved four points between the two samples, which is ordinary sampling noise. And pairing helps: comparing two separate accuracies at $n = 1000$ would give an interval of about $\pm 4$ points on the difference, while the paired interval is about $\pm 2.4$.
+
+<PredictFirst
+  question="Your eval set has 100 questions and the 95% interval on accuracy is about ±9 points. Roughly how many questions do you need for ±3 points?"
+  options={[
+    'About 300',
+    'About 900',
+    'About 200',
+    'About 3,000',
+  ]}
+  correctIndex={1}
+  explanation="The interval shrinks with the square root of the number of questions. Cutting it by a factor of 3 needs 3² = 9 times as many questions, so about 900. Paired comparisons between two systems narrow it further, which is the cheaper way to detect small differences."
+/>
+
+With quality measurable, the other question is whether you can afford to serve it.
+
+## 5. How Inference Runs on a GPU
+
+### Serving & Inference Optimization
+
+Generating text has two phases with very different costs.
+
+**Prefill** processes the whole prompt in one forward pass. All prompt tokens are known, so the GPU computes them in parallel, and it is **compute-bound**: the arithmetic units are busy. Prefill time drives **time to first token** (TTFT).
+
+**Decode** generates the output one token at a time. Each step runs the full model to produce a single token, then appends it and repeats. Each step must read every weight of the model from GPU memory, and does very little arithmetic per weight read. Decode is **memory-bandwidth-bound**: the arithmetic units mostly wait for data. Decode speed is measured as **time per output token** (TPOT, also called inter-token latency).
+
+A rough ceiling for one sequence follows directly. An 8-billion-parameter model in 16-bit precision is 16 GB of weights. A GPU with 3.35 TB/s of memory bandwidth (an H100 SXM) can read them about 200 times a second, so one sequence can't decode faster than about 200 tokens per second, however fast the arithmetic is. The fix is to make each weight read serve many sequences at once: **batching**. Reading the weights once and applying them to 64 sequences costs barely more than applying them to one.
+
+Batching is limited by memory, and the reason is the KV cache.
+
+### The KV cache
+
+During decode, each new token attends to every previous token. Recomputing every previous token's keys and values at every step would waste most of the work, so they're computed once and stored: the **KV cache** ([Foundation Model Internals](/docs/llms-genai/foundation-model-internals) explains attention itself). Its size is
+
+$$
+\text{bytes per token} = 2 \times \text{layers} \times \text{KV heads} \times \text{head dim} \times \text{bytes per value}
+$$
+
+where the 2 is one key and one value. For Llama 3.1 8B:
+
+```python
+def kv_cache_bytes(layers, kv_heads, head_dim, tokens, bytes_per_value=2):
+    return 2 * layers * kv_heads * head_dim * tokens * bytes_per_value   # 2 = one key and one value
+
+GiB = 1024 ** 3
+# Llama 3.1 8B: 32 layers, 8 key-value heads (grouped-query attention), head size 128, bf16 cache
+per_token = kv_cache_bytes(32, 8, 128, 1)
+print(f"per token: {per_token / 1024:.0f} KiB")
+for ctx in (4_096, 32_768, 131_072):
+    print(f"{ctx:>7} tokens: {kv_cache_bytes(32, 8, 128, ctx) / GiB:5.1f} GiB per sequence")
+
+free = 80 - 16                                                # 80 GB GPU minus ~16 GB of bf16 weights
+print(f"sequences of 4,096 tokens that fit in {free} GB: {int(free * 1e9 // kv_cache_bytes(32, 8, 128, 4096))}")
+```
+
+```
+per token: 128 KiB
+   4096 tokens:   0.5 GiB per sequence
+  32768 tokens:   4.0 GiB per sequence
+ 131072 tokens:  16.0 GiB per sequence
+sequences of 4,096 tokens that fit in 64 GB: 119
+```
+
+A single 128K-token conversation needs as much memory as the model's weights. The number of sequences you can batch, and therefore your throughput and cost per token, is set by how much KV cache fits. That's why the architecture choices that shrink the cache matter so much: Llama 3.1 8B uses **grouped-query attention** with 8 key-value heads shared by 32 query heads, which makes its cache four times smaller than standard multi-head attention would. Most serving optimizations below are, one way or another, about using KV-cache memory well.
+
+## 6. Continuous Batching and PagedAttention
+
+**Static batching** collects a batch of requests, runs them together until *all* have finished, then starts the next batch. Requests finish at very different lengths, so a batch with one 2,000-token answer keeps 63 finished slots idle until it's done.
+
+**Continuous batching** (introduced by the Orca system, Yu et al., 2022) schedules at the level of single decode steps. After every step, finished sequences leave the batch and waiting requests join. The GPU stays full, and short requests don't wait for long ones. It is the single largest throughput improvement in LLM serving, and every serious serving engine does it.
 
 <ContinuousBatchingDiagram />
 
-**Speculative decoding**: use a small, fast "draft" model to propose several tokens ahead, then have the large model verify them all in a single forward pass — accepted tokens are free speedup, rejected ones fall back to normal generation. Effective because verifying is cheaper than generating token-by-token.
+Continuous batching exposed a memory problem. Early engines reserved one contiguous block of KV-cache memory per request, sized for the maximum possible output length, because they couldn't know in advance how long it would be. Most of that reservation went unused, and the gaps between blocks fragmented the rest. The vLLM paper measured that existing systems wasted 60 to 80% of KV-cache memory this way.
 
-<SpeculativeDecodingDiagram />
-
-**Paged Attention**: manages the KV cache (see [Foundation Model Internals](/docs/llms-genai/foundation-model-internals)) using memory paging techniques borrowed from operating systems — allocates KV cache memory in fixed-size blocks rather than one large contiguous buffer per request, dramatically reducing memory waste and allowing many more concurrent requests to be served on the same hardware.
+**PagedAttention** (Kwon et al., 2023, the basis of vLLM) borrows virtual memory from operating systems. The KV cache is divided into small fixed-size blocks (16 tokens, say), allocated on demand as a sequence grows, and a per-sequence block table maps logical positions to physical blocks anywhere in memory. Waste falls to under one block per sequence, so far more sequences fit in a batch. It also lets sequences **share** blocks: requests that start with the same system prompt can point at one copy of its cache, which is the basis of **prefix caching**. Provider-side prompt caching, which bills cached input tokens at a fraction of the normal price, is the same idea exposed to customers.
 
 <PagedAttentionDiagram />
 
-## Cost/Latency Tradeoffs
+Two more scheduling refinements are now standard in engines such as vLLM, SGLang and TensorRT-LLM. **Chunked prefill** splits a long prompt's prefill into pieces interleaved with other requests' decode steps, so one 100K-token prompt doesn't freeze everyone else's streaming. **Disaggregated serving** runs prefill and decode on separate GPU pools, since one is compute-bound and the other bandwidth-bound, and each can then be scaled and tuned for its own bottleneck.
 
-Production LLM systems constantly balance: model size (bigger = better quality, slower, more expensive), context length (longer = more cost, "lost in the middle" risk), and precision (quantization trades a small quality hit for large speed/cost wins). The right tradeoff depends entirely on the use case — a real-time chat assistant has very different latency tolerance than an overnight batch summarization job.
+## 7. Speculative Decoding
 
-**Reasoning models add a fourth axis**: the internal "thinking" tokens a reasoning model generates before its visible answer are real billed output tokens, not free — see [Prompt Engineering — Test-Time Compute Scaling](/docs/llms-genai/prompt-engineering#test-time-compute-scaling-a-second-scaling-axis). Evaluating one at scale costs meaningfully more per run than the visible response length suggests, since the hidden reasoning trace is often many times longer than the final answer.
+Batching raises throughput across users. **Speculative decoding** (Leviathan et al., 2023; Chen et al., 2023) cuts latency for each user, using the same observation: in decode the GPU has spare compute while it waits on memory.
 
-## Guardrails
+A small, fast **draft model** proposes the next $k$ tokens. The large **target model** then checks all $k$ in a single forward pass, which costs about the same as generating one token, since the weights are read once either way. Tokens are accepted from the left until the first one the target model disagrees with; there the target model's own token is used instead, so every pass produces at least one token. With the acceptance rule from the papers, the output distribution is **exactly** the target model's: speculative decoding changes speed, never quality.
 
-Production systems typically layer safety on top of the model itself: input filtering (blocking known attack patterns before they reach the model), output filtering (scanning responses for policy violations before returning them to the user), and rate limiting/monitoring for abuse patterns — treating the model's own safety training as one layer of defense, not the only one.
+<SpeculativeDecodingDiagram />
 
-LLMs & GenAI core content complete. Continue to: [Multimodal & Generative Models](/docs/llms-genai/multimodal-generative-models) for the vision/diffusion side, or on to [Agents](/docs/agents/roadmap) for how LLMs take action.
+How much does it help? If each drafted token is accepted with probability $\alpha$, independently, the expected number of tokens produced per target-model pass is
+
+$$
+E[\text{tokens per pass}] = 1 + \alpha + \alpha^2 + \cdots + \alpha^{k} = \frac{1 - \alpha^{k+1}}{1 - \alpha}
+$$
+
+Each term is the probability that the first $i$ drafted tokens were all accepted; the leading 1 is the token the target model always contributes. Checking the formula against a simulation:
+
+```python
+import random
+
+def expected_tokens(alpha, k):
+    """Tokens produced per target-model pass when each of k drafted tokens is accepted with prob alpha."""
+    return (1 - alpha ** (k + 1)) / (1 - alpha)
+
+def simulate(alpha, k, passes=100_000):
+    random.seed(1)
+    total = 0
+    for _ in range(passes):
+        accepted = 0
+        while accepted < k and random.random() < alpha:
+            accepted += 1
+        total += accepted + 1        # +1: the target model always contributes one token of its own
+    return total / passes
+
+for alpha in (0.6, 0.8, 0.9):
+    print(f"alpha={alpha}: k=4 -> formula {expected_tokens(alpha, 4):.2f}, simulated {simulate(alpha, 4):.2f} tokens per pass")
+```
+
+```
+alpha=0.6: k=4 -> formula 2.31, simulated 2.31 tokens per pass
+alpha=0.8: k=4 -> formula 3.36, simulated 3.35 tokens per pass
+alpha=0.9: k=4 -> formula 4.10, simulated 4.09 tokens per pass
+```
+
+The real speedup is smaller than these numbers, because the draft model's own passes cost time, and it depends heavily on $\alpha$. Predictable text (code, structured output, quoting the input) gives high acceptance; creative text gives low acceptance. Large batches also reduce the benefit, because a busy GPU no longer has spare compute to spend on verification. Current variants replace the separate draft model with extra prediction heads trained on the target model's own hidden states (Medusa, EAGLE), or draft from n-grams already in the prompt.
+
+<PredictFirst
+  question="A team uses speculative decoding with a 4-token draft and measures an acceptance rate of 0.8. What happens to the quality of the output compared to the large model alone?"
+  options={[
+    'It drops slightly, since 20% of tokens come from the small model',
+    'It is identical in distribution, because every token is checked by the large model and rejections are resampled from it',
+    'It improves, because two models vote',
+    'It depends on the temperature',
+  ]}
+  correctIndex={1}
+  explanation="With the standard acceptance rule, a drafted token is kept only in proportion to how much the target model agrees with it, and on rejection the replacement is sampled from a corrected target distribution. The result is provably distributed exactly as if the target model had generated alone. Only speed changes."
+/>
+
+## 8. Quantization
+
+The other lever on memory is precision. **Quantization** stores weights (and sometimes activations and the KV cache) in fewer bits: 8-bit floating point (FP8) or integers instead of 16-bit, or 4-bit integers for weights. Halving the bits halves the memory to read per decode step, which speeds up bandwidth-bound decode almost proportionally, and frees memory for more KV cache.
+
+The cost is accuracy, and it is usually small if done carefully. FP8 weights and activations on hardware that supports them are close to lossless for most large models. 4-bit weight-only methods such as GPTQ and AWQ, which pick quantization parameters using a small calibration set, lose a little more, and the loss grows for smaller models and for tasks like long-chain mathematics. The rule is the same as everywhere on this page: **measure it on your eval set**, not on a general benchmark, before deploying a quantized model.
+
+## 9. Cost and Latency in Practice
+
+### Cost/Latency Tradeoffs
+
+Everything above shows up in a few numbers you choose between:
+
+| Lever | Improves | Costs |
+|---|---|---|
+| Bigger model | Quality | Latency, memory, price per token |
+| Longer context | Recall of information | KV-cache memory, price, and attention to the middle degrades |
+| Larger batch | Throughput, cost per token | Per-user latency |
+| Quantization | Speed, memory | A little quality, to be measured |
+| Speculative decoding | Per-user latency | Extra GPU work; less benefit at large batch |
+| Prompt and prefix caching | Prefill cost and TTFT | Requires stable prompt prefixes |
+
+Which matters depends on the product. A chat assistant needs a TTFT under about a second and steady streaming faster than people read. An overnight batch job only cares about total cost, so it should run at the largest batch the memory allows, and many providers sell batch processing at about half price for exactly this reason. Serving engines measure **goodput**: requests per second that meet their latency targets, rather than raw throughput.
+
+**Reasoning models add another axis.** Their hidden reasoning tokens are generated (and billed) like any other output tokens, and often outnumber the visible answer many times over. Evaluating or serving one costs more per request than the visible answer suggests; see [Prompt Engineering, Test-Time Compute Scaling](/docs/llms-genai/prompt-engineering#test-time-compute-scaling-a-second-scaling-axis). Many APIs let you cap the reasoning budget per request, which is a quality/cost dial worth putting on your eval set.
+
+<GoDeeper title="Go deeper: why decode is memory-bound, in numbers">
+
+**Arithmetic intensity** is the number of arithmetic operations done per byte read from memory. A GPU is compute-bound when a workload's intensity is above the ratio of its compute to its bandwidth, and memory-bound below it.
+
+An H100 SXM does about 990 trillion 16-bit operations per second (dense) and reads 3.35 TB/s, a ratio of roughly 300 operations per byte. Decoding one sequence multiplies each 2-byte weight by one activation, about 2 operations (a multiply and an add) per 2 bytes: an intensity of about 1. The GPU runs at well under 1% of its arithmetic capacity.
+
+Batching $B$ sequences reuses each weight read $B$ times, raising intensity to about $B$. Decode stays memory-bound until the batch is in the hundreds, which is why throughput rises almost linearly with batch size until KV-cache memory runs out. Prefill of a 2,000-token prompt already has an intensity in the thousands, which is why it is compute-bound even for one request.
+
+</GoDeeper>
+
+## 10. Safety Checks Around the Model
+
+### Guardrails
+
+A model's own safety training is one layer of defence, not the whole system. Production deployments add checks around it:
+
+- **Input checks** before the model: classifiers for known attack patterns and disallowed requests, length limits, and stripping or flagging instructions embedded in retrieved documents.
+- **Output checks** before the user: policy classifiers, schema validation for structured outputs, checks that answers cite retrieved sources, and redaction of personal data.
+- **Operational controls**: per-user rate limits, cost caps, logging with sampled human review, and alerts on unusual patterns.
+
+Each guardrail is itself a classifier with false positives and false negatives, so each needs its own eval set. A guardrail that blocks 5% of legitimate requests is a product bug.
+
+## 11. When *Not* to Use These Techniques
+
+| Situation | Better choice |
+|---|---|
+| Choosing between two models for your product using a public leaderboard | Your own eval set; leaderboards measure someone else's task |
+| A 2-point difference on 50 questions | More questions or paired analysis before believing it |
+| An uncalibrated LLM judge as the only grader | Code checks where possible, plus a human-labelled sample to measure the judge |
+| Self-hosting a model for low, bursty traffic | A hosted API; idle GPUs cost money and batching needs volume |
+| Speculative decoding at very large batch sizes | Rely on batching; the spare compute speculation needs isn't there |
+| 4-bit quantization for a small model on precise reasoning | Measure first; small models lose more |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Benchmarks | Good for shortlisting models; saturate, leak, and aren't your task |
+| Own eval set | Real inputs, hard cases on purpose, grows with every production failure |
+| Graders | Code where possible, calibrated LLM judges for the rest, humans for ground truth |
+| Judge bias | Position, verbosity, self-preference; swap orders and use rubrics |
+| Error bars | SE about $\sqrt{p(1-p)/n}$; compare systems paired, bootstrap the interval |
+| Prefill vs decode | Prefill is compute-bound (TTFT); decode is bandwidth-bound (TPOT) |
+| KV cache | $2 \times$ layers $\times$ KV heads $\times$ head dim $\times$ bytes per token; it limits batch size |
+| Continuous batching | Schedule per decode step; finished requests leave, new ones join |
+| PagedAttention | KV cache in fixed blocks allocated on demand; enables prefix sharing |
+| Speculative decoding | Draft $k$, verify in one pass; $\frac{1-\alpha^{k+1}}{1-\alpha}$ tokens per pass; same output distribution |
+| Quantization | Fewer bits per weight, faster decode; measure the quality loss on your eval |
+
+---
+
+LLMs and GenAI core content complete. Continue to [Multimodal and Generative Models](/docs/llms-genai/multimodal-generative-models) for the vision and diffusion side, or on to [Agents](/docs/agents/roadmap) for how LLMs take action.
+
+## Sources
+
+- Zheng et al., [Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena](https://arxiv.org/abs/2306.05685) (2023)
+- Kwon et al., [Efficient Memory Management for Large Language Model Serving with PagedAttention](https://arxiv.org/abs/2309.06180) (2023)
+- Yu et al., [Orca: A Distributed Serving System for Transformer-Based Generative Models](https://www.usenix.org/conference/osdi22/presentation/yu) (OSDI 2022)
+- Leviathan, Kalman and Matias, [Fast Inference from Transformers via Speculative Decoding](https://arxiv.org/abs/2211.17192) (2023)
+- Chen et al., [Accelerating Large Language Model Decoding with Speculative Sampling](https://arxiv.org/abs/2302.01318) (2023)
+- Ainslie et al., [GQA: Training Generalized Multi-Query Transformer Models](https://arxiv.org/abs/2305.13245) (2023)
+- Frantar et al., [GPTQ](https://arxiv.org/abs/2210.17323) (2022) and Lin et al., [AWQ](https://arxiv.org/abs/2306.00978) (2023)
+- Meta, [Llama 3.1 model card](https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/MODEL_CARD.md), for the architecture numbers used above
