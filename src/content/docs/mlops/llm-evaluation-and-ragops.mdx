@@ -1,95 +1,296 @@
 ---
-title: "LLM Evaluation & RAGOps"
+title: "LLM Evaluation & RAGOps, In Full Depth"
 sidebar_position: 21
-description: "BLEU/ROUGE vs. LLM-as-judge, plus RAG-specific monitoring -- chunk quality, retrieval latency, Recall@K/MRR/NDCG, and hallucination detection in production."
+description: "Evaluating LLM and retrieval-augmented systems in development and production: why BLEU and ROUGE mislead, LLM-as-judge criteria, Recall@K, MRR and nDCG computed on a real retrieval comparison, layer-by-layer diagnosis of RAG failures, and what to monitor once real users arrive."
 ---
 
 import BleuVsSemanticDiagram from '../../../viz/diagrams/BleuVsSemanticDiagram';
-import LlmJudgeCriteriaDiagram from '../../../viz/diagrams/LlmJudgeCriteriaDiagram';
-import EvalToolComparisonDiagram from '../../../viz/diagrams/EvalToolComparisonDiagram';
 import RagEvalMetricsDiagram from '../../../viz/diagrams/RagEvalMetricsDiagram';
-import MrrCalculatorDiagram from '../../../viz/diagrams/MrrCalculatorDiagram';
 import NdcgRankingDiagram from '../../../viz/diagrams/NdcgRankingDiagram';
 import RagFailureLayerDiagram from '../../../viz/diagrams/RagFailureLayerDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# LLM Evaluation & RAGOps
+# LLM Evaluation & RAGOps, In Full Depth
 
-"The model returns fluent, plausible-sounding text" is a much lower bar than "the model returns *correct* text" — and unlike classical ML, there's rarely one ground-truth label to compare against. Evaluating LLMs and the RAG systems built on them is its own discipline.
+[ML & LLM Testing](/docs/mlops/ml-and-llm-testing) covered the tests that guard an LLM application in CI: mechanical checks, pass rates and judge calibration. This page covers evaluation more broadly, and especially the evaluation and operation of **retrieval-augmented generation** (RAG), the most common production LLM architecture. It covers why the classic text-overlap metrics mislead (with a demonstration), how LLM-as-judge criteria are defined, how to measure retrieval with Recall@K, MRR and nDCG on a real comparison of four retrievers, how to locate which layer of a RAG system is failing, and what to monitor once real users arrive.
 
-## Traditional Metrics vs. LLM-as-Judge
+<ELI5>
 
-- **BLEU / ROUGE**: n-gram overlap metrics originally built for machine translation/summarization — measure surface-level similarity to a reference text. Fast and cheap, but poorly correlated with actual quality for open-ended generation, since a correct answer phrased differently scores badly.
-- **F1**: precision/recall on extracted spans or classification-style outputs — useful when the task has a well-defined correct answer (extractive QA), less useful for open-ended generation.
-- **LLM-as-judge**: use a strong LLM to score a generation against defined criteria — **faithfulness** (does the output only claim things supported by the provided context/source), **relevance** (does it actually address the query), **groundedness** (are specific claims traceable back to source material). This has become the standard approach for evaluating open-ended LLM output at scale, because it captures semantic correctness that n-gram metrics miss, at the cost of being itself a model with its own biases and failure modes (a known area of active research: judge models can be gamed, or systematically prefer certain response styles regardless of actual quality).
+Imagine a student answering exam questions with an open textbook. Two things can go wrong. They might look up the wrong pages, or they might find the right pages and still write a wrong answer. A good teacher grades both: did they find the right material, and did their answer actually follow from it?
+
+A RAG system is that student. It searches a library of documents, then writes an answer from what it found. Evaluating it means checking the search and the answer separately, because a bad answer can come from either, and the fix is different for each.
+
+Everything below is how to grade each part precisely.
+
+</ELI5>
+
+## 1. What Makes LLM Evaluation Hard
+
+Classical ML evaluation compares a prediction with a label: the transaction was fraud or it wasn't. LLM outputs are open-ended text, and that breaks the comparison in three ways:
+
+- **Many correct answers.** "Refunds take five working days" and "you'll have your money back within 5 business days" are both right, with almost no words in common.
+- **Partial correctness.** An answer can be fluent, relevant, mostly right and contain one invented detail, the most damaging kind of error because it's hard to spot.
+- **Several quality dimensions at once.** Correctness, faithfulness to sources, completeness, tone, safety and format can each pass or fail independently.
+
+A RAG system adds a fourth: the answer depends on a **retrieval** step that has its own failure modes. So evaluation has to measure retrieval and generation separately, and the next section shows why the oldest generation metrics aren't up to the job.
+
+## 2. Why Overlap Metrics Mislead
+
+### Traditional Metrics vs. LLM-as-Judge
+
+**BLEU** (from machine translation) and **ROUGE** (from summarization) score a generated text by its n-gram overlap with a reference text. They're fast, cheap and reproducible, and for open-ended generation they measure the wrong thing.
 
 <BleuVsSemanticDiagram />
 
-<LlmJudgeCriteriaDiagram />
-
-## Evaluation Tooling
-
-- **Ragas**: a framework purpose-built for evaluating RAG pipelines specifically — computes faithfulness, answer relevance, and context precision/recall from just a query, retrieved context, and generated answer, without requiring hand-labeled ground truth for every metric.
+Here are two answers scored against the reference "Refunds are issued within 5 business days of receiving the returned item": one correct but reworded, one using nearly the same words with the wrong number:
 
 ```python
-from ragas import evaluate
-from ragas.metrics import faithfulness, answer_relevancy, context_precision
-from datasets import Dataset
+import sacrebleu
+from rouge_score import rouge_scorer
 
-dataset = Dataset.from_dict({
-    "question": questions, "answer": generated_answers,
-    "contexts": retrieved_contexts, "ground_truth": reference_answers,
-})
-results = evaluate(dataset, metrics=[faithfulness, answer_relevancy, context_precision])
+reference = "Refunds are issued within 5 business days of receiving the returned item."
+candidates = {
+    "correct, reworded": "Once we get the item back, you will be refunded in five working days.",
+    "wrong, similar words": "Refunds are issued within 30 business days of receiving the returned item.",
+}
+scorer = rouge_scorer.RougeScorer(["rougeL"])
+for name, text in candidates.items():
+    bleu = sacrebleu.sentence_bleu(text, [reference]).score
+    rouge = scorer.score(reference, text)["rougeL"].fmeasure
+    print(f"{name:<22} BLEU {bleu:5.1f}   ROUGE-L {rouge:.2f}")
 ```
 
-- **DeepEval**: a general LLM evaluation framework with a `pytest`-style API — designed to be run as part of [CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd), turning "did this prompt/model change regress quality" into an automated test rather than a manual spot-check.
-
-```python
-from deepeval import assert_test
-from deepeval.metrics import FaithfulnessMetric
-from deepeval.test_case import LLMTestCase
-
-def test_rag_answer_is_grounded():
-    test_case = LLMTestCase(input=question, actual_output=generated_answer, retrieval_context=retrieved_chunks)
-    assert_test(test_case, [FaithfulnessMetric(threshold=0.8)])   # fails the pytest run (and CI) below 0.8
+```text
+correct, reworded      BLEU   3.5   ROUGE-L 0.15
+wrong, similar words   BLEU  76.1   ROUGE-L 0.92
 ```
-- **LangSmith**: LangChain's observability and evaluation platform — tracing every step of an LLM/agent pipeline (see [Observability](/docs/mlops/observability)'s tracing discussion, applied to LLM chains specifically) plus dataset-based evaluation.
-- **Arize Phoenix**: an open-source LLM observability tool, focused on tracing and evaluating LLM/RAG applications, including embedding drift visualization — extending the drift concepts from [Monitoring & Drift Detection](/docs/mlops/monitoring-and-drift) to LLM-specific signals.
 
-<EvalToolComparisonDiagram />
+The metrics rank the answers in exactly the wrong order. The wrong answer, which tells a customer to wait six times longer, scores 76 BLEU; the correct one scores 3.5. Overlap metrics still have uses (tracking a summarizer's drift against fixed references, or extraction tasks where the exact string matters), but they can't tell you whether an open-ended answer is right.
 
-## RAG Pipeline Monitoring
+**What replaces them** is scoring by meaning, against explicit criteria:
 
-A RAG system has more moving parts than a single model call, and each one can independently degrade:
+- **Exact or field-level checks** wherever the task allows: an extracted invoice total either matches or doesn't; a classification label is right or wrong.
+- **LLM-as-judge**: a model scores each answer against a rubric. The criteria that matter most for RAG are **faithfulness** (every claim in the answer is supported by the retrieved context), **answer relevance** (it addresses the question that was asked), and **correctness** (it agrees with a reference answer, where one exists).
+- **Human review** of samples, which is also how judges are calibrated ([ML & LLM Testing](/docs/mlops/ml-and-llm-testing#5-judging-quality-and-judging-the-judge) shows how to measure judge agreement with Cohen's kappa).
 
-- **Chunk quality**: are documents split into chunks that preserve enough context to be useful when retrieved in isolation? Bad chunking (splitting mid-sentence, or too coarse/fine) silently caps retrieval quality no matter how good the embedding model is.
-- **Retrieval latency**: how long the vector/hybrid search step takes — often the largest controllable latency contributor in a RAG request, ahead of generation itself.
-- **Recall@K / Precision@K**: of the top-K retrieved chunks, what fraction of the actually-relevant chunks were retrieved (Recall@K), and what fraction of retrieved chunks were actually relevant (Precision@K) — the standard retrieval-quality metrics, computed against a labeled or LLM-judged relevance set.
+Faithfulness is usually evaluated by splitting the answer into individual claims and checking each against the context, which turns one vague judgement ("is this grounded?") into many small, more reliable ones, and gives a score: the fraction of claims supported.
+
+## 3. Evaluating Retrieval
+
+In a RAG system, the generator can only be as good as what it's given. If the passage containing the answer isn't retrieved, the best model in the world will either refuse or make something up. So retrieval gets its own metrics, computed on a labelled set: queries, each with the documents (or chunks) that answer it.
 
 <RagEvalMetricsDiagram />
 
-- **MRR (Mean Reciprocal Rank)**: rewards retrieving the first genuinely relevant result *early* in the ranked list, not just somewhere in the top-K — sensitive to ranking order in a way plain Recall@K isn't.
+For a query with a set of relevant documents $R$ and a ranked result list, with $\text{rel}_i$ the relevance of the result at rank $i$:
 
-<MrrCalculatorDiagram />
+- **Recall@K**: the fraction of relevant documents found in the top $K$: $\;\lvert \text{top}_K \cap R \rvert \,/\, \lvert R \rvert$. It answers "did the right material reach the generator at all?", which is the most important retrieval question for RAG, since the generator reads all $K$ results.
+- **Precision@K**: the fraction of the top $K$ that are relevant. Low precision means the generator reads distracting, irrelevant text.
+- **Mean reciprocal rank (MRR)**: the average over queries of $1/\text{rank}$ of the first fully relevant result. It rewards putting the best answer first, which matters when only the top few results fit in the prompt.
+- **Normalized discounted cumulative gain (nDCG@K)** handles *graded* relevance (some documents answer the question; others are merely related) and discounts results found lower down:
 
-```python
-def reciprocal_rank(ranked_chunk_ids: list[str], relevant_ids: set[str]) -> float:
-    for rank, chunk_id in enumerate(ranked_chunk_ids, start=1):
-        if chunk_id in relevant_ids:
-            return 1 / rank
-    return 0.0
+$$\text{DCG@K} = \sum_{i=1}^{K} \frac{\text{rel}_i}{\log_2(i + 1)}, \qquad \text{nDCG@K} = \frac{\text{DCG@K}}{\text{IDCG@K}}$$
 
-mrr = sum(reciprocal_rank(retrieved, relevant) for retrieved, relevant in eval_set) / len(eval_set)
-```
-
-- **NDCG (Normalized Discounted Cumulative Gain)**: a ranking metric that accounts for *graded* relevance (some results are more relevant than others, not just relevant/irrelevant) and discounts relevance found lower in the ranking — the most complete of the standard retrieval ranking metrics.
+where IDCG is the DCG of the best possible ordering, so a perfect ranking scores 1.
 
 <NdcgRankingDiagram />
 
-- **Hallucination**: the generated answer contains claims not supported by the retrieved context — the specific failure mode RAG is meant to reduce (by grounding generation in retrieved facts) but doesn't eliminate; faithfulness scoring via LLM-as-judge (above) is the standard way to catch it in production.
+To make these concrete, here's a small help-centre corpus of ten articles and six customer questions, each labelled with graded relevance (2 = answers it, 1 = related), retrieved four ways: BM25 and TF-IDF (lexical: they match words), a dense embedding model (`all-MiniLM-L6-v2`, which matches meaning), and a hybrid that fuses BM25 and dense rankings with reciprocal rank fusion:
 
-A RAG system that "feels wrong" is usually one of these four failing, not the generative model itself being bad — diagnosing which layer is broken (bad chunks → bad retrieval → bad ranking → ungrounded generation) is the actual day-to-day work of RAGOps.
+```python
+import math
+
+import numpy as np
+from rank_bm25 import BM25Okapi
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sentence_transformers import SentenceTransformer
+
+DOCS = {
+    "refund-policy":  "Refunds are issued to the original payment method within 5 business days of receiving a return.",
+    "return-window":  "Items can be returned within 30 days of delivery if unused and in original packaging.",
+    "damaged-item":   "If an item arrives damaged, report it within 48 hours with photos for a free replacement or refund.",
+    "shipping-times": "Standard shipping takes 3 to 7 business days; express shipping arrives in 1 to 2 days.",
+    "intl-shipping":  "International orders may incur customs duties, which the customer pays on delivery.",
+    "change-email":   "To change your email address, open Account Settings and choose Edit Profile.",
+    "reset-password": "Reset a forgotten password from the sign-in page using the Forgot password link.",
+    "delete-account": "Deleting your account removes order history and cannot be undone.",
+    "gift-cards":     "Gift cards cannot be refunded or exchanged for cash.",
+    "price-match":    "We match a competitor's lower price if you contact us within 14 days of purchase.",
+}
+# graded relevance: 2 = answers the question, 1 = related and useful
+QUERIES = {
+    "how long until I get my money back":           {"refund-policy": 2, "return-window": 1},
+    "my parcel arrived broken":                     {"damaged-item": 2, "refund-policy": 1},
+    "when will my order arrive":                    {"shipping-times": 2, "intl-shipping": 1},
+    "can I get a refund on a gift card":            {"gift-cards": 2, "refund-policy": 1},
+    "I forgot my password":                         {"reset-password": 2},
+    "update the email on my account":               {"change-email": 2},
+}
+ids, texts = list(DOCS), list(DOCS.values())
+tokenize = lambda s: s.lower().replace(",", "").replace(".", "").replace(";", "").split()
+
+bm25 = BM25Okapi([tokenize(t) for t in texts])
+tfidf = TfidfVectorizer().fit(texts)
+doc_vecs = tfidf.transform(texts)
+
+def rank_bm25(q):  return bm25.get_scores(tokenize(q))
+def rank_tfidf(q): return (doc_vecs @ tfidf.transform([q]).T).toarray().ravel()
+
+encoder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+doc_emb = encoder.encode(texts, normalize_embeddings=True)
+def rank_dense(q): return doc_emb @ encoder.encode([q], normalize_embeddings=True)[0]
+def rank_hybrid(q):                                        # reciprocal rank fusion of BM25 and dense
+    fused = np.zeros(len(ids))
+    for scores in (rank_bm25(q), rank_dense(q)):
+        ranks = np.empty(len(ids)); ranks[np.argsort(-scores, kind="stable")] = np.arange(1, len(ids) + 1)
+        fused += np.where(scores > 0, 1 / (60 + ranks), 0)
+    return fused
+
+def dcg(gains):
+    return sum(g / math.log2(i + 2) for i, g in enumerate(gains))
+
+def metrics(scores, rel, k=3):
+    hits = [i for i in np.argsort(-scores, kind="stable") if scores[i] > 0]   # zero score = not retrieved
+    top = [ids[i] for i in hits[:k]]
+    recall = sum(d in rel for d in top) / len(rel)
+    rr = next((1 / (r + 1) for r, i in enumerate(hits) if rel.get(ids[i]) == 2), 0.0)
+    ndcg = dcg([rel.get(d, 0) for d in top]) / dcg(sorted(rel.values(), reverse=True)[:k])
+    return recall, rr, ndcg
+
+for name, ranker in [("BM25", rank_bm25), ("TF-IDF", rank_tfidf), ("dense", rank_dense), ("hybrid", rank_hybrid)]:
+    rows = np.array([metrics(ranker(q), rel) for q, rel in QUERIES.items()])
+    r, mrr, n = rows.mean(axis=0)
+    misses = [q for q, row in zip(QUERIES, rows) if row[1] < 1]
+    print(f"{name:<7} Recall@3 {r:.2f}   MRR {mrr:.2f}   nDCG@3 {n:.2f}   best answer not first: {misses}")
+```
+
+```text
+BM25    Recall@3 0.42   MRR 0.42   nDCG@3 0.41   best answer not first: ['how long until I get my money back', 'my parcel arrived broken', 'when will my order arrive', 'can I get a refund on a gift card']
+TF-IDF  Recall@3 0.42   MRR 0.50   nDCG@3 0.46   best answer not first: ['how long until I get my money back', 'my parcel arrived broken', 'when will my order arrive']
+dense   Recall@3 0.83   MRR 1.00   nDCG@3 0.92   best answer not first: []
+hybrid  Recall@3 0.75   MRR 0.92   nDCG@3 0.83   best answer not first: ['when will my order arrive']
+```
+
+What the numbers say:
+
+- **Lexical retrieval fails on vocabulary mismatch.** "How long until I get my money back" shares no words with "Refunds are issued...", so BM25 scores *every* document zero for it. Customers rarely use the words the documentation uses: "parcel" vs "item", "broken" vs "damaged", "arrive" vs "shipping".
+- **Dense retrieval matches meaning.** The small embedding model puts the right article first for all six questions (MRR 1.00).
+- **Hybrid isn't automatically better.** Fusing BM25 in added noise here and lost a little. On corpora full of exact identifiers (product codes, error codes, names) that embeddings handle poorly, hybrid retrieval often wins. The only way to know is to measure on your own queries.
+
+One more lesson came from writing this script. The first version sorted all ten documents by score and took the top three, so when BM25 scored every document zero for a query, whatever happened to be listed first counted as "retrieved", and that query scored a *perfect* nDCG. Treating zero-score documents as not retrieved fixed it. **Evaluation code is code**, and needs testing against cases where you know the right answer.
+
+<PredictFirst
+  question="A RAG system's answer quality is poor. Retrieval evaluation shows Recall@5 of 0.45 on the labelled query set. Which change should come first?"
+  options={[
+    'Switch to a larger, more capable generator model',
+    'Rewrite the generation prompt to be more careful',
+    'Improve retrieval (chunking, embedding model, hybrid search, query rewriting), because the answer is missing from the context for over half the queries',
+    'Increase the temperature to get more varied answers',
+  ]}
+  correctIndex={2}
+  explanation="With Recall@5 of 0.45, the material needed to answer is absent from the generator's input for most queries. No generator can reliably answer from context it was never given; it will refuse or invent. Fix the retrieval layer first, then evaluate generation on queries where retrieval succeeded, so the two problems aren't confused."
+/>
+
+## 4. Diagnosing a RAG System Layer by Layer
+
+When a RAG answer is wrong, the cause sits in one of several layers, and evaluating each separately tells you which:
 
 <RagFailureLayerDiagram />
 
-Next: [Security & Reproducibility](/docs/mlops/security-and-reproducibility) — the cross-cutting concerns that apply to every system covered so far, from classical ML pipelines to production LLM serving.
+1. **Ingestion and chunking.** Is the needed fact in the index at all, and is it in a chunk that makes sense alone? Chunks that split a table from its header, or a sentence from the clause that qualifies it, are retrieved but useless. Check: find the passage for a failing query by hand; is it a chunk?
+2. **Retrieval.** Is the right chunk in the top $K$? Measured with Recall@K on labelled queries, as above.
+3. **Ranking and context assembly.** Is it near the top, and does it survive truncation to fit the prompt? Measured with MRR and nDCG; a **reranker** (a cross-encoder that scores each query-passage pair jointly) often lifts these substantially.
+4. **Generation.** Given the right context, is the answer faithful to it and does it answer the question? Measured with faithfulness and relevance judging, *only on queries where retrieval succeeded*, so retrieval failures don't get blamed on the generator.
+
+A useful single breakdown for a failing evaluation set is: what share of failures had the answer missing from the index, missing from the retrieved set, retrieved but ranked out of the prompt, or present in the prompt but answered wrongly? Each bucket points to a different fix, and teams that skip this breakdown tend to tune prompts when the problem is chunking.
+
+<GoDeeper title="Go deeper: building the labelled evaluation set">
+
+Every metric above needs labelled queries, and building them is most of the work. Three sources, best used together:
+
+- **Real user queries,** sampled from logs and labelled by people who know the domain. These have the right distribution of phrasings, including the vocabulary mismatches that broke BM25 above. Sample deliberately across topics and difficulty, not just the most frequent questions.
+- **Synthetic queries** generated by an LLM from each document ("write three questions a customer might ask that this passage answers"). Cheap and plentiful, but they tend to reuse the document's own words, which flatters lexical retrieval. Ask for paraphrases and check a sample by hand.
+- **Failure cases** from production: every query that got a bad answer, once diagnosed, becomes a permanent test case.
+
+Keep the set versioned with the corpus it was labelled against: when documents change, some labels go stale. A few hundred well-chosen queries usually give stable comparisons between retrieval configurations; the interval arithmetic in [ML & LLM Testing](/docs/mlops/ml-and-llm-testing#2-pass-rates-not-pass-or-fail) applies to these averages too.
+
+</GoDeeper>
+
+## 5. RAGOps: Operating Retrieval in Production
+
+Evaluation sets age, and production traffic finds failures no test set contains. **RAGOps** is the operational side: keeping the index fresh and monitoring the live system.
+
+**Index freshness and integrity.** Documents change, so ingestion runs continuously or on a schedule, with the same discipline as any data pipeline ([Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning)): validation of new documents, deletion of removed ones (a stale document confidently cited is worse than none), versioned indexes, and a re-embedding plan for when the embedding model changes, because vectors from two different embedding models aren't comparable and can't share an index.
+
+**Access control.** Retrieval must apply the user's permissions *in the search query itself*, so a document the user can't see is never retrieved, never filtered out afterwards ([Security & Reproducibility](/docs/mlops/security-and-reproducibility#7-llm-specific-risks)).
+
+**What to monitor on live traffic**, using the tracing approach from [Observability](/docs/mlops/observability):
+
+| Signal | What it catches |
+|---|---|
+| Retrieval latency and top-1 similarity score per query | Slow indexes; a falling top score suggests queries the corpus doesn't cover |
+| Share of answers that cite no source, or say "I don't know" | Coverage gaps, or a broken retriever returning nothing |
+| Sampled faithfulness scores from a calibrated judge | Hallucination rate drifting up after a prompt, model or corpus change |
+| User feedback (ratings, regenerations, escalations to a person) | Answers that are faithful to the context but don't help |
+| Clusters of unanswered or low-rated queries | Topics to add to the corpus, and new evaluation cases |
+| Tokens per request and cost per answer | Context bloat from retrieving too much |
+
+**Close the loop.** The most valuable output of production monitoring is new evaluation cases: low-rated and unanswered queries are triaged, labelled, and added to the evaluation set, so the offline evaluation gradually comes to look like real usage.
+
+<PredictFirst
+  question="After the company's help-centre documents are reorganized, a RAG assistant's faithfulness score stays high, but user ratings drop and the share of 'I don't know' answers doubles. What's the most likely cause?"
+  options={[
+    'The generator model has started hallucinating',
+    'The index is stale or partly broken after the reorganization, so retrieval returns less relevant context and the model correctly declines to answer',
+    'The judge model is miscalibrated',
+    'Users have become stricter raters',
+  ]}
+  correctIndex={1}
+  explanation="High faithfulness means the model is sticking to what it was given, and more 'I don't know' answers mean it's being given less useful context. A document reorganization (renamed pages, moved or removed documents, changed formats) that the ingestion pipeline didn't handle cleanly is the usual cause. Check retrieval recall on the evaluation set against the new corpus, and the ingestion logs for deleted or failed documents."
+/>
+
+## 6. Tools
+
+| Tool | What it does | Notes |
+|---|---|---|
+| **Ragas** | RAG-specific metrics (faithfulness, answer relevance, context precision and recall), with LLM-judged scoring | Also generates synthetic test sets from documents |
+| **DeepEval** | Pytest-style LLM evaluation with many built-in metrics | Fits directly into CI |
+| **promptfoo** | Config-driven prompt and model comparisons, plus red-teaming | Language-agnostic command-line tool |
+| **MLflow GenAI evaluation and tracing** | Judges, evaluation datasets and production traces in the tracking server | Pairs with [Experiment Tracking](/docs/mlops/experiment-tracking) |
+| **Langfuse, Arize Phoenix, LangSmith** | Tracing of LLM and retrieval steps, datasets, annotation queues, online evaluation | Langfuse and Phoenix are open source; LangSmith is LangChain's hosted platform |
+
+These tools save plumbing, but the decisions that matter are the same in all of them: what the evaluation set contains, which criteria are judged and how the judge is calibrated, and which numbers gate a release.
+
+## 7. When *Not* to Build a Full Evaluation Stack
+
+| Situation | Proportionate approach |
+|---|---|
+| A prototype with a handful of users | A 30 to 50 query labelled set, Recall@K on it, and reading answers by hand |
+| Small, stable corpus that fits in the context window | Skip retrieval: put the documents in the prompt (with prompt caching) and evaluate generation only |
+| Extraction or classification with exact answers | Exact-match and field-level accuracy; LLM judging adds cost and noise |
+| No labelled queries and no time to make them | Start by logging production queries and feedback; label a sample before tuning anything |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Overlap metrics | BLEU and ROUGE scored a wrong answer 76 and a correct paraphrase 3.5 |
+| Judge criteria | Faithfulness (supported by context), relevance, correctness; check claims one by one |
+| Retrieval first | If the answer isn't retrieved, no generator can use it; measure Recall@K |
+| Ranking metrics | MRR rewards the best answer first; nDCG handles graded relevance with a log discount |
+| Lexical vs dense | Word-matching fails on vocabulary mismatch; measure hybrid rather than assume it helps |
+| Diagnose by layer | Index, retrieval, ranking, generation; bucket failures before fixing anything |
+| RAGOps | Fresh, permission-aware indexes; monitor coverage, faithfulness, feedback and cost |
+| Close the loop | Production failures become evaluation cases |
+
+---
+
+Next: [Security & Reproducibility](/docs/mlops/security-and-reproducibility) covers the cross-cutting requirements every system in this section has to meet, LLM systems included.
+
+## Sources
+
+- K. Papineni et al., [BLEU: a Method for Automatic Evaluation of Machine Translation](https://aclanthology.org/P02-1040/), ACL 2002; C.-Y. Lin, [ROUGE: A Package for Automatic Evaluation of Summaries](https://aclanthology.org/W04-1013/), 2004
+- K. Järvelin and J. Kekäläinen, [Cumulated Gain-Based Evaluation of IR Techniques](https://dl.acm.org/doi/10.1145/582415.582418), ACM TOIS 20(4), 2002
+- P. Lewis et al., [Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks](https://arxiv.org/abs/2005.11401), NeurIPS 2020
+- S. Es et al., [RAGAS: Automated Evaluation of Retrieval Augmented Generation](https://arxiv.org/abs/2309.15217), EACL 2024
+- G. Cormack, C. Clarke and S. Büttcher, [Reciprocal Rank Fusion outperforms Condorcet and individual Rank Learning Methods](https://dl.acm.org/doi/10.1145/1571941.1572114), SIGIR 2009

@@ -1,121 +1,307 @@
 ---
-title: "LLM Hosting, Serving Patterns & LLMOps Monitoring"
+title: "LLM Hosting, Serving Patterns & LLMOps Monitoring, In Full Depth"
 sidebar_position: 20
-description: "The real model-to-container-to-GPU-VM-to-API hosting stack, the fine-tuning-to-serving handoff, and the LLM-specific monitoring layer on top."
+description: "Where and how to host language models: the hosting stack, sizing GPU memory for weights and KV cache, the cost of self-hosting against utilization, serverless and local options, handing fine-tuned weights to an inference engine, multi-LoRA, embeddings and rerankers, and measured TTFT and per-token latency."
 ---
 
 import HostingStackDiagram from '../../../viz/diagrams/HostingStackDiagram';
-import CloudProviderComparisonDiagram from '../../../viz/diagrams/CloudProviderComparisonDiagram';
 import ServerlessColdStartDiagram from '../../../viz/diagrams/ServerlessColdStartDiagram';
-import LocalHostingStackDiagram from '../../../viz/diagrams/LocalHostingStackDiagram';
 import FineTuningToInferenceHandoffDiagram from '../../../viz/diagrams/FineTuningToInferenceHandoffDiagram';
 import MultiLoraServingDiagram from '../../../viz/diagrams/MultiLoraServingDiagram';
-import VlmArchitectureDiagram from '../../../viz/diagrams/VlmArchitectureDiagram';
 import EmbeddingRerankerPipelineDiagram from '../../../viz/diagrams/EmbeddingRerankerPipelineDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# LLM Hosting, Serving Patterns & LLMOps Monitoring
+# LLM Hosting, Serving Patterns & LLMOps Monitoring, In Full Depth
 
-An inference engine (see [LLM Inference Engines](/docs/mlops/llm-inference-engines)) has to run *somewhere*, has to receive a model that came from *somewhere*, and once live, has to be watched. This page covers all three: hosting infrastructure, the fine-tuning-to-serving handoff, and the LLM-specific monitoring layer on top of everything in [Monitoring & Drift Detection](/docs/mlops/monitoring-and-drift).
+[LLM Inference Engines](/docs/mlops/llm-inference-engines) covered the software that runs a language model efficiently: vLLM, SGLang, TensorRT-LLM, llama.cpp. An engine still needs hardware to run on, a model to load, a way to receive traffic, and someone watching it. This page covers those decisions: whether to call an API or host a model at all, the hosting stack, how much GPU memory a model really needs (weights *and* KV cache, computed), what self-hosting costs per million tokens at different utilizations, serverless and local hosting, the handoff from fine-tuning to serving, serving many fine-tunes on one GPU, embedding and reranker models for RAG, and the metrics that tell you whether it's working, measured on a real model.
 
-## Cloud GPU Hosting
+<ELI5>
 
-The generic pattern, regardless of provider: **Model → Container → GPU VM → Inference Engine → Load Balancer → API**. A model artifact is packaged into a container (see [Containers](/docs/mlops/containers)) running one of the Tier 1/2 engines, deployed onto a GPU-backed VM or Kubernetes node, and put behind a load balancer that fronts it as a single API.
+A company that needs deliveries can hire a courier service, lease its own vans, or keep one van on call that it only pays for when it's used. The courier is simplest. Owning vans is cheapest per parcel, but only if the vans are busy; an idle van still costs money. The on-call van suits occasional deliveries but takes a while to show up.
+
+Running a language model is the same choice: call a provider's API, run your own GPUs, or use serverless GPUs that start when needed. Most of this page is about how to work out which is cheaper and faster for your traffic, and what to watch once it's running.
+
+</ELI5>
+
+## 1. API or Self-Host?
+
+The first decision isn't *where* to host a model, it's whether to host one at all. Calling a provider's API (Anthropic, OpenAI, Google, or an open-model API from Together, Fireworks or a cloud provider) means no GPUs, no engines, no capacity planning, and access to the most capable models. Self-hosting an open-weight model makes sense for specific reasons:
+
+- **Data control:** inputs can't leave your environment, for regulatory or contractual reasons.
+- **Cost at high, steady volume:** a busy GPU can be much cheaper per token than an API (section 4), but only if it stays busy.
+- **Customization:** a fine-tuned model, or many fine-tunes served side by side (section 7).
+- **Latency or availability control:** dedicated capacity in your own region, no shared rate limits.
+- **Offline or edge use:** no network at all.
+
+If none of those applies, an API is usually the right answer, and this page is background. If one does, the rest of the page is the work involved.
+
+## 2. The Hosting Stack
+
+### Cloud GPU Hosting
+
+Whatever the provider, a self-hosted model sits in the same layers:
 
 <HostingStackDiagram />
 
-- **General cloud providers** (AWS/GCP/Azure): full control, deepest integration with the rest of a cloud-native stack (see [Cloud Computing for ML](/docs/mlops/cloud-computing)), but the most operational overhead — you own GPU provisioning, scaling, and the engine deployment yourself.
-- **GPU-specialized providers** (RunPod, Modal, Together AI, Fireworks, Groq): purpose-built for exactly this workload — faster to get a model served, often cheaper per-GPU-hour than general clouds, with serverless-style GPU provisioning that avoids paying for idle capacity. Groq in particular runs custom LPU hardware rather than GPUs, trading flexibility for extremely low latency on supported models.
-- **Hugging Face Inference Endpoints**: a managed layer specifically for deploying models from the HF Hub, trading some flexibility for the least setup of any option here.
+1. **Model artifact:** weights (ideally `safetensors`), tokenizer and configuration, pinned by revision or hash.
+2. **Container:** the inference engine plus the CUDA libraries it needs, pinned by digest ([Containers](/docs/mlops/containers)).
+3. **GPU machine:** a VM or Kubernetes node with the right GPU and enough GPU memory (section 3).
+4. **Inference engine:** vLLM, SGLang or TensorRT-LLM, exposing an OpenAI-compatible HTTP API.
+5. **Gateway and load balancer:** authentication, rate limits, routing between replicas and models, and request logging.
 
-The general-vs-specialized tradeoff mirrors [Cloud Computing for ML](/docs/mlops/cloud-computing)'s SageMaker discussion: specialized platforms get a model served faster with less infrastructure code, general clouds give more control over cost and architecture once scale justifies owning it.
+Where those layers run is a spectrum of control against effort:
 
-<CloudProviderComparisonDiagram />
+| Option | Examples | You manage | Fits |
+|---|---|---|---|
+| **General clouds, self-managed** | GPU VMs or Kubernetes on AWS, Google Cloud, Azure | Everything above the hardware | Large, steady workloads with platform engineers |
+| **Managed endpoints** | SageMaker, Vertex AI, Azure ML, Hugging Face Inference Endpoints | The model and its configuration | Teams on one cloud who want less operations |
+| **GPU clouds and serverless GPU** | RunPod, Modal, Baseten, Lambda, CoreWeave | Container and scaling settings | Faster access to GPUs, often lower prices, pay-per-second options |
+| **Hosted open-model APIs** | Together AI, Fireworks, cloud model gardens, custom-chip providers such as Groq and Cerebras | Nothing but the API call | Open models without hosting them; some offer dedicated deployments |
+
+The trade-off is the usual one: the more the platform manages, the faster you start and the less you can tune cost and behaviour. Whichever you choose, the sizing question comes first.
+
+## 3. Sizing GPU Memory: Weights and KV Cache
+
+A model doesn't just need room for its weights. Every active request also holds a **KV cache**: the attention keys and values for every token processed so far, kept so that each new token doesn't recompute them ([LLM Inference Optimization](/docs/mlops/llm-inference-optimization#kv-cache) explains why). Both are easy to compute:
+
+$$\text{weights} = N_{\text{params}} \times \text{bytes per parameter}$$
+
+$$\text{KV cache per token} = 2 \times n_{\text{layers}} \times n_{\text{kv heads}} \times d_{\text{head}} \times \text{bytes per value}$$
+
+The 2 is for keys and values. For Llama 3.1 8B (32 layers, 8 key-value heads thanks to grouped-query attention, head dimension 128):
+
+```python
+GiB = 1024 ** 3
+
+def weights_gib(params_b, bytes_per_param):
+    return params_b * 1e9 * bytes_per_param / GiB
+
+def kv_cache_gib(tokens, layers, kv_heads, head_dim, bytes_per_value=2):
+    """K and V, per layer, per KV head, per token."""
+    return 2 * layers * kv_heads * head_dim * bytes_per_value * tokens / GiB
+
+# Llama 3.1 8B: 32 layers, 8 KV heads (grouped-query attention), head dim 128
+per_token_kib = kv_cache_gib(1, 32, 8, 128) * 1024 * 1024
+print(f"KV cache per token (BF16): {per_token_kib:.0f} KiB")
+for precision, b in [("BF16", 2), ("FP8", 1), ("INT4", 0.5)]:
+    print(f"8B weights in {precision:<4}: {weights_gib(8.03, b):5.1f} GiB")
+
+for users, ctx in [(1, 8_192), (32, 8_192), (32, 32_768)]:
+    print(f"{users:>2} concurrent requests x {ctx:>6} tokens: KV cache {kv_cache_gib(users * ctx, 32, 8, 128):5.1f} GiB")
+```
+
+```text
+KV cache per token (BF16): 128 KiB
+8B weights in BF16:  15.0 GiB
+8B weights in FP8 :   7.5 GiB
+8B weights in INT4:   3.7 GiB
+ 1 concurrent requests x   8192 tokens: KV cache   1.0 GiB
+32 concurrent requests x   8192 tokens: KV cache  32.0 GiB
+32 concurrent requests x  32768 tokens: KV cache 128.0 GiB
+```
+
+The weights fit easily on a 24 GB GPU; the problem is concurrency. Thirty-two simultaneous 8K-token conversations need 32 GiB of KV cache on top of 15 GiB of weights, more than a 40 GB GPU holds, and long contexts multiply it again: 32 users at 32K tokens need 128 GiB of cache. That's why engines manage the cache in pages (PagedAttention), why they queue requests when cache space runs out, and why FP8 KV-cache quantization, which halves these numbers, is widely used.
+
+**The practical rule:** choose the GPU from weights *plus* KV cache for your target concurrency and context length, plus a few gigabytes of overhead for activations and the CUDA runtime. Undersize it and the engine serves few requests at once, so throughput and cost per token suffer.
+
+<PredictFirst
+  question="A team moves its 8B chat model from 4K to 32K maximum context, keeping the same GPU. Many conversations now run long. What happens to throughput?"
+  options={[
+    'Nothing, because the weights are the same size',
+    "It drops: each long conversation's KV cache is up to 8 times larger, so fewer requests fit on the GPU at once and the engine batches less",
+    'It rises, because longer prompts make each request more efficient',
+    'The model fails to load',
+  ]}
+  correctIndex={1}
+  explanation="KV cache grows linearly with tokens in context. If conversations actually use the longer context, each one occupies up to 8 times as much cache, so the number of requests that can be batched together falls, and throughput (tokens per second across all users) falls with it. Longer prefills also raise time to first token. Capacity planning has to use the context lengths requests really have, not just the model size."
+/>
+
+## 4. What Self-Hosting Costs
+
+The cost of a self-hosted model is dominated by one ratio: how much of the GPU-time you pay for is spent generating tokens.
+
+$$\text{cost per token} = \frac{\text{GPU price per hour}}{\text{tokens per hour}} = \frac{\text{GPU price per hour}}{\text{peak tokens/s} \times 3600 \times \text{utilization}}$$
+
+With illustrative numbers, a GPU at $2.50 an hour serving an 8B model at an aggregate 2,500 output tokens a second when fully batched:
+
+```python
+# Self-hosting cost per million output tokens, as a function of how busy the GPU is.
+gpu_per_hour = 2.50              # an on-demand H100-class GPU, USD/hour (varies widely by provider)
+peak_tokens_per_s = 2_500        # aggregate output tokens/s at full batch for an 8B model (benchmark yours)
+
+for utilization in [1.0, 0.5, 0.2, 0.05]:
+    tokens_per_hour = peak_tokens_per_s * 3600 * utilization
+    print(f"utilization {utilization:4.0%}: ${gpu_per_hour / tokens_per_hour * 1e6:6.2f} per 1M output tokens")
+```
+
+```text
+utilization 100%: $  0.28 per 1M output tokens
+utilization  50%: $  0.56 per 1M output tokens
+utilization  20%: $  1.39 per 1M output tokens
+utilization   5%: $  5.56 per 1M output tokens
+```
+
+At full use, self-hosting is very cheap per token. At 5% utilization, an internal tool used during office hours, it's twenty times more expensive, and likely more than an API charges for a comparable model. **Self-hosting pays when traffic is high and steady;** for spiky or low traffic, an API or serverless GPUs win. The inputs here are assumptions: benchmark your own model, engine and request mix, since peak throughput depends heavily on prompt and output lengths, and price in the engineers who run it. [AI Cost Engineering](/docs/mlops/ai-cost-engineering) covers the wider cost picture.
+
+## 5. Serverless and Local Hosting
 
 ### Serverless Inference
 
-A distinct provisioning model worth calling out explicitly: rather than renting a GPU VM that runs continuously (billed whether or not it's handling requests), serverless GPU platforms provision GPU capacity **on demand**, per request or per short-lived session, and scale to zero when idle — you pay for actual inference time, not idle capacity. The tradeoff is **cold start latency**: spinning up a GPU worker and loading model weights from scratch takes real time (seconds to tens of seconds for a large model), which shows up as a slow first request after an idle period — serverless platforms mitigate this with techniques like keeping a small warm pool or snapshotting a loaded model's memory state, but cold starts remain the central design constraint serverless inference has to work around. The right fit is **spiky, unpredictable, or low-average-utilization traffic** (an internal tool used a few times a day, a demo endpoint) where paying for an always-on GPU would mean paying mostly for idle time; a **steady, high-volume** production workload is usually cheaper and more predictable on continuously-running, purpose-sized capacity instead.
+**Serverless GPU** platforms start a GPU container when requests arrive and stop it when traffic stops, billing by the second. They solve the utilization problem from section 4, at the price of **cold starts**: the first request after idle waits for a machine, the container, and the model weights to load into GPU memory, from several seconds for a small model to a minute or more for a large one.
 
 <ServerlessColdStartDiagram />
 
-## Local Hosting
+Platforms reduce cold starts with warm pools, cached images, fast weight loading from local NVMe, and memory snapshots of a loaded process. The fit is spiky or low-volume traffic where a slow first request is acceptable: internal tools, batch jobs, demos, evaluation runs. Steady production traffic is usually cheaper on always-on capacity sized for it, often with a small serverless overflow for peaks.
 
-Running an LLM entirely on local hardware — a laptop, a workstation, an on-prem server — for development, privacy-sensitive workloads, or cost reasons at low volume:
+**Local hosting** runs models on a laptop, workstation or on-premises server, for development, privacy, or offline use. **Ollama** wraps model download and serving behind a simple command line and a local HTTP API (built on llama.cpp, with its own engine for some model families); **LM Studio** offers the same in a desktop app; **llama.cpp's `llama-server`** gives direct control, including grammar-constrained output. These run quantized GGUF models efficiently on CPUs and consumer GPUs. For real multi-user throughput on your own GPUs, the step up is vLLM or SGLang, the same engines used in the cloud.
 
-- **Ollama → llama.cpp → GGUF**: Ollama is the friendly wrapper (simple CLI/API, automatic model pulling) around llama.cpp as the underlying engine, running GGUF-format models — the most common on-ramp to running an LLM locally with zero infrastructure setup.
-- **LM Studio**: a desktop GUI application, also built on llama.cpp under the hood, for browsing, downloading, and chatting with local GGUF models without touching a command line.
-- **llama.cpp server**: llama.cpp's own built-in HTTP server (`llama-server`), for when Ollama's abstraction is unwanted and direct control over the engine's serving behavior (including grammar-constrained generation — see [LLM Inference Engines](/docs/mlops/llm-inference-engines)) is needed.
-- **Self-hosted vLLM**: the step up from llama.cpp-based local tools once real throughput matters — running vLLM directly on local or on-prem GPU hardware, the same engine used in high-scale cloud deployments, just self-managed.
+## 6. From Fine-Tuning to Serving
 
-<LocalHostingStackDiagram />
+### The Fine-Tuning → Inference Pipeline
 
-```bash
-ollama pull llama3.1:8b       # downloads and stores the GGUF weights locally
-ollama run llama3.1:8b        # interactive chat, or pipe a prompt in non-interactively
-ollama serve                  # starts Ollama's own local API on :11434
-curl http://localhost:11434/api/generate -d '{"model": "llama3.1:8b", "prompt": "Explain KV caching in one sentence."}'
-```
-
-## The Fine-Tuning → Inference Pipeline
-
-Training/fine-tuning and inference are different jobs, done by different tools, and conflating them is a common mistake. The correct pipeline:
-
-```
-Base model → Fine-tuning framework (e.g. Unsloth, LoRA/QLoRA) → Adapter/merged weights → Inference engine (vLLM / llama.cpp / SGLang / TensorRT-LLM) → Served endpoint
-```
-
-**Unsloth** is a fine-tuning/training framework — it makes LoRA/QLoRA adaptation of open-weight models dramatically faster and more memory-efficient, and that is its entire job. It is not what receives production traffic. Once fine-tuning produces adapter weights (or a merged model), those weights are handed off to a genuine inference engine — vLLM, llama.cpp (after conversion to GGUF), SGLang, or TensorRT-LLM — for actual serving. Treating Unsloth itself as a serving solution is the single most common confusion in this space; keeping the fine-tuning-framework/inference-engine distinction from [LLM Inference Engines](/docs/mlops/llm-inference-engines) in mind avoids it.
+Fine-tuning and serving are separate jobs done by separate tools, and mixing them up is a common mistake:
 
 <FineTuningToInferenceHandoffDiagram />
 
-## Multi-LoRA Serving
+```text
+Base model → fine-tuning framework (Unsloth, TRL, Axolotl; LoRA or QLoRA) → adapter or merged weights → inference engine → endpoint
+```
 
-Rather than fully merging a LoRA adapter into a base model (one model per fine-tune, expensive to store and swap), production systems increasingly serve **one base model with many swappable LoRA adapters** loaded alongside it — a request specifies which adapter to apply, and the engine applies it on the fly. vLLM supports this natively, making it practical to serve dozens of task- or customer-specific fine-tunes from a single deployed base model instead of duplicating the full model per fine-tune.
+Fine-tuning frameworks like **Unsloth** make training adapters faster and lighter on memory; that's their job. They're not built to serve production traffic. The output, either a small **LoRA adapter** or a **merged** model with the adapter folded into the base weights, is handed to an inference engine. The handoff deserves the same discipline as any model release: register the adapter with its base model's exact revision (an adapter is meaningless on a different base), evaluate it with the serving engine and the serving precision, since quantizing for serving can change behaviour, and promote it through the registry and a gate ([CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd)).
+
+**Merge or keep separate?** Merging gives the simplest, fastest serving for one fine-tune. Keeping adapters separate makes the next pattern possible.
+
+## 7. Many Fine-Tunes on One GPU
+
+### Multi-LoRA Serving
+
+A LoRA adapter changes a model's behaviour by adding small low-rank matrices to some of its weight matrices. For a weight matrix of size $d \times d$, a rank-$r$ adapter adds $2rd$ parameters. With $d = 4096$ and $r = 16$ that's about 131,000 parameters per adapted matrix against 16.8 million in the matrix itself, under 1%. A whole adapter for an 8B model is typically tens of megabytes.
 
 <MultiLoraServingDiagram />
 
-```bash
-vllm serve meta-llama/Llama-3.1-8B-Instruct \
-  --enable-lora \
-  --lora-modules support-tone=./adapters/support-tone billing-tone=./adapters/billing-tone
-```
+So instead of deploying one full model per customer or task, an engine can keep **one base model in GPU memory and many adapters beside it**, applying the right adapter per request. vLLM does this with `--enable-lora` and named adapters (`--lora-modules support-tone=./adapters/support-tone`); a request selects one by passing its name as the `model`. Requests for different adapters still batch together, using kernels designed for mixed-adapter batches (the approach introduced by S-LoRA and Punica). Dozens of fine-tunes then cost little more than one, which changes the economics of per-customer or per-task models.
 
-```bash
-# a request picks the adapter by name in the `model` field -- same base weights underneath
-curl http://localhost:8000/v1/completions -d '{"model": "support-tone", "prompt": "..."}'
-```
+## 8. Embeddings, Rerankers and Multimodal Models
 
-## Multimodal / VLM Inference
+### Embedding & Reranker Inference for Production RAG
 
-Vision-language models (LLaVA, Qwen-VL, and similar) follow a consistent architecture: **Image → Vision Encoder → Projector → LLM** — an image encoder (often a ViT, see [CNNs & Vision Architectures](/docs/deep-learning/cnns)) produces image features, a projector module maps those features into the LLM's embedding space, and the LLM then processes them as if they were additional input tokens alongside the text prompt. Serving a VLM means the inference engine must support this multi-stage forward pass (image preprocessing plus the extra encoder/projector compute) in addition to standard text generation — vLLM and TGI both have growing native VLM support, rather than requiring a fully separate serving stack.
-
-<VlmArchitectureDiagram />
-
-## Embedding & Reranker Inference for Production RAG
-
-RAG systems (see [LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops)) depend on two additional model types that need their own inference path, distinct from the generative LLM itself:
-
-- **Embedding models** (Sentence Transformers, BGE, E5, Jina): convert text into dense vectors for retrieval — typically small, fast, and CPU-servable relative to the generative model, but still need a real serving layer once query volume is meaningful.
-- **Reranker models** (cross-encoders): re-score a small candidate set retrieved by the embedding model, jointly encoding the query and each candidate document for much higher precision than embedding similarity alone — more expensive per comparison, which is why they only run on the retrieval shortlist, not the whole corpus.
-- **TEI (Text Embeddings Inference)**: Hugging Face's dedicated serving engine for embedding and reranker models, playing the same specialized role for these smaller models that vLLM plays for generative LLMs. Triton and plain FastAPI deployments are also common for embedding serving, especially at lower volume.
+RAG systems ([LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops)) need two more model types, each with its own serving needs:
 
 <EmbeddingRerankerPipelineDiagram />
 
-```bash
-docker run --gpus all -p 8081:80 \
-  ghcr.io/huggingface/text-embeddings-inference:latest \
-  --model-id BAAI/bge-base-en-v1.5
+- **Embedding models** (for example BGE, E5, GTE, Nomic and the Sentence Transformers family) turn text into vectors. They're small and fast, and they run in two very different modes: bulk embedding of the whole corpus (a batch job where throughput is all that matters) and query embedding at request time (a few milliseconds, on the critical path). Changing the embedding model means re-embedding the whole corpus, since vectors from different models can't be compared.
+- **Rerankers** (cross-encoders) score each query-document pair jointly, which is far more accurate than comparing vectors and far more expensive, so they only rescore the top few dozen candidates from the first-stage retrieval.
 
-curl http://localhost:8081/embed -H "Content-Type: application/json" \
-  -d '{"inputs": "How does prefix caching work?"}'
+Hugging Face's **Text Embeddings Inference** (TEI) is a dedicated server for both, with dynamic batching; Triton, Ray Serve or a FastAPI service with batching ([APIs & Model Serving](/docs/mlops/model-serving#6-dynamic-batching)) are common alternatives. Small embedding models run well on CPUs, which keeps GPUs for the generator.
+
+### Multimodal / VLM Inference
+
+**Vision-language models** (Qwen-VL, Llama vision models, Gemma and many others) add an image encoder whose output is projected into the language model's token space, so each image becomes hundreds or thousands of extra input tokens. For serving, that means larger prefills, more KV cache per request, and image preprocessing on the request path. vLLM and SGLang serve the common open VLMs directly; budget memory and latency for the image tokens as if they were text.
+
+## 9. LLMOps Monitoring: Measuring What Users Feel
+
+LLM serving has its own latency metrics, because a response streams out token by token:
+
+- **Time to first token (TTFT):** from request to the first token. Dominated by **prefill**, processing the whole prompt, so it grows with prompt length. This is what makes a chat feel responsive.
+- **Time per output token (TPOT)**, also called inter-token latency: the gap between later tokens, set by the **decode** step. Reading speed is roughly 5 to 10 tokens a second, so anything faster than that streams faster than people read.
+- **End-to-end latency:** $\text{TTFT} + (n_{\text{out}} - 1) \times \text{TPOT}$.
+- **Throughput:** total tokens per second across all requests, which is what determines cost.
+
+To see the prefill and decode phases separately, here's a measurement on a deliberately tiny model (SmolLM2, 135 million parameters) running on a laptop CPU, streaming 64 output tokens after prompts of increasing length:
+
+```python
+import threading, time
+
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
+
+torch.set_num_threads(4)
+name = "HuggingFaceTB/SmolLM2-135M-Instruct"          # tiny, so this runs on a laptop CPU
+tok = AutoTokenizer.from_pretrained(name)
+model = AutoModelForCausalLM.from_pretrained(name, torch_dtype=torch.float32)
+
+def measure(prompt_tokens, new_tokens=64):
+    prompt = "word " * prompt_tokens
+    inputs = tok(prompt, return_tensors="pt")
+    streamer = TextIteratorStreamer(tok, skip_prompt=True)
+    args = dict(**inputs, max_new_tokens=new_tokens, min_new_tokens=new_tokens, do_sample=False, streamer=streamer)
+    start = time.perf_counter()
+    threading.Thread(target=model.generate, kwargs=args).start()
+    stamps = [time.perf_counter() for _ in streamer]  # a timestamp per streamed piece of text
+    ttft = stamps[0] - start
+    tpot = (stamps[-1] - stamps[0]) / (new_tokens - 1)   # exactly new_tokens are generated
+    print(f"prompt {inputs['input_ids'].shape[1]:>5} tokens: TTFT {ttft * 1000:6.0f} ms   "
+          f"time per output token {tpot * 1000:5.1f} ms   ({1 / tpot:4.0f} tokens/s)")
+
+measure(32)                                            # warm-up
+for n in [32, 512, 2048]:
+    measure(n)
 ```
 
-## LLMOps Monitoring
+After the warm-up run (PyTorch 2.14 on CPU, Transformers):
 
-The operational layer sitting on top of everything above, extending [Monitoring & Drift Detection](/docs/mlops/monitoring-and-drift) with signals specific to LLM serving:
+```text
+prompt    33 tokens: TTFT    124 ms   time per output token  53.8 ms   (  19 tokens/s)
+prompt   513 tokens: TTFT    978 ms   time per output token  55.2 ms   (  18 tokens/s)
+prompt  2049 tokens: TTFT   4598 ms   time per output token  79.9 ms   (  13 tokens/s)
+```
 
-- **Token usage**: input/output tokens per request — the basis for both cost tracking and capacity planning.
-- **Cost**: cost per request and per 1M tokens, tracked per model/deployment, since routing the wrong requests to an oversized model is a common, quietly expensive mistake.
-- **Hallucination rate**: tracked via the evaluation techniques in [LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops), monitored in production the same way any other quality metric is monitored for drift.
-- All of the inference metrics from [LLM Inference Optimization](/docs/mlops/llm-inference-optimization) — TTFT, TPOT, throughput, GPU utilization — remain the base layer this sits on top of.
+The two phases behave differently. **TTFT grows with the prompt**: 62 times more prompt tokens (33 to 2,049) took 37 times longer before the first token, because prefill processes every prompt token (and attention over a longer prompt costs more per token). **TPOT grows only slowly**, from 54 to 80 ms, because each decode step generates one token, though it does read a longer KV cache. On a GPU with a production engine every number is far smaller, but the shape is the same, which is why long-prompt applications such as RAG with many retrieved passages, and long chat histories, show high TTFT first, and why prefix caching (reusing the KV cache of a shared system prompt or document) is one of the most effective optimizations ([LLM Inference Optimization](/docs/mlops/llm-inference-optimization)).
 
-Next: [LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops) — how to actually measure whether everything served above is producing good outputs.
+<GoDeeper title="Go deeper: setting latency targets and routing between models">
+
+Service targets for LLM endpoints are usually written per phase: for example p95 TTFT under 800 ms and p95 TPOT under 50 ms for interactive chat, with looser targets for batch summarization. Engines expose the measurements (vLLM publishes Prometheus histograms for TTFT, inter-token latency, queue time and KV-cache usage), so the burn-rate alerting from [Observability](/docs/mlops/observability#7-slos-error-budgets-and-alerts-that-mean-something) applies unchanged.
+
+Two signals predict trouble before latency does: **queue time** (requests waiting for batch or cache space) and **KV-cache utilization**. When the cache is near full, engines delay or preempt requests, and TTFT climbs sharply, the same $1/(1-\rho)$ behaviour as any queue ([APIs & Model Serving](/docs/mlops/model-serving#5-latency-throughput-and-queues)). Autoscale on those, not on GPU utilization, which reads near 100% whenever anything is running.
+
+A **model router** in the gateway sends each request to the cheapest model likely to handle it well: short, simple requests to a small model; hard ones to a large model or an external API. Routing by request type, prompt length or a small classifier often cuts cost substantially, and it needs per-route quality monitoring so savings don't quietly cost accuracy.
+
+</GoDeeper>
+
+Beyond latency, an LLM service needs the signals no classical service has:
+
+| Signal | Why it matters |
+|---|---|
+| Input and output tokens per request, by route and customer | Cost attribution and capacity planning; sudden growth often means a prompt or retrieval change |
+| Cost per request and per successful task | Catches expensive regressions, such as an agent looping through tool calls |
+| Refusal, error and truncation rates | Truncation at `max_tokens` silently cuts answers |
+| Sampled quality scores from a calibrated judge | Faithfulness and helpfulness drift after model, prompt or corpus changes ([LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops)) |
+| User feedback and escalations | The ground truth that judges approximate |
+| Model and adapter version per response | Lets every other metric be split by version during rollouts |
+
+## 10. When *Not* to Self-Host
+
+| Situation | Better choice |
+|---|---|
+| Low or unpredictable traffic | A provider API, or serverless GPUs with accepted cold starts |
+| You need frontier-model quality | A frontier provider's API; open models may trail on the hardest tasks |
+| No one to run GPU infrastructure | A managed endpoint or hosted open-model API |
+| Experimenting with prompts and models | APIs first; self-host once the model, volume and requirements are settled |
+| Strict data residency but low volume | A provider's regional or private deployment option, before building your own stack |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| First question | Use an API unless data control, steady volume, customization or latency demands self-hosting |
+| Stack | Pinned weights, engine container, GPU machine, OpenAI-compatible API, gateway |
+| KV cache | $2 \times$ layers $\times$ KV heads $\times$ head dim $\times$ bytes per token; 128 KiB/token for Llama 3.1 8B |
+| Sizing | Weights plus KV cache for target concurrency and real context lengths |
+| Cost | GPU price over tokens served; utilization dominates, 5% busy costs 20x more per token |
+| Serverless | Pays only when used; cold starts of seconds to minutes |
+| Fine-tune handoff | Training frameworks produce adapters; inference engines serve them; pin the base revision |
+| Multi-LoRA | One base model, many small adapters, batched together |
+| Latency metrics | TTFT grows with the prompt (prefill); TPOT is the decode speed |
+
+---
+
+Next: [LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops) covers measuring whether what you serve gives good answers.
+
+## Sources
+
+- W. Kwon et al., [Efficient Memory Management for Large Language Model Serving with PagedAttention](https://arxiv.org/abs/2309.06180), SOSP 2023
+- E. Hu et al., [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685), ICLR 2022; Y. Sheng et al., [S-LoRA: Serving Thousands of Concurrent LoRA Adapters](https://arxiv.org/abs/2311.03285), MLSys 2024
+- vLLM, [Documentation](https://docs.vllm.ai/), including LoRA adapters and production metrics
+- Llama Team, Meta, [The Llama 3 Herd of Models](https://arxiv.org/abs/2407.21783), 2024 (architecture table for layer and head counts)
+- Hugging Face, [Text Embeddings Inference](https://huggingface.co/docs/text-embeddings-inference/index)
