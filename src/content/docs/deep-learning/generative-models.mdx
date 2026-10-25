@@ -1,71 +1,322 @@
 ---
-title: "Generative Models: GANs & Diffusion"
+title: "Generative Models: GANs, Diffusion and Flow Matching, In Full Depth"
 sidebar_position: 8.7
-description: "GANs and diffusion models -- adversarial training versus iterative denoising, and the real reason diffusion won out for image generation specifically."
+description: "How networks learn to generate new data: GANs and their minimax game, diffusion models derived from the forward noising process to the denoising objective, flow matching, guidance, fast sampling and latent diffusion, with a DDPM and a flow-matching model trained from scratch and measured."
 ---
-
 
 import DiffusionRandomWalkMp4 from './img/diffusion-random-walk.mp4';
 import DiffusionRandomWalkWebm from './img/diffusion-random-walk.webm';
 import GanMinimaxDiagram from '../../../viz/diagrams/GanMinimaxDiagram';
 import DiffusionForwardProcessDiagram from '../../../viz/diagrams/DiffusionForwardProcessDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Generative Models: GANs & Diffusion
+# Generative Models: GANs, Diffusion and Flow Matching, In Full Depth
 
-[Autoencoders & VAEs](/docs/deep-learning/autoencoders) were one route to generating new data. This page covers the other two dominant approaches — adversarial training and iterative denoising — and why diffusion won out for image generation specifically.
+[Autoencoders and VAEs](/docs/deep-learning/autoencoders) showed one way to generate data: learn a well-behaved code space and decode random points from it. Their samples are blurry, and two other families took over. **Generative adversarial networks** (GANs) train a generator against a critic that tries to tell its output from real data. **Diffusion models** learn to undo noise, step by step, starting from pure noise, and their close relative **flow matching** learns a direct path from noise to data. Diffusion and flow matching now generate almost all high-quality images and video. This page explains what "learning to generate" means, the GAN game and why it is hard to win, diffusion derived from its forward process to its surprisingly simple training objective, flow matching, how text prompts steer generation, and how sampling was made fast. A diffusion model and a flow-matching model are trained from scratch on a toy dataset and measured.
 
-## Generative Adversarial Networks (GANs)
+<ELI5>
 
-A GAN trains two networks against each other: a **Generator** $G$ that maps random noise $z$ to fake samples $G(z)$, trying to fool the second network, and a **Discriminator** $D$ that looks at a sample (real or fake) and predicts whether it's real. They're trained jointly, adversarially:
+Imagine a sandcastle on the beach. Every wave smooths it a little, and after enough waves it's just a flat patch of sand. Watching that happen is easy.
 
-$$\min_G \max_D \; \mathbb{E}_{x \sim p_{data}}[\log D(x)] + \mathbb{E}_{z \sim p_z}[\log(1 - D(G(z)))]$$
+Now imagine filming it and playing the film backwards: a flat patch of sand slowly rising into a castle. If you could learn to predict, from any half-smoothed frame, what the frame just before it looked like, you could start from *any* flat patch of sand and build a brand-new castle, one small step at a time.
 
-$D$ is trained to maximize this (correctly tell real from fake), $G$ is trained to minimize it (fool $D$). At the theoretical optimum, $G$ produces samples indistinguishable from real data — $D$ can do no better than random guessing.
+A diffusion model learns exactly that backwards step, for images instead of sand and random noise instead of waves. A GAN takes a different route: a forger keeps making fake paintings while a detective keeps getting better at spotting them, until the forgeries are good enough to fool the detective. Everything below is those two ideas made exact.
 
-**Why GANs are hard to train**:
-- **Mode collapse**: $G$ discovers a small number of outputs that reliably fool $D$ and keeps producing only those, rather than covering the full diversity of the real data distribution — a direct consequence of $G$ optimizing to fool the current $D$, not to match the true data distribution.
-- **Training instability**: $G$ and $D$ are locked in a minimax game, not a single loss being minimized — if one network gets too strong too fast (e.g. $D$ becomes a perfect discriminator early), the other stops receiving useful gradient signal and training stalls.
-- **No single scalar loss to monitor**: unlike supervised training, "the loss is going down" doesn't straightforwardly mean "the model is getting better" — sample quality has to be judged directly or via separate metrics (e.g. FID, Fréchet Inception Distance) alongside the adversarial losses.
+</ELI5>
 
-Drag training progress and watch the generator's distribution close on the real one, and the discriminator's decision curve flatten out as it loses the ability to tell them apart:
+## 1. What It Means to Generate
+
+A classifier learns $p(y \mid \mathbf{x})$: given an image, which label. A **generative model** learns about $p(\mathbf{x})$ itself, the distribution the data came from, well enough to draw *new* samples that look like they came from it too. For images, $p(\mathbf{x})$ lives in a space with millions of dimensions, and real images occupy a vanishingly thin, curved region of it. Random pixels essentially never look like a photograph.
+
+Every modern approach uses the same basic move: start from something easy to sample, usually Gaussian noise $\mathbf{z} \sim \mathcal{N}(\mathbf{0}, I)$, and learn a transformation that carries it to the data region. They differ in how that transformation is learned:
+
+- **VAEs** learn a decoder from a regularized code space, trained by reconstruction.
+- **GANs** learn a generator in one step, trained by a competing critic.
+- **Diffusion and flow matching** learn many small steps, each trained by simple regression.
+
+Two qualities are always in tension: **fidelity** (each sample looks real) and **diversity** (the samples cover everything the data contains, not one convincing example repeated).
+
+## 2. Generative Adversarial Networks
+
+A GAN (Goodfellow et al., 2014) trains two networks against each other. The **generator** $G$ maps noise $\mathbf{z}$ to a sample $G(\mathbf{z})$. The **discriminator** $D$ looks at a sample and outputs the probability that it's real. $D$ is trained to tell real from fake; $G$ is trained to make $D$ wrong:
+
+$$
+\min_G \max_D \;\; \mathbb{E}_{\mathbf{x} \sim p_\text{data}}\big[\log D(\mathbf{x})\big] + \mathbb{E}_{\mathbf{z} \sim p_\mathbf{z}}\big[\log\big(1 - D(G(\mathbf{z}))\big)\big]
+$$
+
+For a fixed generator, the best discriminator is $D^*(\mathbf{x}) = p_\text{data}(\mathbf{x}) / \big(p_\text{data}(\mathbf{x}) + p_G(\mathbf{x})\big)$, and substituting it shows the generator is then minimizing the Jensen-Shannon divergence between its distribution and the data's. At the optimum, $p_G = p_\text{data}$ and $D$ outputs $\tfrac{1}{2}$ everywhere.
+
+Drag training progress and watch the generator's distribution close on the real one while the discriminator's curve flattens:
 
 <GanMinimaxDiagram />
 
-## Named GAN Variants
+**Why GANs are hard to train.** The objective is a game, not a loss to minimize, and gradient descent on a game doesn't reliably converge.
 
-- **DCGAN (Deep Convolutional GAN)**: the architectural template most later GANs build on — replaces fully-connected layers with (transposed) convolutions, uses batch normalization and specific activation choices, established the design conventions that made GAN training more reliably stable.
-- **Conditional GAN (cGAN)**: feeds a class label (or other conditioning signal) into both $G$ and $D$, so generation can be controlled ("generate a 7," not just "generate a digit") rather than sampled unconditionally.
-- **Pix2Pix**: an image-to-image translation cGAN — learns a mapping from one image domain to another (sketches → photos, maps → satellite images) using *paired* training examples.
-- **CycleGAN**: image-to-image translation *without* paired examples — learns two generators (domain A→B and B→A) with a **cycle-consistency loss** requiring that translating an image to the other domain and back reproduces the original, which regularizes the mapping without ever needing matched pairs (e.g. photos of horses and photos of zebras, with no image showing the same scene as both).
-- **WGAN (Wasserstein GAN)**: replaces the original minimax loss with one based on the Wasserstein/Earth-Mover distance between real and fake distributions (see [Monitoring & Drift Detection](/docs/mlops/monitoring-and-drift) for the same distance used for a different purpose) — provides a smoother, more informative training signal and largely fixes the vanishing-gradient instability of the original formulation.
-- **StyleGAN**: introduces a mapping network that transforms the input noise into an intermediate "style" space, then injects that style at multiple resolutions throughout the generator via adaptive normalization — enables fine-grained, disentangled control over generated image attributes (pose, texture, fine details independently) and produces some of the highest-fidelity GAN-generated faces to date.
-- **BigGAN**: shows that GAN sample quality and diversity improve substantially just from scaling up — larger batch sizes and more parameters, plus architectural tricks (self-attention layers, class-conditional normalization) to keep the larger model stable to train.
+- **Mode collapse.** The generator is rewarded for fooling the current discriminator, not for covering the data. It can find a few outputs that work and produce only those; when the discriminator adapts, it hops to a different few.
+- **Vanishing gradients.** If the discriminator becomes too good too early, $\log(1 - D(G(\mathbf{z})))$ saturates and the generator receives almost no signal. In practice the generator maximizes $\log D(G(\mathbf{z}))$ instead, which gives strong gradients exactly when it's losing.
+- **No reliable progress signal.** Neither network's loss says whether samples are improving, so quality is measured separately, typically with the **Fréchet Inception Distance** (FID), which compares statistics of real and generated images in a pretrained network's feature space.
 
-## Diffusion Models, In More Depth
+**The variants worth knowing:** DCGAN (2015) set the convolutional design conventions that made training workable; conditional GANs feed a label to both networks to control what is generated; Pix2Pix translates between paired image domains and CycleGAN between unpaired ones, using a cycle-consistency loss; WGAN (2017) replaced the divergence with the Wasserstein distance, giving smoother gradients; and StyleGAN (2018 to 2021) injected a learned style vector at every resolution, producing photorealistic faces with controllable attributes.
 
-[Multimodal & Generative Models](/docs/llms-genai/multimodal-generative-models#diffusion-models) introduced the core idea: learn to reverse a gradual noising process. That forward process — repeatedly nudging every pixel by a small random amount until the image is pure noise — is a random walk, the same stochastic process below (Brownian motion is the canonical continuous-time example): many independent small random steps, applied over and over.
+**The limitation:** GANs are fast, one forward pass per sample, and sharp, but unstable and prone to dropping parts of the data. That combination is what diffusion models fixed.
+
+## 3. Diffusion: The Forward Process
+
+A diffusion model starts from the opposite direction: instead of learning to make data, define a fixed process that destroys it, then learn to reverse that.
+
+The **forward process** adds a little Gaussian noise at each of $T$ steps (often 1,000), with a small variance $\beta_t$ set by a schedule:
+
+$$
+q(\mathbf{x}_t \mid \mathbf{x}_{t-1}) = \mathcal{N}\big(\sqrt{1 - \beta_t}\, \mathbf{x}_{t-1},\; \beta_t I\big)
+$$
+
+The $\sqrt{1 - \beta_t}$ shrinks the signal slightly so the total variance stays bounded. After enough steps the image is indistinguishable from pure Gaussian noise. Each step is a small random nudge, and the whole process is a random walk:
 
 <video autoPlay loop muted playsInline width="100%" style={{maxWidth: 560, display: "block", margin: "0 auto"}}>
   <source src={DiffusionRandomWalkWebm} type="video/webm" />
   <source src={DiffusionRandomWalkMp4} type="video/mp4" />
 </video>
-<p style={{textAlign: "center", fontSize: "0.9em", opacity: 0.75}}>A 2D random walk — the same "many small random steps" idea behind diffusion's forward noising process, one particle highlighted</p>
+<p style={{textAlign: "center", fontSize: "0.9em", opacity: 0.75}}>A 2D random walk, the same "many small random steps" as the forward noising process, with one particle highlighted.</p>
 
-The named variants below are the ones actually worth recognizing:
+**The closed form.** Because a sum of Gaussians is Gaussian, you don't need to run the $t$ steps one by one. Writing $\alpha_t = 1 - \beta_t$ and $\bar{\alpha}_t = \prod_{s=1}^{t} \alpha_s$, the fraction of signal left after $t$ steps:
 
-- **DDPM (Denoising Diffusion Probabilistic Models)**: the paper that made diffusion practical for high-quality image generation — a fixed forward process adds Gaussian noise over many steps (often 1000), and a neural network (typically a [U-Net](/docs/deep-learning/vision-architectures#segmentation)) is trained to predict the noise added at each step, enabling the reverse process to denoise from pure noise back to a sample.
-- **DDIM (Denoising Diffusion Implicit Models)**: reformulates the reverse process to be non-Markovian, allowing sampling with far fewer steps (tens instead of a thousand) at a small quality cost — the standard way to make diffusion sampling fast enough for interactive use.
-- **Score-based generative models / SDEs**: a mathematically equivalent formulation of diffusion as learning the *score function* (gradient of the log-probability density) and generating samples by solving a stochastic differential equation — the theoretical framework that unifies DDPM-style discrete diffusion with continuous-time generation.
-- **Latent Diffusion / Stable Diffusion**: runs the diffusion process in a compressed **latent space** (produced by a pretrained VAE encoder, see [Autoencoders & VAEs](/docs/deep-learning/autoencoders)) rather than directly on raw pixels, then decodes the final denoised latent back to pixel space — dramatically cheaper than pixel-space diffusion, which is what made high-resolution text-to-image generation practical on consumer hardware.
-- **Classifier-free guidance**: a technique for strengthening how closely generation follows a conditioning signal (e.g. a text prompt) — the model is trained both with and without the conditioning, and at sampling time the unconditional prediction is extrapolated *away from* to push the output more strongly toward the condition, without needing a separate classifier.
-- **ControlNet**: adds an auxiliary conditioning pathway to a pretrained diffusion model (e.g. conditioning on an edge map, a pose skeleton, a depth map) without retraining the base model — lets a frozen, powerful pretrained diffusion model be steered by precise structural constraints instead of text alone.
+$$
+\mathbf{x}_t = \sqrt{\bar{\alpha}_t}\, \mathbf{x}_0 + \sqrt{1 - \bar{\alpha}_t}\; \boldsymbol{\epsilon}, \qquad \boldsymbol{\epsilon} \sim \mathcal{N}(\mathbf{0}, I)
+$$
 
-The forward process's actual closed form, not just the random-walk intuition above — drag $t$ and watch a real noise schedule dissolve a fixed toy signal:
+Any noise level can be reached from a clean image in one jump: a weighted mix of the image and fresh noise. That one equation is what makes training cheap.
 
 <DiffusionForwardProcessDiagram />
 
-## Why Diffusion Won for Images
+## 4. Diffusion: Learning to Reverse It
 
-GANs generate in a single forward pass (fast) but are notoriously unstable to train and prone to mode collapse (limited diversity). Diffusion models are slower to sample (many iterative denoising steps, though DDIM and distillation techniques have closed much of this gap) but train far more stably — the training objective is a straightforward regression (predict the noise) rather than an adversarial minimax game — and cover the data distribution's diversity more faithfully. That stability-for-speed tradeoff is why diffusion, not GANs, became the dominant architecture behind modern text-to-image systems, while GANs remain relevant for tasks where fast single-pass generation or precise adversarial fine-tuning matters more than sample diversity.
+Going backwards, from $\mathbf{x}_t$ to $\mathbf{x}_{t-1}$, requires knowing what the data looks like, and that's what the network learns. Ho et al.'s **DDPM** (2020) showed it reduces to a remarkably simple task: given a noisy input and its noise level, **predict the noise that was added**.
 
-Next: [GNNs, RL Networks, Metric Learning, SSL & Multimodal Nets](/docs/deep-learning/advanced-architectures) — the remaining major architecture families: graphs, reinforcement learning, self-supervision, and cross-modal models.
+Training, for each example:
+
+1. Take a clean data point $\mathbf{x}_0$, pick a random step $t$, draw noise $\boldsymbol{\epsilon}$.
+2. Make $\mathbf{x}_t$ with the closed form above.
+3. Train a network $\boldsymbol{\epsilon}_\theta(\mathbf{x}_t, t)$ to predict $\boldsymbol{\epsilon}$, with squared error:
+
+$$
+\mathcal{L} = \mathbb{E}_{\mathbf{x}_0,\, t,\, \boldsymbol{\epsilon}} \Big[\, \big\lVert \boldsymbol{\epsilon} - \boldsymbol{\epsilon}_\theta(\mathbf{x}_t, t) \big\rVert^2 \,\Big]
+$$
+
+That's ordinary regression, with no adversary and no game. This is the core reason diffusion trains so much more reliably than GANs.
+
+**Sampling** starts from pure noise $\mathbf{x}_T \sim \mathcal{N}(\mathbf{0}, I)$ and applies the learned reverse step $T$ times:
+
+$$
+\mathbf{x}_{t-1} = \frac{1}{\sqrt{\alpha_t}}\left(\mathbf{x}_t - \frac{\beta_t}{\sqrt{1 - \bar{\alpha}_t}}\, \boldsymbol{\epsilon}_\theta(\mathbf{x}_t, t)\right) + \sqrt{\beta_t}\, \mathbf{z}, \qquad \mathbf{z} \sim \mathcal{N}(\mathbf{0}, I)
+$$
+
+Each step removes the predicted noise, scaled appropriately, and adds back a little fresh noise, except at the last step.
+
+**Why predicting noise works.** The predicted noise is, up to a scale factor, the **score**: the gradient of the log-density of the noisy data, $\nabla_\mathbf{x} \log p_t(\mathbf{x}) \approx -\boldsymbol{\epsilon}_\theta / \sqrt{1 - \bar{\alpha}_t}$. It points from where you are towards where data is more likely. Song et al. (2021) showed DDPM and **score-based models** are the same thing, described by a stochastic differential equation, and that the same model can also be sampled deterministically by solving an ordinary differential equation, which is what makes fast samplers possible (section 7).
+
+**The limitation:** sampling takes many network evaluations, one per step, where a GAN takes one. The rest of the page is largely about cutting that cost.
+
+## 5. Flow Matching
+
+**Flow matching** (Lipman et al., 2022; Liu et al., 2022, as rectified flow) asks the question more directly: draw a path from a noise sample to a data sample, and learn the velocity that moves along it. The simplest path is a straight line. For noise $\mathbf{x}_0 \sim \mathcal{N}(\mathbf{0}, I)$, a data point $\mathbf{x}_1$, and time $t \in [0, 1]$:
+
+$$
+\mathbf{x}_t = (1 - t)\,\mathbf{x}_0 + t\,\mathbf{x}_1, \qquad \frac{d\mathbf{x}_t}{dt} = \mathbf{x}_1 - \mathbf{x}_0
+$$
+
+A network $\mathbf{v}_\theta(\mathbf{x}_t, t)$ is trained by regression to predict that velocity:
+
+$$
+\mathcal{L} = \mathbb{E}\Big[\, \big\lVert (\mathbf{x}_1 - \mathbf{x}_0) - \mathbf{v}_\theta(\mathbf{x}_t, t) \big\rVert^2 \,\Big]
+$$
+
+To generate, start from noise and integrate $d\mathbf{x}/dt = \mathbf{v}_\theta(\mathbf{x}, t)$ from $t = 0$ to $1$, for example with a few Euler steps. Averaged over all pairs, the learned velocity field still moves the whole noise distribution onto the data distribution, and because the paths it learns are close to straight, few integration steps are needed. Stable Diffusion 3 (2024) and FLUX use flow matching with transformer networks, and it has largely become the default for new image and video models.
+
+## 6. Both, Trained and Measured
+
+Here is a DDPM and a flow-matching model, each a small three-layer network, trained from scratch to generate points on a ring of radius 2, a two-dimensional stand-in for images. Both use plain squared-error regression. The DDPM samples with 200 denoising steps; the flow-matching model with 20 Euler steps.
+
+```python
+import math
+import torch
+import torch.nn as nn
+
+torch.manual_seed(0)
+# Data: points on a ring of radius 2 (a 2-D stand-in for "images").
+def sample_data(n):
+    angle = torch.rand(n) * 2 * math.pi
+    return torch.stack([2 * angle.cos(), 2 * angle.sin()], dim=1) + 0.05 * torch.randn(n, 2)
+
+T = 200
+betas = torch.linspace(1e-4, 0.05, T)                     # noise added at each forward step
+alpha_bar = torch.cumprod(1 - betas, dim=0)               # fraction of the original signal left at step t
+
+def net():                                                # input: noisy point and the step, output: 2 numbers
+    return nn.Sequential(nn.Linear(3, 128), nn.SiLU(), nn.Linear(128, 128), nn.SiLU(), nn.Linear(128, 2))
+
+def train(model, make_batch, steps=4000):
+    opt = torch.optim.Adam(model.parameters(), lr=2e-3)
+    for _ in range(steps):
+        inputs, target = make_batch(512)
+        loss = ((model(inputs) - target) ** 2).mean()     # every target is plain regression
+        opt.zero_grad(); loss.backward(); opt.step()
+    return model
+
+# DDPM: noise a clean point in one jump with the closed form, train the network to predict the noise.
+def ddpm_batch(n):
+    x0, t, eps = sample_data(n), torch.randint(0, T, (n,)), torch.randn(n, 2)
+    a = alpha_bar[t].unsqueeze(1)
+    xt = a.sqrt() * x0 + (1 - a).sqrt() * eps
+    return torch.cat([xt, (t / T).unsqueeze(1)], dim=1), eps
+
+# Flow matching: a straight line from noise to data; train the network to predict the line's velocity.
+def flow_batch(n):
+    x0, x1, t = torch.randn(n, 2), sample_data(n), torch.rand(n, 1)
+    xt = (1 - t) * x0 + t * x1
+    return torch.cat([xt, t], dim=1), x1 - x0
+
+ddpm, flow = train(net(), ddpm_batch), train(net(), flow_batch)
+
+@torch.no_grad()
+def sample_ddpm(n):
+    x = torch.randn(n, 2)
+    for t in reversed(range(T)):                          # 200 denoising steps
+        eps = ddpm(torch.cat([x, torch.full((n, 1), t / T)], dim=1))
+        x = (x - betas[t] / (1 - alpha_bar[t]).sqrt() * eps) / (1 - betas[t]).sqrt()
+        if t > 0:
+            x = x + betas[t].sqrt() * torch.randn_like(x)
+    return x
+
+@torch.no_grad()
+def sample_flow(n, steps=20):
+    x = torch.randn(n, 2)
+    for i in range(steps):                                # 20 Euler steps along the learned velocity
+        x = x + flow(torch.cat([x, torch.full((n, 1), i / steps)], dim=1)) / steps
+    return x
+
+radius = lambda x: x.norm(dim=1)
+for name, x in [("pure noise", torch.randn(5000, 2)), ("DDPM, 200 steps", sample_ddpm(5000)),
+                ("flow matching, 20 steps", sample_flow(5000)), ("real data", sample_data(5000))]:
+    r = radius(x)
+    sector = ((torch.atan2(x[:, 1], x[:, 0]) + math.pi) / (2 * math.pi) * 8).long().clamp(max=7)
+    share = torch.bincount(sector, minlength=8) / len(x)      # diversity: is every part of the ring covered?
+    print(f"{name:24s} on the ring (radius 2 +/- 0.25): {((r - 2).abs() < 0.25).float().mean():4.0%}   "
+          f"share per eighth of the circle: {share.min():.3f} to {share.max():.3f}")
+```
+
+```text
+pure noise               on the ring (radius 2 +/- 0.25):  13%   share per eighth of the circle: 0.122 to 0.128
+DDPM, 200 steps          on the ring (radius 2 +/- 0.25):  99%   share per eighth of the circle: 0.097 to 0.145
+flow matching, 20 steps  on the ring (radius 2 +/- 0.25):  99%   share per eighth of the circle: 0.105 to 0.136
+real data                on the ring (radius 2 +/- 0.25): 100%   share per eighth of the circle: 0.112 to 0.132
+```
+
+Both models learn the distribution from nothing but regression targets:
+
+- **Fidelity.** Pure noise lands on the ring only by chance, about one point in eight. Both trained models put nearly all their samples on it, from the same noise.
+- **Diversity.** Each eighth of the circle should hold one-eighth (0.125) of the points. Both models cover every part of the ring. Their emptiest eighth still gets about 0.10 of the samples, a little less even than the real data's 0.112 to 0.132, but no region is dropped. There's no mode collapse, because nothing in the training rewards producing only the easiest part of the data.
+- **Steps.** Flow matching gets there in a tenth of DDPM's sampling steps, because the paths it follows are close to straight lines.
+
+<PredictFirst
+  question="In the DDPM above, the network is trained only to predict the noise that was added to a clean point. Why does running its reverse steps from pure noise produce new points on the ring?"
+  options={[
+    'It memorized the training points and returns the nearest one',
+    'Predicting the noise is equivalent to estimating the direction towards higher data density at every noise level, so each step moves the sample towards where data lies',
+    'The final step projects the point onto a circle',
+    'It doesn\'t: the samples are random noise with a smaller spread',
+  ]}
+  correctIndex={1}
+  explanation="The noise prediction is proportional to the score, the gradient of the log-density of the noisy data. Removing it moves a point uphill in density at that noise level. Doing so from very noisy to clean levels gradually walks pure noise onto the data distribution, producing points that weren't in the training set."
+/>
+
+## 7. Steering and Speeding Up
+
+### Conditioning and guidance
+
+To generate *a specific thing*, such as an image matching a text prompt, the network receives the condition $c$ as an extra input, $\boldsymbol{\epsilon}_\theta(\mathbf{x}_t, t, c)$, usually a text embedding fed in through cross-attention. On its own this follows prompts only loosely.
+
+**Classifier-free guidance** (Ho and Salimans, 2022) strengthens it. Train the same network sometimes with the condition and sometimes with it dropped, so it learns both $\boldsymbol{\epsilon}_\theta(\mathbf{x}_t, t, c)$ and $\boldsymbol{\epsilon}_\theta(\mathbf{x}_t, t)$. At sampling time, extrapolate from the unconditional prediction past the conditional one:
+
+$$
+\tilde{\boldsymbol{\epsilon}} = \boldsymbol{\epsilon}_\theta(\mathbf{x}_t, t) + w\,\big(\boldsymbol{\epsilon}_\theta(\mathbf{x}_t, t, c) - \boldsymbol{\epsilon}_\theta(\mathbf{x}_t, t)\big)
+$$
+
+With guidance scale $w \gt  1$, typically 3 to 8, samples match the prompt much more closely, at some cost in diversity, and each step needs two network evaluations. **ControlNet** (2023) adds a trainable copy of the network's encoder to condition a frozen model on structure, such as an edge map, a pose skeleton or a depth map.
+
+### Fewer steps
+
+- **Better samplers.** DDIM (2020) samples the same trained model deterministically with 20 to 50 steps instead of 1,000; ODE solvers such as DPM-Solver reduce that further.
+- **Distillation.** A slow model teaches a fast student to jump several steps at once. Consistency models (2023) learn to map any point on a sampling path straight to its end, and adversarial distillation adds a GAN-style critic to the student's training, giving usable images in one to four steps. GANs, once displaced, came back as a training signal.
+- **Latent space.** Running diffusion in an autoencoder's compressed latent space rather than on pixels ([latent diffusion](/docs/deep-learning/autoencoders)) cuts the cost of every step, which is what made text-to-image generation practical on consumer GPUs.
+
+### The network inside
+
+Early diffusion models used a [U-Net](/docs/deep-learning/vision-architectures#segmentation), whose skip connections suit an image-in, image-out task. The **Diffusion Transformer** (DiT; Peebles and Xie, 2022) replaced it with a transformer over latent patches and showed quality scales smoothly with model size, the same pattern as language models. Most recent image and video generators are transformers over latent patches, video ones treating time as another axis of patches.
+
+<GoDeeper title="Go deeper: why diffusion overtook GANs, in one comparison">
+
+Both families draw samples by transforming noise. The differences are in how they are trained.
+
+| | GAN | Diffusion / flow matching |
+|---|---|---|
+| Training objective | A two-player game | Plain regression |
+| Stability | Sensitive to architecture and tuning | Reliable; scales like supervised learning |
+| Coverage of the data | Prone to dropping modes | Covers the distribution; the loss penalizes missing any part |
+| Progress signal | Losses don't track quality | The loss falls as quality improves |
+| Sampling cost | One network pass | Many passes, reduced to a few by distillation |
+| Likelihood | None | Can be computed via the ODE view |
+
+The deciding factor at scale was the second row. When generators became billion-parameter models trained on billions of images, a training objective that behaves like ordinary supervised learning was worth far more than single-pass sampling, and distillation later recovered most of the speed.
+
+</GoDeeper>
+
+## 8. Where Each Family Is Used Now
+
+- **Diffusion and flow matching** generate most images, video, and increasingly audio and 3D shapes, and are used in science, for example to generate protein structures and molecules.
+- **GANs** remain useful where single-pass speed matters (real-time effects, super-resolution) and, above all, as a *loss*: adversarial terms keep the autoencoders inside latent diffusion sharp, and adversarial distillation makes diffusion fast.
+- **VAEs and VQ-VAEs** are the compression stage in front of most generators.
+- **Autoregressive transformers** generate text, and also images and audio as sequences of discrete tokens; some recent multimodal models combine them with diffusion. [Multimodal and Generative Models](/docs/llms-genai/multimodal-generative-models) covers text-to-image systems end to end.
+
+## 9. When *Not* to Use Each
+
+| Situation | Better choice |
+|---|---|
+| Real-time generation on small hardware | A GAN or a distilled one-to-four-step diffusion model, not a 50-step sampler |
+| A new image or video generator trained from scratch | Flow matching or diffusion, not a GAN, for stability and coverage |
+| Generating text | An autoregressive language model |
+| Measuring a GAN's progress by its losses | FID or human evaluation of samples |
+| Diffusion directly on high-resolution pixels | Latent diffusion with a pretrained autoencoder |
+| Guidance scale turned very high for prompt adherence | A moderate scale; very high values oversaturate images and lose diversity |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Generative model | Learn to transform easy noise into samples from the data distribution |
+| GAN | Generator versus discriminator; sharp and fast, unstable, prone to mode collapse |
+| Forward process | Add Gaussian noise in small steps; closed form $\mathbf{x}_t = \sqrt{\bar\alpha_t}\mathbf{x}_0 + \sqrt{1-\bar\alpha_t}\boldsymbol{\epsilon}$ |
+| DDPM objective | Predict the added noise with squared error; plain regression |
+| Score | Predicted noise points towards higher data density at each noise level |
+| Flow matching | Learn the velocity along straight noise-to-data paths; fewer sampling steps |
+| Guidance | Extrapolate conditional past unconditional predictions to follow prompts |
+| Speed | Better ODE samplers, distillation, and working in a latent space |
+| Architecture | U-Nets first, now transformers over latent patches (DiT) |
+
+---
+
+Next: [GNNs, RL Networks, Metric Learning, SSL and Multimodal Nets](/docs/deep-learning/advanced-architectures), the remaining architecture families.
+
+## Sources
+
+- Goodfellow et al., [Generative Adversarial Nets](https://arxiv.org/abs/1406.2661) (2014)
+- Arjovsky, Chintala and Bottou, [Wasserstein GAN](https://arxiv.org/abs/1701.07875) (2017)
+- Karras, Laine and Aila, [A Style-Based Generator Architecture for GANs](https://arxiv.org/abs/1812.04948) (2018)
+- Ho, Jain and Abbeel, [Denoising Diffusion Probabilistic Models](https://arxiv.org/abs/2006.11239) (2020)
+- Song, Meng and Ermon, [Denoising Diffusion Implicit Models](https://arxiv.org/abs/2010.02502) (2020)
+- Song et al., [Score-Based Generative Modeling through Stochastic Differential Equations](https://arxiv.org/abs/2011.13456) (2021)
+- Ho and Salimans, [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598) (2022)
+- Lipman et al., [Flow Matching for Generative Modeling](https://arxiv.org/abs/2210.02747) (2022); Liu, Gong and Liu, [Flow Straight and Fast](https://arxiv.org/abs/2209.03003) (2022)
+- Peebles and Xie, [Scalable Diffusion Models with Transformers](https://arxiv.org/abs/2212.09748) (2022)
+- Esser et al., [Scaling Rectified Flow Transformers for High-Resolution Image Synthesis](https://arxiv.org/abs/2403.03206) (2024), Stable Diffusion 3
+- Song et al., [Consistency Models](https://arxiv.org/abs/2303.01469) (2023)
