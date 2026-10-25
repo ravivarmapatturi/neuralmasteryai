@@ -38,7 +38,7 @@ test.describe('Core application', () => {
   test('representative documentation page loads', async ({ page }) => {
     const errors = collectConsoleErrors(page);
     await page.goto('docs/deep-learning/attention-transformers');
-    await expect(page.locator('h1')).toHaveText('Attention & Transformers');
+    await expect(page.locator('h1')).toHaveText('Attention and Transformers, In Full Depth');
     expect(errors.errors()).toEqual([]);
   });
 
@@ -49,9 +49,9 @@ test.describe('Core application', () => {
     // "Deep Learning" collapses by default when it's not the active section
     // (see Sidebar.tsx) -- expand it before its link is clickable.
     await page.locator('.nm-sidebar button', { hasText: 'Deep Learning' }).click();
-    await page.locator('.nm-sidebar a', { hasText: 'Attention & Transformers' }).click();
+    await page.locator('.nm-sidebar a', { hasText: 'Attention and Transformers' }).click();
     await expect(page).toHaveURL(/attention-transformers/);
-    await expect(page.locator('h1')).toHaveText('Attention & Transformers');
+    await expect(page.locator('h1')).toHaveText('Attention and Transformers, In Full Depth');
     expect(errors.errors()).toEqual([]);
   });
 
@@ -70,7 +70,7 @@ test.describe('Core application', () => {
     // Same collapsed-section behavior as the desktop sidebar -- expand
     // "Deep Learning" before its link is clickable.
     await dialog.getByRole('button', { name: 'Deep Learning' }).click();
-    await dialog.getByRole('link', { name: 'Attention & Transformers' }).click();
+    await dialog.getByRole('link', { name: 'Attention and Transformers' }).click();
 
     await expect(page).toHaveURL(/attention-transformers/);
     await expect(dialog).toBeHidden();
@@ -98,9 +98,9 @@ test.describe('Core application', () => {
     const errors = collectConsoleErrors(page);
     const response = await page.goto('docs/deep-learning/attention-transformers');
     expect(response?.status()).toBe(200);
-    await expect(page.locator('h1')).toHaveText('Attention & Transformers');
+    await expect(page.locator('h1')).toHaveText('Attention and Transformers, In Full Depth');
     await page.reload();
-    await expect(page.locator('h1')).toHaveText('Attention & Transformers');
+    await expect(page.locator('h1')).toHaveText('Attention and Transformers, In Full Depth');
     expect(errors.errors()).toEqual([]);
   });
 });
