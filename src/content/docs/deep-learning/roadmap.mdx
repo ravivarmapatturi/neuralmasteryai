@@ -1,92 +1,203 @@
 ---
-title: "Deep Learning — Roadmap"
+title: "Deep Learning Roadmap"
 sidebar_position: 2
-description: "Neural networks from perceptrons to Transformers, diffusion, and GNNs -- CNNs, sequence models, attention, generative models, and every layer type in one map."
+description: "An ordered path through deep learning: what to learn at each stage and why it comes in that order, what you should be able to do before moving on (with a runnable backpropagation checkpoint), which paths to take for language, vision or generative work, and the common problems with their standard fixes."
 ---
 
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Deep Learning — Roadmap
+# Deep Learning Roadmap
 
-Neural networks from first principles up to the architectures that dominate modern AI.
+The [overview](/docs/deep-learning/overview) explained what deep learning is: networks that learn their own features, trained by one loop of forward pass, loss, backward pass and update. This page is the order to learn it in. The section has about twenty pages, and they depend on each other in specific ways: transformers make little sense without the recurrent networks whose limits they fixed, and diffusion models make little sense without the denoising autoencoders they grew from. Below, the material is arranged in five stages, each with the reason it comes where it does, what you should be able to do at the end, and a concrete check. After the stages come three paths through the later material for different goals, and the problems that come up on nearly every real project with their standard fixes.
 
-## 1. [Neural Network Fundamentals](/docs/deep-learning/neural-network-fundamentals)
-- [x] The perceptron, multi-layer perceptrons
-- [x] Activation functions: sigmoid, tanh, ReLU, GELU, SwiGLU
-- [x] Forward pass and backpropagation (the calculus, worked by hand once)
-- [x] Weight initialization (Xavier, He)
-- [x] Batch, mini-batch, and stochastic gradient descent
+<ELI5>
 
-## Building Blocks, In Full Depth
-- [x] [Activation Functions](/docs/deep-learning/activation-functions) — every variant, side by side, and when to use which
-- [x] [Loss Functions](/docs/deep-learning/loss-functions) — regression, classification, metric learning, and segmentation losses
-- [x] [Optimizers](/docs/deep-learning/optimizers) — SGD → Momentum → Adam → AdamW/Lion/LAMB, derived and visualized
-- [x] [Weight Initialization, Regularization & LR Scheduling](/docs/deep-learning/initialization-regularization-scheduling)
+Learning to build houses, you don't start with a skyscraper. First you learn what bricks, beams and mortar do and how to put a wall up straight. Then you learn the standard designs: a cottage, a barn, a block of flats, each suited to a different use. Only then do the special buildings make sense, because they are the standard designs with new ideas added.
 
-## 2. [Training Deep Networks](/docs/deep-learning/training-deep-networks)
-- [x] Loss functions: cross-entropy, MSE, contrastive/triplet loss
-- [x] Batch Normalization vs Layer Normalization vs RMSNorm
-- [x] Dropout and other regularization for deep nets
-- [x] Vanishing / exploding gradients
-- [x] Residual (skip) connections — why they enable very deep networks
-- [x] Learning rate schedules, warmup, gradient clipping
+Deep learning has the same shape. The first stage is the bricks and mortar: how a network computes, learns and stays stable. The middle stages are the standard designs for images, sequences and text. The last stage is everything built on top. Skipping the first stage is how people end up with a network that won't train and no idea why.
 
-## 3. [Convolutional Neural Networks (CNNs)](/docs/deep-learning/cnns)
-- [x] Convolution, pooling, receptive fields
-- [x] Classic architectures: LeNet → AlexNet → ResNet → EfficientNet
-- [x] Applications: image classification, object detection, segmentation
+</ELI5>
 
-## 4. [Sequence Models](/docs/deep-learning/sequence-models)
-- [x] RNNs, the vanishing gradient problem
-- [x] LSTM and GRU
-- [x] Sequence-to-sequence models, encoder-decoder
+## 1. Why the Order Matters
 
-## 5. [Attention & Transformers](/docs/deep-learning/attention-transformers)
-- [x] Self-attention and the Query/Key/Value formulation
-- [x] Why scale by √dₖ
-- [x] Multi-head attention
-- [x] Cross-attention (encoder-decoder)
-- [x] Positional encoding (absolute vs RoPE)
-- [x] The full Transformer block: attention + feed-forward + norm + residual
-- [x] Vision Transformers (ViT) — attention beyond text
+A few dependencies decide the order:
 
-## 6. [Vision Architectures: Transformers, Detection & Segmentation](/docs/deep-learning/vision-architectures)
-- [x] ViT variants: DeiT (data-efficient), Swin (windowed attention)
-- [x] Object detection: R-CNN family, YOLO, SSD, DETR
-- [x] Segmentation: U-Net, Mask R-CNN, semantic vs instance segmentation
+- **Backpropagation underlies everything.** Every architecture, from a CNN to a diffusion model, is trained by the same forward and backward pass. If you can't follow a gradient from the loss back to the first layer, every later failure (vanishing gradients, dead units, divergence) looks like magic.
+- **Training mechanics come before architectures.** Residual connections, normalization and careful initialization appear inside every modern architecture. They are much easier to understand as fixes for a problem you've seen than as unexplained boxes in a diagram.
+- **Sequence models motivate attention.** The transformer is best understood as the answer to two concrete failures of recurrent networks: they can't be parallelized across time, and gradients from distant steps vanish even with gates. Reading attention first leaves its design choices unexplained.
+- **Generative models build on representation learning.** Diffusion is denoising at many noise levels; latent diffusion runs inside an autoencoder's latent space. Both are easier after autoencoders.
 
-## 7. [Autoencoders & Variational Autoencoders](/docs/deep-learning/autoencoders)
-- [x] The encoder/bottleneck/decoder architecture and why the bottleneck forces learning
-- [x] Sparse and Denoising Autoencoder variants
-- [x] VAE: probabilistic latent space, the KL regularization term, the reparameterization trick
-- [x] VQ-VAE's discrete latent codebook
+Each stage below ends with what you should be able to do, which is a better test of readiness than having read the pages.
 
-## 8. [Generative Models: GANs & Diffusion](/docs/deep-learning/generative-models)
-- [x] GANs: Generator/Discriminator minimax training, mode collapse, training instability
-- [x] Named GAN variants: DCGAN, Conditional GAN, CycleGAN, Pix2Pix, WGAN, StyleGAN, BigGAN
-- [x] Diffusion in depth: DDPM, DDIM, score-based/SDE, Latent/Stable Diffusion, classifier-free guidance, ControlNet
-- [x] Why diffusion overtook GANs for image generation
+## 2. The Stages
 
-## 9. [GNNs, RL Networks, Metric Learning, SSL & Multimodal Nets](/docs/deep-learning/advanced-architectures)
-- [x] Graph Neural Networks: GCN, GraphSAGE, GAT, message passing
-- [x] Metric learning: Siamese networks, triplet/contrastive loss
-- [x] RL networks: DQN, policy gradients, actor-critic, PPO
-- [x] Self-supervised learning: contrastive (SimCLR/MoCo) and masked prediction (BERT/MAE)
-- [x] Multimodal: CLIP-style dual encoders, fusion-based VLMs
-- [x] Time series nets: TCN, N-BEATS, TFT
+### Stage 1: How a network computes and learns
 
-## 10. [Continual Learning](/docs/deep-learning/continual-learning)
-- [x] Catastrophic forgetting: why sequential training on Task A → Task B unlearns Task A
-- [x] Regularization-based mitigation: Elastic Weight Consolidation (EWC) and Fisher-weighted importance
-- [x] Replay-based mitigation: experience/generative replay and its memory tradeoff
-- [x] Parameter-isolation mitigation: progressive networks and per-task adapters
-- [x] Where this shows up now: continual pretraining/fine-tuning of LLMs
+Read, in order: [Neural Network Fundamentals](/docs/deep-learning/neural-network-fundamentals), [Activation Functions](/docs/deep-learning/activation-functions), [Loss Functions](/docs/deep-learning/loss-functions), [Optimizers](/docs/deep-learning/optimizers), and [Initialization, Regularization and Schedules](/docs/deep-learning/initialization-regularization-scheduling).
 
-## 11. [NN Layers Reference](/docs/deep-learning/nn-layers-reference)
-- [x] The full catalog: dense, convolutional, recurrent, attention, normalization, and graph layers in one lookup page
+This stage is the foundation for everything else and the one to slow down on. Derive backpropagation for a two-layer network on paper. Understand why cross-entropy pairs with softmax, why Adam behaves differently from SGD on badly scaled problems, and why He initialization has a factor of 2.
 
-## 12. Common Problems & SOTA Solutions
-- [x] **Vanishing gradients in deep nets** → residual connections, normalization
-- [x] **Overfitting on limited image data** → data augmentation, transfer learning, pretrained backbones
-- [x] **Quadratic cost of self-attention on long sequences** → Flash Attention, or [linear attention and Mamba-style state-space models](/docs/deep-learning/linear-attention-and-state-space-models)
-- [x] **Slow inference** → quantization, distillation, pruning
-- [x] **Training instability at scale** → careful init, warmup, gradient clipping, mixed precision
+**You're ready to move on when** you can write the forward and backward pass of a small network without a library and match autograd exactly, which the checkpoint in Section 3 asks you to do; when you can say what loss, output activation and optimizer you'd use for regression, binary and multi-class classification; and when you can explain why AdamW rather than Adam with weight decay.
+
+### Stage 2: Making depth trainable
+
+Read [Training Deep Networks](/docs/deep-learning/training-deep-networks), then [Neural Network Layers](/docs/deep-learning/nn-layers-reference) as a reference you'll keep coming back to.
+
+This stage explains the problem that shaped every modern architecture: the gradient reaching early layers is a product of one factor per layer, and it vanishes or explodes. Normalization, residual connections, gradient clipping and mixed precision are the fixes, and you'll see all of them again inside transformers.
+
+**You're ready when** you can explain from the chain rule why a deep sigmoid network can't train, what a residual connection does to the gradient, why transformers use LayerNorm or RMSNorm rather than BatchNorm, and which three numbers you'd log to diagnose a training run that isn't working.
+
+### Stage 3: Architectures for structure
+
+Read [Convolutional Neural Networks](/docs/deep-learning/cnns), then [Sequence Models](/docs/deep-learning/sequence-models), then [Attention and Transformers](/docs/deep-learning/attention-transformers), in that order.
+
+Each architecture builds in an assumption about the data. Convolutions assume locality and that patterns mean the same thing anywhere in an image. Recurrent networks assume order and carry a summary forward. Attention assumes almost nothing and lets every position look at every other, which costs more data and compute and scales further. Read the sequence-models page as the setup for the transformer: its last section is the list of problems attention fixes.
+
+**You're ready when** you can compute a convolution's output size and parameter count, explain why an LSTM's forget gate lets gradients survive further than a plain RNN, write scaled dot-product attention from memory and say why it divides by $\sqrt{d_k}$, and explain what a causal mask is for.
+
+### Stage 4: The transformer's descendants and extensions
+
+Read [BERT](/docs/deep-learning/bert) for the encoder-only family, [Vision Architectures](/docs/deep-learning/vision-architectures) for transformers applied to images along with detection and segmentation, then [Linear Attention and State-Space Models](/docs/deep-learning/linear-attention-and-state-space-models) and [Looped Transformers](/docs/deep-learning/recurrent-looped-transformers) for where the architecture is being extended.
+
+**You're ready when** you can say which of encoder-only, decoder-only and encoder-decoder suits classification, generation and translation; why raw BERT vectors make poor sentence embeddings; why ViTs need more data than CNNs; and what a fixed-size recurrent state buys over a growing key-value cache.
+
+### Stage 5: Learning without labels, and beyond
+
+Read [Autoencoders and VAEs](/docs/deep-learning/autoencoders), [Generative Models](/docs/deep-learning/generative-models), [Beyond Grids and Labels](/docs/deep-learning/advanced-architectures) (graphs, metric learning, reinforcement learning, self-supervision, multimodal models), and [Continual Learning](/docs/deep-learning/continual-learning).
+
+These pages are more independent of each other. Read the ones that match your work; read autoencoders before generative models.
+
+**You're ready when** you can explain what a VAE's KL term does to the latent space, what a diffusion model is trained to predict, why flow matching needs fewer sampling steps, how a GNN layer aggregates neighbours, and why training on a new task degrades an old one.
+
+## 3. A Checkpoint for Stage 1
+
+The single most useful exercise in this section: write a two-layer network's forward and backward pass by hand in NumPy, then check every gradient against PyTorch's autograd. If your gradients match to floating-point precision, you understand backpropagation; if they don't, the mismatch tells you which line of the chain rule is wrong.
+
+<PredictFirst
+  question="For a softmax output with cross-entropy loss, averaged over a batch of N examples, what is the gradient of the loss with respect to the logits?"
+  options={[
+    'The predicted probabilities p',
+    '(p − y) / N, where y is the one-hot label',
+    'log(p) − y',
+    'p(1 − p)',
+  ]}
+  correctIndex={1}
+  explanation="The softmax's derivative and the cross-entropy's derivative cancel to prediction minus target, and averaging over the batch divides by N. It's the line dlogits = p − onehot(y), then / 32, in the script below, and the reason this pairing is the default for classification."
+/>
+
+```python
+# Checkpoint for Stage 1: write the forward and backward pass of a small network by hand,
+# then check every gradient against PyTorch's autograd. If they match, you understand backprop.
+import numpy as np
+import torch
+
+rng = np.random.default_rng(0)
+X = rng.normal(size=(32, 5))                     # 32 examples, 5 features
+y = rng.integers(0, 3, size=32)                  # 3 classes
+W1, b1 = rng.normal(size=(5, 16)) * 0.5, np.zeros(16)
+W2, b2 = rng.normal(size=(16, 3)) * 0.5, np.zeros(3)
+
+# ---- by hand -------------------------------------------------------------------------
+z1 = X @ W1 + b1
+h = np.maximum(0, z1)                            # ReLU
+logits = h @ W2 + b2
+p = np.exp(logits - logits.max(1, keepdims=True)); p /= p.sum(1, keepdims=True)   # stable softmax
+loss = -np.log(p[np.arange(32), y]).mean()       # cross-entropy
+
+dlogits = p.copy(); dlogits[np.arange(32), y] -= 1; dlogits /= 32     # softmax + CE: p - y
+dW2, db2 = h.T @ dlogits, dlogits.sum(0)
+dz1 = (dlogits @ W2.T) * (z1 > 0)                # back through ReLU
+dW1, db1 = X.T @ dz1, dz1.sum(0)
+
+# ---- the same network in PyTorch -------------------------------------------------------
+t = {k: torch.tensor(v, requires_grad=True) for k, v in dict(W1=W1, b1=b1, W2=W2, b2=b2).items()}
+out = torch.relu(torch.tensor(X) @ t["W1"] + t["b1"]) @ t["W2"] + t["b2"]
+torch_loss = torch.nn.functional.cross_entropy(out, torch.tensor(y))
+torch_loss.backward()
+
+print(f"loss: by hand {loss:.6f}   torch {torch_loss.item():.6f}")
+for name, ours in dict(W1=dW1, b1=db1, W2=dW2, b2=db2).items():
+    print(f"d{name}: max difference from autograd {np.abs(ours - t[name].grad.numpy()).max():.1e}")
+```
+
+Output:
+
+```text
+loss: by hand 2.187317   torch 2.187317
+dW1: max difference from autograd 5.6e-17
+db1: max difference from autograd 2.8e-17
+dW2: max difference from autograd 1.1e-16
+db2: max difference from autograd 5.6e-17
+```
+
+The loss and all four gradients agree with autograd to about $10^{-16}$, the limit of 64-bit floating point. Try breaking it on purpose: forget the $(z_1 > 0)$ ReLU mask, or the division by the batch size, and watch which gradients stop matching. Then extend it: add a third layer, swap ReLU for tanh, or replace the full-batch gradient with mini-batches and an Adam update.
+
+## 4. Three Paths for Different Goals
+
+After stages 1 and 2, the order of the rest depends on what you want to build:
+
+| Goal | Path |
+|---|---|
+| Understanding language models | Sequence Models, Attention and Transformers, BERT, then [LLMs and GenAI](/docs/llms-genai/overview) |
+| Computer vision | CNNs, Attention and Transformers, Vision Architectures, Autoencoders, then [Computer Vision](/docs/computer-vision/overview) |
+| Image, audio or video generation | CNNs, Attention and Transformers, Autoencoders, Generative Models, then [Multimodal and Generative Models](/docs/llms-genai/multimodal-generative-models) |
+
+Whichever you take, come back for Training Deep Networks if a model won't train: it's the page most often needed in practice.
+
+## 5. Common Problems and Their Standard Fixes
+
+These come up on almost every real project:
+
+| Problem | Standard fix | Where it's covered |
+|---|---|---|
+| Loss flat from the first step | Check the learning rate, initialization and activations; look at per-layer gradient norms | [Training Deep Networks](/docs/deep-learning/training-deep-networks) |
+| Loss becomes `NaN` | Lower the learning rate, add warmup and gradient clipping, compute the loss in float32 | [Training Deep Networks](/docs/deep-learning/training-deep-networks) |
+| Vanishing gradients in a deep network | Residual connections, normalization, ReLU-family activations, He initialization | [Initialization](/docs/deep-learning/initialization-regularization-scheduling) |
+| Overfitting on limited data | Augmentation, weight decay, dropout, and above all a pretrained backbone | [Initialization, Regularization](/docs/deep-learning/initialization-regularization-scheduling) |
+| Attention too slow or memory-hungry on long sequences | FlashAttention, grouped-query attention, or linear-attention and state-space models | [Linear Attention](/docs/deep-learning/linear-attention-and-state-space-models) |
+| Inference too slow or expensive | Quantization, distillation, pruning, batching | [Evaluation and Serving](/docs/llms-genai/evaluation-and-serving) |
+| Training unstable at scale | Pre-norm, warmup, clipping, AdamW with $\beta_2 = 0.95$, bfloat16 | [Optimizers](/docs/deep-learning/optimizers) |
+| A fine-tuned model forgot what it knew | Mix in some original data, use adapters, lower the learning rate | [Continual Learning](/docs/deep-learning/continual-learning) |
+
+<GoDeeper title="Go deeper: what to practise, not just read">
+
+Reading builds recognition; only doing builds skill. A few exercises are worth more than any amount of re-reading.
+
+- **Overfit one batch first.** Before training any new model, train it on 32 examples until the loss is near zero. If it can't, there's a bug, and you'll find it faster on 32 examples than on 32 million.
+- **Reproduce a small result.** Train a small CNN on a standard dataset to a published accuracy, or a character-level transformer on a small text corpus. Matching a known number teaches you what the defaults are.
+- **Break things deliberately.** Remove the residual connections, the normalization, the warmup or the causal mask, one at a time, and watch what changes. You'll recognize those failure signatures for good.
+- **Read a reference implementation.** A compact, well-written transformer implementation such as Karpathy's nanoGPT shows every idea in Stage 3 in a few hundred lines.
+
+</GoDeeper>
+
+## 6. When *Not* to Follow This Order
+
+| Situation | Better approach |
+|---|---|
+| You only need to fine-tune or call an existing model | Read the overview, then go straight to [LLMs and GenAI](/docs/llms-genai/overview) or the relevant applied section |
+| You already train networks and want one specific architecture | Skim Stage 1 for gaps, then jump to the page you need |
+| Your problem is tabular data | [Machine Learning](/docs/machine-learning/roadmap) first; gradient-boosted trees usually win there |
+| The calculus or linear algebra feels shaky | [Mathematics for AI](/docs/mathematics-for-ai/overview) first; Stage 1 depends on both |
+
+## Remember
+
+| Stage | What it gives you |
+|---|---|
+| 1. Fundamentals | Forward and backward pass, losses, optimizers, initialization |
+| 2. Depth | Why deep networks fail to train and the fixes inside every modern model |
+| 3. Architectures | CNNs for grids, RNNs for sequences, transformers for everything at scale |
+| 4. Descendants | Encoders, vision transformers, detection and segmentation, new sequence layers |
+| 5. Beyond labels | Autoencoders, generative models, graphs, self-supervision, continual learning |
+| Checkpoint | A hand-written backward pass that matches autograd exactly |
+
+---
+
+Start with [Neural Network Fundamentals](/docs/deep-learning/neural-network-fundamentals).
+
+## Sources
+
+- Goodfellow, Bengio and Courville, [Deep Learning](https://www.deeplearningbook.org/) (MIT Press, 2016)
+- Zhang, Lipton, Li and Smola, [Dive into Deep Learning](https://d2l.ai/) (2023)
+- Karpathy, [nanoGPT](https://github.com/karpathy/nanoGPT) and [A Recipe for Training Neural Networks](https://karpathy.github.io/2019/04/25/recipe/) (2019)
+- PyTorch documentation, [Autograd mechanics](https://pytorch.org/docs/stable/notes/autograd.html)
