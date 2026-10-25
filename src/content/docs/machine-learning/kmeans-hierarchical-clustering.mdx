@@ -1,74 +1,296 @@
 ---
 title: "K-Means & Hierarchical Clustering, In Full Depth"
 sidebar_position: 6.1
-description: "K-Means and hierarchical clustering derived in full -- discovering groups that already exist in unlabeled data, purely from how points relate to each other."
+description: "K-means and hierarchical clustering derived: the k-means objective, why each Lloyd step can only lower it, local optima and k-means++ seeding, choosing k, the link to Gaussian mixtures; agglomerative clustering, the four linkages, Ward's merge cost derived, reading a dendrogram, cost, and from-scratch code checked against scikit-learn and SciPy."
 ---
 
-import __migratedImg0 from './img/kmeans-clusters.png';
-import __migratedImg1 from './img/clustering-shape-comparison.png';
-import __migratedImg2 from './img/dendrogram.png';
-
-
+import kmeansLight from './img/kmeans-clusters-light.png';
+import kmeansDark from './img/kmeans-clusters.png';
+import dendroLight from './img/dendrogram-light.png';
+import dendroDark from './img/dendrogram.png';
 import DecisionBoundaryPlayground from '../../../viz/DecisionBoundaryPlayground';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # K-Means & Hierarchical Clustering, In Full Depth
 
-Every model since [Linear Regression](/docs/machine-learning/linear-regression) has learned from labeled examples. Clustering is different: no labels at all — the goal is to discover groups that already exist in the data, purely from how points relate to each other.
+[Unsupervised Learning](/docs/machine-learning/unsupervised-learning) set out the clustering problem and why judging a clustering is hard. This page derives the two oldest and most widely used methods. k-means is an optimization problem with a simple alternating algorithm, and the derivation shows why that algorithm always converges, why it can converge to a bad answer, and how a better starting point fixes most of that. Hierarchical clustering answers a different question: instead of one partition into $k$ groups, it builds the whole family of nested partitions, from every point alone to everything together, and lets you choose afterwards. Each comes with a from-scratch implementation checked against a library.
 
-## K-Means
+<ELI5>
 
-**The algorithm** (already implemented once, informally, inside [Random Forest's](/docs/machine-learning/random-forest) cousin methods — here it's the main event):
+Imagine placing $k$ ice-cream stands on a beach so that, on average, people walk as little as possible. You could guess some spots, let everyone go to their nearest stand, then move each stand to the middle of its crowd, let people re-choose, move the stands again, and repeat until nothing changes. That's k-means.
 
-1. Choose $k$ (the number of clusters) and initialize $k$ centroids — commonly by picking $k$ random data points.
-2. **Assign**: put each point into the cluster of its nearest centroid (by Euclidean distance — see [Linear Algebra](/docs/mathematics-for-ai/linear-algebra)).
-3. **Update**: move each centroid to the mean position of the points now assigned to it.
-4. Repeat steps 2-3 until assignments stop changing.
+Hierarchical clustering is more like a family tree for the beachgoers. Start with everyone as their own group, then keep joining the two groups that are most alike, until everyone is in one big group. The record of every joining step is a tree, and you can cut it at whatever level gives you the number of groups you want. Everything below is those two ideas made exact.
 
-<img src={__migratedImg0} alt="K-Means clustering: three clusters found automatically, with centroids marked" style={{maxWidth: '100%'}} />
+</ELI5>
 
-**What K-Means is actually optimizing**: it minimizes **inertia** — the total squared distance from each point to its assigned centroid, $\sum_i \|\mathbf{x}_i - \mu_{c(i)}\|^2$. This is the *unsupervised* analog of the [squared-error cost function](/docs/machine-learning/linear-regression#2-the-cost-function-mean-squared-error) from linear regression — same functional form, just minimized over cluster assignments and centroid positions instead of over a fitted line.
+## 1. What k-Means Minimizes
 
-**Choosing $k$**: since there's no ground truth to check against, use the **elbow method** — plot inertia against $k$ for several candidate values, and look for the point where adding another cluster stops reducing inertia much (a bend in the curve). More rigorous alternatives include the silhouette score, which measures how well-separated clusters actually are.
+### K-Means
 
-Click to place your own points (no labels needed — that's the point) and watch real Lloyd's-algorithm assignment/update steps converge live:
+Given $n$ points $\mathbf{x}_1, \dots, \mathbf{x}_n$ and a number of clusters $k$, k-means looks for $k$ **centroids** $\boldsymbol{\mu}_1, \dots, \boldsymbol{\mu}_k$ and an assignment $c(i)$ of each point to one of them that minimize the **within-cluster sum of squares**, also called the **inertia**:
+
+$$
+J(c, \boldsymbol{\mu}) = \sum_{i=1}^{n}\big\lVert\mathbf{x}_i - \boldsymbol{\mu}_{c(i)}\big\rVert^2
+$$
+
+It's the same squared error as [linear regression's cost](/docs/machine-learning/linear-regression#2-the-cost-function-mean-squared-error), with each point "predicted" by its cluster's centroid. Two consequences of that choice follow immediately. Squared Euclidean distance treats all directions the same, so k-means favours round clusters of similar spread. And every feature's units enter the distance directly, so features must be on comparable scales.
+
+Minimizing $J$ exactly is NP-hard, even for $k = 2$ (Aloise et al., 2009). But it splits naturally into two easy problems.
+
+## 2. Lloyd's Algorithm, and Why It Converges
+
+$J$ depends on two sets of unknowns, the assignments and the centroids. Fix one and the other has an exact answer.
+
+**Assignment step: fix the centroids, choose the assignments.** Each point's term in $J$ depends only on its own assignment, so minimize each separately: assign every point to its nearest centroid,
+
+$$
+c(i) = \arg\min_{j}\,\lVert\mathbf{x}_i - \boldsymbol{\mu}_j\rVert^2
+$$
+
+**Update step: fix the assignments, choose the centroids.** Now $J$ separates by cluster. For cluster $j$ with points $S_j$, minimize $\sum_{i \in S_j}\lVert\mathbf{x}_i - \boldsymbol{\mu}_j\rVert^2$ over $\boldsymbol{\mu}_j$. The gradient is $-2\sum_{i \in S_j}(\mathbf{x}_i - \boldsymbol{\mu}_j)$, which is zero at
+
+$$
+\boldsymbol{\mu}_j = \frac{1}{\lvert S_j\rvert}\sum_{i \in S_j}\mathbf{x}_i
+$$
+
+the mean of the cluster's points. That's where the name comes from.
+
+**Lloyd's algorithm** (1957, published 1982) alternates the two steps until the assignments stop changing. Each step solves its subproblem exactly, so neither can increase $J$: the assignment step picks the best assignments for the current centroids, and the update step picks the best centroids for the current assignments. $J$ never goes up. And there are only finitely many ways to assign $n$ points to $k$ clusters, so the algorithm can't keep improving forever: it must stop, usually within a few dozen iterations. In Section 7 the inertia goes 7295, 3333, 3164, ... and settles at 3145 after 13 iterations.
+
+Each iteration costs $O(nkd)$: every point against every centroid. That makes k-means one of the cheapest clustering methods there is, and **mini-batch k-means** (Sculley, 2010), which updates centroids from small random batches, scales it to data that doesn't fit in memory.
+
+Click to place points and watch the assignment and update steps converge:
 
 <DecisionBoundaryPlayground defaultMode="kmeans" />
 
-**Weaknesses**:
-- **Assumes spherical, similarly-sized clusters** — because it minimizes distance-to-centroid, K-Means implicitly assumes clusters are round blobs. It fails badly on elongated or non-convex shapes:
+**Try it yourself:** implement [the assignment step](/practice/kmeans-assignment-step) and [the update step](/practice/kmeans-update-step) from scratch, against real test cases.
 
-<img src={__migratedImg1} alt="K-Means fails on non-convex &quot;two moons&quot; data; density/graph-based methods respect the true shape" style={{maxWidth: '100%'}} />
+## 3. Local Optima and k-Means++
 
-- **Sensitive to initialization** — a bad random start can converge to a poor local optimum; **K-Means++** (a smarter initialization that spreads initial centroids apart) is the standard fix, and the default in most libraries.
-- **Must choose $k$ upfront** — unlike hierarchical clustering below.
+"Converges" means it reaches a point where neither step can improve $J$. That's a **local** optimum, and it can be far from the best. A typical failure: two initial centroids land in the same true cluster, and some other true cluster gets none. The first two split their cluster between them, the neglected cluster is absorbed by a neighbouring centroid, and no single assignment or update step can move a centroid across the gap to fix it.
 
-**Try it yourself:** [implement one K-Means assignment step from scratch](/practice/kmeans-assignment-step), against real test cases.
+Section 7 shows how much this matters. On data with 8 well-defined blobs, 200 runs from random initial centroids end anywhere from close to the best inertia (about 2,160) to 10,037, nearly five times worse; only 9% of runs land within 1% of the best. The single run traced above stops at 3,145.
 
-## Hierarchical Clustering
+**k-means++** (Arthur and Vassilvitskii, 2007) fixes most of this with a better start. Choose the first centroid uniformly at random from the data. Then choose each next centroid at random with probability proportional to $D(\mathbf{x})^2$, the squared distance from $\mathbf{x}$ to the nearest centroid chosen so far. Points far from every existing centroid are much more likely to be picked, so the initial centroids spread out across the data. Arthur and Vassilvitskii proved that the result is, in expectation, within a factor of $O(\log k)$ of the optimal inertia before Lloyd's algorithm even starts. In Section 7, k-means++ cuts the worst of 200 runs from 10,037 to 5,486 and the median from 3,173 to 2,279.
 
-Instead of committing to a fixed $k$, hierarchical clustering builds a full tree of nested groupings, letting you choose how many clusters to cut out *after* seeing the structure.
+The remaining fix is cheap: run several times from different seeds and keep the run with the lowest inertia. scikit-learn's `KMeans` uses k-means++ by default and `n_init` restarts; in Section 7, the best of 10 k-means++ runs reaches 2,159.9, against scikit-learn's 2,159.6.
 
-**Agglomerative** (bottom-up, the common approach): start with every point as its own cluster, then repeatedly merge the two closest clusters, until everything is one cluster. The result is a **dendrogram**:
+<PredictFirst
+  question="You run k-means on the same data with k = 8, once with random_state=1 and once with random_state=2. The final inertias are 2,160 and 3,145. What does that tell you?"
+  options={[
+    'There is a bug, since k-means is deterministic',
+    'The second run stopped at a worse local optimum; keep the first (or run more restarts and keep the lowest)',
+    'The data has between 2,160 and 3,145 natural clusters',
+    'The second run is better because a larger inertia means more spread-out clusters',
+  ]}
+  correctIndex={1}
+  explanation="Lloyd's algorithm only guarantees that inertia never increases, so it stops at a local optimum that depends on the starting centroids. Lower inertia is better for a fixed k. Different seeds giving different answers is expected; the standard remedy is several restarts with k-means++ seeding, keeping the lowest-inertia run."
+/>
 
-<img src={__migratedImg2} alt="A hierarchical clustering dendrogram — cutting at any height gives a different number of clusters" style={{maxWidth: '100%'}} />
+## 4. Choosing k
 
-Read the dendrogram like this: the y-axis is the distance at which two groups merged — low merges are confident, tight groupings; high merges are combining already-dissimilar groups. **Cutting** the tree at any horizontal height gives a specific clustering: cut low for many small, tight clusters; cut high for few, broad clusters. This is hierarchical clustering's key advantage over K-Means — you see the *entire* range of possible groupings in one structure, and pick the cut that makes sense, rather than committing to one $k$ before even looking at the data.
+The inertia always decreases as $k$ grows, and reaches zero at $k = n$ (every point its own centroid), so it can't choose $k$ by itself. The usual aids:
 
-**Linkage criteria** — how "distance between two clusters" is defined, since a cluster is a group of points, not a single point:
-- **Single linkage**: distance between the two closest points across clusters — can produce long, straggly "chained" clusters.
-- **Complete linkage**: distance between the two *farthest* points — tends to produce tight, compact clusters.
-- **Average linkage**: average distance between all cross-cluster pairs — a middle ground.
-- **Ward linkage** (used in the dendrogram above): merges whichever pair of clusters increases total within-cluster variance the least — tends to produce well-balanced, similarly-sized clusters, and is the most common default.
+- **The elbow.** Plot inertia against $k$ and look for the point where adding clusters stops helping much. In Section 7, inertia falls steeply to $k = 7$ or $8$ (10,718 at $k = 4$, 2,378 at $k = 7$, 2,160 at $k = 8$) and slowly after. Often the bend is ambiguous.
+- **The silhouette** ([defined on the hub page](/docs/machine-learning/unsupervised-learning)): pick the $k$ with the highest average. In Section 7 it peaks at $k = 6$ (0.675), not at the true 8 (0.574): some of the eight blobs sit close together, and merging them makes tidier clusters. Silhouette rewards compact, well-separated groups, not the number that generated the data.
+- **The gap statistic** (Tibshirani, Walther and Hastie, 2001) compares the inertia curve with the curve expected for data with no clusters at all (uniform over the same range), and picks the $k$ where the real data's improvement most exceeds what structureless data would give.
+- **Information criteria.** If the clusters are treated as a Gaussian mixture (below), BIC gives a principled trade-off between fit and number of parameters.
 
-**Divisive** (top-down): the reverse — start with all points in one cluster, and recursively split. Far less common in practice than agglomerative, mainly because deciding *how* to split optimally at each step is more expensive than deciding what to merge.
+None of these replaces the question the clusters are for. Three customer segments a team can act on may be more useful than the eight a criterion prefers.
 
-## K-Means vs. Hierarchical
+<GoDeeper title="Go deeper: k-means is a special case of a Gaussian mixture">
 
-| | K-Means | Hierarchical (Agglomerative) |
+A [Gaussian mixture model](/docs/machine-learning/gmm-spectral-clustering) says each point comes from one of $k$ Gaussians, and fits them with the EM algorithm: the E-step computes each point's *probability* of belonging to each component, and the M-step re-estimates each component's mean (and covariance) as a weighted average.
+
+Fix every component's covariance at $\sigma^2 I$ (round, all the same size) and equal mixing weights, then let $\sigma^2 \to 0$. The probability that point $\mathbf{x}$ belongs to component $j$ is proportional to $\exp\!\big(-\lVert\mathbf{x} - \boldsymbol{\mu}_j\rVert^2/2\sigma^2\big)$, and as $\sigma^2$ shrinks, the nearest component's term dominates all the others completely: the soft probabilities become a hard 1 for the nearest centroid and 0 elsewhere. The E-step becomes k-means' assignment step, and the M-step's weighted mean becomes the plain cluster mean. k-means is "hard EM" for a mixture of identical, round Gaussians.
+
+That explains its biases precisely. It assumes round clusters (identity covariance), clusters of similar spread (the same $\sigma^2$ for all), and, because each point counts once toward its nearest centroid, it tends to favour clusters with similar numbers of points. A Gaussian mixture with full covariances relaxes all three, at the cost of more parameters and soft assignments.
+
+</GoDeeper>
+
+<ThemedImage alt="Eight clusters of points, each a different colour, with the eight k-means centroids marked by crosses" sources={{light: kmeansLight, dark: kmeansDark}} />
+
+## 5. Building the Whole Tree
+
+### Hierarchical Clustering
+
+k-means needs $k$ in advance and returns one partition. **Agglomerative hierarchical clustering** returns all of them at once:
+
+1. Start with every point as its own cluster.
+2. Find the two closest clusters and merge them. Record the distance at which they merged.
+3. Repeat until one cluster remains.
+
+The $n - 1$ merges form a binary tree, the **dendrogram**. The height of each join is the distance at which those two groups merged:
+
+<ThemedImage alt="A Ward dendrogram of 60 points, with a dashed horizontal line at height 25 cutting it into three clusters" sources={{light: dendroLight, dark: dendroDark}} />
+
+Reading it: joins near the bottom merged very similar groups; joins near the top merged groups that were already far apart. **Cutting** the tree with a horizontal line gives a partition: every branch the line crosses is one cluster. Cutting this tree at height 25 gives 3 clusters, at height 12 gives 6, and at height 5 gives 8, the number of blobs the points were sampled from. A long vertical stretch with no joins, such as between heights 26 and 68 above, is a sign of well-separated structure: there's a wide range of cut heights that all give the same answer.
+
+**Linkage: what "distance between clusters" means.** Points have distances; clusters need a rule. The four standard ones, for clusters $A$ and $B$:
+
+| Linkage | Distance between $A$ and $B$ | Tends to produce |
 |---|---|---|
-| Must choose $k$ upfront? | Yes | No — cut the dendrogram anywhere after |
-| Scales to large datasets | Yes — roughly $O(nk)$ per iteration | Poorly — naive implementations are $O(n^2)$ or worse |
-| Cluster shape assumption | Spherical/convex | Depends on linkage; still generally struggles with non-convex shapes |
-| Deterministic? | No (depends on initialization) | Yes, given a fixed linkage and distance metric |
+| Single | Closest pair: $\min_{a \in A,\, b \in B} d(a, b)$ | Long chains; follows non-convex shapes, but one bridge of noise merges two clusters |
+| Complete | Farthest pair: $\max_{a,\,b} d(a, b)$ | Compact clusters of similar diameter |
+| Average | Mean over all pairs | A compromise between the two |
+| Ward | Increase in within-cluster sum of squares from merging | Compact, similar-sized clusters, like k-means |
 
-Next: [DBSCAN & HDBSCAN](/docs/machine-learning/dbscan-hdbscan) — clustering by density instead of distance-to-centroid, which handles non-convex shapes natively.
+**Ward's merge cost, derived.** Ward's method merges the pair whose merger increases the total within-cluster sum of squares (k-means' objective) the least. That increase has a closed form. Let the clusters have $n_A$ and $n_B$ points and means $\bar{\mathbf{a}}$ and $\bar{\mathbf{b}}$; the merged cluster has mean $\bar{\mathbf{m}} = (n_A\bar{\mathbf{a}} + n_B\bar{\mathbf{b}})/(n_A + n_B)$. The sum of squares of the merged cluster around $\bar{\mathbf{m}}$ equals each part's own sum of squares plus the cost of measuring from $\bar{\mathbf{m}}$ instead of the part's own mean, which is $n_A\lVert\bar{\mathbf{a}} - \bar{\mathbf{m}}\rVert^2 + n_B\lVert\bar{\mathbf{b}} - \bar{\mathbf{m}}\rVert^2$. Substituting $\bar{\mathbf{m}}$ and simplifying:
+
+$$
+\Delta(A, B) = \frac{n_A\,n_B}{n_A + n_B}\,\big\lVert\bar{\mathbf{a}} - \bar{\mathbf{b}}\big\rVert^2
+$$
+
+The distance between the means, weighted by a factor that's largest when both clusters are big. Ward's method avoids merging two large clusters unless their means are very close, which is why it produces balanced clusters. Section 7 checks the formula against the directly computed change in sum of squares: both give 16.436.
+
+**Cost.** The standard algorithm needs all pairwise distances, $O(n^2)$ memory, and $O(n^2)$ to $O(n^2\log n)$ time with efficient implementations. That's fine for a few thousand points and impractical for millions, the main reason k-means is used at scale. Single linkage is the exception: its dendrogram can be read off a minimum spanning tree of the points, which has fast algorithms.
+
+**How faithful is the tree?** The height at which two points first end up in the same cluster is their **cophenetic distance**. The correlation between cophenetic distances and the original distances measures how well the dendrogram preserves the data's geometry. In Section 7 it's 0.775 for single linkage and 0.80 to 0.82 for the others.
+
+## 6. k-Means or Hierarchical?
+
+| | k-Means | Agglomerative |
+|---|---|---|
+| Output | One partition into $k$ clusters | A tree of all partitions; cut anywhere |
+| Need $k$ in advance? | Yes | No |
+| Cost | $O(nkd)$ per iteration | $O(n^2)$ memory, $O(n^2)$ to $O(n^2\log n)$ time |
+| Deterministic? | No: depends on initialization | Yes, for a given linkage and distance |
+| Cluster shapes | Round, similar size | Depends on linkage: chains (single), compact (complete, Ward) |
+| Distance | Squared Euclidean only (the mean minimizes it) | Any distance or similarity |
+| Assign new points | Nearest centroid | No direct rule; re-run or assign to the nearest cluster |
+
+A common combination uses both: run k-means with a large $k$ (say 100) to compress millions of points into 100 centroids, then build a dendrogram of the centroids to see how they group.
+
+## 7. Minimal Implementation
+
+Lloyd's algorithm with k-means++ seeding, traced iteration by iteration and compared with scikit-learn; 200 random-start and k-means++ runs; the elbow and silhouette for choosing $k$; then Ward's merge-cost formula and each linkage's cophenetic correlation:
+
+```python
+import numpy as np
+from scipy.cluster.hierarchy import cophenet, linkage
+from scipy.spatial.distance import pdist
+from sklearn.cluster import KMeans
+from sklearn.datasets import make_blobs
+from sklearn.metrics import silhouette_score
+
+def kmeans_pp_init(X, k, rng):
+    centers = [X[rng.integers(len(X))]]                        # first centre: uniform at random
+    for _ in range(k - 1):
+        d2 = ((X[:, None, :] - np.array(centers)[None]) ** 2).sum(-1).min(1)
+        centers.append(X[rng.choice(len(X), p=d2 / d2.sum())])  # next: probability proportional to D(x)^2
+    return np.array(centers)
+
+def lloyd(X, centers, iters=100):
+    history = []
+    for _ in range(iters):
+        d2 = ((X[:, None, :] - centers[None]) ** 2).sum(-1)
+        labels = d2.argmin(1)                                   # assignment step
+        history.append(d2[np.arange(len(X)), labels].sum())     # inertia after assigning
+        new = np.array([X[labels == j].mean(0) if np.any(labels == j) else centers[j]
+                        for j in range(len(centers))])          # update step: means
+        if np.allclose(new, centers):
+            break
+        centers = new
+    return centers, labels, history
+
+X, _ = make_blobs(n_samples=1500, centers=8, cluster_std=0.9, random_state=3)
+rng = np.random.default_rng(0)
+centers, labels, hist = lloyd(X, kmeans_pp_init(X, 8, rng))
+print("inertia by iteration:", [round(h) for h in hist])
+best10 = min(lloyd(X, kmeans_pp_init(X, 8, rng))[2][-1] for _ in range(10))
+print(f"ours: one run {hist[-1]:.1f}, best of 10 runs {best10:.1f}   "
+      f"scikit-learn (best of 10) {KMeans(8, n_init=10, random_state=0).fit(X).inertia_:.1f}")
+
+# Random initialization vs k-means++, 200 single runs each
+rand = [lloyd(X, X[rng.choice(len(X), 8, replace=False)])[2][-1] for _ in range(200)]
+pp = [lloyd(X, kmeans_pp_init(X, 8, rng))[2][-1] for _ in range(200)]
+best = min(rand + pp)
+for name, r in [("random init", rand), ("k-means++", pp)]:
+    r = np.array(r)
+    print(f"{name:12s} worst {r.max():.0f}   median {np.median(r):.0f}   runs within 1% of the best {np.mean(r < 1.01 * best):.0%}")
+
+# Choosing k: inertia (elbow) and silhouette
+for k in [4, 6, 7, 8, 9, 10, 12]:
+    m = KMeans(k, n_init=10, random_state=0).fit(X)
+    print(f"k={k:<3} inertia {m.inertia_:>8.0f}   silhouette {silhouette_score(X, m.labels_):.3f}")
+
+# Hierarchical: Ward's merge cost, and how faithfully each linkage's tree preserves distances
+a, b = X[:40], X[40:100]
+ward_cost = len(a) * len(b) / (len(a) + len(b)) * np.sum((a.mean(0) - b.mean(0)) ** 2)
+sse = lambda P: ((P - P.mean(0)) ** 2).sum()
+print(f"Ward merge cost: formula {ward_cost:.3f}   increase in within-cluster SSE {sse(np.vstack([a, b])) - sse(a) - sse(b):.3f}")
+D = pdist(X)
+for method in ["single", "complete", "average", "ward"]:
+    print(f"{method:9s} cophenetic correlation {cophenet(linkage(X, method), D)[0]:.3f}")
+```
+
+Output (scikit-learn 1.7, SciPy 1.16):
+
+```
+inertia by iteration: [7295, 3333, 3164, 3154, 3149, 3147, 3146, 3146, 3145, 3145, 3145, 3145, 3145]
+ours: one run 3145.4, best of 10 runs 2159.9   scikit-learn (best of 10) 2159.6
+random init  worst 10037   median 3173   runs within 1% of the best 9%
+k-means++    worst 5486   median 2279   runs within 1% of the best 22%
+k=4   inertia    10718   silhouette 0.635
+k=6   inertia     3490   silhouette 0.675
+k=7   inertia     2378   silhouette 0.664
+k=8   inertia     2160   silhouette 0.574
+k=9   inertia     2055   silhouette 0.534
+k=10  inertia     1953   silhouette 0.510
+k=12  inertia     1724   silhouette 0.450
+Ward merge cost: formula 16.436   increase in within-cluster SSE 16.436
+single    cophenetic correlation 0.775
+complete  cophenetic correlation 0.815
+average   cophenetic correlation 0.820
+ward      cophenetic correlation 0.802
+```
+
+- **Monotone convergence (Section 2).** Inertia never rises across the 13 iterations, and most of the drop happens in the first two.
+- **A local optimum (Section 3).** That single run stops at 3,145; the best of 10 runs reaches 2,159.9, matching scikit-learn's 2,159.6 to within 0.02%.
+- **Seeding matters.** k-means++ more than halves the worst case and cuts the median from 3,173 to 2,279.
+- **Choosing $k$ is a judgment (Section 4).** Inertia bends around 7 to 8; silhouette prefers 6.
+- **Ward's formula is exact (Section 5)**, and average linkage preserves this data's distances best.
+
+## 8. When *Not* to Use These
+
+| Situation | Better choice |
+|---|---|
+| Clusters are elongated, nested or non-convex | [DBSCAN/HDBSCAN](/docs/machine-learning/dbscan-hdbscan), single linkage, or [spectral clustering](/docs/machine-learning/gmm-spectral-clustering) |
+| Clusters have very different spreads or orientations | A [Gaussian mixture](/docs/machine-learning/gmm-spectral-clustering) with full covariances |
+| You need soft, probabilistic memberships | A Gaussian mixture |
+| Data has many outliers or noise points | DBSCAN/HDBSCAN, which label noise; or k-medoids, which uses actual points as centres and any distance |
+| Categorical features | k-modes, or hierarchical clustering with a suitable distance (Gower, Hamming) |
+| Millions of points with hierarchical clustering | k-means (mini-batch) first, then cluster the centroids |
+| Very high-dimensional raw data | Reduce dimensions (PCA) or embed first; distances concentrate |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| k-means objective | Minimize $\sum_i\lVert\mathbf{x}_i - \boldsymbol{\mu}_{c(i)}\rVert^2$ |
+| Lloyd's algorithm | Assign to nearest centroid; move centroid to the mean; repeat |
+| Convergence | Each step solves its half exactly, so $J$ never rises; finitely many assignments |
+| Local optima | Different seeds, different answers; keep the lowest inertia |
+| k-means++ | Seed with probability $\propto D(\mathbf{x})^2$; $O(\log k)$-competitive in expectation |
+| Choosing $k$ | Elbow, silhouette, gap statistic, BIC, and above all the purpose |
+| Hidden assumptions | Round, similar-sized clusters; it's hard EM for identical spherical Gaussians |
+| Agglomerative | Merge the closest pair repeatedly; the record is a dendrogram |
+| Linkage | Single chains, complete and Ward compact, average in between |
+| Ward's cost | $\frac{n_A n_B}{n_A + n_B}\lVert\bar{\mathbf{a}} - \bar{\mathbf{b}}\rVert^2$ |
+| Cost | k-means $O(nkd)$ per iteration; hierarchical $O(n^2)$ memory |
+
+---
+
+Next: [DBSCAN & HDBSCAN](/docs/machine-learning/dbscan-hdbscan), which define clusters by density instead of distance to a centre, find arbitrary shapes, and label noise.
+
+## Sources
+
+- S. P. Lloyd, [Least Squares Quantization in PCM](https://doi.org/10.1109/TIT.1982.1056489), *IEEE Transactions on Information Theory*, 1982 (written 1957)
+- D. Arthur and S. Vassilvitskii, [k-means++: The Advantages of Careful Seeding](https://dl.acm.org/doi/10.5555/1283383.1283494), SODA 2007
+- D. Aloise, A. Deshpande, P. Hansen and P. Popat, [NP-hardness of Euclidean Sum-of-Squares Clustering](https://doi.org/10.1007/s10994-009-5103-0), *Machine Learning*, 2009
+- D. Sculley, [Web-Scale K-Means Clustering](https://doi.org/10.1145/1772690.1772862), WWW 2010
+- R. Tibshirani, G. Walther and T. Hastie, [Estimating the Number of Clusters in a Data Set via the Gap Statistic](https://doi.org/10.1111/1467-9868.00293), *Journal of the Royal Statistical Society B*, 2001
+- J. H. Ward, [Hierarchical Grouping to Optimize an Objective Function](https://doi.org/10.1080/01621459.1963.10500845), *JASA*, 1963
+- D. Müllner, [Modern Hierarchical, Agglomerative Clustering Algorithms](https://arxiv.org/abs/1109.2378), 2011
+- scikit-learn, [K-means](https://scikit-learn.org/stable/modules/clustering.html#k-means) and [Hierarchical clustering](https://scikit-learn.org/stable/modules/clustering.html#hierarchical-clustering)
