@@ -1,53 +1,266 @@
 ---
 title: "PCA, Kernel PCA & Truncated SVD, In Full Depth"
 sidebar_position: 6.4
-description: "PCA, Kernel PCA, and truncated SVD in full depth -- real eigendecomposition, scree plots for choosing k, and why PCA and SVD are the same computation."
+description: "PCA derived two ways (maximum variance and minimum reconstruction error) and shown to be the SVD of the centred data, with the eigenvalue/variance link, choosing k, scaling, whitening; kernel PCA through the centred kernel matrix; truncated SVD for sparse data; and from-scratch code checked against scikit-learn."
 ---
 
-import __migratedImg0 from './img/pca-scree.png';
-
+import screeLight from './img/pca-scree-light.png';
+import screeDark from './img/pca-scree.png';
 import PcaProjectionDiagram from '../../../viz/diagrams/PcaProjectionDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # PCA, Kernel PCA & Truncated SVD, In Full Depth
 
-Every model so far assumed the given features are the right ones to work with. Dimensionality reduction questions that assumption directly: can most of a dataset's information be captured in far fewer dimensions than it was originally given in?
+[Unsupervised Learning](/docs/machine-learning/unsupervised-learning) asked whether data with $d$ features can be described with far fewer numbers. Principal component analysis is the standard answer: find the few directions along which the data varies most, and describe each point by its position along those. This page derives PCA twice, as the directions of maximum variance and as the best low-dimensional approximation, and shows both lead to the same eigenvectors, which are also the singular vectors of the data matrix. It then covers how many components to keep, why scaling changes the answer, kernel PCA for curved structure, and truncated SVD for sparse data such as text. Everything is checked numerically against scikit-learn.
 
-## PCA: Principal Component Analysis
+<ELI5>
 
-**The idea**: find the directions in feature space along which the data varies the most, and project onto just those — discarding directions with little variance, since a direction the data barely moves along carries little information.
+Picture a swarm of bees flying along a straight country road. To tell a friend where each bee is, you could give three numbers: east-west, north-south, and height. But most of the information is in one number, how far along the road the bee is. Width across the road and height vary a little, but not much. Describing each bee by "distance along the road" loses very little.
 
-**The mechanism**, connecting directly back to [Linear Algebra](/docs/mathematics-for-ai/linear-algebra#eigenvalues-and-eigenvectors): compute the data's covariance matrix, then find its eigenvectors and eigenvalues. Each eigenvector is a **principal component** — a direction in the original feature space — and its corresponding eigenvalue is exactly how much variance the data has along that direction. Sort components by eigenvalue (largest first), and keep only the top $k$ — that's PCA, in its entirety. Real covariance, real eigendecomposition, real projection:
+PCA finds that road automatically: the direction along which the points spread out the most, then the next most spread-out direction at right angles to it, and so on. Keep the first few, drop the rest, and you've described the data with fewer numbers while losing as little as possible. Everything below is that idea made exact.
+
+</ELI5>
+
+## 1. The Direction of Greatest Variance
+
+### PCA: Principal Component Analysis
+
+Start with $n$ points in $d$ dimensions, stacked as the rows of $X$, and **centre** them by subtracting each feature's mean, so the cloud sits at the origin. The covariance matrix is
+
+$$
+S = \frac{1}{n-1}X^TX
+$$
+
+a $d \times d$ symmetric matrix: entry $S_{jk}$ is the covariance of features $j$ and $k$.
+
+Project every point onto a unit vector $\mathbf{w}$: point $i$ becomes the single number $\mathbf{w}^T\mathbf{x}_i$. The variance of these numbers is
+
+$$
+\operatorname{Var}(\mathbf{w}^T\mathbf{x}) = \frac{1}{n-1}\sum_i(\mathbf{w}^T\mathbf{x}_i)^2 = \mathbf{w}^T S\,\mathbf{w}
+$$
+
+The first principal component is the unit direction that makes this as large as possible:
+
+$$
+\max_{\mathbf{w}}\;\mathbf{w}^TS\mathbf{w} \quad\text{subject to}\quad \mathbf{w}^T\mathbf{w} = 1
+$$
+
+(Without the constraint, scaling $\mathbf{w}$ up would make the variance infinite.) Add a Lagrange multiplier $\lambda$ for the constraint and set the gradient to zero:
+
+$$
+\nabla_{\mathbf{w}}\big[\mathbf{w}^TS\mathbf{w} - \lambda(\mathbf{w}^T\mathbf{w} - 1)\big] = 2S\mathbf{w} - 2\lambda\mathbf{w} = 0 \quad\Rightarrow\quad S\mathbf{w} = \lambda\mathbf{w}
+$$
+
+So $\mathbf{w}$ must be an **eigenvector** of the covariance matrix (see [Linear Algebra: Eigenvalues](/docs/mathematics-for-ai/linear-algebra#eigenvalues-and-eigenvectors)). Which one? Multiply both sides by $\mathbf{w}^T$: the variance along it is $\mathbf{w}^TS\mathbf{w} = \lambda\mathbf{w}^T\mathbf{w} = \lambda$. **The variance along an eigenvector is its eigenvalue**, so the first principal component is the eigenvector with the largest eigenvalue.
+
+The second component is the direction of greatest variance among those perpendicular to the first; repeating the argument with that extra constraint gives the eigenvector with the second-largest eigenvalue, and so on. Because $S$ is symmetric, its eigenvectors are mutually orthogonal and its eigenvalues are real and non-negative, so the result is a new orthogonal coordinate system, ordered by how much of the data's variance each axis carries. The total variance is unchanged by the rotation: $\sum_j\lambda_j = \operatorname{tr}(S)$, the sum of the original features' variances.
+
+**Reducing dimension** means keeping the top $k$ eigenvectors as the columns of a $d \times k$ matrix $W_k$, and replacing each point by its $k$ coordinates $\mathbf{z}_i = W_k^T\mathbf{x}_i$. Drag the projection direction here and watch the projected variance peak at the first principal component:
 
 <PcaProjectionDiagram />
 
-**Choosing $k$**: plot each component's share of total variance, and how much accumulates as you keep adding components:
+## 2. The Same Answer From Reconstruction
 
-<img src={__migratedImg0} alt="PCA scree plot: variance explained per component, and cumulative variance — most information concentrated in the first few components" style={{maxWidth: '100%'}} />
+There's a second way to ask for "the best $k$-dimensional summary": find the $k$-dimensional subspace that the points are closest to. Project each point onto a subspace with orthonormal basis $W_k$ and map it back, $\hat{\mathbf{x}}_i = W_kW_k^T\mathbf{x}_i$. The reconstruction error is the squared distance from each point to its projection. Because $\hat{\mathbf{x}}_i$ and $\mathbf{x}_i - \hat{\mathbf{x}}_i$ are perpendicular, Pythagoras gives
 
-This is a **scree plot** — look for the "elbow" where additional components stop adding meaningful variance (the same elbow-finding intuition as [K-Means' elbow method](/docs/machine-learning/kmeans-hierarchical-clustering#k-means) and [DBSCAN's k-distance plot](/docs/machine-learning/dbscan-hdbscan#dbscan-density-based-spatial-clustering-of-applications-with-noise), applied to variance instead). In the chart above, the first 3 components already capture nearly all the variance — the remaining 5 dimensions are mostly noise, exactly matching how this particular synthetic data was generated from 3 underlying latent factors.
+$$
+\lVert\mathbf{x}_i - \hat{\mathbf{x}}_i\rVert^2 = \lVert\mathbf{x}_i\rVert^2 - \lVert W_k^T\mathbf{x}_i\rVert^2
+$$
 
-**Why PCA connects to [SVD](/docs/mathematics-for-ai/linear-algebra#singular-value-decomposition-svd)**: the principal components are mathematically identical to the right singular vectors of the (mean-centered) data matrix — PCA and SVD are, in a precise sense, the same computation viewed from two different angles. This is why libraries often compute PCA via SVD directly rather than explicitly forming the covariance matrix — numerically more stable, especially when the number of features is large.
+Summed over points, the first term is fixed. So **minimizing reconstruction error is the same as maximizing the variance captured** by the subspace, and the best subspace is spanned by the top $k$ eigenvectors. The leftover error has a clean value: divided by $n - 1$, it equals the sum of the discarded eigenvalues,
 
-**PCA's core limitation**: it only captures *linear* structure — directions that are literally straight lines through feature space. Data that curves (like the [two-moons shape](/docs/machine-learning/kmeans-hierarchical-clustering#k-means)) has no good linear projection that preserves its structure.
+$$
+\frac{1}{n-1}\sum_i\lVert\mathbf{x}_i - \hat{\mathbf{x}}_i\rVert^2 = \sum_{j \gt  k}\lambda_j
+$$
 
-## Kernel PCA
+Section 6 checks this on the handwritten-digits data for $k = 5, 10, 20, 40$, and the two columns agree to every printed digit. The Eckart–Young theorem says the same thing for matrices: the best rank-$k$ approximation of $X$, in squared error, is its truncated SVD, which is where the next section goes.
 
-The same [kernel trick](/docs/machine-learning/support-vector-machines#the-kernel-trick) from SVM, applied to PCA: implicitly map data into a higher-dimensional (possibly infinite-dimensional) space via a kernel function, then perform ordinary PCA *in that space* — again without ever explicitly computing the high-dimensional mapping, since (exactly as in SVM) the computation only ever needs pairwise kernel evaluations, not the mapped coordinates themselves.
+## 3. PCA Is the SVD of the Centred Data
 
-**What this buys you**: Kernel PCA can capture *nonlinear* structure that plain PCA misses — e.g. it can successfully separate concentric rings or curved manifolds that are hopeless for linear PCA, using an RBF kernel exactly as described in the SVM page. The tradeoff: choosing the right kernel and its hyperparameters is not automatic, and results are much harder to interpret than plain PCA's direct "variance along an axis" reading.
+Write the centred data matrix by its [singular value decomposition](/docs/mathematics-for-ai/linear-algebra#singular-value-decomposition-svd), $X = U\Sigma V^T$, where $U$ ($n \times d$) and $V$ ($d \times d$) have orthonormal columns and $\Sigma$ holds the singular values $\sigma_1 \ge \sigma_2 \ge \dots$. Then
 
-## Truncated SVD
+$$
+S = \frac{1}{n-1}X^TX = \frac{1}{n-1}V\Sigma U^TU\Sigma V^T = V\,\frac{\Sigma^2}{n-1}\,V^T
+$$
 
-Plain PCA requires mean-centering the data first (subtracting each feature's mean). **Truncated SVD** skips that step and works directly on the raw data matrix — which matters specifically for **sparse data** (like a bag-of-words document-term matrix, mostly zeros), where mean-centering would destroy the sparsity and blow up memory usage. Truncated SVD keeps only the top $k$ singular values/vectors (see [Linear Algebra — SVD](/docs/mathematics-for-ai/linear-algebra#singular-value-decomposition-svd)) directly, making it the standard dimensionality-reduction tool for text data (this specific application is sometimes called **LSA** — Latent Semantic Analysis — in the NLP context) and other high-dimensional sparse feature sets.
+since $U^TU = I$. That's an eigendecomposition of $S$. So:
 
-## PCA vs. Kernel PCA vs. Truncated SVD
+- The **principal directions** are the right singular vectors, the columns of $V$.
+- The **variances** are $\lambda_j = \sigma_j^2/(n-1)$.
+- The **projected coordinates** of the data are $XV = U\Sigma$: the left singular vectors scaled by the singular values.
 
-| | PCA | Kernel PCA | Truncated SVD |
-|---|---|---|---|
-| Captures nonlinear structure? | No | Yes | No |
-| Requires mean-centering? | Yes | Yes (in kernel space) | No |
-| Works well on sparse data? | No (centering destroys sparsity) | No | Yes |
-| Interpretability | High (variance along axes) | Low | Moderate |
-| Typical use | General-purpose linear compression, visualization | Nonlinear structure, moderate data size | Text/sparse feature compression (LSA) |
+Libraries compute PCA through the SVD rather than by forming $S$, for the reason on the [Linear Regression page](/docs/machine-learning/linear-regression#9-minimal-implementation): forming $X^TX$ squares the condition number and loses precision. For large matrices where only the top $k$ components are needed, **randomized SVD** (Halko, Martinsson and Tropp, 2011) finds them in roughly $O(ndk)$ time instead of $O(nd\min(n, d))$, and it's what scikit-learn uses by default for large inputs.
 
-Next: [ICA, t-SNE & UMAP](/docs/machine-learning/ica-tsne-umap) — separating mixed signals, and the nonlinear methods built specifically for visualizing high-dimensional data like embeddings.
+## 4. How Many Components, and Whose Variance?
+
+**Choosing $k$.** The fraction of variance kept by $k$ components is $\sum_{j \le k}\lambda_j / \sum_j\lambda_j$. The **scree plot** shows each component's share and the running total:
+
+<ThemedImage alt="Scree plot for the digits data: bars showing each of 64 components' share of variance falling quickly, and a cumulative curve crossing 90% at 21 components" sources={{light: screeLight, dark: screeDark}} />
+
+Common rules: keep enough components for a target share (90% or 95% is typical), look for an elbow where the bars flatten, or, when PCA feeds a model, treat $k$ as a hyperparameter and pick it by cross-validation. For the digits, 21 of 64 components keep 90% of the variance, and 40 keep 98.8%.
+
+**Scaling changes the answer.** PCA maximizes variance, and variance depends on units. If one feature is measured in thousands and the rest in fractions, the first component simply points along the large feature. In Section 6, on the raw wine data, the first component carries 99.8% of the variance, almost entirely the proline measurement, which has the largest numbers; after standardizing each feature, it carries 36.2%, spread across several measurements. Standardize (PCA on the correlation matrix) when features have different units; leave them unscaled when they share units and their variances are meaningful, as with pixel intensities.
+
+**Whitening.** Dividing each component by $\sqrt{\lambda_j}$ gives coordinates that are uncorrelated with unit variance (`PCA(whiten=True)`). It's a useful preprocessing step for some methods, and it's the first step of [ICA](/docs/machine-learning/ica-tsne-umap).
+
+<PredictFirst
+  question="You run PCA on customer data where 'annual income' (in rupees, values up to 5,000,000) sits alongside 'number of purchases' (values up to 50). Without scaling, what is the first principal component?"
+  options={[
+    'A balanced mix of all features, since PCA finds the most informative direction',
+    'Almost exactly the income axis: its variance is millions of times larger, so it dominates the covariance matrix',
+    'The number-of-purchases axis, because small features are more informative',
+    'PCA refuses to run on features with different units',
+  ]}
+  correctIndex={1}
+  explanation="PCA maximizes variance, and a feature whose values span millions has a variance trillions of times larger than one spanning tens. The top eigenvector of the covariance matrix lines up with that feature. The result reflects the choice of units, not the structure of the data, which is why features with different units are standardized before PCA."
+/>
+
+<GoDeeper title="Go deeper: probabilistic PCA and what PCA assumes">
+
+PCA can be written as a probability model. Tipping and Bishop (1999) defined **probabilistic PCA**: each point is generated from a $k$-dimensional latent variable $\mathbf{z} \sim \mathcal{N}(0, I)$ by a linear map plus isotropic noise, $\mathbf{x} = W\mathbf{z} + \boldsymbol{\mu} + \boldsymbol{\epsilon}$ with $\boldsymbol{\epsilon} \sim \mathcal{N}(0, \sigma^2I)$. They showed the maximum-likelihood $W$ spans the same subspace as the top $k$ principal components, and the maximum-likelihood $\sigma^2$ is the average of the discarded eigenvalues: the variance PCA throws away is treated as noise.
+
+That makes PCA's assumptions explicit: the important structure is linear, and what remains is noise of equal size in every direction. It also gives PCA a likelihood, which allows choosing $k$ with BIC, handling missing values with EM, and mixing several local PCA models. **Factor analysis** relaxes the equal-noise assumption, giving each feature its own noise variance, which matters when features are measured with different precision.
+
+</GoDeeper>
+
+## 5. Beyond Linear: Kernel PCA and Truncated SVD
+
+**Kernel PCA.** PCA finds straight directions. For curved structure, map the data through features $\phi(\mathbf{x})$ and do PCA there, using the [kernel trick](/docs/machine-learning/support-vector-machines#the-kernel-trick) to avoid computing $\phi$. Every principal direction in feature space is a combination of the mapped training points, $\mathbf{w} = \sum_i\alpha_i\phi(\mathbf{x}_i)$, and substituting this into the eigenvector equation turns it into an eigenproblem for the $n \times n$ kernel matrix $K_{ij} = k(\mathbf{x}_i, \mathbf{x}_j)$ (Schölkopf, Smola and Müller, 1998). The mapped points must be centred in feature space, which is done on the kernel matrix directly: $\tilde{K} = HKH$, with the centring matrix $H = I - \tfrac1n\mathbf{1}\mathbf{1}^T$. The eigenvectors of $\tilde{K}$ give the $\alpha$ coefficients, and a point's coordinate on a component is $\sum_i\alpha_i\tilde{k}(\mathbf{x}_i, \mathbf{x})$.
+
+Section 6 runs it on two concentric rings, which no straight direction separates (one linear component gives about 49% accuracy for a classifier, chance level). With a degree-2 polynomial kernel, whose features are $x_1^2$, $\sqrt{2}x_1x_2$ and $x_2^2$, one kernel component separates the rings perfectly (100%). But it's the *third* component, not the first. The radius, $x_1^2 + x_2^2$, is what separates the rings, yet it varies less than other combinations of the squared features. PCA ranks directions by variance, never by usefulness for a task you haven't told it about: the most variable direction and the most informative one can be different.
+
+Kernel PCA costs $O(n^2)$ memory and up to $O(n^3)$ time for the eigendecomposition, it needs a kernel and its parameters chosen, and its components are hard to interpret. It's mainly useful on moderate data where curved structure matters.
+
+### Truncated SVD
+
+PCA centres the data first. For a **sparse** matrix, such as a document-term matrix where each row is a document and almost every word count is zero, centring is a disaster: subtracting the column means turns every zero into a nonzero, and a matrix that fit in memory because it was 99.9% empty becomes completely dense. In Section 6, a 20,000 × 5,000 sparse matrix stores 100,000 values; centred, it would need all 100,000,000.
+
+**Truncated SVD** skips centring and computes the top $k$ singular vectors of the raw matrix directly, with sparse-aware randomized or iterative solvers. Without centring, the first component mostly captures the mean, and the rest are similar to PCA's. On text this is called **latent semantic analysis** (LSA; Deerwester et al., 1990): words that occur in similar documents end up with similar coordinates, so documents can be compared by topic even when they share few exact words. It's scikit-learn's `TruncatedSVD`, and the standard dimensionality reduction for TF-IDF features.
+
+## 6. Minimal Implementation
+
+PCA two ways on the 64-pixel digits data, the reconstruction-error identity, the effect of scaling on wine data, kernel PCA on concentric rings, and truncated SVD on a sparse matrix:
+
+```python
+import numpy as np
+from scipy import sparse
+from sklearn.datasets import load_digits, load_wine, make_circles
+from sklearn.decomposition import PCA, KernelPCA, TruncatedSVD
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import cross_val_score
+from sklearn.preprocessing import StandardScaler
+
+X, _ = load_digits(return_X_y=True)                      # 1,797 images, 64 pixels each
+Xc = X - X.mean(0)
+
+# PCA two ways: eigenvectors of the covariance matrix, and the SVD of the centred data
+S = Xc.T @ Xc / (len(X) - 1)
+evals, evecs = np.linalg.eigh(S)
+evals, evecs = evals[::-1], evecs[:, ::-1]                # largest first
+U, sing, Vt = np.linalg.svd(Xc, full_matrices=False)
+sk = PCA().fit(X)
+print("top 3 variances, eigenvalues:      ", np.round(evals[:3], 2))
+print("top 3 variances, sigma^2/(n-1):    ", np.round(sing[:3] ** 2 / (len(X) - 1), 2))
+print("top 3 variances, scikit-learn:     ", np.round(sk.explained_variance_[:3], 2))
+print("same directions (up to sign):", np.allclose(np.abs(evecs[:, :10]), np.abs(Vt[:10].T), atol=1e-6))
+
+# Reconstruction error with k components equals the sum of the discarded eigenvalues
+for k in [5, 10, 20, 40]:
+    Z = Xc @ evecs[:, :k]                                # project
+    err = np.sum((Xc - Z @ evecs[:, :k].T) ** 2) / (len(X) - 1)
+    print(f"k={k:<3} reconstruction error {err:9.2f}   sum of discarded eigenvalues {evals[k:].sum():9.2f}   "
+          f"variance kept {evals[:k].sum() / evals.sum():.1%}")
+
+# Scaling changes the answer: wine features have very different units
+W, _ = load_wine(return_X_y=True)
+raw = PCA(2).fit(W).explained_variance_ratio_
+std = PCA(2).fit(StandardScaler().fit_transform(W)).explained_variance_ratio_
+print(f"wine, first component's share of variance: raw {raw[0]:.1%}, standardized {std[0]:.1%}")
+
+# Kernel PCA on concentric circles: which single component separates the two rings?
+Xr, yr = make_circles(n_samples=600, factor=0.4, noise=0.05, random_state=0)
+Zlin = PCA(2).fit_transform(Xr)
+Zker = KernelPCA(3, kernel="poly", degree=2, coef0=0).fit_transform(Xr)   # features x1^2, sqrt(2) x1 x2, x2^2
+acc = lambda z: cross_val_score(LogisticRegression(), z[:, None], yr, cv=5).mean()
+print("linear PCA, accuracy from component 1, 2:     ", [float(round(acc(Zlin[:, j]), 3)) for j in range(2)])
+print("kernel PCA, accuracy from component 1, 2, 3:  ", [float(round(acc(Zker[:, j]), 3)) for j in range(3)])
+
+# Truncated SVD on a sparse matrix: centring would make it dense
+rng = np.random.default_rng(0)
+M = sparse.random(20000, 5000, density=0.001, format="csr", random_state=0)
+svd = TruncatedSVD(50, random_state=0).fit(M)
+print(f"sparse matrix: {M.nnz:,} stored values of {M.shape[0] * M.shape[1]:,}; "
+      f"after centring every one of the {M.shape[0] * M.shape[1]:,} would be nonzero")
+print(f"truncated SVD to 50 components: transformed shape {svd.transform(M).shape}")
+```
+
+Output (scikit-learn 1.7):
+
+```
+top 3 variances, eigenvalues:       [179.01 163.72 141.79]
+top 3 variances, sigma^2/(n-1):     [179.01 163.72 141.79]
+top 3 variances, scikit-learn:      [179.01 163.72 141.79]
+same directions (up to sign): True
+k=5   reconstruction error    547.02   sum of discarded eigenvalues    547.02   variance kept 54.5%
+k=10  reconstruction error    314.69   sum of discarded eigenvalues    314.69   variance kept 73.8%
+k=20  reconstruction error    127.06   sum of discarded eigenvalues    127.06   variance kept 89.4%
+k=40  reconstruction error     14.18   sum of discarded eigenvalues     14.18   variance kept 98.8%
+wine, first component's share of variance: raw 99.8%, standardized 36.2%
+linear PCA, accuracy from component 1, 2:      [0.487, 0.468]
+kernel PCA, accuracy from component 1, 2, 3:   [0.525, 0.537, 1.0]
+sparse matrix: 100,000 stored values of 100,000,000; after centring every one of the 100,000,000 would be nonzero
+truncated SVD to 50 components: transformed shape (20000, 50)
+```
+
+- **Three routes, one answer (Sections 1 and 3).** Covariance eigenvalues, $\sigma^2/(n-1)$ from the SVD, and scikit-learn agree, and the eigenvectors match the right singular vectors up to sign (an eigenvector's sign is arbitrary).
+- **Reconstruction error is discarded variance (Section 2)**, exactly, at every $k$.
+- **Units decide the first component (Section 4)**: 99.8% raw, 36.2% standardized.
+- **Variance isn't usefulness (Section 5).** The ring-separating kernel component is the third, not the first.
+- **Truncated SVD keeps sparse data sparse**, reducing 5,000 columns to 50 without ever forming the dense matrix.
+
+## 7. When *Not* to Use PCA
+
+| Situation | Better choice |
+|---|---|
+| The structure is curved (a manifold) and you want to see it | [t-SNE or UMAP](/docs/machine-learning/ica-tsne-umap) for visualization; kernel PCA on moderate data |
+| The goal is separating classes, and labels are available | Supervised reduction such as [LDA](/docs/machine-learning/naive-bayes-lda-qda); high variance isn't the same as discriminative |
+| You need to un-mix independent signals | [ICA](/docs/machine-learning/ica-tsne-umap) |
+| Features must stay interpretable | Feature selection (L1, importance) instead; components mix every original feature |
+| Sparse, high-dimensional data (text) | Truncated SVD (no centring) |
+| Heavy outliers | Robust PCA; a few extreme points can swing the top components |
+| Nonnegative data where parts should add up (images, spectra, topics) | Nonnegative matrix factorization (NMF) |
+
+PCA is the right first step for compressing correlated numeric features, removing noise, speeding up a downstream model, and getting a first look at high-dimensional data.
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Objective | Maximize $\mathbf{w}^TS\mathbf{w}$ subject to $\lVert\mathbf{w}\rVert = 1$ |
+| Solution | $S\mathbf{w} = \lambda\mathbf{w}$: principal components are covariance eigenvectors |
+| Eigenvalue | The variance along that component |
+| Reconstruction | Best rank-$k$ subspace; error $= \sum_{j\gt k}\lambda_j$ |
+| SVD | $X = U\Sigma V^T$: directions $V$, variances $\sigma^2/(n-1)$, scores $U\Sigma$ |
+| Computation | Via the SVD, not $X^TX$; randomized SVD for large data |
+| Choosing $k$ | Target variance share, scree elbow, or cross-validation downstream |
+| Scaling | Standardize features with different units, or the largest one wins |
+| Kernel PCA | Eigenvectors of the centred kernel matrix $HKH$ |
+| Caution | Components are ranked by variance, not by usefulness for your task |
+| Truncated SVD | No centring; keeps sparse data sparse; LSA for text |
+
+---
+
+Next: [ICA, t-SNE & UMAP](/docs/machine-learning/ica-tsne-umap), for un-mixing independent signals and for nonlinear maps that preserve neighbourhoods.
+
+## Sources
+
+- K. Pearson, [On Lines and Planes of Closest Fit to Systems of Points in Space](https://doi.org/10.1080/14786440109462720), *Philosophical Magazine*, 1901
+- H. Hotelling, [Analysis of a Complex of Statistical Variables into Principal Components](https://doi.org/10.1037/h0071325), *Journal of Educational Psychology*, 1933
+- C. Eckart and G. Young, [The Approximation of One Matrix by Another of Lower Rank](https://doi.org/10.1007/BF02288367), *Psychometrika*, 1936
+- B. Schölkopf, A. Smola and K.-R. Müller, [Nonlinear Component Analysis as a Kernel Eigenvalue Problem](https://doi.org/10.1162/089976698300017467), *Neural Computation*, 1998
+- M. E. Tipping and C. M. Bishop, [Probabilistic Principal Component Analysis](https://doi.org/10.1111/1467-9868.00196), *Journal of the Royal Statistical Society B*, 1999
+- N. Halko, P.-G. Martinsson and J. A. Tropp, [Finding Structure with Randomness: Probabilistic Algorithms for Constructing Approximate Matrix Decompositions](https://doi.org/10.1137/090771806), *SIAM Review*, 2011
+- S. Deerwester, S. Dumais, G. Furnas, T. Landauer and R. Harshman, [Indexing by Latent Semantic Analysis](https://doi.org/10.1002/(SICI)1097-4571(199009)41:6%3C391::AID-ASI1%3E3.0.CO;2-9), *JASIS*, 1990
+- I. T. Jolliffe and J. Cadima, [Principal Component Analysis: A Review and Recent Developments](https://doi.org/10.1098/rsta.2015.0202), *Philosophical Transactions of the Royal Society A*, 2016
+- scikit-learn, [Decomposing signals in components](https://scikit-learn.org/stable/modules/decomposition.html)
