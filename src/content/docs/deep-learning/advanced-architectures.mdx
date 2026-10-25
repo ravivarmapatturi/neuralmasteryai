@@ -1,92 +1,242 @@
 ---
-title: "GNNs, RL Networks, Metric Learning, SSL & Multimodal Nets"
+title: "Beyond Grids and Labels: GNNs, Metric Learning, RL, Self-Supervision and Multimodal Networks"
 sidebar_position: 8.8
-description: "GNNs, RL networks, metric learning, self-supervised learning, and multimodal nets -- the architecture families beyond fixed-size supervised inputs."
+description: "The architecture families for problems that don't fit 'fixed-size input, one label': graph neural networks and message passing (a GCN trained on a real graph from two labels), metric learning, networks for reinforcement learning, self-supervised pretraining, multimodal models like CLIP, and time-series networks."
 ---
 
 import MessagePassingDiagram from '../../../viz/diagrams/MessagePassingDiagram';
-import GnnVariantsDiagram from '../../../viz/diagrams/GnnVariantsDiagram';
 import SiameseTripletDiagram from '../../../viz/diagrams/SiameseTripletDiagram';
 import RLNetworkFamilyDiagram from '../../../viz/diagrams/RLNetworkFamilyDiagram';
 import SslMethodsDiagram from '../../../viz/diagrams/SslMethodsDiagram';
 import ClipDualEncoderDiagram from '../../../viz/diagrams/ClipDualEncoderDiagram';
 import TcnDilatedConvDiagram from '../../../viz/diagrams/TcnDilatedConvDiagram';
-import AdvancedArchDomainMapDiagram from '../../../viz/diagrams/AdvancedArchDomainMapDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# GNNs, RL Networks, Metric Learning, SSL & Multimodal Nets
+# Beyond Grids and Labels: GNNs, Metric Learning, RL, Self-Supervision and Multimodal Networks
 
-The remaining major architecture families — each built for data or objectives that don't fit the standard "fixed-size input, single label" supervised mold: graphs, sequential decision-making, similarity rather than classification, learning without labels, and combining modalities.
+The architectures so far assume a particular shape of problem. [CNNs](/docs/deep-learning/cnns) assume a grid of pixels, [sequence models](/docs/deep-learning/sequence-models) and [transformers](/docs/deep-learning/attention-transformers) assume an ordered list of tokens, and almost everything assumed a fixed set of labels to learn from. Many important problems break those assumptions. A molecule or a social network is a **graph**, with no grid and no order. Face recognition has millions of classes, most of them unseen at training time. A game-playing agent has no labels, only rewards that arrive later. Most data has no labels at all. And many tasks involve **two kinds of data at once**, such as images and text. This page covers the families built for each, explaining for each one which assumption it drops, what it uses instead, and where it's used today. Graph networks get a worked example: a graph convolutional network that classifies 32 nodes of a real social network from just two labels.
 
-<AdvancedArchDomainMapDiagram />
+<ELI5>
 
-## Graph Neural Networks (GNNs)
+Most of deep learning is like teaching with flashcards: here's a picture, here's the right answer.
 
-Built for data that's naturally a graph — social networks, molecules, road networks — where a plain CNN/Transformer has no notion of arbitrary, irregular connectivity.
+Some things don't come as flashcards. A friendship network is a web, not a picture, so you learn about a person from their friends (graph networks). To recognize faces you've never seen, you learn "same person or different person?" rather than names (metric learning). To learn a game, nobody tells you the right move, only whether you won at the end (reinforcement learning). Sometimes you have a mountain of photos and no answers at all, so you invent puzzles from the photos themselves (self-supervised learning). And sometimes you need to connect pictures with words (multimodal networks).
 
-- **The core idea, message passing**: each node updates its representation by aggregating information from its neighbors, layer by layer — after $k$ layers, a node's representation reflects its $k$-hop neighborhood. This is the graph analog of how convolution aggregates local pixel neighborhoods.
+Each family below is a way of learning when the flashcards are missing or the data isn't shaped like a picture.
+
+</ELI5>
+
+## 1. Learning on Graphs
+
+### Graph Neural Networks (GNNs)
+
+A **graph** is a set of nodes connected by edges: atoms and bonds, people and friendships, road junctions and roads, users and the items they bought. Graphs have no natural order (there's no "first" atom), nodes have different numbers of neighbours, and the structure is the information. A CNN needs a grid and a transformer needs a sequence; neither fits.
+
+**Message passing** is the idea every graph neural network is built on. At each layer, every node collects "messages" from its neighbours, aggregates them with an order-independent operation (sum, mean or max), and updates its own representation:
+
+$$
+\mathbf{h}_v^{(k+1)} = \phi\!\left(\mathbf{h}_v^{(k)},\; \bigoplus_{u \in \mathcal{N}(v)} \psi\big(\mathbf{h}_u^{(k)}\big)\right)
+$$
+
+where $\mathcal{N}(v)$ are $v$'s neighbours, $\oplus$ is the aggregation, and $\phi$, $\psi$ are small learned networks shared by every node. After $k$ layers, a node's representation reflects its $k$-hop neighbourhood. It's the graph version of a convolution: a shared local operation applied everywhere, with the neighbourhood defined by edges instead of pixel positions. Because the aggregation ignores order, the output doesn't depend on how the nodes happen to be numbered.
 
 <MessagePassingDiagram />
 
-- **GCN (Graph Convolutional Network)**: aggregates neighbor features via a (normalized) weighted average, the most direct graph generalization of convolution.
-- **GraphSAGE**: instead of using a full neighborhood (expensive for high-degree nodes, and doesn't generalize to unseen nodes), samples a fixed-size subset of neighbors and learns a general aggregation function — enables **inductive** learning (generalizing to nodes/graphs not seen during training), not just transductive learning on one fixed graph.
-- **GAT (Graph Attention Network)**: replaces GCN's fixed averaging with learned attention weights over neighbors, so the model learns which neighbors matter more for a given node — the same core idea as self-attention, applied to a graph's actual edges instead of a full sequence.
+The main variants differ in how they aggregate:
 
-<GnnVariantsDiagram />
+- **GCN** (Kipf and Welling, 2017) takes a degree-normalized average of neighbours, including the node itself. In matrix form, one layer is $H^{(k+1)} = \sigma\big(\hat{A}\, H^{(k)} W^{(k)}\big)$ with $\hat{A} = D^{-1/2}(A + I)D^{-1/2}$, where $A$ is the adjacency matrix and $D$ its degree matrix. The normalization keeps high-degree nodes from dominating.
+- **GraphSAGE** (Hamilton et al., 2017) samples a fixed number of neighbours and learns the aggregator, so it scales to huge graphs and works on nodes and graphs never seen in training (**inductive** learning).
+- **GAT** (Veličković et al., 2018) learns attention weights over neighbours, so some neighbours count more than others: self-attention restricted to the graph's edges.
 
-- **Applications**: molecule property prediction (atoms as nodes, bonds as edges), recommendation systems (users/items as nodes, interactions as edges), fraud detection (transactions as a graph), traffic forecasting (road network topology).
+**What they're used for**: predicting molecular properties and designing molecules and materials, recommendation (users and items as a graph), fraud detection over transaction networks, traffic forecasting, and physical simulation. Google DeepMind's GraphCast (2023) forecasts global weather with a GNN over a mesh covering the Earth.
 
-## Metric Learning Networks
+**Limitations.** Stacking many layers makes all node representations converge to the same value (**over-smoothing**), so GNNs are usually shallow, two to four layers. Information from far away has to squeeze through a few bottleneck nodes (**over-squashing**). Graph transformers, which add attention over all nodes plus encodings of the graph structure, address the long-range problem at a higher cost. [Graph ML](/docs/graph-ml/graph-ml-fundamentals) covers the field in depth.
 
-Instead of learning to classify into fixed categories, learn an embedding space where distance directly reflects similarity — the right tool when the set of possible classes is huge, open-ended, or unknown at training time (face identification, one-shot recognition).
+## 2. A GCN, Trained
 
-- **Siamese Networks**: two identical (shared-weight) network branches process a pair of inputs, and the model is trained so the output embeddings are close for similar pairs and far apart for dissimilar pairs — the foundational architecture for this whole family.
-- **Triplet Loss**: trains on triplets (anchor, positive, negative), pushing the anchor-positive distance below the anchor-negative distance by at least a margin — a stronger training signal than pairs alone, because it directly encodes relative, not just absolute, similarity.
-- **Contrastive Loss**: the pairwise formulation underlying Siamese training — penalizes similar pairs for being far apart and dissimilar pairs for being closer than a margin.
+The karate-club network is a classic dataset: 34 members of a university club, 78 friendships, recorded by Zachary in the 1970s just before the club split in two after a dispute. Can a GCN predict which side each member joined, knowing *only* which side the two leaders were on and who is friends with whom? Every node's input feature is just a one-hot "I am node $i$"; all the useful information is in the edges.
+
+```python
+import networkx as nx
+import torch
+import torch.nn.functional as F
+
+torch.manual_seed(0)
+G = nx.karate_club_graph()                                # 34 club members, 78 friendships
+n = G.number_of_nodes()
+labels = torch.tensor([0 if G.nodes[i]["club"] == "Mr. Hi" else 1 for i in range(n)])   # which side of the split
+
+# Normalized adjacency with self-loops: A_hat = D^-1/2 (A + I) D^-1/2  (Kipf and Welling, 2017)
+A = torch.tensor(nx.to_numpy_array(G), dtype=torch.float32) + torch.eye(n)
+d = A.sum(1).rsqrt()
+A_hat = d[:, None] * A * d[None, :]
+
+X = torch.eye(n)                                          # no features at all: each node is just "itself"
+W1 = torch.nn.Parameter(torch.randn(n, 16) * 0.1)
+W2 = torch.nn.Parameter(torch.randn(16, 2) * 0.1)
+
+def gcn(X):
+    H = torch.relu(A_hat @ X @ W1)                        # layer 1: each node averages its neighbours' features
+    return A_hat @ H @ W2                                 # layer 2: and again, so it sees 2 hops
+
+train = torch.tensor([0, 33])                             # only the two leaders are labelled
+opt = torch.optim.Adam([W1, W2], lr=0.01, weight_decay=5e-4)
+for step in range(200):
+    loss = F.cross_entropy(gcn(X)[train], labels[train])
+    opt.zero_grad(); loss.backward(); opt.step()
+
+pred = gcn(X).argmax(1)
+others = torch.tensor([i for i in range(n) if i not in (0, 33)])
+print(f"labelled nodes: 2 of {n}; accuracy on the other {len(others)}: {(pred[others] == labels[others]).float().mean():.2f}")
+
+# The same model with the graph removed (A_hat = I) has nothing to propagate.
+A_hat = torch.eye(n)
+W1.data, W2.data = torch.randn(n, 16) * 0.1, torch.randn(16, 2) * 0.1
+opt = torch.optim.Adam([W1, W2], lr=0.01, weight_decay=5e-4)
+for step in range(200):
+    loss = F.cross_entropy(gcn(X)[train], labels[train])
+    opt.zero_grad(); loss.backward(); opt.step()
+pred = gcn(X).argmax(1)
+print(f"same model without the edges: accuracy on the other {len(others)}: {(pred[others] == labels[others]).float().mean():.2f}")
+```
+
+```text
+labelled nodes: 2 of 34; accuracy on the other 32: 0.97
+same model without the edges: accuracy on the other 32: 0.56
+```
+
+With two labelled nodes out of 34, the GCN assigns 31 of the other 32 members to the right side. The second run removes the edges ($\hat{A} = I$) and the model drops to 0.56, barely better than guessing, because without message passing a node learns nothing from the labelled leaders. All of the predictive power came from propagating information along friendships: two layers of averaging spread each leader's label two hops out, and the friendship structure largely follows the eventual split.
+
+<PredictFirst
+  question="The GCN above uses two layers. A colleague stacks twelve GCN layers instead, hoping it will see the whole graph. What is most likely to happen?"
+  options={[
+    'Accuracy improves, because each node sees more of the graph',
+    'Accuracy drops, because repeated averaging makes all node representations nearly identical',
+    'Nothing changes, because the graph only has 34 nodes',
+    'Training fails with an error',
+  ]}
+  correctIndex={1}
+  explanation="Each GCN layer averages a node with its neighbours. Applied many times, that averaging drives every node in a connected graph towards the same representation, so the two sides become indistinguishable. This over-smoothing is why GNNs are typically only a few layers deep."
+/>
+
+## 3. Learning Similarity Instead of Classes
+
+### Metric Learning Networks
+
+A classifier needs a fixed list of classes. Face recognition doesn't have one: new people appear all the time, often with a single photo each. **Metric learning** learns an **embedding** instead, a function that maps each input to a vector so that distance means similarity. To recognize someone, compare the new photo's embedding with the stored ones; no retraining is needed for new people.
+
+- **Siamese networks** run two inputs through the same network (shared weights) and train on whether they match, using a **contrastive loss**: pull matching pairs together, push non-matching pairs apart beyond a margin.
+- **Triplet networks** train on an anchor, a positive (same identity) and a negative (different identity), requiring the anchor to be closer to the positive than to the negative by a margin. FaceNet (2015) trained face embeddings this way; choosing *hard* negatives, ones currently too close, is what makes it work.
+- **Classification-based losses** such as ArcFace train a classifier over the training identities with an angular margin, then discard the classifier and keep the embedding, and often give tighter clusters than triplets.
 
 <SiameseTripletDiagram />
 
-- **Applications**: face verification/recognition (is this the same person), signature verification, few-shot/one-shot classification, and the same underlying idea behind the contrastive self-supervised methods below.
+The same idea powers **retrieval**: text embedding models for [RAG](/docs/llms-genai/rag), image search, product matching and speaker verification. [Loss Functions](/docs/deep-learning/loss-functions) derives the contrastive, triplet and InfoNCE losses.
 
-## Reinforcement Learning Networks
+## 4. Learning From Rewards
 
-Networks trained not to match a label, but to maximize a reward signal through interaction with an environment (see also [ML System Design](/docs/ml-system-design/roadmap) for RL as applied to recommendation and ranking systems).
+### Reinforcement Learning Networks
 
-- **DQN (Deep Q-Network)**: approximates the Q-function (expected future reward of taking an action in a state) with a neural network, combined with **experience replay** (train on a buffer of past transitions, breaking harmful correlation between consecutive samples) and a separate, slowly-updated **target network** (stabilizes the moving-target problem of bootstrapped value estimates) — the architecture that first matched human-level performance on Atari games directly from pixels.
-- **Policy Gradient methods**: instead of learning a value function and deriving a policy from it, directly parameterize and optimize the policy (the action-selection function) via gradient ascent on expected reward — necessary for continuous action spaces where "take the argmax over actions" (as in DQN) isn't well-defined.
-- **Actor-Critic**: combines both — an **actor** network outputs the policy, a **critic** network estimates the value function to reduce the variance of the actor's gradient estimates, getting the sample efficiency benefits of value-based methods with the flexibility of policy-based methods.
-- **PPO (Proximal Policy Optimization)**: an actor-critic method that constrains each policy update to stay within a small "trust region" of the previous policy (via a clipped objective), preventing the destructively large policy updates that made earlier policy gradient methods unstable — the standard, default RL algorithm in practice today, including as the RL algorithm behind RLHF for LLM alignment (see [LLMs & GenAI](/docs/llms-genai/roadmap)).
+In reinforcement learning an agent acts in an environment and receives rewards, often delayed, with no label saying what the right action was. [Reinforcement Learning](/docs/reinforcement-learning/overview) covers the theory; here the question is what the networks do.
+
+- **Value networks.** A **DQN** (Mnih et al., 2015) approximates the Q-function, the expected future reward of each action in a state, and acts by picking the best one. Two additions made it stable: **experience replay** (train on random past transitions, breaking the correlation between consecutive steps) and a slowly updated **target network** for the bootstrapped targets. It learned to play Atari games from raw pixels at roughly human level.
+- **Policy networks.** **Policy-gradient** methods output the action probabilities directly and increase the probability of actions that led to high reward. They handle continuous actions, such as a robot's joint torques, where picking the best of all actions isn't possible.
+- **Actor-critic** methods use both: an actor (policy) chooses, and a critic (value) estimates how good the state is, which reduces the variance of the actor's updates.
+- **PPO** (Schulman et al., 2017) limits how far each update can move the policy with a clipped objective, which made policy-gradient training dependable. It became the standard algorithm, including for RLHF in language models.
 
 <RLNetworkFamilyDiagram />
 
-## Self-Supervised Learning (SSL) Architectures
+**Reinforcement learning on language models.** The biggest use of RL today is training language models. **GRPO** (Shao et al., 2024), used to train DeepSeek-R1, drops PPO's critic: it samples several answers to each prompt and scores each against the group's average reward. With rewards that can be checked automatically, such as correct maths answers or passing tests, this is how current **reasoning models** learn to think at length. [Training Pipeline](/docs/llms-genai/training-pipeline) covers it.
 
-Learn useful representations from unlabeled data by constructing a supervised-*seeming* task out of the data itself — no human labels required.
+## 5. Self-Supervised Learning
 
-- **Contrastive SSL (SimCLR, MoCo)**: create two augmented views of the same image, train the network to pull their embeddings together while pushing apart embeddings of different images — directly reuses the contrastive/triplet-loss ideas above, applied at pretraining scale instead of for a specific similarity task.
-- **Masked prediction SSL (BERT for text, MAE for images)**: mask out part of the input and train the model to reconstruct or predict the missing part — [BERT's masked language modeling](/docs/deep-learning/bert#masked-language-modeling-mlm) and the **Masked Autoencoder (MAE)** for images are the same underlying principle applied to different modalities.
+Labels are scarce; unlabelled data is plentiful. **Self-supervised learning** builds a training task out of the data itself, so the "label" comes for free, and the network learns general-purpose representations in the process. There are three main recipes:
+
+- **Predict a hidden part.** Mask part of the input and reconstruct or predict it. Next-token prediction in language models is the most successful example of all; BERT masks words; **masked autoencoders** (MAE) mask 75% of an image's patches.
+- **Agree across views (contrastive).** Make two random augmentations (crops, colour changes) of the same image and train their embeddings to match, while differing from other images' embeddings: SimCLR and MoCo.
+- **Agree across views, without negatives.** BYOL and **DINO** train a student network to match a slowly updated teacher's output on a different view of the same image, with no negative pairs. **DINOv2** (2023) and **DINOv3** (2025) scaled this to very large curated image collections and produce some of the best general-purpose vision features available.
 
 <SslMethodsDiagram />
 
-- **Why this matters**: SSL pretraining is how essentially every modern foundation model (LLMs, vision backbones) gets its initial general-purpose representations, before any task-specific fine-tuning — see [Transfer Learning & Fine-Tuning](/docs/llms-genai/roadmap) for what happens next.
+**Predict in representation space.** Yann LeCun's **JEPA** approach (I-JEPA, 2023; V-JEPA 2, 2025 for video) predicts the *embedding* of a masked region from the visible ones, rather than its pixels, so the model isn't spending capacity on unpredictable detail.
 
-## Multimodal Architectures
+Self-supervised pretraining is how nearly every foundation model gets its general knowledge before any task-specific fine-tuning, in language and vision alike.
 
-Combine two or more input modalities (text, image, audio) in one model:
+## 6. Combining Images and Text
 
-- **Dual-encoder / contrastive multimodal models (CLIP)**: a separate encoder per modality (a ViT for images, a Transformer for text), trained contrastively so matching image-text pairs land close together in a shared embedding space and non-matching pairs land far apart — the same contrastive principle as SimCLR, across modalities instead of augmented views. This shared embedding space is what powers zero-shot image classification (compare an image embedding to text embeddings of candidate class names) and text-to-image retrieval.
+### Multimodal Architectures
+
+Many tasks involve more than one kind of data. There are two main designs:
+
+**Dual encoders**, of which **CLIP** (Radford et al., 2021) is the landmark. One encoder for images, one for text, trained on 400 million image-caption pairs from the web with a contrastive loss: in each batch, every image's embedding must be most similar to its own caption's embedding, and vice versa. The result is a shared space where images and text are directly comparable. That enables **zero-shot classification** (embed "a photo of a dog", "a photo of a cat" and pick the caption closest to the image, with no training on those classes) and text-to-image search. SigLIP (2023) replaced the batch-wide softmax with a per-pair sigmoid loss, which scales better, and its successors are now common vision encoders.
 
 <ClipDualEncoderDiagram />
 
-- **Fusion-based VLMs**: rather than just aligning separate embeddings, project one modality's features directly into the other's token space and let a single Transformer attend jointly over both — see [Multimodal & Generative Models](/docs/llms-genai/multimodal-generative-models) for VLMs and VLAs in depth, and [LLM Hosting & Serving Patterns](/docs/mlops/llm-hosting-and-serving-patterns) for how these get served in production.
+**Fusion models** feed one modality into the other's model. A **vision-language model** encodes an image into a sequence of vectors, projects them into a language model's token space, and lets the language model attend over image and text tokens together. That's how current assistants read images, documents and screenshots. **Vision-language-action** models add robot actions as outputs. [Multimodal and Generative Models](/docs/llms-genai/multimodal-generative-models) covers both in depth.
 
-## Time Series-Specific Networks
+<GoDeeper title="Go deeper: why contrastive training needs big batches">
 
-Beyond the classical statistical models in [Time Series Forecasting](/docs/machine-learning/time-series-forecasting) and the general sequence models in [Sequence Models](/docs/deep-learning/sequence-models):
+CLIP's loss for one image is a softmax over the whole batch: the image's similarity to its own caption, against its similarity to every other caption in the batch. The other captions are the **negatives**, and the batch size sets how many there are.
 
-- **TCN (Temporal Convolutional Network)**: applies 1D causal, dilated convolutions along the time axis — causal so a prediction only depends on past values, dilated so the receptive field grows exponentially with depth without needing recurrence at all. Often trains faster than an RNN/LSTM on long sequences while matching or beating their accuracy, because convolutions parallelize across time steps during training in a way recurrence cannot.
+With 32 negatives, the task is easy: most random captions are obviously wrong, and the model learns coarse distinctions. With 32,000, many negatives are close ("a brown dog on grass" against "a brown dog on sand"), and the model has to learn fine ones. That's why CLIP was trained with batches of 32,768, and why contrastive methods are expensive to scale.
+
+Remedies include memory queues of past embeddings as extra negatives (MoCo), methods that avoid negatives altogether (BYOL, DINO), and SigLIP's sigmoid loss, which treats each image-caption pair as an independent yes-or-no question, decoupling the loss from the batch-wide normalization and making very large batches cheaper across many devices.
+
+</GoDeeper>
+
+## 7. Time-Series Networks
+
+Beyond the classical models in [Time Series Forecasting](/docs/machine-learning/time-series-forecasting) and the general [sequence models](/docs/deep-learning/sequence-models), a few architectures were built for time series specifically:
+
+- **Temporal convolutional networks (TCNs)** use 1D convolutions that are **causal** (an output depends only on the past) and **dilated** (skipping inputs at growing intervals), so the receptive field grows exponentially with depth. They parallelize across time during training, unlike RNNs.
+- **N-BEATS** (2019) stacks fully connected blocks that each forecast part of the signal and pass on the residual, with an interpretable variant that separates trend from seasonality.
+- **Temporal Fusion Transformer** combines recurrent layers for local patterns with attention for long-range ones, and reports which inputs mattered.
+- **Time-series foundation models**, such as Google's TimesFM and Amazon's Chronos (2024), are pretrained on very large collections of series and forecast new ones zero-shot, the same pretrain-then-apply pattern as language models.
 
 <TcnDilatedConvDiagram />
-- **N-BEATS**: a pure deep learning forecasting architecture built from stacked fully-connected blocks with backward/forward residual connections, explicitly designed to be interpretable (decomposing a forecast into trend and seasonality components) without hand-engineered statistical structure — competitive with, and often beating, classical statistical and hybrid models on standard forecasting benchmarks.
-- **TFT (Temporal Fusion Transformer)**: covered in [Time Series Forecasting](/docs/machine-learning/time-series-forecasting) — combines LSTM-based local processing with attention for long-range dependencies and built-in interpretability (which input features and time steps mattered most for a given forecast).
 
-Next: [NN Layers Reference](/docs/deep-learning/nn-layers-reference) — the individual building-block layers (attention, convolution, normalization, and more) used across every architecture in this section.
+## 8. When *Not* to Use These
+
+| Situation | Better choice |
+|---|---|
+| Graph-shaped data with good node features and few useful edges | A plain model on the node features; check that edges help, as the GCN example did |
+| A GNN that needs information from far across the graph | A graph transformer, or extra edges, rather than stacking many GNN layers |
+| A fixed, small set of classes with plenty of examples each | Ordinary classification; metric learning adds complexity for no gain |
+| A problem with a clear supervised signal and a simulator-free setting | Supervised learning; RL is far less sample-efficient |
+| A few thousand labelled images and no pretrained model | Start from a self-supervised pretrained backbone rather than training from scratch |
+| Image-text matching where exact attributes or counts matter | A fusion VLM; dual encoders like CLIP compress each side to one vector and miss details |
+| A single short time series | Classical statistical models before deep networks |
+
+## Remember
+
+| Family | Drops the assumption that... | In one line |
+|---|---|---|
+| GNNs | Data is a grid or a sequence | Message passing: aggregate neighbours, update, repeat a few times |
+| Metric learning | Classes are fixed and known | Learn an embedding where distance means similarity |
+| RL networks | Each input has a correct output | Value, policy and actor-critic networks learn from rewards; PPO and GRPO train LLMs |
+| Self-supervised | Labels are needed | Masking and view-agreement tasks make labels from the data |
+| Multimodal | One kind of input | Dual encoders align modalities; fusion models attend over both |
+| Time series | Generic sequence models suffice | Causal dilated convolutions, residual forecasting blocks, pretrained forecasters |
+
+---
+
+Next: [Neural Network Layers](/docs/deep-learning/nn-layers-reference), a reference for every layer these architectures are built from, or [Continual Learning](/docs/deep-learning/continual-learning), for models that must keep learning after deployment.
+
+## Sources
+
+- Gilmer et al., [Neural Message Passing for Quantum Chemistry](https://arxiv.org/abs/1704.01212) (2017)
+- Kipf and Welling, [Semi-Supervised Classification with Graph Convolutional Networks](https://arxiv.org/abs/1609.02907) (2017)
+- Hamilton, Ying and Leskovec, [Inductive Representation Learning on Large Graphs](https://arxiv.org/abs/1706.02216) (2017)
+- Veličković et al., [Graph Attention Networks](https://arxiv.org/abs/1710.10903) (2018)
+- Lam et al., [Learning skillful medium-range global weather forecasting](https://www.science.org/doi/10.1126/science.adi2336) (Science, 2023), GraphCast
+- Schroff, Kalenichenko and Philbin, [FaceNet](https://arxiv.org/abs/1503.03832) (2015)
+- Mnih et al., [Human-level control through deep reinforcement learning](https://www.nature.com/articles/nature14236) (Nature, 2015)
+- Schulman et al., [Proximal Policy Optimization Algorithms](https://arxiv.org/abs/1707.06347) (2017)
+- Shao et al., [DeepSeekMath](https://arxiv.org/abs/2402.03300) (2024), GRPO
+- Chen et al., [A Simple Framework for Contrastive Learning of Visual Representations](https://arxiv.org/abs/2002.05709) (2020)
+- Oquab et al., [DINOv2](https://arxiv.org/abs/2304.07193) (2023)
+- Radford et al., [Learning Transferable Visual Models From Natural Language Supervision](https://arxiv.org/abs/2103.00020) (2021), CLIP
+- Zhai et al., [Sigmoid Loss for Language Image Pre-Training](https://arxiv.org/abs/2303.15343) (2023), SigLIP
+- Bai, Kolter and Koltun, [An Empirical Evaluation of Generic Convolutional and Recurrent Networks for Sequence Modeling](https://arxiv.org/abs/1803.01271) (2018), TCN
+- Das et al., [A decoder-only foundation model for time-series forecasting](https://arxiv.org/abs/2310.10688) (2024), TimesFM
