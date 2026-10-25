@@ -1,68 +1,268 @@
 ---
 title: "ICA, t-SNE & UMAP, In Full Depth"
 sidebar_position: 6.5
-description: "ICA, t-SNE, and UMAP -- the cocktail-party problem solved by statistical independence, and two methods optimizing purely for visualizability, not variance."
+description: "ICA derived: the mixing model, whitening, why non-Gaussianity un-mixes signals and Gaussians can't be separated, and the FastICA fixed-point step. t-SNE derived: perplexity, the KL objective, the heavy-tailed kernel and its gradient. UMAP's fuzzy graph and cross-entropy. What their plots can and can't be trusted for, measured on real data."
 ---
 
-import __migratedImg0 from './img/embedding-2d.png';
-
+import embLight from './img/embedding-2d-light.png';
+import embDark from './img/embedding-2d.png';
 import IcaCocktailPartyDiagram from '../../../viz/diagrams/IcaCocktailPartyDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # ICA, t-SNE & UMAP, In Full Depth
 
-[PCA and its relatives](/docs/machine-learning/pca-svd) all optimize for *variance*. This page covers three methods with a different goal entirely: ICA separates mixed signals by *statistical independence*, while t-SNE and UMAP optimize purely to make high-dimensional data *visualizable*, with no interest in variance or interpretable axes at all.
+[PCA](/docs/machine-learning/pca-svd) finds directions of maximum variance, and that's the right goal for compression. This page covers three methods with different goals. **ICA** assumes the observed data is a mixture of independent sources and recovers the sources, which variance can't do. **t-SNE** and **UMAP** give up on preserving variance or distances altogether and arrange points in two dimensions so that neighbours stay neighbours, which makes them the standard tools for looking at high-dimensional data such as embeddings. Each method is derived from its objective, and the experiments measure both what they get right and the parts of their plots that shouldn't be read literally.
 
-## Independent Component Analysis (ICA)
+<ELI5>
 
-**The classic motivating example — the "cocktail party problem"**: imagine several microphones in a room with several people talking simultaneously. Each microphone records a different *mixture* of all the voices. ICA's job: given only the mixed recordings, recover the original, separate voices.
+At a party, two microphones in different corners each pick up both of two people talking. Each recording is a blend. ICA un-blends them, recovering each voice on its own, using one clue: a real voice has a distinctive, spiky pattern, and blending two voices makes the result look more like smooth, random hiss. So it looks for the combinations that are as un-hiss-like as possible.
 
-**The key assumption**: unlike PCA (which looks for directions of maximum variance, and produces components that are merely *uncorrelated*), ICA looks for components that are **statistically independent** — a much stronger condition. Two variables can be uncorrelated (zero linear relationship) while still being highly dependent in a nonlinear way; independence rules out *any* relationship, linear or not.
+t-SNE and UMAP solve a different problem: drawing a map of a crowd in which friends stand next to friends. They don't care about exact distances between groups, only that each person's closest friends end up close to them on the map. That makes great pictures of who's near whom, and misleading pictures of how far apart the groups are. Everything below is those ideas made exact.
 
-**Why independence, and why it works**: ICA relies on the Central Limit Theorem (see [Probability & Statistics](/docs/mathematics-for-ai/probability-statistics#central-limit-theorem)) in reverse — a mixture of independent signals tends to look *more* Gaussian than any of the original signals alone (sums of independent random variables trend toward Gaussian). So ICA searches for a transformation that makes the resulting components as **non-Gaussian** as possible, on the logic that this is exactly what un-mixes the original signals back out. Real signals, a real linear mixing matrix, and real non-Gaussianity (excess kurtosis) measured before and after:
+</ELI5>
+
+## 1. ICA: The Mixing Model
+
+### Independent Component Analysis (ICA)
+
+ICA assumes the observed signals $\mathbf{x}$ (one value per microphone at each moment) are linear mixtures of unknown **source** signals $\mathbf{s}$ (the speakers), through an unknown **mixing matrix** $A$:
+
+$$
+\mathbf{x} = A\,\mathbf{s}
+$$
+
+with the sources **statistically independent** of each other. The goal is an un-mixing matrix $W \approx A^{-1}$, so that $\mathbf{y} = W\mathbf{x}$ recovers the sources. With $A$ and $\mathbf{s}$ both unknown, this looks impossible, and partly it is: any source can be scaled by a constant (and $A$'s column scaled inversely) without changing $\mathbf{x}$, and the sources can come out in any order. So ICA recovers sources only up to **scale, sign and order**. Everything else is identifiable, under one condition derived below.
+
+**Independent is much stronger than uncorrelated.** PCA produces components that are uncorrelated: zero linear relationship. Independence means knowing one tells you nothing about the other, through any relationship. $u$ uniform on $[-1, 1]$ and $u^2$ are uncorrelated (the covariance is $\mathbb{E}[u^3] = 0$) but completely dependent. That's why PCA fails at un-mixing: in Section 5, PCA's components correlate only 0.68 to 0.82 with the true sources, while ICA's correlate at 0.996 or better.
+
+**Step 1: whitening.** First apply a linear transform that gives the data identity covariance, $\mathbf{z} = E D^{-1/2} E^T(\mathbf{x} - \bar{\mathbf{x}})$, from the covariance's eigendecomposition $ED E^T$ (this is [PCA whitening](/docs/machine-learning/pca-svd)). Taking the sources to have unit variance (the scale ambiguity allows it), the whitened data is $\mathbf{z} = \tilde{A}\mathbf{s}$ with $\tilde{A}\tilde{A}^T = \operatorname{Cov}(\mathbf{z}) = I$: the remaining mixing matrix is **orthogonal**, a rotation. Whitening has used up everything second-order statistics can tell us, and the problem has shrunk to finding the right rotation.
+
+**Why Gaussian sources can't be separated.** If the sources were Gaussian, $\mathbf{s}$ would be a standard Gaussian vector, and a standard Gaussian looks identical after any rotation. Every rotation of $\mathbf{z}$ would be just as independent as every other, so there'd be no way to pick the right one. ICA therefore requires that **at most one source is Gaussian**, and it uses non-Gaussianity to find the rotation.
+
+## 2. ICA: Non-Gaussianity Points to the Sources
+
+The central limit theorem says sums of independent variables tend toward a Gaussian (see [Probability & Statistics](/docs/mathematics-for-ai/probability-statistics#central-limit-theorem)). A mixture $\mathbf{w}^T\mathbf{z}$ is a weighted sum of the sources, so it's typically *more Gaussian* than any one source. Turned around: among all directions $\mathbf{w}$ (unit vectors, since we're looking for a rotation), the ones where $\mathbf{w}^T\mathbf{z}$ is **least** Gaussian are the ones that pick out a single source.
+
+Non-Gaussianity needs a measure. The simplest is **excess kurtosis**, $\mathbb{E}[y^4] - 3$ for a unit-variance $y$, which is 0 for a Gaussian, positive for spiky, heavy-tailed signals (speech) and negative for flat ones (a square wave is $-2$). In Section 5, the three sources have kurtosis $-1.37$, $-1.99$ and $-1.17$, and every microphone recording is closer to zero ($-0.99$, $-1.66$, $-0.74$): mixing really does make them more Gaussian. Kurtosis is sensitive to outliers, so practical ICA uses an approximation to **negentropy**, how far a variable's entropy is below that of a Gaussian with the same variance, through a smooth function $G$ such as $\log\cosh$.
+
+**FastICA** (Hyvärinen and Oja, 2000) maximizes that measure for one direction at a time with a fixed-point iteration. With $g = G'$ (for $\log\cosh$, $g = \tanh$), the update is
+
+$$
+\mathbf{w} \leftarrow \mathbb{E}\big[\mathbf{z}\,g(\mathbf{w}^T\mathbf{z})\big] - \mathbb{E}\big[g'(\mathbf{w}^T\mathbf{z})\big]\,\mathbf{w}, \qquad \mathbf{w} \leftarrow \frac{\mathbf{w}}{\lVert\mathbf{w}\rVert}
+$$
+
+which is a Newton step on the constrained objective, simplified using the fact that $\mathbf{z}$ is white. It typically converges in a handful of iterations, cubically for kurtosis-based contrast. After one component is found, the next is found the same way while being kept orthogonal to the earlier ones (**deflation**), since the rotation's rows must be orthogonal. Mix three signals and watch kurtosis move as they're separated:
 
 <IcaCocktailPartyDiagram />
 
-**Practical uses beyond audio**: separating overlapping sources in EEG/fMRI brain signal data, removing specific artifacts (like eye-blink noise) from a signal, and general blind source separation problems — anywhere the data is genuinely a *mixture* of independent underlying causes, which is a different situation than PCA's "compress correlated features" use case.
+ICA is used for blind source separation: un-mixing audio, removing eye-blink and heartbeat artefacts from EEG recordings, separating independent processes in fMRI, finding independent factors in financial returns. It's not a general-purpose compressor: its components aren't ordered by importance, and it assumes the data really is a linear mixture of independent, non-Gaussian causes.
 
-## t-SNE (t-Distributed Stochastic Neighbor Embedding)
+## 3. t-SNE: Matching Neighbourhoods
 
-Built for exactly one job: taking high-dimensional data (like embeddings — see [Foundation Model Internals](/docs/llms-genai/foundation-model-internals#embeddings)) and projecting it into 2D/3D **purely for visualization**, preserving local neighborhood structure as faithfully as possible.
+### t-SNE (t-Distributed Stochastic Neighbor Embedding)
 
-**The mechanism**: for every pair of points, compute a probability that one would "pick" the other as a neighbor, based on distance in the *original* high-dimensional space (closer points get higher probability — using a Gaussian kernel). Then, place points in the low-dimensional space and adjust their positions so the same neighbor-probabilities (this time using a heavier-tailed t-distribution, which is where the "t" comes from) match as closely as possible.
+t-SNE (van der Maaten and Hinton, 2008) places $n$ points $\mathbf{y}_i$ in two dimensions so that each point's neighbours in the original space are its neighbours on the map. It turns "neighbour" into a probability distribution in each space and makes the two distributions match.
 
-**The heavy-tailed trick, specifically**: using a t-distribution (rather than Gaussian) in the *low*-dimensional space deliberately allows moderately-distant points to end up farther apart than they'd naturally be — this directly combats the "crowding problem," where high-dimensional space simply has more room than 2D/3D, so naively squashing it down would crush everything into an undifferentiated blob.
+**High-dimensional similarities.** For each point $i$, define the probability that it would pick $j$ as a neighbour, with a Gaussian centred on $\mathbf{x}_i$:
 
-**Critical caveats** — the most commonly misread output in this entire curriculum:
-- **Cluster *sizes* in a t-SNE plot are meaningless.** A tight-looking cluster and a spread-out one may represent equally tight groupings in the true high-dimensional space — t-SNE doesn't preserve density.
-- **Distances *between* separate clusters are meaningless.** Two clusters that look close together in the 2D plot are not necessarily more similar than two that look far apart — t-SNE only tries to preserve *local* neighbor relationships, not global distances.
-- Results depend heavily on the **perplexity** hyperparameter (roughly, the assumed number of effective neighbors) — different values can produce visibly different-looking plots from the same data.
+$$
+p_{j|i} = \frac{\exp\big(-\lVert\mathbf{x}_i - \mathbf{x}_j\rVert^2/2\sigma_i^2\big)}{\sum_{k}\exp\big(-\lVert\mathbf{x}_i - \mathbf{x}_k\rVert^2/2\sigma_i^2\big)}
+$$
 
-## UMAP (Uniform Manifold Approximation and Projection)
+(Here and below, sums skip pairs of a point with itself.) Each point gets its own width $\sigma_i$, chosen so that the distribution has a fixed **perplexity**, $2^{H(P_i)}$ where $H$ is its entropy. Perplexity is a smooth "effective number of neighbours": in a dense region $\sigma_i$ shrinks, in a sparse one it grows, so every point considers roughly the same number of neighbours. Typical values are 5 to 50. The conditional probabilities are then symmetrized, $p_{ij} = (p_{j|i} + p_{i|j})/2n$.
 
-Solves the same visualization problem as t-SNE, built on different mathematical foundations (topology and manifold learning rather than t-SNE's probability-matching), but the practical differences are what matter:
+**Low-dimensional similarities** use a Student-$t$ distribution with one degree of freedom (a Cauchy kernel):
 
-- **Much faster**, especially on large datasets — scales notably better than t-SNE.
-- **Better preserves global structure** — the relative positioning of distinct clusters is more meaningful in UMAP than in t-SNE, though still not fully reliable for precise distance comparisons.
-- **Can be used for general-purpose dimensionality reduction**, not just 2D/3D visualization (t-SNE is rarely used beyond visualization).
+$$
+q_{ij} = \frac{\big(1 + \lVert\mathbf{y}_i - \mathbf{y}_j\rVert^2\big)^{-1}}{\sum_{k,\,l}\big(1 + \lVert\mathbf{y}_k - \mathbf{y}_l\rVert^2\big)^{-1}}
+$$
 
-**In practice**: UMAP has largely replaced t-SNE as the default choice for visualizing embeddings and high-dimensional clusters, mainly for the speed advantage on large modern datasets — though both remain in active use, and the same misreading caveats above apply to UMAP's cluster sizes and distances too.
+**The objective** is the KL divergence from $P$ to $Q$, minimized over the map positions by gradient descent:
 
-## What a Good Embedding Visualization Looks Like
+$$
+C = \mathrm{KL}(P\,\Vert\,Q) = \sum_{i,\,j} p_{ij}\log\frac{p_{ij}}{q_{ij}},
+\qquad
+\frac{\partial C}{\partial\mathbf{y}_i} = 4\sum_{j}(p_{ij} - q_{ij})\,\frac{\mathbf{y}_i - \mathbf{y}_j}{1 + \lVert\mathbf{y}_i - \mathbf{y}_j\rVert^2}
+$$
 
-Regardless of method, a successful 2D projection of well-separated high-dimensional categories should show visually distinct groups:
+Read the gradient as springs: when $p_{ij} \gt  q_{ij}$ (neighbours in the data, too far apart on the map) the pair attracts; when $p_{ij} \lt  q_{ij}$ it repels. KL divergence is asymmetric in a way that matters: putting true neighbours far apart (large $p$, small $q$) is very costly, while putting non-neighbours close together (small $p$, larger $q$) is cheap. So t-SNE works hard to keep neighbourhoods intact and cares much less about everything else.
 
-<img src={__migratedImg0} alt="A 2D embedding showing three well-separated categories — the goal of any t-SNE/UMAP/PCA visualization" style={{maxWidth: '100%'}} />
+**Why the heavy tail.** In 10 dimensions, a point can have many neighbours all at the same moderate distance; in 2 dimensions there isn't room to place them all at that distance from each other. This is the **crowding problem**: with a Gaussian in both spaces, moderately distant points get squeezed together and clusters merge. The Cauchy kernel falls off much more slowly than a Gaussian, so a moderate distance in the data can be represented by a much larger distance on the map. That pushes clusters apart and gives t-SNE its characteristic, well-separated islands.
 
-This is exactly the kind of plot you'd generate to sanity-check a trained embedding model (see [RAG — Choosing an Embedding Model](/docs/llms-genai/rag#choosing-an-embedding-model)): project a sample of embeddings to 2D and visually confirm that semantically different categories actually separate, before trusting the embedding space for retrieval.
+**Practicalities.** The naive gradient costs $O(n^2)$ per step; the Barnes–Hut approximation brings it to $O(n\log n)$ (scikit-learn's default), and FFT-accelerated versions (FIt-SNE, openTSNE) handle millions of points. Optimization begins with **early exaggeration** (multiplying all $p_{ij}$ by about 12 for the first few hundred iterations), which lets clusters form before the fine arrangement is settled. Initialization matters: since version 1.2 scikit-learn initializes with PCA rather than random positions, which keeps much more of the global layout (Kobak and Linderman, 2021).
 
-## Choosing Among Dimensionality Reduction Methods
+## 4. UMAP, and How to Read These Plots
 
-| | PCA/SVD | Kernel PCA | ICA | t-SNE | UMAP |
-|---|---|---|---|---|---|
-| Goal | Max variance | Nonlinear max variance | Statistical independence | Local structure for visualization | Local + some global structure |
-| Linear? | Yes | No | Yes (linear un-mixing) | No | No |
-| Deterministic? | Yes | Yes | Mostly | No (random init) | Mostly |
-| Good for general compression? | Yes | Sometimes | No (specific use case) | No | Somewhat |
-| Good for visualization? | Basic | Rarely used for this | No | Yes (gold standard) | Yes (faster, more scalable) |
+### UMAP (Uniform Manifold Approximation and Projection)
 
-This completes dimensionality reduction: [PCA/Kernel PCA/Truncated SVD](/docs/machine-learning/pca-svd) → ICA/t-SNE/UMAP. Next: [Anomaly Detection](/docs/machine-learning/unsupervised-learning#anomaly-detection) and the remaining unsupervised methods — association rule mining and autoencoders.
+UMAP (McInnes, Healy and Melville, 2018) has the same aim with a different construction, derived from assumptions about data lying on a manifold. In practice it comes down to a weighted nearest-neighbour graph matched by a layout:
+
+- **High-dimensional graph.** For each point, find its $k$ nearest neighbours (`n_neighbors`, default 15). Let $\rho_i$ be the distance to the nearest one and pick $\sigma_i$ so that the weights $w_{ij} = \exp\big(-(d(\mathbf{x}_i, \mathbf{x}_j) - \rho_i)/\sigma_i\big)$ sum to $\log_2 k$. Subtracting $\rho_i$ guarantees every point is fully connected to at least its nearest neighbour, however sparse its region. Symmetrize with a fuzzy union, $w_{ij} + w_{ji} - w_{ij}w_{ji}$.
+- **Low-dimensional similarity** $v_{ij} = (1 + a\lVert\mathbf{y}_i - \mathbf{y}_j\rVert^{2b})^{-1}$, a family that includes t-SNE's kernel, with $a, b$ set from `min_dist`, the closest that points may be packed on the map.
+- **Objective**: the binary cross-entropy between edge weights, $\sum w\log\tfrac{w}{v} + (1-w)\log\tfrac{1-w}{1-v}$. The first term attracts neighbours like t-SNE's; the second explicitly repels non-neighbours. It's optimized by stochastic gradient descent with **negative sampling**: each step attracts a sampled edge and repels a few random points, so there's no global normalization over all pairs as in t-SNE. That is the main reason UMAP scales well, and it can embed into more than two dimensions and transform new points, which t-SNE can't easily do.
+
+UMAP initializes the layout with the spectral embedding of its graph (the Laplacian eigenvectors from [spectral clustering](/docs/machine-learning/gmm-spectral-clustering)).
+
+**What these plots preserve and what they don't.** Both methods optimize local neighbourhoods. That makes some features of their plots reliable and others misleading:
+
+- **Reliable:** which points are near which. Section 5 measures this two ways: **trustworthiness** (whether a point's neighbours on the map were really its neighbours) is 0.99 for both t-SNE and UMAP on the digits against 0.83 for PCA, and a 10-nearest-neighbour classifier run on the 2-D map scores 0.974 for both against 0.613 on PCA's 2-D projection.
+- **Not reliable: cluster sizes.** Perplexity and $\sigma_i$ adapt to local density, so a tight cluster and a diffuse one can come out the same size.
+- **Not reliable: distances between clusters.** Neither method is trying to preserve them. In Section 5, the correlation between distances separating the ten digits' centres in the original 64 dimensions and on the map is 0.82 for PCA and t-SNE (with PCA initialization) and 0.58 for UMAP on this data. Claims that UMAP preserves global structure better than t-SNE depend largely on initialization, not the algorithm (Kobak and Linderman, 2021).
+- **Not reliable: apparent sub-clusters.** In the map below, digit 1 appears as several separate islands. That may reflect real variation (different handwriting styles of 1), or it may be an artefact of the parameters. Check by changing perplexity or `n_neighbors` and the random seed before believing it.
+
+<ThemedImage alt="t-SNE map of 1,797 handwritten digits in ten coloured groups, each labelled with its digit; most digits form one island, digit 1 forms several" sources={{light: embLight, dark: embDark}} />
+
+<PredictFirst
+  question="In a t-SNE plot of customer embeddings, cluster A is twice as wide as cluster B, and cluster C sits much farther from A than B does. What can you conclude?"
+  options={[
+    'A is more varied than B, and C is more different from A than B is',
+    'Very little about either: t-SNE does not preserve cluster sizes or between-cluster distances, only which points are near which',
+    'A has twice as many customers as B',
+    'C is an outlier group and can be ignored',
+  ]}
+  correctIndex={1}
+  explanation="t-SNE adapts its neighbourhood width to local density, so cluster sizes on the map don't reflect spread in the data, and its objective barely penalizes misplacing far-apart groups, so gaps between clusters aren't faithful. To compare clusters, measure in the original space (distances between centroids, within-cluster variance), and treat the map as a picture of neighbourhoods."
+/>
+
+<GoDeeper title="Go deeper: t-SNE and UMAP are closer than they look">
+
+The two methods have often been presented as very different, one probabilistic and one topological, but analyses since 2019 show their differences come mostly from a few choices rather than their foundations. Böhm, Berens and Kobak (2022) showed that both can be seen as balancing attraction between neighbours against repulsion between all points, and that the main difference is how strong the repulsion is: UMAP's negative sampling effectively applies much weaker repulsion than t-SNE's normalized objective, which is why UMAP's clusters look tighter and more separated. t-SNE with exaggeration greater than 1 throughout produces UMAP-like maps; UMAP with stronger repulsion produces t-SNE-like ones.
+
+And Kobak and Linderman (2021) showed that UMAP's better-preserved global layout in early comparisons came from its spectral initialization, while t-SNE was being started from random positions. Given the same informative initialization, the two preserve global structure comparably. In practice: choose by speed and tooling, initialize from PCA or a spectral embedding, and check any conclusion against a second run with different parameters.
+
+</GoDeeper>
+
+## 5. Minimal Implementation
+
+FastICA from Section 2 (whitening, the fixed-point step, deflation), checked against scikit-learn and against PCA on three mixed signals; then PCA, t-SNE at two perplexities and UMAP on the digits, measured for neighbourhood preservation and for global layout:
+
+```python
+import time
+import warnings
+import numpy as np
+from scipy.stats import kurtosis
+from sklearn.datasets import load_digits
+from sklearn.decomposition import PCA, FastICA
+from sklearn.manifold import TSNE, trustworthiness
+from sklearn.model_selection import cross_val_score
+from sklearn.neighbors import KNeighborsClassifier
+import umap
+warnings.filterwarnings("ignore")
+
+# ---- ICA: un-mix three signals recorded by three "microphones" ----
+t = np.linspace(0, 8, 4000)
+S = np.column_stack([np.sin(2 * t), np.sign(np.sin(3 * t)), (t * 1.7) % 2 - 1])   # sine, square, sawtooth
+A = np.array([[1.0, 1.0, 1.0], [0.5, 2.0, 1.0], [1.5, 1.0, 2.0]])                  # unknown mixing matrix
+X = S @ A.T
+
+def fastica(X, n, iters=200, seed=0):
+    Xc = X - X.mean(0)
+    d, E = np.linalg.eigh(np.cov(Xc.T))
+    Z = Xc @ E @ np.diag(d ** -0.5) @ E.T                     # whitening: identity covariance
+    rng = np.random.default_rng(seed)
+    W = np.zeros((n, Z.shape[1]))
+    for i in range(n):                                         # one component at a time (deflation)
+        w = rng.normal(size=Z.shape[1]); w /= np.linalg.norm(w)
+        for _ in range(iters):
+            u = Z @ w
+            w_new = (Z * np.tanh(u)[:, None]).mean(0) - (1 - np.tanh(u) ** 2).mean() * w   # fixed-point step
+            w_new -= W[:i].T @ (W[:i] @ w_new)                  # stay orthogonal to components already found
+            w_new /= np.linalg.norm(w_new)
+            converged = abs(abs(w_new @ w) - 1) < 1e-10
+            w = w_new
+            if converged:
+                break
+        W[i] = w
+    return Z @ W.T
+
+def match(sources, estimates):                                 # best |correlation| for each true source
+    C = np.abs(np.corrcoef(sources.T, estimates.T)[:3, 3:])
+    return np.round(C.max(1), 4)
+
+print("excess kurtosis of each source:      ", np.round(kurtosis(S), 2))
+print("excess kurtosis of each microphone:  ", np.round(kurtosis(X), 2))
+print("ours:  |corr| with true sources       ", match(S, fastica(X, 3)))
+print("sklearn FastICA: |corr| with sources  ", match(S, FastICA(3, random_state=0, whiten="unit-variance").fit_transform(X)))
+print("PCA:   |corr| with true sources       ", match(S, PCA(3).fit_transform(X)))
+
+# ---- t-SNE and UMAP vs PCA on the 64-pixel digits ----
+Xd, yd = load_digits(return_X_y=True)
+cent = np.array([Xd[yd == c].mean(0) for c in range(10)])
+D_high = np.linalg.norm(cent[:, None] - cent[None], axis=-1)[np.triu_indices(10, 1)]
+print("method                   time    trustworthiness  10-NN accuracy in 2-D  centroid-distance correlation")
+for name, make in [("PCA", lambda: PCA(2, random_state=0)),
+                   ("t-SNE (perplexity 30)", lambda: TSNE(2, perplexity=30, random_state=0)),
+                   ("t-SNE (perplexity 5)", lambda: TSNE(2, perplexity=5, random_state=0)),
+                   ("UMAP (15 neighbours)", lambda: umap.UMAP(n_neighbors=15, random_state=0))]:
+    start = time.perf_counter()
+    Y = make().fit_transform(Xd)
+    secs = time.perf_counter() - start
+    acc = cross_val_score(KNeighborsClassifier(10), Y, yd, cv=5).mean()
+    c2 = np.array([Y[yd == c].mean(0) for c in range(10)])
+    D_low = np.linalg.norm(c2[:, None] - c2[None], axis=-1)[np.triu_indices(10, 1)]
+    print(f"{name:23s} {secs:5.1f} s   {trustworthiness(Xd, Y, n_neighbors=10):.3f}            "
+          f"{acc:.3f}                  {np.corrcoef(D_high, D_low)[0, 1]:.3f}")
+```
+
+Output (scikit-learn 1.9, umap-learn 0.5; times from one run on a shared machine, UMAP's including its one-time compilation):
+
+```
+excess kurtosis of each source:       [-1.37 -1.99 -1.17]
+excess kurtosis of each microphone:   [-0.99 -1.66 -0.74]
+ours:  |corr| with true sources        [0.996  1.     0.9998]
+sklearn FastICA: |corr| with sources   [0.9964 0.9996 0.9984]
+PCA:   |corr| with true sources        [0.6808 0.8191 0.7389]
+method                   time    trustworthiness  10-NN accuracy in 2-D  centroid-distance correlation
+PCA                       0.1 s   0.830            0.613                  0.819
+t-SNE (perplexity 30)    11.5 s   0.993            0.974                  0.818
+t-SNE (perplexity 5)      6.2 s   0.991            0.973                  0.802
+UMAP (15 neighbours)     17.1 s   0.988            0.974                  0.579
+```
+
+- **ICA recovers the sources; PCA doesn't (Sections 1 and 2).** Mixing pulls every signal's kurtosis toward 0. The 30-line FastICA recovers all three sources with correlations of 0.996 or better, matching scikit-learn; PCA's uncorrelated components correlate only 0.68 to 0.82 with them.
+- **Neighbourhoods are kept (Section 4).** t-SNE and UMAP reach trustworthiness of about 0.99, and a 10-NN classifier on their 2-D maps is as accurate as one on 64 dimensions usually is, 0.974. PCA's 2-D projection scrambles neighbourhoods (0.613).
+- **Perplexity changed little here**: 5 and 30 give nearly the same numbers on this data. On other data it can change the picture a lot, so try more than one.
+- **Global layout is a separate question.** PCA and PCA-initialized t-SNE keep the arrangement of the digit centres (correlation 0.82); UMAP, on this data and with defaults, kept less (0.58).
+
+## 6. When *Not* to Use These
+
+| Situation | Better choice |
+|---|---|
+| You want to compress features for a downstream model | [PCA](/docs/machine-learning/pca-svd) (or UMAP to more than 2 dimensions); t-SNE has no transform for new points and its axes mean nothing |
+| You want to measure distances or sizes of groups | Compute them in the original space; never read them off a t-SNE or UMAP plot |
+| You want to cluster | Cluster in the original or PCA-reduced space; clustering on a t-SNE map can find artefacts of the layout (UMAP to 5 to 10 dimensions followed by HDBSCAN is a common, more careful pipeline) |
+| Sources are Gaussian, or mixed nonlinearly, or there are more sources than sensors | ICA's assumptions fail; consider nonlinear ICA variants or model-based approaches |
+| Data is not a mixture of independent causes | PCA or factor analysis |
+| You need an exact, reproducible picture for a report | PCA, which is deterministic; if you use t-SNE or UMAP, fix the seed and state the parameters |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| ICA model | $\mathbf{x} = A\mathbf{s}$ with independent sources; recover up to scale, sign and order |
+| Whitening | Reduces un-mixing to finding a rotation |
+| Why non-Gaussian | Rotations of a Gaussian are indistinguishable; at most one Gaussian source |
+| Key idea | Mixtures are more Gaussian; the least Gaussian directions are the sources |
+| FastICA | $\mathbf{w} \leftarrow \mathbb{E}[\mathbf{z}g(\mathbf{w}^T\mathbf{z})] - \mathbb{E}[g'(\mathbf{w}^T\mathbf{z})]\mathbf{w}$, then normalize |
+| t-SNE | Gaussian neighbour probabilities (perplexity) matched by a Cauchy kernel via KL |
+| Heavy tail | Solves crowding; pushes clusters apart |
+| UMAP | Fuzzy k-NN graph matched by cross-entropy with negative sampling; scales and transforms |
+| Trust | Who is near whom |
+| Don't trust | Cluster sizes, gaps between clusters, sub-clusters from one run |
+| Global layout | Mostly set by initialization; use PCA or spectral init |
+
+---
+
+Next: [Association Rule Mining](/docs/machine-learning/association-rules), finding items that occur together in transactions, then [Anomaly Detection](/docs/machine-learning/anomaly-detection).
+
+## Sources
+
+- A. Hyvärinen and E. Oja, [Independent Component Analysis: Algorithms and Applications](https://doi.org/10.1016/S0893-6080(00)00026-5), *Neural Networks*, 2000
+- P. Comon, [Independent Component Analysis, a New Concept?](https://doi.org/10.1016/0165-1684(94)90029-9), *Signal Processing*, 1994
+- L. van der Maaten and G. Hinton, [Visualizing Data using t-SNE](https://jmlr.org/papers/v9/vandermaaten08a.html), *JMLR*, 2008
+- L. van der Maaten, [Accelerating t-SNE using Tree-Based Algorithms](https://jmlr.org/papers/v15/vandermaaten14a.html), *JMLR*, 2014
+- L. McInnes, J. Healy and J. Melville, [UMAP: Uniform Manifold Approximation and Projection for Dimension Reduction](https://arxiv.org/abs/1802.03426), 2018
+- D. Kobak and G. C. Linderman, [Initialization Is Critical for Preserving Global Data Structure in Both t-SNE and UMAP](https://doi.org/10.1038/s41587-020-00809-z), *Nature Biotechnology*, 2021
+- J. N. Böhm, P. Berens and D. Kobak, [Attraction-Repulsion Spectrum in Neighbor Embeddings](https://jmlr.org/papers/v23/21-0055.html), *JMLR*, 2022
+- M. Wattenberg, F. Viégas and I. Johnson, [How to Use t-SNE Effectively](https://distill.pub/2016/misread-tsne/), *Distill*, 2016
