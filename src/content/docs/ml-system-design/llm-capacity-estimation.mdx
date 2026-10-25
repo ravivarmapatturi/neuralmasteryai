@@ -1,0 +1,240 @@
+---
+title: "Back-of-the-Envelope Estimation for LLM Systems"
+sidebar_position: 3.5
+description: "How to estimate an LLM system's tokens, GPU memory, speed, GPU count and cost in a few minutes: weights, the KV cache, why decoding is limited by memory bandwidth, and a calculator you can run."
+---
+
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+
+# Back-of-the-Envelope Estimation for LLM Systems
+
+[The 9-step framework](/docs/ml-system-design/the-9-step-framework) ends with scaling, and every real design discussion reaches the same questions there: how many GPUs, how fast will it feel, and what will it cost? You can answer them to within a factor of two in a few minutes, before writing any code, from four numbers: how many tokens the system handles, how big the model is, how much memory a GPU has, and how fast that memory is. This page builds the estimate one piece at a time and ends with a calculator you can run.
+
+<ELI5>
+
+Think of a GPU as a kitchen with a small counter and a fast cook. The model's weights are the recipe book, and they take up most of the counter. Every customer's half-finished order (the conversation so far) also needs counter space. The cook can't start the next step of any order until they've read the whole recipe book again, so how fast the cook can read, not how fast they chop, sets the pace.
+
+Estimating an LLM system is working out how many orders fit on the counter, how long each step takes, and how many kitchens you need for the dinner rush.
+
+</ELI5>
+
+## 1. Start from tokens
+
+Everything in an LLM system is priced and limited in tokens, so the first step is turning the product's traffic into tokens per second.
+
+Take a support assistant with 200,000 requests a day. Each request sends a 2,000-token prompt (instructions, retrieved documents and the conversation) and gets back a 300-token answer. Traffic isn't flat, so plan for a peak hour about three times busier than the daily average:
+
+$$
+\text{peak requests/s} = \frac{200{,}000}{86{,}400} \times 3 \approx 6.9
+$$
+
+$$
+\text{peak output tokens/s} = 6.9 \times 300 \approx 2{,}083
+$$
+
+Input and output tokens are kept separate because they cost different amounts of work, for reasons that come up in sections 4 and 5. Here the system reads about 14,000 prompt tokens and writes about 2,000 output tokens per second at peak.
+
+**Limit:** the averages hide the tail. A few users with 30,000-token documents can need more memory than hundreds of ordinary requests, so check the largest request you'll accept as well as the typical one.
+
+## 2. Memory, part one: the weights
+
+A model's weights must sit in GPU memory. Their size is the parameter count times the bytes per parameter:
+
+| Precision | Bytes per parameter | Qwen2.5-72B (72.7B parameters) | Qwen2.5-7B (7.6B) |
+|---|---|---|---|
+| BF16 | 2 | 145 GB | 15 GB |
+| FP8 | 1 | 73 GB | 8 GB |
+| 4-bit | 0.5 | 36 GB | 4 GB |
+
+An H100 GPU has 80 GB of memory. After the serving framework's own overhead, plan on using about 90% of it, so 72 GB per GPU. The 72B model in BF16 needs 145 GB, which is more than two GPUs' usable 144 GB, so in BF16 it needs four GPUs. In FP8 it fits on two, with room to spare. That is why [quantization](/docs/mlops/llm-inference-optimization) is usually the first thing a serving team reaches for: halving the bytes halves the hardware for the weights.
+
+**Limit:** fitting the weights is not enough. Whatever memory is left decides how many users the GPUs can serve at once, which is the next step.
+
+## 3. Memory, part two: the KV cache
+
+While generating, a transformer keeps the keys and values of every earlier token, in every layer, so it doesn't recompute them. That store is the **KV cache**, and it grows with every token of every active conversation. Per token it takes:
+
+$$
+\text{KV bytes per token} = 2 \times \text{layers} \times \text{KV heads} \times \text{head dim} \times \text{bytes per value}
+$$
+
+The 2 is one key and one value. From the published model configurations, in BF16:
+
+- **Qwen2.5-72B:** $2 \times 80 \times 8 \times 128 \times 2 = 327{,}680$ bytes, which is 320 KiB per token.
+- **Qwen2.5-7B:** $2 \times 28 \times 4 \times 128 \times 2 = 57{,}344$ bytes, which is 56 KiB per token.
+
+A single 2,300-token conversation on the 72B model therefore holds about 0.75 GB of KV cache. Whatever memory the weights leave free, divided by that, is how many conversations can be in progress at once: the **batch size**.
+
+Both models use grouped-query attention, which shares each key-value head among several query heads. The 72B model has 64 query heads but only 8 KV heads, so its cache is 8 times smaller than it would otherwise be. [Attention and Transformers](/docs/deep-learning/attention-transformers) explains the mechanism.
+
+**Limit:** this assumes every slot is used for a full-length conversation. Serving engines such as vLLM allocate the cache in small pages as conversations grow, so real batches are often larger than this worst case.
+
+## 4. Speed: decoding is limited by memory bandwidth
+
+A model writes its answer one token at a time. For each new token, the GPU has to read **all of the weights** from memory once, plus the KV cache of every conversation in the batch, and do comparatively little arithmetic with each byte. So the time per step is set by memory bandwidth, not by compute:
+
+$$
+\text{step time} \approx \frac{\text{weight bytes} + \text{batch} \times \text{KV bytes per conversation}}{\text{memory bandwidth}}
+$$
+
+An H100 reads 3.35 TB/s. For the 72B model in FP8 on two GPUs (6.7 TB/s together), a batch of one gives
+
+$$
+\frac{73 \text{ GB}}{6.7 \text{ TB/s}} \approx 11 \text{ ms per token} \approx 92 \text{ tokens/s}
+$$
+
+That's the fastest a single user can get. Batching is where the throughput comes from: one pass over the weights produces a token for every conversation in the batch, so a batch of 94 produces 94 tokens for not much more than the cost of one. Each user then gets fewer tokens per second, because the step also reads all 94 KV caches, but the system as a whole produces far more.
+
+There is a neat consequence. When the batch fills all the free memory, each step reads essentially the GPU's whole usable memory, about 72 GB per GPU, so the step takes about $72 \text{ GB} / 3.35 \text{ TB/s} \approx 21$ ms whatever the model is. A fully loaded H100 serving one stream per conversation gives each user roughly 47 tokens per second, for a 7B model and a 72B model alike. The model size decides how many users fit, not how fast each one goes at full load.
+
+<PredictFirst
+  question="You move a fully loaded deployment from BF16 to FP8 weights on the same GPUs. What happens to each user's token speed at full load?"
+  options={[
+    'It doubles, because there are half as many bytes to read',
+    'It stays about the same, but more users fit at once',
+    'It halves, because FP8 is slower to compute',
+    'It depends only on the GPU compute, so nothing changes',
+  ]}
+  correctIndex={1}
+  explanation="At full load each decode step reads all the memory in use, weights plus KV caches, and that total is set by the GPU's memory size. FP8 frees memory from the weights, and the batch grows to fill it, so the step still reads about the same number of bytes. The gain shows up as more users per GPU, roughly double the throughput, rather than faster tokens for each user. At batch size one, by contrast, FP8 does nearly double the speed."
+/>
+
+**Limit:** this is a ceiling. Real kernels reach perhaps 60 to 80% of peak bandwidth, and the serving engine rarely runs exactly full, so expect measured numbers somewhat below these.
+
+## 5. Prefill: reading the prompt is limited by compute
+
+Before the first output token, the model processes the whole prompt in one pass, the **prefill**. All 2,000 prompt tokens go through the weights together, so the weights are read once for many tokens, and arithmetic becomes the limit instead of memory. A forward pass costs about 2 FLOPs per parameter per token:
+
+$$
+\text{prefill FLOPs} \approx 2 \times 72.7 \times 10^{9} \times 2{,}000 \approx 2.9 \times 10^{14}
+$$
+
+An H100 does 989 TFLOP/s in dense BF16 at peak. Assuming a realistic 50% of that, two GPUs take about 0.29 seconds. That time is most of the **time to first token**, which is what users feel as "it's thinking".
+
+This difference between the two phases is why serving systems treat them differently. Chunked prefill splits long prompts so they don't stall everyone's decoding, and some deployments run prefill and decode on separate GPUs. [LLM Inference Optimization](/docs/mlops/llm-inference-optimization) covers both.
+
+**Limit:** long prompts change the picture. Attention costs grow with the square of the prompt length, so at tens of thousands of tokens the 2-FLOPs-per-parameter rule underestimates prefill time.
+
+## 6. Putting it together
+
+Here is the whole estimate as code. It uses the H100 figures above, the model shapes from the published Qwen2.5 configurations, and the support-assistant traffic from section 1.
+
+```python
+# Back-of-the-envelope capacity plan for serving an LLM.
+# Model shapes are from the published Qwen2.5 configs; GPU figures are the H100 SXM datasheet.
+
+H100 = {"memory_gb": 80, "bandwidth_tb_s": 3.35, "bf16_tflops": 989}
+QWEN_72B = {"params_b": 72.7, "layers": 80, "kv_heads": 8, "head_dim": 128}
+QWEN_7B = {"params_b": 7.6, "layers": 28, "kv_heads": 4, "head_dim": 128}
+
+def kv_bytes_per_token(model, bytes_per_value=2):
+    # one key and one value vector per layer per KV head
+    return 2 * model["layers"] * model["kv_heads"] * model["head_dim"] * bytes_per_value
+
+def serving_plan(model, gpu, n_gpus, context_tokens, weight_bytes=2, usable_fraction=0.9):
+    weights = model["params_b"] * 1e9 * weight_bytes
+    memory = n_gpus * gpu["memory_gb"] * 1e9 * usable_fraction
+    kv_per_seq = kv_bytes_per_token(model) * context_tokens
+    batch = int((memory - weights) // kv_per_seq)          # sequences that fit at once
+    if batch < 1:
+        return None
+    bytes_per_step = weights + batch * kv_per_seq            # each decode step reads weights + every KV cache
+    step_seconds = bytes_per_step / (n_gpus * gpu["bandwidth_tb_s"] * 1e12)
+    return {"weights_gb": weights / 1e9, "batch": batch,
+            "tokens_per_s_per_user": 1 / step_seconds,
+            "output_tokens_per_s": batch / step_seconds}
+
+def prefill_seconds(model, gpu, n_gpus, prompt_tokens, utilisation=0.5):
+    flops = 2 * model["params_b"] * 1e9 * prompt_tokens    # about 2 FLOPs per parameter per token
+    return flops / (n_gpus * gpu["bf16_tflops"] * 1e12 * utilisation)
+
+print(f"KV cache per token: 72B {kv_bytes_per_token(QWEN_72B)/1024:.0f} KiB, 7B {kv_bytes_per_token(QWEN_7B)/1024:.0f} KiB")
+
+# Demand: a support assistant with 200,000 requests a day, 2,000 prompt + 300 output tokens each,
+# and a peak hour three times busier than the average.
+requests_per_day, prompt, output, peak_factor = 200_000, 2_000, 300, 3
+peak_requests_per_s = requests_per_day / 86_400 * peak_factor
+print(f"peak load: {peak_requests_per_s:.1f} requests/s, {peak_requests_per_s * output:,.0f} output tokens/s")
+
+GPU_HOUR_DOLLARS = 2.50   # an assumption: check your provider's current price
+
+cases = [("72B, BF16, 2 GPUs", QWEN_72B, 2, 2), ("72B, FP8, 2 GPUs", QWEN_72B, 2, 1),
+         ("72B, BF16, 4 GPUs", QWEN_72B, 4, 2), ("7B, BF16, 1 GPU", QWEN_7B, 1, 2)]
+for name, model, n, weight_bytes in cases:
+    p = serving_plan(model, H100, n, context_tokens=prompt + output, weight_bytes=weight_bytes)
+    if p is None:
+        print(f"{name}: weights {model['params_b'] * weight_bytes:.0f} GB don't fit in {n * 80 * 0.9:.0f} GB of usable memory")
+        continue
+    alone = n * H100["bandwidth_tb_s"] * 1e12 / (model["params_b"] * 1e9 * weight_bytes)   # batch of one
+    dollars_per_m = n * GPU_HOUR_DOLLARS / (p["output_tokens_per_s"] * 3600) * 1e6
+    print(f"{name}: batch {p['batch']}, {p['tokens_per_s_per_user']:.0f} tok/s per user "
+          f"({alone:.0f} if alone), {p['output_tokens_per_s']:,.0f} tok/s total, "
+          f"prefill {prefill_seconds(model, H100, n, prompt):.2f} s, ${dollars_per_m:.2f} per M output tokens at full load")
+```
+
+Running it prints:
+
+```text
+KV cache per token: 72B 320 KiB, 7B 56 KiB
+peak load: 6.9 requests/s, 2,083 output tokens/s
+72B, BF16, 2 GPUs: weights 145 GB don't fit in 144 GB of usable memory
+72B, FP8, 2 GPUs: batch 94, 47 tok/s per user (92 if alone), 4,387 tok/s total, prefill 0.29 s, $0.32 per M output tokens at full load
+72B, BF16, 4 GPUs: batch 189, 47 tok/s per user (92 if alone), 8,799 tok/s total, prefill 0.15 s, $0.32 per M output tokens at full load
+7B, BF16, 1 GPU: batch 430, 47 tok/s per user (220 if alone), 20,031 tok/s total, prefill 0.06 s, $0.03 per M output tokens at full load
+```
+
+Reading the result:
+
+- **The 72B model fits the peak on two GPUs in FP8**, since 4,387 tokens/s is about twice the 2,083 needed. In production you'd still run at least two replicas, four GPUs, so that one failure or deployment doesn't take the service down.
+- **At ten times the traffic**, 20,833 output tokens/s, the same setup needs $20{,}833 / 4{,}387 \approx 4.7$, so 5 replicas and 10 GPUs. Capacity scales linearly with traffic, which is what makes this kind of estimate useful.
+- **The 7B model is about ten times cheaper per token.** If evaluation shows it answers well enough, switching to it saves more than any serving trick. That's the case for [model routing](/docs/mlops/ai-cost-engineering): send easy requests to the small model.
+- **The cost line assumes full load.** GPUs bill by the hour whether busy or idle. At 30% average utilisation, a common figure for traffic with daily peaks, divide by 0.3: about \$1.05 per million output tokens for the 72B setup.
+
+<GoDeeper title="Go deeper: comparing with an API">
+
+The same arithmetic tells you when self-hosting beats paying an API per token. Write the API's price per million output tokens as $P$ and your self-hosted cost at your real utilisation as $C$. Self-hosting is only cheaper when $C$ is below $P$ *and* you count the engineering time to run the GPUs, the redundancy, and the evaluation work for an open model.
+
+In practice teams self-host when traffic is high and steady (so utilisation is high), when data can't leave their network, or when they need a fine-tuned model the API can't serve. For spiky or modest traffic, an API is usually cheaper because the provider's utilisation is higher than yours can be.
+
+</GoDeeper>
+
+## 7. Where estimates go wrong
+
+- **Long-tail prompts.** A few very long requests take a large share of memory. Estimate with the 95th-percentile prompt, not the average, and cap the maximum.
+- **Output length is a guess.** Reasoning models can write thousands of hidden reasoning tokens before the visible answer. Measure output tokens on real traffic; they drive decode cost directly.
+- **Utilisation, not peak.** Hardware peaks are never reached in practice. Using 60 to 80% of bandwidth and 40 to 60% of compute keeps the estimate honest.
+- **Prompt caching changes the input side.** When requests share a long system prompt, the serving engine can reuse its cached keys and values, and much of the prefill disappears. Count it only once you've confirmed the prefix is stable.
+- **Latency targets cap the batch.** If the product needs 80 tokens per second per user, you can't fill the GPU to the 47-tokens-per-second batch. Pick the batch size from the latency target first, then compute the throughput.
+
+## 8. When *not* to rely on this
+
+| Situation | Do this instead |
+|---|---|
+| Choosing between two serving engines or GPU types | Benchmark both on your own prompts. Engines differ in kernels, batching and caching by more than these formulas capture |
+| Mixture-of-experts models | Use the *active* parameters for decode speed but the *total* parameters for memory; the simple formulas assume a dense model |
+| Very long contexts (32K+ tokens) | Add attention cost to prefill, and check KV-cache memory per conversation first: it can exceed the weights |
+| Committing to a hardware purchase | Treat this as the first pass, then load-test a pilot at realistic traffic before buying |
+
+## Remember
+
+| Quantity | Rule of thumb |
+|---|---|
+| Weights | parameters × bytes per parameter (2 for BF16, 1 for FP8) |
+| KV cache per token | 2 × layers × KV heads × head dim × bytes |
+| Batch size | free memory ÷ KV cache per conversation |
+| Decode step time | bytes read per step ÷ memory bandwidth |
+| Speed per user at full load | about usable memory ÷ bandwidth per step, roughly 47 tokens/s on an H100 |
+| Prefill time | 2 × parameters × prompt tokens ÷ (FLOP/s × utilisation) |
+| Cost per token | GPU-hours ÷ tokens produced, at your real utilisation |
+
+---
+
+Next: [LLM Inference Optimization](/docs/mlops/llm-inference-optimization) for the techniques that move these numbers, and [AI Cost Engineering](/docs/mlops/ai-cost-engineering) for routing and caching decisions built on them.
+
+## Sources
+
+- Qwen, model configurations for [Qwen2.5-72B-Instruct](https://huggingface.co/Qwen/Qwen2.5-72B-Instruct/blob/main/config.json) and [Qwen2.5-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct/blob/main/config.json)
+- NVIDIA, [H100 Tensor Core GPU](https://www.nvidia.com/en-us/data-center/h100/) specifications (80 GB HBM3, 3.35 TB/s, 989 dense BF16 TFLOP/s for the SXM version)
+- Kwon et al., [Efficient Memory Management for Large Language Model Serving with PagedAttention](https://arxiv.org/abs/2309.06180) (vLLM, 2023)
+- Amit Shekhar, [AI System Design](https://github.com/amitshekhariitbhu/ai-system-design) (Apache-2.0), whose topic list this page's coverage was checked against

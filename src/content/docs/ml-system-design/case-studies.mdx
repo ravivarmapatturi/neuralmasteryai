@@ -1,7 +1,7 @@
 ---
 title: "ML System Design Case Studies"
 sidebar_position: 4
-description: "Four real system-design case studies -- RAG, fraud detection, a support agent, recommendations -- the 9-step framework applied to genuinely different problems."
+description: "Five system-design case studies -- RAG, fraud detection, a support agent, a real-time voice agent, recommendations -- the 9-step framework applied to different problems."
 ---
 
 import TwoStagePipelinePatternDiagram from '../../../viz/diagrams/TwoStagePipelinePatternDiagram';
@@ -103,6 +103,30 @@ A third shape again: not "retrieve accurately" or "decide fast on a stream," but
 8. **Durability** — a real conversation can be interrupted, retried, or resumed hours later; losing all context because the process restarted is a real, visible bug, not an edge case. See [Durable Execution](/docs/agents/agent-architectures#durable-execution-retries-checkpoints-long-running-agents) for checkpointing a long-running or interrupted agent task properly.
 9. **Observability** — when an agent does the wrong thing, you need to see the actual reasoning and tool calls that led there, not just the final message the customer saw. See [Observability](/docs/mlops/observability) for tracing what actually happened, not just logging outcomes.
 10. **Evaluation** — "the response sounds right" is not the same claim as "the agent did the right thing," and conflating them hides real failures behind plausible-sounding text. See [Evaluation](/docs/llms-genai/evaluation-and-serving#evaluation) for checking agent behavior specifically, not just output fluency.
+
+## Case Study: A Real-Time Voice Agent
+
+A fourth shape: a phone or app agent that a customer talks to out loud, for example to rebook a delivery. The text-agent design above still applies (tools, memory, guardrails), but voice adds one constraint that dominates everything else: **time**. In ordinary conversation, people leave a gap of about 200 milliseconds between turns ([Stivers et al., 2009](https://www.pnas.org/doi/10.1073/pnas.0903616106)). A pause of two seconds after you stop speaking feels broken, even if the answer is perfect.
+
+<DiscoverySequenceDiagram steps={[
+  { name: 'Latency Budget', constraint: 'Speech recognition, the model and speech synthesis run one after another, and their delays add up.' },
+  { name: 'Endpointing', constraint: 'The system has to decide when the caller has finished speaking, and both early and late are wrong.' },
+  { name: 'Streaming', constraint: 'Waiting for each stage to finish before starting the next is far too slow.' },
+  { name: 'Barge-in', constraint: 'Callers interrupt, and the agent must stop talking and remember only what it actually said.' },
+  { name: 'Slow Tools', constraint: 'A booking lookup that takes two seconds leaves dead air on the line.' },
+  { name: 'Cascade or Speech-to-Speech', constraint: 'One speech model is faster and keeps tone of voice; separate stages are easier to inspect and control.' },
+  { name: 'Transport', constraint: 'Audio over phone lines and mobile networks arrives late, out of order, or at low quality.' },
+  { name: 'Evaluation', constraint: 'A correct transcript can still be a bad call if it was slow or kept interrupting.' },
+]} />
+
+1. **Latency budget.** The classic pipeline is three models in a row: speech-to-text, the language model, and text-to-speech. Write a budget for the delay between the caller finishing a sentence and hearing the first syllable of the reply, and split it between the stages, for example a few hundred milliseconds to detect the end of speech, a few hundred for the model's first tokens, and the rest for the first audio. Measure each stage at the 95th percentile, not the average, because callers notice the slow calls. See [Back-of-the-Envelope Estimation](/docs/ml-system-design/llm-capacity-estimation) for why time to first token depends on prompt length, which is a reason to keep the voice agent's prompt short.
+2. **Endpointing.** Silence alone is a poor signal that the caller has finished: people pause mid-sentence to think. Cutting in after 300 ms of silence interrupts them; waiting 1.5 seconds feels slow. Production systems combine voice-activity detection with a small model that judges from the words so far whether the sentence is complete, and tune the threshold on recorded calls.
+3. **Streaming every stage.** Speech recognition emits partial transcripts while the caller is still speaking. The language model streams tokens, and synthesis starts on the first complete clause instead of waiting for the whole reply. With streaming, the caller hears the answer begin while most of it hasn't been generated yet. See [ASR](/docs/speech-audio/speech-audio-tasks#asr-automatic-speech-recognition) and [TTS](/docs/speech-audio/speech-audio-tasks#tts-text-to-speech) for the models at each end.
+4. **Barge-in.** When the caller starts talking over the agent, playback must stop within a fraction of a second, which needs echo cancellation so the agent doesn't hear its own voice as an interruption. Then the conversation history must be cut to the words the caller actually heard. Otherwise the model believes it said things the caller never heard, and its next turn refers to them.
+5. **Slow tools.** Looking up a booking may take a couple of seconds. Leaving silence on the line makes callers think the call dropped, so the agent says a short acknowledgement ("let me check that") while the tool runs, and long-running work moves to a background job that reports back. See [Message Queues and Async Processing](/docs/mlops/message-queues-and-async-processing) for that pattern.
+6. **Cascade or speech-to-speech.** A single model that takes audio in and produces audio out avoids two hand-offs, so it's faster, and it hears tone of voice, not only the words. A cascade of separate models is easier to control: you can read and log every transcript, swap any stage, apply text guardrails before anything is spoken, and pay text-model prices for the reasoning step. Many teams start with the cascade for its visibility and move latency-critical paths to speech-to-speech. See [Audio-Language Models](/docs/speech-audio/speech-audio-tasks#audio-language-models-and-multimodal-audio).
+7. **Transport.** In browsers and apps, audio usually travels over WebRTC, which is built for low-latency media over unreliable networks and handles jitter and packet loss. Phone calls arrive through a telephony provider at narrowband quality, which lowers recognition accuracy, so test with phone-quality audio rather than studio recordings. See [Speech Enhancement](/docs/speech-audio/speech-audio-tasks#speech-enhancement-and-noise-suppression) for cleaning noisy input.
+8. **Evaluation.** Score calls on more than transcript accuracy: latency per turn, how often the agent interrupted the caller or was interrupted, task completion, and how often callers asked for a human. Replay recorded calls (with consent) through each new version before it ships. See [Observability](/docs/mlops/observability) for tracing each stage of a turn.
 
 ## Case Study: Personalized Recommendations for a 50-Million-Item Catalog
 

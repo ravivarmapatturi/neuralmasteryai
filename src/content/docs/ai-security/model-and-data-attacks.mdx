@@ -62,6 +62,78 @@ The same software-supply-chain trust problem as any dependency, applied to the A
 - **Malicious datasets**: a public dataset used for training or fine-tuning can be poisoned (above) at the source, before you ever touch it — the same provenance-and-validation discipline applies to data sources as to model sources.
 - **Dependency attacks**: the ML-specific instance of the general software supply-chain problem — a compromised package in the Python ML ecosystem (PyTorch, a popular fine-tuning library, a data-loading utility) can execute arbitrary code the moment it's installed or imported, addressed by the same [container/dependency scanning](/docs/mlops/security-and-reproducibility) discipline as any other software dependency, with the added wrinkle that ML dependency trees tend to be unusually deep and fast-moving, making thorough auditing genuinely harder than for a typical web application's dependency tree.
 
+## Watermarking and Provenance: Was This Written by a Model?
+
+The attacks above target the model. A related defence runs the other way: proving later that a piece of text or an image came from a particular model, so that generated spam, fake reviews or impersonation can be traced. There are two approaches, and both have firm limits.
+
+**What is a text watermark?** A hidden statistical pattern in the words a model chooses, which anyone holding a secret key can detect, but which a reader can't see. [Kirchenbauer et al. (2023)](https://arxiv.org/abs/2301.10226) gave the scheme most later work builds on.
+
+**How does it work?** Before each token is sampled, the previous token and a secret key are hashed to split the vocabulary into a "green" list (say a quarter of it) and a "red" list. The model's scores for green tokens get a small boost, so the text drifts towards green words without becoming noticeably worse. To detect it, you recompute each position's green list with the key and count how many tokens landed in it. Unwatermarked text hits the green list about a quarter of the time by chance; watermarked text hits it far more often, and a z-score measures how unlikely that count is by chance:
+
+$$
+z = \frac{\text{green hits} - \gamma T}{\sqrt{T\,\gamma(1-\gamma)}}
+$$
+
+where $T$ is the number of tokens and $\gamma$ the green fraction. Here is the whole scheme on a toy model whose "logits" are random numbers:
+
+```python
+import numpy as np
+
+VOCAB, GAMMA, DELTA, KEY = 1000, 0.25, 2.0, 42
+
+def green_list(prev_token):
+    # The previous token and a secret key seed which quarter of the vocabulary is "green".
+    rng = np.random.default_rng(KEY * 100_003 + prev_token)
+    return rng.permutation(VOCAB)[: int(GAMMA * VOCAB)]
+
+def generate(n_tokens, watermark, seed):
+    rng = np.random.default_rng(seed)
+    tokens = [0]
+    for _ in range(n_tokens):
+        logits = rng.normal(size=VOCAB)               # stand-in for a model's next-token logits
+        if watermark:
+            logits[green_list(tokens[-1])] += DELTA   # nudge green tokens up before sampling
+        p = np.exp(logits - logits.max()); p /= p.sum()
+        tokens.append(int(rng.choice(VOCAB, p=p)))
+    return tokens
+
+def z_score(tokens):
+    # Detection needs only the key: count how many tokens landed in their green list.
+    hits = sum(t in set(green_list(prev)) for prev, t in zip(tokens, tokens[1:]))
+    n = len(tokens) - 1
+    return float((hits - GAMMA * n) / np.sqrt(n * GAMMA * (1 - GAMMA)))
+
+def edit(tokens, fraction, seed):
+    # Crude stand-in for paraphrasing: replace a fraction of the tokens with random ones.
+    rng = np.random.default_rng(seed)
+    out = list(tokens)
+    for i in rng.choice(range(1, len(out)), size=int(fraction * (len(out) - 1)), replace=False):
+        out[i] = int(rng.integers(VOCAB))
+    return out
+
+print("plain text      ", [round(z_score(generate(200, False, s)), 1) for s in range(4)])
+print("watermarked     ", [round(z_score(generate(200, True, s)), 1) for s in range(4)])
+for fraction in (0.25, 0.5):
+    print(f"{fraction:.0%} of tokens edited", [round(z_score(edit(generate(200, True, s), fraction, s)), 1) for s in range(4)])
+```
+
+```text
+plain text       [-0.3, -0.2, -0.3, 0.3]
+watermarked      [15.7, 17.5, 13.9, 14.4]
+25% of tokens edited [7.2, 10.3, 7.0, 8.3]
+50% of tokens edited [3.8, 4.4, 4.4, 1.6]
+```
+
+Plain text scores near 0; watermarked text scores 14 to 18, far above the threshold of 4 the paper uses. Google DeepMind's [SynthID-Text](https://www.nature.com/articles/s41586-024-08025-4) (Nature, 2024) uses a different sampling scheme with the same goal, has been deployed in Gemini, and is open source.
+
+**Why is it useful?** It lets a model provider, or a platform working with one, check at scale whether text came from their model, without storing everything the model ever wrote.
+
+**Limitation:** the last two lines of the output are the problem. Editing tokens destroys the pattern quickly, because each changed token breaks two green-list checks (its own, and the next token's list). With half the tokens changed, one sample falls to 1.6, below the threshold. A paraphrasing model does this without degrading the text, and [Krishna et al. (2023)](https://arxiv.org/abs/2303.13408) showed paraphrasing evades several detectors. Watermarks are also weak on low-entropy text such as code or short factual answers, where there are few word choices to bias. They only work if the model's operator applies them, so they can't cover open-weight models run by someone else. And they need the key to check, so a third party can't verify text without the provider.
+
+**Provenance for media** works differently: [C2PA Content Credentials](https://c2pa.org/) attach signed metadata describing how an image or video was made and edited. The signature shows the metadata wasn't altered, but the metadata can simply be removed, so a missing credential proves nothing.
+
+The practical conclusion for system design: use watermarks and provenance as one signal among several, for example in abuse investigations, never as proof that a person did or didn't write something. Detection tools that claim to spot "AI-written" text without a watermark have high false-positive rates and shouldn't be used to accuse anyone.
+
 ## Code: A Real Membership-Inference Check
 
 The actual attack the diagram above simulates, runnable against a real model:
