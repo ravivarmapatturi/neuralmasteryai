@@ -1,40 +1,173 @@
 ---
-title: "Single-Agent vs. Multi-Agent"
+title: "Single-Agent vs Multi-Agent, In Full Depth"
 sidebar_position: 4.7
-description: "Why the default answer is don't split: the three real triggers (context overload, parallelism, tool access) that justify a multi-agent design."
+description: "When to split an agent into several and when not to: the three real reasons to split (context, parallelism, separation of tools), what splitting costs in tokens, latency and failure modes, a cost model of one agent against an orchestrator with sub-agents, and the security boundary every handoff creates."
 ---
 
-
 import AgentSplitTradeoffDiagram from '../../../viz/diagrams/AgentSplitTradeoffDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Single-Agent vs. Multi-Agent
+# Single-Agent vs Multi-Agent, In Full Depth
 
-The default answer is: don't split. A single, well-prompted agent with good tools handles more than most designs give it credit for, and every specialized agent you add is a real cost, not a free architecture upgrade.
+[Agent Fundamentals](/docs/agents/agent-fundamentals) built one agent: a model in a loop with tools. A common next instinct is to build several, a planner, a researcher, a coder and a reviewer, talking to each other. Sometimes that's exactly right, and Anthropic's research system and most coding agents use sub-agents. Often it isn't, and Cognition, which builds the Devin coding agent, published a widely read essay in 2025 titled "Don't Build Multi-Agents". This page sorts out when each side is right. It covers the three concrete reasons to split an agent, what splitting costs, a cost model that shows both the case for and against with numbers, how multi-agent systems fail, and why every handoff between agents is a security boundary. The default it arrives at: start with one agent, and split only when you can name what the split buys.
 
-## When Splitting Actually Pays Off
+<ELI5>
 
-Three concrete triggers, not vibes:
+Imagine writing a big report. Doing it alone, you keep everything in your head and the report is consistent, but your desk ends up buried in notes, and it takes a long time.
 
-- **Context overload** — the task genuinely needs more source material (documents, tool outputs, conversation history) than fits usefully in one context window, or than one agent can reason over without the signal getting lost in the noise.
-- **Need for parallelism** — independent sub-tasks that don't depend on each other's output can run concurrently across agents instead of sequentially in one agent's loop, and wall-clock time actually matters for the use case.
-- **Genuinely different tool access per role** — a coding sub-agent needs shell and filesystem access a research sub-agent shouldn't have at all; forcing both through one agent means either over-provisioning tools (a security problem on its own) or awkwardly conditioning tool availability on task type inside one prompt.
+Hiring three researchers to each look into one question and send you a one-page summary is faster, and your desk stays clear. But they can't see each other's work, so two might research the same thing, or make different assumptions, and you have to stitch their answers together. If one of them gets something wrong, you may never notice.
 
-## The Real Cost, Computed
+Splitting an agent into many is hiring researchers. It's worth it when the questions really are separate and your desk really is overflowing. Otherwise one careful person does better. Everything below is that judgement made exact.
 
-Splitting a task across N specialized agents isn't just "more agents = more parallelism, strictly better." A single fixed task, actually costed out as N changes:
+</ELI5>
+
+## 1. The Default Is One Agent
+
+A single agent with good tools handles more than most designs give it credit for, for three reasons:
+
+- **It has all the context.** Every decision is made with the full history: what was tried, what failed, what the user said at the start. Nothing gets lost in a handoff.
+- **Its decisions are consistent.** Multi-agent systems fail most often when two agents make conflicting assumptions, such as two sub-agents building parts of an app in two different styles, because neither saw the other's choices. A single agent can't disagree with itself in that way.
+- **It's easier to debug and evaluate.** One trace, one loop, one prompt to fix.
+
+Cognition's essay states the principle well: share full context, and remember that actions carry implicit decisions, so conflicting decisions produce bad results. Each agent you add is a place where context is cut and decisions can conflict.
+
+## 2. Three Real Reasons to Split
+
+Splitting pays off when at least one of these is true:
+
+- **Context overload.** The task needs more material (documents, search results, tool outputs) than one context window can hold, or than one model can reason over without losing the signal. A sub-agent can read fifty pages and return a one-page summary, so the orchestrator's context holds only conclusions. This **context isolation** is the most important benefit, and it's why coding agents use sub-agents to search large codebases.
+- **Parallelism.** The task divides into independent subtasks, such as researching ten companies, whose results don't depend on each other, and wall-clock time matters. Sub-agents can run them at the same time.
+- **Different tools or permissions per role.** A sub-agent that runs code needs a sandbox and shell access that a sub-agent reading customer emails must never have. Splitting lets each role have only the tools it needs, rather than one agent with the union of all of them.
+
+If none of the three applies, splitting adds cost and failure modes without a matching gain.
+
+## 3. What Splitting Costs
 
 <AgentSplitTradeoffDiagram />
 
-The wall-clock speedup is real when work is genuinely parallelizable — but it's not free: every agent added is 2 more coordination LLM calls (a delegate call and a result-integration call the supervisor makes) that a single agent never pays, and — the part usually left out of the "just add more agents" conversation entirely — one more point where one agent's output becomes another agent's trusted input.
+- **Coordination calls.** An orchestrator spends model calls planning, delegating and integrating results that a single agent never makes.
+- **Duplicated work and context.** Each sub-agent re-reads its own system prompt and tools, and sub-agents often explore overlapping ground. Anthropic reported that its multi-agent research system used about 15 times as many tokens as an ordinary chat, against about 4 times for a single agent, and that it is only economical for tasks valuable enough to pay for that.
+- **Lost context at handoffs.** A sub-agent only knows what the orchestrator wrote in its brief. Vague briefs produce work that misses the point, and a sub-agent's summary drops details the orchestrator might have needed.
+- **Harder evaluation.** Failures can come from any agent, any brief, or the integration step, so finding the cause takes more work.
 
-## The Security Cost Nobody Puts on the Diagram
+## 4. A Cost Model: One Agent Against Several
 
-That last number — inter-agent handoff points — isn't just an accounting curiosity. OWASP's [Top 10 for Agentic Applications](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/) has a dedicated category for exactly this, **ASI07: Insecure Inter-Agent Communication**, precisely because splitting into multiple agents expands the attack surface in a way single-agent systems don't have at all: agent-to-agent messages are typically trusted and unfiltered by default, which is what makes delegation efficient — and exactly what a compromised or manipulated agent can exploit. Current research on this is more specific than "prompt injection can spread": intermediate agents that are themselves trusted have been shown to *actively reformat* an injected instruction to strip the markers a downstream filter would have caught, making the attack more effective the further it travels, not less. In simulated multi-agent systems, a single compromised agent has been shown to poison 87% of downstream decision-making within four hours.
+The trade-offs above can be made concrete. Every model call re-sends the whole history, so a single agent's input tokens grow with the square of its step count ([the Agents overview](/docs/agents/overview) derives this). Here is one agent doing $k$ independent research subtasks in a single growing context, against an orchestrator that hands each subtask to a sub-agent with a fresh context, run in parallel, and then integrates their summaries:
 
-This connects directly to tool-call policy gating (see [Agent Architectures](/docs/agents/agent-architectures) and this account's [Agent Security Gateway](https://github.com/ravivarmapatturi/Agent_Security_Gateway)): the same "an agent's decision alone is not authorization" boundary that gates a single agent's tool calls generalizes to gating what one agent's output is allowed to trigger in another — the handoff point is exactly where that boundary needs to exist in a multi-agent system, the same way it needs to exist between an agent and its tools. Today's version of that gateway project gates tool calls specifically, not inter-agent handoffs — worth noting honestly rather than implying it already covers this, since the pattern generalizes but the implementation doesn't yet.
+```python
+# One agent doing k independent research subtasks in a single growing context,
+# versus an orchestrator that hands each subtask to a sub-agent with a fresh context.
+PROMPT = 4_000        # system prompt + tool descriptions, tokens
+STEPS = 8             # tool calls per subtask
+PER_STEP = 2_500      # tokens each tool call and result adds to the context
+SUMMARY = 800         # tokens a sub-agent returns to the orchestrator
+STEP_SECONDS = 6      # wall-clock time per model call
 
-## The Practical Rule
+def run_tokens(prefix, steps):
+    """Input tokens for `steps` model calls when every call re-sends the growing history."""
+    return sum(prefix + PER_STEP * i for i in range(steps))
 
-Start with one agent. Move to multiple only when you hit one of the three concrete triggers above, and when you do, treat every new inter-agent handoff as a real trust boundary that needs the same scrutiny a tool call gets — not as a free internal detail because "it's all your own agents."
+for k in (1, 3, 10):
+    single_in = run_tokens(PROMPT, k * STEPS)
+    single_peak = PROMPT + PER_STEP * k * STEPS
+    single_time = k * STEPS * STEP_SECONDS
 
-Next: [Multi-Agent Systems](/docs/agents/multi-agent-systems) — the coordination topologies (hierarchical, peer-to-peer, blackboard) once you've actually decided to split.
+    sub_in = k * run_tokens(PROMPT, STEPS)                        # each sub-agent starts fresh
+    orch_in = 2 * (PROMPT + k * SUMMARY)                          # plan, then integrate the summaries
+    multi_peak = max(PROMPT + PER_STEP * STEPS, PROMPT + k * SUMMARY)
+    multi_time = 2 * STEP_SECONDS + STEPS * STEP_SECONDS          # sub-agents run in parallel
+
+    print(f"k={k:2d} subtasks | single agent: {single_in/1e6:5.2f}M input tokens, peak context {single_peak/1e3:4.0f}K, {single_time:3d}s"
+          f" | orchestrator + {k} sub-agents: {(sub_in + orch_in)/1e6:5.2f}M, peak {multi_peak/1e3:4.0f}K, {multi_time:3d}s")
+```
+
+```text
+k= 1 subtasks | single agent:  0.10M input tokens, peak context   24K,  48s | orchestrator + 1 sub-agents:  0.11M, peak   24K,  60s
+k= 3 subtasks | single agent:  0.79M input tokens, peak context   64K, 144s | orchestrator + 3 sub-agents:  0.32M, peak   24K,  60s
+k=10 subtasks | single agent:  8.22M input tokens, peak context  204K, 480s | orchestrator + 10 sub-agents:  1.04M, peak   24K,  60s
+```
+
+The model shows both sides of the argument:
+
+- **With one subtask, splitting only adds cost.** The orchestrator's planning and integration calls make it slightly more expensive and 12 seconds slower than just doing the work.
+- **With independent subtasks, splitting wins on all three counts.** At ten subtasks, the single agent sends 8.2 million input tokens, takes eight minutes, and needs a 204K-token context, beyond many models' windows. The orchestrator with sub-agents uses an eighth of the tokens, finishes in a minute, and no context exceeds 24K. The win comes from context isolation: no sub-agent carries the others' history.
+
+Two caveats keep this honest. The model assumes the subtasks really are independent and that sub-agents do no duplicate work; real systems lose some of the gain to overlap and coordination, which is why Anthropic's measured token use went *up*. And prompt caching, which bills repeated input at a fraction of the price, narrows the single agent's cost penalty considerably, though not its latency or its context limit. The numbers that don't change are the structural ones: context isolation keeps each window small, and parallel sub-agents cut wall-clock time.
+
+<PredictFirst
+  question="An agent must fix one bug by reading three related files, editing two of them consistently, and running the tests. Would splitting it into a reader, an editor and a tester agent help?"
+  options={[
+    'Yes, because three agents run in parallel',
+    'Probably not: the steps are sequential and tightly coupled, so splitting adds handoffs where context and decisions can be lost',
+    'Yes, because each agent has a smaller context',
+    'Only if each agent uses a different model',
+  ]}
+  correctIndex={1}
+  explanation="Nothing here is parallel, the context is small, and the edits must agree with what was read. Splitting would force the editor to work from the reader's summary and the tester to report back across another handoff. This is the kind of task where a single agent wins, which is how most coding agents handle it, using sub-agents only for broad searches."
+/>
+
+## 5. How Multi-Agent Systems Fail
+
+A study of 150 or so traces across several open multi-agent frameworks (Cemri et al., 2025) sorted failures into three groups, and they match practical experience:
+
+- **Specification problems**: agents disobey their role, repeat steps, lose the conversation history, or don't recognize when the task is finished.
+- **Misalignment between agents**: agents ignore each other's input, withhold information another needed, proceed on mismatched assumptions, or reset the conversation.
+- **Verification failures**: no one checks the result, the check is superficial, or the system stops too early.
+
+The fixes are the same as for single agents, applied at every boundary: detailed briefs that state the goal, the output format, the tools to use and what not to do; explicit limits on effort per sub-agent; a final verification step that checks the integrated result rather than trusting each sub-agent's claim; and traces of every agent's steps so failures can be located.
+
+Structure matters too. Huang et al. (2024) injected faulty agents into several topologies and found hierarchical systems, with an orchestrator over workers, degraded least: performance dropped 23.6%, against 46.4% and 49.8% for flatter structures. Adding a mechanism for agents to challenge each other's outputs, or a dedicated reviewer, improved resilience further.
+
+## 6. Every Handoff Is a Trust Boundary
+
+In a multi-agent system, one agent's output becomes another agent's input, usually trusted without question, because "they're all our agents". That's exactly what makes delegation efficient, and what an attacker exploits. If a research sub-agent reads a web page containing injected instructions, its summary can carry those instructions to the orchestrator, which may act on them with broader tools than the sub-agent ever had. OWASP's [Top 10 for Agentic Applications](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/) lists this as **ASI07, Insecure Inter-Agent Communication**, alongside cascading failures across agents.
+
+The defence is to treat each handoff like a tool result: as untrusted data. Sub-agents that read untrusted content should return structured, narrow outputs rather than free text where possible; the orchestrator's prompt should state that sub-agent reports are information, not instructions; and irreversible actions should be gated by a check outside the model, whoever requested them. The same principle that a model's decision alone is not authorization, enforced between an agent and its tools (as this site author's [Agent Security Gateway](https://github.com/ravivarmapatturi/Agent_Security_Gateway) does for tool calls), applies between agents. [AI Security](/docs/ai-security/overview) covers prompt injection in depth.
+
+<GoDeeper title="Go deeper: what the two famous 2025 essays actually agree on">
+
+Cognition's "Don't Build Multi-Agents" and Anthropic's "How we built our multi-agent research system" were published within days of each other in June 2025 and are often presented as opposite camps. Read closely, they agree on most things.
+
+Both say context is the central problem. Cognition's two principles are to share full context, including full agent traces, and to recognize that actions carry implicit decisions, so parallel agents making decisions independently produce conflicting work. Anthropic's system works precisely because research is the case where those concerns are weakest: the subtasks (investigate this angle, find sources on that) are genuinely independent, they produce information rather than conflicting actions, and the orchestrator integrates findings rather than merging edits.
+
+Anthropic also reported the costs plainly: about 15 times the tokens of a chat, token usage explaining most of the performance difference, and poor fits for tasks that need shared context or have many dependencies between agents, naming most coding tasks. The practical synthesis: split for breadth-first, read-heavy, parallelizable work; keep one agent for sequential, write-heavy, tightly coupled work.
+
+</GoDeeper>
+
+## 7. When *Not* to Use Multiple Agents
+
+| Situation | Better choice |
+|---|---|
+| Sequential, tightly coupled steps such as most code changes | One agent with the full context |
+| A task that fits comfortably in one context window | One agent; add sub-agents only for isolated broad searches |
+| Splitting by job title (planner, coder, reviewer) without a reason from section 2 | One agent with a planning step and a verification step |
+| Latency doesn't matter and tokens are expensive | One agent with prompt caching |
+| Sub-agents would take conflicting actions on shared state | One agent, or sub-agents that only read and report |
+| Independent, read-heavy subtasks at scale | **Do** split: orchestrator plus parallel sub-agents |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Default | One agent: full context, consistent decisions, one trace |
+| Reasons to split | Context overload, real parallelism, different tools or permissions per role |
+| Costs | Coordination calls, duplicated work, lost context at handoffs, harder evaluation |
+| Cost model | One subtask: splitting costs more; ten independent ones: about an eighth of the tokens and an eighth of the time |
+| Measured in practice | Anthropic's research system used about 15 times a chat's tokens |
+| Failure modes | Specification, inter-agent misalignment, missing verification |
+| Topology | Hierarchical degraded least under faulty agents |
+| Security | Each handoff is a trust boundary; treat agent output as untrusted data |
+
+---
+
+Next: [Multi-Agent Systems](/docs/agents/multi-agent-systems), the coordination patterns once you've decided to split.
+
+## Sources
+
+- Anthropic, [How we built our multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) (June 2025)
+- Cognition, [Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents) (June 2025)
+- Cemri et al., [Why Do Multi-Agent LLM Systems Fail?](https://arxiv.org/abs/2503.13657) (2025)
+- Huang et al., [On the Resilience of Multi-Agent Systems with Malicious Agents](https://arxiv.org/abs/2408.00989) (2024)
+- OWASP, [Top 10 for Agentic Applications for 2026](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/)
+- Anthropic, [Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents) (2024)
