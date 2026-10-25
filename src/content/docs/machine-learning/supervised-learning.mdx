@@ -1,60 +1,238 @@
 ---
-title: "Supervised Learning"
+title: "Supervised Learning, In Full Depth"
 sidebar_position: 4
-description: "Classical supervised learning end to end: linear/logistic regression, regularized variants, tree-based methods, and how each maps inputs to known outputs."
+description: "The supervised learning problem made precise: regression and classification, why the loss decides what the best prediction is (mean, median, most probable class, derived), the model families and the bet each one makes, parametric vs. non-parametric, extrapolation, ensembles and stacking, measured on real and synthetic data, with a map to every algorithm page."
 ---
 
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Supervised Learning
+# Supervised Learning, In Full Depth
 
-The workhorse of classical ML: learn a mapping from inputs to known outputs, then generalize to new inputs.
+The [overview](/docs/machine-learning/overview) defined learning as choosing a function that does well on new examples, and [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals) showed how to measure that honestly. This page covers the most common setting, supervised learning, where every training example comes with the right answer. It shows that choosing a loss already decides what the ideal prediction is, before any model is chosen; it lays out the model families in this section by the assumption each one makes about the data; it measures what those assumptions do when a model is asked about inputs unlike its training data; and it covers combining models. Each family links to its own full-depth page.
 
-## Linear & Logistic Regression
+<ELI5>
 
-**Linear regression** fits $\hat{y} = \mathbf{w}^T \mathbf{x} + b$, minimizing squared error. Assumes a linear relationship between features and target, and that errors are roughly normally distributed. Its simplicity is a feature — it's interpretable (each weight tells you the effect of that feature) and has a convex loss surface (see [Calculus & Optimization](/docs/mathematics-for-ai/calculus-optimization)), so training is guaranteed to find the global optimum. See [Linear Regression, In Full Depth](/docs/machine-learning/linear-regression) for the full gradient derivation, the closed-form normal equation, and a from-scratch implementation.
+A child learning to estimate how far away things are gets told the right answer each time: "that tree is about 50 metres", "that car is about 200 metres". After enough examples, they can guess distances to things they've never been told about. That's supervised learning: examples with answers, then guesses for new cases.
 
-**Regularized variants** add a penalty on the weights to fight overfitting when features are correlated or numerous: [Ridge Regression](/docs/machine-learning/ridge-regression) (L2 penalty, shrinks weights smoothly), [Lasso Regression](/docs/machine-learning/lasso-regression) (L1 penalty, shrinks some weights to exactly zero — automatic feature selection), and [Elastic Net](/docs/machine-learning/elastic-net) (a tunable blend of both, generally the safest default of the three).
+How the child gets graded changes what they learn. If being off by a lot is punished much more than being off by a little, they learn to avoid big mistakes. If every metre of error counts the same, they learn something slightly different. And how they think about distance (using the size of familiar objects, or how hazy things look) decides which situations they'll get right. Everything below is those two ideas made exact.
 
-**Logistic regression** applies a sigmoid to the linear output to produce a probability, and is trained with cross-entropy loss instead of squared error. Despite the name, it's a *classification* algorithm — one of the most-used baseline classifiers because it's fast, interpretable, and surprisingly hard to beat on many tabular problems. See [Logistic Regression, In Full Depth](/docs/machine-learning/logistic-regression) for the full derivation, including why its gradient has the exact same shape as linear regression's despite a completely different loss function.
+</ELI5>
 
-## Tree-Based Methods
+## 1. The Setup
 
-**Decision trees** split the feature space recursively (e.g. "is age > 30?") to separate classes/values, producing axis-aligned rectangular decision regions. Easy to interpret, but prone to overfitting if grown too deep. See [Decision Trees, In Full Depth](/docs/machine-learning/decision-tree) for the Gini/entropy split criteria, the full recursive algorithm, and why the boundary looks like a staircase.
+Training data is a set of pairs $(\mathbf{x}_i, y_i)$: an input, usually a vector of $d$ **features**, and its **label** or **target**. The goal is a function $f$ that predicts $y$ from $\mathbf{x}$ well on new pairs from the same source. Two kinds of target split the field:
 
-**Random Forests** and **Extra Trees**: train many decision trees on bootstrapped samples of the data and random subsets of features, then average their predictions (**bagging**). Reduces variance dramatically compared to a single tree. See [Random Forest & Extra Trees](/docs/machine-learning/random-forest) for the bias-variance math behind why averaging works, out-of-bag error, and feature importance.
+- **Regression**: $y$ is a number. A house price, a temperature, a time to delivery.
+- **Classification**: $y$ is one of $K$ categories. Spam or not; which of 10 digits; which of 3 grape varieties. Most classifiers output a probability for each class, $\hat{P}(y = k \mid \mathbf{x})$, and the predicted class is the most probable one, or whichever a cost-based threshold picks (see [Model Evaluation](/docs/machine-learning/model-evaluation-metrics#threshold-optimization)).
 
-**AdaBoost and Gradient Boosting**: build trees *sequentially*, where each new tree corrects the errors of the ensemble so far — trading Random Forest's variance-reduction for bias-reduction. See [Boosting](/docs/machine-learning/boosting) for the full derivation, including why gradient boosting is literally gradient descent in function space.
+Some problems have a richer target: a ranking, a time until an event that may not have happened yet, a whole sequence. Section 6 points to the pages for those.
 
-**XGBoost, LightGBM, CatBoost**: the production-grade gradient boosting implementations that dominate tabular ML and Kaggle-style competitions. Almost always the strongest off-the-shelf method for structured/tabular data. See [XGBoost, LightGBM & CatBoost](/docs/machine-learning/xgboost-lightgbm-catboost) for what actually differs between them (regularization, leaf-wise growth, categorical handling) and when to reach for which.
+In both main cases, training means minimizing an average **loss** over the training data, usually plus a penalty on complexity. The next section shows that the loss does more than score mistakes: it determines what the perfect model would predict.
 
-**Bagging vs. Boosting**: bagging trains models independently in parallel to reduce variance; boosting trains models sequentially, each focused on the previous ensemble's mistakes, to reduce bias. Stacking goes further — training a "meta-model" to combine the outputs of several different base models.
+## 2. The Loss Decides the Target
 
-## Support Vector Machines
+Suppose we had unlimited data and unlimited flexibility, so the model could predict anything at all for each input. What would minimizing each loss make it predict? At a single input $\mathbf{x}$, the label is still uncertain (two houses with identical features sell for different prices), so the question is: which single prediction $c$ minimizes the *expected* loss over that uncertainty? The answer is different for each loss.
 
-Finds the hyperplane that separates classes with the *maximum margin* — the widest possible gap between classes. Uses the "kernel trick" to handle non-linear boundaries by implicitly mapping data into a higher-dimensional space without ever computing that mapping directly. Historically dominant before deep learning for problems with limited data and a clear margin between classes. See [Support Vector Machines (SVM & SVR), In Full Depth](/docs/machine-learning/support-vector-machines) for the margin-maximization derivation, the soft margin, and exactly how the kernel trick avoids computing the high-dimensional mapping.
+**Squared error, $L = (y - c)^2$.** The expected loss is $\mathbb{E}[(y - c)^2 \mid \mathbf{x}]$. Differentiate with respect to $c$ and set it to zero:
 
-## k-Nearest Neighbors
+$$
+\frac{d}{dc}\,\mathbb{E}\big[(y - c)^2 \mid \mathbf{x}\big] = -2\,\mathbb{E}[y - c \mid \mathbf{x}] = 0 \quad\Rightarrow\quad c^* = \mathbb{E}[y \mid \mathbf{x}]
+$$
 
-Predicts a new point's label by looking at the $k$ closest points in the training set (by some distance metric — often Euclidean or cosine, see [Linear Algebra](/docs/mathematics-for-ai/linear-algebra)) and taking a majority vote (classification) or average (regression). No real training phase — all the cost is at prediction time, which is exactly why approximate nearest-neighbor search (covered in [Databases](/docs/databases/roadmap)) matters at scale. See [K-Nearest Neighbors, In Full Depth](/docs/machine-learning/k-nearest-neighbors) for the curse of dimensionality and why KNN's boundary looks so different from every other classifier's.
+The best prediction under squared error is the **conditional mean**. Every regression model trained with squared error, from [linear regression](/docs/machine-learning/linear-regression) to a neural network, is trying to estimate the average outcome for each input.
 
-## Naive Bayes, LDA & QDA
+**Absolute error, $L = \lvert y - c\rvert$.** The derivative of $\lvert y - c\rvert$ with respect to $c$ is $-1$ when $y \gt  c$ and $+1$ when $y \lt  c$, so the derivative of the expected loss is $P(y \lt  c \mid \mathbf{x}) - P(y \gt  c \mid \mathbf{x})$. It's zero when half the probability is on each side:
 
-Naive Bayes applies Bayes' theorem (see [Probability & Statistics](/docs/mathematics-for-ai/probability-statistics)) with the "naive" assumption that features are conditionally independent given the class. That assumption is almost never literally true, yet Naive Bayes remains a strong, fast baseline for text classification and spam filtering. LDA and QDA are close relatives — generative classifiers that model each class as a Gaussian, differing only in whether classes share one covariance (LDA, linear boundary) or each get their own (QDA, curved boundary). See [Naive Bayes, LDA & QDA, In Full Depth](/docs/machine-learning/naive-bayes-lda-qda) for the full derivation and a direct visual comparison of the two boundary shapes.
+$$
+c^* = \operatorname{median}(y \mid \mathbf{x})
+$$
 
-## SGD Classifier & Regressor
+**Quantile (pinball) loss**, which weights under- and over-predictions by $\tau$ and $1-\tau$, generalizes this to $c^* = $ the $\tau$-quantile, which is how prediction intervals are built ([Uncertainty Estimation](/docs/machine-learning/uncertainty-estimation-and-conformal-prediction)).
 
-Not a separate algorithm — a generic training engine that unifies linear/logistic regression, ridge/lasso, and linear SVM into one configurable loss+penalty framework, trained via mini-batch SGD instead of a closed form. See [SGD Classifier & Regressor, In Full Depth](/docs/machine-learning/sgd-classifier-regressor) for the full loss/penalty comparison table and why this framing matters for datasets too large to fit in memory.
+**Zero-one loss for classification** ($L = 1$ if wrong, 0 if right). The expected loss of predicting class $c$ is $1 - P(y = c \mid \mathbf{x})$, minimized by the most probable class: the **Bayes classifier** ([derived on the Naive Bayes page](/docs/machine-learning/naive-bayes-lda-qda)). Zero-one loss can't be minimized with gradients, so classifiers train with a smooth stand-in: cross-entropy (log loss), whose minimizer is the true probability $P(y = k \mid \mathbf{x})$ itself, or the hinge loss of [SVMs](/docs/machine-learning/support-vector-machines), whose minimizer is the sign of the most probable class.
 
-## Time Series Forecasting
+The difference matters whenever the target is skewed. In Section 7, for a log-normal target shaped like incomes, the best constant under squared error is 1.65 and under absolute error 1.00: the mean and the median, 65% apart. A model trained with squared error to predict "typical" salaries will be pulled up by the few very high ones. Choose the loss to match the question being asked.
 
-A structurally different problem from everything above: predicting the future of a single sequence, where order carries the information and examples are never independent. See [Time Series Forecasting: ARIMA, SARIMA, Prophet & TFT, In Full Depth](/docs/machine-learning/time-series-forecasting) for trend/seasonality decomposition, the classical statistical models, and how attention-based deep learning (TFT) extends the same problem.
+<PredictFirst
+  question="You're predicting delivery times. Most orders arrive in 2 to 3 days, but a few take 30. You train one model with squared error and one with absolute error. Which predicts longer times?"
+  options={[
+    'The absolute-error model, since it treats every day of error equally',
+    'The squared-error model: it estimates the conditional mean, which the rare 30-day orders pull upward; absolute error estimates the median',
+    'They predict the same, since both measure the size of the error',
+    'It depends on the learning rate',
+  ]}
+  correctIndex={1}
+  explanation="Squared error is minimized by the mean, absolute error by the median. A long right tail pulls the mean above the median, so the squared-error model predicts longer times. Which is right depends on the question: 'expected days' (for costs) is the mean; 'what a typical customer sees' is the median."
+/>
 
-## Survival Analysis
+## 3. The Model Families and Their Bets
 
-Predicting *time until an event*, where some subjects haven't experienced the event yet by the time you have to analyze the data (censoring) — churn timing, equipment failure, clinical outcomes. See [Survival Analysis: Kaplan-Meier & Cox Proportional Hazards, In Full Depth](/docs/machine-learning/survival-analysis) for why this needs its own machinery rather than plain regression, and how Cox regression gets interpretable hazard ratios without ever specifying the baseline hazard's shape.
+The loss fixes what we're estimating. The model decides how we estimate it from finite data, and every model does so by making an assumption about what kind of function the answer is, its **inductive bias** (see the [no-free-lunch discussion](/docs/machine-learning/overview)). The families in this section:
 
-## Recommender Systems & Learning-to-Rank
+| Family | The bet it makes | Strengths | Weak spots | Page |
+|---|---|---|---|---|
+| Linear models | Effects add up, each feature with a fixed weight | Interpretable, fast, extrapolate linearly, need little data | Can't capture interactions or curves without engineered features | [Linear](/docs/machine-learning/linear-regression), [Ridge](/docs/machine-learning/ridge-regression), [Lasso](/docs/machine-learning/lasso-regression), [Elastic Net](/docs/machine-learning/elastic-net), [Logistic](/docs/machine-learning/logistic-regression) |
+| Decision trees | The answer is constant within axis-aligned boxes | Readable, any feature scale, interactions for free | Unstable, staircase boundaries | [Decision Trees](/docs/machine-learning/decision-tree) |
+| Tree ensembles | Many trees, averaged or added, are smoother and steadier than one | Best default for tabular accuracy | Less readable; can't extrapolate | [Random Forest](/docs/machine-learning/random-forest), [Boosting](/docs/machine-learning/boosting), [XGBoost, LightGBM & CatBoost](/docs/machine-learning/xgboost-lightgbm-catboost) |
+| Margin and kernel methods | The widest gap between classes generalizes; similarity to key examples decides | Strong in high dimensions with modest $n$ | Slow beyond about $10^5$ examples; need scaling | [SVM & SVR](/docs/machine-learning/support-vector-machines) |
+| Nearest neighbours | Similar inputs have similar outputs | No training; adapts to any boundary | Curse of dimensionality; needs scaling; slow queries | [k-NN](/docs/machine-learning/k-nearest-neighbors) |
+| Generative classifiers | Each class follows a simple distribution | Very little data needed if the assumption holds | Wrong assumptions give wrong, overconfident probabilities | [Naive Bayes, LDA & QDA](/docs/machine-learning/naive-bayes-lda-qda) |
 
-Predicting preference and ordering, not a single output value: matrix factorization, embeddings, the retrieval→rank→re-rank production pipeline behind Netflix/Amazon/YouTube-style recommendations, and the pairwise/listwise objectives (RankNet, LambdaMART) that directly optimize ranking quality metrics like NDCG instead of proxying through classification. See [Recommender Systems](/docs/machine-learning/recommender-systems) and [Learning-to-Rank](/docs/machine-learning/learning-to-rank) for the full depth — the same retrieval-then-rank pattern that also shows up in search and RAG.
+The [SGD page](/docs/machine-learning/sgd-classifier-regressor) shows that the linear rows are one model trained by one loop with different losses, and the [overview's table](/docs/machine-learning/overview) shows every algorithm as a choice of model, loss and optimizer.
 
-Next: [Unsupervised Learning](/docs/machine-learning/unsupervised-learning) — finding structure without labels.
+**Parametric and non-parametric.** A second way to sort them is by whether the model's size is fixed. A **parametric** model has a fixed number of parameters whatever the amount of data: a linear model with $d$ features has $d + 1$. It can only ever represent functions of its fixed form, which limits both how wrong it can be on small data and how right it can get on large data. A **non-parametric** model grows with the data: k-NN stores every example, a fully grown tree adds leaves as data arrives, a kernel SVM keeps a growing set of support vectors. These can represent nearly any function given enough data (k-NN is [universally consistent](/docs/machine-learning/k-nearest-neighbors)), but they need more data to do it, and they say little about regions with no data at all.
+
+## 4. What Happens Away From the Data
+
+That last point is easy to overlook, and it's where the bets show most clearly. Inside the range of the training data, a flexible model can follow almost any pattern. Outside it, each model does whatever its bias dictates:
+
+- A **linear model** extends its line forever.
+- A **tree or tree ensemble** predicts the constant of the nearest edge leaf: a flat line beyond the last split.
+- **k-NN** predicts the average of the nearest training points, which are all at the edge: also flat.
+- A **kernel SVM with an RBF kernel** decays toward its intercept far from every support vector.
+
+Section 7 trains four models on $y = 0.5x + \sin(2x) + \text{noise}$ for $x$ between 0 and 6, then tests them both inside that range and on $x$ from 8 to 10. Inside, the flexible models win easily: errors of 0.11 to 0.15 against 0.67 for the straight line, which can't follow the wiggle. Outside, the ranking flips: the straight line has the smallest error (1.08), because it at least continues the upward trend, while the tree, k-NN and gradient boosting all predict a flat continuation of the last values they saw and are off by 2.2 to 2.5.
+
+Neither model is "right" out there; the data says nothing about $x = 9$. The lesson is to know what your model will do when it's asked, because in production it will be: next year's prices, a new customer segment, a sensor reading beyond the usual range. Tree models are the default for tabular data and they cannot extrapolate a trend. Common responses are to model the trend separately (fit a linear trend, then a tree model on the residuals), to add features that carry the trend, or to monitor for inputs outside the training range.
+
+## 5. Combining Models
+
+Different models make different mistakes, and combining them can cancel some of those mistakes out. Three ways, from simplest to most involved:
+
+**Averaging** (voting, for classifiers). Train several models and average their predictions. By the variance formula derived on the [Random Forest page](/docs/machine-learning/random-forest), $\operatorname{Var}(\text{average}) = \rho\sigma^2 + \tfrac{1-\rho}{B}\sigma^2$, this helps most when the models are accurate and their errors are weakly correlated: models of different families tend to disagree in useful ways. **Bagging** applies it to many copies of one model trained on bootstrap samples.
+
+**Boosting** trains models in sequence, each fitted to the errors of the ones before, reducing bias rather than variance ([Boosting](/docs/machine-learning/boosting)).
+
+**Stacking** (Wolpert, 1992) learns how to combine. Train several base models, then train a **meta-model** whose inputs are the base models' predictions and whose target is the true label. The essential detail is that the meta-model must be trained on predictions the base models made for examples *they weren't trained on*, produced by cross-validation; otherwise it learns to trust whichever base model overfits the training set most. scikit-learn's `StackingClassifier` and `StackingRegressor` do this internally.
+
+In Section 7, stacking a logistic regression on top of four classifiers (logistic regression, an SVM, k-NN and a random forest) on the breast-cancer data gives a cross-validated log loss of 0.0724, slightly better than the best single model (logistic regression, 0.0738), and much better than the worst (k-NN, 0.226). The gain is small, which is typical: stacking reliably matches the best base model and sometimes beats it by a little, at the cost of training and running all of them. It's a staple of competitions and used sparingly in production.
+
+<GoDeeper title="Go deeper: multi-class from binary, and multi-label">
+
+Some classifiers handle many classes natively: trees, k-NN, naive Bayes, LDA, and logistic regression through the softmax. Others are inherently binary, the SVM most of all. Two standard reductions turn a binary method into a $K$-class one:
+
+- **One-vs-rest**: train $K$ classifiers, each separating one class from all the others, and predict the class whose classifier is most confident. $K$ models, each trained on all the data; the "rest" side is often much larger than the "one" side.
+- **One-vs-one**: train a classifier for every pair of classes, $K(K-1)/2$ models, each on only the two classes' data, and predict by majority vote. More models, but each is smaller and balanced. scikit-learn's `SVC` uses this internally.
+
+**Multi-label** problems are different again: each example can have several labels at once (a photo containing both a dog and a beach). The simplest approach trains one independent binary classifier per label; **classifier chains** feed each label's prediction into the next classifier, so correlations between labels (beaches and swimsuits) can be used. The evaluation metrics change too, to per-label averages such as micro- or macro-averaged F1 (see [Model Evaluation](/docs/machine-learning/model-evaluation-metrics#classification-metrics)).
+
+</GoDeeper>
+
+## 6. Problems With Their Own Structure
+
+Some supervised problems don't fit the plain "one input, one label, independent examples" mould, and each has its own page because the evaluation, and often the loss, has to change:
+
+- **[Time series forecasting](/docs/machine-learning/time-series-forecasting)**: the examples are ordered and dependent, so random splits leak the future; models use the past of the series itself.
+- **[Survival analysis](/docs/machine-learning/survival-analysis)**: the target is a time until an event, and for some subjects the event hasn't happened yet (censoring), which plain regression mishandles.
+- **[Recommender systems](/docs/machine-learning/recommender-systems)** and **[learning to rank](/docs/machine-learning/learning-to-rank)**: the target is a preference or an ordering, and the metric (such as NDCG) cares about the top of a list, not each prediction alone.
+
+## 7. Minimal Implementation
+
+Three experiments, one per idea above: the best constant under each loss for a skewed target (Section 2); four models inside and outside their training range (Section 4); and stacking on a real dataset (Section 5):
+
+```python
+import numpy as np
+from sklearn.datasets import load_breast_cancer
+from sklearn.ensemble import HistGradientBoostingRegressor, RandomForestClassifier, StackingClassifier
+from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.model_selection import cross_val_score, StratifiedKFold
+from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeRegressor
+
+# 1. The loss decides what the best constant prediction is
+rng = np.random.default_rng(0)
+y = rng.lognormal(mean=0.0, sigma=1.0, size=100_000)        # skewed, like incomes or house prices
+grid = np.linspace(0, 4, 4001)
+sq = [np.mean((y - c) ** 2) for c in grid[::10]]
+ab = [np.mean(np.abs(y - c)) for c in grid[::10]]
+print(f"best constant under squared error {grid[::10][np.argmin(sq)]:.2f}   mean   {y.mean():.2f}")
+print(f"best constant under absolute error {grid[::10][np.argmin(ab)]:.2f}   median {np.median(y):.2f}")
+
+# 2. Inductive bias: train on x in [0, 6], test inside and outside that range
+x = rng.uniform(0, 6, 300); t = 0.5 * x + np.sin(2 * x) + rng.normal(0, 0.2, 300)
+x_in = np.linspace(0, 6, 200); x_out = np.linspace(8, 10, 200)
+truth = lambda z: 0.5 * z + np.sin(2 * z)
+print("model                  error inside training range   error outside (x in 8..10)")
+for name, m in [("linear regression", LinearRegression()),
+                ("decision tree (depth 6)", DecisionTreeRegressor(max_depth=6)),
+                ("k-NN (k=10)", KNeighborsRegressor(10)),
+                ("gradient boosting", HistGradientBoostingRegressor())]:
+    m.fit(x[:, None], t)
+    rmse = lambda z: np.sqrt(np.mean((m.predict(z[:, None]) - truth(z)) ** 2))
+    print(f"{name:24s} {rmse(x_in):>8.3f}                  {rmse(x_out):>8.3f}")
+
+# 3. Stacking: a logistic regression learns how to combine four different models
+X, yb = load_breast_cancer(return_X_y=True)
+cv = StratifiedKFold(5, shuffle=True, random_state=0)
+base = [("lr", make_pipeline(StandardScaler(), LogisticRegression())),
+        ("svm", make_pipeline(StandardScaler(), SVC(probability=True, random_state=0))),
+        ("knn", make_pipeline(StandardScaler(), KNeighborsClassifier(15))),
+        ("rf", RandomForestClassifier(random_state=0))]
+for name, m in base + [("stacked", StackingClassifier(base, final_estimator=LogisticRegression(), cv=5))]:
+    s = cross_val_score(m, X, yb, cv=cv, scoring="neg_log_loss")
+    print(f"{name:8s} cross-validated log loss {-s.mean():.4f}")
+```
+
+Output (scikit-learn 1.7):
+
+```
+best constant under squared error 1.65   mean   1.65
+best constant under absolute error 1.00   median 1.00
+model                  error inside training range   error outside (x in 8..10)
+linear regression           0.666                     1.084
+decision tree (depth 6)     0.140                     2.163
+k-NN (k=10)                 0.107                     2.399
+gradient boosting           0.149                     2.510
+lr       cross-validated log loss 0.0738
+svm      cross-validated log loss 0.0867
+knn      cross-validated log loss 0.2260
+rf       cross-validated log loss 0.1162
+stacked  cross-validated log loss 0.0724
+```
+
+- **Losses pick targets.** A brute-force search for the best constant lands exactly on the mean under squared error (1.65) and the median under absolute error (1.00), as derived in Section 2.
+- **Flexible inside, flat outside.** The three flexible models fit the curve about five times better than the line inside the training range, and do about twice as badly as the line from 8 to 10.
+- **Stacking edges out the best model.** Log loss 0.0724 against 0.0738 for logistic regression alone. On this nearly linear dataset, the simplest base model was already close to the best possible.
+
+## 8. When *Not* to Use Supervised Learning
+
+| Situation | Better approach |
+|---|---|
+| You have no labels and can't get them | [Unsupervised learning](/docs/machine-learning/unsupervised-learning): clustering, dimensionality reduction, anomaly detection |
+| Labels are expensive but unlabelled data is plentiful | Semi-supervised or self-supervised pretraining, then a small supervised model on the learned features |
+| The labels are themselves unreliable or biased (past decisions, not outcomes) | Fix the labels first; a model trained on biased decisions learns to repeat them |
+| You need the effect of an action, not a prediction | Causal inference or a randomized experiment; supervised models predict under the data's existing patterns |
+| The model will act and its actions change future data (recommendations, pricing) | Bandits or reinforcement learning, which account for the feedback loop |
+| Inputs at prediction time will lie far outside the training range | A model whose extrapolation you understand (Section 4), plus monitoring for out-of-range inputs |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Setup | Pairs $(\mathbf{x}, y)$; regression if $y$ is a number, classification if it's a category |
+| Squared error | Optimal prediction is the conditional mean $\mathbb{E}[y \mid \mathbf{x}]$ |
+| Absolute error | Optimal prediction is the conditional median |
+| Zero-one loss | Optimal prediction is the most probable class (the Bayes classifier) |
+| Cross-entropy | Its minimizer is the true class probability |
+| Inductive bias | Every family assumes a kind of function; pick the bet that matches the data |
+| Parametric vs non-parametric | Fixed size vs growing with data; the latter need more data, assume less |
+| Extrapolation | Lines continue; trees, ensembles and k-NN go flat beyond the data |
+| Combining | Average decorrelated models; boost to cut bias; stack with out-of-fold predictions |
+| Special structure | Time series, survival, ranking: change the evaluation, not only the model |
+
+---
+
+Next: [Unsupervised Learning](/docs/machine-learning/unsupervised-learning), finding structure when there are no labels at all.
+
+## Sources
+
+- T. Hastie, R. Tibshirani and J. Friedman, [The Elements of Statistical Learning](https://hastie.su.domains/ElemStatLearn/), 2nd ed., Chapters 2 and 7
+- D. H. Wolpert, [Stacked Generalization](https://doi.org/10.1016/S0893-6080(05)80023-1), *Neural Networks*, 1992
+- L. Breiman, [Stacked Regressions](https://doi.org/10.1007/BF00117832), *Machine Learning*, 1996
+- R. Koenker and G. Bassett, [Regression Quantiles](https://doi.org/10.2307/1913643), *Econometrica*, 1978
+- J. Read, B. Pfahringer, G. Holmes and E. Frank, [Classifier Chains for Multi-label Classification](https://doi.org/10.1007/s10994-011-5256-5), *Machine Learning*, 2011
+- scikit-learn, [Supervised learning](https://scikit-learn.org/stable/supervised_learning.html) and [Stacked generalization](https://scikit-learn.org/stable/modules/ensemble.html#stacked-generalization)
