@@ -1,77 +1,309 @@
 ---
-title: "Caching Strategies & Redis Patterns"
+title: "Caching Strategies & Redis Patterns, In Full Depth"
 sidebar_position: 22.35
-description: "Cache-aside reads, write-through vs. write-behind writes, TTL/LRU eviction, and cache stampede -- the mechanics behind every 'add a Redis cache' decision, with real code."
+description: "When and how to cache in ML systems: hit-rate arithmetic, cache-aside and write strategies, invalidation, stampedes measured on real Redis, LRU against Zipf-distributed traffic, and semantic caching for LLM answers, including why a similarity threshold can serve the opposite answer."
 ---
 
 import CacheAsideFlowDiagram from '../../../viz/diagrams/CacheAsideFlowDiagram';
 import WriteThroughVsWriteBehindDiagram from '../../../viz/diagrams/WriteThroughVsWriteBehindDiagram';
 import CacheEvictionTtlDiagram from '../../../viz/diagrams/CacheEvictionTtlDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Caching Strategies & Redis Patterns
+# Caching Strategies & Redis Patterns, In Full Depth
 
-[AI Cost Engineering](/docs/mlops/ai-cost-engineering#caching) already leans on "a cache hit is free," and [Production Reliability](/docs/mlops/production-reliability#idempotency-and-distributed-locks) already uses Redis for idempotency keys — both assume a cache without explaining how one actually reads, writes, and forgets data. This page is that mechanics, with the real Redis code behind each pattern.
+[APIs & Model Serving](/docs/mlops/model-serving) made individual predictions fast; [AI Cost Engineering](/docs/mlops/ai-cost-engineering) is about paying less for them. Caching serves both: the fastest and cheapest computation is the one you don't repeat. ML systems cache at many levels, from feature lookups and model predictions to whole LLM answers and the attention state inside a model. This page covers the mechanics they share: when a cache pays off, how reads and writes keep it consistent, why invalidation is hard, the stampede that can take down a database when a popular key expires (measured on real Redis), how eviction interacts with real traffic patterns, and semantic caching for LLMs, where "the same question" stops being a simple equality test.
 
-## Cache Reads: Cache-Aside (Lazy Loading)
+<ELI5>
 
-**Cache-aside** (also called lazy loading) is the default pattern for reads: the application checks the cache first; on a hit, it returns immediately with no database round-trip. On a miss, it reads from the actual source of truth (a database, an API), then writes that result back into the cache — with a TTL — before returning it. The cache only ever holds data that's actually been requested, and if the cache is unavailable entirely, every request just falls through to the database: the system gets slower, not broken.
+A librarian who is asked for the same popular book twenty times a day keeps a copy on the front desk instead of walking to the stacks each time. That desk is a cache. It only has room for a few books, so the librarian keeps the ones people ask for most and puts back the ones nobody has asked for lately. And when a new edition comes out, the old copy on the desk has to go, or people get the outdated one.
+
+Every cache faces those three questions: what to keep close, what to throw out when space runs short, and how to avoid handing out something that's no longer true.
+
+Everything below is how those questions are answered in software.
+
+</ELI5>
+
+## 1. When a Cache Pays Off
+
+A cache stores the results of expensive work so that repeated requests can be answered from fast storage. Its benefit is captured by one formula. With hit rate $h$ (the fraction of requests answered from the cache), cache lookup time $t_c$ and the time of the underlying computation $t_s$, the average latency is
+
+$$\bar t = t_c + (1 - h)\, t_s$$
+
+since every request checks the cache, and only misses pay for the real work. The same shape holds for cost: only misses pay for the database query, the feature computation or the model call.
+
+Two consequences follow:
+
+- **Hit rate is everything.** With $t_c = 1$ ms and $t_s = 200$ ms, a 50% hit rate gives 101 ms on average; 90% gives 21 ms; 99% gives 3 ms. Each extra "nine" of hit rate is worth as much as all the ones before it.
+- **Caches only help repeated work.** If every request is unique (a fraud score on a new transaction, an LLM answer to a free-form question), the hit rate is near zero and the cache only adds lookup time and memory.
+
+So before adding a cache, ask: how often is the same request made, and how stale may the answer be? A product page's recommendations, requested thousands of times an hour and acceptable if a few minutes old, are an excellent candidate. A credit decision on a fresh application isn't.
+
+In ML systems, good candidates include features looked up per user (computed once, read many times), predictions for popular items or pages, embeddings of frequently seen texts, LLM answers to common questions, and the KV cache of shared prompt prefixes inside an inference engine ([LLM Inference Optimization](/docs/mlops/llm-inference-optimization#kv-cache)).
+
+## 2. Reading Through a Cache: Cache-Aside
+
+The most common pattern for reads is **cache-aside**, also called lazy loading. The application checks the cache; on a hit it returns the cached value; on a miss it computes or fetches the value from the source of truth, stores it in the cache with an expiry time, and returns it.
 
 <CacheAsideFlowDiagram />
 
-```python
-def get_user_profile(user_id: str) -> dict:
-    cached = redis.get(f"user:{user_id}")
-    if cached:
-        return json.loads(cached)          # cache hit -- no DB round-trip
+Its properties explain why it's the default:
 
-    profile = db.query_user(user_id)        # cache miss -- fall through to source of truth
-    redis.set(f"user:{user_id}", json.dumps(profile), ex=300)   # write-back, 5 min TTL
-    return profile
-```
+- **Only requested data is cached,** so memory goes to what's actually used.
+- **The cache is optional.** If it's down or empty, every request falls through to the source; the system slows down but keeps working.
+- **Values can be stale** for up to their time-to-live (TTL) after the source changes, unless writes invalidate them (section 4).
 
-## Cache Writes: Write-Through vs. Write-Behind
+The alternative, **read-through**, puts the loading logic inside a caching layer that fetches on a miss itself, so the application only ever talks to the cache. Many managed caches and libraries offer it; the behaviour is the same as cache-aside with the code in a different place.
 
-Reads have one dominant pattern; writes split into two genuinely different philosophies for keeping a cache correct as the underlying data changes:
+## 3. Writing: Write-Through, Write-Behind, Write-Around
 
-- **Write-through**: every write updates the cache and the database synchronously, before acking the caller. The cache is never stale, but write latency is at least as slow as the database write itself — no speedup on the write path.
-- **Write-behind (write-back)**: the write updates the cache and acks immediately; the database update happens asynchronously afterward, often batched. Writes are much faster, but a cache crash before that async flush loses the write — a durability-for-latency tradeoff, not a strict improvement.
+When the underlying data changes, the cache has to be kept consistent with it. Three strategies trade consistency, latency and durability differently:
 
 <WriteThroughVsWriteBehindDiagram />
 
+- **Write-through:** every write goes to the database and then to the cache, before the caller is acknowledged. The cache is never stale for that key, but writes are as slow as the database, and data that's written but never read still occupies cache memory.
+- **Write-behind (write-back):** the write goes to the cache and is acknowledged at once; the database is updated later, often in batches. Writes are fast, but if the cache fails before flushing, acknowledged writes are lost. It suits data where some loss is tolerable, such as counters and analytics, not orders or payments.
+- **Write-around:** writes go only to the database, and the cached copy is deleted (not updated). The next read reloads it. Simple, and it avoids caching data nobody reads, at the cost of one miss after each write.
+
+For most ML-serving caches, which hold derived data (features, predictions, embeddings) rather than the system of record, write-around or cache-aside with a TTL is the right choice: the source of truth stays in the database or feature store, and the cache is a disposable speed-up.
+
+## 4. Invalidation: The Hard Part
+
+Phil Karlton's often-quoted line, that there are only two hard things in computer science, cache invalidation and naming things, is about this section. A cached value is a copy, and copies go stale when the original changes.
+
+Two tools control staleness:
+
+- **TTL expiry** bounds it: a value cached with a 5-minute TTL is at most 5 minutes out of date. It needs no coordination, which makes it robust, but it serves stale data for up to the full TTL and expires values that hadn't changed.
+- **Explicit invalidation** deletes the cached key when the source changes. It's precise, but every write path must remember every cached representation of the data, and a forgotten one leaves values stale indefinitely, with no error to notice. Event-driven invalidation (a change-data-capture stream from the database deleting affected keys) is more reliable than invalidation scattered through application code.
+
+Production systems usually use both: invalidate where you can, and keep a TTL as a safety net that bounds how long a missed invalidation can hurt.
+
+**Versioned keys** avoid a whole class of invalidation bugs in ML systems. Put the model version and feature version into the cache key, for example `pred:v12:user:42`. Deploying model version 13 then changes every key automatically, so no prediction from the old model can be served by the new one, and the old entries simply age out.
+
+<PredictFirst
+  question="A recommendation service caches predictions under the key 'recs:user:{id}' with a 6-hour TTL. A new model version is deployed at 10:00. What do users see between 10:00 and 16:00?"
+  options={[
+    'Only the new model’s recommendations, because the deployment clears the cache',
+    'A mix: users whose cached entries predate 10:00 keep getting the old model’s recommendations until their entries expire',
+    'An error, because the keys no longer match the model',
+    'Nothing changes for anyone until 16:00, then everyone switches at once',
+  ]}
+  correctIndex={1}
+  explanation="Nothing ties the cached entries to a model version, so entries written before the deployment keep being served until their TTL runs out, while users with no entry get the new model. For up to six hours both models are live, which also corrupts any A/B or canary comparison. Putting the model version in the key (recs:v13:user:{id}) makes the switch clean."
+/>
+
+## 5. Stampedes: When a Popular Key Expires
+
+A **cache stampede** (or thundering herd) happens when a heavily requested key expires or is evicted, and many concurrent requests miss at the same moment. Each one independently goes to the source to recompute the value, so a database, feature service or model that was comfortably serving a few misses a second suddenly receives hundreds of identical expensive requests. If that overloads it, requests time out, nothing gets cached, and the overload continues.
+
+This script reproduces it against Redis 8.2: 50 threads request a key that has just expired, where recomputing it takes 200 ms. Once with plain cache-aside, once with a **single-flight lock**, where only the request that wins a short-lived lock recomputes, and the others wait and re-check the cache:
+
 ```python
-def update_user_profile(user_id: str, profile: dict) -> None:
-    db.save_user(user_id, profile)                              # source of truth first
-    redis.set(f"user:{user_id}", json.dumps(profile), ex=300)    # cache kept in lockstep
+import json
+import threading
+import time
+
+import redis
+
+r = redis.Redis(port=6391)
+db_calls = 0
+counter_lock = threading.Lock()
+
+def slow_db_query(key):
+    global db_calls
+    with counter_lock:
+        db_calls += 1
+    time.sleep(0.2)                                   # an expensive query or model call
+    return {"key": key, "value": 42}
+
+def get_naive(key):
+    cached = r.get(key)
+    if cached:
+        return json.loads(cached)
+    value = slow_db_query(key)
+    r.set(key, json.dumps(value), ex=300)
+    return value
+
+def get_with_lock(key):
+    while True:
+        cached = r.get(key)
+        if cached:
+            return json.loads(cached)
+        if r.set(f"lock:{key}", "1", nx=True, ex=10):  # only one caller wins the lock
+            try:
+                value = slow_db_query(key)
+                r.set(key, json.dumps(value), ex=300)
+                return value
+            finally:
+                r.delete(f"lock:{key}")
+        time.sleep(0.02)                               # lost the race: wait, then re-check the cache
+
+for name, getter in [("no protection", get_naive), ("single-flight lock", get_with_lock)]:
+    r.delete("hot-key")                                 # the hot key has just expired
+    db_calls = 0
+    threads = [threading.Thread(target=getter, args=("hot-key",)) for _ in range(50)]
+    start = time.perf_counter()
+    for t in threads: t.start()
+    for t in threads: t.join()
+    print(f"{name:<19} 50 concurrent misses -> {db_calls:>2} database queries, {time.perf_counter() - start:.2f} s")
 ```
 
-## Eviction: TTL and LRU
+```text
+no protection       50 concurrent misses -> 50 database queries, 0.21 s
+single-flight lock  50 concurrent misses ->  1 database queries, 0.22 s
+```
 
-A cache entry disappears for two independent reasons. **TTL (time-to-live)** expiry removes a key once a fixed amount of time has passed, regardless of how full the cache is — set per-write (the `ex=300` above). **LRU (least-recently-used) eviction** only kicks in once the cache hits a configured memory limit, and then removes whichever entries haven't been accessed in the longest time to make room for new ones — Redis enables this with `maxmemory` and a policy like `maxmemory-policy allkeys-lru`. Both mechanisms run at once in a real deployment; TTL bounds staleness, LRU bounds memory.
+Without protection, all 50 requests hit the source. With the lock, one does, and the other 49 get its result a few milliseconds later; total time is essentially the same. `SET ... NX EX` is what makes this safe: it sets the lock only if it doesn't exist (`NX`), atomically, and the expiry (`EX 10`) releases it even if the holder crashes.
+
+Other defences, often combined with the lock:
+
+- **Jittered TTLs:** add a random few percent to each TTL so keys written together don't all expire together.
+- **Serve stale while revalidating:** keep the old value slightly past its expiry and return it while one request refreshes it in the background, so users never wait on the recomputation.
+- **Early probabilistic refresh:** each request refreshes the value with a probability that rises as expiry approaches, so the most popular keys are renewed before they expire at all.
+
+<GoDeeper title="Go deeper: why the lock above is only safe for caching">
+
+The lock in this script has a known weakness. If the holder takes longer than the 10-second expiry, the lock expires, a second request takes it, and when the first finishes, its `DELETE` removes the *second* request's lock. For a cache that's harmless: the worst case is an extra recomputation. For anything that needs mutual exclusion to be correct, such as preventing two workers from charging a card twice, it isn't.
+
+The standard fix is to store a unique token as the lock's value and delete only if the value still matches, using a short Lua script so the check and delete are atomic. Even then, a lock in a single Redis instance can be lost in a failover, and a process paused by garbage collection can believe it still holds a lock that has expired. Correctness-critical exclusion needs either a consensus-backed lock service, or *fencing tokens*: a number that increases with every lock grant, which the protected resource checks so a stale holder's writes are rejected. [Production Reliability](/docs/mlops/production-reliability#idempotency-and-distributed-locks) covers idempotency keys and these locking patterns for exactly those cases.
+
+</GoDeeper>
+
+## 6. Eviction and Real Traffic
+
+Caches have limited memory, so something must decide what to discard when it's full. In Redis, `maxmemory` sets the limit and `maxmemory-policy` the rule: `allkeys-lru` evicts the least recently used keys, `allkeys-lfu` the least frequently used, `volatile-*` variants consider only keys with a TTL, and `noeviction` rejects writes instead.
 
 <CacheEvictionTtlDiagram />
 
-## Cache Invalidation and Stampede
+TTL and eviction are independent: TTL limits *staleness*, eviction limits *memory*, and both run at once.
 
-TTL alone means a key can serve stale data for up to its full TTL window after the underlying data changes. **Explicit invalidation** (deleting or overwriting the cached key on every write to the source of truth) fixes that staleness immediately, but adds a real failure mode: a write path that forgets to invalidate every cached representation of that data leaves it silently stale with no error to notice.
+How well eviction works depends on the shape of the traffic. Request popularity in real systems is usually highly skewed: a few items get most requests, and a long tail gets a few each. It's often modelled with a **Zipf distribution**, where the $i$-th most popular item is requested in proportion to $1/i^s$, and the exponent $s$ controls the skew. If a cache could hold exactly the $k$ most popular of $N$ items, its hit rate would be
 
-A **cache stampede** (thundering herd) happens when a hot key expires and many concurrent requests miss at the same instant, all hitting the database simultaneously to repopulate it — enough to take down a database that was otherwise healthy. The standard fix is a short-lived lock so only one request repopulates the key while the rest wait briefly or serve the stale value, plus jittered TTLs so many keys don't expire in the same instant:
+$$h_{\text{ideal}} = \frac{\sum_{i=1}^{k} i^{-s}}{\sum_{i=1}^{N} i^{-s}}$$
+
+This script measures what Redis's LRU actually achieves: 10,000 items of about 1 KB each, a cache limited to 2 MB (room for about 900), and 60,000 requests at three levels of skew:
 
 ```python
-def get_with_stampede_protection(key: str) -> dict:
-    cached = redis.get(key)
-    if cached:
-        return json.loads(cached)
+import numpy as np
+import redis
 
-    if redis.set(f"lock:{key}", "1", nx=True, ex=10):   # only one caller wins the lock
-        value = recompute_expensive_value(key)
-        redis.set(key, json.dumps(value), ex=300)
-        redis.delete(f"lock:{key}")
-        return value
+r = redis.Redis(port=6391)                    # started with --maxmemory 2mb --maxmemory-policy allkeys-lru
+N_ITEMS, VALUE = 10_000, b"x" * 1000          # 10,000 distinct items of ~1 KB each: ~10 MB, cache holds ~2 MB
 
-    time.sleep(0.05)                                     # lost the lock -- brief wait, then retry
-    return get_with_stampede_protection(key)
+def zipf_requests(n, s, rng):
+    """Popularity follows a power law: item i is requested in proportion to 1 / i**s."""
+    p = 1 / np.arange(1, N_ITEMS + 1) ** s
+    return rng.choice(N_ITEMS, size=n, p=p / p.sum())
+
+for s in [0.6, 1.0, 1.2]:
+    r.flushall(); r.config_resetstat()
+    rng = np.random.default_rng(0)
+    for key in zipf_requests(60_000, s, rng):
+        if r.get(f"item:{key}") is None:      # cache-aside: on a miss, load and store
+            r.set(f"item:{key}", VALUE)
+    stats = r.info("stats")
+    hits, misses = stats["keyspace_hits"], stats["keyspace_misses"]
+    weights = 1 / np.arange(1, N_ITEMS + 1) ** s
+    ideal = weights[: r.dbsize()].sum() / weights.sum()   # if the cache always held exactly the most popular items
+    print(f"skew s={s}: hit rate {hits / (hits + misses):.1%} (ideal {ideal:.1%}), "
+          f"keys in cache {r.dbsize():,}, evicted {stats['evicted_keys']:,}")
 ```
 
-The same cache-aside idea shows up at other layers of this platform too, at different granularity: [prompt/response caching](/docs/mlops/ai-cost-engineering#caching) caches whole LLM responses, and [KV/prefix caching](/docs/mlops/llm-inference-optimization#kv-cache) caches intermediate attention state inside a single model — same hit-avoids-recompute idea, applied at the request level versus inside the forward pass.
+```text
+skew s=0.6: hit rate 21.8% (ideal 37.4%), keys in cache 905, evicted 45,950
+skew s=1.0: hit rate 64.0% (ideal 75.7%), keys in cache 905, evicted 20,625
+skew s=1.2: hit rate 84.8% (ideal 90.0%), keys in cache 905, evicted 8,182
+```
 
-Next: [Legal, Licensing & Governance](/docs/mlops/legal-licensing-and-governance) — the non-technical constraints that shape which of these tradeoffs are even legally available to make.
+The same cache holding 9% of the items achieves anything from 22% to 85% hits depending only on how skewed the traffic is. Measure your traffic's popularity distribution before sizing a cache: with heavy skew a small cache does most of the work, and with flat traffic even a large one helps little.
+
+LRU also falls short of the ideal, most of all when traffic is less skewed (22% against 37%). It keeps whatever was used *recently*, so a burst of one-off requests from the long tail pushes out items that are popular overall. Frequency-aware policies (`allkeys-lfu` in Redis, or W-TinyLFU in application caches such as Caffeine) close much of that gap. Redis also only approximates LRU, sampling a few keys (`maxmemory-samples`, 5 by default) and evicting the oldest of the sample, to keep eviction cheap.
+
+## 7. Semantic Caching for LLM Answers
+
+LLM calls are slow and expensive, and many applications answer the same questions repeatedly, so caching answers is attractive. Exact-match caching (keyed on the prompt's hash) is safe but rarely hits, because users phrase the same question many ways. **Semantic caching** keys on meaning instead: embed the incoming question, find the most similar cached question, and reuse its answer if the similarity is above a threshold.
+
+The danger is in that threshold. Here's the similarity, using a common embedding model (`all-MiniLM-L6-v2`), between a cached question, "How do I cancel my order?", and five new ones:
+
+```python
+from sentence_transformers import SentenceTransformer
+
+encoder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+cached_question = "How do I cancel my order?"
+
+new_questions = [
+    "How can I cancel an order I placed?",        # same meaning: reuse is correct
+    "what's the way to cancel my order",          # same meaning
+    "How do I cancel my subscription?",           # different answer
+    "How do I track my order?",                   # different answer
+    "How do I stop my order from being cancelled?",  # opposite intent
+]
+vectors = encoder.encode([cached_question] + new_questions, normalize_embeddings=True)
+for question, v in zip(new_questions, vectors[1:]):
+    print(f"{float(v @ vectors[0]):.3f}  {question}")
+```
+
+```text
+0.930  How can I cancel an order I placed?
+0.979  what's the way to cancel my order
+0.712  How do I cancel my subscription?
+0.523  How do I track my order?
+0.887  How do I stop my order from being cancelled?
+```
+
+The paraphrases score 0.93 and 0.98, and the unrelated questions are well below. But the question with the *opposite* intent, stopping a cancellation, scores 0.887, barely below a true paraphrase. A threshold of 0.85, which sounds conservative, would answer it with instructions for cancelling. Embedding models capture topic and wording well and are weak on negation and intent.
+
+So semantic caches need care:
+
+- **Calibrate the threshold on labelled pairs** from your own traffic, including near-misses like this one, and measure the false-hit rate, not just the hit rate.
+- **Restrict what's cached** to stable, non-personal answers (help-centre questions, product facts), never answers that depend on the user's account, permissions or state.
+- **Scope cache keys** by everything else that changes the answer: model version, system prompt version, language, tenant, and the retrieved documents' versions.
+- **Verify cheaply when in doubt:** a small model or rule that checks whether the cached answer fits the new question, used in the grey zone just above the threshold.
+
+The provider-side alternative is **prompt caching**: providers cache the processed prefix of a long, repeated prompt (a system prompt, a document) and charge less and respond faster when it's reused. It's exact-match on the prefix, so it carries none of the semantic risk, and it's often the larger saving for applications with long shared context ([AI Cost Engineering](/docs/mlops/ai-cost-engineering)).
+
+<PredictFirst
+  question="A support assistant adds a semantic cache with a similarity threshold of 0.85. Hit rate is 40%, and costs fall sharply. What should the team measure before declaring success?"
+  options={[
+    'Only the hit rate, since higher is better',
+    'The false-hit rate: how often a cached answer is served to a question that needed a different one, checked on a labelled sample including near-miss questions',
+    'The average similarity of hits',
+    'The number of keys in the cache',
+  ]}
+  correctIndex={1}
+  explanation="A semantic cache can be wrong in a way an exact-match cache cannot: it can serve a confident, fluent answer to a different question. Hit rate measures savings; the false-hit rate measures harm. Questions with negation or opposite intent can score as high as true paraphrases, so the evaluation sample must include them, and the threshold should be set from that measurement rather than from intuition."
+/>
+
+## 8. When *Not* to Cache
+
+| Situation | Better choice |
+|---|---|
+| Every request is unique (fresh transactions, free-form prompts with personal context) | No result cache; optimize the computation itself, or cache its inputs (features, prompt prefixes) instead |
+| Answers must reflect the latest state (balances, permissions, inventory at checkout) | Read the source of truth; if needed, cache only with immediate, event-driven invalidation |
+| Personalized or permission-dependent outputs | Don't share cache entries across users; key by user, or don't cache |
+| The source is already fast enough | Skip the cache; it adds a second system to run and a consistency problem to reason about |
+| Correctness-critical coordination (payments, exactly-once jobs) | Idempotency keys and proper locking, not a best-effort cache lock |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Why cache | Average latency is $t_c + (1-h)\,t_s$; only misses pay for the real work |
+| Cache-aside | Check the cache, load on a miss, store with a TTL; the system survives without the cache |
+| Writes | Write-through for consistency, write-behind for speed with loss risk, write-around for simplicity |
+| Invalidation | Explicit invalidation where possible, TTL as a safety net, versioned keys for model changes |
+| Stampede | One expired hot key, 50 concurrent misses, 50 queries; a single-flight lock makes it 1 |
+| Eviction | Hit rate depends on traffic skew; LRU trails the ideal most when traffic is flat; try LFU |
+| Semantic caching | Embedding similarity confuses opposite intents; calibrate the threshold on near-misses |
+
+---
+
+Next: [Legal, Licensing & Governance](/docs/mlops/legal-licensing-and-governance) covers the rules on what an ML system may do with the data it caches and serves.
+
+## Sources
+
+- Redis, [Key eviction](https://redis.io/docs/latest/develop/reference/eviction/) and [Distributed locks with Redis](https://redis.io/docs/latest/develop/clients/patterns/distributed-locks/)
+- L. Breslau et al., [Web Caching and Zipf-like Distributions: Evidence and Implications](https://ieeexplore.ieee.org/document/749260), IEEE INFOCOM 1999
+- G. Einziger, R. Friedman and B. Manes, [TinyLFU: A Highly Efficient Cache Admission Policy](https://arxiv.org/abs/1512.00727), ACM Transactions on Storage 2017
+- A. Vattani, F. Chierichetti and K. Lowenstein, [Optimal Probabilistic Cache Stampede Prevention](https://www.vldb.org/pvldb/vol8/p886-vattani.pdf), VLDB 2015
+- M. Kleppmann, [How to do distributed locking](https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html), 2016

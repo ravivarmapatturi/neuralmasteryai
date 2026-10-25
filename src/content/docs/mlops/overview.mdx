@@ -1,33 +1,220 @@
 ---
-title: "MLOps Overview"
+title: "MLOps Overview, In Full Depth"
 sidebar_position: 1
-description: "Turning a model that works in a notebook into a system that serves real traffic reliably, gets monitored for drift, and retrains itself when the world shifts."
+description: "What MLOps is and why ML systems need it: why code, data and model all change, the hidden technical debt of ML systems, the lifecycle run end to end in one short script, maturity levels, who does what, and a map of this section."
 ---
 
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# MLOps Overview
+# MLOps Overview, In Full Depth
 
-[Machine Learning](/docs/machine-learning/roadmap) and [Deep Learning](/docs/deep-learning/roadmap) teach you how to build a model. MLOps is everything required to take that model — currently working in a notebook, on your laptop, on a train/test split that never changes — and turn it into a system that reliably serves real traffic, gets monitored, and retrains itself when the world shifts underneath it.
+[Machine Learning](/docs/machine-learning/roadmap) and [Deep Learning](/docs/deep-learning/roadmap) teach you how to build a model: choose features, fit parameters, evaluate on held-out data. In those sections the model is the finished product. In a company it's the beginning. Someone has to retrain it when data changes, serve it to real traffic, notice when it quietly gets worse, roll back a bad version at 3am, and show an auditor how it was made. This page explains what MLOps is and why ML systems need more engineering than ordinary software, runs the whole lifecycle once in a short script so the pieces are concrete, describes how teams mature, and maps the rest of this section.
 
-By the end of this section you should be able to answer, concretely, not abstractly:
+<ELI5>
 
-- How do I make this reproducible — code, data, model, and environment all versioned together?
-- How do I package it, deploy it, and roll it back safely if it's wrong?
-- How do I scale it, and how do I know when it's silently degrading?
-- How do I serve an LLM efficiently on GPUs, and evaluate a RAG system once it's live?
+Baking one excellent cake at home is a skill. Running a bakery that sells that cake every day is a different skill: ingredients arrive and must be checked, recipes are written down so any baker can follow them, ovens are maintained, every batch is tasted, and when customers' tastes change, the recipe changes too, carefully.
 
-## Path through this section
+Data science is baking the cake. MLOps is running the bakery: everything needed to make a model work reliably, every day, for real customers, as the world around it changes.
 
-- **Foundations**: [Engineering for ML](/docs/mlops/engineering-foundations), [Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning)
-- **The core loop**: [Experiment Tracking](/docs/mlops/experiment-tracking), [Pipeline Orchestration](/docs/mlops/pipeline-orchestration)
-- **Packaging & serving**: [Containers](/docs/mlops/containers), [APIs & Model Serving](/docs/mlops/model-serving)
-- **Infrastructure**: [Cloud Computing](/docs/mlops/cloud-computing), [Kubernetes](/docs/mlops/kubernetes), [Infrastructure as Code](/docs/mlops/infrastructure-as-code)
-- **Automation**: [CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd)
-- **Production ML plumbing**: [Feature Stores & Model Registry](/docs/mlops/feature-stores-and-model-registry), [Deployment Strategies](/docs/mlops/deployment-strategies)
-- **Keeping it healthy**: [Monitoring & Drift Detection](/docs/mlops/monitoring-and-drift), [Observability](/docs/mlops/observability)
-- **At scale**: [GPU/AI Infrastructure & Distributed Training](/docs/mlops/gpu-and-distributed-training), [Federated Learning](/docs/mlops/federated-learning)
-- **For GenAI specifically**: [LLM Inference Engines](/docs/mlops/llm-inference-engines), [LLM Inference Optimization](/docs/mlops/llm-inference-optimization), [LLM Hosting & Serving Patterns](/docs/mlops/llm-hosting-and-serving-patterns), [LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops)
-- **Non-negotiables**: [Security & Reproducibility](/docs/mlops/security-and-reproducibility)
-- **Pulling it together**: [The Full Architecture, Priority Stack & Learning Path](/docs/mlops/mlops-architecture-and-roadmap)
+Everything below is how that bakery is organized.
 
-See the [roadmap](/docs/mlops/roadmap) for the complete checklist, or jump straight to [the priority stack](/docs/mlops/mlops-architecture-and-roadmap#the-priority-stack) if you want the short version of what actually matters first.
+</ELI5>
+
+## 1. What Is MLOps?
+
+**MLOps** (machine learning operations) is the set of practices, tools and roles for taking machine learning models from development into production and keeping them working there: reproducibly built, safely deployed, continuously monitored, and retrained when needed.
+
+The name echoes **DevOps**, which brought development and operations together around automation: version control, automated tests, continuous integration and delivery, infrastructure as code, monitoring. MLOps uses all of that and adds what ML needs on top, because an ML system has two more moving parts than ordinary software: the data and the model.
+
+What MLOps is not:
+
+- **Not a tool.** MLflow, Kubeflow or a cloud ML platform can help, but buying one doesn't produce reliable ML systems any more than buying Git produces good software.
+- **Not only deployment.** Shipping a model once is the easy part. Most of the work is in what happens after: monitoring, retraining, rollback, and change over time.
+- **Not only for large teams.** A single person with one model in production benefits from versioned data, a tracked training run and a drift check, all of which cost an afternoon to set up.
+
+## 2. Why ML Systems Are Different
+
+In ordinary software, behaviour is determined by code. If the code doesn't change, the behaviour doesn't change, and tests on the code tell you most of what you need to know. An ML system breaks that in several ways.
+
+**Three things change, not one.** Behaviour depends on code, on the data the model was trained on, and on the data it sees in production. Any of them can change independently: an upstream team alters a column, customer behaviour shifts, a library upgrade changes a default. A model can get worse with no code change at all.
+
+**Failures are silent.** A broken model doesn't throw exceptions. It returns well-formed, confident, wrong predictions. Infrastructure monitoring stays green while the business metric drifts.
+
+**Everything is entangled.** Sculley and colleagues at Google described this in "Hidden Technical Debt in Machine Learning Systems" (2015) as the CACE principle: *Changing Anything Changes Everything*. Adding a feature, changing a threshold, or retraining an upstream model shifts the behaviour of everything downstream, often in ways no unit test catches.
+
+**The model is a small part of the system.** The same paper's best-known figure shows the ML code as a small box surrounded by much larger ones: data collection, data verification, feature extraction, configuration, serving infrastructure, monitoring, process management. Most of the engineering, and most of the failures, live in the surrounding boxes.
+
+**Models change the world they learn from.** A fraud model that blocks transactions never learns whether they were fraud; a recommender shapes what users click, which becomes its next training data. These feedback loops make yesterday's evaluation an unreliable guide to tomorrow's behaviour.
+
+Each of those is a reason for a specific practice, and the next section lays the practices out in order.
+
+## 3. The Lifecycle
+
+An ML system in production runs a loop, not a line:
+
+
+1. **Data:** ingest, validate against a contract, version ([Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning)).
+2. **Training:** reproducible runs that record code, data, configuration and results ([Experiment Tracking](/docs/mlops/experiment-tracking)), orchestrated as a pipeline ([Pipeline Orchestration](/docs/mlops/pipeline-orchestration)).
+3. **Validation:** tests on the code and data, behaviour tests on the model, and a statistical comparison with the current production model ([CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd)).
+4. **Registration:** an immutable, versioned artifact with lineage back to its run ([Feature Stores & Model Registry](/docs/mlops/feature-stores-and-model-registry)).
+5. **Deployment:** packaged in a container, served behind an API, released gradually ([Containers](/docs/mlops/containers), [APIs & Model Serving](/docs/mlops/model-serving), [Deployment Strategies](/docs/mlops/deployment-strategies)).
+6. **Monitoring:** service health and model health, inputs and predictions, and real outcomes when labels arrive ([Observability](/docs/mlops/observability), [Monitoring & Drift](/docs/mlops/monitoring-and-drift)).
+7. **Back to the start:** monitoring triggers investigation, retraining or rollback, and the loop runs again.
+
+Every stage produces records the next one depends on: the training run needs a data version, the registry needs a run ID, monitoring needs a reference distribution from training, and an investigation needs all of them. A system where those links exist can answer "why did the model do that?". A system without them can't.
+
+## 4. The Whole Loop in One Script
+
+Here is the lifecycle compressed into one short script, so each stage is concrete before the rest of this section expands it. A fraud model is trained on versioned data, registered as a hashed artifact with its lineage, then served for four weeks while one input feature slowly drifts. Each week, a monitor computes the Population Stability Index (PSI) of that feature against training data, and decides what to do:
+
+```python
+import hashlib
+import pickle
+
+import numpy as np
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import roc_auc_score
+
+rng = np.random.default_rng(0)
+
+def world(n, shift=0.0):
+    """Transactions: two features; fraud depends on them. `shift` moves feature 0 over time."""
+    X = rng.normal([shift, 0.0], 1.0, (n, 2))
+    y = (rng.random(n) < 1 / (1 + np.exp(-(2.5 * X[:, 0] - 1.5 * X[:, 1] - 3)))).astype(int)
+    return X, y
+
+def psi(ref, cur, bins=10):
+    edges = np.quantile(ref, np.linspace(0, 1, bins + 1))
+    edges[[0, -1]] = -np.inf, np.inf
+    r = np.clip(np.histogram(ref, edges)[0] / len(ref), 1e-6, None)
+    c = np.clip(np.histogram(cur, edges)[0] / len(cur), 1e-6, None)
+    return float(np.sum((c - r) * np.log(c / r)))
+
+# 1. Train on versioned data, record exactly what was used
+X_train, y_train = world(20_000)
+data_version = hashlib.sha256(X_train.tobytes()).hexdigest()[:8]
+model = LogisticRegression().fit(X_train, y_train)
+
+# 2. Register: an immutable artifact identified by its hash, with its lineage
+artifact = pickle.dumps(model)
+registry = {"fraud@v1": {"sha256": hashlib.sha256(artifact).hexdigest()[:8], "data": data_version}}
+print("registered", registry)
+
+# 3-5. Serve each week, monitor inputs, and act when the world moves
+for week, shift in enumerate([0.0, 0.2, 0.6, 1.2]):
+    X, y = world(5_000, shift)
+    drift = psi(X_train[:, 0], X[:, 0])
+    flagged = (model.predict_proba(X)[:, 1] > 0.5).mean()
+    auc = roc_auc_score(y, model.predict_proba(X)[:, 1])        # labels arrive later in real life
+    action = "retrain and re-evaluate" if drift > 0.25 else "watch" if drift > 0.1 else "ok"
+    print(f"week {week}: PSI {drift:.3f}  flagged {flagged:5.1%}  actual fraud {y.mean():5.1%}  AUC {auc:.3f}  -> {action}")
+```
+
+```text
+registered {'fraud@v1': {'sha256': '237a1582', 'data': 'abab9917'}}
+week 0: PSI 0.002  flagged 15.7%  actual fraud 18.5%  AUC 0.924  -> ok
+week 1: PSI 0.036  flagged 19.3%  actual fraud 23.0%  AUC 0.918  -> ok
+week 2: PSI 0.329  flagged 30.4%  actual fraud 33.7%  AUC 0.915  -> retrain and re-evaluate
+week 3: PSI 1.258  flagged 49.7%  actual fraud 48.6%  AUC 0.917  -> retrain and re-evaluate
+```
+
+Three things in that output are worth noticing, because each is a full page later in this section:
+
+- **The registry entry links model to data.** `fraud@v1` is a specific artifact (`237a1582`) trained on a specific dataset (`abab9917`). That link is what makes the model reproducible and auditable.
+- **The monitor fires, and the model is fine.** By week 3 the input distribution has moved a long way (PSI 1.26, far above the 0.25 alarm level) and the flag rate has tripled, yet AUC is unchanged and the flag rate tracks the true fraud rate. The relationship between inputs and fraud didn't change; there's simply more fraud-like traffic. A drift alarm is a reason to investigate, not proof the model is broken, which is why [Monitoring & Drift](/docs/mlops/monitoring-and-drift) treats input drift as a diagnostic.
+- **The real answer needed labels.** The script could compute AUC immediately because it simulated the outcomes. In production, fraud labels arrive weeks later, so a team would see the drift and the jump in flag rate long before knowing whether the model was still right.
+
+A real system replaces each line of this script with infrastructure: a data versioning tool, an experiment tracker, a model registry, a serving platform, and a monitoring stack. The shape stays the same.
+
+<PredictFirst
+  question="In the script, the drift alarm fires in week 2 and week 3. Should the team immediately retrain and deploy a new model?"
+  options={[
+    'Yes, because the drift alarm fired',
+    'Not automatically: investigate first. Here the inputs moved but the model is still accurate; a retrain would go through the same evaluation gate and might not be better',
+    'No, drift alarms should be ignored',
+    'Yes, because the flag rate tripled, which proves the model is wrong',
+  ]}
+  correctIndex={1}
+  explanation="The flag rate tripled because actual fraud tripled; AUC barely moved. Retraining is reasonable to consider, but it should be a candidate that passes the same comparison with the champion as any other, not an automatic replacement. Automatic retraining without a gate turns every data problem, including upstream bugs, into a deployed model."
+/>
+
+## 5. How Teams Mature
+
+Teams don't build all of this at once, and they shouldn't. A widely used description, from Google Cloud's MLOps guidance, has three levels:
+
+**Level 0: manual.** A data scientist trains a model in a notebook and hands over a file; an engineer wraps it in a service. Retraining happens rarely, by hand. There's no monitoring of model quality. This is where most teams start, and it works for a model that rarely changes.
+
+**Level 1: automated training pipeline.** The steps from data to registered model run as an orchestrated pipeline, on a schedule or a trigger, with data validation and model evaluation built in. Models are retrained routinely, and the same code runs in development and production. Most of the reliability gain comes from reaching this level.
+
+**Level 2: CI/CD for the pipeline itself.** Changes to the training code go through automated tests and are deployed to the pipeline automatically; many pipelines and models are managed this way across teams. This is where platform teams and shared infrastructure appear.
+
+The practical order of investment, for a team at level 0, follows the failure modes in section 2: first make training reproducible (versioned data, tracked runs, pinned environments), then automate it, then add a gate and gradual rollout, then monitoring that would catch a silent failure. [The Full MLOps Architecture](/docs/mlops/mlops-architecture-and-roadmap) sets out a fuller priority order.
+
+<GoDeeper title="Go deeper: what changes with LLMs (LLMOps)">
+
+Applications built on large language models keep the lifecycle but change what moves through it. Many teams never train a model: the "model" is a provider's API plus prompts, retrieval and tools, so the versioned artifacts are prompts, retrieval indexes, tool definitions and the pinned model version. Evaluation shifts from accuracy on labelled data to pass rates on golden sets, LLM judges calibrated against people, and safety regression suites ([ML & LLM Testing](/docs/mlops/ml-and-llm-testing)). Serving becomes a GPU-memory and token-cost problem when models are self-hosted ([LLM Hosting & Serving Patterns](/docs/mlops/llm-hosting-and-serving-patterns)), and monitoring adds token usage, cost per request, faithfulness and user feedback ([LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops)). The principles carry over unchanged: version everything that determines behaviour, gate changes on evaluation, release gradually, and monitor outcomes.
+
+</GoDeeper>
+
+## 6. Who Does What
+
+MLOps work is usually spread across several roles, and knowing which is which helps when reading job descriptions or organizing a team:
+
+| Role | Focus |
+|---|---|
+| **Data scientist** | Framing the problem, features, model development and offline evaluation |
+| **Data engineer** | Pipelines that ingest, clean, validate and store data; data contracts and freshness |
+| **ML engineer** | Turning models into production systems: training pipelines, serving, testing, rollouts, monitoring |
+| **ML platform engineer** | Shared infrastructure for many teams: GPU clusters, feature stores, registries, serving platforms, guardrails |
+| **Site reliability engineer** | Availability, latency, incident response, capacity, for ML services as for any other |
+
+In small teams one person covers several of these. The important thing is that every responsibility on the list has an owner, especially the unglamorous ones: data contracts, monitoring, and the on-call rota for the model service.
+
+## 7. A Map of This Section
+
+The pages follow the lifecycle, roughly in the order a team adopts the practices:
+
+- **Foundations:** [Engineering Foundations for ML](/docs/mlops/engineering-foundations), [Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning), [Big Data & Analytics](/docs/mlops/big-data-and-analytics)
+- **The training loop:** [Experiment Tracking](/docs/mlops/experiment-tracking), [Pipeline Orchestration](/docs/mlops/pipeline-orchestration), [Message Queues & Async Processing](/docs/mlops/message-queues-and-async-processing)
+- **Packaging and serving:** [Containers](/docs/mlops/containers), [APIs & Model Serving](/docs/mlops/model-serving), [Caching Strategies](/docs/mlops/caching-strategies)
+- **Infrastructure:** [Cloud Computing for ML](/docs/mlops/cloud-computing), [Deploying Models on AWS & Azure](/docs/mlops/cloud-model-deployment), [Kubernetes](/docs/mlops/kubernetes), [Infrastructure as Code](/docs/mlops/infrastructure-as-code)
+- **Automation and release:** [CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd), [Feature Stores & Model Registry](/docs/mlops/feature-stores-and-model-registry), [Deployment Strategies](/docs/mlops/deployment-strategies)
+- **Keeping it healthy:** [Monitoring & Drift Detection](/docs/mlops/monitoring-and-drift), [Observability](/docs/mlops/observability), [Production Reliability](/docs/mlops/production-reliability), [AI Cost Engineering](/docs/mlops/ai-cost-engineering)
+- **Scale:** [GPU/AI Infrastructure & Distributed Training](/docs/mlops/gpu-and-distributed-training), [Federated Learning](/docs/mlops/federated-learning)
+- **LLM systems:** [LLM Inference Engines](/docs/mlops/llm-inference-engines), [LLM Inference Optimization](/docs/mlops/llm-inference-optimization), [LLM Hosting & Serving Patterns](/docs/mlops/llm-hosting-and-serving-patterns), [LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops)
+- **Cross-cutting:** [Security & Reproducibility](/docs/mlops/security-and-reproducibility), [ML & LLM Testing](/docs/mlops/ml-and-llm-testing), [Legal, Licensing & Governance](/docs/mlops/legal-licensing-and-governance)
+- **Putting it together:** [The Full MLOps Architecture, Priority Stack & Learning Path](/docs/mlops/mlops-architecture-and-roadmap), and the [MLOps Roadmap](/docs/mlops/roadmap) as a checklist
+
+## 8. When *Not* to Invest Heavily in MLOps
+
+| Situation | Proportionate approach |
+|---|---|
+| A one-off analysis or a model used once for a decision | A notebook with fixed seeds and versioned inputs; no pipeline |
+| A prototype to test whether ML helps at all | Fast iteration first; add tracking as soon as results matter |
+| A hosted LLM API with a few prompts | Prompt versioning, a small golden set and cost monitoring; skip training infrastructure |
+| One model, retrained twice a year, low stakes | Reproducible training, a registry entry and a basic drift check; level 0 done carefully |
+| Decisions about people, many models, frequent retraining | Level 1 at least, with gates, gradual rollouts, monitoring and audit records |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| MLOps | Practices for building, deploying, monitoring and retraining models reliably |
+| Why it's needed | Code, data and model all change; failures are silent; changing anything changes everything |
+| The loop | Data, training, validation, registration, deployment, monitoring, and back again |
+| Records link stages | Data version, run, artifact hash and reference distributions make "why?" answerable |
+| Drift is a diagnostic | Inputs can move a lot while the model stays right; outcomes decide |
+| Maturity | Manual, automated training pipeline, CI/CD for the pipeline; level 1 gives most of the benefit |
+| Start small | Reproducible training first, then automation, gates and monitoring |
+
+---
+
+Next: start with [Engineering Foundations for ML](/docs/mlops/engineering-foundations), or see the [MLOps Roadmap](/docs/mlops/roadmap) for the complete checklist.
+
+## Sources
+
+- D. Sculley et al., [Hidden Technical Debt in Machine Learning Systems](https://papers.nips.cc/paper/2015/hash/86df7dcfd896fcaf2674f757a2463eba-Abstract.html), NeurIPS 2015
+- Google Cloud, [MLOps: Continuous delivery and automation pipelines in machine learning](https://cloud.google.com/architecture/mlops-continuous-delivery-and-automation-pipelines-in-machine-learning)
+- D. Kreuzberger, N. Kühl and S. Hirschl, [Machine Learning Operations (MLOps): Overview, Definition, and Architecture](https://arxiv.org/abs/2205.02870), IEEE Access 2023
+- C. Huyen, *Designing Machine Learning Systems*, O'Reilly (2022)

@@ -1,66 +1,285 @@
 ---
-title: "Legal, Licensing & Governance"
+title: "Legal, Licensing & Governance, In Full Depth"
 sidebar_position: 22.4
-description: "Whether a system is legally permissible to ship, not just whether it works -- model/dataset licenses, copyright, privacy law, governance, and model cards."
+description: "Whether an ML system may be built and shipped, not just whether it works: model and dataset licences checked automatically, the state of AI copyright law in 2026, privacy law and the deletion problem, the EU AI Act's risk tiers and revised deadlines, governance as pipeline gates, model cards, and tamper-evident audit trails."
 ---
 
 import ModelLicenseSpectrumDiagram from '../../../viz/diagrams/ModelLicenseSpectrumDiagram';
-import DatasetProvenanceRiskDiagram from '../../../viz/diagrams/DatasetProvenanceRiskDiagram';
-import CopyrightUncertaintyDiagram from '../../../viz/diagrams/CopyrightUncertaintyDiagram';
 import PrivacyRegulationScopeDiagram from '../../../viz/diagrams/PrivacyRegulationScopeDiagram';
 import GovernanceApprovalFlowDiagram from '../../../viz/diagrams/GovernanceApprovalFlowDiagram';
 import ModelCardVsDataCardDiagram from '../../../viz/diagrams/ModelCardVsDataCardDiagram';
-import AuditTrailVsLineageDiagram from '../../../viz/diagrams/AuditTrailVsLineageDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Legal, Licensing & Governance
+# Legal, Licensing & Governance, In Full Depth
 
-Everything else in this section is about whether a system works and runs reliably. This page is about whether it's *legally and organizationally permissible* to build and ship it the way it's built — a different kind of constraint, and one that's easy to discover too late if it isn't considered from the start.
+[Security & Reproducibility](/docs/mlops/security-and-reproducibility) asked whether a system is safe and can be rebuilt. This page asks a different question that engineers often meet too late: is the system *allowed*? Can this model be used commercially, was this data ours to train on, does this feature comply with privacy law, does it fall under the EU AI Act, and could we prove what we did if a regulator asked? It covers model and dataset licences (with a script that checks them), where AI copyright law stands as of late 2026, privacy law and why deletion is hard for trained models, the AI Act's risk tiers and its revised timeline, governance built into the delivery pipeline, model and data cards, and audit trails that show when they've been altered. It's an engineer's guide, not legal advice: for any real decision, involve your legal team.
 
-## Model Licenses
+<ELI5>
 
-Open-weight models ship under a range of license types, and the differences have real practical consequences: some (Apache 2.0, MIT) permit essentially unrestricted commercial use; others (many "open" LLM releases) carry usage restrictions — a user-count threshold above which a commercial license is required, restrictions on using the model's outputs to train a competing model, or restrictions on specific use cases. **Always check the actual license text for a specific model version before commercial deployment** — "open-weight" and "open source" are not the same guarantee, and license terms have changed between versions of the same model family.
+Building a house means more than building it well. The land has to be yours, the materials paid for, the plans approved by the council, and the paperwork kept in case an inspector asks. A beautiful house on someone else's land gets torn down.
+
+ML systems have the same paperwork. The model you start from comes with a licence. The data you train on belongs to someone. Personal data has legal protections. Some uses of AI need approval and records. This page is about knowing those rules early, and building the checks into the pipeline so they can't be forgotten.
+
+</ELI5>
+
+## 1. Why Engineers Need to Care
+
+Legal problems in ML systems are rarely discovered by lawyers reading code. They're discovered when a customer's procurement team asks which licence the model is under, when a user exercises their right to have their data deleted, when a regulator asks for documentation of a credit model, or when a lawsuit names a dataset. By then the model is trained, deployed and depended on, and the cheapest fix has passed.
+
+The pattern of this page follows from that: each legal question maps to something the engineering system must *record* or *check*. Licence terms become an allow-list checked in CI. Data provenance becomes metadata in the data catalogue. Approvals become gates in the deployment pipeline. Evidence becomes an audit log. Built that way, compliance is mostly a by-product of a well-run pipeline, rather than a scramble before an audit.
+
+The first and most concrete question is about the model you start from.
+
+## 2. Model Licences
+
+### Model Licenses
+
+"Open" models come under very different terms, and "open weights" doesn't mean "open source".
 
 <ModelLicenseSpectrumDiagram />
 
-## Dataset Licenses
+- **Permissive open-source licences** (Apache 2.0, MIT, BSD) allow commercial use, modification and redistribution, with light conditions such as keeping notices. Apache 2.0 also grants a patent licence.
+- **Custom "community" licences** allow broad use with conditions. Meta's Llama licences, for example, require a separate licence above 700 million monthly active users and impose an acceptable-use policy and attribution requirements; Google's Gemma terms carry a prohibited-use policy that passes on to derivatives. These are usable commercially by most companies, but only within their terms.
+- **Non-commercial and research licences** (some CC BY-NC releases, research-only terms) forbid commercial use entirely.
+- **Proprietary API terms** govern hosted models: what you may do with outputs, data retention, and often restrictions on using outputs to train competing models.
 
-The same scrutiny applies to training/fine-tuning data: a dataset scraped or aggregated from the web can carry mixed, unclear, or restrictive licensing on its constituent parts even when the dataset itself is published as "open" — training a commercial model on data with unclear provenance is a genuine legal risk, not just an ethical nicety, and is exactly the kind of thing [Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning)'s provenance tracking exists to make auditable after the fact.
+Terms also change between versions of the same model family, and they attach to fine-tunes and merges built from a model. A fine-tune of a non-commercial base model is non-commercial.
 
-<DatasetProvenanceRiskDiagram />
+Licence checks are easy to automate, because model hubs record a licence tag. This script checks candidate models against an allow-list that legal has pre-approved:
 
-## Copyright
+```python
+from huggingface_hub import HfApi
 
-Whether training on copyrighted material constitutes infringement (versus fair use/fair dealing) is genuinely unsettled law in multiple jurisdictions as of this writing, actively being litigated — a real, live legal uncertainty rather than a solved question with a clean rule to follow. The practical implication for a team building on top of a foundation model: understand what you can about a chosen model's training data policies and indemnification terms (some commercial model providers offer legal indemnification for output copyright claims, which is itself a signal of how seriously the underlying risk is taken), and treat this as an active area to monitor rather than a settled question to check off once.
+api = HfApi()
+ALLOWED = {"apache-2.0", "mit", "bsd-3-clause"}          # pre-approved by legal for commercial use
 
-<CopyrightUncertaintyDiagram />
+candidates = [
+    "Qwen/Qwen2.5-7B-Instruct",
+    "mistralai/Mistral-7B-Instruct-v0.3",
+    "meta-llama/Llama-3.1-8B-Instruct",
+    "google/gemma-2-9b-it",
+    "sentence-transformers/all-MiniLM-L6-v2",
+]
+for repo in candidates:
+    info = api.model_info(repo)
+    license_tag = next((t.split(":", 1)[1] for t in info.tags if t.startswith("license:")), "unknown")
+    verdict = "approved" if license_tag in ALLOWED else "needs legal review"
+    print(f"{repo:<42} {license_tag:<14} gated={str(bool(info.gated)):<5} -> {verdict}")
+```
 
-## Privacy: PII, GDPR, HIPAA
+```text
+Qwen/Qwen2.5-7B-Instruct                   apache-2.0     gated=False -> approved
+mistralai/Mistral-7B-Instruct-v0.3         apache-2.0     gated=False -> approved
+meta-llama/Llama-3.1-8B-Instruct           llama3.1       gated=True  -> needs legal review
+google/gemma-2-9b-it                       gemma          gated=True  -> needs legal review
+sentence-transformers/all-MiniLM-L6-v2     apache-2.0     gated=False -> approved
+```
 
-- **PII (Personally Identifiable Information)**: detecting, redacting, and controlling access to personal data flowing through training data, logs, and traces — see [Security & Reproducibility — PII Protection](/docs/mlops/security-and-reproducibility) for the technical controls.
-- **GDPR** (EU): grants individuals rights over their personal data — including, notably, a right to have personal data deleted ("right to be forgotten") — which is genuinely difficult to fully satisfy for a model that was *trained* on data containing that individual's information, since "delete this person's data from the trained model's weights" has no clean equivalent to deleting a database row. This tension (between GDPR's deletion rights and how neural network training actually works) is an active, unresolved area of AI governance practice, not a solved compliance checkbox.
-- **HIPAA** (U.S. healthcare): covered in depth for the healthcare-specific case in [Healthcare AI — Privacy and HIPAA](/docs/domain-applications/healthcare-ai#privacy-and-hipaa) — the general pattern (access controls scoped to legitimate need, audit logging, careful third-party data-processing agreements) generalizes to other regulated-data domains beyond healthcare specifically.
+The custom licences aren't forbidden; they're routed to a person who reads them once and adds the decision, with any conditions, to the allow-list. Run the check in CI on every model reference, so an unreviewed model can't reach the registry.
+
+Two cautions keep the automation honest. The licence tag is metadata the uploader wrote; it should match the licence file in the repository, and for important models someone should read that file. And a model's licence covers the *weights*, not necessarily the data it was trained on, which is the next question.
+
+## 3. Dataset Licences and Provenance
+
+Training data needs the same scrutiny. A dataset published as "open" can aggregate material under many terms: web pages under their sites' terms, code under copyleft licences, images with no licence at all, text whose authors never agreed to anything. Fine-tuning data scraped or bought from a vendor brings that vendor's representations with it, which are only as good as the vendor.
+
+What to record for every dataset that trains a production model, ideally as metadata in the data catalogue next to its version ([Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning)):
+
+- **Source and licence** of each component, and the terms of any purchase or partnership.
+- **How it was collected:** scraped, licensed, user-contributed under which terms of service, generated synthetically by which model (whose own terms may restrict use of its outputs).
+- **Personal data** it contains, and the legal basis for using it (section 5).
+- **Opt-outs honoured:** `robots.txt` and AI-specific opt-out signals at collection time, and later removal requests.
+
+Provenance is what makes the next two topics manageable. When the law on training data moves, or a deletion request arrives, a team that knows what's in each dataset can respond; a team that doesn't can only guess.
+
+## 4. Copyright: Where Things Stand in 2026
+
+Two separate questions are being decided, mostly in courts.
+
+**Is training on copyrighted works without permission lawful?** In the United States this turns on fair use, decided case by case, and as of October 2026 no appeals court has settled it for generative AI training. The district court rulings so far point in different directions depending on the facts. In *Bartz v. Anthropic* (2025), the court found training on lawfully acquired books to be fair use, but not building a library from pirated copies; the case then settled for \$1.5 billion, with final approval in July 2026. In *Kadrey v. Meta* (2025), the court ruled for Meta on that record while stressing that the ruling was narrow and that stronger evidence of market harm could change the outcome. *Thomson Reuters v. Ross* (2025) found that copying to build a competing non-generative legal research tool was not fair use. *The New York Times v. OpenAI* and related cases are at the summary-judgment stage. Other jurisdictions differ: the EU allows text and data mining subject to rights holders' opt-outs, and the AI Act requires general-purpose model providers to respect those opt-outs and publish a summary of training content.
+
+**Who is responsible when outputs copy protected material?** A model that reproduces copyrighted text, code or images can create liability for whoever publishes the output. Several major providers offer contractual **indemnification** for customers sued over outputs, under conditions (such as keeping the provider's safety filters on).
+
+The engineering takeaways are practical, not legal: know and record where training data came from; prefer data you have rights to, especially for fine-tuning, where the data is small enough to choose deliberately; keep the provider's protections switched on if you rely on their indemnity; and consider output filters for verbatim reproduction of known protected material in code and text generation. Treat this as an area to re-check every few months, not a box ticked once.
+
+## 5. Privacy Law and the Deletion Problem
+
+Most ML systems process personal data at some point, and privacy law applies to training as well as serving.
 
 <PrivacyRegulationScopeDiagram />
 
-## AI Governance
+- **GDPR** (EU and, as UK GDPR, the UK) requires a legal basis for processing personal data (consent, contract, legitimate interests and others), purpose limitation, data minimization, and gives people rights to access, correction, objection and erasure. Article 22 restricts decisions based *solely* on automated processing that significantly affect people, such as automated credit refusals, and requires safeguards including human review on request.
+- **HIPAA** (US healthcare) governs protected health information handled by covered entities and their business associates: access controls, audit logs, and business associate agreements with vendors, including AI vendors.
+- **US state privacy laws** (California's CCPA as amended by the CPRA, and a growing list of others) add access, deletion and opt-out rights, and some regulate automated decision-making.
+- **Sector rules** apply on top: credit decisions must be explainable to applicants under US fair lending rules, for example.
 
-Organization-level policy and process for how AI systems get built, approved, and monitored — covered as part of the platform-engineering view in [MLOps → AI Platform Engineering — Governance](/docs/mlops/mlops-architecture-and-roadmap#from-mlops-to-ai-platform-engineering): which models are approved for which use cases, who has authority to approve a production deployment, and how policy gets enforced technically (via the [CI/CD gates](/docs/mlops/cicd-and-ml-cicd) covered earlier) rather than remaining a document nobody actually checks against before shipping.
+**The deletion problem.** Deleting a person's row from a database is easy. Removing their influence from a model trained on it is not: the information is spread across millions of weights. The practical options, from strongest to weakest:
+
+1. **Retrain without the data.** Definitive, and expensive for large models; feasible for small classical models retrained regularly anyway.
+2. **Design for removal:** train ensembles on separate data shards (the SISA approach), so removing a record means retraining only one shard's model.
+3. **Machine unlearning** methods that approximately remove a record's influence without full retraining. An active research area; guarantees are weak or hard to verify for large models.
+4. **Remove the data from everything else**, so it can't re-enter: delete it from training sets, feature stores, retrieval indexes and logs, and make sure the next scheduled retrain excludes it.
+
+For retrieval systems the problem is far easier: delete the document from the index and it's gone from answers. That's one reason to keep personal and changeable information in retrieval rather than in fine-tuned weights.
+
+<PredictFirst
+  question="A user invokes their GDPR right to erasure. Their support tickets were used to fine-tune the company's assistant last quarter and are also indexed for retrieval. What is the most defensible engineering response?"
+  options={[
+    'Nothing, because the data is now inside model weights and cannot be found',
+    'Delete them from the retrieval index, the training datasets, logs and feature stores now; exclude them from all future training; and assess with legal whether the fine-tuned model must be retrained',
+    'Only delete the user account; trained models are exempt from GDPR',
+    'Add an output filter that blocks the user name',
+  ]}
+  correctIndex={1}
+  explanation="Erasure applies across the system, not just the primary database. Removing the data from the index, training sets, logs and feature stores is straightforward and stops it re-entering future models. Whether the existing fine-tuned model must be retrained depends on the facts (how identifiable the person is from the model, the legal basis, regulator guidance) and is a legal judgement, which is why provenance records saying which data trained which model matter so much."
+/>
+
+## 6. The EU AI Act
+
+The EU AI Act is the first comprehensive AI law, and it applies to providers and deployers of AI systems used in the EU, wherever they're based. It classifies systems by risk:
+
+| Tier | Examples | Obligations |
+|---|---|---|
+| **Prohibited** | Social scoring by public authorities, manipulative techniques causing harm, untargeted scraping of facial images, emotion recognition at work and school (with exceptions) | Banned since February 2025; the 2026 amendments added bans on generating non-consensual intimate imagery and child sexual abuse material |
+| **High-risk** | AI in hiring, education, credit scoring, essential services, law enforcement, and safety components of regulated products | Risk management, data governance, technical documentation, logging, human oversight, accuracy and robustness, registration, conformity assessment |
+| **Transparency obligations** | Chatbots, emotion recognition, deepfakes and other AI-generated content | Tell people they're interacting with AI; label synthetic content, including machine-readable marking |
+| **General-purpose AI models** | Foundation models offered to others | Technical documentation, a copyright policy, a public summary of training content; extra duties for models with systemic risk |
+| **Minimal risk** | Spam filters, most recommendation and internal tools | None beyond existing law |
+
+**The timeline moved in 2026.** The Act entered into force in August 2024; prohibitions applied from February 2025 and general-purpose model obligations from August 2025. The **Digital Omnibus on AI**, published in July 2026 as Regulation (EU) 2026/1744, postponed the main high-risk obligations because standards and national authorities weren't ready: to **2 December 2027** for stand-alone high-risk systems such as those in hiring, education and credit, and to August 2028 for AI embedded in regulated products. The transparency obligations were not delayed and apply from August 2026, with a grace period to December 2026 for machine-readable marking on systems already on the market. Dates in this area keep changing, so check the official text before planning against them.
+
+For an ML team, the high-risk requirements read like a description of good MLOps: documented data provenance and quality ([Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning)), automatic logging over the system's life ([Observability](/docs/mlops/observability)), accuracy and robustness testing ([CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd)), human oversight, and post-market monitoring ([Monitoring & Drift](/docs/mlops/monitoring-and-drift)). Teams that already run those practices mostly need to document them in the required form.
+
+## 7. Governance as Pipeline Gates
+
+**AI governance** is an organization's policy for which AI systems may be built, for what purposes, with which models and data, approved by whom, and monitored how. A policy document nobody checks against is not governance. The working version enforces policy in the delivery pipeline:
 
 <GovernanceApprovalFlowDiagram />
 
-## Model Cards and Data Cards
+- **An inventory:** every model in production is registered, with an owner, a purpose and a risk classification. You can't govern what you can't list.
+- **Risk-tiered gates:** low-risk models pass on automated checks; high-risk ones additionally need named human approval, a completed model card and a fairness review before the registry will move the production alias ([Feature Stores & Model Registry](/docs/mlops/feature-stores-and-model-registry)).
+- **Automated policy checks** in CI: licence allow-lists (section 2), approved data sources, required documentation fields present, evaluation thresholds met, including per-group metrics where fairness matters.
+- **Separation of duties:** the person who built the model isn't the only one who can approve its release.
+- **Periodic review:** production models are re-reviewed on a schedule and when monitoring flags a change.
 
-Standardized documentation formats for transparency about a model or dataset's intended use, known limitations, and evaluation results:
+Frameworks such as the NIST AI Risk Management Framework and the ISO/IEC 42001 standard for AI management systems describe these practices in detail, and are useful for structuring them and for showing customers and auditors that they exist.
 
-- **Model cards**: document a model's intended use cases, out-of-scope uses, training data summary, evaluation results (including across relevant subgroups, not just an aggregate metric — directly connecting to [fairness evaluation](/docs/ai-evaluation/roadmap) elsewhere on this site), and known limitations — the standard a model consumer should be able to check *before* deploying it for a given use case, rather than discovering a limitation the hard way in production.
-- **Data cards**: the same transparency discipline applied to a dataset — provenance, collection methodology, known biases, and licensing (above) — increasingly expected alongside any dataset released for others to use, for exactly the same "know before you build on this" reason model cards exist.
+## 8. Model Cards and Data Cards
+
+### Model Cards and Data Cards
+
+Documentation is the part of governance that travels with the artifact.
 
 <ModelCardVsDataCardDiagram />
 
-## Audit Trails
+A **model card** (Mitchell et al., 2019) states, for a specific model version: what it's for and what it isn't for; the training data in summary; evaluation results overall *and broken down by relevant groups and conditions*; known limitations and failure modes; and ethical considerations. The breakdown is the part that matters most: an aggregate accuracy can hide a model that works far worse for one group, and a reader deciding whether to deploy it for their use needs to see that.
 
-The ability to reconstruct, after the fact, exactly what a system did and why — which model version served a given prediction, which data it was trained on, who approved its deployment, what a given user was told. This is the direct consumer of the [lineage](/docs/mlops/mlops-architecture-and-roadmap#from-mlops-to-ai-platform-engineering) tracking covered in the platform-engineering section: lineage is the *technical* capability (can you trace the chain), an audit trail is what that capability gets used for when a regulator, a legal team, or an internal investigation needs an actual accounting of what happened and why — the difference between having the data and being able to produce it, verified and complete, when it's actually asked for.
+A **data card** or datasheet (Gebru et al., 2018) does the same for a dataset: why it was created, how it was collected and labelled, what it contains (including personal or sensitive data), known biases and gaps, licence, and maintenance plans.
 
-<AuditTrailVsLineageDiagram />
+Keep both as files versioned with the model and dataset, generated as far as possible from the system itself: evaluation tables from the evaluation run, data versions from the run record, licence fields from the catalogue. Hand-written cards drift from reality within a release or two; generated ones stay true. The prose sections (intended use, limitations) are written by people and reviewed at the approval gate.
 
-MLOps section complete. Next: [The Full MLOps Architecture, Priority Stack & Learning Path](/docs/mlops/mlops-architecture-and-roadmap) — putting every page in this section together into one end-to-end picture.
+## 9. Audit Trails
+
+An **audit trail** answers, after the fact: which model version made this decision, what data and code produced it, who approved it, and what changed since. Lineage ([Experiment Tracking](/docs/mlops/experiment-tracking) runs linked to registry versions linked to data versions) supplies the technical chain. The audit trail adds the human decisions, and one more property: evidence that it hasn't been altered.
+
+A simple, effective technique is a **hash chain**: each log entry includes the hash of the previous entry, so changing any past entry breaks every hash after it:
+
+```python
+import hashlib
+import json
+
+
+def append(log, event):
+    """Each entry stores the hash of the previous one, so editing history breaks the chain."""
+    prev = log[-1]["hash"] if log else "0" * 64
+    body = json.dumps({"prev": prev, **event}, sort_keys=True)
+    log.append({"prev": prev, **event, "hash": hashlib.sha256(body.encode()).hexdigest()})
+
+
+def verify(log):
+    prev = "0" * 64
+    for i, entry in enumerate(log):
+        body = json.dumps({k: v for k, v in entry.items() if k != "hash"}, sort_keys=True)
+        if entry["prev"] != prev or hashlib.sha256(body.encode()).hexdigest() != entry["hash"]:
+            return f"tampered at entry {i}"
+        prev = entry["hash"]
+    return "intact"
+
+
+log = []
+append(log, {"at": "2026-10-01T09:12Z", "actor": "ci-pipeline", "action": "register", "model": "credit-risk", "version": 12,
+             "run": "a41f9c", "data": "applications@v2026-09-30", "eval": {"auc": 0.912, "max_group_gap": 0.018}})
+append(log, {"at": "2026-10-02T14:03Z", "actor": "j.okafor", "action": "approve", "model": "credit-risk", "version": 12,
+             "basis": "model card reviewed; fairness gap under 0.02 threshold"})
+append(log, {"at": "2026-10-02T14:20Z", "actor": "ci-pipeline", "action": "deploy", "model": "credit-risk", "version": 12})
+print("before:", verify(log))
+
+log[1]["basis"] = "approved by phone"                    # someone rewrites history afterwards
+print("after edit:", verify(log))
+```
+
+```text
+before: intact
+after edit: tampered at entry 1
+```
+
+The edited approval is detected. A determined insider could recompute every later hash, so in practice the chain is anchored somewhere they can't rewrite: the latest hash periodically written to write-once storage (S3 Object Lock, or a managed ledger service), or to a separate system owned by another team.
+
+<GoDeeper title="Go deeper: what to log per prediction for regulated decisions">
+
+For decisions about people (credit, hiring, insurance, healthcare), the audit trail extends to individual predictions. A minimal record per decision: a request ID, timestamp, model name and version, a reference to the exact inputs (or the inputs themselves, where retention rules allow), the output and the decision threshold applied, any explanation given to the person (for example the main factors behind a credit refusal, which US fair-lending rules require in an adverse action notice), and whether a human reviewed or overrode it.
+
+Retention has to satisfy two pulls at once: regulators and litigation require keeping records for years, and privacy law requires not keeping personal data longer than necessary. The usual resolution is a documented retention schedule per record type, minimizing what's stored (references and hashes rather than full inputs where possible), and access controls and audit on the logs themselves. Explanation methods for individual predictions, and their limits, are covered in [Interpretability](/docs/interpretability/overview).
+
+</GoDeeper>
+
+<PredictFirst
+  question="A bank is asked by its regulator why a specific applicant was refused credit by model version 12 in March. Which records together answer the question?"
+  options={[
+    'The current model and the training code on the main branch',
+    'The prediction log entry for that application, the registry entry for version 12 linking to its run, data version and evaluation, and the approval record',
+    'Only the model card for the latest version',
+    "An explanation generated now by running the current model on the applicant's data",
+  ]}
+  correctIndex={1}
+  explanation="The question is about one decision made by one model version at one time. The prediction log identifies the inputs, output and version; the registry and run record show how version 12 was built and evaluated; the approval record shows who authorized it. The current model or code may differ from what ran in March, and an explanation produced today from a different model answers a different question."
+/>
+
+## 10. When *Not* to Apply the Full Process
+
+| Situation | Proportionate approach |
+|---|---|
+| Internal tool, no personal data, permissive-licence model | Record the model and licence in the inventory; standard code review |
+| Prototype using a hosted API | Check the provider's data retention and output terms before sending real customer data |
+| Research that won't be deployed | Respect dataset licences and ethics review; skip production governance gates |
+| Any system making decisions about people | The full set: inventory, risk classification, model card with subgroup results, human-approval gate, per-decision logging |
+| Unsure whether the AI Act applies | Classify the use case against the Act's annexes with legal, early; the classification decides how much of this page applies |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Legal as engineering | Each obligation becomes something the pipeline records or checks |
+| Model licences | Permissive, custom community, non-commercial, proprietary; terms flow to fine-tunes |
+| Automate the check | Allow-list licence tags in CI; route custom licences to a human once |
+| Data provenance | Record source, licence, collection method and personal data for every training set |
+| Copyright in 2026 | No US appellate answer on training; settlements and narrow rulings; know your data |
+| Privacy | Legal basis, minimization, rights; deletion from weights is hard, from indexes easy |
+| EU AI Act | Risk tiers; high-risk obligations postponed to December 2027 and August 2028; transparency from August 2026 |
+| Governance | Inventory, risk-tiered gates, policy checks, separation of duties, periodic review |
+| Documentation | Generated model and data cards, with results broken down by group |
+| Audit trail | Lineage plus approvals, hash-chained and anchored in write-once storage |
+
+---
+
+Next: [The Full MLOps Architecture, Priority Stack & Learning Path](/docs/mlops/mlops-architecture-and-roadmap) brings every page in this section together into one system.
+
+## Sources
+
+- European Union, [Regulation (EU) 2024/1689 (AI Act)](https://eur-lex.europa.eu/eli/reg/2024/1689/oj) and the [Digital Omnibus on AI explainer](https://artificialintelligenceact.eu/ai-act-explorer/digital-omnibus/)
+- M. Mitchell et al., [Model Cards for Model Reporting](https://arxiv.org/abs/1810.03993), FAT* 2019; T. Gebru et al., [Datasheets for Datasets](https://arxiv.org/abs/1803.09010), CACM 2021
+- L. Bourtoule et al., [Machine Unlearning](https://arxiv.org/abs/1912.03817), IEEE S&P 2021
+- NIST, [AI Risk Management Framework](https://www.nist.gov/itl/ai-risk-management-framework); ISO/IEC 42001:2023
+- U.S. Copyright Office, [Copyright and Artificial Intelligence, Part 3: Generative AI Training](https://www.copyright.gov/ai/)
+- Authors Alliance, [Bartz v. Anthropic settlement receives final approval](https://www.authorsalliance.org/2026/07/21/bartz-v-anthropic-settlement-receives-final-approval/), July 2026

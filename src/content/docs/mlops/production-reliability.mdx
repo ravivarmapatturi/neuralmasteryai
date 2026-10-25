@@ -1,102 +1,366 @@
 ---
-title: "Production Reliability"
+title: "Production Reliability, In Full Depth"
 sidebar_position: 22.2
-description: "Retries, timeouts, circuit breakers, and graceful degradation -- the difference between a demo that works and a system that survives real failures."
+description: "Keeping ML services up when their dependencies fail: availability arithmetic, timeouts and jittered retries measured against a flaky server, retry storms, circuit breakers, graceful degradation and fallbacks, backpressure, idempotency keys and the check-then-act race, and rollback."
 ---
 
 import TimeoutCascadeDiagram from '../../../viz/diagrams/TimeoutCascadeDiagram';
-import JitteredBackoffDiagram from '../../../viz/diagrams/JitteredBackoffDiagram';
 import CircuitBreakerStateDiagram from '../../../viz/diagrams/CircuitBreakerStateDiagram';
 import GracefulDegradationLadderDiagram from '../../../viz/diagrams/GracefulDegradationLadderDiagram';
 import BackpressureQueueDiagram from '../../../viz/diagrams/BackpressureQueueDiagram';
 import IdempotencyKeyDiagram from '../../../viz/diagrams/IdempotencyKeyDiagram';
-import RollbackBlastRadiusDiagram from '../../../viz/diagrams/RollbackBlastRadiusDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Production Reliability
+# Production Reliability, In Full Depth
 
-Everything covered so far in MLOps gets a model trained, deployed, and monitored. This page is the difference between "the demo works" and "the system survives real traffic, real failures, and real edge cases without falling over" — AI demo engineering vs. AI production engineering, as distinct disciplines.
+[Observability](/docs/mlops/observability) showed how to see when a service is in trouble, and [Deployment Strategies](/docs/mlops/deployment-strategies) how to release changes safely. This page is about surviving the failures that happen anyway. A model service depends on feature stores, databases, other models and, increasingly, external LLM providers, and every one of them will sometimes be slow, unavailable or overloaded. It covers how dependencies multiply into downtime, timeouts and retries measured against a deliberately flaky server, how retries can turn a small outage into a large one, circuit breakers, degrading gracefully with fallbacks, backpressure, idempotency (including a race that charges a customer three times), and rollback.
 
-## Retries and Timeouts
+<ELI5>
 
-- **Timeouts**: every external call (a downstream API, a database query, an LLM provider call) needs an explicit maximum wait time — without one, a single slow dependency can hang a request indefinitely, and under load, enough hung requests exhaust the server's available connections/threads, turning one slow dependency into a full outage.
+A good restaurant doesn't close when one supplier is late. The waiter doesn't stand at the kitchen door forever; after a few minutes they check back with the table. If the fish didn't arrive, the chef offers the chicken rather than turning everyone away. When the place is full, the host takes names for a waiting list instead of squeezing in more tables than the kitchen can serve. And if the till glitches, nobody pays twice.
+
+Production reliability is that set of habits for software: don't wait forever, try again sensibly, stop calling what's clearly broken, offer something simpler when the best option fails, refuse work you can't handle, and make repeated requests harmless.
+
+Everything below is each of those habits, made precise.
+
+</ELI5>
+
+## 1. Why Reliable Parts Make Unreliable Systems
+
+A request to an ML service rarely touches one component. A typical fraud-scoring or assistant request calls the API service, a feature store, a model server, and perhaps an external LLM provider. If each must work for the request to succeed, their availabilities multiply; if a component has independent redundant replicas, its unavailability is what multiplies:
+
+$$A_{\text{serial}} = \prod_i A_i, \qquad A_{\text{redundant}} = 1 - (1 - A)^k$$
+
+```python
+# Availability of a request path: serial dependencies multiply, redundant replicas combine
+def serial(*a):
+    p = 1.0
+    for x in a: p *= x
+    return p
+
+def redundant(a, k):                    # k independent replicas, any one suffices
+    return 1 - (1 - a) ** k
+
+minutes_per_month = 30 * 24 * 60
+paths = {
+    "API alone (99.9%)":                         serial(0.999),
+    "API + feature store + model + LLM provider": serial(0.999, 0.999, 0.999, 0.995),
+    "same, LLM with fallback provider (99.5% each)": serial(0.999, 0.999, 0.999, redundant(0.995, 2)),
+}
+for name, a in paths.items():
+    print(f"{name:<47} {a:.4%}  ~{(1 - a) * minutes_per_month:5.0f} min down/month")
+```
+
+```text
+API alone (99.9%)                               99.9000%  ~   43 min down/month
+API + feature store + model + LLM provider      99.2018%  ~  345 min down/month
+same, LLM with fallback provider (99.5% each)   99.6978%  ~  131 min down/month
+```
+
+Four components that are each "three nines" or close give a path with almost six hours of downtime a month. A second LLM provider as a fallback cuts that by more than half, because the weakest link stops being a single point of failure. (Real failures are rarely fully independent, since providers share clouds and regions, so redundancy helps less than this formula says; it still helps a lot.)
+
+The lesson drives the rest of the page: **every dependency on the request path costs availability**, so either remove it from the path, make it redundant, or make the request succeed without it.
+
+## 2. Timeouts: Never Wait Forever
+
+The most damaging failure isn't a dependency that errors; it's one that *hangs*. A request waiting on a stuck call holds a thread, a connection and memory. Under load, those pile up until the service runs out of them and stops answering *all* requests, including ones that never touched the stuck dependency.
 
 <TimeoutCascadeDiagram />
 
-- **Retries**: transient failures (a momentary network blip, a brief downstream overload) often succeed on a second attempt — retrying automatically, rather than failing the whole request on the first error, meaningfully improves reliability for exactly this class of failure. Retries should have a capped maximum count (an unlimited retry loop against a truly broken dependency just adds load to an already-struggling system) and **backoff** (waiting progressively longer between attempts, often with a small random jitter added to prevent many clients from retrying in synchronized bursts that re-overload the dependency the moment it recovers).
+So every network call needs an explicit **timeout**, set from the latency budget: if the whole request must finish in 2 seconds and the model call is one of three steps, its timeout must be well under that. Many HTTP clients default to no timeout at all, which is the worst possible default.
 
-<JitteredBackoffDiagram />
-
-Both timeout and capped, jittered retry as real Python (`tenacity` is the standard library for exactly this):
+Timeouts turn hangs into fast errors; **retries** turn many of those errors into successes, because most failures in distributed systems are transient. To see both, here's a local model server built to misbehave: 10% of calls hang for 10 seconds and 20% return HTTP 503. Every client strategy below faces exactly the same sequence of failures:
 
 ```python
-from tenacity import retry, stop_after_attempt, wait_random_exponential
-import httpx
+import statistics, time
 
-@retry(stop=stop_after_attempt(3), wait=wait_random_exponential(multiplier=0.5, max=8))
-def call_llm_provider(prompt: str) -> str:
-    response = httpx.post(LLM_API_URL, json={"prompt": prompt}, timeout=5.0)  # explicit timeout, every call
-    response.raise_for_status()
-    return response.json()["text"]
+import httpx
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_random_exponential
+
+URL = "http://127.0.0.1:8799/predict"
+
+def once(i, timeout, trial):
+    r = httpx.get(URL, params={"request_id": i, "trial": trial}, timeout=timeout)
+    r.raise_for_status()
+    return r.json()
+
+@retry(stop=stop_after_attempt(3), wait=wait_random_exponential(multiplier=0.05, max=0.5),
+       retry=retry_if_exception_type((httpx.TimeoutException, httpx.HTTPStatusError)), reraise=True)
+def with_retries(i, timeout, trial):
+    return once(i, timeout, trial)
+
+def trial(name, call, n=40):
+    ok, times = 0, []
+    for i in range(n):
+        start = time.perf_counter()
+        try:
+            call(i); ok += 1
+        except Exception:
+            pass
+        times.append(time.perf_counter() - start)
+    print(f"{name:<26} success {ok / n:4.0%}   median {statistics.median(times) * 1000:5.0f} ms   "
+          f"worst {max(times) * 1000:6.0f} ms   total {sum(times):5.1f} s")
+
+trial("no timeout, no retry", lambda i: once(i, None, "a"))
+trial("1 s timeout, no retry", lambda i: once(i, 1.0, "b"))
+trial("1 s timeout, 3 attempts", lambda i: with_retries(i, 1.0, "c"))
 ```
 
-## Circuit Breakers
+```text
+no timeout, no retry       success  82%   median    57 ms   worst  10058 ms   total  22.1 s
+1 s timeout, no retry      success  78%   median    57 ms   worst   1019 ms   total   3.9 s
+1 s timeout, 3 attempts    success 100%   median    57 ms   worst   2120 ms   total   6.7 s
+```
 
-A **circuit breaker** tracks a dependency's recent failure rate and, once it crosses a threshold, stops sending requests to that dependency entirely for a cooldown period — rather than continuing to retry against something that's clearly down, which wastes resources and adds latency to every request without any chance of success. The pattern name is deliberate: like an electrical circuit breaker, it "trips" open on sustained failure, and periodically allows a small number of test requests through to check whether the dependency has recovered before fully "closing" again. This turns a downstream outage into a fast, predictable failure for callers instead of every request hanging until its own timeout expires.
+- **No timeout:** the hung calls eventually return, so success looks acceptable, but the worst request took 10 seconds and the run took 22. A dependency that hangs *forever*, which happens, would hold those requests forever.
+- **Timeout only:** the worst case drops to about a second and total time falls by more than 80%, at the cost of turning the slow calls into failures.
+- **Timeout plus retries:** every request succeeded, with a worst case of 2.1 seconds, because a fresh attempt usually lands on a healthy response.
+
+The retry policy matters as much as having one. **Cap the attempts** (three is typical). **Back off exponentially with jitter**, so that thousands of clients that failed at the same moment don't retry at the same moment too (see the backoff formula in [Pipeline Orchestration](/docs/mlops/pipeline-orchestration#5-retries-and-backoff)). **Retry only what can succeed on retry:** timeouts, connection errors, 429 and 5xx responses, never 400-level validation errors. And **only retry operations that are safe to repeat**, which section 7 makes precise.
+
+## 3. Retry Storms
+
+Retries have a dark side. If every layer of a call chain retries, the attempts multiply: with $L$ layers each making up to $r$ attempts, one user request can generate up to $r^L$ calls to the service at the bottom. Three layers retrying three times each send 27 calls to a dependency that was already failing, which is how a brief slowdown becomes an outage that can't recover: the retries keep it overloaded.
+
+The defences:
+
+- **Retry at one layer,** usually the one closest to the user or the one that knows the operation is safe to repeat; inner layers fail fast.
+- **Retry budgets:** allow retries to add at most, say, 10% extra load over a window; beyond that, fail instead of retrying.
+- **Respect the server's signals:** honour `Retry-After` headers and 429 responses, which mean "slow down", not "try again immediately".
+- **Stop calling what's clearly broken,** which is what a circuit breaker automates.
+
+## 4. Circuit Breakers
+
+A **circuit breaker** wraps calls to a dependency and tracks their failures. While things are healthy it's **closed** and calls pass through. After a run of failures it **opens**: calls fail immediately, without touching the dependency, for a cool-down period. Then it goes **half-open** and lets a trial call through; success closes it, failure opens it again.
 
 <CircuitBreakerStateDiagram />
 
+The breaker helps both sides. Callers stop wasting their timeout on a dependency that's down and can take a fallback path at once, and the struggling dependency gets breathing room to recover instead of a flood of doomed requests. Here's a complete breaker in about 25 lines, against a dependency that's down for its first 3 seconds and costs a 0.5-second timeout per failed call:
+
 ```python
-import pybreaker
+import time
 
-llm_breaker = pybreaker.CircuitBreaker(fail_max=5, reset_timeout=30)
 
-@llm_breaker
-def call_llm_provider(prompt: str) -> str:
-    return httpx.post(LLM_API_URL, json={"prompt": prompt}, timeout=5.0).json()["text"]
+class CircuitBreaker:
+    """closed: calls pass through. open: calls fail immediately. half-open: one trial call decides."""
 
-# after 5 consecutive failures, further calls raise CircuitBreakerError immediately
-# (no network round-trip, no waiting on a timeout) until the 30s reset_timeout elapses
+    def __init__(self, failure_threshold=5, reset_after=2.0):
+        self.failure_threshold, self.reset_after = failure_threshold, reset_after
+        self.state, self.failures, self.opened_at = "closed", 0, 0.0
+
+    def call(self, fn):
+        if self.state == "open":
+            if time.monotonic() - self.opened_at < self.reset_after:
+                raise RuntimeError("circuit open: failing fast")
+            self.state = "half-open"                     # cool-down over: let one call test the waters
+        try:
+            result = fn()
+        except Exception:
+            self.failures += 1
+            if self.state == "half-open" or self.failures >= self.failure_threshold:
+                self.state, self.opened_at = "open", time.monotonic()
+            raise
+        self.state, self.failures = "closed", 0
+        return result
+
+
+down_until = time.monotonic() + 3.0                     # the dependency is down for 3 seconds
+
+def slow_failing_dependency():
+    if time.monotonic() < down_until:
+        time.sleep(0.5)                                  # each failing call burns a 0.5 s timeout
+        raise TimeoutError("dependency timed out")
+    return "ok"
+
+breaker = CircuitBreaker()
+start = time.monotonic()
+log = []
+while time.monotonic() - start < 5.0:
+    t0 = time.monotonic()
+    try:
+        outcome = breaker.call(slow_failing_dependency)
+    except Exception as e:
+        outcome = type(e).__name__
+    log.append((round(t0 - start, 1), breaker.state, outcome, round((time.monotonic() - t0) * 1000)))
+    time.sleep(0.1)
+
+fast_fails = [ms for _, _, o, ms in log if o == "RuntimeError"]
+print(f"{len(log)} requests in 5 s; {len(fast_fails)} rejected at once by the open breaker, without calling the dependency")
+for t, state, outcome, ms in log:
+    if outcome != "RuntimeError":                        # the calls that actually reached the dependency
+        print(f"t={t:>3}s  {outcome:<13} {ms:>4} ms  breaker now {state}")
 ```
 
-## Fallback Models and Graceful Degradation
+```text
+25 requests in 5 s; 19 rejected at once by the open breaker, without calling the dependency
+t=0.0s  TimeoutError   500 ms  breaker now closed
+t=0.6s  TimeoutError   501 ms  breaker now closed
+t=1.2s  TimeoutError   500 ms  breaker now closed
+t=1.8s  TimeoutError   500 ms  breaker now closed
+t=2.4s  TimeoutError   500 ms  breaker now open
+t=4.9s  ok               0 ms  breaker now closed
+```
 
-- **Fallback models**: if a primary model (or the primary inference engine serving it) is unavailable or exceeding its latency budget, fall back to a smaller, faster, or simpler model rather than failing the request outright — a degraded response is usually better than no response, and this is exactly why [multi-LoRA serving](/docs/mlops/llm-hosting-and-serving-patterns#multi-lora-serving) and [model routing](/docs/mlops/roadmap) architectures often keep a cheap fallback path alongside the primary model.
-- **Graceful degradation**: more generally, a system should fail by doing *less*, not by failing completely — if a RAG system's retrieval step is down, answering from the LLM's own knowledge (clearly caveated as ungrounded) is more graceful than returning an error; if personalization data is unavailable, falling back to generic (non-personalized) recommendations keeps the core feature working rather than breaking entirely. Identify, in advance, which parts of a system are "nice to have" versus "must work," and design the failure behavior for each accordingly — rather than treating every dependency as equally critical by default.
+Five failures each cost the caller half a second. Then the breaker opened, and the next 19 requests were rejected instantly, each free to use a fallback instead of waiting. At 4.9 seconds the cool-down ended, a single trial call found the dependency healthy again, and the breaker closed. Production libraries (resilience4j, Polly, `pybreaker`, or the outlier detection built into service meshes such as Istio and Envoy) add sliding windows, failure-rate thresholds and per-endpoint state, but the state machine is the one above.
+
+## 5. Graceful Degradation and Fallbacks
+
+A circuit breaker decides *when* to stop calling a dependency. **Graceful degradation** decides *what to do instead*. The principle: a system under partial failure should do less, not nothing.
 
 <GracefulDegradationLadderDiagram />
 
-## Rate Limits and Backpressure
+For ML services, each dependency usually has a sensible weaker substitute:
 
-- **Rate limits**: cap how many requests a given client (or the system overall) can make in a given time window — protects the system (and, for a paid upstream API, your budget) from a single misbehaving client or an unexpected traffic spike overwhelming shared capacity.
-- **Backpressure**: when incoming request volume exceeds what a system can currently handle, backpressure means explicitly signaling "slow down" back to callers (rejecting or queuing new requests) rather than silently accepting more work than can actually be processed, which just delays every request further and can eventually crash the service entirely. A system with no backpressure mechanism degrades catastrophically under overload; a system with backpressure degrades predictably (some requests rejected or queued, the rest served normally) — the difference between a bad afternoon and a full outage.
-- **Queues**: decouple request arrival from request processing — incoming requests land in a queue, and workers process them at a sustainable rate, absorbing traffic bursts smoothly rather than requiring capacity provisioned for worst-case instantaneous load. Directly relevant to GPU-backed LLM serving specifically, where provisioning for peak load is expensive enough that smoothing bursts through a queue is often more cost-effective than always having peak capacity on standby.
+| When this fails | Degrade to |
+|---|---|
+| The primary LLM provider | A second provider, or a smaller self-hosted model, with the same interface |
+| The large model's latency budget | A smaller, faster model for this request |
+| Retrieval in a RAG system | An answer that says it couldn't check the documents, or a "try again" message, never a confident ungrounded answer on a high-stakes question |
+| The online feature store | Cached or default feature values, with the prediction marked as degraded |
+| The personalization model | Popular-items or rule-based recommendations |
+| A fraud model | A conservative rule set, or routing to manual review, decided with the business in advance |
+
+Two rules make fallbacks safe. **Decide them in advance with the people who own the product,** because the right fallback is a business decision: a fraud check that "fails open" approves fraud, and one that "fails closed" blocks customers. And **test them**, by injecting the failure deliberately in staging (and, carefully, in production, which is what chaos engineering means), because a fallback path that has never run tends not to work when it's needed. Record which responses were degraded, so dashboards and model monitoring can separate them.
+
+<PredictFirst
+  question="A loan pre-approval service calls a credit-scoring model. The model server goes down. Which fallback is most defensible?"
+  options={[
+    'Approve all applications until the model is back, to avoid losing customers',
+    'Reject all applications until the model is back',
+    'Route applications to a pre-agreed path, such as manual review or a conservative rule set, mark them as degraded, and alert the on-call engineer',
+    'Retry the model call indefinitely until it responds',
+  ]}
+  correctIndex={2}
+  explanation="Failing open approves risk the business never accepted, and failing closed turns an outage into lost customers; both are decisions that should have been made deliberately in advance. A pre-agreed degraded path keeps the service useful within known risk limits, the degraded marker keeps those decisions auditable, and infinite retries just hold requests hostage while adding load to a dead service."
+/>
+
+## 6. Backpressure and Load Shedding
+
+Retries and breakers handle failing dependencies. The other big cause of outages is too much traffic. A service that accepts every request even when it can't keep up builds an ever-growing queue: every request waits longer, clients time out and retry, adding more load, and latency rises for everyone until nothing succeeds. [APIs & Model Serving](/docs/mlops/model-serving#5-latency-throughput-and-queues) showed the arithmetic: as utilization approaches 1, waiting time grows without bound.
 
 <BackpressureQueueDiagram />
 
-## Idempotency and Distributed Locks
+**Backpressure** means signalling "slow down" instead of silently accepting more than you can process:
 
-- **Idempotency**: an operation is idempotent if performing it multiple times has the same effect as performing it once — critical for anything triggered by a retry (above): if a "charge the customer" or "send this notification" action isn't idempotent, a retried request (after a timeout where the first attempt actually *did* succeed, just slowly) can duplicate the action. The standard fix is an idempotency key — a unique identifier per logical operation that the receiving system checks against, rejecting a duplicate request carrying an already-processed key.
+- **Bounded queues:** when the queue is full, reject new work immediately with HTTP 429 or 503 and a `Retry-After` header, rather than queueing it for minutes.
+- **Load shedding by priority:** under overload, drop low-priority traffic (batch jobs, prefetches, free-tier users) first, so interactive and paying traffic keeps working.
+- **Deadline propagation:** pass each request's remaining time budget downstream, and drop work whose caller has already given up.
+- **Rate limits per client** in the gateway, so one misbehaving client can't consume shared capacity.
+
+For GPU-backed inference, a **queue in front of the workers** is also a cost tool: it absorbs short bursts so capacity can be sized for typical load rather than the worst second, as long as the queue is bounded and its wait time is monitored ([Message Queues & Async Processing](/docs/mlops/message-queues-and-async-processing)).
+
+## 7. Idempotency and Distributed Locks
+
+### Idempotency and Distributed Locks
+
+Retries are only safe for operations that can be repeated without harm. An operation is **idempotent** if doing it twice has the same effect as doing it once. Reading a prediction is idempotent. Charging a card, sending an email, or writing a row is not, and a retry after a timeout is exactly the case where the first attempt may have succeeded slowly: the client didn't see the reply, so it tries again, and the action happens twice.
 
 <IdempotencyKeyDiagram />
 
-```python
-@app.post("/v1/charge")
-def charge(req: ChargeRequest, idempotency_key: str = Header(...)):
-    if (cached := redis.get(f"idempotency:{idempotency_key}")):
-        return json.loads(cached)   # already processed -- return the original result, don't charge again
+The standard fix is an **idempotency key**: the client generates a unique key per logical operation (not per attempt) and sends it with every attempt; the server records each key and, on seeing one again, returns the original result instead of repeating the work. Stripe's payments API popularized the pattern.
 
-    result = process_charge(req)
-    redis.set(f"idempotency:{idempotency_key}", json.dumps(result), ex=86400)
-    return result
+The subtle part is *how* the server records keys. The obvious implementation, "check whether the key exists, and if not, do the work and store the key", has a race: if two attempts arrive at nearly the same moment, both check before either has stored the key, and both do the work. This script runs three near-simultaneous attempts of one payment through both implementations:
+
+```python
+import sqlite3
+import threading
+import time
+
+db = sqlite3.connect(":memory:", check_same_thread=False, isolation_level=None)
+db.execute("CREATE TABLE charges (id INTEGER PRIMARY KEY, amount REAL)")
+db.execute("CREATE TABLE idempotency (key TEXT PRIMARY KEY, charge_id INTEGER)")
+lock = threading.Lock()                              # serializes access to the one shared connection
+
+def charge_check_then_act(key, amount):
+    with lock:
+        seen = db.execute("SELECT charge_id FROM idempotency WHERE key = ?", (key,)).fetchone()
+    if seen:
+        return seen[0]
+    time.sleep(0.05)                                 # the slow payment call: the race window
+    with lock:
+        cid = db.execute("INSERT INTO charges (amount) VALUES (?)", (amount,)).lastrowid
+        db.execute("INSERT OR IGNORE INTO idempotency VALUES (?, ?)", (key, cid))
+    return cid
+
+def charge_claim_first(key, amount):
+    with lock:                                       # claim the key atomically before doing any work
+        claimed = db.execute("INSERT OR IGNORE INTO idempotency VALUES (?, NULL)", (key,)).rowcount == 1
+    if not claimed:
+        return "duplicate: return the stored result (or 409 while the first is in flight)"
+    time.sleep(0.05)
+    with lock:
+        cid = db.execute("INSERT INTO charges (amount) VALUES (?)", (amount,)).lastrowid
+        db.execute("UPDATE idempotency SET charge_id = ? WHERE key = ?", (cid, key))
+    return cid
+
+for name, fn in [("check, then act", charge_check_then_act), ("claim key first", charge_claim_first)]:
+    db.execute("DELETE FROM charges"); db.execute("DELETE FROM idempotency")
+    # a client times out and retries: the same request arrives three times, nearly at once
+    threads = [threading.Thread(target=fn, args=("order-981-payment", 49.99)) for _ in range(3)]
+    for t in threads: t.start()
+    for t in threads: t.join()
+    print(f"{name:<16} -> customer charged {db.execute('SELECT COUNT(*) FROM charges').fetchone()[0]} time(s)")
 ```
 
-- **Distributed locks**: when multiple workers/processes might operate on the same resource concurrently (two training jobs writing to the same checkpoint location, two workers processing the same queued item), a distributed lock ensures only one actually proceeds at a time — implemented via a coordination service (the same kind of majority-consensus mechanism as [CS Fundamentals — Consensus](/docs/cs-fundamentals/networking-and-distributed-systems#consensus-raftpaxos-intuition-only)) rather than assuming single-process, single-machine execution.
+```text
+check, then act  -> customer charged 3 time(s)
+claim key first  -> customer charged 1 time(s)
+```
 
-## Disaster Recovery and Rollback
+The check-then-act version charged the customer three times. The fix is to **claim the key atomically before doing the work**, with an operation that only one caller can win: a unique-key insert in a database, as here, or `SET key NX` in Redis. Later attempts see the claim and return the stored result, or a "still in progress" response if the first attempt hasn't finished. Store the result with the key, keep keys for longer than any client retries (24 hours is common), and scope keys to the client so one customer's keys can't collide with another's.
 
-- **Disaster recovery**: a documented, *tested* plan for restoring service after a major failure (a region-wide cloud outage, a corrupted database) — backups alone aren't a disaster recovery plan until someone has actually verified they can be restored successfully within an acceptable time window; an untested backup is a hope, not a plan.
-- **Rollback**: the ability to quickly revert to a previously-known-good model/code version when a new deployment causes problems — this is exactly what [Deployment Strategies](/docs/mlops/deployment-strategies)' blue-green pattern provides directly (the old environment stays live, ready to receive traffic back instantly) and what canary deployment enables at a smaller blast radius (only a fraction of traffic needs rolling back). A deployment process with no fast rollback path turns every deploy into a higher-stakes, harder-to-reverse decision than it needs to be.
+**Distributed locks** solve a related problem: making sure only one worker at a time does something, such as writing a checkpoint or processing a queue item. A lock in a single Redis instance is fine for efficiency (avoiding duplicated work, as in the cache stampede fix in [Caching Strategies](/docs/mlops/caching-strategies#5-stampedes-when-a-popular-key-expires)). Where two holders at once would cause *incorrect* results, use a lock service built on consensus (etcd, ZooKeeper, or a database's own locking) together with fencing tokens, because a paused process can wake up believing it still holds a lock that has expired. Better still, design the operation to be idempotent, so a duplicate does no harm and the lock becomes an optimization.
 
-<RollbackBlastRadiusDiagram />
+<GoDeeper title="Go deeper: exactly-once is usually at-least-once plus idempotency">
 
-Next: [AI Cost Engineering](/docs/mlops/ai-cost-engineering) — reliability and cost are frequently in tension (more redundancy costs more), which is exactly why they're covered back to back.
+Message queues and stream processors often advertise delivery guarantees. "At most once" may lose messages; "at least once" may deliver some twice; "exactly once" sounds like the one you want. In practice, end-to-end exactly-once *effects* across systems you don't fully control are achieved by combining at-least-once delivery with idempotent processing: the consumer records which message IDs it has applied, in the same transaction as the effect (the "outbox" and "inbox" patterns), and skips any it has seen. Kafka's exactly-once semantics, for instance, cover reads and writes within Kafka; side effects in an external database or API still need idempotency on that side.
+
+For ML pipelines, the same reasoning makes batch jobs safe to retry: write outputs keyed by the job's logical date and overwrite them, as [Pipeline Orchestration](/docs/mlops/pipeline-orchestration#4-idempotent-tasks) describes, so a re-run replaces rather than duplicates.
+
+</GoDeeper>
+
+## 8. Rollback and Recovery
+
+Some failures are self-inflicted: a bad model version, a broken feature pipeline, a configuration change. The fastest fix is to go back.
+
+- **Rollback must be fast and practised.** Keep the previous model version deployable (blue-green or a registry alias that can be moved back), keep feature and schema changes backward-compatible so an old model can still run ([Deployment Strategies](/docs/mlops/deployment-strategies#8-rollback-and-version-compatibility)), and rehearse rollback, because a procedure nobody has run is a hope.
+- **Prefer rollback to roll-forward during an incident.** Diagnosing and fixing under pressure takes longer and risks a second bad change; restore the known-good state first, investigate after.
+- **Disaster recovery** covers losing a whole zone or region: replicated data, infrastructure defined as code so it can be recreated elsewhere ([Infrastructure as Code](/docs/mlops/infrastructure-as-code)), and backups that are restored on a schedule to prove they work. Define the targets explicitly: how much data you can afford to lose (recovery point objective) and how long you can be down (recovery time objective).
+- **Write it down afterwards.** A blameless post-incident review records what happened, why the system allowed it, and what changes stop it recurring. Most reliability improvements come from these reviews rather than from up-front design.
+
+## 9. When *Not* to Add These Mechanisms
+
+| Situation | Proportionate approach |
+|---|---|
+| Internal batch jobs with no user waiting | Orchestrator retries with backoff and idempotent outputs; skip circuit breakers and load shedding |
+| A prototype with a handful of users | Timeouts on every call and a simple retry; the rest when real traffic arrives |
+| Operations that aren't safe to repeat and have no idempotency key | Don't retry them automatically; surface the error and reconcile instead |
+| Hard real-time paths with very tight budgets | Fewer dependencies on the path (precompute, cache) beats retries that blow the budget |
+| A dependency that's almost never down and cheap to wait on | A timeout is enough; a breaker adds state and tuning for little benefit |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Availability multiplies | Four "three nines" dependencies give almost six hours of downtime a month |
+| Timeouts | Every network call has one, set from the latency budget; hangs are worse than errors |
+| Retries | Capped, jittered, only for transient errors and safe operations; 82% to 100% success here |
+| Retry storms | Retries at $L$ layers multiply to $r^L$ calls; retry at one layer, with a budget |
+| Circuit breakers | Closed, open, half-open; fail fast so callers can fall back and the dependency can recover |
+| Degradation | Do less, not nothing; fallbacks agreed with the product owner and tested |
+| Backpressure | Bounded queues, shed low-priority load, propagate deadlines |
+| Idempotency | Claim the key atomically before the work; check-then-act charged three times |
+| Rollback | Fast, rehearsed, backward-compatible; restore first, investigate after |
+
+---
+
+Next: [AI Cost Engineering](/docs/mlops/ai-cost-engineering) covers the other side of redundancy and fallbacks: what reliability costs, and how to spend less on the rest.
+
+## Sources
+
+- B. Beyer et al., [Site Reliability Engineering](https://sre.google/sre-book/table-of-contents/), O'Reilly / Google (chapters on handling overload and addressing cascading failures)
+- M. Nygard, *Release It! Design and Deploy Production-Ready Software*, 2nd edition, Pragmatic Bookshelf (2018), which introduced the circuit breaker pattern to software
+- M. Brooker, [Timeouts, retries, and backoff with jitter](https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/), Amazon Builders' Library
+- Stripe, [Idempotent requests](https://docs.stripe.com/api/idempotent_requests)
+- M. Kleppmann, *Designing Data-Intensive Applications*, O'Reilly (2017), on distributed locks, fencing tokens and exactly-once processing

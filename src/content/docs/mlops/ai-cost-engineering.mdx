@@ -1,70 +1,261 @@
 ---
-title: "AI Cost Engineering"
+title: "AI Cost Engineering, In Full Depth"
 sidebar_position: 22.3
-description: "Every cost-optimization technique scattered across this site's model/serving/training pages, consolidated into one place with the tradeoff each one makes."
+description: "Where the money goes in ML and LLM systems and how to spend less without losing quality: training compute from 6ND, per-request unit economics, utilization, caching, context size, model routing measured as a cascade, quantization and distillation, and the quality-latency-cost trade-off."
 ---
 
 import TrainingVsInferenceCostDiagram from '../../../viz/diagrams/TrainingVsInferenceCostDiagram';
-import CostPerMillionTokensDiagram from '../../../viz/diagrams/CostPerMillionTokensDiagram';
 import UtilizationCostDiagram from '../../../viz/diagrams/UtilizationCostDiagram';
-import CachingSavingsDiagram from '../../../viz/diagrams/CachingSavingsDiagram';
 import ModelRoutingSavingsDiagram from '../../../viz/diagrams/ModelRoutingSavingsDiagram';
-import CompressionCostDiagram from '../../../viz/diagrams/CompressionCostDiagram';
 import QualityLatencyCostTriangleDiagram from '../../../viz/diagrams/QualityLatencyCostTriangleDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# AI Cost Engineering
+# AI Cost Engineering, In Full Depth
 
-Every architecture decision covered across this site — which model size, which quantization level, which serving engine, how much redundancy — has a cost implication, and at GPU-driven AI infrastructure's price points, getting cost wrong is expensive in a way it rarely was for traditional web infrastructure. This page consolidates the cost-optimization techniques scattered across earlier pages into one place, and frames the actual tradeoff every one of them makes.
+[LLM Hosting & Serving Patterns](/docs/mlops/llm-hosting-and-serving-patterns) showed that a self-hosted GPU's cost per token depends mostly on how busy it is, and [Caching Strategies](/docs/mlops/caching-strategies) showed how to avoid repeating work. This page puts cost on its own footing. GPUs, accelerators and model APIs make ML systems far more expensive per request than ordinary web services, and the bill grows with usage in ways that surprise teams. It covers how to estimate training cost from first principles, how to compute the unit economics of an LLM feature and which levers move them most, why utilization dominates infrastructure cost, how routing between small and large models trades quality against cost (simulated as a cascade), and the quality-latency-cost trade-off every one of these decisions sits on.
 
-## Training Cost
+<ELI5>
 
-Dominated by GPU-hours — see [GPU/AI Infrastructure & Distributed Training](/docs/mlops/gpu-and-distributed-training) for the mechanics (mixed precision, gradient accumulation, parallelism strategies) that determine how efficiently those GPU-hours get used. The [scaling laws and Chinchilla result](/docs/llms-genai/training-pipeline#scaling-laws-and-the-chinchilla-result) are directly a cost-optimization finding at their core: training compute-optimally (right-sized model, right-sized data, together) gets more capability per dollar than training an oversized model on too little data for the same total spend.
+A delivery company can cut costs in a few ways. It can make sure vans don't drive around half empty. It can avoid sending a big lorry to deliver a small envelope. It can pack parcels more tightly. And it can stop delivering things nobody ordered. What it can't do is cut costs blindly, because a cheaper service that loses parcels isn't cheaper in the end.
 
-## Inference Cost
+Running AI systems is the same: keep the expensive hardware busy, send easy work to cheap models, send less text through the model, and don't recompute what you already know, all while checking that the answers stay good.
 
-For most deployed AI products, inference cost — not training cost — dominates total spend over the system's lifetime, since training happens once (or periodically) while inference happens on every single request, indefinitely. Every technique in [LLM Inference Optimization](/docs/mlops/llm-inference-optimization) is, from a cost-engineering lens, a cost-per-token reduction technique: quantization shrinks memory and increases throughput per GPU, continuous batching increases GPU utilization (more requests served per GPU-hour), speculative decoding reduces wall-clock time per response. The standard unit to optimize and report is **cost per 1M tokens** — see [LLM Inference Optimization — Inference Metrics Summary](/docs/mlops/llm-inference-optimization#inference-metrics-summary) — because it's comparable across models, engines, and hardware choices in a way raw GPU-hour cost alone isn't.
+Everything below is how to measure each of those and how much each one saves.
+
+</ELI5>
+
+## 1. Where the Money Goes
+
+ML systems spend in two phases with very different shapes:
 
 <TrainingVsInferenceCostDiagram />
 
-<CostPerMillionTokensDiagram />
+- **Training** is a large, bursty cost: GPU-hours for experiments and final runs, plus data preparation and storage. It's paid once per model version.
+- **Inference** is a running cost that scales with usage: every prediction or generated token, every day, for as long as the product exists. For most deployed products, especially LLM features, inference is the larger share of lifetime spend.
 
-## GPU and Memory Utilization
+Around both sit the costs teams forget: idle capacity reserved for peaks, storage of datasets, checkpoints and logs, data transfer between regions and clouds, evaluation runs (an LLM judge scoring thousands of outputs costs real money), and the engineers who operate it all.
 
-Idle GPU capacity is pure waste — a GPU costs the same whether it's at 20% or 95% utilization. Low utilization traces back to specific, diagnosable causes covered elsewhere: a data-loading bottleneck starving training compute (see [Python Engineering — Performance](/docs/python-engineering/concurrency-memory-and-performance)), insufficient batching during inference (see [Inference Optimization — Batching](/docs/mlops/llm-inference-optimization#other-core-optimizations)), or simply over-provisioned capacity relative to actual demand (addressed by [autoscaling](/docs/mlops/kubernetes#7-autoscaling-pods-and-nodes) or [serverless inference](/docs/mlops/llm-hosting-and-serving-patterns#serverless-inference) for spiky workloads specifically). Cost engineering starts with measuring utilization, not just measuring spend — a high bill with low utilization is a fixable efficiency problem; a high bill with high utilization is a genuine scale/pricing problem, and the fix is different for each.
+The discipline of AI cost engineering is the same as for any cloud cost (often called FinOps): **measure cost per unit of value**, attribute it to the feature or team that causes it, find the biggest levers, and change them without lowering quality. The first step is being able to estimate the numbers before you spend them.
+
+## 2. Estimating Training Cost
+
+For transformer models there's a reliable first-principles estimate. Training takes about **6 floating-point operations per parameter per token**: 2 for the forward pass (a multiply and an add per parameter) and about 4 for the backward pass. So for $N$ parameters and $D$ training tokens:
+
+$$C \approx 6ND \text{ FLOPs}, \qquad \text{GPU-hours} \approx \frac{6ND}{\text{peak FLOP/s} \times \text{MFU} \times 3600}$$
+
+where **MFU** (model FLOPs utilization) is the fraction of the hardware's peak arithmetic the training run actually achieves; well-tuned large runs reach roughly 35 to 55%. For an 8-billion-parameter model trained on 15 trillion tokens on H100 GPUs:
+
+```python
+# Training compute: about 6 FLOPs per parameter per token (2 forward, 4 backward)
+params, tokens = 8e9, 15e12                 # an 8B model trained on 15T tokens
+flops = 6 * params * tokens
+peak = 989e12                               # H100 dense BF16 peak, FLOP/s
+for mfu in [0.5, 0.4, 0.3]:                 # model FLOPs utilization actually achieved
+    gpu_hours = flops / (peak * mfu) / 3600
+    print(f"MFU {mfu:.0%}: {gpu_hours / 1e6:4.2f}M GPU-hours, ${gpu_hours * 2.5 / 1e6:4.1f}M at $2.50/GPU-hour")
+```
+
+```text
+MFU 50%: 0.40M GPU-hours, $ 1.0M at $2.50/GPU-hour
+MFU 40%: 0.51M GPU-hours, $ 1.3M at $2.50/GPU-hour
+MFU 30%: 0.67M GPU-hours, $ 1.7M at $2.50/GPU-hour
+```
+
+For comparison, Meta's model card for Llama 3.1 8B (trained on about 15 trillion tokens) reports 1.46 million H100 GPU-hours, two to three times this estimate. The gap is normal: the formula counts only the final run's arithmetic, not lower-utilization phases, restarts after failures, long-context stages and experiments. Use $6ND$ as a floor and plan with a multiple.
+
+Two practical lessons. Efficiency work on the training run (mixed precision, better parallelism, fewer stalls) moves MFU, and every point of MFU is a proportional saving ([GPU/AI Infrastructure & Distributed Training](/docs/mlops/gpu-and-distributed-training)). And most teams never pretrain: fine-tuning an existing model on a few million tokens costs GPU-hours, not GPU-years, which is usually the right place to spend.
+
+## 3. Unit Economics of an LLM Feature
+
+For a feature built on a model API, cost per request is simply tokens times prices:
+
+$$\text{cost} = n_{\text{in}} \cdot p_{\text{in}} + n_{\text{out}} \cdot p_{\text{out}}$$
+
+with output tokens typically priced several times higher than input tokens. The numbers that matter are therefore **how many tokens go in and come out per request**, and they're usually far larger than the user's question, because the prompt also carries a system prompt, instructions, examples and retrieved documents.
+
+Here's a RAG assistant: a 3,000-token system prompt, 6,000 tokens of retrieved passages, a 100-token question and a 400-token answer, at illustrative prices of \$3 per million input tokens and \$15 per million output tokens, with cached input billed at 10% (a common discount for provider prompt caching). Each row applies one more change:
+
+```python
+# Unit economics of one LLM feature. Prices are illustrative per-million-token rates; use your provider's.
+PRICE_IN, PRICE_OUT, CACHED_IN_DISCOUNT = 3.00, 15.00, 0.10   # cached input billed at 10% of normal
+
+def cost(system_tokens, retrieved_tokens, question_tokens, output_tokens, cache_system=False):
+    cached = system_tokens if cache_system else 0
+    fresh_in = system_tokens - cached + retrieved_tokens + question_tokens
+    return (fresh_in * PRICE_IN + cached * PRICE_IN * CACHED_IN_DISCOUNT + output_tokens * PRICE_OUT) / 1e6
+
+base = dict(system_tokens=3_000, retrieved_tokens=6_000, question_tokens=100, output_tokens=400)
+variants = {
+    "as built":                         base,
+    "prompt caching on system prompt":  {**base, "cache_system": True},
+    "+ retrieve 3 chunks, not 12":      {**base, "cache_system": True, "retrieved_tokens": 1_500},
+    "+ cap answers at 200 tokens":      {**base, "cache_system": True, "retrieved_tokens": 1_500, "output_tokens": 200},
+}
+for name, v in variants.items():
+    per = cost(**v)
+    print(f"{name:<33} ${per:.4f}/request   ${per * 2_000_000:>8,.0f}/month at 2M requests")
+```
+
+```text
+as built                          $0.0333/request   $  66,600/month at 2M requests
+prompt caching on system prompt   $0.0252/request   $  50,400/month at 2M requests
++ retrieve 3 chunks, not 12       $0.0117/request   $  23,400/month at 2M requests
++ cap answers at 200 tokens       $0.0087/request   $  17,400/month at 2M requests
+```
+
+The user's question is 100 of 9,500 input tokens; the cost is almost entirely context. Three changes that never touch the model cut the bill by 74%: caching the stable system prompt, retrieving fewer but better passages, and asking for shorter answers. Each must be checked against quality: fewer passages can lower recall, and a length cap can cut useful answers ([LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops) has the measurements). Often they improve it, since long, noisy contexts are harder for a model to use than short, relevant ones.
+
+**Agents multiply all of this.** An agent that takes eight steps re-sends a growing conversation on every step, so its cost grows roughly with the square of the number of steps unless the context is trimmed or cached. Track cost per *completed task*, not per call, and set a hard budget per task.
+
+## 4. Utilization: Paying for Idle Hardware
+
+When you run your own hardware, the bill is for time, not work. A GPU at 10% utilization costs the same per hour as one at 90%.
 
 <UtilizationCostDiagram />
 
-## Caching
+[LLM Hosting & Serving Patterns](/docs/mlops/llm-hosting-and-serving-patterns#4-what-self-hosting-costs) computed what that means per token: the same GPU costs \$0.28 per million tokens when fully busy and \$5.56 at 5% utilization, twenty times more. Low utilization has a few common causes, each with its own fix:
 
-Avoiding redundant computation entirely is cheaper than computing it efficiently:
+- **Capacity sized for peak, running all day.** Autoscale replicas with load, scale to zero where cold starts are acceptable, and use serverless GPUs for spiky traffic ([Kubernetes](/docs/mlops/kubernetes#7-autoscaling-pods-and-nodes)).
+- **Too little batching.** One request at a time leaves most of a GPU's capacity unused; dynamic or continuous batching serves many at once ([APIs & Model Serving](/docs/mlops/model-serving#6-dynamic-batching)).
+- **Oversized hardware.** A small model on a large GPU wastes most of it; share GPUs with MIG partitions or several models per server, or pick a smaller GPU.
+- **Training jobs stalled on data.** GPUs waiting for the data loader show high allocation and low utilization; profile and fix the input pipeline.
 
-- **Prompt/response caching**: for requests that repeat exactly or nearly exactly (a common FAQ-style query, a repeated API call with identical parameters), cache the response and skip inference entirely for a cache hit — the cheapest possible inference cost is the one you never pay.
-- **Prefix caching**: covered in [LLM Inference Optimization — KV Cache](/docs/mlops/llm-inference-optimization#kv-cache) — reusing computed KV cache for a shared prompt prefix (a system prompt, a few-shot template) across many requests, avoiding redundant computation on the shared portion of the input.
+And pay less for the same hours: **reserved or committed-use** pricing for steady baseline load, and **spot or preemptible** instances (often 60 to 90% cheaper) for interruptible work such as training with frequent checkpoints, batch inference and evaluation.
 
-<CachingSavingsDiagram />
+Measure before optimizing. A high bill with low utilization is an efficiency problem with known fixes; a high bill with high utilization means the workload really is that big, and the levers are the model and the request, which the next sections cover.
 
-## Batching and Quantization
+## 5. Routing: The Right Model for Each Request
 
-Both covered in depth in [LLM Inference Optimization](/docs/mlops/llm-inference-optimization) — restated here specifically in cost terms: continuous batching increases the number of requests served per GPU-hour (more revenue-generating or product-serving work extracted from the same fixed GPU cost), and quantization ([GGUF ecosystem](/docs/mlops/llm-inference-optimization#the-gguf-ecosystem), GPTQ/AWQ) both shrinks the hardware needed to serve a given model *and* increases throughput on whatever hardware is used — a rare case where a technique improves cost and latency simultaneously rather than trading one against the other.
-
-## Model Routing and Distillation
-
-- **Model routing**: not every request needs the largest, most capable (and most expensive) model — routing simpler requests to a smaller, cheaper model and reserving the largest model for genuinely complex requests can cut average cost substantially with minimal quality impact on the easy majority of traffic. This requires a reliable way to classify request difficulty upfront — often itself a small, cheap classifier model, or confidence-based escalation (try the cheap model first, escalate to the expensive one only if its own confidence is low).
-- **Distillation**: covered in [Training Pipeline — Knowledge Distillation](/docs/llms-genai/training-pipeline#knowledge-distillation) — training a smaller, cheaper "student" model to mimic a larger "teacher," producing a genuinely smaller model to deploy rather than routing between two separately-maintained models.
+Most traffic is easy. If a small model handles easy requests well, sending everything to a large model wastes money on the majority to serve the minority.
 
 <ModelRoutingSavingsDiagram />
 
-## Prompt and Context Compression
+There are two common designs. A **router** classifies each request up front (by type, length or a small classifier) and sends it to one model. A **cascade** tries the small model first and escalates to the large one when the small model's output looks unreliable, by its own confidence, a verifier, or a failed check such as invalid JSON.
 
-- **Prompt compression**: shortening a prompt while preserving the information the model actually needs from it — directly reduces token cost (most LLM APIs charge per input token) and, for long prompts, reduces prefill latency (see [LLM Inference Optimization — Prefill vs. Decode](/docs/mlops/llm-inference-optimization#prefill-vs-decode)) as a side benefit.
-- **Context compression**: for RAG and agent systems specifically, retrieving and passing only the genuinely necessary context (well-tuned [chunk size and top-k](/docs/llms-genai/rag#chunking-strategies), rather than defaulting to "retrieve more, just in case") directly controls both cost and the ["lost in the middle"](/docs/llms-genai/rag#common-failure-modes) quality problem — a case where the cost-optimal choice and the quality-optimal choice point the same direction, not opposite ones.
+This simulation shows the trade-off. 20% of 100,000 requests are hard; a small model costs a twentieth of a large one and succeeds on 93% of easy and 45% of hard requests; the large model succeeds on 96% and 90%. The small model's confidence is informative but noisy. The cascade escalates whenever confidence falls below a threshold:
 
-<CompressionCostDiagram />
+```python
+import numpy as np
 
-## The Central Tradeoff: Quality vs. Latency vs. Cost
+rng = np.random.default_rng(0)
+n = 100_000
+hard = rng.random(n) < 0.2                       # 20% of requests are genuinely hard
 
-Nearly every technique on this page (and the inference-optimization page it draws from) is a point on a three-way tradeoff surface, not a free win: a smaller/more-quantized model is cheaper and faster but somewhat lower quality; a larger batch size improves throughput/cost but can increase per-request latency; a cache hit is free but only helps for repeated requests. The actual engineering job is choosing *where* on that tradeoff surface a given product needs to sit — a real-time chat interface prioritizes latency more than a batch analytics job does, and a customer-facing feature has a different quality floor than an internal tool — rather than assuming any single technique is a universal improvement independent of what a specific system actually needs.
+# Per-request cost (USD) and success probability for each model, by difficulty (illustrative)
+COST = {"small": 0.0006, "large": 0.0120}
+P_OK = {"small": np.where(hard, 0.45, 0.93), "large": np.where(hard, 0.90, 0.96)}
+
+small_ok = rng.random(n) < P_OK["small"]
+large_ok = rng.random(n) < P_OK["large"]
+# The small model's confidence is informative but imperfect: lower when it is wrong
+confidence = np.clip(np.where(small_ok, rng.normal(0.85, 0.10, n), rng.normal(0.55, 0.15, n)), 0, 1)
+
+print(f"{'strategy':<28} {'quality':>8} {'cost / 1k requests':>19}")
+print(f"{'always large':<28} {large_ok.mean():8.1%} {COST['large'] * 1000:>18.2f}")
+print(f"{'always small':<28} {small_ok.mean():8.1%} {COST['small'] * 1000:>18.2f}")
+for threshold in [0.6, 0.7, 0.8]:
+    escalate = confidence < threshold             # cascade: try small, escalate when unsure
+    ok = np.where(escalate, large_ok, small_ok)
+    cost = COST["small"] + escalate * COST["large"]
+    print(f"{f'cascade, escalate below {threshold}':<28} {ok.mean():8.1%} {cost.mean() * 1000:>18.2f}"
+          f"   ({escalate.mean():.0%} escalated)")
+```
+
+```text
+strategy                      quality  cost / 1k requests
+always large                    94.9%              12.00
+always small                    83.5%               0.60
+cascade, escalate below 0.6     93.0%               1.91   (11% escalated)
+cascade, escalate below 0.7     95.9%               2.94   (19% escalated)
+cascade, escalate below 0.8     96.7%               5.59   (42% escalated)
+```
+
+At a threshold of 0.7, the cascade matches the large model's quality for a quarter of its cost, escalating 19% of requests. The threshold is a dial: lower saves more and loses quality, higher spends more. Two cautions keep this honest. The simulation treats the two models' mistakes as independent, which lets the cascade slightly *beat* the large model; real models tend to fail on the same hard inputs, so expect the cascade to approach the large model's quality, not exceed it. And the whole scheme rests on the confidence signal: measure how well it separates right from wrong answers on labelled data before trusting it, exactly as you would calibrate an LLM judge ([ML & LLM Testing](/docs/mlops/ml-and-llm-testing#5-judging-quality-and-judging-the-judge)).
+
+<PredictFirst
+  question="A team routes 80% of traffic to a small model and saves 70% of its LLM bill. Two weeks later, support tickets about wrong answers rise 30%. What did they most likely skip?"
+  options={[
+    'Prompt caching',
+    'Measuring quality per route on labelled examples before and after the change, and monitoring it in production',
+    'Using a larger GPU',
+    'Lowering the temperature',
+  ]}
+  correctIndex={1}
+  explanation="Routing trades quality for cost by design, so the quality side must be measured: on a labelled evaluation set split by route before launch, and with sampled judging and user feedback per route afterwards. Without that, savings show up immediately on the bill while the quality cost shows up slowly in support tickets and churn."
+/>
+
+## 6. Making Each Call Cheaper
+
+Beyond routing and context size, three techniques reduce the cost of running a given model:
+
+- **Quantization** stores weights (and often the KV cache) in 8 or 4 bits instead of 16. It cuts memory, so a model fits on fewer or smaller GPUs, and usually raises throughput, a rare case where cost and latency improve together. The price is a small accuracy loss that must be measured on your task ([LLM Inference Optimization](/docs/mlops/llm-inference-optimization#quantization)).
+- **Distillation** trains a small "student" model to imitate a large "teacher" on your task, often reaching most of the teacher's quality at a fraction of the cost. It costs a training run and an evaluation set, and pays off for high-volume, narrow tasks.
+- **Smaller models for narrow tasks.** Classification, extraction and routing rarely need a frontier model. A fine-tuned small model, or even a classical model on embeddings, is often both cheaper and better.
+
+And for LLM APIs specifically: **batch APIs** (asynchronous processing within a day, usually at a substantial discount) for anything not interactive, such as nightly enrichment or evaluation runs; and **structured, concise outputs**, since output tokens cost the most.
+
+<GoDeeper title="Go deeper: cost attribution and guardrails">
+
+Cost engineering only works if costs are visible where decisions are made. Tag every model call with the feature, team, customer and model version, and send token counts and cost to the same observability stack as latency ([Observability](/docs/mlops/observability)), so dashboards show cost per feature and per customer next to quality metrics. For cloud resources, consistent tags on GPU nodes, buckets and endpoints let the bill be split the same way.
+
+Then add guardrails that stop surprises rather than report them: per-customer and per-feature rate limits and monthly budgets enforced in the gateway; a maximum number of steps and tokens per agent task; alerts on cost per request rising (often the first sign of a prompt change that bloated the context or an agent that loops); and anomaly detection on daily spend. A runaway agent or a retry loop against an expensive model can spend a month's budget in a day, and only a hard limit stops it in time.
+
+</GoDeeper>
+
+## 7. The Central Trade-off: Quality, Latency, Cost
+
+Every technique on this page moves a system along three axes at once:
 
 <QualityLatencyCostTriangleDiagram />
 
-Next: [Caching Strategies & Redis Patterns](/docs/mlops/caching-strategies) — the caching technique introduced above as a cost lever, worked through in full: cache-aside reads, write-through/write-behind writes, eviction, and invalidation.
+A smaller or more quantized model is cheaper and faster, and somewhat less capable. Larger batches cut cost per token and raise each request's latency. Retrieving less is cheaper and faster, and can lose information. A cache hit is free and fast, and only for repeated requests. Very few changes are free wins; most choose a different point on the surface.
+
+The engineering job is choosing the point that a specific product needs. A real-time chat feature has a tight latency budget; a nightly batch job has none and should run on the cheapest, slowest option. A customer-facing medical answer has a high quality floor; an internal draft generator has a lower one. Write those requirements down as targets (a quality threshold on the evaluation set, a p95 latency budget, a cost per task), and then every optimization becomes a measurable question: does it stay within the quality and latency targets while lowering cost?
+
+<PredictFirst
+  question="An offline job summarizes 2 million support tickets every night, results needed by 8am. It currently uses a large model through the real-time API. Which change most likely cuts cost without affecting anyone?"
+  options={[
+    'Switch to the provider’s discounted batch API, and test whether a smaller model meets the summary quality bar',
+    'Add a semantic cache',
+    'Increase the number of parallel requests',
+    'Move it to a real-time streaming endpoint',
+  ]}
+  correctIndex={0}
+  explanation="An overnight job has no latency requirement, so it can use asynchronous batch processing, typically priced well below real-time calls, and it can tolerate a slower or smaller model if quality holds. Tickets are mostly unique, so a semantic cache would rarely hit; more parallelism changes speed, not price; streaming adds nothing for an offline job."
+/>
+
+## 8. When *Not* to Optimize Cost Yet
+
+| Situation | Better choice |
+|---|---|
+| Still finding out whether the feature is useful | Use the most capable model and ship; optimize once usage and value are clear |
+| Spend is small next to engineering time | Leave it; an engineer-week costs more than months of a small bill |
+| No quality measurement in place | Build the evaluation set first; cost cuts without it trade quality blindly |
+| Utilization is already high and quality is at its floor | The workload is genuinely that size; revisit pricing (commitments, providers) rather than the system |
+| Regulated or safety-critical outputs | Optimize latency and cost only within a fixed, verified quality bar, and re-verify after every change |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Two cost shapes | Training is bursty and per version; inference grows with usage and usually dominates |
+| Training estimate | About $6ND$ FLOPs; GPU-hours = FLOPs over peak times MFU; real runs cost 2 to 3 times more |
+| Unit economics | Cost per request is tokens times price; context, not the question, is most of it |
+| Biggest LLM levers | Prompt caching, fewer retrieved tokens, shorter outputs, batch APIs |
+| Utilization | Hardware is billed by time; autoscale, batch, right-size, use spot for interruptible work |
+| Routing | Small model first, escalate when unsure; measure quality per route |
+| Per-call savings | Quantization, distillation, small models for narrow tasks |
+| Trade-off | Set quality and latency targets first, then minimize cost within them |
+
+---
+
+Next: [Caching Strategies & Redis Patterns](/docs/mlops/caching-strategies) works through the mechanics of the cheapest computation of all, the one you don't repeat.
+
+## Sources
+
+- J. Kaplan et al., [Scaling Laws for Neural Language Models](https://arxiv.org/abs/2001.08361), 2020 (the 6ND compute approximation)
+- A. Chowdhery et al., [PaLM: Scaling Language Modeling with Pathways](https://arxiv.org/abs/2204.02311), 2022 (model FLOPs utilization)
+- Meta, [Llama 3.1 model card](https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/MODEL_CARD.md) (training GPU-hours)
+- L. Chen, M. Zaharia and J. Zou, [FrugalGPT: How to Use Large Language Models While Reducing Cost and Improving Performance](https://arxiv.org/abs/2305.05176), 2023
+- FinOps Foundation, [FinOps for AI](https://www.finops.org/topic/finops-for-ai/)

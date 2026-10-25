@@ -4,7 +4,6 @@ sidebar_position: 6
 description: "Why a training pipeline needs an orchestrator, the DAG model, scheduling and logical dates, retries with backoff, idempotent tasks, caching and backfills, a real Airflow 3 pipeline with a quality gate, and how Prefect and Dagster differ."
 ---
 
-import MlLifecyclePipelineDiagram from '../../../viz/diagrams/MlLifecyclePipelineDiagram';
 import DagDependencyDiagram from '../../../viz/diagrams/DagDependencyDiagram';
 import RetryBackoffDiagram from '../../../viz/diagrams/RetryBackoffDiagram';
 import PipelineCachingDiagram from '../../../viz/diagrams/PipelineCachingDiagram';
@@ -36,7 +35,6 @@ Everything below is that head chef made exact.
 
 It works until something goes wrong, and then every weakness shows at once. If the feature query times out at step 3, the whole script fails and tomorrow's run starts from step 1, even though steps 1 and 2 were fine. Nobody is told unless they read the log. If the data for Tuesday was bad and has been fixed, there's no clean way to rerun "Tuesday" specifically. If two runs overlap because one ran long, they write over each other's files. And the only record of what ran is a growing text file.
 
-<MlLifecyclePipelineDiagram />
 
 **What an orchestrator is, precisely:** a system that runs a set of tasks with declared dependencies, on a schedule or in response to events, and tracks the state of every task in every run. From that state it can start tasks as soon as their inputs are ready, retry failures, skip work that's already done, rerun a chosen date range, alert on failure, and show the history.
 
