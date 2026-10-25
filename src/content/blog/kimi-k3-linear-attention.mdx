@@ -1,0 +1,177 @@
+---
+title: "Kimi K3.1 and the Road From Softmax Attention to Kimi Delta Attention"
+description: "Kimi K3.1 Pro is a 2.8-trillion-parameter open model in which three of every four attention layers keep a fixed-size memory instead of a growing KV cache. Here is how attention got there, step by step."
+date: 2026-10-25
+tags: [LLM architecture, linear attention, mixture of experts, open models]
+---
+
+# Kimi K3.1 and the Road From Softmax Attention to Kimi Delta Attention
+
+On 23 October 2026, Moonshot AI released [Kimi K3.1 Pro](https://www.alphaxiv.org/abs/2610.kimi-k3-1-pro), a post-trained version of its open model [Kimi K3](https://arxiv.org/abs/2607.24653). Moonshot reports 65.7% on Terminal-Bench 4.0, against 66.4% for Claude Opus 5.5, and says the full weights will be published by 4 November. The model has 2.8 trillion parameters, of which 104 billion are active for each token, and a context window of one million tokens.
+
+The size is not the interesting part. Of K3's 93 attention layers, 69 are not softmax attention at all. They are **Kimi Delta Attention** (KDA) layers, which keep a fixed-size memory however long the input gets. Only 24 layers use full attention.
+
+This post follows how attention got there. Each step fixed one problem with the step before, and KDA only makes sense once you have seen them in order.
+
+## 1. Softmax attention: exact, and it grows
+
+A transformer's attention layer lets each token look at every earlier token. For token $t$, it compares its query $q_t$ with the key $k_i$ of every earlier token, turns the scores into weights with a softmax, and averages their values:
+
+$$
+o_t = \sum_{i \le t} \frac{\exp(q_t^\top k_i)}{\sum_{j \le t} \exp(q_t^\top k_j)}\, v_i
+$$
+
+This is very good at recall: if a fact appeared 500,000 tokens ago, the matching key is still there to be found. The cost is that every key and value has to be kept. That store is the **KV cache**, and it grows linearly with the context. At a million tokens, the cache for a large model runs to many gigabytes per sequence, and every new token has to read all of it. Long context is expensive mainly because of this. The [attention and transformers page](/docs/deep-learning/attention-transformers) covers the mechanism in detail, and [linear attention and state-space models](/docs/deep-learning/linear-attention-and-state-space-models) covers the alternatives below.
+
+## 2. Linear attention: a fixed-size memory
+
+In 2020, [Katharopoulos and colleagues](https://arxiv.org/abs/2006.16236) asked what happens if you drop the softmax. Without it, the sum can be regrouped:
+
+$$
+o_t = \sum_{i \le t} (q_t^\top k_i)\, v_i = \Big(\sum_{i \le t} k_i v_i^\top\Big)^{\!\top} q_t = S_t^\top q_t
+$$
+
+The sum $S_t$ is a single $d_k \times d_v$ matrix, and it can be updated one token at a time:
+
+$$
+S_t = S_{t-1} + k_t v_t^\top
+$$
+
+That is a recurrent network. The memory is the same size at token 10 as at token 10 million, and each new token costs the same. In this view $S$ works as an associative memory: writing adds $k v^\top$, and reading $S^\top q$ returns the values stored under keys that resemble $q$.
+
+The problem is that the memory only ever adds. Nothing is removed and nothing is corrected. Write a second value under the same key, and reading that key returns the sum of the old and new values. As more pairs are written into a fixed number of dimensions, their keys overlap and the readouts blur. Linear attention was fast, but it trailed softmax attention badly on recall.
+
+## 3. The delta rule: write only the correction
+
+The fix came from an old idea, the delta rule from 1960s learning theory, applied to this memory in [DeltaNet](https://arxiv.org/abs/2102.11174) (2021) and made fast to train on GPUs in [2024](https://arxiv.org/abs/2406.06484). Before writing $v_t$ under key $k_t$, look up what the memory currently returns for $k_t$, and write only the difference:
+
+$$
+S_t = S_{t-1} + \beta_t\, k_t \big(v_t - S_{t-1}^\top k_t\big)^\top
+$$
+
+Here $\beta_t$, between 0 and 1, sets how strongly to overwrite. With $\beta_t = 1$ and a unit-length key, reading $k_t$ afterwards returns exactly $v_t$: the old value is replaced instead of piling up. Rearranged, the same update is
+
+$$
+S_t = (I - \beta_t k_t k_t^\top)\, S_{t-1} + \beta_t k_t v_t^\top
+$$
+
+The first factor erases the memory's content along the direction $k_t$; the second writes the new value there.
+
+Here is the difference on a toy memory: 64 dimensions, 20 key-value pairs written, then key 0 rewritten with a new value.
+
+```python
+import numpy as np
+
+rng = np.random.default_rng(0)
+d = 64
+def unit(v): return v / np.linalg.norm(v)
+
+keys = [unit(rng.standard_normal(d)) for _ in range(20)]
+values = [rng.standard_normal(d) for _ in range(20)]
+new_value_for_key0 = rng.standard_normal(d)
+
+# The stream: write 20 key-value pairs, then rewrite key 0 with a new value.
+stream = list(zip(keys, values)) + [(keys[0], new_value_for_key0)]
+
+def linear_attention(stream):
+    S = np.zeros((d, d))
+    for k, v in stream:
+        S += np.outer(k, v)                     # always add, never replace
+    return S
+
+def delta_rule(stream, beta=1.0):
+    S = np.zeros((d, d))
+    for k, v in stream:
+        S += beta * np.outer(k, v - S.T @ k)    # replace what k currently retrieves
+    return S
+
+def relative_error(S, k, target):
+    return np.linalg.norm(S.T @ k - target) / np.linalg.norm(target)
+
+for name, S in [("linear attention", linear_attention(stream)), ("delta rule", delta_rule(stream))]:
+    print(f"{name:17}  key 0 -> new value: error {relative_error(S, keys[0], new_value_for_key0):.2f}"
+          f"   key 5 -> its value: error {relative_error(S, keys[5], values[5]):.2f}")
+```
+
+```
+linear attention   key 0 -> new value: error 1.20   key 5 -> its value: error 0.31
+delta rule         key 0 -> new value: error 0.00   key 5 -> its value: error 0.36
+```
+
+The rewrite is the point. Linear attention returns a mix of the old and new values for key 0, an error larger than the value itself. The delta rule returns the new value exactly. The second column shows the limit both still share: 20 random keys in 64 dimensions are not orthogonal, so reading key 5 picks up some of the others' values. A fixed-size memory has finite capacity, and the delta rule can correct entries but cannot make room.
+
+## 4. Gating: let old memories fade
+
+Making room is what gating does. State-space models such as [Mamba-2](https://arxiv.org/abs/2405.21060) multiply the memory by a decay factor $\alpha_t$ between 0 and 1 at every step, so old content fades unless it is refreshed, and the model learns when to forget quickly (a new topic starts) and when to hold on.
+
+[Gated DeltaNet](https://arxiv.org/abs/2412.06464) (December 2024) combined the two. In its authors' words, gating enables rapid memory erasure while the delta rule allows targeted updates:
+
+$$
+S_t = (I - \beta_t k_t k_t^\top)\, \alpha_t\, S_{t-1} + \beta_t k_t v_t^\top
+$$
+
+Here $\alpha_t$ is a single number per head per step: the whole memory decays at the same rate.
+
+## 5. Kimi Delta Attention: a forget rate per channel
+
+KDA, introduced in [Kimi Linear](https://arxiv.org/abs/2510.26692) (October 2025) and used in K3, makes one change to Gated DeltaNet. The decay is a vector, one rate per key channel, rather than one number:
+
+$$
+S_t = (I - \beta_t k_t k_t^\top)\, \mathrm{Diag}(\alpha_t)\, S_{t-1} + \beta_t k_t v_t^\top, \qquad o_t = S_t^\top q_t
+$$
+
+with $\alpha_t \in (0,1)^{d_k}$. Some channels of the memory can hold information for a long time while others turn over every few tokens, within the same head. That finer control is what let Kimi Linear's 48-billion-parameter test model match full attention on its benchmarks while cutting KV cache use by up to 75% and decoding up to 6 times faster at a million tokens of context.
+
+K3 changed one more detail, for numerical reasons. Kimi Linear computed the log-decay as $-e^{A}\,\mathrm{Softplus}(z)$, which has no lower bound. K3 uses
+
+$$
+g_t = g_{\min}\, \mathrm{Sigmoid}(e^{A} z_t), \qquad \alpha_t = e^{g_t}, \qquad g_{\min} = -5
+$$
+
+so each step's log-decay stays between $-5$ and 0. GPUs train KDA in chunks of tokens, and the chunked form divides by the cumulative decay. With unbounded decay, that division can overflow in 16-bit arithmetic. With the bound, a 16-token tile's cumulative log-decay stays above $-80$, which BF16 can represent, so the whole computation can run as dense matrix multiplications on tensor cores. It is a small change with a large effect on training speed.
+
+## 6. Why K3 still keeps some full attention
+
+A fixed-size memory still forgets. For tasks that need one exact detail from far back, such as a function name defined 300,000 tokens earlier, a layer that keeps every key is hard to replace. So K3 is a hybrid: every block has three KDA layers followed by one full-attention layer, 69 and 24 in total.
+
+The full-attention layers are **Gated Multi-head Latent Attention**, the compressed-KV attention from DeepSeek, with an output gate. They use no positional encoding at all. The report's reasoning is that the KDA layers already handle position and recency, since their decay is position-sensitive by construction, so the full-attention layers can be left to match content anywhere in the context. A side effect is that extending the context window doesn't require retuning rotary position embeddings.
+
+The result: only a quarter of the layers keep a KV cache that grows with the context. The other three quarters carry a fixed-size state.
+
+## 7. The rest of K3, briefly
+
+Three other parts of the architecture are worth knowing:
+
+- **Mixture of experts.** Each layer's feed-forward network is split into 896 small experts, and each token is routed to 16 of them, plus 2 shared experts every token uses. That is how the model holds 2.8 trillion parameters but uses 104 billion per token. K3 balances the load across experts with what the report calls *quantile balancing*: each expert's routing bias is set from the score threshold that would give it exactly its target share of tokens, instead of being nudged up and down by a fixed step. The [mixture of experts section of Foundation Model Internals](/docs/llms-genai/foundation-model-internals#mixture-of-experts-moe) explains routing and load balancing from the start.
+- **Attention residuals.** A normal residual connection adds each layer's output to a running sum. In K3, each block of 12 layers instead attends over the outputs of all earlier blocks with a learned query, so a late layer can draw directly on an early representation rather than on whatever survived the sum.
+- **Precision.** After training, the expert weights are quantized to 4-bit (MXFP4) for inference, which is what makes a model this size practical to serve.
+
+## 8. Where this stops working
+
+- **Recall still costs something.** The design keeps 24 full-attention layers precisely because a fixed-size memory can't hold everything. The report states that K3's overall performance still trails the strongest closed models, without attributing that to any one component.
+- **No long-context speed figures for K3 itself.** The 75% and 6x figures come from the 48-billion-parameter Kimi Linear model. The K3 report gives an overall scaling efficiency of about 2.5 times Kimi K2, but the sections we read had no decoding-speed measurements at a million tokens for K3.
+- **Benchmarks are the vendor's own.** The K3.1 numbers are Moonshot's. Independent evaluations of the open weights will be possible after 4 November.
+- **Serving needs new kernels.** KDA layers need different inference code from standard attention. Support in serving frameworks is how quickly the design spreads beyond Moonshot.
+- **Deliberate gaps.** Moonshot says it removed offensive-security training data before release, so the open weights trail the frontier on that capability by design.
+
+## The line in one table
+
+| Step | Memory | What it fixed | What it left |
+|---|---|---|---|
+| Softmax attention (2017) | All keys and values, growing | Exact recall from anywhere in the context | Cost grows with every token |
+| Linear attention (2020) | One fixed $d_k \times d_v$ matrix | Constant cost per token | Only adds: no overwriting, blurry recall |
+| Delta rule (2021, 2024) | Same | Overwrites a key's value instead of adding | Can't make room; capacity fills up |
+| Gated DeltaNet (2024) | Same, decaying | Old content fades, one rate per head | Every channel forgets at the same rate |
+| KDA (2025) | Same, per-channel decay | Each channel forgets at its own rate | Still a fixed memory |
+| K3 hybrid (2026) | 3 KDA layers : 1 full-attention layer | Exact recall where needed, fixed state elsewhere | Vendor benchmarks only, so far |
+
+## Further reading
+
+- On this site: [attention and transformers](/docs/deep-learning/attention-transformers), [linear attention and state-space models](/docs/deep-learning/linear-attention-and-state-space-models), which now includes a section on the delta rule, [mixture of experts](/docs/llms-genai/foundation-model-internals#mixture-of-experts-moe), and [the KV cache](/docs/mlops/llm-inference-optimization#kv-cache)
+- Moonshot AI, [Kimi K3.1 Pro announcement](https://www.alphaxiv.org/abs/2610.kimi-k3-1-pro) (23 October 2026)
+- Kimi Team, [Kimi K3: Open Frontier Intelligence](https://arxiv.org/abs/2607.24653) (2026)
+- Kimi Team, [Kimi Linear: An Expressive, Efficient Attention Architecture](https://arxiv.org/abs/2510.26692) (2025)
+- Yang, Kautz and Hatamizadeh, [Gated Delta Networks: Improving Mamba2 with Delta Rule](https://arxiv.org/abs/2412.06464) (2024)
+- Yang et al., [Parallelizing Linear Transformers with the Delta Rule over Sequence Length](https://arxiv.org/abs/2406.06484) (2024)
+- Schlag, Irie and Schmidhuber, [Linear Transformers Are Secretly Fast Weight Programmers](https://arxiv.org/abs/2102.11174) (2021)
+- Katharopoulos et al., [Transformers are RNNs: Fast Autoregressive Transformers with Linear Attention](https://arxiv.org/abs/2006.16236) (2020)

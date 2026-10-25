@@ -24,7 +24,9 @@ Standard attention answers "which earlier words matter to this word?" by compari
 
 **How does it work?** Standard attention computes $\text{softmax}(QK^T/\sqrt{d_k})V$: because softmax is a nonlinear function applied to $QK^T$, it must be computed first, in full, before $V$ can be multiplied in — that's what forces the full $n \times n$ matrix into memory. [Katharopoulos et al. (2020)](https://arxiv.org/abs/2006.16236) replace $\exp(q^Tk/\sqrt{d})$ with a similarity of the form $\varphi(q)^T\varphi(k)$, for a feature map $\varphi(x) = \text{elu}(x) + 1$ (elu chosen simply to keep every output positive, since a similarity score should never go negative). Removing the nonlinear softmax wrapper makes the product **associative**:
 
-$$\big(\varphi(Q)\varphi(K)^T\big)V = \varphi(Q)\big(\varphi(K)^TV\big)$$
+$$
+\big(\varphi(Q)\varphi(K)^T\big)V = \varphi(Q)\big(\varphi(K)^TV\big)
+$$
 
 The right-hand side is the whole point: $\varphi(K)^TV$ is a $d \times d$ matrix — its size depends only on the feature dimension $d$, never on sequence length $n$. Compute that first, once, and every query just multiplies against it.
 
@@ -44,7 +46,9 @@ The associativity above has a second consequence worth making explicit: it turns
 
 **How does it work?** Define a running state matrix $S_i = \sum_{j \le i} \varphi(k_j)v_j^T$ and a running normalizer $z_i = \sum_{j \le i}\varphi(k_j)$. Generating token $i$ only needs the *update*, not a re-scan of every prior token:
 
-$$S_i = S_{i-1} + \varphi(k_i)v_i^T \qquad z_i = z_{i-1} + \varphi(k_i) \qquad y_i = \frac{\varphi(q_i)^TS_i}{\varphi(q_i)^Tz_i}$$
+$$
+S_i = S_{i-1} + \varphi(k_i)v_i^T \qquad z_i = z_{i-1} + \varphi(k_i) \qquad y_i = \frac{\varphi(q_i)^TS_i}{\varphi(q_i)^Tz_i}
+$$
 
 **Why is it useful?** $S_i$ is a fixed-size $d \times d$ matrix regardless of how many tokens have been generated — generating token 10,000 costs exactly as much as generating token 10, with no growing cache to scan. Standard attention's KV cache, by contrast, grows linearly with every generated token (see [the KV cache problem](/docs/deep-learning/attention-transformers#common-problems-sota-solutions)) — this recurrent view is a genuinely different way of paying for long context: constant memory per step, instead of a cache that keeps growing.
 
@@ -58,7 +62,9 @@ That compression-for-speed trade is exactly the design space state-space models 
 
 **How does it work?** A continuous-time linear state-space model defines a hidden state $h(t)$ evolving as $h'(t) = Ah(t) + Bx(t)$, with output $y(t) = Ch(t)$. To run on discrete tokens, [Gu & Dao (2023)](https://arxiv.org/abs/2312.00752) (building on Gu et al.'s earlier **S4**) discretize this with a step size $\Delta$ via zero-order hold: $\bar{A} = \exp(\Delta A)$, $\bar{B} = (\Delta A)^{-1}(\exp(\Delta A) - I)\cdot\Delta B$, giving a clean recurrence:
 
-$$h_t = \bar{A}h_{t-1} + \bar{B}x_t \qquad y_t = Ch_t$$
+$$
+h_t = \bar{A}h_{t-1} + \bar{B}x_t \qquad y_t = Ch_t
+$$
 
 Because $\bar A, \bar B, C$ don't change over time, this recurrence can *also* be computed as one big global convolution — which is what let S4 train efficiently in parallel, the same way attention does.
 
@@ -97,6 +103,28 @@ Every mechanism on this page pays for speed and constant memory the same way: by
 **Why is it useful (as a design signal, not a failure):** this pinpoints exactly *why* the trade-off exists, mechanistically — attention keeps an explicit, uncompressed record of every past token (the KV cache) and can retrieve any one of them exactly; an SSM's hidden state is a lossy compression of everything seen, by construction. Neither is a "better" architecture in the abstract — they're solving for different constraints. This is precisely the finding behind the "hybrid architectures" trend replacing pure-Transformer or pure-SSM designs in current models.
 
 **Limitation:** this doesn't mean SSMs are simply "worse" — for tasks that don't need needle-in-a-haystack exact retrieval (broad long-range context mixing, streaming/continuous inference, extremely long sequences where a growing KV cache is itself the bottleneck), the fixed-size state's constant memory is a genuine win attention cannot match.
+
+## The Delta Rule: Overwriting Instead of Adding
+
+The trade-off above is fixed: a fixed-size state can hold only so much. But plain linear attention also wastes the state it has, because its update, $S_t = S_{t-1} + k_t v_t^\top$, only ever adds. Write a new value under a key that's already stored, and reading that key afterwards returns the old and new values summed together.
+
+**What is it?** The delta rule, from 1960s learning theory, applied to the linear-attention state by [Schlag, Irie & Schmidhuber (2021)](https://arxiv.org/abs/2102.11174) as DeltaNet: before writing, look up what the state currently returns for the key, and write only the correction.
+
+**How does it work?** With a write strength $\beta_t \in (0,1)$:
+
+$$
+S_t = S_{t-1} + \beta_t\, k_t \big(v_t - S_{t-1}^\top k_t\big)^\top = (I - \beta_t k_t k_t^\top)\,S_{t-1} + \beta_t k_t v_t^\top
+$$
+
+The first term erases the state's content along $k_t$, and the second writes the new value there. With $\beta_t = 1$ and a unit-length key, reading $k_t$ afterwards returns exactly $v_t$. [Yang et al. (2024)](https://arxiv.org/abs/2406.06484) showed how to train this in parallel on GPUs, and [Gated DeltaNet](https://arxiv.org/abs/2412.06464) added Mamba-style decay $\alpha_t$, so old content can also fade: $S_t = (I - \beta_t k_t k_t^\top)\,\alpha_t S_{t-1} + \beta_t k_t v_t^\top$. Kimi Delta Attention ([Kimi Linear, 2025](https://arxiv.org/abs/2510.26692)) makes that decay a vector, one forget rate per key channel.
+
+**Why is it useful?** It makes a fixed-size state behave more like an editable memory: facts can be updated in place instead of blurring together. Kimi Linear's 48B-parameter model matched full attention on its benchmarks while cutting KV cache use by up to 75%, and Kimi K3 (2026) uses KDA for 69 of its 93 attention layers.
+
+**Limitation:** overwriting doesn't add capacity. The state is still $d_k \times d_v$, keys that aren't orthogonal still interfere when read back, and exact recall from far back still needs some full-attention layers, which is why every one of these models is a hybrid.
+
+<Remember>Linear attention only adds to its state, so rewriting a key mixes old and new values. The delta rule writes the correction instead, $v_t$ minus what the state currently returns, so a key's value can be replaced; gating then lets old content fade. It uses the fixed state better but doesn't enlarge it.</Remember>
+
+The post [Kimi K3.1 and the Road From Softmax Attention to Kimi Delta Attention](/blog/kimi-k3-linear-attention) walks through each step with a runnable example.
 
 ## Real Hybrid Architectures: Using Both on Purpose
 
