@@ -1,25 +1,23 @@
 ---
-title: "Sequence Models"
+title: "Sequence Models, In Full Depth"
 sidebar_position: 6
-description: "RNNs, LSTMs, and GRUs derived from first principles, including the real math behind the vanishing-gradient problem Attention was built to solve."
+description: "RNNs, LSTMs and GRUs from first principles: the recurrence, vanishing and exploding gradients derived through time, the gates that fix them with the gradient reach measured over 100 steps, sequence-to-sequence models and the attention that replaced recurrence, and where recurrence is coming back."
 ---
 
 
 import RnnUnrolledDiagram from '../../../viz/diagrams/RnnUnrolledDiagram';
 import VanishingGradientDiagram from '../../../viz/diagrams/VanishingGradientDiagram';
-import LstmVsGruDiagram from '../../../viz/diagrams/LstmVsGruDiagram';
-import ArchitectureEvolutionDiagram from '../../../viz/diagrams/ArchitectureEvolutionDiagram';
 import BidirectionalRnnDiagram from '../../../viz/diagrams/BidirectionalRnnDiagram';
-import StackedRnnDiagram from '../../../viz/diagrams/StackedRnnDiagram';
 import LstmCellDiagram from '../../../viz/diagrams/LstmCellDiagram';
 import GruCellDiagram from '../../../viz/diagrams/GruCellDiagram';
 import Seq2SeqDiagram from '../../../viz/diagrams/Seq2SeqDiagram';
 import Seq2SeqAttentionDiagram from '../../../viz/diagrams/Seq2SeqAttentionDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Sequence Models
+# Sequence Models, In Full Depth
 
-Text, audio, time series, DNA — anywhere order carries meaning, you need an architecture that processes sequences, not fixed-size independent inputs.
+[Neural Network Fundamentals](/docs/deep-learning/neural-network-fundamentals) and [CNNs](/docs/deep-learning/cnns) took inputs of a fixed size: a row of features, an image. Text, speech, sensor readings and DNA don't come that way. They are sequences of any length, and their meaning lives in the order. This page builds the networks designed for them. It starts with the recurrent neural network, which carries a running summary from step to step, derives exactly why training it fails over long sequences, shows how the LSTM's and GRU's gates fix that, and measures how far back each can still "feel" its inputs. It then follows the line from encoder-decoder models to the attention mechanism that ended up replacing recurrence altogether, and closes with why recurrence is coming back in 2026's state-space and linear-attention models.
 
 <ELI5>
 
@@ -27,7 +25,7 @@ Most models this site covers look at one snapshot at a time — a row of a sprea
 
 </ELI5>
 
-## What Is Sequential Data?
+## 1. What Is Sequential Data?
 
 Most of the models covered elsewhere on this site (linear/logistic regression, a plain feedforward network, a CNN on a single image) assume every input is **independent and identically distributed (i.i.d.)** — shuffle the rows of your training set and nothing changes, because each row is a self-contained example with no relationship to the ones before or after it.
 
@@ -44,11 +42,13 @@ Most of the models covered elsewhere on this site (linear/logistic regression, a
 
 **Sequential models** are architectures built specifically to consume data in this form — processing elements in order (or at least order-aware), so a prediction at any point can depend on everything that came before it, not just the current element in isolation. Everything below is one family of approaches to that same problem, roughly in the order the field actually solved it.
 
-## Recurrent Neural Networks (RNNs)
+## 2. Recurrent Neural Networks (RNNs)
 
 An RNN processes a sequence one element at a time, maintaining a **hidden state** that's updated at each step and carries information forward. Written out with its actual weights:
 
-$$h_t = \tanh\left(W_h h_{t-1} + W_x x_t + b\right)$$
+$$
+h_t = \tanh\left(W_h h_{t-1} + W_x x_t + b\right)
+$$
 
 The same weight matrices $W_h$, $W_x$, $b$ are reused at *every* time step — this weight sharing is what lets an RNN handle sequences of any length with a fixed number of parameters, and it's also exactly why gradients have to flow through so many repeated multiplications during training (below). In principle, this lets information from any earlier point in the sequence influence later predictions.
 
@@ -64,19 +64,27 @@ The same weight matrices $W_h$, $W_x$, $b$ are reused at *every* time step — t
 
 Backpropagation-through-time (BPTT) unrolls the recurrence and applies the chain rule across every time step. Take the loss $L$ at the final step $T$, and ask how it depends on a much earlier hidden state $h_t$:
 
-$$\frac{\partial L}{\partial h_t} = \frac{\partial L}{\partial h_T} \cdot \frac{\partial h_T}{\partial h_t}$$
+$$
+\frac{\partial L}{\partial h_t} = \frac{\partial L}{\partial h_T} \cdot \frac{\partial h_T}{\partial h_t}
+$$
 
 The second factor is where the problem lives. $h_T$ depends on $h_{T-1}$, which depends on $h_{T-2}$, all the way back to $h_t$ — so by the chain rule, $\partial h_T/\partial h_t$ is itself a **product** across every intermediate step:
 
-$$\frac{\partial h_T}{\partial h_t} = \prod_{k=t+1}^{T} \frac{\partial h_k}{\partial h_{k-1}}$$
+$$
+\frac{\partial h_T}{\partial h_t} = \prod_{k=t+1}^{T} \frac{\partial h_k}{\partial h_{k-1}}
+$$
 
 Each factor comes directly from differentiating the recurrence $h_k = \tanh(W_h h_{k-1} + W_x x_k + b)$ with respect to $h_{k-1}$:
 
-$$\frac{\partial h_k}{\partial h_{k-1}} = \text{diag}\big(\tanh'(z_k)\big)\, W_h \qquad \text{where } z_k = W_h h_{k-1} + W_x x_k + b$$
+$$
+\frac{\partial h_k}{\partial h_{k-1}} = \text{diag}\big(\tanh'(z_k)\big)\, W_h \qquad \text{where } z_k = W_h h_{k-1} + W_x x_k + b
+$$
 
 So the gradient flowing back to an early step is a product of $(T-t)$ of these — one $\tanh'(z_k)$ term times $W_h$, repeated once per step in between:
 
-$$\frac{\partial h_T}{\partial h_t} = \prod_{k=t+1}^{T} \text{diag}\big(\tanh'(z_k)\big)\, W_h$$
+$$
+\frac{\partial h_T}{\partial h_t} = \prod_{k=t+1}^{T} \text{diag}\big(\tanh'(z_k)\big)\, W_h
+$$
 
 A product, not a sum — that's the entire problem. $\tanh'(z) = 1 - \tanh^2(z)$ has a maximum of exactly 1 (at $z=0$) and is smaller everywhere else, so every one of these $(T-t)$ factors is bounded by roughly $\|W_h\|$ at best:
 
@@ -99,33 +107,45 @@ Drag $w_h$ below and watch the two failure modes happen in real time — same pr
 
 **The standard fixes**: gradient clipping directly caps the exploding case (rescale the gradient if its norm crosses a threshold — cheap and effective). The vanishing case is harder, and is exactly what LSTM and GRU's gating mechanisms below are built to solve, by giving gradients an additive path through the cell state instead of a purely multiplicative one. See [Training Deep Networks](/docs/deep-learning/training-deep-networks#vanishing-exploding-gradients) for the same problem's general (non-recurrent) form, and residual connections as its feedforward-network fix.
 
-## LSTM and GRU
+## 3. LSTM and GRU
 
 **LSTM (Long Short-Term Memory)** introduces a separate "cell state" $c_t$ plus three gates — forget, input, output — that explicitly control what information gets added, kept, or discarded at each step, each one its own small learned layer:
 
 **Forget gate** — how much of the old cell state to keep:
 
-$$f_t = \sigma\left(W_f [h_{t-1}, x_t] + b_f\right)$$
+$$
+f_t = \sigma\left(W_f [h_{t-1}, x_t] + b_f\right)
+$$
 
 **Input gate** — how much of the new candidate to add:
 
-$$i_t = \sigma\left(W_i [h_{t-1}, x_t] + b_i\right)$$
+$$
+i_t = \sigma\left(W_i [h_{t-1}, x_t] + b_i\right)
+$$
 
 **Output gate** — how much of the cell state to reveal as the hidden state:
 
-$$o_t = \sigma\left(W_o [h_{t-1}, x_t] + b_o\right)$$
+$$
+o_t = \sigma\left(W_o [h_{t-1}, x_t] + b_o\right)
+$$
 
 **Candidate values** — new content proposed for the cell state:
 
-$$\tilde{c}_t = \tanh\left(W_c [h_{t-1}, x_t] + b_c\right)$$
+$$
+\tilde{c}_t = \tanh\left(W_c [h_{t-1}, x_t] + b_c\right)
+$$
 
 **New cell state** — forget the old, add the new, both gated:
 
-$$c_t = f_t \odot c_{t-1} + i_t \odot \tilde{c}_t$$
+$$
+c_t = f_t \odot c_{t-1} + i_t \odot \tilde{c}_t
+$$
 
 **New hidden state** — the output gate reveals part of the (squashed) cell state:
 
-$$h_t = o_t \odot \tanh(c_t)$$
+$$
+h_t = o_t \odot \tanh(c_t)
+$$
 
 where $[h_{t-1}, x_t]$ is the previous hidden state concatenated with the current input, and $\odot$ is the **Hadamard (elementwise) product** — each gate is a vector of values in $(0,1)$ that scales its target *elementwise*, not a full matrix multiply. Read the new-cell-state and new-hidden-state lines directly as the whole mechanism: the forget gate decides how much of the old cell state to keep, the input gate decides how much of the new candidate to add — both are $\sigma$-gated so each is a soft "keep this fraction" decision per dimension, computed fresh every time step by the gates above.
 
@@ -135,29 +155,92 @@ where $[h_{t-1}, x_t]$ is the previous hidden state concatenated with the curren
 
 **Update gate** — how much of the old hidden state to keep vs. replace with the new candidate:
 
-$$z_t = \sigma\left(W_z [h_{t-1}, x_t] + b_z\right)$$
+$$
+z_t = \sigma\left(W_z [h_{t-1}, x_t] + b_z\right)
+$$
 
 **Reset gate** — how much of the old hidden state to use when computing the new candidate:
 
-$$r_t = \sigma\left(W_r [h_{t-1}, x_t] + b_r\right)$$
+$$
+r_t = \sigma\left(W_r [h_{t-1}, x_t] + b_r\right)
+$$
 
 **Candidate hidden state** — new content proposed, with the reset gate applied to the old state first:
 
-$$\tilde{h}_t = \tanh\left(W_h [r_t \odot h_{t-1}, x_t] + b_h\right)$$
+$$
+\tilde{h}_t = \tanh\left(W_h [r_t \odot h_{t-1}, x_t] + b_h\right)
+$$
 
 **New hidden state** — interpolate between old and candidate, weighted by the update gate:
 
-$$h_t = (1 - z_t) \odot h_{t-1} + z_t \odot \tilde{h}_t$$
+$$
+h_t = (1 - z_t) \odot h_{t-1} + z_t \odot \tilde{h}_t
+$$
 
 The last line is a direct interpolation between the old hidden state and the new candidate, controlled entirely by $z_t$ — no separate cell state to maintain, which is exactly where GRU's parameter savings come from. The reset gate $r_t$ decides how much of the *old* hidden state gets used when computing the new candidate in the first place.
 
 <GruCellDiagram />
 
-"Fewer parameters" made concrete — same per-gate cost, one fewer gate:
+In parameters, an LSTM layer with input size $d$ and hidden size $h$ has four weight blocks of size $h(d + h)$ plus biases, a GRU three: about 25% fewer. [NN Layers](/docs/deep-learning/nn-layers-reference) checks both counts against PyTorch.
 
-<LstmVsGruDiagram />
+**Why the gates fix vanishing gradients.** Look at the cell-state update again: $c_t = f_t \odot c_{t-1} + i_t \odot \tilde{c}_t$. Differentiating along the cell state alone gives $\partial c_t / \partial c_{t-1} = \operatorname{diag}(f_t)$: no weight matrix and no squashing derivative, just the forget gate. When the network wants to remember, it sets $f_t$ close to 1, and the gradient passes back through many steps almost unchanged. It's the same trick as a [residual connection](/docs/deep-learning/training-deep-networks): an additive path that the long product of Jacobians doesn't have to go through. The GRU's interpolation $h_t = (1 - z_t) \odot h_{t-1} + z_t \odot \tilde{h}_t$ gives the same kind of path whenever $z_t$ is near 0. A common practical detail follows: LSTM forget-gate biases are often initialized to 1, so the network starts out remembering by default.
 
-## Sequence-to-Sequence Models
+<PredictFirst
+  question="An LSTM's forget gate outputs exactly 0.95 at every step for some dimension of the cell state. Along that cell-state path alone, roughly what fraction of the gradient survives 50 steps back?"
+  options={[
+    'About 95%',
+    'About 8%, since 0.95 to the power 50 is about 0.077',
+    'Essentially zero, the same as a plain RNN',
+    'More than 100%, because gates amplify gradients',
+  ]}
+  correctIndex={1}
+  explanation="Along the cell state, each step multiplies the gradient by the forget gate's value. 0.95^50 ≈ 0.077: diminished, but nothing like a plain RNN, where each factor also includes tanh′ and W_h and the product typically falls by many orders of magnitude over 50 steps. With the gate at 0.99, about 60% survives."
+/>
+
+## 4. Measuring How Far Back a Network Can Learn
+
+The derivation predicts something testable. The gradient of the last hidden state with respect to the first input, $\partial h_T / \partial x_1$, says how much the first input can influence what's learned at step $T$. For a plain RNN it should collapse exponentially with $T$; for gated cells it should fall far more slowly. Here it is measured for freshly initialized layers of each kind, averaged over 20 random sequences:
+
+```python
+import torch
+import torch.nn as nn
+
+# How much does the first input of a sequence still affect the last hidden state?
+# Measure the gradient of the final state with respect to the first input, at initialization.
+torch.manual_seed(0)
+H = 64
+
+def first_input_influence(cell, T, trials=20):
+    total = 0.0
+    for _ in range(trials):
+        x = torch.randn(1, T, 16, requires_grad=True)
+        out, _ = cell(x)
+        out[0, -1].sum().backward()
+        total += x.grad[0, 0].norm().item()             # influence of step 1 on step T
+    return total / trials
+
+rnn, gru, lstm = nn.RNN(16, H, batch_first=True), nn.GRU(16, H, batch_first=True), nn.LSTM(16, H, batch_first=True)
+with torch.no_grad():                                   # common practice: start the LSTM forget gate near "keep"
+    lstm.bias_ih_l0[H:2 * H].fill_(1.0)                 # PyTorch orders the gates input, forget, cell, output
+print("gradient of the last hidden state with respect to the first input")
+for T in (1, 5, 10, 25, 50, 100):
+    print(f"T = {T:3d}   RNN {first_input_influence(rnn, T):.1e}   GRU {first_input_influence(gru, T):.1e}   LSTM {first_input_influence(lstm, T):.1e}")
+```
+
+```text
+gradient of the last hidden state with respect to the first input
+T =   1   RNN 2.5e+00   GRU 1.1e+00   LSTM 4.0e-01
+T =   5   RNN 1.4e-01   GRU 1.0e-01   LSTM 1.1e-01
+T =  10   RNN 4.1e-03   GRU 7.2e-03   LSTM 5.2e-02
+T =  25   RNN 5.0e-07   GRU 8.9e-06   LSTM 3.3e-03
+T =  50   RNN 2.9e-13   GRU 1.0e-10   LSTM 3.3e-05
+T = 100   RNN 0.0e+00   GRU 9.2e-21   LSTM 4.7e-09
+```
+
+The plain RNN's gradient falls by about a factor of 20 every five steps: after 25 steps it is $10^{-7}$, after 50 it is $10^{-13}$, and at 100 it has underflowed to exactly zero. The first input can no longer affect learning at all. The GRU does better, and the LSTM, with its forget gate starting near "keep", holds on longest: at 50 steps its gradient is eight orders of magnitude larger than the RNN's. That is the whole case for gating, in numbers. Notice too that even the LSTM's gradient still decays: gates slow the problem down rather than removing it, which is part of why attention, where step 1 connects directly to step 100, eventually won.
+
+
+## 5. Sequence-to-Sequence Models
 
 For tasks where both input and output are sequences of different lengths (translation, summarization): an **encoder** RNN compresses the input sequence into a fixed representation, and a **decoder** RNN generates the output sequence from that representation, one token at a time.
 
@@ -165,7 +248,9 @@ For tasks where both input and output are sequences of different lengths (transl
 
 **The bottleneck problem**: compressing an entire input sequence into one fixed-size vector loses information, especially for long sequences — no matter how long the input is, it has to fit through that same single vector.
 
-## Sequence-to-Sequence with Attention
+## 6. Adding Attention
+
+### Sequence-to-Sequence with Attention
 
 The direct fix, and the direct predecessor to the Transformer: instead of forcing the encoder to compress everything into one fixed-size context vector, let the decoder look back at *all* encoder hidden states directly, at every output step, weighted by relevance to what it's generating right now.
 
@@ -173,11 +258,10 @@ The direct fix, and the direct predecessor to the Transformer: instead of forcin
 
 This is the **Bahdanau/Luong attention** mechanism: at each decoder step, score the current decoder state against every encoder state, turn those scores into weights (softmax), and take a weighted sum of the encoder states as that step's context — recomputed fresh every step, so the decoder can effectively "look at" whichever part of the input matters most for the token it's producing right now. This architecture is what proved attention works, before the 2017 "Attention Is All You Need" paper removed the RNN entirely and built a model out of attention alone (see [Attention & Transformers](/docs/deep-learning/attention-transformers)).
 
-The whole arc, walked as one chain — click a stage to see exactly what it fixed and what was still left over for the next one:
 
-<ArchitectureEvolutionDiagram />
+## 7. Variants
 
-## Named Variants Worth Knowing
+### Named Variants Worth Knowing
 
 - **Bidirectional RNN/LSTM (BiRNN/BiLSTM)**: runs two RNNs over the sequence — one forward, one backward — and concatenates their hidden states at each position, so every position's representation depends on both past *and* future context. Only usable when the full sequence is available upfront (not for streaming/online generation), which is exactly why it's common in encoders but not decoders.
 
@@ -185,12 +269,11 @@ The whole arc, walked as one chain — click a stage to see exactly what it fixe
 
 - **Deep (stacked) RNN**: multiple RNN layers stacked on top of each other, the way depth helps any network — each layer's output sequence feeds the next layer as its input sequence, building progressively more abstract sequence representations.
 
-<StackedRnnDiagram />
 - **Peephole LSTM**: a variant where the gates can also look at the cell state directly (not just the hidden state and input) when deciding what to forget/add — lets gating decisions depend on the actual memory content, useful for tasks sensitive to precise timing.
 - **ConvLSTM**: replaces the LSTM's fully-connected gate computations with convolutions — built for spatiotemporal data (video, weather radar) where each time step is itself a spatial grid, so convolution captures spatial structure while the LSTM's gating captures temporal structure.
 - **Pointer Networks**: a sequence-to-sequence variant where the output at each step is an attention-weighted *pointer back into the input sequence* (e.g. selecting one of the input tokens) rather than a token from a fixed output vocabulary — built for problems like combinatorial optimization (convex hull, TSP) and extractive summarization, where the output is literally a subset/reordering of the input.
 
-## Why These Architectures Ran Out of Road
+## 8. Why These Architectures Ran Out of Road
 
 Each fix above solved the previous architecture's specific failure — and each one still left a real limitation standing, right up until attention alone (no recurrence at all) removed the last of them:
 
@@ -204,4 +287,62 @@ Each fix above solved the previous architecture's specific failure — and each 
 
 The pattern across every row: each architecture up to Seq2Seq+Attention kept recurrence and patched around its consequences. The Transformer is the point where the field stopped patching recurrence and asked what's left if you remove it entirely — every position attends directly to every other position, in parallel, regardless of distance, with no chain of hidden states to bottleneck or vanish through.
 
-Next: [Attention & Transformers](/docs/deep-learning/attention-transformers) — the architecture behind every modern LLM.
+## 9. Recurrence Comes Back
+
+Transformers won because they train in parallel and connect every position to every other. Their cost is the other side of the same coin: attention's compute grows with the square of the sequence length, and generating each new token needs a key-value cache that grows with everything generated so far. A recurrent model has the opposite profile: a fixed-size state, constant memory per step, and cost linear in length, but sequential training.
+
+Since 2023 a family of models has tried to get both. **State-space models** such as Mamba (2023) and its successors, **linear attention** variants, **RWKV**, and **xLSTM** (2024, a modernized LSTM from Hochreiter's group) use recurrences that are *linear* in the state, which means training can be computed in parallel across the sequence like a transformer, while generation runs step by step with a fixed-size state like an RNN. Several 2025 and 2026 language models are hybrids, interleaving many such layers with a few full-attention layers. [Linear Attention and State-Space Models](/docs/deep-learning/linear-attention-and-state-space-models) covers how they work.
+
+<PredictFirst
+  question="A model must generate a 100,000-token output. Which grows with the length generated so far: a transformer's per-step memory, or a recurrent or state-space model's?"
+  options={[
+    'Both grow linearly',
+    "The transformer's key-value cache grows with every token; the recurrent model's state stays the same size",
+    "The recurrent model's state grows; the transformer's stays fixed",
+    'Neither grows',
+  ]}
+  correctIndex={1}
+  explanation="Attention needs the keys and values of every previous token at each step, so the cache grows linearly with what has been generated. A recurrent or state-space model compresses everything into a fixed-size state, so its memory per step is constant, which is exactly why these models are attractive for very long sequences."
+/>
+
+## 10. When *Not* to Use a Recurrent Network
+
+| Situation | Better choice |
+|---|---|
+| Language modelling or translation at any real scale | A transformer, which trains in parallel and connects distant positions directly |
+| A plain RNN for dependencies longer than about 10 to 20 steps | An LSTM or GRU at minimum, or attention |
+| Bidirectional layers for streaming or text generation | Unidirectional layers; a bidirectional model needs the whole sequence first |
+| Very long sequences where attention's memory is the bottleneck | A state-space or linear-attention model, or a hybrid |
+| Short tabular time series with a few hundred points | Classical forecasting models before any deep network |
+| Training an RNN without gradient clipping | Clip the gradient norm; exploding gradients are routine in recurrent training |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Sequential data | Order carries meaning; examples aren't independent |
+| RNN | $h_t = \tanh(W_h h_{t-1} + W_x x_t + b)$, same weights at every step |
+| BPTT | The gradient to step $t$ is a product of $T - t$ Jacobians |
+| Vanishing / exploding | That product shrinks or grows exponentially; the dominant eigenvalue of $W_h$ decides |
+| LSTM | Forget, input and output gates around an additive cell state |
+| GRU | Update and reset gates, no separate cell; about 25% fewer parameters |
+| Why gates work | $\partial c_t / \partial c_{t-1} = \operatorname{diag}(f_t)$: an additive path for the gradient |
+| Measured | At 50 steps: RNN $10^{-13}$, GRU $10^{-10}$, LSTM $10^{-5}$ |
+| Seq2seq + attention | Remove the fixed-vector bottleneck; the step before the transformer |
+| Today | Transformers dominate; linear recurrences return in state-space and hybrid models |
+
+---
+
+Next: [Attention & Transformers](/docs/deep-learning/attention-transformers), the architecture behind every modern LLM.
+
+## Sources
+
+- Elman, [Finding Structure in Time](https://onlinelibrary.wiley.com/doi/10.1207/s15516709cog1402_1) (1990)
+- Bengio, Simard and Frasconi, [Learning long-term dependencies with gradient descent is difficult](https://ieeexplore.ieee.org/document/279181) (1994)
+- Hochreiter and Schmidhuber, [Long Short-Term Memory](https://www.bioinf.jku.at/publications/older/2604.pdf) (1997)
+- Pascanu, Mikolov and Bengio, [On the difficulty of training recurrent neural networks](https://arxiv.org/abs/1211.5063) (2013)
+- Cho et al., [Learning Phrase Representations using RNN Encoder-Decoder](https://arxiv.org/abs/1406.1078) (2014), the GRU
+- Sutskever, Vinyals and Le, [Sequence to Sequence Learning with Neural Networks](https://arxiv.org/abs/1409.3215) (2014)
+- Bahdanau, Cho and Bengio, [Neural Machine Translation by Jointly Learning to Align and Translate](https://arxiv.org/abs/1409.0473) (2014)
+- Jozefowicz, Zaremba and Sutskever, [An Empirical Exploration of Recurrent Network Architectures](https://proceedings.mlr.press/v37/jozefowicz15.html) (2015), on forget-gate bias
+- Gu and Dao, [Mamba](https://arxiv.org/abs/2312.00752) (2023); Beck et al., [xLSTM](https://arxiv.org/abs/2405.04517) (2024)
