@@ -219,7 +219,53 @@ The same cache holding 9% of the items achieves anything from 22% to 85% hits de
 
 LRU also falls short of the ideal, most of all when traffic is less skewed (22% against 37%). It keeps whatever was used *recently*, so a burst of one-off requests from the long tail pushes out items that are popular overall. Frequency-aware policies (`allkeys-lfu` in Redis, or W-TinyLFU in application caches such as Caffeine) close much of that gap. Redis also only approximates LRU, sampling a few keys (`maxmemory-samples`, 5 by default) and evicting the oldest of the sample, to keep eviction cheap.
 
-## 7. Semantic Caching for LLM Answers
+## 7. Embedding Caches
+
+Before getting to semantic caching, there's a simpler and entirely safe cache that every retrieval system should have: a cache of **embeddings**, keyed by the exact text. Embedding the same text twice with the same model always gives the same vector, so there's no staleness question at all, only a key-design question. Re-indexing a document collection is the usual place this pays: most documents don't change from one day to the next.
+
+```python
+import hashlib
+import time
+
+import numpy as np
+from sentence_transformers import SentenceTransformer
+
+MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+encoder = SentenceTransformer(MODEL)
+cache: dict[str, np.ndarray] = {}                  # Redis or a vector store in production
+
+def key(text: str) -> str:
+    # model name + normalized text: a new embedding model must never reuse old vectors
+    return hashlib.sha256(f"{MODEL}\n{' '.join(text.split()).lower()}".encode()).hexdigest()
+
+def embed(texts: list[str]) -> np.ndarray:
+    missing = [t for t in dict.fromkeys(texts) if key(t) not in cache]
+    if missing:                                     # one batched call for all misses
+        for t, v in zip(missing, encoder.encode(missing, normalize_embeddings=True)):
+            cache[key(t)] = v
+    return np.stack([cache[key(t)] for t in texts])
+
+# A nightly re-index where 95% of 2,000 documents are unchanged since yesterday
+docs = [f"Help article {i}: how to manage setting number {i} in your account." for i in range(2_000)]
+start = time.perf_counter(); embed(docs); first = time.perf_counter() - start
+docs_next_day = docs[:1_900] + [f"Help article {i}: updated guidance for setting {i}." for i in range(1_900, 2_000)]
+start = time.perf_counter(); embed(docs_next_day); second = time.perf_counter() - start
+print(f"day 1: {first:.2f} s to embed 2,000 documents")
+print(f"day 2: {second:.2f} s, {len(cache) - 2_000} new embeddings computed, 1,900 served from cache")
+```
+
+```text
+day 1: 4.84 s to embed 2,000 documents
+day 2: 0.19 s, 100 new embeddings computed, 1,900 served from cache
+```
+
+The second run embedded only the 100 changed documents, 25 times faster, and with a paid embedding API the saving is in money as well as time. Three details make it correct:
+
+- **The model name is part of the key.** Vectors from different embedding models (or versions of one model) aren't comparable; a cache keyed on text alone would silently mix them after a model upgrade.
+- **Normalize text before hashing** (whitespace, and case if the model is case-insensitive), so trivially different strings share an entry, but no further: any change in meaning must change the key.
+- **Batch the misses.** One call for all uncached texts keeps the speed of batched encoding.
+
+## 8. Semantic Caching for LLM Answers
 
 LLM calls are slow and expensive, and many applications answer the same questions repeatedly, so caching answers is attractive. Exact-match caching (keyed on the prompt's hash) is safe but rarely hits, because users phrase the same question many ways. **Semantic caching** keys on meaning instead: embed the incoming question, find the most similar cached question, and reuse its answer if the similarity is above a threshold.
 
@@ -274,7 +320,7 @@ The provider-side alternative is **prompt caching**: providers cache the process
   explanation="A semantic cache can be wrong in a way an exact-match cache cannot: it can serve a confident, fluent answer to a different question. Hit rate measures savings; the false-hit rate measures harm. Questions with negation or opposite intent can score as high as true paraphrases, so the evaluation sample must include them, and the threshold should be set from that measurement rather than from intuition."
 />
 
-## 8. When *Not* to Cache
+## 9. When *Not* to Cache
 
 | Situation | Better choice |
 |---|---|
@@ -294,6 +340,7 @@ The provider-side alternative is **prompt caching**: providers cache the process
 | Invalidation | Explicit invalidation where possible, TTL as a safety net, versioned keys for model changes |
 | Stampede | One expired hot key, 50 concurrent misses, 50 queries; a single-flight lock makes it 1 |
 | Eviction | Hit rate depends on traffic skew; LRU trails the ideal most when traffic is flat; try LFU |
+| Embedding cache | Key on model name plus normalized text; always safe, large savings on re-indexing |
 | Semantic caching | Embedding similarity confuses opposite intents; calibrate the threshold on near-misses |
 
 ---
@@ -307,3 +354,4 @@ Next: [Legal, Licensing & Governance](/docs/mlops/legal-licensing-and-governance
 - G. Einziger, R. Friedman and B. Manes, [TinyLFU: A Highly Efficient Cache Admission Policy](https://arxiv.org/abs/1512.00727), ACM Transactions on Storage 2017
 - A. Vattani, F. Chierichetti and K. Lowenstein, [Optimal Probabilistic Cache Stampede Prevention](https://www.vldb.org/pvldb/vol8/p886-vattani.pdf), VLDB 2015
 - M. Kleppmann, [How to do distributed locking](https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html), 2016
+- A. Shekhar, [AI System Design](https://github.com/amitshekhariitbhu/ai-system-design) (Apache-2.0), on prompt, semantic and embedding caches

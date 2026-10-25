@@ -190,6 +190,42 @@ The test catches it deterministically, on every run, at no cost. The fix belongs
 
 **When to re-record:** whenever the prompt, the model version or the retrieval changes, and on a schedule (for example nightly) against the live model, with the live run judged by pass rate (section 2) rather than all-or-nothing. Pin the model to a dated version (such as `provider-model-2026-09`) rather than an alias that the provider can move, so that a provider update shows up as a deliberate re-record rather than a mysterious change.
 
+### Prompt registries
+
+Keeping prompts as files in the application's repository works until prompts change more often than the application, or are edited by people who don't deploy code. A **prompt registry** is the model registry idea applied to prompts: each prompt has a name, every edit creates an immutable numbered version with a message, evaluation results are attached to the version, and a movable alias such as `production` says which version is live. Applications load the prompt by alias at runtime, so promoting or rolling back a prompt is moving an alias, gated by the same evaluation as any change. MLflow 3 includes one; Langfuse, LangSmith and most AI gateways offer equivalents. Here the fix for the JSON-format failure above becomes version 2, with its golden-set result recorded, and is promoted:
+
+```python
+import mlflow
+
+mlflow.set_tracking_uri("sqlite:///mlflow.db")
+
+v1 = mlflow.genai.register_prompt(
+    name="ticket-classifier",
+    template="Classify the support ticket into billing, bug or account. Reply with JSON only.\nTicket: {{ticket}}",
+    commit_message="first version",
+)
+v2 = mlflow.genai.register_prompt(
+    name="ticket-classifier",
+    template=("Classify the support ticket into billing, bug or account. Reply with JSON only, "
+              "no text before or after it.\nTicket: {{ticket}}"),
+    commit_message="forbid text around the JSON (fixes the 'Sure! Here is the JSON' failure)",
+    tags={"golden_set_pass_rate": "0.97", "eval_run": "nightly-2026-10-24"},
+)
+mlflow.genai.set_prompt_alias("ticket-classifier", alias="production", version=v2.version)
+
+prompt = mlflow.genai.load_prompt("prompts:/ticket-classifier@production")   # what the application calls
+print("serving version", prompt.version, "|", prompt.commit_message)
+print(prompt.format(ticket="I was charged twice for October"))
+```
+
+```text
+serving version 2 | forbid text around the JSON (fixes the 'Sure! Here is the JSON' failure)
+Classify the support ticket into billing, bug or account. Reply with JSON only, no text before or after it.
+Ticket: I was charged twice for October
+```
+
+Whatever stores them, the rules are the same as for models: never edit a version in place, record which prompt version produced each logged response, and let a prompt reach `production` only through the evaluation gate in section 7.
+
 ## 4. Mechanical Checks: Schemas and Tool Calls
 
 Some properties must hold on *every* output, and can be checked exactly. These are the cheapest and most valuable LLM tests, and they belong both in the test suite and at runtime in the application.
@@ -331,7 +367,7 @@ The structure mirrors [CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd): cheap de
 | Two kinds of LLM test | Mechanical checks on every output; quality measured as a rate over cases |
 | Pass rates | Report with a Wilson interval; 19/20 is consistent with 76% to 99% |
 | Comparing prompts | Paired McNemar test on the cases that changed; read the cases a change broke |
-| Prompts as code | In the repo, reviewed, versioned, tested on change |
+| Prompts as code | In the repo or a prompt registry: immutable versions, evaluation results, a `production` alias |
 | Record and replay | Deterministic, free CI tests; re-record when the prompt or pinned model changes |
 | Schemas and tools | Validate every structured output and tool call; check tool choice and trajectory |
 | LLM judges | Calibrate against people with Cohen's kappa; raw agreement hides useless judges |
@@ -348,3 +384,5 @@ Next: [Production Reliability](/docs/mlops/production-reliability) covers what k
 - J. Cohen, [A Coefficient of Agreement for Nominal Scales](https://journals.sagepub.com/doi/10.1177/001316446002000104), Educational and Psychological Measurement 20 (1960)
 - L. Zheng et al., [Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena](https://arxiv.org/abs/2306.05685), NeurIPS 2023
 - M. T. Ribeiro et al., [Beyond Accuracy: Behavioral Testing of NLP Models with CheckList](https://aclanthology.org/2020.acl-main.442/), ACL 2020
+- MLflow, [Prompt Registry](https://mlflow.org/docs/latest/genai/prompt-registry/)
+- A. Shekhar, [AI System Design](https://github.com/amitshekhariitbhu/ai-system-design) (Apache-2.0), on prompt management and versioning

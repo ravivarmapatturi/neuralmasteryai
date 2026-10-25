@@ -36,6 +36,8 @@ The first decision isn't *where* to host a model, it's whether to host one at al
 
 If none of those applies, an API is usually the right answer, and this page is background. If one does, the rest of the page is the work involved.
 
+**Read the data terms either way.** Before sending real user data to any API, check four things in the contract and settings, not the marketing page: whether inputs and outputs may be used to **train** the provider's models (business tiers usually exclude this by default); how long they're **retained**, and whether **zero data retention** is available for your use; which **region** processes and stores them, since data residency rules (EU customers, healthcare, government) may require a specific one, and several providers and the major clouds offer regional or in-country processing; and what the provider's **subprocessors** are. Record the answers next to each provider in the gateway configuration (section 9), so that routing can never send a regulated tenant's request to a provider or region that isn't allowed to see it.
+
 ## 2. The Hosting Stack
 
 ### Cloud GPU Hosting
@@ -199,7 +201,77 @@ Hugging Face's **Text Embeddings Inference** (TEI) is a dedicated server for bot
 
 **Vision-language models** (Qwen-VL, Llama vision models, Gemma and many others) add an image encoder whose output is projected into the language model's token space, so each image becomes hundreds or thousands of extra input tokens. For serving, that means larger prefills, more KV cache per request, and image preprocessing on the request path. vLLM and SGLang serve the common open VLMs directly; budget memory and latency for the image tokens as if they were text.
 
-## 9. LLMOps Monitoring: Measuring What Users Feel
+## 9. The AI Gateway and Load Balancing
+
+Once an organization has more than one model, provider or team, every application calling models directly becomes a problem: API keys scattered across services, no shared view of cost, a different retry policy in every codebase, and no way to switch provider without changing all of them. The common answer is an **AI gateway**: one entry point that every model call goes through. It's an ordinary reverse proxy with LLM-specific features, and open-source (LiteLLM, Envoy AI Gateway, Kong) and managed options exist. A gateway typically handles:
+
+- **Credentials:** applications get gateway keys; provider keys live only in the gateway, and can be rotated in one place.
+- **Routing and fallbacks:** one OpenAI-compatible API in front of several providers and self-hosted engines, with the cascades and fallbacks from [AI Cost Engineering](/docs/mlops/ai-cost-engineering#5-routing-the-right-model-for-each-request) and [Production Reliability](/docs/mlops/production-reliability#5-graceful-degradation-and-fallbacks) configured once, plus policy routing such as "tenant X only to EU-hosted models" (section 1).
+- **Limits and budgets:** rate limits and token budgets per team, customer and feature.
+- **Logging and cost attribution:** every request, with tokens, cost, latency and model version, sent to the observability stack.
+- **Prompt resolution:** applications ask for a named, versioned prompt and the gateway or a prompt registry supplies the text, so prompts can change without redeploying applications ([ML & LLM Testing](/docs/mlops/ml-and-llm-testing#3-prompts-are-code-version-review-replay) covers versioning them against evaluations).
+- **Batch traffic:** non-interactive work (nightly enrichment, evaluations) goes to providers' **batch APIs**, which process requests asynchronously within a time window, typically within 24 hours, at a large discount, or to a self-hosted engine's offline mode, instead of competing with interactive traffic.
+
+**Load balancing self-hosted replicas** is where LLM serving differs most from ordinary web services. Round-robin or least-connections balancing assumes requests cost about the same. LLM requests don't: one wants 10 output tokens, the next 2,000, and a replica's real load is the tokens it still has to generate and the KV cache it holds. Two smarter policies are common:
+
+- **Least outstanding tokens** (or least KV-cache usage) sends each request to the replica with the least work queued, using metrics the engines export.
+- **Prefix-aware routing** sends requests that share a prompt prefix (the same system prompt, the same tenant's instructions, the same conversation) to the replica that already holds that prefix in its KV cache, so prefill is skipped. **Sticky sessions** are the simple version for chat: keep a conversation on one replica so its growing history stays cached.
+
+This simulation shows why prefix awareness matters. Eight tenants each have a 2,000-token system prompt; four replicas can each keep only two tenants' prefixes cached. Round robin sprays every tenant across every replica, so prefixes keep getting evicted; prefix-aware routing sends each tenant to a home replica, falling back to the least-loaded one when its home is overloaded:
+
+```python
+import heapq
+from collections import OrderedDict
+import numpy as np
+
+rng = np.random.default_rng(0)
+N_REPLICAS, N_REQUESTS = 4, 4_000
+TOKENS_PER_S = 40                                 # decode speed per request on a replica
+PREFILL_PER_TOKEN = 0.0005                        # seconds per prompt token not already cached
+
+# Requests: 8 tenants, each with a long shared system prompt; output lengths are heavy-tailed
+tenants = rng.integers(0, 8, N_REQUESTS)
+prompt_tokens = 2_000 + rng.integers(0, 200, N_REQUESTS)          # mostly the tenant's shared prefix
+output_tokens = np.minimum(rng.lognormal(4.5, 1.0, N_REQUESTS).astype(int) + 10, 2_000)
+arrivals = np.cumsum(rng.exponential(0.1, N_REQUESTS))
+
+def simulate(policy):
+    busy_until = [[] for _ in range(N_REPLICAS)]        # per replica: heap of (finish time, output tokens)
+    cached_prefixes = [OrderedDict() for _ in range(N_REPLICAS)]   # KV cache holds 2 tenants' prefixes
+    ttfts, tpots, rr = [], [], 0
+    for t, tenant, p, o in zip(arrivals, tenants, prompt_tokens, output_tokens):
+        for heap in busy_until:                           # retire finished requests
+            while heap and heap[0][0] <= t:
+                heapq.heappop(heap)
+        outstanding = [sum(tok for _, tok in heap) for heap in busy_until]   # tokens still to generate (approx.)
+        if policy == "round robin":
+            r = rr % N_REPLICAS; rr += 1
+        else:                                             # prefix-aware: tenant's home replica unless overloaded
+            home = tenant % N_REPLICAS
+            r = home if outstanding[home] < 1.5 * (min(outstanding) + 500) else int(np.argmin(outstanding))
+        prefill = 0.05 if tenant in cached_prefixes[r] else p * PREFILL_PER_TOKEN
+        cached_prefixes[r][tenant] = True; cached_prefixes[r].move_to_end(tenant)
+        if len(cached_prefixes[r]) > 2:
+            cached_prefixes[r].popitem(last=False)          # evict the least recently used prefix
+        slowdown = 1 + len(busy_until[r]) / 16             # more concurrent requests, slower each step
+        ttft, tpot = prefill * slowdown, slowdown / TOKENS_PER_S
+        heapq.heappush(busy_until[r], (t + ttft + o * tpot, o))
+        ttfts.append(ttft); tpots.append(tpot)
+    return np.percentile(ttfts, 50), np.percentile(ttfts, 99), np.percentile(tpots, 99)
+
+for policy in ["round robin", "prefix-aware"]:
+    t50, t99, tpot99 = simulate(policy)
+    print(f"{policy:<26} TTFT p50 {t50 * 1000:5.0f} ms  p99 {t99 * 1000:5.0f} ms   time per token p99 {tpot99 * 1000:3.0f} ms")
+```
+
+```text
+round robin                TTFT p50  3329 ms  p99  4817 ms   time per token p99 114 ms
+prefix-aware               TTFT p50   134 ms  p99  3125 ms   time per token p99  88 ms
+```
+
+The median time to first token falls from 3.3 seconds to 0.13, because most requests now land where their prefix is already cached and skip a 2,000-token prefill. The tail improves less: some requests still overflow to a replica without their prefix. The simulation is simplified (no request queue, an approximate load signal), but the effect is the one production routers such as the vLLM production stack's router, SGLang's router and NVIDIA Dynamo's KV-aware routing are built to capture. The trade-off to watch is hot spots: pure stickiness can overload the replica that owns a popular tenant, which is why the policy falls back to the least-loaded replica past a threshold.
+
+## 10. LLMOps Monitoring: Measuring What Users Feel
 
 LLM serving has its own latency metrics, because a response streams out token by token:
 
@@ -270,7 +342,7 @@ Beyond latency, an LLM service needs the signals no classical service has:
 | User feedback and escalations | The ground truth that judges approximate |
 | Model and adapter version per response | Lets every other metric be split by version during rollouts |
 
-## 10. When *Not* to Self-Host
+## 11. When *Not* to Self-Host
 
 | Situation | Better choice |
 |---|---|
@@ -293,6 +365,9 @@ Beyond latency, an LLM service needs the signals no classical service has:
 | Fine-tune handoff | Training frameworks produce adapters; inference engines serve them; pin the base revision |
 | Multi-LoRA | One base model, many small adapters, batched together |
 | Latency metrics | TTFT grows with the prompt (prefill); TPOT is the decode speed |
+| AI gateway | One entry point for keys, routing, fallbacks, budgets, logging, prompts and batch traffic |
+| LLM load balancing | Route by outstanding tokens and shared prefixes, not round robin |
+| Data terms | Check training use, retention, region and subprocessors before sending real data |
 
 ---
 
@@ -305,3 +380,5 @@ Next: [LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops) covers me
 - vLLM, [Documentation](https://docs.vllm.ai/), including LoRA adapters and production metrics
 - Llama Team, Meta, [The Llama 3 Herd of Models](https://arxiv.org/abs/2407.21783), 2024 (architecture table for layer and head counts)
 - Hugging Face, [Text Embeddings Inference](https://huggingface.co/docs/text-embeddings-inference/index)
+- vLLM, [Production stack and prefix-aware routing](https://docs.vllm.ai/projects/production-stack/en/latest/)
+- A. Shekhar, [AI System Design](https://github.com/amitshekhariitbhu/ai-system-design) (Apache-2.0), on AI gateways, LLM load balancing and data residency
