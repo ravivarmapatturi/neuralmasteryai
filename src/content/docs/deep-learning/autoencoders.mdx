@@ -1,51 +1,260 @@
 ---
-title: "Autoencoders & Variational Autoencoders, In Full Depth"
+title: "Autoencoders and Variational Autoencoders, In Full Depth"
 sidebar_position: 8.5
-description: "Autoencoders and VAEs in full depth: why the latent bottleneck forces real compression, plus sparse, denoising, and VQ-VAE variants explained."
+description: "Learning from unlabelled data by reconstructing it: why the bottleneck forces compression, autoencoders versus PCA, denoising, sparse and masked autoencoders, the VAE derived with its KL term and reparameterization trick, VQ-VAE, and where these models sit today, from latent diffusion to interpretability, with every claim measured on real digits."
 ---
 
-
 import AutoencoderDiagram from '../../../viz/diagrams/AutoencoderDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Autoencoders & Variational Autoencoders, In Full Depth
+# Autoencoders and Variational Autoencoders, In Full Depth
 
-Every model in [Deep Learning](/docs/deep-learning/roadmap) so far has been supervised — trained against labels. Autoencoders learn from data with no labels at all, using a strikingly simple trick: train a network to reconstruct its own input, and force the information through a narrow bottleneck along the way.
+Every network in this section so far learned from labels: an image and its class, a sentence and its translation. Labels are expensive and most data has none. An **autoencoder** learns from unlabelled data with a simple trick: train a network to reproduce its own input, but force the information through a narrow bottleneck on the way. To pass that test it has to discover what the data is really made of. This page builds the idea up: the architecture and why the bottleneck matters, how it relates to [PCA](/docs/machine-learning/pca-svd#pca-principal-component-analysis), the variants that use noise, sparsity and masking instead of a bottleneck, the **variational autoencoder** that turns the idea into a generative model, its discrete cousin the VQ-VAE, and where autoencoders matter in 2026: inside image generators, audio codecs and the tools used to look inside language models. Every claim about behaviour is measured on real handwritten digits.
 
-## The Autoencoder Architecture
+<ELI5>
+
+Imagine describing a photo of a face to a friend over the phone, so they can sketch it, but you're only allowed ten words. You can't list every pixel. You'd say the things that matter: "oval face, short dark hair, glasses, big smile". Your friend draws from that.
+
+To do this well you both have to learn what faces are made of, which handful of features capture the most about any face. Nobody gave you a list; you worked it out by practising describing and redrawing faces.
+
+An autoencoder is that game. One network (the describer) squeezes the input into a few numbers; another (the sketcher) rebuilds the input from them. Training them together to make the sketch match the photo teaches them what the data is made of. Everything below is that game made exact.
+
+</ELI5>
+
+## 1. The Autoencoder
+
+### The Autoencoder Architecture
 
 <AutoencoderDiagram />
 
-Two halves: an **encoder** compresses the input $\mathbf{x}$ down to a low-dimensional **latent code** $\mathbf{z}$ (the bottleneck), and a **decoder** tries to reconstruct the original input from just that compressed code, $\hat{\mathbf{x}}$. Trained by minimizing reconstruction error — typically [MSE](/docs/deep-learning/loss-functions#regression-losses) for continuous data — with no labels involved anywhere.
+An autoencoder has two halves:
 
-**Why the bottleneck forces learning**: if the latent code $\mathbf{z}$ had the same dimensionality as the input, the network could trivially learn the identity function and copy input to output with zero effort — no real learning happens. Forcing $\mathbf{z}$ to be much smaller than $\mathbf{x}$ means the network *must* discover a compressed representation that captures the input's essential structure, discarding what's redundant or reconstructible from context — conceptually the same compression logic as [PCA](/docs/machine-learning/pca-svd#pca-principal-component-analysis), except autoencoders can learn *nonlinear* compression, where PCA is restricted to linear projections.
+- An **encoder** $f$ maps the input $\mathbf{x}$ to a **latent code** $\mathbf{z} = f(\mathbf{x})$, much smaller than the input.
+- A **decoder** $g$ maps the code back to a reconstruction $\hat{\mathbf{x}} = g(\mathbf{z})$.
 
-**Uses**: dimensionality reduction (a nonlinear alternative to PCA), denoising (train to reconstruct a *clean* input from a *corrupted* one — the network learns to discard noise as part of compression), and anomaly detection (see [Anomaly Detection](/docs/machine-learning/anomaly-detection) — a model trained only on normal data reconstructs normal inputs well and unfamiliar/anomalous inputs poorly, and that reconstruction error itself becomes the anomaly score).
+Both are ordinary networks, trained together to minimize the reconstruction error, usually squared error for continuous data ([Loss Functions](/docs/deep-learning/loss-functions#regression-losses)) or binary cross-entropy for pixel values in $[0, 1]$:
 
-## Variants
+$$
+\mathcal{L} = \lVert \mathbf{x} - g(f(\mathbf{x})) \rVert^2
+$$
 
-- **Sparse Autoencoder**: keeps the latent code the *same* size as the input (no bottleneck), but adds a penalty encouraging most latent units to be inactive (near zero) for any given input — forcing a different kind of compression: not fewer dimensions, but fewer *active* dimensions per example.
-- **Denoising Autoencoder**: deliberately corrupts the input (adding noise, masking pixels) before feeding it to the encoder, but still trains against the *original, clean* target — forces the network to learn robust features rather than a trivial pixel-copying shortcut.
+No labels appear anywhere: the input is its own target. This is **self-supervised** learning.
 
-## Variational Autoencoder (VAE)
+**Why the bottleneck is essential.** If $\mathbf{z}$ were as large as $\mathbf{x}$, both networks could learn the identity function and reconstruct perfectly while learning nothing. Making $\mathbf{z}$ small means most of the input must be thrown away, and the reconstruction error rewards keeping whatever predicts the most of the rest. For 64-pixel handwritten digits, a code of 2 to 8 numbers forces the network to encode things like which digit, how slanted, how thick the stroke, because those explain the most pixels at once.
 
-A plain autoencoder's latent space has no particular structure — nearby points in $\mathbf{z}$-space don't necessarily decode into anything sensible, and there's no principled way to *generate* new data by sampling from it. VAE fixes this by making the encoder probabilistic.
+**The limitation:** the bottleneck tells the network to compress, but nothing about how the codes should be arranged. Similar inputs may land far apart, and most of the code space may correspond to no real input at all. Section 4 shows why that matters, and section 5 fixes it.
 
-**The key change**: instead of encoding an input to a single point $\mathbf{z}$, the encoder outputs the parameters of a distribution — a mean $\mu$ and variance $\sigma^2$ — and $\mathbf{z}$ is *sampled* from $\mathcal{N}(\mu, \sigma^2)$ before being passed to the decoder.
+## 2. Autoencoders Versus PCA
 
-**The VAE loss** has two terms:
+[PCA](/docs/machine-learning/pca-svd#pca-principal-component-analysis) also compresses data to a few numbers and reconstructs it, by projecting onto the directions of largest variance. The connection is exact: a **linear** autoencoder (no activation functions) trained with squared error learns the same subspace PCA finds. The difference is the nonlinearity. Real data such as images lies near a curved surface in pixel space, and an autoencoder with nonlinear layers can follow the curve, while PCA can only fit a flat plane through it.
 
-$$\mathcal{L} = \underbrace{\|\mathbf{x} - \hat{\mathbf{x}}\|^2}_{\text{reconstruction loss}} + \underbrace{D_{KL}\big(\mathcal{N}(\mu,\sigma^2) \,\|\, \mathcal{N}(0,1)\big)}_{\text{KL regularization}}$$
+How much that buys is measured in section 4: with the same two-number code, the autoencoder reconstructs held-out digits with about 22% less error than PCA.
 
-The first term is the same reconstruction objective as a plain autoencoder. The second is [KL divergence](/docs/mathematics-for-ai/probability-statistics#entropy-cross-entropy-and-kl-divergence), pulling every input's latent distribution toward a standard normal — this is what gives the latent space its structure: it prevents the model from just memorizing isolated points, and instead packs the whole latent space *continuously and densely* around the origin, so that sampling from $\mathcal{N}(0,1)$ anywhere and decoding produces a plausible, coherent output. This exact reconstruction-loss-plus-KL-penalty tradeoff reappears in [RLHF](/docs/llms-genai/training-pipeline#rlhf-reinforcement-learning-from-human-feedback), where a KL term similarly keeps a model from drifting too far from a reference distribution.
+PCA still has real advantages: it has a closed-form solution with no training, its components are ordered and orthogonal, and it can't overfit in the way a network can. For a first look at data, or when the structure is close to linear, PCA is the better tool.
 
-**The reparameterization trick**: sampling $\mathbf{z} \sim \mathcal{N}(\mu, \sigma^2)$ directly isn't differentiable — you can't backpropagate through a random sampling operation. The fix: sample $\epsilon \sim \mathcal{N}(0,1)$ separately (a source of randomness with no learned parameters), then compute $\mathbf{z} = \mu + \sigma \cdot \epsilon$ — now $\mathbf{z}$ is a deterministic, differentiable function of $\mu$ and $\sigma$ (the parts the network actually learns), with all the randomness isolated in $\epsilon$, which needs no gradient at all.
+## 3. Variants That Don't Need a Narrow Bottleneck
 
-## Vector Quantized VAE (VQ-VAE)
+A narrow code is one way to stop the network from copying. Three others proved at least as useful.
 
-Replaces VAE's continuous Gaussian latent space with a **discrete** codebook of learned embedding vectors — the encoder's output gets snapped to the nearest codebook entry, rather than sampled from a continuous distribution. This discrete latent space turned out to be a much better fit for feeding into powerful autoregressive generative models afterward, and is a foundational component behind several modern image and audio generation pipelines (see [Multimodal & Generative Models](/docs/llms-genai/multimodal-generative-models)).
+**Denoising autoencoders** (Vincent et al., 2008) corrupt the input (add noise, blank out pixels) and train the network to reconstruct the *clean* original. Copying is now useless, because the input is wrong. To undo the corruption the network must learn what clean data looks like. The same objective, with much more noise and many steps, is the core of [diffusion models](/docs/deep-learning/generative-models).
 
-## Autoencoders vs. Diffusion Models for Generation
+**Sparse autoencoders** keep a code as large as the input, or larger, but penalize it so that only a few units are active for any given input, for example with an L1 penalty on the code. The constraint is not "few dimensions" but "few active dimensions per example", which tends to make each unit stand for one recognizable feature. That property made them central to **interpretability**: since 2023, Anthropic, OpenAI, Google DeepMind and others have trained very large sparse autoencoders on the internal activations of language models and found millions of individual, often human-interpretable features (a unit for "the Golden Gate Bridge", one for "code with a security vulnerability"). [Interpretability](/docs/interpretability/deep-learning-and-llm-interpretability) covers this work.
 
-VAEs can generate new samples by decoding random latent vectors, but the outputs are typically blurrier and less sharp than what [diffusion models](/docs/llms-genai/multimodal-generative-models#diffusion-models) produce — diffusion's iterative denoising process has become the dominant approach for high-fidelity image generation, while VAE-style architectures remain important as building blocks (VQ-VAE inside Latent Diffusion pipelines) rather than as the final generator themselves.
+**Masked autoencoders** (He et al., 2021) hide most of the input, 75% of an image's patches, and train a Vision Transformer to reconstruct the missing parts. It's the image version of BERT's masked-word training, and an effective way to pretrain vision models on unlabelled images before fine-tuning them on a labelled task.
 
-Next: [Generative Models](/docs/deep-learning/generative-models) — GANs and diffusion models, the other two major approaches to learning to generate data; or [Anomaly Detection](/docs/machine-learning/anomaly-detection), where autoencoder reconstruction error becomes a practical outlier-detection tool.
+## 4. What an Autoencoder Learns, Measured
+
+Here are the claims of sections 1 to 3 checked on scikit-learn's 1,797 handwritten digits (8 × 8 pixels, scaled to $[0, 1]$), with 1,500 for training and 297 held out. The same script compares the codes of a plain autoencoder and a VAE, which section 5 explains.
+
+```python
+import torch
+import torch.nn as nn
+from sklearn.datasets import load_digits
+from sklearn.decomposition import PCA
+
+torch.manual_seed(0)
+X = torch.tensor(load_digits().data / 16.0, dtype=torch.float32)       # 1,797 digits, 64 pixels each
+train, test = X[:1500], X[1500:]
+
+class AutoEncoder(nn.Module):
+    def __init__(self, latent, variational=False):
+        super().__init__()
+        self.variational = variational
+        self.encoder = nn.Sequential(nn.Linear(64, 128), nn.ReLU(), nn.Linear(128, latent * (2 if variational else 1)))
+        self.decoder = nn.Sequential(nn.Linear(latent, 128), nn.ReLU(), nn.Linear(128, 64), nn.Sigmoid())
+
+    def forward(self, x):
+        h = self.encoder(x)
+        if not self.variational:
+            return self.decoder(h), torch.tensor(0.0)
+        mu, log_var = h.chunk(2, dim=1)
+        z = mu + torch.exp(0.5 * log_var) * torch.randn_like(mu)          # reparameterization trick
+        kl = 0.5 * (mu ** 2 + log_var.exp() - 1 - log_var).sum(dim=1).mean()   # KL(N(mu, s^2) || N(0, 1))
+        return self.decoder(z), kl
+
+def train_model(model, epochs=300, beta=0.01):
+    opt = torch.optim.Adam(model.parameters(), lr=3e-3)
+    for _ in range(epochs):
+        recon, kl = model(train)
+        loss = ((recon - train) ** 2).sum(dim=1).mean() + beta * kl
+        opt.zero_grad(); loss.backward(); opt.step()
+    return model
+
+def test_mse(model):
+    with torch.no_grad():
+        return ((model(test)[0] - test) ** 2).mean().item()
+
+pca = PCA(n_components=2).fit(train.numpy())
+pca_mse = ((torch.tensor(pca.inverse_transform(pca.transform(test.numpy()))) - test) ** 2).mean().item()
+ae = train_model(AutoEncoder(2))
+print(f"2-number code, test reconstruction MSE:  PCA {pca_mse:.4f}   autoencoder {test_mse(ae):.4f}")
+
+# Anomaly detection: reconstruction error on real digits vs on random noise images.
+ae8 = train_model(AutoEncoder(8))
+with torch.no_grad():
+    err = lambda x: ((ae8(x)[0] - x) ** 2).mean(dim=1)
+    print(f"8-number code, per-image error: digits {err(test).mean():.4f}   random noise {err(torch.rand(300, 64)).mean():.4f}")
+
+# Why a VAE's latent space can be sampled and a plain autoencoder's can't: where do real digits' codes lie?
+vae = train_model(AutoEncoder(8, variational=True), beta=0.1)
+with torch.no_grad():
+    codes = {"plain autoencoder": ae8.encoder(test), "VAE (means)": vae.encoder(test).chunk(2, dim=1)[0]}
+for name, z in codes.items():
+    print(f"{name:17s} codes: per-dimension mean {z.mean(0).abs().mean():5.2f}, std from {z.std(0).min():5.2f} to {z.std(0).max():5.2f}")
+```
+
+```text
+2-number code, test reconstruction MSE:  PCA 0.0526   autoencoder 0.0409
+8-number code, per-image error: digits 0.0177   random noise 0.2295
+plain autoencoder codes: per-dimension mean  3.01, std from  1.37 to  2.30
+VAE (means)       codes: per-dimension mean  0.12, std from  0.20 to  1.10
+```
+
+Line by line:
+
+- **Nonlinear compression beats linear.** With two numbers per image, PCA's held-out reconstruction error is 0.0526 and the autoencoder's 0.0409, about 22% lower, because it can follow the curved structure of the data.
+- **Reconstruction error detects anomalies.** An autoencoder trained only on digits reconstructs new digits with an error of 0.018 and random noise images with 0.23, about thirteen times larger. Anything unlike the training data reconstructs badly, so reconstruction error works as an anomaly score with no labelled anomalies at all ([Anomaly Detection](/docs/machine-learning/anomaly-detection)).
+- **A plain autoencoder's codes sit wherever they like.** The codes of real digits are centred about 3 units from the origin in each dimension. If you sampled random codes from a standard normal to generate new digits, most would land where no digit's code is, and decode to nonsense. The VAE's codes are centred near zero with spreads of at most about 1, the region a standard normal covers. That is the property that makes a VAE generative.
+
+<PredictFirst
+  question="An autoencoder trained only on photos of healthy circuit boards is shown a board with a missing component. What do you expect?"
+  options={[
+    'A near-perfect reconstruction, because autoencoders copy their input',
+    'A reconstruction that tends to show the component as present, so the reconstruction error is high around it',
+    'An error, because the input was not in the training set',
+    'A reconstruction identical to the most similar training image',
+  ]}
+  correctIndex={1}
+  explanation="The bottleneck only has room for the patterns common in training data, so the decoder rebuilds what a typical healthy board looks like. The difference between input and reconstruction is concentrated where the input departs from normal, which is why reconstruction error, and its location, is used for visual inspection and anomaly detection."
+/>
+
+## 5. The Variational Autoencoder
+
+The **variational autoencoder** (VAE; Kingma and Welling, 2013) changes the autoencoder in two ways so that its code space can be sampled to generate new data.
+
+**A probabilistic encoder.** For each input, the encoder outputs the mean $\boldsymbol{\mu}$ and the log-variance $\log \boldsymbol{\sigma}^2$ of a Gaussian over codes, rather than a single code. During training, a code is *sampled* from that Gaussian and decoded. Since nearby codes must all decode to something like the input, the decoder learns a smooth mapping, where small moves in code space give small changes in output.
+
+**A pull towards a fixed prior.** The loss adds a term that pulls every input's Gaussian towards a standard normal $\mathcal{N}(\mathbf{0}, I)$, the **prior**:
+
+$$
+\mathcal{L} = \underbrace{\mathbb{E}_{\mathbf{z} \sim q(\mathbf{z} \mid \mathbf{x})}\!\left[\lVert \mathbf{x} - g(\mathbf{z}) \rVert^2\right]}_{\text{reconstruction}} \;+\; \beta\, \underbrace{D_\text{KL}\!\left(\mathcal{N}(\boldsymbol{\mu}, \boldsymbol{\sigma}^2) \,\big\Vert\, \mathcal{N}(\mathbf{0}, I)\right)}_{\text{keep codes near the prior}}
+$$
+
+For Gaussians the KL divergence ([Probability & Statistics](/docs/mathematics-for-ai/probability-statistics#entropy-cross-entropy-and-kl-divergence)) has a closed form, summed over the code's dimensions:
+
+$$
+D_\text{KL} = \tfrac{1}{2} \sum_{j} \left(\mu_j^2 + \sigma_j^2 - 1 - \log \sigma_j^2\right)
+$$
+
+It's zero exactly when $\mu_j = 0$ and $\sigma_j = 1$. The two terms pull against each other: reconstruction wants each input's code precise and distinct, the KL term wants every code to look like a standard normal. The result is a code space where real inputs fill the region around the origin with no large gaps, so a point drawn from $\mathcal{N}(\mathbf{0}, I)$ and decoded gives something plausible. That's what the code statistics in section 4 showed: the VAE's codes are centred near zero with spreads of at most about 1. (Dimensions with a spread well below 1, like the 0.20 there, are ones the VAE barely uses: their codes stay near the prior, and the KL term costs nothing.)
+
+With $\beta = 1$ and an appropriate reconstruction likelihood, this loss is the negative of the **evidence lower bound** (ELBO) on the log-probability of the data, which is where the method's name comes from. Larger $\beta$ ($\beta$-VAE) gives more disentangled, more regular codes and blurrier reconstructions; smaller $\beta$ the reverse. The script used $\beta = 0.1$.
+
+### The reparameterization trick
+
+Training needs gradients through the sampling step, and you can't differentiate "draw a random number". The fix is to move the randomness outside the network. Draw noise that doesn't depend on any parameter, and build the code from it deterministically:
+
+$$
+\boldsymbol{\epsilon} \sim \mathcal{N}(\mathbf{0}, I), \qquad \mathbf{z} = \boldsymbol{\mu} + \boldsymbol{\sigma} \odot \boldsymbol{\epsilon}
+$$
+
+Now $\mathbf{z}$ is a differentiable function of $\boldsymbol{\mu}$ and $\boldsymbol{\sigma}$, and gradients flow through them to the encoder; $\boldsymbol{\epsilon}$ needs no gradient. It's one line in the script: `z = mu + torch.exp(0.5 * log_var) * torch.randn_like(mu)`.
+
+**Generating** is then just: sample $\mathbf{z} \sim \mathcal{N}(\mathbf{0}, I)$ and decode it. **Interpolating** between two inputs is decoding points on the line between their codes, which gives smooth transitions because the code space has no gaps.
+
+**The limitation:** VAE samples tend to be blurry. A squared-error reconstruction term corresponds to Gaussian pixel noise, so when the model is uncertain it predicts an average of possible images, and averages of sharp images are blurry. GANs and diffusion models produce much sharper images, which is why the VAE is now mostly used as a component rather than as the generator itself.
+
+<GoDeeper title="Go deeper: where the ELBO comes from">
+
+A generative model wants to maximize $\log p(\mathbf{x})$, the probability it assigns to the training data. With a latent variable, $p(\mathbf{x}) = \int p(\mathbf{x} \mid \mathbf{z})\, p(\mathbf{z})\, d\mathbf{z}$, an integral over every possible code, which can't be computed for a neural decoder.
+
+Introduce the encoder's distribution $q(\mathbf{z} \mid \mathbf{x})$ and use Jensen's inequality:
+
+$$
+\log p(\mathbf{x}) \;\ge\; \mathbb{E}_{q(\mathbf{z} \mid \mathbf{x})}\big[\log p(\mathbf{x} \mid \mathbf{z})\big] - D_\text{KL}\big(q(\mathbf{z} \mid \mathbf{x}) \,\Vert\, p(\mathbf{z})\big)
+$$
+
+The right-hand side is the **ELBO**. Its first term is the reconstruction log-likelihood, which becomes squared error if the decoder's output is the mean of a Gaussian over pixels. Its second is the KL term. The gap between the two sides is exactly $D_\text{KL}\big(q(\mathbf{z} \mid \mathbf{x}) \,\Vert\, p(\mathbf{z} \mid \mathbf{x})\big)$, how far the encoder is from the true posterior, so maximizing the ELBO both fits the data and makes the encoder a better approximation to the posterior. The VAE trains both networks to do that jointly, with the reparameterization trick providing low-variance gradient estimates.
+
+</GoDeeper>
+
+## 6. Discrete Codes: VQ-VAE
+
+The **vector-quantized VAE** (VQ-VAE; van den Oord et al., 2017) replaces the continuous code with a discrete one. The model keeps a **codebook** of $K$ learned vectors, say 512. The encoder outputs a vector at each position of a small grid, and each is replaced by its **nearest codebook entry**. An image becomes a grid of integers, codebook indices, like a short paragraph of "visual words".
+
+Snapping to the nearest entry has no gradient, so training passes the decoder's gradient straight through to the encoder as if the snapping weren't there (the **straight-through estimator**), and adds terms that pull codebook entries and encoder outputs towards each other.
+
+Discrete codes matter because they turn images and audio into **token sequences**, and token sequences can be modelled by the same autoregressive transformers used for text. Several lines of work build on this:
+
+- **Image generation as language modelling**: VQGAN (2021) added an adversarial loss for sharper reconstructions, and the first DALL·E and later token-based image models generate a grid of codebook tokens with a transformer, then decode it.
+- **Neural audio codecs** such as SoundStream and EnCodec use **residual vector quantization** (quantize, then quantize the leftover error with another codebook, several times) to compress audio to a few kilobits per second. Their tokens are what many speech and music generators, and spoken-language models, actually predict.
+
+## 7. Autoencoders Inside Today's Generators
+
+The most widely used autoencoders today are hidden inside image and video generators. **Latent diffusion** (Rombach et al., 2022, the basis of Stable Diffusion) first trains an autoencoder that compresses a $512 \times 512 \times 3$ image to a $64 \times 64 \times 4$ latent, eight times smaller on each side, with a small KL penalty and adversarial and perceptual losses so that reconstructions stay sharp. The diffusion model then works entirely in that latent space, which is about 48 times smaller than pixel space, making training and generation far cheaper. The autoencoder's decoder turns the final latent back into pixels. Video generators do the same with autoencoders that also compress across time.
+
+So the division of labour in a modern generator is: an autoencoder learns a compact, well-behaved representation, and a stronger generative model ([diffusion or flow matching](/docs/deep-learning/generative-models)) learns to produce points in it.
+
+## 8. When *Not* to Use an Autoencoder
+
+| Situation | Better choice |
+|---|---|
+| A quick, interpretable dimensionality reduction | PCA, which needs no training and has ordered, orthogonal components |
+| Visualizing high-dimensional data in 2D | t-SNE or UMAP, designed to preserve neighbourhoods for plotting |
+| Generating sharp, high-fidelity images | A diffusion or flow-matching model, usually working in an autoencoder's latent space |
+| Anomaly detection with labelled anomalies available | A supervised classifier, which uses the labels directly |
+| Anomalies that look like normal data in their overall structure | Check first: reconstruction error only flags what the model can't rebuild |
+| Pretraining features for a labelled task, with lots of labels | Supervised training, or a pretrained model, before building an autoencoder |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Autoencoder | Encoder to a small code, decoder back; trained to reconstruct its own input |
+| Bottleneck | Stops trivial copying and forces the code to keep what matters most |
+| Versus PCA | A linear autoencoder finds PCA's subspace; nonlinear ones follow curved data |
+| Denoising | Reconstruct clean from corrupted input; the idea behind diffusion |
+| Sparse | Few active units per input; now a main tool for interpreting LLMs |
+| Masked | Reconstruct hidden patches; self-supervised pretraining for vision transformers |
+| Anomaly score | Unfamiliar inputs reconstruct badly |
+| VAE | Probabilistic encoder plus a KL pull to $\mathcal{N}(0, I)$ makes the code space sampleable |
+| Reparameterization | $\mathbf{z} = \boldsymbol{\mu} + \boldsymbol{\sigma} \odot \boldsymbol{\epsilon}$ moves randomness outside the gradient path |
+| VQ-VAE | Discrete codebook tokens; lets transformers model images and audio |
+| Latent diffusion | An autoencoder compresses; the diffusion model generates in its latent space |
+
+---
+
+Next: [Generative Models](/docs/deep-learning/generative-models), GANs and diffusion models, the two approaches that overtook the VAE for generation, or [Anomaly Detection](/docs/machine-learning/anomaly-detection), where reconstruction error becomes a practical tool.
+
+## Sources
+
+- Hinton and Salakhutdinov, [Reducing the Dimensionality of Data with Neural Networks](https://www.science.org/doi/10.1126/science.1127647) (Science, 2006)
+- Vincent et al., [Extracting and Composing Robust Features with Denoising Autoencoders](https://dl.acm.org/doi/10.1145/1390156.1390294) (2008)
+- Kingma and Welling, [Auto-Encoding Variational Bayes](https://arxiv.org/abs/1312.6114) (2013)
+- Higgins et al., [beta-VAE](https://openreview.net/forum?id=Sy2fzU9gl) (2017)
+- van den Oord, Vinyals and Kavukcuoglu, [Neural Discrete Representation Learning](https://arxiv.org/abs/1711.00937) (2017), VQ-VAE
+- He et al., [Masked Autoencoders Are Scalable Vision Learners](https://arxiv.org/abs/2111.06377) (2021)
+- Rombach et al., [High-Resolution Image Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) (2022)
+- Défossez et al., [High Fidelity Neural Audio Compression](https://arxiv.org/abs/2210.13438) (2022), EnCodec
+- Bricken et al., [Towards Monosemanticity](https://transformer-circuits.pub/2023/monosemantic-features) (2023) and Templeton et al., [Scaling Monosemanticity](https://transformer-circuits.pub/2024/scaling-monosemanticity/) (2024)
