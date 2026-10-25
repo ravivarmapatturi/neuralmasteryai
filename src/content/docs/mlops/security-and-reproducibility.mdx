@@ -1,102 +1,313 @@
 ---
-title: "Security & Reproducibility"
+title: "Security & Reproducibility, In Full Depth"
 sidebar_position: 22
-description: "IAM, secrets management, and a real reproducibility checklist -- the cross-cutting requirements every layer of an ML pipeline has to satisfy at once."
+description: "The security and reproducibility requirements that cut across every stage of an ML system: least-privilege identity, secrets that never touch git, why loading a pickled model runs code, verifying artifacts by hash, LLM-specific risks, and what it takes for a training run to give the same model twice."
 ---
 
-import SecurityLayerChecklistDiagram from '../../../viz/diagrams/SecurityLayerChecklistDiagram';
 import SecretsInjectionDiagram from '../../../viz/diagrams/SecretsInjectionDiagram';
 import LlmAttackSurfaceDiagram from '../../../viz/diagrams/LlmAttackSurfaceDiagram';
-import PromptInjectionFlowDiagram from '../../../viz/diagrams/PromptInjectionFlowDiagram';
 import LeastPrivilegeAgencyDiagram from '../../../viz/diagrams/LeastPrivilegeAgencyDiagram';
 import ReproducibilityChecklistDiagram from '../../../viz/diagrams/ReproducibilityChecklistDiagram';
-import HardwareDeterminismDiagram from '../../../viz/diagrams/HardwareDeterminismDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Security & Reproducibility
+# Security & Reproducibility, In Full Depth
 
-Two cross-cutting concerns that apply to every layer covered so far — not a new stage in the pipeline, but a set of requirements the whole pipeline has to satisfy.
+The earlier pages in this section each built one stage of an ML system: data pipelines, training, the registry, serving, monitoring. Security and reproducibility aren't stages. They're properties every stage has to have at once, and a gap in any one undoes the rest. This page covers the threats specific to ML systems and the controls that address them: identity and least privilege, secrets, the model file as an attack vector (with a demonstration of why loading a pickle runs code), verifying artifacts, supply-chain scanning, the extra risks of LLM applications, and what it actually takes to get the same model from the same inputs twice.
 
-## General Security
+<ELI5>
 
-- **IAM**: identity and access management — who, and what service, can do what (see [Cloud Computing for ML](/docs/mlops/cloud-computing)). Over-permissioned roles are the single most common source of real security incidents, not exotic exploits.
-- **Secrets management**: API keys, database credentials, and model-provider tokens belong in a secrets manager (AWS Secrets Manager, HashiCorp Vault) injected at runtime — never in a config file, a Dockerfile, or a git-committed `.env`.
+A bank vault has more than a strong door. Only certain staff can open it, and only for what their job needs. Keys are never left on desks. Every delivery is checked against its paperwork before it goes in. And there's a log of exactly who opened what and when, so if something goes missing, it can be traced.
 
-<SecurityLayerChecklistDiagram />
+An ML system needs the same habits. Each service and person gets only the access it needs, passwords never sit in code, models and packages are checked before they're used, and every model can be traced back to exactly what made it, so it can be rebuilt and examined.
+
+Everything below is those habits made concrete.
+
+</ELI5>
+
+## 1. Why ML Systems Need More Than Standard Security
+
+An ML system is a software system, so everything in ordinary application security applies: authenticate callers, encrypt traffic with TLS, patch dependencies, log access. ML adds assets and attack paths of its own:
+
+- **Training data** is often the most sensitive thing a company has (transactions, medical records, private messages), and it's copied into many places: feature tables, notebooks, evaluation sets, logs.
+- **Model files** are downloaded from public hubs and loaded by code that, in common formats, executes whatever the file says.
+- **Models leak what they learned.** A model can memorize and reproduce training data, and its predictions can reveal whether a particular record was in the training set.
+- **LLM applications take instructions from text,** so anyone who can put text in front of the model, including the author of a web page it reads, can try to steer it.
+- **Pipelines need broad access** to data, compute and registries, so a compromised pipeline credential reaches a lot.
+
+The controls in the following sections address these in order, starting with the most common real cause of incidents: access that's broader than needed.
+
+## 2. Identity and Least Privilege
+
+Every person, service and pipeline job should have its own identity and exactly the permissions its job requires. That's **least privilege**, and violating it is the most common root cause of cloud security incidents: not clever exploits, but a credential with far more access than its task needed, leaked or misused.
+
+For an ML platform, that means separate roles with narrow scopes, for example:
+
+| Identity | Needs | Must not have |
+|---|---|---|
+| Training job | Read the training dataset version; write artifacts and runs to the tracker | Write to production tables; deploy models |
+| Promotion pipeline | Read registry versions and evaluation results; move the `@champion` alias | Read raw customer data |
+| Serving pods | Read the one model version they serve; read online features | Write anywhere except logs and metrics |
+| Data scientist | Read de-identified data in a sandbox; start training jobs | Production credentials of any kind |
+
+Two habits make this practical. First, **use workload identities instead of long-lived keys**: Kubernetes service accounts mapped to cloud roles (IAM Roles for Service Accounts or EKS Pod Identity on AWS, Workload Identity on Google Cloud, workload identity federation on Azure), and OIDC tokens for CI jobs ([CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd#5-the-workflow-end-to-end)). Short-lived, automatically rotated credentials can't sit forgotten in a laptop's config file. Second, **review permissions as code**: roles defined in [Terraform](/docs/mlops/infrastructure-as-code) get pull-request review, and policy checks can reject wildcards like `s3:*` on `*`.
+
+Identity decides what a credential can do. The next problem is keeping credentials from leaking at all.
+
+## 3. Secrets: Never in Code, Never in Images
+
+A **secret** is anything that grants access: API keys, database passwords, model-provider tokens, signing keys. The rule is absolute: secrets live in a secrets manager and are injected at runtime, never written into source code, configuration files in git, container images or notebooks.
 
 <SecretsInjectionDiagram />
 
-On [Kubernetes](/docs/mlops/kubernetes), that runtime injection is a `Secret` resource mounted as an environment variable — the value never touches the image or the Deployment YAML in plaintext:
+The usual chain on Kubernetes: the secret is stored in AWS Secrets Manager, Google Secret Manager, Azure Key Vault or HashiCorp Vault; the External Secrets Operator syncs it into a Kubernetes `Secret`; the pod receives it as an environment variable or a mounted file. Nobody types the value into a YAML file, and rotating it means changing it in one place.
 
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: model-api-secrets
-type: Opaque
-stringData:
-  LLM_PROVIDER_API_KEY: "..."   # in practice, populated by a tool like External Secrets Operator from Vault/Secrets Manager, not hand-typed
----
-# in the Deployment's container spec:
-envFrom:
-  - secretRef:
-      name: model-api-secrets
+Why "never in git" is absolute, even briefly: git keeps history. Removing a key in the next commit leaves it in the previous one, readable by anyone with a clone, and public repositories are scanned by attackers within minutes of a push. Scanners catch this. Here, a token was committed "temporarily" and then moved to an environment variable in the next commit; the current code is clean:
+
+```python
+import os
+GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 ```
 
-- **API auth/RBAC**: every serving endpoint (see [APIs & Model Serving](/docs/mlops/model-serving), [LLM Hosting & Serving Patterns](/docs/mlops/llm-hosting-and-serving-patterns)) needs authentication and role-based access control — not every caller should have access to every model or every capability.
-- **TLS**: encrypt traffic in transit, always — between users and the API gateway, and ideally between internal services too.
-- **Container/dependency scanning**: scan images and dependency trees for known CVEs as part of CI (see [Containers](/docs/mlops/containers), [CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd)) — catching a vulnerable base image or package before it ships, not after.
+Scanning the repository's *history* with [gitleaks](https://github.com/gitleaks/gitleaks) 8.28 still finds it:
 
-## LLM-Specific Security
+```text
+$ gitleaks git . --redact -v
+Finding:     REDACTED
+Secret:      REDACTED
+RuleID:      github-pat
+File:        train.py
+Line:        2
+Commit:      7d57f85
+2 commits scanned.
+leaks found: 1
+```
 
-Generative systems introduce attack surfaces that don't exist in classical ML serving:
+The scanner exits with code 1, which is what makes it useful as a pre-commit hook and a CI step: the push is rejected. If a secret does reach a shared repository, the only safe response is to **revoke and rotate it**. Rewriting history afterwards reduces exposure but can't guarantee that nobody copied it.
+
+Secrets can also leak through outputs: a stack trace printing a connection string, an LLM prompt logged with a customer's API key in it. Redact known secret patterns in logging, as [Observability](/docs/mlops/observability) recommends for personal data.
+
+## 4. The Model File Is Code
+
+The most ML-specific risk is in an innocent-looking step: loading a model. Python's `pickle` format, used by `joblib`, older PyTorch `.pt` files, and many scikit-learn artifacts, doesn't just store data. It stores instructions for rebuilding objects, and those instructions can call any Python function. This script writes a "model" whose rebuild instruction is a function call chosen by the file's author, then loads it:
+
+```python
+import pickle
+
+import numpy as np
+from safetensors.numpy import load_file, save_file
+
+
+class NotAModel:
+    def __reduce__(self):                       # pickle calls this to learn how to rebuild the object
+        return (print, ("!! code chosen by the file's author just ran during pickle.load",))
+
+
+with open("model.pkl", "wb") as f:              # what a malicious "model" download could contain
+    pickle.dump(NotAModel(), f)
+
+with open("model.pkl", "rb") as f:
+    pickle.load(f)                              # loading is enough; nothing was called by us
+
+# safetensors stores only tensors: a header plus raw bytes, nothing executable
+save_file({"weights": np.arange(6, dtype=np.float32).reshape(2, 3)}, "model.safetensors")
+print(load_file("model.safetensors")["weights"])
+```
+
+```text
+!! code chosen by the file's author just ran during pickle.load
+[[0. 1. 2.]
+ [3. 4. 5.]]
+```
+
+The call here is a harmless `print`, but it could equally be `os.system` running anything with the loading process's permissions: reading credentials from the environment, opening a reverse shell, or altering the model's behaviour. Malicious pickles have been found on public model hubs.
+
+The defences, in order of strength:
+
+- **Use formats that can't carry code.** `safetensors` stores a JSON header and raw tensor bytes, nothing executable, and is the default for weights on Hugging Face. ONNX stores a computation graph, not Python. For PyTorch, `torch.load` has defaulted to `weights_only=True` since version 2.6, which refuses arbitrary objects.
+- **Only load pickles you produced,** from storage only your pipeline can write to. Treat a pickle from anywhere else as an executable.
+- **Scan third-party models** with tools such as ModelScan or picklescan before loading, and load untrusted ones in a sandbox with no credentials or network.
+
+<PredictFirst
+  question="A team downloads a popular fine-tuned model from a public hub as a .bin file and loads it with an older version of torch.load on a training server that has cloud credentials in its environment. What's the risk?"
+  options={[
+    'None, because model files only contain numbers',
+    'The file could run arbitrary code during loading, with access to those credentials',
+    'Only that the model might be inaccurate',
+    'Only a risk if the model is later served publicly',
+  ]}
+  correctIndex={1}
+  explanation="Older PyTorch .bin and .pt files are pickles, and unpickling can call arbitrary functions. Loading one is equivalent to running a script its author wrote, with the process's permissions, including any credentials in the environment. Prefer safetensors, use torch.load(weights_only=True) (the default since PyTorch 2.6), and load untrusted files in a sandbox without credentials."
+/>
+
+## 5. Verify Every Artifact
+
+Even a model your own pipeline produced can be swapped or corrupted between training and serving: a misconfigured bucket, a compromised CI job, a partial upload. The defence is to record a cryptographic hash of every artifact when it's registered, and check it before use:
+
+```python
+import hashlib
+import sys
+
+EXPECTED = {  # recorded when the model was registered, stored with the registry entry
+    "model.safetensors": "c2de86ec672e2dc0bb804f615b733a2e671cc3054466f9df7568aff2bc44f8e3",
+}
+
+def sha256(path, chunk=1 << 20):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while block := f.read(chunk):
+            h.update(block)
+    return h.hexdigest()
+
+path = sys.argv[1]
+actual = sha256(path)
+if actual != EXPECTED[path]:
+    sys.exit(f"refusing to load {path}: sha256 {actual[:16]}... does not match the registry")
+print(f"{path}: sha256 verified")
+```
+
+On the file as registered, and then after appending a single byte to it:
+
+```text
+model.safetensors: sha256 verified
+refusing to load model.safetensors: sha256 4c2818d2ec47ea4e... does not match the registry
+```
+
+The same principle applies at every layer: container images referenced by **digest** rather than tag ([Containers](/docs/mlops/containers)), Python dependencies installed from a lock file with hashes (`pip install --require-hashes`, or `uv` and Poetry lock files), and Terraform providers pinned in `.terraform.lock.hcl`. A hash proves the bytes are the ones you recorded. A **signature** goes further and proves *who* produced them: Sigstore's cosign signs container images, and the OpenSSF model-signing project applies the same idea to model files, so a serving system can refuse any model not signed by the training pipeline.
+
+<GoDeeper title="Go deeper: the software supply chain for ML">
+
+A trained model depends on a long chain: base container images, operating-system packages, hundreds of Python packages, pretrained weights, datasets, and the CI system that assembled them. Each link has been attacked in practice, for example through typosquatted packages with names one letter off a popular one, and through compromised maintainer accounts publishing malicious versions of legitimate packages.
+
+The established controls: generate a **software bill of materials** (SBOM) for each image (Syft, or `docker buildx` with SBOM attestations) so you know what's inside; **scan** images and dependencies for known vulnerabilities in CI (Trivy, Grype, pip-audit) and fail builds on serious unpatched ones; pin and hash every dependency; pull through an internal mirror rather than directly from public registries; and record **provenance**, a signed statement of how an artifact was built, following the SLSA framework. The ML-specific additions are the same controls applied to weights and datasets: record where each pretrained model and dataset came from, its hash, and its licence ([Legal, Licensing & Governance](/docs/mlops/legal-licensing-and-governance)).
+
+</GoDeeper>
+
+## 6. Protecting Data and What Models Learn
+
+Training data has to be protected both where it's stored and in what the model remembers.
+
+**At rest and in transit:** encrypt storage (on by default in the major clouds), encrypt traffic, and restrict who can read raw data. Give experimentation environments de-identified or sampled data, and keep raw personal data in a narrow, audited zone.
+
+**In logs and traces:** prompts, request payloads and feature values often contain personal data. Logging them all by default creates a second, poorly protected copy of the most sensitive data you have. Log identifiers instead of content, redact known patterns, sample, and set retention.
+
+**In the model itself:** models can memorize. Large language models have been shown to reproduce verbatim training text, including personal details, when prompted the right way, and **membership inference** attacks can tell, better than chance, whether a specific record was in a model's training set by comparing the model's confidence on it with its confidence on similar unseen records. Mitigations include deduplicating training data (repeated text is memorized far more), filtering personal data before training, limiting the detail of returned outputs (labels rather than raw probabilities for external callers), and, where the guarantee is needed, training with **differential privacy**, which bounds how much any one record can influence the model. [Federated Learning](/docs/mlops/federated-learning) covers training without centralizing the data at all.
+
+## 7. LLM-Specific Risks
+
+Applications built on large language models add risks that classical ML serving doesn't have, because the model takes instructions from the same text it processes.
 
 <LlmAttackSurfaceDiagram />
 
-- **Prompt injection**: malicious instructions embedded in user input (or in retrieved RAG content) attempt to override the system prompt or intended behavior — e.g. a document retrieved by RAG contains hidden text instructing the model to ignore its original task. Mitigation is layered (input/output filtering, strict system-prompt design, treating retrieved content as untrusted data rather than instructions) rather than fully solved by any single technique.
-
-<PromptInjectionFlowDiagram />
-
-- **Data leakage**: a model trained or fine-tuned on sensitive data can memorize and later regurgitate it; a RAG system with insufficiently scoped retrieval can surface documents a given user shouldn't see — both require access controls enforced *before* retrieval/generation, not just filtering the output after.
-- **Jailbreaks**: adversarial prompts designed to bypass a model's safety training — an ongoing arms race, addressed with a combination of model-level safety tuning and system-level guardrails (input/output classifiers) rather than either alone.
-- **Excessive agency**: giving an LLM-based agent (see [Agents](/docs/agents/roadmap)) more real-world capability (API calls, file writes, financial transactions) than a given task actually requires — the fix is the same principle as least-privilege IAM, applied to what tools an agent is allowed to invoke and under what confirmation requirements.
+- **Prompt injection.** Instructions placed in input the model reads, either typed by a user (direct) or hidden in a document, email or web page the application retrieves (indirect), try to override the developer's instructions. No prompt-writing technique fully prevents it. The robust defences are architectural: treat retrieved content as untrusted data, and design so that a successfully injected model still can't do much harm.
+- **Excessive agency.** An agent with tools that can send email, move money or delete files turns a successful injection into real damage. Give agents the narrowest tools for the task, read-only where possible, and require human confirmation for consequential actions. It's least privilege again, applied to tools.
 
 <LeastPrivilegeAgencyDiagram />
 
-- **PII protection**: detecting and redacting personally identifiable information both in data used for training/fine-tuning and in logs/traces captured during serving (see [Observability](/docs/mlops/observability)) — logging full prompts and completions by default is a common, easily-avoided way to accidentally create a PII exposure.
+- **Data leakage through retrieval.** A retrieval-augmented system that searches all documents and filters afterwards can surface documents the user isn't allowed to see. Enforce the user's permissions in the retrieval query itself.
+- **Insecure output handling.** Model output inserted into a web page, a SQL query or a shell command is untrusted input; escape and validate it like any user input.
+- **Unbounded consumption.** Long prompts and long generations cost money and capacity; rate-limit and cap tokens per user.
 
-## Reproducibility Checklist
+The OWASP Top 10 for LLM Applications catalogues these risks, and [AI Security](/docs/ai-security/overview) covers attacks and defences in depth.
 
-Given the same inputs below, a training run should produce the same result — the foundation everything else in this section (experiment tracking, CI/CD gating, incident debugging) depends on:
+## 8. Reproducibility: The Same Inputs, the Same Model
 
-- **Code**: the exact git commit.
-- **Data**: the exact dataset version (see [Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning)).
-- **Model**: the exact architecture and starting weights (for fine-tuning).
-- **Params**: every hyperparameter, logged (see [Experiment Tracking](/docs/mlops/experiment-tracking)).
-- **Environment**: exact package versions, ideally captured as a container image (see [Containers](/docs/mlops/containers)), not just a `requirements.txt`.
-- **Seeds**: random seeds for data shuffling, weight initialization, and any stochastic training component.
-- **Hardware**: GPU type and count — some operations (certain CUDA kernels, some forms of mixed precision) are not bit-for-bit deterministic across different hardware or GPU counts, so "same result" sometimes means "same result within a documented, acceptable tolerance," not literal bit-identical output.
+Reproducibility is the other cross-cutting property. If a production model misbehaves, you need to rebuild it exactly to investigate; if an auditor asks how a decision was made, you need to show what produced the model. A run is reproducible when everything that determines its result is recorded and can be restored:
 
 <ReproducibilityChecklistDiagram />
 
-<HardwareDeterminismDiagram />
+- **Code:** the exact commit, from a clean working tree.
+- **Data:** the exact dataset version ([Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning)).
+- **Configuration:** every hyperparameter ([Experiment Tracking](/docs/mlops/experiment-tracking)).
+- **Environment:** a container image by digest, with a locked dependency set.
+- **Starting point:** pretrained weights by hash, for fine-tuning.
+- **Randomness:** seeds for every random number generator.
+- **Hardware:** GPU type, count and driver, which affect floating-point results.
 
-The seeds and determinism knobs a training script actually needs to set, and the one environment variable PyTorch requires for its own deterministic-algorithm guarantee to hold:
+Seeds matter more than they seem. This script trains a 200-tree random forest five ways and fingerprints each model by hashing its predicted probabilities:
 
 ```python
-import torch, random, numpy as np
+import hashlib
 
-def set_seed(seed: int):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    torch.use_deterministic_algorithms(True)
+import numpy as np
+from sklearn.datasets import load_breast_cancer
+from sklearn.ensemble import RandomForestClassifier
+
+X, y = load_breast_cancer(return_X_y=True)
+
+def fingerprint(**kwargs):
+    """Train a forest and hash its predicted probabilities: equal hashes mean identical models."""
+    model = RandomForestClassifier(n_estimators=200, **kwargs).fit(X, y)
+    return hashlib.sha256(model.predict_proba(X).tobytes()).hexdigest()[:12]
+
+print("seed 0, run 1:        ", fingerprint(random_state=0))
+print("seed 0, run 2:        ", fingerprint(random_state=0))
+print("seed 0, 4 threads:    ", fingerprint(random_state=0, n_jobs=4))
+print("no seed, run 1:       ", fingerprint())
+print("no seed, run 2:       ", fingerprint())
+
+# floating-point addition is not associative: summation order changes the last bits
+a = np.float32(1e8); b = np.float32(-1e8); c = np.float32(1.0)
+print("(a + b) + c =", (a + b) + c, "   a + (b + c) =", a + (b + c))
 ```
 
-```bash
-CUBLAS_WORKSPACE_CONFIG=:4096:8 python train.py --seed 42
+```text
+seed 0, run 1:         ab720329813c
+seed 0, run 2:         ab720329813c
+seed 0, 4 threads:     ab720329813c
+no seed, run 1:        2f5ba1ad4587
+no seed, run 2:        e304ae1ca7cb
+(a + b) + c = 1.0    a + (b + c) = 0.0
 ```
 
-A pipeline that can't satisfy this checklist can't be debugged when something goes wrong in production — "the model started behaving differently" is unanswerable without knowing exactly what changed.
+With a fixed seed, the model is bit-identical across runs and even across thread counts, because scikit-learn derives each tree's randomness from the seed rather than from the thread that builds it. Without a seed, every run produces a different model.
 
-Next: [The Full MLOps Architecture, Priority Stack & Learning Path](/docs/mlops/mlops-architecture-and-roadmap) — putting every page in this section together into one end-to-end picture.
+The last line explains why GPU training is harder. Floating-point addition isn't associative: adding the same three numbers in a different order gives 1.0 or 0.0. GPU kernels often sum in an order that depends on thread scheduling, so the same seed on the same data can produce slightly different weights, and the differences grow over training. PyTorch can be made deterministic with `torch.use_deterministic_algorithms(True)` and the environment variable `CUBLAS_WORKSPACE_CONFIG=:4096:8`, at some cost in speed, but results still differ across GPU models and GPU counts. The realistic standard for large models is **statistical reproducibility**: a rerun lands within the measured seed-to-seed spread, as [Experiment Tracking](/docs/mlops/experiment-tracking#6-reproducing-a-run) explains.
+
+<PredictFirst
+  question="An auditor asks a bank to show how its credit model's version 12, deployed in March, was produced. The team has the model file and the training code's current main branch. What's missing?"
+  options={[
+    'Nothing; the model file contains everything needed',
+    'The exact commit, data version, configuration, environment and seeds used for version 12',
+    'Only the hardware specification',
+    'Only the evaluation metrics',
+  ]}
+  correctIndex={1}
+  explanation="The current main branch may differ from the code that trained version 12, and the model file doesn't say which data, hyperparameters, package versions or seeds produced it. Without those, the team can neither rebuild the model nor show what went into it. This is why each registered version must link to a tracked run that records commit, data version, configuration, environment and seeds."
+/>
+
+## 9. When *Not* to Apply the Full Set
+
+| Situation | Proportionate approach |
+|---|---|
+| A local prototype on public data | Fixed seeds and git; no secrets manager needed if there are no secrets, but still never paste a real key into a notebook |
+| Internal batch model with no external callers | Least-privilege roles, secret injection and artifact hashes; skip public-endpoint hardening |
+| A model trained once for a paper | Record the full reproducibility set; security controls matter less than releasing exact code, data references and seeds |
+| Regulated decisions (credit, health, hiring) | Everything on this page, plus documented approvals and retention required by the regulator |
+| An LLM feature with no tools and no private data | Input and output filtering and rate limits; the agency controls apply once it can act or read private data |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| ML adds risks | Sensitive training data, executable model files, memorization, instruction-following LLMs |
+| Least privilege | One identity per workload, narrow roles, short-lived workload credentials |
+| Secrets | In a secrets manager, injected at runtime; scan history; rotate anything that leaked |
+| Pickles run code | Loading an untrusted pickle executes its author's code; prefer safetensors and `weights_only` |
+| Verify artifacts | Hash models, pin images by digest and dependencies by hash; sign for provenance |
+| Data in models | Models memorize; deduplicate, filter personal data, consider differential privacy |
+| LLM risks | Prompt injection is unsolved; limit agency, enforce permissions in retrieval |
+| Reproducibility | Commit, data, config, environment, weights, seeds, hardware; GPU runs reproduce statistically |
+
+---
+
+Next: [The Full MLOps Architecture, Priority Stack & Learning Path](/docs/mlops/mlops-architecture-and-roadmap) puts every page in this section together into one end-to-end design.
+
+## Sources
+
+- OWASP, [Top 10 for Large Language Model Applications](https://genai.owasp.org/llm-top-10/)
+- Hugging Face, [Pickle scanning and safetensors](https://huggingface.co/docs/hub/security-pickle)
+- PyTorch, [torch.load and weights_only](https://docs.pytorch.org/docs/stable/generated/torch.load.html) and [Reproducibility](https://docs.pytorch.org/docs/stable/notes/randomness.html)
+- N. Carlini et al., [Extracting Training Data from Large Language Models](https://arxiv.org/abs/2012.07805), USENIX Security 2021
+- R. Shokri et al., [Membership Inference Attacks Against Machine Learning Models](https://arxiv.org/abs/1610.05820), IEEE S&P 2017
+- SLSA, [Supply-chain Levels for Software Artifacts](https://slsa.dev/)

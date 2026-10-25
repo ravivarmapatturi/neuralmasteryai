@@ -1,111 +1,359 @@
 ---
-title: "Data Engineering & Versioning"
+title: "Data Engineering & Versioning, In Full Depth"
 sidebar_position: 4
-description: "The real data pipeline from source to training set, plus DVC/LakeFS/Delta Lake for versioning -- because a bad dataset produces a precisely wrong model."
+description: "The pipeline from raw sources to a training set, data contracts that fail loudly, choosing between pandas, Polars, DuckDB and Spark with measured timings, content-addressed versioning with DVC, table time travel with Delta Lake and Iceberg, lineage, and schema evolution."
 ---
 
 import DataPipelineFlowDiagram from '../../../viz/diagrams/DataPipelineFlowDiagram';
-import DataSourceTypesDiagram from '../../../viz/diagrams/DataSourceTypesDiagram';
-import DatabaseUseCaseDiagram from '../../../viz/diagrams/DatabaseUseCaseDiagram';
 import DataProcessingScaleDiagram from '../../../viz/diagrams/DataProcessingScaleDiagram';
 import GitVsDataVersioningDiagram from '../../../viz/diagrams/GitVsDataVersioningDiagram';
 import DataLineageProvenanceDiagram from '../../../viz/diagrams/DataLineageProvenanceDiagram';
-import DataVersioningToolComparisonDiagram from '../../../viz/diagrams/DataVersioningToolComparisonDiagram';
 import SchemaEvolutionDiagram from '../../../viz/diagrams/SchemaEvolutionDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Data Engineering & Versioning
+# Data Engineering & Versioning, In Full Depth
 
-MLOps starts with data, not models. A perfectly engineered training pipeline running on badly-sourced, unvalidated data produces a model that's precisely wrong.
+[Engineering Foundations](/docs/mlops/engineering-foundations) covered the code side of a production ML project: version control, packaging, testing. A model is a function of its code *and* its data, and the data side is where most production failures start. This page covers the path data takes from its sources to a training set: the stages of a pipeline, contracts that stop bad data at the door, how to choose a processing engine (with timings), why git can't version datasets and what does, table formats that keep every past version queryable, lineage, and changing a schema without breaking its consumers.
 
-## The Data Pipeline
+<ELI5>
+
+A restaurant is only as good as its ingredients. A great chef with spoiled fish makes a bad meal, every time, very skilfully. So good kitchens check deliveries at the door, label every container with what it is and when it arrived, and keep records of which supplier's batch went into which dish, so that when a customer gets sick they can find the cause.
+
+Data engineering is that discipline for the data a model learns from: checking it on arrival, storing it in labelled, dated versions, and recording which version went into which model.
+
+Everything below is how each of those checks and labels works in practice.
+
+</ELI5>
+
+## 1. Why Data Engineering Decides Model Quality
+
+A training run takes a dataset and produces a model that fits it as well as possible. It has no opinion about whether the dataset is right. Duplicate rows get counted twice, a column whose units silently changed from dollars to cents gets learned as a hundredfold signal, and a label leaked into a feature produces a model that looks brilliant offline and fails in production. The model reproduces the data's mistakes precisely, which is why the saying in this field is that a pipeline on bad data produces a model that is *precisely wrong*.
+
+Data problems also surface late. A broken upstream export on Monday shows up as a strange drop in a dashboard on Thursday, after a model was retrained on it Tuesday night. The engineering goal is to move detection as early as possible: to the moment data arrives.
+
+That requires a pipeline with explicit stages, so each stage can be checked.
+
+## 2. The Pipeline, Stage by Stage
 
 <DataPipelineFlowDiagram />
 
-- **Data sources**: CSV/JSON/Parquet files, relational databases, REST APIs, object storage (S3-style), streaming systems (Kafka) — real production systems usually pull from several of these simultaneously.
+**Sources.** Production ML data rarely comes from one place: application databases (PostgreSQL, MySQL), event streams (Kafka, Kinesis), files dropped by partners (CSV, JSON, Parquet), third-party APIs, and object storage. Each has its own update rhythm and failure modes.
 
-<DataSourceTypesDiagram />
+**Ingestion** copies data from sources into storage you control, either in **batches** on a schedule or **continuously** from a stream. For databases, **change data capture** (CDC) tools such as Debezium read the database's change log and stream inserts, updates and deletes, which is far kinder to a production database than repeatedly querying whole tables.
 
-- **Ingestion**: getting data from the source into your system, on a schedule or continuously.
-- **Validation**: checking incoming data matches expected schema, types, and ranges *before* anything downstream touches it — catching a broken upstream data source here, not three stages later as a confusing model failure.
-- **Transformation**: cleaning, joining, reshaping — turning raw ingested data into a usable table.
-- **Storage**: where the processed data lives until needed — a data warehouse, a data lake, or plain object storage, depending on scale and query patterns.
-- **Feature engineering**: turning stored data into the actual model inputs (see [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals)).
+**Validation** checks each batch against its contract (section 3) before anything downstream reads it.
 
-## Databases
+**Transformation** cleans, deduplicates, joins and reshapes. The common modern pattern is **ELT**: load raw data into the warehouse or lake first, then transform it there with SQL, often managed by dbt, so the raw copy is always available to reprocess when a transformation bug is found.
 
-- **PostgreSQL / MySQL**: the standard relational stores for structured application and pipeline metadata (see [Databases — Relational](/docs/databases/relational/overview)).
-- **Redis**: an in-memory key-value store, used in ML systems for caching (e.g. cached predictions, cached feature lookups) where sub-millisecond access matters more than durability.
-- **MongoDB**: a document store, useful when data doesn't fit a rigid relational schema (e.g. variable-structure event logs).
+**Storage.** Raw data usually lands in a **data lake** (files in object storage), and cleaned, modelled tables live in a **warehouse** (BigQuery, Snowflake, Redshift) or in a **lakehouse**, a lake whose files are managed by a table format such as Delta Lake or Apache Iceberg (section 6). A common layering names them bronze (raw), silver (cleaned and joined) and gold (aggregated for specific uses).
 
-<DatabaseUseCaseDiagram />
+**Feature engineering** turns stored tables into model inputs, ideally in definitions shared with serving through a feature store ([Feature Stores & Model Registry](/docs/mlops/feature-stores-and-model-registry)).
 
-## Data Processing at Scale
+The stages are run as tasks in an orchestrated pipeline ([Pipeline Orchestration](/docs/mlops/pipeline-orchestration)), with each stage writing a dated output that the next reads. The first stage where things are actually *checked* is validation, so it gets the most attention.
 
-- **Pandas / NumPy**: the default for data that fits in memory on one machine — most experimentation and small-to-mid production pipelines never need more than this.
-- **Polars**: a newer DataFrame library built for speed (multi-threaded, written in Rust) — a drop-in-flavored alternative to Pandas when single-machine performance starts to matter.
-- **PySpark**: distributed data processing across a cluster, for datasets too large for one machine's memory — the standard choice once you outgrow Pandas, especially paired with **Databricks** for managed Spark infrastructure.
+## 3. Data Contracts: Fail at the Door
 
-<DataProcessingScaleDiagram />
+A **data contract** is an explicit, machine-checked agreement between the team that produces data and the teams that consume it: which columns exist, their types, allowed values and ranges, uniqueness, freshness, and who to contact when it changes. Without one, every consumer relies on assumptions it never wrote down, and finds out they were broken from a model's behaviour weeks later.
 
-The same validate-then-aggregate step in Pandas (fits in memory) vs. PySpark (distributed) -- same operation, different execution model:
+Here is a contract for a transaction feed, written with [Pandera](https://pandera.readthedocs.io), validating a batch that contains three realistic problems: a duplicated ID, a refund sent as a negative amount, and a lower-case currency code from a new upstream client:
 
 ```python
 import pandas as pd
-df = pd.read_parquet("transactions.parquet")
-df = df[df["amount"] > 0]                              # validation: drop bad rows
-daily = df.groupby("date")["amount"].sum()
+import pandera.pandas as pa
+
+contract = pa.DataFrameSchema(
+    {
+        "transaction_id": pa.Column(str, unique=True),
+        "user_id": pa.Column(int, pa.Check.gt(0)),
+        "amount": pa.Column(float, pa.Check.in_range(0.01, 50_000)),
+        "currency": pa.Column(str, pa.Check.isin(["INR", "USD", "GBP"])),
+        "event_time": pa.Column("datetime64[ns, UTC]"),
+    },
+    strict=True,                       # unexpected new columns are a contract change too
+)
+
+batch = pd.DataFrame({
+    "transaction_id": ["t1", "t2", "t3", "t3"],
+    "user_id": [42, 7, 7, 9],
+    "amount": [31.0, 4800.0, -5.0, 120.0],          # a refund sent with a negative sign
+    "currency": ["INR", "USD", "usd", "GBP"],       # lower-case from a new upstream client
+    "event_time": pd.to_datetime(["2026-10-22T10:00Z"] * 4),
+})
+
+try:
+    contract.validate(batch, lazy=True)             # lazy: collect every failure, not just the first
+except pa.errors.SchemaErrors as err:
+    print(err.failure_cases[["column", "check", "failure_case", "index"]].to_string(index=False))
 ```
+
+```text
+        column                       check failure_case  index
+transaction_id            field_uniqueness           t3      2
+transaction_id            field_uniqueness           t3      3
+        amount       in_range(0.01, 50000)         -5.0      2
+      currency isin(['INR', 'USD', 'GBP'])          usd      2
+```
+
+Every problem is reported, with the column, the rule it broke, the bad value and the row. A pipeline step that runs this and fails stops the batch from reaching training or features.
+
+Three design decisions matter more than the library:
+
+- **Decide what a failure does.** Some violations should stop the pipeline (missing columns, a wrong type, an empty batch). Others should quarantine the bad rows and let the rest through, with an alert, because stopping all ingestion for one bad row is its own outage.
+- **Check distributions, not just individual values.** Each value in a batch can be valid while the batch is wrong: the null rate on a column jumped from 0.1% to 30%, or the batch is a tenth of its usual size. Row-count, null-rate and freshness checks catch the broken upstream jobs that per-value rules miss.
+- **Put the contract where the producer sees it.** A contract that only the consumer runs catches breakage after the fact. One checked in the producer's CI stops a breaking change before it ships.
+
+Pandera, Great Expectations and dbt tests cover most needs in Python and SQL pipelines. Validated data then has to be processed, and the next choice is what to process it with.
+
+## 4. Choosing a Processing Engine
+
+The right engine depends mostly on one question: does the data fit on one machine?
+
+<DataProcessingScaleDiagram />
+
+Here is the same job three ways on one machine: 5 million transactions in a Parquet file, filter invalid amounts, and total spend per user per day:
 
 ```python
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, sum as spark_sum
+import time
 
-spark = SparkSession.builder.appName("transactions").getOrCreate()
-df = spark.read.parquet("s3://my-ml-bucket/transactions/")
-df = df.filter(col("amount") > 0)
-daily = df.groupBy("date").agg(spark_sum("amount").alias("total"))
+import duckdb
+import numpy as np
+import pandas as pd
+import polars as pl
+
+rng = np.random.default_rng(0)
+n = 5_000_000
+pd.DataFrame({
+    "user_id": rng.integers(1, 200_000, n),
+    "day": rng.integers(0, 30, n),
+    "amount": rng.lognormal(3.5, 1.0, n).round(2),
+}).to_parquet("transactions.parquet")
+
+def timed(name, fn):
+    start = time.perf_counter()
+    result = fn()
+    print(f"{name:<7} {time.perf_counter() - start:5.2f} s   rows out: {len(result):,}")
+
+# The same job three ways: per-user, per-day spend over valid rows
+timed("pandas", lambda: pd.read_parquet("transactions.parquet")
+      .query("amount > 0").groupby(["user_id", "day"], as_index=False)["amount"].sum())
+timed("polars", lambda: pl.scan_parquet("transactions.parquet")
+      .filter(pl.col("amount") > 0).group_by("user_id", "day").agg(pl.col("amount").sum()).collect())
+timed("duckdb", lambda: duckdb.sql("""
+      SELECT user_id, day, sum(amount) AS amount FROM 'transactions.parquet'
+      WHERE amount > 0 GROUP BY user_id, day""").df())
 ```
 
-## Data Versioning: Why Code Versioning Isn't Enough
+On a shared 12-core laptop (pandas 2.3, Polars 2.0, DuckDB 2.0; exact times vary with machine load):
 
-Git versions code beautifully and versions large binary data terribly — datasets are too large for git's diffing model, and "which exact version of this 500GB dataset trained this model" is a question git alone can't answer. This is the entire reason dedicated data versioning tools exist.
+```text
+pandas  20.34 s   rows out: 3,392,259
+polars   1.37 s   rows out: 3,392,259
+duckdb   1.71 s   rows out: 3,392,259
+```
+
+All three produce the same 3.39 million groups. The order-of-magnitude gap comes from how they execute:
+
+- **pandas** runs each operation eagerly, mostly on one core, materializing every intermediate result in memory. It's the most widely known API and fine for data up to a few million rows.
+- **Polars** builds a **lazy query plan** (`scan_parquet` reads nothing until `collect()`), optimizes it (pushing the filter into the file scan, reading only needed columns) and runs it in parallel across cores, in Rust.
+- **DuckDB** is an in-process analytical SQL database with the same ingredients: columnar, vectorized, parallel, and able to query Parquet files directly.
+
+Beyond one machine, **Apache Spark** (PySpark) distributes the same kind of query plan across a cluster, typically through Databricks, EMR or Dataproc. It earns its operational cost when data reaches hundreds of gigabytes or more; below that, a single large machine with Polars or DuckDB is usually faster, cheaper and simpler. [Big Data & Analytics](/docs/mlops/big-data-and-analytics) covers distributed processing in depth.
+
+Processing produces a dataset. Training on it reproducibly needs a way to name that exact dataset later, which is where git falls short.
+
+## 5. Why Git Can't Version Data, and What DVC Does
+
+Git stores every version of every file in full in the repository, and every clone downloads the whole history. That's fine for kilobytes of source code and unworkable for gigabytes of Parquet: a repository holding ten versions of a 5 GB dataset is 50 GB to clone. Git's line-based diffs also mean nothing for binary files.
 
 <GitVsDataVersioningDiagram />
 
-**What you actually need to track**:
-- **Data lineage**: which raw sources and transformations produced a given dataset.
-- **Data provenance**: where a specific piece of data originally came from.
-- **Dataset snapshots/versioning**: being able to reference "the exact dataset used to train model v3," reproducibly, months later.
-- **Data reproducibility**: given the same code and the same data version, get the same trained model.
+The fix used by DVC and similar tools is **content addressing**. Compute a cryptographic hash of the file's bytes, store the file in cheap object storage under that hash, and put only a tiny text file containing the hash in git. The hash identifies the content exactly: change one byte and the hash changes; two identical files share one stored copy.
+
+A complete DVC workflow, using DVC 3.67 and a local folder standing in for S3:
+
+```bash
+git init -q && git config user.email demo@example.com && git config user.name demo
+dvc init -q && git commit -qm "Initialize DVC"
+dvc remote add -d storage ../dvcstore          # S3, GCS or Azure in practice; a folder here
+git commit -qam "Add DVC remote"
+
+printf "user_id,amount\n42,31.0\n7,12.0\n" > data/train.csv
+dvc add -q data/train.csv
+git add data/train.csv.dvc data/.gitignore && git commit -qm "Training data v1"
+git tag data-v1
+dvc push -q
+
+printf "user_id,amount\n42,31.0\n7,12.0\n9,250.0\n" > data/train.csv     # new rows arrive
+dvc add -q data/train.csv
+git commit -qam "Training data v2" && dvc push -q
+
+echo "--- what git stores: the pointer file"
+cat data/train.csv.dvc
+echo "--- current data"
+wc -l < data/train.csv
+git checkout -q data-v1 && dvc checkout -q
+echo "--- after checking out data-v1"
+wc -l < data/train.csv
+cat data/train.csv.dvc | grep md5
+```
+
+```text
+--- what git stores: the pointer file
+outs:
+- md5: 90eb2340927a54bba57cbf4e0ccae8d7
+  size: 38
+  hash: md5
+  path: train.csv
+--- current data
+4
+--- after checking out data-v1
+3
+- md5: fb1feeefc9465ac0e388686cac195ac7
+  hash: md5
+```
+
+Git versions only the five-line pointer file. Checking out the `data-v1` tag restores the old pointer, and `dvc checkout` fetches the matching content from the cache or remote: the file goes back to its 3 lines (a header and two rows). The pair "git commit plus DVC hash" now names the code and the data together, which is exactly what [Experiment Tracking](/docs/mlops/experiment-tracking) needs a run to record.
+
+DVC also defines **pipelines** (`dvc.yaml`): stages with declared inputs and outputs, re-run only when an input's hash changes, which is the caching idea from orchestration applied to files.
+
+<PredictFirst
+  question="A team versions a 20 GB training set with DVC. They fix a typo in one row and run dvc add again. How much new data does dvc push upload?"
+  options={[
+    'Only the changed row, because DVC stores diffs like git',
+    'Roughly the whole 20 GB file again, because the file has a new hash and DVC stores whole files',
+    'Nothing, because the change is too small to affect the hash',
+    'Only the new pointer file',
+  ]}
+  correctIndex={1}
+  explanation="DVC addresses whole files by their hash, and any change produces a new hash, so the edited file is a new object and is uploaded in full. That's why large datasets are usually stored as many partition files (for example one per day): a change then creates new versions of only the affected partitions, and unchanged partitions are shared between versions. Table formats like Delta Lake and Iceberg go further and version at the level of data files inside a table."
+/>
+
+## 6. Table Formats: Versioning Inside the Lake
+
+DVC versions files that sit next to code. Large, continuously updated tables in a lake need versioning built into the storage layer itself. **Open table formats**, chiefly **Delta Lake** and **Apache Iceberg** (and Apache Hudi), provide it.
+
+A table in these formats is a set of immutable Parquet data files plus a **transaction log** or metadata tree that records which files make up the table at each version. A write never modifies existing files; it adds new files and commits a new log entry saying "version 7 = these files". That one design gives:
+
+- **ACID transactions:** readers never see a half-finished write, and concurrent writers don't corrupt the table.
+- **Time travel:** any past version can be read, because its files and log entry still exist.
+- **Schema enforcement and evolution:** the log records the schema, so writes with the wrong schema are rejected and allowed changes are tracked.
+- **Engine independence:** Spark, Trino, DuckDB, Polars, Snowflake and BigQuery can read the same tables.
+
+Here is time travel with the `deltalake` Python library (no Spark needed):
+
+```python
+import pandas as pd
+from deltalake import DeltaTable, write_deltalake
+
+path = "features_table"          # s3://... in production; a local folder here
+
+write_deltalake(path, pd.DataFrame({"user_id": [42, 7], "avg_7d": [31.0, 12.0]}))                  # version 0
+write_deltalake(path, pd.DataFrame({"user_id": [9], "avg_7d": [250.0]}), mode="append")             # version 1
+write_deltalake(path, pd.DataFrame({"user_id": [42, 7, 9], "avg_7d": [48.5, 12.0, 250.0]}),
+                mode="overwrite")                                                                    # version 2
+
+table = DeltaTable(path)
+for entry in table.history():
+    print(entry["version"], entry["operation"], entry.get("operationParameters", {}).get("mode"))
+
+print("now:\n", table.to_pandas().sort_values("user_id").to_string(index=False))
+print("as of version 0:\n", DeltaTable(path, version=0).to_pandas().sort_values("user_id").to_string(index=False))
+```
+
+```text
+2 WRITE Overwrite
+1 WRITE Append
+0 WRITE ErrorIfExists
+now:
+  user_id  avg_7d
+       7    12.0
+       9   250.0
+      42    48.5
+as of version 0:
+  user_id  avg_7d
+       7    12.0
+      42    31.0
+```
+
+The overwrite at version 2 didn't destroy version 0: reading `version=0` returns the original two rows. A training run that records "features_table at version 0" can be reproduced exactly, months later, as long as old versions are retained.
+
+That last condition is the catch. Old data files accumulate, so tables are periodically cleaned (`VACUUM` in Delta, snapshot expiry in Iceberg), which deletes versions older than a retention window, often 7 to 30 days by default. For training data you need to reproduce, either extend retention or copy the exact version into a dated snapshot.
+
+<GoDeeper title="Go deeper: Delta Lake vs Iceberg, and branching data with lakeFS">
+
+Delta Lake (created by Databricks, now a Linux Foundation project) and Apache Iceberg (created at Netflix) solve the same problem with different metadata designs. Delta keeps an ordered JSON transaction log with periodic Parquet checkpoints. Iceberg keeps a tree: a table metadata file points to manifest lists, which point to manifests, which list data files with column statistics. Iceberg's design makes **hidden partitioning** and **partition evolution** possible: a table partitioned by day can switch to hourly partitions without rewriting old data, and queries don't need to know the partitioning scheme. Both now support row-level deletes, schema evolution and time travel, and most engines read both. Delta's UniForm feature even writes Iceberg metadata alongside Delta's so one table can be read as either. The practical choice usually follows your platform: Databricks favours Delta, while Snowflake, AWS and most multi-engine setups lean towards Iceberg.
+
+Table formats version one table at a time. **lakeFS** versions a whole data lake: it puts a git-like layer of branches, commits and merges over object storage, so you can branch the entire lake, run a risky backfill or test a new pipeline on the branch, check the results, and merge or discard it, without copying data. It is to a lake what a feature branch is to a code repository.
+
+</GoDeeper>
+
+## 7. Lineage and Provenance
+
+Versioning answers "what exactly was this dataset?". **Lineage** answers "where did it come from?": which source tables, through which transformations, at which versions, produced it, and which models and dashboards depend on it downstream. **Provenance** is the same question for individual records: where a particular row originally came from.
 
 <DataLineageProvenanceDiagram />
 
-## Tools
+Lineage pays for itself in two situations:
 
-- **DVC (Data Version Control)**: the most common starting point — versions large files/datasets alongside git, storing the actual data in remote storage (S3, GCS, etc.) while git tracks lightweight pointer files. Effectively "git for data," using a workflow deliberately familiar to anyone who already knows git.
+- **Root cause:** a model's accuracy dropped; lineage shows that one of its input tables is built from a source whose schema changed last week.
+- **Impact analysis:** a source table must change, or contains personal data that must be deleted under a privacy request; lineage lists every downstream table, feature and model affected.
 
-```bash
-dvc init
-dvc remote add -d storage s3://my-ml-bucket/dvc-store
+The open standard for capturing it is **OpenLineage**: orchestrators (Airflow, Dagster), Spark and dbt emit lineage events as jobs run, and a backend such as Marquez or a data catalog (DataHub, OpenMetadata, Unity Catalog) assembles the graph. Capturing lineage automatically from running jobs is what makes it trustworthy; hand-drawn lineage diagrams go stale within weeks.
 
-dvc add data/fraud-training.parquet     # creates a small .dvc pointer file -- that's what git tracks
-git add data/fraud-training.parquet.dvc .gitignore
-git commit -m "Track fraud training data v1"
-dvc push                                # uploads the actual data to the S3 remote
+## 8. Schema Evolution Without Breaking Consumers
 
-git checkout v1-training-run            # jump git to an older commit...
-dvc checkout                            # ...and the dataset in the working directory matches it exactly
-```
-- **LakeFS**: brings git-like branching and versioning semantics directly to a data lake — branch a dataset, experiment, merge back, exactly like a code branch.
-- **Delta Lake**: adds versioned, ACID-compliant tables on top of a data lake (built on Apache Spark) — every write creates a new, queryable version, enabling "time travel" queries against past states of a table.
-- **Apache Iceberg**: a similar table format to Delta Lake (versioned, schema-evolving tables over object storage), engine-agnostic rather than Spark-specific — increasingly the default choice for new data lake infrastructure.
-
-<DataVersioningToolComparisonDiagram />
-
-## Data Contracts & Schema Evolution
-
-A **data contract** is an explicit agreement between whoever produces data and whoever consumes it: field names, types, allowed ranges, update frequency — formalizing what used to be an implicit, easily-broken assumption. **Schema evolution** is the discipline of changing that schema over time (adding a field, changing a type) without silently breaking every downstream consumer — versioned schemas and backward-compatible changes (e.g. new fields are optional, not required) are the standard approach.
+Schemas change: a new column is added, a type widens, a field is renamed. The question is whether a change breaks the consumers that already read the data.
 
 <SchemaEvolutionDiagram />
 
-Next: [Experiment Tracking](/docs/mlops/experiment-tracking) — once your data is versioned and trustworthy, tracking what you actually did with it.
+The rules come from serialization formats like Avro and Protobuf, and apply to tables too:
+
+| Change | Safe for existing readers? | Why |
+|---|---|---|
+| Add an optional (nullable) column | Yes | Old readers ignore it; new readers handle nulls in old data |
+| Widen a type (int to long, float to double) | Usually | Values still fit; check every engine supports the promotion |
+| Add a required column with no default | No | Old data has no value for it |
+| Rename a column | No | It's a remove plus an add to every reader; add the new one, migrate readers, then drop the old |
+| Change a column's meaning or units, keeping its name | No, and the most dangerous | Nothing fails; the model silently learns the wrong thing |
+
+The last row deserves emphasis. A type change fails loudly. A units change from dollars to cents passes every type check, every not-null check and most range checks, and turns a model's most important feature into nonsense. The defences are a range or distribution check in the contract, and a rule that a change in meaning gets a new column name.
+
+**Schema registries** (Confluent Schema Registry for Kafka, the table format's own schema history for lake tables) enforce compatibility rules automatically, rejecting a producer's write that would break readers.
+
+## 9. When *Not* to Build All of This
+
+| Situation | Better choice |
+|---|---|
+| A one-off analysis on a CSV | pandas or DuckDB on a local copy; record the file's hash in your notes |
+| A dataset that never changes, such as a published benchmark | Pin the source URL and a checksum; versioning tooling adds nothing |
+| Data already in a warehouse with time travel and access controls | Use the warehouse's snapshots and record the timestamp or snapshot ID per run, rather than exporting files to DVC |
+| Small team, a few gigabytes, one model | DVC with a cloud bucket, a Pandera contract and pandas or Polars; skip the lakehouse until scale demands it |
+| Streaming features that must be seconds fresh | A stream processor and an online store; batch-oriented versioning doesn't fit the hot path |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Garbage in | A model reproduces its data's mistakes precisely; catch them when data arrives |
+| Pipeline stages | Sources, ingestion, validation, transformation, storage, features; each writes a dated output |
+| Data contracts | Machine-checked schema, ranges, uniqueness, volume and freshness, agreed with the producer |
+| Engines | pandas for small, Polars or DuckDB for one machine, Spark for a cluster; measured 15x apart on 5M rows |
+| Content addressing | DVC stores files under their hash; git tracks a tiny pointer |
+| Table formats | Delta, Iceberg: immutable files plus a log give ACID writes and time travel |
+| Retention | Time travel only reaches back as far as old versions are kept |
+| Lineage | Capture it automatically from jobs; use it for root cause and impact analysis |
+| Schema evolution | Add optional columns; never change a column's meaning under the same name |
+
+---
+
+Next: [Big Data & Analytics](/docs/mlops/big-data-and-analytics) covers distributed processing when data outgrows one machine, and [Experiment Tracking](/docs/mlops/experiment-tracking) records which data version each training run used.
+
+## Sources
+
+- DVC, [Documentation](https://dvc.org/doc)
+- Delta Lake, [Documentation](https://docs.delta.io/) and [delta-rs Python library](https://delta-io.github.io/delta-rs/); M. Armbrust et al., [Delta Lake: High-Performance ACID Table Storage over Cloud Object Stores](https://www.vldb.org/pvldb/vol13/p3411-armbrust.pdf), VLDB 2020
+- Apache Iceberg, [Table spec](https://iceberg.apache.org/spec/)
+- Pandera, [Documentation](https://pandera.readthedocs.io/)
+- OpenLineage, [Documentation](https://openlineage.io/docs/)
+- N. Polyzotis et al., [Data Validation for Machine Learning](https://mlsys.org/Conferences/2019/doc/2019/167.pdf), MLSys 2019

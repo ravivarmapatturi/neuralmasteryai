@@ -1,119 +1,349 @@
 ---
-title: "Engineering Foundations for ML"
+title: "Engineering Foundations for ML, In Full Depth"
 sidebar_position: 3
-description: "The part of MLOps most ML courses skip -- clean code, testing, and config management, the actual difference between a notebook and a real system."
+description: "What turns a notebook into a system other people can run: a package layout, typed configuration, locked dependencies with uv, tests that use parametrization, mocks and property-based testing, a measured load test, and a one-command setup."
 ---
 
 import NotebookVsPipelineDiagram from '../../../viz/diagrams/NotebookVsPipelineDiagram';
-import SingleResponsibilityDiagram from '../../../viz/diagrams/SingleResponsibilityDiagram';
 import ConfigVsHardcodedDiagram from '../../../viz/diagrams/ConfigVsHardcodedDiagram';
 import DependencyPinningDiagram from '../../../viz/diagrams/DependencyPinningDiagram';
-import TestTypeGlossaryDiagram from '../../../viz/diagrams/TestTypeGlossaryDiagram';
-import TestingToolsDiagram from '../../../viz/diagrams/TestingToolsDiagram';
 import OnboardingStandardDiagram from '../../../viz/diagrams/OnboardingStandardDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Engineering Foundations for ML
+# Engineering Foundations for ML, In Full Depth
 
-The part of MLOps that gets skipped in most ML courses, and is the actual difference between a notebook and a system someone else can run, debug, and trust at 3am.
+The [MLOps Roadmap](/docs/mlops/roadmap) lays out the whole field. This page is its first technical step, and the one most ML courses skip: the ordinary software engineering that turns a model in a notebook into code another person can install, run, test and change safely. It covers why notebooks break as systems, how to structure an ML project as a package, typed configuration, locking dependencies so the same code gives the same numbers, the tests an ML codebase needs (with parametrized tests, mocks and property-based tests that you can run), a measured load test, and the standard a repository should meet before anyone else depends on it.
 
-## Why "It Works On My Machine" Isn't Good Enough
+<ELI5>
 
-A model in a Jupyter notebook has implicit dependencies everywhere: cell execution order, global variables set three cells up, a specific package version installed by hand. None of that survives contact with a second person, a second machine, or six months of time passing. Everything below exists to remove that implicitness.
+A home cook can make a great dish without writing anything down: a pinch of this, the pan that heats unevenly, the oven that runs hot. It works in their kitchen, for them. A restaurant can't run that way. Recipes are written with exact quantities, ingredients come from named suppliers, every station is laid out the same way, and a new cook can make the dish on their first night.
+
+A notebook is the home cook's kitchen. Engineering foundations are what turn it into a restaurant kitchen: written-down settings, exact versions of every ingredient, checks that each step works, and a setup a newcomer can follow.
+
+Everything below is how each of those is done for ML code.
+
+</ELI5>
+
+## 1. Why Notebooks Break as Systems
+
+Notebooks are excellent for exploration: fast feedback, plots next to code, easy to try ideas. They're poor as the home of a system that other people and machines run, for specific reasons:
+
+- **Hidden state.** Cells can run in any order, and variables persist after the cell that set them is edited or deleted. The notebook on disk may not reproduce the results on screen.
+- **No interface.** Nothing says what the inputs are, what the outputs are, or which cells matter. Another person, or a scheduler, can only run all of it top to bottom and hope.
+- **Untestable.** Logic written inline in cells can't be imported into a test.
+- **Hard to review.** Notebook files mix code with outputs and metadata, so a diff of a one-line change can be hundreds of lines of JSON.
+- **Implicit environment.** The packages installed on one laptop, in whatever versions happened to be current, are part of the result and aren't written down.
 
 <NotebookVsPipelineDiagram />
 
-## Clean Code & Architecture
+The fix isn't to stop using notebooks. It's to move code that matters into a package as soon as it works, and have notebooks import from it. Exploration stays fast, and everything that will be run again lives somewhere it can be tested, versioned and reviewed.
 
-- **SOLID principles**, applied to ML code specifically: a `Model` class shouldn't also handle data loading *and* API serialization (Single Responsibility) — split them so any one piece can change without breaking the others.
+## 2. Structure: A Package with Clear Responsibilities
 
-<SingleResponsibilityDiagram />
+A minimal, conventional layout for an ML project:
 
-- **Modular architecture**: separate data loading, preprocessing, model definition, training loop, and evaluation into distinct modules — the same separation of concerns that makes any software maintainable, just applied to a domain (ML) that often skips it under deadline pressure.
-- **Configuration management**: hyperparameters, file paths, and environment-specific values belong in config files (YAML/JSON) or environment variables — never hardcoded, so the same code runs in dev/staging/production by changing config, not code.
+```text
+fraud-model/
+├── pyproject.toml          # metadata, dependencies, tool settings
+├── uv.lock                 # exact versions of everything installed
+├── src/fraud_model/
+│   ├── __init__.py
+│   ├── config.py           # typed settings
+│   ├── features.py         # pure feature functions
+│   ├── scoring.py          # glue: fetch features, call the model
+│   └── train.py            # training entry point
+├── tests/                  # one test file per module
+└── configs/                # per-environment overrides
+```
+
+The **`src/` layout** means tests import the *installed* package rather than files that happen to be on the path, which catches packaging mistakes before anyone else does.
+
+The important design rule is **separation of responsibilities**, the single-responsibility principle applied to ML: data loading, feature computation, model definition, training, evaluation and serving each live in their own module, and each does one thing. Two payoffs follow directly:
+
+- **Feature functions become pure**: given inputs, return outputs, with no file reads, network calls or globals. Pure functions are trivial to test, and they can be imported unchanged by the training pipeline *and* the serving code, which is the cheapest defence against training-serving skew ([Feature Stores & Model Registry](/docs/mlops/feature-stores-and-model-registry#the-training-serving-skew-problem)).
+- **Side effects are pushed to the edges**: the scoring function receives its feature store client and model as arguments rather than creating them, so a test can pass in stand-ins (section 5).
+
+Creating such a project with [uv](https://docs.astral.sh/uv/) takes one command, `uv init --package fraud-model`, which writes `pyproject.toml` and the `src/` layout.
+
+## 3. Configuration: One Place, Typed, Overridable
+
+Every value a run depends on (file paths, hyperparameters, thresholds, endpoints) should live in one configuration object, not scattered through the code as literals. Then the same code runs in development, staging and production by changing configuration, never code, and every run can log exactly what it used.
 
 <ConfigVsHardcodedDiagram />
 
-- **Dependency management**: pin exact versions (`pyproject.toml` + a lockfile via `uv` or `poetry`) — an ML pipeline that silently picks up a newer NumPy/PyTorch and produces different numbers is a debugging nightmare that pinned dependencies prevent outright.
+Typed configuration catches mistakes at startup rather than halfway through a training run. With `pydantic-settings`, defaults live in the class and environment variables override them:
+
+```python
+from pathlib import Path
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class TrainConfig(BaseSettings):
+    """Every value a run depends on, typed and validated. Environment variables override defaults."""
+    model_config = SettingsConfigDict(env_prefix="FRAUD_", frozen=True)
+
+    data_path: Path = Path("data/transactions.parquet")
+    regularization_c: float = 1.0
+    test_size: float = 0.25
+    seed: int = 0
+```
+
+Setting `FRAUD_REGULARIZATION_C=0.3` changes that one value for a run, and `FRAUD_REGULARIZATION_C=abc` fails immediately with a validation error instead of crashing an hour into training. `frozen=True` stops code from changing configuration mid-run, so what was logged at the start is what was used.
+
+For larger projects with many experiment variants, **Hydra** composes configuration from YAML files and command-line overrides (`python train.py model=xgboost model.depth=8`). The principles are the same: one source, typed, overridable, logged with the run.
+
+**Secrets are not configuration.** API keys and passwords come from a secrets manager at runtime, never from a config file in git ([Security & Reproducibility](/docs/mlops/security-and-reproducibility#3-secrets-never-in-code-never-in-images)).
+
+## 4. Dependencies: Ranges to Declare, Locks to Install
+
+A model's numbers depend on its libraries. A NumPy or scikit-learn upgrade can change default parameters, random number streams or numerical routines, so the same code and data can produce a different model on a different install. Reproducible environments need two layers:
 
 <DependencyPinningDiagram />
+
+1. **Declared ranges** in `pyproject.toml`, saying what the code is known to work with:
 
 ```toml
 [project]
 name = "fraud-model"
+version = "0.1.0"
+requires-python = ">=3.12"
 dependencies = [
-    "torch==2.4.0",
-    "numpy==1.26.4",
-    "scikit-learn==1.5.1",
+    "pandas>=2.3",
+    "pydantic-settings>=2.10",
+    "scikit-learn>=1.7",
+]
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.170.9",
+    "pytest>=9.1.1",
 ]
 ```
 
-```bash
-uv sync             # installs exactly what's in uv.lock -- no version resolution surprises
-uv lock --upgrade   # a deliberate, reviewable step to bump versions, not an implicit side effect of installing
+2. **A lock file** recording the exact version and hash of every package, including transitive dependencies, resolved from those ranges. `uv add scikit-learn` updates both files; the lock entry it wrote for scikit-learn begins:
+
+```toml
+name = "scikit-learn"
+version = "1.9.1"
+source = { registry = "https://pypi.org/simple" }
 ```
 
-- **API design**: if your model is served behind an API (see [APIs & Model Serving](/docs/mlops/model-serving)), the contract (request/response schema, error format, versioning) is a design decision made deliberately, not whatever `FastAPI` happens to auto-generate from your first draft.
+`uv sync` installs exactly what the lock file says, on any machine, in CI and in the Docker build. Upgrades become a deliberate, reviewable change: `uv lock --upgrade` (or `--upgrade-package numpy`), run the tests and the [model gate](/docs/mlops/cicd-and-ml-cicd#4-a-model-gate-that-accounts-for-noise), commit the new lock file.
 
-## Testing an ML System
+Libraries you publish for others to use should declare ranges and not ship a lock; applications and training pipelines should always install from one. The container image built from the lock ([Containers](/docs/mlops/containers)) then fixes the operating system layer too.
 
-Testing ML code is genuinely harder than testing normal software, because "correct" isn't just "matches an exact expected value" — a model's output is expected to vary. The test types below cover different layers of that problem:
+<PredictFirst
+  question="A training pipeline's requirements.txt lists 'scikit-learn>=1.5' with no lock file. Retraining on unchanged data and code produces a model whose metrics shift slightly. What's the most likely explanation?"
+  options={[
+    'The data must have changed without anyone noticing',
+    'A newer scikit-learn release was installed on the new build, with different defaults or numerics',
+    'Random forests are never reproducible',
+    'The GPU drivers changed',
+  ]}
+  correctIndex={1}
+  explanation="A range like >=1.5 resolves to whatever is newest on the day of installation, so two builds weeks apart can install different versions, and upgrades sometimes change default hyperparameters or numerical details. A lock file pins exact versions (with hashes), so every install is identical until someone upgrades on purpose."
+/>
 
-- **Unit tests**: test individual functions in isolation — a data-cleaning function, a feature-computation function, a custom loss function's math.
-- **Integration tests**: test that pieces work together — does the full preprocessing pipeline correctly feed the model's expected input shape?
-- **End-to-end tests**: run the entire pipeline (data in, prediction out) on a small fixture dataset, checking it completes without error and produces reasonable output.
-- **Regression tests**: does a code change accidentally degrade a metric that used to pass? Run the model against a fixed benchmark dataset and assert performance hasn't dropped below a threshold.
-- **Data validation tests**: assert incoming data matches expected schema, ranges, and types *before* it reaches the model — see [Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning) for the pipeline stage this belongs to.
-- **Model tests**: beyond accuracy — does the model handle an empty input gracefully? Does it produce the same output for the same input (determinism, where expected)? Does a known edge case (e.g. a specific adversarial input) behave as expected?
-- **API tests**: does the serving endpoint return the correct schema, correct status codes, and handle malformed requests without crashing?
-- **Load tests**: does the serving endpoint hold up under realistic (or peak) concurrent request volume, and what's the latency distribution under load?
+## 5. Testing ML Code
 
-<TestTypeGlossaryDiagram />
+Testing ML code is harder than testing ordinary code in one way: a model's output isn't a single exact expected value. But most of an ML codebase is ordinary code (parsing, feature computation, glue, validation), and that part can and should be tested exactly. The model-specific tests (data contracts, behaviour tests, champion comparison) are covered in [CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd#3-testing-an-ml-repository); this section covers the foundations.
 
-## Tools
+Here are two feature functions, written as pure functions:
 
-- **`pytest`**: the standard Python test runner — fixtures, parametrized tests, and plugins cover nearly everything above.
-- **`unittest`**: Python's built-in test framework — less ergonomic than pytest, but zero extra dependencies, and you'll see it in older codebases.
-- **`mock`**: replace expensive or external dependencies (a real API call, a real database) with a fake stand-in during tests, so tests run fast and don't depend on external services being up.
-- **Locust**: a load-testing tool — define realistic user behavior in Python, and it simulates many concurrent users hitting your API, reporting latency/throughput/error rate under load.
-- **Postman**: manual and scripted API testing/exploration — useful for exploring and documenting an API's actual behavior before automating tests against it.
+```python
+import re
 
-<TestingToolsDiagram />
 
-A real parametrized unit test, and a Locust load test for the serving endpoint from [APIs & Model Serving](/docs/mlops/model-serving):
+def clean_amount(raw: str) -> float | None:
+    """Parse an amount like ' $1,200.50 '. Negative or unparseable amounts return None."""
+    text = re.sub(r"[\s$,]", "", raw)
+    try:
+        value = float(text)
+    except ValueError:
+        return None
+    return value if value >= 0 else None
+
+
+def risk_band(score: float) -> str:
+    if not 0.0 <= score <= 1.0:
+        raise ValueError(f"score must be in [0, 1], got {score}")
+    return "high" if score >= 0.8 else "medium" if score >= 0.5 else "low"
+```
+
+**Parametrized tests** run one test body over a table of cases, which makes edge cases cheap to add and easy to read. **Property-based tests** with [Hypothesis](https://hypothesis.readthedocs.io) go further: instead of listing examples, you state a property that must hold for *every* input, and the library generates hundreds of inputs, including the awkward ones (zero, negative zero, NaN, infinity, huge values) people forget:
 
 ```python
 import pytest
-from features import clean_transaction_amount
+from hypothesis import given
+from hypothesis import strategies as st
+
+from fraud_model.features import clean_amount, risk_band
+
 
 @pytest.mark.parametrize("raw, expected", [
     (" $1,200.50 ", 1200.50),
     ("0", 0.0),
-    ("-42", None),   # negative amounts are invalid -- should be dropped, not coerced
+    ("-42", None),          # negative amounts are invalid: dropped, not coerced
+    ("N/A", None),
 ])
-def test_clean_transaction_amount(raw, expected):
-    assert clean_transaction_amount(raw) == expected
+def test_clean_amount(raw, expected):
+    assert clean_amount(raw) == expected
+
+
+@given(st.floats(min_value=0, max_value=1))
+def test_risk_band_accepts_every_valid_score(score):
+    assert risk_band(score) in {"low", "medium", "high"}
+
+
+@given(st.floats(allow_nan=True, allow_infinity=True))
+def test_risk_band_never_silently_accepts_out_of_range(score):
+    if 0.0 <= score <= 1.0:
+        assert risk_band(score) in {"low", "medium", "high"}
+    else:
+        with pytest.raises(ValueError):
+            risk_band(score)
 ```
 
+The third test earns its place. An earlier version of `risk_band` had no range check, and returned `"high"` for any score above 0.8, including impossible ones like 2.0 that only appear when something upstream is broken. Running the property test against that version, Hypothesis finds a counterexample and shrinks it to a simple one:
+
+```text
+E           Failed: DID NOT RAISE ValueError
+E               score=2.0,
+FAILED tests/test_features.py::test_risk_band_never_silently_accepts_out_of_range
+```
+
+**Mocks** replace slow or external dependencies (a feature store, a database, an LLM API) with stand-ins, so tests are fast, deterministic and runnable without network access. Because `score_user` receives its dependencies as arguments (section 2), the test simply passes fakes in and checks how they were used:
+
 ```python
-from locust import HttpUser, task, between
+from unittest.mock import Mock
+
+from fraud_model.scoring import score_user
+
+
+def test_score_user_uses_feature_store_and_model():
+    feature_client = Mock()
+    feature_client.get.return_value = [48.5, 3.0]          # no network: a stand-in for the store
+    model = Mock()
+    model.predict_proba.return_value = [[0.1, 0.9]]
+
+    assert score_user(42, feature_client, model) == "high"
+    feature_client.get.assert_called_once_with(42)
+    model.predict_proba.assert_called_once_with([[48.5, 3.0]])
+```
+
+The full suite, including a test that an environment variable overrides the config default, runs in under two seconds:
+
+```text
+$ uv run pytest -q
+........                                                                 [100%]
+8 passed in 1.75s
+```
+
+The usual shape is a **test pyramid**: many fast unit tests like these, fewer integration tests that run real components together (the preprocessing pipeline producing the model's expected input shape, the API with a real small model), and a handful of end-to-end tests that run the whole pipeline on a small fixture dataset. Mocks are for unit tests; an integration test that mocks everything tests nothing.
+
+<GoDeeper title="Go deeper: what not to mock, and testing numerical code">
+
+Mocking is valuable at boundaries you don't control (networks, clocks, third-party services) and harmful inside your own logic. A test that mocks pandas to check you called `groupby` verifies the implementation, not the behaviour, and breaks on every refactor while catching no real bugs. Prefer small real inputs: a five-row DataFrame exercises the actual code. For services you depend on heavily, a **fake** (a small working in-memory implementation, such as a dict-backed feature store) is often better than a mock, because it behaves consistently across tests.
+
+Numerical code needs tolerances rather than equality: `pytest.approx` or `numpy.testing.assert_allclose` with a relative tolerance suited to the computation, since floating-point results legitimately differ in the last bits across platforms. Two property tests catch a large class of numerical bugs cheaply: **invariances** (a feature computed on shuffled rows gives the same per-row result; a probability output sums to 1) and **known cases** (a loss function's value and gradient at a point you've worked out by hand, or checked against finite differences, as the [Linear Regression](/docs/machine-learning/linear-regression) page does for the MSE gradient).
+
+</GoDeeper>
+
+## 6. Load Testing the Service
+
+Unit tests say the code is correct; a **load test** says whether the service holds up under realistic concurrent traffic, and what its latency distribution looks like when it does. [Locust](https://locust.io) describes user behaviour in Python:
+
+```python
+from locust import HttpUser, between, task
+from sklearn.datasets import load_breast_cancer
+
+ROW = load_breast_cancer().data[81].tolist()
+
 
 class ModelApiUser(HttpUser):
-    wait_time = between(0.1, 0.5)
+    wait_time = between(0.05, 0.2)          # think time between a user's requests
 
     @task
     def predict(self):
-        self.client.post("/v1/predict", json={"features": [5.1, 3.5, 1.4, 0.2]})
+        self.client.post("/v1/predict", json={"features": ROW}, headers={"x-api-key": "dev-key"})
 ```
 
-```bash
-pytest tests/ -v
-locust -f locustfile.py --host=http://localhost:8000 --users 100 --spawn-rate 10
+Run headless for 30 seconds against the FastAPI service from [APIs & Model Serving](/docs/mlops/model-serving#3-a-production-shaped-service-with-fastapi), with two Uvicorn workers on a laptop, ramping to 50 users (Locust 2.47):
+
+```text
+$ locust -f locustfile.py --headless --host http://127.0.0.1:8799 -u 50 -r 10 -t 30s --only-summary
+Type     Name           # reqs      # fails |    Avg     Min     Max    Med |   req/s  failures/s
+POST     /v1/predict      7347     0(0.00%) |     10       1     375      6 |  331.59        0.00
+
+Type     Name              50%    66%    75%    80%    90%    95%    98%    99%  99.9% 99.99%   100%
+POST     /v1/predict         6      9     12     14     22     29     41     62    190    380    380
 ```
 
-## The Standard You're Aiming For
+Read it the way section 5 of the serving page suggests: 332 requests a second with no failures, a median of 6 ms, but a p99 of 62 ms and a maximum of 380 ms. The tail is ten times the median even with no errors, which is the number to compare against the latency budget. Repeat with more users until the p99 breaks the budget or failures appear; that point, minus headroom, is the service's capacity per replica, and it feeds autoscaling settings.
 
-A production-grade ML codebase should let a new engineer clone the repo, run one setup command, and have tests, linting, and a working local pipeline — no tribal knowledge required, no "ask Sarah how the data loads." Every practice above exists to make that true.
+Load tests belong in a staging environment that resembles production, run before releases that change the model or the serving code, because a larger model can halve capacity without any test going red.
+
+## 7. Code Quality and the One-Command Setup
+
+A few tools remove whole categories of review comments and bugs, and they should run automatically:
+
+- **Formatting and linting** with Ruff (`ruff format`, `ruff check`): consistent style without debate, and detection of unused imports, undefined names and common mistakes.
+- **Type checking** with mypy or Pyright on the package: catches passing a `DataFrame` where an array was expected, or `None` where a float was required, before runtime.
+- **Pre-commit hooks** (the `pre-commit` framework) that run the formatter, linter and a secret scanner on every commit, so problems are fixed before they reach review.
+- **Logging instead of `print`**, with the standard `logging` module or structured logs ([Observability](/docs/mlops/observability#2-logs-what-happened)), so pipeline output carries levels and timestamps and can be collected.
+
+All of this adds up to a standard worth stating plainly:
 
 <OnboardingStandardDiagram />
 
-Next: [Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning) — MLOps starts with data, and data needs the same engineering discipline as code.
+**A new engineer clones the repository, runs one setup command, and can run the tests, the linter and a small end-to-end pipeline locally, with no undocumented steps.** In practice that's `uv sync` plus a `Makefile` or task runner with targets like `make test`, `make lint` and `make train-small`, a README that explains them, and CI running the same commands. If a step lives only in someone's head ("ask the person who set it up how the data loads"), the project depends on that person being available at 3am.
+
+<PredictFirst
+  question="A team's training code reads its learning rate from a global variable set in a notebook cell, and a teammate's scheduled retrain produces a different model from the one in the experiment report. Which change most directly prevents this class of problem?"
+  options={[
+    'Adding more comments to the notebook',
+    'Moving the code into a package whose training entry point reads one typed, logged configuration object',
+    'Running the notebook more carefully, top to bottom',
+    'Increasing test coverage of the plotting code',
+  ]}
+  correctIndex={1}
+  explanation="The bug is hidden state: the value that determined the result lived in a notebook session, not in code or configuration. A package entry point with an explicit, typed configuration that is logged with every run means the scheduled job and the experiment use the same declared values, and any difference is visible in the run records."
+/>
+
+## 8. When *Not* to Engineer This Much
+
+| Situation | Proportionate approach |
+|---|---|
+| A one-off exploration that answers a question and ends | A notebook with a fixed seed, committed; no package needed |
+| A prototype to show a stakeholder next week | A small script with a config dict and a pinned environment; package it if it survives |
+| A model that will be retrained or served by anyone other than its author | Everything on this page |
+| Research code accompanying a paper | Pinned environment, a single script per result, seeds and data references; tests for the core logic |
+| Code generated quickly by an AI assistant | The same standard: tests, types and review matter more, not less, for code nobody wrote line by line |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Notebooks | Great for exploring, poor as systems: hidden state, no interface, untestable |
+| Package layout | `src/` package, one responsibility per module, pure feature functions |
+| Configuration | One typed, frozen, overridable object, logged with every run; secrets elsewhere |
+| Dependencies | Declare ranges in `pyproject.toml`, install from a lock file, upgrade deliberately |
+| Tests | Parametrized cases, property-based tests for invariants, mocks only at external boundaries |
+| Load tests | Measure throughput and the latency tail per replica before release |
+| Quality tools | Ruff, a type checker, pre-commit hooks, structured logging |
+| The standard | Clone, one setup command, tests and a small pipeline run locally |
+
+---
+
+Next: [Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning) applies the same discipline to the data the code consumes.
+
+## Sources
+
+- Python Packaging Authority, [Writing your pyproject.toml](https://packaging.python.org/en/latest/guides/writing-pyproject-toml/)
+- Astral, [uv documentation: projects and lock files](https://docs.astral.sh/uv/concepts/projects/)
+- Pydantic, [Settings management](https://docs.pydantic.dev/latest/concepts/pydantic_settings/)
+- Hypothesis, [Documentation](https://hypothesis.readthedocs.io/)
+- Locust, [Documentation](https://docs.locust.io/)
+- E. Breck et al., [The ML Test Score: A Rubric for ML Production Readiness](https://research.google/pubs/the-ml-test-score-a-rubric-for-ml-production-readiness-and-technical-debt-reduction/), IEEE Big Data 2017
