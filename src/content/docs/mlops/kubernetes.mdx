@@ -1,53 +1,110 @@
 ---
-title: "Kubernetes"
+title: "Kubernetes, In Full Depth"
 sidebar_position: 10
-description: "Pods, Deployments, Services, and the control-plane/worker-node split explained mechanically -- running and scaling containers across a real cluster."
+description: "How Kubernetes runs containers across a cluster: the control plane and reconciliation loops, the core objects, a production-shaped model deployment with probes and disruption budgets, requests and limits, the autoscaling rule worked through, and GPU scheduling for training and inference."
 ---
 
-import K8sObjectHierarchyDiagram from '../../../viz/diagrams/K8sObjectHierarchyDiagram';
-import ReconciliationLoopDiagram from '../../../viz/diagrams/ReconciliationLoopDiagram';
-import WorkloadTypesDiagram from '../../../viz/diagrams/WorkloadTypesDiagram';
-import HpaAutoscalingDiagram from '../../../viz/diagrams/HpaAutoscalingDiagram';
-import ResourceRequestsLimitsDiagram from '../../../viz/diagrams/ResourceRequestsLimitsDiagram';
-import RbacNetworkPolicyDiagram from '../../../viz/diagrams/RbacNetworkPolicyDiagram';
-import GpuSchedulingDiagram from '../../../viz/diagrams/GpuSchedulingDiagram';
 import ClusterArchitectureDiagram from '../../../viz/diagrams/ClusterArchitectureDiagram';
-import { Remember } from '../../../components/content/Remember';
+import ReconciliationLoopDiagram from '../../../viz/diagrams/ReconciliationLoopDiagram';
+import ResourceRequestsLimitsDiagram from '../../../viz/diagrams/ResourceRequestsLimitsDiagram';
+import HpaAutoscalingDiagram from '../../../viz/diagrams/HpaAutoscalingDiagram';
+import GpuSchedulingDiagram from '../../../viz/diagrams/GpuSchedulingDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Kubernetes
+# Kubernetes, In Full Depth
 
-Docker solves "run this container the same way everywhere." Kubernetes solves the next problem: running hundreds of containers across a fleet of machines, restarting the ones that crash, scaling them under load, and routing traffic to healthy instances — none of which one `docker run` command can do.
+[Containers](/docs/mlops/containers) made a model service run the same way on any machine. A production service, though, runs on many machines at once: replicas spread across a fleet, restarted when they crash, replaced when a machine fails, multiplied when traffic grows, and updated without downtime. Doing that by hand with `docker run` doesn't scale past a handful of servers. This page covers Kubernetes, the system that does it: how the cluster is built, the reconciliation loop at its centre, the objects you declare, a production-shaped model deployment (validated against the Kubernetes 1.34 schemas), how requests and limits decide scheduling and evictions, the autoscaling rule worked through step by step, and how GPUs are scheduled for training and inference.
 
-## The Cluster Itself: Control Plane and Worker Nodes
+<ELI5>
 
-Before any object (Pod, Deployment, Service) makes sense, it helps to see the real machine topology those objects get scheduled onto — a Kubernetes cluster is two kinds of machine working together, each running a small, fixed set of components.
+Picture a large restaurant chain's operations manager. They don't cook. They keep a sheet that says "this branch needs three cooks on the grill tonight", and every few minutes they compare the sheet with who actually turned up. If a cook calls in sick, they send another. If a branch is overwhelmed, they write a bigger number on the sheet and the staffing follows.
 
-**What is it?** A cluster is split into a **control plane** (the brain — decides what should run where) and any number of **worker nodes** (the muscle — actually run the containers).
+Kubernetes is that manager for software. You write down what should be running ("three copies of the model service, each with this much memory"), and it keeps checking reality against your sheet and fixing any difference, all day, without being asked.
 
-**How does it work?** Four control-plane components, each with one job: **`kube-apiserver`** is the front door every request goes through (including `kubectl` itself) — it handles auth and admission control, then reads and writes cluster state in **`etcd`**, the cluster's source-of-truth key-value store. **`kube-scheduler`** watches for Pods that don't have a node assigned yet and picks one. **`kube-controller-manager`** runs the reconciliation loops — the exact mechanism the diagram below (desired vs. actual replica count) visualizes; this is the component actually doing that work. Every worker node runs three components: **`kubelet`**, the node's own agent, watches the API server for Pods assigned to it and tells the **container runtime** (`containerd` or CRI-O — the same OCI-standardized chain [Docker](/docs/mlops/containers#how-docker-actually-works) uses, reached through the **Container Runtime Interface**, not a runtime-specific API) to start or stop them; **`kube-proxy`** maintains the network rules on that node that make Service routing actually work.
+Everything below is how that sheet is written and how the checking works.
+
+</ELI5>
+
+## 1. What Kubernetes Is
+
+**Kubernetes** is a container orchestrator: a system that runs containers across a cluster of machines and continuously keeps them in the state you declared. You don't tell it *what to do* ("start a container on machine 7"); you tell it *what should be true* ("three replicas of this image should be running and reachable at this name"), and it works out and performs the steps, now and whenever reality drifts.
+
+What that buys an ML team:
+
+- **Self-healing:** crashed containers restart, and containers on a failed machine are recreated elsewhere.
+- **Scaling:** replicas are added or removed by changing one number, or automatically from metrics.
+- **Rolling updates:** a new model image replaces the old one pod by pod, with no downtime, and rolls back with one command.
+- **Bin-packing:** workloads are placed on machines according to the CPU, memory and GPUs they request, so expensive hardware is used efficiently.
+- **One platform** for serving, batch jobs, training and the tools around them, on any cloud or on-premises.
+
+**What it costs:** Kubernetes is a large distributed system with its own concepts, failure modes and security model. A small team with one model service may be better served by a managed container platform (section 8). Managed Kubernetes (EKS, GKE, AKS) removes the work of running the control plane but not the work of understanding it.
+
+The rest of the page builds up how it works, starting with the machines.
+
+## 2. The Cluster: Control Plane and Nodes
+
+A cluster has two kinds of machine. The **control plane** decides what should run where; **worker nodes** run the containers.
 
 <ClusterArchitectureDiagram />
 
-**Why is it useful?** This is the real, complete request flow behind every `kubectl apply`: the API server authenticates the request and writes the desired state to etcd → the scheduler notices an unscheduled Pod and picks a node → that node's kubelet starts the container through the runtime → kube-proxy updates routing so a Service can actually reach it. Every object described below is a *declaration* written to etcd through the API server — the control plane and worker-node components above are what actually turns that declaration into a running, reachable container.
+The control plane runs four components:
 
-<Remember>Every Kubernetes object you write YAML for is really just a write to etcd through the API server. The scheduler, kubelet, and kube-proxy are what turn that declaration into an actual running, reachable container — the object model and the cluster's real machinery are two different layers.</Remember>
+- **`kube-apiserver`**, the front door. Every request, from `kubectl` or from other components, goes through it, where it's authenticated, authorized and validated.
+- **`etcd`**, a consistent key-value store holding the cluster's entire declared and observed state. It's the only component that stores anything durably.
+- **`kube-scheduler`**, which watches for pods with no node assigned and picks one, based on resource requests, constraints and spreading rules.
+- **`kube-controller-manager`**, which runs the controllers: the loops that make reality match the declarations (section 3).
 
-## Fundamentals
+Each worker node runs:
 
-- **Pod**: the smallest deployable unit — one or more tightly-coupled containers sharing network/storage, scheduled together onto a node.
-- **Deployment**: declares the desired state for a set of Pods (which image, how many replicas) — Kubernetes continuously reconciles reality toward that desired state, replacing crashed Pods automatically.
-- **Service**: a stable network endpoint in front of a changing set of Pods — Pods come and go (and get new IPs) as they scale and restart, a Service gives callers one address that doesn't.
-- **Namespace**: a logical partition of a cluster — separating `dev`/`staging`/`prod`, or separating teams, within one physical cluster.
-- **ConfigMap / Secret**: externalized configuration and sensitive values respectively, injected into Pods at runtime rather than baked into the image (the same principle as [Engineering Foundations](/docs/mlops/engineering-foundations)'s config management, at the cluster level).
-- **Volume / PV / PVC**: Kubernetes's storage abstraction — a `PersistentVolume` is actual storage, a `PersistentVolumeClaim` is a Pod's request for some of it, decoupling "what storage exists" from "what a given Pod needs."
-- **Ingress**: routes external HTTP(S) traffic into Services inside the cluster, based on hostname/path rules — the cluster's front door.
-- **Job / CronJob**: run-to-completion workloads (a batch inference job, a nightly retraining job) rather than long-running services — the Kubernetes-native equivalent of a scheduled pipeline step.
+- **`kubelet`**, the node agent. It watches the API server for pods assigned to its node and tells the container runtime to run them, then reports their status back.
+- **A container runtime**, usually containerd or CRI-O, reached through the Container Runtime Interface. It runs the same OCI images described in [Containers](/docs/mlops/containers#how-docker-actually-works).
+- **`kube-proxy`** (or an eBPF-based replacement such as Cilium), which programs the node's networking so that Services route to the right pods.
 
-<K8sObjectHierarchyDiagram />
+A `kubectl apply` therefore travels: API server (authenticate, validate, store in etcd) → a controller creates pod objects → the scheduler assigns each to a node → that node's kubelet starts the containers → the networking layer adds them to their Service. Nothing in the chain is a script that runs once; each step is a component watching for state it's responsible for.
+
+## 3. The Reconciliation Loop
+
+The idea that makes Kubernetes work is the **control loop**, borrowed from control engineering. Each controller repeats the same three steps forever:
+
+1. **Observe** the current state of the objects it's responsible for.
+2. **Compare** it with the desired state declared in their specs.
+3. **Act** to reduce the difference, then go back to step 1.
 
 <ReconciliationLoopDiagram />
 
-A real Deployment + Service pair for a model-serving container built in [Containers](/docs/mlops/containers) — three replicas, explicit resource requests/limits, behind a stable ClusterIP:
+For a Deployment declaring 3 replicas: if 2 pods exist, the controller creates one; if 4 exist, it deletes one; if 3 exist, it does nothing. It doesn't matter *why* there are 2 (a crash, a node failure, someone deleting a pod by hand); the same loop fixes all of them.
+
+Two consequences follow, and both show up constantly in practice:
+
+- **Manual changes to managed objects get reverted.** Delete a pod that a Deployment owns and a new one appears seconds later. To change anything durably, change the declaration. (The same principle as drift correction in [Infrastructure as Code](/docs/mlops/infrastructure-as-code) and GitOps in [CI/CD](/docs/mlops/cicd-and-ml-cicd#6-delivery-gitops-and-promotion).)
+- **The system is level-triggered, not edge-triggered.** Controllers act on the current difference, not on remembered events, so a missed event or a controller restart loses nothing: the next loop sees the difference and fixes it.
+
+Every Kubernetes object has a `spec` (what you want) and a `status` (what the controller last observed). Reading the two side by side is most of debugging.
+
+## 4. The Objects You Declare
+
+A few object types cover most ML workloads:
+
+| Object | What it declares | ML example |
+|---|---|---|
+| **Pod** | One or more containers scheduled together on one node, sharing a network address and volumes | A model server container plus a log-shipping sidecar |
+| **Deployment** | A set of identical, interchangeable pods, with rolling updates | The online inference service |
+| **Service** | A stable name and virtual IP that load-balances across the pods matching a label selector | `model-api` in front of the inference pods |
+| **Job / CronJob** | Pods that run to completion, once or on a schedule, with retries | A fine-tuning run; nightly batch scoring |
+| **StatefulSet** | Pods with stable identities and their own persistent storage | A vector database; a distributed training group that needs stable hostnames |
+| **DaemonSet** | One pod on every (matching) node | The NVIDIA device plugin; a log collector |
+| **ConfigMap / Secret** | Configuration and credentials injected into pods | Model version and thresholds; the feature store password |
+| **PersistentVolumeClaim** | A request for storage that outlives a pod | A cache of downloaded model weights |
+| **Ingress / Gateway** | External HTTP routing into Services | `api.example.com/v1/predict` to `model-api` |
+
+Pods are disposable by design. Each gets a new IP address when recreated, which is why callers use a Service name, never a pod's address. Objects find each other through **labels** (key-value tags such as `app: model-api`) and **selectors** that match them: a Deployment manages the pods with its labels, and a Service routes to them.
+
+**Namespaces** partition a cluster into named areas, for example per team or per environment, with their own resource quotas and access rules.
+
+## 5. A Production-Shaped Model Deployment
+
+Here's a deployment for the FastAPI model service from [APIs & Model Serving](/docs/mlops/model-serving#3-a-production-shaped-service-with-fastapi), with the settings that separate a demo from a production service:
 
 ```yaml
 apiVersion: apps/v1
@@ -59,6 +116,10 @@ spec:
   selector:
     matchLabels:
       app: model-api
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0            # never drop below 3 ready pods during an update
+      maxSurge: 1
   template:
     metadata:
       labels:
@@ -66,16 +127,22 @@ spec:
     spec:
       containers:
         - name: model-api
-          image: my-registry/my-model-api:1.0
+          image: ghcr.io/acme/fraud-api@sha256:3f1c9a0d6e2b4c8f7a5e1d0b9c8a7f6e5d4c3b2a1f0e9d8c7b6a5f4e3d2c1b0a
           ports:
             - containerPort: 8000
           resources:
-            requests:
-              cpu: "500m"
-              memory: "1Gi"
-            limits:
-              cpu: "1"
-              memory: "2Gi"
+            requests: { cpu: 500m, memory: 1Gi }   # what the scheduler reserves
+            limits: { memory: 2Gi }                # exceeding this gets the container OOM-killed
+          startupProbe:                            # allow up to 5 minutes to load the model
+            httpGet: { path: /readyz, port: 8000 }
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:                          # only send traffic once the model is loaded
+            httpGet: { path: /readyz, port: 8000 }
+            periodSeconds: 5
+          livenessProbe:                           # restart a hung process
+            httpGet: { path: /healthz, port: 8000 }
+            periodSeconds: 10
 ---
 apiVersion: v1
 kind: Service
@@ -87,31 +154,71 @@ spec:
   ports:
     - port: 80
       targetPort: 8000
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: model-api
+spec:
+  minAvailable: 2                  # node drains and upgrades may never take more than one pod away
+  selector:
+    matchLabels:
+      app: model-api
 ```
 
-```bash
-kubectl apply -f deployment.yaml
-kubectl get pods -l app=model-api
-kubectl describe pod model-api-<hash>          # scheduling/events for one Pod
-kubectl logs -f deployment/model-api           # follow logs across all replicas
-kubectl exec -it deployment/model-api -- bash  # shell into a running Pod
+What each setting prevents:
 
-kubectl rollout status deployment/model-api    # watch a rollout finish
-kubectl rollout undo deployment/model-api      # roll back to the previous revision
-kubectl scale deployment/model-api --replicas=5
+- **Image by digest.** The pods can only run the exact image that passed CI; a tag can be moved, a digest can't.
+- **`maxUnavailable: 0`** makes a rolling update start a new pod and wait for it to be *ready* before removing an old one, so capacity never dips during a model update.
+- **Three probes, three jobs.** The **startup probe** gives a slow-loading model up to 5 minutes (30 checks × 10 s) before anything else counts, so large models aren't killed mid-load. The **readiness probe** gates traffic: a pod is added to the Service only while `/readyz` succeeds. The **liveness probe** restarts a process that is up but stuck. Pointing liveness at a check that depends on external systems (a database, the feature store) is a classic mistake: when that dependency blips, every pod restarts at once.
+- **The PodDisruptionBudget** limits *voluntary* disruptions, such as nodes being drained for an upgrade, so routine maintenance can't take the service below 2 ready pods.
+
+These manifests, together with the autoscaler and GPU job later on this page, pass `kubeconform -strict` against the Kubernetes 1.34 schemas:
+
+```text
+Summary: 5 resources found in 2 files - Valid: 5, Invalid: 0, Errors: 0, Skipped: 0
 ```
 
-## Advanced
+Applying them is `kubectl apply -f model-api.yaml`; watching a rollout is `kubectl rollout status deployment/model-api`, and undoing one is `kubectl rollout undo deployment/model-api`. In a team, the apply is done by a GitOps controller from a reviewed repository rather than by hand.
 
-- **Helm**: a package manager for Kubernetes — templated YAML bundled into reusable "charts," so deploying a complex multi-resource application is one `helm install` instead of hand-writing dozens of YAML files.
-- **StatefulSets**: like a Deployment, but for Pods that need stable identities and storage (databases, anything that isn't safely interchangeable) — regular Deployments assume Pods are stateless and disposable.
-- **DaemonSets**: ensures exactly one copy of a Pod runs on every node — used for node-level agents (log collectors, monitoring agents, GPU device plugins).
+## 6. Requests, Limits and What Happens Under Pressure
 
-<WorkloadTypesDiagram />
+Every container should declare its resources, because the scheduler and the node act on these numbers, not on actual usage.
 
-- **HPA (Horizontal Pod Autoscaler)**: automatically scales the number of Pod replicas based on observed metrics (CPU, memory, or custom metrics like queue depth/requests-per-second) — the mechanism behind "scale up under load, scale down when it's quiet."
+<ResourceRequestsLimitsDiagram />
+
+- **Requests** are what the scheduler reserves. A node with 8 CPUs can hold pods whose CPU *requests* add up to 8, however busy or idle they actually are. Requests that are too high waste money on reserved but unused capacity; too low, and pods are packed onto nodes that can't really sustain them.
+- **Limits** are hard ceilings enforced on the node. The two resources behave very differently at the limit:
+  - **CPU is compressible.** A container over its CPU limit is *throttled*: it slows down but keeps running. For latency-sensitive inference, CPU limits often cause unexplained tail latency, which is why many teams set CPU requests but no CPU limit.
+  - **Memory isn't.** A container that exceeds its memory limit is killed immediately (`OOMKilled`) and restarted. Model servers whose memory grows with batch size or input length hit this under load.
+
+When a *node* runs short of memory, the kubelet evicts pods, and the order follows each pod's **quality-of-service class**, derived from its settings: **BestEffort** (no requests or limits) goes first, then **Burstable** (requests below limits, like the deployment above), and **Guaranteed** (requests equal to limits for every resource) last. Critical services should be Guaranteed for memory, or at least request close to what they really use.
+
+<PredictFirst
+  question="A model server is deployed with a memory request of 1Gi and a limit of 2Gi. Under a traffic spike with long inputs, each pod's memory climbs to 2.3Gi. What happens?"
+  options={[
+    'The pods slow down but keep serving',
+    'Each pod that crosses 2Gi is OOM-killed and restarted, dropping its in-flight requests and possibly cascading as load shifts to the survivors',
+    'Kubernetes moves the pods to a node with more memory',
+    'The HPA adds memory to each pod',
+  ]}
+  correctIndex={1}
+  explanation="Memory is not compressible: crossing the limit gets the container killed by the kernel's OOM killer, and the kubelet restarts it. While it restarts (including reloading the model), the remaining pods take its traffic, grow too, and may be killed in turn. Fixes are to bound memory in the server (cap batch size and input length), set the limit from measured peak usage under load tests, and scale out before memory pressure builds."
+/>
+
+## 7. Autoscaling: Pods and Nodes
+
+Kubernetes scales at two levels: more **pods** for a workload, and more **nodes** to hold them.
 
 <HpaAutoscalingDiagram />
+
+The **Horizontal Pod Autoscaler** (HPA) adjusts a Deployment's replica count from a metric. Its rule is a proportion:
+
+$$\text{desired} = \left\lceil \text{current} \times \frac{\text{current metric}}{\text{target metric}} \right\rceil$$
+
+clamped between a minimum and a maximum, and skipped when the ratio is within a tolerance of 1 (10% by default) so it doesn't flap. Scaling *up* happens promptly; scaling *down* uses a **stabilization window** (5 minutes by default): the HPA scales down only to the highest recommendation of the last 5 minutes, so a brief dip doesn't remove pods that a returning burst will need.
+
+For model servers, CPU utilization is often a poor signal (a GPU-bound server can be overloaded at low CPU). Scaling on requests per second per pod, queue depth or in-flight requests, served from Prometheus through a metrics adapter, tracks load more directly:
 
 ```yaml
 apiVersion: autoscaling/v2
@@ -126,49 +233,168 @@ spec:
   minReplicas: 2
   maxReplicas: 10
   metrics:
-    - type: Resource
-      resource:
-        name: cpu
+    - type: Pods
+      pods:
+        metric:
+          name: http_requests_per_second   # served by a metrics adapter, e.g. from Prometheus
         target:
-          type: Utilization
-          averageUtilization: 70
+          type: AverageValue
+          averageValue: "100"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
 ```
 
-```bash
-kubectl apply -f hpa.yaml
-kubectl get hpa model-api --watch    # observe replica count react to load in real time
+To see the rule work, this script applies the same algorithm to a traffic burst, minute by minute, with a target of 100 requests per second per pod:
+
+```python
+from math import ceil
+
+TARGET = 100                      # target requests/s per pod
+MIN_PODS, MAX_PODS = 2, 10
+TOLERANCE = 0.1                   # no change while within 10% of target
+STABILIZATION = 5                 # minutes: scale down only to the highest recent recommendation
+
+def recommend(replicas, per_pod):
+    ratio = per_pod / TARGET
+    if abs(ratio - 1) <= TOLERANCE:
+        return replicas
+    return min(MAX_PODS, max(MIN_PODS, ceil(replicas * ratio)))
+
+replicas, history = 3, []
+traffic = [300, 340, 520, 900, 950, 940, 600, 300, 280, 260, 250, 240]   # total requests/s each minute
+for minute, total in enumerate(traffic):
+    per_pod = total / replicas
+    rec = recommend(replicas, per_pod)
+    history = (history + [rec])[-STABILIZATION:]
+    new = rec if rec >= replicas else max(history)        # up immediately, down cautiously
+    print(f"min {minute:>2}: {total:>4} req/s, {per_pod:5.0f}/pod on {replicas:>2} pods -> {new:>2} pods")
+    replicas = new
 ```
 
-- **Resource requests/limits**: declare how much CPU/memory a Pod needs (`requests`, used for scheduling) and the hard ceiling it can't exceed (`limits`) — get this wrong and either the scheduler wastes capacity or a Pod gets OOM-killed under real load.
+```text
+min  0:  300 req/s,   100/pod on  3 pods ->  3 pods
+min  1:  340 req/s,   113/pod on  3 pods ->  4 pods
+min  2:  520 req/s,   130/pod on  4 pods ->  6 pods
+min  3:  900 req/s,   150/pod on  6 pods ->  9 pods
+min  4:  950 req/s,   106/pod on  9 pods ->  9 pods
+min  5:  940 req/s,   104/pod on  9 pods ->  9 pods
+min  6:  600 req/s,    67/pod on  9 pods ->  9 pods
+min  7:  300 req/s,    33/pod on  9 pods ->  9 pods
+min  8:  280 req/s,    31/pod on  9 pods ->  9 pods
+min  9:  260 req/s,    29/pod on  9 pods ->  9 pods
+min 10:  250 req/s,    28/pod on  9 pods ->  7 pods
+min 11:  240 req/s,    34/pod on  7 pods ->  4 pods
+```
 
-<ResourceRequestsLimitsDiagram />
+Three behaviours are visible. During the ramp (minutes 1 to 3), each step sizes the deployment for the load just measured, so it lags a fast-growing burst by a step: at minute 3 the 6 pods carry 150 requests each, 50% over target, before 9 arrive. At minutes 4 and 5 the ratio is inside the 10% tolerance, so nothing changes. After traffic falls, the stabilization window holds 9 pods for five minutes before stepping down. The lag on the way up is the reason to keep headroom (a target below the true per-pod capacity, as in the queueing discussion in [APIs & Model Serving](/docs/mlops/model-serving#5-latency-throughput-and-queues)), and the caution on the way down is what protects against a burst that returns.
 
-- **RBAC (Role-Based Access Control)**: who/what can do what inside the cluster — the Kubernetes-level analog to IAM.
-- **Network policies**: firewall rules for which Pods can talk to which other Pods — default Kubernetes networking is flat and open, network policies restrict it.
+New pods also have to *start*. A model server that takes two minutes to pull a multi-gigabyte image and load weights can't help with a spike that lasts one minute; pre-pulled images, smaller models and a higher minimum replica count are the remedies.
 
-<RbacNetworkPolicyDiagram />
+**Node autoscaling** adds machines when pods can't be scheduled for lack of capacity, and removes underused ones. The classic Cluster Autoscaler scales predefined node groups; **Karpenter** (on AWS, and increasingly elsewhere) provisions right-sized nodes directly from the pending pods' requirements, which suits mixed CPU and GPU workloads. **KEDA** extends pod autoscaling to event sources such as queue length, including scaling to zero replicas when idle.
 
-- **Operators**: custom controllers that encode operational knowledge for running a specific piece of software on Kubernetes (e.g. a Postgres Operator that knows how to fail over and back up itself) — the mechanism behind tools like KServe (see [APIs & Model Serving](/docs/mlops/model-serving)).
+## 8. GPUs: Scheduling the Expensive Part
 
-## Why This Matters for ML Specifically
+### Why This Matters for ML Specifically
 
-GPU scheduling adds a wrinkle regular web workloads don't have: GPUs are expensive, often can't be fractionally shared cleanly, and Pods need explicit `nvidia.com/gpu` resource requests plus the NVIDIA device plugin (a DaemonSet) running on every GPU node. Autoscaling a GPU-backed inference Deployment under HPA is also slower and costlier than autoscaling a CPU web service — GPU nodes are expensive to keep idle and slow to provision on demand, which is a major reason serverless-style GPU platforms (see [LLM Hosting & Serving Patterns](/docs/mlops/llm-hosting-and-serving-patterns)) exist as an alternative to running your own GPU-backed Kubernetes cluster.
+GPUs change the economics and the mechanics of everything above. A GPU node can cost twenty or more times as much as a CPU node of similar size, takes minutes to provision, and its accelerators can't be divided as freely as CPU time.
 
 <GpuSchedulingDiagram />
 
-The resource request that actually reserves a GPU for a Pod (this replaces the `resources` block in the Deployment above for a GPU-backed inference workload):
+How GPU scheduling works:
+
+- The **NVIDIA device plugin**, running as a DaemonSet on GPU nodes (usually installed with the NVIDIA GPU Operator along with drivers and monitoring), advertises each node's GPUs to Kubernetes as an extended resource, `nvidia.com/gpu`.
+- A pod asks for whole GPUs in its **limits**. GPUs can't be overcommitted: a GPU allocated to one pod is unavailable to others until that pod ends.
+- GPU nodes are usually **tainted**, so ordinary pods can't land on them; GPU pods carry a matching **toleration**, plus a **node selector** or affinity when they need a particular GPU model.
+
+A fine-tuning run as a Kubernetes Job, on one NVIDIA L4:
 
 ```yaml
-resources:
-  requests:
-    nvidia.com/gpu: 1
-  limits:
-    nvidia.com/gpu: 1   # GPUs can't be overcommitted like CPU/memory -- request == limit
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: finetune-fraud-model
+spec:
+  backoffLimit: 2                  # retry a failed run at most twice
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-L4      # label set by NVIDIA GPU feature discovery
+      tolerations:
+        - key: nvidia.com/gpu                   # GPU nodes are tainted so CPU pods stay off them
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: train
+          image: ghcr.io/acme/fraud-train@sha256:9b8a7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b
+          args: ["--config", "configs/prod.yaml"]
+          resources:
+            limits:
+              nvidia.com/gpu: 1                 # whole GPUs only; requests default to the limit
+              memory: 24Gi
+            requests:
+              cpu: "4"
+              memory: 24Gi
 ```
 
-```bash
-kubectl get nodes -o json | jq '.items[].status.allocatable."nvidia.com/gpu"'  # GPU capacity per node
-kubectl describe node <gpu-node-name>   # confirm the NVIDIA device plugin advertised GPUs as allocatable
-```
+Whole-GPU allocation wastes capacity when a small model uses a fraction of a large GPU. Three ways to share, with different isolation:
 
-Next: [Infrastructure as Code](/docs/mlops/infrastructure-as-code) — everything above should be defined in version-controlled code, not clicked together by hand.
+| Method | How it splits the GPU | Isolation |
+|---|---|---|
+| **Multi-Instance GPU (MIG)** | Hardware partitions on A100, H100 and newer data-centre GPUs, each with dedicated memory and compute | Strong: partitions can't affect each other |
+| **Time-slicing** | The device plugin advertises one GPU as several; pods take turns | None for memory: one pod can exhaust the GPU's memory for all |
+| **Several models in one server** | One pod serves many models on its GPU (e.g. Dynamo-Triton, multi-LoRA LLM serving) | Up to the server |
+
+<GoDeeper title="Go deeper: scheduling multi-GPU training jobs">
+
+Distributed training adds a scheduling problem ordinary workloads don't have: a job that needs 8 pods with 8 GPUs each is useless until *all* of them are running. The default scheduler places pods one at a time, so two such jobs can each grab half the GPUs and both wait forever, a deadlock. **Gang scheduling** fixes it by admitting all of a job's pods together or none of them. Kueue (a Kubernetes project for batch admission and quotas), Volcano and the scheduler plugins for co-scheduling provide it, along with fair-share queues so that teams share a GPU fleet without one team's experiments starving another's production training.
+
+**Topology** matters too. GPUs within one node talk over NVLink at hundreds of gigabytes per second; across nodes they use the network, ideally InfiniBand or RoCE with GPUDirect RDMA. Placing a job's pods on nodes in the same rack or network block can change training speed substantially, which is what topology-aware scheduling and the newer Dynamic Resource Allocation API for devices aim at. [GPU/AI Infrastructure & Distributed Training](/docs/mlops/gpu-and-distributed-training) covers the parallelism strategies these jobs run.
+
+</GoDeeper>
+
+For GPU *inference*, the autoscaling trade-off is harsher than for CPU services: idle GPU replicas are very expensive, but a new GPU node plus a model load can take several minutes. Teams typically keep a warm minimum, scale on queue depth or in-flight requests rather than CPU, and use scale-to-zero only where minutes of cold start are acceptable; [LLM Hosting & Serving Patterns](/docs/mlops/llm-hosting-and-serving-patterns) covers the options.
+
+## 9. Security Basics
+
+A default cluster is more open than most people expect, so a few controls should be on from the start:
+
+- **RBAC** (role-based access control) decides who and what can act on which objects. Give people and CI identities namespaced roles, not cluster-admin, and give each workload its own service account with only the permissions it needs, mapped to a cloud role for cloud access ([Security & Reproducibility](/docs/mlops/security-and-reproducibility#2-identity-and-least-privilege)).
+- **Network policies**: by default every pod can reach every other pod. A default-deny policy per namespace, with explicit allows (the model API may call the feature store, nothing else may), limits how far a compromised pod can reach.
+- **Pod security**: run containers as non-root with a read-only filesystem where possible, and enforce the Pod Security Standards' `restricted` profile on application namespaces.
+- **Secrets** are only base64-encoded in etcd by default; enable encryption at rest, or sync them from an external secrets manager.
+
+## 10. When *Not* to Use Kubernetes
+
+| Situation | Better choice |
+|---|---|
+| One or two stateless services and a small team | A managed container platform such as Cloud Run, AWS App Runner or Azure Container Apps |
+| Standard model serving without platform engineers | A managed ML endpoint (SageMaker, Vertex AI, Azure ML); see [Deploying Models on AWS & Azure](/docs/mlops/cloud-model-deployment) |
+| Occasional GPU jobs | A managed training service, or a serverless GPU platform, rather than running a GPU cluster |
+| Batch scoring once a day | A scheduled job on a managed data platform (Databricks, BigQuery, EMR Serverless) |
+| You need Kubernetes but not its operations | Managed Kubernetes with a managed node mode (GKE Autopilot, EKS Auto Mode) |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| What it is | Declare desired state; controllers keep reality matching it |
+| Control plane | API server, etcd, scheduler, controller manager; nodes run kubelet, a runtime and networking |
+| Reconciliation | Observe, compare, act, repeat; manual changes to managed objects are undone |
+| Objects | Pods are disposable; Deployments, Jobs and StatefulSets manage them; Services give stable names |
+| Probes | Startup for slow loads, readiness gates traffic, liveness restarts hung processes |
+| Requests and limits | Requests reserve; CPU over limit throttles, memory over limit is killed |
+| HPA | $\lceil \text{current} \times \text{metric}/\text{target} \rceil$, prompt up, stabilized down |
+| GPUs | Whole devices via the device plugin; taints and tolerations; MIG or time-slicing to share; gang scheduling for multi-GPU jobs |
+
+---
+
+Next: [Infrastructure as Code](/docs/mlops/infrastructure-as-code) covers declaring the cluster itself, and everything around it, in reviewed files.
+
+## Sources
+
+- Kubernetes, [Documentation](https://kubernetes.io/docs/home/), including [Horizontal Pod Autoscaling](https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/), [Pod Quality of Service classes](https://kubernetes.io/docs/concepts/workloads/pods/pod-qos/) and [Scheduling GPUs](https://kubernetes.io/docs/tasks/manage-gpus/scheduling-gpus/)
+- B. Burns, B. Grant, D. Oppenheimer, E. Brewer and J. Wilkes, [Borg, Omega, and Kubernetes](https://queue.acm.org/detail.cfm?id=2898444), ACM Queue 14(1), 2016
+- NVIDIA, [GPU Operator](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/index.html) and [Multi-Instance GPU user guide](https://docs.nvidia.com/datacenter/tesla/mig-user-guide/)
+- Kueue, [Documentation](https://kueue.sigs.k8s.io/docs/)

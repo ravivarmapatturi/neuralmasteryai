@@ -1,92 +1,350 @@
 ---
-title: "ML & LLM Testing"
+title: "ML & LLM Testing, In Full Depth"
 sidebar_position: 22.1
-description: "Statistical and model tests for classical ML, plus LLM-specific test types -- prompt tests, golden datasets, hallucination and jailbreak regression tests."
+description: "How to test systems whose outputs vary: the ML test pyramid, why LLM tests need pass rates instead of pass/fail, Wilson intervals and paired comparisons for prompt changes, replayed responses for fast deterministic CI, schema and tool-call checks, judging the judge with Cohen's kappa, and regression suites for jailbreaks."
 ---
 
 import MlTestPyramidDiagram from '../../../viz/diagrams/MlTestPyramidDiagram';
-import ClassicalTestTypesDiagram from '../../../viz/diagrams/ClassicalTestTypesDiagram';
-import SchemaVsDataTestDiagram from '../../../viz/diagrams/SchemaVsDataTestDiagram';
-import LlmTestTypesDiagram from '../../../viz/diagrams/LlmTestTypesDiagram';
 import PromptAsCodeDiagram from '../../../viz/diagrams/PromptAsCodeDiagram';
+import LlmTestTypesDiagram from '../../../viz/diagrams/LlmTestTypesDiagram';
 import JailbreakRegressionDiagram from '../../../viz/diagrams/JailbreakRegressionDiagram';
-import CiCdTestGateDiagram from '../../../viz/diagrams/CiCdTestGateDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# ML & LLM Testing
+# ML & LLM Testing, In Full Depth
 
-[Engineering Foundations for ML](/docs/mlops/engineering-foundations) introduced the general testing taxonomy (unit, integration, data validation, model, API, load). This page goes deeper into two things that page only named: the specific statistical/model testing techniques classical ML needs, and the LLM-specific test types — prompt tests, golden datasets, hallucination/jailbreak/tool-call tests — that don't have a classical-ML equivalent at all.
+[Engineering Foundations for ML](/docs/mlops/engineering-foundations) covered testing the ordinary code in an ML system, and [CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd) covered data contracts, behaviour tests and the statistical gate a retrained model must pass. This page is about the hardest case: testing systems built on large language models, whose outputs vary from run to run, are free text, and can be steered by their inputs. It covers how the test pyramid changes, why a single pass or fail means little and what to measure instead, how to compare two prompt versions honestly, how to make LLM tests fast and repeatable in CI, mechanical checks on structured output and tool calls, how to tell whether an LLM judge can be trusted, and how to keep fixed jailbreaks fixed.
+
+<ELI5>
+
+Testing a calculator is easy: 2 + 2 must be 4, every time. Testing a new waiter is different. You can't check that they say the exact same sentence to every table. You check things that must always be true (they never serve the wrong dish, they never insult anyone, the bill always adds up), and for the rest you watch many tables and count how often it goes well.
+
+Testing an LLM application is testing the waiter. A few checks are exact, and the rest are about how often things go right, measured over enough cases to be sure.
+
+Everything below is how to do both properly.
+
+</ELI5>
+
+## 1. The Test Pyramid for ML Systems
+
+The usual software advice holds: many fast, cheap tests at the bottom, fewer slow, expensive ones at the top.
 
 <MlTestPyramidDiagram />
 
-## Classical ML Testing, In More Depth
+For a classical ML system, the layers from bottom to top are: unit tests of feature and parsing code, data contract tests, model behaviour tests (invariance, direction, minimum quality), the champion-versus-candidate gate, and a few end-to-end pipeline runs. The earlier pages ran all of them.
 
-- **Unit tests**: individual functions in isolation — a feature-computation function, a custom loss function's math, a data-cleaning transformation. Standard software unit testing, applied to ML code specifically.
-- **Data tests**: assert incoming data matches expected schema, types, and ranges — see [Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning); this is the automated, CI-enforced version of that page's validation stage, not a separate concern.
-- **Schema tests**: a stricter, more structural version of data tests — the *shape* of the data (column names, types, nullability) matches a defined contract exactly, catching an upstream schema change (a renamed column, a type change) before it silently breaks a downstream pipeline stage that assumed the old schema.
+An LLM application changes the top half of the pyramid in three ways:
 
-<SchemaVsDataTestDiagram />
+- **The model is usually someone else's.** You don't train it; you write prompts, retrieval and tool definitions around it, and the provider may update it. What you test is your *system's* behaviour with that model.
+- **Outputs are free text and vary.** Even at temperature 0, providers don't guarantee identical outputs across calls, and any change to the prompt, the retrieved context or the model version changes them.
+- **Calls cost money and time.** A suite of 500 cases at a few seconds and a fraction of a cent each is fine nightly and painful on every commit.
 
-- **Statistical tests**: assert properties of a *distribution*, not a single value — does a feature's distribution in a new data batch still resemble the training distribution (directly the [drift detection](/docs/mlops/monitoring-and-drift) math — PSI, KS test — run as an automated test rather than a dashboard you have to remember to check), does a model's prediction distribution look sane (not collapsed to a single class, not wildly different from a known-good baseline run).
-- **Model tests**: beyond accuracy — does the model handle an empty or malformed input gracefully rather than crashing? Does it produce deterministic output for the same input when determinism is expected (see [Security & Reproducibility](/docs/mlops/security-and-reproducibility))? Does a known, specific edge case behave as expected — a unit test for model *behavior* on a case you know matters, not just an aggregate metric.
-- **Regression tests**: run the model against a fixed benchmark dataset and assert its metrics haven't dropped below a threshold — see [CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd) for wiring this into an automated deployment gate.
-- **Performance tests**: does the model/pipeline complete within an acceptable time and resource budget — a slow-but-correct model can still fail a production requirement, which accuracy-focused testing alone won't catch.
+The answer is to split LLM tests into two kinds: **mechanical checks** that must hold on every single output (format, schema, tool arguments, banned content), which can be exact, and **quality evaluations** measured as rates over a set of cases. The second kind needs some statistics first.
 
-<ClassicalTestTypesDiagram />
+## 2. Pass Rates, Not Pass or Fail
 
-The regression-test gate as a real, CI-runnable pytest function -- this is what `evaluate.py` from the CI/CD pipeline actually asserts:
+Run a test case against an LLM once and it passes. Run it again and it may fail. A single result is a sample from a distribution, so the meaningful quantity is the **pass rate** over many cases (and sometimes many runs per case), reported with its uncertainty.
+
+For $k$ passes out of $n$ cases, the obvious interval $\hat p \pm 1.96\sqrt{\hat p(1-\hat p)/n}$ behaves badly near 0% and 100%, exactly where good systems live: at 50 out of 50 it gives an interval of width zero. The **Wilson score interval** is the standard fix:
+
+$$\frac{\hat p + \frac{z^2}{2n} \pm z\sqrt{\frac{\hat p(1-\hat p)}{n} + \frac{z^2}{4n^2}}}{1 + \frac{z^2}{n}}$$
+
+with $z = 1.96$ for 95% confidence. Computed for three suites:
 
 ```python
-def test_candidate_beats_production_benchmark():
-    candidate_f1 = evaluate(candidate_model, benchmark_dataset)
-    production_f1 = evaluate(load_production_model(), benchmark_dataset)
-    assert candidate_f1 >= production_f1 - 0.01   # allow a small tolerance, not strict improvement every time
+from math import sqrt
+
+from scipy.stats import binomtest, norm
+
+
+def wilson(passes, n, confidence=0.95):
+    """Wilson score interval for a pass rate: well behaved near 0% and 100%, unlike p +/- 1.96*se."""
+    z = norm.ppf(1 - (1 - confidence) / 2)
+    p = passes / n
+    centre = (p + z * z / (2 * n)) / (1 + z * z / n)
+    half = z * sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / (1 + z * z / n)
+    return centre - half, centre + half
+
+
+for passes, n in [(19, 20), (190, 200), (50, 50)]:
+    lo, hi = wilson(passes, n)
+    print(f"{passes}/{n} passed: pass rate {passes / n:.0%}, 95% interval [{lo:.1%}, {hi:.1%}]")
+
+# Prompt v1 vs v2 on the SAME golden cases: only the cases where they disagree carry information.
+# b = cases v2 fixed (v1 failed, v2 passed); c = cases v2 broke (v1 passed, v2 failed).
+for b, c in [(14, 6), (20, 4)]:
+    p = binomtest(b, b + c, 0.5, alternative="greater").pvalue          # exact McNemar test
+    print(f"v2 fixed {b} cases and broke {c}: net +{b - c}, one-sided p = {p:.3f}")
 ```
 
-## LLM-Specific Testing
+```text
+19/20 passed: pass rate 95%, 95% interval [76.4%, 99.1%]
+190/200 passed: pass rate 95%, 95% interval [91.0%, 97.3%]
+50/50 passed: pass rate 100%, 95% interval [92.9%, 100.0%]
+v2 fixed 14 cases and broke 6: net +8, one-sided p = 0.058
+v2 fixed 20 cases and broke 4: net +16, one-sided p = 0.001
+```
 
-None of the categories above naturally cover "does this prompt still produce the intended behavior" or "can this model be manipulated into ignoring its instructions" — LLM systems need their own test types:
+The first three lines show how little a small suite says. **95% on 20 cases is consistent with a true rate anywhere from 76% to 99%.** A perfect 50 out of 50 still allows a true failure rate of up to 7%. So a threshold like "the suite must pass at 90%" on 20 cases can't distinguish a 90% system from a 99% one, and should be written against the interval's lower bound on a suite big enough to make that bound meaningful.
 
-- **Prompt tests**: treat a prompt template as code under test — given a fixed set of inputs, does the resulting output still meet expected criteria (format, content, tone)? A prompt change is a code change, and deserves the same regression-testing discipline as any other code change, not ad hoc manual spot-checking.
+The last two lines compare prompt versions properly. Two versions run on the **same** cases are paired, so the right test is **McNemar's**: cases both pass or both fail say nothing about which is better; only the disagreements count. If v2 fixed 14 cases and broke 6, a net gain of 8 is suggestive but could plausibly be noise ($p = 0.058$). Fixing 20 and breaking 4 is clear. And the cases v2 *broke* are worth reading one by one, because a prompt change that fixes many cases while breaking a few important ones may still be a bad change.
+
+<PredictFirst
+  question="A team changes a system prompt. On their 30-case golden set the pass rate goes from 27/30 to 29/30. What should they conclude?"
+  options={[
+    'The new prompt is clearly better, since it fixed two cases',
+    'Nothing reliable yet: a two-case difference on 30 cases is well within noise, so look at which cases changed and test on more',
+    'The new prompt is worse, because the sample is too small',
+    'The golden set is broken, because pass rates should not move',
+  ]}
+  correctIndex={1}
+  explanation="With 30 cases each interval is wide, and the comparison rests on the handful of cases that changed outcome. If the new prompt fixed 2 and broke 0, an exact McNemar test gives p = 0.25, far from convincing. The right moves are to read the changed cases, grow the golden set (especially with failure-prone inputs), and, for stochastic outputs, run each case several times."
+/>
+
+Statistics settle whether a quality difference is real. The next problem is making the suite cheap and repeatable enough to run on every change.
+
+## 3. Prompts Are Code: Version, Review, Replay
+
+A prompt template determines behaviour as much as any function, so it should be treated like one: kept in the repository as a file, reviewed in pull requests, versioned, and covered by tests that run when it changes.
 
 <PromptAsCodeDiagram />
 
-```python
-@pytest.mark.parametrize("query", GOLDEN_DATASET)
-def test_support_prompt_stays_on_format(query):
-    response = llm.invoke(SUPPORT_PROMPT.format(query=query))
-    assert response.startswith(("I can help", "I'm sorry"))   # the two sanctioned opening patterns
-    assert "as an AI language model" not in response.lower()  # a known regression this prompt version fixed
-```
-
-- **Golden datasets**: covered in depth in [AI Evaluation — Golden Datasets](/docs/ai-evaluation/evaluation-fundamentals#golden-datasets) — the curated, maintained reference set every regression test and prompt test above actually runs against.
-- **Hallucination tests**: specifically check whether the model states claims unsupported by its provided context — see [RAG — Evaluating RAG](/docs/llms-genai/rag#evaluating-rag)'s faithfulness/groundedness metrics, run as an automated test suite rather than only a production-monitoring signal.
-- **Jailbreak tests**: run known jailbreak patterns (see [AI Security — Jailbreaks](/docs/ai-security/owasp-llm-top-10-and-prompt-attacks#jailbreaks)) against the system as part of the regular test suite, not just a one-time pre-launch red-teaming exercise — catching a regression where a previously-patched jailbreak starts working again after a model or prompt update.
-
-<JailbreakRegressionDiagram />
-
-- **Tool-call tests**: for agentic systems, assert that a given input reliably produces the *correct* tool call with correctly-formed arguments — directly testing the [tool-call accuracy](/docs/ai-evaluation/llm-rag-agent-evaluation#agent-evaluation) dimension of agent evaluation as an automated, CI-enforced check rather than only a periodic manual evaluation.
-- **Structured-output tests**: when a model is expected to return output conforming to a schema (JSON with specific fields, a specific format), assert the output actually validates against that schema — a narrower, more mechanical check than general output-quality evaluation, but one that catches a real and common failure mode (a model drifting from the requested format) cheaply and reliably.
+Calling a live model in every CI run has three problems: cost, latency, and flakiness, since a sampled output can fail a check by chance and turn the build red for no reason. The standard fix is **record and replay**: record the model's responses once, deliberately, against the real API, save them in a file next to the tests (often called a *cassette*), and have CI replay them. A replayed test is free, instant and deterministic. It fails when the code that *handles* model output changes behaviour, and it refuses to run when the prompt or model changes, because the recording no longer applies:
 
 ```python
-from pydantic import BaseModel
+import hashlib
+import json
+from pathlib import Path
 
-class TicketClassification(BaseModel):
-    category: str
-    priority: int
-    summary: str
 
-def test_ticket_classification_matches_schema():
-    raw = llm.invoke(CLASSIFY_PROMPT.format(ticket=SAMPLE_TICKET))
-    TicketClassification.model_validate_json(raw)  # raises if the model drifted from the requested schema
+class ReplayClient:
+    """Returns recorded model responses keyed by (model, prompt). Recording is done once,
+    deliberately, against the real API; CI only replays, so tests are free, fast and stable."""
+
+    def __init__(self, cassette: Path, model: str):
+        self.model = model
+        self.responses = json.loads(cassette.read_text())
+
+    def key(self, prompt: str) -> str:
+        return hashlib.sha256(f"{self.model}\n{prompt}".encode()).hexdigest()[:16]
+
+    def complete(self, prompt: str) -> str:
+        k = self.key(prompt)
+        if k not in self.responses:
+            raise LookupError(f"no recording for prompt {k}: re-record after changing the prompt or model")
+        return self.responses[k]
 ```
-- **Agent trajectory tests**: for multi-step agents, assert not just the final outcome but that the *sequence* of steps taken matches an expected pattern for known test scenarios — the automated-test version of the [trajectory analysis](/docs/ai-evaluation/llm-rag-agent-evaluation#agent-evaluation) evaluation technique, run against a fixed set of scripted scenarios in CI.
+
+Here is a ticket-classification prompt and a test that checks both the format and the answer for each case in a small golden set. Pydantic validates the reply against the schema the prompt asks for:
+
+```python
+CLASSIFY = """Classify the support ticket. Reply with JSON only:
+{{"category": "billing" | "bug" | "account", "priority": 1-3, "summary": "<= 15 words"}}
+Ticket: {ticket}"""
+```
+
+```python
+from pathlib import Path
+from typing import Literal
+
+import pytest
+from pydantic import BaseModel, Field, ValidationError
+
+from prompts import CLASSIFY
+from replay import ReplayClient
+
+
+class Ticket(BaseModel):
+    category: Literal["billing", "bug", "account"]
+    priority: int = Field(ge=1, le=3)
+    summary: str = Field(max_length=120)
+
+
+GOLDEN = [  # (ticket, expected category)
+    ("I was charged twice for October", "billing"),
+    ("App crashes when I upload a PDF", "bug"),
+    ("How do I change my email address?", "account"),
+]
+
+client = ReplayClient(Path(__file__).parent / "cassettes" / "classify.json", model="provider-model-2026-09")
+
+
+@pytest.mark.parametrize("ticket, expected", GOLDEN)
+def test_classification(ticket, expected):
+    raw = client.complete(CLASSIFY.format(ticket=ticket))
+    try:
+        parsed = Ticket.model_validate_json(raw)              # format: valid JSON with the right fields
+    except ValidationError as err:
+        pytest.fail(f"not valid ticket JSON: {raw[:60]!r}... ({err.error_count()} errors)")
+    assert parsed.category == expected                         # content: the right answer
+```
+
+The cassette for this example holds three recorded replies, one of which is the most common real failure of "reply with JSON only" prompts: the model added a friendly sentence before the JSON.
+
+```text
+E           Failed: not valid ticket JSON: 'Sure! Here is the JSON: {"category": "account", "priority": '... (1 errors)
+1 failed, 2 passed in 0.33s
+```
+
+The test catches it deterministically, on every run, at no cost. The fix belongs in the system, not the test: use the provider's structured-output mode (which constrains decoding to a JSON schema), or a parser that extracts and validates the JSON and retries on failure.
+
+**When to re-record:** whenever the prompt, the model version or the retrieval changes, and on a schedule (for example nightly) against the live model, with the live run judged by pass rate (section 2) rather than all-or-nothing. Pin the model to a dated version (such as `provider-model-2026-09`) rather than an alias that the provider can move, so that a provider update shows up as a deliberate re-record rather than a mysterious change.
+
+## 4. Mechanical Checks: Schemas and Tool Calls
+
+Some properties must hold on *every* output, and can be checked exactly. These are the cheapest and most valuable LLM tests, and they belong both in the test suite and at runtime in the application.
 
 <LlmTestTypesDiagram />
 
-## Wiring This Into CI/CD
+**Structured output** is checked by validating against a schema, as above.
 
-None of the above matters if it doesn't actually run automatically and block a bad deploy — see [CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd) for how model/prompt regression tests, drift checks, and the LLM-specific tests above become an automated gate a change has to pass before shipping, the same discipline as any other software test suite, just testing statistical and generative properties instead of only deterministic logic.
+**Tool calls** are where an agent's mistakes turn into actions, so their arguments deserve the strictest checks. The tool definition already contains a JSON Schema for the arguments; validate every call against it before executing anything. Here are three calls a model emitted for a refund tool:
 
-<CiCdTestGateDiagram />
+```python
+import json
 
-Next: [Production Reliability](/docs/mlops/production-reliability) — what happens after tests pass and the system is actually serving real traffic.
+from jsonschema import Draft202012Validator
+
+REFUND_TOOL = {   # the schema the model is given for the tool's arguments
+    "type": "object",
+    "properties": {
+        "order_id": {"type": "string", "pattern": "^ORD-[0-9]{6}$"},
+        "amount": {"type": "number", "exclusiveMinimum": 0, "maximum": 500},
+        "reason": {"type": "string", "enum": ["damaged", "late", "duplicate"]},
+    },
+    "required": ["order_id", "amount", "reason"],
+    "additionalProperties": False,
+}
+validator = Draft202012Validator(REFUND_TOOL)
+
+recorded_calls = [   # tool calls a model emitted for three test conversations
+    '{"order_id": "ORD-104233", "amount": 49.99, "reason": "damaged"}',
+    '{"order_id": "104233", "amount": 49.99, "reason": "damaged"}',
+    '{"order_id": "ORD-104233", "amount": 4999, "reason": "customer asked nicely"}',
+]
+for raw in recorded_calls:
+    errors = [e.message for e in validator.iter_errors(json.loads(raw))]
+    print("OK  " if not errors else "FAIL", raw if not errors else "; ".join(errors))
+```
+
+```text
+OK   {"order_id": "ORD-104233", "amount": 49.99, "reason": "damaged"}
+FAIL '104233' does not match '^ORD-[0-9]{6}$'
+FAIL 4999 is greater than the maximum of 500; 'customer asked nicely' is not one of ['damaged', 'late', 'duplicate']
+```
+
+The third call shows why this matters: an amount a hundred times too large and a made-up reason, the kind of output a manipulated or confused model produces. A schema check stops it before any money moves. Beyond argument validity, tool tests should check **choice** (for a given request, the right tool is called, and no tool is called when none should be) and, for multi-step agents, **trajectory**: the sequence of calls for scripted scenarios, such as "look up the order before issuing a refund".
+
+## 5. Judging Quality, and Judging the Judge
+
+Many quality properties can't be checked mechanically: is the answer correct, helpful, faithful to the retrieved documents, appropriately cautious? Three ways to score them, from cheapest to most reliable:
+
+- **Reference-based metrics** compare the output with a reference answer (exact match, F1 on extracted fields, embedding similarity). Cheap, but they penalize correct answers worded differently.
+- **LLM-as-judge**: a model scores each output against a rubric. Scales well, catches meaning rather than wording, and has known biases: preferring longer answers, preferring answers in its own style, and being swayed by the order in which options are shown.
+- **Human review**: the reference standard, and too slow and expensive to run on every change.
+
+The practical approach uses the judge for scale and humans to **calibrate the judge**. Have people label a sample of outputs, run the judge on the same sample, and measure agreement. Raw agreement is misleading when most outputs are good, so use **Cohen's kappa**, which corrects for the agreement expected by chance:
+
+$$\kappa = \frac{p_o - p_e}{1 - p_e}$$
+
+where $p_o$ is observed agreement and $p_e$ is the agreement two raters would reach by chance given how often each says "pass". Here are two judges compared with a human on 40 answers, 6 of which the human rejected:
+
+```python
+from sklearn.metrics import cohen_kappa_score
+
+# 40 answers labelled by a human reviewer and by an LLM judge: 1 = acceptable, 0 = not
+human = [1] * 34 + [0] * 6
+judge_lenient = [1] * 34 + [1, 1, 1, 1, 1, 0]           # passes almost everything
+judge_useful  = [1] * 32 + [0, 1] + [0, 0, 0, 0, 1, 0]  # misses a little, catches most failures
+
+for name, judge in [("lenient judge", judge_lenient), ("useful judge", judge_useful)]:
+    agree = sum(h == j for h, j in zip(human, judge)) / len(human)
+    caught = sum(h == 0 and j == 0 for h, j in zip(human, judge))
+    print(f"{name:<14} raw agreement {agree:.0%}   kappa {cohen_kappa_score(human, judge):.2f}   "
+          f"bad answers caught {caught}/6")
+```
+
+```text
+lenient judge  raw agreement 88%   kappa 0.25   bad answers caught 1/6
+useful judge   raw agreement 95%   kappa 0.80   bad answers caught 5/6
+```
+
+The lenient judge agrees with the human 88% of the time, which sounds fine, and catches one bad answer in six, which is useless: it agrees mostly because nearly everything is good. Kappa exposes it (0.25, slight agreement), while the useful judge scores 0.80 (strong). Only a judge with high kappa on *your* data should gate releases, and the calibration should be repeated when the judge model or the rubric changes.
+
+<GoDeeper title="Go deeper: making LLM judges more reliable">
+
+A few practices consistently improve judge agreement with people. Ask for a **binary or small-scale verdict against explicit criteria** ("Does the answer state anything not supported by the context? yes/no") rather than a 1-to-10 score, which models use inconsistently. Ask for the **reasoning before the verdict**, which tends to improve accuracy. For pairwise comparisons, **run both orders** (A then B, B then A) and count a win only when the verdicts agree, which cancels position bias. Use a **different model family** for judging than for generating where possible, to reduce self-preference. And give the judge the same information a human reviewer would need, such as the retrieved documents for a faithfulness check.
+
+Even a well-calibrated judge drifts when its underlying model is updated, so pin the judge model version too, and keep a small human-labelled set as a standing calibration check. [AI Evaluation](/docs/ai-evaluation/evaluation-fundamentals) covers evaluation design, golden datasets and judge methods in depth, and [LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops) covers running them in production.
+
+</GoDeeper>
+
+## 6. Safety Regression Tests
+
+Some failures must never come back once fixed: a jailbreak that got the assistant to give dangerous instructions, a prompt injection that made an agent call a tool it shouldn't, a leak of the system prompt or another user's data.
+
+<JailbreakRegressionDiagram />
+
+Treat each discovered attack like a fixed bug: add it, and variations of it, to a **safety regression suite** that runs whenever the prompt, model, retrieval or tools change. The suite asserts *refusal or safe behaviour*, checked mechanically where possible (no tool call made, no forbidden string in the output, the canary token planted in the system prompt never appears in a reply) and by a calibrated judge otherwise.
+
+Two cautions. First, a passing suite shows that *known* attacks fail, not that the system is safe; new attacks keep appearing, which is why architectural limits on what the model can do ([Security & Reproducibility](/docs/mlops/security-and-reproducibility#7-llm-specific-risks)) matter more than any test suite. Second, these tests involve sampling, so run each attack several times: an attack that succeeds 1 time in 10 is a real vulnerability that a single run will usually miss. Open-source tools such as garak and promptfoo provide collections of known attack patterns to seed the suite, and [AI Security](/docs/ai-security/overview) covers the attacks themselves.
+
+## 7. Putting It in the Pipeline
+
+Different tests belong at different moments, by cost and by how much noise they tolerate:
+
+| When | What runs | Gate |
+|---|---|---|
+| Every commit | Unit tests, schema and tool-argument checks, replayed LLM tests | All must pass |
+| Prompt, model or retrieval change | Live golden-set evaluation, several runs per case, plus the safety suite | Lower bound of the pass rate above threshold; paired comparison with the current version shows no significant regression; no safety case passes |
+| Nightly | Live re-record of cassettes, full golden set, judge calibration sample | Alert on drops; humans review changed cases |
+| In production | The same mechanical checks at runtime, plus sampled judge scoring of live traffic | Monitoring and alerts; see [LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops) |
+
+The structure mirrors [CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd): cheap deterministic checks on every change, statistical gates on the changes that can move quality, and production monitoring to catch what tests missed.
+
+<PredictFirst
+  question="A CI job calls the live model for 40 golden cases on every commit and fails the build if any case fails. Developers complain it is red about one run in three with no code changes. What is the best fix?"
+  options={[
+    'Lower the temperature to 0 and keep the any-failure rule',
+    'Delete the cases that fail most often',
+    'Replay recorded responses on every commit, and run the live suite on prompt or model changes and nightly, gated on a pass-rate lower bound',
+    'Retry each failing case until it passes',
+  ]}
+  correctIndex={2}
+  explanation="An any-failure rule on sampled outputs turns ordinary variation into red builds, and temperature 0 doesn't guarantee identical outputs. Deleting hard cases or retrying until success hides real failures. Replaying recordings makes per-commit tests deterministic, while the live evaluation runs where it is informative, measured as a rate with an uncertainty-aware threshold."
+/>
+
+## 8. When *Not* to Build This Much
+
+| Situation | Proportionate approach |
+|---|---|
+| An internal prototype used by its author | A handful of example prompts checked by eye; add a golden set when someone else depends on it |
+| A deterministic classical model | The tests in [CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd); pass-rate statistics are for sampled outputs |
+| Low-stakes generation such as internal summaries | Schema checks and a small sampled human review; skip the judge calibration machinery |
+| A feature with no tools, no private data and no external users | Mechanical checks and a modest golden set; a large safety suite matters once the model can act or leak |
+| Comparing two prompts that differ in a handful of golden cases | Get more cases before concluding anything; more testing infrastructure won't fix a small sample |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Two kinds of LLM test | Mechanical checks on every output; quality measured as a rate over cases |
+| Pass rates | Report with a Wilson interval; 19/20 is consistent with 76% to 99% |
+| Comparing prompts | Paired McNemar test on the cases that changed; read the cases a change broke |
+| Prompts as code | In the repo, reviewed, versioned, tested on change |
+| Record and replay | Deterministic, free CI tests; re-record when the prompt or pinned model changes |
+| Schemas and tools | Validate every structured output and tool call; check tool choice and trajectory |
+| LLM judges | Calibrate against people with Cohen's kappa; raw agreement hides useless judges |
+| Safety regressions | Every fixed attack becomes a test, run several times per case |
+
+---
+
+Next: [Production Reliability](/docs/mlops/production-reliability) covers what keeps a system up once its tests pass and it serves real traffic.
+
+## Sources
+
+- E. B. Wilson, [Probable Inference, the Law of Succession, and Statistical Inference](https://www.jstor.org/stable/2276774), Journal of the American Statistical Association 22 (1927)
+- Q. McNemar, [Note on the sampling error of the difference between correlated proportions or percentages](https://link.springer.com/article/10.1007/BF02295996), Psychometrika 12 (1947)
+- J. Cohen, [A Coefficient of Agreement for Nominal Scales](https://journals.sagepub.com/doi/10.1177/001316446002000104), Educational and Psychological Measurement 20 (1960)
+- L. Zheng et al., [Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena](https://arxiv.org/abs/2306.05685), NeurIPS 2023
+- M. T. Ribeiro et al., [Beyond Accuracy: Behavioral Testing of NLP Models with CheckList](https://aclanthology.org/2020.acl-main.442/), ACL 2020
