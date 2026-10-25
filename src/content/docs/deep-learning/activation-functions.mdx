@@ -65,13 +65,13 @@ That derivative peaks at $0.25$ at $z = 0$ and is close to zero once $|z|$ excee
 
 **ReLU** (rectified linear unit), $f(z) = \max(0, z)$, changed deep learning around 2010 to 2012 (Nair and Hinton, 2010; Glorot et al., 2011; AlexNet, 2012). Its slope is exactly 1 for every positive input, so gradients pass through active units without shrinking, however deep the network. It costs one comparison. And its outputs are exactly zero for about half of inputs, giving sparse activations that are cheap and, empirically, easy to learn with. AlexNet reported training several times faster with ReLU than with tanh.
 
-Its flaw is the other half of the same property: for $z < 0$ the slope is exactly 0. A unit whose input is negative for *every* training example outputs 0 and receives no gradient, so nothing ever moves its weights back. This is the **dying ReLU** problem. It's usually triggered by a large update, often from a learning rate that's too high, that pushes a unit's bias far negative. Section 6 shows it happening.
+Its flaw is the other half of the same property: for $z \lt  0$ the slope is exactly 0. A unit whose input is negative for *every* training example outputs 0 and receives no gradient, so nothing ever moves its weights back. This is the **dying ReLU** problem. It's usually triggered by a large update, often from a learning rate that's too high, that pushes a unit's bias far negative. Section 6 shows it happening.
 
 The fixes keep ReLU's positive side and change the negative side:
 
-- **Leaky ReLU**: $f(z) = z$ for $z > 0$, else $\alpha z$ with a small fixed $\alpha$ such as 0.01. The negative-side slope is small but not zero, so a unit can always recover.
+- **Leaky ReLU**: $f(z) = z$ for $z \gt  0$, else $\alpha z$ with a small fixed $\alpha$ such as 0.01. The negative-side slope is small but not zero, so a unit can always recover.
 - **PReLU** (parametric ReLU): the same shape with $\alpha$ learned, often per channel (He et al., 2015).
-- **ELU**: $f(z) = z$ for $z > 0$, else $\alpha(e^z - 1)$. It bends smoothly towards $-\alpha$, pushing mean activations closer to zero, at the cost of an exponential.
+- **ELU**: $f(z) = z$ for $z \gt  0$, else $\alpha(e^z - 1)$. It bends smoothly towards $-\alpha$, pushing mean activations closer to zero, at the cost of an exponential.
 - **SELU**: ELU scaled by fixed constants ($\alpha \approx 1.6733$, $\lambda \approx 1.0507$) chosen so that, with LeCun-normal initialization in a plain feed-forward network, activations keep zero mean and unit variance through the layers without normalization layers (Klambauer et al., 2017). The guarantee needs those exact conditions, so SELU is rarely used outside them.
 
 **The limitation of the ReLU family** is its corner at zero. It hasn't stopped ReLU from training excellent CNNs, but at transformer scale smooth activations have consistently trained slightly better.
