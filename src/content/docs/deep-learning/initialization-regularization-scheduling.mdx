@@ -1,57 +1,246 @@
 ---
-title: "Weight Initialization, Regularization & LR Scheduling"
+title: "Initialization, Regularization and Learning-Rate Schedules, In Full Depth"
 sidebar_position: 3.8
-description: "Weight initialization (Xavier, He), regularization beyond dropout, and learning rate scheduling -- the last cluster of real training-loop decisions."
+description: "The three remaining training-loop decisions: how weights start (Xavier and He derived from variance, measured through 50 layers), how overfitting is controlled (weight decay, dropout, early stopping, augmentation, label smoothing), and how the learning rate changes over training (warmup, cosine, warmup-stable-decay)."
 ---
 
 import LrSchedulesDiagram from '../../../viz/diagrams/LrSchedulesDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+# Initialization, Regularization and Learning-Rate Schedules, In Full Depth
 
-# Weight Initialization, Regularization & LR Scheduling
+With [activations](/docs/deep-learning/activation-functions), a [loss](/docs/deep-learning/loss-functions) and an [optimizer](/docs/deep-learning/optimizers) chosen, three decisions remain before a training run can start, and each can quietly decide whether it succeeds. **Initialization**: what values do the weights start at? Get the scale wrong and the signal vanishes or explodes before the first update. **Regularization**: how do you stop a network with more parameters than examples from memorizing them? **Scheduling**: should the learning rate stay fixed, or change as training goes on? This page derives the standard initializations from a variance argument and measures what happens without them across fifty layers, goes through the regularization toolkit and what each method actually assumes, and explains the schedules used to train today's large models.
 
-The last cluster of training-loop decisions, after [Activation Functions](/docs/deep-learning/activation-functions), [Loss Functions](/docs/deep-learning/loss-functions), and [Optimizers](/docs/deep-learning/optimizers): how weights start, how overfitting gets controlled, and how the learning rate changes over the course of training. [Training Deep Networks](/docs/deep-learning/training-deep-networks) already covers BatchNorm/LayerNorm/RMSNorm and dropout — this page fills in the rest of each category.
+<ELI5>
 
-## Weight Initialization
+Think of tuning a long chain of guitar effects pedals before a concert. If every pedal starts with its volume knob too low, the sound fades to nothing by the end of the chain; too high, and it's deafening distortion. You want every knob set so the sound comes out about as loud as it went in. That's initialization.
 
-Why initialization matters at all: start every weight at the same value (including zero) and every neuron in a layer computes an identical gradient forever — **symmetry** never breaks, and the extra neurons are wasted. Beyond avoiding that failure, the *scale* of initial weights controls whether activations and gradients stay in a reasonable range as they pass through many layers, or vanish/explode before training even gets going (see [Vanishing & Exploding Gradients](/docs/deep-learning/training-deep-networks#vanishing-exploding-gradients)).
+During rehearsal, the band could memorize one exact performance of each song, every slip included, and then fall apart when the venue sounds different. Making them practise in different rooms, with someone occasionally missing, forces them to really know the songs. That's regularization.
 
-- **Zero Initialization**: all weights set to 0. Breaks nothing *except* symmetry — unusable in practice for exactly the reason above.
-- **Random Initialization**: small random values (e.g. $\mathcal{N}(0, 0.01^2)$). Breaks symmetry, but with no principled scale — for deep networks, naive random init tends to shrink or blow up activation variance layer by layer.
-- **Xavier / Glorot Initialization**: scales initial weights by $\sqrt{1/n_{in}}$ (or $\sqrt{2/(n_{in}+n_{out})}$ for the "normalized" version), derived specifically to keep activation variance roughly constant across layers *assuming a symmetric activation like tanh/sigmoid*.
-- **He Initialization**: scales by $\sqrt{2/n_{in}}$ — the factor of 2 accounts for ReLU zeroing out roughly half its inputs, which would otherwise halve the variance at every layer if using Xavier's constant. The standard choice for ReLU/GELU-family networks (see [Activation Functions](/docs/deep-learning/activation-functions)).
-- **LeCun Initialization**: scales by $\sqrt{1/n_{in}}$ — the basis both Xavier and He build on, and the correct choice specifically for SELU (see [Activation Functions — SELU](/docs/deep-learning/activation-functions#the-relu-family)), whose self-normalizing property depends on this exact scale.
-- **Orthogonal Initialization**: initializes weight matrices to be exactly orthogonal (rows/columns are unit vectors, mutually perpendicular — see [Linear Algebra](/docs/mathematics-for-ai/linear-algebra)). Preserves gradient norm exactly through a linear layer at initialization, historically important for training vanilla RNNs (see [Sequence Models](/docs/deep-learning/sequence-models)) deep enough to otherwise vanish/explode immediately.
+And when tuning, you turn the knobs in big moves at first, then smaller and smaller ones as you get close. That's a learning-rate schedule. Everything below is those three habits made exact.
 
-**Rule of thumb**: He init for ReLU/GELU-family networks (the vast majority of modern nets), Xavier for tanh/sigmoid, LeCun specifically for SELU.
+</ELI5>
 
-## Regularization, Beyond Dropout
+## 1. Why Initialization Matters
 
-[Training Deep Networks](/docs/deep-learning/training-deep-networks#6-regularization-for-deep-nets) covers dropout and normalization. The rest of the toolkit:
+Two things go wrong with a bad starting point.
 
-- **L1 / L2 weight penalties**: identical in mechanism to [Lasso](/docs/machine-learning/lasso-regression) and [Ridge](/docs/machine-learning/ridge-regression) regression — add $\lambda\sum|w|$ or $\lambda\sum w^2$ to the loss. In deep learning this is almost always applied as **weight decay** directly in the optimizer (see [AdamW](/docs/deep-learning/optimizers#adam-and-its-descendants)) rather than mixed into the loss function.
-- **Elastic Net**: the [same L1+L2 blend](/docs/machine-learning/elastic-net) as in classical ML, occasionally used on specific layers (e.g. embedding tables) where both sparsity and stability matter.
-- **DropConnect**: a generalization of dropout — instead of zeroing out entire neuron *outputs* at random, zero out individual *weights* (connections) at random. More fine-grained, less commonly used than standard dropout in practice.
-- **Weight Decay**: shrinks every weight toward zero by a small multiplicative factor every step, independent of the loss gradient — see the [Ridge Regression gradient derivation](/docs/machine-learning/ridge-regression#deriving-the-gradient) for exactly why this is mathematically the same mechanism as L2 regularization.
-- **Early Stopping**: stop training once validation loss stops improving (see [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals#train-validation-test-splits)), rather than training for a fixed number of epochs regardless — the simplest regularizer that costs nothing extra to implement.
-- **Data Augmentation**: synthetically expand the training set with label-preserving transformations (crops/flips/rotations for images, synonym swaps for text) — regularizes by forcing the model to be invariant to changes that shouldn't affect the answer, rather than by penalizing weights directly.
-- **Label Smoothing**: instead of training toward a hard one-hot target ($[0,0,1,0]$), train toward a softened version ($[0.03,0.03,0.91,0.03]$) — prevents the model from becoming overconfident (pushing logits to extreme values to hit an exact 0 or 1 target), which empirically improves generalization and calibration.
+**Symmetry.** If every weight in a layer starts at the same value (zero, say), every neuron in that layer computes the same output and receives the same gradient, so after any number of updates they're still identical. A layer of 512 neurons acts like one. Random initialization breaks the symmetry, so neurons can learn different features.
 
-## Learning Rate Scheduling
+**Scale.** A neuron's pre-activation is a sum over its $n$ inputs, $z = \sum_{i=1}^{n} w_i x_i$. If the weights and inputs are independent with zero mean, the variances add:
+
+$$
+\operatorname{Var}(z) = n\, \operatorname{Var}(w)\, \operatorname{Var}(x)
+$$
+
+So each layer multiplies the variance of the signal by $n \operatorname{Var}(w)$, times whatever the activation does to it. Over $L$ layers that factor is raised to the $L$-th power. Slightly less than 1 per layer and the signal vanishes; slightly more and it explodes, in the forward pass and, by the same argument, in the gradients of the backward pass ([Training Deep Networks](/docs/deep-learning/training-deep-networks#vanishing-exploding-gradients)). Initialization chooses $\operatorname{Var}(w)$ to make the per-layer factor 1.
+
+## 2. Xavier and He, Derived
+
+**For tanh and sigmoid-like activations**, which are close to the identity near zero, keeping $n \operatorname{Var}(w) = 1$ keeps the variance steady:
+
+$$
+\operatorname{Var}(w) = \frac{1}{n_\text{in}}
+$$
+
+Glorot and Bengio (2010) noted the backward pass wants $\operatorname{Var}(w) = 1/n_\text{out}$ by the same argument, and compromised on
+
+$$
+\operatorname{Var}(w) = \frac{2}{n_\text{in} + n_\text{out}}
+$$
+
+This is **Xavier** (or Glorot) initialization. The plain $1/n_\text{in}$ version is also called **LeCun** initialization, and it's the one SELU's self-normalizing property requires.
+
+**For ReLU**, the activation zeroes every negative input, which is half of them, so it halves the second moment of the signal at every layer. He et al. (2015) compensated by doubling the weight variance:
+
+$$
+\operatorname{Var}(w) = \frac{2}{n_\text{in}}
+$$
+
+This is **He** (or Kaiming) initialization, and it's the default for ReLU-family networks. Biases are usually started at zero. Both schemes come in normal and uniform versions with the same variance: a uniform distribution on $[-a, a]$ has variance $a^2/3$.
+
+### Measured through fifty layers
+
+The variance argument predicts exactly what the following script measures: push a batch of random inputs through fifty 512-wide layers, with no training, and print the spread of the final activations under each scheme.
+
+```python
+import math
+import torch
+
+torch.manual_seed(0)
+DEPTH, WIDTH = 50, 512
+x0 = torch.randn(1000, WIDTH)
+
+def activation_std(act, std_fn):
+    x = x0
+    for _ in range(DEPTH):
+        W = torch.randn(WIDTH, WIDTH) * std_fn(WIDTH)
+        x = act(x @ W)
+    return x.std().item()
+
+schemes = {"N(0, 0.01^2)": lambda n: 0.01, "Xavier 1/sqrt(n)": lambda n: 1 / math.sqrt(n), "He sqrt(2/n)": lambda n: math.sqrt(2 / n)}
+for act_name, act in [("tanh", torch.tanh), ("ReLU", torch.relu)]:
+    for name, std_fn in schemes.items():
+        print(f"{act_name:4s} + {name:17s} activation std after {DEPTH} layers: {activation_std(act, std_fn):.2e}")
+
+# Warmup then cosine decay: the learning rate at a few steps of a 10,000-step run.
+def lr_at(step, peak=3e-4, warmup=500, total=10_000, floor=3e-5):
+    if step < warmup:
+        return peak * (step + 1) / warmup
+    progress = (step - warmup) / (total - warmup)
+    return floor + 0.5 * (peak - floor) * (1 + math.cos(math.pi * progress))
+
+for s in (0, 250, 500, 2500, 5000, 7500, 9999):
+    print(f"step {s:5d}: learning rate {lr_at(s):.1e}")
+```
+
+```text
+tanh + N(0, 0.01^2)      activation std after 50 layers: 5.10e-33
+tanh + Xavier 1/sqrt(n)  activation std after 50 layers: 9.66e-02
+tanh + He sqrt(2/n)      activation std after 50 layers: 5.54e-01
+ReLU + N(0, 0.01^2)      activation std after 50 layers: 9.65e-41
+ReLU + Xavier 1/sqrt(n)  activation std after 50 layers: 2.32e-08
+ReLU + He sqrt(2/n)      activation std after 50 layers: 9.32e-01
+step     0: learning rate 6.0e-07
+step   250: learning rate 1.5e-04
+step   500: learning rate 3.0e-04
+step  2500: learning rate 2.7e-04
+step  5000: learning rate 1.8e-04
+step  7500: learning rate 7.4e-05
+step  9999: learning rate 3.0e-05
+```
+
+The first six lines confirm the derivation:
+
+- **Small fixed initialization kills the signal** with either activation: an activation spread of $10^{-33}$ or $10^{-41}$ means the output no longer depends on the input. With a standard deviation of 0.01 and 512 inputs, each layer multiplies the spread by about $0.01 \times \sqrt{512} = 0.23$.
+- **Xavier suits tanh and fails ReLU.** With tanh it keeps the signal alive at 0.1 after fifty layers (tanh shrinks large values slightly, so a slow decline is expected). With ReLU it loses half the variance at each layer, $2^{-25} \approx 3 \times 10^{-8}$ in spread, as measured.
+- **He suits ReLU**, keeping the spread near 1 after fifty layers. (With tanh it's slightly too large but still workable.)
+
+The last seven lines belong to section 5.
+
+<PredictFirst
+  question="A colleague initializes a 30-layer ReLU network with Xavier initialization, Var(w) = 1/n. Roughly what happens to the variance of the activations by layer 30?"
+  options={[
+    'It stays about the same',
+    'It falls by a factor of about 2 per layer, so by roughly 2^30, about a billion',
+    'It doubles every layer',
+    'It falls to exactly zero after the first layer',
+  ]}
+  correctIndex={1}
+  explanation="Xavier keeps n·Var(w) = 1, which would preserve variance for an activation close to the identity. ReLU zeroes half its inputs and so halves the second moment at every layer. Thirty halvings is a factor of about 10^9. He initialization's factor of 2 exists precisely to cancel this."
+/>
+
+**Other schemes.** **Orthogonal** initialization uses a random orthogonal matrix, which preserves the norm of every vector exactly; it helped plain RNNs, which apply one matrix many times. Residual networks often initialize the last layer of each residual branch at zero or scaled down by $1/\sqrt{\text{depth}}$, so each block starts as nearly the identity and the residual stream doesn't grow with depth (GPT-2 scaled by $1/\sqrt{2 \times \text{layers}}$). And with normalization layers in every block, as in modern transformers, the network is much less sensitive to initialization, though the scale still affects early training stability.
+
+## 3. Regularization: Controlling Overfitting
+
+A network with millions of parameters can fit its training set perfectly, noise included. **Regularization** is anything that pushes it towards solutions that generalize instead. The methods differ in what they assume about a good solution.
+
+### Penalties on the weights
+
+**L2 regularization** adds $\tfrac{\lambda}{2}\sum w^2$ to the loss, assuming small weights generalize better, the same idea as [ridge regression](/docs/machine-learning/ridge-regression). Its gradient is $\lambda w$, so with plain gradient descent every step shrinks each weight by a factor $(1 - \alpha\lambda)$: **weight decay**. With adaptive optimizers the two are *not* the same, and decay should be applied directly to the weights, which is what [AdamW](/docs/deep-learning/optimizers#adam-and-its-descendants) does. In practice, weight decay of about 0.01 to 0.1 with AdamW is applied to weight matrices and usually not to biases and normalization parameters.
+
+**L1 regularization** adds $\lambda\sum\lvert w\rvert$, pushing weights to exactly zero like [lasso](/docs/machine-learning/lasso-regression). It's rarely used on whole deep networks, since sparse weights don't make dense hardware faster, but appears where sparsity itself is the goal.
+
+### Noise during training
+
+**Dropout** (Srivastava et al., 2014) zeroes each activation with probability $p$ during training and scales the survivors by $1/(1-p)$, so expected values are unchanged and nothing needs adjusting at inference, when dropout is off. No unit can count on any particular other unit, so the network learns redundant features; it behaves like an average over an ensemble of sub-networks sharing weights. Typical rates are 0.1 in transformers and up to 0.5 in older fully connected layers. **DropConnect** drops individual weights instead of activations, and **stochastic depth** drops whole residual blocks, which regularizes very deep networks and speeds up their training.
+
+**Data augmentation** creates new training examples by transformations that shouldn't change the label: crops, flips, colour changes and mixing images (mixup, CutMix) in vision; noise and time-stretching in audio; back-translation in text. It assumes the model should be invariant to those changes, and builds that in without touching the architecture. In vision it's often the most effective regularizer.
+
+### Softer targets and earlier stops
+
+**Label smoothing** trains towards, say, 0.9 on the true class and the remaining 0.1 spread over the others, instead of exactly 1 and 0. It stops the model driving its logits towards infinity to fit hard targets, and generally improves calibration ([Loss Functions](/docs/deep-learning/loss-functions) covers it with cross-entropy).
+
+**Early stopping** watches the validation loss and keeps the checkpoint where it was lowest, rather than training for a fixed number of epochs. It's free, and it's a regularizer: limiting the number of steps limits how far the weights can travel from their small initial values.
+
+### Data, the strongest regularizer
+
+The surest cure for overfitting is more data. Large language models are often pretrained with little or no dropout because they see each token about once, so there is nothing to memorize. Regularization matters most when data is scarce relative to model size, such as fine-tuning on a few thousand examples.
+
+## 4. What the Learning Rate Should Do Over Time
+
+A fixed learning rate is a compromise. Early on, the weights are far from good values and large steps make fast progress. Later, large steps bounce around the bottom of the loss valley, because each mini-batch gradient is noisy, and only small steps settle into it. And at the very start there's a separate danger: the weights are random, gradients can be large and erratic, and Adam's moment estimates are empty, so a full-size first step can throw training into a bad region it never recovers from.
+
+A **schedule** changes the learning rate during training to match. Three phases are standard:
+
+1. **Warmup**: increase linearly from near zero to the peak over the first few hundred or thousand steps.
+2. **The bulk of training** at or near the peak.
+3. **Decay** towards a small final value, where the loss usually drops noticeably as the optimizer stops bouncing and settles.
+
+## 5. Common Schedules
 
 <LrSchedulesDiagram />
 
-[Calculus & Optimization](/docs/mathematics-for-ai/calculus-optimization#learning-rate-schedules-warmup) introduced warmup and decay conceptually — here's the actual shape of each schedule in the chart above:
+- **Step decay**: multiply the learning rate by a factor such as 0.1 at fixed epochs. The classic ResNet recipe. Loss curves show a visible drop at each step.
+- **Exponential decay**: $\alpha_t = \alpha_0 e^{-kt}$. Smooth, but its shape is fixed in advance regardless of progress.
+- **Cosine decay** (Loshchilov and Hutter, 2016): follow half a cosine from the peak to a minimum, slow at first, fastest in the middle, gentle at the end:
 
-- **Step Decay** (green): multiply the LR by a fixed factor (e.g. 0.5) every fixed number of steps — simple, but the sudden drops can visibly disrupt the loss curve at each step.
-- **Exponential Decay** (blue): smooth continuous decay, $\alpha_t = \alpha_0 e^{-kt}$ — no sudden jumps, but decays "blindly," regardless of how training is actually progressing.
-- **Cosine Annealing** (gold): follows a cosine curve down from the base LR to ~0 — decays slowly at first, fastest in the middle, slowly again near the end. Extremely common as the default schedule for training from scratch.
-- **Cosine Warm Restarts** (red): repeatedly resets to the base LR and re-anneals via cosine — the periodic "restart" jumps can help escape a poor local region even late in training, at the cost of periodic visible spikes in loss.
-- **One-Cycle Policy** (gray): ramp *up* to a (relatively high) peak LR for the first phase, then back down for the second — deliberately spends the early-middle of training at higher LR than you'd otherwise dare, which empirically both speeds up convergence and acts as a regularizer.
-- **Cyclic LR**: oscillate the LR between a lower and upper bound throughout training (not shown above, but visually similar to a repeated sawtooth) — related to warm restarts, motivated by the same "periodically higher LR helps escape sharp minima" idea.
-- **Reduce on Plateau**: not a fixed schedule at all — monitor validation loss, and cut the LR by a factor whenever it stops improving for a set number of epochs. Adaptive to the *actual* training curve rather than a pre-committed shape.
-- **Warmup Scheduler**: ramp LR up from ~0 at the very start of training (visible in the first ~20 steps of the gold and blue curves above) — prevents the large, noisy gradients typical of an untrained model's first steps from destabilizing training, especially important for Transformers.
-- **Polynomial Decay**: $\alpha_t = \alpha_0(1 - t/T)^p$ — a tunable middle ground between linear ($p=1$) and more aggressive early decay ($p\gt 1$).
+$$
+\alpha_t = \alpha_\text{min} + \tfrac{1}{2}\left(\alpha_\text{max} - \alpha_\text{min}\right)\left(1 + \cos\frac{\pi t}{T}\right)
+$$
 
-**In practice**: warmup + cosine annealing is the most common combination for training large models (including LLMs) from scratch; reduce-on-plateau is common for smaller-scale fine-tuning where you can afford to monitor validation loss closely.
+Warmup followed by cosine decay to about 10% of the peak has been the standard schedule for training transformers. The script in section 2 computed it for a 10,000-step run with 500 warmup steps and a peak of $3 \times 10^{-4}$: the rate climbs from almost nothing to the peak at step 500, and is still at 90% of it at step 2,500, 60% at the halfway point and 10% at the end.
 
-This completes the neural network building-blocks cluster: [Activation Functions](/docs/deep-learning/activation-functions) → [Loss Functions](/docs/deep-learning/loss-functions) → [Optimizers](/docs/deep-learning/optimizers) → initialization/regularization/scheduling. Next: [Convolutional Neural Networks](/docs/deep-learning/cnns) — the first full architecture family built from these pieces.
+- **Cosine with warm restarts**: repeat the cosine, jumping back to the peak each time. The jumps can move the model out of a poor region, at the cost of temporary loss spikes.
+- **One-cycle** (Smith, 2018): ramp up to an unusually high peak and back down over a single cycle. The high-learning-rate phase acts as a regularizer, and it often trains small and medium models fast.
+- **Reduce on plateau**: cut the rate by a factor whenever validation loss stops improving for a set number of epochs. It adapts to the actual curve, which suits fine-tuning where validation is cheap.
+- **Polynomial and linear decay**: $\alpha_t = \alpha_0 (1 - t/T)^p$; with $p = 1$, the linear decay often used for BERT-style fine-tuning.
+
+### Warmup-stable-decay
+
+A recent change in large-model training is the **warmup-stable-decay (WSD)** schedule, also called trapezoidal: warm up, hold the peak learning rate constant for most of training, then decay quickly over the final 10 to 20% of steps. Cosine's drawback is that it needs the total number of steps fixed in advance: stop early and the learning rate was never decayed, so you can't take a good checkpoint from the middle. With WSD, any point in the stable phase can be branched into a short decay to produce a finished model, which makes it possible to continue training, or to compare data mixtures at several training lengths, without rerunning from scratch. MiniCPM (2024) popularized it, and studies since have found it matches cosine at the same final step count.
+
+<GoDeeper title="Go deeper: why the loss drops sharply when the learning rate decays">
+
+Training curves often show a long, slowly declining plateau followed by a sharp fall when the learning rate is cut. A useful picture explains it.
+
+With a noisy mini-batch gradient, gradient descent doesn't settle at the bottom of the loss valley; it bounces around it, and the size of the bounce is proportional to the learning rate times the gradient noise. During the high-learning-rate phase, the optimizer is moving the weights a long way, finding a good *region*, while bouncing high up its walls. Decaying the learning rate shrinks the bounce, so the weights settle towards the floor of the region already found, and the loss drops.
+
+That's why both phases matter. Too short a high phase, and the region found is worse. No decay phase, and the model never settles into it. It's also why WSD works: the stable phase does the exploring, and a short final decay does the settling, so the settling can be attached to any point in the run.
+
+</GoDeeper>
+
+## 6. When *Not* to Use Each
+
+| Situation | Better choice |
+|---|---|
+| Xavier initialization in a deep ReLU network | He initialization, which accounts for ReLU zeroing half its inputs |
+| L2 regularization mixed into the loss with Adam | AdamW's decoupled weight decay |
+| Weight decay on biases and normalization gains | Exclude them; decay is meant for weight matrices |
+| Heavy dropout in a large model trained once over huge data | Little or none; there's nothing to memorize and it slows learning |
+| Augmentations that change the label, such as flipping digits like 6 and 9 | Only label-preserving transformations |
+| A cosine schedule when you don't know how long you'll train | Warmup-stable-decay, which can be decayed at any point |
+| No warmup with Adam on a transformer | A few hundred to a few thousand warmup steps |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Symmetry | Identical starting weights stay identical; initialize randomly |
+| Scale | Each layer multiplies variance by $n \operatorname{Var}(w)$; aim for 1 |
+| Xavier / LeCun | $\operatorname{Var}(w) = 1/n_\text{in}$ (or $2/(n_\text{in}+n_\text{out})$) for tanh-like activations |
+| He | $\operatorname{Var}(w) = 2/n_\text{in}$ for ReLU, which halves the signal's second moment |
+| Weight decay | Shrink weights each step; with Adam, use AdamW |
+| Dropout | Zero activations at random in training, scale the rest; off at inference |
+| Augmentation, label smoothing, early stopping | Invariance by construction; softer targets; stop at the best validation point |
+| Data | The strongest regularizer; large pretraining runs use little else |
+| Schedules | Warm up, train near the peak, decay; cosine is standard, WSD is decay-on-demand |
+
+---
+
+Next: [Training Deep Networks](/docs/deep-learning/training-deep-networks), what changes when all of this meets a network fifty or a hundred layers deep.
+
+## Sources
+
+- Glorot and Bengio, [Understanding the difficulty of training deep feedforward neural networks](https://proceedings.mlr.press/v9/glorot10a.html) (2010)
+- He et al., [Delving Deep into Rectifiers](https://arxiv.org/abs/1502.01852) (2015)
+- Saxe, McClelland and Ganguli, [Exact solutions to the nonlinear dynamics of learning in deep linear neural networks](https://arxiv.org/abs/1312.6120) (2013), orthogonal initialization
+- Srivastava et al., [Dropout](https://jmlr.org/papers/v15/srivastava14a.html) (2014)
+- Huang et al., [Deep Networks with Stochastic Depth](https://arxiv.org/abs/1603.09382) (2016)
+- Zhang et al., [mixup: Beyond Empirical Risk Minimization](https://arxiv.org/abs/1710.09412) (2017)
+- Loshchilov and Hutter, [SGDR: Stochastic Gradient Descent with Warm Restarts](https://arxiv.org/abs/1608.03983) (2016)
+- Smith, [A disciplined approach to neural network hyper-parameters](https://arxiv.org/abs/1803.09820) (2018), one-cycle
+- Hu et al., [MiniCPM: Unveiling the Potential of Small Language Models with Scalable Training Strategies](https://arxiv.org/abs/2404.06395) (2024), warmup-stable-decay
+- Hägele et al., [Scaling Laws and Compute-Optimal Training Beyond Fixed Training Durations](https://arxiv.org/abs/2405.18392) (2024)
