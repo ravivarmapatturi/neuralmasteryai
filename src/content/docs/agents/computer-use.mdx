@@ -1,41 +1,183 @@
 ---
-title: "Computer-Use & GUI Agents"
+title: "Computer-Use and GUI Agents, In Full Depth"
 sidebar_position: 8
-description: "How computer-use/GUI agents work: screenshot in, pixel-coordinate clicks out, Anthropic's real tool loop, and why the blast radius is larger than tool calls."
+description: "How agents operate a computer through its screen: screenshots in, mouse and keyboard actions out, Anthropic's current computer-use toolset, what screenshots cost in tokens, the coordinate-scaling bug and how to avoid it (both computed), why the risk is larger than a tool call, and the sandbox and confirmation rules that contain it."
 ---
 
-
 import ComputerUseLoopDiagram from '../../../viz/diagrams/ComputerUseLoopDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Computer-Use & GUI Agents
+# Computer-Use and GUI Agents, In Full Depth
 
-Every agent pattern so far has assumed the agent's actions are scoped tool calls — a function with a name and a JSON schema. Computer-use agents don't call functions; they operate a screen the same way a person does: look at a screenshot, decide where to click or what to type, and look again. That's a fundamentally larger action space, and a fundamentally larger blast radius.
+[Browser automation agents](/docs/agents/browser-automation) act on a web page's structure: a numbered list of buttons and fields. Outside the browser, most software offers no such structure to an outside program: a desktop accounting package, a design tool, a legacy internal application, the operating system's own settings. A **computer-use agent** handles those the way a person does. It looks at a screenshot, decides where to click or what to type, does it, and looks again. This page covers how that loop works, the action set of Anthropic's current computer-use toolset, what screenshots cost in tokens, the coordinate-scaling mistake almost everyone makes once (both computed below), why a click is far riskier than a tool call, and the rules for running these agents safely.
 
-## How the Loop Actually Works
+<ELI5>
 
-Anthropic's [computer-use tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/computer-use-tool) is the concrete reference implementation for this pattern: the model receives the desktop as a screenshot (base64 PNG), and can act on it via a fixed set of primitive actions — `left_click`, `type`, `key`, `scroll`, `left_click_drag`, and others — each taking pixel coordinates in the screenshot's own coordinate space. There's no DOM, no accessibility tree, no structured page model here (that's the [browser-automation](/docs/agents/browser-automation) case) — just pixels in, coordinates out.
+Imagine helping someone use their computer while you can only see photos of their screen, one after another. You say "click the blue button about two-thirds of the way down", they click, and they send you a new photo. It works, but it's slow, and if the photo was shrunk before you saw it, your "two-thirds of the way" might land on the wrong button.
 
-The loop:
+And there's a bigger worry: unlike a calculator that can only do sums, a mouse can do anything. The same click that opens a menu could pay a bill or delete a folder, depending on what happens to be under it.
+
+A computer-use agent is the AI in that position. Everything below is how it works, why it's expensive, and how to make sure a wrong click can't do real harm.
+
+</ELI5>
+
+## 1. Pixels In, Actions Out
+
+Every agent so far acted through **scoped tools**: functions with names and argument schemas, like `send_email(to, subject, body)`. A computer-use agent has one very general tool, the computer itself:
+
+- **Observation**: a screenshot of the display, as an image.
+- **Actions**: mouse and keyboard primitives at pixel coordinates: move, click, drag, scroll, type text, press key combinations.
+
+The model must read the screen visually (find the button, read the label, notice the error dialog) and turn intentions into coordinates. That requires models trained specifically for it: grounding text like "the Save button" to exact pixel positions is a skill vision-language models had to learn, and it improved quickly from 2024 onwards. Anthropic released computer use for Claude in October 2024; OpenAI's computer-using agent powers ChatGPT's agent mode, and Google offers a Gemini computer-use model.
+
+**Why not always use structure?** Where structure exists, it's better: a web page's accessibility tree or an application's API is cheaper and more reliable than pixels. Computer use is for when there is nothing else, or when the task spans several applications.
+
+## 2. The Loop and the Toolset
 
 <ComputerUseLoopDiagram />
 
-Two details worth being precise about, because they're easy to get wrong if you build this yourself: coordinates are always relative to the screenshot's *own* resolution, so if you downscale the image before sending it (Claude's vision limits cap long-edge pixels), you have to scale the model's returned coordinates back up before executing them — and multiple actions proposed in one turn execute in order, stopping at the first failure, since later actions usually depend on earlier ones having actually landed.
+The loop is the standard [agent loop](/docs/agents/agent-fundamentals) with a screen as the environment:
 
-## Why This Is Riskier Than a Scoped Tool Call
+1. The application sends the task and a screenshot.
+2. The model replies with one or more actions.
+3. The application performs them in a sandboxed machine, takes a new screenshot, and sends it back.
+4. Repeat until the model reports the task done, or a limit is reached.
 
-A tool call like `send_notification(recipient, message)` has a fixed, auditable argument shape — you know exactly what it can and can't do before it runs. A `left_click(512, 300)` can do *anything a human sitting at that screen could do* — submit a payment, delete a file through a GUI, accept a legal agreement — because the action's meaning depends entirely on what happens to be under the cursor at that moment. The action primitive is generic; the risk is contextual and can't be fully bounded by the tool's schema the way it can for API-shaped tool calls.
+Your application does the executing: the model never touches the machine directly. In Anthropic's API, the current version is the **`computer_toolset_20260801`** client toolset, declared as `{"type": "computer_toolset_20260801"}` with no beta header. It exposes seventeen actions, each called by name: `screenshot`, `zoom` (look at a region at higher resolution), `left_click`, `right_click`, `middle_click`, `double_click`, `triple_click`, `left_click_drag`, `mouse_move`, `left_mouse_down`, `left_mouse_up`, `cursor_position`, `scroll`, `type`, `key` (such as `"ctrl+s"`), `hold_key` and `wait`. Earlier versions (`computer_20250124`, `computer_20251124`) took an `action` field and declared the display size; the current toolset doesn't, and coordinates are simply in the pixel space of the screenshots you return. Anthropic also publishes a reference implementation that runs the loop in a Docker container with a virtual desktop.
 
-Anthropic's own documentation is explicit about this, recommending:
+Two details matter in practice:
 
-1. **A dedicated VM or container with minimal privileges** — never point this at a real desktop with real credentials.
-2. **No access to sensitive data** (login info, etc.) — the sandbox should have nothing worth stealing.
-3. **An allowlist of reachable domains**, if the sandbox has internet access at all.
-4. **Human confirmation before consequential actions** — "tasks requiring affirmative consent, such as accepting cookies, completing financial transactions, or agreeing to terms of service."
+- **Several actions in one turn run in order**, and execution should stop at the first failure, since later actions usually assume earlier ones landed.
+- **Screens change while the model thinks.** Animations, loading spinners and pop-ups mean the screenshot can be stale. Taking a fresh screenshot after every action, and using `wait` when something is loading, avoids clicking where a button used to be.
 
-That fourth point is the direct analog of the tool-call policy engine pattern from [Agent Architectures](/docs/agents/agent-architectures): the model isn't trusted to self-police which of its own actions are consequential. The diagram above models exactly that — routine navigation clicks execute immediately, but a click that would complete a purchase pauses for explicit confirmation before the sandbox ever executes it, the same "the agent's decision alone is not authorization" boundary a [risk-tiered policy gateway](https://github.com/ravivarmapatturi/Agent_Security_Gateway) enforces for ordinary API tool calls. Anthropic also runs an automatic classifier over computer-use screenshots specifically to catch prompt-injection attempts hidden in on-screen content (a malicious instruction rendered as text on a webpage, for instance) and will force a confirmation prompt if one's detected — worth knowing about, but not a substitute for sandboxing: a classifier is a probabilistic filter, not a hard boundary the way "this action requires a human click" is.
+## 3. The Two Numbers to Get Right: Tokens and Coordinates
 
-## When to Reach for This vs. Browser Automation
+A computer-use agent's costs and its most common bug both come from the screenshot. The script below computes what screenshots cost (recent Claude models count an image as $\lceil w/28 \rceil \times \lceil h/28 \rceil$ visual tokens, up to a 2,576-pixel long edge), then shows what happens to a click when the screenshot sent to the model was smaller than the real screen.
 
-If the task lives entirely inside a webpage, [browser-automation](/docs/agents/browser-automation) agents (structured DOM access, no pixels) are cheaper, faster, and more reliable — there's no coordinate math, no screenshot token cost, and far less ambiguity about what's clickable. Computer-use earns its much higher cost and risk specifically for tasks that cross application boundaries, touch non-web GUIs (a desktop app, a settings panel, a file manager), or need visual verification of a task's actual rendered result, not just its underlying data.
+```python
+import math
 
-Agents section complete. Next: [ML System Design](/docs/ml-system-design/roadmap) — how to turn any of this (models, RAG pipelines, agents) into a production system that scales.
+# 1. What a screenshot costs. Recent Claude models count visual tokens as ceil(w/28) * ceil(h/28).
+def visual_tokens(w, h):
+    return math.ceil(w / 28) * math.ceil(h / 28)
+
+for w, h in [(1024, 768), (1280, 800), (1920, 1080)]:
+    print(f"{w}x{h} screenshot: {visual_tokens(w, h):,} tokens; 30 screenshots in one task: {30 * visual_tokens(w, h):,}")
+
+# 2. Coordinates live in the screenshot's pixel space. If you downscale before sending, scale back.
+SCREEN = (2560, 1600)                                   # the real display (e.g. a Retina laptop)
+SENT = (1280, 800)                                      # the screenshot actually sent to the model
+scale = SENT[0] / SCREEN[0]
+buttons = {"Search": (2100, 300, 2300, 360), "Pay $1,240": (2100, 1400, 2400, 1480)}   # real-screen boxes
+
+def hit(x, y):
+    return next((name for name, (x0, y0, x1, y1) in buttons.items() if x0 <= x <= x1 and y0 <= y <= y1), None)
+
+CONSEQUENTIAL = ("Pay", "Delete", "Send", "Accept")
+for model_xy in [(1100, 165), (1125, 720)]:             # the model's clicks, in screenshot pixels
+    unscaled = hit(*model_xy)
+    real = (round(model_xy[0] / scale), round(model_xy[1] / scale))
+    target = hit(*real)
+    gate = "needs human confirmation" if target and target.startswith(CONSEQUENTIAL) else "run"
+    print(f"model clicks {model_xy} -> without scaling hits {unscaled}; scaled to {real} hits {target!r}: {gate}")
+```
+
+```text
+1024x768 screenshot: 1,036 tokens; 30 screenshots in one task: 31,080
+1280x800 screenshot: 1,334 tokens; 30 screenshots in one task: 40,020
+1920x1080 screenshot: 2,691 tokens; 30 screenshots in one task: 80,730
+model clicks (1100, 165) -> without scaling hits None; scaled to (2200, 330) hits 'Search': run
+model clicks (1125, 720) -> without scaling hits None; scaled to (2250, 1440) hits 'Pay $1,240': needs human confirmation
+```
+
+**Tokens.** A 1280 × 800 screenshot is about 1,300 tokens; a task that takes 30 screenshots spends 40,000 tokens on images alone, before any text, and history makes it worse because earlier screenshots stay in the conversation unless you trim them. A 1080p display doubles it. That's why the documentation recommends modest resolutions (1024 × 768 or 1280 × 800) and why agents usually drop all but the last few screenshots from the history.
+
+**Coordinates.** The model's coordinates are in the pixel space of the image it saw. Here the real display is 2560 × 1600 (a high-density laptop screen), the screenshot sent was halved to 1280 × 800, and the model's clicks, applied directly to the real screen, hit nothing at all. Scaled back up by the same factor, they land on the right buttons. It's easy to miss because nothing errors: the clicks simply land somewhere else. If you resize screenshots, and on high-density displays you almost certainly do, divide the model's coordinates by the same scale before executing them.
+
+<PredictFirst
+  question="Your agent works perfectly on a 1280×800 virtual machine. On a developer's Retina MacBook, every click lands too far up and to the left. What is the most likely cause?"
+  options={[
+    'The model is worse on macOS',
+    'Screenshots are captured at twice the logical resolution and downscaled before sending, but the model\'s coordinates are not scaled back up',
+    'The mouse acceleration setting',
+    'The screenshots are too large for the model',
+  ]}
+  correctIndex={1}
+  explanation="Retina displays capture screenshots at 2x. If they are resized for the model but the returned coordinates are applied unchanged, every click lands at half the intended distance from the top-left corner, which is up and to the left. Divide the coordinates by the scale factor before executing."
+/>
+
+## 4. Why a Click Is Riskier Than a Tool Call
+
+A tool call such as `send_notification(recipient, message)` has a fixed, auditable shape: you know before it runs exactly what it can do, and a policy can inspect its arguments. A `left_click(512, 300)` can do **anything a person at that screen could do**: open a menu, submit a payment, delete a file, accept a contract. Its meaning depends entirely on what's under the cursor at that moment, which the schema can't tell you. The action is generic; the risk is in the context.
+
+Two further problems compound it:
+
+- **Prompt injection through the screen.** Anything visible can carry instructions: a web page, an email, a document, a notification, even near-invisible text in an image. Security researchers demonstrated in 2025 that text hidden in screenshots could steer AI browsers. The model reads the screen to understand it, so it reads the attacker's text too.
+- **Credentials on screen.** A real desktop shows logged-in sessions, saved passwords in autofill, private files and messages. An agent on such a machine inherits all of it.
+
+## 5. Running It Safely
+
+Anthropic's documentation sets out four rules, and they're the right baseline for any computer-use agent:
+
+1. **Use a dedicated virtual machine or container with minimal privileges**, never the user's real desktop.
+2. **Keep sensitive data out of it**, including account logins.
+3. **Limit internet access to an allow-list of domains.**
+4. **Have a human confirm consequential actions**, especially anything requiring consent: accepting cookies, completing financial transactions, agreeing to terms of service.
+
+The fourth rule is best enforced in code, not in the prompt. The script in section 3 shows the shape: after scaling a click to real-screen coordinates, the application identifies what's under it and pauses for confirmation if it's a payment, a send, a delete or an acceptance. Identifying the target can use the operating system's accessibility API, or a second model call asked only "what does this click do?". It's the same principle as gating tool calls in [Agent Architectures](/docs/agents/agent-architectures): the model's decision alone is not authorization.
+
+Anthropic also runs **classifiers** over what the computer-use tools return, including screenshots, to flag likely prompt injections; when one fires, the model is steered to check with the user before acting. It's a useful layer, but a probabilistic filter, not a boundary. The sandbox and the confirmation rule are the boundaries.
+
+<GoDeeper title="Go deeper: how good are computer-use agents now?">
+
+The standard benchmark is **OSWorld** (Xie et al., 2024): 369 real tasks across Ubuntu, Windows and macOS applications, checked by scripts that inspect the final state of the machine. When it was released, the best model completed about 12% of tasks, against about 72% for people. Scores rose steeply through 2025 and 2026 as models were trained specifically on computer use, and leading systems now complete a majority of OSWorld tasks.
+
+Benchmarks flatter in two ways. Tasks are short and well specified, while real work is long, ambiguous and full of pop-ups, and per-step errors compound over long tasks. And a benchmark machine has nothing sensitive on it. In practice, computer-use agents are most useful today for bounded, verifiable tasks in a sandbox (filling a form in a legacy application, collecting information across several programs, testing a user interface), with a person reviewing the result.
+
+</GoDeeper>
+
+## 6. Choosing Between Computer Use, Browser Agents and APIs
+
+| Task | Best tool |
+|---|---|
+| The application has an API | Call the API, as a tool or an [MCP server](/docs/agents/mcp/overview) |
+| Web-only tasks | A [browser agent](/docs/agents/browser-automation) using the page's structure |
+| A fixed, repeated sequence in a desktop application | Conventional robotic process automation or a script |
+| Open-ended tasks in desktop applications or across several programs | A computer-use agent in a sandbox |
+| Checking how a user interface actually looks | Computer use, which sees the rendered result |
+
+## 7. When *Not* to Use Computer Use
+
+| Situation | Better choice |
+|---|---|
+| Any task an API or structured interface can do | The API: cheaper, faster, auditable arguments |
+| On a real desktop with the user's logins | A dedicated VM or container with nothing sensitive in it |
+| Consequential actions with no confirmation step | Add a code-level confirmation first |
+| High-volume, latency-sensitive automation | Scripts or RPA; screenshots make each step slow and costly |
+| Tasks you can't verify afterwards | Build a check on the final state first |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| The tool | One general tool, the computer: screenshots in, mouse and keyboard actions out |
+| Toolset | Anthropic's `computer_toolset_20260801`: 17 actions, including `zoom`, `type`, `key`, `wait` |
+| Tokens | About 1,300 per 1280×800 screenshot; trim old screenshots, keep resolution modest |
+| Coordinates | In the screenshot's pixel space; divide by your downscale factor before clicking |
+| Risk | A click's meaning depends on the screen; it can do anything a person could |
+| Injection | Anything on screen can carry instructions, including hidden text in images |
+| Safety | Sandbox VM, no sensitive data, domain allow-list, code-level confirmation of consequential actions |
+| Choosing | API first, browser agent for the web, computer use when there's nothing structured |
+
+---
+
+Agents section complete. Next: [ML System Design](/docs/ml-system-design/roadmap), turning models, retrieval pipelines and agents into production systems.
+
+## Sources
+
+- Anthropic, [Computer use tool documentation](https://platform.claude.com/docs/en/agents-and-tools/tool-use/computer-use-tool)
+- Anthropic, [Introducing computer use](https://www.anthropic.com/news/3-5-models-and-computer-use) (October 2024)
+- Xie et al., [OSWorld: Benchmarking Multimodal Agents for Open-Ended Tasks in Real Computer Environments](https://arxiv.org/abs/2404.07972) (2024)
+- Brave, [Unseeable prompt injections in screenshots](https://brave.com/blog/unseeable-prompt-injections/) (October 2025)
+- OWASP, [Top 10 for Agentic Applications for 2026](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/)
