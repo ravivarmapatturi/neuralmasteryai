@@ -1,50 +1,237 @@
 ---
 title: "DBSCAN & HDBSCAN, In Full Depth"
 sidebar_position: 6.2
-description: "DBSCAN and HDBSCAN in full depth: density-based clustering that finds arbitrary-shaped clusters and explicitly labels noise, unlike K-Means."
+description: "Density-based clustering derived: DBSCAN's core, border and noise points and density-reachability defined precisely, the algorithm and its cost, choosing eps from the k-distance curve, why one radius fails on clusters of different density, and how HDBSCAN's mutual reachability distance, condensed tree and stability fix it. From-scratch DBSCAN matches scikit-learn exactly."
 ---
 
-import __migratedImg0 from './img/dbscan-clusters.png';
-
 import DbscanLiveDiagram from '../../../viz/diagrams/DbscanLiveDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # DBSCAN & HDBSCAN, In Full Depth
 
-[K-Means](/docs/machine-learning/kmeans-hierarchical-clustering) assumes round, similarly-sized blobs and forces every point into a cluster. DBSCAN drops both assumptions: it finds clusters of *any* shape, defined purely by density, and explicitly labels sparse points as noise rather than forcing them into a nearby group.
+[k-means](/docs/machine-learning/kmeans-hierarchical-clustering) looks for round groups around centres and puts every point in one of them. Many real datasets don't look like that: clusters are long, curved or nested, and some points belong to no group at all. Density-based clustering starts from a different definition. A cluster is a region where points are packed densely, separated from other such regions by space where they're sparse; points in sparse space are **noise**. This page defines that precisely for DBSCAN, derives the algorithm and its cost, shows how to choose its radius and why a single radius can't handle clusters of different densities, then builds HDBSCAN, which considers every radius at once and keeps the clusters that persist. A from-scratch DBSCAN reproduces scikit-learn's result point for point.
 
-## DBSCAN (Density-Based Spatial Clustering of Applications with Noise)
+<ELI5>
 
-Two parameters define everything: $\epsilon$ (a distance radius) and `min_samples` (a density threshold). Every point falls into one of three roles:
+Look at a city at night from an aeroplane. You can see the towns without anyone drawing borders: they're where the lights are bunched together, and the dark countryside between them separates one town from the next. A single farmhouse light in the middle of nowhere isn't a town; it's just a light.
 
-- **Core point**: has at least `min_samples` other points within distance $\epsilon$ of it.
-- **Border point**: within $\epsilon$ of a core point, but doesn't itself have enough neighbors to qualify as core.
-- **Noise point**: neither — too isolated to belong to any cluster.
+DBSCAN finds clusters the same way. A point with many neighbours close by is in a "town". Towns grow by following chains of bright, crowded areas, whatever shape that makes. A point with almost no neighbours is a lone farmhouse: noise. Everything below is that idea made exact.
 
-**The algorithm**: pick an unvisited point; if it's a core point, start a new cluster and recursively absorb every point density-reachable from it (every neighbor within $\epsilon$, and their neighbors, and so on, as long as each new point is itself a core point or directly borders one). If the starting point isn't core, mark it as noise (for now — it may still get absorbed later as a border point of some other cluster). Repeat until every point has been visited.
+</ELI5>
 
-<img src={__migratedImg0} alt="DBSCAN finds clusters of arbitrary shape and explicitly marks sparse points as noise (×)" style={{maxWidth: '100%'}} />
+## 1. Density, Defined
 
-**Why this handles non-convex shapes natively**: nothing in the algorithm ever computes a centroid or assumes a shape — clusters grow purely by chaining together dense neighborhoods, so an elongated, curved, or ring-shaped cluster is found exactly as easily as a round one. This is precisely why DBSCAN succeeds on the [two-moons data where K-Means fails](/docs/machine-learning/kmeans-hierarchical-clustering#k-means).
+### DBSCAN (Density-Based Spatial Clustering of Applications with Noise)
 
-**Choosing $\epsilon$ and `min_samples`**: `min_samples` is often set based on data dimensionality (a common heuristic: $\geq d+1$, where $d$ is the number of features). $\epsilon$ is typically chosen via a **k-distance plot** — sort each point's distance to its $k$-th nearest neighbor, plot it, and look for the "knee" where distances start increasing sharply — the same elbow-finding intuition as [K-Means' elbow method](/docs/machine-learning/kmeans-hierarchical-clustering#k-means), applied to density instead of inertia.
+DBSCAN (Ester, Kriegel, Sander and Xu, 1996) has two parameters: a radius $\varepsilon$ and a count `min_samples` (written $m$ below). Everything follows from one notion, the **$\varepsilon$-neighbourhood** of a point $p$: all the points within distance $\varepsilon$ of it, $N_\varepsilon(p) = \{q : d(p, q) \le \varepsilon\}$, including $p$ itself.
 
-Real DBSCAN, run live — drag ε and min_samples and watch cluster count, noise count, and every point's role recompute for real:
+- $p$ is a **core point** if $\lvert N_\varepsilon(p)\rvert \ge m$: it sits in a dense region.
+- $q$ is **directly density-reachable** from $p$ if $p$ is a core point and $q \in N_\varepsilon(p)$.
+- $q$ is **density-reachable** from $p$ if there's a chain $p = p_1, p_2, \dots, p_r = q$ in which each $p_{i+1}$ is directly density-reachable from $p_i$. Every point in the chain except possibly the last must be a core point.
+- $p$ and $q$ are **density-connected** if both are density-reachable from some common point $o$.
+
+A **cluster** is a maximal set of density-connected points. From that:
+
+- Every core point belongs to exactly one cluster: the set of everything density-reachable from it.
+- A **border point** isn't core itself, but lies within $\varepsilon$ of a core point, so it's reachable and joins that point's cluster.
+- A **noise point** is reachable from no core point. It belongs to no cluster.
+
+Nothing here mentions a centre, a mean or a shape. A cluster grows by chaining dense neighbourhoods together, so a curved band, a ring or a spiral is found as easily as a round blob, provided the band is dense and separated from other bands by sparse space. That's why DBSCAN recovers the two interleaved half-moons that k-means splits down the middle (see the [comparison on the hub page](/docs/machine-learning/unsupervised-learning)).
+
+One subtlety: a border point within $\varepsilon$ of core points from two different clusters is reachable from both. Core points and noise are determined uniquely, but such a border point goes to whichever cluster reaches it first, so its label can depend on the order of the data. It rarely matters, but it means DBSCAN isn't perfectly deterministic.
+
+## 2. The Algorithm and Its Cost
+
+The definitions turn directly into a breadth-first search:
+
+1. Find each point's $\varepsilon$-neighbourhood, and mark the core points.
+2. For each core point not yet in a cluster, start a new cluster with it and put it in a queue.
+3. Take a point from the queue. Every unlabelled point in its neighbourhood joins the cluster; those that are core points are added to the queue, because they can reach further. Border points join but don't expand.
+4. When the queue is empty, the cluster is complete (it's maximal). Continue with the next unclustered core point.
+5. Anything still unlabelled at the end is noise.
+
+Each point's neighbourhood is examined once, so the cost is dominated by step 1, the radius queries. With a spatial index (a k-d tree or ball tree, see [k-NN](/docs/machine-learning/k-nearest-neighbors)) in low dimensions, each query takes roughly $O(\log n)$ plus the number of neighbours found, for about $O(n\log n)$ overall. With brute force, or in high dimensions where indexes stop pruning, it's $O(n^2)$. Memory can also be a concern: if $\varepsilon$ is large, every neighbourhood is large, and storing them all costs up to $O(n^2)$.
+
+DBSCAN's advantages over k-means come straight from the definitions: it doesn't need the number of clusters (it emerges from the density), it finds arbitrary shapes, and it says which points are noise instead of forcing them into a cluster. Drag $\varepsilon$ and `min_samples` and watch every point's role update:
 
 <DbscanLiveDiagram />
 
-**Weakness**: a single global $\epsilon$ assumes roughly uniform density everywhere. If one region of the data is naturally denser than another, one $\epsilon$ can't serve both well — too small and it fragments the dense region; too large and it merges the sparse region into noise or into the wrong cluster.
+## 3. Choosing ε and min_samples
 
-## HDBSCAN (Hierarchical DBSCAN)
+**`min_samples`** sets how many points count as "dense". Larger values make core points rarer, so clusters need to be denser and more points become noise; it also smooths the result. A common starting point is $m \ge d + 1$ for $d$ features, often $2d$, and at least 3 to 5 in two dimensions. On noisy or large data, larger values are safer.
 
-Fixes DBSCAN's single-$\epsilon$ limitation directly: instead of one fixed radius, HDBSCAN builds a hierarchy across a *range* of $\epsilon$ values (conceptually similar to the [dendrogram](/docs/machine-learning/kmeans-hierarchical-clustering#hierarchical-clustering) from hierarchical clustering, but built from density rather than raw distance), then extracts the most *stable* clusters across that range — clusters that persist over a wide span of $\epsilon$ values are considered genuine; clusters that only appear briefly at one specific $\epsilon$ are treated as noise or merged.
+**$\varepsilon$** is the hard one, and the standard tool is the **k-distance curve**. For each point, compute the distance to its $k$-th nearest neighbour, with $k = m$. A point inside a cluster has close neighbours, so its $k$-distance is small; a noise point's is large. Sort these distances and plot them. The curve is flat and low for clustered points, then rises sharply for noise points, and $\varepsilon$ is chosen near that bend: large enough that cluster points are core, small enough that noise points aren't. On the moons-plus-noise data in Section 6, the median $k$-distance is 0.055, the 90th percentile 0.10, the 95th 0.21 and the 99th 0.66: about 7% of the points (the 40 uniformly scattered noise points) sit in the steep tail, and $\varepsilon = 0.15$ sits just before it.
 
-**Practical result**: HDBSCAN needs only `min_samples` (or `min_cluster_size`) as a real hyperparameter — no $\epsilon$ to tune at all — and handles varying-density data that plain DBSCAN cannot, at the cost of somewhat higher computational complexity and a less intuitive parameter to reason about than a simple distance radius.
+<PredictFirst
+  question="Two tight, dense clusters sit close together, and a third cluster nearby is large and diffuse. You run DBSCAN with a small ε, then with a large ε. What happens?"
+  options={[
+    'Both settings find the three clusters; DBSCAN adapts to density automatically',
+    'Small ε finds the two tight clusters but breaks the diffuse one into fragments and noise; large ε captures the diffuse cluster but merges the two tight ones',
+    'Small ε merges everything; large ε finds three clusters',
+    'DBSCAN refuses to run when densities differ',
+  ]}
+  correctIndex={1}
+  explanation="One radius defines one density threshold for the whole dataset. A radius suited to the tight clusters is too small for the diffuse one, whose points mostly don't have enough neighbours within it. A radius suited to the diffuse cluster is so large that the gap between the two tight clusters is bridged. Section 6 measures this: no ε finds all three cleanly, while HDBSCAN, which needs no ε, does."
+/>
 
-## When to Use Density-Based Clustering
+## 4. One Radius Is One Density
 
-- Cluster shapes are irregular, elongated, or nested (rings within rings) — where [K-Means](/docs/machine-learning/kmeans-hierarchical-clustering#k-means)'s spherical assumption breaks down.
-- The dataset genuinely contains noise/outliers that shouldn't be forced into any cluster — geospatial data, sensor readings, anomaly-adjacent data.
-- You don't know the number of clusters upfront, and don't want to guess $k$ — DBSCAN/HDBSCAN discover the cluster count automatically from the data's density structure.
-- **Not ideal when**: clusters genuinely do vary smoothly in density with no clear gaps (DBSCAN needs some density contrast to find boundaries at all), or the dataset is very high-dimensional (density becomes a less meaningful concept — the same [curse of dimensionality](/docs/machine-learning/k-nearest-neighbors#the-curse-of-dimensionality) that hurts KNN affects any distance/density-based method).
+That checkpoint is DBSCAN's central limitation. $\varepsilon$ and $m$ together fix a single density threshold, "at least $m$ points per ball of radius $\varepsilon$", for the whole dataset. When clusters have very different densities, no single threshold separates all of them. Section 6 builds the case in the checkpoint: two tight clusters 2 units apart and a third, five times more spread out. At $\varepsilon = 0.3$, DBSCAN finds the tight pair but labels 31% of all points noise and splits the diffuse cluster; at $\varepsilon = 0.8$ the noise disappears but the two tight clusters merge into one. No value finds the three clusters.
 
-Next: [Gaussian Mixture Models & Spectral Clustering](/docs/machine-learning/gmm-spectral-clustering) — a probabilistic take on clustering, and a graph-based approach that handles non-convex shapes through an entirely different mechanism than density.
+One way to see the problem: DBSCAN with fixed $m$ and every possible $\varepsilon$ produces a family of clusterings, from everything-is-noise at tiny $\varepsilon$ to one big cluster at large $\varepsilon$, and different clusters are best seen at different points in that family. Picking a single $\varepsilon$ takes one slice. HDBSCAN looks at the whole family.
+
+## 5. HDBSCAN: Every Radius at Once
+
+### HDBSCAN (Hierarchical DBSCAN)
+
+HDBSCAN (Campello, Moulavi and Sander, 2013; McInnes, Healy and Astels, 2017) builds the clusterings for every $\varepsilon$ into one tree and then chooses clusters from different levels of it. Four steps.
+
+**1. Measure density at each point.** The **core distance** of $p$, $\text{core}_m(p)$, is the distance to its $m$-th nearest neighbour: the smallest $\varepsilon$ at which $p$ would be a core point. Small in dense regions, large in sparse ones.
+
+**2. Spread sparse points out.** Replace the ordinary distance with the **mutual reachability distance**:
+
+$$
+d_{\text{mreach}}(a, b) = \max\big(\text{core}_m(a),\; \text{core}_m(b),\; d(a, b)\big)
+$$
+
+Two points in a dense region keep their ordinary distance. A point in a sparse region is pushed away from everything by at least its own core distance. This makes the hierarchy robust to noise: a few scattered points can't form a cheap bridge between two clusters, because each of them is "far" from everything.
+
+**3. Build the hierarchy.** Compute a minimum spanning tree of the points under $d_{\text{mreach}}$, and remove its edges from longest to shortest. This is single-linkage clustering ([see hierarchical clustering](/docs/machine-learning/kmeans-hierarchical-clustering#hierarchical-clustering)) in the new distance, and it contains the DBSCAN clusterings for every $\varepsilon$ at once: cutting the tree at height $\varepsilon$ gives the clusters of DBSCAN\* at that radius (the variant in which border points are treated as noise, so only core points are clustered).
+
+**4. Condense and select.** Walk down the tree, with $\lambda = 1/\varepsilon$ increasing (density increasing). When a cluster splits and one side has fewer than `min_cluster_size` points, don't treat it as a new cluster: those points simply "fall out" of the parent as noise at that $\lambda$. Only splits into two sufficiently large parts create new clusters. This gives a small **condensed tree**. Each cluster $C$ in it is born at some $\lambda_{\text{birth}}$, and each of its points leaves at some $\lambda_p$ (falling out as noise or when the cluster splits). The cluster's **stability** is
+
+$$
+S(C) = \sum_{p \in C}\big(\lambda_p - \lambda_{\text{birth}}(C)\big)
+$$
+
+which is large when many points stay in the cluster over a wide range of densities. Finally, choose the set of clusters, with no cluster an ancestor of another, that has the largest total stability: working up from the leaves, keep a parent only if its stability exceeds the combined stability of its selected children.
+
+The result: clusters can come from different density levels, the diffuse cluster from low in the tree and the tight ones from high, which is exactly what one $\varepsilon$ couldn't do. In Section 6, HDBSCAN finds all three clusters with 2% of points labelled noise. Its main parameter is `min_cluster_size`, the smallest group you'd accept as a cluster, which is much easier to choose than a radius. It also gives each point a membership strength and an outlier score (GLOSH), useful for anomaly detection.
+
+<GoDeeper title="Go deeper: what HDBSCAN costs, and OPTICS">
+
+The expensive parts are the core distances (a $k$-nearest-neighbour query per point) and the minimum spanning tree. With spatial indexes and a dual-tree Borůvka algorithm in low dimensions, McInnes and Healy's implementation runs in close to $O(n\log n)$ in practice; in high dimensions both degrade toward $O(n^2)$, as for DBSCAN. scikit-learn has included `HDBSCAN` since version 1.3.
+
+**OPTICS** (Ankerst et al., 1999) was the earlier answer to the same problem. It orders the points so that dense regions come out as valleys in a "reachability plot", from which clusters at any density can be read off. It shares the core-distance idea with HDBSCAN but leaves the extraction of clusters to a separate step, which in practice needed its own parameter. HDBSCAN's stability-based selection is what made the approach mostly parameter-free.
+
+</GoDeeper>
+
+## 6. Minimal Implementation
+
+DBSCAN from the definitions in Section 1: radius queries, core points, then breadth-first expansion through core points only. It runs on two half-moons with 40 uniformly scattered noise points and is compared with scikit-learn, followed by the k-distance curve and the varying-density experiment of Section 4:
+
+```python
+import numpy as np
+from collections import deque
+from sklearn.cluster import DBSCAN, HDBSCAN
+from sklearn.datasets import make_blobs, make_moons
+from sklearn.metrics import adjusted_rand_score
+from sklearn.neighbors import NearestNeighbors
+
+def dbscan(X, eps, min_samples):
+    nbrs = NearestNeighbors(radius=eps).fit(X).radius_neighbors(X, return_distance=False)
+    core = np.array([len(nb) >= min_samples for nb in nbrs])   # the point itself counts, as in scikit-learn
+    labels = np.full(len(X), -1)                                # -1 = noise until shown otherwise
+    cluster = 0
+    for i in range(len(X)):
+        if labels[i] != -1 or not core[i]:
+            continue
+        labels[i] = cluster
+        queue = deque([i])
+        while queue:                                            # breadth-first expansion through core points
+            p = queue.popleft()
+            for q in nbrs[p]:
+                if labels[q] == -1:
+                    labels[q] = cluster                         # core or border point joins the cluster
+                    if core[q]:
+                        queue.append(q)                         # only core points keep expanding it
+        cluster += 1
+    return labels, core
+
+# Two moons plus uniform noise
+X, y = make_moons(n_samples=500, noise=0.05, random_state=0)
+rng = np.random.default_rng(0)
+X = np.vstack([X, rng.uniform([-1.5, -1], [2.5, 1.5], (40, 2))])
+ours, core = dbscan(X, eps=0.15, min_samples=5)
+ref = DBSCAN(eps=0.15, min_samples=5).fit(X)
+print(f"clusters {ours.max() + 1}, noise points {np.sum(ours == -1)}, core points {core.sum()}")
+print(f"agreement with scikit-learn: ARI {adjusted_rand_score(ref.labels_, ours):.3f}, "
+      f"same core points {np.array_equal(np.sort(ref.core_sample_indices_), np.flatnonzero(core))}")
+print(f"agreement with the true moons (non-noise points): ARI {adjusted_rand_score(y, ours[:500]):.3f}")
+
+# Choosing eps: the distance to each point's 5th neighbour, sorted (the k-distance curve)
+kd = np.sort(NearestNeighbors(n_neighbors=5).fit(X).kneighbors(X)[0][:, -1])
+print("k-distance curve at percentiles 50/80/90/95/99:", np.round(np.percentile(kd, [50, 80, 90, 95, 99]), 3))
+
+# Clusters of very different density: no single eps works; HDBSCAN needs none
+Xd, yd = make_blobs(n_samples=[300, 300, 300], centers=[[0, 0], [2.0, 0], [8, 0]],
+                    cluster_std=[0.3, 0.3, 1.5], random_state=0)   # two tight clusters close together, one diffuse
+for eps in [0.2, 0.3, 0.5, 0.8, 1.2]:
+    lab = DBSCAN(eps=eps, min_samples=10).fit_predict(Xd)
+    print(f"DBSCAN eps={eps:<4} clusters {lab.max() + 1:>2}   noise {np.mean(lab == -1):>4.0%}   ARI {adjusted_rand_score(yd, lab):.3f}")
+lab = HDBSCAN(min_cluster_size=20).fit_predict(Xd)
+print(f"HDBSCAN          clusters {lab.max() + 1:>2}   noise {np.mean(lab == -1):>4.0%}   ARI {adjusted_rand_score(yd, lab):.3f}")
+```
+
+Output (scikit-learn 1.7):
+
+```
+clusters 2, noise points 30, core points 505
+agreement with scikit-learn: ARI 1.000, same core points True
+agreement with the true moons (non-noise points): ARI 1.000
+k-distance curve at percentiles 50/80/90/95/99: [0.055 0.078 0.102 0.213 0.655]
+DBSCAN eps=0.2  clusters  2   noise  36%   ARI 0.924
+DBSCAN eps=0.3  clusters  4   noise  31%   ARI 0.960
+DBSCAN eps=0.5  clusters  4   noise  11%   ARI 0.878
+DBSCAN eps=0.8  clusters  2   noise   3%   ARI 0.529
+DBSCAN eps=1.2  clusters  2   noise   0%   ARI 0.560
+HDBSCAN          clusters  3   noise   2%   ARI 0.968
+```
+
+- **The definitions are the algorithm.** Thirty lines reproduce scikit-learn exactly: the same 505 core points and the same partition (ARI 1.000).
+- **Shape and noise are handled.** Both moons are recovered perfectly. 30 points are labelled noise; the other 10 scattered points happened to land within $\varepsilon$ of a moon and became border points.
+- **The k-distance curve has its bend between the 90th and 99th percentiles**, where the noise points are, and $\varepsilon = 0.15$ sits at its start.
+- **One radius can't serve two densities (Section 4).** Small $\varepsilon$ labels a third or more of the data noise; at 0.5 there are still 4 clusters instead of 3; from 0.8 the two tight clusters merge (2 clusters). HDBSCAN finds exactly three clusters with 2% noise. (ARI here treats the noise label as one more group, so a run that puts a third of the points into "noise" can still score fairly high; the cluster counts and noise rates tell the story more directly.)
+
+## 7. When *Not* to Use Density-Based Clustering
+
+| Situation | Better choice |
+|---|---|
+| Many features (more than about 10 to 20 raw dimensions) | Reduce dimensions first (PCA or UMAP), then cluster; density estimates degrade with the [curse of dimensionality](/docs/machine-learning/k-nearest-neighbors#the-curse-of-dimensionality) |
+| Density changes smoothly, with no sparse gaps between groups | k-means or a [Gaussian mixture](/docs/machine-learning/gmm-spectral-clustering), which don't need gaps |
+| Every point must be assigned to a cluster | k-means or a mixture; or assign DBSCAN's noise to the nearest cluster afterwards |
+| You need soft memberships or probabilities | A Gaussian mixture (HDBSCAN's membership strengths are a partial answer) |
+| Very large datasets with a large radius | Mini-batch k-means, or subsample; neighbourhood storage can approach $O(n^2)$ |
+| You want a fixed number of clusters | k-means, a mixture, or hierarchical clustering cut at $k$ |
+
+Density-based methods are the right default for spatial data (GPS points, store locations), for data that contains real noise you want flagged, and for clustering embeddings after UMAP, where clusters often have irregular shapes. BERTopic, for example, uses HDBSCAN on reduced document embeddings (see [Topic Modeling](/docs/machine-learning/topic-modeling)).
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Core point | At least `min_samples` points within $\varepsilon$, counting itself |
+| Border point | Not core, but within $\varepsilon$ of a core point; joins its cluster |
+| Noise | Reachable from no core point |
+| Cluster | A maximal set of density-connected points; any shape |
+| Algorithm | Breadth-first expansion through core points; $O(n\log n)$ with an index in low dimensions |
+| Choosing $\varepsilon$ | The bend in the sorted $k$-distance curve, with $k$ = `min_samples` |
+| Limitation | One $\varepsilon$ is one density threshold; clusters of different densities break it |
+| Mutual reachability | $\max(\text{core}(a), \text{core}(b), d(a, b))$: sparse points pushed apart |
+| HDBSCAN | Single linkage on mutual reachability, condensed by `min_cluster_size`, most stable clusters kept |
+| Stability | $\sum_p(\lambda_p - \lambda_{\text{birth}})$, with $\lambda = 1/\varepsilon$ |
+| Default choice | HDBSCAN, unless you need DBSCAN's simple, explainable radius |
+
+---
+
+Next: [Gaussian Mixture Models & Spectral Clustering](/docs/machine-learning/gmm-spectral-clustering), a probabilistic model of clusters with soft memberships, and a graph-based method that finds non-convex clusters without density.
+
+## Sources
+
+- M. Ester, H.-P. Kriegel, J. Sander and X. Xu, [A Density-Based Algorithm for Discovering Clusters in Large Spatial Databases with Noise](https://dl.acm.org/doi/10.5555/3001460.3001507), KDD 1996
+- E. Schubert, J. Sander, M. Ester, H.-P. Kriegel and X. Xu, [DBSCAN Revisited, Revisited: Why and How You Should (Still) Use DBSCAN](https://doi.org/10.1145/3068335), *ACM Transactions on Database Systems*, 2017
+- R. J. G. B. Campello, D. Moulavi and J. Sander, [Density-Based Clustering Based on Hierarchical Density Estimates](https://doi.org/10.1007/978-3-642-37456-2_14), PAKDD 2013
+- L. McInnes, J. Healy and S. Astels, [hdbscan: Hierarchical Density Based Clustering](https://doi.org/10.21105/joss.00205), *Journal of Open Source Software*, 2017
+- M. Ankerst, M. M. Breunig, H.-P. Kriegel and J. Sander, [OPTICS: Ordering Points to Identify the Clustering Structure](https://doi.org/10.1145/304181.304187), SIGMOD 1999
+- scikit-learn, [DBSCAN](https://scikit-learn.org/stable/modules/clustering.html#dbscan) and [HDBSCAN](https://scikit-learn.org/stable/modules/clustering.html#hdbscan)
