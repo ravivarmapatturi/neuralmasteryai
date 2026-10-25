@@ -1,33 +1,184 @@
 ---
-title: "Deep Learning Overview"
+title: "Deep Learning, The Big Picture"
 sidebar_position: 1
-description: "From the single perceptron to the architecture behind every modern LLM: why depth works, and the training mechanics that make a deep network trainable."
+description: "What deep learning is and why it works: learned features instead of hand-made ones (shown on a toy problem a linear model can't solve), why depth helps and makes training hard, the architectures built for images, sequences and graphs, learning without labels, and when not to use a neural network."
 ---
 
-# Deep Learning Overview
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-Everywhere [Machine Learning](/docs/machine-learning/overview) fits models with a small, hand-chosen set of features and a fixed functional form — a line, a tree, a kernel — deep learning takes the opposite bet: give a network enough layers and enough data, and let it learn its own features, end to end, directly from raw pixels, raw audio, or raw text. That single idea — stack simple, differentiable operations, and let gradient descent find the weights — is what this entire section is about, from the smallest building block up to the architecture behind every modern large language model.
+# Deep Learning, The Big Picture
 
-## Why "deep" specifically
+[Machine Learning](/docs/machine-learning/overview) fits models with a fixed functional form, a line, a tree, a kernel, on features that a person usually chooses. Deep learning makes the opposite bet: give a network many layers of simple, differentiable operations and enough data, and let gradient descent learn the features itself, end to end, straight from raw pixels, audio samples or text. That one idea runs from the smallest network to the models behind Claude and GPT, and it's what this section is about. This page is the map: what "learning features" means, shown on a problem a linear model can't solve; why depth helps and why it makes training hard; the architectures built for different kinds of data; how networks learn without labels; and when a neural network is the wrong tool. Each part links to the page that covers it in depth.
 
-A single layer of weighted sums and a nonlinearity (a **perceptron**, see [Neural Network Fundamentals](/docs/deep-learning/neural-network-fundamentals)) can only separate data that's linearly separable. Stack layers, and each one learns a progressively more abstract transformation of the last — edges into shapes into object parts into objects, for a vision network; characters into words into phrases into meaning, for a language model. Depth is what buys that hierarchy. The cost is that training a deep stack is a genuinely harder optimization problem than training a shallow one (vanishing/exploding gradients chief among the reasons — derived in full in [Sequence Models](/docs/deep-learning/sequence-models#vanishing-and-exploding-gradients-derived) and [Training Deep Networks](/docs/deep-learning/training-deep-networks)), which is exactly why so much of this section is about the *mechanics* of training, not just the architectures themselves.
+<ELI5>
 
-## How this section is organized
+Imagine teaching someone to recognize cats in photos. The old way was to write a checklist yourself: pointy ears, whiskers, fur texture, and then teach them to combine the checklist items. The hard part was the checklist, and every new task needed a new one.
 
-Four clusters, roughly in the order the field actually solved them:
+Deep learning lets the learner write their own checklist. The first layer learns to notice simple things, like edges and colours. The next layer combines those into textures and shapes, the next into ears and eyes, and the last into "cat". Nobody tells it what to look for at each level; it works that out from thousands of labelled examples.
 
-**1. Foundations — how a network computes and learns at all.** [Neural Network Fundamentals](/docs/deep-learning/neural-network-fundamentals) derives the forward pass and backpropagation from scratch; [Activation Functions](/docs/deep-learning/activation-functions), [Loss Functions](/docs/deep-learning/loss-functions), [Optimizers](/docs/deep-learning/optimizers), and [Initialization, Regularization & Scheduling](/docs/deep-learning/initialization-regularization-scheduling) cover every choice you actually have to make to get a network training at all, and [Training Deep Networks](/docs/deep-learning/training-deep-networks) covers what changes once "a network" becomes "a *deep* network" — normalization, residual connections, and the vanishing-gradient problem they exist to fix. [Continual Learning](/docs/deep-learning/continual-learning) covers the related question of what happens once training doesn't stop at one fixed dataset — a sequence of tasks instead, and the catastrophic-forgetting problem that creates.
+Everything in this section is about how that works: how the layers compute, how they learn, and which arrangements of layers suit which kinds of data.
 
-**2. Architectures for structured data.** Raw fully-connected layers ignore the *structure* of an input — a pixel's neighbors, a word's position in a sentence — and that structure is exactly what the next architectures are built to exploit. [CNNs](/docs/deep-learning/cnns) exploit spatial locality (a pixel is related to its neighbors) via convolution and pooling; [Vision Architectures](/docs/deep-learning/vision-architectures) covers what's built on top of that foundation (ViTs, detection, segmentation). [Sequence Models](/docs/deep-learning/sequence-models) exploits temporal order via recurrence (RNN → LSTM/GRU → Seq2Seq+Attention) and derives exactly why recurrence itself becomes the bottleneck at scale — the problem [Attention & Transformers](/docs/deep-learning/attention-transformers) exists to solve, removing recurrence entirely in favor of direct, parallel attention between every pair of positions. This is the architecture behind GPT, Claude, LLaMA, and effectively every frontier model today, so it's worth treating as the section's centerpiece, not just one topic among many.
+</ELI5>
 
-**3. Learning without labels.** [Autoencoders & VAEs](/docs/deep-learning/autoencoders) and [Generative Models: GANs & Diffusion](/docs/deep-learning/generative-models) cover architectures trained without hand-labeled targets — reconstruction error, adversarial competition, or iterative denoising standing in for supervision. [GNNs, RL, Metric Learning, SSL & Multimodal Nets](/docs/deep-learning/advanced-architectures) rounds out the architectures that don't fit neatly into "images" or "sequences": graphs, reinforcement learning, contrastive/self-supervised pretraining, and CLIP-style joint vision-language models.
+## 1. Learned Features, Not Hand-Made Ones
 
-**4. Reference.** [NN Layers Reference](/docs/deep-learning/nn-layers-reference) is a single lookup page for every layer type introduced across the architectures above — useful once you've read the derivations and just need to check a shape or a formula.
+The difference between classical machine learning and deep learning is easiest to see on a problem built to defeat a linear model: points on two concentric rings, with the label "inner" or "outer". A straight line can't separate a ring from the ring around it. The fix in classical ML is **feature engineering**: a person notices that distance from the centre separates the classes and adds it as a feature. A neural network finds an equivalent feature itself.
 
-## How to actually use this section
+```python
+import numpy as np
+from sklearn.datasets import make_circles
+from sklearn.linear_model import LogisticRegression
+from sklearn.neural_network import MLPClassifier
 
-Read Foundations in order — everything after it assumes you can derive a forward pass and backward pass by hand. After that, [Sequence Models](/docs/deep-learning/sequence-models) → [Attention & Transformers](/docs/deep-learning/attention-transformers) is the single most valuable path if your goal is understanding modern LLMs, since it's written as one continuous argument (RNNs' limitations motivate LSTM/GRU, which motivate Seq2Seq+Attention, which motivates removing recurrence entirely). CNNs/Vision, and the unsupervised-learning cluster, are largely independent of that path and of each other — jump to whichever matches what you're building.
+X, y = make_circles(n_samples=2000, noise=0.08, factor=0.5, random_state=0)   # one ring inside another
+X_train, X_test, y_train, y_test = X[:1500], X[1500:], y[:1500], y[1500:]
 
-**Prerequisite**: the derivations here lean on calculus (chain rule, gradients) and linear algebra (matrix/vector operations) — see [Mathematics for AI](/docs/mathematics-for-ai/overview) if any step feels unfamiliar. If you haven't seen the classical ML toolkit (linear/logistic regression, bias-variance, regularization) yet, [Machine Learning](/docs/machine-learning/overview) covers the concepts deep learning specializes and extends.
+linear = LogisticRegression().fit(X_train, y_train)
+print(f"logistic regression on the raw (x, y) coordinates:   test accuracy {linear.score(X_test, y_test):.2f}")
 
-See the [roadmap](/docs/deep-learning/roadmap) for the full ordered path through this section.
+net = MLPClassifier(hidden_layer_sizes=(8,), activation="relu", max_iter=2000, random_state=0).fit(X_train, y_train)
+print(f"network with one hidden layer of 8 units:            test accuracy {net.score(X_test, y_test):.2f}")
+
+# What did the hidden layer learn? Feed its 8 outputs, instead of the raw coordinates, to the SAME linear model.
+hidden = lambda X: np.maximum(0, X @ net.coefs_[0] + net.intercepts_[0])
+on_features = LogisticRegression().fit(hidden(X_train), y_train)
+print(f"logistic regression on the hidden layer's features:  test accuracy {on_features.score(hidden(X_test), y_test):.2f}")
+
+# A hand-made feature does the same job: distance from the centre.
+radius = lambda X: np.linalg.norm(X, axis=1, keepdims=True)
+print(f"logistic regression on a hand-made radius feature:   test accuracy "
+      f"{LogisticRegression().fit(radius(X_train), y_train).score(radius(X_test), y_test):.2f}")
+```
+
+```text
+logistic regression on the raw (x, y) coordinates:   test accuracy 0.51
+network with one hidden layer of 8 units:            test accuracy 1.00
+logistic regression on the hidden layer's features:  test accuracy 1.00
+logistic regression on a hand-made radius feature:   test accuracy 1.00
+```
+
+Logistic regression on the raw coordinates gets 51%, a coin flip. A network with one hidden layer of eight units gets 100%. The third line shows what happened: feed the hidden layer's eight outputs, instead of the raw coordinates, to the *same* logistic regression and it also gets 100%. The hidden layer **learned a representation** in which the problem is linearly separable, playing exactly the role of the hand-made radius feature on the last line, without anyone telling it about radii.
+
+That's the whole idea of deep learning in miniature. Each layer transforms its input into a representation that makes the next layer's job easier, and gradient descent shapes every layer at once to make the final prediction right. On images, audio and text, the useful features are far too complex for anyone to write by hand, which is why deep learning took over those domains.
+
+## 2. Why Depth Helps, and Why It Hurts
+
+One hidden layer can, in principle, approximate any reasonable function (the universal approximation theorem), but it may need an impractically large number of units. Stacking layers is far more efficient, because each layer builds on the last: edges into textures, textures into parts, parts into objects in a vision network; characters into words, words into phrases, phrases into meaning in a language model. Many functions that need exponentially many units in one wide layer need only a modest number spread over several layers.
+
+The cost is optimization. The gradient that reaches the first layer is a product of one factor per layer above it, and over many layers that product tends to vanish or explode. A large part of this section is therefore about training *mechanics* rather than architectures: activations whose slopes don't collapse, initialization that keeps signals at a steady scale, normalization layers, residual connections, and adaptive optimizers. [Training Deep Networks](/docs/deep-learning/training-deep-networks) measures the problem on a 50-layer network and shows each fix working.
+
+<PredictFirst
+  question="A colleague replaces every ReLU in a deep network with the identity function, so each layer is just a matrix multiply plus bias. What can the network now learn?"
+  options={[
+    'The same functions as before, only more slowly',
+    'Only linear functions, because a stack of linear layers is itself a single linear layer',
+    'More complex functions, because there is no saturation',
+    'Nothing at all, because the gradients become zero',
+  ]}
+  correctIndex={1}
+  explanation="Composing linear maps gives another linear map, so without nonlinearities depth adds nothing: the whole network collapses to one linear layer and could not solve even the ring problem above. The nonlinearity between layers is what lets depth build new features."
+/>
+
+## 3. What Training Actually Does
+
+Every network in this section, from the eight-unit one above to a language model with hundreds of billions of parameters, is trained by the same loop:
+
+1. **Take a mini-batch** of examples, say 256 images with their labels.
+2. **Forward pass**: run them through the network to get predictions.
+3. **Loss**: compare predictions with the targets to get one number saying how wrong the network is.
+4. **Backward pass**: backpropagation computes the gradient of that number with respect to every weight, by the chain rule, in about twice the time of the forward pass.
+5. **Update**: the optimizer nudges every weight a small step in the direction that lowers the loss.
+6. **Repeat**, thousands to millions of times, checking a held-out validation set now and then to see whether the network is learning something that generalizes or just memorizing the training set.
+
+Nothing in the loop knows what a cat, a word or a ring is. All the structure comes from three choices: the **architecture** (what functions the network can represent), the **loss** (what counts as right), and the **data** (what it sees). That's why the pages in this section are organized around those choices, and why so much practical deep learning is about the data rather than the model.
+
+Two numbers are worth watching in any run: the **training loss**, which should fall steadily, and the **validation loss**, which should fall with it. When validation loss starts rising while training loss keeps falling, the network has begun to memorize, and regularization or more data is needed. When neither falls, something is wrong with the optimization, usually the learning rate, the initialization, or a bug, and the [training](/docs/deep-learning/training-deep-networks) and [optimizer](/docs/deep-learning/optimizers) pages cover how to tell which.
+
+## 4. The Foundations: How a Network Learns
+
+The first cluster of pages covers every decision needed to get a network training at all, in the order they come up:
+
+- [Neural Network Fundamentals](/docs/deep-learning/neural-network-fundamentals): neurons, layers, the forward pass, and backpropagation derived and written by hand.
+- [Activation Functions](/docs/deep-learning/activation-functions): the nonlinearities, from sigmoid to the SwiGLU gates in current language models.
+- [Loss Functions](/docs/deep-learning/loss-functions): what "wrong" means, and what each choice makes a model predict.
+- [Optimizers](/docs/deep-learning/optimizers): how a gradient becomes an update, from SGD to AdamW.
+- [Initialization, Regularization and Schedules](/docs/deep-learning/initialization-regularization-scheduling): where weights start, how overfitting is controlled, how the learning rate changes.
+- [Training Deep Networks](/docs/deep-learning/training-deep-networks): what changes when the network gets deep.
+- [Continual Learning](/docs/deep-learning/continual-learning): what happens when training doesn't stop at one dataset.
+
+## 5. Architectures for Structured Data
+
+A fully connected layer ignores the structure of its input: it would treat a photo's pixels the same if they were shuffled. The major architectures each build in an assumption about structure, which saves parameters and data:
+
+- **Grids** ([CNNs](/docs/deep-learning/cnns)): nearby pixels are related, and a pattern means the same thing anywhere. Convolution shares a small filter across the image.
+- **Sequences** ([Sequence Models](/docs/deep-learning/sequence-models)): order carries meaning. Recurrent networks carry a summary forward step by step, and the page derives why that breaks down over long sequences.
+- **Everything at once** ([Attention and Transformers](/docs/deep-learning/attention-transformers)): every position attends directly to every other, in parallel. This is the architecture behind essentially every frontier model, and the centrepiece of the section. [BERT](/docs/deep-learning/bert) is its encoder-only form; [linear attention and state-space models](/docs/deep-learning/linear-attention-and-state-space-models) and [looped transformers](/docs/deep-learning/recurrent-looped-transformers) are where it is being extended.
+- **Detection and segmentation** ([Vision Architectures](/docs/deep-learning/vision-architectures)): keeping track of *where* things are, not only what.
+- **Graphs and other shapes** ([Beyond Grids and Labels](/docs/deep-learning/advanced-architectures)): message passing on graphs, plus metric learning, reinforcement learning networks and multimodal models.
+
+The general lesson: the right **inductive bias**, an assumption built into the architecture, lets a model learn from less data. With enough data, less-constrained architectures such as transformers can learn the structure themselves and go further, which is why they now dominate at scale.
+
+## 6. Learning Without Labels
+
+Labels are expensive, and most data has none. Several families learn anyway, by constructing a training signal from the data itself:
+
+- [Autoencoders and VAEs](/docs/deep-learning/autoencoders) learn by reconstructing their input through a bottleneck.
+- [Generative Models](/docs/deep-learning/generative-models) learn to produce new data: GANs by competing against a critic, diffusion and flow-matching models by learning to undo noise.
+- **Self-supervised pretraining**, predicting hidden parts of the input, covered in [Beyond Grids and Labels](/docs/deep-learning/advanced-architectures), is how every foundation model is first trained. A language model's next-token prediction is the most successful example of all.
+
+Self-supervision is what made today's large models possible: the internet provides effectively unlimited training text, but no labels.
+
+<GoDeeper title="Go deeper: why deep learning took off when it did">
+
+Neural networks are old. Backpropagation was popularized in 1986, and convolutional networks read handwritten cheques in the 1990s. They became dominant only around 2012, when three things arrived together.
+
+- **Data.** ImageNet's 1.2 million labelled images (2009) gave large networks enough examples to learn features instead of memorizing.
+- **Compute.** Graphics processors, built for games, turned out to be ideal for the matrix multiplications networks consist of. AlexNet trained on two consumer GPUs in 2012.
+- **Training tricks.** ReLU activations, dropout, better initialization, and later batch normalization and residual connections made deep networks trainable.
+
+AlexNet cut the ImageNet error rate by about a third in one step. Since then the same three ingredients have kept scaling: datasets moved from millions of images to trillions of tokens, compute from two GPUs to tens of thousands, and the transformer replaced convolutions and recurrence as the general-purpose architecture.
+
+</GoDeeper>
+
+## 7. How to Use This Section
+
+Read the foundations in order; everything after assumes you can follow a forward and a backward pass. After that, **Sequence Models, then Attention and Transformers** is the most valuable path if your goal is understanding language models, because it's one continuous argument: recurrence's limits motivate gates, then attention, then removing recurrence altogether. The vision pages and the learning-without-labels pages are largely independent of that path and of each other, so start with whichever matches what you're building. [Neural Network Layers](/docs/deep-learning/nn-layers-reference) is a lookup page for shapes and parameter counts.
+
+**In practice, start from a pretrained model.** Very few projects train a network from random weights any more. For images, text, audio and code, models pretrained on huge datasets are freely available, and fine-tuning one on a few thousand examples of your task usually beats training from scratch on far more. The pages here explain what is inside those models, so you can choose, adapt and debug them.
+
+**Prerequisites.** The derivations use the chain rule, gradients and matrix multiplication; [Mathematics for AI](/docs/mathematics-for-ai/overview) covers them. The classical toolkit (linear and logistic regression, overfitting, regularization) is in [Machine Learning](/docs/machine-learning/overview), and deep learning builds directly on it.
+
+## 8. When *Not* to Use Deep Learning
+
+| Situation | Better choice |
+|---|---|
+| Tabular data with a few thousand rows | Gradient-boosted trees, which usually match or beat neural networks there |
+| A relationship that is close to linear | Linear or logistic regression: interpretable and hard to overfit |
+| Every prediction must be explained to a regulator | An interpretable model, or a network with careful explanation tooling |
+| Very little data and no pretrained model for the domain | Classical models, or collecting more data first |
+| Images, audio, text or other unstructured data | Deep learning, almost always starting from a pretrained model |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| The bet | Learn features end to end instead of engineering them by hand |
+| Learned representation | A hidden layer turned an unsolvable linear problem into a solvable one |
+| Depth | Builds features hierarchically and efficiently, but makes gradients vanish or explode |
+| Training mechanics | Activations, initialization, normalization, residuals and optimizers make depth trainable |
+| Inductive bias | CNNs assume locality, RNNs order; transformers assume little and need more data |
+| No labels | Reconstruction, generation and self-supervision make the training signal from the data |
+| Why now | Data, GPUs and training tricks arrived together around 2012 |
+
+---
+
+See the [roadmap](/docs/deep-learning/roadmap) for the full ordered path, or start with [Neural Network Fundamentals](/docs/deep-learning/neural-network-fundamentals).
+
+## Sources
+
+- LeCun, Bengio and Hinton, [Deep learning](https://www.nature.com/articles/nature14539) (Nature, 2015)
+- Goodfellow, Bengio and Courville, [Deep Learning](https://www.deeplearningbook.org/) (MIT Press, 2016)
+- Krizhevsky, Sutskever and Hinton, [ImageNet Classification with Deep Convolutional Neural Networks](https://papers.nips.cc/paper/2012/hash/c399862d3b9d6b76c8436e924a68c45b-Abstract.html) (2012)
+- Rumelhart, Hinton and Williams, [Learning representations by back-propagating errors](https://www.nature.com/articles/323533a0) (Nature, 1986)
+- Bengio, Courville and Vincent, [Representation Learning: A Review and New Perspectives](https://arxiv.org/abs/1206.5538) (2013)
