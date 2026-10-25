@@ -1,100 +1,320 @@
 ---
 title: "Naive Bayes, LDA & QDA, In Full Depth"
 sidebar_position: 5.7
-description: "Generative classifiers explained: model each class's own distribution, then classify via Bayes' theorem -- the real alternative to a discriminative boundary."
+description: "Generative classifiers derived: the Bayes classifier and why it's optimal, naive Bayes and Laplace smoothing, why LDA's boundary is linear and QDA's quadratic (the algebra worked through), Fisher's discriminant, parameter counts and shrinkage, generative vs. discriminative learning curves, and from-scratch implementations matching scikit-learn to 1e-14."
 ---
 
-import __migratedImg0 from './img/lda-boundary.png';
-import __migratedImg1 from './img/qda-boundary.png';
-
 import LdaQdaBoundaryDiagram from '../../../viz/diagrams/LdaQdaBoundaryDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Naive Bayes, LDA & QDA, In Full Depth
 
-Every classifier so far — [logistic regression](/docs/machine-learning/logistic-regression), [SVM](/docs/machine-learning/support-vector-machines), [KNN](/docs/machine-learning/k-nearest-neighbors) — is **discriminative**: it learns a boundary directly, without ever modeling what each class's data actually looks like. This page covers the alternative: **generative** classifiers, which model each class's distribution explicitly, then use Bayes' theorem to classify.
+[Logistic regression](/docs/machine-learning/logistic-regression), [SVMs](/docs/machine-learning/support-vector-machines) and [k-nearest neighbours](/docs/machine-learning/k-nearest-neighbors) are all **discriminative**: they go straight for the boundary between classes. This page covers the other approach. A **generative** classifier models how each class produces its data, then uses Bayes' theorem to turn "what does class $c$ look like?" into "which class is this point from?". The page derives why that rule is the best possible classifier when the model is right, the three classic versions (naive Bayes, LDA and QDA) and exactly where their boundaries come from, Fisher's very different route to the same LDA direction, and when modelling the data beats modelling the boundary. Implementations of all three match scikit-learn's probabilities to fourteen decimal places.
 
-## Discriminative vs. Generative
+<ELI5>
 
-- **Discriminative** models learn $P(y \mid \mathbf{x})$ directly — "given this input, what's the probability of each class?"
-- **Generative** models learn $P(\mathbf{x} \mid y)$ for each class — "if this were really class $c$, what would the data look like?" — plus the class prior $P(y)$, then combine via [Bayes' theorem](/docs/mathematics-for-ai/probability-statistics#bayes-theorem):
+A doctor can learn to diagnose two illnesses in two ways. One way is to memorize a rule: "fever above 39 and a rash means measles". The other is to learn what each illness typically looks like, how high the fever usually runs, how often there's a rash, how common each illness is this season, and then, for a new patient, ask which illness would most likely produce exactly these symptoms.
 
-$$P(y \mid \mathbf{x}) = \frac{P(\mathbf{x} \mid y)\, P(y)}{P(\mathbf{x})}$$
+The second way is the generative approach. It builds a picture of each class, then asks which picture best explains the new example. Everything below is that idea made exact, with different choices of how detailed each class's picture is.
 
-Since $P(\mathbf{x})$ is the same regardless of which class you're evaluating, classification just picks whichever class maximizes the numerator: $\hat{y} = \arg\max_y P(\mathbf{x} \mid y) P(y)$.
+</ELI5>
 
-## Naive Bayes
+## 1. Classifying With Bayes' Rule
 
-**The "naive" assumption**: features are conditionally independent given the class — $P(\mathbf{x} \mid y) = \prod_j P(x_j \mid y)$. This is almost never literally true (word co-occurrence in text, correlated pixels in images) — yet Naive Bayes remains a fast, surprisingly strong baseline, especially for text classification, because getting the *relative ranking* between classes right doesn't actually require the independence assumption to be true, only that violating it doesn't happen to favor the wrong class.
+Suppose we knew, for each class $c$, its **prior** $\pi_c = P(y = c)$, how common it is, and its **class-conditional density** $p(\mathbf{x} \mid y = c)$, what its examples look like. [Bayes' theorem](/docs/mathematics-for-ai/probability-statistics#bayes-theorem) then gives the posterior probability of each class for a new point:
 
-Three variants, differing in what $P(x_j \mid y)$ is assumed to look like:
+$$
+P(y = c \mid \mathbf{x}) = \frac{p(\mathbf{x} \mid y = c)\,\pi_c}{\sum_{k} p(\mathbf{x} \mid y = k)\,\pi_k}
+$$
 
-- **Gaussian Naive Bayes**: assumes each feature is normally distributed within each class — $P(x_j \mid y) = \mathcal{N}(\mu_{j,y}, \sigma_{j,y}^2)$. The natural choice for continuous features.
-- **Multinomial Naive Bayes**: assumes features are counts (e.g. word frequencies in a document) drawn from a multinomial distribution — the standard choice for text classification with bag-of-words features.
-- **Bernoulli Naive Bayes**: assumes features are binary (e.g. "does this word appear at all, yes/no") — used for text when only presence/absence matters, not frequency.
+The denominator is the same for every class, so the most probable class is
 
-**Training** is just counting: estimate each class's prior $P(y)$ as its frequency in the training set, and each $P(x_j \mid y)$ from the relevant sample statistics (mean/variance for Gaussian, counts for Multinomial/Bernoulli) — no iterative optimization at all, which is exactly why Naive Bayes trains almost instantly even on large datasets.
+$$
+\hat{y}(\mathbf{x}) = \arg\max_c\; p(\mathbf{x} \mid y = c)\,\pi_c = \arg\max_c\; \big[\log p(\mathbf{x} \mid y = c) + \log\pi_c\big]
+$$
 
-## LDA: Linear Discriminant Analysis
+**Why this rule is the best possible.** For any classifier, the chance of being wrong at a point $\mathbf{x}$ is $1 - P(y = \hat{y}(\mathbf{x}) \mid \mathbf{x})$. Picking the class with the largest posterior makes that as small as possible at every point, so it minimizes the overall error rate too. This is the **Bayes classifier**, and its error rate, the **Bayes error**, is the floor that no classifier can beat ([k-NN's error was measured against it](/docs/machine-learning/k-nearest-neighbors)).
 
-LDA is a *specific* generative model: assumes each class's features follow a multivariate Gaussian, and — critically — that **every class shares the same covariance matrix** $\Sigma$, differing only in their means $\mu_y$.
+**The catch.** We don't know $p(\mathbf{x} \mid y = c)$. A generative classifier assumes a form for it, estimates that from the training examples of class $c$, and plugs the estimate into the rule above. It's only as good as that assumed form. The three methods on this page are three choices of form, from the most restrictive to the most flexible, and the whole trade-off between them is how many parameters each needs to estimate.
 
-Under this assumption, the log-ratio $\log\frac{P(y=1\mid\mathbf{x})}{P(y=0\mid\mathbf{x})}$ works out to be **linear** in $\mathbf{x}$ — the quadratic terms from the Gaussian density cancel exactly because both classes share the same $\Sigma$. That's why LDA produces a straight-line boundary:
+## 2. Naive Bayes
 
-<img src={__migratedImg0} alt="LDA's decision boundary is exactly linear, because both classes share the same covariance shape" style={{maxWidth: '100%'}} />
+Estimating a full $d$-dimensional density from data is hard; the number of examples needed grows rapidly with $d$. Naive Bayes makes it easy with one strong assumption: **within each class, the features are independent**. Then the density factors into $d$ one-dimensional densities:
 
-## QDA: Quadratic Discriminant Analysis
+$$
+p(\mathbf{x} \mid y = c) = \prod_{j=1}^{d} p(x_j \mid y = c)
+\qquad\Rightarrow\qquad
+\hat{y} = \arg\max_c\Big[\log\pi_c + \sum_{j=1}^{d}\log p(x_j \mid y = c)\Big]
+$$
 
-Drop LDA's shared-covariance assumption — let each class have its **own** covariance matrix $\Sigma_y$. Now the quadratic terms in the log-ratio no longer cancel, producing a genuinely curved boundary:
+Each feature contributes its own piece of evidence, and the pieces add up. Products of many small probabilities underflow in floating point, which is why implementations always work with the sum of logs. The variants differ in the form of each one-dimensional piece:
 
-<img src={__migratedImg1} alt="QDA's decision boundary curves, because each class now has its own covariance shape" style={{maxWidth: '100%'}} />
+- **Gaussian naive Bayes** for continuous features: $x_j \mid y = c \sim \mathcal{N}(\mu_{jc}, \sigma_{jc}^2)$. Training computes a mean and a variance per feature per class.
+- **Multinomial naive Bayes** for counts, such as word counts in a document. With $\theta_{cw}$ the probability that a word drawn from a class-$c$ document is $w$, a document's log-likelihood is $\sum_w n_w\log\theta_{cw}$ plus a term that doesn't depend on the class.
+- **Bernoulli naive Bayes** for binary features (word present or absent), which also counts the absence of words.
 
-Toggle between the two directly on the same real data, with each boundary computed live from real fitted means and covariances rather than pre-rendered:
+**Training is counting.** The maximum-likelihood estimates are sample frequencies: $\pi_c$ is the fraction of training examples in class $c$, and for the multinomial model $\theta_{cw} = N_{cw}/N_c$, the number of times word $w$ appears in class-$c$ documents over the total number of words in them. One pass over the data; no iterative optimization.
+
+**Laplace smoothing.** That estimate has a fatal flaw. If the word "refund" never appears in any training email labelled "not spam", then $\theta_{\text{not spam},\,\text{refund}} = 0$, its log is $-\infty$, and every future email containing "refund" gets probability zero of being not-spam, whatever else it says. One unseen word vetoes all other evidence. The fix is to add a pseudo-count $\alpha$ to every word:
+
+$$
+\theta_{cw} = \frac{N_{cw} + \alpha}{N_c + \alpha V}
+$$
+
+where $V$ is the vocabulary size; the $\alpha V$ in the denominator keeps the probabilities summing to 1. With $\alpha = 1$ this is **Laplace smoothing**. It's equivalent to the posterior mean under a uniform Dirichlet prior on $\theta_c$, the same "a prior is a regularizer" idea as [ridge's Gaussian prior](/docs/machine-learning/ridge-regression). scikit-learn's `MultinomialNB(alpha=1.0)` does this by default.
+
+**Why it works despite the assumption.** Words in a document are obviously not independent ("New" and "York"). The assumption makes the predicted *probabilities* badly overconfident, because correlated evidence gets counted several times. But classification only needs the *largest* posterior to be on the right class, and that's much more robust: Domingos and Pazzani (1997) showed naive Bayes can be the optimal classifier even when the independence assumption is badly violated, as long as the violations don't systematically favour the wrong class. In practice it's a fast, strong baseline for text and very high-dimensional data, and a poor source of calibrated probabilities.
+
+Naive Bayes ignores correlations between features entirely. The next model keeps them, at the cost of one other assumption.
+
+## 3. LDA: A Linear Boundary From Shared Covariance
+
+### LDA: Linear Discriminant Analysis
+
+**Linear discriminant analysis** models each class as a multivariate Gaussian with its own mean $\boldsymbol{\mu}_c$ and **one covariance matrix $\Sigma$ shared by every class**:
+
+$$
+\log p(\mathbf{x} \mid y = c) = -\frac12(\mathbf{x} - \boldsymbol{\mu}_c)^T\Sigma^{-1}(\mathbf{x} - \boldsymbol{\mu}_c) - \frac12\log\lvert\Sigma\rvert - \frac{d}{2}\log 2\pi
+$$
+
+The first term is the squared **Mahalanobis distance** from $\mathbf{x}$ to the class mean: Euclidean distance after accounting for the spread and correlations of the features. So LDA assigns a point to the class whose mean is closest in that sense, adjusted by the prior.
+
+**Why the boundary is linear.** Expand the quadratic form:
+
+$$
+(\mathbf{x} - \boldsymbol{\mu}_c)^T\Sigma^{-1}(\mathbf{x} - \boldsymbol{\mu}_c) = \mathbf{x}^T\Sigma^{-1}\mathbf{x} - 2\boldsymbol{\mu}_c^T\Sigma^{-1}\mathbf{x} + \boldsymbol{\mu}_c^T\Sigma^{-1}\boldsymbol{\mu}_c
+$$
+
+The term $\mathbf{x}^T\Sigma^{-1}\mathbf{x}$ is the same for every class, because $\Sigma$ is shared, and so is $\log\lvert\Sigma\rvert$. Both cancel when comparing classes. What's left for class $c$ is the **linear discriminant function**
+
+$$
+\delta_c(\mathbf{x}) = \mathbf{x}^T\Sigma^{-1}\boldsymbol{\mu}_c - \frac12\boldsymbol{\mu}_c^T\Sigma^{-1}\boldsymbol{\mu}_c + \log\pi_c
+$$
+
+and LDA predicts the class with the largest $\delta_c$. For two classes the boundary is $\delta_1(\mathbf{x}) = \delta_0(\mathbf{x})$:
+
+$$
+\underbrace{\Sigma^{-1}(\boldsymbol{\mu}_1 - \boldsymbol{\mu}_0)}_{\mathbf{w}}{}^T\,\mathbf{x} \;+\; \underbrace{\Big(-\tfrac12\boldsymbol{\mu}_1^T\Sigma^{-1}\boldsymbol{\mu}_1 + \tfrac12\boldsymbol{\mu}_0^T\Sigma^{-1}\boldsymbol{\mu}_0 + \log\tfrac{\pi_1}{\pi_0}\Big)}_{b} = 0
+$$
+
+A hyperplane, $\mathbf{w}^T\mathbf{x} + b = 0$. Moreover the log-odds, $\delta_1 - \delta_0 = \mathbf{w}^T\mathbf{x} + b$, is linear in $\mathbf{x}$, which is exactly logistic regression's model. LDA and logistic regression fit the same form of classifier. They differ in how they estimate it: LDA estimates means and a covariance and computes $\mathbf{w}$ and $b$ from them; logistic regression fits $\mathbf{w}$ and $b$ directly. Section 6 shows when that difference matters.
+
+**Training** is again a few averages: the class frequencies, the class means, and the **pooled covariance**, the average of the within-class covariances, $\hat{\Sigma} = \tfrac{1}{n - K}\sum_c\sum_{i:\,y_i = c}(\mathbf{x}_i - \hat{\boldsymbol{\mu}}_c)(\mathbf{x}_i - \hat{\boldsymbol{\mu}}_c)^T$.
+
+<GoDeeper title="Go deeper: Fisher's discriminant reaches the same direction without any Gaussians">
+
+In 1936, Ronald Fisher asked a different question, with no probability model at all: which direction $\mathbf{w}$ should we project the data onto so that the two classes are as separated as possible? Project every point to the number $\mathbf{w}^T\mathbf{x}$. The projected class means are $\mathbf{w}^T\boldsymbol{\mu}_1$ and $\mathbf{w}^T\boldsymbol{\mu}_0$, and the projected spread within a class is $\mathbf{w}^TS_W\mathbf{w}$, where $S_W$ is the within-class scatter matrix. Fisher maximized the ratio of the squared distance between projected means to the within-class spread:
+
+$$
+J(\mathbf{w}) = \frac{\big(\mathbf{w}^T(\boldsymbol{\mu}_1 - \boldsymbol{\mu}_0)\big)^2}{\mathbf{w}^TS_W\mathbf{w}}
+$$
+
+Set the gradient to zero. Writing $\mathbf{m} = \boldsymbol{\mu}_1 - \boldsymbol{\mu}_0$, the condition is $(\mathbf{w}^TS_W\mathbf{w})\,\mathbf{m}\,(\mathbf{m}^T\mathbf{w}) = (\mathbf{m}^T\mathbf{w})^2\,S_W\mathbf{w}$, so $S_W\mathbf{w}$ must point in the direction of $\mathbf{m}$, giving
+
+$$
+\mathbf{w} \propto S_W^{-1}(\boldsymbol{\mu}_1 - \boldsymbol{\mu}_0)
+$$
+
+That's the same direction as the Gaussian LDA's $\mathbf{w} = \Sigma^{-1}(\boldsymbol{\mu}_1 - \boldsymbol{\mu}_0)$, since $S_W$ is proportional to the pooled covariance. Two very different arguments, one maximizing class separation and one assuming Gaussian classes, land on the same answer. With $K$ classes, Fisher's criterion gives up to $K - 1$ directions (the top eigenvectors of $S_W^{-1}S_B$, with $S_B$ the between-class scatter), which is why LDA is also used as **supervised dimensionality reduction**: `LinearDiscriminantAnalysis(n_components=2).fit_transform(X, y)` projects data onto the two directions that best separate the classes.
+
+</GoDeeper>
+
+## 4. QDA: A Curved Boundary From Separate Covariances
+
+**Quadratic discriminant analysis** drops the shared-covariance assumption: each class gets its own $\Sigma_c$. Now the $\mathbf{x}^T\Sigma_c^{-1}\mathbf{x}$ term differs between classes and no longer cancels, and neither does $\log\lvert\Sigma_c\rvert$:
+
+$$
+\delta_c(\mathbf{x}) = -\frac12\log\lvert\Sigma_c\rvert - \frac12(\mathbf{x} - \boldsymbol{\mu}_c)^T\Sigma_c^{-1}(\mathbf{x} - \boldsymbol{\mu}_c) + \log\pi_c
+$$
+
+The boundary between two classes is where $\delta_1 = \delta_0$, and it contains the term $-\tfrac12\mathbf{x}^T(\Sigma_1^{-1} - \Sigma_0^{-1})\mathbf{x}$: a quadratic surface. In two dimensions that's an ellipse, a parabola or a hyperbola. This lets QDA capture a class that is tightly clustered next to one that is spread out, which a straight line can't. Toggle between the two models on the same data, each computed live from the fitted means and covariances:
 
 <LdaQdaBoundaryDiagram />
 
-## LDA vs. QDA
+Naive Bayes, from this angle, is QDA with every $\Sigma_c$ forced to be diagonal: each class has its own variances but no correlations. Its boundary is also quadratic in general, but built from axis-aligned ellipses.
 
-More flexible isn't automatically better — QDA has far more parameters to estimate (a full covariance matrix *per class* instead of one shared matrix), so it needs proportionally more data to estimate them reliably. With limited data, LDA's extra assumption acts as a form of regularization: it accepts a bit more bias (forcing a linear boundary even if the true boundary curves slightly) in exchange for much lower variance in the estimated parameters. The same bias-variance tradeoff appears here as everywhere else in this curriculum ([Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics#bias-variance-tradeoff)) — just expressed through a modeling assumption instead of a regularization hyperparameter.
+## 5. Choosing Among Them: Counting Parameters
 
-## Naive Bayes vs. LDA vs. QDA
+### LDA vs. QDA
 
-| | Naive Bayes | LDA | QDA |
+All three use the same Bayes rule, so the choice comes down to how many numbers each must estimate from the training data, with $K$ classes and $d$ features:
+
+| Model | Covariance | Parameters (excluding priors) | At $d = 50$, $K = 3$ |
 |---|---|---|---|
-| Feature independence assumed? | Yes | No (models full covariance) | No |
-| Covariance shared across classes? | N/A (independent features) | Yes | No, per-class |
-| Boundary shape | Depends on distribution choice | Linear | Quadratic (curved) |
-| Parameters to estimate | Fewest | Moderate | Most |
-| Best when | Many features, limited data (esp. text) | Gaussian-ish classes, similar spread | Gaussian-ish classes, genuinely different spread per class |
+| Naive Bayes (Gaussian) | Diagonal, per class | $K \cdot 2d$ | 300 |
+| LDA | Full, shared | $Kd + \tfrac{d(d+1)}{2}$ | 1,425 |
+| QDA | Full, per class | $K\big(d + \tfrac{d(d+1)}{2}\big)$ | 3,975 |
 
-## Minimal Implementation
+A full covariance matrix has $d(d+1)/2$ free entries, which grows with the square of the number of features. QDA estimates one per class. With 50 features and 3 classes, that's nearly 4,000 numbers. If a class has fewer than $d$ training examples, its sample covariance isn't even invertible. LDA's shared covariance is estimated from all the classes pooled together, which is much more stable, and naive Bayes needs only variances.
 
-Gaussian Naive Bayes, matching the derivation above directly:
+So the choice is the [bias-variance trade-off](/docs/machine-learning/model-evaluation-metrics#bias-variance-tradeoff) once more, made through modelling assumptions instead of a penalty. QDA has the least bias (it can represent different spreads per class) and the most variance. LDA accepts the bias of a linear boundary for far less variance. Naive Bayes goes further. On the wine data in Section 7 (13 features, 29 to 43 training wines per class), LDA scores 0.986 and QDA 0.958: the extra flexibility costs more in estimation noise than it gains.
+
+**Shrinkage** gives a continuum between these. Regularized discriminant analysis (Friedman, 1989) blends each class covariance with the pooled one, and the pooled one with a scaled identity, $\hat{\Sigma}(\gamma) = (1-\gamma)\hat{\Sigma} + \gamma\,\tfrac{\operatorname{tr}\hat{\Sigma}}{d}I$. Ledoit and Wolf (2004) derived a formula for the shrinkage amount $\gamma$ that minimizes expected estimation error, with no cross-validation needed. In scikit-learn, `LinearDiscriminantAnalysis(solver="lsqr", shrinkage="auto")` uses it, and it's the right default whenever $d$ is not small compared with $n$. QDA has `reg_param`.
+
+<PredictFirst
+  question="A two-class problem has 40 features and only 30 training examples per class. Which generative classifier is likely to do best?"
+  options={[
+    'QDA, because it is the most flexible',
+    'LDA with shrinkage, or naive Bayes: QDA cannot even invert a 40×40 covariance estimated from 30 points',
+    'All three are identical when classes are balanced',
+    'None of them can run with more features than examples',
+  ]}
+  correctIndex={1}
+  explanation="A sample covariance from 30 points in 40 dimensions has rank at most 29, so it is singular and QDA's Σ_c⁻¹ does not exist without regularization. LDA pools both classes (60 points, still fewer than 40·41/2 = 820 free entries), so it needs shrinkage too; naive Bayes needs only 40 variances per class. With few examples per parameter, the more restrictive model wins."
+/>
+
+## 6. Generative or Discriminative?
+
+LDA and logistic regression produce the same kind of linear classifier, so which should you use? Ng and Jordan (2002) compared the two families precisely, for naive Bayes against logistic regression:
+
+- If the generative model's assumptions are **true**, it reaches its best accuracy with far fewer examples. Naive Bayes approaches its asymptotic error with a number of examples that grows only logarithmically in $d$; logistic regression may need a number linear in $d$.
+- If the assumptions are **false**, the generative model converges to the wrong answer, and logistic regression, which assumed only that the log-odds are linear, eventually does better.
+
+Generative models make stronger assumptions and use them to learn faster; discriminative models assume less and win with enough data. Section 7 measures both regimes. With independent features (naive Bayes' assumption true), naive Bayes beats logistic regression at 300 examples (0.799 against 0.789) and they finish level at 3,000 (0.832 and 0.831). With correlated features (assumption false), naive Bayes is behind at every size and plateaus lower (0.907 against 0.929). LDA with shrinkage, whose Gaussian assumption is true in both simulations, does best or ties at every size.
+
+Generative models have two more practical advantages. They handle **missing features** naturally: drop the missing feature's term from the sum, since the model describes each feature's distribution. And they can **generate** data and detect outliers, because they model $p(\mathbf{x})$, not only the boundary. The price is that a wrong density model gives wrong, usually overconfident, probabilities.
+
+## 7. Minimal Implementation
+
+All three models from one function: estimate per-class means, priors and covariances (shared for LDA, diagonal for naive Bayes), then apply Bayes' rule in log space with `logsumexp` for numerical stability. Then the generative-versus-discriminative learning curves of Section 6:
 
 ```python
 import numpy as np
+from scipy.special import logsumexp
+from sklearn.datasets import load_wine
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis, QuadraticDiscriminantAnalysis
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+from sklearn.naive_bayes import GaussianNB
 
-def fit_gaussian_nb(X, y):
+def fit_gaussian_classes(X, y, shared_cov, diagonal):
     classes = np.unique(y)
-    params = {}
-    for c in classes:
-        X_c = X[y == c]
-        params[c] = {
-            "mean": X_c.mean(axis=0),
-            "var": X_c.var(axis=0) + 1e-9,
-            "prior": len(X_c) / len(X),
-        }
-    return params
+    means = np.array([X[y == c].mean(0) for c in classes])
+    priors = np.array([np.mean(y == c) for c in classes])
+    if shared_cov:                                   # LDA: one pooled covariance for every class
+        resid = X - means[np.searchsorted(classes, y)]
+        covs = [resid.T @ resid / (len(y) - len(classes))] * len(classes)
+    else:                                            # QDA / naive Bayes: one covariance per class
+        covs = [np.cov(X[y == c].T, bias=diagonal) for c in classes]
+    if diagonal:                                     # naive Bayes: independence = diagonal covariance
+        covs = [np.diag(np.diag(S)) for S in covs]
+    return classes, means, priors, covs
 
-def predict_gaussian_nb(X, params):
-    log_probs = []
-    for c, p in params.items():
-        log_likelihood = -0.5 * np.sum(
-            np.log(2 * np.pi * p["var"]) + (X - p["mean"]) ** 2 / p["var"], axis=1
-        )
-        log_probs.append(np.log(p["prior"]) + log_likelihood)
-    log_probs = np.array(log_probs)
-    classes = list(params.keys())
-    return np.array([classes[i] for i in log_probs.argmax(axis=0)])
+def log_posterior(X, model):
+    classes, means, priors, covs = model
+    scores = []
+    for mu, pi, S in zip(means, priors, covs):
+        sign, logdet = np.linalg.slogdet(S)
+        diff = X - mu
+        maha = np.einsum("ij,ij->i", diff @ np.linalg.inv(S), diff)
+        scores.append(np.log(pi) - 0.5 * logdet - 0.5 * maha)      # log N(x | mu, S) + log prior, minus a constant
+    scores = np.array(scores).T
+    return scores - logsumexp(scores, axis=1, keepdims=True)        # normalize: Bayes' rule
+
+X, y = load_wine(return_X_y=True)
+X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.4, stratify=y, random_state=0)
+for name, shared, diag, ref in [("naive Bayes", False, True, GaussianNB(var_smoothing=0)),
+                                ("LDA", True, False, LinearDiscriminantAnalysis()),
+                                ("QDA", False, False, QuadraticDiscriminantAnalysis())]:
+    lp = log_posterior(X_te, fit_gaussian_classes(X_tr, y_tr, shared, diag))
+    ref.fit(X_tr, y_tr)
+    gap = np.abs(np.exp(lp) - ref.predict_proba(X_te)).max()
+    print(f"{name:12s} test accuracy {np.mean(lp.argmax(1) == y_te):.3f}   largest probability gap vs scikit-learn {gap:.1e}")
+
+# Generative vs discriminative as the training set grows (Ng and Jordan, 2002)
+rng = np.random.default_rng(0)
+def experiment(title, d, cov, shift):
+    def sample(n):
+        yy = rng.integers(0, 2, n)
+        XX = rng.multivariate_normal(np.zeros(d), cov, n) + np.where(yy[:, None] == 1, shift, -shift)
+        return XX, yy
+    X_test, y_test = sample(20000)
+    print(title)
+    print("  training examples   naive Bayes   LDA     logistic regression")
+    for n in [10, 30, 100, 300, 3000]:
+        accs = np.zeros(3)
+        for _ in range(20):
+            Xn, yn = sample(n)
+            while len(np.unique(yn)) < 2:
+                Xn, yn = sample(n)
+            for k, m in enumerate([GaussianNB(), LinearDiscriminantAnalysis(solver="lsqr", shrinkage="auto"),
+                                   LogisticRegression(max_iter=1000)]):
+                accs[k] += m.fit(Xn, yn).score(X_test, y_test) / 20
+        print(f"  {n:>17}   {accs[0]:.3f}         {accs[1]:.3f}   {accs[2]:.3f}")
+
+d = 50
+experiment("independent features (naive Bayes' assumption holds), 50 features:",
+           d, np.eye(d), rng.normal(0, 0.15, d))
+A = rng.normal(size=(20, 20)) / np.sqrt(20)
+experiment("correlated features (the assumption is wrong), 20 features:",
+           20, A @ A.T + 0.5 * np.eye(20), rng.normal(0, 0.35, 20))
 ```
 
-Next: [SGD Classifier & Regressor](/docs/machine-learning/sgd-classifier-regressor) — the generic "any linear model, trained via SGD" framing that ties the linear-model family together.
+Output (scikit-learn 1.7):
+
+```
+naive Bayes  test accuracy 0.972   largest probability gap vs scikit-learn 3.6e-15
+LDA          test accuracy 0.986   largest probability gap vs scikit-learn 4.0e-15
+QDA          test accuracy 0.958   largest probability gap vs scikit-learn 4.8e-14
+independent features (naive Bayes' assumption holds), 50 features:
+  training examples   naive Bayes   LDA     logistic regression
+                 10   0.539         0.617   0.615
+                 30   0.647         0.703   0.689
+                100   0.735         0.775   0.738
+                300   0.799         0.815   0.789
+               3000   0.832         0.834   0.831
+correlated features (the assumption is wrong), 20 features:
+  training examples   naive Bayes   LDA     logistic regression
+                 10   0.625         0.748   0.750
+                 30   0.796         0.862   0.851
+                100   0.872         0.903   0.895
+                300   0.896         0.919   0.914
+               3000   0.907         0.930   0.929
+```
+
+- **One formula, three models.** The same Bayes-rule code reproduces scikit-learn's predicted probabilities for all three to within $5 \times 10^{-14}$; the only differences are which covariance is used.
+- **Fewer parameters won on wine.** LDA (0.986) beats QDA (0.958) with 29 to 43 training wines per class: QDA's three separate 13×13 covariances are noisier than LDA's one pooled matrix.
+- **The learning curves are Section 6.** When independence holds, naive Bayes catches up with logistic regression by 300 examples and they end level. When it fails, naive Bayes never catches up. Shrinkage LDA, whose Gaussian assumption matches both simulations, leads or ties throughout, which is the generative advantage when the model is right.
+
+## 8. When *Not* to Use These
+
+| Situation | Better choice |
+|---|---|
+| Classes are far from Gaussian (multi-modal, skewed, bounded) | Discriminative models ([logistic regression](/docs/machine-learning/logistic-regression), [trees](/docs/machine-learning/xgboost-lightgbm-catboost)), or transform features toward normality first |
+| You need calibrated probabilities from naive Bayes | Logistic regression, or calibrate; naive Bayes double-counts correlated evidence and is overconfident |
+| QDA with many features and few examples per class | LDA with shrinkage, regularized QDA (`reg_param`), or naive Bayes |
+| Large data and you only care about accuracy | Discriminative models, which have lower asymptotic error when the generative assumptions are wrong |
+| Complex nonlinear boundaries | Kernel methods, tree ensembles or neural networks |
+
+Naive Bayes remains a strong first model for text classification and very high-dimensional sparse data; LDA is a good linear classifier and supervised dimensionality reducer for roughly Gaussian data; QDA fits when classes really do differ in spread and there's enough data per class to estimate it.
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Generative | Model $p(\mathbf{x} \mid y)$ and $P(y)$; classify with Bayes' rule |
+| Bayes classifier | Picking the largest posterior minimizes error; its error is the floor |
+| Naive Bayes | Features independent within a class; sum per-feature log-likelihoods |
+| Laplace smoothing | $(N_{cw} + \alpha)/(N_c + \alpha V)$; one unseen word can't veto everything |
+| LDA | Gaussian classes with a shared $\Sigma$; $\mathbf{x}^T\Sigma^{-1}\mathbf{x}$ cancels, so the boundary is linear |
+| LDA direction | $\mathbf{w} = \Sigma^{-1}(\boldsymbol{\mu}_1 - \boldsymbol{\mu}_0)$, also Fisher's most-separating projection |
+| QDA | Per-class $\Sigma_c$; the quadratic term survives, so the boundary curves |
+| Parameters | NB $2Kd$; LDA $Kd + d(d+1)/2$; QDA $K(d + d(d+1)/2)$ |
+| Shrinkage | Blend covariance toward a scaled identity; `shrinkage="auto"` (Ledoit-Wolf) |
+| Generative vs discriminative | Generative learns faster if right; discriminative wins with data if not |
+
+---
+
+Next: [SGD Classifier & Regressor](/docs/machine-learning/sgd-classifier-regressor), which trains the discriminative linear models (logistic regression, linear SVMs, linear regression) with one loop that scales to data of any size.
+
+## Sources
+
+- R. A. Fisher, [The Use of Multiple Measurements in Taxonomic Problems](https://doi.org/10.1111/j.1469-1809.1936.tb02137.x), *Annals of Eugenics*, 1936
+- A. Y. Ng and M. I. Jordan, [On Discriminative vs. Generative Classifiers: A Comparison of Logistic Regression and Naive Bayes](https://papers.nips.cc/paper/2001/hash/7b7a53e239400a13bd6be6c91c4f6c4e-Abstract.html), NeurIPS 2001 (proceedings 2002)
+- P. Domingos and M. Pazzani, [On the Optimality of the Simple Bayesian Classifier under Zero-One Loss](https://doi.org/10.1023/A:1007413511361), *Machine Learning*, 1997
+- J. H. Friedman, [Regularized Discriminant Analysis](https://doi.org/10.1080/01621459.1989.10478752), *JASA*, 1989
+- O. Ledoit and M. Wolf, [A Well-Conditioned Estimator for Large-Dimensional Covariance Matrices](https://doi.org/10.1016/S0047-259X(03)00096-4), *Journal of Multivariate Analysis*, 2004
+- A. McCallum and K. Nigam, A Comparison of Event Models for Naive Bayes Text Classification, AAAI Workshop on Learning for Text Categorization, 1998
+- T. Hastie, R. Tibshirani and J. Friedman, [The Elements of Statistical Learning](https://hastie.su.domains/ElemStatLearn/), 2nd ed., Sections 4.3 and 6.6.3
+- scikit-learn, [Naive Bayes](https://scikit-learn.org/stable/modules/naive_bayes.html) and [Linear and Quadratic Discriminant Analysis](https://scikit-learn.org/stable/modules/lda_qda.html)
