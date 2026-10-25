@@ -1,66 +1,309 @@
 ---
 title: "Support Vector Machines (SVM & SVR), In Full Depth"
 sidebar_position: 5.5
-description: "The maximum-margin classifier derived: support vectors, the optimization problem, soft margins, and the kernel trick for non-linearly-separable data."
+description: "The maximum-margin classifier derived: the margin as a distance, the quadratic program, the Lagrangian dual and why only support vectors matter, soft margins and the hinge loss, the kernel trick with an explicit feature map, C and gamma, SVR, scaling, and a from-scratch dual solver checked against scikit-learn."
 ---
 
-import __migratedImg0 from './img/svm-margin.png';
-
+import marginLight from './img/svm-margin-light.png';
+import marginDark from './img/svm-margin.png';
 import KernelTrickDiagram from '../../../viz/diagrams/KernelTrickDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Support Vector Machines (SVM & SVR), In Full Depth
 
-[Logistic Regression](/docs/machine-learning/logistic-regression) finds *a* line that separates classes. SVM finds *the* line that separates them with the widest possible gap — a subtly different objective that turns out to have far-reaching consequences.
+[Logistic Regression](/docs/machine-learning/logistic-regression) finds a boundary by making the training labels as probable as possible, and every example has some influence on where it ends up. A support vector machine asks a different question: of all the boundaries that separate the classes, which one leaves the widest gap on either side? This page derives the answer. It turns the gap into a distance, then into an optimization problem, then into its dual form, which shows why only a handful of training points, the support vectors, determine the result. The dual is also what makes the kernel trick possible: curved boundaries from a linear method, without ever computing the curved features. It finishes with the two hyperparameters that control everything, the regression version, and when SVMs are and aren't the right tool.
 
-## What Is an SVM?
+<ELI5>
 
-Given linearly separable data, there are infinitely many lines that correctly separate the two classes. SVM picks the one that maximizes the **margin** — the distance from the boundary to the nearest point of either class:
+Picture two groups of people standing in a field, and you need to lay a straight road between them. Many roads would separate the groups. The safest is the one that runs as far as possible from the nearest person on each side, because if a few more people arrive and stand a little off from where the others stood, they're still likely to be on the right side.
 
-<img src={__migratedImg0} alt="SVM finds the maximum-margin hyperplane; only the circled support vectors determine its position" style={{maxWidth: '100%'}} />
+Notice that only the people closest to the road decide where it goes. Everyone standing further back could move around and the road wouldn't change. Those few closest people are the "support vectors". Everything below is that idea made exact.
 
-**Why maximize the margin specifically?** Intuitively, a boundary that barely squeezes between the classes is fragile — a new point close to the boundary could easily land on the wrong side. A wide-margin boundary is the most "confident" separator possible, and this intuition has a rigorous backing: maximum-margin classifiers have provably better generalization bounds than arbitrary separating hyperplanes.
+</ELI5>
 
-## Support Vectors
+## 1. The Margin as a Distance
 
-The margin is defined entirely by the points closest to the boundary — the **support vectors** (circled above). Every other point could move anywhere further from the boundary without changing the solution at all. This is SVM's defining structural property: the model is determined by a small subset of the training data, not by all of it — contrast this with [Linear Regression](/docs/machine-learning/linear-regression), where every single point pulls on the fitted line via the MSE gradient.
+A linear classifier predicts with the sign of $f(\mathbf{x}) = \mathbf{w}^T\mathbf{x} + b$. Its boundary is the hyperplane $f(\mathbf{x}) = 0$, and $\mathbf{w}$ is perpendicular to it. How far is a point $\mathbf{x}_i$ from that hyperplane? Move from $\mathbf{x}_i$ straight toward the plane, along $\mathbf{w}$, by a distance $r$: you reach $\mathbf{x}_i - r\,\mathbf{w}/\lVert\mathbf{w}\rVert$. That point is on the plane when
 
-## The Optimization Problem
+$$
+\mathbf{w}^T\!\left(\mathbf{x}_i - r\frac{\mathbf{w}}{\lVert\mathbf{w}\rVert}\right) + b = 0 \quad\Rightarrow\quad r = \frac{\mathbf{w}^T\mathbf{x}_i + b}{\lVert\mathbf{w}\rVert}
+$$
 
-Maximize margin $= \frac{2}{\|\mathbf{w}\|}$ subject to every point being correctly classified with margin at least 1: $y_i(\mathbf{w}^T\mathbf{x}_i + b) \geq 1$ for all $i$. Maximizing $\frac{2}{\|\mathbf{w}\|}$ is equivalent to minimizing $\|\mathbf{w}\|^2$ — so the problem becomes:
+With labels $y_i \in \{-1, +1\}$, the distance on the correct side is $y_i(\mathbf{w}^T\mathbf{x}_i + b)/\lVert\mathbf{w}\rVert$, positive exactly when the point is classified correctly. The **margin** of the classifier is the smallest of these over the training set: the distance from the boundary to the nearest point.
 
-$$\min_{\mathbf{w}, b} \frac{1}{2}\|\mathbf{w}\|^2 \quad \text{subject to} \quad y_i(\mathbf{w}^T\mathbf{x}_i + b) \geq 1 \;\, \forall i$$
+There's a free choice here. Multiplying $\mathbf{w}$ and $b$ by any positive constant gives the same hyperplane, and the same distances. So fix the scale: choose it so that the nearest points satisfy $y_i(\mathbf{w}^T\mathbf{x}_i + b) = 1$ exactly. Then every point has $y_i(\mathbf{w}^T\mathbf{x}_i + b) \ge 1$, the nearest ones are at distance $1/\lVert\mathbf{w}\rVert$ on each side, and the full width of the gap between the two classes is
 
-This is a **quadratic program** — a convex optimization problem (see [Calculus & Optimization — Convexity](/docs/mathematics-for-ai/calculus-optimization#convexity)) with linear constraints, solvable exactly (no gradient descent required, though it can also be solved that way in practice).
+$$
+\text{margin width} = \frac{2}{\lVert\mathbf{w}\rVert}
+$$
 
-## Soft Margin: Handling Non-Separable Data
+**Why want a wide margin?** The intuition is in the ELI5: a boundary that just squeezes past the training points will misclassify new points that land slightly off from where the training points did. The formal version is a generalization bound. Vapnik showed that the capacity of linear classifiers with margin at least $\rho$, on data inside a ball of radius $R$, is at most about $R^2/\rho^2$, regardless of the number of features. A wider margin means a smaller effective hypothesis class, so lower estimation error in the sense of the [overview's](/docs/machine-learning/overview) decomposition. That's why SVMs can work well with far more features than examples.
 
-Real data is rarely perfectly separable. The **soft margin** SVM allows some points to violate the margin (or even end up on the wrong side), at a cost:
+## 2. Maximizing the Margin
 
-$$\min_{\mathbf{w},b} \frac{1}{2}\|\mathbf{w}\|^2 + C\sum_i \max(0,\ 1 - y_i(\mathbf{w}^T\mathbf{x}_i+b))$$
+### The Optimization Problem
 
-The second term is exactly [Hinge Loss](/docs/deep-learning/loss-functions#classification-losses) — zero once a point is correctly classified with sufficient margin, growing linearly for violations. $C$ controls the tradeoff: large $C$ heavily penalizes margin violations (narrower margin, less tolerant of misclassification — can overfit); small $C$ tolerates more violations for a wider, more robust margin (can underfit). This is the SVM's direct analog of the regularization strength $\lambda$ in [Ridge](/docs/machine-learning/ridge-regression#the-ridge-cost-function)/[Lasso](/docs/machine-learning/lasso-regression#the-lasso-cost-function).
+Maximizing $2/\lVert\mathbf{w}\rVert$ is the same as minimizing $\lVert\mathbf{w}\rVert$, and squaring it (which doesn't move the minimum) makes it smooth. With the scale fixed as above, the **hard-margin SVM** is
 
-## The Kernel Trick
+$$
+\min_{\mathbf{w},\,b}\; \frac12\lVert\mathbf{w}\rVert^2 \quad\text{subject to}\quad y_i(\mathbf{w}^T\mathbf{x}_i + b) \ge 1 \;\text{ for every } i
+$$
 
-SVM as described so far only draws straight lines. The **kernel trick** is what lets it handle non-linear boundaries, and the idea is genuinely elegant: the optimization problem above only ever needs *dot products* between pairs of points, $\mathbf{x}_i \cdot \mathbf{x}_j$ — never the raw feature vectors individually. So replace that dot product with a **kernel function** $K(\mathbf{x}_i, \mathbf{x}_j)$ that computes the dot product *as if* the points had been mapped into some higher-dimensional space first — without ever actually computing that mapping.
+A convex quadratic objective with linear constraints: a **quadratic program**. It has a unique solution (when the data is separable), and standard solvers find it exactly. But the dual form of this problem is what explains the SVM's most important properties, so derive it.
 
-- **Linear kernel**: $K(\mathbf{x}_i,\mathbf{x}_j) = \mathbf{x}_i \cdot \mathbf{x}_j$ — the plain SVM above.
-- **Polynomial kernel**: $K(\mathbf{x}_i,\mathbf{x}_j) = (\mathbf{x}_i \cdot \mathbf{x}_j + c)^d$ — equivalent to adding polynomial feature combinations, without explicitly constructing them.
-- **RBF (Gaussian) kernel**: $K(\mathbf{x}_i,\mathbf{x}_j) = \exp(-\gamma\|\mathbf{x}_i - \mathbf{x}_j\|^2)$ — implicitly corresponds to an *infinite-dimensional* feature space. The most common default for non-linear SVM, with $\gamma$ controlling how far each point's influence reaches.
+## 3. The Dual, and Why Only Support Vectors Matter
 
-This is why SVMs were historically so powerful for non-linear problems before deep learning: full non-linear modeling power, without ever paying the computational cost of actually working in a high (or infinite) dimensional space. A real, minimal example of the underlying idea — real data, genuinely not linearly separable in 1D, made separable by an explicit feature map:
+Attach a Lagrange multiplier $\alpha_i \ge 0$ to each constraint (see [Calculus & Optimization](/docs/mathematics-for-ai/calculus-optimization)):
+
+$$
+\mathcal{L}(\mathbf{w}, b, \boldsymbol{\alpha}) = \frac12\lVert\mathbf{w}\rVert^2 - \sum_{i=1}^{n}\alpha_i\left[y_i(\mathbf{w}^T\mathbf{x}_i + b) - 1\right]
+$$
+
+At the optimum, the derivatives with respect to $\mathbf{w}$ and $b$ are zero:
+
+$$
+\frac{\partial\mathcal{L}}{\partial\mathbf{w}} = \mathbf{w} - \sum_i \alpha_i y_i\mathbf{x}_i = 0 \;\Rightarrow\; \mathbf{w} = \sum_{i=1}^{n}\alpha_i y_i\mathbf{x}_i \qquad\qquad \frac{\partial\mathcal{L}}{\partial b} = -\sum_i\alpha_i y_i = 0
+$$
+
+The first equation is the key result: **the weight vector is a weighted sum of training points**. Substitute both back into $\mathcal{L}$. The $b$ term vanishes because $\sum_i\alpha_i y_i = 0$, and $\tfrac12\lVert\mathbf{w}\rVert^2 - \mathbf{w}^T\sum_i\alpha_i y_i\mathbf{x}_i = -\tfrac12\lVert\mathbf{w}\rVert^2$, which leaves the **dual problem**:
+
+$$
+\max_{\boldsymbol{\alpha}}\; \sum_{i=1}^{n}\alpha_i - \frac12\sum_{i=1}^{n}\sum_{j=1}^{n}\alpha_i\alpha_j y_i y_j\,\mathbf{x}_i^T\mathbf{x}_j \quad\text{subject to}\quad \alpha_i \ge 0,\;\; \sum_i\alpha_i y_i = 0
+$$
+
+Two things to notice. First, the data appears **only through dot products** $\mathbf{x}_i^T\mathbf{x}_j$. That's what Section 5 exploits. Second, the optimum must satisfy **complementary slackness**, one of the KKT conditions for constrained optimization:
+
+$$
+\alpha_i\left[y_i(\mathbf{w}^T\mathbf{x}_i + b) - 1\right] = 0 \quad\text{for every } i
+$$
+
+For each point, either $\alpha_i = 0$, or the constraint is tight and the point sits exactly on the margin. Points beyond the margin have $\alpha_i = 0$ and therefore contribute nothing to $\mathbf{w} = \sum_i\alpha_i y_i\mathbf{x}_i$. Only the points with $\alpha_i \gt  0$, the **support vectors**, determine the boundary. Move any other point anywhere, as long as it stays beyond the margin, and the solution doesn't change. The prediction for a new point is
+
+$$
+f(\mathbf{x}) = \sum_{i \,\in\, \text{SV}}\alpha_i y_i\,\mathbf{x}_i^T\mathbf{x} + b
+$$
+
+and $b$ comes from any support vector on the margin, where $y_i f(\mathbf{x}_i) = 1$. Compare [linear regression](/docs/machine-learning/linear-regression), where every point pulls on the fitted line through the squared error, and logistic regression, where every point has a small but nonzero gradient.
+
+<ThemedImage alt="Two classes of points with a linear SVM's solid boundary line, two dashed margin lines on either side, and the support vectors circled: the points on or inside the margin" sources={{light: marginLight, dark: marginDark}} />
+
+## 4. Soft Margins and the Hinge Loss
+
+Real data usually isn't separable, and even when it is, insisting on it lets one mislabelled point dictate the boundary. The **soft-margin SVM** (Cortes and Vapnik, 1995) gives each point a slack variable $\xi_i \ge 0$ that lets it violate the margin, and charges for it:
+
+$$
+\min_{\mathbf{w},\,b,\,\boldsymbol{\xi}}\; \frac12\lVert\mathbf{w}\rVert^2 + C\sum_{i=1}^{n}\xi_i \quad\text{subject to}\quad y_i(\mathbf{w}^T\mathbf{x}_i + b) \ge 1 - \xi_i,\;\; \xi_i \ge 0
+$$
+
+At the optimum each slack is as small as its constraints allow, $\xi_i = \max\big(0,\; 1 - y_i f(\mathbf{x}_i)\big)$, so the problem is the same as the unconstrained
+
+$$
+\min_{\mathbf{w},\,b}\; \frac12\lVert\mathbf{w}\rVert^2 + C\sum_{i=1}^{n}\max\big(0,\; 1 - y_i(\mathbf{w}^T\mathbf{x}_i + b)\big)
+$$
+
+That's the **hinge loss** plus an L2 penalty: the same structure as [ridge](/docs/machine-learning/ridge-regression) or regularized logistic regression, with a different loss. The hinge loss is zero for points correctly classified beyond the margin and grows linearly inside it, which is the loss-function view of why those points don't matter. It's also why a linear SVM can be trained with [SGD](/docs/machine-learning/sgd-classifier-regressor) (`SGDClassifier(loss="hinge")`).
+
+$C$ plays the role of an inverse regularization strength. Large $C$ makes violations expensive: a narrow margin that bends to fit every point, low bias, high variance. Small $C$ tolerates violations in exchange for a wide margin. In the dual, the only change is a box on each multiplier, $0 \le \alpha_i \le C$. Points with $\alpha_i = 0$ are beyond the margin; points with $0 \lt  \alpha_i \lt  C$ sit exactly on it; points with $\alpha_i = C$ are inside the margin or misclassified. Both of the last two kinds are support vectors.
+
+<PredictFirst
+  question="You train an RBF SVM and then delete every training point that is not a support vector. You retrain on what's left with the same C and gamma. What changes?"
+  options={[
+    'The boundary moves, because the model has less data',
+    'Nothing: points with α = 0 contribute nothing to the solution, so removing them leaves the same optimum',
+    'The model gets more support vectors, to make up for the lost data',
+    'It can no longer be trained, because the classes are unbalanced',
+  ]}
+  correctIndex={1}
+  explanation="The solution depends only on points with α > 0. The non-support vectors satisfy their constraints with room to spare and have α = 0, so they appear nowhere in w = Σ αᵢ yᵢ xᵢ or in the dual objective. The same α values remain optimal on the reduced set, giving the same boundary. That is also why incremental and online SVM methods can discard most of the data."
+/>
+
+## 5. Curved Boundaries Without Curved Features
+
+### The Kernel Trick
+
+To draw a curved boundary with a linear method, map each input through features $\phi(\mathbf{x})$ (squares, products, and so on) and find a linear boundary in that new space. The problem is cost: degree-3 polynomial features of 100 inputs number over 170,000.
+
+The dual removes the problem. It touches the data only through dot products, so in feature space it needs only $\phi(\mathbf{x}_i)^T\phi(\mathbf{x}_j)$. If some function $K$ computes that dot product directly from the original inputs, $\phi$ never has to be formed. That function is a **kernel**, and replacing $\mathbf{x}_i^T\mathbf{x}_j$ by $K(\mathbf{x}_i, \mathbf{x}_j)$ everywhere in the dual and in the prediction formula is the **kernel trick**:
+
+$$
+f(\mathbf{x}) = \sum_{i \,\in\, \text{SV}}\alpha_i y_i\,K(\mathbf{x}_i, \mathbf{x}) + b
+$$
+
+**A kernel computed both ways.** Take two-dimensional inputs and $K(\mathbf{x}, \mathbf{z}) = (\mathbf{x}^T\mathbf{z})^2$. Expand it:
+
+$$
+(x_1z_1 + x_2z_2)^2 = x_1^2z_1^2 + 2x_1x_2z_1z_2 + x_2^2z_2^2 = \begin{bmatrix}x_1^2\\ \sqrt{2}x_1x_2\\ x_2^2\end{bmatrix}^T\begin{bmatrix}z_1^2\\ \sqrt{2}z_1z_2\\ z_2^2\end{bmatrix}
+$$
+
+So $K$ is the dot product under the feature map $\phi(\mathbf{x}) = (x_1^2, \sqrt{2}x_1x_2, x_2^2)$, computed with one dot product and a square instead of building three features. For degree $p$ in $d$ dimensions, the kernel still costs one dot product while the explicit map has $\binom{d+p-1}{p}$ features.
+
+The common kernels:
+
+- **Linear**: $K(\mathbf{x}, \mathbf{z}) = \mathbf{x}^T\mathbf{z}$, the plain SVM.
+- **Polynomial**: $K(\mathbf{x}, \mathbf{z}) = (\mathbf{x}^T\mathbf{z} + c)^p$, all monomials up to degree $p$.
+- **RBF (Gaussian)**: $K(\mathbf{x}, \mathbf{z}) = \exp\!\big(-\gamma\lVert\mathbf{x} - \mathbf{z}\rVert^2\big)$. Its feature map is infinite-dimensional (expand the exponential as a power series and every degree appears), yet it costs one distance to compute. It's the usual default.
+
+Which functions are valid kernels? Mercer's condition: $K$ must be symmetric, and every kernel matrix $K_{ij} = K(\mathbf{x}_i, \mathbf{x}_j)$ it produces must be positive semidefinite. That's exactly what's needed for the dual to stay a convex problem. Here is the underlying idea in its simplest form, one-dimensional data that no single threshold separates, made separable by mapping $x \mapsto (x, x^2)$:
 
 <KernelTrickDiagram />
 
-## SVR: Support Vector Regression
+**Reading the RBF kernel.** With the RBF kernel the prediction is a weighted sum of bumps, one centred on each support vector, each of width about $1/\sqrt{\gamma}$. That makes the RBF SVM a cousin of [k-nearest neighbours](/docs/machine-learning/k-nearest-neighbors): a new point is classified by its similarity to stored training points. **$\gamma$** sets the reach of each point. Small $\gamma$ means wide bumps and a smooth, nearly linear boundary; large $\gamma$ means narrow bumps, so each training point influences only its immediate neighbourhood and the boundary can wrap around individual points. **$C$** sets how much violations cost. The two interact, and Section 8's grid shows it: on noisy moons, accuracy is best at moderate $\gamma$ with moderate to large $C$, and very large $\gamma$ overfits whatever $C$ is, with nearly every point becoming a support vector.
 
-The same margin idea, adapted for regression: instead of finding a boundary that separates classes with maximum margin, SVR fits a function such that as many points as possible fall *within* an $\epsilon$-wide tube around it, and only penalizes points outside that tube (again via a hinge-like loss). Points strictly inside the tube contribute nothing to the loss at all — a form of built-in tolerance for small errors, unlike [MSE](/docs/deep-learning/loss-functions#regression-losses), which penalizes every deviation no matter how small.
+## 6. Support Vector Regression
 
-## When to Use SVM
+The same ideas apply to regression with a different loss. **SVR** fits $f(\mathbf{x}) = \mathbf{w}^T\mathbf{x} + b$ (or its kernel version) and ignores errors smaller than $\epsilon$, the **$\epsilon$-insensitive loss**:
 
-- Effective in high-dimensional spaces, even when the number of features exceeds the number of examples.
-- Memory-efficient at inference (only support vectors matter).
-- **Doesn't scale well** to very large datasets — training is at least quadratic in the number of examples for standard solvers, far worse than [logistic regression](/docs/machine-learning/logistic-regression) or tree-based methods at scale.
-- Mostly superseded by gradient-boosted trees ([XGBoost/LightGBM/CatBoost](/docs/machine-learning/xgboost-lightgbm-catboost)) for tabular data and by deep learning for unstructured data — but still a strong choice for smaller, high-dimensional problems (e.g. text classification with TF-IDF features).
+$$
+L_\epsilon(y, f) = \max\big(0,\; \lvert y - f\rvert - \epsilon\big)
+$$
 
-Next: [K-Nearest Neighbors](/docs/machine-learning/k-nearest-neighbors) — a completely different philosophy: no training phase, no learned boundary at all.
+The objective is $\tfrac12\lVert\mathbf{w}\rVert^2 + C\sum_i L_\epsilon(y_i, f(\mathbf{x}_i))$: a function as flat as possible, with every training point inside a tube of half-width $\epsilon$ around it, paying linearly for points outside. By the same complementary-slackness argument, points strictly inside the tube have zero multipliers, so only points on or outside the tube are support vectors. Compared with squared error, the loss ignores small errors entirely and grows only linearly for large ones, which makes SVR robust to outliers. $\epsilon$ is a third hyperparameter, in the units of the target.
+
+## 7. Probabilities, Many Classes and Scale
+
+**Probabilities.** An SVM outputs a score $f(\mathbf{x})$, not a probability. Platt scaling (1999) fits a one-feature logistic regression on the scores, $P(y = 1 \mid \mathbf{x}) = \sigma(A f(\mathbf{x}) + B)$, using cross-validation so the scores it's fitted on aren't the training scores. scikit-learn's `SVC(probability=True)` does this internally, at the cost of five extra fits; and its `predict_proba` can occasionally disagree with `predict`, since they come from different procedures.
+
+**More than two classes.** SVMs are binary. scikit-learn's `SVC` trains one SVM per pair of classes (**one-vs-one**, $K(K-1)/2$ models) and takes a vote; `LinearSVC` trains one per class against the rest.
+
+**Training cost.** The kernel matrix has $n^2$ entries, and solving the dual takes between about $O(n^2)$ and $O(n^3)$ time. Platt's **SMO** algorithm (1998), the basis of LIBSVM and therefore of scikit-learn's `SVC`, solves it by repeatedly optimizing just two multipliers at a time, which has a closed form, and avoids storing the full matrix. That handles tens of thousands of examples comfortably and hundreds of thousands slowly. Beyond that, two routes:
+
+- **Linear SVMs** don't need the kernel matrix: LIBLINEAR (`LinearSVC`) and SGD train them in roughly linear time, on millions of examples.
+- **Kernel approximations** build an explicit, finite feature map whose dot products approximate the kernel, then train a linear model on it: random Fourier features for the RBF kernel (Rahimi and Recht, 2007) or the Nyström method. In scikit-learn, `RBFSampler` and `Nystroem`.
+
+<GoDeeper title="Go deeper: the SVM and logistic regression are closer than they look">
+
+Write both as "penalty plus loss on the margin $m = y f(\mathbf{x})$":
+
+- Logistic regression: $\tfrac{\lambda}{2}\lVert\mathbf{w}\rVert^2 + \sum_i \log(1 + e^{-m_i})$
+- Soft-margin SVM: $\tfrac12\lVert\mathbf{w}\rVert^2 + C\sum_i \max(0, 1 - m_i)$
+
+Plot the two losses against $m$ and they have almost the same shape: both roughly linear for very negative margins (badly wrong), both going toward zero for large positive margins. The difference is at the right end. The hinge loss reaches exactly zero at $m = 1$, so confidently correct points drop out completely and the solution is sparse in the training points. The log loss only approaches zero, so every point keeps a little influence, the solution is not sparse, and in exchange the score has a probabilistic meaning.
+
+In practice the two usually give very similar linear boundaries and similar accuracy. Choose logistic regression when you need probabilities or coefficients to interpret, and the SVM when the kernel trick or the margin's robustness in high dimensions is the attraction. Kernelized logistic regression exists too, but because it isn't sparse, every training point must be kept for prediction, which is a large part of why the kernel trick became associated with SVMs.
+
+</GoDeeper>
+
+**Scale the features.** Both the margin and the RBF distance are computed in the units of the inputs. A feature measured in thousands dominates the distance and the norm $\lVert\mathbf{w}\rVert$. Standardize every feature, inside a pipeline, before fitting any SVM.
+
+## 8. Minimal Implementation
+
+The soft-margin dual of Sections 3 and 4, solved directly with a general-purpose constrained optimizer, then checked against scikit-learn: first with the linear kernel (recovering $\mathbf{w} = \sum_i\alpha_i y_i\mathbf{x}_i$), then with the RBF kernel by swapping the dot-product matrix for the kernel matrix. Finally a grid over $C$ and $\gamma$:
+
+```python
+import numpy as np
+from scipy.optimize import minimize
+from sklearn.datasets import make_blobs, make_moons
+from sklearn.model_selection import cross_val_score
+from sklearn.svm import SVC
+
+def rbf(A, B, gamma):
+    sq = (A**2).sum(1)[:, None] + (B**2).sum(1)[None, :] - 2 * A @ B.T
+    return np.exp(-gamma * sq)
+
+def fit_svm_dual(K, y, C):
+    """Soft-margin SVM dual: max sum(a) - 1/2 a^T (yy^T * K) a, s.t. 0 <= a <= C, sum(a y) = 0."""
+    n = len(y)
+    Q = (y[:, None] * y[None, :]) * K
+    res = minimize(lambda a: 0.5 * a @ Q @ a - a.sum(), np.zeros(n), jac=lambda a: Q @ a - 1,
+                   bounds=[(0, C)] * n, constraints={"type": "eq", "fun": lambda a: a @ y, "jac": lambda a: y},
+                   method="SLSQP", options={"maxiter": 1000, "ftol": 1e-12})
+    a = res.x
+    on_margin = (a > 1e-6) & (a < C - 1e-6)                    # 0 < a < C: exactly on the margin
+    b = np.mean(y[on_margin] - (a * y) @ K[:, on_margin])
+    return a, b
+
+# Linear SVM on two blobs: recover w from the dual, w = sum_i a_i y_i x_i
+X, y01 = make_blobs(n_samples=80, centers=[[-1.5, -1], [1.5, 1]], cluster_std=1.0, random_state=0)
+y = 2.0 * y01 - 1
+a, b = fit_svm_dual(X @ X.T, y, C=1.0)
+w = (a * y) @ X
+sk = SVC(kernel="linear", C=1.0).fit(X, y)
+print(f"linear, ours:    w = {np.round(w, 3)}, b = {b:.3f}, support vectors = {np.sum(a > 1e-6)}, margin width = {2 / np.linalg.norm(w):.3f}")
+print(f"linear, sklearn: w = {np.round(sk.coef_[0], 3)}, b = {sk.intercept_[0]:.3f}, support vectors = {len(sk.support_)}")
+
+# RBF SVM on two interleaved moons: same dual, kernel matrix instead of dot products
+X, y01 = make_moons(n_samples=150, noise=0.2, random_state=0)
+y = 2.0 * y01 - 1
+a, b = fit_svm_dual(rbf(X, X, 1.0), y, C=1.0)
+grid = np.random.default_rng(0).uniform(-2, 3, size=(500, 2))
+ours = (a * y) @ rbf(X, grid, 1.0) + b
+sk = SVC(kernel="rbf", gamma=1.0, C=1.0).fit(X, y)
+print(f"rbf, largest decision-function gap vs sklearn on 500 new points: {np.abs(ours - sk.decision_function(grid)).max():.1e}")
+print(f"rbf, support vectors: ours {np.sum(a > 1e-6)}, sklearn {len(sk.support_)}")
+
+# How C and gamma trade off: cross-validated accuracy and number of support vectors
+X, y = make_moons(n_samples=400, noise=0.3, random_state=1)
+print("gamma \\ C     0.1          1           10          100")
+for gamma in [0.1, 1, 10, 100]:
+    row = []
+    for C in [0.1, 1, 10, 100]:
+        acc = cross_val_score(SVC(C=C, gamma=gamma), X, y, cv=5).mean()
+        n_sv = len(SVC(C=C, gamma=gamma).fit(X, y).support_)
+        row.append(f"{acc:.3f} ({n_sv:>3})")
+    print(f"{gamma:<6}  " + "  ".join(row))
+```
+
+Output (scikit-learn 1.7, SciPy 1.16):
+
+```
+linear, ours:    w = [1.816 1.208], b = -0.755, support vectors = 8, margin width = 0.917
+linear, sklearn: w = [1.817 1.208], b = -0.755, support vectors = 8
+rbf, largest decision-function gap vs sklearn on 500 new points: 4.6e-04
+rbf, support vectors: ours 51, sklearn 51
+gamma \ C     0.1          1           10          100
+0.1     0.823 (254)  0.832 (165)  0.857 (141)  0.897 (121)
+1       0.870 (196)  0.897 (120)  0.905 ( 98)  0.910 ( 97)
+10      0.900 (320)  0.905 (172)  0.893 (150)  0.870 (127)
+100     0.795 (400)  0.855 (348)  0.807 (322)  0.790 (311)
+```
+
+Reading it:
+
+- **The dual gives the primal (Section 3).** From the $\alpha$ values alone, $\mathbf{w} = \sum_i\alpha_i y_i\mathbf{x}_i$ matches scikit-learn's weights to three decimals, with the same 8 support vectors out of 80 points (the circled points in the figure above). The other 72 have $\alpha = 0$.
+- **The kernel trick is a one-line change (Section 5).** Replacing the dot-product matrix with the RBF kernel matrix, the same solver reproduces scikit-learn's decision function on 500 unseen points to within $5 \times 10^{-4}$, with the same 51 support vectors.
+- **$C$ and $\gamma$ interact.** At $\gamma = 0.1$ the bumps are wide and the model is close to linear, so it needs a large $C$ to fit the curved classes (0.897 at $C = 100$). At $\gamma = 1$ it does well across the board, best at 0.910. At $\gamma = 100$ every training point has its own tiny bump; accuracy falls and almost every point becomes a support vector (400 of 400 at $C = 0.1$), a sign of overfitting and of a slow model. Always search the two together, on a log scale.
+
+## 9. When *Not* to Use an SVM
+
+| Situation | Better choice |
+|---|---|
+| More than about 100,000 examples with a nonlinear kernel | Gradient-boosted trees, or a kernel approximation plus a linear model; exact kernel SVMs scale between $n^2$ and $n^3$ |
+| Tabular data with mixed types and missing values | [XGBoost, LightGBM, CatBoost](/docs/machine-learning/xgboost-lightgbm-catboost), which need no scaling and handle both |
+| You need calibrated probabilities | [Logistic regression](/docs/machine-learning/logistic-regression), or Platt-scaled scores at extra cost |
+| You need to explain the model in terms of features | A linear model; a kernel SVM's decision is a weighted sum of similarities to stored examples |
+| Images, audio, raw text at scale | Neural networks |
+| Many noisy, overlapping classes | Probabilistic models that report uncertainty instead of a hard margin |
+
+SVMs remain a strong choice for small and medium datasets with many features, such as text classification with TF-IDF features, where a linear SVM is fast, accurate and hard to beat, and for problems where a well-chosen kernel encodes domain knowledge (string kernels for sequences, graph kernels for molecules).
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Distance to the boundary | $y_i(\mathbf{w}^T\mathbf{x}_i + b)/\lVert\mathbf{w}\rVert$ |
+| Margin width | $2/\lVert\mathbf{w}\rVert$ after fixing the scale so the nearest points have $y f = 1$ |
+| Hard margin | Minimize $\tfrac12\lVert\mathbf{w}\rVert^2$ subject to $y_i f(\mathbf{x}_i) \ge 1$ |
+| Dual | Data appears only as dot products; $\mathbf{w} = \sum_i\alpha_i y_i\mathbf{x}_i$ |
+| Support vectors | Points with $\alpha_i \gt  0$; all others can move freely without changing the answer |
+| Soft margin | Hinge loss plus L2: $\tfrac12\lVert\mathbf{w}\rVert^2 + C\sum\max(0, 1 - y f)$; $0 \le \alpha_i \le C$ |
+| Kernel trick | Replace $\mathbf{x}_i^T\mathbf{x}_j$ with $K(\mathbf{x}_i, \mathbf{x}_j)$; never build $\phi$ |
+| RBF kernel | $\exp(-\gamma\lVert\mathbf{x} - \mathbf{z}\rVert^2)$; $\gamma$ = reach of each point |
+| $C$ and $\gamma$ | Search together on a log scale; huge $\gamma$ means nearly every point is a support vector |
+| SVR | $\epsilon$-insensitive tube; points inside it don't matter |
+| Practicalities | Standardize features; Platt scaling for probabilities; $O(n^2)$ to $O(n^3)$ training |
+
+---
+
+Next: [K-Nearest Neighbours](/docs/machine-learning/k-nearest-neighbors), which takes the "classify by similarity to stored examples" idea that the RBF kernel hints at, and makes it the whole model.
+
+## Sources
+
+- C. Cortes and V. Vapnik, [Support-Vector Networks](https://doi.org/10.1007/BF00994018), *Machine Learning*, 1995
+- B. E. Boser, I. M. Guyon and V. N. Vapnik, [A Training Algorithm for Optimal Margin Classifiers](https://doi.org/10.1145/130385.130401), COLT 1992
+- J. C. Platt, [Sequential Minimal Optimization: A Fast Algorithm for Training Support Vector Machines](https://www.microsoft.com/en-us/research/publication/sequential-minimal-optimization-a-fast-algorithm-for-training-support-vector-machines/), Microsoft Research Technical Report, 1998
+- J. C. Platt, Probabilistic Outputs for Support Vector Machines and Comparisons to Regularized Likelihood Methods, in *Advances in Large Margin Classifiers*, MIT Press, 1999
+- A. Rahimi and B. Recht, [Random Features for Large-Scale Kernel Machines](https://papers.nips.cc/paper/2007/hash/013a006f03dbc5392effeb8f18fda755-Abstract.html), NeurIPS 2007
+- A. J. Smola and B. Schölkopf, [A Tutorial on Support Vector Regression](https://doi.org/10.1023/B:STCO.0000035301.49549.88), *Statistics and Computing*, 2004
+- C.-C. Chang and C.-J. Lin, [LIBSVM: A Library for Support Vector Machines](https://doi.org/10.1145/1961189.1961199), *ACM TIST*, 2011
+- scikit-learn, [Support Vector Machines](https://scikit-learn.org/stable/modules/svm.html) user guide
