@@ -1,72 +1,291 @@
 ---
 title: "Loss Functions, In Full Depth"
 sidebar_position: 3.6
-description: "Every regression and classification loss derived in full -- what 'training' actually optimizes, and how that choice shapes a model's entire behavior."
+description: "What training actually optimizes: losses as negative log-likelihoods, what MSE, MAE, Huber and quantile losses make a model predict (computed on data with an outlier), why classification uses cross-entropy (with the gradients shown), focal and hinge losses, metric-learning losses for embeddings, and segmentation losses."
 ---
 
 import RegressionLossesDiagram from '../../../viz/diagrams/RegressionLossesDiagram';
-
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Loss Functions, In Full Depth
 
-The loss function is what "training" actually optimizes — everything about a model's behavior (what errors it tolerates, what it's robust to, what its output layer looks like) traces back to this choice. [Activation Functions](/docs/deep-learning/activation-functions) shape what a layer *can* output; the loss function decides what "correct" means.
+[Activation Functions](/docs/deep-learning/activation-functions) decide what a network *can* output. The **loss function** decides what it *should* output: it's the single number that gradient descent makes smaller, so everything a trained model does, which errors it tolerates, what it does with outliers, whether its probabilities can be trusted, traces back to this choice. This page starts from the idea that unifies most losses, that a loss is a negative log-likelihood under some assumption about the noise, then goes through the regression losses and shows, by computing it, what each one makes a model predict. It explains why classifiers use cross-entropy rather than squared error, with the gradients that make the difference, and covers losses for imbalanced classes, for learning embeddings, and for segmentation.
 
-## Regression Losses
+<ELI5>
+
+Imagine a darts coach who has to score your throws. One coach says "the penalty is the distance from the bullseye, squared", so one wild throw into the wall costs more than ten slightly-off throws together. Another says "the penalty is the plain distance", so the wild throw counts, but only as much as its distance. A third only cares whether you hit the board at all.
+
+You'll learn to throw differently depending on the coach. Under the first, you'll play it very safe to avoid any disaster. Under the second, you'll aim at where most of your throws land and accept the occasional miss.
+
+A loss function is the coach. The network learns whatever the coach rewards, not what you hoped it would learn. Everything below is the major coaches, made exact, and what each one teaches.
+
+</ELI5>
+
+## 1. Where Losses Come From
+
+Most standard losses aren't arbitrary. They come from one recipe: assume the target $y$ is the model's prediction plus some kind of noise, then choose the parameters that make the observed data most probable. That's **maximum likelihood estimation**, and maximizing a likelihood is the same as minimizing its negative logarithm:
+
+$$
+\text{loss} = -\log p(y \mid \mathbf{x}; \theta)
+$$
+
+Different noise assumptions give different losses:
+
+| Assumption about the target | Negative log-likelihood is | Loss |
+|---|---|---|
+| Gaussian noise around the prediction | $\tfrac{1}{2\sigma^2}(y - \hat{y})^2 + \text{const}$ | Mean squared error |
+| Laplace noise (heavier tails) | $\tfrac{1}{b}\lvert y - \hat{y} \rvert + \text{const}$ | Mean absolute error |
+| A coin flip with probability $p$ | $-[y \log p + (1-y)\log(1-p)]$ | Binary cross-entropy |
+| One of $K$ classes with probabilities $\mathbf{p}$ | $-\log p_{\text{true class}}$ | Categorical cross-entropy |
+
+This view answers practical questions. Why does MSE hate outliers? Because Gaussian noise almost never produces them, so the model contorts itself to explain them. Why are cross-entropy outputs interpretable as probabilities? Because the loss was derived by treating them as probabilities. [Linear Regression](/docs/machine-learning/linear-regression) derives the Gaussian case in full.
+
+**The limitation** of the recipe is that it assumes you know the noise. When you don't, or when the costs of different errors aren't symmetric, you choose a loss for the behaviour you want instead, which is most of the rest of this page.
+
+## 2. Losses for Predicting Numbers
+
+### Regression Losses
 
 <RegressionLossesDiagram />
 
-**Mean Squared Error (MSE)**: $\frac{1}{n}\sum(\hat{y}-y)^2$ — the default, derived and used throughout [Linear Regression](/docs/machine-learning/linear-regression#2-the-cost-function-mean-squared-error). Quadratic growth means large errors are penalized disproportionately — sensitive to outliers, for better (forces the model to address big misses) or worse (a few bad data points can dominate training).
+Write $e = \hat{y} - y$ for the error.
 
-**Mean Absolute Error (MAE)**: $\frac{1}{n}\sum|\hat{y}-y|$ — linear penalty, far more robust to outliers than MSE (one huge error contributes proportionally, not quadratically). Tradeoff: its gradient has constant magnitude regardless of error size (like [Lasso's L1 penalty](/docs/machine-learning/lasso-regression#why-l1-produces-exact-zeros-and-l2-doesnt)), which can make final convergence near the optimum less precise than MSE's naturally-shrinking gradient.
+**Mean squared error (MSE)**, $\frac{1}{n}\sum e^2$. The default. Its gradient, $2e$, shrinks as the error shrinks, so it converges smoothly. Because the penalty grows with the square, one error of 10 costs as much as a hundred errors of 1, so outliers dominate it.
 
-**Huber Loss**: quadratic (like MSE) for small errors, linear (like MAE) beyond a threshold $\delta$ — the smooth compromise: sensitive enough to small errors to converge precisely, robust enough to large errors (outliers) to not be dominated by them. The chart above shows exactly this — Huber (gold) hugs MSE near zero and MAE far from zero.
+**Mean absolute error (MAE)**, $\frac{1}{n}\sum \lvert e \rvert$. Linear penalty, far more robust to outliers. Its gradient is $\pm 1$ whatever the error's size, which makes it robust (a huge error pulls no harder than a small one) and also makes convergence near the optimum less precise, since the step doesn't shrink as you approach it.
 
-**Log-Cosh Loss**: $\sum \log(\cosh(\hat{y}-y))$ — smoothly approximates Huber (visibly almost identical in the chart) but is twice-differentiable everywhere, which some second-order optimization methods require.
+**Huber loss** is quadratic for small errors and linear beyond a threshold $\delta$:
 
-**Quantile Loss**: $\sum \max(\tau(\hat{y}-y),\ (\tau-1)(\hat{y}-y))$ — asymmetric: penalizes over- and under-prediction differently based on $\tau \in (0,1)$. Used to predict a specific quantile of the target distribution rather than its mean — e.g. $\tau=0.9$ trains a model to predict a value only exceeded 10% of the time, useful for forecasting under uncertainty (see [Time Series](/docs/deep-learning/sequence-models)) where you want a upper/lower bound, not just a point estimate.
+$$
+L_\delta(e) =
+\begin{cases}
+\tfrac{1}{2} e^2 & \lvert e \rvert \le \delta \\
+\delta\big(\lvert e \rvert - \tfrac{1}{2}\delta\big) & \lvert e \rvert > \delta
+\end{cases}
+$$
 
-## Classification Losses
+It's precise near the optimum like MSE and robust to outliers like MAE. In the chart, Huber hugs MSE near zero and runs parallel to MAE further out. **Log-cosh**, $\log \cosh(e)$, has nearly the same shape and is smooth everywhere.
 
-**Binary Cross-Entropy (BCE)**: the loss behind [Logistic Regression](/docs/machine-learning/logistic-regression#the-cost-function-binary-cross-entropy) — derived there in full, including why it's convex (unlike MSE-on-sigmoid) and why it's exactly Maximum Likelihood Estimation for a Bernoulli target.
+**Quantile (pinball) loss** penalizes over- and under-prediction differently:
 
-**Categorical Cross-Entropy (CCE)**: BCE's generalization to more than two classes, paired with a [softmax](/docs/deep-learning/activation-functions#auxiliary-functions) output: $-\sum_c y_c \log(\hat{p}_c)$, where $y$ is a one-hot vector. This is the loss behind essentially every multi-class classifier's output layer.
+$$
+L_\tau(y, \hat{y}) = \max\big(\tau (y - \hat{y}),\; (\tau - 1)(y - \hat{y})\big), \qquad \tau \in (0, 1)
+$$
 
-**Sparse Categorical Cross-Entropy**: mathematically identical to CCE, just a different *input format* — takes the true class as an integer index (e.g. `3`) instead of a one-hot vector (`[0,0,0,1,0]`). Purely an implementation convenience (saves memory/computation for large class counts, like an LLM's vocabulary — see [Foundation Model Internals](/docs/llms-genai/foundation-model-internals#embeddings)) — not a different loss.
+Under-predicting costs $\tau$ per unit, over-predicting $1 - \tau$. With $\tau = 0.9$, under-predicting is nine times as costly, so the model learns to predict a value that the target exceeds only 10% of the time. Training several quantiles gives prediction intervals instead of single numbers, which is how many demand and [time-series forecasting](/docs/machine-learning/time-series-forecasting) systems express uncertainty.
 
-**Focal Loss**: $-\alpha(1-\hat{p})^\gamma \log(\hat{p})$ — CCE with a modulating factor that *down-weights* easy, already-well-classified examples (where $\hat{p}$ is already close to 1) and keeps full weight on hard/misclassified ones. Designed specifically for severe class imbalance (e.g. object detection, where "background" vastly outnumbers actual objects — see [Object Detection](/docs/deep-learning/cnns)) — without it, the easy majority class dominates the gradient and the model barely learns the rare class.
+## 3. What Each Regression Loss Predicts
 
-**Hinge Loss**: $\max(0,\ 1 - y\cdot\hat{y})$ (with $y \in \{-1,+1\}$) — the loss behind [Support Vector Machines](/docs/machine-learning/supervised-learning#support-vector-machines). Unlike cross-entropy, it doesn't just want the correct side of the boundary — it wants a *margin*: zero loss only once a prediction is correct *and* confidently past the boundary by at least 1 unit.
+The cleanest way to see the difference is to strip the model away. Fit a single constant $c$ to six numbers, five ordinary and one outlier, under each loss, and see which $c$ each loss prefers:
 
-**KL Divergence**: covered in depth in [Probability & Statistics](/docs/mathematics-for-ai/probability-statistics#entropy-cross-entropy-and-kl-divergence) — measures how much one distribution diverges from another. Used directly as a training loss in VAEs (regularizing the latent distribution toward a prior) and in RLHF/DPO to keep a fine-tuned model close to its base policy (see [Training Pipeline](/docs/llms-genai/training-pipeline#rlhf-reinforcement-learning-from-human-feedback)).
+```python
+import torch
+import torch.nn.functional as F
 
-## Metric Learning Losses
+# 1. What each regression loss makes a model predict: fit a single constant c to data with one outlier.
+y = torch.tensor([10.0, 11.0, 12.0, 13.0, 14.0, 100.0])
+losses = {
+    "MSE":           lambda c: ((c - y) ** 2).mean(),
+    "MAE":           lambda c: (c - y).abs().mean(),
+    "Huber (d=1)":   lambda c: F.huber_loss(c.expand_as(y), y, delta=1.0),
+    "Quantile 0.9":  lambda c: torch.maximum(0.9 * (y - c), (0.9 - 1) * (y - c)).mean(),
+}
+for name, loss in losses.items():
+    c = torch.tensor(0.0, requires_grad=True)
+    opt = torch.optim.Adam([c], lr=0.5)
+    for _ in range(3000):
+        opt.zero_grad(); loss(c).backward(); opt.step()
+    print(f"{name:13s} best constant = {c.item():6.2f}")
+print(f"mean = {y.mean():.2f}; the two middle values are 12 and 13")
 
-These don't train a classifier directly — they train an **embedding space** where distance means semantic similarity, the exact property [RAG](/docs/llms-genai/rag) depends on for retrieval.
+# 2. Why classification uses cross-entropy, not squared error: the gradient for a confidently wrong answer.
+z = torch.tensor(-6.0, requires_grad=True)            # logit; sigmoid(-6) = 0.0025, but the label is 1
+for name, fn in [("cross-entropy", lambda p: -torch.log(p)), ("squared error", lambda p: (p - 1) ** 2)]:
+    (g,) = torch.autograd.grad(fn(torch.sigmoid(z)), z)
+    print(f"{name:13s} dLoss/dlogit = {g.item():+.4f}")
+```
 
-**Contrastive Loss**: given a pair of examples labeled "similar" or "dissimilar," pulls similar pairs' embeddings together and pushes dissimilar pairs' embeddings apart (beyond some margin).
+```text
+MSE           best constant =  26.67
+MAE           best constant =  12.68
+Huber (d=1)   best constant =  12.50
+Quantile 0.9  best constant =  99.98
+mean = 26.67; the two middle values are 12 and 13
+cross-entropy dLoss/dlogit = -0.9975
+squared error dLoss/dlogit = -0.0049
+```
 
-**Triplet Loss**: takes three examples at once — an anchor, a positive (similar to anchor), a negative (dissimilar) — and trains so the anchor-positive distance is smaller than the anchor-negative distance by at least a margin: $\max(0,\ d(a,p) - d(a,n) + \text{margin})$. This is literally how most modern text/image embedding models (the ones powering RAG's vector search) are trained.
+The first five lines are a precise statement of what each loss *means*:
 
-**Cosine Embedding Loss**: like contrastive loss, but measured with cosine similarity (see [Linear Algebra](/docs/mathematics-for-ai/linear-algebra#vectors)) instead of Euclidean distance — the natural choice when embeddings will later be compared by cosine similarity at inference time anyway (as in most vector databases, see [Vector Databases](/docs/databases/roadmap)).
+- **MSE predicts the mean**, 26.67, which isn't close to any of the data: the outlier at 100 has dragged it up. Setting the derivative $\sum 2(c - y_i)$ to zero gives $c = \bar{y}$ exactly.
+- **MAE predicts a median.** Any value between the two middle points, 12 and 13, minimizes it (the optimizer stopped at 12.68). The outlier only counts as "one point above"; its size is irrelevant.
+- **Huber lands near the median** (12.50), because with $\delta = 1$ the outlier is far in the linear region.
+- **The 0.9 quantile predicts the top of the data**, because with six points only the largest has at most 10% of the data above it.
 
-**ArcFace Loss**: adds an angular margin directly inside the softmax computation, used heavily in face recognition — produces embeddings with unusually tight, well-separated clusters per identity/class.
+A network trained with these losses behaves the same way, per input: MSE learns the conditional mean, MAE the conditional median, the quantile loss the conditional quantile. Choose the loss by which of those you actually want to predict.
 
-**Center Loss**: adds a penalty pulling each example's embedding toward a learned "center" for its class, used alongside (not instead of) softmax/cross-entropy — improves intra-class compactness of the embedding space.
+The last two lines are the subject of the next section.
 
-## Segmentation Losses
+<PredictFirst
+  question="A delivery-time model is trained with MSE. A few deliveries took ten times longer than usual because of storms. What happens to its predictions on ordinary days?"
+  options={[
+    'Nothing; MSE ignores rare cases',
+    'They are pulled upwards, because MSE predicts the mean and the storm days raise it',
+    'They are pulled downwards',
+    'They become the median delivery time',
+  ]}
+  correctIndex={1}
+  explanation="MSE's optimum is the conditional mean, and a handful of very large values moves a mean a lot. If the business wants the typical delivery time, MAE or Huber (median-like) fits better; if it wants a time it will rarely exceed, a high quantile does."
+/>
 
-Pixel-wise classification (see [Image Segmentation](/docs/deep-learning/cnns)) has its own loss family, because plain per-pixel cross-entropy handles severe foreground/background imbalance poorly (most pixels in a medical scan, say, are "not the tumor").
+## 4. Losses for Predicting Classes
 
-**Dice Loss**: $1 - \frac{2|P \cap G|}{|P|+|G|}$ — derived from the Dice coefficient, which measures overlap between the predicted mask $P$ and ground truth $G$. Directly optimizes for overlap rather than per-pixel accuracy, which is far more robust to class imbalance than cross-entropy.
+### Classification Losses
 
-**IoU Loss**: $1 - \frac{|P \cap G|}{|P \cup G|}$ — same spirit as Dice, using Intersection-over-Union instead. IoU is also the standard *evaluation* metric for segmentation/detection, so training on it directly optimizes what will actually be measured.
+**Binary cross-entropy (BCE)** pairs with a sigmoid output $p = \sigma(z)$:
 
-**Tversky Loss**: generalizes Dice with separate weights on false positives vs. false negatives — lets you explicitly trade off precision vs. recall (see [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics#classification-metrics)) depending on which error type is more costly (e.g. in medical imaging, missing a tumor is usually worse than a false alarm).
+$$
+L = -\big[\,y \log p + (1 - y)\log(1 - p)\,\big]
+$$
 
-**Focal Tversky Loss**: combines Tversky's precision/recall weighting with Focal Loss's focus on hard examples — used when segmentation targets are both imbalanced *and* hard to distinguish.
+It's the negative log-likelihood of a coin flip, and [Logistic Regression](/docs/machine-learning/logistic-regression#the-cost-function-binary-cross-entropy) derives it, including why it's convex there.
 
-## Choosing a Loss: The General Principle
+**Why not squared error on the probability?** Look at the gradients with respect to the logit $z$. For cross-entropy with a sigmoid, the sigmoid's slope cancels:
 
-A loss function encodes what mistakes you consider worse than others. MSE says "big errors are much worse than small ones." MAE says "all errors matter proportionally." Focal loss says "easy examples don't need more attention." Triplet loss says "I don't care about absolute position, only relative distance." Before reaching for a default, ask what a *bad* prediction actually costs in the real application — that answer usually points directly at the right loss.
+$$
+\frac{\partial L_\text{CE}}{\partial z} = p - y
+$$
 
-Next: [Optimizers](/docs/deep-learning/optimizers) — how the gradient of whichever loss you pick actually gets turned into a weight update.
+For squared error, it doesn't:
+
+$$
+\frac{\partial}{\partial z}(p - y)^2 = 2(p - y)\, p\,(1 - p)
+$$
+
+When the model is confidently wrong ($y = 1$ but $p \approx 0$), the factor $p(1-p)$ is nearly zero, so squared error gives almost no gradient exactly when the model most needs correcting. The script above shows it: at a logit of $-6$, cross-entropy's gradient is $-0.998$ and squared error's is $-0.005$, two hundred times smaller. Cross-entropy also penalizes confident mistakes without bound ($-\log p \to \infty$ as $p \to 0$), which pushes the model towards calibrated probabilities.
+
+**Categorical cross-entropy** generalizes to $K$ classes with a [softmax](/docs/deep-learning/activation-functions#auxiliary-functions) output:
+
+$$
+L = -\sum_{c=1}^{K} y_c \log p_c = -\log p_{\text{true class}}
+$$
+
+The gradient with respect to the logits is again $\mathbf{p} - \mathbf{y}$. **Sparse** categorical cross-entropy is the same loss with the label given as a class index rather than a one-hot vector; it's purely a storage convenience, and it's how a language model's next-token loss is computed over a vocabulary of a hundred thousand or more tokens. In PyTorch, `F.cross_entropy` takes raw logits and fuses softmax and log for numerical stability.
+
+**Label smoothing** replaces the one-hot target with, say, 0.9 on the true class and the remaining 0.1 spread over the others. It stops the model from pushing logits to infinity to drive the loss to zero, which tends to improve calibration and generalization.
+
+**Focal loss** (Lin et al., 2017) handles severe class imbalance by down-weighting examples the model already gets right:
+
+$$
+L_\text{focal} = -\alpha\,(1 - p_t)^{\gamma} \log p_t
+$$
+
+where $p_t$ is the probability assigned to the true class. With $\gamma = 2$, an easy example at $p_t = 0.9$ is down-weighted 100-fold, while a hard one at $p_t = 0.1$ keeps most of its weight. In object detection, where tens of thousands of easy background positions would otherwise swamp a handful of objects, it made one-stage detectors as accurate as two-stage ones ([Vision Architectures](/docs/deep-learning/vision-architectures)).
+
+**Hinge loss**, $\max(0,\, 1 - y \hat{y})$ with labels $y \in \{-1, +1\}$, is the [support vector machine](/docs/machine-learning/support-vector-machines) loss. It's zero once a prediction is correct *by a margin* of at least 1, and doesn't care how far beyond. It gives no probabilities, but encourages a large margin.
+
+**KL divergence**, $D_\text{KL}(P \,\|\, Q) = \sum_i P_i \log (P_i / Q_i)$, measures how far a predicted distribution $Q$ is from a target distribution $P$ ([Probability & Statistics](/docs/mathematics-for-ai/probability-statistics#entropy-cross-entropy-and-kl-divergence)). Cross-entropy equals KL divergence plus the target's entropy, so with fixed targets minimizing one minimizes the other. KL appears on its own in [knowledge distillation](/docs/llms-genai/training-pipeline) (match a teacher's full distribution), in variational autoencoders, and as the penalty that keeps an RLHF-tuned model close to its starting point.
+
+## 5. Losses for Embeddings
+
+Some models aren't trained to output a label at all, but an **embedding**: a vector where distance means similarity. Face recognition, image search, and the text embedding models behind [RAG](/docs/llms-genai/rag) all work this way. The losses only care about *relative* distances.
+
+**Contrastive loss** (Hadsell et al., 2006) takes pairs: pull a similar pair's embeddings together, push a dissimilar pair apart until they're at least a margin $m$ away.
+
+**Triplet loss** (Schroff et al., 2015, FaceNet) takes an anchor $a$, a positive $p$ and a negative $n$:
+
+$$
+L = \max\big(0,\; d(a, p) - d(a, n) + m\big)
+$$
+
+The anchor must be closer to the positive than to the negative by at least $m$. Training quality depends heavily on choosing *hard* negatives; random ones are usually already far away and contribute nothing.
+
+**InfoNCE** is how most current embedding models are trained. For each anchor in a batch, its positive must score highest among all candidates, with every other example in the batch serving as a negative:
+
+$$
+L = -\log \frac{\exp(\operatorname{sim}(a, p)/\tau)}{\sum_{j} \exp(\operatorname{sim}(a, x_j)/\tau)}
+$$
+
+It's softmax cross-entropy over similarities, with temperature $\tau$. CLIP trains image and text encoders this way on image-caption pairs, and text embedding models use it on query-passage pairs. Large batches supply more negatives, which is one reason these models are trained with very large batches.
+
+**ArcFace** and related losses add an angular margin inside the softmax, giving very tight per-identity clusters in face recognition.
+
+## 6. Segmentation Losses
+
+Pixel-wise classification has its own problem: in a medical scan, the tumour may be 1% of the pixels, so a model that predicts "no tumour" everywhere scores 99% per-pixel accuracy and low cross-entropy. Segmentation losses measure overlap instead.
+
+**Dice loss** compares the predicted mask $P$ with the ground truth $G$:
+
+$$
+L_\text{Dice} = 1 - \frac{2\,\lvert P \cap G \rvert}{\lvert P \rvert + \lvert G \rvert}
+$$
+
+With soft predictions, $\lvert P \cap G \rvert$ becomes $\sum_i p_i g_i$, which is differentiable. Because it's a ratio, a small structure counts as much as a large one. **IoU (Jaccard) loss** is the same idea with intersection over union, the metric segmentation is usually evaluated with. **Tversky loss** weights false positives and false negatives separately, so you can say that missing a tumour is worse than a false alarm. In practice, segmentation models often train on cross-entropy plus Dice together: cross-entropy for stable per-pixel gradients, Dice for the imbalance.
+
+<GoDeeper title="Go deeper: the loss you train on versus the metric you report">
+
+The metric you care about (accuracy, F1, IoU, revenue) is often not something gradient descent can optimize directly: accuracy is a step function of the predictions, with zero gradient almost everywhere. So you train on a smooth **surrogate** loss and report the metric separately.
+
+That gap has consequences.
+
+- **Loss and metric can disagree.** Validation cross-entropy can rise while accuracy keeps improving, because the model is becoming overconfident on the examples it gets wrong. Early-stopping on the loss and early-stopping on the metric can pick different checkpoints.
+- **Thresholds are a separate decision.** Cross-entropy trains probabilities; turning them into decisions at a threshold of 0.5 is a choice you should make on validation data for the precision and recall you need ([Model Evaluation](/docs/machine-learning/model-evaluation-metrics#classification-metrics)).
+- **Class weights change the estimate.** Weighting the rare class up improves recall but makes predicted probabilities no longer calibrated frequencies. If you need real probabilities, train unweighted and adjust the threshold instead, or recalibrate afterwards.
+
+</GoDeeper>
+
+## 7. Choosing a Loss
+
+A loss encodes which mistakes you consider worse. MSE says big errors are disproportionately bad. MAE says every unit of error costs the same. A quantile loss says over- and under-prediction cost different amounts. Focal loss says easy examples need no more attention. Triplet loss says only relative distances matter. Before taking a default, ask what a bad prediction costs in the real application; the answer usually points at the loss.
+
+| Task | Default | Switch when |
+|---|---|---|
+| Regression | MSE | Outliers in the targets: Huber or MAE; asymmetric costs: quantile |
+| Binary classification | BCE on logits | Severe imbalance: class weights or focal loss |
+| Multi-class classification | Cross-entropy on logits | Overconfidence: add label smoothing |
+| Language modelling | Token-level cross-entropy | Distilling a teacher: add a KL term to its distribution |
+| Embeddings and retrieval | InfoNCE with in-batch negatives | Few classes with many examples each: triplet loss with hard negatives |
+| Segmentation | Cross-entropy plus Dice | Unequal error costs: Tversky |
+
+## 8. When *Not* to Use Each
+
+| Situation | Better choice |
+|---|---|
+| MSE on targets with heavy outliers or long tails | Huber, MAE, or MSE on a log-transformed target |
+| Squared error on a sigmoid or softmax output | Cross-entropy, whose gradient doesn't vanish when confidently wrong |
+| Softmax cross-entropy for multi-label problems | Independent binary cross-entropy per label |
+| Applying softmax, then log, then a separate loss | A fused cross-entropy on raw logits, for numerical stability |
+| Plain per-pixel cross-entropy for tiny segmentation targets | Add Dice or Tversky loss |
+| Class weighting when calibrated probabilities matter | Train unweighted; move the decision threshold instead |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Losses as likelihoods | Loss = negative log-likelihood; Gaussian gives MSE, Laplace gives MAE, Bernoulli gives BCE |
+| MSE | Predicts the conditional mean; outliers dominate it |
+| MAE | Predicts the conditional median; robust, with a constant-size gradient |
+| Huber | MSE near zero, MAE far away; precise and robust |
+| Quantile | Asymmetric penalty; predicts the chosen quantile, for intervals |
+| Cross-entropy | Gradient $\mathbf{p} - \mathbf{y}$ on logits; doesn't vanish when confidently wrong |
+| Focal | Down-weights easy examples for extreme imbalance |
+| Embedding losses | Contrastive, triplet, InfoNCE: only relative distances matter |
+| Segmentation | Dice, IoU, Tversky measure overlap, robust to tiny foregrounds |
+| Surrogates | You train on a smooth loss and report a metric; they can disagree |
+
+---
+
+Next: [Optimizers](/docs/deep-learning/optimizers), how the gradient of whichever loss you pick becomes a weight update.
+
+## Sources
+
+- Goodfellow, Bengio and Courville, [Deep Learning](https://www.deeplearningbook.org/), sections 5.5 and 6.2 (2016), on maximum likelihood and output units
+- Huber, [Robust Estimation of a Location Parameter](https://projecteuclid.org/journals/annals-of-mathematical-statistics/volume-35/issue-1/Robust-Estimation-of-a-Location-Parameter/10.1214/aoms/1177703732.full) (1964)
+- Koenker and Bassett, [Regression Quantiles](https://www.jstor.org/stable/1913643) (1978)
+- Lin et al., [Focal Loss for Dense Object Detection](https://arxiv.org/abs/1708.02002) (2017)
+- Szegedy et al., [Rethinking the Inception Architecture](https://arxiv.org/abs/1512.00567) (2016), label smoothing
+- Schroff, Kalenichenko and Philbin, [FaceNet](https://arxiv.org/abs/1503.03832) (2015)
+- van den Oord, Li and Vinyals, [Representation Learning with Contrastive Predictive Coding](https://arxiv.org/abs/1807.03748) (2018), InfoNCE
+- Radford et al., [Learning Transferable Visual Models From Natural Language Supervision](https://arxiv.org/abs/2103.00020) (2021), CLIP
+- Milletari, Navab and Ahmadi, [V-Net](https://arxiv.org/abs/1606.04797) (2016), Dice loss
