@@ -1,61 +1,347 @@
 ---
 title: "XGBoost, LightGBM & CatBoost, In Full Depth"
 sidebar_position: 5.4
-description: "Three real gradient boosting implementations compared: XGBoost's regularized second-order objective, LightGBM's speed tricks, CatBoost's categorical handling."
+description: "The three production gradient-boosting libraries derived: XGBoost's regularized second-order objective with the optimal leaf weight and split gain worked out, histogram splits and missing values, LightGBM's leaf-wise growth, GOSS and feature bundling, CatBoost's ordered target statistics and ordered boosting, a from-scratch XGBoost tree checked against the library, and a three-way comparison on data with a 500-level categorical feature."
 ---
 
-
 import TreeGrowthStrategyDiagram from '../../../viz/diagrams/TreeGrowthStrategyDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # XGBoost, LightGBM & CatBoost, In Full Depth
 
-[Gradient Boosting](/docs/machine-learning/boosting) is an algorithm. XGBoost, LightGBM, and CatBoost are three separate, highly-engineered *implementations* of it — each making different systems and algorithmic tradeoffs, and each dominant in different situations. Together, they're the reason gradient boosting is still the strongest off-the-shelf method for tabular data, even in the deep learning era.
+[Boosting](/docs/machine-learning/boosting) derived gradient boosting: each new tree is fitted to the negative gradient of the loss, and its leaf values are re-solved for the best step. XGBoost, LightGBM and CatBoost are the three libraries that turned that algorithm into the default method for tabular data. Each changes the algorithm, not only the engineering. This page derives XGBoost's objective, which chooses splits using second derivatives and a penalty on the tree itself, then the tricks that make split-finding fast, LightGBM's changes to how trees grow and which rows and features they see, and CatBoost's fix for a subtle leak in how categorical features are usually encoded. Two experiments check the derivations: a from-scratch XGBoost that reproduces the library's training predictions to $10^{-6}$, and the three libraries side by side on data with a 500-level categorical feature.
 
-## XGBoost (eXtreme Gradient Boosting)
+<ELI5>
 
-The implementation that made gradient boosting a Kaggle-competition staple. Its core additions beyond [vanilla gradient boosting](/docs/machine-learning/boosting#gradient-boosting-the-general-framework):
+Three car makers start from the same engine design. One adds a better fuel-injection system and careful tuning, so every drop of fuel goes further. One redesigns the engine to rev faster and cut weight, so it's the quickest on a long highway. One adds a gearbox that handles rough, unusual roads that make the other two stall.
 
-- **Regularized objective**: adds an explicit penalty on tree complexity directly into the loss being optimized — $\Omega(f) = \gamma T + \frac{1}{2}\lambda\sum w_j^2$, where $T$ is the number of leaves and $w_j$ are leaf output values. This is [L2 regularization](/docs/machine-learning/ridge-regression#the-ridge-cost-function) applied to leaf weights, plus a penalty per leaf — controlling overfitting directly in the objective rather than only through hyperparameter limits.
-- **Second-order optimization**: instead of fitting trees to just the gradient (first derivative) of the loss, XGBoost uses a second-order (Newton's method style) approximation — using both the gradient *and* the Hessian (second derivative, see [Calculus & Optimization](/docs/mathematics-for-ai/calculus-optimization)) to choose splits and leaf values more precisely, converging in fewer rounds.
-- **Built-in handling of missing values**: learns, per split, which direction (left or right) missing values should default to, rather than requiring imputation beforehand.
-- **Systems engineering**: parallelized split-finding (evaluate candidate splits across features simultaneously), cache-aware memory access, and out-of-core computation for datasets too large for memory — a large fraction of XGBoost's real-world speed advantage is pure engineering, not algorithmic novelty.
+XGBoost, LightGBM and CatBoost all start from the same gradient boosting engine. XGBoost uses more information at each step and penalizes complicated trees. LightGBM is built for speed on very large data. CatBoost is built for data full of categories, like city names or product codes. Everything below is what each one changed, made exact.
 
-## LightGBM (Light Gradient Boosting Machine)
+</ELI5>
 
-Built for speed and scale, with two specific algorithmic innovations:
+## 1. XGBoost's Objective, Derived
 
-- **Leaf-wise (best-first) tree growth**: standard tree growth (including XGBoost's default) is *level-wise* — grow every leaf at the current depth before going deeper. LightGBM instead always splits whichever single leaf would reduce loss the most, regardless of depth — often reaches lower loss with fewer splits, at the cost of trees that can grow unbalanced and overfit more easily on small datasets (mitigated with a `max_depth` cap in practice). Real per-leaf gain values, same split budget, two different orders:
+Plain gradient boosting fits each tree to the gradient, then fixes up the leaf values afterwards. XGBoost (Chen and Guestrin, 2016) instead writes down one objective for the new tree, including a penalty on the tree's complexity, and derives both the splits and the leaf values from it.
+
+At round $t$, the model is $F_{t-1}$ plus a new tree $f_t$. The objective is the training loss plus a regularizer on the tree:
+
+$$
+\mathcal{L}^{(t)} = \sum_{i=1}^{n} L\big(y_i,\; F_{t-1}(\mathbf{x}_i) + f_t(\mathbf{x}_i)\big) + \Omega(f_t), \qquad \Omega(f) = \gamma T + \frac{\lambda}{2}\sum_{j=1}^{T} w_j^2
+$$
+
+where the tree has $T$ leaves and leaf $j$ outputs the value $w_j$. The penalty charges $\gamma$ per leaf and an L2 penalty $\lambda$ on the leaf values, the same penalty as [ridge](/docs/machine-learning/ridge-regression#the-ridge-cost-function), applied to leaves.
+
+**Step 1: a second-order Taylor expansion.** For each example, expand the loss around the current prediction $F_{t-1}(\mathbf{x}_i)$, with the new tree's output as the small step:
+
+$$
+L(y_i, F_{t-1} + f) \approx L(y_i, F_{t-1}) + g_i f + \tfrac12 h_i f^2, \qquad g_i = \frac{\partial L}{\partial F}, \quad h_i = \frac{\partial^2 L}{\partial F^2}
+$$
+
+evaluated at $F_{t-1}(\mathbf{x}_i)$. For log loss, $g_i = p_i - y_i$ and $h_i = p_i(1 - p_i)$, the gradient and curvature from [logistic regression](/docs/machine-learning/logistic-regression#deriving-the-gradient). For squared error, $g_i = F - y_i$ and $h_i = 1$. Dropping the first term, which doesn't depend on the new tree:
+
+$$
+\mathcal{L}^{(t)} \approx \sum_{i}\left[g_i f_t(\mathbf{x}_i) + \tfrac12 h_i f_t(\mathbf{x}_i)^2\right] + \gamma T + \frac{\lambda}{2}\sum_j w_j^2
+$$
+
+**Step 2: group by leaf.** Every example in leaf $j$ gets the same output $w_j$. Let $G_j = \sum_{i \in j} g_i$ and $H_j = \sum_{i \in j} h_i$ be the sums of gradients and curvatures in that leaf. The objective separates into one quadratic per leaf:
+
+$$
+\mathcal{L}^{(t)} \approx \sum_{j=1}^{T}\left[G_j w_j + \tfrac12 (H_j + \lambda) w_j^2\right] + \gamma T
+$$
+
+**Step 3: the best leaf value.** Each quadratic is minimized where its derivative $G_j + (H_j + \lambda)w_j$ is zero:
+
+$$
+w_j^* = -\frac{G_j}{H_j + \lambda}
+$$
+
+This is a Newton step for the leaf, the same as the log-loss leaf value on the [Boosting page](/docs/machine-learning/boosting), with $\lambda$ added to the denominator. $\lambda$ shrinks leaves with little curvature (few examples, or examples the model is already sure of) toward zero.
+
+**Step 4: the score of a tree shape.** Substitute $w_j^*$ back in. Each leaf contributes $G_j\cdot\left(-\tfrac{G_j}{H_j+\lambda}\right) + \tfrac12(H_j+\lambda)\tfrac{G_j^2}{(H_j+\lambda)^2} = -\tfrac12\tfrac{G_j^2}{H_j+\lambda}$, so for a fixed tree shape the best achievable objective is
+
+$$
+\mathcal{L}^* = -\frac12\sum_{j=1}^{T}\frac{G_j^2}{H_j + \lambda} + \gamma T
+$$
+
+**Step 5: the gain of a split.** Splitting a leaf with sums $G, H$ into children $(G_L, H_L)$ and $(G_R, H_R)$ changes $\mathcal{L}^*$ by the difference of those terms, plus one more leaf's $\gamma$:
+
+$$
+\text{Gain} = \frac12\left[\frac{G_L^2}{H_L + \lambda} + \frac{G_R^2}{H_R + \lambda} - \frac{(G_L + G_R)^2}{H_L + H_R + \lambda}\right] - \gamma
+$$
+
+That's XGBoost's split criterion. It replaces Gini or variance reduction with a score derived from the loss itself, so it's correct for any twice-differentiable loss. And the penalty is built in: a split is only made if its gain exceeds $\gamma$, so $\gamma$ acts as pruning, and $\lambda$ damps the gain of splits whose children have little curvature. The parameter `min_child_weight` is a lower limit on $H$ in each child; for squared error, where $h_i = 1$, it's simply a minimum number of examples per leaf.
+
+The derivation also explains what's fitted: there is no residual target anywhere. Each tree is built directly from the $(g_i, h_i)$ pairs, which is why XGBoost and its successors accept any custom loss for which you can supply a gradient and a second derivative.
+
+## 2. Finding Splits Fast
+
+The gain formula needs $G_L$ and $H_L$ for every candidate threshold. The **exact greedy** method sorts each feature and sweeps the threshold, accumulating $g$ and $h$, exactly like the sweep on the [Decision Trees page](/docs/machine-learning/decision-tree): $O(n\log n)$ per feature per node. On millions of rows that's too slow.
+
+**Histograms.** Bucket each feature into at most $k$ bins once, before training (256 by default in all three libraries). At each node, add up $g$ and $h$ per bin, which is one pass over the rows, $O(n)$, and then sweep only the $k$ bin boundaries. Two more savings follow. A child's histogram can be computed as the parent's histogram minus its sibling's, so only the smaller child needs a pass over its rows. And bins fit in one byte, which shrinks memory. The cost is that thresholds are limited to bin boundaries, which in practice rarely matters. Histogram splitting was introduced by LightGBM and is now the default in XGBoost (`tree_method="hist"` since version 2.0) and scikit-learn's `HistGradientBoosting`.
+
+XGBoost's paper also introduced a **weighted quantile sketch** for choosing the bin boundaries. Because the objective in Step 2 is a sum of terms weighted by $h_i$, the boundaries are chosen so each bin holds about the same total curvature rather than the same number of rows, putting more resolution where the loss is most sensitive.
+
+**Missing values.** At each split, XGBoost tries sending all the rows with a missing value left, then right, and keeps whichever gives the higher gain. The learned "default direction" is stored in the tree, so missing values need no imputation and their absence can carry information. LightGBM and CatBoost handle missing values natively as well. The same mechanism makes sparse inputs (one-hot columns, bag-of-words counts) cheap, since only the non-missing entries need to be visited.
+
+## 3. How the Tree Grows
+
+Gradient boosting traditionally grows each tree **level-wise** (depth-wise): split every node at the current depth, then move to the next depth. XGBoost does this by default. LightGBM grows **leaf-wise** (best-first): always split the single leaf, anywhere in the tree, whose best split has the highest gain, until a limit on the number of leaves is reached.
+
+With the same number of leaves, leaf-wise growth reaches a lower training loss, because it never spends a split on a node whose best gain is small just because it happens to sit at the current level. The trees come out unbalanced, deep along the paths where the data is complex. The risk is the same thing seen from the other side: on small datasets, leaf-wise growth can chase a few examples down a long, narrow branch and overfit. LightGBM's main size control is therefore `num_leaves` (default 31), usually with a `max_depth` cap and a `min_data_in_leaf` floor. Here are both orders on the same split budget, with real per-leaf gains:
 
 <TreeGrowthStrategyDiagram />
-- **Histogram-based splitting**: instead of considering every unique feature value as a candidate threshold (expensive), bucket continuous features into a fixed number of histogram bins upfront, and only search over bin boundaries — dramatically fewer candidate splits to evaluate, at a small, usually negligible cost in split quality.
-- **GOSS (Gradient-based One-Side Sampling)**: examples with small gradients are already well-fit by the ensemble so far and contribute little new information — GOSS keeps *all* examples with large gradients but only a random sample of small-gradient examples (reweighted to stay unbiased), cutting the effective dataset size per round without a proportional accuracy loss.
-- **EFB (Exclusive Feature Bundling)**: many real-world features (especially one-hot encoded categoricals) are sparse and rarely nonzero simultaneously — LightGBM bundles such mutually-exclusive features together into one, reducing the effective feature count without losing information.
 
-The net effect: LightGBM is typically the fastest of the three on large datasets, especially with many features.
+CatBoost does a third thing, covered in Section 5: every node at the same depth uses the *same* split.
 
-## CatBoost (Categorical Boosting)
+## 4. LightGBM's Two Sampling Tricks
 
-Built specifically to handle **categorical features** well, without manual preprocessing:
+LightGBM (Ke et al., 2017) added two ideas aimed at the cost per round, both justified by the gain formula.
 
-- **Native categorical handling**: instead of requiring one-hot or manual target encoding beforehand, CatBoost encodes categories using an **ordered target statistic** — computing each category's average target value *only from examples that came before it* in a random permutation of the data, specifically to avoid target leakage (using an example's own label to help encode its own feature, which would leak information and cause overfitting).
-- **Ordered boosting**: applies a similar "only use data that came before, in a random order" principle to the boosting process itself, not just categorical encoding — reduces a subtle overfitting bias present in standard gradient boosting where every tree indirectly sees the same examples' residuals it will later be evaluated on.
-- **Symmetric (oblivious) trees**: every node at the same depth uses the *same* split condition across the whole tree — less flexible than XGBoost/LightGBM's trees, but faster to evaluate at inference time and provides implicit regularization.
+**Gradient-based One-Side Sampling (GOSS).** A row with a small gradient $g_i$ is already well fitted; it contributes little to $G_L$ and $G_R$, and therefore to the gain. GOSS keeps all rows with the largest $\lvert g_i\rvert$ (the top fraction $a$), keeps a random fraction $b$ of the rest, and multiplies the sampled small-gradient rows' $g$ and $h$ by $\tfrac{1-a}{b}$. That reweighting keeps the sums $G$ and $H$ unbiased: the small-gradient rows make up a fraction $1-a$ of the data, and a sample of fraction $b$ of all rows drawn from them needs the factor $\tfrac{1-a}{b}$ to stand in for the whole group. The paper proves the gain estimated this way is close to the full-data gain with high probability. Each round then looks at only $a + b$ of the rows, often 20 to 30%. In LightGBM 4 it's enabled with `data_sample_strategy="goss"`.
 
-CatBoost typically needs the least manual feature engineering of the three, specifically when a dataset has many categorical columns.
+**Exclusive Feature Bundling (EFB).** With one-hot encodings and other sparse features, many columns are almost never nonzero at the same time. Such *mutually exclusive* features can be packed into a single column without losing information, by giving each original feature its own range of values in the bundle (feature A's bins are 1 to 10, feature B's 11 to 20, and so on). Finding the best bundling is a graph-colouring problem, which is NP-hard, so LightGBM uses a greedy approximation that also allows a small rate of conflicts. Fewer columns means proportionally fewer histograms to build.
 
-## Choosing Between Them
+Both tricks matter most on large, wide datasets, and both are why LightGBM is usually the fastest of the three there.
+
+<PredictFirst
+  question="A dataset has a 'city' column with 500 values. You target-encode it by replacing each city with the average label of all training rows from that city, then train gradient boosting. What happens?"
+  options={[
+    'Nothing unusual: target encoding is a standard, safe way to handle many categories',
+    'Training looks better than it should: each row\'s encoding includes its own label, which leaks the answer, worst for rare cities',
+    'The model ignores the city column because it is now a single number',
+    'It only matters for linear models, not trees',
+  ]}
+  correctIndex={1}
+  explanation="A city with 3 training rows gets an encoding that is one-third made of each row's own label, so the feature partly is the target. The model learns to trust it, training loss falls, and on new data, where the encoding no longer contains the row's own label, it does worse. CatBoost's ordered target statistics compute each row's encoding only from rows that came before it, so a row's own label never enters its encoding (Section 5)."
+/>
+
+## 5. CatBoost: Categories Without Leakage
+
+Trees need numbers, and the standard ways of turning a categorical column into numbers each have a problem. One-hot encoding a 500-level column creates 500 sparse columns, each splitting off one category at a time. Arbitrary integer codes impose an order that means nothing. **Target encoding**, replacing each category by the mean label of its rows, is compact and informative, but done naively it leaks, as the checkpoint above describes.
+
+**Ordered target statistics.** CatBoost (Prokhorenkova et al., 2018) fixes the leak by imposing a random order on the training rows and encoding each row using only the rows *before it* in that order:
+
+$$
+\hat{x}_i = \frac{\sum_{j \,\text{before}\, i} \mathbb{1}[x_j = x_i]\; y_j \;+\; a\,P}{\sum_{j \,\text{before}\, i} \mathbb{1}[x_j = x_i] \;+\; a}
+$$
+
+$P$ is a prior (the overall mean of the label) and $a \gt  0$ controls how strongly it smooths categories with few rows: a city seen for the first time is encoded as exactly the prior, and the encoding moves toward the city's own average as more of its rows appear. Because row $i$'s own label is never in its encoding, the training encodings behave like the encodings of new data, where the label is unknown. CatBoost uses several random orders and also builds encodings for combinations of categorical features greedily as trees grow.
+
+**Ordered boosting.** The authors point out that plain gradient boosting has the same leak in a different place. The gradients $g_i$ used to fit tree $t$ are computed from a model $F_{t-1}$ that was itself trained on example $i$, so they're systematically smaller than they'd be on new data, a **prediction shift**. Ordered boosting computes each example's gradient from a model trained only on the examples before it in the random order. Done naively that needs $n$ models; CatBoost uses a small number of supporting models trained on prefixes of the permutation to make it affordable. It matters most on small datasets.
+
+**Oblivious trees.** CatBoost's trees are **symmetric**: every node at the same depth applies the same split condition. A depth-6 tree is therefore just 6 (feature, threshold) tests, and a row's leaf is the 6-bit number formed by their answers. That's a strong restriction on the hypothesis class, which acts as regularization, and it makes prediction very fast: no branching, just 6 comparisons and an array lookup.
+
+<GoDeeper title="Go deeper: splitting on a categorical feature without encoding it">
+
+There's another way to handle a categorical feature: split it directly into two groups of categories. With $q$ categories there are $2^{q-1} - 1$ possible groupings, far too many to try for $q = 500$. But for a single split there's a shortcut that dates back to Fisher (1958) and appears in the CART book: sort the categories by a per-category statistic, then the best split is one of the $q - 1$ cuts along that order. For gradient boosting the right statistic is $G_c / H_c$, each category's gradient sum over its curvature sum.
+
+LightGBM and XGBoost (`enable_categorical=True`) both implement this. Its weakness is exactly the one ordered statistics avoid: the sort is done on training statistics, so with many rare categories it finds groupings that fit the training gradients by chance. LightGBM adds smoothing (`cat_smooth`) and a minimum number of rows per category (`min_data_per_group`) for that reason. In the experiment in Section 7, with 500 cities and about 80 training rows per city, XGBoost's native categorical splits did worse than simply treating the city ID as a number, while CatBoost's ordered target statistics did much better than both.
+
+</GoDeeper>
+
+## 6. Choosing Between Them
 
 | | XGBoost | LightGBM | CatBoost |
 |---|---|---|---|
-| Best for | General-purpose, well-understood, huge community | Very large datasets, speed-critical | Heavy categorical features, less tuning needed |
-| Tree growth | Level-wise (default) | Leaf-wise | Symmetric/oblivious |
-| Categorical features | Manual encoding needed | Some native support | Best native support |
-| Typical weakness | Slower than LightGBM at scale | Can overfit small datasets (leaf-wise growth) | Slower training than the other two |
+| Split criterion | Second-order gain with $\lambda$, $\gamma$ | Same second-order gain | Same, on oblivious trees |
+| Tree growth | Level-wise by default (`grow_policy="lossguide"` for leaf-wise) | Leaf-wise | Symmetric (oblivious) |
+| Speed on large data | Fast with `hist` | Usually fastest (GOSS, EFB, histograms) | Slower to train, very fast to predict |
+| Categorical features | Integer codes, one-hot, or native partition splits | Native partition splits with smoothing | Ordered target statistics and combinations |
+| Small datasets | Good | Can overfit with leaf-wise growth | Strong: ordered boosting targets this case |
+| Tuning needed | Moderate | Moderate; `num_leaves` matters | Least; defaults are strong |
+| GPU training | Yes | Yes | Yes |
 
-**In practice**: all three usually land within a small margin of each other on a given tabular problem after proper tuning — the differences above matter more for *training speed*, *ease of use with a specific data type*, and *robustness to less tuning*, than for a large gap in best-achievable accuracy. Trying more than one and comparing on your actual validation set (see [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics)) is standard practice, not a sign that you picked wrong the first time.
+After tuning, the three usually land within a small margin of each other on numeric features. The differences that decide the choice in practice are training speed on your data, how your categorical columns are handled, and how much tuning time you have. Trying two of them with the same validation split is cheap and common.
 
-## When Gradient Boosting Beats Deep Learning
+**The settings that matter most**, in all three: the learning rate and the number of trees (small rate, many trees, stop early on a validation set, as on the [Boosting page](/docs/machine-learning/boosting)); tree size (`max_depth`, `num_leaves`, `depth`); row and column subsampling (`subsample`, `colsample_bytree`, and their LightGBM and CatBoost equivalents); and the regularization terms $\lambda$ (`reg_lambda`, `lambda_l2`, `l2_leaf_reg`) and $\gamma$ (`gamma`, `min_split_gain`). [Hyperparameter Optimization](/docs/machine-learning/hyperparameter-optimization) covers searching them efficiently.
 
-For **tabular data specifically** (rows and columns of heterogeneous features — not images, text, or audio), gradient-boosted trees still routinely match or beat deep neural networks, for a few structural reasons: trees naturally handle mixed feature types and missing values without preprocessing, don't need large amounts of data to avoid overfitting the way deep nets do, and don't require the architecture search that gets neural nets their edge on unstructured data (see [Deep Learning](/docs/deep-learning/roadmap)). This is precisely why XGBoost/LightGBM/CatBoost remain the default first choice for tabular ML problems, even as deep learning dominates vision, language, and audio.
+## 7. Minimal Implementation
 
-This completes the tree-based model family: [Decision Tree](/docs/machine-learning/decision-tree) → [Random Forest & Extra Trees](/docs/machine-learning/random-forest) → [Boosting](/docs/machine-learning/boosting) → XGBoost/LightGBM/CatBoost. Next: [Support Vector Machines](/docs/machine-learning/support-vector-machines) and the other margin-based and instance-based classifiers.
+First, XGBoost from scratch: the gradient and Hessian of log loss, trees built by the gain formula of Section 1, and leaves set to $-G/(H+\lambda)$. It's compared with the real library using the same settings, exact split search and the same starting point:
+
+```python
+import numpy as np
+import xgboost as xgb
+from sklearn.datasets import load_breast_cancer
+from sklearn.model_selection import train_test_split
+
+def sigmoid(z):
+    return 1 / (1 + np.exp(-z))
+
+def build(X, g, h, depth, max_depth, lam, gamma):
+    """One XGBoost-style tree: splits and leaf weights from gradient sums G and Hessian sums H."""
+    G, H = g.sum(), h.sum()
+    leaf = -G / (H + lam)                                    # optimal leaf weight
+    if depth == max_depth or len(g) < 2:
+        return leaf
+    best_gain, best = 0.0, None
+    for j in range(X.shape[1]):
+        order = np.argsort(X[:, j]); xs = X[order, j]
+        GL, HL = np.cumsum(g[order])[:-1], np.cumsum(h[order])[:-1]
+        GR, HR = G - GL, H - HL
+        gain = 0.5 * (GL**2 / (HL + lam) + GR**2 / (HR + lam) - G**2 / (H + lam)) - gamma
+        gain[xs[:-1] == xs[1:]] = -np.inf                    # no split between equal values
+        i = int(np.argmax(gain))
+        if gain[i] > best_gain:
+            best_gain, best = gain[i], (j, (xs[i] + xs[i + 1]) / 2)
+    if best is None:
+        return leaf
+    j, t = best
+    m = X[:, j] < t
+    return (j, t, build(X[m], g[m], h[m], depth + 1, max_depth, lam, gamma),
+                  build(X[~m], g[~m], h[~m], depth + 1, max_depth, lam, gamma))
+
+def tree_predict(node, X):
+    out = np.empty(len(X))
+    for k, x in enumerate(X):
+        n = node
+        while isinstance(n, tuple):
+            n = n[2] if x[n[0]] < n[1] else n[3]
+        out[k] = n
+    return out
+
+def boost(X, y, rounds, eta, max_depth, lam, gamma):
+    F = np.zeros(len(y)); trees = []                         # start at log-odds 0 (p = 0.5)
+    for _ in range(rounds):
+        p = sigmoid(F)
+        g, h = p - y, p * (1 - p)                            # log-loss gradient and Hessian
+        tree = build(X, g, h, 0, max_depth, lam, gamma)
+        F += eta * tree_predict(tree, X); trees.append(tree)
+    return trees
+
+X, y = load_breast_cancer(return_X_y=True)
+X = X.astype(np.float32)                                     # xgboost stores features as float32
+X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.3, stratify=y, random_state=0)
+params = dict(rounds=20, eta=0.3, max_depth=3, lam=1.0, gamma=0.0)
+trees = boost(X_tr, y_tr, **params)
+ours_tr = sum(params["eta"] * tree_predict(t, X_tr) for t in trees)
+ours = sum(params["eta"] * tree_predict(t, X_te) for t in trees)
+
+ref = xgb.train({"objective": "binary:logistic", "eta": 0.3, "max_depth": 3, "lambda": 1.0, "gamma": 0.0,
+                 "min_child_weight": 0, "base_score": 0.5, "tree_method": "exact"},
+                xgb.DMatrix(X_tr, label=y_tr), num_boost_round=20)
+theirs_tr = ref.predict(xgb.DMatrix(X_tr), output_margin=True)
+theirs = ref.predict(xgb.DMatrix(X_te), output_margin=True)
+print(f"largest log-odds difference, ours vs xgboost: training set {np.abs(ours_tr - theirs_tr).max():.1e}, "
+      f"test set {np.abs(ours - theirs).max():.1e}")
+print(f"test accuracy: ours {np.mean((ours > 0) == y_te):.3f}, xgboost {np.mean((theirs > 0) == y_te):.3f}")
+```
+
+Output (XGBoost 3.4):
+
+```
+largest log-odds difference, ours vs xgboost: training set 1.1e-06, test set 4.5e-01
+test accuracy: ours 0.953, xgboost 0.959
+```
+
+On the training set, the forty-line version reproduces XGBoost's predictions to $10^{-6}$ after 20 rounds: same splits, same leaf values, everything in Section 1 exactly as derived. The test-set difference is not an error, and tracing it is instructive. The first two trees match the library's to $10^{-8}$ on every input. In the third tree, one node has two candidate splits on different features (`f7 < 0.0413` and `f8 < 0.1512`) that send exactly the same training rows left and right, so their gains are equal. The two implementations break the tie differently. Identical partitions of the training data mean identical training predictions from then on, but on test rows the two features disagree, so the predictions differ. It's a small, concrete demonstration that a tree model is only pinned down where the training data is.
+
+Second, the three libraries on 60,000 synthetic rows with eight numeric features and a "city" column with 500 levels, each city with its own effect on the label. Because the data is synthetic, the true probabilities are known, which gives the best achievable score:
+
+```python
+import time
+import numpy as np
+import pandas as pd
+import lightgbm as lgb
+import xgboost as xgb
+from catboost import CatBoostClassifier
+from sklearn.metrics import log_loss, roc_auc_score
+
+# 60,000 rows: 8 numeric features plus a "city" column with 500 levels, each with its own effect
+rng = np.random.default_rng(0)
+n, n_cities = 60000, 500
+num = rng.normal(size=(n, 8))
+city = rng.integers(0, n_cities, n)
+city_effect = rng.normal(0, 1.0, n_cities)
+logit = 1.5 * num[:, 0] - num[:, 1] + np.sin(2 * num[:, 2]) + num[:, 3] * num[:, 4] + city_effect[city] - 0.5
+y = (rng.random(n) < 1 / (1 + np.exp(-logit))).astype(int)
+df = pd.DataFrame(num, columns=[f"x{j}" for j in range(8)])
+df["city"] = pd.Categorical(city)
+tr, va, te = slice(0, 40000), slice(40000, 50000), slice(50000, n)
+
+def report(name, p, seconds):
+    print(f"{name:34s} test log loss {log_loss(y[te], p):.4f}   AUC {roc_auc_score(y[te], p):.4f}   ({seconds:.1f} s)")
+
+common = dict(n_estimators=2000, learning_rate=0.05)
+t = time.perf_counter()
+m = xgb.XGBClassifier(**common, max_depth=6, tree_method="hist", early_stopping_rounds=50)
+m.fit(df.assign(city=city)[tr], y[tr], eval_set=[(df.assign(city=city)[va], y[va])], verbose=False)
+report("XGBoost, city as an integer code", m.predict_proba(df.assign(city=city)[te])[:, 1], time.perf_counter() - t)
+
+t = time.perf_counter()
+m = xgb.XGBClassifier(**common, max_depth=6, tree_method="hist", enable_categorical=True, early_stopping_rounds=50)
+m.fit(df[tr], y[tr], eval_set=[(df[va], y[va])], verbose=False)
+report("XGBoost, native categorical", m.predict_proba(df[te])[:, 1], time.perf_counter() - t)
+
+t = time.perf_counter()
+m = lgb.LGBMClassifier(**common, num_leaves=31, verbose=-1)
+m.fit(df[tr], y[tr], eval_set=[(df[va], y[va])], callbacks=[lgb.early_stopping(50, verbose=False)])
+report("LightGBM, native categorical", m.predict_proba(df[te])[:, 1], time.perf_counter() - t)
+
+t = time.perf_counter()
+m = CatBoostClassifier(iterations=2000, learning_rate=0.05, depth=6, cat_features=["city"], verbose=0,
+                       early_stopping_rounds=50, random_seed=0)
+m.fit(df[tr].assign(city=city[tr]), y[tr], eval_set=(df[va].assign(city=city[va]), y[va]))
+report("CatBoost, ordered target statistics", m.predict_proba(df[te].assign(city=city[te]))[:, 1], time.perf_counter() - t)
+
+p_true = 1 / (1 + np.exp(-logit[te]))
+print(f"{'true probabilities (the floor)':34s} test log loss {log_loss(y[te], p_true):.4f}   AUC {roc_auc_score(y[te], p_true):.4f}")
+```
+
+Output (XGBoost 3.4, LightGBM 4.7, CatBoost 1.2; times from one run on one shared machine):
+
+```
+XGBoost, city as an integer code   test log loss 0.4759   AUC 0.8513   (27.7 s)
+XGBoost, native categorical        test log loss 0.5082   AUC 0.8311   (4.1 s)
+LightGBM, native categorical       test log loss 0.4700   AUC 0.8560   (7.3 s)
+CatBoost, ordered target statistics test log loss 0.4336   AUC 0.8797   (30.8 s)
+true probabilities (the floor)     test log loss 0.4203   AUC 0.8872
+```
+
+On this data the way the city column is handled matters far more than anything else. CatBoost's ordered target statistics get within 0.013 of the best possible log loss. The two partition-based approaches are well behind, and XGBoost's native categorical splits, with default settings, actually did worse than treating the city ID as a meaningless integer: with 500 cities and about 80 training rows each, sorting categories by their training gradients finds groupings that don't hold up (the GoDeeper box above explains why). LightGBM's smoothing helps it some. None of this says CatBoost is better in general: with only numeric features, or with tuned categorical settings (LightGBM's `cat_smooth`, `min_data_per_group`; a cross-fitted target encoding in front of XGBoost), the gap shrinks or disappears. It says that for high-cardinality categories, leak-free target statistics are the right default, and that defaults are worth testing rather than trusting.
+
+## 8. When *Not* to Use Gradient-Boosted Trees
+
+| Situation | Better choice |
+|---|---|
+| Images, audio, raw text | Neural networks; boosted trees on raw pixels or tokens do poorly |
+| Very small tabular data (a few hundred rows) | Regularized [linear models](/docs/machine-learning/logistic-regression), or a [random forest](/docs/machine-learning/random-forest) with defaults; a tuned booster has many knobs to overfit |
+| Predictions must extrapolate (trends, values beyond the training range) | Linear or explicit trend models; trees predict a constant past the edge |
+| The model must be fully readable | A small [decision tree](/docs/machine-learning/decision-tree) or a linear model; use SHAP if a booster is required |
+| Smooth, nearly linear relationships | Linear models, which are simpler and often as accurate |
+| Very tight latency on tiny devices | A linear model, or a small CatBoost model (oblivious trees evaluate fastest) |
+
+For most tabular prediction problems, though, one of these three libraries is the right first serious model, after a linear baseline. Recent benchmarks still find tree ensembles hard to beat on medium-sized tabular data (Grinsztajn et al., 2022; see the [overview](/docs/machine-learning/overview)).
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| XGBoost objective | Loss plus $\gamma T + \tfrac{\lambda}{2}\sum w_j^2$, expanded to second order |
+| Per example | Gradient $g_i$ and curvature $h_i$; for log loss $p - y$ and $p(1-p)$ |
+| Leaf value | $w^* = -G/(H + \lambda)$, a regularized Newton step |
+| Split gain | $\tfrac12\big[\tfrac{G_L^2}{H_L+\lambda} + \tfrac{G_R^2}{H_R+\lambda} - \tfrac{G^2}{H+\lambda}\big] - \gamma$ |
+| Histograms | Bin features once; sum $g, h$ per bin; sibling = parent minus child |
+| Missing values | Learned default direction per split |
+| LightGBM growth | Leaf-wise: lower loss per leaf, needs `num_leaves` and depth limits |
+| GOSS | Keep large-gradient rows, sample the rest, reweight by $\tfrac{1-a}{b}$ |
+| EFB | Pack mutually exclusive sparse features into one column |
+| Target leakage | Naive target encoding includes each row's own label |
+| CatBoost | Ordered target statistics, ordered boosting, oblivious trees |
+| Choosing | Similar accuracy when tuned; decide on speed, categoricals, tuning budget |
+
+---
+
+Next: [Support Vector Machines](/docs/machine-learning/support-vector-machines), a margin-based classifier with a very different inductive bias, and the kernel trick that lets a linear method draw curved boundaries.
+
+## Sources
+
+- T. Chen and C. Guestrin, [XGBoost: A Scalable Tree Boosting System](https://arxiv.org/abs/1603.02754), KDD 2016
+- G. Ke et al., [LightGBM: A Highly Efficient Gradient Boosting Decision Tree](https://papers.nips.cc/paper/2017/hash/6449f44a102fde848669bdd9eb6b76fa-Abstract.html), NeurIPS 2017
+- L. Prokhorenkova, G. Gusev, A. Vorobev, A. V. Dorogush and A. Gulin, [CatBoost: Unbiased Boosting with Categorical Features](https://arxiv.org/abs/1706.09516), NeurIPS 2018
+- W. D. Fisher, [On Grouping for Maximum Homogeneity](https://doi.org/10.1080/01621459.1958.10501479), *JASA*, 1958
+- L. Grinsztajn, E. Oyallon and G. Varoquaux, [Why Do Tree-Based Models Still Outperform Deep Learning on Typical Tabular Data?](https://arxiv.org/abs/2207.08815), NeurIPS 2022 Datasets and Benchmarks
+- XGBoost documentation, [Introduction to Boosted Trees](https://xgboost.readthedocs.io/en/stable/tutorials/model.html) and [Categorical Data](https://xgboost.readthedocs.io/en/stable/tutorials/categorical.html)
+- LightGBM documentation, [Features](https://lightgbm.readthedocs.io/en/stable/Features.html) and [Parameters](https://lightgbm.readthedocs.io/en/stable/Parameters.html)
+- CatBoost documentation, [Transforming categorical features to numerical features](https://catboost.ai/docs/en/concepts/algorithm-main-stages_cat-to-numberic)
