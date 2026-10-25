@@ -1,5 +1,5 @@
 ---
-title: "Attention & Transformers"
+title: "Attention and Transformers, In Full Depth"
 sidebar_position: 7
 description: "The architecture behind GPT, Claude, and LLaMA, worked through end to end with real numbers -- why attention exists, and every mechanism in the original paper."
 ---
@@ -10,25 +10,22 @@ import RnnVsAttentionComparison from '../../../viz/diagrams/RnnVsAttentionCompar
 import QkvProjectionDiagram from '../../../viz/diagrams/QkvProjectionDiagram';
 import AttentionWorkedExample from '../../../viz/diagrams/AttentionWorkedExample';
 import CausalMaskAnimated from '../../../viz/diagrams/CausalMaskAnimated';
-import FinalSoftmaxAnimated from '../../../viz/diagrams/FinalSoftmaxAnimated';
 import TransformerArchitectureDiagram from '../../../viz/diagrams/TransformerArchitectureDiagram';
 import TokenEmbeddingLookup from '../../../viz/diagrams/TokenEmbeddingLookup';
 import MultiHeadAttentionDiagram from '../../../viz/diagrams/MultiHeadAttentionDiagram';
-import PaddingMaskDiagram from '../../../viz/diagrams/PaddingMaskDiagram';
 import CrossAttentionDiagram from '../../../viz/diagrams/CrossAttentionDiagram';
 import PositionalEncodingSinusoids from '../../../viz/diagrams/PositionalEncodingSinusoids';
-import PositionalEncodingHeatmap from '../../../viz/diagrams/PositionalEncodingHeatmap';
 import AddNormDiagram from '../../../viz/diagrams/AddNormDiagram';
 import FeedForwardDiagram from '../../../viz/diagrams/FeedForwardDiagram';
-import EncoderLayerDiagram from '../../../viz/diagrams/EncoderLayerDiagram';
 import TransformerModelFamiliesDiagram from '../../../viz/diagrams/TransformerModelFamiliesDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
-# Attention & Transformers
+# Attention and Transformers, In Full Depth
 
-The architecture behind GPT, Claude, LLaMA, and essentially every modern large model — text, vision, and beyond. This page follows the original architecture end to end: from *why* it exists, through every mechanism in the paper, worked out with real numbers rather than left abstract.
+[Sequence Models](/docs/deep-learning/sequence-models) ended with recurrent networks hitting their limits: they process one step at a time, and even gated ones lose the gradient from distant steps. The transformer, introduced in 2017, removed recurrence and built a model from attention alone. It is the architecture behind Claude, GPT, Gemini, Llama and nearly every large model in text, vision and beyond. This page follows it end to end: why it exists, every mechanism in the original design worked out with real numbers, the three model families it produced, and the problems later work fixed.
 
 <ELI5>
 
@@ -89,9 +86,7 @@ Plotted for real — a handful of dimensions across 100 positions, each a sine/c
 
 <PositionalEncodingSinusoids />
 
-**Why sine and cosine specifically**: intuitively, they're a natural choice for encoding *pattern* — periodic, smoothly repeating functions that never blow up (always bounded in $[-1,1]$, unlike, say, just using $pos$ itself, which would grow unboundedly with sequence length and dominate the embedding). More precisely: for any fixed offset $k$, $PE(pos+k)$ can be written as a *linear function* of $PE(pos)$ — the encoding makes relative position linearly recoverable, which is exactly what lets attention learn to use it. Stacking every dimension into one matrix shows the pattern the formula produces: low dimensions oscillate fast (fine position detail), high dimensions oscillate slow (coarse position), so every position gets a unique fingerprint across the full vector:
-
-<PositionalEncodingHeatmap />
+**Why sine and cosine specifically**: intuitively, they're a natural choice for encoding *pattern* — periodic, smoothly repeating functions that never blow up (always bounded in $[-1,1]$, unlike, say, just using $pos$ itself, which would grow unboundedly with sequence length and dominate the embedding). More precisely: for any fixed offset $k$, $PE(pos+k)$ can be written as a *linear function* of $PE(pos)$ — the encoding makes relative position linearly recoverable, which is exactly what lets attention learn to use it. Stacking every dimension into one matrix shows the pattern the formula produces: low dimensions oscillate fast (fine position detail), high dimensions oscillate slow (coarse position), so every position gets a unique fingerprint across the full vector.
 
 The output of this section — token embedding plus positional encoding, summed into one vector per position — is what every Query, Key, and Value projection below actually reads from, not the raw token embedding alone.
 
@@ -207,6 +202,18 @@ assert scaled_dot_product_attention(Q, K, V)[1][2].argmax() == 2`}
 
 **A related expectation**: because a token's Query is dotted against its *own* Key among everything else (self-attending, above), and a vector's dot product with itself is often its single largest dot product with anything, the diagonal of $QK^T$ is frequently — though not guaranteed to be — the highest score in its row, as seen concretely with "sat" in the worked example.
 
+<PredictFirst
+  question="Queries and keys have 64 dimensions whose entries have mean 0 and variance 1. Before scaling, roughly what is the standard deviation of a query-key dot product?"
+  options={[
+    '1',
+    '8, because the variance of a sum of 64 independent unit-variance products is 64',
+    '64',
+    '0.125',
+  ]}
+  correctIndex={1}
+  explanation="Each of the 64 products q_i·k_i has variance 1, and variances of independent terms add, so the dot product has variance 64 and standard deviation 8. Scores that spread out push softmax towards one-hot outputs with tiny gradients; dividing by √64 = 8 brings them back to unit scale."
+/>
+
 ### Why Scale by the Square Root of the Key Dimension
 
 The part most explanations wave a hand at instead of deriving. If a Query and Key's components are independent with mean 0 and variance 1, their dot product $q \cdot k = \sum_{i=1}^{d_k} q_i k_i$ is a sum of $d_k$ independent terms — and variance adds across independent terms, so the dot product ends up with **variance $d_k$**, not variance 1. As $d_k$ grows, raw scores grow with it, pushing softmax toward a near-one-hot distribution where gradients through every non-max entry are vanishingly small. Dividing by $\sqrt{d_k}$ renormalizes the variance back down to 1, regardless of dimension — step 5 of the worked example above has a toggle for exactly this comparison: same raw scores, softmax without scaling puts 0.976 of "sat"'s row on a single token; scaled, that peak drops to 0.821, leaving real, learnable gradient on the other tokens instead of squeezing them toward zero.
@@ -267,15 +274,25 @@ Two unrelated reasons to block certain positions from attending to certain other
 
 **Why $-\infty$ becomes exactly 0, precisely**: softmax turns a row of scores into probabilities via $\text{softmax}(z)_i = e^{z_i} / \sum_j e^{z_j}$. Set a blocked position's score $z_i = -\infty$, and its numerator is $e^{-\infty}$ — and $e^z \to 0$ as $z \to -\infty$ (a negative exponent shrinks $e^z$ toward zero as it grows more negative, with no floor), so $e^{-\infty}=0$ exactly, not just very small. That position's numerator vanishes, so its output probability is $0/(\text{sum}) = 0$ exactly — a hard, mathematically clean zero, not an approximation — and it also contributes exactly $0$ to the denominator sum, so it has zero effect on every *other* position's probability either. In practice, implementations use a very large negative finite number (like `-1e9`) rather than literal infinity, purely to avoid `NaN` from computing $-\infty - (-\infty)$ during softmax's numerical-stability subtraction step — but $e^{-1e9}$ underflows to exactly $0.0$ in floating point anyway, so the effect is identical.
 
-**Padding mask** — sequences in a batch are padded to a common length; a real token should never attend to a `<pad>` placeholder, since it carries no information:
-
-<PaddingMaskDiagram />
+**Padding mask** — sequences in a batch are padded to a common length; a real token should never attend to a `<pad>` placeholder, since it carries no information.
 
 **Causal (look-ahead) mask** — the decoder generates one token at a time and must never see the future token it's being trained to predict, so each position can only attend to itself and earlier positions:
 
 <CausalMaskAnimated />
 
 This is exactly what "causal (masked) self-attention" means in the GPT-lineage section [below](#decoder-only-the-gpt-lineage) — the same mechanism, applied inside the decoder's self-attention specifically.
+
+<PredictFirst
+  question="A decoder-only language model is trained without the causal mask. Training loss drops much faster than usual. What will happen at generation time?"
+  options={[
+    'It generates better text, because it learned faster',
+    'It generates poor text, because during training each position could see the token it was asked to predict',
+    'Nothing changes, because generation is one token at a time anyway',
+    'Generation fails with a shape error',
+  ]}
+  correctIndex={1}
+  explanation="Without the mask, position t attends to position t+1, so predicting the next token is trivial copying and the loss plummets. At generation time the future tokens don't exist, so the model has learned nothing useful about predicting them. A training loss that looks too good is the classic symptom of a leaking mask."
+/>
 
 ## Cross-Attention
 
@@ -299,13 +316,9 @@ $$\text{FFN}(x) = \max(0, xW_1+b_1)W_2+b_2$$
 
 <FeedForwardDiagram />
 
-Put together, that's one full encoder layer — self-attention, Add & Norm, feed-forward, Add & Norm — and $N=6$ identical layers (independently learned weights each) are stacked, every layer's output feeding the next layer's input:
+Put together, that's one full encoder layer — self-attention, Add & Norm, feed-forward, Add & Norm — and $N=6$ identical layers (independently learned weights each) are stacked, every layer's output feeding the next layer's input.
 
-<EncoderLayerDiagram />
-
-The decoder layer adds one extra sublayer in the middle — masked self-attention, then cross-attention (above), then feed-forward, each followed by Add & Norm — also stacked $N=6$ times. At the very top of the decoder stack, the final output vector is projected through one more linear layer into vocabulary-sized logits, then softmax turns those into a probability distribution over the next token:
-
-<FinalSoftmaxAnimated />
+The decoder layer adds one extra sublayer in the middle — masked self-attention, then cross-attention (above), then feed-forward, each followed by Add & Norm — also stacked $N=6$ times. At the very top of the decoder stack, the final output vector is projected through one more linear layer into vocabulary-sized logits, then softmax turns those into a probability distribution over the next token.
 
 Stack many of these blocks, and you have GPT-style decoder-only models (predict next token, used by essentially every modern LLM), or encoder-only models (BERT-style, used for embeddings/classification), or encoder-decoder models (T5-style, used for translation/summarization).
 
@@ -392,4 +405,40 @@ Multimodal models then combine a vision encoder with a language model. A connect
 
 One more real limitation worth naming explicitly: every token above gets exactly the same fixed amount of computation, set once by the layer count, whether it's trivial or the hardest reasoning step in the sequence. [From RNNs to Transformers to Recurrent Looped Transformers](/docs/deep-learning/recurrent-looped-transformers) picks up exactly there — how looping the same blocks across tokens, rather than stacking more of them, lets reasoning depth keep growing with context instead of stopping at the layer count.
 
+## When *Not* to Use a Transformer
+
+| Situation | Better choice |
+|---|---|
+| Small tabular datasets | Gradient-boosted trees, which usually beat transformers there |
+| Very long sequences where memory or latency is the constraint | Linear-attention, state-space or hybrid models, or windowed attention |
+| Small image datasets trained from scratch | A CNN, or a pretrained vision transformer rather than a fresh one |
+| On-device inference with tight compute | A small distilled or quantized model, or a CNN for vision |
+| A task needing a fixed-size embedding for search | An encoder (BERT-style) or embedding model, not a decoder generating text |
+| Short, simple sequences with little data | An RNN, a 1D CNN, or a classical model |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Why it exists | Recurrence is sequential and loses distant gradients; attention connects every pair of positions in parallel |
+| Self-attention | $\operatorname{softmax}(QK^\top/\sqrt{d_k})V$: each position takes a relevance-weighted average of all values |
+| Scaling | Dividing by $\sqrt{d_k}$ keeps scores at unit variance so softmax doesn't saturate |
+| Multi-head | Several smaller attentions in parallel, each free to learn a different relation |
+| Position | Attention is order-blind; positions are added (sinusoidal, learned) or rotated in (RoPE) |
+| Masks | Padding masks hide filler; causal masks hide the future in decoders |
+| Cross-attention | Queries from one sequence, keys and values from another |
+| Block | Attention and feed-forward, each with a residual connection and normalization |
+| Families | Encoder-only (BERT), decoder-only (GPT, Claude, Llama), encoder-decoder (T5) |
+| Cost | Quadratic in sequence length; FlashAttention, GQA and paged KV caches manage it |
+
 Next: [Vision Architectures](/docs/deep-learning/vision-architectures) — detection, segmentation, and the ViT variants built for them; then on to [LLMs & GenAI](/docs/llms-genai/roadmap) for where this architecture becomes ChatGPT-class systems.
+
+## Sources
+
+- Vaswani et al., [Attention Is All You Need](https://arxiv.org/abs/1706.03762) (2017)
+- Bahdanau, Cho and Bengio, [Neural Machine Translation by Jointly Learning to Align and Translate](https://arxiv.org/abs/1409.0473) (2014)
+- Devlin et al., [BERT](https://arxiv.org/abs/1810.04805) (2018); Radford et al., [Language Models are Unsupervised Multitask Learners](https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf) (2019); Raffel et al., [T5](https://arxiv.org/abs/1910.10683) (2019)
+- Su et al., [RoFormer: Rotary Position Embedding](https://arxiv.org/abs/2104.09864) (2021)
+- Dao et al., [FlashAttention](https://arxiv.org/abs/2205.14135) (2022)
+- Ainslie et al., [GQA](https://arxiv.org/abs/2305.13245) (2023)
+- Xiong et al., [On Layer Normalization in the Transformer Architecture](https://arxiv.org/abs/2002.04745) (2020)
