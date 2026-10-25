@@ -1,42 +1,240 @@
 ---
-title: "Unsupervised Learning"
+title: "Unsupervised Learning, In Full Depth"
 sidebar_position: 5
-description: "k-Means and hierarchical clustering -- discovering latent structure in unlabeled data, with no ground-truth labels to optimize against."
+description: "What can be learned without labels, made precise: unsupervised learning as describing the data distribution, the four families (clustering, dimensionality reduction, anomaly detection, pattern mining), why evaluation is the hard part (Kleinberg's impossibility theorem, internal vs. external scores), and an experiment where the internal score picks the wrong clustering every time."
 ---
 
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Unsupervised Learning
+# Unsupervised Learning, In Full Depth
 
-No labels — the goal is to discover structure that's already latent in the data.
+[Supervised learning](/docs/machine-learning/supervised-learning) always has an answer to aim at: every training example comes with its label, and the loss measures how far off a prediction is. Unsupervised learning has only the inputs. There's no right answer to compare against, so the question changes from "predict this" to "describe what's here": which groups the data falls into, which few directions explain most of its variation, which points don't fit. This page frames all of those as ways of describing the distribution the data came from, lays out the families with links to each method's full page, and spends most of its time on the hardest part, judging whether an unsupervised result is any good, with an experiment in which the standard internal score prefers the wrong answer on both datasets tested.
 
-## Clustering
+<ELI5>
 
-**k-Means**: pick $k$ cluster centers, assign each point to its nearest center, recompute centers as the mean of assigned points, repeat until stable. Simple and fast, but requires choosing $k$ upfront and assumes roughly spherical, similarly-sized clusters. See [K-Means & Hierarchical Clustering, In Full Depth](/docs/machine-learning/kmeans-hierarchical-clustering) for what K-Means is actually optimizing (it's the unsupervised analog of squared-error regression) and the elbow method for choosing $k$.
+Someone hands you a box of a thousand old photos with no captions and asks you to sort them. Nobody tells you the categories. You might group them by who's in them, or by place, or by decade, and all three could be sensible. You might notice that most photos could be described by a few things (indoor or outdoor, colour or black-and-white, how many people), and that a handful don't fit anything else in the box.
 
-**Hierarchical clustering**: builds a tree of clusters (a dendrogram) by either repeatedly merging the closest pairs (agglomerative) or splitting (divisive). Doesn't require choosing $k$ in advance — you cut the tree at whatever level makes sense. Covered in the same page above, including the four linkage criteria (single/complete/average/Ward) that decide how "distance between clusters" is measured.
+That's unsupervised learning: finding groups, finding a short description, and spotting the odd ones out, with no answer key. The difficulty is also clear from the photos: with no answer key, there can be several good sortings, and deciding which is "right" depends on what you wanted them for.
 
-**DBSCAN and HDBSCAN**: group points that are densely packed together, marking sparse points as noise/outliers. Unlike k-Means, they can find arbitrarily shaped clusters and don't need $k$ specified — but DBSCAN does need density parameters tuned, and HDBSCAN removes even that. See [DBSCAN & HDBSCAN, In Full Depth](/docs/machine-learning/dbscan-hdbscan) for the core/border/noise point definitions and why density-based clustering handles non-convex shapes natively.
+</ELI5>
 
-**Gaussian Mixture Models and Spectral Clustering**: GMM gives soft, probabilistic cluster membership instead of K-Means' hard assignment (it's essentially unsupervised QDA); Spectral Clustering handles non-convex shapes via graph eigenvectors instead of density. See [GMM & Spectral Clustering, In Full Depth](/docs/machine-learning/gmm-spectral-clustering) for the Expectation-Maximization derivation and a full four-way comparison table across all the clustering methods on this page.
+## 1. What There Is to Learn
 
-## Dimensionality Reduction
+In supervised learning the data is pairs $(\mathbf{x}, y)$ and the target is the conditional distribution $P(y \mid \mathbf{x})$. In unsupervised learning the data is only $\mathbf{x}_1, \dots, \mathbf{x}_n$, drawn from some distribution $p(\mathbf{x})$, and everything there is to learn is a property of $p(\mathbf{x})$ itself. Each family of methods describes a different property:
 
-**PCA (Principal Component Analysis)**: projects data onto the directions of maximum variance — the eigenvectors of the data's covariance matrix (see [Linear Algebra](/docs/mathematics-for-ai/linear-algebra)). Fast, deterministic, and the standard first move for compressing features or visualizing high-dimensional data, though it only captures *linear* structure. **Kernel PCA** extends it to nonlinear structure via the same kernel trick as SVM; **Truncated SVD** skips mean-centering to handle sparse data like text. See [PCA, Kernel PCA & Truncated SVD, In Full Depth](/docs/machine-learning/pca-svd) for the eigenvector derivation, scree plots for choosing how many components to keep, and how PCA connects directly to SVD.
+- **Clustering**: is $p(\mathbf{x})$ made of separate pieces? Find groups of points that are closer to each other than to the rest.
+- **Dimensionality reduction**: does $p(\mathbf{x})$ live near a lower-dimensional surface? Find a few coordinates that describe each point almost as well as all $d$ features.
+- **Anomaly detection**: where is $p(\mathbf{x})$ very small? Find points in regions where the data almost never goes.
+- **Pattern mining**: which combinations of values occur together more than chance would predict? Association rules and topic models.
 
-**ICA (Independent Component Analysis)**: separates mixed signals into statistically independent sources — the "cocktail party problem." A fundamentally different goal from PCA's variance-maximization. See [ICA, t-SNE & UMAP, In Full Depth](/docs/machine-learning/ica-tsne-umap) for the non-Gaussianity trick that makes it work.
+The most complete description is the density itself, and **density estimation** connects all four. A [Gaussian mixture model](/docs/machine-learning/gmm-spectral-clustering) estimates $p(\mathbf{x})$ as a sum of Gaussian bumps; each bump is a cluster, and points where the fitted density is very low are anomalies. [PCA](/docs/machine-learning/pca-svd) can be derived as the maximum-likelihood fit of a Gaussian whose covariance is concentrated in a few directions. Seeing the methods as different summaries of one distribution explains why they share so much, and why each one fails where its summary doesn't fit.
 
-**t-SNE and UMAP**: nonlinear dimensionality reduction, mainly used for *visualizing* high-dimensional data (like embeddings) in 2D/3D. They preserve local neighborhood structure well, but the resulting axes aren't interpretable and distances between distant clusters shouldn't be over-interpreted. See [ICA, t-SNE & UMAP, In Full Depth](/docs/machine-learning/ica-tsne-umap#t-sne-t-distributed-stochastic-neighbor-embedding) for exactly what these plots can and can't be trusted to show.
+## 2. The Families
 
-## Association Rule Mining
+### Clustering
 
-Finding "if X, then usually Y" patterns in transactional data — the algorithms behind "customers who bought this also bought that." See [Association Rule Mining: Apriori & FP-Growth, In Full Depth](/docs/machine-learning/association-rules) for support/confidence/lift, the Apriori principle for pruning an otherwise-intractable search space, and FP-Growth's faster tree-based alternative.
+Clustering methods differ in what they think a cluster is, which determines what shapes they can find:
 
-## Topic Modeling
+| Kind | A cluster is | Finds | Struggles with | Page |
+|---|---|---|---|---|
+| Centroid-based | Points closest to a centre | Round, similar-sized groups | Elongated or nested shapes; needs $k$ | [k-Means](/docs/machine-learning/kmeans-hierarchical-clustering#k-means) |
+| Hierarchical | A branch of a merge tree | Any number of clusters, by cutting the tree | Large $n$ (quadratic memory) | [Hierarchical](/docs/machine-learning/kmeans-hierarchical-clustering#hierarchical-clustering) |
+| Density-based | A dense region separated by sparse ones | Arbitrary shapes; labels noise | Clusters of very different densities (DBSCAN) | [DBSCAN & HDBSCAN](/docs/machine-learning/dbscan-hdbscan) |
+| Model-based | A component of a probability mixture | Elliptical clusters, soft memberships | Non-elliptical shapes; needs $k$ | [GMM](/docs/machine-learning/gmm-spectral-clustering) |
+| Graph-based | A weakly connected part of a similarity graph | Non-convex shapes | Large $n$; choosing the graph | [Spectral](/docs/machine-learning/gmm-spectral-clustering) |
 
-Discovering the themes running through a text collection with no labels — LDA (Latent Dirichlet Allocation, a completely different algorithm from the LDA classifier above despite the shared name) models documents as topic mixtures via a Bayesian generative process; BERTopic clusters modern embeddings instead. See [Topic Modeling: LDA & BERTopic, In Full Depth](/docs/machine-learning/topic-modeling) for the full generative story and why embedding-based BERTopic captures synonyms that bag-of-words LDA structurally cannot.
+The experiment in Section 6 makes the differences concrete: on two interleaved half-moons, k-means and the Gaussian mixture split each moon down the middle (agreement with the true groups 0.48 and 0.49 on a scale where 1 is perfect), while single-linkage agglomerative clustering and DBSCAN, which follow chains of nearby points, recover both moons exactly.
 
-## Anomaly Detection
+### Dimensionality Reduction
 
-Identifying points that don't fit the normal pattern of the data — fraud transactions, defective products, network intrusions. Approaches range from simple statistical thresholds (points far from the mean), to density-based methods (isolation forests, DBSCAN's noise points), to autoencoders (trained to reconstruct normal data well; anomalies reconstruct poorly). See [Anomaly Detection: Isolation Forest, LOF & One-Class SVM, In Full Depth](/docs/machine-learning/anomaly-detection) for why randomly-split trees isolate anomalies faster than normal points, and a full comparison across all four approaches.
+Dimensionality reduction methods differ in what they preserve:
 
-Next: [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics) — how to know whether any of these models are actually good.
+- **Variance (linear)**: [PCA](/docs/machine-learning/pca-svd) finds the orthogonal directions of greatest variance. Fast, deterministic, invertible, and the right first step for compressing features or removing noise. Kernel PCA does the same in a kernel feature space; truncated SVD handles sparse data without centring it.
+- **Statistical independence**: [ICA](/docs/machine-learning/ica-tsne-umap) finds directions whose projections are independent, which un-mixes signals (the "cocktail party" problem) rather than compressing them.
+- **Neighbourhoods (nonlinear)**: [t-SNE and UMAP](/docs/machine-learning/ica-tsne-umap#t-sne-t-distributed-stochastic-neighbor-embedding) arrange points in 2 or 3 dimensions so that points which were neighbours stay neighbours. Excellent for looking at embeddings, but distances between clusters and cluster sizes in the plot aren't meaningful, and they don't give a reusable mapping in the way PCA does.
+
+How much reduction is possible depends on the data. The handwritten-digits images in Section 6 have 64 pixels each, but 21 principal components capture 90% of their variance and 29 capture 95%: most of the 64 numbers are predictable from the others.
+
+### Anomaly Detection
+
+Anomalies are points in low-density regions of $p(\mathbf{x})$. The methods differ in how they measure "low density" without estimating it directly in high dimensions:
+
+- **Statistical**: distance from the mean in standard deviations, or Mahalanobis distance; fine for roughly Gaussian data with few features.
+- **Isolation**: an [isolation forest](/docs/machine-learning/anomaly-detection) splits the data at random and measures how quickly each point ends up alone; anomalies are isolated in few splits.
+- **Local density**: the local outlier factor compares each point's density with its neighbours'; DBSCAN's noise points are a simple version.
+- **Boundary**: a one-class SVM fits a boundary around the normal data.
+- **Reconstruction**: a model trained to compress and reconstruct normal data (PCA, an autoencoder) reconstructs anomalies badly, and the reconstruction error is the score.
+
+Anomaly detection is the one unsupervised task where a few labels usually exist (known fraud cases, known faults), and they're best used for evaluation and threshold-setting rather than ignored.
+
+### Pattern Mining
+
+[Association rules](/docs/machine-learning/association-rules) find itemsets that occur together in transactions more often than their individual frequencies predict ("customers who buy X also buy Y"), measured by support, confidence and lift. [Topic models](/docs/machine-learning/topic-modeling) find the themes in a collection of documents: Latent Dirichlet Allocation (unrelated to the LDA classifier) treats each document as a mixture of topics and each topic as a distribution over words; BERTopic clusters document embeddings instead.
+
+## 3. Judging a Result Without Labels
+
+In supervised learning there's one clear test: error on held-out labels. Unsupervised results have no such test, and this is the central practical difficulty of the field.
+
+**There may be no single right answer.** Kleinberg (2002) stated three properties that seem essential for any clustering method: it shouldn't change if all distances are multiplied by a constant (**scale invariance**); for a suitable dataset it should be able to produce any partition (**richness**); and if points within clusters move closer and points in different clusters move apart, the result shouldn't change (**consistency**). He proved that no clustering function can satisfy all three. Every method gives up at least one, which is a precise version of "clustering depends on what you're looking for": the method encodes a choice, and different choices give different, equally defensible groupings.
+
+**Internal scores** use only the data and the result. The most common is the **silhouette**: for each point, with $a$ its mean distance to the other points in its own cluster and $b$ its mean distance to the points of the nearest other cluster,
+
+$$
+s = \frac{b - a}{\max(a, b)}
+$$
+
+which is near 1 when the point is much closer to its own cluster than to the next, near 0 on a border, and negative if it's probably in the wrong cluster; the score is the average over points. Others are the within-cluster sum of squares (k-means' own objective, the basis of the elbow method), the Davies–Bouldin index and the Calinski–Harabasz index. All of them reward compact, well-separated, roughly round groups. That's itself a bias: they prefer whatever clustering looks most like k-means.
+
+**External scores** compare the result with known labels, when some exist for evaluation. The **adjusted Rand index** (ARI) counts pairs of points that the clustering and the labels agree on (same group in both, or different groups in both), adjusted so that a random clustering scores 0 and perfect agreement scores 1. It doesn't care about cluster names, only about which points go together.
+
+Section 6 puts these against each other. On both datasets, the method with the **highest silhouette** has a **lower ARI** than the best method. On the half-moons, single linkage and DBSCAN recover the true groups perfectly (ARI 1.000) with a silhouette of 0.387, while k-means' wrong split scores a higher silhouette of 0.491, because it cut the data into two compact halves, which is what silhouette rewards. An analyst choosing by silhouette would pick the wrong answer.
+
+<PredictFirst
+  question="You cluster customer data with k-means for k = 2 to 10 and choose the k with the highest silhouette score. What have you actually optimized?"
+  options={[
+    'The number of real customer segments',
+    'How compact and well separated the k-means clusters are, which favours round groups whether or not they are meaningful',
+    'The predictive accuracy of the clusters',
+    'Nothing: silhouette is unrelated to k',
+  ]}
+  correctIndex={1}
+  explanation="Silhouette measures geometry: how much closer points are to their own cluster than to the next. It can't know whether the groups correspond to anything useful. It tends to favour the kind of compact, convex clusters k-means produces, so it's a reasonable sanity check but a poor sole judge. Check the clusters against what they're for: do the segments behave differently, are they stable across resamples, do domain experts recognize them?"
+/>
+
+**What to do instead.** Since no single score settles it:
+
+- **Evaluate against the purpose.** If clusters are customer segments, do they differ in behaviour you care about (retention, spend)? If PCA is preprocessing, does the downstream model improve? This is the only evaluation that really answers "is it good?".
+- **Check stability.** Re-run on bootstrap samples or with different random seeds and measure how much the result changes (ARI between runs). Structure that disappears under resampling isn't real.
+- **Look at it.** Plot the data (after PCA or UMAP), look at examples from each cluster, read the topics. Unsupervised results are for people to use, and people can often tell immediately whether a grouping makes sense.
+- **Use a few labels if you can get them.** Even a small labelled sample turns external scores into an option.
+
+## 4. Practical Pitfalls
+
+Three issues come up across all the families:
+
+- **Scaling.** Almost every method here uses distances, so a feature measured in thousands dominates one measured in fractions, as on the [k-NN page](/docs/machine-learning/k-nearest-neighbors). Standardize first, or deliberately weight features by importance.
+- **The curse of dimensionality.** In high dimensions distances concentrate and density is hard to estimate. Clustering raw high-dimensional data often works poorly; reduce dimensions first (PCA to 20 to 50 components is a common step before clustering), or cluster learned embeddings.
+- **Choosing the number of things.** $k$ clusters, the number of components, DBSCAN's density threshold. Each has heuristics (the elbow, explained variance, the k-distance plot, BIC for mixtures), and none replaces checking against purpose. HDBSCAN and Bayesian nonparametric mixtures choose the number themselves, at the cost of other settings.
+
+<GoDeeper title="Go deeper: self-supervised learning, the unsupervised idea that took over">
+
+The largest models of the last decade were trained mostly without human labels, but not with the methods on this page. **Self-supervised learning** invents a supervised task from unlabelled data: predict the next word of a text, predict a masked-out patch of an image, or recognize that two augmented crops come from the same photo. Because the "labels" come from the data itself, there's no labelling cost, and the amount of training data is limited only by how much raw text or imagery exists.
+
+The connection to this page is that self-supervised training is a way of learning $p(\mathbf{x})$, or a representation of it. A language model trained to predict the next token is literally a density model of text, $p(\text{text}) = \prod_t p(\text{token}_t \mid \text{previous tokens})$. And the representations these models learn are what make the classical unsupervised methods work on hard data: clustering, nearest-neighbour search, anomaly detection and topic modelling (BERTopic) all perform far better on learned embeddings than on raw pixels or word counts. In practice, a modern unsupervised pipeline is often "embed with a pretrained model, then use a classical method from this section on the embeddings". See [the LLM training pipeline](/docs/llms-genai/training-pipeline) for how pretraining works.
+
+</GoDeeper>
+
+## 5. Which Family for Which Question
+
+| Question | Family | Start with |
+|---|---|---|
+| Are there natural groups? | Clustering | k-means for a quick look; HDBSCAN for arbitrary shapes and noise |
+| Can I describe each point with fewer numbers? | Dimensionality reduction | PCA |
+| What does this high-dimensional data look like? | Visualization | PCA, then UMAP or t-SNE |
+| Which points are unusual? | Anomaly detection | Isolation forest |
+| Which items go together? | Pattern mining | FP-Growth for association rules |
+| What are these documents about? | Topic modeling | BERTopic on embeddings; LDA for interpretable word distributions |
+
+## 6. Minimal Implementation
+
+Two experiments. First, four clustering methods on two synthetic datasets with known groups: three blobs of different spreads, and two interleaved half-moons. Each result is scored both internally (silhouette, which uses no labels) and externally (ARI against the true groups). Second, how many principal components the 64-pixel handwritten digits need:
+
+```python
+import numpy as np
+from sklearn.cluster import DBSCAN, AgglomerativeClustering, KMeans
+from sklearn.datasets import load_digits, make_blobs, make_moons
+from sklearn.decomposition import PCA
+from sklearn.metrics import adjusted_rand_score, silhouette_score
+from sklearn.mixture import GaussianMixture
+from sklearn.preprocessing import StandardScaler
+
+# 1. Four clustering methods on two datasets whose true groups we know
+datasets = {
+    "blobs": make_blobs(n_samples=600, centers=3, cluster_std=[1.0, 2.0, 0.5], random_state=4),
+    "moons": make_moons(n_samples=600, noise=0.06, random_state=0),
+}
+methods = {
+    "k-means (k=2 or 3)": lambda X, k: KMeans(k, n_init=10, random_state=0).fit_predict(X),
+    "GMM (k=2 or 3)": lambda X, k: GaussianMixture(k, random_state=0).fit_predict(X),
+    "agglomerative, single link": lambda X, k: AgglomerativeClustering(k, linkage="single").fit_predict(X),
+    "DBSCAN (eps=0.3)": lambda X, k: DBSCAN(eps=0.3, min_samples=5).fit_predict(X),
+}
+for dname, (X, truth) in datasets.items():
+    X = StandardScaler().fit_transform(X)
+    k = len(np.unique(truth))
+    print(f"{dname}:   method                      ARI vs truth   silhouette")
+    for mname, fit in methods.items():
+        labels = fit(X, k)
+        sil = silhouette_score(X, labels) if len(np.unique(labels)) > 1 else float("nan")
+        print(f"         {mname:28s} {adjusted_rand_score(truth, labels):>6.3f}        {sil:>6.3f}")
+
+# 2. Dimensionality reduction: how much of the digits data 64 pixels really need
+X, y = load_digits(return_X_y=True)                     # 1,797 handwritten digits, 8x8 = 64 pixels
+pca = PCA().fit(X)
+cum = np.cumsum(pca.explained_variance_ratio_)
+for target in [0.5, 0.8, 0.9, 0.95]:
+    print(f"components needed for {target:.0%} of the variance: {np.searchsorted(cum, target) + 1} of 64")
+```
+
+Output (scikit-learn 1.7):
+
+```
+blobs:   method                      ARI vs truth   silhouette
+         k-means (k=2 or 3)            0.741         0.564
+         GMM (k=2 or 3)                0.772         0.561
+         agglomerative, single link    0.569         0.667
+         DBSCAN (eps=0.3)              0.566         0.621
+moons:   method                      ARI vs truth   silhouette
+         k-means (k=2 or 3)            0.480         0.491
+         GMM (k=2 or 3)                0.494         0.491
+         agglomerative, single link    1.000         0.387
+         DBSCAN (eps=0.3)              1.000         0.387
+components needed for 50% of the variance: 5 of 64
+components needed for 80% of the variance: 13 of 64
+components needed for 90% of the variance: 21 of 64
+components needed for 95% of the variance: 29 of 64
+```
+
+- **No method wins both datasets.** On the blobs, the Gaussian mixture is best (ARI 0.772): blobs of different spreads are exactly what a mixture of Gaussians with separate covariances models. On the moons it's among the worst, and the chain-following methods are perfect. Each method's notion of a cluster suits one shape (Section 2).
+- **The internal score is backwards on both.** On the blobs, single linkage has the highest silhouette (0.667) but a much lower ARI than the mixture model; on the moons, k-means has a higher silhouette than the two perfect clusterings. Section 3's warning, measured.
+- **Dimensionality is often much lower than the feature count.** 21 of 64 components keep 90% of the digits' variance.
+
+## 7. When *Not* to Use Unsupervised Learning
+
+| Situation | Better approach |
+|---|---|
+| You have labels, or can get some, for the thing you care about | [Supervised learning](/docs/machine-learning/supervised-learning), even with few labels; it optimizes the right target directly |
+| You need to prove a grouping is "real" | Treat clusters as hypotheses; test them against outcomes or with designed studies |
+| The groups must be stable and explainable to stakeholders | Simple, documented rules or segmentations; clustering results can shift with each refit |
+| Very high-dimensional raw data (pixels, text tokens) | Embed with a pretrained model first, then cluster or reduce the embeddings |
+| A few labelled anomalies and many normal examples | Semi-supervised or supervised detection that uses those labels, with unsupervised scores as features |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| The goal | Describe $p(\mathbf{x})$: its groups, its low-dimensional shape, its empty regions, its co-occurrences |
+| Clustering | What counts as a cluster (centre, density, mixture, graph) decides which shapes it finds |
+| Dimensionality reduction | Choose what to preserve: variance (PCA), independence (ICA), neighbourhoods (t-SNE, UMAP) |
+| Anomalies | Points in low-density regions; isolation forest is a strong default |
+| Kleinberg | No clustering method can be scale-invariant, rich and consistent at once |
+| Silhouette | $(b - a)/\max(a, b)$; rewards compact, round clusters, not correct ones |
+| ARI | Agreement with known labels, 0 for random, 1 for perfect |
+| Evaluation | Judge against the purpose, check stability, look at the results |
+| Pitfalls | Scale features; reduce dimensions before clustering; no formula picks $k$ for you |
+| Modern practice | Cluster and search learned embeddings, not raw data |
+
+---
+
+Next: [K-Means & Hierarchical Clustering](/docs/machine-learning/kmeans-hierarchical-clustering), the two classic clustering methods derived in full, then [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics) for judging supervised models.
+
+## Sources
+
+- J. Kleinberg, [An Impossibility Theorem for Clustering](https://papers.nips.cc/paper/2002/hash/43e4e6a6f341e00671e123714de019a8-Abstract.html), NeurIPS 2002
+- P. J. Rousseeuw, [Silhouettes: A Graphical Aid to the Interpretation and Validation of Cluster Analysis](https://doi.org/10.1016/0377-0427(87)90125-7), *Journal of Computational and Applied Mathematics*, 1987
+- L. Hubert and P. Arabie, [Comparing Partitions](https://doi.org/10.1007/BF01908075), *Journal of Classification*, 1985
+- U. von Luxburg, R. C. Williamson and I. Guyon, [Clustering: Science or Art?](https://proceedings.mlr.press/v27/luxburg12a.html), ICML Workshop on Unsupervised and Transfer Learning, 2012
+- M. E. Tipping and C. M. Bishop, [Probabilistic Principal Component Analysis](https://doi.org/10.1111/1467-9868.00196), *Journal of the Royal Statistical Society B*, 1999
+- T. Hastie, R. Tibshirani and J. Friedman, [The Elements of Statistical Learning](https://hastie.su.domains/ElemStatLearn/), 2nd ed., Chapter 14
+- scikit-learn, [Clustering](https://scikit-learn.org/stable/modules/clustering.html) and [clustering performance evaluation](https://scikit-learn.org/stable/modules/clustering.html#clustering-performance-evaluation)
