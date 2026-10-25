@@ -1,104 +1,393 @@
 ---
-title: "APIs & Model Serving"
+title: "APIs & Model Serving, In Full Depth"
 sidebar_position: 8
-description: "FastAPI, REST, auth, and batch/online/streaming inference architectures -- turning a trained model artifact into an endpoint that answers real traffic."
+description: "Turning a trained model into a service: batch, online and streaming inference, a FastAPI service with validation, auth and health checks, why blocking code in async handlers stalls a server, queueing and dynamic batching measured, and when to use Triton, KServe, BentoML or Ray Serve."
 ---
 
 import ModelServingRequestFlowDiagram from '../../../viz/diagrams/ModelServingRequestFlowDiagram';
 import AsyncBlockingDiagram from '../../../viz/diagrams/AsyncBlockingDiagram';
 import AdaptiveBatchingQueueDiagram from '../../../viz/diagrams/AdaptiveBatchingQueueDiagram';
 import BatchOnlineStreamingDiagram from '../../../viz/diagrams/BatchOnlineStreamingDiagram';
-import ServingToolComparisonDiagram from '../../../viz/diagrams/ServingToolComparisonDiagram';
-import VersioningAndCanaryDiagram from '../../../viz/diagrams/VersioningAndCanaryDiagram';
-import RateLimitingDiagram from '../../../viz/diagrams/RateLimitingDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# APIs & Model Serving
+# APIs & Model Serving, In Full Depth
 
-A trained model artifact (a `.pkl`, a `.pt` file) does nothing by itself — something has to load it, accept requests, run inference, and return a response, reliably and at whatever scale production traffic demands. Everything below builds directly on [APIs, HTTP & Communication Patterns](/docs/cs-fundamentals/apis-http-and-protocols) — a model-serving endpoint is a REST API like any other, just with a GPU-bound function instead of a database query behind it.
+[Containers](/docs/mlops/containers) packaged a model and its dependencies into an image that runs the same everywhere. A model file in an image still does nothing until something loads it, accepts requests, runs inference and sends answers back, reliably and fast enough. This page covers that something. It builds on [APIs, HTTP & Communication Patterns](/docs/cs-fundamentals/apis-http-and-protocols): a model service is an HTTP API like any other, with an expensive function behind it. It covers the three ways to serve predictions, a complete FastAPI service you can run, the concurrency mistake that most often makes Python model servers slow, the queueing maths behind latency, dynamic batching measured, and how the dedicated serving frameworks fit in.
 
-## Building the API
+<ELI5>
 
-- **FastAPI** (the modern default) / **Flask** (older, still common): Python web frameworks for exposing a `predict` endpoint over HTTP.
-- **REST**: the standard request/response API style — `POST /predict` with a JSON body in, a JSON body out.
-- **Auth**: API keys, OAuth2, or JWT tokens gating who can call the endpoint.
-- **Validation**: enforce the request schema (Pydantic in FastAPI) before it reaches the model — malformed input should fail fast with a clear error, not crash the model or silently produce garbage.
-- **Serialization**: converting model inputs/outputs to and from JSON (or a binary format like Protobuf for performance-sensitive paths).
+A trained model is like a recipe written down by a great chef. A recipe doesn't feed anyone. You need a kitchen: someone to take orders, check they make sense, cook, and hand the food out, without the queue at the counter growing forever when the lunch rush arrives.
+
+Model serving is building that kitchen. Some kitchens cook everything overnight and leave it ready (batch). Some cook each order as it arrives (online). Some cook continuously from a conveyor belt (streaming). A busy kitchen also learns to cook several of the same order at once in one pan, which is what batching is.
+
+Everything below is how that kitchen is built and why it slows down.
+
+</ELI5>
+
+## 1. What Model Serving Is
+
+**Model serving** is running a trained model as a long-lived service that receives inputs and returns predictions, within a latency budget and at a required throughput, with the operational properties of any production service: it starts reliably, reports its health, rejects bad input, authenticates callers, scales with load, and can be updated without downtime.
+
+The path of one request:
 
 <ModelServingRequestFlowDiagram />
 
-A real, minimal FastAPI endpoint showing all of the above together — Pydantic validates the request before the model ever sees it:
+1. The client sends a request, typically `POST /v1/predict` with a JSON body.
+2. The server **authenticates** the caller and **validates** the body against a schema.
+3. It **fetches features** that aren't in the request, for example from an online feature store ([Feature Stores & Model Registry](/docs/mlops/feature-stores-and-model-registry)).
+4. It runs **inference**, the model's forward pass.
+5. It **post-processes** the output (a threshold, a top-k, a label lookup), returns it, and logs the prediction with the model version.
 
-```python
-from fastapi import FastAPI
-from pydantic import BaseModel
-import joblib
+Most of the engineering in serving is not step 4. It's making steps 1 to 5 fast and safe under concurrent load. Before building any of it, though, decide whether you need a live service at all.
 
-app = FastAPI()
-model = joblib.load("model.pkl")
+## 2. Batch, Online and Streaming Inference
 
-class PredictRequest(BaseModel):
-    features: list[float]
+### Batch, Online, and Streaming Inference
 
-class PredictResponse(BaseModel):
-    prediction: float
-
-@app.post("/v1/predict", response_model=PredictResponse)
-def predict(req: PredictRequest):
-    prediction = model.predict([req.features])[0]
-    return PredictResponse(prediction=prediction)
-```
-
-```bash
-uvicorn app:app --host 0.0.0.0 --port 8000
-
-curl -X POST http://localhost:8000/v1/predict \
-  -H "Content-Type: application/json" \
-  -d '{"features": [5.1, 3.5, 1.4, 0.2]}'
-```
-
-- **Async APIs**: `async def` endpoints let the server handle other requests while waiting on I/O (a database call, a feature-store lookup) instead of blocking — important once the endpoint does more than "call `model.predict()`."
-
-<AsyncBlockingDiagram />
-
-- **Versioning**: `/v1/predict`, `/v2/predict` — so a new model version can roll out without silently breaking every existing caller.
-- **Rate limiting**: caps requests per client to protect the service (and the GPU behind it) from being overwhelmed by one caller.
-
-<VersioningAndCanaryDiagram />
-
-<RateLimitingDiagram />
-
-## Batch, Online, and Streaming Inference
-
-- **Batch inference**: run predictions on a large accumulated dataset on a schedule (e.g. nightly), writing results to storage for later use — no latency pressure, optimized for throughput.
-- **Online (real-time) inference**: a live API call gets a prediction back synchronously, within a latency budget (often under 100ms) — the classic "serve a model behind an endpoint" case.
-- **Streaming inference**: predictions computed continuously as new events arrive on a stream (Kafka, Kinesis) — used for real-time fraud detection, recommendation updates, etc., where waiting for a batch window isn't acceptable.
+There are three ways to deliver predictions, and the right one follows from *when* the prediction is needed.
 
 <BatchOnlineStreamingDiagram />
 
-Picking the wrong one is a common design mistake: batch inference for a use case that actually needs sub-second responses (or the reverse — standing up a real-time API for a report that only needs to run nightly) wastes either latency budget or infrastructure cost.
+**Batch inference** scores a large set of inputs on a schedule and writes the results to a table or file: every customer's churn risk, every night. There's no latency pressure, so it can use cheap compute, large batches and spot instances. Consumers simply look up a precomputed answer. Its limitation is staleness: a prediction made at 2am knows nothing about what happened at 9am, and it can only score inputs that exist when the job runs, never a brand-new user.
 
-Online serving specifically almost always uses **adaptive batching**: grouping multiple concurrent requests that arrive within a short window into one GPU forward pass, since running the model on a batch of 8 costs barely more than a batch of 1 on the same GPU:
+**Online (real-time) inference** computes a prediction when it's requested, synchronously, within a latency budget often between 10 and 200 ms. It handles new inputs and the latest context, which fraud checks, search ranking and chat need. It costs more: the service runs continuously, sized for peak load, and every millisecond of latency is engineering work.
+
+**Streaming inference** consumes events from a stream such as Kafka or Kinesis and emits predictions as events arrive, without a caller waiting on each one. It suits continuous signals, such as updating a user's risk score after every transaction or flagging anomalous sensor readings, where the result feeds other systems rather than a waiting user. [Message Queues & Async Processing](/docs/mlops/message-queues-and-async-processing) covers the infrastructure.
+
+| | Batch | Online | Streaming |
+|---|---|---|---|
+| Triggered by | A schedule | A request | An event |
+| Latency | Hours | Milliseconds | Seconds |
+| Handles brand-new inputs | No | Yes | Yes |
+| Cost profile | Cheap, bursty | Always-on, sized for peak | Always-on, sized for event rate |
+| Typical use | Churn scores, recommendations precomputed per user | Fraud checks, search ranking, chat | Continuous risk scores, anomaly detection |
+
+A common, effective hybrid: precompute what you can in batch (candidate recommendations for every user) and do only the cheap, context-dependent part online (re-rank those candidates for the current session). Choosing online serving for a use case that only needs nightly scores is one of the most expensive mistakes in ML infrastructure, so ask "how fresh must this be?" first.
+
+The rest of the page is about online serving, where the hard problems are.
+
+## 3. A Production-Shaped Service with FastAPI
+
+### Building the API
+
+[FastAPI](https://fastapi.tiangolo.com) is the standard Python framework for model APIs. It validates requests with Pydantic type hints, generates OpenAPI documentation automatically, and supports both synchronous and asynchronous handlers. Here's a complete service for a scikit-learn classifier with 30 input features:
+
+```python
+import os
+from contextlib import asynccontextmanager
+
+import joblib
+from fastapi import Depends, FastAPI, Header, HTTPException
+from pydantic import BaseModel, Field
+
+MODEL_VERSION = "3"
+state = {}
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    state["model"] = joblib.load("model.joblib")      # load once at startup, never per request
+    yield
+    state.clear()
+
+
+app = FastAPI(lifespan=lifespan)
+
+
+def require_key(x_api_key: str = Header()):
+    if x_api_key != os.environ.get("API_KEY", "dev-key"):
+        raise HTTPException(status_code=401, detail="invalid API key")
+
+
+class PredictRequest(BaseModel):
+    features: list[float] = Field(min_length=30, max_length=30)
+
+
+class PredictResponse(BaseModel):
+    probability: float
+    model_version: str
+
+
+@app.get("/healthz")                                   # liveness: the process is up
+def healthz():
+    return {"status": "ok"}
+
+
+@app.get("/readyz")                                    # readiness: the model is loaded
+def readyz():
+    if "model" not in state:
+        raise HTTPException(status_code=503, detail="model not loaded")
+    return {"status": "ready", "model_version": MODEL_VERSION}
+
+
+@app.post("/v1/predict", response_model=PredictResponse, dependencies=[Depends(require_key)])
+def predict(req: PredictRequest):
+    probability = state["model"].predict_proba([req.features])[0, 1]
+    return PredictResponse(probability=round(float(probability), 4), model_version=MODEL_VERSION)
+```
+
+Calling it with FastAPI's test client, once correctly, once with 5 features instead of 30, and once with the wrong key:
+
+```python
+from fastapi.testclient import TestClient
+from sklearn.datasets import load_breast_cancer
+
+from app import app
+
+row = load_breast_cancer().data[81].tolist()
+with TestClient(app) as client:                         # runs the lifespan, so the model loads
+    print(client.get("/readyz").json())
+    ok = client.post("/v1/predict", json={"features": row}, headers={"x-api-key": "dev-key"})
+    print(ok.status_code, ok.json())
+    short = client.post("/v1/predict", json={"features": row[:5]}, headers={"x-api-key": "dev-key"})
+    print(short.status_code, short.json()["detail"][0]["msg"])
+    nokey = client.post("/v1/predict", json={"features": row}, headers={"x-api-key": "wrong"})
+    print(nokey.status_code, nokey.json())
+```
+
+```text
+{'status': 'ready', 'model_version': '3'}
+200 {'probability': 0.6588, 'model_version': '3'}
+422 List should have at least 30 items after validation, not 5
+401 {'detail': 'invalid API key'}
+```
+
+Each piece answers a production need:
+
+- **Load the model once, at startup.** The `lifespan` handler loads it before the server accepts traffic. Loading per request would add seconds to every call.
+- **Validate at the edge.** The malformed request gets a 422 with a precise message and never reaches the model. Without validation, a 5-feature input might raise an obscure NumPy error, or worse, be silently padded and scored.
+- **Authenticate.** An API key in a header is the simplest scheme; services behind a gateway often use OAuth 2.0 tokens or mutual TLS instead. A prediction endpoint is an expensive, often sensitive resource and shouldn't be open.
+- **Separate liveness from readiness.** `/healthz` says the process is alive; `/readyz` says it can serve. [Kubernetes](/docs/mlops/kubernetes) restarts a pod that fails liveness and stops sending traffic to one that fails readiness, which matters for large models that take a minute to load.
+- **Return the model version.** Every response says which model produced it, so logs, monitoring and [deployment comparisons](/docs/mlops/deployment-strategies) can split by version.
+- **Version the API path.** `/v1/predict` lets you change the request format in `/v2` without breaking existing callers. The API version and the model version are different things: a new model with the same inputs needs no new path.
+
+Run it in production with an ASGI server such as Uvicorn, usually one process per CPU core or one per GPU, behind a load balancer. That last detail, how many requests one process can handle at once, is where most Python model servers lose their performance.
+
+## 4. Concurrency: The Blocking-Call Trap
+
+FastAPI handlers can be `async def` or plain `def`, and the difference decides how the server handles concurrent requests.
+
+An `async def` handler runs on the **event loop**, a single thread that switches between requests whenever one is waiting on I/O with `await`. A plain `def` handler is run by FastAPI in a **thread pool**, so several can run at once. The trap: if an `async def` handler calls something that blocks without awaiting (CPU-bound inference, `time.sleep`, a synchronous database client), the event loop can't switch, and **every other request on that process waits**.
+
+<AsyncBlockingDiagram />
+
+This script serves the same 100 ms blocking function three ways and sends 20 concurrent requests to each:
+
+```python
+import asyncio, threading, time
+
+import httpx
+import uvicorn
+from fastapi import FastAPI
+
+app = FastAPI()
+
+def model_predict():
+    time.sleep(0.1)                 # stands in for 100 ms of blocking work (CPU inference, a sync client)
+    return 1
+
+@app.get("/async-blocking")
+async def async_blocking():          # blocking call inside async def: freezes the event loop
+    return model_predict()
+
+@app.get("/sync")
+def sync():                          # plain def: FastAPI runs it in a worker thread pool
+    return model_predict()
+
+@app.get("/async-offloaded")
+async def async_offloaded():         # async def, with the blocking call moved off the loop
+    return await asyncio.to_thread(model_predict)
+
+async def load(path, n=20):
+    async with httpx.AsyncClient(base_url="http://127.0.0.1:8799") as client:
+        start = time.perf_counter()
+        await asyncio.gather(*(client.get(path) for _ in range(n)))
+        return time.perf_counter() - start
+
+server = uvicorn.Server(uvicorn.Config(app, port=8799, log_level="warning"))
+threading.Thread(target=server.run, daemon=True).start()
+time.sleep(1.5)
+for path in ["/async-blocking", "/sync", "/async-offloaded"]:
+    print(f"{path:<17} 20 concurrent requests took {asyncio.run(load(path)):.2f} s")
+server.should_exit = True
+```
+
+```text
+/async-blocking   20 concurrent requests took 2.06 s
+/sync             20 concurrent requests took 0.12 s
+/async-offloaded  20 concurrent requests took 0.22 s
+```
+
+The blocking `async def` handled the 20 requests one at a time: 20 × 100 ms ≈ 2 seconds. The plain `def` and the offloaded version overlapped them. The rule: **use `async def` only when everything slow inside it is awaited**; otherwise use `def`, or move the blocking call to a thread with `asyncio.to_thread` or `run_in_threadpool`.
+
+Threads help here because `time.sleep`, like most I/O and like most native inference libraries (NumPy, PyTorch and ONNX Runtime kernels release Python's global interpreter lock while they compute), lets other threads run. Pure-Python CPU work doesn't, and needs multiple processes instead. On a GPU, the question changes again: one GPU can only usefully run so many forward passes at once, and the way to use it well is to batch.
+
+## 5. Latency, Throughput and Queues
+
+Two numbers describe a service's performance. **Latency** is how long one request takes, reported as percentiles (p50, p99), because the slow tail is what users notice. **Throughput** is how many requests per second it completes. They're linked by queueing.
+
+**Little's law** relates the average number of requests in the system $L$, the arrival rate $\lambda$ and the average time each spends in the system $W$:
+
+$$L = \lambda W$$
+
+At 200 requests a second and 50 ms each, about 10 requests are in flight at any moment, so the server needs at least 10 concurrent slots (threads, processes or batch positions) or requests will queue.
+
+The more important result is about **utilization** $\rho = \lambda / \mu$, the arrival rate divided by the service's maximum throughput $\mu$. In the simplest queueing model (random arrivals, one server, the M/M/1 queue) the average time in the system is
+
+$$W = \frac{1}{\mu - \lambda} = \frac{1}{\mu}\cdot\frac{1}{1 - \rho}$$
+
+At 50% utilization, requests take twice the bare service time; at 90%, ten times; at 99%, a hundred times. And when $\rho \geq 1$, arrivals outpace service and the queue grows without bound. **Latency doesn't degrade gracefully as load rises; it degrades suddenly near capacity.** This is why services are sized to run well below their maximum, typically 50 to 70% at peak, and why autoscaling triggers before saturation, not at it.
+
+<PredictFirst
+  question="A model server's measured maximum throughput is 100 requests per second, and latency at very low load is 10 ms. Traffic grows from 50 to 95 requests per second. Roughly what happens to the average latency?"
+  options={[
+    'It stays around 10 ms, since the server is still under capacity',
+    'It roughly doubles, in proportion to the load',
+    'It rises about tenfold, because queueing delay grows as 1/(1 - utilization)',
+    'It falls, because the server warms up under load',
+  ]}
+  correctIndex={2}
+  explanation="With random arrivals, time in system scales like 1/(1 - rho). At rho = 0.5 that factor is 2; at rho = 0.95 it is 20. Going from 50 to 95 requests per second multiplies the queueing factor by about ten, so average latency goes from roughly 20 ms to roughly 200 ms, and the p99 gets much worse still. Being 'under capacity' is not enough; you need headroom."
+/>
+
+On a GPU, one lever changes $\mu$ itself: processing several requests in one forward pass.
+
+## 6. Dynamic Batching
+
+A GPU forward pass has a large fixed cost (launching kernels, moving weights through memory) and a small cost per input. Running 16 inputs together often takes barely longer than running one. **Dynamic batching** (also called adaptive batching) exploits this: the server holds incoming requests for a few milliseconds, groups whatever arrived into one batch, runs one forward pass, and returns each request its own result.
 
 <AdaptiveBatchingQueueDiagram />
 
-## Serving Tools
+Two settings control it: the **maximum batch size**, and the **maximum wait**, how long the first request in a batch may wait for others. The simulation below models a GPU call costing 20 ms plus 1 ms per item, sends requests at random times averaging about 240 per second, and compares no batching with batching up to 16 and up to 64:
 
-- **FastAPI (hand-rolled)**: full control, but you own all the model-loading, batching, and versioning logic yourself.
-- **MLflow serving**: turns a model logged in MLflow (see [Experiment Tracking](/docs/mlops/experiment-tracking)) into a REST endpoint with one command — the fastest path from "logged experiment" to "running endpoint."
+```python
+import asyncio, random, statistics, time
 
-```bash
-mlflow models serve -m runs:/<run_id>/model --port 5000 --no-conda
+async def gpu_forward(batch):
+    await asyncio.sleep(0.020 + 0.001 * len(batch))     # 20 ms fixed cost per call + 1 ms per item
+    return [x * 2 for x in batch]
 
-curl -X POST http://localhost:5000/invocations \
-  -H "Content-Type: application/json" \
-  -d '{"dataframe_split": {"columns": ["f1", "f2"], "data": [[5.1, 3.5]]}}'
+async def batcher(queue, max_batch, max_wait):
+    while True:
+        items = [await queue.get()]                     # wait for the first request
+        deadline = time.perf_counter() + max_wait
+        while len(items) < max_batch and (left := deadline - time.perf_counter()) > 0:
+            try:
+                items.append(await asyncio.wait_for(queue.get(), left))
+            except asyncio.TimeoutError:
+                break
+        outputs = await gpu_forward([x for x, _ in items])
+        for (_, fut), out in zip(items, outputs):
+            fut.set_result(out)
+
+async def run(max_batch, max_wait, rate=300, n=600):
+    queue = asyncio.Queue()
+    worker = asyncio.create_task(batcher(queue, max_batch, max_wait))
+    latencies = []
+
+    async def request(x):
+        fut = asyncio.get_running_loop().create_future()
+        start = time.perf_counter()
+        await queue.put((x, fut))
+        await fut
+        latencies.append(time.perf_counter() - start)
+
+    random.seed(0)
+    tasks, start = [], time.perf_counter()
+    for i in range(n):                                  # Poisson arrivals at `rate` requests/second
+        tasks.append(asyncio.create_task(request(i)))
+        await asyncio.sleep(random.expovariate(rate))
+    await asyncio.gather(*tasks)
+    worker.cancel()
+    q = statistics.quantiles(latencies, n=100)
+    print(f"max_batch={max_batch:>2} max_wait={max_wait * 1000:>2.0f} ms: "
+          f"p50 {q[49] * 1000:6.0f} ms  p99 {q[98] * 1000:6.0f} ms  "
+          f"throughput {n / (time.perf_counter() - start):5.0f} req/s")
+
+for max_batch, max_wait in [(1, 0.0), (16, 0.005), (64, 0.005)]:
+    asyncio.run(run(max_batch, max_wait))
 ```
-- **BentoML**: a framework purpose-built for packaging and serving ML models, with built-in support for adaptive batching, multiple model runners in one service, and easy containerization.
-- **TorchServe**: PyTorch's official model-serving tool — handles model versioning, batching, and metrics out of the box for PyTorch models specifically.
-- **NVIDIA Triton Inference Server**: a general-purpose, multi-framework, GPU-optimized serving server (PyTorch, TensorFlow, ONNX, TensorRT models all served the same way) — the standard choice once GPU throughput and multi-model serving matter; see [LLM Inference Engines](/docs/mlops/llm-inference-engines) for how it compares to LLM-specific engines like vLLM.
-- **Ray Serve**: model serving built on Ray's distributed compute framework — strong for composing multiple models/steps into one serving pipeline (a "model graph") that scales horizontally.
-- **KServe**: a Kubernetes-native model serving layer (built on Knative) providing standardized serving, autoscaling (including scale-to-zero), and canary rollouts for models deployed on [Kubernetes](/docs/mlops/kubernetes).
 
-The right choice depends on where the model runs: a single PyTorch model behind a moderate-traffic API is well served by TorchServe or BentoML; a multi-model, GPU-heavy, high-throughput system is where Triton or KServe earn their extra operational complexity.
+```text
+max_batch= 1 max_wait= 0 ms: p50   5211 ms  p99  10285 ms  throughput    47 req/s
+max_batch=16 max_wait= 5 ms: p50     48 ms  p99     68 ms  throughput   239 req/s
+max_batch=64 max_wait= 5 ms: p50     48 ms  p99     69 ms  throughput   242 req/s
+```
 
-Next: [Cloud Computing for ML](/docs/mlops/cloud-computing) — the infrastructure all of the above actually runs on.
+(The script asks for 300 requests a second; asyncio's timer granularity makes the real arrival rate about 240, which is why the batched runs report that throughput: they kept up with everything that arrived.)
+
+Without batching, each call costs 21 ms, so the maximum throughput is $1 / 0.021 \approx 48$ requests a second. Arrivals are five times that, $\rho \approx 5$, and the queue grows for the whole run: median latency is over 5 seconds and still climbing. With batches of up to 16, the capacity becomes $16 / (0.020 + 0.016) \approx 444$ requests a second, utilization drops to about 0.55, and the median latency is 48 ms. Allowing batches of 64 changes nothing here, because at this arrival rate batches rarely fill beyond 16 within the 5 ms wait.
+
+**The trade-off** is the wait: every request may sit up to `max_wait` before its batch starts, and it shares the batch's compute time. Tune `max_wait` against the latency budget and the maximum batch size against GPU memory and the measured cost curve. Serving frameworks implement exactly this loop, with the parameters exposed as configuration.
+
+<GoDeeper title="Go deeper: why LLM serving batches differently">
+
+Dynamic batching groups whole requests: a batch starts together and finishes together. That works when every request costs about the same, as with a classifier. LLM generation breaks it: one request needs 10 output tokens and another 2,000, and with request-level batching the short ones wait for the longest in their batch, while new requests wait for the whole batch to finish.
+
+LLM servers therefore use **continuous batching** (also called in-flight or iteration-level batching): the batch is re-formed at every decoding step. Finished sequences leave immediately and waiting requests join at the next step. Combined with paged management of the attention KV cache, this is what lets engines such as vLLM, SGLang and TensorRT-LLM reach several times the throughput of naive serving. [LLM Inference Engines](/docs/mlops/llm-inference-engines) and [LLM Inference Optimization](/docs/mlops/llm-inference-optimization) cover both in depth.
+
+</GoDeeper>
+
+## 7. Serving Frameworks
+
+A hand-written FastAPI service is the right start: full control, minimal moving parts. As requirements grow (GPU batching, several models, model graphs, scale-to-zero), dedicated frameworks save work:
+
+| Tool | What it is | Reach for it when |
+|---|---|---|
+| **FastAPI + Uvicorn** | A general web framework you add the model to | One CPU model, moderate traffic, custom logic |
+| **BentoML** | Python framework that packages a model with its service code into a deployable unit, with adaptive batching | You want batching and packaging without leaving Python |
+| **NVIDIA Dynamo-Triton** (formerly Triton Inference Server) | High-performance C++ server for PyTorch, TensorFlow, ONNX, TensorRT and Python models, with dynamic batching, concurrent model execution and model ensembles | GPU throughput matters, or many models share GPUs |
+| **KServe** | Kubernetes-native model serving: a custom resource per model, with autoscaling (including to zero), canary rollouts and pluggable runtimes such as Triton or vLLM | You run on Kubernetes and want a standard way to deploy many models |
+| **Ray Serve** | Serving on the Ray distributed runtime, strong at composing several models and Python steps into one scalable pipeline | Multi-step inference graphs, or you already use Ray |
+| **MLflow** (`mlflow models serve`) | Serves any MLflow-logged model as a REST endpoint with one command | Quick internal endpoints and prototypes straight from the registry |
+| **vLLM, SGLang, TensorRT-LLM** | LLM-specific engines | Serving generative language models; see [LLM Inference Engines](/docs/mlops/llm-inference-engines) |
+
+**TorchServe**, recommended by older guides for PyTorch models, has been in limited maintenance since 2025: its repository was archived, with no further fixes or security patches. Prefer one of the options above for new work.
+
+Managed endpoints (SageMaker, Vertex AI, Azure ML) wrap similar servers behind a cloud API; [Deploying Models on AWS & Azure](/docs/mlops/cloud-model-deployment) covers them.
+
+## 8. Making Inference Itself Faster
+
+The serving layer controls queues and batching. The model's own speed is the other half:
+
+- **Export to an optimized runtime.** ONNX Runtime or TensorRT often run the same model 2 to 5 times faster than the training framework, by fusing operations and choosing kernels for the hardware.
+- **Reduce precision.** Running in FP16 or BF16 instead of FP32 roughly halves memory and is faster on modern GPUs; INT8 quantization goes further for many models, with a small accuracy check required.
+- **Make it smaller.** Distilling a large model into a smaller one, or pruning, can cut latency by an order of magnitude when the accuracy cost is acceptable.
+- **Cache.** Identical requests (the same product page, the same query) can return a cached prediction; see [Caching Strategies](/docs/mlops/caching-strategies).
+- **Measure before optimizing.** A trace often shows the model takes 5 ms of a 60 ms request and the feature lookup takes 40 ([Observability](/docs/mlops/observability#5-instrumenting-a-model-api)).
+
+## 9. When *Not* to Run Your Own Online Service
+
+| Situation | Better choice |
+|---|---|
+| Predictions are needed daily or hourly, not per request | Batch inference to a table; consumers look up results |
+| Low, spiky traffic with tolerant latency | Serverless or scale-to-zero endpoints (KServe, cloud serverless inference), accepting cold starts |
+| A hosted foundation model meets the need | Call the provider's API; serving your own LLM is a large commitment |
+| The model must run where there's no network, or data can't leave the device | On-device inference with Core ML, TensorFlow Lite or ONNX Runtime Mobile |
+| Inference is a step inside a data pipeline | Run the model inside the pipeline job (Spark, Ray Data) rather than calling an HTTP service per row |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Three modes | Batch on a schedule, online per request, streaming per event; choose by freshness needed |
+| Service basics | Load once at startup, validate at the edge, authenticate, split liveness from readiness, return the model version |
+| Async trap | A blocking call inside `async def` serializes every request on that process |
+| Little's law | In-flight requests $L = \lambda W$; size concurrency accordingly |
+| Utilization | Latency grows like $1/(1-\rho)$; keep peak load well below capacity |
+| Dynamic batching | Group requests for one forward pass; tune max batch and max wait |
+| LLMs | Continuous batching re-forms the batch every token |
+| Frameworks | FastAPI to start; Triton, KServe, BentoML or Ray Serve as needs grow; TorchServe is unmaintained |
+
+---
+
+Next: [Cloud Computing for ML](/docs/mlops/cloud-computing) covers the infrastructure a model service runs on, and [Deploying Models on AWS & Azure](/docs/mlops/cloud-model-deployment) the managed endpoints built on it.
+
+## Sources
+
+- FastAPI, [Concurrency and async / await](https://fastapi.tiangolo.com/async/) and [Lifespan events](https://fastapi.tiangolo.com/advanced/events/)
+- J. D. C. Little, [A Proof for the Queuing Formula L = λW](https://pubsonline.informs.org/doi/10.1287/opre.9.3.383), Operations Research 9(3), 1961
+- D. Crankshaw et al., [Clipper: A Low-Latency Online Prediction Serving System](https://www.usenix.org/conference/nsdi17/technical-sessions/presentation/crankshaw), NSDI 2017 (adaptive batching)
+- NVIDIA, [Dynamo-Triton](https://developer.nvidia.com/dynamo-triton); KServe, [Documentation](https://kserve.github.io/website/)
+- PyTorch, [TorchServe limited-maintenance notice](https://docs.pytorch.org/serve/)

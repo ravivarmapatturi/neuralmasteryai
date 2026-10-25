@@ -1,90 +1,344 @@
 ---
-title: "Monitoring & Drift Detection"
+title: "Monitoring & Drift Detection, In Full Depth"
 sidebar_position: 15
-description: "Why deployed models fail silently, then the real drift math: PSI, KL/JS divergence, KS test, and Wasserstein distance for data vs. concept drift."
+description: "Why deployed models degrade silently, the kinds of distribution change (data, label and concept drift), PSI, KL/JS, KS and Wasserstein computed and compared, why significance is not magnitude, why input drift can miss the drift that matters, monitoring before labels arrive, and alerting across many features."
 ---
 
 import ThreeMonitoringLayersDiagram from '../../../viz/diagrams/ThreeMonitoringLayersDiagram';
 import PsiCalculatorDiagram from '../../../viz/diagrams/PsiCalculatorDiagram';
-import KlVsJsDivergenceDiagram from '../../../viz/diagrams/KlVsJsDivergenceDiagram';
 import KsTestDiagram from '../../../viz/diagrams/KsTestDiagram';
 import WassersteinDistanceDiagram from '../../../viz/diagrams/WassersteinDistanceDiagram';
 import DataVsConceptDriftDiagram from '../../../viz/diagrams/DataVsConceptDriftDiagram';
-import DriftToolComparisonDiagram from '../../../viz/diagrams/DriftToolComparisonDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Monitoring & Drift Detection
+# Monitoring & Drift Detection, In Full Depth
 
-A deployed model doesn't stay accurate by default — the world it's making predictions about keeps changing, and unlike a normal software bug, a degrading model usually fails silently: it keeps returning confident, well-formed predictions that are just quietly getting worse.
+[Deployment Strategies](/docs/mlops/deployment-strategies) got a new model safely onto all production traffic. That isn't the end of the risk. A model is a snapshot of the world at training time, and the world keeps moving: customers change, products change, fraudsters adapt, an upstream system starts sending a field in different units. This page covers how to notice when that happens: the three layers of monitoring, the precise kinds of change a model can suffer, the distance measures used to detect them (computed and compared on real numbers), why a drift alarm on inputs can miss the change that actually hurts, what to watch before labels arrive, and how to alert across dozens of features without crying wolf.
 
-## Three Layers of Monitoring
+<ELI5>
 
-- **Infrastructure monitoring**: is the serving system itself healthy — CPU/GPU utilization, memory, disk, request latency, error rate, uptime? This is standard software monitoring, nothing ML-specific about it.
-- **Application monitoring**: is the API behaving correctly — request/response schemas valid, correct status codes, no unhandled exceptions? Also not ML-specific.
-- **ML-specific monitoring**: is the *model* still good — are its predictions still accurate, and does the data it's seeing still resemble what it was trained on? This is the layer that has no equivalent in regular software monitoring, and the one most systems under-invest in.
+A weather forecaster trained on twenty years of summers will do fine in summer. When winter comes, they'll keep forecasting confidently, and be wrong every day. Nothing about the forecaster broke; the weather they're forecasting changed.
 
-A system can be 100% "up" by every infrastructure and application metric while the model underneath has silently degraded to near-random — this is why ML-specific monitoring is its own discipline, not a subset of the first two.
+A model is the same. It keeps answering, in the same format, with the same confidence, while the world it learned from slips away. Monitoring is how you notice the season changing: by watching whether today's inputs still look like the ones the model learned from, and whether its answers are still turning out right.
+
+Everything below is how to measure "still looks like" and "still right" precisely.
+
+</ELI5>
+
+## 1. Why Models Degrade Silently
+
+Ordinary software fails loudly. A bug throws an exception, a request returns a 500, a test goes red. A model that has become wrong does none of that: it still returns a well-formed prediction with a plausible score in a few milliseconds. Every infrastructure dashboard stays green.
+
+There are three layers to watch, and only the third is specific to ML:
 
 <ThreeMonitoringLayersDiagram />
 
-## Data Drift: The Math
+- **Infrastructure:** CPU, GPU, memory, disk, network. Is the machinery running?
+- **Service:** request rate, error rate, latency. Is the API answering? [Observability](/docs/mlops/observability) covers these two layers.
+- **Model:** are the inputs still like the training data, are the predictions still distributed as expected, and, when labels arrive, is the model still accurate?
 
-Data drift is a change in the distribution of the model's *input* features between training time and now. Several statistical distances quantify "how different are these two distributions":
+A system can be fully healthy on the first two layers while the model underneath has degraded badly. That's why model monitoring is its own discipline. To do it, you first need a precise vocabulary for *what* can change.
 
-- **PSI (Population Stability Index)**: bins a feature's values and compares the proportion of data in each bin between a reference (training) distribution and a current distribution — `PSI = Σ (current_% − reference_%) × ln(current_% / reference_%)` summed over bins. PSI < 0.1 is typically considered stable, 0.1–0.25 moderate drift, > 0.25 significant drift — one of the most widely used thresholds in industry monitoring.
+## 2. What Can Change
 
-<PsiCalculatorDiagram />
+A supervised model learns the joint distribution of inputs $x$ and labels $y$. Factor it as
 
-- **KL divergence (Kullback-Leibler)**: measures how one probability distribution diverges from a reference distribution — asymmetric (KL(P‖Q) ≠ KL(Q‖P)), which matters when deciding which distribution is "reference" and which is "current."
-- **JS divergence (Jensen-Shannon)**: a symmetric, smoothed version of KL divergence — the fix when direction shouldn't matter, computed as the average of KL divergences from each distribution to their mixture.
+$$P(x, y) = P(y \mid x)\, P(x) = P(x \mid y)\, P(y)$$
 
-<KlVsJsDivergenceDiagram />
+Each factor can move independently, and each kind of movement has a name and a different consequence.
 
-- **KS test (Kolmogorov-Smirnov)**: a statistical hypothesis test comparing two *continuous* distributions' empirical CDFs — gives a p-value for "these two samples plausibly come from the same distribution," rather than just a distance score.
-- **Chi-square test**: the categorical-feature analog of the KS test — compares observed vs. expected frequencies across categories.
+**Data drift** (also *covariate shift*): $P(x)$ changes while $P(y \mid x)$ stays the same. The inputs come from a different mix, but the rule linking inputs to outcomes is unchanged. A fraud model starts seeing more transactions from a new country, but fraud there looks like fraud anywhere. The model may still be right; it's now being asked about regions of input space it saw less of in training.
 
-<KsTestDiagram />
+**Label drift** (also *prior shift*): $P(y)$ changes while $P(x \mid y)$ stays the same. The share of fraudulent transactions doubles during a holiday attack. The model's ranking of transactions may still be good, but its probabilities are now miscalibrated, and any fixed decision threshold flags the wrong number of cases.
 
-- **Wasserstein distance (Earth Mover's Distance)**: the minimum "work" needed to transform one distribution into another — more robust to small distributional shifts than KL/JS divergence and doesn't blow up when distributions have non-overlapping support (where KL divergence is undefined).
+**Concept drift**: $P(y \mid x)$ itself changes. The same input now warrants a different answer. Fraudsters learn which patterns are caught and change behaviour, so transactions that used to be safe are now fraud. This is the kind that makes a model wrong, and the kind that is hardest to see without labels.
 
-<WassersteinDistanceDiagram />
-
-## Data Drift vs. Concept Drift
-
-- **Data drift**: the *input* distribution changes (e.g. customer demographics shift), but the true relationship between input and output stays the same.
-- **Concept drift**: the relationship between input and output itself changes (e.g. what counted as "fraud" behavior changes as fraudsters adapt) — the same input now genuinely warrants a different prediction.
-
-This distinction matters for the fix: data drift can sometimes be handled by retraining on more recent data with the same labeling logic; concept drift means the model's *target definition* has moved, and retraining on stale labels won't help — the labeling/evaluation process itself needs revisiting.
+### Data Drift vs. Concept Drift
 
 <DataVsConceptDriftDiagram />
 
-## A Real, Proven Example: PSI + KS-Test, Actually Validated
+The distinction decides the response. Under pure data drift, the old labelling logic still holds, so retraining on recent data with the same labels usually helps, and sometimes nothing needs doing at all. Under concept drift, the target itself moved: retraining on old labels teaches the old rule again. You need fresh labels from after the change, and sometimes a rethink of the features.
 
-Everything above is the theory — real, but unverified until it's actually run against known ground truth. [`ml-drift-monitor`](https://github.com/ravivarmapatturi/ml-drift-monitor) implements the exact PSI formula from above, plus the KS-test, around a real XGBoost fraud model (trained on the real 284,807-transaction ULB credit-card-fraud dataset, AP 0.869 / ROC-AUC 0.975 on held-out data) — and then does the part most drift-detection writeups skip: proves the detector itself is correct, rather than just running it once and trusting the output.
+There's also a fourth cause, and in practice it's the most common: **a broken pipeline**. A column's units change from dollars to cents, a join starts producing nulls, a default value changes from `0` to `-1`. To a drift detector this looks exactly like data drift, and it's the first thing to check whenever one fires.
 
-**The proof.** A static historical dataset never contains real *future* drift by definition — validating a detector needs a *known*, controlled amount of drift to check the detector's response against. Two things get measured against that known ground truth:
+The next question is how to measure "$P(x)$ changed" with a number.
 
-- **False-positive rate, empirically measured, not assumed**: 50 independent 5,000-row samples of real, genuinely non-drifted data, scored across 29 features — 1,450 independent KS tests. 80 flagged, an empirical rate of 5.52% against KS's nominal 5% alpha. That's what "well-calibrated" actually looks like measured, not just claimed.
-- **Detection power as a function of injected severity**: sweeping a synthetic feature shift from 0 to a full standard deviation produces a PSI that increases *monotonically* on the shifted feature (0.0004 → 1.40) — and shifting exactly 8 of 29 features flags exactly those 8, with zero false spillover onto the other 21.
+## 3. Measuring Distribution Change
 
-**A finding worth knowing before you rely on either metric**: with real-world sample sizes (~57,000 rows here), the KS-test's p-value becomes extremely significant (p < 1e-79) at even a 10% injected shift — statistical significance stops meaning practical significance once N is large enough. PSI, which measures the *magnitude* of a distribution shift rather than the confidence that any shift occurred at all, correctly stays in "none"/"moderate" territory at that same severity. This is exactly why PSI is the practical-magnitude gate in production monitoring and a p-value-based test is at most a secondary, corroborating signal — not the reverse.
+Drift detection compares a **reference** sample (usually training or validation data) with a **current** sample (recent production inputs) for each feature. Four measures do most of the work, and they answer slightly different questions.
 
-**A real bug this caught**: the project's first drift-verdict logic flagged "any drift detected" whenever *either* PSI was significant *or* the KS-test fired. Given the measured 5.52% KS false-positive rate across ~29 monitored features, that meant the headline verdict was `True` on almost every real comparison, drifted or not — caught by actually reading the dashboard's rendered output rather than trusting a passing test suite, and fixed by making PSI (practical magnitude) the verdict signal, with KS demoted to a secondary per-feature diagnostic. The exact kind of gap between "the code runs" and "the code is right" that only shows up when you check what a detector actually outputs against a case you already know the answer to.
+**Population Stability Index (PSI)** comes from credit scoring. Divide the feature into bins, usually deciles of the reference distribution, and compare the share of each sample in each bin:
 
-## Tools
+$$\text{PSI} = \sum_{i=1}^{B} (c_i - r_i)\,\ln\frac{c_i}{r_i}$$
 
-- **Evidently**: open-source, generates drift and data-quality reports/dashboards comparing a reference and current dataset — the most common starting point.
+where $r_i$ and $c_i$ are the reference and current shares in bin $i$. Each term is non-negative, because $(c_i - r_i)$ and $\ln(c_i / r_i)$ always have the same sign. PSI is in fact the symmetric KL divergence between the binned distributions, $\text{KL}(c \,\|\, r) + \text{KL}(r \,\|\, c)$. The industry rule of thumb is below 0.1 stable, 0.1 to 0.25 moderate shift, above 0.25 significant.
+
+<PsiCalculatorDiagram />
+
+**KL and Jensen-Shannon divergence.** The Kullback-Leibler divergence $\text{KL}(P \,\|\, Q) = \sum_i p_i \ln(p_i / q_i)$ measures how surprised you'd be using $Q$ when the truth is $P$. It's asymmetric and becomes infinite when $Q$ has a zero where $P$ doesn't. The **Jensen-Shannon divergence** fixes both by comparing each distribution with their average $M = \tfrac12(P + Q)$:
+
+$$\text{JS}(P, Q) = \tfrac12 \text{KL}(P \,\|\, M) + \tfrac12 \text{KL}(Q \,\|\, M)$$
+
+It's symmetric and bounded by $\ln 2$, and its square root (the JS *distance*) is a true metric. It works naturally for categorical features.
+
+**The Kolmogorov-Smirnov (KS) test** compares two samples' empirical cumulative distribution functions $F_r$ and $F_c$, using the largest vertical gap between them:
+
+$$D = \sup_x \,\lvert F_c(x) - F_r(x) \rvert$$
+
+<KsTestDiagram />
+
+Unlike the others, KS is a *hypothesis test*. It returns a p-value: how likely a gap this large would be if both samples came from the same distribution. For categorical features, the chi-square test plays the same role.
+
+**The Wasserstein distance** (earth mover's distance) is the least total "work" needed to move one distribution's probability mass onto the other's. For one-dimensional distributions it equals the area between the two CDFs, $W_1 = \int \lvert F_c(x) - F_r(x) \rvert\, dx$, and it is measured in the feature's own units: a Wasserstein distance of 5 on an amount in dollars means the distribution moved by about 5 dollars.
+
+<WassersteinDistanceDiagram />
+
+Its advantage is that it reflects *how far* mass moved, not just whether bins differ, and it stays finite when the distributions don't overlap.
+
+These measures sound interchangeable. Computing them side by side shows they aren't.
+
+## 4. Significance Is Not Magnitude
+
+The script below draws a reference sample of 20,000 values, then current samples shifted by 0, 0.05, 0.1 and 0.5 standard deviations, each at two sizes, 1,000 and 100,000, and computes all four measures:
 
 ```python
-from evidently.report import Report
-from evidently.metric_preset import DataDriftPreset
+import numpy as np
+from scipy.stats import ks_2samp, wasserstein_distance
 
-report = Report(metrics=[DataDriftPreset()])
-report.run(reference_data=training_df, current_data=production_df)
-report.save_html("drift_report.html")   # per-feature PSI/KS-test results, and an overall drift verdict
+def psi(reference, current, bins=10):
+    """Population Stability Index with quantile bins taken from the reference."""
+    edges = np.quantile(reference, np.linspace(0, 1, bins + 1))
+    edges[0], edges[-1] = -np.inf, np.inf
+    ref = np.histogram(reference, edges)[0] / len(reference)
+    cur = np.histogram(current, edges)[0] / len(current)
+    ref, cur = np.clip(ref, 1e-6, None), np.clip(cur, 1e-6, None)    # avoid log(0)
+    return float(np.sum((cur - ref) * np.log(cur / ref)))
+
+def js_divergence(reference, current, bins=10):
+    edges = np.quantile(reference, np.linspace(0, 1, bins + 1))
+    edges[0], edges[-1] = -np.inf, np.inf
+    p = np.histogram(reference, edges)[0] / len(reference)
+    q = np.histogram(current, edges)[0] / len(current)
+    m = (p + q) / 2
+    kl = lambda a, b: np.sum(np.where(a > 0, a * np.log(a / b), 0.0))
+    return float((kl(p, m) + kl(q, m)) / 2)
+
+rng = np.random.default_rng(0)
+reference = rng.normal(50, 10, 20_000)          # e.g. transaction amount at training time
+
+print(f"{'shift (std)':>11} {'n':>7} {'PSI':>7} {'JS':>7} {'Wasserstein':>12} {'KS p-value':>11}")
+for shift in [0.0, 0.05, 0.1, 0.5]:
+    for n in [1_000, 100_000]:
+        current = rng.normal(50 + shift * 10, 10, n)
+        print(f"{shift:>11} {n:>7} {psi(reference, current):>7.4f} {js_divergence(reference, current):>7.4f} "
+              f"{wasserstein_distance(reference, current):>12.2f} {ks_2samp(reference, current).pvalue:>11.2g}")
 ```
-- **WhyLabs**: a managed observability platform for ML, focused on data and model quality monitoring at scale without shipping raw data to a third party (it profiles data locally, sends only statistical summaries).
-- **Arize**: a managed ML observability platform with strong support for root-causing performance drops back to specific data segments (which slice of traffic is actually driving the drift).
 
-<DriftToolComparisonDiagram />
+```text
+shift (std)       n     PSI      JS  Wasserstein  KS p-value
+        0.0    1000  0.0147  0.0018         0.39        0.19
+        0.0  100000  0.0010  0.0001         0.11        0.42
+       0.05    1000  0.0132  0.0016         0.43        0.41
+       0.05  100000  0.0031  0.0004         0.46     5.6e-09
+        0.1    1000  0.0250  0.0031         1.35     6.9e-05
+        0.1  100000  0.0100  0.0013         0.97     1.9e-27
+        0.5    1000  0.2659  0.0325         5.22     3.3e-40
+        0.5  100000  0.2348  0.0287         4.95           0
+```
 
-Next: [Observability](/docs/mlops/observability) — the general logging/metrics/tracing infrastructure that drift detection and everything else above is built on top of.
+Three lessons are in that table.
+
+**1. A p-value measures confidence, not size.** At 100,000 samples, a shift of one twentieth of a standard deviation, half a dollar on a $50 average, gives a KS p-value of $5.6 \times 10^{-9}$. The shift is real, and almost certainly irrelevant to any model. With production volumes, a hypothesis test flags *everything*, because every real system drifts a little. KS is useful as a supporting signal, not as an alert threshold on its own.
+
+**2. Magnitude measures are stable across sample sizes.** PSI, JS and Wasserstein report roughly the same value for the 0.5 shift at both sizes (PSI 0.27 and 0.23, Wasserstein 5.2 and 5.0, close to the true 5-unit shift). They answer "how much did it move?", which is the question an alert should ask.
+
+**3. Small samples have a noise floor.** With no shift at all, PSI on 1,000 samples is 0.015, against 0.001 on 100,000. Binned measures are biased upward on small samples, because sampling noise alone makes bin shares differ. Compare windows of similar size, and calibrate thresholds by computing the measure between two samples you know are not drifted, such as two halves of the reference set.
+
+<PredictFirst
+  question="A team alerts whenever any feature's KS p-value is below 0.01. They monitor hourly windows of 200,000 requests. What will they most likely observe?"
+  options={[
+    'Almost no alerts, because 0.01 is a strict threshold',
+    'Alerts on nearly every feature, nearly every hour, mostly for shifts too small to matter',
+    'Alerts only when the model accuracy drops',
+    'Alerts only for categorical features',
+  ]}
+  correctIndex={1}
+  explanation="With 200,000 samples per window, the KS test detects tiny distribution differences with extreme confidence: time-of-day effects, a marketing email, ordinary week-to-week variation. The p-value says the shift is real, not that it matters. Alerting on a magnitude measure such as PSI or Wasserstein against a calibrated threshold, and using KS only as a secondary signal, avoids training the team to ignore alerts."
+/>
+
+## 5. Input Drift Can Miss the Drift That Matters
+
+Input drift measures watch $P(x)$. Section 2 said the damaging change is often in $P(y \mid x)$, which inputs alone can't reveal. This simulation makes it concrete. A logistic model is trained on three features, then evaluated on three new samples: one with no drift, one where an input's mean moves by a full standard deviation but the rule linking inputs to labels stays the same, and one where the inputs stay put and the rule changes:
+
+```python
+import numpy as np
+from scipy.stats import ks_2samp
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import roc_auc_score
+
+rng = np.random.default_rng(0)
+
+def make(n, weights, input_mean=0.0):
+    """Inputs X ~ N(input_mean, 1); labels from a logistic relationship with the given weights."""
+    X = rng.normal(input_mean, 1, (n, 3))
+    y = (rng.random(n) < 1 / (1 + np.exp(-(X @ weights)))).astype(int)
+    return X, y
+
+w_train = np.array([2.0, -1.0, 0.5])
+X_tr, y_tr = make(20_000, w_train)
+model = LogisticRegression().fit(X_tr, y_tr)
+
+scenarios = {
+    "no drift":      make(5_000, w_train),
+    "data drift":    make(5_000, w_train, input_mean=np.array([1.0, 0.0, 0.0])),   # inputs move, rule stays
+    "concept drift": make(5_000, np.array([0.5, -1.0, 2.0])),                      # inputs stay, rule moves
+}
+for name, (X, y) in scenarios.items():
+    ks_p = min(ks_2samp(X_tr[:, j], X[:, j]).pvalue for j in range(3))
+    auc = roc_auc_score(y, model.predict_proba(X)[:, 1])
+    print(f"{name:14} smallest input KS p-value {ks_p:9.2g}   AUC {auc:.3f}")
+```
+
+```text
+no drift       smallest input KS p-value      0.79   AUC 0.886
+data drift     smallest input KS p-value         0   AUC 0.889
+concept drift  smallest input KS p-value     0.031   AUC 0.713
+```
+
+The results are the reverse of what an input-only dashboard would suggest. The data drift scenario sets off the loudest alarm (a p-value of 0) and does no harm: AUC is unchanged, because the model's rule still holds in the new region. The concept drift scenario produces at most a marginal signal on the inputs (the smallest of three p-values is 0.031, which isn't significant once you account for testing three features) and drops AUC from 0.886 to 0.713.
+
+So input drift is a **diagnostic**, not a verdict. It tells you the model is being used on data that differs from its training data, which is worth knowing and often explains a later problem. It can't tell you whether the model is still right. Only labels can, and the next section deals with the fact that they usually come late.
+
+## 6. Monitoring Before the Labels Arrive
+
+In many systems the true label arrives long after the prediction. Whether a transaction was fraud may be known only when a chargeback arrives, up to several weeks later. Whether a loan defaults takes months. During that gap, you need signals that move sooner.
+
+In rough order of how soon they're available:
+
+1. **Data quality checks**, at once: null rates, out-of-range values, unseen categories, schema changes. These catch the pipeline bugs that cause most incidents.
+2. **Input drift** per feature, within hours, as a diagnostic (sections 3 to 5).
+3. **Prediction drift**, within hours: the distribution of the model's scores and decisions. If a fraud model's flag rate goes from 1.8% to 4.5%, something changed, either in the inputs or in the world, and it involves every request rather than one feature at a time. This is often the single most useful early signal.
+4. **Proxy outcomes**, within days: early signals correlated with the real label, such as customer disputes raised in the first 48 hours, or manual-review verdicts on a sample.
+5. **Delayed ground truth**, within weeks: the real metric, joined back to the stored predictions by request ID. This is the only measurement of whether the model is right, so log every prediction with its ID, model version, inputs and score, so the join is possible when labels come.
+
+<GoDeeper title="Go deeper: estimating performance without labels">
+
+There's a way to estimate accuracy before labels arrive, under one assumption. If the model's probabilities are **well calibrated** (among transactions scored 0.3, about 30% really are fraud) and only $P(x)$ has drifted, not $P(y \mid x)$, then the model's own scores tell you the expected outcome of each prediction. Summing them gives an expected confusion matrix, and from it estimated precision, recall or AUC on the current data. NannyML calls this **confidence-based performance estimation** (CBPE), and offers a related method, direct loss estimation, for regression.
+
+The approach is valuable because it turns data drift into a performance estimate: "inputs moved, and the model is expected to lose 3 points of recall as a result" is much more actionable than "PSI is 0.18". Its limits follow from its assumptions. It can't detect concept drift, because under concept drift the scores themselves stop being calibrated and the estimate is confidently wrong. And it needs calibration checked on recent labelled data, typically after fitting a calibration step such as isotonic regression on a validation set.
+
+</GoDeeper>
+
+## 7. Alerting Across Many Features
+
+A model with 29 features, each tested at a 5% false-alarm rate, gives a probability of at least one false alarm in a window of
+
+$$1 - 0.95^{29} \approx 0.77$$
+
+So an alert on "any feature drifted" fires on most windows even when nothing has happened. Within a week the team stops reading it. Better alert design:
+
+- **Alert on magnitude, not significance:** a PSI or Wasserstein threshold, calibrated on known-stable data.
+- **Weight by importance.** Drift on the model's three most important features matters far more than drift on twenty marginal ones. Rank features by importance (for example SHAP values) and set tighter thresholds on the top ones.
+- **Make the headline signal prediction drift and, when available, performance.** Per-feature drift goes into the investigation view, not the pager.
+- **Require persistence.** A shift that lasts one hourly window is usually noise or a one-off event; one that holds across several windows is real.
+- **Correct for multiple tests where you do use p-values,** for example by dividing the significance level by the number of features (Bonferroni).
+
+### A Real, Proven Example: PSI + KS-Test, Actually Validated
+
+The open-source [`ml-drift-monitor`](https://github.com/ravivarmapatturi/ml-drift-monitor) project applies these ideas to a real XGBoost fraud model, trained on the 284,807-transaction ULB credit-card fraud dataset (average precision 0.869, ROC-AUC 0.975 on held-out data), and does what most drift write-ups skip: it checks the detector against cases where the right answer is known.
+
+- **The false-alarm rate was measured, not assumed.** Across 50 independent 5,000-row samples of non-drifted data and 29 features, 1,450 KS tests flagged 80, an empirical rate of 5.52% against the nominal 5%.
+- **Detection power was measured against injected drift.** Sweeping a synthetic shift from zero to one standard deviation raised PSI monotonically on the shifted feature (0.0004 to 1.40), and shifting exactly 8 of the 29 features flagged exactly those 8 and none of the other 21.
+- **The large-sample effect from section 4 showed up in real data.** At about 57,000 rows, a 10% injected shift gave KS p-values below $10^{-79}$, while PSI correctly stayed in its "none" or "moderate" bands.
+- **It caught a real bug in its own verdict logic.** The first version declared drift if PSI *or* any KS test fired. With a 5.5% KS false-alarm rate across 29 features, that headline was true on almost every comparison, drifted or not. The fix made PSI the verdict signal and KS a per-feature diagnostic, the design section 7 recommends.
+
+## 8. Tools
+
+[Evidently](https://www.evidentlyai.com) is the most common open-source starting point. Its 0.7 API runs a report over a reference and a current dataset:
+
+```python
+import numpy as np
+import pandas as pd
+from evidently import Report
+from evidently.presets import DataDriftPreset
+
+rng = np.random.default_rng(0)
+reference = pd.DataFrame({"amount": rng.normal(50, 10, 5_000), "hour": rng.integers(0, 24, 5_000),
+                          "country": rng.choice(["IN", "US", "GB"], 5_000, p=[0.5, 0.3, 0.2])})
+current = pd.DataFrame({"amount": rng.normal(58, 10, 5_000), "hour": rng.integers(0, 24, 5_000),
+                        "country": rng.choice(["IN", "US", "GB"], 5_000, p=[0.3, 0.5, 0.2])})
+
+snapshot = Report([DataDriftPreset()]).run(current_data=current, reference_data=reference)
+for metric in snapshot.dict()["metrics"]:
+    value = metric["value"]
+    print(f"{metric['metric_name']:<70} {value if isinstance(value, dict) else round(value, 4)}")
+snapshot.save_html("drift_report.html")
+```
+
+```text
+DriftedColumnsCount(drift_share=0.5)                                   {'count': 2.0, 'share': 0.6666666666666666}
+ValueDrift(column=amount,method=Wasserstein distance (normed),threshold=0.1) 0.8129
+ValueDrift(column=hour,method=Wasserstein distance (normed),threshold=0.1) 0.0262
+ValueDrift(column=country,method=Jensen-Shannon distance,threshold=0.1) 0.1595
+```
+
+Notice which methods it chose. With more than 1,000 rows, Evidently uses a *magnitude* measure for each column, Wasserstein distance normalized by the reference standard deviation for numbers and JS distance for categories, rather than a p-value, for exactly the reason section 4 showed. The shifted `amount` (0.81 standard deviations) and `country` mix are flagged; the unchanged `hour` isn't.
+
+Other options:
+
+| Tool | Type | Notes |
+|---|---|---|
+| **NannyML** | Open source | Performance estimation without labels (CBPE), univariate and multivariate drift |
+| **Alibi Detect** | Open source | Statistical and learned detectors, including for images and text embeddings |
+| **Arize, Fiddler** | Commercial | Hosted monitoring with slice-level root-cause analysis and LLM tracing |
+| **SageMaker Model Monitor, Vertex AI Model Monitoring, Azure ML** | Cloud-managed | Scheduled drift and quality jobs against a stored baseline |
+
+WhyLabs, often listed in older material, discontinued its hosted service in March 2025 and released its platform as open source; its `whylogs` profiling library remains available.
+
+## 9. What to Do When Drift Fires
+
+An alert is the start of an investigation, not a reason to retrain automatically. A sensible order:
+
+1. **Check the pipeline.** Did a schema, unit, default value or upstream job change? Most "drift" is a bug, and retraining on buggy data bakes it into the next model.
+2. **Check whether it matters.** Is prediction drift visible? Do proxy outcomes or recent labels show a performance drop? Data drift with stable performance may need nothing but a note.
+3. **Find where it is.** Which features, which segments (a country, a device type, a new product)? A local problem may need a local fix.
+4. **Choose the response:** fix the pipeline; recalibrate or move the decision threshold for label drift; retrain on recent data for data drift that hurts; collect fresh labels and possibly new features for concept drift; roll back if a recent deployment is the cause.
+
+Retraining then goes through the same gate as any other model, as described in [CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd#7-continuous-training).
+
+## 10. When *Not* to Use Statistical Drift Detection
+
+| Situation | Better choice |
+|---|---|
+| Labels arrive within minutes or hours | Monitor the real performance metric directly; drift is a secondary diagnostic |
+| Very small traffic | Binned measures are dominated by noise; aggregate over longer windows or watch data-quality checks and outcomes |
+| High-dimensional inputs such as images, audio or text | Per-pixel or per-token drift is meaningless; compare embedding distributions or use a classifier trained to tell reference from current data |
+| Systems where the model's own decisions shape future data, such as recommenders | Drift is expected and partly self-caused; use experiments and holdout traffic to measure the model's effect |
+| LLM applications using a hosted model | Track input topics, output quality evaluations and user feedback; see [LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops) |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Silent failure | A degraded model still returns fast, well-formed, confident answers |
+| Kinds of change | Data drift $P(x)$, label drift $P(y)$, concept drift $P(y \mid x)$, and pipeline bugs |
+| PSI | Binned symmetric KL; under 0.1 stable, over 0.25 significant; biased up on small samples |
+| KS | A hypothesis test; at production volumes it flags shifts too small to matter |
+| Wasserstein | How far the mass moved, in the feature's own units |
+| Input drift | A diagnostic: loud data drift can be harmless, damaging concept drift can be quiet |
+| Before labels | Data quality, then prediction drift, then proxies, then delayed ground truth |
+| Alerting | Magnitude thresholds, importance weighting, persistence; 29 tests at 5% fire 77% of the time |
+
+---
+
+Next: [Observability](/docs/mlops/observability) covers the logs, metrics and traces that model monitoring is built on.
+
+## Sources
+
+- J. Quiñonero-Candela et al. (eds.), *Dataset Shift in Machine Learning*, MIT Press (2009)
+- J. Gama et al., [A Survey on Concept Drift Adaptation](https://dl.acm.org/doi/10.1145/2523813), ACM Computing Surveys 46(4), 2014
+- S. Rabanser, S. Günnemann and Z. Lipton, [Failing Loudly: An Empirical Study of Methods for Detecting Dataset Shift](https://arxiv.org/abs/1810.11953), NeurIPS 2019
+- Evidently, [Data drift: how it is calculated](https://docs.evidentlyai.com/metrics/explainer_drift)
+- NannyML, [Confidence-based performance estimation](https://nannyml.readthedocs.io/en/stable/how_it_works/performance_estimation.html)
+- WhyLabs, [Platform discontinuation and open-source release](https://docs.whylabs.ai/docs/)
