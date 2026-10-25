@@ -1,97 +1,302 @@
 ---
 title: "Optimizers, In Full Depth"
 sidebar_position: 3.7
-description: "SGD to Momentum to Adam, derived and visualized: why the field moved past plain gradient descent to today's adaptive-learning-rate defaults."
+description: "How a gradient becomes a weight update: plain and mini-batch gradient descent, why ill-conditioning slows it, momentum, AdaGrad and RMSProp, Adam derived with bias correction, AdamW's decoupled weight decay, and newer optimizers such as Lion and Muon, with a measured race on two ravines and a hand-written Adam checked against PyTorch."
 ---
-
 
 import OptimizerRaceMp4 from './img/optimizer-race.mp4';
 import OptimizerRaceWebm from './img/optimizer-race.webm';
 import GradientDescentExplorer from '../../../viz/GradientDescentExplorer';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Optimizers, In Full Depth
 
-[Calculus & Optimization](/docs/mathematics-for-ai/calculus-optimization) introduced gradient descent and briefly named the adaptive optimizers. This page derives each one and shows, visually, why the field moved from plain SGD to today's defaults.
+[Loss Functions](/docs/deep-learning/loss-functions) defined the number training makes smaller, and [backpropagation](/docs/deep-learning/neural-network-fundamentals) computes its gradient with respect to every weight. The **optimizer** decides what to do with that gradient: how far to step, in which direction, and whether to use what earlier gradients said. Plain gradient descent, "step against the gradient", from [Calculus & Optimization](/docs/mathematics-for-ai/calculus-optimization), works on paper and struggles in practice, because real loss surfaces are steep in some directions and flat in others. This page builds up the optimizers the field adopted to deal with that, each fixing a specific failure of the one before: momentum, the adaptive methods AdaGrad and RMSProp, Adam, and AdamW, today's default. It measures them on two ravines of different steepness, checks a hand-written Adam against PyTorch's, and ends with newer optimizers and how to choose.
+
+<ELI5>
+
+Imagine walking down into a long, narrow valley in thick fog. You can only feel the slope under your feet.
+
+If you always step straight downhill, you mostly walk into the steep side wall, then the other side wall, zig-zagging across the valley and barely moving along it. That's plain gradient descent.
+
+If you're a heavy ball rolling instead, the side-to-side pushes cancel out and the push along the valley adds up, so you pick up speed in the direction that matters. That's momentum.
+
+If you're a careful hiker who takes small steps on steep ground and long strides on flat ground, you can walk along the valley quickly without being thrown into the walls. That's Adam. Everything below is those three ideas made exact.
+
+</ELI5>
 
 <video autoPlay loop muted playsInline width="100%" style={{maxWidth: 700, display: "block", margin: "0 auto"}}>
   <source src={OptimizerRaceWebm} type="video/webm" />
   <source src={OptimizerRaceMp4} type="video/mp4" />
 </video>
-<p style={{textAlign: "center", fontSize: "0.9em", opacity: 0.75}}>SGD, Momentum, and Adam racing toward the minimum of an elongated ("ravine") loss surface</p>
+<p style={{textAlign: "center", fontSize: "0.9em", opacity: 0.75}}>SGD (red), momentum (gold) and Adam (green) on an elongated bowl: SGD crawls along the shallow direction, momentum overshoots and settles, Adam adapts its step per direction.</p>
 
-Watch the three paths above on this deliberately elongated bowl (steep in one direction, shallow in the other — a stand-in for real loss surfaces, which are rarely nicely circular). Plain SGD (red) crawls along the shallow direction and stalls far from the minimum within the step budget. Momentum (gold) overshoots and oscillates before settling — it builds up speed but has to fight that speed to turn. Adam (green) adapts its step size per-dimension and reaches the minimum's neighborhood fastest, though it overshoots once too. This single picture motivates every optimizer below.
+## 1. Gradient Descent and How Much Data per Step
 
-Now try it yourself — same bowl, your starting point, your learning rate:
+The base update is the same for every optimizer on this page: move the parameters $\theta$ a small step against the gradient of the loss,
 
-<GradientDescentExplorer />
+$$
+\theta \leftarrow \theta - \alpha\, \nabla_\theta L(\theta)
+$$
 
-## Gradient Descent Variants (by batch size)
+with **learning rate** $\alpha$. The variants differ first in how much data the gradient is computed on.
 
-- **Batch Gradient Descent**: compute the gradient using the *entire* dataset, then take one step. Accurate direction, but one step per full pass over the data — painfully slow for large datasets, and requires holding the whole dataset's gradients in memory at once.
-- **Stochastic Gradient Descent (SGD)**: one example at a time. Extremely noisy gradient estimates, but that noise actually helps escape shallow local minima and saddle points — and it enables starting to learn before even seeing the full dataset once.
-- **Mini-Batch Gradient Descent**: the practical universal default — a small batch (32-512 examples) per step. Balances gradient accuracy against update frequency, and maps naturally onto GPU parallelism (see [Algorithms & Data Structures](/docs/mathematics-for-ai/algorithms-data-structures)). When people say "SGD" in a deep learning context, they almost always mean this.
+### Gradient Descent Variants (by batch size)
 
-The base update rule, regardless of batch size: $\theta \leftarrow \theta - \alpha \nabla L(\theta)$.
+- **Batch gradient descent** uses the whole dataset for every step. The direction is exact, but each step costs a full pass over the data, which for millions of examples is far too slow.
+- **Stochastic gradient descent (SGD)**, strictly, uses one example per step. Each gradient is a very noisy estimate, but steps are cheap and learning starts immediately.
+- **Mini-batch gradient descent** uses a small random batch, typically 32 to a few thousand examples. The estimate is good enough, the steps are cheap, and a batch maps naturally onto GPU parallelism. It's what everyone uses, and in deep learning "SGD" almost always means this.
 
-## Momentum-Based Methods
+The noise in mini-batch gradients isn't only a cost. It helps the optimizer move off saddle points and out of sharp, narrow minima that tend to generalize poorly. Larger batches give cleaner gradients and better hardware use, and need a larger learning rate to make the same progress per example.
 
-**Momentum**: accumulate a running (exponentially-weighted) average of past gradients, and step in *that* direction instead of the raw current gradient:
+## 2. Why Plain Gradient Descent Struggles
 
-$$v \leftarrow \beta v + (1-\beta)\nabla L(\theta), \qquad \theta \leftarrow \theta - \alpha v$$
+Near a minimum, a loss surface looks like a bowl, and its shape is described by its curvature in each direction. The simplest bowl with two different curvatures is
 
-Like a ball rolling downhill: it builds speed in a consistent direction and dampens oscillation across a ravine's steep walls (see the chart above). $\beta$ (typically 0.9) controls how much history persists.
+$$
+f(x, y) = \tfrac{1}{2}\left(x^2 + k\, y^2\right)
+$$
 
-**Nesterov Momentum**: a lookahead correction — compute the gradient not at the current position, but at the position momentum is *about* to carry you to, then adjust. This "look before you leap" adjustment gives noticeably better convergence than vanilla momentum on the same budget, at almost no extra cost.
+with curvature 1 along $x$ and $k$ along $y$. Its gradient is $(x,\; k y)$, so a gradient step multiplies $x$ by $(1 - \alpha)$ and $y$ by $(1 - \alpha k)$.
 
-## Adaptive Learning Rate Methods
+**The learning-rate trap.** For the step not to overshoot and diverge along $y$, you need $\lvert 1 - \alpha k \rvert \lt  1$, so $\alpha \lt  2/k$. But then along $x$ each step only shrinks it by a factor of $1 - \alpha \lt  1 - 2/k$, and with $k = 10{,}000$ that's a reduction of 0.02% per step. The steep direction sets the speed limit, and the flat direction crawls. The ratio of largest to smallest curvature is the **condition number**, and gradient descent's convergence slows roughly in proportion to it.
 
-Momentum uses the *same* effective learning rate for every parameter. Adaptive methods scale the learning rate per-parameter, based on that parameter's own gradient history.
+Real loss surfaces are worse: millions of directions, curvatures spanning many orders of magnitude, and different layers whose gradients differ in scale by factors of hundreds. Every optimizer below is a way out of this trap.
 
-**AdaGrad**: divide each parameter's learning rate by the square root of the sum of *all* its squared past gradients: $\theta_i \leftarrow \theta_i - \frac{\alpha}{\sqrt{G_i + \epsilon}}\nabla_i L$, where $G_i$ accumulates $\nabla_i L^2$ over every step so far. Parameters that get frequent large gradients (common features) end up with a smaller effective learning rate; rare features keep a larger one — good for sparse data. Fatal flaw: $G_i$ only ever grows, so the effective learning rate eventually decays to ≈0 and training stalls, even if far from converged.
+## 3. Momentum
 
-**RMSProp**: fixes AdaGrad's decay problem directly — replace the *sum* of squared gradients with an exponentially-decaying *moving average*, so old gradients get forgotten instead of accumulating forever: $G_i \leftarrow \gamma G_i + (1-\gamma)\nabla_i L^2$. The learning rate can now go back up if recent gradients shrink, instead of monotonically dying.
+**Momentum** (Polyak, 1964) keeps a running velocity $v$, an exponentially weighted sum of past gradients, and steps along it:
 
-**AdaDelta**: a further refinement of RMSProp that removes the need to manually set a global learning rate at all — it uses the *ratio* of recent parameter update magnitudes to recent gradient magnitudes to derive an implicit step size automatically.
+$$
+v \leftarrow \beta v + \nabla L(\theta), \qquad \theta \leftarrow \theta - \alpha v
+$$
 
-## Adam and Its Descendants
+with $\beta$ typically 0.9. In a ravine, the gradient across the valley flips sign every step, so those components cancel in $v$. The gradient along the valley points the same way every step, so those components accumulate, up to $1/(1 - \beta) = 10$ times the single-step size. The optimizer gains speed in the consistent direction and damps the oscillation.
 
-**Adam** (Adaptive Moment Estimation): combines momentum (a moving average of the gradient itself — the "first moment") with RMSProp-style adaptive scaling (a moving average of the *squared* gradient — the "second moment"):
+(Some texts write $v \leftarrow \beta v + (1 - \beta)\nabla L$, an average rather than a sum; it's the same method with the learning rate rescaled by $1 - \beta$. PyTorch uses the sum.)
 
-$$m \leftarrow \beta_1 m + (1-\beta_1)\nabla L, \qquad v \leftarrow \beta_2 v + (1-\beta_2)(\nabla L)^2$$
-$$\hat{m} = \frac{m}{1-\beta_1^t}, \quad \hat{v} = \frac{v}{1-\beta_2^t}, \qquad \theta \leftarrow \theta - \alpha \frac{\hat{m}}{\sqrt{\hat{v}}+\epsilon}$$
+**Nesterov momentum** evaluates the gradient at the point the velocity is about to carry you to, rather than where you are, and corrects in advance. It is slightly better in theory and practice at almost no extra cost.
 
-The $\hat{m}, \hat{v}$ step is **bias correction** — early in training, $m$ and $v$ start at zero and are biased toward zero for the first several steps; dividing by $(1-\beta^t)$ corrects for this so early updates aren't artificially shrunk. Adam is the default optimizer for the overwhelming majority of deep learning today, including Transformers (see [Attention & Transformers](/docs/deep-learning/attention-transformers)).
+**The limitation:** momentum still uses one learning rate for every parameter, and that rate is still capped by the steepest direction. It accelerates the flat direction but doesn't remove the cap.
 
-**AdamW**: a small but important fix to Adam — standard Adam applies L2 weight decay by adding it into the gradient *before* the adaptive scaling, which means the effective decay strength gets distorted by each parameter's own $\hat{v}$. AdamW instead applies weight decay directly to the weights, *decoupled* from the adaptive step — this is now the actual default in most modern training code (including every major LLM), not plain Adam.
+## 4. Adaptive Learning Rates
 
-**AdaMax**: a variant of Adam using the $L^\infty$ norm (max of past gradient magnitudes) instead of the $L^2$ norm for the second moment — occasionally more stable, rarely the default.
+The other route out of the trap is to give each parameter its own learning rate, scaled by how large its gradients usually are: small steps where gradients are large, big steps where they're small.
 
-**Nadam**: Adam with Nesterov's lookahead correction folded in, combining both ideas.
+**AdaGrad** (Duchi et al., 2011) divides each parameter's step by the square root of the sum of all its past squared gradients:
 
-**Lion** (EvoLved Sign Momentum): a much simpler, more memory-efficient recent optimizer that only tracks momentum (no second moment) and uses the *sign* of the momentum for the update rather than its magnitude — found via automated search rather than hand-derivation, and competitive with AdamW on some large-scale training runs while using less memory (no $v$ to store).
+$$
+G_i \leftarrow G_i + g_i^2, \qquad \theta_i \leftarrow \theta_i - \frac{\alpha}{\sqrt{G_i} + \epsilon}\, g_i
+$$
 
-**LAMB** (Layer-wise Adaptive Moments): wraps Adam's update with an additional per-layer scaling based on the ratio of weight norm to update norm — specifically designed to keep training stable when using *very* large batch sizes (thousands+), where plain Adam can become unstable.
+Parameters with consistently large gradients get small steps, and rarely updated ones, such as embeddings of rare words, keep large steps, which made AdaGrad good for sparse features. Its flaw is that $G_i$ only grows, so every learning rate decays towards zero and training eventually stalls, converged or not.
 
-## Choosing an Optimizer
+**RMSProp** (Hinton, 2012, in lecture notes) replaces the sum with an exponential moving average, so old gradients are forgotten:
 
-- **Default, almost always**: AdamW.
-- **Memory-constrained / very large models**: Lion (fewer optimizer states to store) or 8-bit Adam variants.
-- **Very large batch, distributed training**: LAMB.
-- **Classical ML / convex problems** (see [Linear Regression](/docs/machine-learning/linear-regression#7-closed-form-vs-gradient-descent)): plain SGD or even the closed-form solution, since there's no messy non-convex surface to navigate.
-- **Sparse features** (e.g. large embedding tables): AdaGrad's original motivation still applies, though Adam-family optimizers now dominate in practice regardless.
+$$
+v_i \leftarrow \gamma v_i + (1 - \gamma)\, g_i^2, \qquad \theta_i \leftarrow \theta_i - \frac{\alpha}{\sqrt{v_i} + \epsilon}\, g_i
+$$
 
-## Minimal Implementation
+Now the effective learning rate tracks the *recent* gradient scale and can rise again if gradients shrink. **AdaDelta** is a close relative that also removes the global learning rate.
+
+Dividing by $\sqrt{v_i}$, the typical gradient size, makes the step for each parameter roughly $\alpha$ times the sign of its gradient, whatever that parameter's scale. That's what lets an adaptive method take the same-sized step in a steep direction and a flat one.
+
+## 5. Adam
+
+### Adam and Its Descendants
+
+**Adam** (Kingma and Ba, 2014) combines the two ideas: momentum for the direction and RMSProp for the per-parameter scale. It keeps two moving averages per parameter, the **first moment** (mean gradient) and the **second moment** (mean squared gradient):
+
+$$
+\begin{aligned}
+m &\leftarrow \beta_1 m + (1 - \beta_1)\, g \\
+v &\leftarrow \beta_2 v + (1 - \beta_2)\, g^2
+\end{aligned}
+$$
+
+with defaults $\beta_1 = 0.9$ and $\beta_2 = 0.999$.
+
+**Bias correction.** Both averages start at zero, so for the first steps they underestimate the true values. After one step, $m = (1 - \beta_1) g = 0.1\, g$, a tenth of the gradient. Since the weights of an exponential average sum to $1 - \beta^t$ after $t$ steps, dividing by that undoes the bias:
+
+$$
+\hat{m} = \frac{m}{1 - \beta_1^t}, \qquad \hat{v} = \frac{v}{1 - \beta_2^t}
+$$
+
+and the update is
+
+$$
+\theta \leftarrow \theta - \alpha\, \frac{\hat{m}}{\sqrt{\hat{v}} + \epsilon}
+$$
+
+The ratio $\hat{m}/\sqrt{\hat{v}}$ is about $\pm 1$ when gradients are consistent and smaller when they're noisy, so $\alpha$ is close to the largest step any parameter takes. That makes Adam's learning rate unusually easy to set and transfer between problems, which is a large part of its popularity. It costs two extra numbers per parameter, $m$ and $v$, so its state takes twice the memory of the weights.
+
+## 6. Measuring Them
+
+Here are SGD, momentum and Adam written out in NumPy, raced on the ravine from section 2 at two condition numbers, then checked against PyTorch's own Adam. SGD and momentum get the largest stable learning rate, $1.9/k$; Adam gets one fixed learning rate of 0.1 for both.
 
 ```python
 import numpy as np
+import torch
 
-def adam_step(theta, grad, m, v, t, lr=0.001, b1=0.9, b2=0.999, eps=1e-8):
-    m = b1 * m + (1 - b1) * grad
-    v = b2 * v + (1 - b2) * grad ** 2
-    m_hat = m / (1 - b1 ** t)
-    v_hat = v / (1 - b2 ** t)
-    theta = theta - lr * m_hat / (np.sqrt(v_hat) + eps)
-    return theta, m, v
+# A ravine: f(x, y) = 0.5 * (x^2 + k y^2). Curvature 1 along x, k along y; minimum at (0, 0).
+# SGD and momentum use the largest stable learning rate, just under 2/k.
+def sgd(p, g, s, lr):
+    return p - lr * g, s
+def momentum(p, g, s, lr, beta=0.9):
+    s["v"] = beta * s.get("v", 0) + g              # PyTorch-style momentum buffer
+    return p - lr * s["v"], s
+def adam(p, g, s, lr=0.1, b1=0.9, b2=0.999, eps=1e-8):
+    s["t"] = s.get("t", 0) + 1
+    s["m"] = b1 * s.get("m", 0) + (1 - b1) * g
+    s["v"] = b2 * s.get("v", 0) + (1 - b2) * g ** 2
+    m_hat, v_hat = s["m"] / (1 - b1 ** s["t"]), s["v"] / (1 - b2 ** s["t"])
+    return p - lr * m_hat / (np.sqrt(v_hat) + eps), s
+
+for k in (100, 10_000):
+    H = np.array([1.0, k])
+    grad = lambda p: H * p
+    lr = 1.9 / k
+    for name, step in [("SGD", lambda p, g, s: sgd(p, g, s, lr)),
+                       ("Momentum", lambda p, g, s: momentum(p, g, s, lr)),
+                       ("Adam", adam)]:
+        p, s = np.array([10.0, 1.0]), {}
+        for t in range(1, 2001):
+            p, s = step(p, grad(p), s)
+            if np.linalg.norm(p) < 1e-3:
+                break
+        result = f"converged in {t:4d} steps" if np.linalg.norm(p) < 1e-3 else f"not converged after 2000 steps, |p| = {np.linalg.norm(p):.2f}"
+        print(f"curvature ratio {k:6,}  {name:9s} {result}")
+
+# Check the hand-written Adam against PyTorch's for three steps on the same problem.
+p_torch = torch.tensor([10.0, 1.0], requires_grad=True)
+opt = torch.optim.Adam([p_torch], lr=0.1)
+H = np.array([1.0, 100.0])
+p, s = np.array([10.0, 1.0]), {}
+for _ in range(3):
+    opt.zero_grad(); (0.5 * (p_torch[0] ** 2 + 100 * p_torch[1] ** 2)).backward(); opt.step()
+    p, s = adam(p, H * p, s)
+print("ours: ", p.round(6), "  torch:", p_torch.detach().numpy().round(6))
 ```
 
-Next: [Weight Initialization, Regularization & LR Scheduling](/docs/deep-learning/initialization-regularization-scheduling) — the remaining training-loop decisions that determine whether an optimizer like this actually converges well.
+```text
+curvature ratio    100  SGD       converged in  481 steps
+curvature ratio    100  Momentum  converged in  134 steps
+curvature ratio    100  Adam      converged in  310 steps
+curvature ratio 10,000  SGD       not converged after 2000 steps, |p| = 6.84
+curvature ratio 10,000  Momentum  not converged after 2000 steps, |p| = 0.21
+curvature ratio 10,000  Adam      converged in  310 steps
+ours:  [9.700101 0.701586]   torch: [9.700101 0.701586]
+```
+
+The results are worth reading closely, because they aren't "Adam wins":
+
+- **At condition number 100, momentum is fastest** (134 steps), then Adam (310), then SGD (481). On a clean, deterministic, mildly elongated bowl, momentum's acceleration is exactly what's needed, and Adam's fixed step size makes it circle the minimum for a while at the end.
+- **At condition number 10,000, only Adam converges.** SGD's learning rate is capped at $1.9/10{,}000$ by the steep direction and it barely moves along the flat one; momentum helps tenfold but not enough. Adam takes the same 310 steps as before, because dividing by $\sqrt{\hat{v}}$ removes each direction's scale. **Adam is invariant to rescaling individual parameters.**
+- **The hand-written Adam matches PyTorch to six decimal places**, so the equations in section 5 are exactly what the library does.
+
+Deep networks look much more like the second ravine than the first: gradient scales differ by orders of magnitude across layers and parameter types, and gradients are noisy. That's why adaptive methods became the default, and why well-tuned SGD with momentum still competes on some problems, such as training image classifiers, where scales are more uniform.
+
+Try the bowl yourself, with your own starting point and learning rate:
+
+<GradientDescentExplorer />
+
+## 7. AdamW: Fixing Weight Decay
+
+L2 regularization adds $\tfrac{\lambda}{2}\lVert\theta\rVert^2$ to the loss, which adds $\lambda\theta$ to the gradient. With plain SGD that's the same as shrinking every weight by a factor $(1 - \alpha\lambda)$ each step: **weight decay**. With Adam it isn't. The $\lambda\theta$ term goes into $m$ and $v$ and is divided by $\sqrt{\hat{v}}$, so weights with large gradients are barely decayed and weights with small gradients are decayed heavily, not what anyone intended.
+
+**AdamW** (Loshchilov and Hutter, 2017) **decouples** the decay: compute the Adam step from the loss gradient alone, then shrink the weights directly,
+
+$$
+\theta \leftarrow \theta - \alpha\left(\frac{\hat{m}}{\sqrt{\hat{v}} + \epsilon} + \lambda\,\theta\right)
+$$
+
+Every weight now decays at the same relative rate. They showed AdamW generalizes better and that its best learning rate and weight decay can be tuned independently. **AdamW is the default optimizer for transformers and nearly all large-model training.** Typical settings for language models are $\beta_1 = 0.9$, $\beta_2 = 0.95$ (a shorter memory, which reacts faster to gradient spikes at scale), weight decay 0.1, and a learning-rate schedule with warmup and decay ([Initialization, Regularization and Scheduling](/docs/deep-learning/initialization-regularization-scheduling)).
+
+<PredictFirst
+  question="A model is trained with torch.optim.Adam(params, weight_decay=0.01) and then with torch.optim.AdamW(params, weight_decay=0.01). Do they regularize the same way?"
+  options={[
+    'Yes, weight_decay means the same thing in both',
+    'No: Adam adds the decay to the gradient, where the adaptive scaling distorts it; AdamW shrinks the weights directly',
+    'No: AdamW ignores weight_decay',
+    'Yes, but AdamW is faster',
+  ]}
+  correctIndex={1}
+  explanation="In PyTorch's Adam, weight_decay is L2 regularization: λθ is added to the gradient and then divided by the per-parameter √v̂, so each weight is decayed by a different amount. AdamW applies λθ outside the adaptive scaling, so the decay is uniform. Their good values of weight_decay also differ, typically by orders of magnitude."
+/>
+
+## 8. Newer Optimizers
+
+Adam's design is from 2014, and optimizer research is active, mostly aimed at large-model training where memory and stability dominate.
+
+- **Lion** (Chen et al., 2023) was found by automated search. It keeps only the momentum and updates with its *sign*: every parameter moves by exactly $\pm\alpha$. It needs half of Adam's optimizer memory, and is competitive on some large vision and language runs, with a smaller learning rate and larger weight decay than AdamW.
+- **8-bit optimizers** (Dettmers et al., 2021) store Adam's $m$ and $v$ in 8 bits with block-wise scaling, cutting optimizer memory by about 75% with little change in results.
+- **LAMB** (You et al., 2019) scales each layer's Adam update by the ratio of the weight norm to the update norm. It kept BERT pretraining stable at batch sizes of tens of thousands.
+- **Shampoo and SOAP** approximate second-order information with per-layer preconditioner matrices, rather than Adam's per-parameter diagonal. They take fewer steps, at more computation per step.
+- **Muon** (Jordan et al., 2024) orthogonalizes the momentum of each 2D weight matrix before using it as the update, so the step changes all directions of the matrix equally. It set training-speed records on small language-model benchmarks and was used, with stabilizing changes, to train Moonshot AI's Kimi K2 in 2025. It's applied to the hidden weight matrices, with AdamW kept for embeddings, norms and the output layer.
+
+None of these has displaced AdamW as the default, but Muon in particular is an active area in 2026.
+
+<GoDeeper title="Go deeper: why Adam behaves like sign descent, and what that implies">
+
+When gradients are consistent over the averaging window, $\hat{m} \approx g$ and $\sqrt{\hat{v}} \approx \lvert g \rvert$, so Adam's step is close to $\alpha \cdot \operatorname{sign}(g)$: every parameter moves by about $\alpha$, however large or small its gradient. Three consequences follow.
+
+- **The learning rate is a step size in parameter units.** With $\alpha = 10^{-3}$, no weight moves more than about $10^{-3}$ per step. That's why Adam's learning rates transfer between models more easily than SGD's, which are tied to gradient scale.
+- **Gradient magnitude information is mostly discarded.** Lion makes this explicit by using the sign directly, and does about as well, which suggests the magnitude wasn't contributing much.
+- **$\epsilon$ matters for parameters with tiny gradients.** If $\sqrt{\hat{v}}$ is comparable to $\epsilon$ (default $10^{-8}$), the step shrinks. In low-precision training $\epsilon$ is sometimes raised to $10^{-6}$ or so for numerical stability.
+
+Adam's noisy-gradient behaviour also matters: when gradients are mostly noise, $\hat{m}$ averages towards zero while $\sqrt{\hat{v}}$ stays large, so the step shrinks automatically. Adam takes cautious steps where the signal is unclear.
+
+</GoDeeper>
+
+## 9. Choosing an Optimizer
+
+| Situation | Choice |
+|---|---|
+| Almost anything: transformers, most deep networks | **AdamW**, with warmup and a decaying learning rate |
+| Image classifiers where the last fraction of accuracy matters | SGD with momentum (0.9) and a tuned schedule is still competitive |
+| Optimizer memory is the bottleneck | 8-bit AdamW, or Lion |
+| Very large batch sizes | LAMB, or AdamW with careful warmup |
+| Large language-model pretraining where step efficiency matters | Muon for hidden matrices with AdamW for the rest is worth testing |
+| Convex problems such as linear or logistic regression | Plain gradient descent, L-BFGS, or the [closed-form solution](/docs/machine-learning/linear-regression#7-closed-form-vs-gradient-descent) |
+
+## 10. When *Not* to Use Each
+
+| Situation | Better choice |
+|---|---|
+| Adam with `weight_decay` as the regularizer | AdamW, which decouples weight decay correctly |
+| AdaGrad for long training runs | RMSProp or Adam, whose learning rates don't decay to zero |
+| SGD on badly scaled parameters (embeddings next to norms next to deep weights) | An adaptive method, which removes per-parameter scale |
+| A new optimizer adopted from a paper without tuning | AdamW first; new optimizers need their own learning rate and decay settings |
+| Raising the learning rate to fix slow training without warmup | Add warmup, then raise it; large early steps with empty moment estimates cause divergence |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Gradient descent | $\theta \leftarrow \theta - \alpha \nabla L$; mini-batches make it practical |
+| Ill-conditioning | The steepest direction caps the learning rate; flat directions crawl |
+| Momentum | Accumulate past gradients; oscillations cancel, consistent directions speed up |
+| AdaGrad, RMSProp | Per-parameter step scaled by gradient size; RMSProp forgets old gradients |
+| Adam | Momentum plus RMSProp plus bias correction; step about $\alpha$ per parameter |
+| Scale invariance | Adam is unaffected by rescaling individual parameters; SGD isn't |
+| AdamW | Weight decay applied to weights directly, not through the adaptive scaling; the default |
+| Memory | Adam stores two extra numbers per parameter; Lion one; 8-bit variants shrink both |
+| Newer | Lion, Muon, Shampoo, SOAP; AdamW remains the safe default |
+
+---
+
+Next: [Weight Initialization, Regularization and LR Scheduling](/docs/deep-learning/initialization-regularization-scheduling), the remaining decisions that determine whether an optimizer like this converges well.
+
+## Sources
+
+- Polyak, *Some methods of speeding up the convergence of iteration methods*, USSR Computational Mathematics and Mathematical Physics (1964)
+- Sutskever et al., [On the importance of initialization and momentum in deep learning](https://proceedings.mlr.press/v28/sutskever13.html) (2013)
+- Duchi, Hazan and Singer, [Adaptive Subgradient Methods](https://jmlr.org/papers/v12/duchi11a.html) (2011), AdaGrad
+- Kingma and Ba, [Adam: A Method for Stochastic Optimization](https://arxiv.org/abs/1412.6980) (2014)
+- Loshchilov and Hutter, [Decoupled Weight Decay Regularization](https://arxiv.org/abs/1711.05101) (2017), AdamW
+- You et al., [Large Batch Optimization for Deep Learning](https://arxiv.org/abs/1904.00962) (2019), LAMB
+- Dettmers et al., [8-bit Optimizers via Block-wise Quantization](https://arxiv.org/abs/2110.02861) (2021)
+- Chen et al., [Symbolic Discovery of Optimization Algorithms](https://arxiv.org/abs/2302.06675) (2023), Lion
+- Jordan et al., [Muon: An optimizer for hidden layers in neural networks](https://kellerjordan.github.io/posts/muon/) (2024); Moonshot AI, [Kimi K2](https://arxiv.org/abs/2507.20534) (2025)
+- PyTorch documentation, [torch.optim](https://pytorch.org/docs/stable/optim.html)
