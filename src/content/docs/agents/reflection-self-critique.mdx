@@ -1,15 +1,16 @@
 ---
-title: "Reflection / Self-Critique"
+title: "Reflection and Self-Critique, In Full Depth"
 sidebar_position: 4.3
-description: "The real Reflexion architecture (Shinn et al. 2023): Actor, Evaluator, and Self-Reflection as three distinct models -- verbal feedback in place of retraining."
+description: "Agents that check their own work: the Reflexion architecture (Actor, Evaluator, Self-Reflection), a loop with real tests run end to end, why self-critique without external feedback often fails, verifiers and LLM judges, and when reflection is worth its cost."
 ---
 
 import ReflexionLoopDiagram from '../../../viz/diagrams/ReflexionLoopDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Reflection / Self-Critique
+# Reflection and Self-Critique, In Full Depth
 
-[Plan-and-Execute](/docs/agents/plan-and-execute) changes *when* an agent thinks — all upfront, versus per step. Reflection changes what happens *after* a result comes back: does the agent just move on, or does it actually check its own work first?
+[Plan-and-Execute](/docs/agents/plan-and-execute) changes *when* an agent thinks — all upfront, versus per step. Reflection changes what happens *after* a result comes back: does the agent just move on, or does it actually check its own work first? This page covers the Reflexion architecture and its results, runs a reflection loop against real tests, separates reflection from plain verification, and spends time on the most important practical finding: self-critique works when it has an **external signal** to work from (tests, tool errors, a checker), and often doesn't when the model only re-reads its own answer.
 
 <ELI5>
 
@@ -17,7 +18,7 @@ Imagine redoing a homework problem, but before turning it in, you re-read your o
 
 </ELI5>
 
-## The Real Architecture: Reflexion
+## 1. The Real Architecture: Reflexion
 
 Shinn et al.'s ["Reflexion: Language Agents with Verbal Reinforcement Learning"](https://arxiv.org/abs/2303.11366) (2023) is the paper this pattern is named after, and it's precise about the mechanism — three distinct models, not one agent grading itself in the same breath it answered:
 
@@ -33,7 +34,7 @@ This isn't a metaphor for reinforcement learning — it's a real substitution in
 
 </GoDeeper>
 
-## A Real Trial, Not a Constructed Example
+## 2. A Real Trial, Not a Constructed Example
 
 This is the actual ALFWorld trial from the paper — a household-task agent that needs to find a mug and use a desklamp:
 
@@ -41,11 +42,83 @@ This is the actual ALFWorld trial from the paper — a household-task agent that
 
 Step through it: trial 1 fails at "use desklamp 1" because the agent never actually found the lamp first — a genuinely different mistake than the wrong desklamp, which matters because self-reflection has to name what actually went wrong to be useful. The reflection it generates is specific enough to change trial 2's very first action — the agent goes straight to desk 1 instead of wherever it was searching before. That specificity is the whole mechanism: a reflection that just says "try harder" wouldn't have fixed anything.
 
-## Not the Same as a Verifier/Grader
+## 3. The Loop, Run Against Real Tests
+
+The same three roles in code. The Evaluator here is real: it executes the candidate function against unit tests. The Actor and Self-Reflection steps are stand-ins for model calls, with the Actor's second attempt depending on the lesson in its memory, so the mechanism is visible and reproducible:
+
+```python
+# A Reflexion-style loop: Actor attempts, Evaluator runs real tests, Self-Reflection writes a lesson
+# that the next attempt reads. The tests are real; the Actor and reflector are stand-ins for model calls.
+TESTS = [((3,), 6), ((0,), 1), ((5,), 120), ((1,), 1)]           # factorial
+
+ATTEMPTS = {   # what the stand-in Actor writes, depending on which lessons are in its memory
+    (): "def solve(n):\n    out = 1\n    for i in range(1, n):\n        out *= i\n    return out",
+    ("range(1, n) stops before n: include n itself.",):
+        "def solve(n):\n    out = 1\n    for i in range(1, n + 1):\n        out *= i\n    return out",
+}
+
+def actor(memory):
+    return ATTEMPTS[tuple(memory)]
+
+def evaluator(code):
+    namespace = {}
+    exec(code, namespace)                                       # run the candidate against real tests
+    failures = [(args, want, namespace["solve"](*args)) for args, want in TESTS if namespace["solve"](*args) != want]
+    return failures
+
+def self_reflect(code, failures):
+    # A real system asks the model: given the code and the failing tests, what specifically went wrong?
+    args, want, got = failures[0]
+    print(f"   failing: solve{args} = {got}, expected {want}")
+    return "range(1, n) stops before n: include n itself."
+
+memory = []
+for trial in range(1, 4):
+    code = actor(memory)
+    failures = evaluator(code)
+    print(f"trial {trial}: {len(TESTS) - len(failures)}/{len(TESTS)} tests pass")
+    if not failures:
+        break
+    memory.append(self_reflect(code, failures))
+    print(f"   lesson stored: {memory[-1]!r}")
+```
+
+```text
+trial 1: 2/4 tests pass
+   failing: solve(3,) = 2, expected 6
+   lesson stored: 'range(1, n) stops before n: include n itself.'
+trial 2: 4/4 tests pass
+```
+
+Everything useful in the loop comes from the Evaluator's concrete signal: which test failed, with what input, and what came out. The reflection turns that into a specific lesson ("include `n` itself"), and the next attempt fixes exactly that. A reflection written without the failing test, from re-reading the code alone, would have had much less to go on, which is the subject of section 5.
+
+## 4. Not the Same as a Verifier
 
 A plain verifier checks one output and accepts or rejects it — useful, but the lesson dies with that single decision. Reflexion's self-reflection step does something structurally different: it writes a *reusable* lesson into memory that changes the *next* attempt's starting point, not just this one's verdict. In the terms [Loops and Graphs](/docs/agents/loops-and-graphs#two-return-paths-on-rejection) uses for a gate's two return paths, a plain verifier is closer to the **short correction edge** (fixes this run); Reflexion's memory buffer is closer to the **long learning edge** (an accepted-or-corrected result becomes a standing constraint for future runs) — except here it's built from natural language instead of a structured constraint, and it persists across trials of the *same* task rather than across entirely different future tasks.
 
-## Real Numbers, and Real Limitations
+<PredictFirst
+  question="An agent answers maths word problems. You add a step where the same model re-reads its answer and asks itself whether it's correct, with no tools or checks. What does research suggest usually happens to accuracy?"
+  options={[
+    'It rises sharply, since the model catches its own mistakes',
+    'It stays about the same or falls, because the model often changes correct answers to wrong ones without an external signal',
+    'It always reaches 100% after enough rounds',
+    'It rises only for very small models',
+  ]}
+  correctIndex={1}
+  explanation="Huang et al. (2023) found that intrinsic self-correction, with no external feedback, did not reliably improve reasoning and sometimes made it worse: the model was as likely to talk itself out of a right answer as into one. Gains came when the critique had something external to check against, such as tests, tool results or a ground truth."
+/>
+
+## 5. Self-Critique Needs Something to Check Against
+
+Reflexion's strongest results came from settings with a real external signal: unit tests for code, success or failure in an environment. That's not a detail. Later work tested what happens without one:
+
+- **Intrinsic self-correction often fails.** Huang et al. (2023), "Large Language Models Cannot Self-Correct Reasoning Yet", asked models to review and revise their own answers on reasoning benchmarks with no external feedback. Accuracy didn't reliably improve and often dropped, as models changed correct answers to incorrect ones. Earlier reported gains had often relied, implicitly, on knowing which answers were wrong.
+- **External feedback works.** When the critique can use a compiler, tests, a search result, a calculator or a checker, the model has new information, and revision helps. Coding agents iterate against test output and error messages for exactly this reason.
+- **Separate judges help some.** A different model or a differently prompted critic, especially with a rubric, catches more than the same model re-reading its answer, though it shares many blind spots with the generator ([LLM-as-judge](/docs/llms-genai/evaluation-and-serving)).
+
+The practical rule: before adding a reflection step, ask what new information the critic will have that the actor didn't. If the answer is "none", expect little gain for the extra cost.
+
+## 6. Real Numbers, and Real Limitations
 
 The paper's headline result: Reflexion reaches **91% pass@1 on HumanEval**, versus GPT-4's 80% without it — a genuine, cited improvement from the reflect-and-retry loop alone, not a marginal gain.
 
@@ -57,9 +130,33 @@ It's not universal, and the paper says so directly rather than leaving it implie
 
 That last point is the real, honest failure mode worth naming explicitly: self-critique catches the failures the model *can* recognize as failures. A blind spot in the model's judgment is invisible to a critique step running on the same judgment.
 
-## References
+## 7. When *Not* to Add Reflection
+
+| Situation | Better choice |
+|---|---|
+| No external signal to critique against | A better prompt, or build a check (tests, validation) first |
+| Latency-sensitive single answers | Answer once; reflection multiplies calls |
+| A deterministic check exists | Run the check in code and feed back its result, rather than asking the model whether it's right |
+| The failure is a missing capability, not a fixable mistake | A stronger model or different tools; reflection refines, it doesn't invent new strategies |
+| Unbounded retry loops | A fixed trial limit, and escalate to a person when it's reached |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Reflexion | Actor attempts, Evaluator scores, Self-Reflection writes a lesson the next attempt reads |
+| Verbal RL | The "update" is text in the context, not a weight change |
+| Measured | 91% pass@1 on HumanEval with tests as the signal, against 80% without |
+| External signal | Tests, tool errors and checkers make critique work; re-reading alone often doesn't |
+| Verifier vs reflection | A verifier rejects one output; reflection writes a reusable lesson |
+| Limits | Local minima, weak exploration, and wrong self-diagnoses |
+
+## Sources
 
 - Shinn, Cassano, Berman, Gopinath, Narasimhan, Yao, ["Reflexion: Language Agents with Verbal Reinforcement Learning"](https://arxiv.org/abs/2303.11366) — arXiv:2303.11366. The Actor/Evaluator/Self-Reflection architecture, the ALFWorld trial, the 91%/80% HumanEval result, and the WebShop/local-minima/unhelpful-reflection limitations cited above are all directly from this paper.
-- [Loops and Graphs](/docs/agents/loops-and-graphs#two-return-paths-on-rejection) — the short-correction-edge vs. long-learning-edge framing applied to Reflexion's memory buffer above.
+- Huang et al., [Large Language Models Cannot Self-Correct Reasoning Yet](https://arxiv.org/abs/2310.01798) (2023)
+- Madaan et al., [Self-Refine: Iterative Refinement with Self-Feedback](https://arxiv.org/abs/2303.17651) (2023)
+- Kamoi et al., [When Can LLMs Actually Correct Their Own Mistakes?](https://arxiv.org/abs/2406.01297) (2024)
+- On this site: [Loops and Graphs](/docs/agents/loops-and-graphs#two-return-paths-on-rejection), the short-correction-edge versus long-learning-edge framing applied to Reflexion's memory above
 
 Next: [Loops and Graphs](/docs/agents/loops-and-graphs) — the general anatomy both this page and Plan-and-Execute are specific instances of. For the rest of Agent Architectures' patterns (routing, supervisor, memory, durable execution), see [Agent Architectures](/docs/agents/agent-architectures#routing-supervisor-pattern).
