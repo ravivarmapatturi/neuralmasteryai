@@ -1,53 +1,293 @@
 ---
 title: "Association Rule Mining: Apriori & FP-Growth, In Full Depth"
 sidebar_position: 6.6
-description: "Apriori and FP-Growth for market-basket analysis: support, confidence, and lift metrics, worked through a real toy transaction database."
+description: "Association rules derived: support, confidence and lift and what each measures, why confidence misleads, the downward-closure property that makes the search tractable, Apriori's join and prune steps, FP-Growth's prefix tree and conditional pattern bases, rule generation, and the false discoveries that low thresholds produce. From-scratch Apriori and FP-Growth agree exactly."
 ---
 
-
 import AssociationRulesDiagram from '../../../viz/diagrams/AssociationRulesDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Association Rule Mining: Apriori & FP-Growth, In Full Depth
 
-A different unsupervised problem entirely: not grouping examples ([clustering](/docs/machine-learning/kmeans-hierarchical-clustering)) or compressing features ([dimensionality reduction](/docs/machine-learning/pca-svd)), but finding **"if X, then usually Y"** patterns in transactional data — the algorithms behind "customers who bought this also bought that."
+[Clustering](/docs/machine-learning/kmeans-hierarchical-clustering) groups examples and [dimensionality reduction](/docs/machine-learning/pca-svd) compresses features. Association rule mining asks a third kind of unsupervised question about data made of sets: which items occur together more often than chance would explain? "Customers who buy pasta and sauce usually also buy cheese." This page defines the three measures used to score such rules and shows why the most intuitive one, confidence, misleads; derives the property that makes searching an exponential space of item combinations practical; builds the two classic algorithms, Apriori and FP-Growth; and measures how many convincing-looking rules appear in data where no item is related to any other.
 
-## The Core Concepts
+<ELI5>
 
-Given a database of transactions (each one a set of items — a shopping basket, a browsing session), association rule mining looks for rules like $\{\text{bread}, \text{butter}\} \Rightarrow \{\text{milk}\}$, scored by three metrics:
+A shop owner looks through a pile of till receipts and notices that people who buy pasta and sauce usually buy cheese too. That's useful: put the cheese near the pasta. But the owner also notices that people who buy cheese usually buy bread. Is that a pattern? Not really, if almost everyone buys bread anyway. Cheese buyers buy bread about as often as everybody else.
 
-- **Support**: how often the itemset appears at all — $\text{support}(X) = \frac{\text{transactions containing } X}{\text{total transactions}}$. A rule about an itemset nobody buys isn't useful no matter how reliable the pattern is.
-- **Confidence**: given $X$ is present, how often is $Y$ also present — $\text{confidence}(X \Rightarrow Y) = \frac{\text{support}(X \cup Y)}{\text{support}(X)}$. This is literally $P(Y \mid X)$ (see [Probability & Statistics — Bayes' Theorem](/docs/mathematics-for-ai/probability-statistics#bayes-theorem)).
-- **Lift**: how much more often $X$ and $Y$ co-occur than you'd expect if they were independent — $\text{lift}(X \Rightarrow Y) = \frac{\text{confidence}(X \Rightarrow Y)}{\text{support}(Y)}$. Lift $> 1$ means a genuine positive association; lift $\approx 1$ means the "pattern" is just coincidental co-occurrence of two popular items — this is the metric that actually separates real signal from statistical noise, since confidence alone is misleadingly high for any popular item Y regardless of X. Real counts, real metrics, over a real toy transaction database:
+Association rule mining finds the first kind of pattern and filters out the second. It counts how often things appear together, compares that with how often they'd appear together by coincidence, and keeps only the combinations that clearly beat coincidence. Everything below is that idea made exact, plus the tricks that make counting fast when a shop sells thousands of things.
+
+</ELI5>
+
+## 1. Support, Confidence and Lift
+
+### The Core Concepts
+
+The data is a list of $n$ **transactions** (baskets, sessions, patient records), each a set of **items**. An **itemset** is any set of items, and a **rule** $X \Rightarrow Y$ pairs two disjoint itemsets: "when $X$ appears, $Y$ tends to appear". Three numbers score a rule.
+
+**Support** is how common an itemset is:
+
+$$
+\operatorname{supp}(X) = \frac{\lvert\{\text{transactions containing all of } X\}\rvert}{n} = \hat{P}(X)
+$$
+
+A rule's support is $\operatorname{supp}(X \cup Y)$, how often the whole pattern occurs. Rare patterns may be real but rarely matter, and with few occurrences they're also hard to tell apart from chance.
+
+**Confidence** is how often the rule holds when it applies:
+
+$$
+\operatorname{conf}(X \Rightarrow Y) = \frac{\operatorname{supp}(X \cup Y)}{\operatorname{supp}(X)} = \hat{P}(Y \mid X)
+$$
+
+**Lift** compares that with how often $Y$ appears anyway:
+
+$$
+\operatorname{lift}(X \Rightarrow Y) = \frac{\operatorname{conf}(X \Rightarrow Y)}{\operatorname{supp}(Y)} = \frac{\hat{P}(X, Y)}{\hat{P}(X)\,\hat{P}(Y)}
+$$
+
+If $X$ and $Y$ were independent, $P(X, Y) = P(X)P(Y)$ and the lift would be 1. Lift above 1 means they appear together more than independence predicts; below 1, less. Note that lift is symmetric: $\operatorname{lift}(X \Rightarrow Y) = \operatorname{lift}(Y \Rightarrow X)$. It measures association, not direction.
+
+**Why confidence alone misleads.** Confidence is high for any rule whose right side is popular, whatever the left side. In Section 6, bread is in about 60% of baskets independently of everything else. The rule $\{\text{eggs}\} \Rightarrow \{\text{bread}\}$ has confidence 0.614, which looks like a strong rule, but its lift is 1.02: egg buyers buy bread at the same rate as everyone. Meanwhile the planted pattern $\{\text{pasta}, \text{sauce}\} \Rightarrow \{\text{cheese}\}$ has a similar-looking confidence (0.761) and a lift of 4.68. Confidence can't tell them apart; lift can. Explore support, confidence and lift on a small transaction set:
 
 <AssociationRulesDiagram />
 
-## Apriori
+Other measures address lift's own weaknesses. **Leverage**, $P(X, Y) - P(X)P(Y)$, is the same comparison as a difference, so it favours patterns that are both frequent and strong rather than rare ones with extreme ratios. **Conviction**, $\tfrac{1 - P(Y)}{1 - \operatorname{conf}(X \Rightarrow Y)}$, measures how much more often the rule would be wrong if $X$ and $Y$ were independent, and unlike lift it's directional.
 
-**The core problem**: with $n$ possible items, there are $2^n$ possible itemsets — checking all of them is intractable for any real catalog. Apriori's insight, the **Apriori principle**: if an itemset is infrequent, every superset of it must also be infrequent (adding more required items can only make a pattern rarer, never more common). This lets you prune the search space aggressively.
+## 2. The Search Problem, and Downward Closure
 
-**The algorithm**:
-1. Find all frequent 1-item itemsets (support above a minimum threshold).
-2. Generate candidate 2-item itemsets *only* from combinations of frequent 1-itemsets, and filter by support.
-3. Repeat for 3-itemsets, 4-itemsets, etc. — at each step, only extending itemsets that were already frequent at the previous step.
-4. Stop when no new frequent itemsets are found; generate rules from the final frequent itemsets, filtered by minimum confidence and lift.
+The standard task is: find every itemset with support at least a threshold `min_support` (the **frequent itemsets**), then form rules from them. The difficulty is size. With $m$ distinct items there are $2^m - 1$ possible itemsets; a supermarket with 10,000 products has more itemsets than there are atoms in the universe. Counting them all is impossible.
 
-**The cost**: Apriori still requires repeatedly scanning the full transaction database to check candidate support at every level — expensive on large datasets, and the main motivation for FP-Growth below.
+What makes it possible is one property of support. If $X \subseteq Z$, every transaction containing $Z$ also contains $X$, so
 
-## FP-Growth (Frequent Pattern Growth)
+$$
+X \subseteq Z \quad\Rightarrow\quad \operatorname{supp}(Z) \le \operatorname{supp}(X)
+$$
 
-Solves the same problem without Apriori's expensive repeated database scans, using a compact data structure instead:
+Adding items can only make an itemset rarer. Two consequences, which are the same fact read in both directions:
 
-1. Scan the database once to find frequent single items, and sort them by frequency.
-2. Build an **FP-tree**: insert each transaction's items (in frequency order) into a shared prefix tree, so transactions with common frequent items share tree branches — a compact representation of the entire database's itemset structure in one pass.
-3. Mine frequent itemsets directly from the tree structure, recursively, without ever regenerating and re-scanning candidate itemsets against the raw database the way Apriori does.
+- Every subset of a frequent itemset is frequent.
+- If an itemset is infrequent, **every superset of it is infrequent** too, and none of them need to be counted.
 
-**The practical result**: FP-Growth is substantially faster than Apriori on large datasets, at the cost of a more complex implementation and a data structure that has to fit reasonably in memory. It's the standard choice in production settings; Apriori remains more common in teaching contexts specifically because the Apriori principle is easier to reason about directly.
+This is the **Apriori principle**, or **downward closure** (anti-monotonicity) of support. It means the search can proceed outward from single items, and the moment any combination falls below the threshold, the entire region of the lattice above it is pruned. In practice most of the $2^m$ itemsets are never considered.
 
-## Where This Shows Up
+## 3. Apriori
 
-- **Market basket analysis**: the original, defining use case — physical or online retail recommendation ("frequently bought together").
-- **Web usage mining**: finding common navigation patterns across a site.
-- **Bioinformatics**: finding co-occurring genetic markers.
-- Conceptually related to (but distinct from) the collaborative-filtering approach used in [recommendation systems](/docs/ml-system-design/case-studies#case-study-personalized-recommendations-for-a-50-million-item-catalog) — association rules find explicit, interpretable *rules*, while modern recommenders more often use learned embeddings and matrix factorization (see [Linear Algebra — SVD](/docs/mathematics-for-ai/linear-algebra#singular-value-decomposition-svd)) for the same underlying goal.
+### Apriori
 
-Next: [Anomaly Detection](/docs/machine-learning/anomaly-detection) — Isolation Forest, Local Outlier Factor, and One-Class SVM.
+Apriori (Agrawal and Srikant, 1994) searches level by level, by itemset size:
+
+1. Count every single item in one pass; keep those with enough support, $L_1$.
+2. For $k = 2, 3, \dots$:
+   - **Join**: form candidate $k$-itemsets by combining pairs of frequent $(k-1)$-itemsets that differ in one item.
+   - **Prune**: discard any candidate that has an infrequent $(k-1)$-subset. By downward closure it can't be frequent, so it isn't worth counting.
+   - **Count**: one pass over the transactions, counting the surviving candidates; keep the frequent ones, $L_k$.
+3. Stop when a level produces no frequent itemsets.
+
+The prune step is where the Apriori principle pays off: a candidate is counted only if every one of its subsets already proved frequent. The cost is one full pass over the data per level, and potentially a very large number of candidates at level 2 (every pair of frequent items), which is usually the most expensive level. Apriori is easy to understand and implement, and it's the algorithm the principle is named after, but on large or dense data the repeated passes and the candidate sets become the bottleneck.
+
+## 4. FP-Growth
+
+### FP-Growth (Frequent Pattern Growth)
+
+FP-Growth (Han, Pei and Yin, 2000) finds the same frequent itemsets without generating candidates, using a compressed representation of the data:
+
+1. **One pass** to count single items. Drop infrequent items and sort the rest by descending frequency.
+2. **Second pass**: insert each transaction, with its items in that order, into a **prefix tree** (the FP-tree). Transactions that start with the same frequent items share a path from the root, and each node counts how many transactions passed through it. Because the most frequent items come first, many transactions share long prefixes, and the tree is often much smaller than the data.
+3. **Mine recursively.** For each frequent item $i$, starting with the least frequent, collect the **conditional pattern base**: the tree paths leading to $i$, each with $i$'s count. That's a small database of "what appears together with $i$". Build a conditional FP-tree from it and mine it recursively; every frequent itemset found there, with $i$ added, is frequent in the full data.
+
+The recursion divides the problem: all frequent itemsets containing $i$ are found from $i$'s conditional base alone. There's no candidate generation and only two passes over the original data, which is why FP-Growth is usually much faster than Apriori on large, dense datasets, at the cost of keeping the tree in memory. Section 6 implements the recursion directly on lists of (transaction, count) pairs, which is the same algorithm without the tree's memory savings, and confirms it finds exactly the same itemsets with exactly the same supports as Apriori.
+
+**From itemsets to rules.** For each frequent itemset $Z$ and each way of splitting it into $X$ and $Y = Z \setminus X$, compute $\operatorname{conf}(X \Rightarrow Y) = \operatorname{supp}(Z)/\operatorname{supp}(X)$; every support needed is already known, because all subsets of a frequent itemset are frequent. Confidence has its own downward closure: moving items from the left side to the right side can only lower it (the numerator stays $\operatorname{supp}(Z)$ while the denominator grows), so if $X \Rightarrow Y$ fails the confidence threshold, so does every rule with a smaller left side drawn from $X$.
+
+<PredictFirst
+  question="You mine 500 shopping baskets in which every item is chosen independently of every other, with min_support = 1%. You keep rules with confidence ≥ 0.3 and lift ≥ 1.5. How many rules do you expect?"
+  options={[
+    'None: with independent items, every lift is 1',
+    'Dozens: with many itemsets tested and few baskets per itemset, chance fluctuations produce high lifts',
+    'Exactly one per item',
+    'It cannot be estimated',
+  ]}
+  correctIndex={1}
+  explanation="The true lift is 1 for every rule, but the measured lift is an estimate from a handful of baskets. At 1% support an itemset may appear in only 5 baskets, and a couple of extra co-occurrences by chance doubles its lift. With hundreds of itemsets and several rules per itemset, many will clear the thresholds by luck. Section 6 finds 40 such rules in data with no associations at all."
+/>
+
+## 5. Rules That Aren't Real
+
+Association mining tests a very large number of patterns, and a pattern that clears the thresholds by chance looks exactly like a real one. In Section 6, 500 baskets were generated with every item chosen independently, so the true lift of every rule is exactly 1. Mining at 1% support still produced **40 rules** with confidence at least 0.3 and lift at least 1.5. Each is a false discovery. The causes:
+
+- **Low support means small counts.** At 1% of 500 baskets, an itemset appears 5 times; one or two coincidental co-occurrences swing its lift enormously.
+- **Many comparisons.** Thousands of candidate rules are evaluated, so even a 1% chance of a fluke per rule produces dozens of flukes.
+
+The remedies are the ones used for any large-scale testing. Raise `min_support` so every rule rests on enough transactions. Test each rule's association statistically (Fisher's exact test on its $2 \times 2$ table of $X$ present or absent against $Y$ present or absent) and correct for the number of tests (Bonferroni or false-discovery-rate control); Webb (2007) describes this for rule mining. Hold out part of the data and keep only rules that also hold there. And above all, treat mined rules as hypotheses to check, especially before acting on them.
+
+Two more cautions. Rules describe co-occurrence, not cause: buying pasta doesn't cause buying cheese, and promoting one won't necessarily move the other. And rules found in aggregate can reverse within subgroups (Simpson's paradox), for example if the pattern holds only in one store or one season.
+
+<GoDeeper title="Go deeper: closed and maximal itemsets, and sequences">
+
+The number of frequent itemsets can itself explode: if one 20-item set is frequent, all $2^{20} \approx 10^6$ of its subsets are too, and listing them all says little that the one large set doesn't. Two compressed answers are standard:
+
+- A frequent itemset is **closed** if no superset has the same support. The closed itemsets and their supports determine the support of every frequent itemset, so nothing is lost.
+- It's **maximal** if no superset is frequent at all. The maximal itemsets determine *which* itemsets are frequent, but not their supports.
+
+Algorithms such as CHARM and FPMax mine these directly. When order matters (pages visited in a session, purchases over months, events before a machine failure), the problem becomes **sequential pattern mining**, with algorithms such as GSP and PrefixSpan that extend the same downward-closure idea to sequences.
+
+</GoDeeper>
+
+## 6. Minimal Implementation
+
+5,000 synthetic baskets over 20 items, with bread in about 60% of baskets, two planted patterns (pasta night: pasta, sauce and usually cheese; and coffee with sugar), and everything else independent. Apriori and FP-Growth from scratch, the rule measures, and the independent-data experiment of Section 5:
+
+```python
+import time
+from collections import defaultdict
+from itertools import combinations
+import numpy as np
+
+rng = np.random.default_rng(0)
+items = ["bread", "milk", "eggs", "pasta", "sauce", "cheese", "coffee", "tea", "sugar", "apples",
+         "bananas", "rice", "beans", "chicken", "fish", "yogurt", "butter", "jam", "cereal", "juice"]
+pop = np.array([0.60, 0.40, 0.30] + [0.10] * 17)             # bread is in 60% of baskets
+baskets = []
+for _ in range(5000):
+    b = {it for it, p in zip(items, pop) if rng.random() < p}
+    if rng.random() < 0.08:                                    # a planted pattern: pasta night
+        b |= {"pasta", "sauce"} | ({"cheese"} if rng.random() < 0.8 else set())
+    if rng.random() < 0.05:
+        b |= {"coffee", "sugar"}
+    baskets.append(frozenset(b))
+n = len(baskets)
+support = lambda s: sum(1 for b in baskets if s <= b) / n
+
+def apriori(baskets, min_sup):
+    n = len(baskets)
+    counts = defaultdict(int)
+    for b in baskets:
+        for it in b:
+            counts[frozenset([it])] += 1
+    level = {s for s, c in counts.items() if c / n >= min_sup}
+    frequent = {s: counts[s] / n for s in level}
+    k = 2
+    while level:
+        # join frequent (k-1)-itemsets, then prune any candidate with an infrequent (k-1)-subset
+        cands = {a | b for a in level for b in level if len(a | b) == k}
+        cands = {c for c in cands if all(frozenset(sub) in level for sub in combinations(c, k - 1))}
+        counts = defaultdict(int)
+        for b in baskets:                                      # one pass over the data per level
+            for c in cands:
+                if c <= b:
+                    counts[c] += 1
+        level = {c for c in cands if counts[c] / n >= min_sup}
+        frequent.update({c: counts[c] / n for c in level})
+        k += 1
+    return frequent
+
+def fpgrowth(baskets, min_sup):
+    n = len(baskets)
+    min_count = min_sup * n
+    def mine(transactions, suffix, out):                       # transactions: list of (items, count)
+        counts = defaultdict(int)
+        for items_, c in transactions:
+            for it in items_:
+                counts[it] += c
+        frequent_items = sorted((it for it, c in counts.items() if c >= min_count), key=lambda it: (-counts[it], it))
+        for it in frequent_items:
+            new = suffix | {it}
+            out[frozenset(new)] = counts[it] / n
+            # conditional pattern base: the parts of transactions containing `it` that come before it in the order
+            order = {x: i for i, x in enumerate(frequent_items)}
+            cond = [([x for x in items_ if x in order and order[x] < order[it]], c)
+                    for items_, c in transactions if it in items_]
+            mine([(t, c) for t, c in cond if t], new, out)
+        return out
+    return mine([(list(b), 1) for b in baskets], set(), {})
+
+for name, fn in [("Apriori", apriori), ("FP-Growth", fpgrowth)]:
+    start = time.perf_counter()
+    res = fn(baskets, 0.03)
+    print(f"{name:9s} {len(res)} frequent itemsets at support >= 3%  ({time.perf_counter() - start:.2f} s)")
+a, f = apriori(baskets, 0.03), fpgrowth(baskets, 0.03)
+print("same itemsets:", a.keys() == f.keys(), "  same supports:", all(abs(a[k] - f[k]) < 1e-12 for k in a))
+
+def rule(X, Y):
+    sx, sy, sxy = support(frozenset(X)), support(frozenset(Y)), support(frozenset(X) | frozenset(Y))
+    return sxy, sxy / sx, sxy / sx / sy
+print("rule                         support  confidence  lift")
+for X, Y in [({"pasta", "sauce"}, {"cheese"}), ({"cheese"}, {"bread"}), ({"coffee"}, {"sugar"}), ({"eggs"}, {"bread"})]:
+    s, c, l = rule(X, Y)
+    print(f"{str(sorted(X)):18s} -> {str(sorted(Y)):10s} {s:.3f}    {c:.3f}       {l:.2f}")
+
+# Rules found in data with no associations at all: every item independent
+noise = [frozenset(it for it, p in zip(items, pop) if rng.random() < p) for _ in range(500)]
+freq = apriori(noise, 0.01)
+spurious = 0
+for s in freq:
+    if len(s) < 2:
+        continue
+    for r in range(1, len(s)):
+        for X in combinations(s, r):
+            X = frozenset(X); sx = freq[X]; sy = freq[s - X]
+            if freq[s] / sx >= 0.3 and freq[s] / sx / sy >= 1.5:
+                spurious += 1
+print(f"independent data, 500 baskets: {spurious} rules with confidence >= 0.3 and lift >= 1.5")
+```
+
+Output:
+
+```
+Apriori   87 frequent itemsets at support >= 3%  (0.08 s)
+FP-Growth 87 frequent itemsets at support >= 3%  (0.04 s)
+same itemsets: True   same supports: True
+rule                         support  confidence  lift
+['pasta', 'sauce'] -> ['cheese'] 0.072    0.761       4.68
+['cheese']         -> ['bread']  0.099    0.610       1.02
+['coffee']         -> ['sugar']  0.058    0.392       2.76
+['eggs']           -> ['bread']  0.178    0.614       1.02
+independent data, 500 baskets: 40 rules with confidence >= 0.3 and lift >= 1.5
+```
+
+- **The two algorithms agree exactly**: the same 87 frequent itemsets with the same supports. FP-Growth's recursion did it without a single candidate-generation step.
+- **Lift separates real patterns from popular items (Section 1).** The planted pasta-night rule has lift 4.68 and coffee-sugar 2.76. Cheese ⇒ bread and eggs ⇒ bread have confidences above 0.6 that look impressive, and lifts of 1.02: bread is simply in most baskets.
+- **Directional confidence, symmetric lift.** Coffee ⇒ sugar has confidence only 0.39 (most coffee buyers in this data don't buy sugar), yet lift 2.76: sugar is nearly three times as likely in a basket with coffee.
+- **Thresholds alone don't stop false discoveries (Section 5).** 40 rules clear confidence 0.3 and lift 1.5 in 500 baskets where nothing is associated with anything.
+
+## 7. When *Not* to Use Association Rules
+
+| Situation | Better choice |
+|---|---|
+| You want personalized recommendations for each user | [Recommender systems](/docs/machine-learning/recommender-systems): matrix factorization and learned embeddings generalize to items never bought together |
+| Order or timing matters (sessions, event sequences) | Sequential pattern mining, or sequence models |
+| You want to know whether promoting X will increase sales of Y | A controlled experiment; rules are co-occurrence, not cause |
+| Very large catalogues with long-tail items | Embedding-based similarity; most item pairs have too little support for reliable rules |
+| Numeric data | Discretize first with care, or use correlation-based or model-based methods |
+| Few transactions | Results will be dominated by chance; collect more data or test rules statistically |
+
+Association rules remain useful where interpretable, auditable "X goes with Y" statements are the goal: shelf layout, bundle design, finding co-occurring diagnoses or adverse events, and exploring a new transactional dataset.
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Support | $P(X)$: how common an itemset is |
+| Confidence | $P(Y \mid X) = \operatorname{supp}(X \cup Y)/\operatorname{supp}(X)$; inflated by popular $Y$ |
+| Lift | $P(X, Y)/(P(X)P(Y))$; 1 means independent; symmetric |
+| Downward closure | A superset can't be more frequent than its subsets; prune above infrequent itemsets |
+| Apriori | Level by level: join, prune by subsets, count in one pass per level |
+| FP-Growth | Frequency-ordered prefix tree, conditional pattern bases, no candidates, two passes |
+| Rules | Split each frequent itemset; confidence from known supports |
+| False discoveries | Low support and many tests make chance rules look real; raise support, test, hold out |
+| Interpretation | Co-occurrence, not causation |
+
+---
+
+Next: [Topic Modeling](/docs/machine-learning/topic-modeling), finding the themes that run through a collection of documents.
+
+## Sources
+
+- R. Agrawal, T. Imieliński and A. Swami, [Mining Association Rules between Sets of Items in Large Databases](https://doi.org/10.1145/170035.170072), SIGMOD 1993
+- R. Agrawal and R. Srikant, [Fast Algorithms for Mining Association Rules](https://www.vldb.org/conf/1994/P487.PDF), VLDB 1994
+- J. Han, J. Pei and Y. Yin, [Mining Frequent Patterns without Candidate Generation](https://doi.org/10.1145/335191.335372), SIGMOD 2000
+- S. Brin, R. Motwani, J. D. Ullman and S. Tsur, [Dynamic Itemset Counting and Implication Rules for Market Basket Data](https://doi.org/10.1145/253260.253325), SIGMOD 1997 (lift and conviction)
+- G. I. Webb, [Discovering Significant Patterns](https://doi.org/10.1007/s10994-007-5006-x), *Machine Learning*, 2007
+- M. J. Zaki and C.-J. Hsiao, [CHARM: An Efficient Algorithm for Closed Itemset Mining](https://doi.org/10.1137/1.9781611972726.27), SDM 2002
+- T. Hastie, R. Tibshirani and J. Friedman, [The Elements of Statistical Learning](https://hastie.su.domains/ElemStatLearn/), 2nd ed., Section 14.2
