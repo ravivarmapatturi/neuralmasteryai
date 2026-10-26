@@ -1,96 +1,289 @@
 ---
 title: "Survival Analysis: Kaplan-Meier & Cox Proportional Hazards, In Full Depth"
 sidebar_position: 5.85
-description: "Kaplan-Meier and Cox Proportional Hazards for 'how long until this happens' problems -- and why censored data breaks a naive regression framing."
+description: "Time-to-event modelling derived: censoring and why naive methods are biased (measured), survival and hazard functions and how they relate, the Kaplan-Meier estimator, the log-rank test, the Cox model and its partial likelihood with the gradient worked out, checking proportional hazards, and the C-index, with a from-scratch Cox fit matching lifelines on real recidivism data."
 ---
 
-import __migratedImg0 from './img/survival-curve.png';
-
+import kmLight from './img/survival-curve-light.png';
+import kmDark from './img/survival-curve.png';
 import KaplanMeierDiagram from '../../../viz/diagrams/KaplanMeierDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Survival Analysis: Kaplan-Meier & Cox Proportional Hazards, In Full Depth
 
-"How long until this happens" is a different prediction problem from "will this happen" — and a subtler one than it first looks, because in almost every real dataset, some subjects haven't experienced the event yet by the time you have to analyze the data. Survival analysis is the branch of statistics/ML built specifically to handle that.
+Some questions aren't "will it happen?" but "when?": how long until a customer cancels, a machine fails, a patient relapses, a loan defaults. These look like regression on a time, except for one complication present in almost every real dataset: for many subjects, the event hasn't happened yet when the data is analysed. Their times are **censored**. This page shows, with numbers, how badly the obvious workarounds go wrong; derives the survival and hazard functions; builds the Kaplan-Meier estimator and the log-rank test for comparing groups; derives the Cox proportional hazards model and the partial likelihood that lets it ignore the baseline hazard; and covers how to check its key assumption and how to evaluate predictions. The Cox model is fitted from scratch on a real dataset of released prisoners and checked against the standard library.
 
-## The Core Problem: Censoring
+<ELI5>
 
-A **survival analysis** dataset records, for each subject, a **time** and an **event indicator**: did the event of interest (death, churn, failure, default) happen, and if so, when? The complication that makes this its own field rather than plain regression is **censoring**:
+A phone company wants to know how long customers usually stay. It looks at everyone who joined in the last three years. Some have left, and their stay is known. But many are still customers, and all the company knows is that they've stayed *at least* this long.
 
-- **Right-censoring**: the most common case — a subject hasn't experienced the event by the end of the observation window (a customer is still active when the study ends; a patient is still alive at the last follow-up). You know they survived *at least* that long, but not their actual event time.
-- Treating censored subjects as "no event" (a naive classification framing) throws away real information (they *did* survive that long) and biases estimates toward shorter survival times. Treating them as if they experienced the event *at* the censoring time is equally wrong in the other direction. Survival analysis handles this correctly by using every subject's observed time — event or censored — in the likelihood, without pretending to know what happens after censoring.
+Ignoring the people still here makes customers look short-lived, because only the leavers are counted. Pretending the people still here left today is wrong too. Survival analysis uses everyone correctly: someone who's stayed two years and is still here tells you that people do make it past two years, without claiming to know when they'll leave. Everything below is that idea made exact.
 
-**Where this shows up outside medicine**: customer churn (a still-subscribed customer is right-censored, not "will never churn"), equipment/component failure prediction, time-to-conversion in marketing, employee attrition, loan default timing — anywhere "time until X" matters and X hasn't happened for everyone in the dataset yet.
+</ELI5>
 
-## The Survival Function
+## 1. Censoring, and Why Naive Methods Fail
 
-$$S(t) = P(T > t)$$
+For each subject we observe a time $t_i$ and an **event indicator** $\delta_i$: $\delta_i = 1$ if the event happened at $t_i$, and $\delta_i = 0$ if the subject was still event-free at $t_i$ when observation stopped. The second case is **right-censoring**: the true event time is somewhere after $t_i$. It arises when a study ends, a subject drops out, or the data is pulled while customers are still active. (Left- and interval-censoring also exist, but right-censoring is by far the most common.)
 
-The probability a subject survives *past* time $t$. $S(0) = 1$ (everyone starts "alive"), and $S(t)$ decreases monotonically as $t$ grows. Nearly everything in this page is about estimating $S(t)$ well, or modeling how covariates shift it.
+The standard methods assume censoring is **non-informative**: whether a subject is censored at a given time doesn't depend on their risk at that time, beyond what the model's covariates explain. Customers leaving the dataset because the study ended is fine; patients dropping out *because* they feel worse is not.
 
-## The Kaplan-Meier Estimator
+Two obvious shortcuts are both wrong, in opposite directions:
 
-The **Kaplan-Meier estimator** computes $S(t)$ directly from data, non-parametrically — no assumption about the shape of the underlying distribution, just the observed event and censoring times:
+- **Treat censored times as event times.** This says customers still subscribed left today, so it understates survival.
+- **Drop censored subjects.** This keeps only those whose event happened within the observation window, who are disproportionately the early events, so it understates survival even more.
 
-$$\hat{S}(t) = \prod_{t_i \leq t} \left(1 - \frac{d_i}{n_i}\right)$$
+Section 7 measures both on simulated lifetimes whose true median is 6.93, observed over a window that censors 46% of subjects. Treating censored times as events gives a median of 5.33; dropping them gives 3.23. The Kaplan-Meier estimate, which handles censoring correctly, gives 7.11, within sampling error of the truth.
 
-At each observed *event* time $t_i$: $n_i$ is the number of subjects still "at risk" (not yet censored or experienced the event) just before $t_i$, and $d_i$ is the number of events that happened exactly at $t_i$. The estimator is a product of conditional survival probabilities — "survived past each event time, given you'd survived to just before it" — which is exactly why the curve is a step function that only drops at observed event times, and why censored subjects still contribute (they count in $n_i$ for every event time up to their censoring time, then drop out of the risk set without ever contributing a $d_i$).
+## 2. Survival and Hazard
 
-<img src={__migratedImg0} alt="Kaplan-Meier survival curves for two groups, with censoring marks" style={{maxWidth: '100%'}} />
+Let $T$ be the (random) event time. Two functions describe its distribution:
 
-The chart above shows exactly this: each step down is an event, each tick mark is a censored subject leaving the risk set without an event. Group B's curve staying higher for longer is the direct visual read of "this group survives longer" — the entire point of plotting $\hat{S}(t)$ instead of reporting a single summary number.
+- The **survival function** $S(t) = P(T \gt  t)$: the probability of still being event-free at time $t$. It starts at 1 and falls toward 0.
+- The **hazard function** $h(t)$: the instantaneous event rate at time $t$ among those who've survived to $t$,
 
-Step through the real product formula, one real event time at a time, on a real 10-subject toy dataset:
+$$
+h(t) = \lim_{\Delta \to 0}\frac{P(t \le T \lt  t + \Delta \mid T \ge t)}{\Delta} = \frac{f(t)}{S(t)}
+$$
+
+where $f$ is the density of $T$. Since $f(t) = -S'(t)$, the hazard is $h(t) = -\tfrac{d}{dt}\log S(t)$, and integrating gives the link between them:
+
+$$
+S(t) = \exp\!\Big(-\int_0^t h(u)\,du\Big) = \exp\big(-H(t)\big)
+$$
+
+with $H(t)$ the **cumulative hazard**. A constant hazard $\lambda$ gives the exponential distribution, $S(t) = e^{-\lambda t}$, with no memory: an old machine is as likely to fail tomorrow as a new one. Rising hazards describe wear-out, falling ones describe "infant mortality" (new customers are the most likely to cancel). The hazard is the natural quantity to model, because it only concerns subjects still at risk, which is exactly what censored data can inform.
+
+## 3. Kaplan-Meier
+
+The **Kaplan-Meier estimator** (Kaplan and Meier, 1958) estimates $S(t)$ without assuming any distribution. Sort the distinct event times $t_{(1)} \lt  t_{(2)} \lt  \dots$. At each, let $n_j$ be the number of subjects **at risk** (not yet had the event and not yet censored, just before $t_{(j)}$) and $d_j$ the number of events at $t_{(j)}$. Surviving past $t$ means surviving each event time up to $t$, given survival to just before it, so
+
+$$
+\hat{S}(t) = \prod_{j:\,t_{(j)} \le t}\left(1 - \frac{d_j}{n_j}\right)
+$$
+
+Each factor is the observed fraction of those at risk who got through that event time. Censored subjects contribute exactly what they're known to have done: they count in $n_j$ for every event time up to their censoring time, then leave the risk set without ever counting as an event. The curve is a step function that drops only at event times. It's the nonparametric maximum-likelihood estimate of $S$, and when nothing is censored it reduces to the ordinary fraction of subjects with $T \gt  t$. Greenwood's formula gives its variance, $\widehat{\operatorname{Var}}\big(\hat{S}(t)\big) = \hat{S}(t)^2\sum_{t_{(j)} \le t}\frac{d_j}{n_j(n_j - d_j)}$, from which confidence bands are built. Step through the product on a small dataset:
 
 <KaplanMeierDiagram />
 
-## Comparing Groups: The Log-Rank Test
+The **median survival time** is where $\hat{S}(t)$ first falls to 0.5. With heavy censoring the curve may never reach 0.5, in which case the median simply isn't estimable from the data, a real limitation that's better reported than hidden.
 
-To test whether two Kaplan-Meier curves are *significantly* different (not just visibly different, per [Hypothesis Testing](/docs/mathematics-for-ai/probability-statistics#hypothesis-testing-significance)), the **log-rank test** compares the observed number of events in each group, at each event time, against the number *expected* if both groups actually had identical survival — summed into a single chi-squared test statistic across all event times. This is the standard significance test reported alongside a Kaplan-Meier plot in a clinical trial or an A/B-style churn comparison.
+## 4. Comparing Groups: The Log-Rank Test
 
-## The Cox Proportional Hazards Model
+Two Kaplan-Meier curves can look different by chance. The **log-rank test** asks whether the difference is real. Under the null hypothesis that both groups have the same hazard, at each event time $t_{(j)}$ the $d_j$ events should be split between the groups in proportion to how many of each are at risk. Group 1 is *expected* to have $E_{1j} = d_j\,n_{1j}/n_j$ events; it actually had $O_{1j}$. Sum the differences over all event times and standardize by their hypergeometric variance $V_j$:
 
-Kaplan-Meier tells you the survival curve for a group; it can't tell you how an individual *continuous* covariate (age, tenure, a risk score) shifts survival. The **Cox Proportional Hazards model** extends this to regression, via the **hazard function** — the instantaneous event rate at time $t$, given survival to $t$:
+$$
+Z = \frac{\sum_j (O_{1j} - E_{1j})}{\sqrt{\sum_j V_j}}, \qquad V_j = \frac{d_j\,n_{1j}\,n_{2j}\,(n_j - d_j)}{n_j^2\,(n_j - 1)}
+$$
 
-$$h(t \mid x) = h_0(t) \exp(\beta^T x)$$
+$Z^2$ is approximately chi-squared with one degree of freedom. The test weights every event time equally, so it's most powerful when one group's hazard is consistently higher; when curves cross, other weightings or a Cox model with time-varying effects are better.
 
-- $h_0(t)$: the **baseline hazard** — an unspecified, arbitrary function of time shared by everyone, left completely unmodeled (this is what makes Cox regression *semi*-parametric: parametric in the covariates, nonparametric in time).
-- $\exp(\beta^T x)$: how a subject's specific covariates $x$ multiplicatively scale that baseline hazard. A coefficient $\beta_j > 0$ means feature $j$ *increases* the hazard (shortens expected survival); $\beta_j < 0$ decreases it.
-- **The proportional hazards assumption**: the *ratio* of hazards between any two subjects is constant over time (it depends only on $\exp(\beta^T x)$, which doesn't involve $t$) — this is the assumption the model's name refers to, and it's checkable (and sometimes violated) in real data via residual diagnostics.
+Section 7 applies it to the Rossi recidivism data: 432 men released from Maryland prisons in the 1970s, followed for a year, half randomly assigned to receive financial aid. After 52 weeks, 77.8% of the aided group and 69.4% of the others hadn't been re-arrested, with a log-rank $p$-value of 0.050: borderline evidence that aid helped.
 
-**Why $h_0(t)$ can be left unspecified**: Cox's key insight was that $\beta$ can be estimated by maximizing a **partial likelihood** that only depends on the *ordering* of event times and who was at risk at each one — not on $h_0(t)$'s actual shape at all. This is what makes Cox regression so widely used: you get interpretable, hazard-ratio coefficients for your covariates ($\exp(\beta_j)$ is the hazard ratio for a one-unit increase in feature $j$) without ever having to correctly specify the baseline hazard's functional form, which you usually don't know.
+<ThemedImage alt="Two Kaplan-Meier step curves from week 0 to 52 with shaded 95% bands: the financial-aid group stays higher, ending near 0.78, the no-aid group ending near 0.69; the y-axis starts at 0.6" sources={{light: kmLight, dark: kmDark}} />
 
-## Evaluation: The Concordance Index (C-index)
+## 5. The Cox Proportional Hazards Model
 
-Standard classification/regression metrics don't directly apply to censored time-to-event predictions. The **concordance index (C-index)** generalizes ROC-AUC to this setting: among all comparable pairs of subjects (pairs where you can actually tell who experienced the event first, accounting for censoring), what fraction did the model correctly rank — i.e. did it predict a shorter survival time for whoever actually had the earlier event? A C-index of 0.5 is random ranking, 1.0 is perfect ranking — the exact same "ranking quality" interpretation as ROC-AUC, adapted for censored data.
+Kaplan-Meier describes groups; it can't handle several covariates at once or a continuous one such as age. The **Cox model** (Cox, 1972) is regression for hazards:
 
-## Minimal Implementation: Kaplan-Meier from Scratch
+$$
+h(t \mid \mathbf{x}) = h_0(t)\,\exp(\boldsymbol{\beta}^T\mathbf{x})
+$$
+
+The **baseline hazard** $h_0(t)$ is any function of time, left completely unspecified. The covariates scale it multiplicatively. Two consequences:
+
+- **Hazard ratios.** For two subjects, $h(t \mid \mathbf{x}_a)/h(t \mid \mathbf{x}_b) = \exp\big(\boldsymbol{\beta}^T(\mathbf{x}_a - \mathbf{x}_b)\big)$, the same at every time. A one-unit increase in feature $j$ multiplies the hazard by $e^{\beta_j}$. This is the **proportional hazards** assumption, and it's what the coefficients mean.
+- **The model is semi-parametric**: parametric in how covariates act, nonparametric in how risk changes over time.
+
+**The partial likelihood.** Cox's insight was that $\boldsymbol{\beta}$ can be estimated without knowing $h_0$. At the time $t_i$ when subject $i$ has the event, consider everyone still at risk, the risk set $R(t_i) = \{k : t_k \ge t_i\}$. Given that exactly one of them has the event at that moment, the probability it's subject $i$ is its hazard over the sum of the hazards in the risk set, and the unknown $h_0(t_i)$ cancels:
+
+$$
+\frac{h_0(t_i)\,e^{\boldsymbol{\beta}^T\mathbf{x}_i}}{\sum_{k \in R(t_i)}h_0(t_i)\,e^{\boldsymbol{\beta}^T\mathbf{x}_k}} = \frac{e^{\boldsymbol{\beta}^T\mathbf{x}_i}}{\sum_{k \in R(t_i)}e^{\boldsymbol{\beta}^T\mathbf{x}_k}}
+$$
+
+Multiplying over all observed events gives the **partial likelihood**, and its logarithm is
+
+$$
+\ell(\boldsymbol{\beta}) = \sum_{i:\,\delta_i = 1}\Big[\boldsymbol{\beta}^T\mathbf{x}_i - \log\sum_{k \in R(t_i)}e^{\boldsymbol{\beta}^T\mathbf{x}_k}\Big]
+$$
+
+Censored subjects never appear as the event in a term, but they appear in every risk set up to their censoring time, which is how their information is used. Differentiating, with $w_k = e^{\boldsymbol{\beta}^T\mathbf{x}_k}$:
+
+$$
+\nabla\ell = \sum_{i:\,\delta_i = 1}\Big(\mathbf{x}_i - \bar{\mathbf{x}}_i\Big), \qquad \bar{\mathbf{x}}_i = \frac{\sum_{k \in R(t_i)}w_k\mathbf{x}_k}{\sum_{k \in R(t_i)}w_k}
+$$
+
+At each event, the event subject's covariates minus the risk-weighted average of everyone at risk. The gradient is zero when, on average, those who have events look like a weighted draw from those at risk. The Hessian is minus a sum of weighted covariance matrices, so $\ell$ is concave and Newton's method converges quickly, which is how Section 7 fits it: in 20 Newton steps the coefficients match the lifelines library to three decimals (the remaining differences come from how tied event times are handled; Section 7 uses Breslow's approximation, lifelines uses Efron's).
+
+On the Rossi data, financial aid has a hazard ratio of 0.685: about 32% lower re-arrest hazard at any given time, holding the other covariates fixed. Each prior conviction multiplies the hazard by 1.095, and each year of age by 0.944.
+
+<PredictFirst
+  question="In a Cox model, a feature has coefficient β = 0.69. What does that mean?"
+  options={[
+    'Subjects with one more unit of the feature survive 0.69 time units less',
+    'One more unit of the feature roughly doubles the hazard (e^0.69 ≈ 2) at every point in time',
+    '69% of subjects with the feature have the event',
+    'The feature explains 69% of the variation in survival time',
+  ]}
+  correctIndex={1}
+  explanation="Cox coefficients act on the log hazard, so e^β is a hazard ratio: e^0.69 ≈ 2.0, meaning the instantaneous event rate is twice as high, at every time (that's the proportional hazards assumption). It doesn't translate into a fixed number of time units, because how a doubled hazard changes survival time depends on the baseline hazard."
+/>
+
+## 6. Checking Assumptions and Evaluating Predictions
+
+**Proportional hazards.** The model assumes each covariate's effect is constant over time. That fails if, say, a treatment helps early and fades later. Checks:
+
+- Plot $\log(-\log\hat{S}(t))$ against $\log t$ for each group: under proportional hazards the curves are parallel.
+- **Schoenfeld residuals** (the event subject's covariate minus the risk-weighted mean, the terms in the gradient above) should show no trend over time; a significant correlation with time indicates a time-varying effect. lifelines' `check_assumptions` runs this test.
+
+When the assumption fails, options include stratifying on that variable (separate baseline hazards per group), adding an interaction with time, or using a model without the assumption.
+
+**Concordance (C-index).** Harrell's C-index generalizes ROC-AUC to censored data. Consider every pair of subjects where the earlier time is an observed event (otherwise we can't know who had the event first). The pair is **concordant** if the model gives the higher risk to the subject with the earlier event. The C-index is the fraction of such pairs that are concordant: 0.5 is random, 1 is perfect. On the Rossi data the Cox model's C-index is 0.640: modest, which is typical of behavioural outcomes. For predictions at a specific time, the time-dependent Brier score, with inverse-probability-of-censoring weights, measures calibration as well as ranking.
+
+<GoDeeper title="Go deeper: parametric models, competing risks, and machine learning for survival">
+
+**Parametric survival models** assume a distribution for $T$: exponential (constant hazard), Weibull (hazard rising or falling as a power of time), log-normal, log-logistic. They're more efficient when the assumption holds, can extrapolate beyond the observed follow-up, and give directly interpretable times. **Accelerated failure time** models write $\log T = \boldsymbol{\beta}^T\mathbf{x} + \sigma\epsilon$, so a covariate stretches or shrinks time itself, an often more intuitive reading than a hazard ratio.
+
+**Competing risks** arise when several event types can occur and one prevents the others (a patient can die of the disease or of something else). Treating the other events as censoring then overstates the probability of the event of interest; the cumulative incidence function and the Fine–Gray model handle it correctly.
+
+**Machine learning for survival**: random survival forests (Ishwaran et al., 2008) grow trees whose splits maximize the log-rank statistic between children; gradient boosting can optimize the Cox partial likelihood (supported by XGBoost's `survival:cox` objective and scikit-survival); and neural versions such as DeepSurv replace $\boldsymbol{\beta}^T\mathbf{x}$ with a network. They capture interactions and nonlinear effects, at the cost of the simple hazard-ratio interpretation, and are evaluated with the C-index and time-dependent Brier score like any other survival model.
+
+</GoDeeper>
+
+## 7. Minimal Implementation
+
+Kaplan-Meier from the product formula; the censoring-bias comparison on simulated lifetimes with a known median; the log-rank test on the Rossi data; and the Cox model fitted by Newton's method on the partial likelihood, with the gradient and Hessian of Section 5, compared with lifelines:
 
 ```python
 import numpy as np
+from lifelines import CoxPHFitter, KaplanMeierFitter
+from lifelines.datasets import load_rossi
+from lifelines.statistics import logrank_test
+from lifelines.utils import concordance_index
 
 def kaplan_meier(times, events):
-    """times: observed time per subject. events: 1 if the event was
-    observed, 0 if censored at that time."""
-    order = np.argsort(times)
-    times, events = times[order], events[order]
-    unique_event_times = np.unique(times[events == 1])
+    """times: observed time per subject; events: 1 if the event was seen, 0 if censored."""
+    event_times = np.unique(times[events == 1])
+    s, curve = 1.0, []
+    for t in event_times:
+        at_risk = np.sum(times >= t)                       # still under observation just before t
+        d = np.sum((times == t) & (events == 1))
+        s *= 1 - d / at_risk                               # survive this event time, given survival so far
+        curve.append((t, s))
+    return np.array(curve)
 
-    survival = 1.0
-    km_times, km_survival = [0.0], [1.0]
-    for t in unique_event_times:
-        n_at_risk = np.sum(times >= t)        # still in the risk set
-        n_events = np.sum((times == t) & (events == 1))
-        survival *= 1 - n_events / n_at_risk  # the product formula, one factor at a time
-        km_times.append(t)
-        km_survival.append(survival)
+def median_survival(curve):
+    below = curve[curve[:, 1] <= 0.5]
+    return below[0, 0] if len(below) else np.inf
 
-    return np.array(km_times), np.array(km_survival)
+# 1. Censoring bias, where the truth is known: exponential lifetimes with mean 10, followed for 12 time units
+rng = np.random.default_rng(0)
+true_t = rng.exponential(10, 2000)
+start = rng.uniform(0, 8, 2000)                            # people join the study at different times
+follow = 12 - start                                        # and are followed until it ends
+obs = np.minimum(true_t, follow); event = (true_t <= follow).astype(int)
+print(f"{event.mean():.0%} of subjects had the event; the rest are censored")
+print(f"true median lifetime                        {10 * np.log(2):.2f}")
+print(f"median of observed times, censored as events {np.median(obs):.2f}")
+print(f"median of event times, censored dropped      {np.median(obs[event == 1]):.2f}")
+km = kaplan_meier(obs, event)
+print(f"Kaplan-Meier median                          {median_survival(km):.2f}")
+lf = KaplanMeierFitter().fit(obs, event)
+print(f"largest gap vs lifelines' Kaplan-Meier curve {np.max(np.abs(km[:, 1] - lf.survival_function_at_times(km[:, 0]).values)):.1e}")
+
+# 2. Real data: 432 released prisoners followed for 52 weeks; event = re-arrest (Rossi et al., 1980)
+df = load_rossi()
+fin = df["fin"] == 1                                       # received financial aid after release
+res = logrank_test(df.week[fin], df.week[~fin], df.arrest[fin], df.arrest[~fin])
+s_aid = KaplanMeierFitter().fit(df.week[fin], df.arrest[fin]).survival_function_at_times(52).iloc[0]
+s_no = KaplanMeierFitter().fit(df.week[~fin], df.arrest[~fin]).survival_function_at_times(52).iloc[0]
+print(f"\nnot re-arrested by week 52: with aid {s_aid:.3f}, without {s_no:.3f}; log-rank p = {res.p_value:.3f}")
+
+# 3. Cox proportional hazards by Newton's method on the partial likelihood (Breslow handling of ties)
+cols = ["fin", "age", "race", "wexp", "mar", "paro", "prio"]
+X = df[cols].to_numpy(float); T = df.week.to_numpy(float); E = df.arrest.to_numpy()
+beta = np.zeros(len(cols))
+for _ in range(20):
+    eta = np.exp(X @ beta)
+    grad = np.zeros_like(beta); hess = np.zeros((len(cols), len(cols)))
+    for i in np.flatnonzero(E):
+        risk = T >= T[i]                                   # everyone still at risk when subject i had the event
+        w = eta[risk]; W = w.sum(); xbar = (w @ X[risk]) / W
+        grad += X[i] - xbar
+        hess -= (X[risk].T * w) @ X[risk] / W - np.outer(xbar, xbar)
+    beta -= np.linalg.solve(hess, grad)
+cph = CoxPHFitter().fit(df[cols + ["week", "arrest"]], "week", "arrest")
+print("\n           ours      lifelines   hazard ratio")
+for c, b, r in zip(cols, beta, cph.params_[cols]):
+    print(f"{c:6s}  {b:+.4f}   {r:+.4f}     {np.exp(b):.3f}")
+print(f"C-index (higher risk score should mean earlier arrest): {concordance_index(T, -(X @ beta), E):.3f}")
 ```
 
-`lifelines` is the standard Python library for real work — Kaplan-Meier, Cox PH, the log-rank test, and C-index all in one place with proper confidence intervals and diagnostics; the implementation above is for building the intuition the library's output represents.
+Output (lifelines 0.30):
 
-## When to Reach for Survival Analysis
+```
+54% of subjects had the event; the rest are censored
+true median lifetime                        6.93
+median of observed times, censored as events 5.33
+median of event times, censored dropped      3.23
+Kaplan-Meier median                          7.11
+largest gap vs lifelines' Kaplan-Meier curve 3.0e-15
 
-Use it whenever the target is genuinely "time until an event" *and* some subjects haven't had the event yet at analysis time — treating that as ordinary regression (dropping censored subjects, or pretending their last-known time is the true event time) systematically biases the result. If every subject in your data has actually experienced the event (no censoring at all), plain regression on the time-to-event is a reasonable, simpler alternative.
+not re-arrested by week 52: with aid 0.778, without 0.694; log-rank p = 0.050
 
-Next: [Recommender Systems](/docs/machine-learning/recommender-systems) — another "specialized" supervised problem, predicting preference instead of time.
+           ours      lifelines   hazard ratio
+fin     -0.3790   -0.3794     0.685
+age     -0.0572   -0.0574     0.944
+race    +0.3141   +0.3139     1.369
+wexp    -0.1511   -0.1498     0.860
+mar     -0.4328   -0.4337     0.649
+paro    -0.0850   -0.0849     0.919
+prio    +0.0911   +0.0915     1.095
+C-index (higher risk score should mean earlier arrest): 0.640
+```
+
+- **Censoring handled badly biases everything (Section 1).** Against a true median of 6.93, treating censored times as events gives 5.33 and dropping them 3.23; Kaplan-Meier gives 7.11.
+- **The product formula is the estimator (Section 3)**: identical to lifelines to $10^{-15}$.
+- **Aid probably helped (Section 4)**: 77.8% against 69.4% not re-arrested after a year, log-rank $p = 0.050$.
+- **The partial likelihood gives the Cox fit (Section 5).** Twenty Newton steps reproduce lifelines' coefficients to about three decimals, with the small differences from tie handling. Hazard ratios read directly off the exponentials: aid 0.685, each prior conviction 1.095.
+- **Ranking is modest (Section 6)**: C-index 0.640.
+
+## 8. When *Not* to Use Survival Methods
+
+| Situation | Better choice |
+|---|---|
+| No censoring at all (every event observed) | Ordinary regression on time (often on $\log T$) is simpler and fine |
+| You only care whether the event happens within a fixed window, and everyone is followed for that long | Binary classification of "event within the window" |
+| Censoring is informative (people drop out because of their risk) | Model the dropout, or use methods for informative censoring; standard estimates are biased |
+| Several event types that preclude each other | Competing-risks methods (cumulative incidence, Fine–Gray) |
+| Effects that change over time | Stratified or time-varying Cox models, or models without proportional hazards |
+| Strong nonlinear effects and many features | Random survival forests or gradient boosting with a Cox objective |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Censoring | For some subjects we only know $T \gt  t_i$; assume it's non-informative |
+| Naive shortcuts | Censored-as-events and dropping censored both understate survival |
+| Survival and hazard | $S(t) = P(T \gt  t)$; $h = f/S$; $S(t) = e^{-H(t)}$ |
+| Kaplan-Meier | $\hat{S}(t) = \prod(1 - d_j/n_j)$ over event times; censored subjects stay in risk sets |
+| Log-rank | Observed minus expected events per group, summed over event times |
+| Cox model | $h(t \mid \mathbf{x}) = h_0(t)e^{\boldsymbol{\beta}^T\mathbf{x}}$; $e^{\beta_j}$ is a hazard ratio |
+| Partial likelihood | Each event: its hazard over the risk set's; $h_0$ cancels |
+| Gradient | Event subject's $\mathbf{x}$ minus the risk-weighted average; concave, so Newton works |
+| Check | Proportional hazards via log-log plots and Schoenfeld residuals |
+| Evaluate | C-index: fraction of comparable pairs ranked correctly |
+
+---
+
+Next: [Recommender Systems](/docs/machine-learning/recommender-systems), another problem with its own structure: predicting preferences rather than times.
+
+## Sources
+
+- E. L. Kaplan and P. Meier, [Nonparametric Estimation from Incomplete Observations](https://doi.org/10.1080/01621459.1958.10501452), *JASA*, 1958
+- D. R. Cox, [Regression Models and Life-Tables](https://doi.org/10.1111/j.2517-6161.1972.tb00899.x), *Journal of the Royal Statistical Society B*, 1972
+- N. Mantel, Evaluation of Survival Data and Two New Rank Order Statistics Arising in Its Consideration, *Cancer Chemotherapy Reports*, 1966 (the log-rank test)
+- F. E. Harrell, R. M. Califf, D. B. Pryor, K. L. Lee and R. A. Rosati, [Evaluating the Yield of Medical Tests](https://doi.org/10.1001/jama.1982.03320430047030), *JAMA*, 1982 (the C-index)
+- P. H. Rossi, R. A. Berk and K. J. Lenihan, *Money, Work, and Crime: Some Experimental Results*, Academic Press, 1980 (the recidivism data)
+- H. Ishwaran, U. B. Kogalur, E. H. Blackstone and M. S. Lauer, [Random Survival Forests](https://doi.org/10.1214/08-AOAS169), *Annals of Applied Statistics*, 2008
+- C. Davidson-Pilon, [lifelines: Survival Analysis in Python](https://doi.org/10.21105/joss.01317), *Journal of Open Source Software*, 2019
