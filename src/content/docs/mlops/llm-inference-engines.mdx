@@ -1,104 +1,279 @@
 ---
-title: "LLM Inference Engines"
+title: "LLM Inference Engines, In Full Depth"
 sidebar_position: 18
-description: "The real inference stack from API gateway to CUDA, and vLLM/SGLang/TensorRT-LLM/llama.cpp compared -- why serving an LLM is its own discipline."
+description: "Why serving a language model needs a specialized engine: the inference stack, engine vs serving framework vs platform, batching measured on a real model, continuous batching and paged KV memory simulated, and how vLLM, SGLang, TensorRT-LLM, llama.cpp and the on-device runtimes compare in 2026."
 ---
 
 import InferenceStackLayersDiagram from '../../../viz/diagrams/InferenceStackLayersDiagram';
 import EngineTerminologyDiagram from '../../../viz/diagrams/EngineTerminologyDiagram';
-import Tier1EngineComparisonDiagram from '../../../viz/diagrams/Tier1EngineComparisonDiagram';
-import EngineSelectionDecisionDiagram from '../../../viz/diagrams/EngineSelectionDecisionDiagram';
 import BaselineVsEngineDiagram from '../../../viz/diagrams/BaselineVsEngineDiagram';
 import EdgeVsServerDeploymentDiagram from '../../../viz/diagrams/EdgeVsServerDeploymentDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# LLM Inference Engines
+# LLM Inference Engines, In Full Depth
 
-Serving an LLM well is its own discipline, distinct from serving a classical ML model (see [APIs & Model Serving](/docs/mlops/model-serving)) — the models are enormous, autoregressive generation is sequential by nature, and the memory/compute tradeoffs are unlike anything in traditional serving. This page establishes the vocabulary the rest of this section depends on.
+[APIs & Model Serving](/docs/mlops/model-serving) built a service around a classical model: load it once, validate requests, batch them, return a prediction. Language models break several of that page's assumptions. Each response is generated one token at a time, so a request occupies the hardware for seconds rather than milliseconds; responses vary in length by a factor of a hundred; and each in-progress request carries gigabytes of attention state. Specialized **inference engines** exist to handle exactly this. This page covers the layers of an LLM serving stack, the vocabulary that keeps engines, servers and platforms apart, why naive batching wastes most of a GPU (measured on a real model and simulated at scale), the two ideas at the heart of modern engines, continuous batching and paged KV memory, and how the main engines compare as of late 2026.
 
-## The Inference Stack
+<ELI5>
 
-A request to a hosted LLM passes through several distinct layers, each solving a different problem:
+Picture a printing press that can print eight books side by side. A naive printer loads eight books, and the press runs until the *longest* one is finished, even though most are done after a few pages and their slots sit empty. A smarter printer slots a new book in the moment any slot frees up, so the press is always full.
 
-```
-User → API Gateway → Serving Framework → Inference Engine → Model Runtime → GPU → CUDA
-```
+There's also the paper. The naive printer reserves enough paper for the thickest possible book for every slot, and most of it is never used. The smarter one hands out paper a few pages at a time as each book needs it.
 
-- **API Gateway**: authentication, rate limiting, routing — the same role it plays for any API (see [Cloud Computing for ML](/docs/mlops/cloud-computing)).
-- **Serving Framework**: exposes the model as an API and manages requests — request queuing, batching decisions, streaming responses back to the client.
-- **Inference Engine**: executes the model efficiently — the component actually running the forward passes, managing the KV cache, and implementing the optimizations covered in [LLM Inference Optimization](/docs/mlops/llm-inference-optimization).
-- **Model Runtime**: the lower-level execution layer (e.g. PyTorch, or a compiled runtime) the engine is built on.
-- **GPU / CUDA**: the hardware and driver layer everything ultimately runs on (see [GPU/AI Infrastructure & Distributed Training](/docs/mlops/gpu-and-distributed-training)).
+Inference engines are the smarter printer: they keep the GPU full of work and hand out memory as it's needed. Everything below is how.
+
+</ELI5>
+
+## 1. Why Language Models Need Their Own Engines
+
+Three properties of autoregressive generation make LLM serving its own problem:
+
+- **Generation is sequential.** A response of 500 tokens takes 500 forward passes, each depending on the last. A request holds the model for seconds.
+- **Work per request varies enormously.** One request needs 10 output tokens and the next 2,000, and the length isn't known in advance.
+- **Each request carries a large, growing state.** The KV cache, the stored attention keys and values for every token so far, grows by tens to hundreds of kilobytes per token ([LLM Hosting & Serving Patterns](/docs/mlops/llm-hosting-and-serving-patterns#3-sizing-gpu-memory-weights-and-kv-cache) computes it), so a few long conversations can fill a GPU's memory.
+
+The cost of a decode step is dominated by reading the model's weights from GPU memory, and that cost is nearly the same whether the step produces one token or a token for each of 64 requests. So the central job of an engine is to **keep many requests in flight at once**, while handling their different lengths and their memory without waste. A plain `model.generate()` loop does none of that, and the gap is large.
+
+## 2. The Serving Stack and Its Vocabulary
+
+A request to a self-hosted LLM passes through several layers:
 
 <InferenceStackLayersDiagram />
 
-## A Distinction Worth Getting Right
+1. **Gateway:** authentication, rate limits, routing between models and replicas, logging ([LLM Hosting & Serving Patterns](/docs/mlops/llm-hosting-and-serving-patterns#9-the-ai-gateway-and-load-balancing)).
+2. **Serving layer:** the HTTP API (usually OpenAI-compatible), request queueing and streaming of tokens back to the client.
+3. **Inference engine:** schedules which requests run in each step, manages the KV cache, and runs the optimized forward passes.
+4. **Kernels and runtime:** attention and matrix-multiply kernels (FlashAttention, FlashInfer, cuBLAS, Triton-language kernels), CUDA graphs, PyTorch or a compiled runtime.
+5. **Hardware:** GPUs or other accelerators, and the interconnect between them.
 
-These four terms get used interchangeably in casual conversation, but they are not the same thing, and confusing them leads to picking the wrong tool:
-
-- An **inference engine/runtime** *executes* the model efficiently (vLLM, llama.cpp, TensorRT-LLM).
-- A **serving framework** *exposes* the model as an API and manages requests (this is often the same tool as the engine — vLLM does both — but not always: NVIDIA Triton is a serving framework that can run several different engines/backends underneath it).
-- A **hosting/deployment platform** *provides* the infrastructure the above runs on (a cloud GPU provider, a Kubernetes cluster — see [LLM Hosting & Serving Patterns](/docs/mlops/llm-hosting-and-serving-patterns)).
-- A **fine-tuning framework** *trains/adapts* a model — it isn't primarily an inference engine.
-
-That last point matters enough to be explicit: **Unsloth is primarily a fine-tuning/training framework**, used to efficiently LoRA/QLoRA-adapt a model — it is not what you deploy to serve production traffic. **vLLM, llama.cpp, TensorRT-LLM, and SGLang**, by contrast, are the tools much more directly relevant to *inference*. A model fine-tuned with Unsloth still needs to be handed off to one of these (or an equivalent) to actually be served — see [LLM Hosting & Serving Patterns](/docs/mlops/llm-hosting-and-serving-patterns) for that handoff.
+Four terms get mixed up, and the confusion leads to picking the wrong tool:
 
 <EngineTerminologyDiagram />
 
-## Tier 1: Must-Know Engines
+- An **inference engine** *executes* a model efficiently: vLLM, SGLang, TensorRT-LLM, llama.cpp.
+- A **serving framework** *exposes* models as an API and manages requests. Often the same tool as the engine (vLLM and SGLang ship their own servers), but not always: NVIDIA Dynamo-Triton can serve several engines as backends.
+- A **hosting platform** *provides* the machines: a GPU cloud, a Kubernetes cluster, a managed endpoint.
+- A **fine-tuning framework** *trains* or adapts a model, as Unsloth, TRL and Axolotl do. It produces weights for an engine; it isn't one.
 
-- **vLLM**: the current default for high-throughput, general-purpose LLM serving — built around PagedAttention and continuous batching (see [LLM Inference Optimization](/docs/mlops/llm-inference-optimization)), with an OpenAI-compatible API, broad model support, and strong multi-GPU support. The safest first choice for self-hosted LLM serving.
-- **SGLang**: a newer high-performance engine built around **RadixAttention** (a prefix-caching scheme using a radix tree to share KV cache across requests that share a prompt prefix) and a structured generation language for constrained/programmatic output — particularly strong for agent workloads that issue many related, prefix-sharing calls.
-- **llama.cpp**: a C/C++ inference engine built for running LLMs efficiently on CPU and consumer hardware (including Apple Metal and Vulkan), using the **GGUF** model format — the backbone of most local/on-device LLM tooling (Ollama and LM Studio both run on top of it).
-- **TensorRT-LLM**: NVIDIA's own highly optimized engine, compiling models into fused CUDA kernels with CUDA graph capture — typically the fastest option on NVIDIA hardware specifically, at the cost of a heavier compilation/deployment workflow and less flexibility than vLLM.
-- **Hugging Face TGI (Text Generation Inference)**: HF's own production serving engine, tightly integrated with the HF model ecosystem, supporting continuous batching and quantization — a reasonable default when everything else in a stack is already HF-centric.
-- **ONNX Runtime**: a general (not LLM-specific) cross-platform inference runtime built around the ONNX model format, with pluggable **execution providers** (CUDA, TensorRT, CPU, DirectML, CoreML) — used when a model needs to run across genuinely heterogeneous hardware from one exported format.
-- **OpenVINO**: Intel's inference toolkit, optimized specifically for Intel CPUs/iGPUs/VPUs — the standard choice for edge and CPU-heavy deployments on Intel hardware.
+## 3. The Baseline: Batching a Plain Model
 
-<Tier1EngineComparisonDiagram />
+Before any engine, here's what batching alone buys. This measures a small model (SmolLM2, 135 million parameters, on a laptop CPU with PyTorch) generating 48 tokens for each of 16 prompts, sent one at a time, four at a time, and all sixteen at once:
 
-The launch command for each of the top three is genuinely this simple to get a first server running -- the complexity in each is in the flags, covered in [LLM Inference Optimization](/docs/mlops/llm-inference-optimization):
+```python
+import time
 
-```bash
-# vLLM -- serves an OpenAI-compatible API on :8000
-vllm serve meta-llama/Llama-3.1-8B-Instruct
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
-# llama.cpp -- serves a local GGUF file, -ngl offloads layers to GPU
-llama-server -m ./llama-3.1-8b-instruct.Q4_K_M.gguf -c 4096 -ngl 999 --port 8080
+torch.set_num_threads(4)
+name = "HuggingFaceTB/SmolLM2-135M-Instruct"
+tok = AutoTokenizer.from_pretrained(name, padding_side="left")
+model = AutoModelForCausalLM.from_pretrained(name, torch_dtype=torch.float32)
+prompts = [f"Write one sentence about the number {i}." for i in range(16)]
+NEW = 48
 
-# NVIDIA Triton -- serves every model found in a model repository directory
-tritonserver --model-repository=/models
+def generate(batch):
+    inputs = tok(batch, return_tensors="pt", padding=True)
+    model.generate(**inputs, max_new_tokens=NEW, min_new_tokens=NEW, do_sample=False, pad_token_id=tok.eos_token_id)
+
+generate(prompts[:2])                                       # warm-up
+for batch_size in [1, 4, 16]:
+    start = time.perf_counter()
+    for i in range(0, len(prompts), batch_size):
+        generate(prompts[i:i + batch_size])
+    elapsed = time.perf_counter() - start
+    print(f"batch size {batch_size:>2}: {len(prompts) * NEW / elapsed:6.0f} tokens/s for 16 requests ({elapsed:.1f} s)")
 ```
 
-TensorRT-LLM's workflow is real but heavier, as the comparison above shows -- models are compiled ahead of time into hardware-specific engines rather than loaded directly:
-
-```bash
-trtllm-build --checkpoint_dir ./llama-3.1-8b-checkpoint --output_dir ./engine --gemm_plugin float16
-python3 -m tensorrt_llm.serve --engine_dir ./engine --port 8000
+```text
+batch size  1:     19 tokens/s for 16 requests (39.6 s)
+batch size  4:     36 tokens/s for 16 requests (21.1 s)
+batch size 16:     98 tokens/s for 16 requests (7.8 s)
 ```
 
-<EngineSelectionDecisionDiagram />
-
-## Tier 2: Also Worth Knowing
-
-- **DeepSpeed-Inference**: Microsoft's inference-side counterpart to DeepSpeed training, with kernel optimizations and tensor parallelism for large-model serving.
-- **NVIDIA Triton Inference Server**: a *general-purpose, multi-framework* serving server — not LLM-specific like vLLM, but a backend-agnostic server that can run PyTorch, TensorFlow, ONNX, TensorRT, and (via a backend) vLLM itself, standardizing serving across many model types in one system. The right choice when a team serves LLMs *and* classical/vision models and wants one serving layer for all of it, rather than the LLM-specialized throughput vLLM offers.
-- **ExecuTorch**: PyTorch's on-device inference runtime for mobile and embedded targets.
-- **Core ML**: Apple's own on-device inference framework (distinct from MLX) — the standard target for shipping a model inside an iOS/macOS app, with first-class Neural Engine acceleration on Apple hardware; models are typically exported/converted to Core ML's format rather than run directly from PyTorch.
-- **MLX**: Apple's array/ML framework, with strong support for efficient LLM inference on Apple Silicon's unified memory architecture — more of a general array/research framework (NumPy/PyTorch-like) than Core ML's app-deployment-focused runtime.
-- **MLC-LLM**: a compilation-based approach (built on Apache TVM) to deploying LLMs across a wide range of hardware backends from one model definition.
-- **Apache TVM**: a general deep learning compiler stack — MLC-LLM is built on top of it; worth knowing as the underlying compiler technology rather than a tool you reach for directly for LLM serving.
-- **Ray Serve**: general-purpose distributed serving (see [APIs & Model Serving](/docs/mlops/model-serving)) that can host LLM inference as one stage in a larger multi-model/multi-step serving pipeline.
-
-## The Baseline: Plain PyTorch Inference
-
-Before reaching for any engine above, the simplest possible option is just calling `model.forward()` (or `.generate()`) directly in eager-mode PyTorch — no batching optimization, no custom kernels, no KV-cache-aware memory management beyond what the model implementation does itself. This is the right starting point for prototyping, low-traffic internal tools, and anywhere the engineering cost of adopting a dedicated engine isn't yet justified by traffic volume — every engine in the tiers above exists specifically to fix a scaling problem plain PyTorch inference has (poor batching, no paged KV cache, slow per-kernel-launch overhead), and it's worth being able to name *which* problem before reaching for a heavier tool to fix it.
+Serving the same 16 requests together is five times faster than one at a time, on the same hardware, because each forward pass does useful work for 16 sequences instead of one. On a GPU, where weight reads dominate even more, the gap at larger batch sizes is wider still.
 
 <BaselineVsEngineDiagram />
 
-## Edge and On-Device Inference
+But this experiment hides the hard part: every request here was forced to produce exactly 48 tokens. Real requests stop at different times, and that's where plain batching breaks down.
 
-A distinct deployment target from server-side serving above: running inference directly on a phone, laptop, or embedded device, with no network round-trip at all. This trades server-grade throughput/batching for privacy (data never leaves the device), offline capability, and zero marginal inference cost — llama.cpp/GGUF, ExecuTorch, Core ML, and MLX (all above) are the standard tools here, chosen based on target platform (llama.cpp for broad CPU/cross-platform reach, Core ML/MLX for Apple-specific deployment, ExecuTorch for PyTorch-native mobile/embedded export) rather than raw throughput, which is rarely the binding constraint for a single-user, single-request-at-a-time on-device workload.
+## 4. Continuous Batching
+
+With ordinary (**static**) batching, a batch of requests starts together and the batch occupies the GPU until its *longest* request finishes. Short requests finish early and their slots sit empty; new requests wait for the whole batch. **Continuous batching** (also called in-flight or iteration-level batching, introduced by the Orca system in 2022) re-forms the batch at every decoding step: a finished sequence leaves immediately and a waiting request takes its slot at the next step.
+
+This simulation runs 400 requests with realistic, heavy-tailed output lengths through both schedulers, with room for 8 sequences per step:
+
+```python
+import numpy as np
+
+rng = np.random.default_rng(0)
+BATCH = 8                                       # sequences the GPU decodes together per step
+outputs = np.minimum(rng.lognormal(4.5, 1.0, 400).astype(int) + 1, 1_500)   # output lengths, heavy-tailed
+
+def static_batching(lengths):
+    """Batch fills, runs until its LONGEST sequence finishes, then the next batch starts."""
+    steps, finish = 0, []
+    for i in range(0, len(lengths), BATCH):
+        batch = lengths[i:i + BATCH]
+        finish += [steps + max(batch)] * len(batch)      # results returned when the batch ends
+        steps += max(batch)
+    return steps, np.array(finish)
+
+def continuous_batching(lengths):
+    """Iteration-level scheduling: a finished sequence leaves and a waiting one joins at the next step."""
+    queue, running, steps, finish = list(lengths), [], 0, []
+    while queue or running:
+        while queue and len(running) < BATCH:
+            running.append(queue.pop(0))
+        steps += 1
+        running = [r - 1 for r in running]
+        finish += [steps] * sum(r == 0 for r in running)
+        running = [r for r in running if r > 0]
+    return steps, np.array(finish)
+
+for name, fn in [("static batching", static_batching), ("continuous batching", continuous_batching)]:
+    steps, finish = fn(outputs)
+    print(f"{name:<20} {steps:>6} decode steps for {outputs.sum():,} tokens "
+          f"(slot use {outputs.sum() / (steps * BATCH):.0%}), median completion at step {np.median(finish):,.0f}")
+```
+
+```text
+static batching       21716 decode steps for 56,698 tokens (slot use 33%), median completion at step 9,362
+continuous batching    7373 decode steps for 56,698 tokens (slot use 96%), median completion at step 3,500
+```
+
+Static batching keeps only a third of its slots busy, because every batch waits for its longest member; continuous batching keeps 96% busy, generates the same tokens in a third of the steps, and returns the median request almost three times sooner. Since a decode step costs roughly the same however many slots are filled, slot use translates directly into throughput and cost per token.
+
+## 5. Paged KV Memory
+
+Continuous batching needs memory for whichever requests are running, and their KV caches grow by an unpredictable amount. Early servers reserved one contiguous block per request, sized for the maximum possible length, because a contiguous block can't grow in place. Most of that reservation is never used. **PagedAttention**, introduced with vLLM in 2023, borrows the operating system's solution: split the KV cache into fixed-size **blocks** (pages) of, say, 16 tokens, allocate blocks only as a sequence grows, and keep a per-sequence table mapping logical positions to physical blocks.
+
+```python
+import numpy as np
+
+rng = np.random.default_rng(0)
+MAX_LEN, BLOCK = 8_192, 16                      # context limit; page size in tokens
+lengths = np.minimum(rng.lognormal(6.5, 1.0, 1_000).astype(int) + 50, MAX_LEN)   # real sequence lengths
+
+used = lengths.sum()
+contiguous = len(lengths) * MAX_LEN             # reserve the maximum for every request up front
+paged = (np.ceil(lengths / BLOCK) * BLOCK).sum()   # allocate fixed-size blocks as the sequence grows
+print(f"median sequence {np.median(lengths):,.0f} tokens; tokens actually stored {used:,}")
+print(f"contiguous max-length reservation: {contiguous:,} slots, {used / contiguous:.1%} used")
+print(f"paged blocks of {BLOCK} tokens:      {paged:,.0f} slots, {used / paged:.1%} used")
+```
+
+```text
+median sequence 666 tokens; tokens actually stored 1,055,109
+contiguous max-length reservation: 8,192,000 slots, 12.9% used
+paged blocks of 16 tokens:      1,062,352 slots, 99.3% used
+```
+
+With an 8K context limit and a median sequence of 666 tokens, max-length reservation leaves 87% of KV memory empty; paging wastes under 1%, only the unfilled part of each sequence's last block. The memory saved becomes room for more concurrent requests, which (section 4) becomes throughput. Paging also enables **sharing**: sequences with the same prefix, such as a common system prompt, or parallel samples from one prompt, can point at the same physical blocks, copying only when they diverge. That's the basis of prefix caching, which SGLang's RadixAttention organizes as a tree of shared prefixes.
+
+<PredictFirst
+  question="A team serves a chat model with a 32K context limit but most conversations use under 2K tokens. They move from a server that reserves KV memory per request at the maximum length to a paged engine. What changes most?"
+  options={[
+    'Each token is generated faster',
+    'Many more requests fit in GPU memory at once, so the engine batches more and throughput rises',
+    'The model becomes more accurate',
+    'Time to first token for a single request drops sharply',
+  ]}
+  correctIndex={1}
+  explanation="Reserving 32K slots per request when most use under 2K wastes over 90% of KV memory, which caps concurrency. Paging allocates only what each sequence uses, so the same GPU holds many more requests, continuous batching keeps more slots busy, and aggregate throughput rises. Per-token speed for a single request and accuracy don't change much."
+/>
+
+## 6. The Engines in 2026
+
+The two ideas above are now table stakes; engines differ in performance tuning, hardware support, features and operational fit. As of late 2026:
+
+| Engine | Strengths | Fits |
+|---|---|---|
+| **vLLM** | The broadest model and hardware support (NVIDIA, AMD, Intel, TPU and others), PagedAttention, prefix caching, OpenAI-compatible server, multi-LoRA, quantization, speculative decoding, a large community; the default backend of many platforms | The default choice for self-hosted serving |
+| **SGLang** | RadixAttention prefix sharing, a fast scheduler, structured-output support; strong on multi-turn and prefix-heavy workloads such as agents | High-concurrency chat and agent traffic, shared-prefix workloads |
+| **TensorRT-LLM** | NVIDIA's engine: compiled, fused kernels and the latest NVIDIA hardware features first | Maximum performance on NVIDIA GPUs, accepting a heavier build process |
+| **NVIDIA Dynamo** | A distributed serving framework over engines such as vLLM, SGLang and TensorRT-LLM, with KV-aware routing and prefill-decode disaggregation | Large multi-node deployments |
+| **llama.cpp** | C/C++, runs quantized GGUF models on CPUs, Apple Silicon and consumer GPUs; the basis of Ollama and LM Studio | Local, edge and CPU deployments |
+| **Hugging Face TGI** | Formerly a common production server | In maintenance mode since December 2025; Hugging Face recommends vLLM or SGLang for new deployments |
+
+For general-purpose or non-LLM models served next to LLMs, **Dynamo-Triton** (formerly Triton Inference Server) and **ONNX Runtime** remain the multi-framework options; [APIs & Model Serving](/docs/mlops/model-serving#7-serving-frameworks) covers them.
+
+**Choosing.** Start with vLLM unless there's a reason not to. Benchmark SGLang if your traffic shares long prefixes or is multi-turn at high concurrency, and TensorRT-LLM if you're committed to NVIDIA hardware and need the last increment of performance. Benchmark on *your* model, quantization, GPU and request mix, measuring time to first token, time per output token and throughput at your target concurrency; published benchmarks change with every release and rarely match a given workload.
+
+**How to run that benchmark.** Replay a sample of real requests, or synthetic ones with the same distribution of prompt and output lengths, against the engine at increasing concurrency (1, 4, 16, 64 in-flight requests), using the engines' own benchmark scripts or a load generator such as GuideLLM or LLMPerf. At each level record p50 and p99 time to first token, p50 and p99 time per output token, and total output tokens per second. Throughput rises with concurrency until the GPU saturates, while latency stays flat and then climbs steeply; the useful operating point is the highest concurrency at which both latency percentiles still meet your targets, sometimes called **goodput**: throughput counting only requests that met the latency target. Repeat with prefix caching on and off, and with your real quantization, because each changes the curve. Keep the results with the engine version and configuration, since an engine upgrade can move the curve noticeably in either direction.
+
+<GoDeeper title="Go deeper: what else the engines do">
+
+Beyond continuous batching and paging, modern engines implement a stack of further optimizations, most covered in [LLM Inference Optimization](/docs/mlops/llm-inference-optimization):
+
+- **Chunked prefill** splits a long prompt's prefill into pieces interleaved with other requests' decode steps, so one huge prompt doesn't stall everyone else's token stream.
+- **Prefix caching** keeps KV blocks of common prefixes across requests, skipping their prefill entirely.
+- **Speculative decoding** uses a small draft model, or extra prediction heads, to propose several tokens that the large model verifies in one pass.
+- **Quantization** of weights (8- and 4-bit) and of the KV cache (FP8) cuts memory and raises throughput.
+- **Parallelism** across GPUs: tensor parallelism inside a node, pipeline and expert parallelism across nodes for very large and mixture-of-experts models.
+- **Structured output** constrains decoding to a grammar or JSON schema, so outputs always parse.
+- **CUDA graphs** capture the sequence of GPU kernel launches for a decode step and replay it, removing per-step launch overhead, which matters most for small batches.
+
+</GoDeeper>
+
+## 7. On-Device and Edge Inference
+
+A different target altogether: running the model on the user's phone, laptop or an embedded device, with no server.
 
 <EdgeVsServerDeploymentDiagram />
 
-Next: [LLM Inference Optimization](/docs/mlops/llm-inference-optimization) — the specific techniques (PagedAttention, quantization, speculative decoding, and more) that make the Tier 1 engines above fast.
+Throughput barely matters there, since there's one user and one request at a time. What matters is fitting in limited memory, power draw, and latency on modest hardware, in exchange for privacy (data never leaves the device), offline use and zero per-request cost. The common runtimes, chosen by platform:
+
+- **llama.cpp** with 4- to 6-bit GGUF models, for broad CPU and GPU reach across operating systems.
+- **MLX** on Apple Silicon, using its unified memory; **Core ML** for shipping models inside iOS and macOS apps, with access to the Neural Engine.
+- **ExecuTorch** for PyTorch models on Android, iOS and embedded targets; **ONNX Runtime Mobile** and **LiteRT** (formerly TensorFlow Lite) as cross-platform alternatives.
+- Operating-system models: both Apple and Google ship on-device models that applications can call through system APIs, which avoids bundling a model at all.
+
+Small models (one to a few billion parameters), aggressive quantization and careful context limits are what make this practical.
+
+<PredictFirst
+  question="An internal tool used by 5 analysts sends a few dozen requests a day to an 8B model. The team is deciding between deploying vLLM on a dedicated GPU and running the model with llama.cpp on an existing CPU server. Which is the more reasonable starting point?"
+  options={[
+    'vLLM on a dedicated GPU, because it has the highest throughput',
+    'llama.cpp with a quantized model on the existing server, or a hosted API; at this volume, throughput is irrelevant and a dedicated GPU would sit idle',
+    'TensorRT-LLM, because it is fastest on NVIDIA hardware',
+    'A multi-node deployment with prefill-decode disaggregation',
+  ]}
+  correctIndex={1}
+  explanation="Engines like vLLM earn their complexity by keeping a GPU busy with many concurrent requests. A few dozen requests a day would leave a dedicated GPU idle more than 99% of the time. A quantized model on existing hardware, or a hosted API, meets the need at a fraction of the cost and operational effort; revisit when volume grows."
+/>
+
+## 8. When *Not* to Run an Inference Engine
+
+| Situation | Better choice |
+|---|---|
+| Low volume, or still exploring which model to use | A hosted API; self-hosting pays once traffic is steady and high |
+| A handful of internal users | A quantized model on existing hardware (llama.cpp, Ollama) or a managed endpoint |
+| Prototyping a new model architecture | Plain PyTorch `generate()` until it works; adopt an engine once it supports the architecture |
+| Embedding or classification models | A general serving framework or TEI; LLM engines are built for autoregressive generation |
+| No one to operate GPU infrastructure | A managed endpoint or a hosted open-model API, which run these same engines for you |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Why engines | Sequential generation, wildly varying lengths, large per-request KV state |
+| Vocabulary | Engine executes; serving framework exposes; platform hosts; fine-tuning framework trains |
+| Batching | Same 16 requests: 19 tokens/s one at a time, 98 tokens/s batched |
+| Continuous batching | Re-form the batch every step: slot use 33% to 96% in the simulation |
+| Paged KV memory | Allocate fixed blocks as sequences grow: 13% to 99% of KV memory used |
+| Engines in 2026 | vLLM default, SGLang for prefix-heavy traffic, TensorRT-LLM for peak NVIDIA performance; TGI is in maintenance |
+| On-device | llama.cpp, MLX, Core ML, ExecuTorch; small quantized models |
+
+---
+
+Next: [LLM Inference Optimization](/docs/mlops/llm-inference-optimization) goes inside the engines: the KV cache, quantization, speculative decoding, chunked prefill and disaggregated serving.
+
+## Sources
+
+- G.-I. Yu et al., [Orca: A Distributed Serving System for Transformer-Based Generative Models](https://www.usenix.org/conference/osdi22/presentation/yu), OSDI 2022 (iteration-level scheduling)
+- W. Kwon et al., [Efficient Memory Management for Large Language Model Serving with PagedAttention](https://arxiv.org/abs/2309.06180), SOSP 2023
+- L. Zheng et al., [SGLang: Efficient Execution of Structured Language Model Programs](https://arxiv.org/abs/2312.07104), NeurIPS 2024
+- vLLM, [Documentation](https://docs.vllm.ai/); SGLang, [Documentation](https://docs.sglang.ai/); NVIDIA, [TensorRT-LLM](https://nvidia.github.io/TensorRT-LLM/)
+- Hugging Face, [Text Generation Inference documentation](https://huggingface.co/docs/text-generation-inference/index) (maintenance-mode notice)

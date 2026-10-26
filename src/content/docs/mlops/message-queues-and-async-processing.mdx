@@ -1,131 +1,310 @@
 ---
-title: "Message Queues & Async Processing"
+title: "Message Queues & Async Processing, In Full Depth"
 sidebar_position: 6.5
-description: "What a message queue actually is and why Kafka and Celery show up everywhere -- the mechanism underneath async processing and event-driven architectures."
+description: "What a message queue is and when an ML system needs one: sync vs async, producer-queue-consumer with a real Celery worker, queue arithmetic, competing consumers and pub/sub, delivery guarantees shown with a crash and redelivery on Redis Streams, partitioning and hot keys, and choosing between Kafka, Celery, Redis and SQS."
 ---
-
 
 import SyncVsAsyncDiagram from '../../../viz/diagrams/SyncVsAsyncDiagram';
 import ProducerQueueConsumerDiagram from '../../../viz/diagrams/ProducerQueueConsumerDiagram';
 import PubSubVsPointToPointDiagram from '../../../viz/diagrams/PubSubVsPointToPointDiagram';
 import DeliverySemanticsDiagram from '../../../viz/diagrams/DeliverySemanticsDiagram';
 import PartitionOrderingDiagram from '../../../viz/diagrams/PartitionOrderingDiagram';
-import QueueToolComparisonDiagram from '../../../viz/diagrams/QueueToolComparisonDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Message Queues & Async Processing
+# Message Queues & Async Processing, In Full Depth
 
-Kafka, Celery, and "background job" show up in passing across this section — [Pipeline Orchestration](/docs/mlops/pipeline-orchestration#airflow) mentions Celery workers as an Airflow executor, [APIs & Model Serving](/docs/mlops/model-serving#batch-online-and-streaming-inference) mentions Kafka as the backbone of streaming inference — without ever explaining what a message queue actually is or why it's there. This page is that missing piece: the mechanism underneath async task processing, streaming pipelines, and event-driven architectures generally.
+[Pipeline Orchestration](/docs/mlops/pipeline-orchestration) runs a few large, dependent steps on a schedule. Many ML workloads look different: thousands of small, independent jobs arriving all day, such as embedding each uploaded document, scoring each transaction as it happens, or running a slow model behind a request that shouldn't keep the user waiting. The tool for that shape of work is a **message queue**. This page covers why direct calls aren't always enough, the producer-queue-consumer pattern with a real Celery worker, the arithmetic of queues, the two ways messages fan out, delivery guarantees (shown with a worker crashing mid-task and its work being recovered), ordering and partition keys, and how to choose between Kafka, Celery, Redis Streams and SQS.
 
-## Why Not Just Call the API Directly?
+<ELI5>
 
-A direct API call is a **synchronous, tightly coupled** dependency: the caller is blocked until the callee responds, and if the callee is down, slow, or overwhelmed, the caller feels all of that immediately and directly. A message queue sits between two systems and breaks that coupling in three specific ways:
+At a busy café, the cashier doesn't make the coffee. They take your order, write it on a ticket, put the ticket on the rail, and serve the next customer. Baristas take tickets from the rail as fast as they can make drinks. When a rush comes, the rail fills up; nobody is turned away and the cashier never stops. If a barista drops a cup, the ticket is still there, so the drink gets made again.
 
-- **Decoupling**: the producer doesn't need to know who (or how many consumers) will process a message, or when — it just puts the message on the queue and moves on. The consumer can be redeployed, scaled, or temporarily down without the producer's code changing or failing.
-- **Buffering**: a burst of traffic that would overwhelm a downstream service gets absorbed by the queue instead of hitting it directly — the consumer drains the burst at its own sustainable pace instead of falling over.
-- **Backpressure**: the flip side of buffering — a queue makes the mismatch between producer and consumer rates *visible and manageable* (queue depth growing) instead of invisible until something crashes.
+A message queue is that rail. The part of a system that receives requests puts work on the queue and moves on; workers take work off it at their own pace; and if a worker fails, the work isn't lost.
 
-## Sync vs. Async Processing
+Everything below is how the rail is built so that work is never lost and never done twice by mistake.
+
+</ELI5>
+
+## 1. Why Not Just Call the Service Directly?
+
+A direct call is **synchronous** and **tightly coupled**: the caller waits until the callee responds, and anything wrong with the callee (slow, down, overloaded) hits the caller immediately. For a quick prediction behind a 50-millisecond budget, that's exactly right. For other work it isn't:
+
+- **Slow work behind a user request.** Transcribing an hour of audio, embedding a 300-page PDF or fine-tuning a model takes seconds to hours. Holding an HTTP request open that long ties up the server and fails on every network hiccup.
+- **Bursts.** A partner uploads 50,000 documents at once. If each upload calls the embedding service directly, the burst hits the service at full force.
+- **Many consumers of one event.** A "transaction created" event needs fraud scoring, a receipt email and an analytics update. Calling each from the transaction service couples it to all three and to their failures.
+
+A message queue sits between producers and consumers and breaks the coupling in three ways: **decoupling** (the producer doesn't know or care who processes the message, or when), **buffering** (bursts wait in the queue instead of overwhelming workers), and **visible backpressure** (a growing queue shows that consumers can't keep up, long before anything crashes).
+
+## 2. Sync vs Async
 
 <SyncVsAsyncDiagram />
 
-The core tradeoff: synchronous processing gives you an immediate, simple answer (the response *is* the result) at the cost of the caller being blocked for the full processing time. Asynchronous processing frees the caller immediately, at the cost of complexity — now something has to track the request's state, and the caller needs a way to find out when (or whether) it finished, e.g. polling a status endpoint or receiving a callback/webhook.
+In **synchronous** processing the response *is* the result: simple to build and reason about, with the caller blocked for the full duration. In **asynchronous** processing the caller gets an acknowledgement at once ("accepted, here's a job ID") and the result arrives later, so something must track the job's state and the caller must find out when it's done, by polling a status endpoint, receiving a webhook, or having the result pushed over a WebSocket.
 
-## The Core Pattern: Producer, Queue, Consumer
+The rule of thumb for ML services: keep it synchronous when the work reliably fits inside the caller's latency budget, and go asynchronous when it doesn't, when its duration varies wildly, or when it must survive the caller going away.
 
-Every message-queue system reduces to the same three roles, regardless of which specific technology implements them:
+## 3. Producer, Queue, Consumer
+
+### The Core Pattern: Producer, Queue, Consumer
+
+Every queueing system has the same three roles:
 
 <ProducerQueueConsumerDiagram />
 
-- **Producer**: whatever creates the message — an API handler that just accepted a request, a cron job, an upstream service emitting an event.
-- **Queue (or topic)**: the durable (or at least persistent-enough) buffer holding messages until a consumer is ready for them.
-- **Consumer**: a worker process that pulls messages off the queue and does the actual work — send the email, run the inference, write the row.
+- The **producer** creates a message describing work or an event: an API handler that accepted an upload, a scheduler, another service.
+- The **queue** (or **topic**) stores messages durably until a consumer takes them.
+- **Consumers** (workers) take messages, do the work, and acknowledge them.
 
-Producer and consumer rates rarely match exactly, which is precisely why the queue exists as a buffer — but an unbounded buffer just delays the failure instead of preventing it. Real systems cap queue depth and apply backpressure (reject new messages, slow the producer, or auto-scale consumer workers) once that cap is approached, rather than letting the queue grow until the process holding it runs out of memory.
-
-The exact producer/queue/consumer roles above, as real Celery code -- an API handler that returns immediately, and a worker that does the actual (slow) work later:
+[Celery](https://docs.celeryq.dev) is the most common Python framework for this pattern, with Redis or RabbitMQ as the broker. Here's a complete task and worker. Two settings matter for reliability: `task_acks_late`, so a task is acknowledged only after it finishes (a worker that dies mid-task doesn't lose it), and a prefetch multiplier of 1, so one worker can't grab a large batch of tasks while others sit idle:
 
 ```python
-# tasks.py -- the consumer side
+import time
+
 from celery import Celery
 
-app = Celery("ml_tasks", broker="redis://localhost:6379/0")
+app = Celery("ml_tasks", broker="redis://127.0.0.1:6392/0", backend="redis://127.0.0.1:6392/1")
+app.conf.task_acks_late = True                 # acknowledge only after the task finishes
+app.conf.worker_prefetch_multiplier = 1        # don't let one worker hoard queued tasks
 
-@app.task
-def run_inference(user_id: int, features: list[float]):
-    prediction = model.predict([features])[0]
-    save_prediction(user_id, prediction)
+@app.task(bind=True, autoretry_for=(ConnectionError,), retry_backoff=True, max_retries=3)
+def run_inference(self, document_id: int) -> dict:
+    time.sleep(0.5)                            # stands in for half a second of model inference
+    return {"document_id": document_id, "label": "invoice" if document_id % 3 else "receipt"}
 ```
+
+The producer side, as an API handler would use it, enqueuing 16 documents while a worker runs with `celery -A tasks worker --concurrency=4` (Celery 5.6, Redis 8.2):
 
 ```python
-# api.py -- the producer side
-from tasks import run_inference
+import time
 
-@app.post("/v1/predict-async")
-def predict_async(req: PredictRequest):
-    task = run_inference.delay(req.user_id, req.features)  # returns immediately, doesn't block on inference
-    return {"task_id": task.id}
+from tasks import app, run_inference
+
+run_inference.delay(-1).get(timeout=30)                        # warm up connections (not timed)
+
+start = time.perf_counter()
+results = [run_inference.delay(i) for i in range(16)]          # the API returns task IDs immediately
+print(f"16 tasks enqueued in {(time.perf_counter() - start) * 1000:.0f} ms")
+outputs = [r.get(timeout=30) for r in results]                 # a client would poll or get a callback
+print(f"all 16 done after {time.perf_counter() - start:.1f} s with 4 worker processes "
+      f"(16 x 0.5 s = 8 s of work); e.g. {outputs[1]}")
+for r in results:
+    r.forget()
 ```
 
-```bash
-celery -A tasks worker --loglevel=info --concurrency=8   # the consumer pool draining the queue
+```text
+16 tasks enqueued in 13 ms
+all 16 done after 2.0 s with 4 worker processes (16 x 0.5 s = 8 s of work); e.g. {'document_id': 1, 'label': 'invoice'}
 ```
 
-## Point-to-Point vs. Pub/Sub
+The API would have answered in 13 milliseconds instead of 8 seconds, and four workers finished eight seconds of work in two. Adding workers adds throughput without touching the producer.
 
-Two different fan-out shapes, both built on the same producer/queue/consumer primitives:
+## 4. Queue Arithmetic
+
+A queue is a buffer, and buffers obey simple arithmetic. If messages arrive at rate $\lambda$ and the worker pool completes them at rate $\mu = c / s$ (with $c$ workers each taking $s$ seconds per message):
+
+- If $\lambda < \mu$, the queue drains, and on average stays short. Little's law, $L = \lambda W$, says how many messages are in the system for a given wait ([APIs & Model Serving](/docs/mlops/model-serving#5-latency-throughput-and-queues)).
+- If $\lambda > \mu$, the backlog grows linearly, by $(\lambda - \mu)$ messages per second, without limit.
+
+So a burst of 50,000 documents at 0.5 seconds each needs 25,000 worker-seconds: about 7 hours on one worker, or 7 minutes on 60. The queue lets you choose: absorb the burst slowly with few workers, or scale workers out on queue depth (KEDA does this on Kubernetes, scaling to zero when the queue is empty, see [Kubernetes](/docs/mlops/kubernetes#7-autoscaling-pods-and-nodes)).
+
+Two numbers tell you a queue's health: its **depth** and the **age of its oldest message**. Depth alone can mislead: 10,000 queued messages is fine if workers clear 2,000 a second and alarming if they clear 2. Alert on age, against the freshness the work needs.
+
+**Bound the queue.** An unbounded queue only postpones failure: the backlog grows until messages are too old to matter or storage runs out. Set a maximum depth or message age, reject or shed work beyond it, and tell producers to slow down ([Production Reliability](/docs/mlops/production-reliability#6-backpressure-and-load-shedding)).
+
+## 5. Point-to-Point and Publish-Subscribe
+
+Messages can fan out in two ways, built from the same primitives:
 
 <PubSubVsPointToPointDiagram />
 
-Point-to-point (a queue with a pool of **competing consumers**) is how you scale out processing of one logical stream of work — more workers pulling from the same queue means more throughput, and each unit of work still gets done exactly once. Pub/sub (a topic with independent **subscribers**) is how one event fans out to multiple, unrelated downstream systems that each need their own full copy of the stream — the same "order placed" event triggering a fraud check, a receipt email, and an analytics pipeline, none of which should have to compete with each other for it.
+- **Point-to-point (work queues):** each message goes to exactly one of a pool of **competing consumers**. Adding consumers spreads the work. This is the Celery pattern: one logical stream of jobs, processed once each.
+- **Publish-subscribe (pub/sub):** each message on a **topic** is delivered to every **subscriber** (in Kafka, every consumer group), and each processes its own full copy. One "transaction created" event feeds fraud scoring, receipts and analytics, each at its own pace, none aware of the others.
 
-## Delivery Semantics: At-Most-Once, At-Least-Once, Exactly-Once
+Kafka combines both: within one consumer group, partitions are divided among the group's consumers (point-to-point); across groups, every group sees every message (pub/sub). Kafka also keeps messages for a configured retention period after they're read, so a new consumer group, such as a new model's feature pipeline, can **replay** history from the beginning. That replay is one of the main reasons ML platforms build on Kafka: features and training data can be recomputed from the original event log.
+
+## 6. Delivery Guarantees
+
+The central question in any queue is **when the consumer acknowledges a message**, relative to doing its work:
 
 <DeliverySemanticsDiagram />
 
-The practical question underneath all three: **when does the consumer tell the queue "I'm done with this message"** relative to when it actually finishes the work? Acking too early risks losing work on a crash; acking too late (or not at all until success) risks redelivering and reprocessing a message that already succeeded. "Exactly-once" in practice almost always means at-least-once delivery plus an **idempotent consumer** — one that checks a message ID against what it's already processed before re-applying an effect, so a harmless duplicate delivery doesn't turn into a harmful duplicate *side effect* (charging a customer twice, sending a duplicate email).
+- **Acknowledge, then work: at-most-once.** If the consumer crashes mid-work, the message is gone. Acceptable only when losing some messages is fine, such as sampled metrics.
+- **Work, then acknowledge: at-least-once.** If the consumer crashes after the work but before the acknowledgement, the message is delivered again and the work is repeated. Nothing is lost, but duplicates happen.
+- **Exactly-once:** what everyone wants, and what end-to-end systems achieve as **at-least-once delivery plus idempotent processing**: the consumer makes repeated processing harmless.
 
-## Ordering Guarantees and Partitioning
+Here's at-least-once recovery on Redis Streams, which supports consumer groups with explicit acknowledgements. Two workers share a stream of documents to embed. One embeds two documents and crashes before acknowledging them; those messages stay *pending*, and the other worker reclaims and reprocesses them. The effect (recording the document as embedded) is a set insertion, so doing it twice is harmless:
+
+```python
+import redis
+
+r = redis.Redis(port=6392, decode_responses=True)
+r.delete("docs-to-embed", "embedded")
+r.xgroup_create("docs-to-embed", "embedders", id="0", mkstream=True)
+
+for doc in range(6):                                            # producer: append events to the stream
+    r.xadd("docs-to-embed", {"doc_id": doc})
+
+def work(consumer, count, crash_before_ack=False):
+    """Read new messages as one member of the group; ack only after the effect is recorded."""
+    batch = r.xreadgroup("embedders", consumer, {"docs-to-embed": ">"}, count=count)
+    for _, messages in batch:
+        for msg_id, fields in messages:
+            first_time = r.sadd("embedded", fields["doc_id"]) == 1   # idempotent effect: a set, not a counter
+            if crash_before_ack:
+                print(f"{consumer} embedded doc {fields['doc_id']}, then crashed before acknowledging")
+                continue
+            r.xack("docs-to-embed", "embedders", msg_id)
+            print(f"{consumer} processed doc {fields['doc_id']}" + ("" if first_time else " (duplicate, no effect)"))
+
+work("worker-a", 2)
+work("worker-b", 2, crash_before_ack=True)                      # its two messages stay pending
+work("worker-a", 2)
+
+pending = r.xpending("docs-to-embed", "embedders")
+print("pending (delivered, never acknowledged):", pending["pending"])
+
+# Recovery: worker-a claims messages that have been pending too long (here: any age) and redoes them
+_, claimed, _ = r.xautoclaim("docs-to-embed", "embedders", "worker-a", min_idle_time=0, start_id="0-0")
+for msg_id, fields in claimed:
+    first_time = r.sadd("embedded", fields["doc_id"]) == 1
+    r.xack("docs-to-embed", "embedders", msg_id)
+    print(f"worker-a reclaimed doc {fields['doc_id']}" + ("" if first_time else " (duplicate, no effect)"))
+print("documents embedded:", sorted(map(int, r.smembers("embedded"))),
+      "| pending now:", r.xpending("docs-to-embed", "embedders")["pending"])
+```
+
+```text
+worker-a processed doc 0
+worker-a processed doc 1
+worker-b embedded doc 2, then crashed before acknowledging
+worker-b embedded doc 3, then crashed before acknowledging
+worker-a processed doc 4
+worker-a processed doc 5
+pending (delivered, never acknowledged): 2
+worker-a reclaimed doc 2 (duplicate, no effect)
+worker-a reclaimed doc 3 (duplicate, no effect)
+documents embedded: [0, 1, 2, 3, 4, 5] | pending now: 0
+```
+
+Every document was processed, none was lost to the crash, and the two duplicates did no harm because the effect was idempotent. If the effect had been "increment a counter" or "send an email", the redelivery would have double-counted or double-sent. Designing every consumer so a repeated message is harmless is the single most important rule of queue-based systems. Record processed message IDs, write results with keys that overwrite rather than append, or use the idempotency-key pattern from [Production Reliability](/docs/mlops/production-reliability#idempotency-and-distributed-locks).
+
+Messages that fail repeatedly, because they're malformed or trigger a bug, shouldn't be retried forever. After a few attempts, move them to a **dead-letter queue** for inspection, so one bad message doesn't block or burn the rest.
+
+<PredictFirst
+  question="An embedding worker reads a message, writes the document's vectors to the vector database, and then is killed by a deployment before acknowledging. The queue redelivers the message to another worker. What determines whether this causes a problem?"
+  options={[
+    'Nothing, because queues guarantee exactly-once delivery',
+    'Whether the write is idempotent: upserting the vectors under the document ID is harmless, while appending a new copy creates duplicates in search results',
+    'Whether the deployment was a rolling update',
+    'Only the queue technology used',
+  ]}
+  correctIndex={1}
+  explanation="With at-least-once delivery, the work will sometimes run twice; the consumer's design decides whether that matters. Upserting by a stable ID makes the second run overwrite the first with the same data. Appending creates duplicate vectors, so the same document appears twice in retrieval results. Exactly-once effects come from idempotent consumers, not from the queue."
+/>
+
+## 7. Ordering and Partitions
+
+A single queue preserves order (first in, first out) but limits throughput to what one ordered stream can sustain. Systems built for high volume, Kafka above all, split a topic into **partitions**: each partition is an ordered log, and partitions are processed in parallel by different consumers. Order is guaranteed *within* a partition and not across partitions.
 
 <PartitionOrderingDiagram />
 
-A single queue trivially preserves order (first in, first out), but a single queue is also a scaling bottleneck. Systems built for high throughput (Kafka is the canonical example) split a topic into multiple **partitions**, each independently ordered but with no ordering guarantee *across* partitions — the tradeoff for parallelism. **Partition keys** solve the "but I need this subset in order" problem: routing every message for a given key (a user ID, an order ID) to the same partition guarantees order *within* that key, at the cost of that partition becoming a hotspot if one key sees disproportionate traffic.
+A **partition key** chooses the partition: messages with the same key always go to the same partition (Kafka hashes the key modulo the partition count), so all events for one user or one order stay in order. That's often required: a feature like "transactions in the last 10 minutes" must see a user's events in sequence.
 
-A Kafka producer keying by `user_id` (every event for one user lands in the same partition, in order), and a consumer reading the stream:
-
-```python
-from kafka import KafkaProducer, KafkaConsumer
-import json
-
-producer = KafkaProducer(bootstrap_servers="localhost:9092", value_serializer=lambda v: json.dumps(v).encode())
-producer.send("user-events", key=str(user_id).encode(), value={"event": "click", "user_id": user_id})
-
-consumer = KafkaConsumer("user-events", bootstrap_servers="localhost:9092", group_id="fraud-scoring")
-for message in consumer:
-    score_event(json.loads(message.value))
-```
-
-## Kafka, Celery, Redis, SQS: Picking One
-
-<QueueToolComparisonDiagram />
-
-The real decision usually comes down to what you actually need: replay-able event history and multiple independent consumer groups reading the same stream → Kafka. Distributing background jobs across a worker pool with minimal setup → Celery. Already running Redis for caching and want a lightweight queue nearby, without hard durability requirements → Redis Streams. Zero infrastructure to manage on AWS → SQS.
+The cost is that the key decides the load. Keys with very different volumes make some partitions much busier than others, and a partition is processed by one consumer at a time in its group, so the busiest partition limits the whole group:
 
 ```python
-import boto3
-sqs = boto3.client("sqs")
+import hashlib
+from collections import Counter
 
-sqs.send_message(QueueUrl=queue_url, MessageBody=json.dumps({"user_id": 42, "features": [...]}))
+import numpy as np
 
-response = sqs.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=10, WaitTimeSeconds=20)
-for msg in response.get("Messages", []):
-    process(json.loads(msg["Body"]))
-    sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=msg["ReceiptHandle"])  # the "I'm done" ack from above
+PARTITIONS = 6
+
+def partition(key: str) -> int:
+    # Kafka hashes the key (murmur2) modulo the partition count; any stable hash shows the idea
+    return int(hashlib.md5(key.encode()).hexdigest(), 16) % PARTITIONS
+
+rng = np.random.default_rng(0)
+users = [f"user-{u}" for u in rng.integers(0, 10_000, 60_000)]           # many users, evenly active
+merchants = [f"merchant-{m}" for m in rng.zipf(1.6, 60_000) % 2_000]     # a few merchants dominate
+
+for name, keys in [("key = user_id", users), ("key = merchant_id", merchants)]:
+    load = Counter(partition(k) for k in keys)
+    shares = [load[p] / len(keys) for p in range(PARTITIONS)]
+    print(f"{name:<18} busiest partition {max(shares):.0%} of traffic, quietest {min(shares):.0%}")
 ```
 
-## Where This Shows Up in ML Systems
+```text
+key = user_id      busiest partition 17% of traffic, quietest 16%
+key = merchant_id  busiest partition 46% of traffic, quietest 3%
+```
 
-- **Pipeline orchestration**: [Airflow's Celery executor](/docs/mlops/pipeline-orchestration#airflow) distributes DAG tasks across a worker pool using exactly the queue mechanics above.
-- **Streaming inference**: [Batch, Online, and Streaming Inference](/docs/mlops/model-serving#batch-online-and-streaming-inference) depends on a message queue (Kafka, Kinesis) as the event source predictions react to continuously.
-- **Background jobs generally**: anything a user shouldn't have to wait on synchronously — sending a notification, kicking off a long-running model training job from a UI click, ingesting a new document into a RAG index — is a producer/queue/consumer problem underneath, whether or not the framework on top calls it that.
+Keyed by user, six partitions share traffic almost evenly. Keyed by merchant, where a few large merchants dominate, one partition carries 46% of all traffic: adding consumers can't help, because that partition can only be read by one consumer at a time. Choose keys with many values of similar volume, key by the finest unit that needs ordering, and for unavoidable hot keys, split them (append a small bucket number to the key) at the cost of ordering across buckets.
 
-Next: [Containers](/docs/mlops/containers) — once a pipeline's steps (and its queue-backed workers) are defined, each one needs to run the same way everywhere.
+<GoDeeper title="Go deeper: consumer lag, rebalancing and the transactional outbox">
+
+In Kafka, each consumer group tracks a committed **offset** per partition: how far it has read. The gap between the newest message and the committed offset is **consumer lag**, the main health metric for streaming consumers, and the equivalent of a work queue's oldest-message age. Rising lag means consumers can't keep up; lag that's high on one partition only means a hot key.
+
+When consumers join or leave a group (a deployment, a crash, autoscaling), partitions are **rebalanced** among them. Older protocols paused the whole group during a rebalance; Kafka's newer consumer rebalance protocol, made generally available in Kafka 4.0, reassigns incrementally so the rest of the group keeps working. Frequent rebalances, from consumers that are slow to send heartbeats because one message takes too long, are a common source of lag and duplicate processing; keep per-message work short or move long work to a separate pool.
+
+A subtle bug appears when a service updates its database and publishes an event about it: if it crashes between the two, the database and the event stream disagree. The **transactional outbox** pattern fixes it by writing the event into an "outbox" table in the same database transaction as the change, and having a separate relay (often change data capture with Debezium) publish outbox rows to the queue. The event is published if and only if the change committed.
+
+</GoDeeper>
+
+## 8. Choosing a Technology
+
+### Kafka, Celery, Redis, SQS: Picking One
+
+| Tool | Model | Strengths | Fits |
+|---|---|---|---|
+| **Apache Kafka** (and compatible systems such as Redpanda, or managed MSK and Confluent Cloud) | Partitioned, replicated log with retention | Very high throughput, replay, many independent consumer groups; Kafka 4 runs without ZooKeeper and adds queue-style share groups | Event streams feeding several systems, streaming features, data platforms |
+| **Celery** (with Redis or RabbitMQ as broker) | Task queue for Python functions | Simple to adopt, retries, scheduling, result backend | Background jobs in Python services: inference jobs, document processing |
+| **RabbitMQ** | Message broker with flexible routing | Routing patterns, per-message acknowledgements, priorities | Work queues with complex routing |
+| **Redis Streams** | Append-only log with consumer groups in Redis | Light, fast, acknowledgements and pending lists | Moderate volume where Redis is already run; less suited to long retention |
+| **Amazon SQS / Google Pub/Sub / Azure Service Bus** | Fully managed queues and topics | No servers, scales automatically, dead-letter queues built in | Cloud-native systems that want no queue operations |
+
+The choice usually follows from two questions. Do several independent systems need the same stream, possibly replayed later? Kafka or a managed pub/sub. Is it background work for one service? Celery, RabbitMQ or a managed queue. Durable workflows with many long steps, retries and human approvals are a third case, better served by a workflow engine such as Temporal, or by the orchestrators in [Pipeline Orchestration](/docs/mlops/pipeline-orchestration).
+
+## 9. Where Queues Appear in ML Systems
+
+- **Asynchronous inference:** long-running models (transcription, document understanding, large batch predictions) behind an API that returns a job ID. Managed equivalents exist, such as SageMaker Asynchronous Inference.
+- **Ingestion for retrieval:** each uploaded or changed document becomes a message; workers parse, chunk, embed and index it, with idempotent upserts so retries are harmless ([LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops)).
+- **Streaming features and inference:** events on Kafka feed stream processors that maintain features and score events as they arrive ([Feature Stores & Model Registry](/docs/mlops/feature-stores-and-model-registry), [APIs & Model Serving](/docs/mlops/model-serving#batch-online-and-streaming-inference)).
+- **Smoothing GPU load:** a bounded queue in front of GPU workers absorbs bursts so capacity matches typical load, not the worst second.
+- **Orchestrator internals:** Airflow's Celery executor distributes task instances to workers through exactly this mechanism ([Pipeline Orchestration](/docs/mlops/pipeline-orchestration#airflow)).
+
+## 10. When *Not* to Use a Queue
+
+| Situation | Better choice |
+|---|---|
+| Work finishes reliably within the caller's latency budget | A direct synchronous call: simpler, and the result is immediate |
+| The caller needs the result to continue | Synchronous call with timeouts and retries; a queue only adds polling |
+| A few large, dependent steps on a schedule | An orchestrator such as Airflow, Dagster or Prefect |
+| Long-running workflows with state, waits and approvals | A durable workflow engine (Temporal, cloud step functions) |
+| Very low volume with no burst risk | A database table polled by a worker, or a cron job; a broker adds a system to operate |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Why queue | Decouple producers from consumers, absorb bursts, make backlog visible |
+| Async | Return a job ID now, deliver the result later by polling, webhook or push |
+| Arithmetic | If arrivals exceed $c/s$, the backlog grows by $\lambda - \mu$ per second; watch the oldest message's age |
+| Fan-out | Competing consumers share work; pub/sub gives every subscriber its own copy |
+| Delivery | Acknowledge after the work: at-least-once; make consumers idempotent for exactly-once effects |
+| Poison messages | A few retries, then a dead-letter queue |
+| Partitions | Order within a key; a skewed key overloads one partition, which caps the group |
+| Choosing | Kafka for shared, replayable streams; Celery or a managed queue for background jobs |
+
+---
+
+Next: [Containers](/docs/mlops/containers) covers packaging these workers, and every other service, so they run the same way everywhere.
+
+## Sources
+
+- Celery, [Documentation](https://docs.celeryq.dev/en/stable/), including task acknowledgement and prefetch settings
+- Redis, [Streams](https://redis.io/docs/latest/develop/data-types/streams/)
+- Apache Kafka, [Documentation](https://kafka.apache.org/documentation/)
+- J. Kreps, N. Narkhede and J. Rao, [Kafka: a Distributed Messaging System for Log Processing](https://notes.stephenholiday.com/Kafka.pdf), NetDB 2011
+- C. Richardson, [Pattern: Transactional outbox](https://microservices.io/patterns/data/transactional-outbox.html), microservices.io
