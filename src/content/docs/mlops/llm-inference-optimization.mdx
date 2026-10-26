@@ -1,182 +1,395 @@
 ---
-title: "LLM Inference Optimization"
+title: "LLM Inference Optimization, In Full Depth"
 sidebar_position: 19
-description: "KV cache, quantization, speculative decoding, and batching -- every real technique that makes LLM inference cheaper, explained by the two bottlenecks they solve."
+description: "Why LLM inference is slow and how engines make it fast: prefill vs decode and the roofline model, the KV cache and the attention variants that shrink it, chunked prefill and disaggregated serving, quantization measured on a real model, speculative decoding's speedup formula, and the metrics to report."
 ---
 
 import PrefillVsDecodeDiagram from '../../../viz/diagrams/PrefillVsDecodeDiagram';
 import TtftTpotTimelineDiagram from '../../../viz/diagrams/TtftTpotTimelineDiagram';
-import KvCacheGrowthDiagram from '../../../viz/diagrams/KvCacheGrowthDiagram';
-import PagedAttentionDiagram from '../../../viz/diagrams/PagedAttentionDiagram';
 import PrefixCachingDiagram from '../../../viz/diagrams/PrefixCachingDiagram';
 import AttentionVariantsKvCacheDiagram from '../../../viz/diagrams/AttentionVariantsKvCacheDiagram';
-import QuantizationMethodComparisonDiagram from '../../../viz/diagrams/QuantizationMethodComparisonDiagram';
-import GgufSizeCalculatorDiagram from '../../../viz/diagrams/GgufSizeCalculatorDiagram';
-import ContinuousBatchingDiagram from '../../../viz/diagrams/ContinuousBatchingDiagram';
 import SpeculativeDecodingDiagram from '../../../viz/diagrams/SpeculativeDecodingDiagram';
 import FlashAttentionMemoryDiagram from '../../../viz/diagrams/FlashAttentionMemoryDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# LLM Inference Optimization
+# LLM Inference Optimization, In Full Depth
 
-The techniques that make the engines from [LLM Inference Engines](/docs/mlops/llm-inference-engines) fast. Almost all of them exist to solve one of two problems: autoregressive generation is memory-bandwidth-bound, or the KV cache is too big.
+[LLM Inference Engines](/docs/mlops/llm-inference-engines) showed the two ideas every modern engine is built on: continuous batching and paged KV memory. This page goes inside the engine to the rest of the toolkit. Almost every technique here solves one of two problems: generating each token is limited by memory bandwidth rather than arithmetic, and the KV cache is large. It covers the two phases of a request and the roofline model that explains their speed, the KV cache and the attention designs that shrink it, prefix caching, chunked prefill and disaggregated prefill and decode, weight and KV-cache quantization (measured on a real model), speculative decoding with its exact speedup formula, the kernel-level work, and the metrics that tell you whether any of it helped.
 
 <ELI5>
 
-Imagine a factory line building sentences one word at a time. Reading the customer's order (the prompt) is fast — you can look at the whole thing at once and get moving. But writing the response has to happen strictly in order, one word depending on the last, and for every single word you have to re-consult a truly enormous rulebook (the model's weights) just to decide what comes next — most of the wait isn't "thinking," it's flipping through that rulebook again and again. Everything on this page is a different trick for making that per-word rulebook-flipping cheaper: remember what you already looked up (KV cache), compress the rulebook itself (quantization), let a fast junior clerk guess several words ahead and only double-check them (speculative decoding), or serve many customers' orders at once so the expensive rulebook-flipping is shared across them (batching).
+Imagine writing a reply to a letter one word at a time, where before each word you must read through an enormous reference book from cover to cover. Reading the original letter is quick, because you can take it all in at once. Writing is slow, not because choosing a word is hard but because of all that page-turning.
 
-Everything below makes each of those tricks exact.
+Every trick on this page reduces the page-turning or shares it. Keep notes of what you've already read (the KV cache). Use a smaller, compressed edition of the book (quantization). Let a quick assistant draft several words ahead so you only check them (speculative decoding). And reply to many letters at once, so one pass through the book serves them all (batching).
+
+Everything below makes each of those exact.
 
 </ELI5>
 
-## Prefill vs. Decode
+## 1. Two Phases: Prefill and Decode
 
-Every LLM request has two distinct phases with opposite performance characteristics:
+### Prefill vs. Decode
 
-- **Prefill**: processing the input prompt — all prompt tokens are known upfront, so this is done as one large, parallelizable matrix multiply. Prefill is **compute-bound**: it saturates the GPU's raw FLOPs, and its speed scales with prompt length and GPU compute throughput.
-- **Decode**: generating output tokens one at a time, autoregressively — each new token depends on the previous one, so this can't be parallelized across tokens the way prefill can. Decode is **memory-bandwidth-bound**: each step has to read the entire model's weights (and the growing KV cache) from GPU memory, and that memory traffic — not compute — is the bottleneck.
-
-<GoDeeper title="Go deeper: why exactly decode is memory-bound and prefill is compute-bound">
-
-The precise way to answer "is a workload compute-bound or memory-bound" is **arithmetic intensity** — how many floating-point operations get done per byte moved from memory. A GPU has a fixed FLOPs-per-second ceiling and a fixed bytes-per-second (memory bandwidth) ceiling; whichever ceiling you hit first determines the bottleneck. This is the standard **roofline model** (Williams, Waterman & Patterson, 2009) applied to a Transformer forward pass.
-
-**Prefill**, processing $n$ prompt tokens at once, reuses the *same* loaded weights for every one of those $n$ tokens' worth of matrix multiplication — the weights get read from memory once, but do $n\times$ the compute work per byte read. Arithmetic intensity scales up with $n$, so a long enough prompt saturates the GPU's compute ceiling before it saturates memory bandwidth: compute-bound.
-
-**Decode** processes exactly *one* new token per step (per sequence) — the model still has to read that *entire* set of weights from memory to produce that single token's output, then discards almost all of that reused computational opportunity before the next step re-reads the same weights again. One token's worth of FLOPs per full weight-matrix read is a far lower arithmetic intensity than prefill's — low enough that decode hits the memory-bandwidth ceiling long before it comes close to using the GPU's available compute. This is exactly why **batching** (below) helps decode specifically: batching several sequences' decode steps together means one weight read now produces output for every sequence in the batch simultaneously, raising decode's effective arithmetic intensity back toward prefill's — the entire mechanism behind why continuous batching is the single biggest throughput lever for decode-bound serving.
-
-</GoDeeper>
+Every request runs in two phases with opposite performance profiles:
 
 <PrefillVsDecodeDiagram />
 
-This split is why the two standard latency metrics measure different things:
+- **Prefill** processes the whole prompt at once. All prompt tokens are known, so they're processed together as large matrix multiplications that keep the GPU's arithmetic units busy. Prefill time grows with prompt length.
+- **Decode** generates output tokens one at a time, each depending on the last. Each step must read the model's entire set of weights (and the growing KV cache) from GPU memory to produce one token per sequence.
 
-- **TTFT (Time To First Token)**: dominated by prefill — how long until the first output token appears.
-- **TPOT (Time Per Output Token)**: dominated by decode — the per-token generation rate once streaming has started.
-
-A system optimized only for throughput can still feel slow to a user if TTFT is high; a system with fast TTFT can still feel slow overall if TPOT is high on long generations. Production systems report both, plus end-to-end latency, separately.
+The two phases map onto the two latency metrics users feel:
 
 <TtftTpotTimelineDiagram />
 
-## KV Cache
+- **Time to first token (TTFT)** is dominated by prefill (plus queueing): how long until the response starts.
+- **Time per output token (TPOT)**, or inter-token latency, is set by decode: how fast the response streams.
 
-During decode, re-computing attention over the full prior sequence at every step would be wasteful — instead, the Key and Value projections for every previous token are cached (the **KV cache**) and reused, so each new token only computes attention against the cache plus its own new K/V. This is what makes decode tractable at all, but the cache itself becomes the memory bottleneck: it grows linearly with sequence length and batch size, and at scale it can consume more GPU memory than the model weights themselves.
+They pull against each other, and most of this page is about improving one without hurting the other. To see why decode in particular is slow, we need one model of hardware.
 
-<KvCacheGrowthDiagram />
+## 2. The Roofline: Why Decode Is Memory-Bound
 
-- **Paged Attention** (introduced by vLLM): manages the KV cache like an OS manages virtual memory — allocating it in fixed-size, non-contiguous blocks ("pages") rather than one large contiguous buffer per request. This eliminates the memory fragmentation and over-allocation that plagued naive KV cache management, letting far more concurrent requests fit in the same GPU memory.
+A GPU has two speed limits: how many floating-point operations it can do per second, and how many bytes it can read from memory per second. Which limit a workload hits depends on its **arithmetic intensity**, the operations performed per byte read. The ratio of the two limits, the **ridge point**, is the intensity at which a workload switches from being memory-bound to compute-bound. This is the **roofline model** (Williams, Waterman and Patterson, 2009).
 
-<PagedAttentionDiagram />
+A transformer does about 2 floating-point operations per parameter per token. In a decode step, the weights are read once and used for every sequence in the batch, so arithmetic intensity grows with batch size. For an 8B model on an H100:
 
-- **Prefix caching**: when multiple requests share a common prompt prefix (a system prompt, a few-shot template, a shared agent instruction), the KV cache for that shared prefix is computed once and reused across requests instead of recomputed per request. SGLang's **RadixAttention** generalizes this into a radix tree that automatically finds and shares the longest common prefix across arbitrary requests, not just exact-matching ones.
+```python
+# One decode step of an 8B model on an H100: is it limited by arithmetic or by reading memory?
+params = 8e9
+peak_flops = 989e12          # dense BF16 FLOP/s
+bandwidth = 3.35e12          # HBM bytes/s
+weight_bytes = params * 2    # BF16 weights, read once per step whatever the batch size
 
-<PrefixCachingDiagram />
+print(f"ridge point: {peak_flops / bandwidth:.0f} FLOPs per byte")
+for batch in [1, 8, 64, 256, 512]:
+    flops = 2 * params * batch                       # ~2 FLOPs per parameter per token
+    t_compute, t_memory = flops / peak_flops, weight_bytes / bandwidth
+    step = max(t_compute, t_memory)                  # whichever limit is hit first
+    bound = "memory" if t_memory > t_compute else "compute"
+    print(f"batch {batch:>3}: {step * 1000:5.2f} ms per step, {batch / step:8,.0f} tokens/s  ({bound}-bound)")
+```
 
-- **KV cache quantization**: storing cached K/V values at lower precision (e.g. FP8 or INT8 instead of FP16) to shrink the cache's memory footprint, trading a small amount of accuracy for meaningfully more concurrent capacity.
-- **KV cache sharing**: related requests (multiple samples from the same prompt, or multi-turn conversations that extend a previous cache) reuse cache rather than starting from scratch each time.
+```text
+ridge point: 295 FLOPs per byte
+batch   1:  4.78 ms per step,      209 tokens/s  (memory-bound)
+batch   8:  4.78 ms per step,    1,675 tokens/s  (memory-bound)
+batch  64:  4.78 ms per step,   13,400 tokens/s  (memory-bound)
+batch 256:  4.78 ms per step,   53,600 tokens/s  (memory-bound)
+batch 512:  8.28 ms per step,   61,812 tokens/s  (compute-bound)
+```
 
-## Attention Variants and Why They Matter for the KV Cache
+Up to a batch of about 300, a decode step takes the same 4.8 ms however many sequences it serves, because it's waiting on memory: one sequence at a time uses well under 1% of the GPU's arithmetic. That single fact explains most of this page. **Batching** is the biggest lever, because extra sequences are nearly free until the ridge point. **Quantization** helps decode because fewer bytes to read means a faster step. **Speculative decoding** helps because verifying several tokens costs about the same as generating one. And the **KV cache** matters because its reads add to every step and its size limits the batch.
 
-- **MHA (Multi-Head Attention)**: the original Transformer design — every attention head has its own full set of Key and Value projections. Highest quality, but the most expensive KV cache (proportional to the full number of heads).
-- **MQA (Multi-Query Attention)**: all heads share a single Key/Value projection, with only Query staying per-head — dramatically shrinks the KV cache (by a factor of the number of heads), at some cost to model quality.
-- **GQA (Grouped-Query Attention)**: a middle ground — heads are split into groups, and each group shares one Key/Value projection. This is the design most modern production LLMs (Llama 2/3, Mistral, and others) actually use, because it recovers most of MHA's quality while keeping most of MQA's KV cache savings.
-- **MLA (Multi-Head Latent Attention)**: introduced by DeepSeek-V2, compresses Key/Value into a smaller shared latent representation that's decompressed per head, achieving KV cache savings competitive with MQA while preserving quality closer to MHA.
+This calculation ignores KV-cache reads, which grow with context and batch and push the real ridge point further out, and real kernels reach perhaps 60 to 80% of peak bandwidth. The shape holds.
 
-The reason this list belongs in an *inference* page rather than an architecture page: the choice of attention variant is made at training time, but its consequence — how much GPU memory the KV cache eats per token of context — is entirely an inference-serving concern, and directly determines how many concurrent requests/how much context length a given GPU can actually serve.
+## 3. The KV Cache
+
+### KV Cache
+
+Attention at each new token needs the keys and values of every previous token. Recomputing them at every step would make generation quadratic, so they're stored: the **KV cache**. Each decode step computes keys and values only for the newest token, appends them, and attends over the cache.
+
+The cache grows linearly with context length and with the number of concurrent sequences, and for long contexts it outgrows the weights: [LLM Hosting & Serving Patterns](/docs/mlops/llm-hosting-and-serving-patterns#3-sizing-gpu-memory-weights-and-kv-cache) computed 32 GiB of cache for 32 conversations of 8K tokens on an 8B model whose weights are 15 GiB. The cache's size sets how many requests fit, and so the batch size, and so throughput (section 2). Managing it is the job of three mechanisms:
+
+- **Paging** allocates the cache in fixed blocks as sequences grow, wasting under 1% instead of most of a max-length reservation ([LLM Inference Engines](/docs/mlops/llm-inference-engines#5-paged-kv-memory) measures it).
+- **Prefix caching** reuses the cache of a shared prompt prefix across requests (section 5).
+- **Offloading** moves cold cache blocks, for example of idle conversations, to CPU memory or local SSD and brings them back on the next turn, which is cheaper than recomputing a long prefill.
+
+The cache can also be made smaller per token, by the model's design or by compression, which the next section covers.
+
+## 4. Shrinking the Cache: Attention Variants and Compression
+
+### Attention Variants and Why They Matter for the KV Cache
+
+How much cache a token needs is fixed when the model is designed, by how many key-value heads its attention has:
 
 <AttentionVariantsKvCacheDiagram />
 
-## Quantization
+- **Multi-head attention (MHA):** every query head has its own keys and values. The original design, and the largest cache.
+- **Multi-query attention (MQA):** all query heads share one key-value head. The smallest cache, at some quality cost.
+- **Grouped-query attention (GQA):** query heads share key-value heads in groups. Most current open models (the Llama 3, Qwen and Mistral families, among others) use it, keeping most of MHA's quality at a fraction of the cache.
+- **Multi-head latent attention (MLA):** introduced in DeepSeek-V2, stores one compressed latent vector per token and layer, from which keys and values are reconstructed.
 
-Reducing the numerical precision of model weights (and sometimes activations) to shrink memory footprint and increase throughput, at some cost to accuracy.
+The differences are large. For a 32-layer model with 32 query heads of dimension 128, per token and for one 32K-token context:
 
-- **PTQ (Post-Training Quantization)**: quantize an already-trained model, no retraining required — fast and simple, the default approach for most deployment quantization.
-- **QAT (Quantization-Aware Training)**: simulate quantization *during* training/fine-tuning so the model learns to be robust to the precision loss — higher quality at a given bit-width than PTQ, at the cost of requiring a training run.
-- **GPTQ**: a PTQ method that quantizes weights layer-by-layer, minimizing the reconstruction error of each layer's output — one of the earliest widely-adopted 4-bit LLM quantization schemes.
-- **AWQ (Activation-aware Weight Quantization)**: identifies and preserves the small fraction of weights that matter most (based on activation magnitude) at higher precision, quantizing the rest more aggressively — often outperforms GPTQ at the same bit-width.
-- **SmoothQuant**: shifts quantization difficulty from activations (harder to quantize, due to outliers) to weights (easier to quantize) via a mathematically equivalent rescaling — enables efficient INT8 *activation* quantization, not just weights.
-- **BitsAndBytes**: a popular library for on-the-fly 8-bit and 4-bit quantization, widely used in the Hugging Face ecosystem for making large models fit in less VRAM with minimal setup.
-- **HQQ (Half-Quadratic Quantization)**: a fast, calibration-data-free quantization method — useful when representative calibration data isn't available or a fast turnaround matters more than squeezing out the last bit of accuracy.
-- **AQLM**: an extreme low-bit (near 2-bit) quantization approach using additive quantization, pushing compression further than GPTQ/AWQ at correspondingly higher complexity.
+```python
+# KV cache per token for a 32-layer model with 32 query heads of dimension 128
+LAYERS, Q_HEADS, HEAD_DIM = 32, 32, 128
 
-<QuantizationMethodComparisonDiagram />
+def kv_kib_per_token(kv_heads, bytes_per_value=2, latent_dim=None):
+    per_layer = latent_dim if latent_dim else 2 * kv_heads * HEAD_DIM      # K and V, or one compressed latent
+    return LAYERS * per_layer * bytes_per_value / 1024
 
-## The GGUF Ecosystem
-
-**GGUF** is the model file format used by **llama.cpp** (successor to the older GGML format) — a single self-contained file bundling weights, tokenizer, and metadata, purpose-built for efficient CPU and consumer-GPU inference. GGUF models ship in named **quantization levels**, trading size against quality:
-
-| Quant level | Bits/weight (approx.) | Typical use |
-|---|---|---|
-| Q8_0 | 8 | Near-lossless, largest of the quantized options |
-| Q6_K | 6 | Very close to full quality, meaningful size reduction |
-| Q5_K_M | 5 | Good quality/size balance |
-| Q4_K_M | ~4.5 | The most common default — best all-round tradeoff |
-| Q3_K_M | ~3.5 | Noticeable quality loss, for tight memory budgets |
-| Q2_K | 2 | Significant quality loss, only for extreme constraints |
-
-**Concrete size math**: a 7B-parameter model at FP16 (2 bytes/param) is roughly `7B × 2 bytes ≈ 14 GB`. The same model at Q4_K_M (~4.5 bits/param, plus overhead) comes out to roughly `7B × 4.5/8 bytes ≈ 4 GB` — small enough to run on a consumer GPU or even a modern laptop's CPU/RAM, which is the entire point of the format.
-
-<GgufSizeCalculatorDiagram />
-
-Producing that Q4_K_M file from a full-precision checkpoint, and the two most-tuned vLLM flags that put the KV cache/quantization tradeoffs above directly into practice:
-
-```bash
-# llama.cpp: convert to GGUF, then quantize down to Q4_K_M
-python3 convert_hf_to_gguf.py ./llama-3.1-8b --outfile llama-3.1-8b-f16.gguf
-llama-quantize llama-3.1-8b-f16.gguf llama-3.1-8b-Q4_K_M.gguf Q4_K_M
-
-# vLLM: serve a pre-quantized (AWQ) checkpoint, cap concurrency, budget KV cache memory
-vllm serve TheBloke/Llama-3.1-8B-Instruct-AWQ \
-  --quantization awq \
-  --max-num-seqs 256 \
-  --gpu-memory-utilization 0.9
+variants = {
+    "MHA (32 KV heads)":            kv_kib_per_token(32),
+    "GQA (8 KV heads)":             kv_kib_per_token(8),
+    "MQA (1 KV head)":              kv_kib_per_token(1),
+    "MLA-style latent (576 dims)":  kv_kib_per_token(0, latent_dim=576),
+    "GQA, FP8 KV cache":            kv_kib_per_token(8, bytes_per_value=1),
+}
+for name, kib in variants.items():
+    print(f"{name:<29} {kib:6.0f} KiB/token   {kib * 32_768 / 1024 / 1024:5.1f} GiB for one 32K-token context")
 ```
 
-## Model Format Reference
+```text
+MHA (32 KV heads)                512 KiB/token    16.0 GiB for one 32K-token context
+GQA (8 KV heads)                 128 KiB/token     4.0 GiB for one 32K-token context
+MQA (1 KV head)                   16 KiB/token     0.5 GiB for one 32K-token context
+MLA-style latent (576 dims)       36 KiB/token     1.1 GiB for one 32K-token context
+GQA, FP8 KV cache                 64 KiB/token     2.0 GiB for one 32K-token context
+```
 
-| Format | Primary engine | Notes |
-|---|---|---|
-| Safetensors | HF Transformers, vLLM, TGI | The modern safe default for storing raw weights |
-| GGUF | llama.cpp, Ollama, LM Studio | Bundled + quantized, built for CPU/edge/consumer GPU |
-| ONNX | ONNX Runtime | Cross-framework interchange format |
-| TensorRT engine | TensorRT-LLM | Hardware-and-version-specific compiled artifact |
-| OpenVINO IR | OpenVINO | Intel-optimized intermediate representation |
+A single 32K-token conversation needs 16 GiB of cache under MHA and 4 GiB under GQA: a fourfold difference in how many long conversations a GPU can hold, decided at training time but felt entirely at serving time.
 
-## Other Core Optimizations
+The last row is a serving-time choice: **KV-cache quantization**, storing keys and values in FP8 (or lower) instead of 16 bits, which halves the cache with little quality loss on most models and is a single flag in vLLM and SGLang. More aggressive **KV-cache compression** methods go further: quantizing to 4 or 2 bits with per-channel scales, or **evicting** tokens that receive little attention (heavy-hitter and attention-sink methods keep the first tokens and the most-attended ones, plus a recent window). Eviction trades accuracy on long-range recall for memory, so it needs evaluation on tasks that actually use long context.
 
-- **Batching**: **static batching** (fixed batch, all requests wait for the slowest to finish) → **dynamic batching** (batch requests arriving in a short window) → **continuous batching** (vLLM's core innovation: new requests join and finished requests leave a running batch at every decode step, not just at batch boundaries) — continuous batching is what makes high GPU utilization under real, bursty traffic possible.
+## 5. Prefix Caching
 
-<ContinuousBatchingDiagram />
+When many requests begin the same way (a long system prompt, a tool list, a document several questions refer to, earlier turns of a conversation), the KV cache for that shared prefix is the same for all of them. **Prefix caching** computes it once and lets later requests reuse it, skipping that part of prefill.
 
-- **Kernel fusion & CUDA graphs**: combining multiple small GPU operations into one fused kernel (fewer memory round-trips) and capturing a fixed sequence of operations as a replayable CUDA graph (eliminating per-step kernel-launch overhead) — the core of what makes TensorRT-LLM fast.
-- **FlashAttention / FlashInfer**: IO-aware attention kernels that avoid materializing the full attention matrix in slow GPU memory, computing attention in fused, tiled blocks that stay in fast on-chip memory — a foundational speedup used inside most of the engines above, not a competing engine itself.
+<PrefixCachingDiagram />
 
-<FlashAttentionMemoryDiagram />
+vLLM hashes cache blocks by their content so identical prefixes are found automatically; SGLang's **RadixAttention** keeps cached prefixes in a radix tree, matching the longest shared prefix of any request. The effect on TTFT can be dramatic: a request whose 2,000-token system prompt is cached prefills only its own new tokens. [LLM Hosting & Serving Patterns](/docs/mlops/llm-hosting-and-serving-patterns#9-the-ai-gateway-and-load-balancing) showed how routing requests to the replica that holds their prefix cut median TTFT from 3.3 seconds to 0.13 in a simulation. Two practical consequences: put the stable parts of a prompt first and the variable parts last, and keep the stable parts byte-for-byte identical (no timestamps at the top of system prompts), since a single changed token invalidates everything after it. Providers' API-level prompt caching rewards the same discipline.
 
-- **Speculative decoding**: a small, fast **draft model** proposes several tokens ahead; the large **target model** verifies them all in a single forward pass and accepts the prefix that matches what it would have generated itself — when the **acceptance rate** is high, this trades a small amount of extra compute for a meaningful drop in wall-clock latency, since verification is cheaper than autoregressive generation.
+## 6. Scheduling Prefill and Decode
+
+Prefill and decode share the same GPU, and they interfere. When a request with a long prompt arrives, its prefill is one large burst of work; if the engine runs it in a single step, every user already streaming tokens sees their stream freeze until it's done.
+
+**Chunked prefill** splits a long prefill into pieces processed alongside the running decodes, a piece per step, so no step grows too long. Here 32 users are streaming when a request with a 16,000-token prompt arrives:
+
+```python
+# 32 users are streaming tokens when a request with a 16,000-token prompt arrives.
+DECODE_STEP_MS = 25            # one decode step for the running batch
+PREFILL_MS_PER_1K = 60         # prefill cost per 1,000 prompt tokens, when it runs inside a step
+
+def stream_gaps(chunk_tokens):
+    """Gaps between consecutive tokens seen by the users already streaming, while the long prompt is prefilled."""
+    remaining, gaps = 16_000, []
+    while remaining > 0:
+        chunk = remaining if chunk_tokens is None else min(chunk_tokens, remaining)
+        gaps.append(DECODE_STEP_MS + PREFILL_MS_PER_1K * chunk / 1000)   # this step also does that much prefill
+        remaining -= chunk
+    return gaps
+
+for label, chunk in [("whole prompt in one step", None), ("chunks of 2,048 tokens", 2_048), ("chunks of 512 tokens", 512)]:
+    gaps = stream_gaps(chunk)
+    print(f"{label:<26} worst gap {max(gaps):5.0f} ms  over {len(gaps):>2} steps; "
+          f"new request's prefill done after {sum(gaps):5.0f} ms")
+```
+
+```text
+whole prompt in one step   worst gap   985 ms  over  1 steps; new request's prefill done after   985 ms
+chunks of 2,048 tokens     worst gap   148 ms  over  8 steps; new request's prefill done after  1160 ms
+chunks of 512 tokens       worst gap    56 ms  over 32 steps; new request's prefill done after  1760 ms
+```
+
+Without chunking, 32 users' streams freeze for nearly a second. With 2,048-token chunks the worst gap is 148 ms, and with 512-token chunks just 56 ms, barely above a normal step. The price is paid by the new request, whose first token arrives later (985 ms becomes 1,760 ms). The chunk size is the dial between protecting everyone's TPOT and the newcomer's TTFT; engines such as vLLM enable chunked prefill by default and expose the token budget per step.
+
+**Disaggregated prefill and decode** goes further and runs the two phases on *different* GPUs. Prefill workers process prompts and transfer the resulting KV cache over a fast interconnect to decode workers, which only generate. Each pool can then be sized and tuned for its own phase (compute-heavy prefill, memory-bound decode), and long prompts never interrupt anyone's decoding. The cost is the KV transfer and a more complex system, so it pays off at large scale and with long prompts; NVIDIA Dynamo, SGLang and the vLLM ecosystem support it, building on research systems such as DistServe and Splitwise.
+
+<PredictFirst
+  question="A RAG chat service has users complaining that responses sometimes freeze mid-stream for about a second, especially at busy times. Prompts include long retrieved documents. Which change most directly targets the freezes?"
+  options={[
+    'Quantize the model weights to 4 bits',
+    'Enable chunked prefill (or lower its per-step token budget) so long prompts are prefilled in pieces between decode steps',
+    'Increase the maximum context length',
+    'Switch from GQA to MHA attention',
+  ]}
+  correctIndex={1}
+  explanation="Mid-stream freezes at busy times are the signature of long prefills running as single large steps and stalling everyone else's decoding. Chunking spreads each long prefill across many steps so no single step grows long. Quantization speeds steps up generally but doesn't remove the stall, a longer context makes it worse, and MHA would enlarge the KV cache."
+/>
+
+## 7. Quantization
+
+### Quantization
+
+**Quantization** stores weights (and sometimes activations and the KV cache) in fewer bits: 8 or 4 instead of 16. Section 2 explains why it speeds up decode: a step that reads half the bytes takes roughly half the time. It also lets a model fit on fewer or smaller GPUs. The cost is accuracy, and the amount depends on the method, the bit width and the model.
+
+To see the trade-off directly, here's round-to-nearest weight quantization applied to every linear layer of a 360-million-parameter model (SmolLM2-360M), measuring perplexity (lower is better) on about 2,000 tokens of Python documentation before and after. Weights share a scale either per row or per small group; smaller groups track the weights more closely at the cost of storing more scales:
+
+```python
+import copy, math
+
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+name = "HuggingFaceTB/SmolLM2-360M"
+tok = AutoTokenizer.from_pretrained(name)
+base = AutoModelForCausalLM.from_pretrained(name, torch_dtype=torch.float32).eval()
+ids = tok(open("eval.txt").read(), return_tensors="pt").input_ids[:, :2048]   # Python stdlib docstrings
+
+def perplexity(model):
+    with torch.no_grad():
+        return math.exp(model(ids, labels=ids).loss.item())
+
+def fake_quantize(w, bits, group):
+    """Symmetric round-to-nearest: one scale per `group` consecutive input weights (group=None: per row)."""
+    out_f, in_f = w.shape
+    group = group or in_f
+    g = w.reshape(out_f, in_f // group, group)
+    qmax = 2 ** (bits - 1) - 1
+    scale = g.abs().amax(dim=-1, keepdim=True) / qmax
+    return (torch.round(g / scale).clamp(-qmax - 1, qmax) * scale).reshape(out_f, in_f)
+
+def quantized(bits, group):
+    m, n = copy.deepcopy(base), 0
+    for module in m.modules():
+        if isinstance(module, torch.nn.Linear):
+            module.weight.data = fake_quantize(module.weight.data, bits, group)
+            n += 1
+    return m, n
+
+print(f"{'FP32 baseline':<30} perplexity {perplexity(base):6.2f}")
+for bits, group in [(8, None), (4, None), (4, 64), (4, 32), (3, 32)]:
+    model, n = quantized(bits, group)
+    label = f"INT{bits}, scale per {'row' if group is None else f'{group} weights'}"
+    print(f"{label:<30} perplexity {perplexity(model):6.2f}   ({n} linear layers)")
+```
+
+```text
+FP32 baseline                  perplexity   4.65
+INT8, scale per row            perplexity   4.66   (225 linear layers)
+INT4, scale per row            perplexity 244.02   (225 linear layers)
+INT4, scale per 64 weights     perplexity   7.18   (225 linear layers)
+INT4, scale per 32 weights     perplexity   6.44   (225 linear layers)
+INT3, scale per 32 weights     perplexity  99.97   (225 linear layers)
+```
+
+Three lessons are in those six lines. **8 bits is nearly free:** perplexity moves from 4.65 to 4.66. **At 4 bits, the scale granularity decides everything:** one scale per row lets a few large weights stretch the range so far that the rest round to almost nothing, and the model breaks (perplexity 244); a scale per 32 weights brings it back to 6.44, still clearly worse than the original. **3 bits is too far** for plain rounding on a model this small. Larger models tolerate quantization better than small ones, and the methods below do much better than round-to-nearest, but the shape of the trade-off is the same.
+
+One more lesson came from writing this experiment. The first version only quantized layers whose width divided evenly by the group size, and with a group of 128 that silently skipped most of the model, producing a deceptively good "INT4" result. Always check what a quantization tool actually changed.
+
+The practical methods all improve on plain rounding:
+
+- **Post-training quantization (PTQ)** quantizes a trained model with no retraining, usually with a small calibration set. **GPTQ** quantizes layer by layer, adjusting remaining weights to compensate for each rounding error; **AWQ** protects the small fraction of weights that matter most, identified from activation magnitudes. Both are standard for 4-bit weights.
+- **Weight-and-activation quantization** (W8A8, often FP8 on recent GPUs) speeds up prefill as well, because the matrix multiplications themselves run in low precision. **SmoothQuant** makes activations easier to quantize by moving their outliers into the weights through an equivalent rescaling.
+- **Quantization-aware training (QAT)** simulates quantization during training or fine-tuning so the model learns to tolerate it; several model families now ship official QAT checkpoints for 4-bit deployment.
+- **Newer formats:** FP8 is standard on recent NVIDIA, AMD and other accelerators, and 4-bit floating-point formats (MXFP4, NVFP4) with fine-grained scales are supported on the latest GPUs and used for some open models' released weights.
+
+### The GGUF Ecosystem
+
+For CPUs and consumer GPUs, **GGUF** is the file format of llama.cpp (and so Ollama and LM Studio): one file bundling quantized weights, tokenizer and metadata, in named quantization levels. `Q8_0` is near-lossless at 8 bits; `Q4_K_M` (about 4.8 bits per weight, using per-block scales) is the usual default, cutting an 8B model from 16 GB to about 5 GB; `Q3` and `Q2` levels fit tighter memory with clearly visible quality loss. The size is simply parameters × bits per weight ÷ 8, plus a little metadata.
+
+Whatever the method, **measure on your task**, not just perplexity: quantization damages some abilities (long-context recall, arithmetic, rare languages, code) more than others, and averages hide it.
+
+## 8. Speculative Decoding
+
+Decode is memory-bound, so a target-model forward pass costs about the same whether it scores one token or several. **Speculative decoding** exploits that. A cheap **draft** (a small model, extra prediction heads as in Medusa and EAGLE, or simply matching n-grams from the prompt) proposes $\gamma$ tokens; the large model scores all of them in one pass and accepts the longest prefix it agrees with, plus one token of its own. A rejection-sampling rule makes the output distribution exactly the same as the large model's alone, so quality is unchanged.
 
 <SpeculativeDecodingDiagram />
 
-<GoDeeper title="Go deeper: the actual speedup formula, from the original paper">
+If each drafted token is accepted with probability $\alpha$, Leviathan et al. (2023) show the expected number of tokens per target pass is
 
-"High acceptance rate helps" is quantifiable, not just directionally true. [Leviathan et al.'s speculative decoding paper](https://arxiv.org/abs/2211.17192) derives it precisely. Let $\alpha$ be the (per-token) probability the target model accepts a drafted token, and $\gamma$ the number of tokens speculated ahead per round. The expected number of tokens produced per verification round is:
+$$E[\text{tokens per pass}] = \frac{1 - \alpha^{\gamma + 1}}{1 - \alpha}$$
 
-$$E[\text{tokens per round}] = \frac{1-\alpha^{\gamma+1}}{1-\alpha}$$
+and, if one draft step costs $c$ times a target step, the expected speedup is
 
-— a geometric-series expectation: keep accepting drafted tokens as long as each one (independently, with probability $\alpha$) matches, and either the whole run of $\gamma$ gets accepted plus one bonus token from the target model, or acceptance stops early. Combined with $c$, the ratio of draft-model cost to target-model cost per step, the paper's Theorem 3.8 gives the full expected wall-time improvement factor:
+$$\text{speedup} = \frac{1 - \alpha^{\gamma + 1}}{(1 - \alpha)(\gamma c + 1)}$$
 
-$$\text{speedup} = \frac{1-\alpha^{\gamma+1}}{(1-\alpha)(\gamma c + 1)}$$
+```python
+def expected_tokens(alpha, gamma):
+    """Tokens produced per target-model pass when gamma draft tokens are verified (Leviathan et al.)."""
+    return (1 - alpha ** (gamma + 1)) / (1 - alpha)
 
-The paper's own worked examples (their Table 1, assuming a near-negligible-cost draft model, $c\approx 0$) make the acceptance-rate sensitivity concrete: $\alpha=0.8,\ \gamma=2$ gives a **1.63×** speedup; push acceptance up to $\alpha=0.9$ with $\gamma=10$ and it reaches **6.86×** — the same mechanism, just a better draft model and more tokens speculated per round. Low $\alpha$ doesn't just fail to help — since $\gamma$ tokens of draft-model compute get spent whether or not they're accepted, a draft model with low acceptance can make wall-time *worse* than plain autoregressive decoding, which is exactly why picking a well-matched draft model (typically ~100× smaller than the target, per the paper's own experiments) matters as much as the algorithm itself.
+def speedup(alpha, gamma, c):
+    """c = cost of one draft-model step relative to one target-model step."""
+    return expected_tokens(alpha, gamma) / (gamma * c + 1)
 
-</GoDeeper>
+print("alpha gamma    c  tokens/pass  speedup")
+for alpha, gamma, c in [(0.8, 2, 0.0), (0.9, 10, 0.0), (0.8, 4, 0.05), (0.6, 4, 0.05), (0.4, 8, 0.1)]:
+    print(f"{alpha:5} {gamma:5} {c:4}  {expected_tokens(alpha, gamma):11.2f}  {speedup(alpha, gamma, c):6.2f}x")
+```
 
-- **Parallelism for serving**: tensor and pipeline parallelism (see [GPU/AI Infrastructure & Distributed Training](/docs/mlops/gpu-and-distributed-training)) apply to inference too — splitting a model too large for one GPU across several, specifically to serve it, not just to train it.
+```text
+alpha gamma    c  tokens/pass  speedup
+  0.8     2  0.0         2.44    2.44x
+  0.9    10  0.0         6.86    6.86x
+  0.8     4 0.05         3.36    2.80x
+  0.6     4 0.05         2.31    1.92x
+  0.4     8  0.1         1.67    0.93x
+```
 
-## Inference Metrics Summary
+With a well-matched draft (acceptance 0.8 to 0.9) the theoretical gain is two- to sevenfold; with a poor one (0.4) and an over-eager speculation length, the draft's cost outweighs its savings and generation gets *slower*. Two practical cautions: the formula is per sequence, and at large batch sizes the GPU is no longer idle waiting on memory (section 2), so the gains shrink; and acceptance varies by task, high for code and structured text, lower for creative writing. Engines support it with a configuration flag; measure acceptance rate and end-to-end TPOT on real traffic before relying on it.
 
-- **Latency**: TTFT, TPOT, end-to-end latency, and their P50/P95/P99 percentiles — averages hide the tail latency that actually determines user experience.
-- **Throughput**: requests/sec, tokens/sec (aggregate, across all concurrent requests).
-- **Resource**: GPU utilization, memory usage (weights + KV cache), batch size achieved.
-- **Cost**: cost per 1M tokens — the metric that ultimately determines whether a given engine/hardware/quantization combination is viable at production scale.
+<PredictFirst
+  question="A team enables speculative decoding with a draft model and sees a 2.5x speedup at low traffic, but almost none at peak traffic, when the server runs batches of 200 or more. Why?"
+  options={[
+    'The draft model stops working under load',
+    'At large batch sizes decode is closer to compute-bound, so verifying extra draft tokens is no longer nearly free, and the spare capacity speculation relied on is already used by batching',
+    'Acceptance rates always fall at peak hours',
+    'Speculative decoding only works with a batch size of one, by definition',
+  ]}
+  correctIndex={1}
+  explanation="Speculative decoding converts idle arithmetic capacity into extra tokens per memory-bound step. At small batches that capacity is mostly idle; at large batches, batching has already filled it, so scoring extra speculative tokens costs real compute. Many engines therefore reduce or disable speculation as batch size grows."
+/>
 
-Next: [LLM Hosting & Serving Patterns](/docs/mlops/llm-hosting-and-serving-patterns) — where these engines actually run, and how a fine-tuned model gets from a training job to a served endpoint.
+## 9. Kernels, Graphs and Parallelism
+
+### Other Core Optimizations
+
+Beneath the scheduling ideas sits kernel-level engineering:
+
+- **FlashAttention** computes attention in tiles that stay in fast on-chip memory instead of writing the full attention matrix to GPU memory, reducing memory traffic from quadratic to linear in sequence length and making long contexts practical; FlashInfer and similar libraries provide versions specialized for serving (paged caches, variable-length batches).
+
+<FlashAttentionMemoryDiagram />
+
+- **Kernel fusion** combines consecutive small operations (a normalization, an activation, a residual add) into one kernel, so intermediate results don't round-trip through memory.
+- **CUDA graphs** record the sequence of kernel launches for a decode step and replay it, removing per-launch overhead that otherwise dominates small-batch decoding.
+- **Continuous batching** and **paged memory** keep the GPU full and the cache dense ([LLM Inference Engines](/docs/mlops/llm-inference-engines#4-continuous-batching)).
+- **Parallelism for serving:** tensor parallelism splits each layer across GPUs in a node to fit and speed up large models; pipeline parallelism splits layers across nodes; expert parallelism spreads a mixture-of-experts model's experts over GPUs ([GPU/AI Infrastructure & Distributed Training](/docs/mlops/gpu-and-distributed-training)).
+
+## 10. Measuring the Result
+
+### Inference Metrics Summary
+
+Every optimization above should be judged by measurements on your own workload:
+
+| Metric | What it tells you |
+|---|---|
+| TTFT, p50 and p99 | Responsiveness; dominated by queueing and prefill |
+| TPOT (inter-token latency), p50 and p99 | Streaming speed; dominated by decode and interference from prefills |
+| End-to-end latency | $\text{TTFT} + (n_{\text{out}} - 1) \times \text{TPOT}$ per request |
+| Output tokens per second, total | Throughput, which sets cost |
+| Goodput | Throughput counting only requests that met their latency targets |
+| KV-cache utilization and queue time | Early warning: a full cache means queueing, and TTFT climbs |
+| Cost per million tokens | The figure that decides whether a configuration is viable |
+| Task quality after the change | Quantization and eviction can lower it; always re-evaluate |
+
+Report percentiles, not averages, and measure at the concurrency you'll actually run. An optimization that improves throughput at batch 256 can worsen TTFT at batch 8, and the right choice depends on which your users experience.
+
+## 11. When *Not* to Optimize Further
+
+| Situation | Better choice |
+|---|---|
+| Using a hosted API | The provider runs these optimizations; your levers are prompt length, caching-friendly prompts and model choice |
+| Low traffic | Batching gains need concurrency; a smaller or quantized model on modest hardware matters more |
+| Accuracy-critical outputs | Avoid aggressive quantization and KV eviction, or validate them on the exact tasks that matter |
+| Default engine settings already meet latency targets | Stop; each further optimization adds configuration to maintain and test after every upgrade |
+| Short prompts and short outputs | Chunked prefill, disaggregation and prefix caching have little to work with |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Two phases | Prefill sets TTFT and is compute-heavy; decode sets TPOT and is memory-bound |
+| Roofline | An 8B model's decode step costs the same 4.8 ms for 1 or 256 sequences on an H100 |
+| KV cache | Grows with context and batch; caps concurrency; paged, shared, offloaded |
+| Attention variants | GQA needs a quarter of MHA's cache; MQA and MLA far less; FP8 halves it again |
+| Prefix caching | Reuse shared prefixes; keep stable prompt parts first and byte-identical |
+| Chunked prefill | Long prompts in pieces: worst stream gap 985 ms to 56 ms |
+| Disaggregation | Separate prefill and decode GPUs, connected by KV transfer |
+| Quantization | Fewer bits, faster decode; 8-bit nearly free, 4-bit needs good methods; measure on your task |
+| Speculative decoding | $\frac{1-\alpha^{\gamma+1}}{(1-\alpha)(\gamma c+1)}$; great at small batch with a good draft |
+
+---
+
+Next: [LLM Hosting & Serving Patterns](/docs/mlops/llm-hosting-and-serving-patterns) covers where these engines run, how to size and price them, and how to route traffic between them.
+
+## Sources
+
+- S. Williams, A. Waterman and D. Patterson, [Roofline: An Insightful Visual Performance Model for Multicore Architectures](https://dl.acm.org/doi/10.1145/1498765.1498785), CACM 2009
+- J. Ainslie et al., [GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints](https://arxiv.org/abs/2305.13245), EMNLP 2023; DeepSeek-AI, [DeepSeek-V2](https://arxiv.org/abs/2405.04434), 2024 (multi-head latent attention)
+- A. Agrawal et al., [Taming Throughput-Latency Tradeoff in LLM Inference with Sarathi-Serve](https://arxiv.org/abs/2403.02310), OSDI 2024 (chunked prefill); Y. Zhong et al., [DistServe](https://arxiv.org/abs/2401.09670), OSDI 2024 (disaggregated prefill and decode)
+- E. Frantar et al., [GPTQ](https://arxiv.org/abs/2210.17323), ICLR 2023; J. Lin et al., [AWQ](https://arxiv.org/abs/2306.00978), MLSys 2024
+- Y. Leviathan, M. Kalman and Y. Matias, [Fast Inference from Transformers via Speculative Decoding](https://arxiv.org/abs/2211.17192), ICML 2023
+- T. Dao et al., [FlashAttention](https://arxiv.org/abs/2205.14135), NeurIPS 2022
+- A. Shekhar, [AI System Design](https://github.com/amitshekhariitbhu/ai-system-design) (Apache-2.0), on chunked prefill, disaggregated serving and KV-cache compression
