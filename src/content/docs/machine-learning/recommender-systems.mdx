@@ -1,69 +1,285 @@
 ---
 title: "Recommender Systems, In Full Depth"
 sidebar_position: 6.9
-description: "Matrix factorization, two-tower embeddings, and the two-stage production pipeline -- the most commercially valuable prediction problem in applied ML, derived."
+description: "Recommendation derived: the sparse user-item matrix, baselines with user and item biases, matrix factorization and the alternating-least-squares update, implicit feedback, two-tower retrieval with sampled negatives, the retrieval-ranking-re-ranking pipeline, CTR models, sequential recommenders, and offline evaluation, where a popularity baseline beats rating-optimized factorization at top-10."
 ---
 
-import __migratedImg0 from './img/matrix-factorization.png';
-
 import MatrixFactorizationDiagram from '../../../viz/diagrams/MatrixFactorizationDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Recommender Systems, In Full Depth
 
-"Users who bought this also bought that" is the most commercially valuable prediction problem in applied ML — it's the core of Netflix, Amazon, Spotify, YouTube, and every ad-ranking system, and it blends supervised learning, unsupervised matrix decomposition, and modern deep learning into one problem.
+Recommending what someone will want next, a film, a product, a song, a post, is a prediction problem with its own structure. The data is a huge, mostly empty table of users and items; most of what's recorded is clicks and purchases rather than explicit ratings; the catalogue may have millions of items; and the quantity that matters is the quality of the top few suggestions, not the accuracy of every prediction. This page builds the standard approaches from that structure: baselines that already explain much of the data, matrix factorization with the alternating-least-squares update derived, the shift to implicit feedback, two-tower models for retrieval at scale, the multi-stage pipeline production systems use, and how to evaluate offline without fooling yourself. The experiments include a result practitioners keep rediscovering: a model with clearly better rating predictions loses to "most popular items" at recommending the top 10.
 
-## The Core Problem
+<ELI5>
 
-Given a set of users, a set of items, and some observed interactions (ratings, clicks, purchases), predict which *unobserved* items a user would like. Two structurally different starting points:
+A good bookshop owner recommends books in two ways. One is by the book itself: "you liked this mystery, here's another mystery". The other is by people: "customers who loved the same three books as you also loved this one", even if it's a different genre.
 
-- **Content-based filtering**: recommend items similar to what a user liked before, based on item *features* (genre, cast, description embeddings) — works from day one for a new item (no interaction history needed), but tends to over-narrow recommendations to "more of the same" and can't discover a user's *latent* taste that isn't explainable by stated features.
-- **Collaborative filtering**: recommend based on patterns across *many users' behavior* — "users similar to you liked this," inferred purely from the interaction matrix, no item content needed at all. Captures latent taste content-based filtering structurally can't, at the cost of the **cold-start problem**: a brand-new item with zero interactions has nothing to collaborate on.
+Recommender systems do both, at a scale no shop owner could. The second way works by noticing that tastes cluster: there turn out to be a few hidden "taste dimensions", and once the system has placed every customer and every book along them, it can guess how anyone would feel about anything. Everything below is that idea made exact, plus the engineering needed when the shop has millions of customers and books.
 
-Most production systems are hybrids, for exactly this complementary-weaknesses reason.
+</ELI5>
 
-## Matrix Factorization
+## 1. The Problem
 
-The classical collaborative-filtering workhorse. Represent the user-item interaction matrix $R \in \mathbb{R}^{m \times n}$ (mostly missing entries — no user has rated most items) as the product of two much smaller matrices:
+There are $m$ users and $n$ items, and a matrix $R \in \mathbb{R}^{m \times n}$ in which entry $r_{ui}$ records an interaction: a rating, a click, a purchase, a watch time. Almost all entries are missing. In Section 8 only 6.2% are observed, and in real catalogues it's typically far less than 1%. The task is to predict which missing entries a user would value most and show them those.
 
-$$R \approx U V^T, \quad U \in \mathbb{R}^{m \times k}, \quad V \in \mathbb{R}^{n \times k}$$
+Two families of approach, usually combined:
 
-Each user gets a $k$-dimensional **latent factor vector** $u_i$, each item gets a $k$-dimensional latent factor vector $v_j$, and the predicted rating is simply their dot product: $\hat{r}_{ij} = u_i \cdot v_j$. $k$ (commonly tens to low hundreds) is far smaller than $m$ or $n$ — the entire method rests on the assumption that user preferences and item characteristics are actually driven by a small number of underlying factors (roughly: genre affinities, price sensitivity, format preference), not by the millions of raw user-item combinations.
+- **Content-based filtering** uses item features (genre, text, image embeddings, price) and recommends items similar to what the user liked. It works for brand-new items, but tends to recommend more of the same and can't learn tastes that features don't capture.
+- **Collaborative filtering** uses only the interaction matrix: users who agreed in the past will agree in the future. It discovers tastes no feature describes, but has a **cold-start** problem: a new user or item with no interactions has nothing to collaborate on.
 
-<img src={__migratedImg0} alt="Sparse observed ratings matrix next to its dense reconstruction from learned user/item latent factors" style={{maxWidth: '100%'}} />
+**Explicit and implicit feedback.** Ratings say how much someone liked something, including dislike. Most data is **implicit**: clicks, views, purchases, listening time. Implicit data is far more plentiful but noisier, and it has no negatives: a missing entry might mean "not interested" or "never saw it". That difference changes the loss function (Section 3).
 
-The chart above is exactly this: the left panel is the real, mostly-empty observed data; the right panel is what $UV^T$ predicts for *every* cell, including the ones that were never observed — that's the entire value of the method, filling in the blanks based on the latent structure learned from the cells that were observed. This is the same low-rank-approximation idea as [SVD](/docs/machine-learning/pca-svd#truncated-svd), applied to a matrix that's sparse (mostly missing) instead of dense. Real gradient descent, trained on only the amber-bordered observed cells below:
+## 2. Baselines First
+
+A surprising amount of the structure in ratings is just that some users rate generously and some items are better than others. The **baseline predictor**
+
+$$
+\hat{r}_{ui} = \mu + b_u + b_i
+$$
+
+adds a user bias and an item bias to the global mean $\mu$, fitted by regularized least squares: minimize $\sum(r_{ui} - \mu - b_u - b_i)^2 + \lambda\big(\sum b_u^2 + \sum b_i^2\big)$. With the item biases fixed, each user bias has a closed form, the user's average residual shrunk toward zero:
+
+$$
+b_u = \frac{\sum_{i \in I_u}(r_{ui} - \mu - b_i)}{\lvert I_u\rvert + \lambda}
+$$
+
+and symmetrically for items. The shrinkage matters: a user with two ratings shouldn't get a confident bias. Alternating a few rounds of these updates converges quickly. In Section 8, biases alone reduce the error from 1.117 (predicting the global mean) to 0.915, before any modelling of taste.
+
+The other baseline every recommender must beat is **most popular**: recommend the items with the most interactions that the user hasn't seen yet. It ignores the user entirely, and it's strong (Section 7).
+
+## 3. Learning Hidden Tastes
+
+### Matrix Factorization
+
+Collaborative filtering's central model assumes tastes are driven by a small number $k$ of hidden factors. Give each user a vector $\mathbf{p}_u \in \mathbb{R}^k$ and each item a vector $\mathbf{q}_i \in \mathbb{R}^k$, and predict
+
+$$
+\hat{r}_{ui} = \mu + b_u + b_i + \mathbf{p}_u^T\mathbf{q}_i
+$$
+
+The dot product is high when the user's factors align with the item's: a user who loves sci-fi and dislikes romance, scored against a sci-fi film. The factors aren't labelled; they're whatever directions best explain the data. Stacked, the user vectors form $P \in \mathbb{R}^{m \times k}$ and the item vectors $Q \in \mathbb{R}^{n \times k}$, and the interaction part of the matrix is approximated by the low-rank product $PQ^T$, the same idea as [truncated SVD](/docs/machine-learning/pca-svd#truncated-svd), except that SVD needs a complete matrix and here most entries are missing. So the fit uses only the observed entries $\Omega$, with L2 penalties because each user has few ratings (Koren, Bell and Volinsky, 2009):
+
+$$
+\min_{P,\,Q}\sum_{(u,i) \in \Omega}\big(r_{ui} - \mu - b_u - b_i - \mathbf{p}_u^T\mathbf{q}_i\big)^2 + \lambda\Big(\sum_u\lVert\mathbf{p}_u\rVert^2 + \sum_i\lVert\mathbf{q}_i\rVert^2\Big)
+$$
+
+Watch gradient descent fill in a small matrix from its observed cells:
 
 <MatrixFactorizationDiagram />
 
-**Training**: minimize squared error over only the *observed* entries, plus L2 regularization on the factors to prevent overfitting to the (typically very sparse) observed data:
+**Alternating least squares.** The objective isn't convex in $P$ and $Q$ together, but it's convex in either one with the other fixed. Fix $Q$. Then each user's vector appears only in that user's terms, and minimizing over $\mathbf{p}_u$ is a [ridge regression](/docs/machine-learning/ridge-regression): the "features" are the vectors $\mathbf{q}_i$ of the items the user rated, and the targets are the residual ratings $\tilde{r}_{ui} = r_{ui} - \mu - b_u - b_i$. Setting its gradient to zero gives the closed form
 
-$$\min_{U, V} \sum_{(i,j) \in \text{observed}} (r_{ij} - u_i \cdot v_j)^2 + \lambda \left(\|U\|_F^2 + \|V\|_F^2\right)$$
+$$
+\mathbf{p}_u = \big(Q_u^TQ_u + \lambda I\big)^{-1}Q_u^T\tilde{\mathbf{r}}_u
+$$
 
-Solved via gradient descent, or **Alternating Least Squares (ALS)** — fix $V$, solve the now-convex problem for $U$ in closed form; fix $U$, solve for $V$; repeat. ALS's appeal is that each half-step is an ordinary (regularized) least-squares problem — the same normal-equations math from [Linear Regression](/docs/machine-learning/linear-regression) — and it parallelizes cleanly across users/items, which is why it was the standard approach at scale for years (Spark's MLlib recommender is ALS).
+where $Q_u$ stacks the rated items' vectors. Then fix $P$ and solve every item's vector the same way. Each half-step can only lower the objective, every user (and then every item) is solved independently and in parallel, and a dozen or so rounds usually suffice. That's why ALS became the standard at scale (Spark MLlib's recommender is ALS). Stochastic gradient descent on one rating at a time is the alternative, and it's simpler to extend with extra terms.
 
-## Embeddings and the Two-Tower Architecture
+**Choosing $k$** is the usual [bias-variance trade](/docs/machine-learning/model-evaluation-metrics#bias-variance-tradeoff). In Section 8 the data was generated with 6 true factors: $k = 2$ underfits (error 0.863), $k = 6$ is best (0.750), and $k = 20$ starts fitting noise (0.783).
 
-Modern (deep-learning-based) recommenders generalize matrix factorization's latent vectors into full **embeddings** — learned dense vectors, but now produced by a neural network from rich features (user history, item metadata, context), not just an ID looked up in a table:
+**Implicit feedback** needs a different loss. Hu, Koren and Volinsky (2008) treat every user-item pair as an observation: a binary preference $p_{ui} = 1$ if there was any interaction and 0 otherwise, weighted by a confidence $c_{ui} = 1 + \alpha\,(\text{interaction count})$, so the many zeros count, but weakly. ALS still works, with a trick that avoids touching all $m \times n$ pairs. Bayesian personalized ranking (Rendle et al., 2009) instead optimizes the ordering directly: for each user, an item they interacted with should score higher than one they didn't.
 
-- **Two-tower model**: one neural network ("tower") encodes user features into a user embedding, a separate tower encodes item features into an item embedding, trained so that the dot product (or cosine similarity) of a user's and item's embeddings is high for real interactions and low otherwise — a direct, learned generalization of $u_i \cdot v_j$ above, now able to incorporate side features and generalize to brand-new users/items whose *features* are known even without prior interactions (a partial fix for the cold-start problem).
-- **Why two towers, not one combined network**: computing the score for every user-item pair with a single joint network requires re-running the network per pair at serving time — infeasible at real catalog scale. With two *separate* towers, every item's embedding can be precomputed once and indexed (see [Vector Databases](/docs/databases/vector/overview)), so serving a recommendation becomes a nearest-neighbor search in embedding space — an approximate nearest-neighbor lookup — rather than a forward pass per candidate item.
+<PredictFirst
+  question="A matrix factorization model predicts held-out ratings much better than a biases-only baseline (RMSE 0.75 against 0.91). Which recommends more of each user's top-rated held-out items in its top 10: the factorization model, or simply the most popular items?"
+  options={[
+    'Matrix factorization, clearly, since it predicts ratings better',
+    'Possibly the popularity baseline: rating error rewards getting every rating right, while top-10 hit rate rewards ranking the few best items, and popular items are disproportionately among what users rated',
+    'They tie, since both use the same data',
+    'Neither can recommend anything a user has not rated',
+  ]}
+  correctIndex={1}
+  explanation="RMSE averages over all ratings, most of them mediocre ones, and says little about the top of each user's list. And because users rate popular items more often, held-out favourites are often popular items. Cremonesi, Koren and Turrin (2010) showed popularity and simple methods often beat RMSE-optimized models on top-N metrics; Section 8 reproduces it: hit rate 0.245 for most-popular, 0.166 for factorization."
+/>
 
-## The Two-Stage Production Pipeline
+## 4. Two-Tower Models for Retrieval
 
-Real-world recommenders essentially never score the entire catalog for every request — instead:
+### Embeddings and the Two-Tower Architecture
 
-1. **Candidate generation (retrieval)**: cheaply narrow millions of items down to a few hundred/thousand plausible candidates — typically via the two-tower embedding nearest-neighbor search above, optimized for *recall* (don't miss good candidates) over precision.
-2. **Ranking**: a much more expensive, feature-rich model (often a gradient-boosted tree or a deep cross-network, incorporating dozens of user/item/context features a lightweight retrieval embedding can't) re-scores and orders just those few hundred candidates precisely, optimized for the *actual* business metric (predicted CTR, watch time, purchase probability).
-3. **Re-ranking**: business-logic adjustments layered on top of the ranked list — diversity injection (don't show 10 nearly-identical items), freshness boosting, deduplication, and business rules (promoted content, removing already-purchased items) — see [Learning-to-Rank](/docs/machine-learning/learning-to-rank) for how the ranking stage's model is actually trained.
+Matrix factorization learns one vector per user ID and per item ID, so it can't say anything about a new user or item. A **two-tower model** replaces those lookups with neural networks: a user tower maps everything known about the user (history, demographics, context such as time and device) to an embedding $\mathbf{e}_u$, and an item tower maps item features (text, image, category, price) to $\mathbf{e}_i$. The score is still a dot product, $s(u, i) = \mathbf{e}_u^T\mathbf{e}_i$, a direct generalization of $\mathbf{p}_u^T\mathbf{q}_i$ that also works for new items whose features are known.
 
-This funnel shape (cheap-and-broad → expensive-and-narrow) is the standard architecture precisely because it's computationally infeasible to run the expensive ranking model over the full catalog for every request — see [ML System Design](/docs/ml-system-design/roadmap) for the same retrieval-then-rank pattern showing up in search and RAG.
+**Training with sampled negatives.** Interactions are positives. Treating every non-interacted item as a negative would mean a softmax over the whole catalogue for every example, too expensive with millions of items. The standard approach is a **sampled softmax** over the positive and a set of negatives, often the other items in the same training batch (**in-batch negatives**):
 
-## CTR Prediction
+$$
+\mathcal{L} = -\log\frac{e^{s(u, i^+)}}{e^{s(u, i^+)} + \sum_{j \in \text{negatives}}e^{s(u, j)}}
+$$
 
-**Click-Through Rate prediction** — will a user click this specific item/ad if shown it — is the ranking-stage model in most ad and feed-ranking systems, framed as binary classification (see [Logistic Regression](/docs/machine-learning/logistic-regression) and [Boosting](/docs/machine-learning/boosting)) with heavily engineered features: user history aggregates, item popularity, recency, and increasingly, learned embeddings as additional input features alongside hand-engineered ones.
+In-batch negatives are drawn in proportion to popularity (popular items appear in more batches), which would push popular items' scores down too much; subtracting $\log P(\text{item in batch})$ from each score, the **logQ correction**, removes the bias (Yi et al., 2019).
 
-## Sequential Recommendation
+**Why two separate towers.** Because user and item embeddings are computed independently, every item's embedding can be computed once and stored. Recommending then means one user-tower pass and a nearest-neighbour search for the items with the largest dot product, done approximately in milliseconds over millions of items by a [vector index](/docs/databases/vector/overview). A model that took user and item together could capture richer interactions, but would need a forward pass for every candidate. That trade is why production systems use stages.
 
-Instead of treating a user's history as an unordered set of past interactions, model it as a *sequence* — what a user is likely to want next depends on the order of what they did, not just the set (someone who just bought a phone case probably wants a screen protector next, not "more phones," which a pure collaborative-filtering signal wouldn't naturally distinguish). Architecturally, this reuses the sequence-modeling machinery from [Sequence Models](/docs/deep-learning/sequence-models) and [Attention & Transformers](/docs/deep-learning/attention-transformers) directly — a user's interaction history becomes a token sequence, and the "next item" becomes the next-token-prediction target, the same self-attention mechanism that predicts the next word predicting the next likely interaction instead.
+## 5. The Production Pipeline
 
-Next: [Learning-to-Rank](/docs/machine-learning/learning-to-rank) — the ranking-stage model training objective in more depth, the same problem sitting underneath recommenders, search, and ad ranking alike.
+### The Two-Stage Production Pipeline
+
+A real system can't run its best model on every item for every request, so it works as a funnel, each stage more expensive and more accurate over fewer items:
+
+1. **Retrieval (candidate generation)**: several cheap sources produce a few hundred to a few thousand candidates from millions: two-tower nearest neighbours, items similar to recent interactions, trending items, the user's subscriptions. The goal is **recall**: the eventual best items must be somewhere in this set.
+2. **Ranking**: a feature-rich model scores each candidate for the business objective: probability of click, purchase, watch time, often several at once (multi-task). It can use cross features between user and item that two-tower models can't. Gradient-boosted trees and deep models such as DCN (Wang et al., 2017) are common; [Learning to Rank](/docs/machine-learning/learning-to-rank) covers how ranking objectives are trained.
+3. **Re-ranking**: adjust the final list for things no single score captures: **diversity** (not ten near-identical items), freshness, removing items already bought, fairness to suppliers, and business rules.
+
+Covington, Adams and Sargin (2016) describe this design for YouTube's recommendations, and the same retrieve-then-rank pattern appears in search and in retrieval-augmented generation (see [ML System Design](/docs/ml-system-design/roadmap)).
+
+### CTR Prediction
+
+In feeds and advertising, the ranking model is usually a **click-through-rate** model: binary classification of whether a user will click an item if shown it, trained on impression logs. It's [logistic regression](/docs/machine-learning/logistic-regression) scaled up: very high-dimensional sparse features (user ID, item ID, categories, crossed with each other), hashed into a fixed space, trained online with adaptive learning rates (McMahan et al., 2013), increasingly replaced or supplemented by deep models that learn feature interactions (factorization machines, Wide & Deep, DCN). Because ad auctions use the predicted probability directly to price, **calibration** matters as much as ranking, and log loss is the standard metric.
+
+## 6. Sequential and Generative Recommenders
+
+Treating a history as an unordered set loses information: someone who just bought a phone wants a case, not another phone. **Sequential recommenders** model the history as a sequence and predict the next interaction, with the same machinery as language models: SASRec (Kang and McAuley, 2018) uses self-attention over the sequence of item IDs; BERT4Rec predicts masked items. Recent work goes further and treats recommendation as generation: items are represented by short sequences of learned "semantic ID" tokens and a transformer generates the next item's tokens directly (Rajput et al., 2023), and large generative recommenders trained on user action sequences have reported gains in production (Zhai et al., 2024). See [Attention & Transformers](/docs/deep-learning/attention-transformers) for the underlying architecture.
+
+<GoDeeper title="Go deeper: feedback loops and popularity bias">
+
+A recommender's training data is produced by the previous recommender. Items it showed get clicks; items it never showed get none, and so look unappealing to the next model, which shows them even less. This **feedback loop** concentrates exposure on already-popular items and makes the logged data a biased sample of what users would actually like.
+
+Several tools address it. **Exploration**: show some items the model is uncertain about (bandit methods such as Thompson sampling) so the data keeps covering the catalogue. **Inverse propensity scoring**: when training or evaluating on logged data, weight each interaction by one over the probability that the logging policy showed that item, which estimates what would have happened under a different policy (Schnabel et al., 2016). **Position bias correction**: items lower on a page get fewer clicks regardless of quality, which ranking models must account for. And **evaluation by online experiment**: offline metrics on logged data inherit its biases, so the final judge of a recommender is an A/B test on the outcome the business cares about.
+
+</GoDeeper>
+
+## 7. Evaluating a Recommender Offline
+
+- **Rating prediction** (RMSE, MAE) was the target of the Netflix Prize, but it measures accuracy on every rating, most of them for items users would never be shown, and correlates weakly with recommendation quality.
+- **Top-$N$ metrics** match the actual use: **hit rate** or **recall@$k$** (is the held-out item in the top $k$?), **precision@$k$**, and rank-aware metrics such as **NDCG@$k$** and **MRR** that reward putting good items higher ([defined on the Learning to Rank page](/docs/machine-learning/learning-to-rank#ranking-evaluation-metrics)).
+- **Split by time** when possible (train on the past, test on later interactions), as in [time series](/docs/machine-learning/time-series-forecasting): random splits let the model see a user's future.
+- **Always include popularity and simple neighbourhood baselines.** Cremonesi, Koren and Turrin (2010) found that RMSE-optimized models often lose to them on top-$N$ metrics, and Dacrema, Cremonesi and Jannach (2019) found that many published neural recommenders failed to beat well-tuned simple baselines when re-evaluated.
+
+Section 8 shows the first point directly. Factorization cuts rating error from 0.915 (biases only) to 0.750, yet at recommending each user's best held-out item in the top 10, "most popular" scores a hit rate of 0.245 and factorization 0.166. Users rate popular items more often, so held-out favourites are disproportionately popular, and a model trained to predict every rating precisely isn't trained to put those at the top. Training for ranking (BPR, sampled softmax) and evaluating with top-$N$ metrics fixes the mismatch.
+
+## 8. Minimal Implementation
+
+Ratings generated from a latent-factor model with 6 true taste dimensions, user and item biases, and popularity-skewed exposure; then the baselines of Section 2, matrix factorization by ALS (Section 3) at three ranks, and a top-10 comparison against the popularity baseline (Section 7):
+
+```python
+import numpy as np
+
+# Ratings generated by a latent-factor model: 1,000 users, 600 items, 6 hidden taste dimensions
+rng = np.random.default_rng(0)
+m, n, k_true = 1000, 600, 6
+U_true = rng.normal(0, 1, (m, k_true)); V_true = rng.normal(0, 1, (n, k_true))
+user_bias = rng.normal(0, 0.4, m); item_bias = rng.normal(0, 0.6, n)
+popularity = rng.zipf(1.6, n).astype(float); popularity /= popularity.sum()   # a few items are seen by many
+rows, cols = [], []
+for u in range(m):                                         # each user rates 15-60 items, popular ones more often
+    items = rng.choice(n, size=rng.integers(15, 61), replace=False, p=popularity * 0.7 + 0.3 / n)
+    rows += [u] * len(items); cols += list(items)
+rows, cols = np.array(rows), np.array(cols)
+latent = (U_true[rows] * V_true[cols]).sum(1) / np.sqrt(k_true)
+r = np.clip(np.round(3.5 + user_bias[rows] + item_bias[cols] + 0.8 * latent + rng.normal(0, 0.5, len(rows))), 1, 5)
+test = rng.random(len(r)) < 0.2
+tr = ~test
+print(f"{len(r)} ratings, {len(r) / (m * n):.1%} of the matrix observed")
+
+def rmse(pred):
+    return np.sqrt(np.mean((r[test] - pred) ** 2))
+
+mu = r[tr].mean()
+print(f"global mean                          RMSE {rmse(np.full(test.sum(), mu)):.4f}")
+
+# Baseline: rating = mu + b_user + b_item, fitted by a few rounds of regularized averaging
+bu, bi = np.zeros(m), np.zeros(n); lam_b = 5.0
+for _ in range(10):
+    res = r[tr] - mu - bi[cols[tr]]
+    bu = np.bincount(rows[tr], res, m) / (np.bincount(rows[tr], minlength=m) + lam_b)
+    res = r[tr] - mu - bu[rows[tr]]
+    bi = np.bincount(cols[tr], res, n) / (np.bincount(cols[tr], minlength=n) + lam_b)
+print(f"mean + user and item biases          RMSE {rmse(mu + bu[rows[test]] + bi[cols[test]]):.4f}")
+
+# Matrix factorization of the residual by alternating least squares
+def als(k, lam, iters=15):
+    resid = r[tr] - mu - bu[rows[tr]] - bi[cols[tr]]
+    P = rng.normal(0, 0.1, (m, k)); Q = rng.normal(0, 0.1, (n, k))
+    by_user = [np.flatnonzero(rows[tr] == u) for u in range(m)]
+    by_item = [np.flatnonzero(cols[tr] == i) for i in range(n)]
+    for _ in range(iters):
+        for u in range(m):                                 # fix Q: each user is a ridge regression
+            idx = by_user[u]; Qi = Q[cols[tr][idx]]
+            P[u] = np.linalg.solve(Qi.T @ Qi + lam * np.eye(k), Qi.T @ resid[idx])
+        for i in range(n):                                 # fix P: each item is a ridge regression
+            idx = by_item[i]; Pu = P[rows[tr][idx]]
+            Q[i] = np.linalg.solve(Pu.T @ Pu + lam * np.eye(k), Pu.T @ resid[idx])
+    return P, Q
+for k in [2, 6, 20]:
+    P, Q = als(k, lam=5.0)
+    pred = mu + bu[rows[test]] + bi[cols[test]] + (P[rows[test]] * Q[cols[test]]).sum(1)
+    print(f"biases + ALS factorization, k={k:<3}     RMSE {rmse(np.clip(pred, 1, 5)):.4f}")
+
+# Top-10 recommendation: does each user's highest-rated held-out item make the top 10?
+P, Q = als(6, lam=5.0)
+seen = {u: set(cols[tr][rows[tr] == u]) for u in range(m)}
+hits_pop, hits_mf, users = 0, 0, 0
+pop_rank = np.argsort(-np.bincount(cols[tr], minlength=n))
+for u in range(m):
+    t_idx = np.flatnonzero(test & (rows == u))
+    if len(t_idx) == 0 or r[t_idx].max() < 5:
+        continue
+    target = cols[t_idx[np.argmax(r[t_idx])]]
+    scores = mu + bu[u] + bi + Q @ P[u]
+    scores[list(seen[u])] = -np.inf                        # never recommend what they already rated
+    hits_mf += target in np.argsort(-scores)[:10]
+    hits_pop += target in [i for i in pop_rank if i not in seen[u]][:10]
+    users += 1
+print(f"hit rate at 10 over {users} users: most popular {hits_pop / users:.3f}, factorization {hits_mf / users:.3f}")
+```
+
+Output:
+
+```
+37419 ratings, 6.2% of the matrix observed
+global mean                          RMSE 1.1174
+mean + user and item biases          RMSE 0.9148
+biases + ALS factorization, k=2       RMSE 0.8633
+biases + ALS factorization, k=6       RMSE 0.7501
+biases + ALS factorization, k=20      RMSE 0.7834
+hit rate at 10 over 649 users: most popular 0.245, factorization 0.166
+```
+
+- **Biases explain a lot (Section 2)**: error falls from 1.117 to 0.915 with no taste modelling at all.
+- **Factorization captures taste (Section 3)**, best at the true rank $k = 6$ (0.750), worse when too small (0.863) or too large (0.783).
+- **Lower error doesn't mean better recommendations (Section 7).** The popularity baseline beats factorization at top-10 hit rate, 0.245 against 0.166, on data where factorization's rating predictions are far better.
+
+## 9. When *Not* to Use These Methods
+
+| Situation | Better choice |
+|---|---|
+| Very few users or interactions | Content-based recommendations, editorial curation, or popularity |
+| Mostly new items (news, listings) | Content and context features (two-tower with item features), not ID-based factorization |
+| You need recommendations to explain themselves | Item-to-item neighbours ("because you watched X") or content rules |
+| Small catalogue where users can browse everything | Search and good navigation may matter more than a recommender |
+| Feedback loops dominate (the model shapes its own data) | Add exploration and propensity-weighted evaluation; confirm with online experiments |
+| The objective is long-term satisfaction, not the next click | Optimize longer-horizon outcomes (retention, surveys); click models overfit to the immediate |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| The data | A huge, sparse user-item matrix, mostly implicit feedback |
+| Two approaches | Content-based (features) and collaborative (patterns across users); combine them |
+| Baselines | $\mu + b_u + b_i$ with shrinkage, and "most popular": always report both |
+| Factorization | $\hat{r}_{ui} = \mu + b_u + b_i + \mathbf{p}_u^T\mathbf{q}_i$, fitted on observed entries with L2 |
+| ALS | Fix items, each user is a ridge regression: $\mathbf{p}_u = (Q_u^TQ_u + \lambda I)^{-1}Q_u^T\tilde{\mathbf{r}}_u$ |
+| Implicit feedback | All pairs, with confidence weights; or ranking losses (BPR) |
+| Two towers | User and item networks, dot-product score; precompute items, search nearest neighbours |
+| Sampled negatives | In-batch negatives need the logQ correction for popularity |
+| Pipeline | Retrieval for recall, ranking for the objective, re-ranking for diversity and rules |
+| Evaluation | Top-$N$ metrics, time-based splits, strong baselines, then online tests |
+
+---
+
+Next: [Learning to Rank](/docs/machine-learning/learning-to-rank), how the ranking stage is trained to optimize the order of a list directly.
+
+## Sources
+
+- Y. Koren, R. Bell and C. Volinsky, [Matrix Factorization Techniques for Recommender Systems](https://doi.org/10.1109/MC.2009.263), *IEEE Computer*, 2009
+- Y. Hu, Y. Koren and C. Volinsky, [Collaborative Filtering for Implicit Feedback Datasets](https://doi.org/10.1109/ICDM.2008.22), ICDM 2008
+- S. Rendle, C. Freudenthaler, Z. Gantner and L. Schmidt-Thieme, [BPR: Bayesian Personalized Ranking from Implicit Feedback](https://arxiv.org/abs/1205.2618), UAI 2009
+- P. Covington, J. Adams and E. Sargin, [Deep Neural Networks for YouTube Recommendations](https://doi.org/10.1145/2959100.2959190), RecSys 2016
+- X. Yi et al., [Sampling-Bias-Corrected Neural Modeling for Large Corpus Item Recommendations](https://doi.org/10.1145/3298689.3346996), RecSys 2019
+- P. Cremonesi, Y. Koren and R. Turrin, [Performance of Recommender Algorithms on Top-N Recommendation Tasks](https://doi.org/10.1145/1864708.1864721), RecSys 2010
+- M. F. Dacrema, P. Cremonesi and D. Jannach, [Are We Really Making Much Progress? A Worrying Analysis of Recent Neural Recommendation Approaches](https://doi.org/10.1145/3298689.3347058), RecSys 2019
+- W.-C. Kang and J. McAuley, [Self-Attentive Sequential Recommendation](https://doi.org/10.1109/ICDM.2018.00035), ICDM 2018
+- S. Rajput et al., [Recommender Systems with Generative Retrieval](https://arxiv.org/abs/2305.05065), NeurIPS 2023
+- J. Zhai et al., [Actions Speak Louder than Words: Trillion-Parameter Sequential Transducers for Generative Recommendations](https://arxiv.org/abs/2402.17152), ICML 2024
+- T. Schnabel, A. Swaminathan, A. Singh, N. Chandak and T. Joachims, [Recommendations as Treatments: Debiasing Learning and Evaluation](https://proceedings.mlr.press/v48/schnabel16.html), ICML 2016
+- R. Wang, B. Fu, G. Fu and M. Wang, [Deep & Cross Network for Ad Click Predictions](https://arxiv.org/abs/1708.05123), ADKDD 2017
+- H. B. McMahan et al., [Ad Click Prediction: a View from the Trenches](https://research.google/pubs/ad-click-prediction-a-view-from-the-trenches/), KDD 2013
