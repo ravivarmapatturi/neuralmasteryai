@@ -1,35 +1,218 @@
 ---
-title: "Context Engineering"
+title: "Context Engineering, In Full Depth"
 sidebar_position: 3.5
-description: "Why context windows need active management, not just better prompts -- context rot, and the four real strategies for curating an agent's context."
+description: "Deciding what goes into an agent's context at every step: why long contexts degrade (context rot), the anatomy and budget of an agent's context, the four strategies (write, select, compress, isolate), compaction, memory files, just-in-time retrieval, Agent Skills and progressive disclosure measured, and keeping the context cache-friendly."
 ---
 
 import ContextEngineeringStrategiesDiagram from '../../../viz/diagrams/ContextEngineeringStrategiesDiagram';
-import { Remember } from '../../../components/content/Remember';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Context Engineering
+# Context Engineering, In Full Depth
 
-[Agent Fundamentals](/docs/agents/agent-fundamentals#agent-memory) left off with a real, unresolved problem: context windows are finite, but useful agent tasks span far more information than fits in one. **Context engineering** is the name the field has settled on for the discipline of actually solving that — not a single trick, but the whole practice of deciding what goes into an agent's context at every step.
+[Agent Fundamentals](/docs/agents/agent-fundamentals#agent-memory) ended with a problem it didn't solve: a model's only working memory is its context window, which is finite, while useful agent tasks touch far more information than fits. **Context engineering** is the discipline of deciding, at every step, what that window should contain. Anthropic defines it as the set of strategies for curating and maintaining the optimal set of tokens during inference, including everything that lands in the context besides the prompt. This page explains why the window degrades as it fills, what an agent's context is actually made of and what each part costs, the four strategies for managing it, the specific techniques behind each (compaction, memory files, just-in-time retrieval, sub-agents), **Agent Skills**, the standard way to give an agent many procedures without loading them all, measured below, and how to keep the context friendly to the provider's cache.
 
-**What is it?** Anthropic's own definition: context engineering is "the set of strategies for curating and maintaining the optimal set of tokens (information) during LLM inference, including all the other information that may land there outside of the prompts." That's a deliberately broader scope than **prompt engineering** (see [Prompt Engineering](/docs/llms-genai/prompt-engineering)), which is about writing and organizing instructions — context engineering is about managing the *entire* context state a multi-turn agent accumulates: conversation history, tool results, retrieved documents, memory, everything.
+<ELI5>
 
-**Why is it its own discipline now, and not just "better prompting"?** Because of **context rot**: as the number of tokens in the context window grows, a model's ability to accurately recall and use any specific piece of it goes down — not linearly, but in a way that gets worse the longer the context runs. Two real mechanical reasons this happens: a transformer's self-attention creates *n²* pairwise relationships across *n* tokens, so attention gets spread thinner as context grows; and models simply have less training exposure to very-long-context dependencies than to short ones. This is a sharper, more general version of the "lost in the middle" effect you've already seen in [Prompt Engineering](/docs/llms-genai/prompt-engineering#failure-modes-and-debugging) — that was about *position* within a fixed context; context rot is about sheer *volume* degrading recall broadly, at any position.
+Imagine a desk where you do all your work, and it's the only place you can read anything. A small desk with exactly the papers you need lets you work fast. A desk buried under every document you've ever touched makes you slow and error-prone: the one page that matters is somewhere in the pile.
 
-**How does it work?** LangChain's framing breaks the practice into four independent, composable strategies — not a sequence, a toolbox you draw from per situation:
+Context engineering is keeping the AI's desk tidy. Put the task and the important notes on top. File finished work away in a drawer and keep a one-line note saying where it is. Keep the instruction manuals on a shelf and take one down only when you need it. Send an assistant off to read a long report and bring back a summary instead of piling the whole report on the desk.
+
+Everything below is those habits made exact.
+
+</ELI5>
+
+## 1. Why a Fuller Context Is a Worse Context
+
+Context windows grew from 4,000 tokens to hundreds of thousands, and in some models over a million. It's tempting to treat that as solving the problem: just include everything. It doesn't, for two reasons.
+
+**Context rot.** As the number of tokens grows, a model's ability to find and use any particular piece of information declines. Earlier work showed the **lost in the middle** effect (Liu et al., 2023): facts in the middle of a long prompt are used less reliably than facts at the start or end. Later evaluations (Chroma's 2025 context-rot study among them) found performance falling with context length across many models even on simple retrieval tasks, and falling faster when the context contains distractors: text that looks relevant but isn't. Two mechanisms contribute. Attention spreads each token's focus over every other token, so more tokens means thinner attention; and models see far fewer very long dependencies in training than short ones.
+
+**Cost and speed.** An agent re-sends its whole context on every model call. Input tokens grow with the square of the number of steps ([the Agents overview](/docs/agents/overview) computes it), and every extra token in a long-lived prefix is paid for again on every turn.
+
+So the target isn't "as much as fits". It's the **smallest set of high-signal tokens** that makes the right next step most likely.
+
+## 2. What an Agent's Context Contains
+
+A running agent's context has five kinds of content, each with a different lifetime and a different fix when it grows:
+
+| Part | Typical size | Lifetime | How it grows |
+|---|---|---|---|
+| System prompt | 1K to 10K tokens | Whole session | Instructions accrete over time |
+| Tool definitions | 100 to 500 tokens per tool | Whole session | Every connected tool or MCP server adds its schemas |
+| Conversation | Grows with each turn | Session | User messages and the agent's replies |
+| Tool calls and results | Often the largest part | Session unless trimmed | File contents, search results, command output |
+| Retrieved or remembered material | Varies | Per step | Documents, memory entries, loaded skills |
+
+In practice, **tool results** dominate long sessions: one file read can be 5,000 tokens, one web page 20,000. Tool definitions are the quiet cost: forty tools at 300 tokens each is 12,000 tokens on every single call, whether used or not.
+
+## 3. Four Strategies
+
+LangChain's framing groups the techniques into four strategies. They're a toolbox, not a sequence; most agents use all four.
 
 <ContextEngineeringStrategiesDiagram />
 
-A few of the concrete techniques underneath those four, real patterns from Anthropic's own agent-building practice:
+- **Write**: save information *outside* the context so it survives without occupying it: notes files, memory stores, scratchpads.
+- **Select**: bring into the context only what the current step needs: retrieval, just-in-time file reads, loading one skill out of many.
+- **Compress**: keep the gist of something with fewer tokens: summarizing history, trimming old tool results, returning compact tool outputs.
+- **Isolate**: give a sub-task its own context, so its working material never enters the main one: sub-agents, sandboxed code execution.
 
-- **Compaction**: when a conversation gets close to the context limit, summarize the trajectory so far and reinitialize context from that summary — Claude Code does this automatically once usage crosses roughly 95%. The guidance that matters here: tune a compaction prompt for *recall* first (capture everything that might matter — architectural decisions, unresolved bugs, specific values), then tighten it for *precision* second (cut the redundant tool output and dead-end exploration) — never the other order, since a compaction pass that's precise but drops something real is much harder to notice or recover from than one that's momentarily too verbose.
-- **Structured note-taking**: an agent periodically writes notes to a persistent store *outside* the context window, then reads relevant notes back in at a later step — the same "write, then select" pair from the diagram above, made concrete. This is how long-horizon agents (Anthropic cites one playing Pokémon across thousands of game steps) stay coherent well past what any single context window could hold.
-- **Just-in-time retrieval vs. pre-loading**: instead of dumping everything potentially relevant into context up front, an agent can keep lightweight references (file paths, a stored query, a URL) and dynamically load the actual content only when a step needs it — mirroring how people use an index or a filing system instead of memorizing a whole document. Claude Code actually mixes both: a `CLAUDE.md` file is loaded up front unconditionally, while `grep`/`glob` tools let it pull in specific file contents just-in-time as the task requires them.
-- **Sub-agent isolation**: hand a focused sub-task to a sub-agent with its own clean context window (see [Multi-Agent Systems](/docs/agents/multi-agent-systems#coordination-patterns)), and let only a condensed result — often just 1,000-2,000 tokens — return to the parent's context, not the sub-agent's entire working trace.
+The next sections are the main techniques under each.
 
-**Why does this matter in practice?** Every one of these techniques is answering the same underlying question, differently: *what's the smallest set of high-signal tokens that makes the desired outcome most likely?* Tool design matters here too — a bloated tool set with overlapping functionality burns context on ambiguous choices before the agent even gets to the real task; narrow, well-scoped tools (see [Agent Fundamentals](/docs/agents/agent-fundamentals#tool-use-function-calling)) keep that overhead down from the start.
+## 4. Compress: Compaction and Trimming
 
-**What's the limitation?** There's no universal formula. Compress too aggressively and the agent silently loses information it needed three steps later — a failure mode that's hard to catch because nothing errors, the agent just gets quietly worse. Compress too little (or not at all) and context rot sets in anyway, plus you're paying for tokens that aren't earning their place. Anthropic's own stated approach is not a fixed rule but "start by testing a minimal prompt... then iterate based on failure modes found during testing" — this is an empirical, task-specific practice, not something you can get right purely on paper before running the agent for real.
+**Trimming** drops content that's no longer needed. The safest target is old tool results: once the agent has read a file and acted on it, the raw content can usually be replaced by a short placeholder ("read `config.py`, 240 lines"), keeping the record that it happened. Some APIs offer this as a built-in context-editing feature that clears stale tool results automatically.
 
-<Remember>Context engineering's whole job in one sentence: find the smallest set of high-signal tokens that makes the model's desired behavior most likely — everything else (compaction, sub-agents, just-in-time retrieval) is a specific technique for getting closer to that, not the goal itself.</Remember>
+**Compaction** goes further: when the context nears its limit, the agent writes a summary of the work so far (decisions made, current state, open problems, important specific values such as file paths and error messages) and continues from that summary in a fresh context. Coding agents such as Claude Code do it automatically as the window fills.
 
-Next: [Agent Architectures](/docs/agents/agent-architectures) — the concrete structural patterns (several of which, like sub-agent orchestration, are also context-engineering techniques wearing an architecture hat).
+The craft is in the compaction prompt. Tune it for **recall first**: make sure everything that might matter later survives, especially specific values, unresolved bugs and the reasons behind decisions. Only then tighten it for **precision**, cutting redundant tool output and dead ends. Failing the other way is worse, because a summary that silently dropped one critical detail produces an agent that just gets quietly worse three steps later, with no error to point at.
+
+## 5. Write and Select: Memory, Notes and Just-in-Time Retrieval
+
+**Structured notes.** An agent working on a long task keeps a file outside the context, such as a to-do list, a progress log, or a `NOTES.md`, and writes to it as it goes. After a compaction or in a new session, it reads the file back. Anthropic described an agent playing Pokémon for thousands of steps that stayed coherent this way, tracking goals and maps in its notes. **Project memory files** such as `CLAUDE.md` or `AGENTS.md` are the same idea set up by people: standing instructions loaded at the start of every session.
+
+**Just-in-time retrieval.** Instead of loading everything that might be relevant up front, the agent holds lightweight **references** (file paths, URLs, stored queries) and fetches content only when a step needs it, the way a person uses a file system rather than memorizing it. Coding agents combine both: a memory file is loaded up front, while `grep`, `glob` and file-read tools pull in specific code as needed. The trade-off is speed: each fetch is a tool call and a model round trip, so information needed on nearly every step belongs up front.
+
+**Retrieval for knowledge.** For large document collections, selection is [retrieval-augmented generation](/docs/llms-genai/rag): search, then put the best few passages in context.
+
+## 6. Agent Skills: Many Procedures, Loaded One at a Time
+
+A special case of "select" has become a standard of its own. Agents need *procedures* as well as facts: your release checklist, your report format, the steps before touching the billing database. Putting every procedure in the system prompt makes each one cost tokens on every call; fine-tuning is slow; retrieval may miss the step-by-step guide at the moment it's needed.
+
+**Agent Skills** package each procedure as a folder with a `SKILL.md` file: YAML frontmatter with a `name` and a `description` saying what the skill does and when to use it, followed by Markdown instructions, plus optional `scripts/`, `references/` and `assets/` folders. Anthropic introduced them, published the open specification in December 2025, and donated it to the Agentic AI Foundation on 22 October 2026, alongside MCP. Many agent platforms, including ChatGPT, Cursor, GitHub Copilot and VS Code, load the same format.
+
+The design that makes them cheap is **progressive disclosure**, in three stages:
+
+1. **At startup**, the agent loads only each skill's name and description, roughly 100 tokens per skill.
+2. **When a task matches a description**, it loads that skill's full instructions (the specification suggests keeping them under about 5,000 tokens).
+3. **Only if needed**, it reads the extra files or runs the scripts.
+
+The model itself does the matching, by reading the descriptions as part of its normal reasoning, so the description must say *when* to use the skill in the words users actually use. Here's the mechanism, with three skills on disk and a tokenizer used to measure each stage:
+
+```python
+import pathlib, tempfile, textwrap
+import tiktoken, yaml
+
+count = lambda text: len(tiktoken.get_encoding("o200k_base").encode(text))   # an OpenAI tokenizer, as a ruler
+
+# Three skills, each a folder with a SKILL.md: YAML frontmatter (name, description) + Markdown instructions.
+SKILLS = {
+    "release-notes": ("Writes release notes from the git log since the last tag, grouped into features, "
+                      "fixes and breaking changes. Use when the user asks for release notes or a changelog.",
+                      "Group commits; one line per change starting with a verb; breaking changes first. " * 60),
+    "billing-migration": ("Runs a database migration on the billing tables safely. Use when the user asks "
+                          "to change, migrate or alter billing tables.",
+                          "Check the backup; run on staging; compare row counts; then production. " * 80),
+    "incident-report": ("Drafts a post-incident report from a timeline. Use when the user asks for a "
+                        "postmortem or incident write-up.",
+                        "Timeline, impact, root cause, contributing factors, action items with owners. " * 70),
+}
+root = pathlib.Path(tempfile.mkdtemp())
+for name, (desc, body) in SKILLS.items():
+    (root / name).mkdir()
+    (root / name / "SKILL.md").write_text(f"---\nname: {name}\ndescription: {desc}\n---\n\n{textwrap.fill(body, 100)}\n")
+
+def read_skill(path):
+    _, front, body = path.read_text().split("---", 2)
+    return yaml.safe_load(front), body.strip()
+
+# Stage 1, at startup: only name + description of every skill goes into the system prompt.
+index = {meta["name"]: meta["description"] for meta, _ in (read_skill(p) for p in root.glob("*/SKILL.md"))}
+startup = "\n".join(f"- {n}: {d}" for n, d in index.items())
+
+# Stage 2, when a task matches: load that one skill's full instructions.
+# (A real agent's model makes this choice by reading the descriptions; a keyword match stands in here.)
+task = "Please write the changelog for v2.3"
+chosen = next(n for n, d in index.items() if "changelog" in d.lower() and "changelog" in task.lower())
+loaded = read_skill(root / chosen / "SKILL.md")[1]
+
+everything = "\n\n".join(read_skill(p)[1] for p in root.glob("*/SKILL.md"))
+print(f"all instructions always in the prompt:  {count(everything):5d} tokens on every call")
+print(f"progressive disclosure, at startup:     {count(startup):5d} tokens (3 descriptions)")
+print(f"after choosing '{chosen}':      {count(startup) + count(loaded):5d} tokens")
+print(f"with 50 skills like these: {50 * count(everything) // 3:,} tokens always loaded, vs about {50 * count(startup) // 3:,} for the descriptions")
+```
+
+```text
+all instructions always in the prompt:   3317 tokens on every call
+progressive disclosure, at startup:        98 tokens (3 descriptions)
+after choosing 'release-notes':       1098 tokens
+with 50 skills like these: 55,283 tokens always loaded, vs about 1,633 for the descriptions
+```
+
+With three skills, always loading every instruction costs about 3,300 tokens on every call; progressive disclosure costs about 100 until a task needs a skill, and about 1,100 after loading the one it needs. Scaled to 50 skills of this size, it's the difference between some 55,000 tokens on every call and about 1,600.
+
+**Skills and MCP are different layers.** [MCP](/docs/agents/mcp/overview) connects an agent to an external system, a running server exposing tools. A skill is know-how the agent reads and follows itself, often telling it which MCP tools to use, in what order, and what to check in between. Two cautions: a skill's scripts run with the agent's permissions, so read a skill before installing it like any code; and a skill only helps if its description matches how tasks are phrased, which is worth testing with and without the skill. The blog post [Agent Skills, Explained](/blog/agent-skills-explained) goes further.
+
+<PredictFirst
+  question="A team writes an excellent skill for preparing quarterly reports, with the description 'Report helper'. Users ask the agent to 'put together the Q3 numbers deck', and the skill never activates. Why?"
+  options={[
+    'The skill body is too long',
+    'The model chooses skills by reading their descriptions, and this one says nothing about what it does or when to use it',
+    'Skills only activate when called by name',
+    'The agent needs to be restarted',
+  ]}
+  correctIndex={1}
+  explanation="At startup the agent sees only names and descriptions. 'Report helper' gives the model nothing to match 'Q3 numbers deck' against. A description like 'Builds the quarterly results deck from the finance export. Use when asked for quarterly, Q1–Q4, or board numbers decks or reports' would. Weak descriptions are the most common reason skills appear not to work."
+/>
+
+## 7. Isolate: Sub-Agents and Sandboxes
+
+A **sub-agent** gets a focused task and its own clean context, does the token-heavy work there (reading fifty files, running searches), and returns only a condensed result, often 1,000 to 2,000 tokens, to the parent. The parent's context holds conclusions, not working material. This is the main reason coding agents use sub-agents for broad searches, and the trade-offs of splitting are covered in [Single vs Multi-Agent](/docs/agents/single-vs-multi-agent).
+
+**Code execution** isolates too: instead of loading a 50,000-row table into context, the agent writes code that processes it in a sandbox and returns only the answer. Anthropic described the same idea for MCP: letting agents call tools from code they write, so large intermediate results stay in the execution environment rather than passing through the model's context.
+
+## 8. Keep It Cache-Friendly
+
+Providers cache the processed prefix of a prompt and bill repeated prefixes at a fraction of the normal price, often a tenth. An agent's context is almost all repeated prefix, so caching decides much of its cost, and context engineering should preserve it:
+
+- **Stable first, changing last.** System prompt, then tool definitions, then the conversation. Anything that varies per call, such as the current date or a timestamp, goes at the end, not the start.
+- **Append, don't rewrite.** Editing an early message invalidates the cache for everything after it. Compaction necessarily rewrites history, which is one reason to compact rarely and decisively rather than trimming a little on every turn.
+- **Keep tool lists stable.** Adding or reordering tools mid-session invalidates the cached prefix; MCP's current specification asks servers to return tools in a deterministic order for this reason.
+
+<GoDeeper title="Go deeper: tool definitions are context too">
+
+It's easy to count conversation tokens and forget the tools. Each tool's name, description and JSON schema is sent on every call, and connecting several MCP servers can put dozens of tools, and tens of thousands of tokens, into every request before the user has said anything.
+
+The fixes mirror the rest of this page. **Fewer, broader tools**: one `search_issues(query, state, labels)` instead of five filters. **Tool search**: give the agent a tool for finding tools, and load a tool's full definition only once the agent has decided it needs it, which is progressive disclosure applied to tools. **Skills over tools for procedures**: a procedure written as a skill costs about 100 tokens until it's used, where the same guidance in tool descriptions costs its full length every time. And **compact results**: return the fields the next step needs, paginate, and say what was truncated.
+
+</GoDeeper>
+
+## 9. When *Not* to Over-Engineer Context
+
+| Situation | Better choice |
+|---|---|
+| Short tasks that fit easily in the window | Plain context; compaction and sub-agents add complexity for nothing |
+| Information needed on almost every step | Keep it in the system prompt or a memory file, not fetched just in time |
+| Aggressive compaction on tasks full of exact values | Recall-first summaries, or keep raw tool results and trim less |
+| A handful of procedures | A clear system prompt; skills pay off as the count grows |
+| Editing early history to save tokens | Append-only history and occasional decisive compaction, to keep the cache |
+| Skills from unknown sources | Read and test them first; they run code with the agent's permissions |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Goal | The smallest set of high-signal tokens that makes the right next step likely |
+| Context rot | Recall degrades as context grows, faster with distractors |
+| Anatomy | System prompt, tools, conversation, tool results, retrieved material; tool results dominate |
+| Four strategies | Write (outside), select (just what's needed), compress (summarize, trim), isolate (sub-agents) |
+| Compaction | Summarize and restart; tune the prompt for recall before precision |
+| Notes and memory files | Persist what matters outside the window; read it back after compaction |
+| Agent Skills | `SKILL.md` folders; about 100 tokens each until needed; the description decides activation |
+| Skills vs MCP | Skills teach procedures; MCP connects systems |
+| Caching | Stable prefix first, append-only history, stable tool lists |
+
+---
+
+Next: [Agent Architectures](/docs/agents/agent-architectures), the structural patterns, several of which are context-engineering techniques in another form.
+
+## Sources
+
+- Anthropic, [Effective context engineering for AI agents](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) (2025)
+- LangChain, [Context Engineering for Agents](https://blog.langchain.com/context-engineering-for-agents/) (2025)
+- Liu et al., [Lost in the Middle: How Language Models Use Long Contexts](https://arxiv.org/abs/2307.03172) (2023)
+- Chroma, [Context Rot: How Increasing Input Tokens Impacts LLM Performance](https://research.trychroma.com/context-rot) (2025)
+- Agent Skills, [Specification](https://agentskills.io/specification)
+- Anthropic, [Donating Agent Skills to the Agentic AI Foundation](https://www.anthropic.com/news/donating-agent-skills-to-the-agentic-ai-foundation) (October 2026)
+- Anthropic, [Code execution with MCP](https://www.anthropic.com/engineering/code-execution-with-mcp) (2025)
