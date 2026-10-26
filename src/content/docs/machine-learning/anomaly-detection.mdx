@@ -1,56 +1,280 @@
 ---
 title: "Anomaly Detection: Isolation Forest, LOF & One-Class SVM, In Full Depth"
 sidebar_position: 6.7
-description: "Anomaly detection in full depth: Isolation Forest, Local Outlier Factor, One-Class SVM, and autoencoder-based detection, plus how to choose among them."
+description: "Anomaly detection derived: anomalies as low-density points, how to evaluate rare-event detectors, Isolation Forest's path lengths and its normalizing constant, LOF's reachability density, the one-class SVM and its nu parameter, robust Mahalanobis distance and reconstruction error, with from-scratch Isolation Forest and LOF checked against scikit-learn and four methods compared on global and local anomalies."
 ---
 
-import __migratedImg0 from './img/anomaly-detection.png';
-
+import anomLight from './img/anomaly-detection-light.png';
+import anomDark from './img/anomaly-detection.png';
 import IsolationPathLengthDiagram from '../../../viz/diagrams/IsolationPathLengthDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Anomaly Detection: Isolation Forest, LOF & One-Class SVM, In Full Depth
 
-A distinctive unsupervised problem: find the points that *don't* fit, usually with few or no labeled examples of what "anomalous" even looks like — fraud, defects, and intrusions are rare and varied enough that you rarely have a good labeled training set of them.
+Fraud, faulty parts, intrusions and sensor failures share two properties: they're rare, and they don't look like anything in particular. There's rarely a good labelled set of them, and the next one may look nothing like the last. So instead of learning what anomalies look like, anomaly detection learns what *normal* looks like and flags whatever doesn't fit. [Unsupervised Learning](/docs/machine-learning/unsupervised-learning#anomaly-detection) framed this as finding the low-density regions of the data distribution. This page derives the main methods, each a different way of judging "low density" without estimating a density directly: how quickly random splits isolate a point (Isolation Forest), how a point's density compares with its neighbours' (LOF), a boundary drawn around the normal data (one-class SVM), and distance from a robust centre. Isolation Forest and LOF are implemented from scratch, and all four are compared on data with two different kinds of anomaly.
 
-<img src={__migratedImg0} alt="Anomaly detection: a normal cluster with a handful of clear outliers flagged" style={{maxWidth: '100%'}} />
+<ELI5>
 
-## Isolation Forest
+At a school assembly, picking out the one student who doesn't belong is easy if they're standing off by the car park: they're far from everyone. It's harder if they're standing just at the edge of a tight group of friends: not far from the crowd, but still not part of that group.
 
-A genuinely different mechanism than every other tree-based method on this site — instead of trying to *classify* points, it exploits a simple structural fact: **anomalies are easier to isolate than normal points.**
+The methods below find both kinds. One plays a game of drawing random lines across the yard: someone standing alone gets fenced off after just a couple of lines, while someone in the middle of a crowd needs many. Another compares how crowded it is around each student with how crowded it is around their nearest neighbours. Everything below is those ideas made exact.
 
-**The algorithm**: build many random trees, where each split picks a random feature and a random threshold within that feature's range (unlike [Decision Trees](/docs/machine-learning/decision-tree#how-a-split-is-chosen), no impurity criterion is optimized at all — splits are purely random). For any given point, count how many splits it takes to isolate it alone in its own leaf — the **path length**.
+</ELI5>
 
-**Why this isolates anomalies faster**: anomalies sit in sparse regions, far from other points — a single random split is disproportionately likely to separate them from the rest of the data immediately. Normal points sit in dense clusters, requiring many more splits to carve out individually, since each random split has to get "lucky" to fall exactly between an inlier and its many close neighbors. Average the path length across many random trees (the "forest" part — same ensembling logic as [Random Forest](/docs/machine-learning/random-forest#the-core-idea-bagging), just applied to isolation instead of prediction accuracy), and short average path length becomes directly the anomaly score. Real random splits, real path lengths, real Monte Carlo average:
+## 1. The Problem, and How to Score a Detector
+
+Every method here produces a **score** for each point, larger for more anomalous, and a threshold turns scores into flags. Formally an anomaly is a point in a region where the data's density $p(\mathbf{x})$ is low; in practice that has two forms, both present in the data of Section 6:
+
+- **Global anomalies**: far from all the data. Almost any method finds these.
+- **Local anomalies**: not far from the data in absolute terms, but in a sparse spot next to a dense cluster, where nearby points are normally packed tightly. A point at distance 1.8 from a cluster with spread 0.3 is six standard deviations out, even though a looser cluster elsewhere has normal points much farther from its centre.
+
+Methods differ in their assumptions about what "normal" looks like: one Gaussian blob, any shape, dense regions of different densities. They also differ in whether training data is clean (only normal points, called **novelty detection**) or contaminated with unknown anomalies (**outlier detection**).
+
+**Evaluating with a few labels.** Even when anomalies are unlabelled in training, a small labelled sample is needed to choose a method and a threshold. Because anomalies are rare, accuracy is useless (flag nothing and you're 97% accurate). Two measures are standard (see [Model Evaluation](/docs/machine-learning/model-evaluation-metrics#classification-metrics)):
+
+- **ROC-AUC**: the probability that a random anomaly scores higher than a random normal point. Easy to read, but optimistic when anomalies are very rare, because it gives as much weight to ranking the many unremarkable normal points.
+- **Average precision** (area under the precision-recall curve): how clean the top of the ranking is. This is what matters when an analyst will investigate only the top few hundred alerts, and it's the better headline number for rare anomalies.
+
+## 2. Isolation Forest
+
+Isolation Forest (Liu, Ting and Zhou, 2008) turns "anomalies are few and different" into an algorithm with no distances at all.
+
+**Isolation trees.** Take a random subsample of the data. Pick a random feature, pick a random threshold uniformly between that feature's minimum and maximum in the current node, and split. Repeat in each part until every point is alone or a depth limit is reached. Unlike a [decision tree](/docs/machine-learning/decision-tree#how-a-split-is-chosen), there's no criterion; every split is random.
+
+**Path length.** The number of splits from the root to the leaf containing a point $\mathbf{x}$ is its path length $h(\mathbf{x})$. A point in a sparse region is separated from everything else after very few random splits, because almost any threshold between it and the crowd isolates it. A point inside a dense cluster needs many: a random threshold rarely falls between it and its close neighbours. Average over many trees and the expected path length $\mathbb{E}[h(\mathbf{x})]$ measures how isolated a point is. Watch path lengths form:
 
 <IsolationPathLengthDiagram />
 
-**Why it's fast**: unlike distance-based methods, no pairwise distance computation is needed at all — just random splits — making Isolation Forest one of the most scalable anomaly detection methods to large, high-dimensional datasets.
+**Normalizing.** Path lengths grow with the subsample size $\psi$, so they're compared with the average path length one would expect in a tree of $\psi$ points. An isolation tree has the same structure as a binary search tree, and the average length of an unsuccessful search in a random BST of $\psi$ points is
 
-## Local Outlier Factor (LOF)
+$$
+c(\psi) = 2H(\psi - 1) - \frac{2(\psi - 1)}{\psi}, \qquad H(i) \approx \ln i + 0.5772
+$$
 
-A density-based approach, conceptually close to [DBSCAN](/docs/machine-learning/dbscan-hdbscan#dbscan-density-based-spatial-clustering-of-applications-with-noise): compare each point's local density to the local density of its neighbors. A point sitting in a much sparser neighborhood than its neighbors' neighborhoods gets a high outlier score.
+with $H$ the harmonic number. The anomaly score is
 
-**Why "local" matters specifically**: a single global density threshold (like DBSCAN's fixed $\epsilon$) fails when different regions of the data have genuinely different natural densities — a point that's sparse relative to a dense region might be entirely normal relative to a naturally sparser region elsewhere in the same dataset. LOF compares each point only to its *own* neighborhood's typical density, making it far more sensitive to local anomalies that a global threshold would miss entirely — directly the same varying-density problem that motivated [HDBSCAN](/docs/machine-learning/dbscan-hdbscan#hdbscan-hierarchical-dbscan) over plain DBSCAN.
+$$
+s(\mathbf{x}, \psi) = 2^{-\,\mathbb{E}[h(\mathbf{x})]\,/\,c(\psi)}
+$$
 
-## One-Class SVM
+which is close to 1 for points isolated much faster than average, about 0.5 for points isolated at the average rate, and well below 0.5 for points deep in dense regions. When a branch stops at the depth limit with several points still together, $c(\text{points remaining})$ is added to the path length, an estimate of how much deeper isolation would have taken.
 
-Adapts [SVM](/docs/machine-learning/support-vector-machines) to a setting with only one class (normal data, little or no labeled anomalies): instead of finding a boundary *between* two classes, it finds a boundary that separates the normal data from the origin (or, in the more common variant, fits the smallest possible enclosing region around the normal data) in the kernel-transformed feature space (see [SVM — The Kernel Trick](/docs/machine-learning/support-vector-machines#the-kernel-trick)).
+**Why subsample.** Each tree uses only $\psi = 256$ points by default, which sounds too few but helps. Dense normal data near an anomaly can **mask** it (the anomaly is isolated more slowly because so many points surround it), and many points can cause **swamping** (normal points near anomalies get flagged). Small subsamples reduce both. It also makes the method very fast: building 100 trees on 256 points each costs nothing, and scoring is $O(\text{trees} \times \log\psi)$ per point, independent of the data size. No feature scaling is needed, since splits compare one feature with a threshold.
 
-**How it's used**: train the boundary on normal data only; at inference, anything falling outside the learned boundary is flagged as anomalous. The kernel trick lets this boundary be arbitrarily non-linear, exactly as in standard SVM — critical since "normal" data rarely forms a simple, linearly-bounded region.
+Its blind spot follows from the random axis-parallel splits: points in the gaps between clusters, or in a small hollow inside a dense region, aren't much faster to isolate than normal points, so it's weaker on local anomalies. Extended Isolation Forest (Hariri et al., 2021) uses random hyperplanes instead of axis-parallel splits to reduce the artefacts this creates.
 
-## Autoencoder-Based Detection
+## 3. Local Outlier Factor
 
-Covered in depth in [Autoencoders](/docs/deep-learning/autoencoders#the-autoencoder-architecture): train a reconstruction model on normal data only; at inference, high reconstruction error signals an anomaly, since the model never learned to compress and reconstruct that kind of input well. The deep-learning analog of the same "model what's normal, flag what doesn't fit" strategy as every method above.
+LOF (Breunig et al., 2000) compares each point's local density with its neighbours' densities, so a point is judged relative to its own surroundings rather than the whole dataset.
 
-## Choosing an Approach
+With $k$ neighbours (`n_neighbors`), define for each point $\mathbf{a}$:
 
-| | Isolation Forest | LOF | One-Class SVM | Autoencoder |
-|---|---|---|---|---|
-| Scales to large data | Best | Moderate (pairwise distances) | Poor (like standard SVM) | Good |
-| Handles varying density | Reasonably | Best (explicitly local) | No | Depends on training data coverage |
-| Needs feature scaling | No (splits are threshold-based) | Yes (distance-based) | Yes | Yes |
-| Captures complex nonlinear structure | Limited | Limited | Yes (via kernel) | Yes (via depth) |
+- its **$k$-distance**: the distance to its $k$-th nearest neighbour, and $N_k(\mathbf{a})$ its $k$ nearest neighbours;
+- the **reachability distance** from $\mathbf{a}$ to a neighbour $\mathbf{b}$: $\operatorname{reach}_k(\mathbf{a}, \mathbf{b}) = \max\big(k\text{-distance}(\mathbf{b}),\; d(\mathbf{a}, \mathbf{b})\big)$. Points that are very close to $\mathbf{b}$ are all treated as being at $\mathbf{b}$'s $k$-distance, which smooths out random fluctuations within dense regions (the same idea as [HDBSCAN's mutual reachability](/docs/machine-learning/dbscan-hdbscan));
+- the **local reachability density**, the inverse of the average reachability distance to its neighbours:
 
-**General rule of thumb**: Isolation Forest is the strong default for tabular data at any real scale; LOF when you specifically suspect varying-density regions; One-Class SVM for smaller, well-understood feature spaces; autoencoders when the data is high-dimensional/unstructured (images, sequences) where deep learning already has an architectural advantage (see [Deep Learning](/docs/deep-learning/roadmap)).
+$$
+\operatorname{lrd}_k(\mathbf{a}) = \left(\frac{1}{k}\sum_{\mathbf{b} \in N_k(\mathbf{a})}\operatorname{reach}_k(\mathbf{a}, \mathbf{b})\right)^{-1}
+$$
 
-This completes association rules and anomaly detection. Next: [Topic Modeling: LDA & BERTopic](/docs/machine-learning/topic-modeling) — unsupervised structure discovery specifically for text.
+The **local outlier factor** is the average density of the point's neighbours relative to its own:
+
+$$
+\operatorname{LOF}_k(\mathbf{a}) = \frac{1}{k}\sum_{\mathbf{b} \in N_k(\mathbf{a})}\frac{\operatorname{lrd}_k(\mathbf{b})}{\operatorname{lrd}_k(\mathbf{a})}
+$$
+
+About 1 means the point is as dense as its neighbours: normal, whether it sits in a tight cluster or a loose one. Well above 1 means its neighbours are much denser than it is: it's on the sparse fringe of a dense region. That's exactly the definition of a local anomaly, and it's why LOF ranks them best in Section 6, with the ring of anomalies around the tight cluster at a median rank of 12 out of 1,030 points.
+
+LOF needs nearest-neighbour searches ($O(n\log n)$ with an index in low dimensions, $O(n^2)$ otherwise), feature scaling, and a choice of $k$: too small and scores are noisy, too large and small anomalous groups are treated as their own neighbourhood. Values of 10 to 50 are typical. In scikit-learn, `novelty=True` lets LOF score new points against a fitted reference set.
+
+<PredictFirst
+  question="A dataset has one tight cluster and one loose cluster. A point sits 1.8 units from the tight cluster's centre (cluster spread 0.3); many normal points in the loose cluster are 4 units from its centre. Which method is most likely to rank the first point as highly anomalous?"
+  options={[
+    'Distance from the overall mean, since 1.8 is a large distance',
+    'LOF, because it compares the point with the density of its own neighbourhood (the tight cluster), not with the whole dataset',
+    'None: 1.8 is smaller than the normal distances in the loose cluster, so no method can flag it',
+    'Any method, equally',
+  ]}
+  correctIndex={1}
+  explanation="By global standards the point isn't far out: loose-cluster points are farther from their centre. But its nearest neighbours are tight-cluster points packed far more densely than the point's own surroundings, so its LOF is much greater than 1. Global methods (Mahalanobis distance from one centre) miss it; in Section 6 robust Mahalanobis distance puts these points at a median rank of 474, LOF at 12."
+/>
+
+## 4. One-Class SVM, Mahalanobis and Reconstruction
+
+**One-class SVM.** Schölkopf et al. (2001) adapted the [SVM](/docs/machine-learning/support-vector-machines) to data with one class. In the kernel feature space, separate the training data from the origin with the largest possible margin, allowing some points to fall on the wrong side:
+
+$$
+\min_{\mathbf{w},\,\boldsymbol{\xi},\,\rho}\; \frac12\lVert\mathbf{w}\rVert^2 + \frac{1}{\nu n}\sum_{i}\xi_i - \rho \quad\text{subject to}\quad \mathbf{w}^T\phi(\mathbf{x}_i) \ge \rho - \xi_i,\;\; \xi_i \ge 0
+$$
+
+Points with $\mathbf{w}^T\phi(\mathbf{x}) \lt  \rho$ are flagged. With an RBF kernel this boundary becomes a closed curve wrapped around the normal data in the original space. The parameter $\nu \in (0, 1]$ has a clean meaning: it's an upper bound on the fraction of training points treated as outliers and a lower bound on the fraction of support vectors, so it's set to the expected contamination. The RBF width $\gamma$ needs tuning too: small $\gamma$ gives a smooth boundary that may include anomalies; large $\gamma$ wraps each training point tightly and flags any new point that isn't nearly identical to one. It scales like any kernel SVM, so it's practical up to tens of thousands of points.
+
+**Robust Mahalanobis distance.** If normal data is roughly one Gaussian blob, the natural score is the [Mahalanobis distance](/docs/machine-learning/naive-bayes-lda-qda) from its centre. The catch is that the anomalies themselves distort the mean and covariance used to compute it. The **minimum covariance determinant** estimator (Rousseeuw, 1984) fits the mean and covariance on the subset of points whose covariance has the smallest determinant, the tightest core of the data, so outliers don't pull the estimate. It's `EllipticEnvelope` in scikit-learn: fast, interpretable, and right when its one-blob assumption holds. Section 6's data has two blobs of very different spread, so it does worst there.
+
+**Reconstruction error.** Fit a model that compresses and reconstructs normal data: [PCA](/docs/machine-learning/pca-svd) with a few components, or an [autoencoder](/docs/deep-learning/autoencoders#the-autoencoder-architecture) for images, audio and sequences. The reconstruction error is the score: a normal point lies near the learned structure and reconstructs well; an anomaly doesn't. For high-dimensional, structured data this is usually the most effective family.
+
+<ThemedImage alt="Scatter plot of a tight cluster near the origin and a loose cluster up and to the right, with true anomalies marked by crosses, including a ring just outside the tight cluster, and LOF's top 30 points circled" sources={{light: anomLight, dark: anomDark}} />
+
+## 5. Choosing and Using a Detector
+
+| | Isolation Forest | LOF | One-class SVM | Robust Mahalanobis | Reconstruction |
+|---|---|---|---|---|---|
+| Notion of normal | Hard to isolate | As dense as its neighbours | Inside a kernel boundary | Near one Gaussian centre | Well reconstructed |
+| Local anomalies | Weak to moderate | Strong | Moderate | Weak | Depends on the model |
+| Scale | Very large data | Moderate | Small to medium | Very large data | Large (with batching) |
+| Feature scaling needed | No | Yes | Yes | No (uses covariance) | Usually |
+| Main settings | Trees, subsample size | $k$ | $\nu$, $\gamma$ | Support fraction | Model size |
+
+Practical guidance:
+
+- **Start with Isolation Forest** on tabular data: fast, few settings, no scaling. Add **LOF** when anomalies may be local, near dense groups.
+- **Use the labels you have** (past incidents, confirmed fraud) to compare methods by average precision and to set the threshold at a workload your team can investigate.
+- **Combine scores** (rank-average Isolation Forest and LOF, for example); different methods catch different kinds of anomaly.
+- **Watch for drift.** What's normal changes; refit regularly on recent data, and monitor the fraction of points flagged.
+- **Once labels accumulate, switch to supervised learning** on them, keeping the unsupervised scores as features. A classifier trained on real examples of the anomaly you care about usually beats any unsupervised score.
+
+<GoDeeper title="Go deeper: why Isolation Forest normalizes by a binary-search-tree constant">
+
+Why should path lengths in a tree built from random splits match search lengths in a binary search tree? An isolation tree on $\psi$ distinct points in one dimension, with random thresholds, partitions them exactly the way inserting them in random order partitions a BST: each split separates the points on either side of a random position. Isolating a point corresponds to searching for it, and a point that isn't in the subsample (a new point at scoring time) corresponds to an unsuccessful search, which ends at an empty slot.
+
+The expected depth of an unsuccessful search in a BST built from $\psi$ random insertions is a classic result from the analysis of binary search trees, and Liu et al. use it in the form $2H(\psi - 1) - 2(\psi - 1)/\psi$. With $\psi = 256$, $c(256) \approx 10.24$. So a point with average path length 10.24 scores $2^{-1} = 0.5$, one isolated after 3 splits scores about $2^{-0.29} \approx 0.82$, and one needing 15 scores about $0.36$. The normalization makes scores comparable across subsample sizes and datasets, though in practice the threshold is still best set from labels or an expected contamination rate.
+
+</GoDeeper>
+
+## 6. Minimal Implementation
+
+Isolation Forest and LOF from the definitions in Sections 2 and 3, checked against scikit-learn, then four methods compared on 1,000 normal points in a tight cluster and a loose one, with 20 global anomalies scattered widely and 10 local anomalies on a ring just outside the tight cluster:
+
+```python
+import numpy as np
+from sklearn.covariance import EllipticEnvelope
+from sklearn.ensemble import IsolationForest
+from sklearn.metrics import average_precision_score, roc_auc_score
+from sklearn.neighbors import LocalOutlierFactor, NearestNeighbors
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import OneClassSVM
+
+rng = np.random.default_rng(0)
+# Normal data: a tight cluster and a loose one. Anomalies: 20 scattered far away,
+# and 10 "local" ones just outside the tight cluster, which are still closer to it than the loose cluster's spread
+dense = rng.normal([0, 0], 0.3, (500, 2))
+loose = rng.normal([6, 6], 2.0, (500, 2))
+far = rng.uniform(-6, 14, (20, 2))
+angles = rng.uniform(0, 2 * np.pi, 10)
+local = 1.8 * np.column_stack([np.cos(angles), np.sin(angles)])   # a ring at 6 standard deviations from the tight centre
+X = np.vstack([dense, loose, far, local])
+y = np.r_[np.zeros(1000), np.ones(30)]                       # 1 = anomaly
+
+def c(n):                                                    # average path length of an unsuccessful BST search
+    return 2 * (np.log(n - 1) + 0.5772156649) - 2 * (n - 1) / n if n > 2 else (1.0 if n == 2 else 0.0)
+
+def isolation_tree(X, depth, limit, rng):
+    if depth >= limit or len(X) <= 1:
+        return ("leaf", len(X))
+    j = rng.integers(X.shape[1]); lo, hi = X[:, j].min(), X[:, j].max()
+    if lo == hi:
+        return ("leaf", len(X))
+    t = rng.uniform(lo, hi)                                  # random feature, random threshold: no criterion
+    return ("split", j, t, isolation_tree(X[X[:, j] < t], depth + 1, limit, rng),
+                          isolation_tree(X[X[:, j] >= t], depth + 1, limit, rng))
+
+def path_length(node, x, depth=0):
+    if node[0] == "leaf":
+        return depth + c(node[1])                            # unbuilt subtree: add its expected depth
+    _, j, t, left, right = node
+    return path_length(left if x[j] < t else right, x, depth + 1)
+
+def iforest_scores(X, n_trees=100, psi=256, seed=0):
+    rng = np.random.default_rng(seed)
+    limit = int(np.ceil(np.log2(psi)))
+    trees = [isolation_tree(X[rng.choice(len(X), psi, replace=False)], 0, limit, rng) for _ in range(n_trees)]
+    Eh = np.array([np.mean([path_length(tr, x) for tr in trees]) for x in X])
+    return 2 ** (-Eh / c(psi))                               # near 1: anomaly; well below 0.5: normal
+
+def lof_scores(X, k=20):
+    nn = NearestNeighbors(n_neighbors=k + 1).fit(X)
+    dist, idx = nn.kneighbors(X); dist, idx = dist[:, 1:], idx[:, 1:]   # drop the point itself
+    kdist = dist[:, -1]
+    reach = np.maximum(dist, kdist[idx])                     # reach-dist(a, b) = max(k-distance(b), d(a, b))
+    lrd = 1 / reach.mean(1)                                  # local reachability density
+    return lrd[idx].mean(1) / lrd                            # neighbours' density relative to the point's own
+
+ours_if = iforest_scores(X); ours_lof = lof_scores(X)
+sk_if = -IsolationForest(n_estimators=100, random_state=0).fit(X).score_samples(X)
+sk_lof = -LocalOutlierFactor(n_neighbors=20).fit(X).negative_outlier_factor_
+print(f"isolation forest: ours vs scikit-learn score correlation {np.corrcoef(ours_if, sk_if)[0, 1]:.3f}")
+print(f"LOF:              ours vs scikit-learn max difference    {np.abs(ours_lof - sk_lof).max():.1e}")
+
+Xs = StandardScaler().fit_transform(X)
+scores = {
+    "Mahalanobis (robust covariance)": -EllipticEnvelope(random_state=0).fit(X).score_samples(X),
+    "isolation forest": sk_if,
+    "LOF (k=20)": sk_lof,
+    "one-class SVM (RBF)": -OneClassSVM(nu=0.05, gamma=1.0).fit(Xs).score_samples(Xs),
+}
+is_local = np.r_[np.zeros(1020), np.ones(10)]                # the 10 anomalies hugging the tight cluster
+print("method                           ROC-AUC  avg precision   rank of the 10 local anomalies (median, of 1030)")
+for name, s in scores.items():
+    ranks = (-s).argsort().argsort() + 1                     # 1 = most anomalous
+    print(f"{name:32s} {roc_auc_score(y, s):.3f}    {average_precision_score(y, s):.3f}          "
+          f"{int(np.median(ranks[is_local == 1]))}")
+```
+
+Output (scikit-learn 1.7):
+
+```
+isolation forest: ours vs scikit-learn score correlation 0.989
+LOF:              ours vs scikit-learn max difference    4.3e-09
+method                           ROC-AUC  avg precision   rank of the 10 local anomalies (median, of 1030)
+Mahalanobis (robust covariance)  0.751    0.209          474
+isolation forest                 0.957    0.542          68
+LOF (k=20)                       0.952    0.806          12
+one-class SVM (RBF)              0.894    0.520          40
+```
+
+- **The implementations match.** Our LOF equals scikit-learn's to $10^{-8}$; our Isolation Forest's scores correlate 0.989 with scikit-learn's (both use random trees, so they agree in ranking rather than exactly).
+- **Isolation Forest has the best ROC-AUC (0.957) but LOF has much better average precision (0.806 against 0.542).** LOF puts more true anomalies at the very top of its list, which is what an analyst working through alerts experiences. The two numbers can disagree; for rare anomalies, trust average precision.
+- **Local anomalies separate the methods.** LOF puts the ring around the tight cluster at a median rank of 12; the one-class SVM at 40, Isolation Forest at 68, and robust Mahalanobis distance, which assumes one Gaussian blob, at 474, essentially unflagged.
+- **Some "anomalies" can't be found.** A few of the uniformly scattered anomalies landed inside the loose cluster (visible in the figure), where they look exactly like normal points. No method should flag them, and none does.
+
+## 7. When *Not* to Use Unsupervised Anomaly Detection
+
+| Situation | Better choice |
+|---|---|
+| You have a reasonable number of labelled anomalies of the type you care about | A supervised classifier with class weighting and a PR-AUC-based threshold |
+| Anomalies are defined by business rules (amount over a limit, impossible values) | Write the rules; they're exact and auditable |
+| Time series, where "anomalous" depends on time of day, trend and season | Forecast-based detection: flag large residuals from a [time-series model](/docs/machine-learning/time-series-forecasting) |
+| Images, audio, logs, other high-dimensional structured data | Reconstruction-based or embedding-based detection, not raw-feature distances |
+| "Normal" changes faster than you can refit | Streaming detectors with forgetting, plus monitoring |
+| The cost of a missed anomaly is extreme | Combine methods and human review; no unsupervised score should be the only safeguard |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Anomaly | A point in a low-density region of $p(\mathbf{x})$; global or local |
+| Evaluation | Use a few labels; prefer average precision to ROC-AUC for rare anomalies |
+| Isolation Forest | Random splits isolate anomalies in few steps; score $2^{-\mathbb{E}[h]/c(\psi)}$ |
+| $c(\psi)$ | Average unsuccessful-search depth in a random BST: $2H(\psi-1) - 2(\psi-1)/\psi$ |
+| Subsampling | $\psi = 256$ reduces masking and swamping and makes it fast |
+| LOF | Neighbours' local density over the point's own; about 1 is normal |
+| Reachability | $\max(k\text{-dist}(\mathbf{b}), d(\mathbf{a}, \mathbf{b}))$ smooths dense regions |
+| One-class SVM | Kernel boundary around normal data; $\nu$ bounds the outlier fraction |
+| Robust Mahalanobis | Distance from an MCD centre; right only for one blob |
+| Reconstruction | PCA or autoencoder error; best for high-dimensional structured data |
+| Practice | Isolation Forest first, LOF for local anomalies, labels to choose and threshold |
+
+---
+
+Next: [Topic Modeling](/docs/machine-learning/topic-modeling), finding the themes in a collection of documents, the last of the unsupervised methods.
+
+## Sources
+
+- F. T. Liu, K. M. Ting and Z.-H. Zhou, [Isolation Forest](https://doi.org/10.1109/ICDM.2008.17), ICDM 2008
+- M. M. Breunig, H.-P. Kriegel, R. T. Ng and J. Sander, [LOF: Identifying Density-Based Local Outliers](https://doi.org/10.1145/335191.335388), SIGMOD 2000
+- B. Schölkopf, J. C. Platt, J. Shawe-Taylor, A. J. Smola and R. C. Williamson, [Estimating the Support of a High-Dimensional Distribution](https://doi.org/10.1162/089976601750264965), *Neural Computation*, 2001
+- P. J. Rousseeuw and K. Van Driessen, [A Fast Algorithm for the Minimum Covariance Determinant Estimator](https://doi.org/10.1080/00401706.1999.10485670), *Technometrics*, 1999
+- S. Hariri, M. Carrasco Kind and R. J. Brunner, [Extended Isolation Forest](https://doi.org/10.1109/TKDE.2019.2947676), *IEEE TKDE*, 2021
+- V. Chandola, A. Banerjee and V. Kumar, [Anomaly Detection: A Survey](https://doi.org/10.1145/1541880.1541882), *ACM Computing Surveys*, 2009
+- scikit-learn, [Novelty and Outlier Detection](https://scikit-learn.org/stable/modules/outlier_detection.html)
