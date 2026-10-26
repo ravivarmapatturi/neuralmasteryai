@@ -1,67 +1,240 @@
 ---
 title: "Topic Modeling: LDA & BERTopic, In Full Depth"
 sidebar_position: 6.8
-description: "LDA and BERTopic derived -- discovering a document collection's themes with no labels, and the naming collision with the other, unrelated LDA."
+description: "Topic models derived: LDA's generative story, the Dirichlet prior and what its parameter does, inference by collapsed Gibbs sampling with the update worked out, choosing the number of topics and judging coherence, BERTopic's embed-reduce-cluster-describe pipeline and class-based TF-IDF, and a from-scratch Gibbs sampler that recovers known topics as well as scikit-learn."
 ---
 
-import __migratedImg0 from './img/topic-words.png';
-
+import topicsLight from './img/topic-words-light.png';
+import topicsDark from './img/topic-words.png';
 import TopicMixtureDiagram from '../../../viz/diagrams/TopicMixtureDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Topic Modeling: LDA & BERTopic, In Full Depth
 
-The last unsupervised family on this site, specifically for text: discovering the themes running through a collection of documents, with no labels telling you what those themes are in advance.
+[Clustering](/docs/machine-learning/kmeans-hierarchical-clustering) puts each item in one group. Documents rarely belong to just one theme: a news story about a football club's finances is partly sport and partly money. Topic models describe each document as a *mixture* of themes and each theme as a set of words that tend to appear together, with no labels given. This page derives the classic model, Latent Dirichlet Allocation, from the story it tells about how documents are written, works through how its hidden variables are inferred by Gibbs sampling, and covers how to choose and judge topics. It then covers BERTopic, which replaces word counts with sentence embeddings. A from-scratch Gibbs sampler recovers known topics from a synthetic corpus as accurately as scikit-learn.
 
-<div style={{border: '1px solid var(--nm-border)', borderLeft: '3px solid var(--nm-accent-secondary)', borderRadius: 8, padding: '12px 16px', margin: '16px 0', background: 'var(--nm-surface)'}}>
-<strong style={{color: 'var(--nm-accent-secondary)'}}>Naming collision, resolved</strong>
+**Two different LDAs.** This page's LDA, Latent Dirichlet Allocation, is an unsupervised model of text. [Linear Discriminant Analysis](/docs/machine-learning/naive-bayes-lda-qda#lda-linear-discriminant-analysis) is a supervised classifier. They share only the acronym.
 
-There are **two completely different "LDA"s** on this site. [Linear Discriminant Analysis](/docs/machine-learning/naive-bayes-lda-qda#lda-linear-discriminant-analysis) is a *supervised classifier* that models each class as a Gaussian. **Latent Dirichlet Allocation** — this page — is an *unsupervised topic model* for text, and shares nothing with the other LDA except the acronym. Context always disambiguates which one is meant, but it's worth internalizing the split explicitly the first time you see both.
-</div>
+<ELI5>
 
-## Latent Dirichlet Allocation (LDA)
+Imagine a newspaper writer who, for every story, first decides on a recipe: say 70% sport and 30% business. Then for every word they write, they roll a die to decide which of those themes the word comes from, and pick a word typical of that theme: "goal", "coach" for sport; "shares", "profit" for business.
 
-**The generative story LDA assumes**: every document is a mixture of a handful of topics, and every topic is a probability distribution over words. To "generate" a document under this model: pick a mixture of topics for it (e.g. 70% "finance," 30% "politics"), then for each word slot, pick a topic according to that mixture, and pick a word according to that topic's word distribution.
+Topic modeling runs that story backwards. Given only the finished articles, it works out what the themes must have been (which words go together) and what recipe each article used. Nobody tells it the themes or their names; it finds groups of words that keep turning up together, and people name them afterwards. Everything below is that idea made exact.
 
-LDA works backward from this story: given only the observed documents (no topic labels), infer the most likely topic-word distributions and document-topic mixtures that could have generated them. "Dirichlet" refers to the specific probability distribution (a distribution *over* distributions) used as a prior on both the topic mixtures and the word distributions — a smooth, computationally convenient way of encoding "most documents focus on relatively few topics, most topics have relatively few dominant words" before seeing any data.
+</ELI5>
 
-A real (simplified) version of the inference direction — given fixed topic-word distributions, estimate a document's real topic mixture from its actual words:
+## 1. The Generative Story
+
+### Latent Dirichlet Allocation (LDA)
+
+LDA (Blei, Ng and Jordan, 2003) describes how a corpus of $D$ documents over a vocabulary of $V$ words could have been produced from $K$ topics:
+
+1. For each topic $k$, draw a distribution over words, $\boldsymbol{\phi}_k \sim \operatorname{Dirichlet}(\beta)$. Topic $k$ is this vector: $\phi_{kw}$ is the probability that a word drawn from topic $k$ is word $w$.
+2. For each document $d$, draw its topic proportions, $\boldsymbol{\theta}_d \sim \operatorname{Dirichlet}(\alpha)$: $\theta_{dk}$ is the share of document $d$ about topic $k$.
+3. For each word position $i$ in document $d$:
+   - choose a topic $z_{di} \sim \operatorname{Categorical}(\boldsymbol{\theta}_d)$,
+   - choose the word $w_{di} \sim \operatorname{Categorical}(\boldsymbol{\phi}_{z_{di}})$.
+
+Only the words $w$ are observed. The topics $\boldsymbol{\phi}$, the proportions $\boldsymbol{\theta}$ and every word's topic $z$ are **latent**, and inference means working out what they probably are given the words. The model is **bag-of-words**: word order inside a document is ignored, and only counts matter.
+
+**Why Dirichlet priors.** A Dirichlet distribution is a distribution over probability vectors, and its parameter controls how concentrated they are. With a symmetric parameter $\alpha$ below 1, draws put most of their mass on a few components; above 1, they spread out evenly. So $\alpha \lt  1$ encodes "each document is about a few topics", and $\beta \lt  1$ encodes "each topic uses a fairly small set of words". The Dirichlet is also **conjugate** to the categorical distribution: after observing counts, the posterior is again a Dirichlet, with the counts added to the parameter. That's what makes the inference in Section 2 possible in closed form. Section 5 generates a corpus from this exact process with $\alpha = 0.3$, so the true topics and proportions are known.
+
+The inference direction is easiest to see in a small case. Fix the topics and estimate one document's mixture from its words:
 
 <TopicMixtureDiagram />
 
-**What a "topic" actually is**: not a labeled category — just a weighted list of words that tend to co-occur across the corpus:
+## 2. Inference by Collapsed Gibbs Sampling
 
-<img src={__migratedImg0} alt="Three LDA topics, each just a ranked list of words with weights — LDA discovers these purely from word co-occurrence, with no human-provided labels" style={{maxWidth: '100%'}} />
+The exact posterior over $\boldsymbol{\theta}$, $\boldsymbol{\phi}$ and $\mathbf{z}$ is intractable: its normalizing constant sums over every possible topic assignment of every word, $K^N$ terms for $N$ words. Two families of approximation are used: **variational inference**, which fits a simpler distribution by optimization (scikit-learn's method), and **sampling**. The collapsed Gibbs sampler of Griffiths and Steyvers (2004) is the clearest to derive.
 
-The words "Sports," "Finance," "Health" in the chart above are labels a *human* would assign after looking at each topic's top words — LDA itself only ever outputs the weighted word lists; it has no concept of what to call them.
+**Collapse.** Because the Dirichlet priors are conjugate, $\boldsymbol{\theta}$ and $\boldsymbol{\phi}$ can be integrated out exactly, leaving a distribution over the topic assignments $\mathbf{z}$ alone.
 
-**Training**: typically via Gibbs sampling or variational inference — genuinely different machinery from every gradient-descent-trained model elsewhere on this site, since LDA is a fully Bayesian generative model, not a differentiable one being directly optimized (see [Probability & Statistics — Bayes' Theorem](/docs/mathematics-for-ai/probability-statistics#bayes-theorem) for the conceptual foundation).
+**Sample one assignment at a time.** Gibbs sampling repeatedly resamples each $z_{di}$ from its conditional distribution given all the other assignments. Define counts that exclude the current word: $n_{dk}$, the number of words in document $d$ assigned to topic $k$; $n_{kw}$, the number of times word $w$ is assigned to topic $k$ across the corpus; and $n_k = \sum_w n_{kw}$. The conditional is a product of two factors:
 
-**Preprocessing matters enormously**: LDA works on a bag-of-words representation (word order discarded — see [Foundation Model Internals](/docs/llms-genai/foundation-model-internals#tokenization) for the tokenization step this requires), and typically needs stopword removal and stemming/lemmatization beforehand — raw text fed in directly produces poor, noisy topics dominated by common function words.
+$$
+P(z_{di} = k \mid \mathbf{z}_{\text{rest}}, \mathbf{w}) \;\propto\; \underbrace{(n_{dk} + \alpha)}_{\text{how much document } d \text{ uses topic } k}\;\times\;\underbrace{\frac{n_{k w_{di}} + \beta}{n_k + V\beta}}_{\text{how much topic } k \text{ likes this word}}
+$$
 
-## BERTopic
+Each factor is a Dirichlet posterior mean. The second is the probability of word $w$ under topic $k$, estimated from all the words currently assigned to $k$ with $\beta$ as a pseudo-count, the same smoothing as [naive Bayes' Laplace smoothing](/docs/machine-learning/naive-bayes-lda-qda). The first is the probability of topic $k$ in document $d$, estimated from the document's other words. A word is pulled toward topics its document already uses and topics that already use that word. That double pull is the whole mechanism: words that co-occur in documents end up sharing topics.
 
-A modern alternative built on an entirely different foundation: instead of LDA's bag-of-words generative model, BERTopic uses actual sentence/document **embeddings** (see [Foundation Model Internals](/docs/llms-genai/foundation-model-internals#embeddings)) from a pretrained transformer, then clusters those embeddings.
+**The algorithm**: initialize every $z$ at random; then sweep through every word in the corpus, removing its assignment from the counts, sampling a new topic from the conditional above, and adding it back. After a few hundred sweeps, the assignments are samples from the posterior, and the topics and proportions are read off the counts:
 
-**The pipeline**:
-1. Embed every document with a pretrained embedding model (capturing semantic meaning, not just word co-occurrence counts).
-2. Reduce dimensionality (typically **UMAP** — see [ICA, t-SNE & UMAP](/docs/machine-learning/ica-tsne-umap#umap-uniform-manifold-approximation-and-projection)) since embeddings are high-dimensional and raw clustering struggles there (the [curse of dimensionality](/docs/machine-learning/k-nearest-neighbors#the-curse-of-dimensionality) again).
-3. Cluster the reduced embeddings (typically **HDBSCAN** — see [DBSCAN & HDBSCAN](/docs/machine-learning/dbscan-hdbscan#hdbscan-hierarchical-dbscan)), where each resulting cluster *is* a topic.
-4. Extract representative words per cluster/topic using a TF-IDF-style scoring applied within each cluster, to produce the same kind of human-readable word list LDA produces.
+$$
+\hat{\phi}_{kw} = \frac{n_{kw} + \beta}{n_k + V\beta}, \qquad \hat{\theta}_{dk} = \frac{n_{dk} + \alpha}{n_d + K\alpha}
+$$
 
-**Why BERTopic often outperforms LDA in practice**: because it clusters on *semantic* embeddings rather than raw word co-occurrence, it correctly groups documents using synonyms or paraphrases together (e.g. "physician" and "doctor") — something bag-of-words LDA structurally cannot do, since it only ever sees which exact tokens co-occur, never their meaning.
+In Section 5, 300 sweeps over 400 documents recover the three planted topics exactly, with the correct dominant topic for 94.5% of documents. scikit-learn's variational method gets 95.3%. Each sweep costs $O(NK)$ for $N$ words, so plain Gibbs sampling is slow on large corpora (the pure-Python version here takes a few minutes); optimized samplers and online variational inference (Hoffman, Blei and Bach, 2010), which processes the corpus in mini-batches, are used at scale.
 
-## LDA vs. BERTopic
+<ThemedImage alt="Three bar charts, one per learned topic, each listing its top eight words with their probabilities: sport words, health words and finance words" sources={{light: topicsLight, dark: topicsDark}} />
 
-| | LDA | BERTopic |
-|---|---|---|
-| Text representation | Bag-of-words | Pretrained embeddings |
-| Captures synonyms/semantics | No | Yes |
-| Interpretability | High (direct word-topic weights) | Moderate (word extraction is a post-hoc step) |
-| Compute cost | Low | Higher (needs an embedding model + UMAP + HDBSCAN) |
-| Number of topics | Must specify upfront | Discovered automatically (via HDBSCAN, like [DBSCAN's noise-aware clustering](/docs/machine-learning/dbscan-hdbscan)) |
+A topic is only a ranked word list. The model never learns a name: "sport", "health" and "finance" are labels a person gives after reading the top words.
 
-## A Note on Standalone SVD
+## 3. Choosing K and Judging Topics
 
-**SVD** as a general-purpose matrix factorization tool is covered in depth in [Linear Algebra](/docs/mathematics-for-ai/linear-algebra#singular-value-decomposition-svd) (the underlying math) and [PCA, Kernel PCA & Truncated SVD](/docs/machine-learning/pca-svd#truncated-svd) (its application to sparse/text data, sometimes called LSA). There's no separate treatment needed here — it's the same decomposition, just applied earlier in this curriculum to dimensionality reduction rather than topic discovery specifically.
+**The number of topics $K$** must be chosen. Too few, and distinct themes are merged; too many, and themes are split into near-duplicates or junk topics. Two kinds of evidence are used:
 
-This completes the entire Unsupervised Learning family. Back to [Unsupervised Learning](/docs/machine-learning/unsupervised-learning) for the full overview, or [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics) to continue the Machine Learning roadmap.
+- **Held-out likelihood (perplexity).** Fit on most documents and measure how probable the model finds the rest. Lower perplexity means better prediction of unseen text. But Chang et al. (2009) ran experiments in which people judged topic quality, and found that models with better held-out likelihood often produced topics people found *less* interpretable. Predictive fit and meaningfulness are different targets.
+- **Coherence.** Score each topic by how often its top words actually co-occur in documents, for example the normalized pointwise mutual information between pairs of top words, measured on a reference corpus. Coherence tracks human judgments much better than perplexity (Röder, Both and Hinneburg, 2015), and choosing $K$ by average coherence plus reading the topics is standard practice.
+
+**Preprocessing decides much of the result.** Bag-of-words models are dominated by frequent words. Remove stop words, drop words that appear in almost every document (in Section 5, the "said", "year", "new" and "week" words appear in every topic's list with lower weight, because every topic uses them) and words too rare to estimate, and consider lemmatizing so that "match" and "matches" are counted together. Choices of $\alpha$ and $\beta$ also matter; learning an asymmetric $\alpha$ from the data (Wallach, Mimno and McCallum, 2009) often improves topics.
+
+<PredictFirst
+  question="An LDA model trained on hospital notes has a topic whose top words are 'physician, consultant, attending, MD'. Another topic's top words include 'doctor, GP, clinician'. What does this suggest?"
+  options={[
+    'The hospital has two distinct groups of staff',
+    'Bag-of-words LDA can split synonyms into separate topics when they are used in different documents, because it never sees meaning, only which exact words co-occur',
+    'K is too small',
+    'The notes were preprocessed correctly',
+  ]}
+  correctIndex={1}
+  explanation="LDA groups words by co-occurrence across documents. If some departments write 'physician' and others write 'doctor', the two words rarely appear together and may land in different topics, even though they mean the same thing. Embedding-based methods such as BERTopic place synonyms near each other and tend to merge them."
+/>
+
+## 4. BERTopic: Topics From Embeddings
+
+### BERTopic
+
+BERTopic (Grootendorst, 2022) builds topics from what [embedding models](/docs/llms-genai/foundation-model-internals#embeddings) already know about meaning, rather than from word counts. It's a pipeline of four steps, each a method covered elsewhere in this section:
+
+1. **Embed** each document with a pretrained sentence-embedding model. Documents about the same subject get nearby vectors, whether or not they share words: "the physician prescribed antibiotics" and "the doctor gave her penicillin" share no content words but land close together.
+2. **Reduce** the embeddings, typically from several hundred dimensions to about 5, with [UMAP](/docs/machine-learning/ica-tsne-umap#umap-uniform-manifold-approximation-and-projection), because density-based clustering degrades in high dimensions.
+3. **Cluster** with [HDBSCAN](/docs/machine-learning/dbscan-hdbscan#hdbscan-hierarchical-dbscan). Each cluster is a topic, the number of topics is found by the clustering, and documents in no dense region are labelled as outliers rather than forced into a topic.
+4. **Describe** each topic with **class-based TF-IDF**. Concatenate all documents in a cluster into one "class document", and weight each word by its frequency in that class times $\log\big(1 + A/f_w\big)$, where $f_w$ is the word's frequency across all classes and $A$ the average number of words per class. Words frequent in one topic and rare elsewhere rise to the top.
+
+Compared with LDA, the trade-offs are clear. BERTopic captures synonyms and paraphrases, needs less text preprocessing, and finds the number of topics itself. But it assigns each document to **one** topic (LDA's mixtures are its signature feature), it needs an embedding model and more compute, its topic words come from a separate post-hoc step rather than from the model itself, and its results inherit UMAP's and HDBSCAN's randomness and parameters. It's usually the stronger choice for short texts (reviews, tweets, support tickets), where documents have too few words for LDA's counts to say much.
+
+<GoDeeper title="Go deeper: LDA as matrix factorization, and its relatives">
+
+Collect the corpus into a $D \times V$ document-word count matrix. LDA's expected counts factor as $\Theta\Phi$: a $D \times K$ matrix of document-topic proportions times a $K \times V$ matrix of topic-word distributions, both nonnegative with rows summing to 1. That makes LDA a probabilistic, Bayesian cousin of two other factorizations:
+
+- **LSA** ([truncated SVD](/docs/machine-learning/pca-svd#truncated-svd)) factors the TF-IDF matrix with no constraints, so its "topics" have negative weights and are hard to read.
+- **NMF** (nonnegative matrix factorization) requires both factors to be nonnegative, which gives parts-based, readable topics, and with a KL-divergence loss it's closely related to probabilistic LSA (pLSA). It's fast and often a strong baseline.
+
+LDA adds the Dirichlet priors to pLSA, which regularizes the topic mixtures and gives a proper generative model for new documents. Extensions model correlations between topics (correlated topic models), change over time (dynamic topic models), and attached metadata such as author or date (structural topic models). Using an LLM to label or summarize topics, given their top words and example documents, is now common on top of any of these.
+
+</GoDeeper>
+
+## 5. Minimal Implementation
+
+A corpus generated by LDA's own story (three topics over a 22-word vocabulary, 400 documents of 60 words, $\alpha = 0.3$), so the true topics and mixtures are known. Then the collapsed Gibbs sampler of Section 2 from scratch, and scikit-learn's variational LDA, each scored against the truth after matching their arbitrarily ordered topics to the real ones:
+
+```python
+import numpy as np
+from itertools import permutations
+from sklearn.decomposition import LatentDirichletAllocation
+
+# A corpus generated by LDA's own story, so the true topics are known
+rng = np.random.default_rng(0)
+vocab = ["goal", "match", "team", "coach", "league", "score",          # sport
+         "market", "shares", "bank", "rates", "profit", "investor",     # finance
+         "vaccine", "doctor", "patient", "clinic", "virus", "therapy",  # health
+         "year", "new", "said", "week"]                                 # words every topic uses
+V, K = len(vocab), 3
+beta_true = np.full((K, V), 0.005)
+for k in range(K):
+    beta_true[k, 6 * k:6 * k + 6] = 0.13
+    beta_true[k, 18:] = 0.04
+beta_true /= beta_true.sum(1, keepdims=True)
+theta_true = rng.dirichlet([0.3] * K, size=400)                        # each document's topic mix
+docs = []
+for theta in theta_true:
+    z = rng.choice(K, size=60, p=theta)                                # a topic for every word slot
+    docs.append(np.array([rng.choice(V, p=beta_true[k]) for k in z]))  # then a word from that topic
+
+def gibbs_lda(docs, K, V, alpha=0.3, beta=0.1, iters=300, seed=0):
+    rng = np.random.default_rng(seed)
+    z = [rng.integers(K, size=len(d)) for d in docs]
+    ndk = np.array([np.bincount(zd, minlength=K) for zd in z], dtype=float)
+    nkw = np.zeros((K, V)); nk = np.zeros(K)
+    for d, zd in zip(docs, z):
+        np.add.at(nkw, (zd, d), 1); np.add.at(nk, zd, 1)
+    for _ in range(iters):
+        for j, (d, zd) in enumerate(zip(docs, z)):
+            for i, w in enumerate(d):
+                k = zd[i]                                              # remove this word's current assignment
+                ndk[j, k] -= 1; nkw[k, w] -= 1; nk[k] -= 1
+                p = (ndk[j] + alpha) * (nkw[:, w] + beta) / (nk + V * beta)   # collapsed conditional
+                k = rng.choice(K, p=p / p.sum())
+                zd[i] = k
+                ndk[j, k] += 1; nkw[k, w] += 1; nk[k] += 1
+    phi = (nkw + beta) / (nk[:, None] + V * beta)                      # topic-word estimates
+    theta = (ndk + alpha) / (ndk.sum(1, keepdims=True) + K * alpha)    # document-topic estimates
+    return phi, theta
+
+def report(name, phi, theta):
+    # topics come out in arbitrary order: match them to the true ones by the best permutation
+    perm = max(permutations(range(K)), key=lambda p: sum(phi[p[k]] @ beta_true[k] for k in range(K)))
+    phi, theta = phi[list(perm)], theta[:, list(perm)]
+    print(f"{name}:")
+    for k in range(K):
+        print("   topic", k, " ".join(vocab[i] for i in np.argsort(-phi[k])[:6]))
+    print(f"   documents whose main topic is right: {np.mean(theta.argmax(1) == theta_true.argmax(1)):.3f}   "
+          f"mean error in topic mix: {np.abs(theta - theta_true).sum(1).mean() / 2:.3f}")
+
+phi, theta = gibbs_lda(docs, K, V)
+report("collapsed Gibbs sampling (from scratch)", phi, theta)
+
+counts = np.array([np.bincount(d, minlength=V) for d in docs])
+lda = LatentDirichletAllocation(K, doc_topic_prior=0.3, topic_word_prior=0.1, random_state=0, max_iter=100).fit(counts)
+report("scikit-learn (variational Bayes)", lda.components_ / lda.components_.sum(1, keepdims=True), lda.transform(counts))
+```
+
+Output (scikit-learn 1.7):
+
+```
+collapsed Gibbs sampling (from scratch):
+   topic 0 score coach team goal league match
+   topic 1 market rates bank shares profit investor
+   topic 2 clinic doctor virus therapy vaccine patient
+   documents whose main topic is right: 0.945   mean error in topic mix: 0.068
+scikit-learn (variational Bayes):
+   topic 0 coach score goal team league match
+   topic 1 market shares rates bank profit investor
+   topic 2 vaccine therapy virus clinic doctor patient
+   documents whose main topic is right: 0.953   mean error in topic mix: 0.066
+```
+
+- **The topics are recovered.** Both methods find the three planted topics with exactly the right six words at the top of each, in a different order from the generating process (topics are identified only up to relabelling, which the permutation matching handles).
+- **Mixtures are recovered too.** The dominant topic is correct for 94.5% (Gibbs) and 95.3% (variational) of documents. The average error in each document's estimated topic mixture is about 0.07 out of a maximum of 1 (half the summed absolute difference). The errors come mostly from documents whose true mixture is nearly even, where 60 words can't pin it down.
+- **Two inference methods, one model.** Sampling and variational inference reach essentially the same answer here, by very different routes.
+
+## 6. When *Not* to Use Topic Models
+
+| Situation | Better choice |
+|---|---|
+| You know the categories you care about and can label some examples | A supervised [text classifier](/docs/machine-learning/supervised-learning); it optimizes for your categories, not for word co-occurrence |
+| Very short texts (tweets, titles, queries) with LDA | BERTopic or clustering of embeddings; a few words give LDA almost no counts to work with |
+| You need each document's single best theme for routing | Clustering or classification; a mixture is the wrong output |
+| Meaning matters more than vocabulary (synonyms, paraphrase, multiple languages) | Embedding-based methods |
+| Results must be stable and reproducible for reporting | Fix seeds, report coherence across several runs, or use NMF; topic models vary between runs |
+| You want to summarize a few dozen documents | Read them, or ask an LLM to summarize; topic models need hundreds of documents or more |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Generative story | Topics are word distributions; documents are topic mixtures; each word picks a topic, then a word |
+| Dirichlet $\alpha \lt  1$ | Documents use few topics; $\beta \lt  1$: topics use few words |
+| Conjugacy | Dirichlet prior plus counts gives a Dirichlet posterior; enables collapsing |
+| Gibbs update | $P(z = k) \propto (n_{dk} + \alpha)\,\frac{n_{kw} + \beta}{n_k + V\beta}$ |
+| Estimates | $\hat{\phi}_{kw} = \frac{n_{kw} + \beta}{n_k + V\beta}$, $\hat{\theta}_{dk} = \frac{n_{dk} + \alpha}{n_d + K\alpha}$ |
+| Topics | Ranked word lists; people supply the names |
+| Choosing $K$ | Coherence and reading the topics; perplexity alone favours less interpretable topics |
+| Bag-of-words limit | Synonyms used in different documents can split into different topics |
+| BERTopic | Embed, reduce (UMAP), cluster (HDBSCAN), describe (class-based TF-IDF); one topic per document |
+
+---
+
+Next: [Anomaly Detection](/docs/machine-learning/anomaly-detection), finding the points that don't fit, which completes the unsupervised family.
+
+## Sources
+
+- D. M. Blei, A. Y. Ng and M. I. Jordan, [Latent Dirichlet Allocation](https://jmlr.org/papers/v3/blei03a.html), *JMLR*, 2003
+- T. L. Griffiths and M. Steyvers, [Finding Scientific Topics](https://doi.org/10.1073/pnas.0307752101), *PNAS*, 2004
+- M. D. Hoffman, D. M. Blei and F. Bach, [Online Learning for Latent Dirichlet Allocation](https://papers.nips.cc/paper/2010/hash/71f6278d140af599e06ad9bf1ba03cb0-Abstract.html), NeurIPS 2010
+- J. Chang, J. Boyd-Graber, S. Gerrish, C. Wang and D. M. Blei, [Reading Tea Leaves: How Humans Interpret Topic Models](https://papers.nips.cc/paper/2009/hash/f92586a25bb3145facd64ab20fd554ff-Abstract.html), NeurIPS 2009
+- M. Röder, A. Both and A. Hinneburg, [Exploring the Space of Topic Coherence Measures](https://doi.org/10.1145/2684822.2685324), WSDM 2015
+- H. M. Wallach, D. Mimno and A. McCallum, [Rethinking LDA: Why Priors Matter](https://papers.nips.cc/paper/2009/hash/0d0871f0806eae32d30983b62252da50-Abstract.html), NeurIPS 2009
+- M. Grootendorst, [BERTopic: Neural Topic Modeling with a Class-Based TF-IDF Procedure](https://arxiv.org/abs/2203.05794), 2022
+- scikit-learn, [Latent Dirichlet Allocation](https://scikit-learn.org/stable/modules/decomposition.html#latentdirichletallocation)
