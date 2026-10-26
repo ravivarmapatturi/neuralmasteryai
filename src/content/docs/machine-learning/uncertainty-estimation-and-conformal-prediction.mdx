@@ -1,64 +1,219 @@
 ---
-title: "Uncertainty Estimation & Conformal Prediction"
+title: "Uncertainty Estimation & Conformal Prediction, In Full Depth"
 sidebar_position: 6.06
-description: "Conformal prediction's real coverage guarantee -- a prediction range built to contain the true answer as often as promised, regardless of model quality."
+description: "Prediction uncertainty made precise: aleatoric vs. epistemic uncertainty, quantile regression and the pinball loss, ensembles, split conformal prediction with its coverage theorem proved, conformalized quantile regression for adaptive intervals, conformal sets for classification, and what breaks the guarantee, all measured on data where the noise changes with the input."
 ---
 
 import ConformalPredictionDiagram from '../../../viz/diagrams/ConformalPredictionDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
 
-# Uncertainty Estimation & Conformal Prediction
+# Uncertainty Estimation & Conformal Prediction, In Full Depth
 
-[Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics) covers calibration — "are the predicted *probabilities* trustworthy." This page covers a related but distinct question: "how confident should I be in *this specific prediction*," which matters most exactly when a model needs to know what it doesn't know.
+[Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics) covered calibration: whether a model's probabilities are right *on average*. This page asks how sure we can be about *one particular* prediction, and how to turn a point prediction into a range that contains the true value with a stated probability. It separates the two kinds of uncertainty, covers quantile regression and ensembles (useful but without guarantees), then derives **conformal prediction**, a wrapper that turns any model into one whose intervals are guaranteed to cover the truth at the promised rate, proves the guarantee, and shows the version that adapts its width to how noisy each input is. The experiments measure coverage overall and in the noisy and quiet regions separately, and show what happens when the guarantee's one assumption is broken.
 
 <ELI5>
 
-A weather forecaster saying "70% chance of rain" is making a calibration claim: across every day they said 70%, it should actually rain about 70% of the time. Conformal prediction answers a different question: instead of a single number's trustworthiness, it gives you a *range* — "the temperature tomorrow will be between 60°F and 75°F" — built specifically so that range genuinely contains the true answer at least as often as promised, no matter how good or bad the underlying forecasting model actually is. That last part is the surprising bit: the guarantee doesn't require the model to be any good, only that you calibrate the range using real held-out examples first.
+A weather forecaster who says "about 20 degrees tomorrow" is giving a point prediction. A more useful forecast is "between 17 and 23 degrees, and on nine days in ten my ranges like this one are right". That second claim can be checked, and a forecaster can earn it.
+
+Conformal prediction is a way to earn it for any model. Before using the model, test it on examples it hasn't seen and look at how far off it was. If 90% of its misses were within 3 degrees, put a 3-degree margin on every future forecast. That simple rule comes with a real guarantee, as long as tomorrow's examples are like the ones it was tested on. Everything below is that idea made exact, and improved so the margin can be narrow on calm days and wide on stormy ones.
 
 </ELI5>
 
-## Prediction Intervals and Ensembles
+## 1. Two Kinds of Uncertainty
 
-Two lighter-weight approaches, worth knowing before the main event below:
+A prediction can be uncertain for two different reasons, and they behave differently:
 
-- **Prediction intervals via quantile regression**: instead of a single predicted value, train separate models (or output heads) for different quantiles of the target (10th, 50th, 90th percentile) — giving a real range directly, rather than a point estimate plus an assumed error distribution.
-- **Ensemble-based uncertainty**: train several models (or use dropout at inference time — "Monte Carlo dropout") and treat *disagreement* across them as the uncertainty signal — high variance across members on a given input suggests the model is extrapolating into territory it hasn't seen reliable examples of.
+- **Aleatoric uncertainty** is randomness in the target itself. Two houses with identical features sell for different prices; a customer with a given history may or may not churn. More data doesn't reduce it; it's a property of the problem. It can also vary with the input: in the experiments below, the noise grows from small at $x = 0$ to large at $x = 10$.
+- **Epistemic uncertainty** is the model's own ignorance: too little data near this input, or an input unlike anything in training. More data does reduce it.
 
-Both are useful, and both share the same weakness: neither comes with a guarantee. A quantile model's 90% interval might actually contain the truth 70% of the time if the model is wrong about the error distribution; an ensemble's disagreement is a heuristic signal, not a calibrated probability.
+A good interval reflects both. Quantile regression (Section 2) learns aleatoric spread directly; ensembles (Section 2) mostly measure epistemic disagreement; and conformal prediction (Sections 3 to 5) calibrates whatever interval method you use so that its total coverage is right.
 
-## Conformal Prediction: the Part With an Actual Guarantee
+## 2. Quantile Regression and Ensembles
 
-This is the part of "uncertainty estimation" that most explanations assert rather than prove: **conformal prediction** produces intervals with a real, distribution-free coverage guarantee — true regardless of what model produced the predictions, and regardless of whether the underlying data is Gaussian, heteroskedastic, or anything else. Angelopoulos & Bates' ["A Gentle Introduction to Conformal Prediction and Distribution-Free Uncertainty Quantification"](https://arxiv.org/abs/2107.07511) states the real recipe as four steps:
+**Quantile regression.** The [Supervised Learning page](/docs/machine-learning/supervised-learning) showed that squared error makes a model predict the conditional mean and absolute error the conditional median. Generalize the absolute error by weighting under- and over-predictions differently. The **pinball loss** for quantile level $\tau$ is
 
-1. Start from any fitted model with *some* heuristic notion of uncertainty — even a bad one.
-2. Define a **score function** $s(x, y) \in \mathbb{R}$ where larger scores mean worse agreement between $x$ and $y$ (for regression, the simplest real choice is the absolute residual, $s(x,y) = |y - \hat f(x)|$).
-3. On a fresh **calibration set** of $n$ examples never used for training, compute $\hat q$ as the $\lceil (n+1)(1-\alpha) \rceil / n$ empirical quantile of the calibration scores $s_1, \dots, s_n$ — a small but load-bearing finite-sample correction on top of the "ordinary" $1-\alpha$ quantile.
-4. Build the prediction set for a new point: $C(x_{\text{test}}) = \{y : s(x_{\text{test}}, y) \le \hat q\}$ — for the absolute-residual score, this is exactly the interval $[\hat f(x) - \hat q,\ \hat f(x) + \hat q]$.
+$$
+L_\tau(y, \hat{y}) = \begin{cases} \tau\,(y - \hat{y}) & y \ge \hat{y} \\ (1 - \tau)\,(\hat{y} - y) & y \lt  \hat{y} \end{cases}
+$$
 
-**Theorem 1** (Vovk, Gammerman & Saunders, as stated in Angelopoulos & Bates): if the calibration points and the test point are exchangeable (i.i.d. is the standard special case), then
+Its expected value is minimized where $\tau P(y \gt  \hat{y}) = (1-\tau) P(y \lt  \hat{y})$, which is where $P(y \lt  \hat{y}) = \tau$: at the conditional $\tau$-**quantile**. Training one model at $\tau = 0.05$ and another at $\tau = 0.95$ gives a 90% interval whose width follows the noise, narrow where the data is tight and wide where it's spread out. Linear models, gradient boosting (`loss="quantile"`) and neural networks can all be trained this way. The weakness is that the quantiles are estimates: with limited data or a misspecified model, a nominal 90% interval might cover 85% of cases, and nothing tells you so. In Section 7 the uncalibrated boosting quantiles cover 89.0% overall and only 87.1% in the low-noise region.
 
-$$P\big(Y_{\text{test}} \in C(X_{\text{test}})\big) \ge 1 - \alpha$$
+**Ensembles.** Train several models on different bootstrap samples, seeds or architectures, and treat their disagreement as uncertainty: where they agree, the data pinned the answer down; where they disagree, it didn't. Deep ensembles (Lakshminarayanan, Pritzel and Blundell, 2017) are a strong baseline for neural networks, and Monte Carlo dropout is a cheap approximation. Disagreement is a good signal of epistemic uncertainty and of inputs unlike the training data, but it isn't calibrated: "the models disagree by 2 units" doesn't translate into "90% of outcomes fall within 2 units".
 
-The proof sketch is genuinely simple, which is part of why the guarantee is so robust: exchangeability means the true test score is equally likely to land in any rank position among the $n+1$ scores (the $n$ calibration scores plus the test score itself) — so the probability the test score exceeds the $\lceil(n+1)(1-\alpha)\rceil$-th largest of those $n+1$ values is, by construction, at most $\alpha$. Nothing in that argument uses the *quality* of the underlying model or score function — a bad score function still gets valid coverage, it just produces wide, uninformative intervals rather than invalid ones. Coverage and informativeness are separate axes: conformal prediction only promises the first.
+Both are useful, and neither comes with a guarantee. The next section adds one.
 
-<GoDeeper title="Go deeper: the sketch above, made fully rigorous">
+## 3. Split Conformal Prediction
 
-Let $s_1, \dots, s_n$ be the calibration scores and $s_{n+1}$ the (unknown, at decision time) test score, with $k = \lceil (n+1)(1-\alpha) \rceil$ so that $\hat q$ is the $k$-th smallest of $s_1,\dots,s_n$. Exchangeability of $(X_1,Y_1),\dots,(X_{n+1},Y_{n+1})$ means every ordering of $(s_1,\dots,s_{n+1})$ is equally likely, so $\text{rank}(s_{n+1})$ among all $n+1$ scores is uniformly distributed over $\{1,\dots,n+1\}$ (ties broken at random). The prediction set fails to cover — $s_{n+1} > \hat q$ — exactly when $s_{n+1}$'s rank exceeds $k$, i.e. $\text{rank}(s_{n+1}) \in \{k+1,\dots,n+1\}$, which is $n+1-k$ of the $n+1$ equally-likely rank positions:
+Conformal prediction (Vovk, Gammerman and Shafer, 2005) wraps any model. The simplest version, **split conformal**, needs a set of labelled **calibration** examples that the model never trained on:
 
-$$P(s_{n+1} > \hat q) = \frac{n+1-k}{n+1} \le \frac{n+1-(n+1)(1-\alpha)}{n+1} = \alpha$$
+1. Fit any model $\hat{f}$ on training data.
+2. Choose a **score function** $s(x, y)$ that's large when $y$ disagrees with the model. For regression the simplest is the absolute residual, $s(x, y) = \lvert y - \hat{f}(x)\rvert$.
+3. Compute the scores $s_1, \dots, s_n$ on the $n$ calibration examples, and let $\hat{q}$ be the $k$-th smallest, with
 
-using $k = \lceil (n+1)(1-\alpha) \rceil \ge (n+1)(1-\alpha)$ in the second step. So $P(Y_{\text{test}} \in C(X_{\text{test}})) = P(s_{n+1} \le \hat q) \ge 1-\alpha$ — Theorem 1, from nothing but counting rank positions among exchangeable values.
+$$
+k = \big\lceil (n + 1)(1 - \alpha)\big\rceil
+$$
 
-</GoDeeper>
+4. For a new input, the prediction set is every $y$ whose score is at most $\hat{q}$: for the absolute residual, the interval $[\hat{f}(x) - \hat{q},\; \hat{f}(x) + \hat{q}]$.
+
+**The guarantee.** If the calibration examples and the test example are **exchangeable** (any ordering of them is equally likely; i.i.d. data is the standard case), then
+
+$$
+P\big(Y_{\text{test}} \in C(X_{\text{test}})\big) \ge 1 - \alpha
+$$
+
+**Proof.** Consider the $n + 1$ scores together: the $n$ calibration scores and the test score $s_{n+1}$. By exchangeability, every ordering of these values is equally likely, so the rank of $s_{n+1}$ among them is uniformly distributed over $1, \dots, n + 1$ (breaking ties at random). The test point is outside the interval exactly when $s_{n+1} \gt  \hat{q}$, the $k$-th smallest calibration score, which happens only if $s_{n+1}$'s rank is $k + 1$ or higher: $n + 1 - k$ of the $n + 1$ equally likely positions. So
+
+$$
+P(s_{n+1} \gt  \hat{q}) \le \frac{n + 1 - k}{n + 1} \le \frac{n + 1 - (n+1)(1-\alpha)}{n + 1} = \alpha
+$$
+
+using $k \ge (n+1)(1-\alpha)$. That's the whole argument. It never mentions the model, the score function, or the distribution of the data. A terrible model still gets valid coverage; its intervals are just wide. The "$+1$" in $k$ is the finite-sample correction that makes the guarantee exact for any $n$, rather than approximately true for large $n$. (When $k \gt  n$, which happens for very small $n$ or $\alpha$, the interval must be infinite.)
+
+**What the guarantee says, precisely.** The probability is over the random draw of the calibration set *and* the test point. For one fixed calibration set, the realized coverage on future data is a random quantity centred just above $1 - \alpha$, with spread of about $\sqrt{\alpha(1-\alpha)/n}$. In Section 7, repeating calibration 300 times with $n = 1{,}000$ gives a mean coverage of exactly 0.900, with the middle 90% of runs between 0.884 and 0.917. Larger calibration sets narrow that spread.
 
 <ConformalPredictionDiagram />
 
-That diagram is the guarantee checked, not just stated: the calibration and test sets are two different random draws, $\hat q$ is computed only from calibration data, and the reported coverage is measured on the held-out test points afterward. Moving the target miscoverage slider changes $\hat q$ and the interval width, but the measured rate should track the target at every setting — including at $\alpha = 0.3$, where the underlying regression fit is visibly worse in the noisy region, because the guarantee doesn't depend on the fit being good.
+## 4. Adaptive Intervals: Conformalized Quantile Regression
 
-### Check the Guarantee Yourself, in Real Python
+Split conformal with absolute residuals adds the same $\hat{q}$ everywhere, so its intervals have **constant width**. That satisfies the guarantee, which is about coverage averaged over all inputs (**marginal coverage**), but it can be badly unbalanced: too wide where the data is quiet and too narrow where it's noisy. In Section 7, with noise that grows with $x$, the constant-width interval covers 100% of points with $x \lt  3$ and only 79.6% with $x \gt  7$, averaging out to 91.7%.
 
-The diagram animates the guarantee; this runs the actual four-step recipe from above — real synthetic data, a real (deliberately ordinary) least-squares fit, real calibration, and a real coverage measurement on fresh test data the calibration step never saw:
+**Conformalized quantile regression** (CQR; Romano, Patterson and Candès, 2019) combines the adaptive width of quantile regression with the guarantee of conformal prediction. Fit lower and upper quantile models $\hat{q}_{\text{lo}}(x)$ and $\hat{q}_{\text{hi}}(x)$. Use the score
+
+$$
+s(x, y) = \max\big(\hat{q}_{\text{lo}}(x) - y,\;\; y - \hat{q}_{\text{hi}}(x)\big)
+$$
+
+which is negative when $y$ is inside the quantile band and measures how far outside it is otherwise. Calibrate this score exactly as before, and widen (or narrow, if $\hat{q}$ is negative) the band by $\hat{q}$: $C(x) = [\hat{q}_{\text{lo}}(x) - \hat{q},\; \hat{q}_{\text{hi}}(x) + \hat{q}]$. The same proof applies, so marginal coverage is guaranteed; and because the band follows the quantile models, coverage is much more even across inputs. In Section 7, CQR covers 90.4% overall, 90.1% in the quiet region and 91.1% in the noisy one, with intervals averaging 2.8 wide where the noise is small and 12.4 where it's large.
+
+**Conditional coverage can't be guaranteed in general.** The ideal would be 90% coverage for every individual input, not just on average. Vovk (2012) and Barber et al. (2021) showed that no method can guarantee that without assumptions, beyond trivial infinite intervals. What can be done is coverage within chosen groups (**Mondrian conformal prediction**: calibrate separately per group, such as per region or demographic), and score functions like CQR's that make conditional coverage approximately right in practice.
+
+<PredictFirst
+  question="You calibrate split conformal intervals on last year's customers, then apply them to a new market where customers spend far more than any in your data. What coverage should you expect?"
+  options={[
+    'At least 90%, since conformal prediction guarantees coverage for any model',
+    'Possibly much less: the guarantee requires calibration and test data to be exchangeable, and the new market breaks that',
+    'Exactly 90%',
+    'More than 90%, because the intervals widen automatically for unusual inputs',
+  ]}
+  correctIndex={1}
+  explanation="The proof rests entirely on the test score being equally likely to fall anywhere among the calibration scores. If test data comes from a different distribution, the test scores can be systematically larger, and coverage falls below target with no warning. In Section 7, shifting the test inputs to a range the calibration data never covered drops coverage from 0.90 to 0.68."
+/>
+
+## 5. Classification, Shift, and Other Variants
+
+**Classification.** For a classifier with predicted probabilities $\hat{p}(y \mid x)$, use the score $s(x, y) = 1 - \hat{p}(y \mid x)$, one minus the probability given to the true class. Calibrate $\hat{q}$ as before; the prediction **set** for a new input is every class with $1 - \hat{p}(y \mid x) \le \hat{q}$. Confident inputs get a single class; ambiguous ones get two or three; and the set contains the true class at least $1 - \alpha$ of the time. The set size is itself a useful uncertainty signal: route inputs with large sets to a person. Adaptive prediction sets (APS) and their regularized version (RAPS; Angelopoulos et al., 2021) give smaller sets with more even coverage across easy and hard inputs.
+
+**When exchangeability fails.** The guarantee's single assumption is exchangeability, and it's exactly what deployment tends to break: time series (the future isn't exchangeable with the past), distribution shift, feedback loops. Section 7 shows the cost: test inputs from a range the calibration data never covered drop coverage from 0.90 to 0.68, silently. Remedies include **weighted conformal prediction** (Tibshirani et al., 2019), which reweights calibration scores by an estimated likelihood ratio between test and calibration inputs when the shift is in $x$ only, and **adaptive conformal inference** (Gibbs and Candès, 2021), which adjusts $\alpha$ online from observed misses so long-run coverage stays on target even under drift. Monitoring realized coverage in production is the simplest safeguard.
+
+**Using all the data.** Split conformal sets aside a calibration set, which costs training data. **Cross-conformal** and **jackknife+** (Barber et al., 2021) reuse every point for both training and calibration through cross-validation, with slightly weaker but still finite-sample guarantees.
+
+<GoDeeper title="Go deeper: conformal prediction for language models">
+
+The same recipe works for systems whose internals are inaccessible, which has made it popular for LLMs. Some examples of the score functions used:
+
+- **Multiple-choice and classification tasks**: one minus the model's probability (or a sampled frequency) for each option, giving answer sets with guaranteed coverage of the right answer.
+- **Open-ended generation**: sample several answers, score each by how often semantically equivalent answers recur or by a self-evaluation score, and calibrate a threshold so that the set of accepted answers contains a correct one at the target rate; Quach et al. (2024) develop this as conformal language modeling.
+- **Abstention**: calibrate a confidence threshold so that, among the questions the model answers, the error rate is below a target, and route the rest to a human.
+
+The guarantee is exactly as strong, and as weak, as the exchangeability assumption: calibration questions must be representative of the questions the system will see.
+
+</GoDeeper>
+
+## 6. Choosing a Method
+
+| Need | Method |
+|---|---|
+| A quick interval with a guarantee for any model | Split conformal with absolute residuals |
+| Intervals that adapt to input-dependent noise | Conformalized quantile regression |
+| Uncertainty about inputs unlike the training data | Ensembles or other epistemic signals, used inside a conformal score |
+| Classification with guaranteed coverage | Conformal prediction sets (APS or RAPS) |
+| Guarantees per group (region, segment) | Mondrian (group-wise) calibration |
+| Drifting data, time series | Adaptive conformal inference, plus coverage monitoring |
+| Can't spare a calibration set | Jackknife+ or cross-conformal |
+
+## 7. Minimal Implementation
+
+Data with noise that grows with $x$ (standard deviation 0.2 at $x = 0$, 4.2 at $x = 10$). Five interval methods at a 90% target, each scored on 20,000 fresh test points for coverage and width overall and in the quiet ($x \lt  3$) and noisy ($x \gt  7$) regions; then the distribution-shift failure, and coverage across 300 independent calibration sets:
+
+```python
+import numpy as np
+from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.linear_model import LinearRegression
+
+rng = np.random.default_rng(0)
+def sample(n, lo=0, hi=10):
+    x = rng.uniform(lo, hi, n)
+    y = 2 * x + 5 + rng.normal(0, 0.2 + 0.4 * x, n)          # noise grows with x
+    return x[:, None], y
+X_tr, y_tr = sample(2000); X_cal, y_cal = sample(1000); X_te, y_te = sample(20000)
+alpha = 0.1
+k = int(np.ceil((len(y_cal) + 1) * (1 - alpha)))               # finite-sample-corrected rank
+
+def report(name, lo, hi, x, y):
+    cover = (y >= lo) & (y <= hi)
+    low, high = x[:, 0] < 3, x[:, 0] > 7
+    print(f"{name:34s} coverage {cover.mean():.3f}   (x<3: {cover[low].mean():.3f}, x>7: {cover[high].mean():.3f})   "
+          f"mean width {np.mean(hi - lo):.2f}  (x<3: {np.mean((hi - lo)[low]):.2f}, x>7: {np.mean((hi - lo)[high]):.2f})")
+
+# 1. Split conformal with absolute residuals: a constant-width band
+lin = LinearRegression().fit(X_tr, y_tr)
+q = np.sort(np.abs(y_cal - lin.predict(X_cal)))[k - 1]
+p = lin.predict(X_te)
+report("split conformal, |residual|", p - q, p + q, X_te, y_te)
+
+# 2. Quantile regression alone: adaptive width, but no guarantee
+ql = GradientBoostingRegressor(loss="quantile", alpha=alpha / 2, random_state=0).fit(X_tr, y_tr)
+qh = GradientBoostingRegressor(loss="quantile", alpha=1 - alpha / 2, random_state=0).fit(X_tr, y_tr)
+report("quantile regression (uncalibrated)", ql.predict(X_te), qh.predict(X_te), X_te, y_te)
+
+# 3. Conformalized quantile regression (CQR): calibrate the quantile band
+s = np.maximum(ql.predict(X_cal) - y_cal, y_cal - qh.predict(X_cal))   # how far outside the band each point is
+q_cqr = np.sort(s)[k - 1]
+report("conformalized quantile regression", ql.predict(X_te) - q_cqr, qh.predict(X_te) + q_cqr, X_te, y_te)
+
+# 4. A deliberately bad model still gets coverage, at the cost of width
+bad = lambda X: np.full(len(X), y_tr.mean())                  # predicts a constant
+q_bad = np.sort(np.abs(y_cal - bad(X_cal)))[k - 1]
+report("split conformal, constant model", bad(X_te) - q_bad, bad(X_te) + q_bad, X_te, y_te)
+
+# 5. Exchangeability broken: test inputs come from a range the calibration data never covered
+X_sh, y_sh = sample(20000, lo=8, hi=14)
+p = lin.predict(X_sh)
+cover = (np.abs(y_sh - p) <= q).mean()
+print(f"split conformal under distribution shift (x in 8..14): coverage {cover:.3f}, target {1 - alpha:.2f}")
+
+# 6. The guarantee is an average over calibration sets: repeat the constant-model calibration 300 times
+covs = []
+for _ in range(300):
+    Xc, yc = sample(1000)
+    qb = np.sort(np.abs(yc - bad(Xc)))[k - 1]
+    covs.append((np.abs(y_te - bad(X_te)) <= qb).mean())
+print(f"constant model, 300 fresh calibration sets: mean coverage {np.mean(covs):.3f}, "
+      f"middle 90% of runs {np.percentile(covs, 5):.3f} to {np.percentile(covs, 95):.3f}")
+```
+
+Output (scikit-learn 1.7):
+
+```
+split conformal, |residual|        coverage 0.917   (x<3: 1.000, x>7: 0.796)   mean width 9.00  (x<3: 9.00, x>7: 9.00)
+quantile regression (uncalibrated) coverage 0.890   (x<3: 0.871, x>7: 0.906)   mean width 7.48  (x<3: 2.61, x>7: 12.16)
+conformalized quantile regression  coverage 0.904   (x<3: 0.901, x>7: 0.911)   mean width 7.69  (x<3: 2.82, x>7: 12.37)
+split conformal, constant model    coverage 0.892   (x<3: 0.907, x>7: 0.737)   mean width 18.98  (x<3: 18.98, x>7: 18.98)
+split conformal under distribution shift (x in 8..14): coverage 0.680, target 0.90
+constant model, 300 fresh calibration sets: mean coverage 0.900, middle 90% of runs 0.884 to 0.917
+```
+
+- **Marginal coverage is delivered (Section 3).** Every conformal method lands near 90% overall. The constant model's single run is at 89.2%, just under target, which is what the guarantee allows: across 300 calibration sets its average is exactly 0.900, with individual runs between 0.884 and 0.917.
+- **Constant width is unbalanced (Section 4).** Split conformal with residuals covers every quiet point and only 79.6% of noisy ones.
+- **Quantile regression adapts but isn't calibrated (Section 2)**: 89.0% overall, 87.1% in the quiet region.
+- **CQR gets both (Section 4)**: 90.4% overall, 90.1% and 91.1% by region, with widths that follow the noise (2.8 to 12.4).
+- **A useless model still gets coverage**, with intervals more than twice as wide (19.0 against 9.0).
+- **Shift breaks the guarantee (Section 5)**: 68% coverage where 90% was promised.
+
+The core of the method fits in a few lines; here's the split conformal recipe on a heteroskedastic line, running in your browser:
 
 <RunnableCode code={`import numpy as np
 
@@ -109,9 +264,7 @@ print(f"Guarantee holds: {coverage >= 1 - alpha}")
 # above, because the guarantee never depended on this being a good model.
 `} />
 
-### Implement the Core Formula Yourself
-
-Everything above leans on one function: turning $n$ calibration scores into $\hat q$. The tests are hand-derivable directly from the formula in step 3 above — no simulation, no floating-point tolerance, just $k = \lceil (n+1)(1-\alpha) \rceil$ and the $k$-th smallest score.
+Then implement the one function everything depends on, turning calibration scores into $\hat{q}$, against four tests:
 
 <RunnableCode
   code={`import math
@@ -129,6 +282,44 @@ assert conformal_quantile([42], 0.5) == 42
 assert conformal_quantile(list(range(1, 20)), 0.05) == 19`}
 />
 
-## Why This Matters in Production
+## 8. When *Not* to Rely on These Intervals
 
-A model that can say "I don't know" (a wide interval, or high ensemble disagreement) on out-of-distribution inputs enables routing those cases to a human reviewer or a fallback system, instead of returning a confident-looking wrong answer. Conformal prediction is increasingly used as a **wrapper around black-box models** — including LLMs, where a "score function" might be a self-reported confidence or an ensemble of sampled completions — specifically because the coverage guarantee holds no matter what's inside the box, which plain calibration or ensemble-disagreement heuristics can't promise.
+| Situation | What to do instead or as well |
+|---|---|
+| Test data differs from calibration data (new market, new time period) | Recalibrate on recent data, weighted or adaptive conformal, and monitor coverage |
+| You need coverage for each individual, not on average | Group-wise calibration for the groups that matter; no method guarantees it per point |
+| Very small calibration sets | Expect large run-to-run variation in realized coverage; collect more calibration data |
+| The intervals are too wide to be useful | Improve the model or the score (CQR, better features); conformal guarantees validity, not usefulness |
+| Time series forecasting | Use methods designed for dependence (adaptive conformal, block methods) |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Aleatoric vs epistemic | Noise in the target vs the model's ignorance; only the second shrinks with data |
+| Pinball loss | Minimized at the conditional $\tau$-quantile |
+| Ensembles | Disagreement signals epistemic uncertainty; not calibrated |
+| Split conformal | Scores on held-out data; $\hat{q}$ = the $\lceil(n+1)(1-\alpha)\rceil$-th smallest |
+| Guarantee | Coverage $\ge 1 - \alpha$ under exchangeability, for any model |
+| Proof | The test score's rank among $n+1$ exchangeable scores is uniform |
+| Marginal only | Coverage is on average over inputs and calibration draws |
+| CQR | Calibrate a quantile band: adaptive width, same guarantee |
+| Classification | Prediction sets from $1 - \hat{p}(y \mid x)$; set size signals difficulty |
+| The assumption | Exchangeability; shift and time series break it |
+
+---
+
+Next: [Time Series Forecasting](/docs/machine-learning/time-series-forecasting), where examples are ordered and exchangeability fails by design.
+
+## Sources
+
+- V. Vovk, A. Gammerman and G. Shafer, *Algorithmic Learning in a Random World*, Springer, 2005
+- A. N. Angelopoulos and S. Bates, [A Gentle Introduction to Conformal Prediction and Distribution-Free Uncertainty Quantification](https://arxiv.org/abs/2107.07511), 2021
+- Y. Romano, E. Patterson and E. Candès, [Conformalized Quantile Regression](https://papers.nips.cc/paper/2019/hash/5103c3584b063c431bd1268e9b5e76fb-Abstract.html), NeurIPS 2019
+- R. F. Barber, E. J. Candès, A. Ramdas and R. J. Tibshirani, [Predictive Inference with the Jackknife+](https://doi.org/10.1214/20-AOS1965), *Annals of Statistics*, 2021
+- R. J. Tibshirani, R. F. Barber, E. Candès and A. Ramdas, [Conformal Prediction Under Covariate Shift](https://papers.nips.cc/paper/2019/hash/8fb21ee7a2207526da55a679f0332de2-Abstract.html), NeurIPS 2019
+- I. Gibbs and E. Candès, [Adaptive Conformal Inference Under Distribution Shift](https://papers.nips.cc/paper/2021/hash/0d441de75945e5acbc865406fc9a2559-Abstract.html), NeurIPS 2021
+- A. N. Angelopoulos, S. Bates, J. Malik and M. I. Jordan, [Uncertainty Sets for Image Classifiers using Conformal Prediction](https://arxiv.org/abs/2009.14193), ICLR 2021
+- B. Lakshminarayanan, A. Pritzel and C. Blundell, [Simple and Scalable Predictive Uncertainty Estimation using Deep Ensembles](https://papers.nips.cc/paper/2017/hash/9ef2ed4b7fd2c810847ffa5fa85bce38-Abstract.html), NeurIPS 2017
+- R. Koenker and G. Bassett, [Regression Quantiles](https://doi.org/10.2307/1913643), *Econometrica*, 1978
+- V. Quach et al., [Conformal Language Modeling](https://arxiv.org/abs/2306.10193), ICLR 2024
