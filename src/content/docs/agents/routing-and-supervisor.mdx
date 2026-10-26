@@ -1,73 +1,225 @@
 ---
-title: "Routing & Supervisor Pattern"
+title: "Routing and the Supervisor Pattern, In Full Depth"
 sidebar_position: 4.6
-description: "Routing decides which agent handles a task once, up front; a supervisor decides it again after every result -- two patterns for a different frequency."
+description: "Deciding which agent, prompt or model handles a request: routers that classify once (rules, embeddings, an LLM call) and supervisors that re-decide after every result, both run for real, plus routing between cheap and expensive models, and how to choose."
 ---
 
-
 import RouterVsSupervisorDiagram from '../../../viz/diagrams/RouterVsSupervisorDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Routing & Supervisor Pattern
+# Routing and the Supervisor Pattern, In Full Depth
 
-Both patterns answer "which agent handles this?" — but they answer it at a different frequency. A router answers it once, up front. A supervisor answers it again after every result, for as long as the task needs.
+Once a system has more than one specialist (a billing agent and a technical agent, a cheap model and an expensive one, a SQL tool and a document search), something has to decide which one handles each request. There are two patterns for that decision, and they differ in **how often** it's made. A **router** decides once, up front, and hands the request off. A **supervisor** decides again after every result, for as long as the task needs. This page explains both, runs an embedding-based router and a LangGraph supervisor on the same two-part request so the difference shows, covers routing between models of different cost, and ends with how to choose.
 
 <ELI5>
 
-A router is like a receptionist: hears your question once, points you to the right department, and that's the whole job — they never check back in on how it went. A supervisor is more like a project manager: assigns the first task, but then actually looks at what came back, decides if more work is needed, and keeps deciding that after every update until the whole thing is done. The receptionist is cheaper and faster for simple requests; the project manager is what you need when one request might genuinely take several people working in sequence.
+A router is a receptionist. You say what you need once, they point you to the right department, and that's the end of their job. They never check back. Quick and cheap, and perfect when every question belongs to exactly one department.
+
+A supervisor is a project manager. They hand the first part of the job to someone, look at what comes back, decide what's still missing, hand that to someone else, and keep going until the whole job is done. Slower and more expensive, but able to handle "I have a billing problem *and* a technical problem" in one go.
+
+Everything below is those two jobs made exact.
 
 </ELI5>
 
-## The Actual Difference, Not Just the Definitions
+## 1. Two Patterns, One Question
 
-[LangChain's own docs](https://docs.langchain.com/oss/python/langchain/multi-agent/router) draw the line precisely: a **router** is "a dedicated routing step... that classifies the input and dispatches to agents... it typically doesn't maintain conversation history or perform multi-turn orchestration — it's a preprocessing step." A **supervisor**, by contrast, "maintains context, can call multiple subagents across turns, and orchestrates complex multi-step workflows."
+### The Actual Difference, Not Just the Definitions
 
-Same two-part request, stepped through both ways:
+Both patterns answer "who handles this?". What separates them is whether anyone looks at the result before the system answers.
+
+- A **router** is a preprocessing step: classify the input, dispatch to one handler, return that handler's answer. It keeps no conversation of its own and does no multi-step orchestration. LangChain's documentation describes it in those terms: a routing step that classifies and dispatches, without maintaining history or orchestrating several agents across turns.
+- A **supervisor** is an agent whose tools are other agents. It keeps the context, calls a specialist, reads what came back, and decides whether to call another, call the same one again, or finish.
 
 <RouterVsSupervisorDiagram />
 
-The router isn't a worse supervisor — it's architecturally incapable of noticing the second half of a request needs more work, because nothing re-reads the first agent's output before returning it. That's not a bug to fix; it's the entire reason routing is cheap: one classification call, one dispatch, no loop.
+The router isn't a worse supervisor. It structurally can't notice that a request needs a second specialist, because nothing reads the first specialist's output before it's returned. That's also exactly why it's cheap: one classification, one dispatch, no loop.
 
-## Real Code, Both Patterns
+## 2. Routers
 
-Router — LangGraph's `Command` primitive dispatches once, deterministically:
+A router needs a classifier, and there are three common kinds, in increasing cost and flexibility:
+
+- **Rules**: keywords, regular expressions, form fields, or which page the user is on. Free, instant, transparent, and brittle with free text.
+- **Embedding similarity**: embed a few example requests per route; send each new request to the route whose examples it's most similar to. No model call, a few milliseconds, and robust to wording. It works well when routes are distinct topics.
+- **An LLM call**: ask a small model to pick a route, with a description of each, using structured output so the answer is one of a fixed set. The most flexible, it can follow nuanced definitions, and costs one model call.
+
+Whichever you use, add a **fallback**: a confidence threshold below which the request goes to a general agent or a person, rather than to the wrong specialist.
+
+Here's an embedding router with three routes, three example requests each, and a confidence threshold, run on new requests including one that needs two specialists:
 
 ```python
+import numpy as np
+from sentence_transformers import SentenceTransformer
+
+# A router: classify each request once, then hand it to one specialist. This one embeds the request
+# and picks the route whose example requests are most similar, no LLM call needed.
+ROUTES = {
+    "billing":   ["I was charged twice", "How do I update my card?", "Can I get a refund for last month?"],
+    "technical": ["The app crashes when I upload a file", "I get error 500 on login", "Sync stopped working"],
+    "sales":     ["Do you offer a team plan?", "What does the enterprise tier include?", "Can I get a demo?"],
+}
+model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+centroids = {r: model.encode(ex, normalize_embeddings=True).mean(0) for r, ex in ROUTES.items()}
+
+def route(text, threshold=0.25):
+    v = model.encode(text, normalize_embeddings=True)
+    scores = {r: float(v @ c / np.linalg.norm(c)) for r, c in centroids.items()}
+    best = max(scores, key=scores.get)
+    return (best if scores[best] >= threshold else "fallback: LLM or human"), round(scores[best], 2)
+
+tests = [("My invoice shows the wrong amount", "billing"), ("Password reset email never arrives", "technical"),
+         ("Is there a discount for nonprofits?", "sales"), ("Why was my subscription renewed?", "billing"),
+         ("The dashboard is blank in Safari", "technical"), ("How many seats come with Business?", "sales"),
+         ("I was charged, and now the export button crashes", "billing+technical")]
+for text, expected in tests:
+    got, score = route(text)
+    print(f"{text:50s} -> {got:10s} (similarity {score})   expected {expected}")
+```
+
+```text
+My invoice shows the wrong amount                  -> billing    (similarity 0.3)   expected billing
+Password reset email never arrives                 -> technical  (similarity 0.28)   expected technical
+Is there a discount for nonprofits?                -> sales      (similarity 0.35)   expected sales
+Why was my subscription renewed?                   -> billing    (similarity 0.32)   expected billing
+The dashboard is blank in Safari                   -> technical  (similarity 0.3)   expected technical
+How many seats come with Business?                 -> sales      (similarity 0.35)   expected sales
+I was charged, and now the export button crashes   -> technical  (similarity 0.45)   expected billing+technical
+```
+
+Six single-topic requests route correctly without a single model call, including phrasings that share no words with the examples ("subscription renewed" goes to billing). The last request needs billing *and* technical help. The router picks the one with the higher similarity, technical, and the billing half is never handled. Nothing in the pattern can notice that.
+
+## 3. The Supervisor
+
+A supervisor fixes exactly that, at the cost of a loop. It's usually built as an agent whose tools are the specialist agents: their names and descriptions go into its tool list, and its model decides which to call next with each step's results in front of it. The same request through a supervisor, built as a LangGraph graph (the supervisor's choice is a simple rule here, standing in for the model, so the run is reproducible):
+
+```python
+from typing import TypedDict
+from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command
 
-def route_query(state: State) -> Command:
-    active_agent = classify_query(state["query"])
-    return Command(goto=active_agent)
+class State(TypedDict):
+    request: str
+    findings: list[str]
+
+# Workers: in a real system each is an agent with its own tools and prompt.
+def billing(state: State) -> Command:
+    return Command(goto="supervisor", update={"findings": state["findings"] + ["billing: duplicate charge of $49 refunded"]})
+
+def technical(state: State) -> Command:
+    return Command(goto="supervisor", update={"findings": state["findings"] + ["technical: export bug, fix in 2.4.1"]})
+
+# The supervisor re-decides after every result. Here a rule stands in for the model's choice:
+# send the request to each specialist whose part hasn't been answered yet, then finish.
+def supervisor(state: State) -> Command:
+    done = {f.split(":")[0] for f in state["findings"]}
+    text = state["request"].lower()
+    if "charged" in text and "billing" not in done:
+        return Command(goto="billing")
+    if "crash" in text and "technical" not in done:
+        return Command(goto="technical")
+    return Command(goto=END)
+
+graph = StateGraph(State)
+for name, fn in [("supervisor", supervisor), ("billing", billing), ("technical", technical)]:
+    graph.add_node(name, fn)
+graph.add_edge(START, "supervisor")
+app = graph.compile()
+
+for step in app.stream({"request": "I was charged, and now the export button crashes", "findings": []},
+                       stream_mode="updates"):
+    node, update = next(iter(step.items()))
+    print(f"{node:10s} {'added: ' + update['findings'][-1] if update else 'chose the next step'}")
 ```
 
-Supervisor — a tool-calling loop where each worker agent is exposed to the supervisor *as a tool*, not a routing label:
-
-```python
-from langgraph_supervisor import create_supervisor
-from langgraph.prebuilt import create_react_agent
-
-math_agent = create_react_agent(model, tools=[add, multiply], name="math_expert")
-research_agent = create_react_agent(model, tools=[web_search], name="research_expert")
-
-workflow = create_supervisor(
-    [research_agent, math_agent],
-    model=model,
-    prompt="You manage a research expert and a math expert. Use research_agent for "
-           "current events; use math_agent for calculations.",
-)
-app = workflow.compile()
+```text
+supervisor chose the next step
+billing    added: billing: duplicate charge of $49 refunded
+supervisor chose the next step
+technical  added: technical: export bug, fix in 2.4.1
+supervisor chose the next step
 ```
 
-Worth knowing if you're picking a library rather than hand-rolling this: [`langgraph-supervisor-py`](https://github.com/langchain-ai/langgraph-supervisor-py)'s own maintainers now recommend implementing the supervisor pattern directly with plain LangGraph tool-calling for most new projects, rather than reaching for the dedicated library — it gives more direct control over exactly what context each handoff carries, which matters once you're tuning a real system rather than following a quickstart.
+The supervisor runs three times: before the first specialist, after it, and after the second, each time seeing what has been found so far. Both halves of the request are answered. The cost is visible too: three supervisor decisions, each a model call in a real system, where the router made one cheap classification.
 
-<GoDeeper title="Go deeper: why 'workers as tools' is the actual mechanism, not just an API choice">
+<GoDeeper title="Go deeper: why 'workers as tools' is the actual mechanism">
 
-The router's `Command(goto=active_agent)` is a hard-coded jump — the graph edge to take is decided by ordinary Python code (`classify_query`), not by the model choosing among options at runtime. The supervisor's worker-as-tool pattern is structurally different: each worker agent gets exposed to the supervisor's own LLM call as a function in its tool schema, the same mechanism [tool use / function calling](/docs/agents/agent-fundamentals) uses for any tool — the model reads each tool's name and description, and its own reasoning (not a Python `if`/`else`) decides which one to call, with what arguments, based on the current state of the conversation. That's the actual source of the supervisor's flexibility: routing decisions live inside the model's forward pass, re-evaluated fresh every turn against whatever the previous worker just returned, instead of being fixed once by a classifier that never sees intermediate results. It's also exactly why a supervisor costs more per turn than a router — every dispatch decision is a real LLM call reasoning over tool schemas, not a lookup.
+In the router, the decision is ordinary code: a function computes a label and the graph follows the matching edge. The model never sees the alternatives.
+
+In a supervisor built on tool calling, each worker is presented to the supervisor's model as a tool, with a name and a description, the same mechanism as [any tool call](/docs/agents/agent-fundamentals#tool-use-function-calling). The model reads the descriptions and the results so far, and its own reasoning picks the next worker and writes the instructions it receives. That's the source of the supervisor's flexibility: the routing decision is re-made by the model every turn, against everything that has happened. It's also why every supervisor step costs a model call, and why the quality of each worker's description matters as much as the quality of the worker.
+
+Libraries package this pattern (LangGraph's prebuilt supervisor, the OpenAI Agents SDK's handoffs, Google's ADK), but it's small enough to write directly, which gives you control over exactly what context each worker receives. The `langgraph-supervisor` package's own maintainers recommend building it with plain tool calling for most new projects.
 
 </GoDeeper>
 
-## When to Use Which
+## 4. Handoffs: a Third Option
 
-Reach for a **router** when requests genuinely fall into a small number of distinct categories, each fully handled by one specialist, with no need to combine results afterward — a support router sending billing questions one way and technical questions another. Reach for a **supervisor** when a single request might genuinely need more than one specialist's output combined, or when you can't know in advance how many sub-agents a request will need until you see the first one's result. Don't default to supervisor "to be safe" — every extra round of supervisor decision-making is a real LLM call, and the diagram above shows exactly where that cost comes from: 2 extra "inspect and decide" steps the router never pays, in exchange for actually answering the whole question.
+Between the two sits the **handoff**: the agent currently in charge transfers control to another and steps aside, as a human support agent transfers a call. Unlike a router, the decision happens mid-conversation, by an agent that has context; unlike a supervisor, control doesn't come back. The OpenAI Agents SDK is built around handoffs, and they suit conversational systems where the user should end up talking to the right specialist directly ("let me transfer you to billing"). The receiving agent needs enough of the history to continue without asking the user to repeat themselves, which is the main thing to get right.
 
-Next: [Single-Agent vs. Multi-Agent](/docs/agents/single-vs-multi-agent) — the more fundamental question underneath both of these: whether to split the work into multiple agents at all.
+## 5. Routing Between Models
+
+The same pattern applies one level down, to models instead of agents. Requests vary enormously in difficulty, and sending all of them to the largest model wastes money; sending all of them to a small one loses quality on the hard ones.
+
+- **Model routers** classify each request's difficulty and send easy ones to a cheap model and hard ones to a strong model. RouteLLM (Ong et al., 2024) trained routers on preference data and reported matching a strong model's quality on some benchmarks while sending well under half the requests to it.
+- **Cascades** try the cheap model first and escalate only if its answer fails a check (low confidence, a failed validation, a verifier model's rejection). FrugalGPT (Chen et al., 2023) reported large cost savings this way.
+- **Effort settings**: reasoning models let you set how much they think per request, which is routing within one model: low effort for simple requests, high for hard ones.
+
+Model routing needs the same safeguards as agent routing: measure quality per route on an evaluation set, and watch for the router's own errors, because a hard request mistakenly sent to a small model fails quietly.
+
+<PredictFirst
+  question="A support system routes each message to one of five specialist agents. Logs show 15% of messages contain two unrelated issues, and customers often have to write back about the second one. What change addresses this most directly?"
+  options={[
+    'Add more example requests to each route',
+    'Use a supervisor, or let the router return several routes and run those specialists, so multi-issue messages get every part handled',
+    'Switch the router from embeddings to an LLM call',
+    'Raise the router\'s confidence threshold',
+  ]}
+  correctIndex={1}
+  explanation="A single-label router can only ever pick one specialist, however accurate it is, so better examples or a smarter classifier don't help multi-issue messages. Either the router must be allowed to return several labels (and the answers combined), or a supervisor must look at what's left after each specialist."
+/>
+
+## 6. Choosing
+
+| Situation | Pattern |
+|---|---|
+| Requests fall into a few distinct categories, each fully handled by one specialist | Router |
+| A request may need several specialists, or you can't know how many until you see results | Supervisor |
+| A conversation should move to a specialist who then talks to the user directly | Handoff |
+| Requests vary in difficulty and cost matters | Model router or cascade |
+| Categories are distinct topics with plenty of examples | Embedding router |
+| Category definitions are nuanced or change often | LLM router with clear descriptions |
+
+Don't default to a supervisor "to be safe". Every supervisor step is a model call, and for single-topic traffic a router gives the same answers faster and cheaper. Measure how often requests really need more than one specialist, and choose from that.
+
+## 7. When *Not* to Route
+
+| Situation | Better choice |
+|---|---|
+| One capable agent with a handful of tools handles everything | No router; let the agent choose tools itself |
+| Categories overlap heavily | Merge the specialists, or use a supervisor |
+| Routing on keywords for free-text input | Embeddings or a small LLM classifier |
+| No fallback for low-confidence cases | Add a threshold and a general handler or human |
+| Model routing with no per-route quality measurement | Build the evaluation set first |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Router | Classify once, dispatch to one handler, no loop |
+| Supervisor | An agent whose tools are agents; re-decides after every result |
+| Measured | The router routed six single-topic requests correctly and missed half of a two-topic one; the supervisor handled both halves in three decisions |
+| Classifiers | Rules, embedding similarity, or an LLM call; add a confidence fallback |
+| Handoff | Transfer control mid-conversation; control doesn't come back |
+| Model routing | Easy requests to cheap models, hard ones to strong models; cascades escalate on failure |
+| Choosing | Measure how often requests need several specialists |
+
+---
+
+Next: [Single-Agent vs Multi-Agent](/docs/agents/single-vs-multi-agent), the question underneath both patterns: whether to split the work at all.
+
+## Sources
+
+- LangChain, [Multi-agent systems: router](https://docs.langchain.com/oss/python/langchain/multi-agent/router) and [LangGraph](https://langchain-ai.github.io/langgraph/) documentation
+- OpenAI, [Agents SDK: handoffs](https://openai.github.io/openai-agents-python/handoffs/)
+- Ong et al., [RouteLLM: Learning to Route LLMs with Preference Data](https://arxiv.org/abs/2406.18665) (2024)
+- Chen, Zaharia and Zou, [FrugalGPT](https://arxiv.org/abs/2305.05176) (2023)
+- Anthropic, [Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents) (2024), routing as a workflow pattern
