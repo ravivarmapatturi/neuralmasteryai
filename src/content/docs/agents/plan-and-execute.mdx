@@ -1,16 +1,17 @@
 ---
-title: "Plan-and-Execute"
+title: "Plan-and-Execute, In Full Depth"
 sidebar_position: 4.2
-description: "Plan the whole task before acting on any of it, then execute with far less per-step reasoning than ReAct -- and what a replanner does when reality diverges."
+description: "Planning the whole task before acting: the planner, executor and replanner, the orchestration loop run and implemented, why it can be faster and cheaper than ReAct and where it loses, plans as DAGs (LLMCompiler), and how today's agents plan with to-do lists and reasoning models."
 ---
 
 import PlanExecuteReplanDiagram from '../../../viz/diagrams/PlanExecuteReplanDiagram';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
 
-# Plan-and-Execute
+# Plan-and-Execute, In Full Depth
 
-[Agent Architectures](/docs/agents/agent-architectures#react-reasoning-acting) covers [ReAct](/docs/agents/agent-architectures#react-reasoning-acting) — reason, act, observe, one step at a time. Plan-and-execute inverts the order: think through the whole task *before* acting on any of it, then execute the resulting plan with far less per-step reasoning.
+[Agent Architectures](/docs/agents/agent-architectures#react-reasoning-acting) covers [ReAct](/docs/agents/agent-architectures#react-reasoning-acting) — reason, act, observe, one step at a time. Plan-and-execute inverts the order: think through the whole task *before* acting on any of it, then execute the resulting plan with far less per-step reasoning. This page covers the three components and the loop that connects them, runs that loop (and asks you to write it), weighs it against ReAct in both directions, shows how plans become graphs that run in parallel, and describes how planning actually shows up in agents in 2026, where it is more often a to-do list the agent keeps than a separate planner.
 
 <ELI5>
 
@@ -18,7 +19,7 @@ Think of the difference between planning a road trip turn-by-turn as you drive v
 
 </ELI5>
 
-## The Architecture
+## 1. The Architecture
 
 Three real components, matching how [LangChain describes the pattern](https://www.langchain.com/blog/planning-agents), which traces back to earlier work like [Plan-and-Solve prompting](https://arxiv.org/abs/2305.04091) and BabyAGI:
 
@@ -115,7 +116,7 @@ assert run_plan(plan, execute_step, replan)[2] == ("fetch https://old-blog.examp
 assert run_plan(plan, execute_step, replan)[3] == ("fetch https://web.archive.org/web/2023/old-blog.example/post-42", True)`}
 />
 
-## Why It's Often More Efficient Than ReAct
+## 2. Why It's Often More Efficient Than ReAct
 
 LangChain's own framing of the tradeoff names three real advantages of separating planning from execution:
 
@@ -123,7 +124,19 @@ LangChain's own framing of the tradeoff names three real advantages of separatin
 - **Cost** — "smaller, domain-specific models" can execute individual steps, reserving the larger (and more expensive) model specifically for the planning call that needs the most reasoning.
 - **Quality** — forcing one call to reason through the *entire* problem space upfront, chain-of-thought style, produces more coherent multi-step plans than reasoning about each step in isolation without seeing the whole shape of the task first.
 
-## Where It Loses to ReAct
+<PredictFirst
+  question="A plan has five steps. Step 3's tool call fails with a timeout. What does a replanner do that a fixed plan executor can't?"
+  options={[
+    'Retry step 3 forever',
+    'Look at why step 3 failed and produce replacement steps from the current state, keeping steps 1 and 2\'s results',
+    'Restart the whole plan from step 1',
+    'Skip step 3 silently',
+  ]}
+  correctIndex={1}
+  explanation="The replanner sees the original plan, what has been done, and the failure, and writes a revised plan from where the agent actually is: perhaps a retry with a different source, perhaps a different route to the same information. Completed steps aren't repeated, and the failure is recorded rather than hidden, as the loop above shows."
+/>
+
+## 3. Limitations: Where It Loses to ReAct
 
 The tradeoff runs the other way for tasks that genuinely need per-step adaptation: a plan committed to upfront is exactly the wrong structure when each step's *result* changes what the next step should even be, not just whether it succeeded. ReAct's interleaved reason-act-observe cycle handles that naturally; plan-and-execute has to detour through the replanner every time, which is slower than never having committed to a rigid plan in the first place.
 
@@ -135,14 +148,50 @@ The basic version also has a real, named limitation: it's "still restricted by s
 
 </GoDeeper>
 
-## When to Reach for It
+## 4. Plans as Graphs
+
+The basic pattern runs steps one after another, but many plans don't need to. If step 3 doesn't use anything step 2 produced, the order between them is an accident of writing the plan as a list. **LLMCompiler** (Kim et al., 2023) has the planner output a directed acyclic graph instead: each step lists the earlier steps whose outputs it needs, with placeholders for those outputs, and a scheduler runs every step whose inputs are ready in parallel. The authors reported both lower latency and lower cost than ReAct on tasks with independent sub-steps. The same idea underlies parallel tool calling, now supported natively by most model APIs: the model can request several independent tool calls in one turn.
+
+## 5. How Agents Plan Today
+
+Separate planner and executor models are less common in 2026 than the pattern's prominence suggests, for two reasons.
+
+- **Reasoning models plan internally.** A model trained to think before answering already works out a plan in its reasoning, then acts. The explicit planning call is folded into the model.
+- **Plans became a tool.** Coding agents such as Claude Code keep a to-do list as a tool the agent itself writes and updates: it lists the steps at the start, marks them done as it goes, and revises the list when something unexpected happens. That's plan-and-execute with the planner, executor and replanner all being one agent, and the plan kept visible in the context, where it also helps the agent stay on track across a long session ([Context Engineering](/docs/agents/context-engineering)).
+
+The explicit pattern still earns its place when the executor should be a cheaper model than the planner, when the plan must be shown to a person for approval before anything runs, or when steps should run in parallel as a graph.
+
+## 6. When to Reach for It
 
 Predictable-structure tasks — the ones where you could sketch the steps yourself before starting — are the actual fit: "search three specific sources and synthesize a comparison" has a shape you already know; "debug this failing test" doesn't, since what to do next depends entirely on what the previous step revealed. The general rule from [Agent Architectures](/docs/agents/agent-architectures#react-reasoning-acting) still applies: reach for structure once managing a plain loop by hand gets error-prone, not by default.
 
-## References
+## 7. When *Not* to Use Plan-and-Execute
+
+| Situation | Better choice |
+|---|---|
+| Each step's result changes what the next step should be (debugging, exploration) | ReAct, which re-decides after every observation |
+| Short tasks of two or three steps | A single agent loop; a planning call adds latency for nothing |
+| Independent steps executed one at a time | A DAG planner or parallel tool calls |
+| A capable reasoning model running a single agent | Let it plan internally, with a to-do list tool for long tasks |
+| Plans that must be approved before execution | Plan-and-execute is the right fit: show the plan, then run it |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Pattern | Plan the whole task first, then execute the steps, replanning on surprises |
+| Components | Planner (one strong call), executor (cheap per step), replanner (on failure or completion) |
+| Gains | Fewer model calls, cheaper executors, more coherent plans |
+| Losses | Rigid when each result changes the next step; serial by default |
+| DAG plans | LLMCompiler runs independent steps in parallel |
+| Today | Reasoning models plan internally; agents keep a to-do list as a tool |
+
+## Sources
 
 - [LangChain, "Plan-and-Execute Agents"](https://www.langchain.com/blog/planning-agents) — the architecture description, efficiency reasoning, and named limitation cited above.
 - Wang et al., ["Plan-and-Solve Prompting"](https://arxiv.org/abs/2305.04091) — arXiv:2305.04091, cited prior work on separating planning from execution in a single prompt.
-- [Loops and Graphs](/docs/agents/loops-and-graphs) — the general loop/graph framing this pattern is one concrete instance of; the replanner here is functionally a gate deciding whether to loop back or finish.
+- Kim et al., [An LLM Compiler for Parallel Function Calling](https://arxiv.org/abs/2312.04511) (2023)
+- Yao et al., [ReAct](https://arxiv.org/abs/2210.03629) (2022)
+- On this site: [Loops and Graphs](/docs/agents/loops-and-graphs), the general loop/graph framing this pattern is one instance of; the replanner is a gate deciding whether to loop back or finish
 
 Next: [Reflection / Self-Critique](/docs/agents/reflection-self-critique) — a different axis entirely: not *how many steps ahead* to plan, but whether the agent checks its own work.
