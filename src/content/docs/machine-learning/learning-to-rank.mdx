@@ -1,119 +1,271 @@
 ---
 title: "Learning-to-Rank, In Full Depth"
 sidebar_position: 6.91
-description: "Why ranking isn't classification or regression -- pointwise, pairwise, and listwise losses, and the NDCG/MRR metrics that actually measure list order."
+description: "Ranking derived: why order needs its own losses, the ranking metrics (precision@k, MRR, DCG and NDCG) defined exactly, pointwise, pairwise and listwise training, RankNet's loss and gradient worked out, LambdaRank's NDCG-weighted gradients and LambdaMART, position bias in click data, and five rankers compared on the same queries."
 ---
 
-
 import NdcgDiagram from '../../../viz/diagrams/NdcgDiagram';
-import { Remember } from '../../../components/content/Remember';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Learning-to-Rank, In Full Depth
 
-Search, recommendation ranking, and ad ranking are not classification problems and not regression problems — the thing that actually matters is the *order* of a list, and optimizing accuracy or MSE on individual item scores doesn't directly optimize for that at all. Learning-to-Rank (LTR) is the family of methods built to close that gap.
+Search engines, product search, feeds, the ranking stage of a [recommender system](/docs/machine-learning/recommender-systems) and the re-ranking step in retrieval-augmented generation all produce an ordered list, and what users experience is that order, mostly its top few positions. Predicting a score for each item and sorting by it works, but the training objective then has nothing to do with the order, and a mistake at position 1 counts the same as one at position 40. This page defines the metrics that measure order, derives the three ways of training for it (pointwise, pairwise and listwise), works through RankNet's gradient and the LambdaRank modification behind LambdaMART, the method most search systems have used for over a decade, and covers the bias that makes click logs hard to learn from. Five rankers are compared on the same set of queries.
 
-## Why Ranking Isn't Classification or Regression
+<ELI5>
 
-Predicting "will the user click this" per item (see [Recommender Systems — CTR Prediction](/docs/machine-learning/recommender-systems#ctr-prediction)) is a reasonable *input* to ranking, but training a classifier to predict clicks and then sorting by predicted probability isn't the same as directly optimizing ranking quality:
+A librarian helping you find books about whales could hand you a pile of a hundred books, all somewhat relevant. Far more useful: put the best three on top. You'll look at those, maybe the next few, and almost never reach the bottom of the pile.
 
-- A classifier trained on pointwise log-loss treats every item's prediction error equally — but a ranking error at position 1 (showing the wrong top result) matters far more to a user than an error at position 47.
-- Classification/regression metrics (accuracy, AUC, MSE) don't directly measure "is the list in the right order" — two models with identical AUC can produce meaningfully different orderings of the top-$k$ results, which is the only part of the list most users ever see.
+Learning to rank teaches a model to be that librarian. What matters isn't how well it grades each book in isolation, but whether the best ones end up on top. Everything below is that idea made exact: how to score an ordering, and how to train a model so that the orderings it produces score well.
 
-## Three Formulations
+</ELI5>
 
-Three different ways to turn "rank this list well" into something a model can actually be trained on — each one exists because the previous one gets something importantly wrong.
+## 1. The Setup
 
-### Pointwise
+Ranking data is organized by **query**. For each query $q$ (a search, a user visiting a feed) there's a set of candidate items $d_1, \dots, d_n$, each with a feature vector $\mathbf{x}_{qi}$ describing the query-item pair (text match, embedding similarity, popularity, the user's history with similar items) and a **relevance label** $y_{qi}$, often graded: 0 for irrelevant up to 4 for perfect, from human judgments or derived from clicks and purchases. A ranker is a scoring function $f(\mathbf{x})$; the list for a query is its items sorted by score.
 
-**What is it?** The simplest option: forget ranking is even happening, and just predict a relevance score for each item on its own.
+Two properties make this different from ordinary supervised learning:
 
-**How does it work?** Train an ordinary regressor or classifier — exactly like [supervised learning](/docs/machine-learning/supervised-learning) anywhere else — to predict a relevance score (or click probability) per item, independent of every other item in the list. Sort the final list by that predicted score.
+- **Only order within a query matters.** Adding a constant to every score for one query changes nothing. Scores aren't comparable across queries.
+- **Positions aren't equal.** Users look at the top and rarely scroll. The metric, and ideally the training, should weight the top of the list most.
 
-**Why is it useful?** It's simple, and reuses standard ML machinery directly — no special ranking infrastructure needed, just a regressor or classifier you already know how to train.
+## 2. Measuring an Ordering
 
-**Limitation:** The model never sees the list as a list. A pointwise loss treats every item's prediction error equally, but a ranking error at position 1 (showing the wrong top result) matters far more to a user than an error at position 47 — the training objective simply doesn't know that.
+### Ranking Evaluation Metrics
 
-Pointwise optimizes independent scores, but ranking quality is fundamentally about *relative* order — which is exactly what pairwise training targets directly.
+For one query, write $\text{rel}_i$ for the relevance of the item at position $i$ of the ranked list.
 
-### Pairwise
+- **Precision@$k$**: the fraction of the top $k$ that are relevant. **Recall@$k$**: the fraction of all relevant items that appear in the top $k$. Both ignore order inside the top $k$.
+- **Mean reciprocal rank (MRR)**: for each query, $1/\text{rank}$ of the first relevant item, averaged over queries. Right when there's one answer the user needs (a navigational search, a question with one correct document).
+- **Discounted cumulative gain** adds up each item's gain, discounted by position:
 
-**What is it?** Reframe ranking as classification over *pairs* of items, instead of scoring each one alone.
+$$
+\text{DCG@}k = \sum_{i=1}^{k}\frac{2^{\text{rel}_i} - 1}{\log_2(i + 1)}
+$$
 
-**How does it work?** For two items $i$ and $j$ where $i$ is known to be more relevant, train the model to predict $i > j$. **RankNet** is the canonical method: it turns the score difference between a pair into a probability via a sigmoid, and trains with cross-entropy on whether the "more relevant" item actually scored higher.
+The gain $2^{\text{rel}} - 1$ makes a perfect result worth much more than a fair one; some libraries, including scikit-learn's `ndcg_score`, use the relevance itself as the gain instead, which gives different numbers. The $\log_2(i+1)$ discount is 1 at the top position and falls slowly: position 2 gets 0.63, position 10 gets 0.29.
 
-**Why is it useful?** This directly optimizes for getting relative order right, which is much closer to what ranking quality actually means than an independent per-item score ever was.
+- **Normalized DCG** divides by the DCG of the ideal ordering of the same items, $\text{IDCG@}k$, so that a perfect ranking scores 1 for every query, whatever its number of relevant items:
 
-**Limitation:** Pairwise training still doesn't see the *whole* list at once — it optimizes a huge number of independent pairwise comparisons, with no direct connection to how a real ranking-quality metric like NDCG (below) scores the final, complete ordering.
+$$
+\text{NDCG@}k = \frac{\text{DCG@}k}{\text{IDCG@}k}
+$$
 
-Pairwise gets relative order right pair by pair, but the metric that's actually reported (NDCG) is computed over the whole list — listwise training closes that last gap by optimizing for it directly.
-
-### Listwise
-
-**What is it?** Optimize a ranking-quality metric directly over the *entire list* at once, rather than decomposing into independent pairs.
-
-**How does it work?** **LambdaMART** (gradient-boosted trees, see [Boosting](/docs/machine-learning/boosting)) is the most widely deployed listwise-style method in production search/ranking systems: it trains with "lambda gradients" that weight each pairwise comparison by how much swapping that pair would actually change the *list's* NDCG — so a swap that would meaningfully improve the top of the list matters more to training than one buried at position 40.
-
-**Why is it useful?** It captures listwise ranking quality — the thing actually being reported and optimized for in production — while still training with the well-understood, efficient machinery of gradient boosting, not a fundamentally different modeling approach.
-
-In code, via [LightGBM's](https://lightgbm.readthedocs.io) `LGBMRanker`, the standard implementation of LambdaMART:
-
-```python
-from lightgbm import LGBMRanker
-
-ranker = LGBMRanker(objective="lambdarank")
-
-# group tells the ranker where each query's results start/end within X, y --
-# e.g. group=[10, 20] means the first 10 rows are query 1's candidates,
-# the next 20 rows are query 2's, and so on. This is how a single flat
-# feature matrix encodes many separate ranking lists at once.
-ranker.fit(X_train, y_train, group=group_train)
-scores = ranker.predict(X_test)  # higher score = should rank higher
-```
-
-**Limitation:** Listwise methods are more complex to train and reason about than pointwise or pairwise, and LambdaMART's lambda gradients are a well-tested heuristic approximation to directly optimizing NDCG, not a mathematically exact gradient of it.
-
-<Remember>The general pattern here is worth internalizing beyond just ranking: pointwise is simplest but optimizes the wrong thing, pairwise gets the relative-order objective right, listwise gets closest to the metric that's actually reported. It recurs anywhere "get the order right" matters more than "get each individual score right."</Remember>
-
-## Ranking Evaluation Metrics
-
-These are worth knowing precisely, since "which metric" materially changes what a ranking model is optimized toward:
-
-- **Precision@k / Recall@k**: of the top $k$ results, what fraction are relevant (Precision@k); of all relevant items, what fraction appear in the top $k$ (Recall@k) — same definitions as [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics#classification-metrics), applied to a ranked list's top slice.
-- **MRR (Mean Reciprocal Rank)**: for each query, take $\frac{1}{\text{rank of the first relevant result}}$, then average across queries. Rewards getting *a* relevant result high up quickly — a good fit for queries with one clear right answer (a navigational search query, "find the answer").
-- **NDCG (Normalized Discounted Cumulative Gain)**: the most complete standard ranking metric, and the one most listwise methods (including LambdaMART) directly target:
-  - **DCG**: $\sum_{i=1}^{k} \frac{2^{rel_i} - 1}{\log_2(i + 1)}$ — sums each result's relevance (which can be graded, not just relevant/irrelevant — a 0-4 relevance scale, say), discounted logarithmically by position, so a highly relevant result buried at position 20 contributes far less than the same result at position 1.
-  - **NDCG**: DCG divided by the *ideal* DCG (the DCG of the best-possible ordering of the same result set) — normalizing to $[0, 1]$ so NDCG is comparable across queries with different numbers of relevant results, where raw DCG wouldn't be. Real DCG/NDCG, recomputed live as you reorder the list:
+NDCG@10 averaged over queries is the standard metric in search and ranking. Reorder a list and watch DCG and NDCG change:
 
 <NdcgDiagram />
 
-In code, via `sklearn.metrics.ndcg_score` — takes graded relevance labels and predicted scores, handles the discounting and ideal-DCG normalization described above internally:
+These metrics depend on the scores only through the sort. Changing scores slightly changes nothing until two items swap places, and then the metric jumps. The metric is flat almost everywhere and discontinuous at swaps, so its gradient is useless for training. Each family of ranking losses is a different way around that.
+
+## 3. Pointwise, Pairwise and Listwise
+
+### Three Formulations
+
+**Pointwise.** Ignore the list: train an ordinary regressor (or classifier) to predict each item's relevance label, and sort by prediction. Simple, and it uses standard tools. But the loss counts every item's error equally, wherever it would land in the list, and spends effort predicting exact labels when only relative order matters: getting a mediocre item's score from 1.2 to 1.0 helps the loss and changes nothing about the ranking.
+
+**Pairwise.** Train on pairs instead. For each query and each pair of items with different labels, the model should score the more relevant one higher. **RankNet** (Burges et al., 2005) turns a score difference into a probability with a sigmoid. With $s_i = f(\mathbf{x}_i)$, the modelled probability that $i$ should rank above $j$ is
+
+$$
+P_{ij} = \frac{1}{1 + e^{-(s_i - s_j)}}
+$$
+
+and for a pair where $i$ really is more relevant, the loss is cross-entropy, $C_{ij} = -\log P_{ij} = \log\big(1 + e^{-(s_i - s_j)}\big)$. Its derivative with respect to $s_i$ is
+
+$$
+\lambda_{ij} = \frac{\partial C_{ij}}{\partial s_i} = -\frac{1}{1 + e^{s_i - s_j}} = -(1 - P_{ij})
+$$
+
+and $\partial C_{ij}/\partial s_j = -\lambda_{ij}$. So each pair pushes the better item up and the worse one down, with force $1 - P_{ij}$: strongly when the pair is currently mis-ordered, hardly at all when it's already correctly ordered with a wide margin. Summing over pairs, each item gets a net force $\lambda_i = \sum_j \lambda_{ij} - \sum_j \lambda_{ji}$, and the model's parameters $\mathbf{w}$ move along $\sum_i \lambda_i\,\partial s_i/\partial\mathbf{w}$.
+
+Pairwise training targets relative order, which pointwise training doesn't. But it counts every mis-ordered pair equally, whether the pair is at positions 1 and 2 or 41 and 42.
+
+**Listwise.** Optimize the quality of the whole list. One route defines a loss over the full ordering, such as ListNet's cross-entropy between softmax distributions of true and predicted scores (Cao et al., 2007). The route that dominates in practice is LambdaRank.
+
+## 4. LambdaRank and LambdaMART
+
+Burges and colleagues noticed that a training method never needs the loss itself, only its gradients, the $\lambda$s. So they *defined* gradients that point where NDCG wants the scores to go, by weighting each RankNet pair by how much NDCG would change if the two items swapped places:
+
+$$
+\lambda_{ij} = -\frac{1}{1 + e^{s_i - s_j}}\,\big\lvert\Delta\text{NDCG}_{ij}\big\rvert
+$$
+
+$\lvert\Delta\text{NDCG}_{ij}\rvert$ is cheap to compute: swapping items at positions $p_i$ and $p_j$ changes DCG by $(2^{\text{rel}_i} - 2^{\text{rel}_j})\big(\tfrac{1}{\log_2(1+p_i)} - \tfrac{1}{\log_2(1+p_j)}\big)$, divided by IDCG. A mis-ordered pair near the top, or one that involves a highly relevant item, gets a large weight; a pair deep in the list gets almost none. This is **LambdaRank** (Burges, Ragno and Le, 2006). It was later shown that these gradients do correspond to optimizing a well-defined bound on NDCG (Wang et al., 2018), and empirically they improve NDCG directly.
+
+**LambdaMART** (Burges, 2010) uses the lambdas as the pseudo-residuals in [gradient boosting](/docs/machine-learning/boosting): each new tree is fitted to the $\lambda_i$ of every item, with Newton-style leaf values from their second derivatives, exactly as gradient boosting does for any loss. Gradient-boosted trees handle the heterogeneous, unnormalized features of ranking (counts, ratios, text scores, categorical signals) without preprocessing, and LambdaMART won the Yahoo! Learning to Rank Challenge (Chapelle and Chang, 2011). It remains the standard strong baseline; LightGBM's `LGBMRanker(objective="lambdarank")` and XGBoost's `rank:ndcg` implement it.
+
+In Section 7, the NDCG weighting improves a linear RankNet from 0.648 to 0.657, and LambdaMART reaches 0.750, above the pointwise boosted regressor (0.734) and close to the 0.779 achieved by ranking with the true underlying signal itself.
+
+<PredictFirst
+  question="A pairwise ranker currently has two mis-ordered pairs: one at positions 1 and 2 (a perfect result below a fair one), the other at positions 31 and 32. Under RankNet, and under LambdaRank, which pair gets the larger gradient?"
+  options={[
+    'The same under both, since both are single mis-ordered pairs',
+    'Under RankNet they can be similar (it depends only on the score gap); LambdaRank weights the top pair far more, because swapping it changes NDCG far more',
+    'LambdaRank weights the bottom pair more, to fix the long tail',
+    'Neither: correct pairs dominate the gradient',
+  ]}
+  correctIndex={1}
+  explanation="RankNet's force on a pair is 1 - P_ij, which depends only on the two scores, not on where the pair sits in the list. LambdaRank multiplies it by |ΔNDCG| for swapping the two items, and the position discounts at the top (1 and 0.63) differ far more than those at positions 31 and 32 (both about 0.2), especially when the gain difference is large. So training concentrates on the top of the list, where users look."
+/>
+
+## 5. Learning From Clicks
+
+Human relevance labels are expensive, so most production rankers learn from behaviour: clicks, purchases, dwell time. Clicks are biased:
+
+- **Position bias.** People click higher results more, regardless of relevance, because they look at them more. Treating clicks as relevance teaches the ranker to keep whatever it already ranked high.
+- **Presentation and trust bias.** Snippets, thumbnails and the fact that users trust the top result all affect clicks.
+- **Selection bias.** Items never shown never get clicks.
+
+**Unbiased learning to rank** corrects for position bias with inverse propensity weighting: if an item at position $p$ is examined with probability $\theta_p$, each click there is weighted by $1/\theta_p$, so clicks at low, rarely seen positions count more (Joachims, Swaminathan and Schnabel, 2017). The propensities are estimated from randomization experiments (briefly swapping results) or jointly with the ranker. Counterfactual evaluation of a new ranker on logged data uses the same weights.
+
+<GoDeeper title="Go deeper: neural rankers, cross-encoders and LLM re-ranking">
+
+Gradient-boosted trees work on hand-built features. For text, neural models can learn relevance directly from the query and document:
+
+- **Bi-encoders** embed query and document separately and score by dot product, the same design as the [two-tower model](/docs/machine-learning/recommender-systems#embeddings-and-the-two-tower-architecture); documents can be pre-embedded, so this is used for retrieval.
+- **Cross-encoders** feed the query and document together into a transformer that outputs a relevance score. Every token of the query can attend to every token of the document, so they're far more accurate, and far too slow to run on a whole corpus. They're used to re-rank the top few dozen candidates (Nogueira and Cho, 2019), which is the re-ranking step in retrieval-augmented generation (see [RAG](/docs/llms-genai/rag#re-ranking-with-cross-encoders)).
+- **LLM re-rankers** prompt a large language model to order a list of passages, pointwise (rate each), pairwise (compare two), or listwise (output the order of a window of passages and slide the window). They can be strong zero-shot, at high cost per query.
+
+All three are trained or evaluated with the same losses and metrics as this page: pairwise and listwise losses over query groups, and NDCG@10.
+
+</GoDeeper>
+
+## 6. Features for Ranking
+
+The model matters less than the features. A typical ranker for search combines:
+
+- **Query-item match**: lexical scores such as BM25, embedding similarity from a bi-encoder, matches in title and category.
+- **Item quality**: popularity, historical click-through rate, ratings, freshness, price.
+- **Personalization**: the user's past interactions with similar items, their preferences, their segment.
+- **Context**: device, time, location, session history.
+
+Historical click-through features need care: computed over the same data used for training, they leak the label; computed only from earlier periods, they're legitimate (see [data leakage](/docs/machine-learning/ml-workflow-fundamentals#data-leakage)).
+
+## 7. Minimal Implementation
+
+600 synthetic queries with 30 candidates each, 10 features, and graded relevance 0 to 4 from a function with a nonlinear interaction; 400 queries train and 200 test. First a check of NDCG against scikit-learn; then a pointwise boosted regressor, a linear RankNet and its LambdaRank-weighted version written from Section 3 and 4's gradients, and LightGBM's LambdaMART:
 
 ```python
 import numpy as np
+from lightgbm import LGBMRanker
+from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.metrics import ndcg_score
 
-true_relevance = np.asarray([[10, 0, 0, 1, 5]])  # graded relevance, one row per query
-scores = np.asarray([[.1, .2, .3, 4, 70]])        # this model's predicted scores
+# 600 queries, 30 candidate documents each, 10 features; graded relevance 0-4 from a nonlinear function
+rng = np.random.default_rng(0)
+Q, D, F = 600, 30, 10
+X = rng.normal(size=(Q, D, F))
+w = rng.normal(size=F)
+query_shift = rng.normal(0, 1.5, (Q, 1))                       # some queries have better candidates overall
+signal = X @ w / np.sqrt(F) + 0.8 * np.sin(2 * X[..., 0]) * X[..., 1] + query_shift
+rel = np.digitize(signal + rng.normal(0, 0.5, signal.shape), np.quantile(signal, [0.6, 0.8, 0.9, 0.97]))
+tr, te = slice(0, 400), slice(400, Q)
 
-ndcg_score(true_relevance, scores)        # 0.69 -- full list
-ndcg_score(true_relevance, scores, k=4)   # NDCG@4, truncated to the top 4
+def dcg_at_k(rels_in_ranked_order, k, exp_gain=True):
+    r = rels_in_ranked_order[:k]
+    gain = 2.0 ** r - 1 if exp_gain else r                     # 2^rel - 1 is the usual web-search gain
+    return np.sum(gain / np.log2(np.arange(2, len(r) + 2)))
+
+def ndcg_at_k(rel_q, score_q, k=10, exp_gain=True):
+    ideal = dcg_at_k(np.sort(rel_q)[::-1], k, exp_gain)
+    return dcg_at_k(rel_q[np.argsort(-score_q)], k, exp_gain) / ideal if ideal > 0 else 0.0
+
+def mean_ndcg(scores, k=10, exp_gain=True):
+    return np.mean([ndcg_at_k(rel[te][q], scores[q], k, exp_gain) for q in range(scores.shape[0])])
+
+# Our NDCG vs scikit-learn's (which uses the relevance itself as the gain) on the same random scores
+s = rng.normal(size=rel[te].shape)
+print(f"NDCG@10 of random scores, linear gain: ours {mean_ndcg(s, exp_gain=False):.4f}, scikit-learn {ndcg_score(rel[te], s, k=10):.4f}")
+print(f"NDCG@10 of random scores, 2^rel - 1 gain (used below): {mean_ndcg(s):.4f}")
+
+# Pointwise: regress relevance on features, sort by prediction
+point = HistGradientBoostingRegressor(random_state=0).fit(X[tr].reshape(-1, F), rel[tr].ravel())
+print(f"pointwise (regression trees)      NDCG@10 {mean_ndcg(point.predict(X[te].reshape(-1, F)).reshape(-1, D)):.4f}")
+
+# Pairwise: RankNet with a linear scorer, trained by gradient descent on all ordered pairs within each query
+def ranknet(X, rel, epochs=60, lr=0.05, lambda_ndcg=False):
+    wt = np.zeros(X.shape[-1])
+    for _ in range(epochs):
+        g = np.zeros_like(wt)
+        for q in range(X.shape[0]):
+            s = X[q] @ wt
+            i, j = np.nonzero(rel[q][:, None] > rel[q][None, :])          # pairs where i should rank above j
+            p_wrong = 1 / (1 + np.exp(s[i] - s[j]))                      # = 1 - P(i ranked above j)
+            lam = -p_wrong                                               # dLoss/ds_i for each pair
+            if lambda_ndcg:                                              # LambdaRank: weight by |change in NDCG| from swapping
+                rank = np.empty(D, int); rank[np.argsort(-s)] = np.arange(D)
+                gain = 2.0 ** rel[q] - 1; disc = 1 / np.log2(rank + 2)
+                ideal = dcg_at_k(np.sort(rel[q])[::-1], D)
+                lam = lam * np.abs((gain[i] - gain[j]) * (disc[i] - disc[j])) / ideal
+            g += (lam[:, None] * (X[q][i] - X[q][j])).sum(0)
+        wt -= lr * g / X.shape[0]
+    return wt
+for name, flag in [("pairwise (linear RankNet)", False), ("listwise-weighted (linear LambdaRank)", True)]:
+    wt = ranknet(X[tr], rel[tr], lambda_ndcg=flag)
+    print(f"{name:33s} NDCG@10 {mean_ndcg(X[te] @ wt):.4f}")
+
+# LambdaMART: gradient-boosted trees with lambda gradients (LightGBM)
+ranker = LGBMRanker(objective="lambdarank", n_estimators=300, learning_rate=0.05, verbose=-1, random_state=0)
+ranker.fit(X[tr].reshape(-1, F), rel[tr].ravel(), group=[D] * 400)
+print(f"LambdaMART (LightGBM)             NDCG@10 {mean_ndcg(ranker.predict(X[te].reshape(-1, F)).reshape(-1, D)):.4f}")
+oracle = signal[te]
+print(f"ranking by the true signal        NDCG@10 {mean_ndcg(oracle):.4f}")
 ```
-- **Choosing between them**: MRR when there's typically one right answer near the top; NDCG when relevance is graded and the quality of the *entire* top-$k$ ordering matters, not just whether one good result appeared somewhere in it — NDCG is the default in most modern search/ranking evaluation for exactly this completeness.
 
-## Feature Engineering for Ranking
+Output (scikit-learn 1.9, LightGBM 4.7):
 
-LTR models are almost always gradient-boosted trees (LambdaMART) or a deep ranking network fed a rich, heavily engineered feature set per query-item pair — the modeling technique matters less than getting these features right:
+```
+NDCG@10 of random scores, linear gain: ours 0.2948, scikit-learn 0.2948
+NDCG@10 of random scores, 2^rel - 1 gain (used below): 0.2384
+pointwise (regression trees)      NDCG@10 0.7344
+pairwise (linear RankNet)         NDCG@10 0.6478
+listwise-weighted (linear LambdaRank) NDCG@10 0.6565
+LambdaMART (LightGBM)             NDCG@10 0.7503
+ranking by the true signal        NDCG@10 0.7786
+```
 
-- **Query-item features**: text match score (BM25, see [RAG](/docs/llms-genai/rag#dense-vs-sparse-retrieval-and-bm25)), embedding similarity, category match.
-- **Item features**: popularity, recency, price, historical CTR.
-- **User features**: personalization signals — past behavior, stated preferences, session context.
-- **Context features**: time of day, device, location — relevance is often genuinely contextual, not a fixed property of the item.
+- **The metric matches the library** once the gain is the same (0.2948 both with linear gain); with the $2^{\text{rel}} - 1$ gain used below, random scores get 0.238.
+- **NDCG weighting helps (Section 4)**: the same linear model improves from 0.648 to 0.657 when each pair's gradient is scaled by $\lvert\Delta\text{NDCG}\rvert$.
+- **Model class still matters.** Both linear rankers trail the pointwise boosted trees (0.734), because the relevance has a nonlinear interaction a linear score can't represent.
+- **LambdaMART combines both advantages**: trees for the nonlinearity and lambda gradients for the top of the list, reaching 0.750 against a ceiling of 0.779 from the noise-free signal.
 
-## Where This Shows Up
+## 8. When *Not* to Use Learning to Rank
 
-- **Search engines**: ranking documents/pages by relevance to a query — the original LTR use case.
-- **Recommendation ranking**: the ranking stage of the retrieval→rank→re-rank pipeline in [Recommender Systems](/docs/machine-learning/recommender-systems).
-- **Ad ranking**: ordering ads by a combination of predicted CTR and bid price.
-- **RAG reranking**: re-ordering retrieved chunks by relevance before feeding them to an LLM — see [RAG — Re-ranking with Cross-Encoders](/docs/llms-genai/rag#re-ranking-with-cross-encoders), the same pairwise/listwise ranking principles applied to retrieved text chunks instead of search results.
+| Situation | Better choice |
+|---|---|
+| Few queries, or few labelled results per query | A hand-tuned scoring formula (BM25 plus a few boosts), or pointwise models with strong regularization |
+| Each query has one right answer and you only need it on top | Classification of "the answer" or an MRR-focused setup; full listwise training adds little |
+| Scores must be calibrated probabilities (ads, pricing) | Pointwise models with log loss, which keep calibration; ranking losses don't |
+| Labels come from clicks with heavy position bias | Correct the bias first (propensity weighting, randomization), or the ranker learns its own past |
+| Text relevance on modest volumes | A pretrained cross-encoder for re-ranking, rather than training a ranker from scratch |
 
-Back to [Supervised Learning](/docs/machine-learning/supervised-learning) for the full overview, or [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics) to continue the Machine Learning roadmap.
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Setup | Lists grouped by query; only order within a query matters; the top matters most |
+| DCG | $\sum_i (2^{\text{rel}_i} - 1)/\log_2(i + 1)$; NDCG divides by the ideal ordering's DCG |
+| MRR | $1/\text{rank}$ of the first relevant item, averaged over queries |
+| Why special losses | Ranking metrics are flat between swaps; no useful gradient |
+| Pointwise | Regress labels, sort; ignores position and relative order |
+| RankNet | $P_{ij} = \sigma(s_i - s_j)$, cross-entropy per pair; gradient $-(1 - P_{ij})$ |
+| LambdaRank | Weight each pair's gradient by $\lvert\Delta\text{NDCG}\rvert$ of swapping it |
+| LambdaMART | Gradient boosting on the lambdas; the standard strong ranker |
+| Clicks | Position bias; correct with inverse propensity weighting |
+| Text | Bi-encoders retrieve, cross-encoders and LLMs re-rank |
+
+---
+
+Next: back to the [Supervised Learning hub](/docs/machine-learning/supervised-learning) for the full map, or on to [Deep Learning](/docs/deep-learning/roadmap), where the neural rankers above come from.
+
+## Sources
+
+- C. Burges et al., [Learning to Rank using Gradient Descent](https://doi.org/10.1145/1102351.1102363), ICML 2005 (RankNet)
+- C. J. C. Burges, R. Ragno and Q. V. Le, [Learning to Rank with Nonsmooth Cost Functions](https://papers.nips.cc/paper/2006/hash/af44c4c56f385c43f2529f9b1b018f6a-Abstract.html), NeurIPS 2006 (LambdaRank)
+- C. J. C. Burges, [From RankNet to LambdaRank to LambdaMART: An Overview](https://www.microsoft.com/en-us/research/publication/from-ranknet-to-lambdarank-to-lambdamart-an-overview/), Microsoft Research Technical Report, 2010
+- Z. Cao, T. Qin, T.-Y. Liu, M.-F. Tsai and H. Li, [Learning to Rank: From Pairwise Approach to Listwise Approach](https://doi.org/10.1145/1273496.1273513), ICML 2007 (ListNet)
+- K. Järvelin and J. Kekäläinen, [Cumulated Gain-Based Evaluation of IR Techniques](https://doi.org/10.1145/582415.582418), *ACM TOIS*, 2002 (DCG and NDCG)
+- O. Chapelle and Y. Chang, [Yahoo! Learning to Rank Challenge Overview](https://proceedings.mlr.press/v14/chapelle11a.html), JMLR W&CP, 2011
+- X. Wang, C. Li, N. Golbandi, M. Bendersky and M. Najork, [The LambdaLoss Framework for Ranking Metric Optimization](https://doi.org/10.1145/3269206.3271784), CIKM 2018
+- T. Joachims, A. Swaminathan and T. Schnabel, [Unbiased Learning-to-Rank with Biased Feedback](https://doi.org/10.1145/3018661.3018699), WSDM 2017
+- R. Nogueira and K. Cho, [Passage Re-ranking with BERT](https://arxiv.org/abs/1901.04085), 2019
+- T.-Y. Liu, [Learning to Rank for Information Retrieval](https://doi.org/10.1561/1500000016), *Foundations and Trends in IR*, 2009
