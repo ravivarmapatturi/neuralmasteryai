@@ -1,19 +1,29 @@
 ---
-title: "Agentic Coding Assistants"
+title: "Agentic Coding Assistants, In Full Depth"
 sidebar_position: 5.5
-description: "Claude Code, Cursor, Gemini CLI, and Windsurf -- the named, real agent loop that reads a codebase, edits real files, and runs real commands, not a toy example."
+description: "How coding agents such as Claude Code, Codex, Cursor and Gemini CLI work: the gather-act-verify loop, run against a real test, search-based context gathering, the shared tool palette, two safety models, project memory, spec-driven development and the verification layers that make agent-written code trustworthy."
 ---
 
 import AgenticCodingLoopDiagram from '../../../viz/diagrams/AgenticCodingLoopDiagram';
 import CodingAgentSafetyModelDiagram from '../../../viz/diagrams/CodingAgentSafetyModelDiagram';
 import OversightSpectrumDiagram from '../../../viz/diagrams/OversightSpectrumDiagram';
 import VerificationLayersDiagram from '../../../viz/diagrams/VerificationLayersDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Agentic Coding Assistants
+# Agentic Coding Assistants, In Full Depth
 
 [Agent Architectures](/docs/agents/agent-architectures) and [Loops and Graphs](/docs/agents/loops-and-graphs) describe agent loops in general. This page is the specific, named application: tools like Claude Code, Cursor, Windsurf, and Gemini CLI that read a real codebase, edit real files, and run real commands — not a toy example, a tool that operates on the same repository you're actually working in.
 
 These are all real, current, open or hybrid tools, not a hypothetical category: [Claude Code](https://code.claude.com/docs/en/overview) (Anthropic), [Cursor](https://cursor.com) (built on VS Code), [Gemini CLI](https://github.com/google-gemini/gemini-cli) (Google, open source, 100k+ GitHub stars), and Windsurf (Cognition) are all in active daily use, and DeepLearning.AI alone runs on the order of a dozen short courses specifically on this category — spec-driven development, AI code review, and each individual tool.
+
+<ELI5>
+
+Imagine a new colleague fixing a bug in a large codebase they've never seen. They don't read every file first. They run the failing test, search for the function it mentions, open that file, make a change, and run the test again. If it's still failing, they look further. They stop when the test passes.
+
+A coding agent does exactly that, using a few tools: search, read a file, edit a file, run a command. The difference from a chat assistant that suggests code is that it runs the check itself and keeps going until the check passes. Everything below is how that works, and how to make sure "the check passes" really means the code is right.
+
+</ELI5>
 
 ## The Core Loop
 
@@ -22,6 +32,71 @@ The loop is the same one [Loops and Graphs](/docs/agents/loops-and-graphs#loop-v
 <AgenticCodingLoopDiagram />
 
 The step through above is a real (if abbreviated) trace: the first fix doesn't actually resolve the failure, so the loop goes back for *more* context rather than trying random variations of the same fix — the same "real pass/fail condition" discipline Loops and Graphs insists a gate needs, applied to a test's exit code instead of a human's approval.
+
+## The Loop, Run
+
+Here is the whole loop in miniature against a real repository on disk with a real test: a discount function that forgets to divide a percentage by 100. The tools are the four every coding agent has (run a command, search, read, edit by exact string replacement), and they really execute; a fixed sequence stands in for the model's choices so the run is reproducible:
+
+```python
+import pathlib, subprocess, sys, tempfile, textwrap
+
+# A tiny repository with a bug and a test, like the ones a coding agent works in.
+repo = pathlib.Path(tempfile.mkdtemp())
+(repo / "prices.py").write_text(textwrap.dedent("""
+    def apply_discount(price, percent):
+        return price - price * percent
+"""))
+(repo / "test_prices.py").write_text(textwrap.dedent("""
+    import unittest
+    from prices import apply_discount
+    class TestPrices(unittest.TestCase):
+        def test_ten_percent(self):
+            self.assertEqual(apply_discount(200, 10), 180)
+"""))
+
+# The agent's tools: search, read, edit (exact string replacement), run a command.
+def grep(pattern):
+    return subprocess.run(["grep", "-rn", pattern, "."], cwd=repo, capture_output=True, text=True).stdout.strip()
+def read(path):
+    return (repo / path).read_text()
+def edit(path, old, new):
+    text = read(path)
+    if text.count(old) != 1:                      # refuse ambiguous edits, as real edit tools do
+        return f"error: '{old}' found {text.count(old)} times"
+    (repo / path).write_text(text.replace(old, new)); return "ok"
+def run_tests():
+    r = subprocess.run([sys.executable, "-m", "unittest", "-q"], cwd=repo, capture_output=True, text=True)
+    lines = r.stderr.strip().splitlines()
+    detail = next((l for l in lines if l.startswith("AssertionError")), "")
+    return r.returncode, (lines[-1] + " " + detail).strip()
+
+# The loop. A stand-in plays the model, choosing each next tool call from what it has seen.
+plan = [
+    ("run_tests", ()),
+    ("grep", ("apply_discount",)),
+    ("read", ("prices.py",)),
+    ("edit", ("prices.py", "price * percent", "price * percent / 100")),
+    ("run_tests", ()),
+]
+for name, args in plan:
+    result = {"grep": grep, "read": read, "edit": edit, "run_tests": run_tests}[name](*args)
+    shown = str(result).strip().replace("\n", " | ")
+    print(f"{name}{args if args else '()'} -> {shown[:110]}")
+    if name == "run_tests" and result[0] == 0:
+        print("tests pass: the loop's check is satisfied, so the agent stops")
+        break
+```
+
+```text
+run_tests() -> (1, 'FAILED (failures=1) AssertionError: -1800 != 180')
+grep('apply_discount',) -> ./test_prices.py:3:from prices import apply_discount | ./test_prices.py:6:        self.assertEqual(apply_disco
+read('prices.py',) -> def apply_discount(price, percent): |     return price - price * percent
+edit('prices.py', 'price * percent', 'price * percent / 100') -> ok
+run_tests() -> (0, 'OK')
+tests pass: the loop's check is satisfied, so the agent stops
+```
+
+Every element of the real thing is here. The agent starts from the failing test, not from reading the repository. The test's assertion message (`-1800 != 180`) is the information that points to the bug. The edit tool replaces one exact string and refuses ambiguous matches, which is how real coding agents keep edits precise. And the loop ends on a real check, the test suite's exit code, rather than on the model's opinion that it's done.
 
 ## Context Gathering: Search, Not Necessarily an Index
 
@@ -72,15 +147,51 @@ Four real, current techniques do most of the actual verifying, each catching a d
 
 None of this eliminates the need for human judgment on *intent* — did the code do the right thing, not just a thing that happens to pass every check written for it. A test suite, a property check, and a critic model can all agree a result is "correct" by their own definitions while still missing that the actual goal was slightly different from what got specified. Spec-driven verification narrows how much of a diff needs that judgment; it doesn't remove the need for it, and no technique above claims otherwise.
 
+<PredictFirst
+  question="A coding agent reports 'All tests pass' after fixing a bug. Which single check gives the most confidence that the fix is right?"
+  options={[
+    'The agent\'s statement that it is confident',
+    'A test written before the fix that failed then and passes now, alongside the full suite still passing',
+    'The diff being short',
+    'The agent having re-read its own code',
+  ]}
+  correctIndex={1}
+  explanation="A test that demonstrably failed on the old code and passes on the new one proves the fix changed the behaviour it was meant to, and the full suite passing shows nothing else broke. Agents can make tests pass by weakening or deleting them, so check that the tests themselves weren't edited to fit."
+/>
+
 ## Seen Elsewhere on This Site
 
 The [qa_rag_application](https://github.com/ravivarmapatturi/qa_rag_application) and [Multi_Agent_Research_System](https://github.com/ravivarmapatturi/Multi_Agent_Research_System) projects referenced throughout [MLOps](/docs/mlops/roadmap) and [Agents](/docs/agents/roadmap) were built using exactly this loop — an agentic coding assistant reading the real repository, editing real files, running real tests, and iterating on real failures, with the safety and context-gathering mechanics described above, not a simplified stand-in for them.
 
-## References
+## When *Not* to Hand a Task to a Coding Agent
+
+| Situation | Better approach |
+|---|---|
+| There's no test or check that defines "done" | Write the check first, or keep a person reviewing every change |
+| The change touches production systems, data or money directly | Gate those actions behind human approval; let the agent prepare, not execute |
+| The task needs a decision only the team can make (architecture, product behaviour) | Decide first, then hand the agent a spec |
+| Agent output is merged without reading on code others depend on | Review the diff, or require tests that would catch the failure |
+| A large, vague request ("improve the codebase") | Break it into specific tasks with acceptance criteria |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Loop | Gather context, act, verify against something real, repeat |
+| Context | Search as you go (grep, glob, read), not a one-off index of the repo |
+| Tools | Read, edit by exact replacement, run commands, search; MCP for the rest |
+| Safety | Gate risky actions before, or checkpoint and roll back after; neither covers actions that leave the machine |
+| Memory | `CLAUDE.md` or `AGENTS.md` carries conventions across sessions |
+| Spec-driven | Review the plan and the acceptance tests first, then let the agent implement |
+| Verification | Tests written first, property tests, types and linters, an independent critic |
+
+## Sources
 
 - [Claude Code Overview](https://code.claude.com/docs/en/overview) and [Claude Code Permissions](https://code.claude.com/docs/en/permissions) — Anthropic's own documentation for the tool palette, parallel sub-agents, `CLAUDE.md`/auto-memory, and the tiered permission system.
 - [Cursor Agent Overview](https://cursor.com/docs/agent/overview) — Cursor's own documentation for its Agent mode's tools and checkpoint-based safety model.
 - [Gemini CLI](https://github.com/google-gemini/gemini-cli) — Google's open-source terminal coding agent.
+- OpenAI, [Codex](https://github.com/openai/codex) — OpenAI's open-source coding agent for the terminal.
+- Jimenez et al., [SWE-bench: Can Language Models Resolve Real-World GitHub Issues?](https://arxiv.org/abs/2310.06770) (2023), the standard benchmark for coding agents.
 - Andrej Karpathy, [the original "vibe coding" post](https://x.com/karpathy/status/1886192184808149383), February 2, 2025.
 - [Loops and Graphs](/docs/agents/loops-and-graphs) — the general loop/gate/reversibility framing this page applies specifically to coding agents.
 - [Agent Frameworks](/docs/frameworks/llm-agent-frameworks) — the libraries you'd actually use to build a loop like this yourself, rather than use a packaged product.
