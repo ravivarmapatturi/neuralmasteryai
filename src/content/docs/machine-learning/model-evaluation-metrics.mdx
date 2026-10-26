@@ -1,91 +1,337 @@
 ---
-title: "Model Evaluation & Metrics"
+title: "Model Evaluation & Metrics, In Full Depth"
 sidebar_position: 6
-description: "Bias-variance tradeoff, classification/regression metrics, calibration, and threshold optimization -- why picking the wrong metric silently sinks ML projects."
+description: "How to measure a model, derived: the bias-variance decomposition proved and measured, regression metrics and what each rewards, the confusion matrix, precision, recall, F1, ROC-AUC as a ranking probability, PR-AUC on rare classes, proper scoring rules and calibration, the cost-optimal threshold, and how to tell whether one model really beats another."
 ---
-
 
 import BiasVarianceDecompositionDiagram from '../../../viz/diagrams/BiasVarianceDecompositionDiagram';
 import RocPrCurveDiagram from '../../../viz/diagrams/RocPrCurveDiagram';
 import CalibrationDiagram from '../../../viz/diagrams/CalibrationDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Model Evaluation & Metrics
+# Model Evaluation & Metrics, In Full Depth
 
-A model is only as good as the way you measure it. Picking the wrong metric is one of the most common ways ML projects quietly fail.
+[ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals) covered *where* to measure a model: on data it never trained on. This page covers *what* to measure. The answer matters more than it seems: a fraud model with 95% accuracy can be useless, a model with a better ROC-AUC can give worse probabilities, and a "0.3% improvement" can be noise. The page derives the bias-variance decomposition that explains overfitting, then the metrics for regression and classification and what each one actually rewards, the scoring rules that judge probabilities, the threshold that minimizes cost, and the tests that say whether one model really beats another. Every claim is checked numerically on the same imbalanced dataset.
 
-## Bias-Variance Tradeoff
+<ELI5>
 
-- **Bias**: error from overly simplistic assumptions — the model *underfits*, missing real patterns in the data.
-- **Variance**: error from being overly sensitive to the specific training data — the model *overfits*, memorizing noise instead of learning generalizable patterns.
-- Total error decomposes roughly as $\text{Bias}^2 + \text{Variance} + \text{Irreducible Error}$. Reducing one often increases the other — a simpler model has more bias but less variance, and vice versa. Model capacity, regularization strength, and amount of training data are the main levers.
+A school wants to know which of two teachers is better. "Average exam score" sounds fair, but if one class had easy exams, it misleads. "Pass rate" ignores how close students came. And if one teacher's students did better only because a few strong pupils happened to be in that class this year, next year might look different.
 
-Real Monte Carlo decomposition — 150 real resampled datasets, real polynomial fits at increasing complexity:
+Measuring a model has the same problems. Different metrics reward different things, the right one depends on what mistakes cost, and a difference between two models only counts if it's bigger than the luck of which examples happened to be tested. Everything below is those ideas made exact.
+
+</ELI5>
+
+## 1. Why Models Fail: Bias and Variance
+
+### Bias-Variance Tradeoff
+
+Suppose the data comes from $y = f(\mathbf{x}) + \epsilon$, with noise $\epsilon$ of mean 0 and variance $\sigma^2$. Train a model $\hat{f}$ on a random training set; because the training set is random, so is $\hat{f}$. The expected squared error at a point $\mathbf{x}$, averaged over training sets and over the noise in a new label, splits into three parts. Write $\bar{f}(\mathbf{x}) = \mathbb{E}[\hat{f}(\mathbf{x})]$ for the average prediction over training sets, add and subtract it, and expand:
+
+$$
+\mathbb{E}\big[(y - \hat{f})^2\big] = \mathbb{E}\big[(f + \epsilon - \bar{f} + \bar{f} - \hat{f})^2\big] = \underbrace{\sigma^2}_{\text{noise}} + \underbrace{(f - \bar{f})^2}_{\text{bias}^2} + \underbrace{\mathbb{E}\big[(\hat{f} - \bar{f})^2\big]}_{\text{variance}}
+$$
+
+The cross terms vanish: $\epsilon$ has mean 0 and is independent of the training set, and $\hat{f} - \bar{f}$ has mean 0 by definition. Each term is a different failure:
+
+- **Noise** is irreducible. No model can predict the part of $y$ that's random.
+- **Bias** is how far the *average* model is from the truth: the error you'd keep even with infinitely many training sets to average over. Models that are too simple have high bias (they **underfit**).
+- **Variance** is how much the model changes from one training set to another. Models that are too flexible for the amount of data have high variance (they **overfit**): they fit the noise of their particular sample.
+
+Section 9 measures each term by fitting polynomials to 300 fresh training sets of 30 points each. A straight line has bias² 0.417 and variance 0.038; degree 5 has bias² 0.001 and variance 0.052, the best total; by degree 9, variance explodes to 548 because a few training sets produce wild curves near the edges of the data. The three parts add up to the measured test error to within Monte Carlo noise. Explore the same decomposition:
 
 <BiasVarianceDecompositionDiagram />
 
-## Regularization
+This decomposition is exact for squared error; for other losses the same intuition holds with less tidy algebra. It's the reason for most of the tools in this section: averaging reduces variance ([random forests](/docs/machine-learning/random-forest)), adding corrections reduces bias ([boosting](/docs/machine-learning/boosting)), and regularization trades one for the other.
 
-Techniques that intentionally constrain a model to reduce variance/overfitting:
+### Regularization
 
-- **L1 (Lasso)**: adds $\lambda \sum |w_i|$ to the loss — pushes weights toward exactly zero, giving automatic feature selection.
-- **L2 (Ridge)**: adds $\lambda \sum w_i^2$ — shrinks weights smoothly without forcing them to zero. Mathematically equivalent to MAP estimation with a Gaussian prior (see [Probability & Statistics](/docs/mathematics-for-ai/probability-statistics)).
-- **Dropout** (deep learning): randomly zeroes out neurons during training, forcing the network to not rely too heavily on any single pathway.
-- **Early stopping**: stop training once validation performance stops improving, before the model starts memorizing training noise.
+**Regularization** deliberately restricts a model to lower its variance, at the cost of some bias. The main forms, each derived on its own page:
 
-## Classification Metrics
+- **L2 penalty** ([ridge](/docs/machine-learning/ridge-regression)): adds $\lambda\lVert\mathbf{w}\rVert_2^2$; shrinks all weights; equivalent to a Gaussian prior on them.
+- **L1 penalty** ([lasso](/docs/machine-learning/lasso-regression)): adds $\lambda\lVert\mathbf{w}\rVert_1$; sets some weights exactly to zero; equivalent to a Laplace prior.
+- **Structural limits**: tree depth and leaf size ([decision trees](/docs/machine-learning/decision-tree)), number of neighbours ([k-NN](/docs/machine-learning/k-nearest-neighbors)), the margin parameter $C$ ([SVMs](/docs/machine-learning/support-vector-machines)).
+- **Early stopping**: stop iterative training when validation error stops improving ([boosting](/docs/machine-learning/boosting), neural networks).
+- **Dropout and data augmentation** in [deep learning](/docs/deep-learning/overview).
 
-- **Accuracy**: fraction correct — misleading on imbalanced data (a 99%-negative dataset gets 99% accuracy by always predicting negative).
-- **Precision**: of everything predicted positive, how much was actually positive. $\text{Precision} = \frac{TP}{TP + FP}$
-- **Recall**: of everything actually positive, how much did the model catch. $\text{Recall} = \frac{TP}{TP + FN}$
-- **F1 score**: harmonic mean of precision and recall — a single number balancing both.
-- **ROC-AUC**: area under the true-positive-rate vs. false-positive-rate curve across all thresholds — measures ranking quality independent of a specific threshold.
-- **PR-AUC**: like ROC-AUC but using precision/recall — more informative than ROC-AUC on heavily imbalanced datasets.
+The strength of any of these is a hyperparameter, chosen by validation error, never by training error, which always prefers no regularization.
 
-**Choosing precision vs. recall**: depends entirely on the cost of each error type. A cancer-screening model should favor recall (missing a real case is worse than a false alarm); a spam filter should favor precision (blocking a real email is worse than letting one spam message through).
+## 2. Regression Metrics
 
-Real ROC and PR curves, swept over 200 real scored examples — drag the threshold and watch the marked point slide along the actual curve:
+### Regression Metrics
+
+For predictions $\hat{y}_i$ of targets $y_i$:
+
+| Metric | Formula | Rewards | Notes |
+|---|---|---|---|
+| MSE | $\frac1n\sum(y_i - \hat{y}_i)^2$ | Predicting the conditional **mean** | Dominated by the largest errors |
+| RMSE | $\sqrt{\text{MSE}}$ | Same as MSE | In the target's units |
+| MAE | $\frac1n\sum\lvert y_i - \hat{y}_i\rvert$ | Predicting the conditional **median** | Robust to outliers |
+| MAPE | $\frac1n\sum\lvert y_i - \hat{y}_i\rvert/\lvert y_i\rvert$ | Relative accuracy | Undefined at $y = 0$; favours under-prediction |
+| $R^2$ | $1 - \frac{\sum(y_i - \hat{y}_i)^2}{\sum(y_i - \bar{y})^2}$ | Beating the constant mean | Can be negative on test data |
+
+The "rewards" column follows from the [optimal predictions derived on the Supervised Learning page](/docs/machine-learning/supervised-learning): a model tuned for MSE estimates the mean, one tuned for MAE the median, and on skewed targets they differ. **$R^2$** is the fraction of the variance around the mean that the model explains. On training data with an intercept it lies between 0 and 1; on *test* data it can be negative, which means the model predicts worse than simply predicting the training mean. Report it together with an error in the target's own units (RMSE or MAE), which says how wrong a typical prediction is.
+
+## 3. Classification Metrics
+
+### Classification Metrics
+
+A classifier with a threshold produces four counts, the **confusion matrix**:
+
+| | Predicted positive | Predicted negative |
+|---|---|---|
+| **Actually positive** | true positives, TP | false negatives, FN |
+| **Actually negative** | false positives, FP | true negatives, TN |
+
+The common metrics are ratios of these:
+
+$$
+\text{precision} = \frac{TP}{TP + FP}, \qquad \text{recall} = \frac{TP}{TP + FN}, \qquad F_1 = \frac{2\cdot\text{precision}\cdot\text{recall}}{\text{precision} + \text{recall}}
+$$
+
+**Precision** is how trustworthy a positive prediction is; **recall** (sensitivity, true-positive rate) is how many of the real positives are caught. $F_1$ is their harmonic mean, which is pulled down hard by whichever is smaller, so it can't be inflated by doing one well and the other badly. When one matters more, the weighted $F_\beta$ counts recall $\beta$ times as much as precision.
+
+**Accuracy fails on rare classes.** In Section 9, 5.5% of the test examples are positive. A "model" that always predicts negative has 94.5% accuracy and catches nothing. Logistic regression reaches 95.5% accuracy, barely better, with a recall of only 33%: it misses two-thirds of the positives. Precision, recall and $F_1$ expose that; accuracy hides it.
+
+**Threshold-free metrics.** Precision and recall depend on the threshold. Sweeping the threshold from 1 down to 0 traces two curves:
+
+- The **ROC curve**: true-positive rate against false-positive rate, $FP/(FP + TN)$. Its area, **ROC-AUC**, has an exact interpretation: it's the probability that a randomly chosen positive gets a higher score than a randomly chosen negative (ties counting half). That's the Mann–Whitney statistic, and Section 9 confirms it numerically: counting all positive-negative pairs gives 0.9431, identical to `roc_auc_score`. A random model scores 0.5. ROC-AUC measures **ranking** alone, and it isn't affected by class imbalance.
+- The **precision-recall curve**, and its area **PR-AUC** (average precision). A random model's PR-AUC equals the prevalence, 0.055 here, not 0.5. Because precision counts false positives against true positives, PR-AUC is far more sensitive to how the top of the ranking looks when positives are rare.
+
+That difference shows in Section 9: the two models' ROC-AUCs look close (0.920 and 0.943) while their PR-AUCs are far apart (0.564 and 0.801). With 18 negatives for every positive, a small difference in false-positive *rate* is a large difference in how many of the flagged cases are real. For rare positives, report PR-AUC. Drag the threshold along both curves:
 
 <RocPrCurveDiagram />
 
-## Regression Metrics
+<PredictFirst
+  question="A disease affects 1 in 1,000 people. A test has 99% sensitivity (recall) and 99% specificity. A person tests positive. Roughly how likely is it that they have the disease?"
+  options={[
+    '99%',
+    'About 9%: among 1,000 people, about 1 true positive and about 10 false positives',
+    '50%',
+    '0.1%',
+  ]}
+  correctIndex={1}
+  explanation="Out of 100,000 people, 100 have the disease and the test catches 99. Of the 99,900 without it, 1% (999) test positive anyway. So about 99 of 1,098 positives are real: precision is about 9%. A high ROC-type operating point says nothing about precision when the condition is rare, which is why PR curves and prevalence matter."
+/>
 
-- **MSE (Mean Squared Error)**: penalizes large errors disproportionately (squared term) — sensitive to outliers.
-- **MAE (Mean Absolute Error)**: penalizes all errors linearly — more robust to outliers.
-- **R²**: fraction of variance in the target explained by the model, from 0 (no better than predicting the mean) to 1 (perfect fit).
+## 4. Judging Probabilities: Proper Scoring and Calibration
 
-## Calibration
+Many decisions use the predicted probability itself, not just the ranking: pricing a risk, deciding how many cases to staff for, combining several models. Two kinds of tool judge probabilities.
 
-A model can rank examples correctly (good AUC) while its predicted probabilities are systematically off (e.g. it says "70% confident" but is only right 50% of the time at that confidence level). **Calibration** measures and corrects this — critical whenever downstream decisions depend on the actual probability value, not just the ranking (e.g. risk-based pricing). Real reliability diagram, 600 real predictions:
+**Proper scoring rules** are losses that are minimized, in expectation, only by reporting the true probability. The two standard ones:
+
+$$
+\text{log loss} = -\frac1n\sum_i\big[y_i\log p_i + (1 - y_i)\log(1 - p_i)\big], \qquad \text{Brier score} = \frac1n\sum_i(p_i - y_i)^2
+$$
+
+For the Brier score the propriety is a one-line check: if the true probability is $q$, the expected score of reporting $p$ is $q(1-p)^2 + (1-q)p^2$, whose derivative $2(p - q)$ is zero only at $p = q$. A model can't improve either score by exaggerating or hedging. Log loss punishes confident mistakes severely (predicting 0.001 for something that happens costs 6.9); Brier is bounded and gentler.
+
+**Calibration** asks a narrower question: among all the cases where the model said 0.7, did about 70% turn out positive? A **reliability diagram** bins predictions and plots each bin's average prediction against its observed frequency; a calibrated model follows the diagonal. The **expected calibration error** (ECE) summarizes it as the bin-size-weighted average gap. Ranking quality and calibration are separate: a model can rank perfectly and still report probabilities that are all too high, and a model that predicts the base rate for everyone is perfectly calibrated and useless.
+
+When a model's probabilities are off, **recalibrate** on held-out data: **Platt scaling** fits a logistic regression on the scores; **isotonic regression** fits any monotone mapping and needs more data. In Section 9, isotonic recalibration of gradient boosting cuts its ECE from 0.0125 to 0.0053 and also improves its log loss and Brier score, without changing its ranking. See a reliability diagram:
 
 <CalibrationDiagram />
 
-## Threshold Optimization
+## 5. Choosing the Threshold From Costs
 
-A classifier's raw output is a probability; turning it into a decision requires picking a threshold, and 0.5 is a default, not a law of nature. The right threshold depends on the same cost asymmetry that drives the precision/recall tradeoff above:
+### Threshold Optimization
 
-- **Cost-based thresholding**: if a false negative costs 10x a false positive (a missed fraud case vs. a flagged legitimate transaction), the optimal threshold isn't where precision equals recall — it's wherever `expected_cost = FN_rate × cost_FN + FP_rate × cost_FP` is minimized, which is usually well below 0.5.
-- **Reading it off the PR or ROC curve**: since both curves are threshold-sweeps, picking a threshold means picking a *point* on that curve corresponding to the precision/recall (or TPR/FPR) tradeoff your use case actually needs, then finding which threshold produces it.
-- **The common mistake**: reporting "our model gets 90% precision" without saying at what threshold, or worse, choosing the threshold that produces the best-looking headline number on the test set — the threshold is a decision variable to be chosen deliberately for the deployment's actual cost structure, not a hyperparameter to tune for a better-looking single metric.
+A threshold of 0.5 is a default, not a rule. If a missed positive (a false negative) costs $c_{FN}$ and a false alarm costs $c_{FP}$, and the model's probabilities are calibrated, the decision for each case is simple. Predicting positive costs $c_{FP}$ with probability $1 - p$; predicting negative costs $c_{FN}$ with probability $p$. Predict positive when it's cheaper:
 
-## Uncertainty Estimation
+$$
+(1 - p)\,c_{FP} \lt  p\,c_{FN} \quad\Longleftrightarrow\quad p \gt  \frac{c_{FP}}{c_{FP} + c_{FN}}
+$$
 
-Calibration (above) asks "are the predicted *probabilities* trustworthy." Uncertainty estimation asks a related but distinct question: "how confident should I be in *this specific prediction*," which matters most when a model needs to know what it doesn't know. See [Uncertainty Estimation & Conformal Prediction](/docs/machine-learning/uncertainty-estimation-and-conformal-prediction) for prediction intervals, ensemble-based uncertainty, and — the part with an actual proof, not just an assertion — conformal prediction's real distribution-free coverage guarantee, verified live against a held-out test set rather than just stated.
+With a missed fraud costing 20 times a false alarm, the threshold is $1/21 \approx 0.048$, far below 0.5. Section 9 checks this on the recalibrated model: total cost is 3,905 at threshold 0.5, 1,764 at the theoretical 0.048, and 1,731 at the best value found by searching a grid (0.06), essentially the same.
 
-## Hyperparameter Optimization
+Two practical points. The formula needs calibrated probabilities, which is one more reason to calibrate. And the threshold should be chosen on validation data, not the test set, and reported along with any threshold-dependent metric: "90% precision" means nothing without "at threshold $t$" or "at 40% recall". When costs are unknown, a common alternative is to fix the operating point by capacity: "the team can review 200 alerts a day, so flag the top 200".
 
-Model hyperparameters (learning rate, tree depth, regularization strength, number of layers) aren't learned from data the way weights are — they have to be searched over, using validation performance as the search signal, never the test set. See [Hyperparameter Optimization](/docs/machine-learning/hyperparameter-optimization) for the real Bergstra & Bengio result on why random search beats grid search (not just intuition — a real distinct-values-tried comparison), the actual Expected Improvement formula behind Bayesian optimization, and successive halving/Hyperband.
+### Uncertainty Estimation
 
-## Statistical Significance of Improvements
+A calibrated probability says how often predictions like this one are right on average. Sometimes you need more: an interval that contains the true value of *this* prediction with a stated probability. [Uncertainty Estimation & Conformal Prediction](/docs/machine-learning/uncertainty-estimation-and-conformal-prediction) covers quantile regression, ensembles, and conformal prediction, which wraps any model in intervals with a coverage guarantee that doesn't depend on the model being right.
 
-Before shipping "Model B beats Model A by 0.3%," check whether that difference is statistically significant (see [Probability & Statistics](/docs/mathematics-for-ai/probability-statistics)) or just noise from the particular test split / random seed. This is exactly what A/B testing in production is designed to answer rigorously.
+## 6. Is the Difference Real?
 
-## Common Problems & Their State-of-the-Art Solutions
+### Statistical Significance of Improvements
 
-- **Class imbalance** → resampling (SMOTE), class weighting, focal loss (down-weights easy examples so the model focuses on hard/minority-class ones)
-- **Overfitting on small data** → stronger regularization, data augmentation, transfer learning from a model pretrained on related data
-- **Concept drift in production** (the real-world data distribution shifts over time) → continuous monitoring dashboards, scheduled retraining, online learning
-- **Curse of dimensionality** (too many features relative to data volume, distances become meaningless) → feature selection, PCA, stronger regularization
-- **Slow training on huge tabular datasets** → gradient boosting libraries built for speed (XGBoost, LightGBM), distributed training frameworks
-- **Explainability** ("why did the model predict this?") → SHAP values (game-theoretic feature attribution), LIME (local approximations), built-in feature importance from tree models
+Every metric computed on a test set is an estimate with sampling error. Before concluding that model B beats model A, check that the difference is larger than that error. Because both models are scored on the **same** test examples, use paired methods, which are far more sensitive than comparing two separate confidence intervals:
 
-Machine Learning section complete. Next: [Deep Learning](/docs/deep-learning/roadmap) — when classical algorithms stop being enough.
+- **Paired bootstrap.** Resample the test set with replacement many times, compute the metric difference on each resample, and take the 2.5th and 97.5th percentiles as a 95% confidence interval. If it excludes 0, the difference is unlikely to be luck. In Section 9 the ROC-AUC difference is 0.023 with interval [0.012, 0.033]: real, if modest. This works for any metric, including ROC-AUC and $F_1$, which have no simple formula for their standard errors.
+- **McNemar's test** for accuracy: count the examples where only A is right ($n_{10}$) and where only B is right ($n_{01}$). Under the hypothesis that the models are equally accurate, each disagreement is equally likely to go either way, so $n_{01}$ is binomial with probability 1/2. In Section 9 boosting is right on 232 examples where logistic regression is wrong, and the reverse happens 52 times; the chance of a split that lopsided with equal models is about $10^{-28}$.
+
+Three cautions. Cross-validation scores from different folds aren't independent, so naive $t$-tests on them are overconfident (Dietterich, 1998; Nadeau and Bengio, 2003 give corrected versions). Comparing many models or settings and reporting the best inflates its score, which is why the final test set is used once ([workflow](/docs/machine-learning/ml-workflow-fundamentals#train-validation-test-splits)). And statistical significance isn't practical significance: with a million test examples, a 0.01% improvement can be "significant" and worthless. In production, an A/B test on the real outcome is the final judge.
+
+<GoDeeper title="Go deeper: choosing the metric is choosing the model">
+
+Metrics aren't neutral measurements; whatever you optimize and select by is what you'll get. A few consequences that catch teams out:
+
+- **Optimizing accuracy on imbalanced data** produces models that ignore the minority class. Optimize a proper scoring rule (log loss), then set the threshold for the cost structure.
+- **Optimizing ROC-AUC** ignores calibration entirely; a model selected this way may need recalibration before its probabilities can be used.
+- **Optimizing MAPE** rewards under-forecasting, since over-predictions can be penalized without limit but under-predictions at most 100%.
+- **Optimizing a proxy** (clicks, engagement) can diverge from the real goal (satisfaction, revenue): Goodhart's law. Offline metrics are proxies for an online outcome, and the gap between them should itself be measured.
+- **Aggregate metrics hide subgroups.** A model can improve overall while getting worse for a particular region, device or demographic group. Slice the evaluation by the groups that matter before shipping.
+
+</GoDeeper>
+
+## 7. Common Problems and Their Standard Fixes
+
+| Problem | How it shows up | Standard fixes |
+|---|---|---|
+| Overfitting | Training score far above validation score | Regularization, simpler models, more data, early stopping, ensembling |
+| Underfitting | Training and validation scores both poor | More flexible model, better features, less regularization |
+| Class imbalance | High accuracy, poor recall on the rare class | PR-AUC, class weights, cost-based thresholds; resample only inside training folds |
+| Miscalibrated probabilities | Reliability diagram off the diagonal | Platt or isotonic recalibration on held-out data |
+| Leakage | A validation score too good to be true | Pipelines, group or time splits ([workflow](/docs/machine-learning/ml-workflow-fundamentals#data-leakage)) |
+| Concept drift | Live performance decays over time | Monitoring, scheduled retraining, online learning |
+| Curse of dimensionality | Distance-based models fail with many features | Feature selection, PCA, regularization |
+| Unexplained predictions | Stakeholders can't see why | Simpler models, or SHAP and permutation importance ([interpretability](/docs/interpretability/classical-interpretability)) |
+
+## 8. When *Not* to Trust a Single Metric
+
+| Situation | What to do instead |
+|---|---|
+| Rare positives | Report PR-AUC and precision at the recall you need, not accuracy or ROC-AUC alone |
+| Decisions use the probability itself | Report log loss or Brier score and a reliability diagram |
+| Errors have very different costs | Report expected cost at the chosen threshold |
+| Two models are close | Report a paired confidence interval for the difference |
+| Fairness or subgroup performance matters | Report the metric per group, not only overall |
+| The real goal is a business outcome | Treat offline metrics as a filter and confirm with an online experiment |
+
+## 9. Minimal Implementation
+
+Five experiments, one per section: the bias-variance decomposition measured by Monte Carlo; classification metrics on a dataset with 5.5% positives; calibration before and after isotonic recalibration; the cost-optimal threshold; and paired significance tests between two models:
+
+```python
+import numpy as np
+from scipy.stats import binomtest
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.datasets import make_classification
+from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import (average_precision_score, brier_score_loss, f1_score, log_loss,
+                             precision_score, recall_score, roc_auc_score)
+from sklearn.model_selection import train_test_split
+
+# ---- 1. Bias-variance decomposition, measured: fit polynomials to 300 fresh training sets ----
+rng = np.random.default_rng(0)
+f = lambda x: np.sin(2 * x)
+x_test = np.linspace(-2, 2, 50); sigma = 0.3
+print("degree   bias^2   variance   noise   sum     measured test MSE")
+for deg in [1, 3, 5, 7, 9]:
+    preds = []
+    for _ in range(300):
+        x = rng.uniform(-2, 2, 30); y = f(x) + rng.normal(0, sigma, 30)
+        preds.append(np.polyval(np.polyfit(x, y, deg), x_test))
+    preds = np.array(preds)
+    bias2 = np.mean((preds.mean(0) - f(x_test)) ** 2)
+    var = np.mean(preds.var(0))
+    y_new = f(x_test) + rng.normal(0, sigma, (300, 50))           # fresh test labels
+    mse = np.mean((preds - y_new) ** 2)
+    print(f"{deg:>6}   {bias2:.4f}   {var:.4f}     {sigma**2:.3f}   {bias2 + var + sigma**2:.4f}  {mse:.4f}")
+
+# ---- 2. Classification metrics on imbalanced data (5% positives) ----
+X, y = make_classification(n_samples=20000, n_features=20, n_informative=6, weights=[0.95], flip_y=0.01, random_state=0)
+X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.5, stratify=y, random_state=0)
+lr = LogisticRegression(max_iter=1000).fit(X_tr, y_tr)
+gb = HistGradientBoostingClassifier(random_state=0).fit(X_tr, y_tr)
+p_lr, p_gb = lr.predict_proba(X_te)[:, 1], gb.predict_proba(X_te)[:, 1]
+print(f"\nprevalence {y_te.mean():.3f};  always predicting 'negative' has accuracy {1 - y_te.mean():.3f}")
+for name, p in [("logistic regression", p_lr), ("gradient boosting", p_gb)]:
+    yhat = (p >= 0.5).astype(int)
+    print(f"{name:20s} acc {np.mean(yhat == y_te):.3f}  precision {precision_score(y_te, yhat):.3f}  recall {recall_score(y_te, yhat):.3f}  "
+          f"F1 {f1_score(y_te, yhat):.3f}  ROC-AUC {roc_auc_score(y_te, p):.3f}  PR-AUC {average_precision_score(y_te, p):.3f}")
+
+# ROC-AUC is the probability a random positive outscores a random negative
+pos, neg = p_gb[y_te == 1], p_gb[y_te == 0]
+pairs = (pos[:, None] > neg[None, :]).mean() + 0.5 * (pos[:, None] == neg[None, :]).mean()
+print(f"P(score of a positive > score of a negative) = {pairs:.4f}  vs  roc_auc_score {roc_auc_score(y_te, p_gb):.4f}")
+
+# ---- 3. Calibration: expected calibration error before and after isotonic recalibration ----
+def ece(y, p, bins=10):
+    idx = np.minimum((p * bins).astype(int), bins - 1)
+    return sum(np.mean(idx == b) * abs(y[idx == b].mean() - p[idx == b].mean()) for b in range(bins) if np.any(idx == b))
+gb_iso = CalibratedClassifierCV(HistGradientBoostingClassifier(random_state=0), method="isotonic", cv=5).fit(X_tr, y_tr)
+p_iso = gb_iso.predict_proba(X_te)[:, 1]
+for name, p in [("gradient boosting", p_gb), ("  + isotonic", p_iso), ("logistic regression", p_lr)]:
+    print(f"{name:20s} ECE {ece(y_te, p):.4f}   Brier {brier_score_loss(y_te, p):.4f}   log loss {log_loss(y_te, p):.4f}")
+
+# ---- 4. Threshold from costs: a missed positive costs 20, a false alarm costs 1 ----
+c_fn, c_fp = 20.0, 1.0
+cost = lambda t: np.sum((p_iso >= t) & (y_te == 0)) * c_fp + np.sum((p_iso < t) & (y_te == 1)) * c_fn
+grid = np.linspace(0.01, 0.99, 99)
+best = grid[np.argmin([cost(t) for t in grid])]
+print(f"\ncost at threshold 0.5: {cost(0.5):.0f};  theory says use c_FP/(c_FP+c_FN) = {c_fp / (c_fp + c_fn):.3f}: cost {cost(c_fp / (c_fp + c_fn)):.0f};"
+      f"  best on a grid {best:.2f}: cost {cost(best):.0f}")
+
+# ---- 5. Is gradient boosting really better? Paired bootstrap and McNemar's test ----
+diffs = []
+for _ in range(1000):
+    i = rng.integers(0, len(y_te), len(y_te))
+    diffs.append(roc_auc_score(y_te[i], p_gb[i]) - roc_auc_score(y_te[i], p_lr[i]))
+lo, hi = np.percentile(diffs, [2.5, 97.5])
+print(f"ROC-AUC difference (boosting - logistic): {roc_auc_score(y_te, p_gb) - roc_auc_score(y_te, p_lr):.4f}, 95% bootstrap CI [{lo:.4f}, {hi:.4f}]")
+a, b = (p_gb >= 0.5) == y_te, (p_lr >= 0.5) == y_te
+n01, n10 = np.sum(a & ~b), np.sum(~a & b)
+print(f"McNemar: boosting right & logistic wrong {n01}, the reverse {n10}, p = {binomtest(n01, n01 + n10, 0.5).pvalue:.2g}")
+```
+
+Output (scikit-learn 1.7, SciPy 1.16):
+
+```
+degree   bias^2   variance   noise   sum     measured test MSE
+     1   0.4172   0.0384     0.090   0.5456  0.5468
+     3   0.0372   0.0264     0.090   0.1536  0.1542
+     5   0.0014   0.0519     0.090   0.1433  0.1420
+     7   0.0014   0.8249     0.090   0.9163  0.9232
+     9   1.9857   548.1579     0.090   550.2336  550.2807
+
+prevalence 0.055;  always predicting 'negative' has accuracy 0.945
+logistic regression  acc 0.955  precision 0.699  recall 0.326  F1 0.445  ROC-AUC 0.920  PR-AUC 0.564
+gradient boosting    acc 0.973  precision 0.875  recall 0.599  F1 0.711  ROC-AUC 0.943  PR-AUC 0.801
+P(score of a positive > score of a negative) = 0.9431  vs  roc_auc_score 0.9431
+gradient boosting    ECE 0.0125   Brier 0.0215   log loss 0.0900
+  + isotonic         ECE 0.0053   Brier 0.0200   log loss 0.0800
+logistic regression  ECE 0.0067   Brier 0.0336   log loss 0.1243
+
+cost at threshold 0.5: 3905;  theory says use c_FP/(c_FP+c_FN) = 0.048: cost 1764;  best on a grid 0.06: cost 1731
+ROC-AUC difference (boosting - logistic): 0.0227, 95% bootstrap CI [0.0122, 0.0328]
+McNemar: boosting right & logistic wrong 232, the reverse 52, p = 2.6e-28
+```
+
+- **The decomposition is exact (Section 1).** For every degree, bias² + variance + noise matches the separately measured test MSE to within Monte Carlo error. Error falls from degree 1 (bias-dominated) to degree 5 and then rises steeply (variance-dominated).
+- **Accuracy hides failure (Section 3).** Logistic regression's 95.5% accuracy sits beside 33% recall; the trivial all-negative model gets 94.5%.
+- **ROC-AUC is a ranking probability**, confirmed to four decimals by counting pairs, and **PR-AUC separates models that ROC-AUC makes look close** (0.564 against 0.801).
+- **Recalibration fixes probabilities without touching the ranking (Section 4)**, improving ECE, Brier and log loss.
+- **The cost formula works (Section 5)**: the theoretical threshold of 0.048 cuts cost from 3,905 to 1,764, within 2% of the best grid value.
+- **The improvement is real (Section 6)**: a bootstrap interval that excludes zero and a decisive McNemar test.
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Decomposition | Expected squared error = noise + bias² + variance |
+| Underfit / overfit | High bias / high variance; regularization trades one for the other |
+| MSE vs MAE | Reward the conditional mean vs the conditional median |
+| $R^2$ | Variance explained; negative on test data means worse than the mean |
+| Precision, recall | $TP/(TP+FP)$, $TP/(TP+FN)$; $F_1$ is their harmonic mean |
+| ROC-AUC | $P(\text{score}_+ \gt  \text{score}_-)$; ranking only; insensitive to imbalance |
+| PR-AUC | Baseline equals prevalence; the right headline for rare positives |
+| Proper scores | Log loss and Brier are minimized only by true probabilities |
+| Calibration | Reliability diagram and ECE; fix with Platt or isotonic on held-out data |
+| Threshold | Predict positive when $p \gt  c_{FP}/(c_{FP} + c_{FN})$ |
+| Significance | Paired bootstrap or McNemar on the same test set |
+
+---
+
+Next: [Hyperparameter Optimization](/docs/machine-learning/hyperparameter-optimization), how to search for the settings these metrics are used to choose, and then [Deep Learning](/docs/deep-learning/roadmap).
+
+## Sources
+
+- T. Hastie, R. Tibshirani and J. Friedman, [The Elements of Statistical Learning](https://hastie.su.domains/ElemStatLearn/), 2nd ed., Chapter 7
+- T. Fawcett, [An Introduction to ROC Analysis](https://doi.org/10.1016/j.patrec.2005.10.010), *Pattern Recognition Letters*, 2006
+- T. Saito and M. Rehmsmeier, [The Precision-Recall Plot Is More Informative than the ROC Plot When Evaluating Binary Classifiers on Imbalanced Datasets](https://doi.org/10.1371/journal.pone.0118432), *PLOS ONE*, 2015
+- T. Gneiting and A. E. Raftery, [Strictly Proper Scoring Rules, Prediction, and Estimation](https://doi.org/10.1198/016214506000001437), *JASA*, 2007
+- C. Elkan, [The Foundations of Cost-Sensitive Learning](https://www.ijcai.org/Proceedings/01/IJCAI-2001-e.pdf), IJCAI 2001
+- T. G. Dietterich, [Approximate Statistical Tests for Comparing Supervised Classification Learning Algorithms](https://doi.org/10.1162/089976698300017197), *Neural Computation*, 1998
+- C. Nadeau and Y. Bengio, [Inference for the Generalization Error](https://doi.org/10.1023/A:1024068626366), *Machine Learning*, 2003
+- A. Niculescu-Mizil and R. Caruana, [Predicting Good Probabilities with Supervised Learning](https://doi.org/10.1145/1102351.1102430), ICML 2005
