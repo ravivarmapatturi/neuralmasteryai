@@ -1,18 +1,30 @@
 ---
-title: "Multi-Agent Systems"
+title: "Multi-Agent Systems, In Full Depth"
 sidebar_position: 5
-description: "The three coordination topologies for when one agent isn't enough, drawn as actual graphs -- the real tradeoff between debuggability and flexibility."
+description: "Coordinating several agents once you have decided to split: hierarchical, peer-to-peer and blackboard topologies, shared state and conflicts, when parallel agents pay off, swarms and what the research on more agents shows (majority voting simulated, with and without shared blind spots), and the common failure modes."
 ---
 
 
 import CoordinationPatternsDiagram from '../../../viz/diagrams/CoordinationPatternsDiagram';
 import ParallelAgentSpeedupDiagram from '../../../viz/diagrams/ParallelAgentSpeedupDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Multi-Agent Systems
+# Multi-Agent Systems, In Full Depth
 
-When one agent isn't enough — and the coordination problems that come with adding more.
+[Single-Agent vs Multi-Agent](/docs/agents/single-vs-multi-agent) dealt with *whether* to split work across agents: usually not, unless context, parallelism or separation of tools demands it. This page is about *how*, once you have. It covers the three coordination topologies and what each trades, how agents share state without trampling each other, when parallel agents actually save time, what "swarms" of many agents are and what the research on adding more agents shows, including a simulation of the simplest version (many attempts plus a vote) that shows both why it works and where it stops, and the failure modes every multi-agent system meets.
 
-## Coordination Patterns
+<ELI5>
+
+Think of three ways to run a group project. In the first, one team leader hands out tasks and stitches the results together. In the second, everyone talks to everyone and the group works it out among themselves. In the third, nobody talks directly: there's a shared whiteboard, everyone writes what they find, and people pick up whatever they can help with.
+
+The leader version is the easiest to keep on track. The free-for-all is flexible but can go in circles. The whiteboard works well when you don't know in advance who'll be needed. Everything below is those three set-ups made exact, and what goes wrong in each.
+
+</ELI5>
+
+## 1. Topologies
+
+### Coordination Patterns
 
 The three topologies, drawn as actual graphs rather than described in prose — the shape difference is the entire tradeoff between debuggability and flexibility:
 
@@ -22,11 +34,11 @@ The three topologies, drawn as actual graphs rather than described in prose — 
 - **Peer-to-peer**: agents communicate directly with each other as equals, without a central coordinator — more flexible, but harder to guarantee the task actually converges to a result, and harder to debug when something goes wrong.
 - **Blackboard**: agents don't talk to each other directly at all — they read and write to a shared state/workspace ("the blackboard"), and react to changes in it. Useful when the set of contributing agents isn't fixed in advance.
 
-## Shared State and Conflict Resolution
+## 2. Shared State and Conflict Resolution
 
 When multiple agents can read and write shared state (a document, a database, a plan), you need a strategy for conflicts — two agents editing the same resource, or reaching contradictory conclusions. Common approaches: locking/turn-taking (only one agent acts on a resource at a time), a designated "resolver" agent that reconciles conflicting outputs, or simply designing the task decomposition so agents own disjoint pieces of state and never need to reconcile.
 
-## When Multi-Agent Actually Helps
+## 3. When Parallel Agents Pay Off
 
 Multi-agent systems earn their complexity when:
 - Different sub-tasks genuinely need different tools, instructions, or models (e.g. a coding sub-agent vs. a research sub-agent)
@@ -37,7 +49,7 @@ Multi-agent systems earn their complexity when:
 
 They *don't* help — and often actively hurt — when a single well-prompted agent with good tools was already handling the task fine. Coordination overhead, extra latency, and extra points of failure are real costs, not free architecture upgrades.
 
-## Agent Swarms: Scaling to Many Agents
+## 4. Agent Swarms: Scaling to Many Agents
 
 The three topologies above assume a small, deliberately-designed set of agents — two specialists, three sub-agents under an orchestrator. **"Swarm"** specifically implies something different: potentially dozens to millions of largely *homogeneous*, lightweight agents, often coordinated in a more decentralized way — the term borrows directly from biological swarm intelligence (ant colonies foraging, birds flocking), where simple individual behavior produces sophisticated collective behavior without any single agent holding the full plan.
 
@@ -59,13 +71,92 @@ Frameworks explain *how* to build a swarm; three real results establish *why* �
 
 **The honest limit.** [Society of HiveMind](https://arxiv.org/abs/2503.05473) (Mamie & Rao, 2025) — explicitly framed around biological swarm behavior and evolutionary theory, the most literal "swarm" of the three — reports a real, task-dependent split: a *significant* improvement on tasks requiring intensive logical reasoning, but *negligible* benefit on tasks that mainly require retrieving existing knowledge. This is the same "coordination overhead is a real cost, not a free upgrade" honesty from earlier on this page, now with the specific dividing line: swarms help you *reason* better collectively; they don't help you *know* more than any one agent already does.
 
+### More attempts and a vote, simulated
+
+The simplest "many agents" result, sampling the same model several times and taking a majority vote, is easy to simulate, and the simulation shows both why it works and where it stops. Each attempt is right with probability 0.6. In the first column every attempt's errors are independent. In the second, a quarter of the questions are blind spots the model gets wrong every single time (with its accuracy on the rest raised so that one attempt is still 60% right overall):
+
+```python
+import random
+
+# "More agents" in its simplest form: N independent attempts, then a majority vote.
+# Each attempt is right with probability p. How often is the majority right?
+def majority_accuracy(n, p, shared=0.0, trials=20_000, seed=0):
+    """shared = probability that a question is one the model gets wrong *every* time it's asked
+    (a correlated blind spot), which no amount of voting can fix."""
+    rng = random.Random(seed)
+    wins = 0
+    for _ in range(trials):
+        if rng.random() < shared:                       # a blind spot: all attempts fail together
+            continue
+        votes = sum(rng.random() < p for _ in range(n))
+        wins += votes > n / 2
+    return wins / trials
+
+for n in (1, 5, 15, 45):
+    print(f"N={n:2d} attempts: independent errors {majority_accuracy(n, 0.6):.2f}   "
+          f"with a 25% shared blind spot {majority_accuracy(n, 0.6 / 0.75, shared=0.25):.2f}")
+```
+
+```text
+N= 1 attempts: independent errors 0.60   with a 25% shared blind spot 0.60
+N= 5 attempts: independent errors 0.68   with a 25% shared blind spot 0.71
+N=15 attempts: independent errors 0.79   with a 25% shared blind spot 0.74
+N=45 attempts: independent errors 0.91   with a 25% shared blind spot 0.76
+```
+
+With independent errors, voting is powerful: 45 attempts lift 60% to 91%. With a shared blind spot, voting climbs a little and then flattens against a ceiling of 75%, because on blind-spot questions every attempt agrees on the same wrong answer, and more votes for it change nothing. Real agents built from the same model share many errors, which is why gains from adding agents taper off, and why diversity (different models, different prompts, different tools or evidence) matters more than count.
+
+<PredictFirst
+  question="A team runs 20 copies of the same model with the same prompt and takes a majority vote, but accuracy barely improves over one copy. What is the most likely reason?"
+  options={[
+    'Twenty is too few; use two hundred',
+    'The copies make the same mistakes on the same questions, so their errors are correlated and votes add little information',
+    'Majority voting never helps language models',
+    'The temperature is too low, so all answers are identical',
+  ]}
+  correctIndex={1}
+  explanation="Voting helps only to the extent the voters' errors are independent. Identical models with identical prompts tend to fail on the same questions. Raising the temperature adds some diversity (the fourth option is part of the story), but different models, prompts or evidence add much more."
+/>
+
 Further reading: ["Multi-Agent Collaboration Mechanisms: A Survey of LLMs"](https://arxiv.org/abs/2501.06322) (Tran et al., 2025) covers the broader landscape — participating agents, interaction types, organizational structures, and coordination strategies — in one place.
 
-## Common Problems & SOTA Solutions
+## 5. Common Problems and Their Fixes
 
 - **Agent loses context over long tasks** → explicit memory systems, periodic summarization of progress-so-far, offloading state to an external store rather than keeping everything in the context window
 - **Agent gets stuck in loops** (repeating the same failed action) → hard step limits, reflection checkpoints that force the agent to reassess, escalation to a human when stuck
 - **Tool-calling hallucination** (calling tools that don't exist, or with malformed arguments) → strict schema validation on tool calls, clear error messages fed back to the model so it can self-correct, retry logic with backoff
 - **Runaway cost/latency in multi-agent chains** → caching repeated sub-results, using smaller/cheaper models for simple sub-tasks and reserving the largest model for the parts that need it, parallelizing independent sub-agent calls instead of running them sequentially
 
+## 6. When *Not* to Use Each Topology
+
+| Situation | Better choice |
+|---|---|
+| You need predictable, debuggable behaviour | Hierarchical, with one orchestrator that owns the result |
+| Peer agents with no clear owner of the final answer | Add an orchestrator or a judge; peers alone may not converge |
+| Several agents writing to the same files or records | One writer, or locking and a merge step; prefer read-only sub-agents |
+| Many copies of one model voting | Diverse models, prompts or evidence; identical copies share blind spots |
+| A swarm framework for a task one agent handles | One agent |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Hierarchical | An orchestrator delegates and integrates; easiest to debug |
+| Peer-to-peer | Direct messages between equals; flexible, harder to make converge |
+| Blackboard | Agents read and write shared state; good when contributors aren't fixed |
+| Shared state | Locking, a single writer, or an arbiter; read-only sub-agents avoid most conflicts |
+| Parallelism | Pays off only for independent sub-tasks |
+| More agents | Voting lifts 60% to 91% with independent errors, but stalls at 75% with shared blind spots |
+| Diversity | Different models, prompts and evidence matter more than count |
+
+---
+
 Next: [Agentic Coding Assistants](/docs/agents/agentic-coding-assistants) — a real, named, everyday application of everything above: the loop, the tool palette, and the safety/reversibility tradeoffs, in tools you're probably already using.
+
+## Sources
+
+- Li et al., [More Agents Is All You Need](https://arxiv.org/abs/2402.05120) (2024)
+- Wang et al., [Mixture-of-Agents Enhances Large Language Model Capabilities](https://arxiv.org/abs/2406.04692) (2024)
+- Tran et al., [Multi-Agent Collaboration Mechanisms: A Survey of LLMs](https://arxiv.org/abs/2501.06322) (2025)
+- Anthropic, [How we built our multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) (2025)
+- Wang et al., [Self-Consistency Improves Chain of Thought Reasoning](https://arxiv.org/abs/2203.11171) (2022)
