@@ -1,15 +1,27 @@
 ---
-title: "Loops and Graphs: The Actual Anatomy"
+title: "Loops and Graphs, In Full Depth"
 sidebar_position: 4.5
-description: "What's actually inside a Loop vs. a Graph -- a real, checkable pass/fail condition, not a vibe, is what makes one unit of agent work correct at all."
+description: "What is inside an agent loop and an agent graph: a real pass/fail check that makes one unit of work correct, splitters, workers, code nodes and gates, real versus fake edges, two return paths on rejection, gating on reversibility, and a LangGraph graph run with a gate that returns only the failed unit."
 ---
 
 import LoopGraphAnatomyDiagram from '../../../viz/diagrams/LoopGraphAnatomyDiagram';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# Loops and Graphs: The Actual Anatomy
+# Loops and Graphs, In Full Depth
 
-[Agent Architectures](/docs/agents/agent-architectures#how-we-got-here-prompt-context-harness-loop-graph) narrated *why* the field moved from a single loop to a graph of them. This page stops narrating and gets precise: what is actually inside a Loop, what is actually inside a Graph, and where each one earns its keep.
+[Agent Architectures](/docs/agents/agent-architectures#how-we-got-here-prompt-context-harness-loop-graph) narrated *why* the field moved from a single loop to a graph of them. This page stops narrating and gets precise: what is actually inside a Loop, what is actually inside a Graph, and where each one earns its keep. It ends with a small graph built and run in LangGraph, where a gate rejects one unit of work and sends only that unit back, so every idea on the page is visible in a real execution trace.
+
+<ELI5>
+
+Think of a kitchen during dinner service. Each cook makes one dish and tastes it before it leaves their station: if it's not right, they fix it and taste again. That's a loop: make, check, fix, repeat, until it passes a real test.
+
+The head chef decides which dishes are needed for each table, who cooks what, which can be made at the same time and which must wait, and checks each plate before it goes out. If one plate is wrong, only that plate goes back, not the whole table's order. That's a graph.
+
+Good cooks without a head chef make great dishes in chaos. A head chef with careless cooks sends out bad food faster. You need both. Everything below is that kitchen made exact.
+
+</ELI5>
 
 <div className="nb-theme" style={{ padding: '0.25rem 0' }}>
 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0.75rem' }}>
@@ -101,7 +113,102 @@ Prefect's engineering team frames the same idea from the workflow-orchestration 
 
 Worth being precise about, since "graph" gets used for two genuinely different scopes: a framework like LangGraph typically models **one agent's internals** — the nodes are steps inside a single agent's own reasoning. A **macro-orchestration** graph, by contrast, coordinates across multiple agents, where each node is a full, independent agentic invocation in its own right. Both are real graphs in the sense this page describes — splitters, workers, gates, and real edges all still apply — they just operate one level apart. A single LangGraph agent with well-designed internal state is the micro case; a system that assigns different sub-agents to different nodes is the macro case. Neither is "the" graph — they're the same idea at two different altitudes.
 
-## References
+## A Graph, Run
+
+Here are the pieces above in one small LangGraph graph: a **splitter** fans a report out into three sections handled by parallel **workers**, a **gate** applies a real, checkable rule (every section must cite a source), a rejected unit goes back alone with the reason (the **short correction edge**), and a **code node** merges the results with no model call. The workers are stand-ins for model calls, with the first draft of one section forgetting its citation:
+
+```python
+import operator
+from typing import Annotated, TypedDict
+from langgraph.graph import StateGraph, START, END
+from langgraph.types import Send
+
+# Splitter -> parallel workers -> gate (a real, checkable condition) -> code node that merges.
+# A rejected unit goes back alone, with the reason; units that passed are never redone.
+class State(TypedDict):
+    sections: list[str]
+    drafts: Annotated[list[dict], operator.add]          # parallel workers append here
+
+attempts = {}
+def worker(unit: dict) -> dict:
+    attempts[unit["section"]] = attempts.get(unit["section"], 0) + 1
+    cite = "" if unit["section"] == "pricing" and attempts["pricing"] == 1 else " [1]"   # first pricing draft forgets
+    return {"drafts": [{"section": unit["section"], "text": f"{unit['section']} summary{cite}",
+                        "feedback": unit.get("feedback")}]}
+
+def gate(state: State):
+    latest = {d["section"]: d for d in state["drafts"]}                                   # newest draft per unit
+    failed = [s for s, d in latest.items() if "[1]" not in d["text"]]                     # rule: every claim cited
+    if failed:
+        print(f"gate: rejected {failed}; returning only those, with the reason")
+        return [Send("worker", {"section": s, "feedback": "add a citation"}) for s in failed]
+    print("gate: all units pass")
+    return "merge"
+
+def split(state: State):
+    return [Send("worker", {"section": s}) for s in state["sections"]]
+
+def merge(state: State) -> dict:                                                           # code node: no model call
+    latest = {d["section"]: d["text"] for d in state["drafts"]}
+    print("merged:", " | ".join(latest[s] for s in state["sections"]))
+    return {}
+
+g = StateGraph(State)
+g.add_node("worker", worker)
+g.add_node("check", lambda state: {})
+g.add_node("merge", merge)
+g.add_conditional_edges(START, split, ["worker"])
+g.add_edge("worker", "check")
+g.add_conditional_edges("check", gate, ["worker", "merge"])
+g.add_edge("merge", END)
+g.compile().invoke({"sections": ["overview", "pricing", "risks"], "drafts": []})
+print("worker calls per unit:", attempts)
+```
+
+```text
+gate: rejected ['pricing']; returning only those, with the reason
+gate: all units pass
+merged: overview summary [1] | pricing summary [1] | risks summary [1]
+worker calls per unit: {'overview': 1, 'pricing': 2, 'risks': 1}
+```
+
+The trace shows the rules from this page holding. The three workers ran in parallel because no edge connects them: there is no variable one needs from another. The gate's check is a rule a program evaluates, not a confidence score. Only `pricing` went back, with a specific reason, while `overview` and `risks` were never redone. And the merge is plain code. The graph doesn't yet have a long learning edge: nothing records that pricing sections tend to forget citations, so the next run will make the same first mistake.
+
+<PredictFirst
+  question="In the run above, suppose the gate sent all three sections back whenever any one failed. With each section independently failing its first check 30% of the time and passing on retry, what changes?"
+  options={[
+    'Nothing, because sections that passed will pass again',
+    'Every failure triggers redoing all three units, roughly tripling worker calls on failing runs, and each redo is another chance for an unrelated unit to fail',
+    'It becomes faster, because the batch stays together',
+    'The gate stops working',
+  ]}
+  correctIndex={1}
+  explanation="Returning the batch re-runs units that already passed, paying for them again, and since model outputs vary, a unit that passed can fail on the redo, which can send the whole batch round again. Returning only the failed unit keeps cost proportional to failures and lets the run converge."
+/>
+
+## When *Not* to Build a Graph
+
+| Situation | Better choice |
+|---|---|
+| A single unit of work with a clear check | One well-built loop; a graph adds structure with nothing to coordinate |
+| Steps with no real data dependency written as a sequence | Remove the fake edges and run them in parallel |
+| A gate based on the model's self-reported confidence | A deterministic check: tests, schema validation, citations that resolve |
+| Human review on every intermediate step | A human only at the irreversible step |
+| Loops with no exit bound | A maximum number of attempts, then escalate |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Loop | Produce, check, correct, repeat, until a real pass/fail condition holds |
+| Graph | Decides which units exist, their order, and what runs in parallel |
+| Node types | Splitter, worker, code node, gate |
+| Real edge | One you can name the variable for; anything else is a fake edge to parallelize |
+| Rejection | Short correction edge fixes this run; long learning edge fixes future runs |
+| Return the unit | Send back only what failed, never the batch |
+| Gate on reversibility | Blast radius decides the gate; a human belongs at the irreversible step |
+
+## Sources
 
 - Hu Wei, ["From Agent Loops to Structured Graphs: A Scheduler-Theoretic Framework for LLM Agent Execution"](https://arxiv.org/abs/2604.11378) — arXiv:2604.11378. A position paper and design proposal (not an empirical/production paper), formally critiquing the plain agent-loop pattern and proposing a graph harness with termination and soundness guarantees.
 - Prefect, ["Loops vs. Graphs"](https://www.prefect.io/blog/loops-vs-graphs) — the autonomy-inside-nodes/control-at-edges framing, the refund-workflow capability-scoping example, and the micro/macro graph distinction referenced above.
