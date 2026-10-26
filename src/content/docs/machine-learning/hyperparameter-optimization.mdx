@@ -1,34 +1,52 @@
 ---
-title: "Hyperparameter Optimization"
+title: "Hyperparameter Optimization, In Full Depth"
 sidebar_position: 6.05
-description: "Grid vs. random search's real distinct-values argument, Bayesian optimization, and Hyperband -- the actual search problem underneath 'tune the hyperparameters'."
+description: "Hyperparameter search derived: the problem as optimizing a noisy, expensive black box, why random search beats grid search (the distinct-values argument and the probability of hitting a good region), Bayesian optimization with a Gaussian process and the Expected Improvement formula derived, TPE, successive halving and Hyperband, overfitting the validation set, and all four strategies run on one real tuning problem."
 ---
 
 import HyperparamSearchDiagram from '../../../viz/diagrams/HyperparamSearchDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
 
-# Hyperparameter Optimization
+# Hyperparameter Optimization, In Full Depth
 
-[Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics) covers *what* to measure. This page covers the actual search problem underneath "tune the hyperparameters": model hyperparameters (learning rate, tree depth, regularization strength, number of layers) aren't learned from data the way weights are — they have to be searched over, using validation performance (see [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals#train-validation-test-splits)) as the search signal, never the test set.
+[Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics) covered what to measure, and [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals#train-validation-test-splits) where to measure it: on validation data, never the test set. This page covers the search itself. Hyperparameters, such as a learning rate, a tree depth, a regularization strength or an SVM's $C$ and $\gamma$, aren't learned by training; each setting has to be tried by training a model and scoring it. That makes tuning an optimization problem of an unusual kind: no gradients, noisy measurements, and every evaluation costs a full training run. The page derives why random search beats grid search, how Bayesian optimization uses past results to choose the next try (including the Expected Improvement formula, derived), how successive halving saves budget by stopping bad runs early, and how tuning itself can overfit. All four strategies are run on the same real problem.
 
 <ELI5>
 
-Imagine tuning an old radio with two knobs — one actually changes the station, the other does nothing (it's broken). If you test every combination of both knobs systematically (a grid), you waste half your turns twiddling the broken knob while barely varying the one that matters. If you just spin both knobs randomly instead, you end up trying way more distinct settings of the knob that actually matters, for the same number of tries. That's the whole surprising result below: most models have a few "real" knobs and several "broken" ones, and grid search doesn't know which is which — random search doesn't need to.
+Imagine tuning an old radio with two knobs. One changes the station; the other, it turns out, does nothing. If you try every combination in a neat grid, five positions per knob, you spend 25 tries but only ever try five settings of the knob that matters. If you spin both knobs to random positions 25 times, you try 25 different settings of the knob that matters, for the same effort.
+
+Better still, after a few tries you could notice which direction the music gets clearer and try there next, instead of choosing blindly. And if you can tell within a second that a setting is just static, you can move on without listening for a whole minute. Those three ideas, random search, guided search and stopping early, are what this page makes exact.
 
 </ELI5>
 
-## Grid Search vs. Random Search — the Real Result, Not the Obvious One
+## 1. The Problem
 
-The obvious intuition is that a denser, more systematic grid search should beat randomly guessing. Bergstra and Bengio's ["Random Search for Hyper-Parameter Optimization"](https://jmlr.org/papers/v13/bergstra12a.html) (JMLR, 2012) shows this is backwards, and explains precisely why: across real deep belief network tuning tasks spanning 32 hyperparameter dimensions, pure random search matched or beat grid and manual search — and a Gaussian-process analysis of validation performance as a function of the hyperparameters revealed that **for most datasets, only a few of the hyperparameters actually matter**.
+Let $\boldsymbol{\lambda}$ be a vector of hyperparameters, from a search space $\Lambda$. Training with $\boldsymbol{\lambda}$ produces a model; scoring it on validation data gives a number. Tuning is
 
-That single fact is what breaks grid search. A $k \times k$ grid over two hyperparameters spends $k^2$ evaluations — but if only one of those two hyperparameters is actually important, every one of those $k^2$ evaluations only ever tries $k$ *distinct* values of the dimension that matters, because each of the $k$ important-dimension values gets repeated $k$ times while the unimportant dimension varies. Random search, drawing $k^2$ independent samples, tries close to $k^2$ distinct values of *every* dimension — including the one that matters — for the identical evaluation budget.
+$$
+\boldsymbol{\lambda}^* = \arg\max_{\boldsymbol{\lambda} \in \Lambda} f(\boldsymbol{\lambda}), \qquad f(\boldsymbol{\lambda}) = \text{validation score of the model trained with } \boldsymbol{\lambda}
+$$
+
+which is a **bilevel** problem: inside each evaluation of $f$ sits a whole training run that optimizes the model's ordinary parameters. From the outside, $f$ is a **black box** with four awkward properties:
+
+- **No gradients.** Most hyperparameters are discrete or affect training in ways that can't be differentiated, so we only see values of $f$.
+- **Expensive.** One evaluation is a full training run, often with cross-validation: seconds for a small model, days for a large one.
+- **Noisy.** Random initialization, data shuffling and the particular validation split change the score from run to run.
+- **Mixed and conditional spaces.** Some hyperparameters are continuous (a learning rate), some integer (depth), some categorical (the kernel), and some exist only for certain values of others (`gamma` only matters for the RBF kernel).
+
+Two practical rules before any algorithm. **Search scale parameters on a log scale**: a learning rate is as likely to need changing from 0.001 to 0.01 as from 0.01 to 0.1, so sample $\log_{10}$ of it uniformly. And **every evaluation must use only training and validation data**, with the test set held back for the single final measurement (Section 6 explains why the search itself can overfit).
+
+## 2. Grid Search and Random Search
+
+**Grid search** chooses a few values for each hyperparameter and tries every combination. With $k$ values for each of $d$ hyperparameters, that's $k^d$ evaluations: exponential in the number of hyperparameters.
+
+**Random search** draws each configuration independently at random from the space. Bergstra and Bengio (2012) showed it matches or beats grid search for the same budget, for a reason that becomes obvious once stated: **usually only a few hyperparameters matter much**. Their analysis of neural network tuning tasks found that, for most datasets, performance depended strongly on one or two hyperparameters and hardly at all on the rest, and which ones mattered differed between datasets.
+
+That's what breaks grid search. A $k \times k$ grid over two hyperparameters spends $k^2$ evaluations but tries only $k$ distinct values of each one; if only the first matters, $k(k-1)$ of the evaluations repeat values of it that were already tried. Random search with the same $k^2$ evaluations tries $k^2$ distinct values of every hyperparameter, including the one that matters. With $k = 20$ that's 400 distinct values against 20:
 
 <HyperparamSearchDiagram />
-
-### See the Distinct-Values Gap For Real
-
-The diagram above illustrates the claim; here it is proven with a real count, for a real budget. Say only hyperparameter $A$ actually matters (call it "learning rate") and hyperparameter $B$ doesn't ("some knob that turns out not to matter") — a $k\times k$ grid spends $k^2$ evaluations but every one of them only ever tries $k$ *distinct* values of $A$, since each of those $k$ values gets repeated $k$ times as $B$ varies underneath it. Count it yourself, for the exact same evaluation budget:
 
 <RunnableCode code={`import numpy as np
 
@@ -62,9 +80,15 @@ print(f"Random search: {random_distinct} distinct values of that same dimension"
 # grows as k^2 -- the gap widens, it doesn't stay fixed.
 `} />
 
-### Implement the Grid-Search Counter Yourself
+**How many random tries are enough?** If the best fraction $q$ of the space counts as "good enough" (say the top 5%, $q = 0.05$), each independent random draw misses it with probability $1 - q$, so $N$ draws all miss with probability $(1-q)^N$. The chance that at least one lands in the good region is
 
-The tests check an exact, hand-derivable property: a $k\times k$ grid always tries exactly $k$ distinct values of each dimension and $k^2$ total evaluations — no floating-point tolerance needed, it's just what a grid *is*.
+$$
+P(\text{hit}) = 1 - (1 - q)^N
+$$
+
+For $q = 0.05$: 64% at $N = 20$, 95% at $N = 59$. Solving for $N$, about 60 random evaluations find a top-5% configuration with 95% probability, **whatever the number of hyperparameters**. Grid search gives no such guarantee, and its cost grows exponentially with dimension. The guarantee is about the fraction of the space that's good, so it depends on defining the space sensibly: if the good region is a tiny corner because the ranges are badly chosen, $q$ is small and $N$ is large.
+
+Write the grid counter yourself:
 
 <RunnableCode
   code={`import numpy as np
@@ -80,33 +104,203 @@ assert grid_search_distinct_values(1) == (1, 1)
 assert grid_search_distinct_values(3)[1] == 3 ** 2`}
 />
 
-<GoDeeper title="Go deeper: how many random draws until you're confident you've hit the good region?">
+## 3. Bayesian Optimization
 
-This has a clean, real answer, independent of anything about the model being tuned. Say the top $X$ fraction of the hyperparameter space counts as "good" (e.g. the top 5%, so $X = 0.05$) — with $N$ independent random draws, the probability that *none* of them land in that good region is $(1-X)^N$, since each draw independently misses it with probability $1-X$. So the probability at least one draw *does* land in the good region is $1 - (1-X)^N$. Plugging in $X = 0.05$: at $N=20$ draws, that's $1 - 0.95^{20} \approx 64\%$; by $N=60$, it's $1 - 0.95^{60} \approx 95\%$. This is exactly why random search needs surprisingly few evaluations to be confident of finding a near-optimal setting — the sample size needed depends only on how large you consider the "good" region to be, not on the number of hyperparameters or how the model itself behaves, which is part of why the guarantee holds even for models nobody understands well enough to reason about directly.
+Grid and random search decide every configuration in advance, ignoring the results as they come in. **Bayesian optimization** uses them: it fits a probabilistic model of $f$ to all the evaluations so far, a **surrogate**, and uses it to pick the next configuration where an evaluation is most worth making.
+
+**The surrogate.** The classic choice is a **Gaussian process**, a distribution over functions whose correlations are set by a kernel (configurations close together have similar scores). After $t$ evaluations, it gives at every untried $\boldsymbol{\lambda}$ a predictive distribution $f(\boldsymbol{\lambda}) \sim \mathcal{N}\big(\mu(\boldsymbol{\lambda}), \sigma^2(\boldsymbol{\lambda})\big)$: the mean is the best guess of the score, and the standard deviation is small near points already tried and large far from them.
+
+**The acquisition function** turns that distribution into a single number saying how useful it would be to evaluate there. The most common is **Expected Improvement**. With $f^+$ the best score so far, the improvement from evaluating $\boldsymbol{\lambda}$ is $I = \max(0, f(\boldsymbol{\lambda}) - f^+)$. Its expectation under the surrogate can be computed exactly. Writing $\mu$ and $\sigma$ for the predictive mean and standard deviation at $\boldsymbol{\lambda}$ and substituting $f = \mu + \sigma u$ with $u$ standard normal:
+
+$$
+\mathbb{E}[I] = \int_{f^+}^{\infty}(f - f^+)\,\frac{1}{\sigma}\phi\!\Big(\frac{f - \mu}{\sigma}\Big)\,df = \int_{-z}^{\infty}(\mu - f^+ + \sigma u)\,\phi(u)\,du, \qquad z = \frac{\mu - f^+}{\sigma}
+$$
+
+The first part integrates the constant $\mu - f^+$ against $\phi$ over $u \gt  -z$, giving $(\mu - f^+)\Phi(z)$. The second uses $\int_{-z}^{\infty}u\,\phi(u)\,du = \phi(-z) = \phi(z)$, since $\phi'(u) = -u\,\phi(u)$. Together:
+
+$$
+\operatorname{EI}(\boldsymbol{\lambda}) = (\mu - f^+)\,\Phi(z) + \sigma\,\phi(z)
+$$
+
+with $\Phi$ and $\phi$ the standard normal CDF and density. The two terms are the two reasons to evaluate somewhere. $(\mu - f^+)\Phi(z)$ is large where the surrogate predicts a score above the current best: **exploitation**. $\sigma\phi(z)$ is large where the surrogate is uncertain: **exploration**. A point predicted slightly worse than the best but with high uncertainty can have higher EI than a point predicted slightly better with almost no uncertainty, which is what stops the search from circling one spot. A small margin $\xi$ is often subtracted from $\mu - f^+$ to push toward exploration.
+
+**The loop**: evaluate a handful of random configurations; then repeatedly fit the surrogate, choose the configuration that maximizes EI (a cheap optimization, since the surrogate is cheap), evaluate it, and add the result. Gaussian processes cost $O(t^3)$ to fit and struggle with more than about 20 dimensions and with categorical or conditional spaces, so other surrogates are common in practice: random forests (SMAC; Hutter, Hoos and Leyton-Brown, 2011) and the **Tree-structured Parzen Estimator** (TPE; Bergstra et al., 2011), which models the density of good configurations and of bad ones separately and samples where their ratio is high. TPE is the default in Optuna and handles conditional spaces naturally.
+
+<PredictFirst
+  question="Tuning two SVM hyperparameters with cross-validation that takes about a second per evaluation, you give random search and Bayesian optimization 25 evaluations each. Which finds the better configuration?"
+  options={[
+    'Bayesian optimization, by a wide margin, because it learns from every result',
+    'About the same: in 2 cheap dimensions random search already covers the space well, and Bayesian optimization spends its first evaluations at random anyway',
+    'Random search, by a wide margin',
+    'Grid search would beat both',
+  ]}
+  correctIndex={1}
+  explanation="Bayesian optimization's advantage is sample efficiency when evaluations are expensive and the space is large enough that random coverage is thin. In two dimensions with 25 evaluations, random search lands near the good region quickly. Section 7 measures it: after 25 evaluations, 0.9737 for random search and 0.9743 for Bayesian optimization, averaged over five seeds."
+/>
+
+## 4. Successive Halving and Hyperband
+
+Bayesian optimization chooses *which* configurations to try. Another lever is *how much* budget each one gets. Most bad configurations are obviously bad long before training finishes: after a few epochs, or on a fraction of the data. **Successive halving** (Jamieson and Talwalkar, 2016) exploits this:
+
+1. Start $n$ configurations, each with a small budget $r$ (epochs, iterations, or training examples).
+2. Evaluate all of them; keep the best $1/\eta$ (with $\eta = 3$, the top third); multiply the survivors' budget by $\eta$.
+3. Repeat until one configuration remains, or the full budget is reached.
+
+There are about $\log_\eta n$ rounds, and each round spends roughly the same total budget (a third as many configurations, each with three times the resources), so the total cost is about $n\,r\log_\eta n$ instead of $n$ full runs. In Section 7, successive halving over 64 random SVM configurations, using the number of training examples as the resource, finds a configuration scoring 0.9721 in 11.5 seconds, against 0.9750 in 50.6 seconds for evaluating all 64 on the full data.
+
+The risk is the assumption that early performance predicts final performance. Some configurations (small learning rates, strong regularization) start slowly and finish best, and an aggressive cut can discard them. **Hyperband** (Li et al., 2018) hedges by running several brackets of successive halving with different trade-offs: some start many configurations with tiny budgets, others few configurations with large budgets, so a slow starter gets a chance in at least one bracket. **BOHB** (Falkner, Klein and Hutter, 2018) chooses Hyperband's configurations with a TPE-style model instead of at random, combining both levers; Optuna and Ray Tune provide similar combinations.
+
+<GoDeeper title="Go deeper: why the tuned score is optimistic, and what to report">
+
+The best validation score found by a search is a **maximum over many noisy estimates**, so it's biased upward, for the same reason the best of many lottery tickets looks like a skilled pick. If 100 configurations are really equally good and each validation score has noise with standard deviation $s$, the best of them will look about $2.5s$ better than its true value (the expected maximum of 100 standard normals is about 2.5). The more configurations searched, the larger the optimism.
+
+Three consequences. First, the final model's performance must be measured on data the search never touched: a held-out test set used once, or **nested cross-validation**, where an outer loop of folds evaluates the whole tune-then-train procedure ([ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals) covers it). Cawley and Talbot (2010) showed that skipping this can make one method look better than another purely because it was tuned harder. Second, small differences between the top few configurations usually aren't meaningful; prefer the simpler or cheaper of near-ties. Third, when comparing methods in a paper or a report, give each the same tuning budget, or the comparison measures tuning effort rather than the methods.
 
 </GoDeeper>
 
-## Bayesian Optimization: Using Every Result to Pick the Next One
+## 5. Choosing a Strategy
 
-Grid and random search are both **open-loop**: every point to evaluate is decided in advance, before seeing a single result. Bayesian optimization is **closed-loop** — it builds a probabilistic model of "hyperparameters → validation score" from every evaluation run so far, and uses that model to choose the next point deliberately.
+| Situation | Strategy |
+|---|---|
+| A few hyperparameters, cheap evaluations | Random search, 50 to 100 configurations, log-scaled ranges |
+| Expensive evaluations (minutes to days each) | Bayesian optimization (TPE or GP), with a modest number of random starts |
+| Training is iterative and early scores are informative | Successive halving or Hyperband, ideally combined with a model (BOHB, Optuna's pruners) |
+| Many evaluations can run in parallel | Random search or Hyperband parallelize trivially; Bayesian optimization needs batch variants |
+| One or two discrete choices to compare (e.g. two kernels) | A small grid over those, random search over the rest |
+| Very large models where even one run is expensive | Tune on a smaller model or data subset and transfer, plus learning-rate range tests |
 
-The standard surrogate model is a **Gaussian Process (GP)**: at any untried hyperparameter setting $x$, the GP gives both a predicted score $\mu(x)$ and an uncertainty $\sigma(x)$ — confident and low-uncertainty near points already evaluated, uncertain and high-variance far from anything tried yet. The next point to evaluate is chosen by maximizing an **acquisition function** built from $\mu$ and $\sigma$; the standard choice, **Expected Improvement (EI)**, is (see [Distill's "Exploring Bayesian Optimization"](https://distill.pub/2020/bayesian-optimization/)):
+And in every case: define sensible ranges (most of the gain comes from good ranges, not clever algorithms), use log scales for scale parameters, fix the evaluation protocol before searching, and keep the test set out of it.
 
-$$EI(x) = \big(\mu(x) - f(x^+) - \epsilon\big)\,\Phi(Z) + \sigma(x)\,\phi(Z), \qquad Z = \frac{\mu(x) - f(x^+) - \epsilon}{\sigma(x)}$$
+## 6. Overfitting the Search
 
-where $f(x^+)$ is the best score found so far, $\Phi$/$\phi$ are the standard normal CDF/PDF, and $\epsilon$ is a small constant controlling how much improvement counts as worth chasing. The formula is worth reading as two additive terms, not one opaque expression: $(\mu(x)-f(x^+)-\epsilon)\Phi(Z)$ rewards points predicted to beat the current best — **exploitation** — and $\sigma(x)\phi(Z)$ rewards points the model is simply uncertain about, regardless of predicted value — **exploration**. EI is high when either term is high, which is exactly the mechanism that keeps Bayesian optimization from just greedily re-exploring the best region found so far.
+Tuning is learning. The search fits hyperparameters to the validation data, and with enough configurations it fits that data's noise too. Signs and guards:
 
-<HyperparamSearchDiagram />
+- **The validation score keeps improving with more search, but test or production performance doesn't.** Stop searching; the gains are noise.
+- **Small validation sets amplify the problem.** Use cross-validation for the score being maximized, or a larger validation split.
+- **Report the final number from untouched data**, as in the box above.
 
-This sequential, informed selection is why Bayesian optimization typically needs far fewer evaluations than grid or random search to reach a comparable result — a real, practically significant gap when each evaluation is an expensive full training run — at the real cost of being inherently sequential (each point depends on all previous results) rather than trivially parallelizable the way grid/random search are.
+## 7. Minimal Implementation
 
-## Successive Halving and Hyperband
+All four strategies tuning the same black box: the 5-fold cross-validated accuracy of an RBF SVM on the handwritten-digits data, as a function of $\log_{10}C \in [-2, 4]$ and $\log_{10}\gamma \in [-5, 1]$. Grid search uses a 5 × 5 grid; random search and Bayesian optimization (a Gaussian process with the Expected Improvement formula from Section 3, written out) get the same 25 evaluations and are averaged over five seeds; then random search and successive halving each get 64 candidates:
 
-A different lever entirely: instead of choosing *which* configurations to try more cleverly, spend the *budget* per configuration adaptively. **Successive halving** allocates a small budget (a few epochs, a data subsample) to many configurations at once, discards the worst-performing half, and gives the survivors a larger budget — repeating until one configuration remains. This exploits a real empirical regularity: a bad hyperparameter configuration is usually identifiable early, well before training to completion, so the real budget only ever goes toward configurations that already looked competitive. **Hyperband** wraps successive halving in an outer loop that varies the initial budget-vs-configuration-count tradeoff itself, hedging against picking a bad tradeoff for problems where it isn't obvious in advance whether wide-and-shallow or narrow-and-deep search will win.
+```python
+import time
+import numpy as np
+from scipy.stats import norm, loguniform
+from sklearn.datasets import load_digits
+from sklearn.experimental import enable_halving_search_cv  # noqa: F401
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import Matern, WhiteKernel
+from sklearn.model_selection import HalvingRandomSearchCV, RandomizedSearchCV, cross_val_score
+from sklearn.svm import SVC
 
-## Choosing an Approach
+X, y = load_digits(return_X_y=True)
+X = X / 16.0
+def score(log_C, log_gamma):                                  # the black box: 5-fold CV accuracy of an RBF SVM
+    return cross_val_score(SVC(C=10 ** log_C, gamma=10 ** log_gamma), X, y, cv=5).mean()
+lo, hi = np.array([-2.0, -5.0]), np.array([4.0, 1.0])         # search log10(C) in [-2, 4], log10(gamma) in [-5, 1]
+budget = 25
 
-- **Few hyperparameters, cheap evaluations**: random search is a strong, simple default — Bergstra & Bengio's result holds precisely here.
-- **Expensive evaluations (full training runs), evaluation budget matters most**: Bayesian optimization's sample efficiency is worth its sequential-only constraint.
-- **Cheap early signal available (can tell early if a run is bad)**: successive halving / Hyperband, often combined *with* Bayesian optimization for choosing which configurations to allocate budget to in the first place (the approach real tools like Optuna and Ray Tune default to).
-- **Grid search**: rarely the right default given the result above — reach for it only when a hyperparameter genuinely has just 2-3 sensible discrete choices worth enumerating exhaustively, not as the general-purpose method.
+def grid_search():
+    g = [np.linspace(lo[i], hi[i], 5) for i in range(2)]
+    return [score(a, b) for a in g[0] for b in g[1]]
+
+def random_search(seed):
+    rng = np.random.default_rng(seed)
+    return [score(*rng.uniform(lo, hi)) for _ in range(budget)]
+
+def bayes_opt(seed, n_init=5):
+    rng = np.random.default_rng(seed)
+    pts = [rng.uniform(lo, hi) for _ in range(n_init)]
+    ys = [score(*p) for p in pts]
+    gp = GaussianProcessRegressor(Matern(nu=2.5) + WhiteKernel(1e-4), normalize_y=True, random_state=0)
+    while len(ys) < budget:
+        gp.fit(np.array(pts), np.array(ys))
+        cand = rng.uniform(lo, hi, size=(2000, 2))            # maximize EI over random candidates
+        mu, sd = gp.predict(cand, return_std=True)
+        best = max(ys); z = (mu - best) / np.maximum(sd, 1e-9)
+        ei = (mu - best) * norm.cdf(z) + sd * norm.pdf(z)     # expected improvement
+        p = cand[np.argmax(ei)]
+        pts.append(p); ys.append(score(*p))
+    return ys
+
+def best_after(ys, n):
+    return max(ys[:n])
+
+g = grid_search()
+R = [random_search(s) for s in range(5)]
+B = [bayes_opt(s) for s in range(5)]
+print("best 5-fold CV accuracy after n evaluations (random and Bayesian: mean of 5 seeds)")
+print("n     grid (row order)   random   Bayesian (GP + EI)")
+for n in [5, 10, 15, 25]:
+    print(f"{n:<5} {best_after(g, n):.4f}             {np.mean([best_after(r, n) for r in R]):.4f}   {np.mean([best_after(b, n) for b in B]):.4f}")
+
+# Successive halving: same 64 random candidates, most of them stopped early on a fraction of the data
+space = {"C": loguniform(1e-2, 1e4), "gamma": loguniform(1e-5, 10)}
+for name, search in [("random search, 64 candidates on all data", RandomizedSearchCV(SVC(), space, n_iter=64, cv=5, random_state=0)),
+                     ("successive halving, 64 candidates", HalvingRandomSearchCV(SVC(), space, n_candidates=64, factor=3,
+                                                                                resource="n_samples", cv=5, random_state=0))]:
+    t = time.perf_counter(); search.fit(X, y)
+    print(f"{name:42s} best CV accuracy {search.best_score_:.4f}   time {time.perf_counter() - t:.1f} s")
+```
+
+Output (scikit-learn 1.7; times from one run on a shared machine; the Gaussian process also prints convergence warnings about its noise term, which go to stderr and aren't shown):
+
+```
+best 5-fold CV accuracy after n evaluations (random and Bayesian: mean of 5 seeds)
+n     grid (row order)   random   Bayesian (GP + EI)
+5     0.1581             0.9628   0.9628
+10    0.9572             0.9682   0.9649
+15    0.9727             0.9714   0.9678
+25    0.9727             0.9737   0.9743
+random search, 64 candidates on all data   best CV accuracy 0.9750   time 50.6 s
+successive halving, 64 candidates          best CV accuracy 0.9721   time 11.5 s
+```
+
+- **Grid search depends on the order of its grid.** After 5 evaluations it has only tried the lowest value of $C$, all of which are terrible (0.158). It reaches 0.9727 by evaluation 15 and gets no further, because none of its 25 points is closer to the optimum.
+- **Random and Bayesian search are close (Section 3's checkpoint).** Both start from the same 5 random points. On this cheap, two-dimensional problem, random search is slightly ahead at 10 and 15 evaluations and Bayesian optimization slightly ahead at 25 (0.9743 against 0.9737). The model-based method's advantage needs more dimensions or more expensive evaluations to show.
+- **Successive halving trades a little score for a lot of time (Section 4)**: 4.4 times faster, 0.003 lower.
+- **The differences between the best results are tiny.** With 1,797 examples, the standard error of a cross-validated accuracy near 0.97 is about 0.004, so the top results here are statistically indistinguishable, which is Section 6's point in practice.
+
+## 8. When *Not* to Tune Extensively
+
+| Situation | Better choice |
+|---|---|
+| The model already has strong defaults (random forests, many boosting setups) | Light tuning of the one or two parameters that matter; spend the effort on data and features |
+| Validation data is small | Little tuning, or nested CV; extensive search will mostly fit noise |
+| The gains are within the score's standard error | Stop and choose the simplest configuration |
+| A different model family would help more than better settings | Compare families with light tuning first, then tune the winner |
+| The real bottleneck is data quality or leakage | Fix the data; no hyperparameter compensates for a broken evaluation |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| The problem | Maximize a noisy, expensive black box $f(\boldsymbol{\lambda})$ with no gradients |
+| Log scale | Search learning rates, $C$, $\gamma$, regularization on $\log_{10}$ |
+| Grid vs random | Grid tries $k$ distinct values per axis for $k^d$ cost; random tries a new value every time |
+| Few matter | Usually only a couple of hyperparameters drive performance (Bergstra and Bengio) |
+| Random coverage | $1 - (1-q)^N$: about 60 draws hit the top 5% with 95% probability |
+| Bayesian optimization | Fit a surrogate, maximize an acquisition function, evaluate, repeat |
+| Expected Improvement | $(\mu - f^+)\Phi(z) + \sigma\phi(z)$: exploitation plus exploration |
+| TPE | Models good and bad configurations separately; Optuna's default |
+| Successive halving | Many cheap runs, keep the best $1/\eta$, multiply budget by $\eta$ |
+| Hyperband | Several halving brackets to hedge against slow starters |
+| Optimism | The best validation score is biased upward; measure on untouched data |
+
+---
+
+Next: [Uncertainty Estimation & Conformal Prediction](/docs/machine-learning/uncertainty-estimation-and-conformal-prediction), turning a tuned model's point predictions into intervals with guaranteed coverage.
+
+## Sources
+
+- J. Bergstra and Y. Bengio, [Random Search for Hyper-Parameter Optimization](https://jmlr.org/papers/v13/bergstra12a.html), *JMLR*, 2012
+- J. Bergstra, R. Bardenet, Y. Bengio and B. Kégl, [Algorithms for Hyper-Parameter Optimization](https://papers.nips.cc/paper/2011/hash/86e8f7ab32cfd12577bc2619bc635690-Abstract.html), NeurIPS 2011 (TPE)
+- J. Snoek, H. Larochelle and R. P. Adams, [Practical Bayesian Optimization of Machine Learning Algorithms](https://papers.nips.cc/paper/2012/hash/05311655a15b75fab86956663e1819cd-Abstract.html), NeurIPS 2012
+- D. R. Jones, M. Schonlau and W. J. Welch, [Efficient Global Optimization of Expensive Black-Box Functions](https://doi.org/10.1023/A:1008306431147), *Journal of Global Optimization*, 1998 (Expected Improvement)
+- F. Hutter, H. H. Hoos and K. Leyton-Brown, [Sequential Model-Based Optimization for General Algorithm Configuration](https://doi.org/10.1007/978-3-642-25566-3_40), LION 2011 (SMAC)
+- K. Jamieson and A. Talwalkar, [Non-stochastic Best Arm Identification and Hyperparameter Optimization](https://proceedings.mlr.press/v51/jamieson16.html), AISTATS 2016
+- L. Li, K. Jamieson, G. DeSalvo, A. Rostamizadeh and A. Talwalkar, [Hyperband: A Novel Bandit-Based Approach to Hyperparameter Optimization](https://jmlr.org/papers/v18/16-558.html), *JMLR*, 2018
+- S. Falkner, A. Klein and F. Hutter, [BOHB: Robust and Efficient Hyperparameter Optimization at Scale](https://proceedings.mlr.press/v80/falkner18a.html), ICML 2018
+- G. C. Cawley and N. L. C. Talbot, [On Over-fitting in Model Selection and Subsequent Selection Bias in Performance Evaluation](https://jmlr.org/papers/v11/cawley10a.html), *JMLR*, 2010
+- P. Frazier, [A Tutorial on Bayesian Optimization](https://arxiv.org/abs/1807.02811), 2018
