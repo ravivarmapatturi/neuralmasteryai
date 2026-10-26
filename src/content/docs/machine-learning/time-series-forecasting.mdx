@@ -1,81 +1,300 @@
 ---
 title: "Time Series Forecasting: ARIMA, SARIMA & Prophet, In Full Depth"
 sidebar_position: 5.9
-description: "ARIMA, SARIMA, and Prophet -- decomposing a time series into its structural components once shuffling the rows destroys the one thing that matters: order."
+description: "Forecasting derived: why order breaks the usual assumptions, decomposition, stationarity and differencing, AR models as regression on lags, MA terms and ARIMA, seasonal ARIMA, Prophet's additive model, machine-learning models on lag features, honest evaluation with rolling origins and MASE, and forecast intervals, all run on 44 years of monthly CO2 data."
 ---
 
-import __migratedImg0 from './img/time-series-decomposition.png';
-import __migratedImg1 from './img/time-series-forecast.png';
-
+import decompLight from './img/time-series-decomposition-light.png';
+import decompDark from './img/time-series-decomposition.png';
+import forecastLight from './img/time-series-forecast-light.png';
+import forecastDark from './img/time-series-forecast.png';
 import ArimaDifferencingDiagram from '../../../viz/diagrams/ArimaDifferencingDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Time Series Forecasting: ARIMA, SARIMA & Prophet, In Full Depth
 
-Every model up to this point assumed training examples are independent — shuffle the rows and nothing changes. Time series data breaks that assumption completely: order *is* the information, and yesterday's value directly informs today's prediction.
+Every method in the [supervised learning](/docs/machine-learning/supervised-learning) pages assumes the training examples are independent: shuffle the rows and nothing changes. A time series breaks that on purpose. The order is the information: this month's value is related to last month's and to the same month last year, and the goal is to predict values that come *after* everything seen so far. This page builds forecasting from that fact: decomposing a series into trend and seasonality, making it stationary by differencing, the autoregressive and moving-average models and their seasonal extension, Prophet's alternative, using ordinary machine-learning models on lagged values, and how to evaluate a forecast without leaking the future into it. Everything runs on monthly carbon dioxide measurements from Mauna Loa, 1958 to 2001.
 
-## Decomposition: What's Actually In a Time Series
+<ELI5>
 
-Before modeling, it helps to separate a series into its structural components:
+To guess tomorrow's temperature, the most useful facts are today's temperature (tomorrow is usually similar), the season (July is warmer than January), and whether this year has been running warm. A forecaster combines those three things: the recent past, the regular yearly pattern, and the long-term direction.
 
-<img src={__migratedImg0} alt="A time series decomposed into trend, seasonal, and residual components" style={{maxWidth: '100%'}} />
+Time series models make that combination exact. And there's one rule you can't break: when you test a forecaster, you may only use what was known at the time. Testing a weather forecaster with tomorrow's newspaper in their pocket proves nothing. Everything below is those ideas made exact.
 
-- **Trend**: the long-run direction — growing, shrinking, flat.
-- **Seasonal**: a pattern that repeats at a fixed, known period (daily, weekly, yearly).
-- **Residual**: whatever's left after removing trend and seasonality — ideally close to random noise; if the residual still has visible structure, the model hasn't captured everything it should.
+</ELI5>
 
-Classical forecasting models are, in large part, formal ways of modeling these three pieces (or explicitly assuming one away).
+## 1. What Changes When Order Matters
 
-## ARIMA (AutoRegressive Integrated Moving Average)
+Write the series as $y_1, y_2, \dots, y_T$, one value per time step. Three things are different from the independent-examples setting:
 
-ARIMA combines three ideas, named by its three parameters $(p, d, q)$:
+- **The examples are dependent.** $y_t$ is correlated with $y_{t-1}$, $y_{t-12}$ and so on. That correlation is what makes forecasting possible, and it's what models exploit.
+- **The target is in the future.** A forecast for $y_{T+h}$, $h$ steps ahead, can use only $y_1, \dots, y_T$ and whatever other inputs will be known at time $T$.
+- **The distribution can drift.** The mean and spread may change over time, so the past is only a guide to the future to the extent the process stays similar.
 
-- **AR($p$) — AutoRegressive**: predict the current value as a linear combination of the previous $p$ values: $y_t = c + \phi_1 y_{t-1} + \cdots + \phi_p y_{t-p} + \epsilon_t$. Structurally, this is just [linear regression](/docs/machine-learning/linear-regression) where the "features" are the series' own past values.
-- **I($d$) — Integrated**: apply **differencing** $d$ times ($y_t' = y_t - y_{t-1}$) before modeling, to remove trend and make the series **stationary** (statistical properties like mean/variance constant over time — a requirement for AR/MA to work correctly). $d$ is *how many times* you need to difference before the trend disappears.
-- **MA($q$) — Moving Average**: model the current value as a function of the past $q$ forecast **errors**, not past values: $y_t = c + \epsilon_t + \theta_1\epsilon_{t-1} + \cdots + \theta_q\epsilon_{t-q}$ — captures short-term shocks whose effect lingers for a few steps before fading.
+The dependence is measured by the **autocorrelation function** (ACF): the correlation between the series and itself shifted by $k$ steps, $\rho_k = \operatorname{corr}(y_t, y_{t-k})$, for each lag $k$. A strongly trending series has an ACF that decays very slowly; a monthly series with a yearly pattern has spikes at lags 12, 24 and so on. The **partial autocorrelation** (PACF) at lag $k$ is the correlation that remains after accounting for lags 1 to $k-1$, which isolates the direct effect of lag $k$.
 
-Real non-stationary series, real differencing applied live:
+## 2. Trend, Seasonality and Noise
+
+The first look at any series is a **decomposition** into three parts:
+
+$$
+y_t = T_t + S_t + R_t
+$$
+
+the **trend** $T_t$ (the slow, long-run level), the **seasonal** component $S_t$ (a pattern repeating with a fixed period, such as 12 months or 7 days), and the **remainder** $R_t$. When the seasonal swing grows with the level (sales whose December peak grows as the business grows), the decomposition is multiplicative, which is the same as additive on $\log y_t$. **STL** (seasonal-trend decomposition using LOESS; Cleveland et al., 1990) estimates the parts with repeated local smoothing and is robust to outliers:
+
+<ThemedImage alt="STL decomposition of monthly CO2: a rising observed series, a smooth upward trend, a regular yearly seasonal wave of about plus or minus 3 ppm, and a small residual" sources={{light: decompLight, dark: decompDark}} />
+
+For the CO2 data the picture is unusually clean: a trend rising from 316 to 371 parts per million, accelerating slightly; a yearly cycle of about ±3 ppm (plants in the Northern Hemisphere absorb carbon in summer and release it in winter); and a small remainder. Classical forecasting models are, largely, ways of modelling these three parts, which they do in two different styles: ARIMA by transforming the trend and seasonality away and modelling what's left (Sections 3 to 5), Prophet by modelling each part explicitly (Section 6).
+
+## 3. Stationarity and Differencing
+
+Most classical models assume the series is **stationary**: its mean, variance and autocorrelations don't change over time. A trending series isn't: its mean keeps rising. The standard fix is **differencing**, replacing the series by its changes,
+
+$$
+\Delta y_t = y_t - y_{t-1}
+$$
+
+A linear trend becomes a constant; a quadratic trend becomes linear and needs a second difference. Seasonality is removed by a **seasonal difference** at the period $s$, $y_t - y_{t-s}$: this January minus last January. Differencing loses nothing essential: the original series is recovered by adding the changes back up, which is what the "I" (integrated) in ARIMA refers to.
+
+Whether a series needs differencing can be tested. The **augmented Dickey–Fuller test** has the null hypothesis that the series has a unit root (it's a random-walk-like, non-stationary process). In Section 9, the raw CO2 series gives $p = 0.999$, consistent with non-stationarity; after one difference, $p \lt  0.001$. Watch differencing flatten a trend:
 
 <ArimaDifferencingDiagram />
 
-**Choosing $(p,d,q)$**: classically done by inspecting **ACF** (autocorrelation function — correlation between $y_t$ and $y_{t-k}$ across lags $k$) and **PACF** (partial autocorrelation — the same, controlling for shorter lags) plots, or more commonly today, via automated search (grid search over candidate values, scored by AIC/BIC or cross-validated forecast error — see [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics)).
+## 4. Autoregression and Moving Averages
 
-## SARIMA: ARIMA + Explicit Seasonality
+**Autoregressive model, AR($p$).** Predict the (stationary) series from its own last $p$ values:
 
-Plain ARIMA has no dedicated mechanism for seasonality — differencing can remove trend, but a repeating yearly pattern needs its own treatment. **SARIMA** adds a second, seasonal $(P,D,Q,s)$ set of the exact same AR/I/MA ideas, operating at lag multiples of the seasonal period $s$ (e.g. $s=12$ for monthly data with yearly seasonality) — so the model captures both short-term autocorrelation *and* the repeating seasonal pattern simultaneously, each with its own order.
+$$
+y_t = c + \phi_1 y_{t-1} + \phi_2 y_{t-2} + \dots + \phi_p y_{t-p} + \epsilon_t
+$$
 
-## Prophet
+with $\epsilon_t$ white noise. This is [linear regression](/docs/machine-learning/linear-regression) whose features are lagged copies of the target, and it can be fitted exactly that way, by least squares on a matrix of lags. Section 9 does so for an AR(3) on the CO2 changes and gets coefficients identical to statsmodels' to four decimals. An AR(1) with $\lvert\phi_1\rvert \lt  1$ is stationary and reverts to its mean; with $\phi_1 = 1$ it's a random walk, the non-stationary case differencing removes.
 
-Facebook/Meta's forecasting library, designed specifically to be robust and usable without deep statistical expertise. Instead of ARIMA's autoregressive structure, Prophet models the series as an explicit additive decomposition:
+**Moving-average model, MA($q$).** Predict from the last $q$ *forecast errors* (shocks) rather than the last values:
 
-$$y_t = g(t) + s(t) + h(t) + \epsilon_t$$
+$$
+y_t = c + \epsilon_t + \theta_1\epsilon_{t-1} + \dots + \theta_q\epsilon_{t-q}
+$$
 
-where $g(t)$ is a trend curve (piecewise linear or logistic growth, with automatically-detected changepoints where the trend shifts), $s(t)$ is seasonality modeled via Fourier series (smoothly capturing multiple overlapping seasonal periods — weekly *and* yearly, simultaneously), and $h(t)$ explicitly accounts for holidays/known special events.
+A shock affects the next $q$ values and then disappears entirely, which suits effects that linger briefly. The errors aren't observed directly, so MA models are fitted by maximum likelihood, not least squares.
 
-**Why teams reach for Prophet over ARIMA**: handles missing data and outliers gracefully, requires far less manual tuning of $(p,d,q)$-style orders, and its explicit trend/seasonality/holiday decomposition is directly interpretable — you can plot each component separately and sanity-check it, which is harder with ARIMA's autoregressive coefficients.
+**ARIMA($p, d, q$)** (Box and Jenkins, 1970) combines them: difference $d$ times, then fit AR($p$) and MA($q$) terms together on the result:
 
-## The Forecast Output
+$$
+\Delta^d y_t = c + \sum_{i=1}^{p}\phi_i\,\Delta^d y_{t-i} + \sum_{j=1}^{q}\theta_j\,\epsilon_{t-j} + \epsilon_t
+$$
 
-Regardless of which model, the practical output looks the same: a point forecast plus a widening confidence interval further into the future, reflecting genuinely increasing uncertainty the further out you predict:
+The ACF and PACF guide the orders: a pure AR($p$) has a PACF that cuts off after lag $p$ and an ACF that decays; a pure MA($q$) has the reverse. In practice the orders are usually chosen by searching a small range and comparing AIC or BIC, or forecast error on held-out time periods (Hyndman and Khandakar's automatic ARIMA does this).
 
-<img src={__migratedImg1} alt="A forecast extending past the historical data, with a confidence interval that widens with distance into the future" style={{maxWidth: '100%'}} />
+## 5. Seasonality: SARIMA
 
-This directly uses [Quantile Loss](/docs/deep-learning/loss-functions#regression-losses) or similar machinery under the hood to produce calibrated upper/lower bounds, not just a single point estimate — critical for any real decision-making use case (inventory planning, capacity planning) where knowing the *range* of plausible outcomes matters as much as the central estimate.
+ARIMA has no way to say "this month resembles the same month last year" except through very long lags. **Seasonal ARIMA**, written ARIMA$(p,d,q)(P,D,Q)_s$, adds a second set of the same three ideas operating at multiples of the season length $s$: $D$ seasonal differences, $P$ seasonal autoregressive terms (on $y_{t-s}, y_{t-2s}, \dots$) and $Q$ seasonal moving-average terms. The two parts multiply, so the model captures short-term dependence and the yearly pattern together.
 
-## Temporal Fusion Transformer (TFT)
+A classic choice for monthly data with trend and seasonality is ARIMA$(1,1,1)(0,1,1)_{12}$ or the closely related "airline model": one ordinary and one seasonal difference, then short-term terms and a seasonal MA term. In Section 9 it's the most accurate model, with forecast errors less than half those of the seasonal-naive baseline. Non-seasonal ARIMA$(1,1,1)$ on the same data does worse than that baseline, because it has no way to represent the yearly cycle.
 
-ARIMA and Prophet fit one model per series, with a fixed, hand-specified structure. **TFT** is a deep learning approach — it applies [attention](/docs/deep-learning/attention-transformers) to forecasting, and can be trained *once* across many related series simultaneously (e.g. sales for every store in a chain), letting it share learned patterns across them instead of fitting each in isolation.
+<PredictFirst
+  question="You fit a gradient-boosted model to predict monthly CO2 levels from just two features, the month number (1, 2, 3, ...) and the month of the year. Shuffled 5-fold cross-validation reports a mean absolute error of 0.44 ppm. What error will it have forecasting the next few years?"
+  options={[
+    'About 0.44 ppm, since cross-validation estimates future error',
+    'Much larger: shuffled folds let the model interpolate between neighbouring months it trained on, but trees cannot extrapolate the rising trend into the future',
+    'Smaller, because more data will be available',
+    'Exactly zero, since the trend is deterministic',
+  ]}
+  correctIndex={1}
+  explanation="With shuffled folds, every test month has training months on both sides, so the model only needs to interpolate. Forecasting needs extrapolation beyond the last training month, and a tree ensemble predicts a flat continuation there. Time-ordered folds, which always test on later data, measure that honestly: Section 9 finds 6.56 ppm, fifteen times the shuffled estimate."
+/>
 
-Its architecture combines several pieces built for this specific problem:
+## 6. Prophet: Modelling the Parts Directly
 
-- **Variable selection networks**: learn which input features actually matter for a given forecast, rather than assuming all inputs are equally relevant — a learned analog of manual feature selection.
-- **LSTM layers** (see [Sequence Models](/docs/deep-learning/sequence-models)) for local, short-term temporal patterns.
-- **Self-attention** (see [Attention & Transformers](/docs/deep-learning/attention-transformers)) for long-range dependencies — letting the model directly relate a forecast to a relevant event far in the past, without the information having to pass through every intermediate timestep the way a pure RNN would require.
-- **Quantile outputs**: like Prophet's confidence intervals, TFT directly predicts multiple quantiles (see [Loss Functions — Quantile Loss](/docs/deep-learning/loss-functions#regression-losses)) rather than a single point forecast, giving calibrated uncertainty bounds natively.
+Prophet (Taylor and Letham, 2018), developed at Meta, takes the decomposition view instead of the ARIMA view. It fits a regression on functions of time:
 
-**When TFT earns its complexity over ARIMA/Prophet**: many related series that can share learned structure, rich additional covariates (promotions, weather, holidays) that interact in complex nonlinear ways, and enough data to actually train a deep model well. For a single series with limited data, ARIMA or Prophet usually remains the more practical choice — TFT's flexibility isn't free, and needs enough data to justify it, the same tradeoff as everywhere else deep learning competes with classical methods (see [Deep Learning — When to Reach for It](/docs/deep-learning/roadmap)).
+$$
+y(t) = g(t) + s(t) + h(t) + \epsilon_t
+$$
 
-## Evaluating Forecasts
+- $g(t)$, the **trend**, is piecewise linear (or logistic, for growth that saturates), with many potential **changepoints** where the slope may change, regularized so that only a few are used.
+- $s(t)$, **seasonality**, is a Fourier series, $\sum_{n=1}^{N}\big(a_n\cos\tfrac{2\pi nt}{P} + b_n\sin\tfrac{2\pi nt}{P}\big)$, for each period $P$ (weekly, yearly), so several seasonal cycles can be combined smoothly.
+- $h(t)$ adds effects for **holidays** and known events, with dates supplied by the user.
 
-Standard [regression metrics](/docs/machine-learning/model-evaluation-metrics#regression-metrics) (MAE, RMSE) apply, but time series adds one non-negotiable rule: **never split train/test randomly**. Always split by time — train on the past, test on the future — since evaluating a model on data that came *before* some of its training data leaks future information backward and produces a wildly over-optimistic result (a direct instance of the [data leakage](/docs/machine-learning/ml-workflow-fundamentals#data-leakage) problem, specific to temporal data).
+Because it doesn't depend on the order of observations the way ARIMA does, Prophet handles missing values and irregular spacing easily, and its components can be plotted and checked by people who know the business. It was designed for daily business series with strong human-calendar effects. Its limits are the flip side: with no autoregressive terms, it ignores short-term dependence in the remainder, and independent evaluations have often found it less accurate than well-chosen ARIMA, exponential smoothing or simple baselines on general benchmark collections. (Prophet isn't installed in this page's environment, so it isn't run in Section 9.)
 
-This completes the classical + modern time series forecasting family: ARIMA → SARIMA → Prophet → TFT. Next: [Unsupervised Learning](/docs/machine-learning/unsupervised-learning) — finding structure in data with no target to forecast at all.
+**Exponential smoothing** (ETS) deserves a mention alongside both: forecasts are weighted averages of past observations with weights decaying exponentially into the past, with separate smoothed components for level, trend and season (Holt–Winters). ETS models are fast, strong on many business series, and a standard benchmark.
+
+## 7. Machine Learning on Lag Features
+
+Any regression model can forecast if the problem is rewritten as supervised learning: for each time $t$, the features are values known at $t$ (lags $y_{t-1}, y_{t-2}, y_{t-12}, \dots$, rolling means, calendar features, known future inputs such as planned promotions) and the target is $y_{t+h}$. Gradient-boosted trees are the usual choice; they handle many related series, nonlinear effects and covariates well, and models of this kind won the M5 forecasting competition (Makridakis et al., 2022).
+
+Two details decide whether it works:
+
+- **Model what trees can represent.** Trees can't extrapolate: they predict values within the range they've seen. A trending level will eventually exceed every training value. Predict the *change* (or the ratio to a recent level) instead, then add it back. In Section 9 the boosting model predicts month-to-month changes from six lags and is almost exactly as accurate as SARIMA.
+- **Multi-step forecasts.** To forecast 12 months ahead, either train one model per horizon (**direct**), or forecast one step, feed the prediction back in as a lag and repeat (**recursive**, which Section 9 uses). Recursive forecasts compound their own errors; direct ones need more models.
+
+For many related series (every product in every store), **global models** trained across all series at once usually beat one model per series, because they share what's common. Deep learning versions include DeepAR, N-BEATS and the Temporal Fusion Transformer (Lim et al., 2021), which combines recurrent layers, attention over long histories, learned feature selection and quantile outputs; see [Sequence Models](/docs/deep-learning/sequence-models) and [Attention & Transformers](/docs/deep-learning/attention-transformers). Since 2023, **pretrained time-series foundation models** such as Chronos and TimesFM produce zero-shot forecasts for series they weren't trained on; on standard benchmarks they're competitive with tuned classical models, and they're worth trying as a baseline, though a seasonal-naive and a well-specified ARIMA or ETS remain essential comparisons.
+
+## 8. Evaluating a Forecast Honestly
+
+**Split by time, never at random.** A random split lets a model see the future of its test points. Section 9 measures how misleading that can be: the same gradient-boosted model of CO2 levels from the month index scores 0.44 ppm with shuffled folds and 6.56 ppm with time-ordered folds. When the model predicts stationary changes instead, the two kinds of fold agree (0.291 and 0.295), because the changes don't trend. Shuffled folds can look fine or catastrophically optimistic depending on the setup, so the only safe rule is never to use them for forecasting. This is the time-series form of [data leakage](/docs/machine-learning/ml-workflow-fundamentals#data-leakage), and it also applies to features: any feature must be computable from data available at forecast time.
+
+**Rolling-origin evaluation** (time-series cross-validation): choose several forecast origins; at each, train on everything before it and forecast the next $h$ steps; average the errors. That tests the model as it would actually be used and shows how stable it is. scikit-learn's `TimeSeriesSplit` implements the expanding-window version.
+
+**Scale-free error: MASE.** Comparing errors across series of different scales needs a relative measure. The **mean absolute scaled error** (Hyndman and Koehler, 2006) divides the forecast's mean absolute error by the in-sample error of the seasonal-naive forecast ("same as last season"):
+
+$$
+\text{MASE} = \frac{\frac{1}{h}\sum_{j=1}^{h}\lvert y_{T+j} - \hat{y}_{T+j}\rvert}{\frac{1}{T-s}\sum_{t=s+1}^{T}\lvert y_t - y_{t-s}\rvert}
+$$
+
+Below 1 means the forecast beats what seasonal-naive achieved in-sample. Unlike percentage errors, it's defined when values are zero and doesn't favour under-forecasting. On a trending series like CO2, the seasonal-naive forecast's *out-of-sample* MASE is above 1 (1.355 in Section 9), because over a 12-month horizon it misses the trend for the whole year ahead.
+
+**Always report a baseline.** Naive (last value), seasonal naive and drift forecasts are surprisingly hard to beat, and a model that can't beat them isn't worth deploying.
+
+**Forecast intervals.** A point forecast hides how uncertain it is, and uncertainty grows with the horizon, because errors accumulate. ARIMA models give intervals from their error model; ML models need quantile losses or conformal methods (see [Uncertainty Estimation](/docs/machine-learning/uncertainty-estimation-and-conformal-prediction), with the caveat that standard conformal prediction assumes exchangeability, which time series violate). For CO2, a SARIMA model fitted to data through 1995 and forecasting 1996 to 2001 gives a 90% interval that widens with the horizon and contains 97% of the 72 actual months:
+
+<ThemedImage alt="CO2 from 1988 to 2001: training data to 1995, then a SARIMA forecast for 1996 to 2001 following the actual values closely, inside a shaded 90% interval that widens over time" sources={{light: forecastLight, dark: forecastDark}} />
+
+<GoDeeper title="Go deeper: why forecast errors grow with the horizon">
+
+Take the simplest non-stationary model, a random walk, $y_t = y_{t-1} + \epsilon_t$ with noise variance $\sigma^2$. The best forecast of $y_{T+h}$ is $y_T$, and the error is the sum of the $h$ future shocks: $y_{T+h} - y_T = \epsilon_{T+1} + \dots + \epsilon_{T+h}$. Independent shocks' variances add, so the error variance is $h\sigma^2$ and the interval width grows like $\sqrt{h}$.
+
+For a stationary AR(1), $y_t = \phi y_{t-1} + \epsilon_t$ with $\lvert\phi\rvert \lt  1$, the $h$-step forecast is $\phi^h y_T$, which decays toward the mean, and the error variance is $\sigma^2(1 + \phi^2 + \dots + \phi^{2(h-1)})$, which levels off at the series' unconditional variance $\sigma^2/(1-\phi^2)$. Far ahead, a stationary model's best forecast is just the mean, with the uncertainty of the series itself. Differenced (integrated) models behave like the random walk, so their intervals keep widening, which is visible in the CO2 forecast above. Model-based intervals assume the model is right; when the process itself changes, real errors exceed them, so check interval coverage on past forecasts.
+
+</GoDeeper>
+
+## 9. Minimal Implementation
+
+Monthly CO2: a stationarity test before and after differencing; an AR(3) fitted by hand as regression on lags and checked against statsmodels; four forecasters (seasonal naive, ARIMA, SARIMA, and gradient boosting on lagged changes) compared over 12-month horizons from five rolling origins, scored by MASE; and the leakage comparison of shuffled and time-ordered folds:
+
+```python
+import warnings
+import numpy as np
+from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.model_selection import KFold, TimeSeriesSplit, cross_val_score
+from statsmodels.datasets import co2
+from statsmodels.tsa.ar_model import AutoReg
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+from statsmodels.tsa.stattools import adfuller
+warnings.filterwarnings("ignore")
+
+# Monthly mean CO2 at Mauna Loa, 1958-2001 (weekly data averaged by month, gaps filled)
+y = co2.load_pandas().data["co2"].resample("MS").mean().ffill().to_numpy()
+print(f"{len(y)} months, from {y[0]:.1f} to {y[-1]:.1f} ppm")
+
+# Stationarity: Augmented Dickey-Fuller test before and after differencing
+for name, s in [("raw series", y), ("first difference", np.diff(y)), ("plus seasonal difference (lag 12)", np.diff(y)[12:] - np.diff(y)[:-12])]:
+    print(f"ADF p-value, {name:34s} {adfuller(s)[1]:.3f}")
+
+# AR(p) is linear regression on lagged values: least squares by hand vs statsmodels
+p = 3
+d = np.diff(y)
+Xlag = np.column_stack([np.ones(len(d) - p)] + [d[p - j - 1:len(d) - j - 1] for j in range(p)])
+coef = np.linalg.lstsq(Xlag, d[p:], rcond=None)[0]
+print("AR(3) on differences, least squares:", np.round(coef, 4))
+print("AR(3) on differences, statsmodels:  ", np.round(AutoReg(d, lags=p).fit().params, 4))
+
+# Rolling-origin evaluation: forecast the next 12 months from 5 different starting points
+def mase_scale(train):                                     # error of the seasonal-naive forecast in-sample
+    return np.mean(np.abs(train[12:] - train[:-12]))
+def lag_features(series, lags=(1, 2, 3, 12, 13, 24)):
+    m = max(lags)
+    X = np.column_stack([series[m - l:len(series) - l] for l in lags])
+    return X, series[m:]
+results = {k: [] for k in ["seasonal naive", "ARIMA(1,1,1)", "SARIMA(1,1,1)(0,1,1,12)", "boosting on lags (recursive)"]}
+for origin in range(len(y) - 5 * 24, len(y) - 12 + 1, 24):
+    train, test = y[:origin], y[origin:origin + 12]
+    scale = mase_scale(train)
+    fc = {"seasonal naive": train[-12:],
+          "ARIMA(1,1,1)": SARIMAX(train, order=(1, 1, 1), trend="c").fit(disp=False).forecast(12),
+          "SARIMA(1,1,1)(0,1,1,12)": SARIMAX(train, order=(1, 1, 1), seasonal_order=(0, 1, 1, 12)).fit(disp=False).forecast(12)}
+    Xtr, ytr = lag_features(np.diff(train))                # model month-to-month changes
+    gb = HistGradientBoostingRegressor(random_state=0).fit(Xtr, ytr)
+    hist = list(np.diff(train)); level = train[-1]; preds = []
+    for _ in range(12):                                    # feed each forecast back in as the next lag
+        x = np.array([[hist[-l] for l in (1, 2, 3, 12, 13, 24)]])
+        step = gb.predict(x)[0]; hist.append(step); level += step; preds.append(level)
+    fc["boosting on lags (recursive)"] = np.array(preds)
+    for k, f in fc.items():
+        results[k].append(np.mean(np.abs(test - f)) / scale)
+print("12-month forecasts from 5 origins, MASE (below 1 beats the seasonal-naive forecast):")
+for k, v in results.items():
+    print(f"  {k:30s} mean {np.mean(v):.3f}   per origin {np.round(v, 2)}")
+
+# Leakage: the same model scored with shuffled folds and with time-ordered folds
+t_idx = np.arange(len(y))
+cases = {"level from (time index, month)": (np.column_stack([t_idx, t_idx % 12]), y),
+         "monthly change from its lags": lag_features(np.diff(y))}
+for case, (X, target) in cases.items():
+    for name, cv in [("shuffled 5-fold", KFold(5, shuffle=True, random_state=0)), ("time-ordered 5-fold", TimeSeriesSplit(5))]:
+        mae = -cross_val_score(HistGradientBoostingRegressor(random_state=0), X, target, cv=cv, scoring="neg_mean_absolute_error").mean()
+        print(f"{case:32s} {name:20s} MAE {mae:.3f}")
+```
+
+Output (statsmodels 0.15, scikit-learn 1.9):
+
+```
+526 months, from 316.1 to 371.0 ppm
+ADF p-value, raw series                         0.999
+ADF p-value, first difference                   0.000
+ADF p-value, plus seasonal difference (lag 12)  0.000
+AR(3) on differences, least squares: [ 0.0619  0.8635 -0.1208 -0.3363]
+AR(3) on differences, statsmodels:   [ 0.0619  0.8635 -0.1208 -0.3363]
+12-month forecasts from 5 origins, MASE (below 1 beats the seasonal-naive forecast):
+  seasonal naive                 mean 1.355   per origin [0.64 1.54 1.41 2.32 0.87]
+  ARIMA(1,1,1)                   mean 1.497   per origin [1.75 1.5  1.61 1.3  1.32]
+  SARIMA(1,1,1)(0,1,1,12)        mean 0.420   per origin [0.37 0.45 0.19 0.86 0.22]
+  boosting on lags (recursive)   mean 0.426   per origin [0.32 0.49 0.3  0.72 0.31]
+level from (time index, month)   shuffled 5-fold      MAE 0.436
+level from (time index, month)   time-ordered 5-fold  MAE 6.557
+monthly change from its lags     shuffled 5-fold      MAE 0.291
+monthly change from its lags     time-ordered 5-fold  MAE 0.295
+```
+
+- **Differencing makes it stationary (Section 3).** The Dickey–Fuller $p$-value goes from 0.999 to below 0.001.
+- **AR is regression on lags (Section 4).** Least squares on a lag matrix reproduces statsmodels' AR(3) exactly.
+- **Seasonality must be modelled (Section 5).** SARIMA's MASE is 0.42; ARIMA without a seasonal part, 1.50, worse on average than the seasonal-naive baseline. The per-origin values show SARIMA beating both at every one of the five origins.
+- **ML on lags works when it predicts changes (Section 7).** Boosting on lagged changes, forecasting recursively, reaches 0.43, essentially tied with SARIMA.
+- **Shuffled folds can be wildly optimistic (Section 8)**: 0.44 against 6.56 ppm for a model of levels, while a model of stationary changes barely notices the difference.
+
+## 10. When *Not* to Use These Methods
+
+| Situation | Better choice |
+|---|---|
+| Very short history (under two seasonal cycles) | Seasonal naive, simple exponential smoothing, or pooling with related series |
+| Many related series (products, stores, sensors) | A global model across all series: gradient boosting on lag features, DeepAR or TFT |
+| The future depends mostly on known drivers (prices, promotions, weather) | Regression on those drivers with time-aware validation, not a pure univariate model |
+| Structural breaks (a pandemic, a policy change) | Re-estimate on post-break data, add intervention variables, widen intervals; history may not apply |
+| Intermittent demand (many zeros) | Croston-type methods or count models |
+| You need a quick, strong baseline across thousands of series | ETS or automatic ARIMA, or a pretrained forecasting model, compared against seasonal naive |
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Order matters | Examples are dependent and the target is in the future |
+| ACF / PACF | Correlation with past lags; PACF removes shorter lags' effects |
+| Decomposition | Trend + seasonal + remainder (multiplicative = additive on logs) |
+| Stationarity | Constant mean, variance and autocorrelation; difference to get there |
+| AR($p$) | Regression on the last $p$ values |
+| MA($q$) | Regression on the last $q$ shocks |
+| ARIMA | Difference $d$ times, then AR and MA terms |
+| SARIMA | Adds seasonal differencing and seasonal AR/MA terms at lag $s$ |
+| Prophet | Piecewise trend + Fourier seasonality + holidays, fitted as a regression |
+| ML on lags | Predict changes, not trending levels; direct or recursive multi-step |
+| Evaluation | Time-ordered splits, rolling origins, MASE, and always a naive baseline |
+| Intervals | Widen with the horizon; check their coverage on past forecasts |
+
+---
+
+Next: [Survival Analysis](/docs/machine-learning/survival-analysis), where the target is the time until an event, and some events haven't happened yet.
+
+## Sources
+
+- G. E. P. Box, G. M. Jenkins, G. C. Reinsel and G. M. Ljung, *Time Series Analysis: Forecasting and Control*, 5th ed., Wiley, 2015
+- R. J. Hyndman and G. Athanasopoulos, [Forecasting: Principles and Practice](https://otexts.com/fpp3/), 3rd ed., OTexts, 2021
+- R. B. Cleveland, W. S. Cleveland, J. E. McRae and I. Terpenning, STL: A Seasonal-Trend Decomposition Procedure Based on Loess, *Journal of Official Statistics*, 1990
+- R. J. Hyndman and A. B. Koehler, [Another Look at Measures of Forecast Accuracy](https://doi.org/10.1016/j.ijforecast.2006.03.001), *International Journal of Forecasting*, 2006
+- S. J. Taylor and B. Letham, [Forecasting at Scale](https://doi.org/10.1080/00031305.2017.1380080), *The American Statistician*, 2018
+- S. Makridakis, E. Spiliotis and V. Assimakopoulos, [M5 Accuracy Competition: Results, Findings, and Conclusions](https://doi.org/10.1016/j.ijforecast.2021.11.013), *International Journal of Forecasting*, 2022
+- B. Lim, S. Ö. Arık, N. Loeff and T. Pfister, [Temporal Fusion Transformers for Interpretable Multi-horizon Time Series Forecasting](https://doi.org/10.1016/j.ijforecast.2021.03.012), *International Journal of Forecasting*, 2021
+- A. F. Ansari et al., [Chronos: Learning the Language of Time Series](https://arxiv.org/abs/2403.07815), *Transactions on Machine Learning Research*, 2024
+- C. D. Keeling et al., Mauna Loa monthly CO2 record, distributed with statsmodels as `statsmodels.datasets.co2`
