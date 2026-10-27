@@ -38,7 +38,7 @@ test.describe('Core application', () => {
   test('representative documentation page loads', async ({ page }) => {
     const errors = collectConsoleErrors(page);
     await page.goto('docs/deep-learning/attention-transformers');
-    await expect(page.locator('h1')).toHaveText('Attention and Transformers, In Full Depth');
+    await expect(page.locator('h1')).toHaveText('Attention and Transformers');
     expect(errors.errors()).toEqual([]);
   });
 
@@ -51,7 +51,7 @@ test.describe('Core application', () => {
     await page.locator('.nm-sidebar button', { hasText: 'Deep Learning' }).click();
     await page.locator('.nm-sidebar a', { hasText: 'Attention and Transformers' }).click();
     await expect(page).toHaveURL(/attention-transformers/);
-    await expect(page.locator('h1')).toHaveText('Attention and Transformers, In Full Depth');
+    await expect(page.locator('h1')).toHaveText('Attention and Transformers');
     expect(errors.errors()).toEqual([]);
   });
 
@@ -61,7 +61,7 @@ test.describe('Core application', () => {
     await page.goto('docs/getting-started/intro');
 
     await expect(page.locator('.nm-sidebar').first()).toBeHidden();
-    const hamburger = page.getByRole('button', { name: 'Open navigation menu' });
+    const hamburger = page.getByRole('button', { name: 'Browse topics' });
     await expect(hamburger).toBeVisible();
     await hamburger.click();
 
@@ -98,9 +98,9 @@ test.describe('Core application', () => {
     const errors = collectConsoleErrors(page);
     const response = await page.goto('docs/deep-learning/attention-transformers');
     expect(response?.status()).toBe(200);
-    await expect(page.locator('h1')).toHaveText('Attention and Transformers, In Full Depth');
+    await expect(page.locator('h1')).toHaveText('Attention and Transformers');
     await page.reload();
-    await expect(page.locator('h1')).toHaveText('Attention and Transformers, In Full Depth');
+    await expect(page.locator('h1')).toHaveText('Attention and Transformers');
     expect(errors.errors()).toEqual([]);
   });
 });

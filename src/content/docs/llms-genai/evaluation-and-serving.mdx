@@ -1,5 +1,5 @@
 ---
-title: "LLM Evaluation and Serving, In Full Depth"
+title: "LLM Evaluation and Serving"
 sidebar_position: 7
 description: "How to tell whether an LLM system is good, and how to run it fast and cheaply: eval sets and confidence intervals, LLM-as-judge and its biases, then the serving side, with KV-cache memory worked out, continuous batching, PagedAttention, speculative decoding derived, quantization and guardrails."
 ---
@@ -11,7 +11,7 @@ import PagedAttentionDiagram from '../../../viz/diagrams/PagedAttentionDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# LLM Evaluation and Serving, In Full Depth
+# LLM Evaluation and Serving
 
 [Calling the LLM API](/docs/llms-genai/calling-the-llm-api) got a model answering; [RAG](/docs/llms-genai/rag) gave it your data. Two questions decide whether that system can go to production. **Is it good?** That means measuring quality in a way you can trust enough to make decisions with, which is harder for open-ended text than for a classifier. **Can you afford to run it?** That means generating tokens fast enough for users and cheaply enough for the business, which is a memory problem more than a compute problem. This page covers both: how to build an eval set and read its results with error bars, how LLM judges work and where they're biased, then how inference actually runs on a GPU, why the KV cache dominates it, and the techniques serving engines use (continuous batching, PagedAttention, speculative decoding, quantization) with the arithmetic behind each.
 

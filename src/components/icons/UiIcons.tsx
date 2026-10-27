@@ -27,3 +27,14 @@ export function PersonIcon() {
     </svg>
   );
 }
+
+/** A panel with a sidebar: the Learn topics drawer, distinct from the ☰
+ * site menu next to it on phones. */
+export function SidebarIcon() {
+  return (
+    <svg {...base}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9 4v16M5.5 8h1.5M5.5 11h1.5M5.5 14h1.5" />
+    </svg>
+  );
+}

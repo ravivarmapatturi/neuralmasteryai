@@ -2149,8 +2149,8 @@ def deduplicate_near_duplicates(vectors: list[list[float]], threshold: float) ->
       concept: 'Why does L1 regularization naturally perform feature selection whereas L2 handles multicollinearity among features?',
     },
     conceptConnections: [
-      { title: 'Ridge Regression, In Full Depth', route: '/docs/machine-learning/ridge-regression', description: 'The L2 penalty term this problem adds to a base loss' },
-      { title: 'Lasso Regression, In Full Depth', route: '/docs/machine-learning/lasso-regression', description: 'The L1 penalty term this problem adds to a base loss' },
+      { title: 'Ridge Regression', route: '/docs/machine-learning/ridge-regression', description: 'The L2 penalty term this problem adds to a base loss' },
+      { title: 'Lasso Regression', route: '/docs/machine-learning/lasso-regression', description: 'The L1 penalty term this problem adds to a base loss' },
     ],
     testCases: [
       { id: 'l1-only', label: 'L1 (Lasso) Only', input: { mse: 2.0, weights: [1.0, -2.0, 3.0], l1: 0.1, l2: 0.0 }, expectedOutput: 2.6, hidden: false, description: '0.1 * (1 + 2 + 3) = 0.6 added to the base loss' },
@@ -2195,7 +2195,7 @@ def deduplicate_near_duplicates(vectors: list[list[float]], threshold: float) ->
       concept: 'What theoretical foundation (Condorcet jury theorem) explains why ensemble voting outperforms individual constituent estimators?',
     },
     conceptConnections: [
-      { title: 'Random Forest & Extra Trees, In Full Depth', route: '/docs/machine-learning/random-forest', description: 'Majority voting as the aggregation step every bagging ensemble uses at prediction time' },
+      { title: 'Random Forest & Extra Trees', route: '/docs/machine-learning/random-forest', description: 'Majority voting as the aggregation step every bagging ensemble uses at prediction time' },
     ],
     testCases: [
       { id: 'clear-majority', label: 'Clear Majority Per Sample', input: { predictions: [[0, 1, 1], [1, 1, 0], [1, 1, 1]] }, expectedOutput: [1, 1, 1], hidden: false, description: 'Every sample has a 2-out-of-3 (or 3-out-of-3) majority' },
@@ -2238,7 +2238,7 @@ def linear_regression_normal_equation(X: list[list[float]], y: list[float]) -> l
       concept: 'Why is the normal equation computationally expensive (O(d^3)) for high feature counts compared to stochastic gradient descent?',
     },
     conceptConnections: [
-      { title: 'Linear Regression, In Full Depth', route: '/docs/machine-learning/linear-regression', description: 'The normal equation as the closed-form alternative to gradient descent' },
+      { title: 'Linear Regression', route: '/docs/machine-learning/linear-regression', description: 'The normal equation as the closed-form alternative to gradient descent' },
     ],
     testCases: [
       { id: 'exact-1d-fit', label: 'Exact 1D Fit (y = 2x + 1)', input: { X: [[1], [2], [3], [4]], y: [3, 5, 7, 9] }, expectedOutput: [1.0, 2.0], hidden: false, description: 'Noise-free data recovers the exact generating weights' },
@@ -2282,7 +2282,7 @@ def logistic_regression_loss(X: list[list[float]], y: list[int], weights: list[f
       concept: 'Why is log-loss the natural negative log-likelihood loss function for Bernoulli-distributed binary classification targets?',
     },
     conceptConnections: [
-      { title: 'Logistic Regression, In Full Depth', route: '/docs/machine-learning/logistic-regression', description: 'The sigmoid + binary cross-entropy pipeline this problem implements end to end' },
+      { title: 'Logistic Regression', route: '/docs/machine-learning/logistic-regression', description: 'The sigmoid + binary cross-entropy pipeline this problem implements end to end' },
     ],
     testCases: [
       { id: 'zero-logit', label: 'Zero Logit (Maximum Uncertainty)', input: { X: [[0.0]], y: [1], weights: [0.0], bias: 0.0 }, expectedOutput: 0.6931471805599453, hidden: false, description: 'z=0 gives p=0.5; loss = -ln(0.5) = ln(2)' },
@@ -2327,7 +2327,7 @@ def information_gain(parent: list, left: list, right: list, criterion: str = 'gi
       concept: 'Why do decision trees greedily choose the split that maximizes information gain at each node?',
     },
     conceptConnections: [
-      { title: 'Decision Trees, In Full Depth', route: '/docs/machine-learning/decision-tree', description: 'Gini impurity and information gain as the criteria CART/ID3 greedily maximize at every split' },
+      { title: 'Decision Trees', route: '/docs/machine-learning/decision-tree', description: 'Gini impurity and information gain as the criteria CART/ID3 greedily maximize at every split' },
     ],
     testCases: [
       { id: 'perfect-split-gini', label: 'Perfect Split (Gini)', input: { parent: [0, 0, 1, 1], left: [0, 0], right: [1, 1], criterion: 'gini' }, expectedOutput: 0.5, hidden: false, description: 'A perfectly pure split on a balanced parent gains the maximum possible Gini reduction' },
@@ -2374,7 +2374,7 @@ def gaussian_naive_bayes_predict(X_train: list[list[float]], y_train: list[int],
       concept: 'Naive Bayes is "naive" because it assumes every feature is conditionally independent given the class -- almost never exactly true, but the resulting per-feature Gaussian estimates are cheap to fit and the classifier is a genuinely strong, fast baseline in practice despite the wrong assumption.',
     },
     conceptConnections: [
-      { title: 'Naive Bayes, LDA & QDA, In Full Depth', route: '/docs/machine-learning/naive-bayes-lda-qda', description: 'The per-class Gaussian likelihood model this problem fits and predicts from' },
+      { title: 'Naive Bayes, LDA & QDA', route: '/docs/machine-learning/naive-bayes-lda-qda', description: 'The per-class Gaussian likelihood model this problem fits and predicts from' },
     ],
     testCases: [
       { id: 'clearly-class-0', label: 'Clearly Class 0', input: { X_train: [[1.0], [1.2], [0.8], [5.0], [5.2], [4.8]], y_train: [0, 0, 0, 1, 1, 1], x_test: [0.5] }, expectedOutput: 0, hidden: false, description: 'x=0.5 sits well inside the class-0 cluster (mean 1.0)' },
@@ -2414,7 +2414,7 @@ def gaussian_naive_bayes_predict(X_train: list[list[float]], y_train: list[int],
       concept: 'Setting C=0 leaves only the regularizer (0.5*||w||^2) -- with no data term at all, an SVM trained this way would collapse to w=0, which is exactly why C controls the real tradeoff between a wide margin and correctly classifying every training point.',
     },
     conceptConnections: [
-      { title: 'Support Vector Machines (SVM & SVR), In Full Depth', route: '/docs/machine-learning/support-vector-machines', description: 'The margin + hinge-loss objective this problem computes directly' },
+      { title: 'Support Vector Machines (SVM & SVR)', route: '/docs/machine-learning/support-vector-machines', description: 'The margin + hinge-loss objective this problem computes directly' },
     ],
     testCases: [
       { id: 'one-violation', label: 'One Correctly-Classified, One Violating', input: { X: [[1, 1], [2, 2]], y: [1, -1], weights: [1.0, 0.0], bias: 0.0, C: 1.0 }, expectedOutput: 2.0, hidden: false, description: 'Row 2 lands on the wrong side of the boundary and dominates the hinge term' },
@@ -2504,7 +2504,7 @@ def pca_explained_variance_ratio(X: list[list[float]], k: int) -> list[float]:
       concept: 'The eigenvalues of the covariance matrix ARE the variances along each principal axis -- the eigenvector with the largest eigenvalue points along the direction of maximum spread in the data, which is precisely what "the first principal component" means.',
     },
     conceptConnections: [
-      { title: 'PCA, Kernel PCA & Truncated SVD, In Full Depth', route: '/docs/machine-learning/pca-svd', description: 'The covariance-eigendecomposition route to PCA this problem implements directly' },
+      { title: 'PCA, Kernel PCA & Truncated SVD', route: '/docs/machine-learning/pca-svd', description: 'The covariance-eigendecomposition route to PCA this problem implements directly' },
     ],
     testCases: [
       { id: 'perfectly-collinear', label: 'Perfectly Collinear Data', input: { X: [[1, 2], [3, 4], [5, 6], [7, 8]], k: 2 }, expectedOutput: [1.0, 0.0], hidden: false, description: 'All 4 points lie exactly on a line -- 100% of variance is along one direction' },
@@ -2595,7 +2595,7 @@ def silhouette_score(X: list[list[float]], labels: list[int]) -> float:
       concept: 'This is exactly the metric you would use to numerically justify a choice of k in K-Means (as an alternative to the more subjective elbow method) -- compute the mean silhouette score for several values of k and pick the one that maximizes it.',
     },
     conceptConnections: [
-      { title: 'K-Means & Hierarchical Clustering, In Full Depth', route: '/docs/machine-learning/kmeans-hierarchical-clustering', description: 'Silhouette score as the standard way to numerically evaluate a clustering result' },
+      { title: 'K-Means & Hierarchical Clustering', route: '/docs/machine-learning/kmeans-hierarchical-clustering', description: 'Silhouette score as the standard way to numerically evaluate a clustering result' },
     ],
     testCases: [
       { id: 'well-separated', label: 'Two Well-Separated Clusters', input: { X: [[1, 1], [1.5, 2], [8, 8], [8.5, 8.5]], labels: [0, 0, 1, 1] }, expectedOutput: 0.9059559942468866, hidden: false, description: 'Tight, far-apart clusters score close to the maximum of 1.0' },

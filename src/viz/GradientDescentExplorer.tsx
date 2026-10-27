@@ -122,7 +122,7 @@ export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as O
   const converged = loss < 0.01;
 
   return (
-    <VisualizationContainer footer="Click anywhere on the bowl to set a starting point, pick an optimizer, and watch it descend -- the exact update rules from Optimizers, In Full Depth, running live.">
+    <VisualizationContainer footer="Click anywhere on the bowl to set a starting point, pick an optimizer, and watch it descend -- the exact update rules from Optimizers, running live.">
       <VisualizationHeader eyebrow="Interactive" title="Gradient Descent Explorer" />
       <ControlRow>
         <PillSelect<Optimizer> label="Optimizer" value={optimizer} onChange={setOptimizer} options={OPTIMIZERS} />

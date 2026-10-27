@@ -1,5 +1,5 @@
 ---
-title: "LLM Inference Engines, In Full Depth"
+title: "LLM Inference Engines"
 sidebar_position: 18
 description: "Why serving a language model needs a specialized engine: the inference stack, engine vs serving framework vs platform, batching measured on a real model, continuous batching and paged KV memory simulated, and how vLLM, SGLang, TensorRT-LLM, llama.cpp and the on-device runtimes compare in 2026."
 ---
@@ -11,7 +11,7 @@ import EdgeVsServerDeploymentDiagram from '../../../viz/diagrams/EdgeVsServerDep
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
-# LLM Inference Engines, In Full Depth
+# LLM Inference Engines
 
 [APIs & Model Serving](/docs/mlops/model-serving) built a service around a classical model: load it once, validate requests, batch them, return a prediction. Language models break several of that page's assumptions. Each response is generated one token at a time, so a request occupies the hardware for seconds rather than milliseconds; responses vary in length by a factor of a hundred; and each in-progress request carries gigabytes of attention state. Specialized **inference engines** exist to handle exactly this. This page covers the layers of an LLM serving stack, the vocabulary that keeps engines, servers and platforms apart, why naive batching wastes most of a GPU (measured on a real model and simulated at scale), the two ideas at the heart of modern engines, continuous batching and paged KV memory, and how the main engines compare as of late 2026.
 

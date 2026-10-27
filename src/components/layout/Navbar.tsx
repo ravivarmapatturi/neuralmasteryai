@@ -4,7 +4,7 @@ import { useColorMode } from '../../theme/ThemeProvider';
 import SearchModal from './SearchModal';
 import AuthButton from './AuthButton';
 import StreakBadge from './StreakBadge';
-import { MoonIcon, SunIcon } from '../icons/UiIcons';
+import { MoonIcon, SidebarIcon, SunIcon } from '../icons/UiIcons';
 import BrandMark from '../brand/BrandMark';
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform ?? navigator.userAgent);
@@ -91,17 +91,18 @@ export default function Navbar({
           gap: '0.75rem',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div className="nm-navbar-left" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           {onMenuClick && (
             <button
               ref={menuButtonRef}
               type="button"
               onClick={onMenuClick}
               className="nm-navbar-toggle"
-              aria-label="Open navigation menu"
+              aria-label="Browse topics"
               style={{
-                width: 36,
-                height: 36,
+                height: 34,
+                padding: '0 10px',
+                gap: 6,
                 borderRadius: 8,
                 border: '1px solid var(--nm-border)',
                 background: 'transparent',
@@ -109,11 +110,17 @@ export default function Navbar({
                 cursor: 'pointer',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: 16,
+                fontSize: 13,
+                fontWeight: 600,
+                fontFamily: 'var(--font-sans)',
                 flexShrink: 0,
               }}
             >
-              ☰
+              {/* A sidebar icon and a visible label, so on phones this
+                  (the Learn topics drawer) can't be confused with the ☰
+                  site menu further along the row. */}
+              <SidebarIcon />
+              Topics
             </button>
           )}
           <Link to="/" aria-label="Neural Mastery home" className="nm-brand-link" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 17, fontFamily: "'Kalam', 'Comic Sans MS', cursive", color: 'var(--nm-text-primary)', textDecoration: 'none' }}>
