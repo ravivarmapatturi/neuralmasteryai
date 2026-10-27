@@ -30,6 +30,28 @@ Assigning a label (or set of labels) to an entire document/sentence rather than 
 
 Still a completely reasonable, fast, interpretable baseline for well-scoped classification tasks with limited labeled data. Modern: fine-tuning a BERT-style encoder (see [Attention & Transformers](/docs/deep-learning/attention-transformers#encoder-only-the-bert-lineage)) or prompting an LLM directly (see [Prompt Engineering](/docs/llms-genai/prompt-engineering)) — better accuracy, especially on nuanced/context-dependent sentiment (exactly the negation-scope case above), at higher compute cost per prediction.
 
+### Classifying With an LLM
+
+**What it is.** A fine-tuned classifier has a fixed set of labels baked into its output layer. An LLM can classify into labels it has never seen, because the labels arrive as text in the input. There are three common ways to get the label out, and they behave differently.
+
+**How it works.**
+
+1. **Generate.** List the labels in the prompt and ask the model to answer with one of them. Parse the reply. Simple, and it works with any chat API, but the reply can be a label that isn't on the list, or a sentence instead of a label, and there is no probability attached unless you ask for one (and a probability the model writes as text is usually not calibrated).
+2. **Score each label.** Run the model once per label and read the log-probability it assigns to that label's text, or ask an entailment model whether "This text is about *label*" follows from the input ([Yin, Hay and Roth, 2019](https://arxiv.org/abs/1909.00161)). Softmax over the scores gives a distribution over exactly the allowed labels, so off-list answers are impossible. The cost is one forward pass per label.
+3. **Embed and compare.** Encode the input and each label separately with a [bi-encoder](/docs/llms-genai/retrieval-and-reranking-architectures#bi-encoder-independent-encoding-pooled-to-one-vector) and pick the nearest label. Label embeddings are computed once and reused for every request, which makes this the cheapest option at large label counts, but the input and the labels never interact before the final dot product, so fine distinctions suffer.
+
+**Why it matters.** The choice decides what you can promise downstream code. Methods 2 and 3 always return a valid label and a number you can threshold. Method 1 needs validation and a retry path. Method 3 is the only one whose cost barely grows as the label set grows.
+
+**Where it stops working.**
+
+- **Order bias.** When labels are listed as A, B, C, D in a prompt, models prefer some letters regardless of content. [Zheng et al. (2023)](https://arxiv.org/abs/2309.03882) found this selection bias in 20 LLMs and traced it mainly to the model's prior over the option letters. Shuffle the options on a sample of your data and check whether answers change.
+- **No "none of these".** A softmax over the supplied labels always sums to one, so it ranks the labels against each other and says nothing about whether any of them fits. You need a separate threshold, or an explicit "other" class that is calibrated on held-out data.
+- **Uncalibrated scores.** Log-probabilities from a generative model are rarely calibrated out of the box. Check them with a reliability diagram and recalibrate as described in [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics#4-judging-probabilities-proper-scoring-and-calibration).
+
+Newer **decision models** build these properties into the architecture: options encoded independently so they can be cached, an order-independent aggregation step, and a separate output for "no option fits". The blog post [Jeva and the decision model](/blog/jeva-decision-models) walks through one such design.
+
+**Remember:** an LLM classifier is only as reliable as the way you read the label out of it; prefer scoring a fixed label set over parsing free text, and test for order bias before trusting it.
+
 ## Machine Translation
 
 Translating text from one language to another — the task that originally motivated the encoder-decoder Transformer architecture ([Attention & Transformers — The T5 Lineage](/docs/deep-learning/attention-transformers#encoder-decoder-the-t5-lineage)):

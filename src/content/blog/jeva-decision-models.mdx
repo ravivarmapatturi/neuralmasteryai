@@ -1,0 +1,193 @@
+---
+title: "Jeva and the Decision Model: How Picking From a List Became Its Own Architecture"
+description: "Jeva is an open 4-billion-parameter model that returns a choice, a probability or a score instead of text. Here is the line of classifiers it grew out of, how its decision head works, and what its results do and don't show."
+date: 2026-10-27
+tags: [LLM architecture, text classification, decision models, open models]
+---
+
+# Jeva and the Decision Model: How Picking From a List Became Its Own Architecture
+
+On 13 October 2026, Qi Li and Xinchao Wang of the National University of Singapore posted [Jeva: System One Models from First Principles](https://arxiv.org/abs/2610.18773), with a revised version on 18 October. Jeva is a model that never writes text. You give it a request and a set of options, and it returns a choice with probabilities, the probability that a statement is true, or an expected score on a rubric. The [weights](https://huggingface.co/LIQIIIII/Jeva-4B) and [code](https://github.com/LiQiiiii/Jeva) are released under Apache-2.0.
+
+The result that matters is about order. The authors shuffled the options of 600 multiple-choice decisions into up to five orders each and counted how often the answer changed. Jeva's answer changed on none of them. TypeSafe's Jev, the closed model that started this category a month earlier, changed its answer on 17% of them in the same test.
+
+Picking one option from a list is the oldest task in applied machine learning, so it is fair to ask why it needs a new architecture. This post follows the line of methods that led here. Each one fixed a problem with the one before and left a new one, and Jeva's design is a list of answers to those leftover problems.
+
+## 1. Fixed-label classifiers: fast, and frozen
+
+The classic text classifier turns a document into features, from bag-of-words counts to a [fine-tuned BERT encoder](/docs/deep-learning/bert), and ends in an output layer with one unit per label. Training sets the weights of those units, and a softmax over them gives a probability for each label.
+
+This is fast and, with care, well calibrated. Its limit is that the labels are part of the weights. A support-ticket router trained on 12 teams cannot route to a 13th without new labelled data and retraining. The model has no idea what the label "billing" means; it only knows which output unit that was.
+
+## 2. Labels as text: score each one
+
+The fix is to give the model the label as text. [Yin, Hay and Roth (2019)](https://arxiv.org/abs/1909.00161) framed zero-shot classification as entailment: for each label, ask a model whether "This text is about *billing*" follows from the input, and pick the label with the highest entailment score. New labels cost nothing to add.
+
+Two limits came with it. The input has to be read again for every label, so 50 labels means 50 forward passes. And because each label is scored on its own, the scores don't depend on which other labels are in the set. That sounds like a feature, but it rules out a kind of judgement people make all the time. "Is this ticket about billing or about a bug?" and "Is it about billing, a bug, or a refund?" can have different correct answers, because the presence of "refund" changes what "billing" is taken to mean. The Jeva paper makes this precise: with independent scores and a softmax over them, adding or removing an option can shift the probabilities but can never reverse the preference between two options that stay.
+
+## 3. Bi-encoders: encode the options once
+
+[Sentence-BERT](https://arxiv.org/abs/1908.10084) (2019) attacked the cost. Encode each text into a vector on its own, and compare vectors with a dot product. Option vectors can be computed once and stored. The paper's example: finding the most similar pair among 10,000 sentences took about 65 hours with BERT reading every pair together, and about 5 seconds with Sentence-BERT.
+
+The limit is that the request and the option never meet until the final dot product. Whatever subtle interaction decides the answer has to survive being squeezed into two independent vectors. [Retrieval and reranking architectures](/docs/llms-genai/retrieval-and-reranking-architectures) covers this trade-off, and why search systems usually follow a bi-encoder with a slower cross-encoder.
+
+Bi-encoders also leave a question unanswered: what if none of the options fits? A dot product has no natural zero. You end up tuning a similarity threshold by hand, separately for every task.
+
+## 4. Prompting an LLM: flexible, and fragile
+
+The method most teams use today is to list the options in a prompt and ask a chat model to pick one. It handles any options, it reads the request and the options together, and it can be told "say NONE if nothing fits".
+
+It also brings a list of problems that software has to work around:
+
+- **It is slow.** The model reads the whole prompt and then generates the answer token by token, often after some reasoning.
+- **The answer can be invalid.** The reply may be a label that wasn't offered, or a paragraph. Code needs validation and retries.
+- **Order matters.** The options are a sequence in the prompt, and models carry preferences for positions. [Zheng et al. (2023)](https://arxiv.org/abs/2309.03882) found this selection bias in 20 LLMs and traced it mainly to a prior over the option letters A, B, C and D.
+- **Nothing is reused.** If 10,000 requests choose among the same 300 tools, all 300 descriptions are read again for every request.
+- **No usable probability.** A confidence the model writes out as text is usually not calibrated, and token log-probabilities need recalibration before they can be thresholded.
+
+The [new Learn section on classifying with an LLM](/docs/nlp/nlp-task-taxonomy#classifying-with-an-llm) goes through these three readout methods (generate, score, embed) and how to test them.
+
+## 5. Decision models: Jev
+
+On 15 September 2026, Diogo Almeida's company TypeSafe [announced Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), the first of what it calls System One models. Jev takes unstructured input and returns typed decisions with probabilities, all produced in one parallel pass instead of one token at a time. TypeSafe reports 70 to 500 milliseconds end to end, against 3 to 329 seconds for the frontier LLMs it tested, at \$0.042 per million input tokens with output free. It supports up to 255 options. Simon Willison [suggested](https://simonwillison.net/2026/Sep/21/jev/) "decision models" as a plainer name, which this post uses.
+
+Jev settles the speed and validity problems: its outputs can only be one of the options, by construction. But it is an API in early access. TypeSafe mentions a new architecture and a training method it calls Reinforcement Learning for Calibrated Decisions, and gives no further detail. Nobody outside can check how it handles order, missing answers or large option sets, which is where Jeva comes in.
+
+## 6. How Jeva works
+
+The paper starts from four properties it says a decision model should have:
+
+1. **Null-aware**: it should tell "no option fits" apart from "several options fit about equally".
+2. **Permutation-invariant**: reordering the options should not change the decision.
+3. **Option-scalable**: more options should not need a new output layer or a hard cap.
+4. **Cacheable**: work that depends only on an option should be done once and reused.
+
+Each part of the architecture answers one of these.
+
+**Encode separately.** A shared backbone, Qwen3.5-4B, encodes the request (decision type, question and state) into a vector $z_0$, and each option into a vector $u_i$, with no option seeing the request or any other option. This is the bi-encoder step from section 3, and it is what makes options cacheable: an option's vector is the same in every request.
+
+**Let the request read the options.** One attention block then refines the request vector against the set of option vectors, which stay fixed. The request is the query and the options are keys and values:
+
+$$
+a_i = \mathrm{softmax}_i\!\left(\frac{q^\top k_i}{\tau}\right), \qquad \tilde z = z_0 + \alpha \sum_i a_i v_i
+$$
+
+followed by a feed-forward layer. The sum over options is the key step. A sum doesn't care about order, so reordering the options can't change $\tilde z$. And because the request has now seen the whole set, the same two options can be ranked differently in different sets, which section 2's independent scorers provably can't do. Only the request vector is updated, so the block never builds a $K \times K$ comparison between options, and the paper shows the cost grows linearly with the number of options $K$. Like [self-attention](/docs/deep-learning/attention-transformers#two-properties-of-self-attention) without position encodings, it treats its inputs as a set.
+
+**Score, and separately ask whether anything fits.** Each option gets one score from the same rule, $s_i = z_L^\top u_i$, and a softmax over the scores gives $q$, the distribution over options if one must be chosen. The null answer comes from a separate gate that looks only at the best score:
+
+$$
+\rho = \sigma\!\left(\frac{\max_i s_i - b}{\tau_{\mathrm{cov}}}\right), \qquad p_{\varnothing} = 1 - \rho, \qquad p_i = \rho\, q_i
+$$
+
+Here $\rho$ is the probability that at least one option is acceptable, and $b$ and $\tau_{\mathrm{cov}}$ are learned. The alternative, adding "none of these" as one more logit in the softmax, has a flaw the paper spells out: every extra weak option takes probability from "none", so the null answer gets less likely just because the list got longer. The gate depends only on the maximum, so adding options that score below the best leaves it unchanged.
+
+The three output types reuse this head. A **Choice** returns $q$ (or $p$ when "none" is allowed). A **Noul**, the paper's name for a true-or-false question, is a choice between a true and a false candidate, and returns the probability of true. A **Score** returns the expected rubric value, the sum of each level's value weighted by its probability.
+
+Here is a toy version of the head in numpy, with random matrices standing in for the trained ones, to check the two structural claims: shuffling the options only reorders the probabilities, and the null gate ignores weak distractors while a flat softmax does not.
+
+```python
+import numpy as np
+
+rng = np.random.default_rng(0)
+d = 32
+
+def unit(x): return x / np.linalg.norm(x, axis=-1, keepdims=True)
+def softmax(x): e = np.exp(x - x.max()); return e / e.sum()
+def sigmoid(x): return 1 / (1 + np.exp(-x))
+
+# Random stand-ins for the trained projections of one attention step.
+Wq, Wk, Wv = (rng.standard_normal((d, d)) / np.sqrt(d) for _ in range(3))
+
+def scores(z0, U, tau=0.5, alpha=0.1):
+    """z0: the request vector. U: one row per option, each encoded on its own."""
+    a = softmax((Wq @ z0) @ (U @ Wk.T).T / tau)   # the request attends over the options
+    z = unit(z0 + alpha * (a @ (U @ Wv.T)))       # a weighted sum: option order can't matter
+    return U @ z                                  # one shared score per option
+
+def decide(s, b_cov=0.45, tau_cov=0.05):
+    q = softmax(s / 0.1)                          # which option, if one must be picked
+    p_null = 1 - sigmoid((s.max() - b_cov) / tau_cov)   # is any option acceptable?
+    return q, p_null
+
+request = unit(rng.standard_normal(d))
+options = unit(rng.standard_normal((8, d)))
+options[3] = unit(request + 0.2 * rng.standard_normal(d))   # one good match
+
+q, p_null = decide(scores(request, options))
+perm = rng.permutation(8)
+q_perm, _ = decide(scores(request, options[perm]))
+print(f"chosen option: {q.argmax()}  p={q.max():.3f}  p_null={p_null:.3f}")
+print(f"after shuffling, largest change in any option's probability: {np.abs(q_perm - q[perm]).max():.1e}")
+
+# Now a request with no good option, padded with ever more weak distractors.
+s_bad = np.array([0.31, 0.22, 0.18, 0.05, -0.02, -0.10, -0.15, -0.30])
+for K in (8, 64, 512):
+    s = np.concatenate([s_bad, rng.uniform(-0.4, 0.25, K - 8)])   # all below the best score
+    _, p_null = decide(s)
+    flat_null = softmax(np.append(s, 0.45) / 0.1)[-1]   # "none of these" as one more logit
+    print(f"K={K:4d}   coverage gate p_null={p_null:.3f}   flat softmax p_null={flat_null:.3f}")
+```
+
+```
+chosen option: 3  p=0.903  p_null=0.026
+after shuffling, largest change in any option's probability: 3.5e-18
+K=   8   coverage gate p_null=0.943   flat softmax p_null=0.690
+K=  64   coverage gate p_null=0.943   flat softmax p_null=0.330
+K= 512   coverage gate p_null=0.943   flat softmax p_null=0.093
+```
+
+The shuffle changes nothing beyond rounding error. In the no-match case, the gate keeps saying "nothing fits" with the same confidence at 8 and 512 options, while the flat softmax's "none" falls from 0.69 to 0.09 only because the list grew. With trained weights the numbers would differ, but these two behaviours come from the structure, and training can't undo them.
+
+**Training.** The backbone is adapted with rank-64 LoRA, and with the projections and decision head that makes 13.37 million trainable parameters. Training runs through a staged curriculum, from basic typed decisions through preference, counterfactual, evidence-grounded and long-text stages. The paper gives sizes per stage rather than a total, from about 80,000 examples for basic typed decisions to about 500,000 in the largest stage. The loss is cross-entropy over the candidates plus a binary cross-entropy on the gate for whether any acceptable candidate exists.
+
+## 7. What the results show
+
+All numbers below are from the paper's own evaluation.
+
+| | Jeva-4B | Jev 1.13.0 |
+|---|---|---|
+| BANKING77 intents, 16 options | 91.62% | 82.50% |
+| MASSIVE intents, 16 options | 90.22% | 81.61% |
+| Mind2Web web actions, 16 options (task split) | 79.99% | 66.26% |
+| Answer changed under reordering (600 decisions) | 0.00% | 17.00% |
+| True-or-false Brier score (lower is better) | 0.0184 | 0.0342 |
+
+Across the eight accuracy slices in its main table, Jeva leads seven. The exception is the authors' own typed-decision test set, where a model called InternDecision-4B scores 78.70% against Jeva's 78.30%.
+
+On missing answers, the authors used 3,080 BANKING77 requests with 16 options, 588 of which had no correct option in the set. Jeva separated answer-absent from answer-present requests with an AUROC of 98.66%, and at a 5% false-alarm rate it caught 93.88% of the absent cases.
+
+On large sets, using a tool-retrieval benchmark with 32 to 2,048 options, Jeva's accuracy was 86.90% at 32 options and 69.88% at 2,048. Some of the compared models could not take more than their fixed option limit at all.
+
+On reuse, when every option had been seen before and was served from cache, median latency fell from 2,102 ms to 75 ms on the MLDR long-document retrieval set, about 28 times faster, with decisions unchanged.
+
+## 8. Where it stops working
+
+- **The guarantees are about structure.** Order invariance and the null gate's behaviour are proved for exact arithmetic. The paper notes that floating-point effects and batching can perturb nearly tied scores, and that exact ties need a fixed tie-breaking rule (the code picks the first candidate).
+- **Set-dependent choice is a capability.** The proof that one block can prefer A in one set and B in another shows the architecture can express it. It does not show the trained model gets such cases right.
+- **Accuracy still falls with set size.** From 86.90% at 32 options to 69.88% at 2,048 is a large drop, and the authors note that the added options in that benchmark include weak or unjudged negatives.
+- **Comparisons are uneven.** Baselines were scored only on requests they support, latency was measured on one NVIDIA H200 with each model in its own runtime, and Jev is a black box whose version and serving setup the authors don't control. The paper also gives two different counts (50 and 46) for one latency experiment.
+- **Caches go stale.** Cached option vectors must be thrown away after any change to weights, tokenizer, template or numeric settings.
+- **It needs a GPU.** The released code targets Linux, NVIDIA GPUs and CUDA 12.8, and no hosted inference provider serves the model yet.
+- **No independent results yet.** Everything above is the authors' own evaluation, two weeks after release.
+
+## The line in one table
+
+| Step | How options are handled | What it fixed | What it left |
+|---|---|---|---|
+| Fixed-label classifier | One output unit per label | Fast, calibrated with care | New label means retraining |
+| Entailment scoring (2019) | Each label scored with the input | Labels are text, any can be added | One pass per label; no set-dependent choice |
+| Bi-encoder (2019) | Each option embedded once | Option vectors cached and reused | Request and option never interact; no "none" |
+| Prompted LLM | Options listed in the prompt | Full interaction, flexible | Slow, invalid outputs, order bias, no reuse |
+| Jev (Sept 2026) | Typed outputs in one parallel pass | Fast, always a valid option | Closed; internals unknown; 17% order flips |
+| Jeva (Oct 2026) | Cached options, set attention, coverage gate | Order-invariant, null-aware, cacheable, open | No independent results yet; accuracy falls at large K |
+
+## Further reading
+
+- On this site: [classifying with an LLM](/docs/nlp/nlp-task-taxonomy#classifying-with-an-llm), new with this post; [bi-encoders and cross-encoders](/docs/llms-genai/retrieval-and-reranking-architectures); [BERT and fine-tuning](/docs/deep-learning/bert); [why self-attention ignores order](/docs/deep-learning/attention-transformers#two-properties-of-self-attention); [Brier score and calibration](/docs/machine-learning/model-evaluation-metrics#4-judging-probabilities-proper-scoring-and-calibration)
+- Qi Li and Xinchao Wang, [Jeva: System One Models from First Principles](https://arxiv.org/abs/2610.18773) (2026), with [code](https://github.com/LiQiiiii/Jeva) and [weights](https://huggingface.co/LIQIIIII/Jeva-4B)
+- Diogo Almeida, [Introducing System One models and Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev) (TypeSafe, 15 September 2026)
+- Simon Willison, [Jev introduces a new shape of LLM](https://simonwillison.net/2026/Sep/21/jev/) (21 September 2026)
+- Zheng et al., [Large Language Models Are Not Robust Multiple Choice Selectors](https://arxiv.org/abs/2309.03882) (2023)
+- Reimers and Gurevych, [Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks](https://arxiv.org/abs/1908.10084) (2019)
+- Yin, Hay and Roth, [Benchmarking Zero-shot Text Classification: Datasets, Evaluation and Entailment Approach](https://arxiv.org/abs/1909.00161) (2019)
