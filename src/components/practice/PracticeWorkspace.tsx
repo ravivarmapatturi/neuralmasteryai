@@ -38,6 +38,7 @@ import { normalizeRoute, getFlatPages, getPageByRoute, getPracticeProblems } fro
 import { isSolved, recommendedProblem, relatedLesson } from '../../lib/mastery';
 import { getProblemAward, getMasteryTier } from '../../lib/gamification';
 import { MoonIcon, SunIcon } from '../icons/UiIcons';
+import BrandMark from '../brand/BrandMark';
 
 interface PracticeWorkspaceProps {
   problemId: string;
@@ -526,6 +527,7 @@ export default function PracticeWorkspace({ problemId, mdxContent }: PracticeWor
                   whiteSpace: 'nowrap',
                 }}
               >
+                <BrandMark size={20} />
                 Neural Mastery
               </Link>
               <div style={{ height: 16, width: 1, background: 'var(--nm-border)' }} />

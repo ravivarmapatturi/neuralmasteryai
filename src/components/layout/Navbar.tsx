@@ -5,6 +5,7 @@ import SearchModal from './SearchModal';
 import AuthButton from './AuthButton';
 import StreakBadge from './StreakBadge';
 import { MoonIcon, SunIcon } from '../icons/UiIcons';
+import BrandMark from '../brand/BrandMark';
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform ?? navigator.userAgent);
 const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -115,8 +116,11 @@ export default function Navbar({
               ☰
             </button>
           )}
-          <Link to="/" style={{ fontWeight: 700, fontSize: 17, fontFamily: "'Kalam', 'Comic Sans MS', cursive", color: 'var(--nm-text-primary)', textDecoration: 'none' }}>
-            Neural Mastery
+          <Link to="/" aria-label="Neural Mastery home" className="nm-brand-link" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 17, fontFamily: "'Kalam', 'Comic Sans MS', cursive", color: 'var(--nm-text-primary)', textDecoration: 'none' }}>
+            <BrandMark size={24} />
+            {/* Hidden on narrow phones (theme.css): the mark alone keeps the
+                row inside the 375px width the mobile smoke test checks. */}
+            <span className="nm-brand-text">Neural Mastery</span>
           </Link>
         </div>
         {/* fontSize deliberately NOT bumped on any link below, even though
