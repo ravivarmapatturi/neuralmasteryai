@@ -1,0 +1,150 @@
+---
+title: "How US Healthcare Works, Part 10: Prior Authorization"
+description: "How a prior authorization request moves from provider to payer and back, the decision timelines in federal rules, what the 2024 CMS rule changes in 2026 and 2027, the electronic standards, and where reform and AI fit."
+date: 2026-10-27
+tags: [us healthcare, prior authorization, utilization management, interoperability, fhir]
+series: us-healthcare
+part: 10
+---
+
+# How US Healthcare Works, Part 10: Prior Authorization
+
+[Part 9](/blog/us-healthcare-9-utilization-management) described utilization management in general. **Prior authorization** (PA) is its most common form: the payer must approve a service before it happens, or it won't pay for it. It's also the part of the US system that providers complain about most, that regulators have changed most in the last three years, and that software companies are working on hardest. This part follows one request from start to finish, then looks at the rules, the volumes and the changes coming.
+
+## 1. What needs prior authorization
+
+Each payer publishes a list of services that need PA, usually by procedure code, sometimes by drug, and often differing by plan and line of business. Typical items:
+
+- advanced imaging: MRI, CT, PET scans
+- planned inpatient admissions and many surgeries
+- specialty drugs, especially expensive injectables and infusions
+- durable medical equipment such as power wheelchairs
+- post-acute care: skilled nursing, rehabilitation, home health
+- genetic testing, sleep studies, some physical therapy
+
+Emergency care never needs PA. Most routine office visits and basic tests don't either.
+
+In traditional Medicare, PA is rare: about 625,000 reviews in fiscal year 2024, roughly 2 per 100 members, according to [KFF](https://www.kff.org/medicare/medicare-advantage-insurers-made-nearly-53-million-prior-authorization-determinations-in-2024/). In Medicare Advantage it is routine: nearly 53 million requests in 2024, almost 2 per member.
+
+## 2. One request, step by step
+
+Say Maria's plan requires PA for her knee MRI from part 3.
+
+```
+1. Check      Her doctor's office checks whether this MRI code needs PA for her plan
+2. Gather     Notes showing knee pain, exam findings, X-ray result, weeks of physical therapy tried
+3. Submit     Through the payer's (or its imaging vendor's) portal, by fax, by phone,
+              or electronically
+4. Review     Auto-approved if it clearly meets criteria; otherwise a nurse reviews (part 9)
+5. Pend       If information is missing, the payer asks for more, and the clock may pause
+6. Decide     Approve, partly approve (for example fewer sessions than asked), or deny
+7. Notify     The provider gets an authorization number; the member gets a letter if denied
+8. Use        The MRI is done within the approved dates, at the approved place
+9. Claim      The claim must match the authorization, or it's denied
+```
+
+Step 9 catches many practices out. An authorization is specific: a procedure code, a number of units, a provider, a site and a date range. If the MRI is done with contrast when the authorization was for without contrast, at a different imaging centre, or a week after the authorization expired, the claim can be denied even though a scan was approved.
+
+## 3. How fast the payer must decide
+
+Decision deadlines depend on the type of plan and how urgent the request is.
+
+| Plan type | Urgent (expedited) | Standard |
+|---|---|---|
+| Medicare Advantage, Medicaid and CHIP, from 1 January 2026 | 72 hours | 7 calendar days |
+| Employer plans under ERISA | 72 hours | 15 days, extendable once by 15 days |
+
+The Medicare Advantage and Medicaid row comes from CMS's [Interoperability and Prior Authorization final rule](https://www.cms.gov/newsroom/fact-sheets/cms-interoperability-prior-authorization-final-rule-cms-0057-f) (CMS-0057-F), published in January 2024. Before it, the standard deadline in Medicare Advantage was 14 days. The ERISA row comes from the Department of Labor's claims procedure rules. States set their own deadlines for fully insured plans, often shorter.
+
+## 4. What the 2024 rule changes
+
+CMS-0057-F applies to Medicare Advantage plans, Medicaid and CHIP programs and their managed care plans, and, for some provisions, plans on the federal marketplace. Its main requirements arrive in two waves:
+
+**From 2026:**
+
+- the 72-hour and 7-day decision deadlines above,
+- a **specific reason** for every denial, so a provider knows what to fix or appeal, and
+- **public reporting**: each payer posts yearly PA statistics on its website, including approval and denial rates and average decision times. The first reports, covering 2025, were due by 31 March 2026.
+
+**From 1 January 2027:**
+
+- a **Prior Authorization API**, using the FHIR standard, that lets a provider's system find out whether PA is needed, what documentation is required, and submit the request and get the answer electronically,
+- a **Provider Access API**, letting in-network providers retrieve a patient's claims and PA history, and
+- a **Payer-to-Payer API**, so a member's data, including active authorizations, follows them when they change plans.
+
+## 5. The electronic standards
+
+PA has had an electronic standard since HIPAA, the **X12 278** transaction. But few providers use it end to end, because it carries the request without the clinical documentation payers need, so the documents still go by fax or portal.
+
+The newer approach, which the 2027 API requirement points to, uses three FHIR implementation guides from the HL7 **Da Vinci** project, each covering one step:
+
+| Guide | Step it automates |
+|---|---|
+| CRD, Coverage Requirements Discovery | Inside the doctor's electronic record, while ordering: does this need PA for this patient's plan? |
+| DTR, Documentation Templates and Rules | Pull the needed information from the record and ask the doctor only for what's missing |
+| PAS, Prior Authorization Support | Submit the request and receive the decision, mapped to the 278 where required |
+
+If these work as intended, many requests could be answered while the doctor is still ordering, instead of days later.
+
+## 6. The volume, and how often denials stand
+
+From insurers' reports to CMS, analysed by [KFF](https://www.kff.org/medicare/medicare-advantage-insurers-made-nearly-53-million-prior-authorization-determinations-in-2024/):
+
+| Medicare Advantage, 2024 | |
+|---|---|
+| Prior authorization requests | nearly 53 million |
+| Fully or partly denied | 4.1 million, 7.7% |
+| Denials appealed | 11.5% |
+| Appeals that overturned the denial | 80.7% |
+| Denial rate by insurer | from 4.2% (Elevance Health) to 12.8% (UnitedHealth Group) |
+
+So most denials are never appealed, and most appealed denials are reversed. That doesn't prove the reversed denials were wrong, since appeals often bring documentation the first request lacked, but it does suggest many initial denials don't hold up. On the provider side, the [AMA's 2025 survey](https://www.ama-assn.org/practice-management/prior-authorization/ama-prior-authorization-physician-survey) found physicians completing 40 PAs a week each, using 13 hours of physician and staff time.
+
+## 7. Reform
+
+Several changes are under way besides the federal rule:
+
+- **Gold carding.** Some states, starting with Texas in 2021, exempt providers with a high approval rate from PA for those services. A provider whose requests are nearly always approved stops having to ask.
+- **The 2025 industry pledge.** In June 2025, insurers covering nearly 8 in 10 Americans [committed to HHS](https://www.hhs.gov/press-room/kennedy-oz-cms-secure-healthcare-industry-pledge-to-fix-prior-authorization-system.html) to cut the number of services needing PA, honour existing authorizations for 90 days when a member changes plans, have clinicians review all clinical denials, and standardise electronic PA, with the main changes due by January 2027.
+- **PA in traditional Medicare.** In the opposite direction, CMS's [WISeR model](https://www.cms.gov/priorities/innovation/innovation-models/wiser) started in January 2026 in six states: New Jersey, Ohio, Oklahoma, Texas, Arizona and Washington. Technology companies review requests for a few services with high rates of unnecessary use, including skin substitutes, nerve stimulator implants and knee arthroscopy for osteoarthritis, the same procedure as part 5's coverage example. Clinicians at the companies must review any request that isn't approved.
+
+## 8. Where AI fits
+
+Both sides are automating, and they are meeting in the middle:
+
+- **Payers** use rules and models to auto-approve requests that clearly meet criteria, so nurses only see the harder ones. CMS has said a Medicare Advantage plan may use algorithms to help decide, but the decision must rest on the individual patient's circumstances and a denial must be reviewed by an appropriate clinician.
+- **Providers** use software to check PA requirements, assemble documentation from the record and submit requests, and to predict which requests will be denied.
+- **WISeR** uses technology vendors for traditional Medicare reviews, with clinicians making the denials.
+
+The useful direction is fast approval of clear cases and fast routing of unclear ones to people. The risk is automated denial at scale, which is exactly what the 2024 rule's reporting and the physician-review requirements are meant to expose.
+
+## 9. Limits
+
+- **Requirements differ everywhere.** Each payer, plan and vendor has its own list, criteria and portal, and they change often.
+- **The documents are the bottleneck.** Most of the work is gathering clinical evidence, which electronic transactions only partly automate until CRD and DTR are widely adopted.
+- **Approval isn't payment.** An authorized service can still be denied at the claim if the details don't match, or if the member's eligibility changed.
+
+## Remember
+
+| Term | Meaning |
+|---|---|
+| Prior authorization | Payer approval required before a service, or it won't pay |
+| Authorization number | The approval's reference; the claim must match its code, units, site and dates |
+| 72 hours / 7 days | The urgent and standard decision deadlines for MA, Medicaid and CHIP from 2026 |
+| CMS-0057-F | The 2024 rule on PA timelines, denial reasons, reporting and APIs |
+| X12 278 | The HIPAA standard PA transaction |
+| CRD, DTR, PAS | The Da Vinci FHIR guides for discovering, documenting and submitting PA |
+| Gold carding | Exempting providers with high approval rates from PA |
+| WISeR | CMS's 2026 PA model for traditional Medicare in six states |
+
+Next, in part 11: care management, how payers try to keep members healthy and out of hospital, from disease management to complex case management.
+
+## Sources
+
+- CMS, [Interoperability and Prior Authorization final rule (CMS-0057-F) fact sheet](https://www.cms.gov/newsroom/fact-sheets/cms-interoperability-prior-authorization-final-rule-cms-0057-f)
+- KFF, [Medicare Advantage insurers made nearly 53 million prior authorization determinations in 2024](https://www.kff.org/medicare/medicare-advantage-insurers-made-nearly-53-million-prior-authorization-determinations-in-2024/), January 2026
+- American Medical Association, [2025 AMA prior authorization physician survey](https://www.ama-assn.org/practice-management/prior-authorization/ama-prior-authorization-physician-survey)
+- HHS, [Industry pledge to fix prior authorization](https://www.hhs.gov/press-room/kennedy-oz-cms-secure-healthcare-industry-pledge-to-fix-prior-authorization-system.html), June 2025
+- CMS, [WISeR model](https://www.cms.gov/priorities/innovation/innovation-models/wiser)
+- HL7 Da Vinci project, [implementation guides](https://confluence.hl7.org/display/DVP)
+- US Department of Labor, [Benefit claims procedure regulation](https://www.dol.gov/agencies/ebsa/about-ebsa/our-activities/resource-center/faqs/benefit-claims-procedure-regulation)

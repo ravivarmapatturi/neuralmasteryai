@@ -1,0 +1,143 @@
+---
+title: "How US Healthcare Works, Part 7: Network Management"
+description: "How payers build provider networks: contracting and rates, credentialing and primary source verification, the provider data behind directories and claims, and the rules on network adequacy."
+date: 2026-10-27
+tags: [us healthcare, provider networks, credentialing, provider data, payers]
+series: us-healthcare
+part: 7
+---
+
+# How US Healthcare Works, Part 7: Network Management
+
+[Part 3](/blog/us-healthcare-3-how-a-health-plan-works) showed that being in network decides most of the money: the allowed amount, the member's cost sharing, and whether the provider can bill the member for the rest. [Part 6](/blog/us-healthcare-6-eligibility-and-enrollment) covered the member side of the payer's data. This part covers the provider side: how a doctor or hospital joins a payer's network, what the payer checks before letting them in, and the provider data that every claim, directory and network report depends on.
+
+## 1. What a network is for
+
+A **network** is the set of providers that have a contract with a payer. The payer gets lower prices and some control over quality. The provider gets patients: the plan steers members to it with lower cost sharing, and in HMOs and EPOs, by not covering anyone else.
+
+Network management has four jobs, and the rest of this part takes them in turn:
+
+| Job | Question it answers |
+|---|---|
+| Contracting | What will we pay this provider, and on what terms? |
+| Credentialing | Is this provider qualified, licensed and safe to be in our network? |
+| Provider data | Where do they practise, under which tax ID, accepting which patients? |
+| Network adequacy | Do our members have enough providers, close enough, of each kind? |
+
+## 2. Contracting
+
+A provider contract sets the price for every service the provider might bill, plus the rules around payment. Professional and hospital contracts look different.
+
+**Professional contracts** (physicians, therapists, labs) usually pay from a **fee schedule**: an allowed amount per CPT and HCPCS code. Many commercial fee schedules are written as a percentage of Medicare's fee schedule, such as "130% of the current Medicare physician fee schedule", so the payer doesn't have to set thousands of prices by hand. Medicare's rates change every January, and so do every contract rate tied to them.
+
+**Hospital contracts** use the payment methods from [part 4](/blog/us-healthcare-4-the-code-systems): a rate per DRG for inpatient stays, rates per outpatient service or APC, a **per diem** (a fixed amount per day in hospital), or a **percentage of billed charges**. A single hospital contract can mix all of them, with carve-outs for expensive items such as implants or transplants.
+
+Beyond prices, a contract sets terms that come up again and again in claims:
+
+- **Hold harmless**: the provider can't bill the member for anything beyond cost sharing, even if the payer goes bankrupt or denies the claim for the provider's own error.
+- **Timely filing**: claims must reach the payer within a set time, often 90 to 180 days from the date of service, or they aren't paid.
+- **Payment timelines**: many states have prompt pay laws requiring clean claims to be paid within a set number of days.
+- **All-products clause**: the provider agrees to participate in all of the payer's plans, or only some.
+- **Termination and notice**: how either side can leave, and what happens to patients mid-treatment.
+
+Price depends on leverage. A hospital system that is the only one in a region, or that members won't do without, gets higher rates. As hospitals have merged and bought physician practices, their negotiating power has grown, which is one reason the same procedure can cost several times more in one city than another.
+
+## 3. Credentialing
+
+Before a contracted provider can see members as in network, the payer has to **credential** them: check that they are who they say they are, and are qualified and safe to practise. Most payers follow standards from [NCQA](https://www.ncqa.org/programs/health-plans/credentialing-accreditation/), the accreditation body for health plans.
+
+The steps:
+
+1. **Application.** The provider submits their history. Most use [CAQH ProView](https://www.caqh.org/solutions/caqh-proview), a shared database, so they fill in one profile and authorise each payer to read it, instead of a separate form for each payer.
+2. **Primary source verification.** The payer checks each fact with the organization that issued it, not with a copy the provider supplies: the state medical licence with the state board, board certification with the certifying board, education and training, the DEA registration needed to prescribe controlled drugs, and malpractice insurance.
+3. **History checks.** The [National Practitioner Data Bank](https://www.npdb.hrsa.gov/) for malpractice payments and disciplinary actions, and federal exclusion lists, such as the [HHS Inspector General's exclusion list](https://oig.hhs.gov/exclusions/), for people barred from federal health programs.
+4. **Committee review.** A credentialing committee, including physicians, approves or declines, and looks closely at any red flags.
+5. **Recredentialing** at least every three years, with sanctions and licence status monitored in between.
+
+Credentialing commonly takes two to four months. Until it's finished, the provider usually can't see the payer's members as in network, which is why a newly hired doctor's schedule often fills slowly. Large medical groups and hospital systems often get **delegated credentialing**, where the payer lets the group credential its own doctors and audits the process.
+
+Hospitals and facilities are credentialed too, mostly by checking their licence and accreditation, such as by The Joint Commission.
+
+## 4. Provider data
+
+Contracting and credentialing produce data, and that data is what claims, directories and network reports run on. A provider record has to answer questions like these:
+
+| Field | Why it matters |
+|---|---|
+| NPI, individual and group | Identifies who did the service and who bills for it |
+| Tax ID (TIN) | Who gets paid; one doctor can bill under several TINs |
+| Practice locations | Directory listings, network adequacy, place of service |
+| Specialty and taxonomy | Which fee schedule and which rules apply |
+| Contract and fee schedule link | The price the claim system pays |
+| Accepting new patients, languages, hours | What members need to find care |
+| Effective and end dates | Whether the provider was in network on the date of service |
+
+The hard part is that providers aren't simple. A surgeon might work at two hospitals and one clinic, bill under her group's TIN at the clinic and the hospital's TIN at one of the hospitals, and be in network for the commercial plan but not the Medicaid plan. The claim system has to match each claim's NPI, TIN, location and date to the right contract. When it picks the wrong one, a claim is priced wrongly or denied as out of network.
+
+## 5. Directories and ghost networks
+
+Members choose doctors from the payer's **provider directory**, and the directory is only as good as the provider data. Since 2022, the [No Surprises Act](https://www.cms.gov/nosurprises) has required plans to:
+
+- verify their directory information at least every 90 days,
+- update the directory within two business days of a change, and
+- answer a member's question about whether a provider is in network within one business day.
+
+If a member relies on wrong directory information and sees a provider who turns out to be out of network, the plan can't charge them more than in-network cost sharing.
+
+Directories are still often wrong. In a 2023 [secret shopper study](https://www.finance.senate.gov/imo/media/doc/050323%20Ghost%20Network%20Hearing%20-%20Secret%20Shopper%20Study%20Report.pdf), Senate Finance Committee staff called 120 mental health providers listed in 12 Medicare Advantage plans' directories in six states. 33% of the listings were inaccurate, had non-working numbers or never returned the call, and staff could book an appointment only 18% of the time. Listings like these, providers who appear in the directory but can't actually be seen, are called **ghost networks**.
+
+The causes are mostly about data: providers change locations and stop taking new patients without telling every payer, each payer collects the same information separately, and a payer has little reason to remove a listing that makes its network look larger.
+
+## 6. Network adequacy
+
+Regulators require plans to have enough providers to serve their members. The rules differ by program:
+
+- **Medicare Advantage**: CMS sets, for each specialty and each type of county, a minimum number of providers and a maximum travel time and distance for members. A plan applying to serve a county has to show its network meets them.
+- **Marketplace plans**: federal and state standards, also based on time and distance and, increasingly, appointment wait times.
+- **Medicaid managed care**: each state sets its own standards within federal rules.
+
+Plans also design networks on purpose: a **narrow network** includes fewer providers in return for a lower premium, and a **tiered network** puts providers in tiers with different cost sharing, to steer members toward lower-cost or higher-quality ones.
+
+## 7. How it all reaches a claim
+
+When Maria's son's paediatrician sends a claim, the payer:
+
+1. finds the provider record by NPI and TIN,
+2. checks the provider was credentialed and in network on the date of service,
+3. finds the contract and fee schedule that apply to this plan and this location,
+4. prices each line from the fee schedule, and
+5. applies the member's cost sharing from part 3.
+
+Steps 1 to 3 depend entirely on provider data. A large share of claim errors, and of provider complaints about payment, trace back to a provider record with the wrong dates, a missing location or a contract linked to the wrong TIN.
+
+## 8. Limits
+
+- **Everyone keeps their own copy.** Each payer collects and verifies the same provider information separately, and it goes out of date at a different rate in each.
+- **Credentialing is slow.** Months of waiting delay new doctors' access to patients, and much of the work is repeated for every payer.
+- **Adequacy standards measure distance, not access.** A directory can meet time and distance rules while many of the listed providers aren't taking new patients.
+- **Contracts are complex and private.** Rates are negotiated one by one. Federal price-transparency rules now require hospitals and plans to publish them, but the files are huge and hard to use.
+
+## Remember
+
+| Term | Meaning |
+|---|---|
+| Network | The providers a payer has contracts with |
+| Fee schedule | The allowed amount per procedure code in a provider's contract |
+| Hold harmless | The provider can't bill the member beyond cost sharing |
+| Credentialing | Checking a provider's licence, training and history before letting them in network |
+| Primary source verification | Checking each fact with the body that issued it |
+| CAQH ProView | The shared profile most providers use for credentialing |
+| Provider data | NPI, TIN, locations, specialties and contract links behind every claim |
+| Ghost network | Directory listings for providers members can't actually see |
+| Network adequacy | Rules on how many providers, how close, a plan must have |
+
+Next, in part 8: benefit digitization, how a plan's benefits, written in documents, become configuration a claim system can run.
+
+## Sources
+
+- NCQA, [Credentialing Accreditation](https://www.ncqa.org/programs/health-plans/credentialing-accreditation/)
+- CAQH, [ProView](https://www.caqh.org/solutions/caqh-proview)
+- HRSA, [National Practitioner Data Bank](https://www.npdb.hrsa.gov/)
+- HHS Office of Inspector General, [Exclusions database](https://oig.hhs.gov/exclusions/)
+- CMS, [No Surprises Act](https://www.cms.gov/nosurprises)
+- US Senate Committee on Finance, [Majority study: Medicare Advantage plan directories haunted by ghost networks](https://www.finance.senate.gov/imo/media/doc/050323%20Ghost%20Network%20Hearing%20-%20Secret%20Shopper%20Study%20Report.pdf), May 2023

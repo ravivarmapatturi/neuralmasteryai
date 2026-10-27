@@ -1,0 +1,127 @@
+---
+title: "How US Healthcare Works, Part 8: Benefit Digitization"
+description: "How a health plan's benefits, written in documents for people, become configuration a claim system can run: service categories, cost-share rules, limits and authorization flags, and where it goes wrong."
+date: 2026-10-27
+tags: [us healthcare, benefit configuration, claims, payers]
+series: us-healthcare
+part: 8
+---
+
+# How US Healthcare Works, Part 8: Benefit Digitization
+
+A health plan is written twice. Once in documents for people: the summary a member reads when choosing a plan, the contract that says what's covered. And once as configuration in the payer's claim system, which is what actually decides how each claim is paid. [Part 3](/blog/us-healthcare-3-how-a-health-plan-works) showed the arithmetic, [part 5](/blog/us-healthcare-5-coverage-policy) the coverage rules, and [part 7](/blog/us-healthcare-7-network-management) the networks. **Benefit digitization** is the work of turning all of that, as written, into rules a machine runs, and keeping the two versions in agreement.
+
+## 1. Where the benefits are written down
+
+| Document | Plan type | What it is |
+|---|---|---|
+| Summary of Benefits and Coverage (SBC) | Employer and individual plans | A standard summary every plan must give in the same federal format, so plans can be compared |
+| Summary Plan Description (SPD) | Employer plans under ERISA | The legal description of the plan the employer must give employees |
+| Certificate or Evidence of Coverage (EOC) | Insured and Medicare Advantage plans | The full contract: everything covered, excluded and limited |
+| Plan Benefit Package (PBP) | Medicare Advantage and Part D | The structured benefit filing a plan submits to CMS with its yearly bid |
+| Schedule of benefits | Most plans | The table of cost sharing by service |
+
+The SBC is the most familiar. The ACA made it a uniform template, with the same rows in the same order for every plan, and **coverage examples** that work through three standard situations: a pregnancy, managing type 2 diabetes and a simple fracture, so a person can compare what each plan would cost them.
+
+The PBP is the most structured. Medicare Advantage plans enter their benefits into CMS's software as answers to thousands of specific questions, so Medicare's plan comparison tool can show them. It is the closest thing the industry has to a standard machine-readable benefit, and it exists only because CMS required it.
+
+## 2. What the claim system needs
+
+A claim system can't read "Specialist visit: \$50 copay after deductible". It needs every benefit broken into pieces it can match against a claim:
+
+```
+Benefit:        Specialist office visit
+Service match:  CPT 99202-99215, place of service 11, provider specialty is not primary care
+Network tier:   In network
+Cost sharing:   $50 copay, deductible does not apply, counts toward the out-of-pocket maximum
+Limits:         none
+Authorization:  not required
+Out of network: 40% coinsurance after the out-of-network deductible
+```
+
+The **service match** is the hard part. The plan document says "specialist visit"; the system must define it in codes, places of service, provider types and sometimes diagnoses. Every service category in the plan, often more than a hundred, needs a definition like this, and they mustn't overlap in ways that send one claim line to two benefits.
+
+A benefit configuration usually has these layers:
+
+| Layer | Example |
+|---|---|
+| Product | A commercial PPO product sold in one state |
+| Plan | The product with one set of cost sharing, such as the \$1,500-deductible version |
+| Benefit package | The list of service categories and their rules |
+| Service category | "Advanced imaging", defined by codes and places of service |
+| Cost-share rule | Deductible applies, then 20%, per network tier |
+| Limit | 30 physical therapy visits a year, shared with occupational therapy |
+| Accumulator | Which counters the service adds to (part 3) |
+| Authorization flag | Prior authorization required for this category (part 10) |
+
+## 3. Why there are so many variations
+
+One insurer might sell a few dozen products, but it runs far more distinct benefit configurations, because:
+
+- **Large self-funded employers customise.** An employer can change cost sharing, add or exclude services and set its own limits. Each employer group can effectively be its own plan.
+- **Each year is a new version.** Cost sharing changes every plan year, and claims for last year's dates of service still arrive, so last year's configuration has to keep working beside this year's.
+- **States differ.** Fully insured plans follow each state's mandates, so the same product differs between states.
+- **Lines of business differ.** Commercial, Medicare Advantage and Medicaid plans have different rules, as part 2 described.
+
+A large payer can end up with tens of thousands of benefit configurations, each of which has to be built, tested and maintained.
+
+## 4. How it's built and tested
+
+The workflow at most payers looks like this:
+
+1. **Product and sales** design the plan and write the documents.
+2. **Benefit analysts** read the documents and translate each benefit into configuration, usually in the core claim platform's own tools.
+3. **Testers** run **test claims**, made-up claims for typical services, through the configuration and compare the results to what the documents say should happen.
+4. The configuration goes live on the plan's effective date, usually 1 January.
+
+Step 2 is skilled manual work, and step 3 can only test the cases someone thought of. Errors show up later as wrong payments: a copay applied where coinsurance should be, a preventive service charged to the deductible, a limit not enforced. Some get caught by member complaints, some by audits, and some never.
+
+## 5. Benefits leave the payer too
+
+The configured benefit doesn't only drive claims. The same data has to reach:
+
+- **Providers**, through the 271 eligibility response from [part 6](/blog/us-healthcare-6-eligibility-and-enrollment), so the front desk can tell a patient what they'll owe.
+- **Members**, through the member portal, ID card and EOB.
+- **The pharmacy benefit manager**, which runs the drug benefit and needs the medical plan's deductible and out-of-pocket rules (part 17).
+- **Regulators and the public.** Since July 2022, the federal [Transparency in Coverage rule](https://www.cms.gov/healthplan-price-transparency) has required most employer and individual plans to publish machine-readable files of their negotiated rates and historical out-of-network allowed amounts, and to offer members an online tool that estimates their cost for a service before they get it.
+
+Each of these channels reads from the configuration, so an error in it shows up in several places at once.
+
+## 6. Why this is a natural problem for software, and AI
+
+Benefit digitization is a translation problem: from long, semi-structured documents written in careful legal English into structured rules. That makes it one of the clearest places where language models are being tried in payer operations:
+
+- **Extraction**: read an SBC or EOC and fill in the structured benefit fields, for an analyst to review.
+- **Comparison**: compare this year's documents with last year's and list exactly what changed, so analysts only reconfigure the changes.
+- **Consistency checking**: compare the configuration with the documents and flag disagreements, for example a service the EOC says has no cost sharing but the configuration charges to the deductible.
+- **Test generation**: write test claims that cover the edge cases a document implies.
+
+The constraint is the same as everywhere in claims: an error costs money and can harm a member, so these tools are used to suggest and check, with a person approving the configuration. Part 18 comes back to this.
+
+## 7. Limits
+
+- **The documents themselves can be ambiguous**, and the configuration has to pick one interpretation. Disagreements often surface only when a claim is denied and a member appeals.
+- **There's no common standard for benefits.** Each claim platform has its own configuration model, so benefits can't move cleanly between systems. The PBP for Medicare Advantage and the X12 and FHIR standards cover parts of the picture, but not the whole configuration.
+- **Most errors are found late**, through wrong payments, rather than before the plan goes live.
+
+## Remember
+
+| Term | Meaning |
+|---|---|
+| SBC | The standard federal summary of a plan's benefits and costs |
+| EOC / certificate | The full contract describing the coverage |
+| SPD | The ERISA plan description an employer must give employees |
+| PBP | The structured benefit filing a Medicare Advantage plan submits to CMS |
+| Benefit configuration | The plan's rules as set up in the claim system |
+| Service category | A benefit defined by codes, places of service and provider types |
+| Test claim | A made-up claim run through the configuration to check it |
+| Transparency in Coverage | The rule requiring plans to publish negotiated rates |
+
+Next, in part 9: utilization management, how payers review whether care is medically necessary before, during and after it happens.
+
+## Sources
+
+- CMS, [Summary of Benefits and Coverage and Uniform Glossary](https://www.cms.gov/cciio/resources/forms-reports-and-other-resources#sbc)
+- US Department of Labor, [Reporting and disclosure guide for employee benefit plans](https://www.dol.gov/agencies/ebsa/about-ebsa/our-activities/resource-center/publications/reporting-and-disclosure-guide-for-employee-benefit-plans)
+- CMS, [Health plan price transparency](https://www.cms.gov/healthplan-price-transparency)
+- CMS, [Medicare Advantage rates and statistics: Plan Benefit Package data](https://www.cms.gov/data-research/statistics-trends-and-reports/medicare-advantagepart-d-contract-and-enrollment-data/benefits-data)
