@@ -1,0 +1,147 @@
+---
+title: "How US Healthcare Works, Part 13: Claim Adjudication"
+description: "What happens inside a payer's system between receiving a claim and paying it: the adjudication pipeline step by step, coding edits, pricing, denials and their reason codes, pends, payment timing and corrected claims."
+date: 2026-10-27
+tags: [us healthcare, claims, adjudication, payers, edi]
+series: us-healthcare
+part: 13
+---
+
+# How US Healthcare Works, Part 13: Claim Adjudication
+
+[Part 12](/blog/us-healthcare-12-from-visit-to-claim) ended with a claim arriving at the payer. **Adjudication** is everything the payer does to decide whether and how much to pay it. Most of the earlier parts of this series exist so that this one process can run: eligibility, networks, benefits, coverage policy, authorizations and cost sharing all meet here, applied line by line. This part walks through the pipeline in the order most claim systems run it.
+
+## 1. Intake
+
+When a claim file arrives from the clearinghouse, the payer:
+
+- translates the X12 837 into its own internal format,
+- runs **front-end edits** for things like a valid member ID and required fields, and rejects claims that fail (the rejections from part 12),
+- assigns each accepted claim an internal claim number, and
+- records the **receipt date**, which starts the clock for prompt payment rules and settles timely filing.
+
+## 2. The pipeline
+
+Each accepted claim then goes through a series of steps. The names vary by system, but the logic is close to universal:
+
+| Step | Question | Covered in |
+|---|---|---|
+| 1. Member and eligibility | Was this person covered by this plan on each date of service? | Part 6 |
+| 2. Provider | Who is the provider, and were they in network for this plan on that date? | Part 7 |
+| 3. Duplicate check | Has this same service already been billed? | |
+| 4. Benefits | Which service category does each line fall into, and is it covered? | Part 8 |
+| 5. Authorization | If the service needs prior authorization, is there a matching one? | Part 10 |
+| 6. Coverage policy | Do the diagnoses support medical necessity under the policy? | Part 5 |
+| 7. Coding edits | Are the codes valid together, in these units, for this patient? | Part 4 |
+| 8. Pricing | What's the allowed amount under the contract? | Parts 7, 16 |
+| 9. Coordination of benefits | Is another plan primary? What did it pay? | Part 6 |
+| 10. Cost sharing | How much is deductible, copay, coinsurance? Update the accumulators | Part 3 |
+| 11. Payment | Produce the payment, the remittance and the member's EOB | Part 12 |
+
+Each step can **pay**, **deny** or **pend** a line. A pend stops the claim and sends it to a person, which part 14 covers.
+
+## 3. Duplicates
+
+Providers sometimes send the same claim twice, for example when they haven't heard back. An **exact duplicate**, same member, provider, date, code and charge, is denied automatically. A **suspect duplicate**, close but not identical, is harder: two office visits on the same day by the same doctor might be a duplicate or might be two separate visits. Suspect duplicates usually pend for review, or are paid and checked later.
+
+## 4. Coding edits
+
+Coding edits check that the codes make sense together. The most widely used are Medicare's **National Correct Coding Initiative** (NCCI) edits, which many commercial payers also apply:
+
+- **Procedure-to-procedure (PTP) edits**: pairs of codes that shouldn't be billed together for the same patient on the same day, usually because one is part of the other. A surgery code includes the routine incision and closure, so billing them separately is **unbundling**. Some pairs can be overridden with a modifier such as 59 when the services really were separate.
+- **Medically unlikely edits (MUEs)**: the maximum units of a service that make sense for one patient on one day. Two appendectomies on the same day fail.
+
+Payers add their own edits on top: age and sex edits (a prostate exam for a female patient), place-of-service edits, frequency limits (one screening colonoscopy every ten years), and edits licensed from commercial claim-editing vendors.
+
+## 5. Pricing
+
+Pricing works out the allowed amount from the provider's contract:
+
+- **Professional claims**: look up each code in the provider's fee schedule, adjust for modifiers (an assistant surgeon or a bilateral procedure is paid differently) and multiply by units.
+- **Inpatient hospital claims**: run the DRG grouper (part 4) to get the DRG, then multiply its weight by the hospital's contracted base rate, plus any outlier payment for an exceptionally expensive stay and any carve-outs.
+- **Outpatient hospital claims**: price by APC, fee schedule or percentage of charges, depending on the contract.
+- **Out of network**: price by the plan's out-of-network method. Some payers send these claims to **repricing networks**, companies that negotiate a discount with the provider claim by claim.
+
+For Maria's husband's stay, the hospital billed \$38,000 in charges. The grouper assigned MS-DRG 343, appendectomy without complications. If the contract pays a base rate of \$9,500 and DRG 343's weight were 1.0, the allowed amount would be about \$9,500, regardless of the charges. (The numbers here are illustrative; actual weights are set by CMS each year and contract rates are private.)
+
+## 6. Denials and their reason codes
+
+When a line is denied, the payer attaches CARC and RARC codes so the provider knows why. Some of the most common:
+
+| CARC | Meaning | Usually means |
+|---|---|---|
+| CO-16 | Claim lacks information needed for adjudication | Fix the missing data and resubmit |
+| CO-18 | Exact duplicate claim or service | Already billed |
+| CO-22 | Care may be covered by another payer per coordination of benefits | Bill the primary plan first |
+| CO-27 | Expenses incurred after coverage terminated | Eligibility ended |
+| CO-29 | The time limit for filing has expired | Timely filing missed |
+| CO-50 | Not deemed a medical necessity by the payer | Coverage policy failed; may be appealed |
+| CO-97 | Payment is included in the allowance for another service | Bundled by a coding edit |
+| CO-197 | Precertification or authorization absent | No matching prior authorization |
+
+Denials are common. In plans on HealthCare.gov, insurers [denied 19% of in-network claims in 2024](https://www.kff.org/patient-consumer-protections/claims-denials-and-appeals-in-aca-marketplace-plans-in-2024/), ranging from 3% to 36% by insurer. Only 5% of those denials cited medical necessity. A quarter were for administrative reasons, 13% were for excluded services and 9% for a missing prior authorization or referral. Fewer than 1% of denied claims were appealed.
+
+So most denials aren't about clinical judgement at all. They're about data: eligibility, coding, authorizations and paperwork. That's why denial prevention, on both sides, is mostly a data-quality problem.
+
+## 7. Auto-adjudication and pends
+
+A claim that goes through every step without stopping is **auto-adjudicated**, with no person involved. Payers aim for as high a rate as possible, because each manual touch costs money and time.
+
+A claim **pends** when a step can't decide on its own. Typical pend reasons:
+
+- the member or provider couldn't be matched confidently,
+- a suspect duplicate,
+- the authorization almost matches: right code, but the units or dates differ,
+- a high-dollar claim above a threshold that always gets a second look,
+- an unlisted procedure code, which has no fixed price,
+- COB information is missing,
+- the configuration has no rule for this situation.
+
+Pended claims go into work queues, sorted by reason, where claim examiners resolve them. That work is the subject of part 14.
+
+## 8. Payment timing
+
+Payers pay in **payment cycles**, often once or twice a week. Timing rules apply:
+
+- **Medicare** can't pay an electronic clean claim before the 14th day after receipt, and must pay it within 30 days or owe interest.
+- **States** set prompt pay deadlines for fully insured commercial plans, often 30 to 45 days for clean claims, with interest when late.
+- **Medicare Advantage** plans must pay clean claims from out-of-network providers within 30 days. In-network timelines are set by the contract.
+
+## 9. When a claim changes after payment
+
+A claim isn't final when it's paid:
+
+- The provider can send a **corrected claim**, which replaces the original (claim frequency code 7) or voids it (code 8).
+- The payer can **adjust** a claim, for example after a retroactive eligibility change (part 6), a COB discovery or an audit (part 15).
+- The member or provider can **appeal** a denial.
+
+Each change reverses the original claim and reprocesses it, including the accumulators. If the reversed claim had taken the member's deductible, every later claim that year may need to be reprocessed too. That ripple is one of the hardest parts of claim systems to get right.
+
+## 10. Limits
+
+- **Every step depends on earlier data.** Most wrong denials trace back to eligibility, provider or configuration errors, not to the adjudication logic itself.
+- **Edits are blunt.** A coding edit can't see the record, so it denies some legitimate claims and passes some wrong ones.
+- **Speed and accuracy pull against each other.** Auto-adjudicating more claims saves money but lets more errors through, which then need recovery later.
+
+## Remember
+
+| Term | Meaning |
+|---|---|
+| Adjudication | Deciding whether and how much to pay a claim |
+| Front-end edit | A check at intake; failures are rejections, not denials |
+| Exact / suspect duplicate | Identical / possibly the same service billed twice |
+| NCCI PTP edit | Two codes that shouldn't be billed together |
+| MUE | Maximum units of a service per patient per day |
+| Pricing | Calculating the allowed amount from the contract |
+| Auto-adjudication | A claim processed with no human touch |
+| Pend | A claim stopped for a person to resolve |
+| Corrected claim | A replacement (7) or void (8) of an earlier claim |
+
+Next, in part 14: the claim SOP, the checks an examiner works through on a pended claim, step by step, to a final decision.
+
+## Sources
+
+- KFF, [Claims denials and appeals in ACA marketplace plans in 2024](https://www.kff.org/patient-consumer-protections/claims-denials-and-appeals-in-aca-marketplace-plans-in-2024/), March 2026
+- CMS, [National Correct Coding Initiative edits](https://www.cms.gov/medicare/coding-billing/national-correct-coding-initiative-ncci-edits)
+- X12, [Claim Adjustment Reason Codes](https://x12.org/codes/claim-adjustment-reason-codes)
+- CMS, [Medicare Claims Processing Manual, chapter 1](https://www.cms.gov/regulations-and-guidance/guidance/manuals/downloads/clm104c01.pdf) (payment floor and interest)

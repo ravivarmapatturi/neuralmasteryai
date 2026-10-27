@@ -1,0 +1,173 @@
+---
+title: "How US Healthcare Works, Part 14: The Claim SOP, Step by Step"
+description: "The checks a claim examiner works through on a pended claim, in order, from eligibility and provider status through duplicates, authorization, coding, coordination of benefits and pricing, to a documented decision, with four worked cases and the appeal paths that follow."
+date: 2026-10-27
+tags: [us healthcare, claims, adjudication, operations, payers]
+series: us-healthcare
+part: 14
+---
+
+# How US Healthcare Works, Part 14: The Claim SOP, Step by Step
+
+[Part 13](/blog/us-healthcare-13-claim-adjudication) followed a claim through the automated pipeline and ended where the machine stops: a **pend**. A pended claim lands in a work queue for a **claim examiner**, who has to decide it by hand. Payers write the steps an examiner follows into a **standard operating procedure** (SOP). This part is a generic version of that SOP: the checks, in order, that take a pended claim to a final, documented decision. The order matters, because a later check is pointless if an earlier one already settles the claim.
+
+## 1. The examiner's job
+
+A claim examiner works one or more queues, each holding a type of pend: eligibility research, duplicates, COB, high-dollar, authorization mismatch, coding review and so on. Their work is measured on two things:
+
+- **Productivity**: claims resolved per hour or day, and how long claims wait in the queue.
+- **Accuracy**: auditors sample finished claims and check them. **Financial accuracy** asks whether the right amount was paid. **Procedural accuracy** asks whether the right steps were followed and documented, even if the payment happened to be right.
+
+Examiners don't make clinical judgements. When a claim needs one, the SOP sends it to a nurse or physician reviewer (part 9).
+
+## 2. The SOP
+
+### Step 0: Read the pend and the history
+
+Before checking anything, read why the claim pended, and pull the member's and provider's **claim history** for the same dates. Many pends are explained by a related claim: an earlier version of this claim, a hospital claim for the same stay, or a denial the provider is now correcting. Check whether this is an original, a replacement or a void (part 13).
+
+### Step 1: Is the claim complete and valid?
+
+- Required fields present: dates, codes, units, charges, NPIs.
+- Codes valid for the date of service: an ICD-10 code retired on 1 October, or a CPT code added on 1 January, may not be valid for a date on the other side of the change.
+- Dates make sense: the service date isn't in the future, and a hospital stay's discharge date is after its admission date.
+
+If information is missing, deny with **CO-16** and a remark code saying what's missing, so the provider can resubmit. Don't guess the missing data.
+
+### Step 2: Was the member covered?
+
+- Coverage active on **each** date of service, not just the first.
+- Check for retroactive changes: a recent termination or addition, a marketplace grace period, a COBRA election (part 6).
+- Right plan and product for the dates.
+
+If the member wasn't covered, deny with **CO-27** (expenses after coverage terminated) or the matching code. If enrollment looks wrong, for example a newborn who should have been added, route to the enrollment team instead of denying.
+
+### Step 3: Is the provider right?
+
+- The rendering and billing NPIs and the tax ID match a known provider record.
+- The provider was in network, and credentialed, for this plan and location on the date of service (part 7).
+- The provider isn't on a federal **exclusion** list. Payments to an excluded provider aren't allowed for government programs.
+
+A provider match problem is usually a data problem: route it to provider data management rather than pricing the claim at an out-of-network rate by mistake.
+
+### Step 4: Is it a duplicate?
+
+Compare against the history from step 0:
+
+- Same member, provider, date, code and charge: an **exact duplicate**. Deny with **CO-18**.
+- Similar but not identical: look for a legitimate reason. Different modifiers (left and right knee), different times, or a corrected claim replacing an earlier one. If the record shows two separate services, pay both.
+
+### Step 5: Was it filed in time?
+
+Compare the receipt date with the date of service and the contract's **timely filing** limit. If it's late, check for proof that the provider filed on time, for example a clearinghouse acceptance report or a rejection from another payer. Without proof, deny with **CO-29**.
+
+### Step 6: Is the service a covered benefit?
+
+- The service maps to a covered category in the member's plan (part 8).
+- It isn't excluded.
+- No benefit limit has been reached: visit limits, dollar limits, frequency limits.
+
+A reached limit is denied with **CO-119** (benefit maximum reached). An exclusion is denied with the matching code and a reference to the plan language.
+
+### Step 7: Is there a matching authorization?
+
+If the service needs prior authorization (part 10), check the authorization against the claim line by line: procedure code, units, dates, provider and place of service.
+
+- **Exact match**: continue.
+- **Close match**: the SOP says what tolerance is allowed. Many payers accept, say, a few extra days on a date span, or a closely related code, and send anything else to utilization management to amend the authorization.
+- **No authorization**: deny with **CO-197**, unless the service was an emergency, which never needs one.
+
+### Step 8: Does the coverage policy need clinical review?
+
+If the pend is about medical necessity, the examiner checks whether the claim already has what the policy requires. If records are needed, the SOP sends a request to the provider and pends the claim with a deadline. If records come back, a nurse reviews them. A denial for medical necessity (**CO-50**) is made by clinical staff, not by the examiner.
+
+### Step 9: Are the codes right?
+
+- NCCI and payer coding edits: is the bundling edit correct, or does a modifier such as 59 or 25 legitimately override it, given what the record shows?
+- Units within the medically unlikely edit limits.
+- **Unlisted procedure codes**, used when no specific code exists, have no fixed price. The SOP usually requires the operative report and prices by comparison with a similar listed code.
+
+Complex coding questions go to the payer's coding team.
+
+### Step 10: Is another plan primary?
+
+- Check for other coverage on file and on the claim (part 6).
+- If this plan is secondary, the primary plan's payment information must be on the claim. If it isn't, deny with **CO-22** and ask for the primary plan's remittance.
+- Calculate the secondary payment using the plan's COB method. Under standard COB, the secondary plan pays up to what it would have paid as primary, without the member paying more than their cost share.
+
+### Step 11: Is the price right?
+
+- The right contract and fee schedule were applied (part 7).
+- For inpatient claims, the DRG assignment looks consistent with the diagnoses and procedures, and outlier or carve-out rules were applied correctly.
+- Most contracts pay the **lesser of** the billed charge or the allowed amount, so check the charge isn't lower.
+- **High-dollar claims** above a set threshold get a second examiner or a supervisor's approval before payment.
+
+### Step 12: Apply cost sharing
+
+Apply the deductible, copay and coinsurance, and check the accumulators are current (part 3). If an earlier claim for the same member is also pended or being reprocessed, the order matters, and the SOP usually says to finish the earlier one first.
+
+### Step 13: Decide and document
+
+- Release the claim to pay, deny or partly pay each line.
+- Choose the right **CARC** and **RARC** for every adjustment, because they tell the provider what to fix and the member what they owe.
+- Write a clear **note**: what was checked, what was found, and why the decision was made. The next person to touch the claim, an auditor, an appeals reviewer or a regulator, will rely on it.
+
+### Step 14: Escalate when something is wrong
+
+Some findings go beyond this claim: a pattern of unusual billing from a provider, documents that look altered, services billed for a member who says they never received them. The SOP routes these to the **special investigations unit** (part 15), and the examiner doesn't contact the provider about the suspicion.
+
+## 3. Four worked cases
+
+**Case 1: two anaesthesia claims for the same surgery.** Pended as a suspect duplicate: two claims for the husband's appendectomy anaesthesia, same date, same code. Step 4: one is from an anaesthesiologist with modifier QK (medical direction of concurrent cases), the other from a nurse anaesthetist with modifier QX (service with medical direction). That's the normal care-team model, where both are paid, each at its share. Decision: pay both.
+
+**Case 2: an MRI that doesn't match its authorization.** Maria's knee MRI was authorized as CPT 73721, without contrast, but billed as 73723, without and then with contrast. Step 7: the code differs. The SOP doesn't let examiners approve a different service, so the claim goes to utilization management, which can update the authorization if contrast was clinically justified. If UM doesn't, the decision is to deny with CO-197 and a remark explaining the mismatch, and the provider can appeal.
+
+**Case 3: the 31st physical therapy visit.** Maria's plan covers 30 therapy visits a year. Step 6: the accumulator shows 30 already used. Before denying, the examiner checks that none of the 30 was itself a denied or duplicate claim counted by mistake. They weren't. Decision: deny with CO-119, benefit maximum reached. The member may owe the provider, depending on what the provider told her in advance.
+
+**Case 4: a claim after a retroactive termination.** A claim for a visit on 15 July pends because the employer's file, received in August, terminated the member as of 30 June. Step 2: coverage wasn't active on 15 July. Step 0 also turns up two July claims that were already paid before the termination arrived. Decision: deny this claim with CO-27, and send the two paid claims to the recovery team to be adjusted.
+
+## 4. After the decision: appeals
+
+A denial isn't the end. The routes depend on the plan type:
+
+| Plan type | Internal appeal | Outside the plan |
+|---|---|---|
+| Employer (ERISA) and marketplace plans | At least 180 days to appeal; decision within 72 hours (urgent), 30 days (before care), 60 days (after care) | External review by an independent review organization, under the ACA |
+| Medicare Advantage | Reconsideration by the plan | Independent review entity, then an administrative law judge, the Medicare Appeals Council and federal court: five levels in all |
+| Medicaid managed care | Appeal to the plan | State fair hearing |
+
+The appeal reviewer reads the examiner's notes from step 13 first. A clear note often decides how quickly, and how fairly, an appeal is handled.
+
+## 5. Where automation helps
+
+Most of the SOP is looking things up across several systems and comparing them: history, eligibility, provider records, authorizations, contracts. Payers increasingly use software to do the lookups and present the results together, to suggest the likely next action and the reason codes, to read attached medical records and find the relevant pages, and to draft the decision note. The examiner makes the decision. Part 18 comes back to how far this can go, and where it shouldn't.
+
+## 6. Limits
+
+- **SOPs can't cover everything.** New codes, new contract terms and unusual cases fall between the steps, and examiners rely on judgement and escalation.
+- **The fix is often upstream.** If the same pend reason appears thousands of times, the right fix is in configuration, provider data or eligibility, not in examiners resolving each one by hand.
+- **Speed targets can fight with accuracy.** Queues with strict turnaround targets risk decisions made without checking the history.
+
+## Remember
+
+| Term | Meaning |
+|---|---|
+| Claim examiner | The person who resolves pended claims |
+| SOP | The written, ordered steps for deciding a claim |
+| Financial / procedural accuracy | Was the payment right / were the steps right |
+| Claim history | Earlier and related claims, checked first |
+| Timely filing proof | Evidence the provider filed within the limit |
+| Lesser of | Pay the smaller of the billed charge and the allowed amount |
+| CO-119 / CO-197 / CO-27 | Benefit maximum reached / no authorization / coverage ended |
+| SIU | The special investigations unit for suspected fraud |
+| External review | An independent review of a denial outside the plan |
+
+Next, in part 15: payment integrity, how payers find and recover wrong payments, before and after they're made, and how fraud, waste and abuse are investigated.
+
+## Sources
+
+- X12, [Claim Adjustment Reason Codes](https://x12.org/codes/claim-adjustment-reason-codes)
+- US Department of Labor, [Benefit claims procedure regulation](https://www.dol.gov/agencies/ebsa/about-ebsa/our-activities/resource-center/faqs/benefit-claims-procedure-regulation)
+- HealthCare.gov, [Appealing a health plan decision: external review](https://www.healthcare.gov/appeal-insurance-company-decision/external-review/)
+- Medicare.gov, [Appeals in Medicare health plans](https://www.medicare.gov/providers-services/claims-appeals-complaints/appeals/medicare-health-plans)
+- HHS Office of Inspector General, [Exclusions database](https://oig.hhs.gov/exclusions/)

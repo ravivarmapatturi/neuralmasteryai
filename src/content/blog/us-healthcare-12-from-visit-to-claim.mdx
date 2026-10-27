@@ -1,0 +1,135 @@
+---
+title: "How US Healthcare Works, Part 12: From Visit to Claim"
+description: "How a provider turns care into a claim: registration, documentation, charge capture and the chargemaster, coding, claim scrubbing, clearinghouses, acknowledgements and rejections, with one office visit followed end to end."
+date: 2026-10-27
+tags: [us healthcare, revenue cycle, claims, edi, providers]
+series: us-healthcare
+part: 12
+---
+
+# How US Healthcare Works, Part 12: From Visit to Claim
+
+The earlier parts covered what a payer does before care: enrol members, build networks, set benefits and review requests. This part switches to the provider's side of the desk. Everything a provider does to get paid, from booking the appointment to collecting the last dollar from the patient, is called the **revenue cycle**. This part follows its first half, up to the moment a claim reaches the payer. [Part 13](/blog/us-healthcare-13-claim-adjudication) picks it up from there.
+
+## 1. The front end: before the patient is seen
+
+| Step | What happens | Covered in |
+|---|---|---|
+| Scheduling | The appointment is booked | |
+| Registration | Demographics and insurance details captured; ID card scanned | Part 6 |
+| Eligibility check | 270/271 to confirm coverage and cost sharing | Part 6 |
+| Prior authorization | Obtained if the service needs it | Part 10 |
+| Estimate | What the patient is likely to owe | Part 3 |
+
+Errors made here are the cheapest to fix and the most expensive to miss. A wrong member ID, a misspelled name or a plan that ended last month all lead to rejected or denied claims weeks later. Many providers' denial-prevention work focuses on registration for this reason.
+
+Since 2022, the No Surprises Act has also required providers to give a **good faith estimate** of expected charges to patients who are uninsured or choose not to use their insurance, when care is scheduled in advance.
+
+## 2. Documentation and charge capture
+
+During the visit, the doctor documents what happened in the electronic health record: the history, the exam, the assessment and the plan. That note is the legal record of the care, and the only evidence that supports the claim if anyone asks later (part 15).
+
+**Charge capture** turns the care into billable items. In a doctor's office this is mostly the E/M visit plus any procedures, tests or injections. In a hospital it's much larger: every drug dose, supply, lab test, imaging study, operating-room minute and room-day can be a charge.
+
+Hospitals price charges from their **chargemaster**, a list of every item and service they bill, each with a revenue code, usually a CPT or HCPCS code, and a list price. The chargemaster can have tens of thousands of lines. Its prices are the "list prices" from part 1 that almost nobody pays, but every claim starts from them. Since 2021, federal rules have required hospitals to publish their standard charges, including negotiated rates, in machine-readable files.
+
+## 3. Coding
+
+The documentation is then translated into the codes from [part 4](/blog/us-healthcare-4-the-code-systems):
+
+- In a small practice, the doctor often picks the E/M level and diagnosis codes in the record, and billing staff check them.
+- In hospitals and larger groups, professional **coders** read the record and assign ICD-10-CM, CPT, HCPCS and, for inpatient stays, ICD-10-PCS codes, which then determine the DRG.
+- **Clinical documentation integrity** (CDI) specialists review records while the patient is still in hospital and send **queries** to doctors when the documentation is unclear, for example asking whether a low sodium level was a clinically significant hyponatremia, which could be a complication that moves the DRG.
+
+**Computer-assisted coding** software suggests codes from the record's text, and coding is one of the most active areas for language models in healthcare. The coder still reviews and signs off, because the provider is legally responsible for what is billed.
+
+## 4. Building and scrubbing the claim
+
+The billing system assembles the claim from registration, coding and charge data. For the son's ear-infection visit, the professional claim carries, among other things:
+
+```
+Billing provider     Paediatric practice, group NPI, tax ID
+Rendering provider   The doctor's individual NPI
+Subscriber           Maria, member ID W123456789, group number
+Patient              Her son, date of birth, relationship: child
+Diagnosis            H66.91  Otitis media, unspecified, right ear
+Line 1               Date 2026-03-11, place of service 11 (office)
+                     CPT 99213, 1 unit, charge $250, points to diagnosis 1
+```
+
+Before it's sent, a **claim scrubber** checks it: required fields present, codes valid for the date of service, diagnosis and procedure consistent, NCCI bundling pairs, units within limits, and each payer's own rules, for example a payer that wants a particular modifier. A failed edit sends the claim to a work queue for staff to fix. Clean claims go out.
+
+## 5. Two kinds of claim for one surgery
+
+Maria's husband's appendectomy didn't produce one claim. It produced several, from different organizations:
+
+| Claim | From | Form | Main codes |
+|---|---|---|---|
+| Hospital | The hospital | 837I (institutional) | Revenue codes, ICD-10-PCS, DRG |
+| Surgeon | The surgical group | 837P (professional) | CPT 44970 |
+| Anaesthesia | The anaesthesia group | 837P | Anaesthesia code plus time units |
+| Pathology | The lab reading the removed appendix | 837P | Pathology CPT code |
+| Emergency physician | The ER physician group | 837P | ER E/M code |
+
+Each is adjudicated separately, may arrive weeks apart, and draws on the same deductible and out-of-pocket accumulators from part 3. That's why one hospital visit can generate a stack of EOBs, and why the order the claims arrive in changes which one the deductible lands on.
+
+## 6. The clearinghouse
+
+Most providers don't send claims to each payer directly. They send all their claims to a **clearinghouse**, which:
+
+1. checks each claim's format against the X12 standard,
+2. applies more edits,
+3. converts formats where needed,
+4. routes each claim to the right payer, using the payer ID, and
+5. returns the payers' responses to the provider.
+
+A few clearinghouses handle a very large share of US claims. When one fails, the whole system feels it. In February 2024, a ransomware attack on Change Healthcare, a clearinghouse owned by UnitedHealth Group, took its systems offline for weeks. Many providers couldn't submit claims or receive payments, and some smaller practices borrowed money to make payroll.
+
+## 7. Acknowledgements, rejections and denials
+
+After submission, the provider gets several kinds of response, and the difference between them matters:
+
+| Response | Means | What to do |
+|---|---|---|
+| 999 acknowledgement | The file was received and is syntactically valid, or not | Fix the file if rejected |
+| 277CA claim acknowledgement | Each claim was accepted into the payer's system, or rejected | Fix and resubmit rejected claims |
+| **Rejection** | The claim never entered adjudication: bad member ID, missing data | Correct and send again; it doesn't count as a claim yet |
+| **Denial** | The claim was adjudicated and not paid (part 13) | Correct and resubmit, or appeal |
+
+A rejected claim doesn't stop the **timely filing** clock from part 7. If a rejection sits unnoticed in a queue for months, the provider can lose the right to be paid at all.
+
+Providers track progress with **276/277 claim status** inquiries and with measures such as **days in accounts receivable**, how long it takes on average to get paid, and the **clean claim rate**, the share of claims accepted on the first submission.
+
+## 8. After the payer answers
+
+When the payer has adjudicated the claim, it sends an **835 electronic remittance advice** (ERA) explaining what it paid and why, using the CARC and RARC codes from part 4, and the payment itself, usually by electronic funds transfer. The provider's system **posts** the payment against the claim, writes off the contractual adjustment, and bills the patient for their share. If the payer denied the claim, the provider decides whether to correct it, appeal it or write it off.
+
+For the son's visit: allowed \$140, plan paid \$110, PR-3 (copay) \$30, CO-45 \$110. The practice writes off \$110 and collects the \$30 copay, which it probably already took at the front desk.
+
+## 9. Limits
+
+- **Two sets of rules at once.** A provider bills dozens of payers, each with its own edits, forms, portals and policies, so revenue cycle teams spend much of their time on payer-specific exceptions.
+- **The record and the claim drift apart.** The claim is a summary of the record, and audits find differences between them.
+- **Much of it is rework.** Rejections, denials and resubmissions are a large share of billing staff time, mostly caused by data errors earlier in the process.
+
+## Remember
+
+| Term | Meaning |
+|---|---|
+| Revenue cycle | Everything a provider does to get paid, from booking to collection |
+| Charge capture | Turning care into billable items |
+| Chargemaster | A hospital's full price list of every billable item |
+| CDI query | A question to a doctor to clarify documentation before coding |
+| Claim scrubber | Software that checks a claim before it's sent |
+| Clearinghouse | The middleman that checks and routes claims to payers |
+| Rejection vs denial | Never entered adjudication vs adjudicated and not paid |
+| 277CA / 835 | Claim acknowledgement / electronic remittance advice |
+
+Next, in part 13: claim adjudication, what happens inside the payer's system between receiving a claim and paying it.
+
+## Sources
+
+- CMS, [No Surprises Act: good faith estimates](https://www.cms.gov/nosurprises/consumers/understanding-costs-in-advance)
+- CMS, [Hospital price transparency](https://www.cms.gov/priorities/key-initiatives/hospital-price-transparency)
+- CMS, [HIPAA administrative simplification: transaction standards](https://www.cms.gov/priorities/key-initiatives/burden-reduction/administrative-simplification/hipaa/transaction-standards)
+- American Hospital Association, [Change Healthcare cyberattack](https://www.aha.org/change-healthcare-cyberattack-underscores-urgent-need-strengthen-cyber-preparedness-individual-health-care-organizations-and)
