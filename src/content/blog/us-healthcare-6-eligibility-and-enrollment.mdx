@@ -1,0 +1,131 @@
+---
+title: "How US Healthcare Works, Part 6: Eligibility and Enrollment"
+description: "How members get into a payer's system, how a provider checks coverage before a visit, what goes wrong with retroactive changes, and how two plans decide which pays first."
+date: 2026-10-27
+tags: [us healthcare, eligibility, enrollment, edi, coordination of benefits]
+series: us-healthcare
+part: 6
+---
+
+# How US Healthcare Works, Part 6: Eligibility and Enrollment
+
+Every rule in the earlier parts, the cost sharing in [part 3](/blog/us-healthcare-3-how-a-health-plan-works) and the coverage policy in [part 5](/blog/us-healthcare-5-coverage-policy), starts from one question the payer asks first on every claim: was this person covered by this plan on the date of service? If the answer is no, nothing else matters. This part covers how that answer gets into the payer's system, how providers ask for it, and why it's wrong more often than you'd expect.
+
+## 1. Enrollment: how a member gets into the system
+
+A person doesn't appear in a payer's system by signing up with the payer directly, in most cases. Someone else sends them in:
+
+| Coverage | Who sends the enrollment | How |
+|---|---|---|
+| Employer plan | The employer, or its benefits administration platform | An X12 834 enrollment file, usually weekly |
+| ACA marketplace | HealthCare.gov or the state exchange | An 834 file from the exchange |
+| Medicare Advantage | CMS, after the member applies to the plan | CMS's enrollment system confirms each election |
+| Medicaid managed care | The state Medicaid agency | A daily or monthly 834 from the state |
+
+The **834** is the standard HIPAA transaction for enrollment. Each record says who the subscriber is, who their dependents are, which plan and coverage level they chose, and the dates their coverage starts and ends. A payer's enrollment system loads the file, matches each person to an existing member or creates a new one, and assigns a member ID.
+
+Employers send either **change files**, with only additions, changes and terminations since the last file, or **full files** with everyone currently enrolled. Full files are easier to keep correct, because anyone missing from the file can be terminated, but they are large. Many payers receive change files weekly and a full file monthly to reconcile.
+
+## 2. When people can enrol
+
+People can't join or change plans whenever they like. Otherwise they would buy coverage only when they got sick.
+
+- **Open enrollment**: a yearly window when anyone eligible can join or change plans. For employer plans the employer sets it, usually in the autumn for a 1 January start. For Medicare it runs from 15 October to 7 December.
+- **Special enrollment**: a window opened by a **qualifying life event**, such as marriage, a birth or adoption, losing other coverage, or moving. Employer plans must allow at least 30 days to enrol after most of these events, and 60 days after losing Medicaid or CHIP coverage. Marketplace special enrollment periods are generally 60 days.
+- **Medicare's initial enrollment period**: seven months around a person's 65th birthday, the three months before, the birthday month and the three months after. People who miss it, and don't have employer coverage from current work, can pay a lifelong late-enrollment penalty on their Part B premium.
+
+A baby is the classic case. A newborn added within the special enrollment window is covered back to the date of birth, so the hospital's claims for the delivery and the baby's care get paid even though the 834 adding the child arrives weeks later.
+
+## 3. Checking eligibility before the visit
+
+Before seeing a patient, a provider's front desk checks that the coverage is active, usually electronically. The provider's system sends a **270** eligibility inquiry and the payer answers with a **271** response:
+
+```
+270 (provider asks):   Is member W123456789, born 2018-04-02, covered by this plan
+                       on 2026-11-03, and what are the benefits for an office visit?
+
+271 (payer answers):   Active coverage, Family plan, PPO
+                       Office visit: $30 copay
+                       Deductible: $1,500 individual, $900 met
+                       Out-of-pocket maximum: $5,000 individual, $2,980 met
+                       Primary care provider: (for HMOs)
+```
+
+Most of this happens in real time, in a few seconds. Industry operating rules from [CAQH CORE](https://www.caqh.org/core) set the expected response time and the minimum content a 271 must carry, so a provider gets the deductible remaining, not just "covered: yes". Traditional Medicare answers through its own system, **HETS**.
+
+The response is a snapshot of what the payer knows today. If the employer hasn't yet sent a termination, the 271 says "active" for a person who has already left the job.
+
+## 4. Identifiers
+
+| Identifier | What it identifies |
+|---|---|
+| Member ID | The person within one payer's system, printed on the ID card |
+| Group number | The employer or plan the member is enrolled through |
+| MBI | Medicare Beneficiary Identifier: an 11-character random ID on the Medicare card |
+| Medicaid ID | Issued by the state |
+| Payer ID | Which payer a claim goes to, used by clearinghouses for routing |
+
+The MBI replaced the old Medicare number, which was based on the person's Social Security number. The switch, finished in 2020, was made to reduce identity theft, and it meant every provider's system had to change the identifier it stored.
+
+## 5. Retroactive changes: why "covered" isn't final
+
+Eligibility is often corrected after the fact, and a claim already paid can turn out to be for someone who wasn't covered:
+
+- **Late terminations.** An employee leaves on 30 June, but the employer's file with the termination arrives in August, dated back to 30 June. Claims paid for July were for a person who wasn't covered. The payer recovers the money from the providers, who then bill the patient.
+- **Retroactive additions.** A newborn, or a person who elects **COBRA** continuation coverage, which can be done up to 60 days after losing coverage and then applies back to the date coverage ended. Claims denied in the gap have to be reprocessed.
+- **Grace periods.** A marketplace member who receives premium tax credits and stops paying gets a three-month grace period. The plan pays claims in the first month, and holds ("pends") claims in months two and three. If the member never pays, coverage ends at the end of month one, and the pended claims are denied.
+- **Medicaid redeterminations.** States check Medicaid eligibility at least once a year, and coverage can end, or be restored back to an earlier date after an appeal.
+
+Each of these creates rework for both sides. For the payer it means recoveries and reprocessing. For the provider it means a claim that was paid gets taken back months later, which is why providers check eligibility again close to the date of service.
+
+## 6. Two plans: coordination of benefits
+
+Many people have more than one source of coverage at once: their own job and a spouse's, a job plan and Medicare, or Medicare and Medicaid. The plans don't each pay in full. They **coordinate**: one is **primary** and pays first as if it were the only plan, and the other is **secondary** and may pay some or all of what's left. The rules for which goes first come from a model regulation used by most states, plus federal Medicare rules:
+
+| Situation | Primary | Secondary |
+|---|---|---|
+| A person's own job plan vs a spouse's plan covering them as a dependent | Own plan | Spouse's plan |
+| A child covered on both parents' plans | The plan of the parent whose birthday comes first in the calendar year (the **birthday rule**) | The other parent's plan |
+| Divorced parents | Usually as a court order says; otherwise the custodial parent's plan first | |
+| Active employee plan vs COBRA or retiree plan | Active plan | COBRA or retiree plan |
+| Medicare and a job plan, employer with 20 or more employees, person still working | Job plan | Medicare |
+| Medicare and a job plan, employer with fewer than 20 employees | Medicare | Job plan |
+| Medicare and Medicaid | Medicare | Medicaid, which always pays last |
+
+The Medicare rows come from the **Medicare Secondary Payer** rules, and getting them wrong is expensive: if Medicare pays a claim that the employer plan should have paid first, Medicare can recover the money later.
+
+The order of payment has to be in the payer's system before claims arrive. Payers find out about other coverage from members' answers to questionnaires, from data-matching services that compare enrollment files across insurers, and from the other payer's own claims. A claim sent to the secondary plan must carry the primary plan's payment details, so the secondary payer can work out its share.
+
+## 7. Where eligibility data goes wrong
+
+- **It's always a little late.** Files arrive weekly or monthly, so for days or weeks the payer's picture of who is covered is out of date.
+- **Matching people is hard.** The same person can arrive with a different spelling of their name, a typo in the birth date or a new address, and get split into two member records, or two people can be merged into one.
+- **Dates are subtle.** Coverage that ends "on 30 June" might end at the start or end of that day, and payers, employers and providers don't always agree.
+- **The ID card can be stale.** A member may present a card for a plan that has already ended.
+
+Part 18 comes back to this: identity matching and eligibility timing are among the least glamorous and most useful problems for better software in healthcare.
+
+## Remember
+
+| Term | Meaning |
+|---|---|
+| 834 | The standard enrollment file: who is covered, in which plan, from when |
+| Open enrollment | The yearly window to join or change plans |
+| Qualifying life event | A change, such as a birth or job loss, that opens a special enrollment window |
+| 270 / 271 | The eligibility question and answer between provider and payer |
+| MBI | The Medicare Beneficiary Identifier on the Medicare card |
+| Retroactive termination | Coverage ended after the fact, so paid claims are taken back |
+| Grace period | Time after a missed premium before coverage ends |
+| Coordination of benefits | The rules for which of two plans pays first |
+| Birthday rule | A child on two parents' plans: the parent with the earlier birthday pays first |
+
+Next, in part 7: network management, how payers recruit and contract with providers, check their credentials, and keep the provider directory accurate.
+
+## Sources
+
+- CMS, [HIPAA administrative simplification: transaction standards](https://www.cms.gov/priorities/key-initiatives/burden-reduction/administrative-simplification/hipaa/transaction-standards)
+- CAQH, [CORE operating rules](https://www.caqh.org/core)
+- Medicare.gov, [When can I sign up for Medicare?](https://www.medicare.gov/basics/get-started-with-medicare/sign-up/when-can-i-sign-up-for-medicare)
+- CMS, [Medicare Secondary Payer](https://www.cms.gov/medicare/coordination-benefits-recovery/overview/medicare-secondary-payer)
+- US Department of Labor, [An Employee's Guide to Health Benefits Under COBRA](https://www.dol.gov/agencies/ebsa/about-ebsa/our-activities/resource-center/publications/an-employees-guide-to-health-benefits-under-cobra)
+- HealthCare.gov, [Special Enrollment Period](https://www.healthcare.gov/glossary/special-enrollment-period/)

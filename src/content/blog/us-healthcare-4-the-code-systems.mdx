@@ -1,0 +1,158 @@
+---
+title: "How US Healthcare Works, Part 4: The Code Systems"
+description: "ICD-10 diagnoses, CPT and HCPCS procedures, modifiers, DRGs, revenue codes, NDCs and the identifiers that turn a doctor's visit into data a payer can process."
+date: 2026-10-27
+tags: [us healthcare, medical coding, claims, icd-10, cpt]
+series: us-healthcare
+part: 4
+---
+
+# How US Healthcare Works, Part 4: The Code Systems
+
+A payer processes millions of claims a day, and it can't read a doctor's notes for each one. So every visit is translated into codes: one set saying what was wrong with the patient, another saying what was done, and a few more saying where, by whom and with what. [Part 3](/blog/us-healthcare-3-how-a-health-plan-works) showed the arithmetic a plan runs on a claim. This part covers the vocabulary the claim is written in. Almost every rule later in the series, from prior authorization to payment, is a rule about these codes.
+
+## 1. The two questions every claim answers
+
+| Question | Code system | Who maintains it |
+|---|---|---|
+| Why was the patient seen? (diagnosis) | ICD-10-CM | CDC's National Center for Health Statistics, with CMS |
+| What was done? (outpatient and physician services) | CPT and HCPCS Level II | American Medical Association (CPT); CMS (HCPCS II) |
+| What was done? (inpatient hospital procedures) | ICD-10-PCS | CMS |
+| How is a hospital stay grouped for payment? | MS-DRG | CMS |
+
+The diagnosis justifies the procedure. A claim for a knee MRI with a diagnosis code for an ear infection will be denied, because nothing about an ear infection makes a knee MRI necessary. Checking that the two fit together is one of the first edits a payer runs.
+
+## 2. ICD-10-CM: diagnoses
+
+ICD-10-CM is the US version of the World Health Organization's International Classification of Diseases. The US moved to it from ICD-9 on 1 October 2015. Codes are three to seven characters: a letter, then digits, a decimal point after the third character, and more characters adding detail.
+
+Take Maria's son's ear infection from part 3:
+
+```
+H66.91    Otitis media, unspecified, right ear
+H66       Suppurative and unspecified otitis media   (category)
+H66.9     Otitis media, unspecified                  (subcategory)
+H66.91    ... right ear                              (laterality)
+```
+
+The detail matters for payment. Many codes exist in versions for the left side, right side, both sides and unspecified, and some payers deny or question claims that use an "unspecified" code when the record shows the side.
+
+Some codes need a seventh character. Injuries use it to say whether this is the initial encounter (A), a follow-up (D) or a late effect (S), so a fracture treated today and the same fracture checked in six weeks carry different codes.
+
+The code set is updated every year, effective **1 October**, at the start of the federal fiscal year. Codes that get added or deleted mid-stream are a common cause of rejected claims in early October.
+
+## 3. CPT: procedures and services
+
+**Current Procedural Terminology** (CPT) codes describe what a physician or other professional did. The AMA owns CPT and licenses it, and updates it every year, effective **1 January**. There are three categories:
+
+| Category | Format | Used for |
+|---|---|---|
+| I | Five digits | Most procedures and services; these drive payment |
+| II | Four digits plus F | Optional quality-measure tracking, such as "blood pressure recorded" |
+| III | Four digits plus T | Emerging technology, tracked before it gets a Category I code |
+
+The family's year from part 3, in CPT:
+
+| Service | CPT |
+|---|---|
+| Son's office visit, established patient, low complexity | 99213 |
+| Maria's knee MRI without contrast | 73721 |
+| Maria's knee arthroscopy with meniscectomy | 29881 |
+| Husband's laparoscopic appendectomy | 44970 |
+
+The office visit codes, 99202 to 99215, are called **evaluation and management** (E/M) codes. Since 2021 the level is chosen by the complexity of medical decision-making or by the total time spent, not by counting bullet points in the exam. Choosing a higher level than the record supports is called **upcoding**, and payers look for patterns of it (part 15).
+
+## 4. HCPCS Level II: everything CPT doesn't cover
+
+The **Healthcare Common Procedure Coding System** has two levels. Level I is CPT. Level II, maintained by CMS, is a letter followed by four digits and covers supplies, equipment, ambulance rides, some drugs and services CPT doesn't describe:
+
+| Code | Meaning |
+|---|---|
+| E0110 | Crutches, forearm, with tips and handgrips |
+| A0427 | Ambulance service, advanced life support, emergency |
+| J-codes, e.g. J0696 | Ceftriaxone sodium injection, per 250 mg (drugs given in a clinic) |
+
+J-codes matter for expensive drugs given in a clinic or infusion centre. The drug is billed per unit of the code, so a dose of 1 gram of ceftriaxone is four units of J0696. Unit errors are a classic source of overpayment.
+
+## 5. Modifiers: two characters that change the meaning
+
+A **modifier** is a two-character code attached to a procedure code to give extra information without inventing a new code.
+
+| Modifier | Meaning | Why it matters |
+|---|---|---|
+| RT, LT | Right side, left side | Two knee procedures on different knees are both payable |
+| 25 | Significant, separately identifiable E/M service on the same day as a procedure | Without it, the office visit is bundled into the procedure and not paid |
+| 59 | Distinct procedural service | Overrides a bundling edit when two procedures really were separate |
+| 26, TC | Professional component, technical component | Splits an imaging study between the radiologist who read it and the facility that ran the machine |
+| 50 | Bilateral procedure | Changes the payment amount |
+
+Modifiers 25 and 59 are among the most audited in the industry, because they allow payments that bundling edits would otherwise block. The bundling edits themselves, such as Medicare's **National Correct Coding Initiative** (NCCI) pairs, come up again in part 13.
+
+## 6. ICD-10-PCS and DRGs: inpatient hospital stays
+
+For an inpatient stay, the hospital codes the procedures in **ICD-10-PCS**, a separate seven-character system where every character has a meaning: body system, operation, body part, approach, device and so on. The physician still bills the surgeon's work in CPT. So the same appendectomy is CPT 44970 on the surgeon's claim and an ICD-10-PCS code on the hospital's.
+
+Medicare doesn't pay hospitals per procedure for inpatient stays. It pays a fixed amount per stay, based on the **Medicare Severity Diagnosis Related Group** (MS-DRG) the stay falls into. A grouper program reads the principal diagnosis, secondary diagnoses, procedures, age and discharge status, and assigns one DRG. Each DRG has a weight, and the payment is roughly the weight times the hospital's base rate.
+
+Secondary diagnoses matter a lot here. A stay with a **major complication or comorbidity** (MCC) or a **complication or comorbidity** (CC) groups into a higher-paying DRG than the same procedure without one. For appendectomy, MS-DRGs 341, 342 and 343 are the same operation with an MCC, with a CC, and with neither. That's why hospitals employ coders and clinical documentation specialists, and why payers audit DRG assignments (part 15). Many commercial payers and Medicaid programs pay hospitals by DRG too, sometimes using their own grouper versions.
+
+Hospital outpatient care has its own grouping for Medicare, **Ambulatory Payment Classifications** (APCs). Part 16 covers these payment methods.
+
+## 7. The rest of the vocabulary
+
+| Code or identifier | What it is | Example |
+|---|---|---|
+| NPI | National Provider Identifier: a 10-digit number for every provider, individual or organization | Issued through CMS's NPPES registry |
+| Taxonomy code | The provider's specialty | 208000000X is paediatrics |
+| Place of service | Two digits for where professional care happened | 11 office, 21 inpatient hospital, 23 emergency room, 02 and 10 telehealth |
+| Revenue code | Four digits on a hospital claim for the department or type of charge | 0450 emergency room, 0360 operating room |
+| Type of bill | Three or four characters on a hospital claim for the kind of facility and claim | 0111 inpatient hospital, admit through discharge |
+| NDC | National Drug Code: the specific drug, strength and package | Used on pharmacy claims and alongside J-codes |
+| CARC and RARC | Claim Adjustment Reason Codes and Remittance Advice Remark Codes: why a payment differs from the charge | CARC 45: charge exceeds the fee schedule; CARC 1: deductible |
+
+CARCs come with a group code that says who is responsible for the difference: **CO** (contractual obligation, the provider writes it off), **PR** (patient responsibility, the member owes it) or **OA** (other adjustment). So "PR-1" on a remittance means the member owes this amount toward the deductible, and "CO-45" means the provider charged more than its contract allows and must write off the excess.
+
+## 8. Two claim forms
+
+Professional services (a doctor, a lab) and institutional services (a hospital, a nursing facility) are billed differently.
+
+| | Professional | Institutional |
+|---|---|---|
+| Paper form | CMS-1500 | UB-04 |
+| Electronic transaction | X12 837P | X12 837I |
+| Procedures coded in | CPT and HCPCS, with modifiers | Revenue codes, plus CPT/HCPCS for outpatient and ICD-10-PCS for inpatient |
+| Typical payment basis | Fee schedule per service | DRG per stay, APC per outpatient service, or per diem |
+
+Almost all claims are electronic now. Part 12 follows one from the provider's system to the payer.
+
+## 9. Limits of codes
+
+- **Codes lose detail.** A code says a knee MRI happened; it doesn't say why the doctor thought it was needed. That gap is why payers sometimes ask for the medical record (parts 9 and 15).
+- **Codes lag medicine.** New procedures wait years for a Category I CPT code, and payers handle them case by case meanwhile.
+- **Coding shapes payment, so payment shapes coding.** Because DRGs and E/M levels pay more for more documented complexity, the incentive is to document and code more, and payers spend heavily on checking it.
+- **Licensing.** CPT is copyrighted by the AMA, and software that uses it needs a licence, unlike ICD-10 and HCPCS Level II, which are public.
+
+## Remember
+
+| Term | Meaning |
+|---|---|
+| ICD-10-CM | Diagnosis codes: why the patient was seen; updated each 1 October |
+| CPT | Procedure codes for professional services, owned by the AMA; updated each 1 January |
+| HCPCS Level II | CMS codes for supplies, equipment, ambulance and clinic-given drugs |
+| Modifier | Two characters that change a procedure code's meaning, such as 25, 59, RT |
+| ICD-10-PCS | Inpatient hospital procedure codes |
+| MS-DRG | Medicare's group for an inpatient stay, which sets the payment |
+| NPI | The 10-digit identifier for every provider |
+| CARC with CO / PR | Why a payment differs, and whether the provider or member owes the difference |
+
+Next, in part 5: coverage policy, how Medicare's national and local coverage decisions and each insurer's medical policies decide which coded services a plan will pay for at all.
+
+## Sources
+
+- CMS, [ICD-10](https://www.cms.gov/medicare/coding-billing/icd-10-codes)
+- American Medical Association, [CPT overview](https://www.ama-assn.org/practice-management/cpt)
+- CMS, [Healthcare Common Procedure Coding System](https://www.cms.gov/medicare/coding-billing/healthcare-common-procedure-system)
+- CMS, [MS-DRG classifications and software](https://www.cms.gov/medicare/payment/prospective-payment-systems/acute-inpatient-pps/ms-drg-classifications-and-software)
+- CMS, [National Correct Coding Initiative edits](https://www.cms.gov/medicare/coding-billing/national-correct-coding-initiative-ncci-edits)
+- X12, [Claim Adjustment Reason Codes](https://x12.org/codes/claim-adjustment-reason-codes)
+- CMS, [NPPES NPI registry](https://npiregistry.cms.hhs.gov/)
