@@ -1,0 +1,143 @@
+---
+title: "How US Healthcare Works, Part 18: The Data and Rules Underneath, and Where AI Fits"
+description: "The transactions, privacy rules and interoperability standards that every part of US healthcare runs on, the data problems that cause most failures, and where AI helps, where it's risky, and what rules now govern it."
+date: 2026-10-27
+tags: [us healthcare, interoperability, hipaa, fhir, ai in healthcare]
+series: us-healthcare
+part: 18
+---
+
+# How US Healthcare Works, Part 18: The Data and Rules Underneath, and Where AI Fits
+
+The first seventeen parts followed the money and the decisions: who pays, what's covered, how a claim is decided. This last part looks at what all of them run on, the data standards and rules that let thousands of payers and hundreds of thousands of providers exchange information, and then at where AI fits into that system. The two topics belong together. Almost every useful application of AI in this industry is a response to a data problem described somewhere earlier in the series.
+
+## 1. The transactions, end to end
+
+Each step of Maria's family's year in [part 1](/blog/us-healthcare-1-the-map) has its own standard electronic transaction:
+
+| Step | Transaction | Standard | Part |
+|---|---|---|---|
+| Enrollment | 834 | X12 | 6 |
+| Premium payment | 820 | X12 | 6 |
+| Eligibility question and answer | 270 / 271 | X12 | 6 |
+| Prior authorization | 278, and FHIR APIs from 2027 | X12, HL7 FHIR | 10 |
+| Claim | 837P / 837I | X12 | 12 |
+| Claim acknowledgement | 999, 277CA | X12 | 12 |
+| Claim status | 276 / 277 | X12 | 12 |
+| Payment and remittance | 835, plus the funds transfer | X12 | 12, 13 |
+| Pharmacy claim | Telecommunication D.0 | NCPDP | 17 |
+| Prescription and drug prior authorization | SCRIPT | NCPDP | 17 |
+
+These X12 and NCPDP standards were made mandatory by **HIPAA**, the 1996 law whose "administrative simplification" rules required payers and providers that transact electronically to use the same formats, the same code sets (ICD-10, CPT, HCPCS) and, later, the same provider identifier (the NPI). Before HIPAA, each payer had its own formats. Most of the industry's electronic plumbing still dates from that decision.
+
+## 2. Privacy and security
+
+HIPAA also gave the industry its privacy rules:
+
+- The **Privacy Rule** limits how **protected health information** (PHI) can be used and shared. Payers and providers can use it for treatment, payment and operations, but other uses need the patient's authorization.
+- The **minimum necessary** standard says to use and share only the PHI a task needs.
+- The **Security Rule** requires safeguards for electronic PHI.
+- Vendors that handle PHI for a payer or provider, from clearinghouses to AI companies, must sign a **business associate agreement** and follow the same rules.
+
+For anyone building software in this space, these rules decide what data a system may see, where it may run and who it may send data to.
+
+## 3. The newer layer: APIs and FHIR
+
+The X12 transactions move data between businesses in batches. Over the last decade a second layer has been built on **HL7 FHIR**, a web-API standard that represents healthcare data as resources such as Patient, Coverage, Claim and ExplanationOfBenefit:
+
+- **21st Century Cures Act** rules (from 2021) ban **information blocking**: providers, health IT developers and exchanges can't unreasonably prevent access to electronic health information, and certified health records must offer standard FHIR APIs.
+- CMS's 2020 **interoperability rule** required Medicare Advantage, Medicaid, CHIP and federal marketplace plans to offer members a **Patient Access API** for their claims and clinical data, and a public provider directory API.
+- CMS's 2024 rule, from [part 10](/blog/us-healthcare-10-prior-authorization), adds the Prior Authorization, Provider Access and Payer-to-Payer APIs by 2027.
+- **TEFCA**, a national framework for exchanging health information between networks, went live in December 2023, with designated networks connecting to each other under common rules.
+- The **USCDI** defines the core set of data elements, such as problems, medications, allergies and lab results, that these APIs must support.
+
+So the industry now runs on two layers at once: the HIPAA-era X12 transactions for payment, and FHIR APIs for access and, increasingly, for prior authorization.
+
+## 4. Where the data fails
+
+Across the series, the same few data problems kept causing wrong denials, wrong payments and rework:
+
+| Problem | Where it showed up |
+|---|---|
+| Matching people | Duplicate or merged member records (part 6). The US has no national patient identifier; Congress has blocked HHS from funding one since the late 1990s |
+| Provider data | Wrong locations, tax IDs and contract links; ghost networks (part 7) |
+| Timing | Late enrollment files, retroactive changes and accumulator order (parts 3, 6, 13) |
+| Benefit configuration | Plan documents translated into rules by hand (part 8) |
+| Documentation versus codes | Claims that don't match the record (parts 12, 15) |
+| Unstructured text | Clinical notes, faxed records and PDFs that systems can't read directly (parts 9, 10) |
+
+None of these is solved by more rules engines alone, because each involves text, ambiguity or judgement. That's where AI comes in.
+
+## 5. Where AI fits
+
+| Area | What AI does today | Part |
+|---|---|---|
+| Medical coding | Suggests codes from clinical notes; coders review | 4, 12 |
+| Clinical documentation | Drafts notes from the visit conversation (ambient scribes); flags documentation gaps | 12 |
+| Benefit digitization | Extracts structured benefits from plan documents; compares versions | 8 |
+| Prior authorization | Checks requirements, assembles documentation, auto-approves clear cases | 10 |
+| Utilization review | Summarizes long records against criteria for nurse reviewers | 9 |
+| Claim examination | Gathers history and evidence for a pend, suggests next steps and reason codes, drafts notes | 14 |
+| Payment integrity | Flags outlier billing, reads records to check codes | 15 |
+| Care management | Predicts which members are likely to be admitted; drafts outreach | 11 |
+| Provider data | Reconciles directory data from many sources | 7 |
+| Member and provider service | Answers questions about benefits, claims and authorizations | 3, 13 |
+
+The pattern across the table: AI is most useful where a person has to read a lot of text, cross-check several systems and produce a structured answer, and least safe where its answer becomes a decision about someone's care without a person checking it.
+
+## 6. The risks
+
+- **Automated denial.** A model trained on past decisions learns past denials, including wrong ones. Run at scale, a model can deny far more care than a person would review. The lawsuits over post-acute care algorithms in part 9 are the example everyone in the industry knows.
+- **Errors that look fluent.** A language model can produce a confident summary of a record that omits the one finding that matters, or a code that's plausible but wrong.
+- **Bias.** Models trained on spending learn who received care, not who needed it, and can under-serve groups that had less access in the past.
+- **Opacity.** A provider told "denied" can't appeal an unexplained model score. Decisions need reasons tied to policy and evidence.
+
+## 7. The rules on AI
+
+The rules are recent and still forming:
+
+- **Medicare Advantage.** CMS has said that plans may use algorithms and AI to help with coverage decisions, but the decision must be based on the individual patient's circumstances, and a denial based on medical necessity must be reviewed by a physician or other appropriate professional.
+- **State laws.** California's SB 1120, in effect since 2025, requires that decisions to deny, delay or modify care based on medical necessity be made by a licensed physician or qualified health professional, not by an algorithm alone. Other states have passed or proposed similar laws.
+- **Health IT certification.** ONC's 2024 HTI-1 rule requires certified health record systems to give users information about the decision support algorithms they include, such as their intended use and how they were developed.
+- **Nondiscrimination.** HHS's 2024 rule under section 1557 of the ACA requires covered organizations to identify and reduce the risk of discrimination from patient care decision support tools they use.
+
+## 8. What good looks like
+
+Putting the series together, a few principles separate useful AI in this domain from harmful AI:
+
+1. **Approve fast, deny carefully.** Automate approvals of clear cases; route anything else to a person with the evidence assembled.
+2. **Cite the evidence.** Every suggestion should point to the policy, the code rule and the page of the record it relies on.
+3. **Measure against outcomes.** Track how often AI-assisted decisions are overturned on appeal, by group, not just how fast they are.
+4. **Fix the data upstream.** Use AI to find the configuration and provider-data errors behind repeated pends and denials, not just to process them faster.
+5. **Keep a person accountable.** Someone with the right expertise owns every adverse decision.
+
+## 9. The whole year, one more time
+
+Maria's family's year ran through every part of this series. Their employer sent an 834 (part 6). Their plan was configured from its documents (part 8), with the cost sharing from part 3. The paediatrician was credentialed and contracted (part 7). Maria's MRI needed prior authorization (part 10), checked against coverage policy (part 5). Her husband's emergency stay was reviewed day by day (part 9) and followed up by a care manager (part 11). Every visit became codes (part 4) and claims (part 12), adjudicated by the pipeline (part 13), with a few pended for an examiner (part 14). Payment integrity checked some afterwards (part 15). Providers were paid by fee schedule, DRG or capitation (part 16), and the son's antibiotic went through a PBM in seconds (part 17). Underneath all of it ran the transactions and rules in this part.
+
+It's a system assembled over eighty years, one fix at a time, and that's why it's complicated. It's also why so much of the useful work in it, by people and by software, is about making the pieces agree with each other.
+
+## Remember
+
+| Term | Meaning |
+|---|---|
+| HIPAA transactions | The X12 and NCPDP standards payers and providers must use |
+| PHI | Protected health information, governed by the Privacy and Security Rules |
+| Business associate | A vendor handling PHI under a HIPAA agreement |
+| FHIR | The web-API standard for healthcare data |
+| Information blocking | Unreasonably preventing access to health information; banned since 2021 |
+| TEFCA | The national framework connecting health information networks |
+| USCDI | The core data set that health APIs must support |
+| SB 1120 | California's law that only clinicians can make medical necessity denials |
+
+That's the end of the series. If you're building software for any part of this system, the best place to start is usually the data problem behind the step you care about.
+
+## Sources
+
+- HHS, [HIPAA for professionals](https://www.hhs.gov/hipaa/for-professionals/index.html)
+- CMS, [Interoperability and Patient Access final rule (CMS-9115-F)](https://www.cms.gov/priorities/key-initiatives/burden-reduction/interoperability/policies-and-regulations/cms-interoperability-and-patient-access-final-rule-cms-9115-f)
+- CMS, [Interoperability and Prior Authorization final rule (CMS-0057-F)](https://www.cms.gov/newsroom/fact-sheets/cms-interoperability-prior-authorization-final-rule-cms-0057-f)
+- ASTP/ONC, [Information blocking](https://www.healthit.gov/topic/information-blocking) and [HTI-1 final rule](https://www.healthit.gov/topic/laws-regulation-and-policy/health-data-technology-and-interoperability-certification-program)
+- ASTP/ONC, [Trusted Exchange Framework and Common Agreement (TEFCA)](https://www.healthit.gov/topic/interoperability/policy/trusted-exchange-framework-and-common-agreement-tefca)
+- California Legislature, [SB 1120 (2024)](https://leginfo.legislature.ca.gov/faces/billNavClient.xhtml?bill_id=202320240SB1120)
+- HHS Office for Civil Rights, [Section 1557 final rule](https://www.hhs.gov/civil-rights/for-individuals/section-1557/index.html)
