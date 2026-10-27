@@ -8,6 +8,7 @@ describe('computeLearnerTitle', () => {
   const mockProblems: DocPage[] = [
     {
       title: 'Attention Implementation',
+      navLabel: 'Attention Implementation',
       slug: 'attention-impl',
       route: '/practice/transformers-llms/attention-impl',
       topic: 'transformers-llms',
@@ -18,6 +19,7 @@ describe('computeLearnerTitle', () => {
     },
     {
       title: 'Feed Forward Network',
+      navLabel: 'Feed Forward Network',
       slug: 'ffn',
       route: '/practice/transformers-llms/ffn',
       topic: 'transformers-llms',
@@ -28,6 +30,7 @@ describe('computeLearnerTitle', () => {
     },
     {
       title: 'Backpropagation from Scratch',
+      navLabel: 'Backpropagation from Scratch',
       slug: 'backprop',
       route: '/practice/deep-learning/backprop',
       topic: 'deep-learning',
@@ -38,6 +41,7 @@ describe('computeLearnerTitle', () => {
     },
     {
       title: 'Conv2d Implementation',
+      navLabel: 'Conv2d Implementation',
       slug: 'conv2d',
       route: '/practice/deep-learning/conv2d',
       topic: 'deep-learning',
@@ -48,6 +52,7 @@ describe('computeLearnerTitle', () => {
     },
     {
       title: 'RNN Cell',
+      navLabel: 'RNN Cell',
       slug: 'rnn',
       route: '/practice/deep-learning/rnn',
       topic: 'deep-learning',
@@ -58,6 +63,7 @@ describe('computeLearnerTitle', () => {
     },
     {
       title: 'Agent Tool Calling',
+      navLabel: 'Agent Tool Calling',
       slug: 'tool-calling',
       route: '/practice/agents/tool-calling',
       topic: 'agents,-mcp-systems',

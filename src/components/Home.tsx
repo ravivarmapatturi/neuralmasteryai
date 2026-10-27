@@ -106,7 +106,7 @@ export default function Home() {
                           <ol>
                             {section.pages.map((page) => (
                               <li key={page.route}>
-                                <Link to={page.route}>{page.title}</Link>
+                                <Link to={page.route}>{page.navLabel}</Link>
                                 {isUnderstood(page.route) && <span aria-label="understood"> ✓</span>}
                               </li>
                             ))}

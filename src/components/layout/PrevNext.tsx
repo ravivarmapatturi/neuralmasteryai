@@ -1,10 +1,14 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { getPrevNext } from '../../lib/contentTree';
+import { getPageByRoute, getPrevNext, type DocPage } from '../../lib/contentTree';
 
 export default function PrevNext({ route }: { route: string }) {
   const { prev, next } = getPrevNext(route);
   if (!prev && !next) return null;
+  // The short nav label ("Overview") only makes sense inside the current
+  // section; a link that crosses into another section keeps the full title.
+  const section = getPageByRoute(route)?.section;
+  const label = (page: DocPage) => (page.section === section ? page.navLabel : page.title);
 
   const linkStyle: React.CSSProperties = {
     flex: 1,
@@ -21,7 +25,7 @@ export default function PrevNext({ route }: { route: string }) {
       {prev ? (
         <Link to={prev.route} style={linkStyle}>
           <div style={{ fontSize: 12, color: 'var(--nm-text-muted)' }}>← Previous</div>
-          <div style={{ fontWeight: 600 }}>{prev.title}</div>
+          <div style={{ fontWeight: 600 }}>{label(prev)}</div>
         </Link>
       ) : (
         <div style={{ flex: 1 }} />
@@ -29,7 +33,7 @@ export default function PrevNext({ route }: { route: string }) {
       {next ? (
         <Link to={next.route} style={{ ...linkStyle, textAlign: 'right' }}>
           <div style={{ fontSize: 12, color: 'var(--nm-text-muted)' }}>Next →</div>
-          <div style={{ fontWeight: 600 }}>{next.title}</div>
+          <div style={{ fontWeight: 600 }}>{label(next)}</div>
         </Link>
       ) : (
         <div style={{ flex: 1 }} />

@@ -48,6 +48,12 @@ export interface DocPage {
    * which keys its test data and saved code. Its URL uses the descriptive
    * slug from practiceSlugs.generated.json instead when it has one. */
   problemId?: string;
+  /** The shorter name used in navigation lists (/learn, the sidebar,
+   * prev/next), where the section heading is already on screen: no
+   * repeated section name, no ", In Full Depth" filler. `title` stays the
+   * full, descriptive name for the page itself, the browser tab and search
+   * results. */
+  navLabel: string;
 }
 
 export interface SidebarSection {
@@ -55,6 +61,25 @@ export interface SidebarSection {
   label: string;
   position: number;
   pages: DocPage[];
+}
+
+/** "Computer Vision — Overview" under the Computer Vision heading reads as
+ * "Overview"; "Decision Trees, In Full Depth" as "Decision Trees". Only
+ * drops words that repeat the heading or carry no information --
+ * meaningful subtitles ("Boosting: AdaBoost & Gradient Boosting") stay. */
+export function navLabel(title: string, sectionLabel?: string): string {
+  let label = title
+    .replace(/,\s*In Full Depth/g, '')
+    .replace(/\s+—\s+The Full Bank$/, '')
+    .replace(/:\s+The Actual Anatomy$/, '');
+  if (sectionLabel) {
+    for (const sep of [' — ', ': ', ', ']) {
+      if (label.startsWith(sectionLabel + sep)) label = label.slice(sectionLabel.length + sep.length);
+    }
+    if (label === `${sectionLabel} Overview`) label = 'Overview';
+    if (label === `${sectionLabel} Roadmap`) label = 'Roadmap';
+  }
+  return label.replace(/^The (Overview|Roadmap)$/, '$1');
 }
 
 function titleCase(slug: string): string {
@@ -185,6 +210,7 @@ function buildPages(): DocPage[] {
       topic: meta.topic ?? undefined,
       placeholder: meta.placeholder ?? false,
       problemId,
+      navLabel: problemId ? title : navLabel(title, typedPageMeta.categories[meta.section]?.label),
     });
   }
   return pages;

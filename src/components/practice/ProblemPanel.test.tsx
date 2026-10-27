@@ -39,6 +39,7 @@ const mockLesson: DocPage = {
   slug: 'mathematics-for-ai/overview',
   route: '/docs/mathematics-for-ai/overview',
   title: 'Mathematics for AI Overview',
+  navLabel: 'Mathematics for AI Overview',
   sidebarPosition: 1,
   section: 'mathematics-for-ai',
   Component: () => null,

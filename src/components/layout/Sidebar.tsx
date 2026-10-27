@@ -142,7 +142,7 @@ export default function Sidebar({
                     fontWeight: isActive ? 700 : 400,
                   })}
                 >
-                  {page.title}
+                  {page.navLabel}
                 </NavLink>
               ))}
           </div>

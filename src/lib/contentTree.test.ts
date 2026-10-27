@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getSidebar, getPageByRoute, getPracticeProblems, getAllPracticeProblems, getFlatPages, legacyPracticeRedirect } from './contentTree'
+import { getSidebar, getPageByRoute, getPracticeProblems, getAllPracticeProblems, getFlatPages, legacyPracticeRedirect, navLabel } from './contentTree'
 import { getPracticeProblem } from './practiceProblem'
 
 describe('contentTree: practice-problems -> /practice IA split', () => {
@@ -77,5 +77,32 @@ describe('contentTree: practice-problems -> /practice IA split', () => {
       expect(p.title).not.toMatch(/^Practice:/)
       expect(p.title).not.toMatch(/^#\d+\./)
     }
+  })
+})
+
+describe('navLabel: short names for navigation lists', () => {
+  it('drops the repeated section name and filler, keeps meaningful subtitles', () => {
+    expect(navLabel('Computer Vision — Overview', 'Computer Vision')).toBe('Overview')
+    expect(navLabel('Agents — Roadmap', 'Agents')).toBe('Roadmap')
+    expect(navLabel('Decision Trees, In Full Depth', 'Machine Learning')).toBe('Decision Trees')
+    expect(navLabel('Machine Learning, In Full Depth: The Overview', 'Machine Learning')).toBe('Overview')
+    expect(navLabel('MLOps Overview, In Full Depth', 'MLOps')).toBe('Overview')
+    expect(navLabel('RAG Interview Questions — The Full Bank', 'Interview Prep')).toBe('RAG Interview Questions')
+    expect(navLabel('Loops and Graphs: The Actual Anatomy', 'Agents')).toBe('Loops and Graphs')
+    expect(navLabel('Boosting: AdaBoost & Gradient Boosting, In Full Depth', 'Machine Learning')).toBe(
+      'Boosting: AdaBoost & Gradient Boosting',
+    )
+    expect(navLabel('Graph Databases (Neo4j)', 'Databases')).toBe('Graph Databases (Neo4j)')
+    expect(navLabel('Machine Learning Roadmap', 'Machine Learning')).toBe('Roadmap')
+    expect(navLabel('Deep Learning, The Big Picture', 'Deep Learning')).toBe('The Big Picture')
+    expect(navLabel('NLP Task Taxonomy', 'NLP')).toBe('NLP Task Taxonomy')
+  })
+
+  it('every real Learn page gets a nav label with no dash or filler, and keeps its full title', () => {
+    for (const page of getFlatPages()) {
+      expect(page.navLabel).not.toMatch(/ — |In Full Depth|: The /)
+      expect(page.title.length).toBeGreaterThanOrEqual(page.navLabel.length)
+    }
+    expect(getPageByRoute('/docs/computer-vision/overview')?.title).toBe('Computer Vision — Overview')
   })
 })
