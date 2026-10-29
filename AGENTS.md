@@ -1,0 +1,114 @@
+# AGENTS.md — NeuralMastery Autonomous Agent Operating Contract
+
+> **Scope**: This document defines the mandatory operating contract for all AI agents (Antigravity, Codex, Claude Code, Gemini CLI, Cursor, etc.) working on the `neuralmasteryai` codebase (`platform-vite`).
+> **Authority**: Absolute. Every agent turn must satisfy the invariants defined herein.
+
+---
+
+## 1. Identity & Architectural Vision
+
+**NeuralMastery** (`neuralmasteryai.com`) is the premier interactive learning platform for AI Engineering, Deep Learning, and Autonomous Systems.
+
+The codebase is built on:
+- **Core Framework**: React 18 + TypeScript + Vite + Tailwind/Custom CSS Tokens.
+- **Content System**: MDX (`@mdx-js/react`) with custom React pedagogical components and interactive SVG visualizations.
+- **In-Browser Execution**: WebAssembly Pyodide runtime (`RunnableCode`) executing real Python code client-side.
+- **Search & Static Generation**: Pagefind headless indexing over 1,800+ prerendered static routes.
+
+---
+
+## 2. The Golden Invariant: Zero Premature Victory
+
+Autonomous models are prone to **Premature Victory**: claiming a task is complete based on an intent to fix rather than empirical verification.
+
+### Mandatory Rules:
+1. **Never declare victory without empirical proof**:
+   You must NEVER say *"I have completed the task and all tests pass"* unless you have just executed the actual verification commands and observed an exit code of `0`.
+2. **Never hide, skip, or weaken tests**:
+   Never alter assertions or delete test cases to manufacture an artificial pass. If a test fails, diagnose the root cause and fix the underlying implementation.
+3. **The 4-Layer Verification Gate**:
+   Before asking for user sign-off or pushing commits, execute:
+   - **Layer 1: Typecheck**: `npm run typecheck` (`tsc -b` must exit 0).
+   - **Layer 2: Internal Links**: `npm run check:links` (0 broken internal prose or anchor links).
+   - **Layer 3: Unit Tests**: `npx vitest run` (or targeted test suites in `src/lib/` or `src/components/`).
+   - **Layer 4: Static Build**: `NODE_OPTIONS="--max-old-space-size=8192" npm run build` (dist/ generated with 0 errors).
+
+---
+
+## 3. Voice, Tone & Content Authoring Standards
+
+Content in NeuralMastery is written with **first-party authority**:
+
+### Content Rules:
+1. **Direct, Authoritative First-Party Voice**:
+   - **DO**: *"We engineer our reference harness in Python 3.12..."*, *"In this chapter, we derive the multi-head attention projection matrices..."*
+   - **DON'T**: *"Unlike other tutorials on the internet..."* or *"Early developer tutorials used Node.js, but we decided to use Python..."*
+2. **Zero Apologetic / Meta Comparisons**:
+   Never write reactive commentary comparing NeuralMastery to competitor websites, YouTube videos, or early blog posts. Teach concepts from first principles, production reality, and research papers (OpenAI, Anthropic, Google DeepMind, Meta).
+3. **Explain the "Why" Before Code**:
+   Never present code without motivating the underlying systems-level or mathematical trade-off (e.g. why attention variance scales with $\sqrt{d_k}$, why userspace mount namespaces prevent path traversal, why context anxiety emerges at 70% token capacity).
+
+---
+
+## 4. Visual Density: The "Attention & Transformers" Benchmark
+
+The gold standard for educational pages in this repository is [`src/content/docs/deep-learning/attention-transformers.mdx`](file:///home/ravivarma/Documents/DREAM_PROJECT/neuralmastery/platform-vite/src/content/docs/deep-learning/attention-transformers.mdx).
+
+Every major learning chapter must maintain this standard:
+
+| Component | Purpose & Placement |
+| :--- | :--- |
+| `<ELI5>` | **Mandatory at top of page**: Plain-English intuition before diving into technical derivations. |
+| `<PredictFirst>` | **Active Recall Challenge**: Placed before counter-intuitive revelations or surprising failure modes. Forces the reader to predict the outcome before seeing the answer. |
+| Dedicated Interactive Visualizers | **Step-Through SVG Diagrams**: Featuring playback buttons, step toggles, or parameter sliders using `useVizTokens()`. Never rely on static ASCII art alone when an interactive diagram can be built. |
+| `<RunnableCode>` | **Live In-Browser Python**: Executable Pyodide code snippets allowing learners to run, modify, and inspect actual output in the browser. |
+| `<GoDeeper title="...">` | **Advanced Systems / Math Proofs**: Expandable accordions for formal derivations, kernel internals, or asymptotic bounds. |
+| `<NotebookCallout color="...">` | **Color-Coded Invariants**: Amber (`color="amber"`) for critical warnings, Blue (`color="blue"`) for core takeaways, Green (`color="green"`) for architectural heuristics. |
+
+---
+
+## 5. UI, Diagram & Token Architecture
+
+All interactive visualizations in `src/viz/` must obey the design token system:
+
+1. **Use Viz Tokens**:
+   Always import and use `useVizTokens()` from `src/theme/vizTokens.ts`.
+   ```tsx
+   import { useVizTokens } from '../../theme/vizTokens';
+   const t = useVizTokens();
+   // Use t.surface, t.surfaceAlt, t.border, t.textPrimary, t.textSecondary, t.accentPrimary, etc.
+   ```
+2. **Accessible Contrast & Reduced Motion**:
+   - Never hardcode fixed dark/light hex codes (`#000`, `#fff`, `#333`) where theme tokens exist.
+   - Respect user preferences using `usePrefersReducedMotion()` from `src/viz/primitives`.
+3. **Container Layouts**:
+   Wrap interactive diagrams in `<VisualizationContainer footer="...">` and use `<VisualizationHeader>` and `<PillSelect>`.
+
+---
+
+## 6. Memory & Environment Execution Guidelines
+
+1. **Node.js Heap Allocation**:
+   The repository contains 1,835+ MDX routes. Running Vite or Rollup without expanded heap will result in `JavaScript heap out of memory` (Exit code 134).
+   - **Always prepend**: `NODE_OPTIONS="--max-old-space-size=8192"` to all `npm run build` commands.
+2. **Metadata Regeneration**:
+   When adding, removing, or renaming MDX files or category JSONs:
+   - Run: `node scripts/generate-page-meta.mjs`
+   - Check taxonomy in `src/data/sectionMeta.ts` if adding a new track.
+3. **Playwright & Container Sandboxing**:
+   Playwright tests and Pagefind prerendering rely on Chromium. Ensure no zombie browser instances linger in the background.
+
+---
+
+## 7. Git & Deployment Lifecycle
+
+1. **Production Branch**:
+   The `main` branch automatically builds and deploys to production GitHub Pages via `.github/workflows/deploy.yml`.
+   - Never push non-passing builds or broken links to `main`.
+2. **Atomic Commits**:
+   Commit related changes together with descriptive conventional commit messages:
+   - `feat(harness-engineering): ...`
+   - `fix(viz): ...`
+   - `docs(agents): ...`
+3. **External Pull Requests**:
+   Always inspect external contributor PRs with diligence. If the repository maintainer requests to leave a PR unmerged, leave it untouched.
