@@ -97,41 +97,32 @@ Instead of dumping raw source code, a production harness uses Python's built-in 
 Run this live in-browser Python implementation to see how an AST parser extracts an 85% compressed map:
 
 <RunnableCode code={`import ast
+import textwrap
 
 sample_code = """
-import torch
-import torch.nn as nn
-from typing import Optional, Tuple
-
-class MultiHeadAttention(nn.Module):
-    '''Scaled dot-product multi-head attention module.'''
+class MultiHeadAttention:
     def __init__(self, d_model: int = 512, n_heads: int = 8):
-        super().__init__()
         self.d_model = d_model
         self.n_heads = n_heads
 
-    def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
-        '''Compute attention outputs and normalized weights.'''
-        # In a real file, 80 lines of tensor math live here...
+    def forward(self, q, k, v):
         pass
 """
 
 def extract_ast_skeleton(code: str) -> str:
-    tree = ast.parse(code)
+    clean_code = textwrap.dedent(code).strip()
+    tree = ast.parse(clean_code)
     lines = []
     for node in tree.body:
         if isinstance(node, ast.ClassDef):
             lines.append(f"class {node.name}:")
-            doc = ast.get_docstring(node)
-            if doc:
-                lines.append(f"    '''{doc}'''")
             for item in node.body:
                 if isinstance(item, ast.FunctionDef):
                     args = [a.arg for a in item.args.args]
                     lines.append(f"    def {item.name}({', '.join(args)}): ...")
     return "\\n".join(lines)
 
-print("=== Raw Code (45 lines of implementation) ===")
+print("=== Raw Code ===")
 print(f"Raw character length: {len(sample_code)}")
 
 skeleton = extract_ast_skeleton(sample_code)

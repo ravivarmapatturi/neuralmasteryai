@@ -88,20 +88,20 @@ Prompt engineering often falls into the **Manual Trap**: pasting entire librarie
 Run this live in-browser Python implementation to see how the harness converts a verbose Python module into a 40-token structural map:
 
 <RunnableCode code={`import ast
+import textwrap
 
 python_source = """
 class AgentSupervisor:
-    '''Coordinates Planner, Generator, and Evaluator agents.'''
     def __init__(self, max_turns: int = 25):
         self.max_turns = max_turns
 
     def dispatch_work_order(self, task: str) -> dict:
-        '''Dispatches atomic task to sandbox generator.'''
         return {"task": task, "status": "dispatched"}
 """
 
 def extract_map(code: str) -> str:
-    tree = ast.parse(code)
+    clean_code = textwrap.dedent(code).strip()
+    tree = ast.parse(clean_code)
     signatures = []
     for node in tree.body:
         if isinstance(node, ast.ClassDef):

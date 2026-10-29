@@ -112,3 +112,44 @@ All interactive visualizations in `src/viz/` must obey the design token system:
    - `docs(agents): ...`
 3. **External Pull Requests**:
    Always inspect external contributor PRs with diligence. If the repository maintainer requests to leave a PR unmerged, leave it untouched.
+
+---
+
+## 8. In-Browser Python Execution & The Indentation Trap
+
+When embedding interactive Python code via `<RunnableCode code={\`...\`} />`, understand the underlying execution architecture:
+
+### The Pyodide Worker Indentation Trap:
+1. **The Architecture**:
+   `src/workers/pyodideWorker.ts` executes client-side Python in a dedicated Web Worker via Pyodide. To capture `stdout` and isolate execution errors, the worker wraps submitted code inside a Python `try:` block:
+   ```ts
+   const wrapped = CAPTURE_PREAMBLE + indent(msg.code) + CAPTURE_POSTAMBLE;
+   ```
+   The `indent()` helper prepends 4 spaces (\`'    ' + line\`) to **every single line** of the code payload before execution.
+
+2. **The Root Cause of \`IndentationError: unexpected indent\`**:
+   If a Python snippet defines a multi-line string literal (e.g. \`code_snippet = """class Foo:\\n    pass"""\`) and then passes that variable to \`ast.parse(code_snippet)\` or \`compile(code_snippet)\`:
+   - The worker indents all lines inside the multi-line string literal by 4 spaces.
+   - When \`ast.parse()\` compiles the string as a standalone module, line 2 begins with unexpected leading whitespace.
+   - CPython immediately raises:
+     ```
+     File "<unknown>", line 2
+         class Foo:
+     IndentationError: unexpected indent
+     ```
+
+3. **The Mandatory Invariant**:
+   Whenever Python code inside \`<RunnableCode>\` parses an embedded multi-line string using \`ast.parse()\`, \`compile()\`, or \`exec()\`, **ALWAYS** import \`textwrap\` and clean the code first:
+   ```python
+   import ast
+   import textwrap
+
+   # Strip any leading indent injected by editor or worker wrapper
+   clean_code = textwrap.dedent(source_code).strip()
+   tree = ast.parse(clean_code)
+   ```
+
+4. **RunnableCode Operational Invariants**:
+   - Every snippet embedded in \`<RunnableCode>\` MUST be tested to ensure it runs to completion with zero uncaught exceptions in Pyodide.
+   - Rely strictly on Python standard library modules (\`ast\`, \`textwrap\`, \`re\`, \`json\`, \`hashlib\`, \`dataclasses\`, \`typing\`) or preloaded Pyodide packages (\`numpy\`).
+   - Do not require outbound network calls inside browser Pyodide without explicit fallback handling.
