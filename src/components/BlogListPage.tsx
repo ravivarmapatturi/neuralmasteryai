@@ -7,6 +7,7 @@ import { BLOG_SERIES } from '../data/blogSeries';
 import { listAllPosts, listPublishedPosts, readingMinutes, useIsAdmin, type StoredPost } from '../lib/blogStore';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useDocumentMeta } from '../lib/useDocumentMeta';
+import BlogCover from './BlogCover';
 
 interface Row {
   slug: string;
@@ -132,7 +133,7 @@ export default function BlogListPage() {
               <>
                 {latest && !activeTag && (
                   <article className="nm-blog-latest">
-                    <div className="nm-blog-latest-art" aria-hidden="true"><span>NM</span></div>
+                    <BlogCover slug={latest.slug} className="nm-blog-latest-art" />
                     <div className="nm-blog-latest-body">
                       <p className="nm-blog-kicker">Latest essay · {latest.readingMinutes} min read</p>
                       <h2><Link to={latest.draft ? `/blog/write/${latest.slug}` : `/blog/${latest.slug}`}>{latest.title}</Link></h2>

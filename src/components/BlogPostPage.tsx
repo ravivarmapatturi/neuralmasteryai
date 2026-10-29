@@ -12,6 +12,7 @@ import Markdown from './content/Markdown';
 import { getStoredPost, readingMinutes, useIsAdmin, type StoredPost } from '../lib/blogStore';
 import { useGamification } from '../contexts/GamificationContext';
 import { BLOG_READ_POINTS, hasAward } from '../lib/gamification';
+import BlogCover from './BlogCover';
 
 /** /blog/:slug: one post, in the same prose styles as the Learn pages.
  * File-based posts render their MDX; editor-written posts are fetched from
@@ -97,6 +98,7 @@ export default function BlogPostPage() {
               <h1 className="nm-post-title">{title}</h1>
               {description && <p className="nm-post-standfirst">{description}</p>}
               <div className="nm-post-author"><span className="nm-post-author-mark">RV</span><span><strong>Ravi Varma Patturi</strong><small>Neural Mastery · technical field notes</small></span></div>
+              <BlogCover slug={slug} series={filePost?.series} className="nm-post-cover" />
             </header>
             {series && <BlogSeriesBox {...series} variant="inline" />}
             <article className="prose" ref={articleRef}>
