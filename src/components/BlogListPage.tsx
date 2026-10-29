@@ -166,7 +166,13 @@ export default function BlogListPage() {
             {allTags.length > 0 && (
               <section>
                 <h2>Topics</h2>
-                <TagList tags={allTags} active={activeTag} showAll />
+                <TagList tags={allTags.slice(0, 8)} active={activeTag} showAll />
+                {allTags.length > 8 && (
+                  <details className="nm-blog-all-topics">
+                    <summary>View all {allTags.length} topics</summary>
+                    <TagList tags={allTags.slice(8)} active={activeTag} />
+                  </details>
+                )}
               </section>
             )}
             <section>
