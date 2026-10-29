@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useColorMode } from '../../theme/ThemeProvider';
 import SearchModal from './SearchModal';
 import AuthButton from './AuthButton';
@@ -18,6 +18,8 @@ export default function Navbar({
   menuButtonRef?: RefObject<HTMLButtonElement | null>;
 }) {
   const { colorMode, toggleColorMode } = useColorMode();
+  const isHome = useLocation().pathname === '/';
+  const learnDestination = isHome ? '/docs/deep-learning/attention-transformers' : '/learn';
   const [searchOpen, setSearchOpen] = useState(false);
   const [primaryMenuOpen, setPrimaryMenuOpen] = useState(false);
   const primaryMenuPanelRef = useRef<HTMLElement>(null);
@@ -158,7 +160,7 @@ export default function Navbar({
           >
             ☰
           </button>
-          <Link to="/learn" className="nm-navbar-learn-link" style={{ color: 'var(--nm-text-primary)', textDecoration: 'none', fontSize: 14, fontFamily: "'Kalam', 'Comic Sans MS', cursive" }}>
+          <Link to={learnDestination} className="nm-navbar-learn-link" style={{ color: 'var(--nm-text-primary)', textDecoration: 'none', fontSize: 14, fontFamily: "'Kalam', 'Comic Sans MS', cursive" }}>
             Learn
           </Link>
           <Link
@@ -290,7 +292,7 @@ export default function Navbar({
               </button>
             </div>
             {[
-              { to: '/learn', label: 'Learn' },
+              { to: learnDestination, label: 'Learn' },
               { to: '/practice', label: 'Practice' },
               { to: '/blog', label: 'Blog' },
               { to: '/leaderboard', label: 'Leaderboard' },

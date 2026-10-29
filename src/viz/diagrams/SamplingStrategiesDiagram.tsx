@@ -63,13 +63,13 @@ export default function SamplingStrategiesDiagram() {
       {strategy === 'temperature' && <Slider label={`T = ${temperature.toFixed(2)}`} min={0.1} max={2} step={0.05} value={temperature} onChange={setTemperature} />}
       {strategy === 'topk' && <Slider label={`k = ${k}`} min={1} max={10} step={1} value={k} onChange={setK} />}
       {strategy === 'topp' && <Slider label={`p = ${p.toFixed(2)}`} min={0.1} max={1} step={0.05} value={p} onChange={setP} />}
-      <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end', height: 90, marginTop: 12 }}>
+      <div role="img" aria-label={`Computed token probabilities: ${TOKENS.map((tok, i) => `${tok} ${(probs[i] * 100).toFixed(1)} percent`).join(', ')}`} style={{ display: 'flex', gap: 4, alignItems: 'flex-end', height: 110, marginTop: 12, overflowX: 'auto' }}>
         {TOKENS.map((tok, i) => (
-          <div key={tok} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+          <div key={tok} style={{ flex: '1 0 38px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
             <div style={{ width: '100%', height: 70, display: 'flex', alignItems: 'flex-end' }}>
               <div style={{ width: '100%', height: `${(probs[i] / maxProb) * 100}%`, background: kept[i] ? color : dropColor, opacity: kept[i] ? 0.85 : 0.2, borderRadius: '3px 3px 0 0' }} />
             </div>
-            <div style={{ fontSize: 8, fontFamily: 'monospace', color: kept[i] ? t.textSecondary : t.textMuted }}>{tok}</div>
+            <div style={{ fontSize: 11, fontFamily: 'monospace', color: kept[i] ? t.textSecondary : t.textMuted }}>{tok}</div>
           </div>
         ))}
       </div>
