@@ -125,6 +125,12 @@ export default function BlogPostPage() {
               )}
             </article>
             {series && <SeriesPager {...series} />}
+            <section className="nm-blog-learn-bridge" aria-label="Continue learning">
+              <p className="nm-blog-kicker">Continue learning</p>
+              <h2>Turn this idea into working knowledge.</h2>
+              <p>Explore the structured Neural Mastery curriculum for first-principles lessons, diagrams, and practice.</p>
+              <Link to="/learn" className="nm-blog-read-link">Explore Learn <span aria-hidden="true">→</span></Link>
+            </section>
             <MarkReadButton slug={slug} />
             <p
               style={{
