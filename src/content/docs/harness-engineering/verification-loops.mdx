@@ -5,6 +5,9 @@ description: "Eliminating premature victory and false success in autonomous agen
 ---
 
 import VerificationThreeLayerSimulator from '../../../viz/diagrams/VerificationThreeLayerSimulator';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
 # The 3-Layer Verification Engine
@@ -14,15 +17,33 @@ Autonomous AI models are fundamentally prone to **Premature Victory**. When an L
 
 In reality, the model has no sensory apparatus inside its neural weights to know if the code compiles, let alone runs. 
 
-The **3-Layer Verification Engine** is the sensory nervous system of the harness. It replaces conversational claims with deterministic proofs.
+<ELI5>
+
+Imagine a student taking a math exam who writes down an answer, immediately closes the booklet, and declares with total confidence that they got a 100% score—without ever re-reading the question or checking their arithmetic.
+
+The **3-Layer Verification Engine** is the strict teacher standing over the desk: it refuses to accept the student's word. It runs 3 automated tests in sequence—syntax check, unit test, and behavioral probe—and only allows the agent to submit when all three pass with zero warnings.
+
+</ELI5>
 
 ---
 
 ## 1. The Interactive Verification Simulator
 
-Test how the harness intercepts failures and forces agent self-correction:
+Test how the harness intercepts failures and forces agent self-correction across the 3 deterministic tiers:
 
 <VerificationThreeLayerSimulator />
+
+<PredictFirst
+  question="Why must a harness always execute Layer 1 (ruff check and mypy typechecking) before triggering Layer 2 (pytest unit tests)?"
+  options={[
+    "Because pytest will crash the Python interpreter if there are type annotation errors.",
+    "Cost and velocity: static typing and AST linting run in <200ms without spawning runtime processes. Running slow pytest suites on broken syntax wastes agent token cycles and execution time.",
+    "Because mypy automatically fixes all syntax errors in place before pytest runs.",
+    "Because pytest cannot run unless mypy generates a .mypy_cache directory."
+  ]}
+  correctIndex={1}
+  explanation="In autonomous agent loops, velocity is everything. Spawning pytest, importing heavy libraries like PyTorch, and executing test suites takes 2-10 seconds. Static linting and mypy run in 200 milliseconds and catch 80% of common LLM hallucinations (missing imports, typos, wrong argument types). Bailing out early saves time, token budget, and API spend."
+/>
 
 ---
 
@@ -33,8 +54,8 @@ Verification is structured into three progressive gates. Each layer is cheaper a
 ```
         ┌──────────────────────────────────────────────┐
         │       LAYER 1: STATIC AUDIT (TYPECHECK)      │
-        │ • Time: ~500ms                               │
-        │ • Tools: tsc, mypy, oxlint                   │
+        │ • Time: ~200ms                               │
+        │ • Tools: ruff check ., mypy --strict         │
         │ • Catches: syntax errors, bad types, typos   │
         └──────────────────────┬───────────────────────┘
                                │ Passed
@@ -42,54 +63,89 @@ Verification is structured into three progressive gates. Each layer is cheaper a
         ┌──────────────────────────────────────────────┐
         │      LAYER 2: DETERMINISTIC UNIT SUITES      │
         │ • Time: ~2s                                  │
-        │ • Tools: vitest, pytest, cargo test          │
+        │ • Tools: pytest tests/unit/ -v               │
         │ • Catches: algorithmic bugs, math regressions│
         └──────────────────────┬───────────────────────┘
                                │ Passed
                                ▼
         ┌──────────────────────────────────────────────┐
         │      LAYER 3: BEHAVIORAL RUNTIME PROBES      │
-        │ • Time: ~10s                                 │
-        │ • Tools: playwright, headless chromium       │
-        │ • Catches: infinite re-renders, hydration bug│
+        │ • Time: ~8s                                  │
+        │ • Tools: python -m tests.smoke, playwright   │
+        │ • Catches: runtime deadlocks, memory leaks   │
         └──────────────────────┬───────────────────────┘
                                │ Passed
                                ▼
                [ AUTHORIZATION TO COMMIT / DEPLOY ]
 ```
 
----
+<GoDeeper title="Go deeper: Why Premature Victory is an emergent property of next-token prediction">
 
-## 3. Feedback Loop Engineering: Converting Errors into Corrections
+Why do language models hallucinate completion? In human conversational training datasets, when someone asks "Can you write a function to sort a list?", polite responses conclude with affirmations: *"Here is your completed function; it handles all edge cases and runs in O(n log n) time."*
 
-When a verification layer fails, how the error is presented to the model determines whether the agent fixes it or descends into a hallucinated loop.
+Because the next-token probability distribution is heavily conditioned on conversational politeness, the model naturally predicts tokens expressing confidence and closure, regardless of whether the code contains syntax errors. The harness breaks this psychological illusion by decoupling completion claims from actual git commit authorization.
 
-### Bad Feedback (Raw Dump)
-Dumping 400 lines of raw stack trace, npm debug headers, and ANSI escape sequences confuses the model and fills the context window.
-
-### Good Feedback (Structured Harness Diagnostic)
-The harness parses the failure into a concise, actionable diagnostic block:
-
-```markdown
-<VERIFICATION_FAILURE layer="2" tool="pytest">
-Target: tests/unit/test_attention.py::test_qkv_projection_shape
-Error: AssertionError in 'test_qkv_projection_shape'
-Expected tensor shape: (2, 8, 64)
-Received tensor shape: (2, 1, 512)
-
-Culprit line (src/models/attention.py:42):
-  def forward(self, x: torch.Tensor) -> torch.Tensor:
-      # Reshape accidentally collapsed heads into sequence length
-      return x.view(batch_size, 1, self.d_model)
-
-Diagnostic Instruction:
-Preserve the multi-head dimension (num_heads=8, head_dim=64) when reshaping the projected Q/K/V tensors before computing scaled dot-product attention. Re-run `pytest tests/unit/test_attention.py` to confirm.
-</VERIFICATION_FAILURE>
-```
-
-By isolating the exact file, failing assertion, and culprit line, the model fixes the root cause on the first attempt 94% of the time.
+</GoDeeper>
 
 ---
+
+## 3. Feedback Loop Engineering: Structured Diagnostic Parsing
+
+When a test fails, dumping 300 lines of raw terminal output clutters the agent's context and causes attention dispersion. The harness parses raw terminal output into a structured, actionable XML diagnostic envelope.
+
+Run this live Python implementation to see how the harness converts noisy traceback logs into high-signal feedback:
+
+<RunnableCode code={`import re
+
+raw_pytest_traceback = """
+============================= test session starts ==============================
+collecting ... collected 1 item
+tests/unit/test_attention.py::test_qkv_projection FAILED                 [100%]
+
+=================================== FAILURES ===================================
+_____________________________ test_qkv_projection ______________________________
+    def test_qkv_projection():
+        mha = MultiHeadAttention(d_model=512, n_heads=8)
+        x = torch.randn(2, 10, 512)
+>       q, k, v = mha.forward(x)
+E       ValueError: too many values to unpack (expected 3, got 2)
+
+tests/unit/test_attention.py:18: ValueError
+=========================== 1 failed in 0.42s ===========================
+"""
+
+def parse_diagnostic_envelope(raw_output: str) -> str:
+    # Extract failing test and root cause using regex
+    test_match = re.search(r"::(test_\\w+)\\s+FAILED", raw_output)
+    error_match = re.search(r"E\\s+([A-Za-z]+Error:.*)", raw_output)
+    location_match = re.search(r"([a-zA-Z0-9_/.]+\\.py:\\d+):\\s+[A-Za-z]+Error", raw_output)
+    
+    test_name = test_match.group(1) if test_match else "unknown_test"
+    error_msg = error_match.group(1) if error_match else "Test execution failed"
+    location = location_match.group(1) if location_match else "unknown location"
+    
+    return f"""<VERIFICATION_FAILURE layer="2" tool="pytest">
+  <target_test>{test_name}</target_test>
+  <location>{location}</location>
+  <error_diagnostic>{error_msg}</error_diagnostic>
+  <instruction>
+    Do not declare victory. Inspect the function signature at {location}. 
+    Ensure the return statement matches the test expectation. Re-run pytest to verify.
+  </instruction>
+</VERIFICATION_FAILURE>"""
+
+print("=== Raw Noisy Terminal Traceback (30 lines) ===")
+print(raw_pytest_traceback.strip())
+
+print("\\n=== Clean Harness Diagnostic Envelope ===")
+print(parse_diagnostic_envelope(raw_pytest_traceback))
+`} />
+
+---
+
+<NotebookCallout color="amber" title="Verification Invariant">
+**Never permit an agent to mark its own work as complete.** Verification must always be performed by an independent deterministic process. If the 3-layer verifier fails, the agent must be re-prompted with the structured diagnostic envelope until all tests pass.
+</NotebookCallout>
 
 <NotebookCallout title="Next in Curriculum">
 Learn how to persist multi-session progress and compress tokens in **[State, Continuity & Memory Compaction](/docs/harness-engineering/state-continuity-and-memory)**.

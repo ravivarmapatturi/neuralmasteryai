@@ -4,7 +4,12 @@ sidebar_position: 7
 description: "Designing autonomous goal loops, Maker-Checker supervisor architectures, cycle detection, budget triggers, and production halting conditions."
 ---
 
+import AnthropicSupervisorTriadVisualizer from '../../../viz/diagrams/AnthropicSupervisorTriadVisualizer';
+import OpenAIEntropyVisualizer from '../../../viz/diagrams/OpenAIEntropyVisualizer';
 import HarnessAblationStudio from '../../../viz/diagrams/HarnessAblationStudio';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
 # Autonomous Loops & Supervisors
@@ -13,7 +18,13 @@ The defining characteristic of an autonomous agent is its ability to run in an u
 
 However, unbounded autonomous loops introduce critical engineering hazards: **infinite cycling**, **runaway token expenditure**, and **drift from the original specification**.
 
-This chapter details the design of goal loops, halting conditions, and the Maker-Checker supervisor pattern.
+<ELI5>
+
+If you ask an autonomous agent to build a multi-page app without supervision, it's like leaving an over-enthusiastic junior developer alone in the office for a weekend: they might rewrite the entire database, install 30 unnecessary libraries, get stuck in an endless loop trying to center a button, and spend $500 in cloud credits.
+
+The **Supervisor Harness** provides the guardrails: it limits the number of attempts, stops the agent when it loops in circles, and assigns an independent "Checker" agent to approve every pull request.
+
+</ELI5>
 
 ---
 
@@ -70,53 +81,81 @@ An **Autonomous Goal Loop** delegates the execution loop to the harness:
                       └───────────────────────────┘
 ```
 
+<PredictFirst
+  question="If an autonomous coding loop gets stuck in an oscillating ping-pong loop (editing File A breaks File B, editing File B breaks File A), what will happen if you only enforce a step cap (e.g. max 30 turns) without cycle detection?"
+  options={[
+    "The model will realize after 3 attempts that it is oscillating and choose a third path.",
+    "The agent will burn through all 30 turns bouncing between the two errors, consuming maximum API tokens while leaving the workspace corrupted at turn 30.",
+    "The Python interpreter will raise a RecursionError and stop the agent.",
+    "The git index will automatically revert back to the initial commit."
+  ]}
+  correctIndex={1}
+  explanation="Language models have no internal memory of past turns once older tool logs are compacted. Without explicit cycle detection tracking file hashes and error signatures, the agent exhibits 'Markovian amnesia': seeing only the immediate error in File B, it re-introduces the fix for File A that broke it, ping-ponging until the turn ceiling is exhausted."
+/>
+
 ---
 
-## 2. Halting Conditions & Guardrails
+## 2. Cycle Detection & Circuit Breakers in Python
 
-To prevent runaway loops that deplete API credits or loop indefinitely, a production harness enforces four strict halting conditions:
+To prevent infinite oscillation, the harness hashes workspace diffs and error outputs after each turn. If the identical state hash repeats, a **Circuit Breaker** halts the loop.
 
-### 1. Step & Budget Caps
-- **Turn Limit**: A hard ceiling on maximum autonomous turns (e.g. 25 turns per task). If the agent fails to converge within 25 turns, the harness halts execution, preserves working git diffs, and alerts the operator.
-- **Cost Budget**: Token consumption is audited every step. If expenditure exceeds a predetermined threshold (e.g. $2.00 on a single ticket), execution suspends.
+Run this live in-browser Python implementation to see how the cycle detector detects an oscillating agent:
 
-### 2. Cycle Detection
-Agents frequently get trapped repeating the identical sequence:
-1. Make an edit to file A.
-2. Run test, hit error in file B.
-3. Edit file B, hit error back in file A.
-4. Repeat endlessly.
+<RunnableCode code={`import hashlib
+from typing import List, Dict
 
-The harness hashes file states and tool outputs. If the exact same AST or error hash is observed 3 times within 5 turns, the harness intervenes with a **Circuit Breaker** instruction forcing the model to step back and re-read foundational requirements.
+class CycleDetector:
+    def __init__(self, repeat_threshold: int = 2):
+        self.history: List[str] = []
+        self.threshold = repeat_threshold
+
+    def record_and_check(self, edited_file: str, diff_text: str, error_msg: str) -> bool:
+        # Generate deterministic fingerprint of turn state
+        payload = f"{edited_file}:{diff_text}:{error_msg}"
+        turn_hash = hashlib.sha256(payload.encode()).hexdigest()[:8]
+        
+        self.history.append(turn_hash)
+        occurrences = self.history.count(turn_hash)
+        
+        print(f"Turn {len(self.history)}: State Hash=[{turn_hash}] (Observed {occurrences} time(s))")
+        if occurrences >= self.threshold:
+            print("  >>> CIRCUIT BREAKER TRIGGERED: Agent is oscillating in an infinite loop! <<<")
+            return True # Tripped!
+        return False
+
+detector = CycleDetector(repeat_threshold=2)
+
+# Simulated Agent Turns (Ping-Pong oscillation between router.py and handler.py)
+simulated_turns = [
+    {"file": "router.py", "diff": "import handler", "err": "ImportError: cannot import name 'router' from partially initialized module"},
+    {"file": "handler.py", "diff": "import router", "err": "ImportError: cannot import name 'handler' from partially initialized module"},
+    {"file": "router.py", "diff": "import handler", "err": "ImportError: cannot import name 'router' from partially initialized module"}, # Repeated!
+]
+
+for t in simulated_turns:
+    tripped = detector.record_and_check(t["file"], t["diff"], t["err"])
+    if tripped:
+        print("Harness Action: Halting loop, injecting architectural refactor prompt into agent context.\\n")
+        break
+`} />
 
 ---
 
 ## 3. Anthropic's Multi-Agent Triad (Planner-Generator-Evaluator)
 
-When a single model acts as both author and auditor of its own code, cognitive bias and token repetition lead to blindness: the model believes its code is correct because it wrote it.
+When a single model acts as both author and auditor of its own code, confirmation bias leads to blindness: the model believes its code is correct because it wrote it.
 
-Anthropic's long-running agent research formalizes this as the **Triad Pattern** (inspired by Generative Adversarial Networks):
+Anthropic's long-running agent research formalizes the **Supervisor Triad**:
 
-```
-┌─────────────────────────────────┐
-│         PLANNER AGENT           │
-│ • Decomposes high-level goal    │
-│ • Writes feature_list.json      │
-│ • Emits acceptance criteria     │
-└────────────────┬────────────────┘
-                 │
-                 ▼
-┌─────────────────────────────────┐         ┌─────────────────────────────────┐
-│        GENERATOR (MAKER)        │         │        EVALUATOR (CHECKER)      │
-│ • Writes code and refactors     │         │ • Strictly read-only tools      │
-│ • Edits Python source files     │  ----►  │ • Independent system prompt     │
-│ • Runs local ruff / pytest      │         │ • Adversarial edge-case tests   │
-│ • Submits patch for audit       │         │ • Approves or rejects patch     │
-└─────────────────────────────────┘         └─────────────────────────────────┘
-```
+<AnthropicSupervisorTriadVisualizer />
 
-### The Invariant
-The Generator agent **never** has permission to approve its own changes. The Evaluator executes in an isolated context without the Generator's chain of thought, evaluating the code purely on its objective merits, type safety, and test coverage.
+<GoDeeper title="Go deeper: Why Maker-Checker separation eliminates Confirmation Bias in AI">
+
+In psychology and agentic systems, **Confirmation Bias** describes how an agent evaluates its own output. When the Generator agent writes a function, its internal attention heads are biased toward the prompt path that led to that implementation. If you prompt it *"Did you make any errors?"*, it reliably hallucinates *"No, the logic is sound."*
+
+By instantiating a completely separate **Evaluator Agent** with a fresh context window containing only the file diff and the requirements in `AGENTS.md`, the Evaluator examines the patch with zero preconceptions or sycophancy, catching edge cases the Generator missed.
+
+</GoDeeper>
 
 ---
 
@@ -126,28 +165,9 @@ In OpenAI's 1-million-line production Codex experiment, a critical finding emerg
 
 To solve this, the harness runs automated **Entropy Collection Agents** asynchronously:
 
-```python
-import asyncio
-from pyharness.agents import GarbageCollectorAgent
-from pyharness.sensors import AstAnalyzer
+<OpenAIEntropyVisualizer />
 
-async def run_entropy_maintenance(repo_path: str):
-    """OpenAI background entropy worker: audits dead code and doc drift."""
-    analyzer = AstAnalyzer(repo_path)
-    dead_symbols = analyzer.find_unused_functions()
-    stale_docs = analyzer.find_undocumented_endpoints()
-
-    if dead_symbols or stale_docs:
-        gc_agent = GarbageCollectorAgent(model="claude-3-7-sonnet")
-        cleanup_plan = await gc_agent.propose_prune(dead_symbols, stale_docs)
-        
-        # Dispatch to 3-layer verifier before staging
-        verification = await gc_agent.verify_cleanup(cleanup_plan)
-        if verification.passed:
-            await gc_agent.submit_maintenance_pr(cleanup_plan)
-```
-
-Running entropy passes every 24 hours prevents autonomous codebases from decaying into "AI slop."
+Running entropy passes continuously prevents autonomous codebases from decaying into "AI slop."
 
 ---
 
@@ -158,6 +178,10 @@ The ablation studio below shows how closing the loop with automated supervision 
 <HarnessAblationStudio />
 
 ---
+
+<NotebookCallout color="amber" title="Supervisor Golden Rule">
+**An agent should never judge its own work.** Always enforce the Maker-Checker separation: the Generator proposes patches inside the sandbox, while an independent Evaluator verifies deterministic proofs and signs off on git commits.
+</NotebookCallout>
 
 <NotebookCallout title="Track Complete">
 You have mastered the foundational pillars of Harness Engineering. Return to the **[Harness Engineering Roadmap](/docs/harness-engineering/roadmap)** or dive into building your own sandboxed agent loop.

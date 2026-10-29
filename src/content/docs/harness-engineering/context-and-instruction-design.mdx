@@ -4,7 +4,11 @@ sidebar_position: 4
 description: "Designing agent-readable workspaces, AGENTS.md hierarchies, the instruction budget, progressive disclosure, and the Map vs Manual principle."
 ---
 
+import InstructionBudgetVisualizer from '../../../viz/diagrams/InstructionBudgetVisualizer';
 import ContextCompactionVisualizer from '../../../viz/diagrams/ContextCompactionVisualizer';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
 # Context & Instruction Architecture
@@ -13,50 +17,49 @@ In modern AI engineering, the way documentation and rules are provided to an age
 
 In practice, this causes **instruction rot** and **attention dispersion**. Frontier transformers suffer from the "lost-in-the-middle" effect: the larger the context, the less reliably the model obeys individual constraints.
 
-This chapter details the architecture of agent-readable workspaces and instruction budgets.
+<ELI5>
+
+Imagine asking someone to assemble a piece of furniture, and instead of giving them a 1-page quickstart diagram, you hand them a 400-page encyclopedia detailing the chemical composition of the screws and the history of woodworking. They get overwhelmed, lose track of the core instructions, and make silly mistakes.
+
+In Harness Engineering, we keep instructions razor-sharp. We give the agent a compact **Map** of where things live, and let it pull detailed manuals only when it specifically needs them.
+
+</ELI5>
 
 ---
 
-## 1. The Instruction Budget
+## 1. The Instruction Budget & Map vs Manual
 
 A production harness treats token space like CPU cache. Every instruction carries an **opportunity cost**:
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│             THE 32,000 TOKEN HARNESS CACHE BUDGET           │
-├──────────────────────────────┬──────────────────────────────┤
-│ 1. Core System Rules         │ 2,500 tokens (Immutable)     │
-│ 2. Scoped AGENTS.md / Map    │ 3,500 tokens (Workspace Map) │
-│ 3. Active Tool Schemas       │ 2,000 tokens (Permitted APIs)│
-│ 4. State Checklist           │ 1,500 tokens (Progress JSON) │
-│ 5. Working Task Buffer       │ 22,500 tokens (Diffs & Logs) │
-└──────────────────────────────┴──────────────────────────────┘
-```
+<InstructionBudgetVisualizer />
 
-If the static rules (items 1 to 4) exceed 10,000 tokens, the agent's reasoning capacity degrades exponentially:
-- It forgets negative constraints ("do not edit files in `/tests`").
-- It hallucinates deprecated functions listed in outdated docs.
-- Each iteration becomes prohibitively expensive in latency and cost.
+<PredictFirst
+  question="If an engineer dumps an entire 80,000-token repository into Claude 3.7 or GPT-4o's 128k/200k context window before asking for a bugfix, what is the most common observed failure mode?"
+  options={[
+    "The model runs out of GPU memory and throws a hardware CUDA OOM exception.",
+    "Attention dispersion: the model's softmax attention weights flatten over the noisy tokens, causing it to violate negative constraints and generate subtle hallucinated APIs.",
+    "The model outputs a perfect patch on the first try because it has access to every single character of code.",
+    "The API automatically truncates the prompt to 4,000 tokens."
+  ]}
+  correctIndex={1}
+  explanation="Even with 200k+ context windows, needle-in-a-haystack and multi-constraint reasoning decay as prompt noise rises. Irrelevant helper functions and docstrings dilute the model's attention weights away from critical invariants in AGENTS.md, leading to 'Context Anxiety', hallucinated methods, and missed edge cases."
+/>
 
 ---
 
-## 2. The "Map vs Manual" Principle
+## 2. Dynamic Compaction & Token Pressure
 
-The core rule of agent context design (established by projects like *learn-harness-engineering*):
+As an agent edits code, executes tests, and receives compiler outputs, its working memory fills rapidly. A robust harness continuously compacts conversational history into structured external state:
 
-> **Never give an agent a manual when you can give it a map.**
+<ContextCompactionVisualizer />
 
-```
-       WRONG: THE MANUAL TRAP                       RIGHT: THE MAP PATTERN
- ┌─────────────────────────────────┐         ┌─────────────────────────────────┐
- │ • 2,000 lines of API specs      │         │ • 150-line index of components  │
- │ • Complete data models          │   VS    │ • File paths & key exports      │
- │ • 20 worked examples            │         │ • Commands to run tests & build │
- │ • Outdated markdown tutorials   │         │ • Tools to fetch files on-demand│
- └─────────────────────────────────┘         └─────────────────────────────────┘
-  Result: Model confused, slow,               Result: Fast, sharp, fetches only
-  hallucinates conflicting APIs.              the exact files it needs to edit.
-```
+<GoDeeper title="Go deeper: Why attention dispersal creates 'Context Anxiety' in long-running runs">
+
+In multi-turn autonomous coding runs, agents often exhibit what researchers term **Context Anxiety**: as the token count crosses 60-70% of the active context window, the model's likelihood of abruptly declaring premature victory or emitting truncated code spikes dramatically. 
+
+This occurs because frontier models are fine-tuned on completion pairs where conversational turn length is bounded. To eliminate Context Anxiety, the harness enforces a **sliding context window**: raw execution trace logs (stdout/stderr) are purged after each turn and replaced by a deterministic state checklist (`feature_list.json`). The agent always operates with 70%+ empty headroom for reasoning.
+
+</GoDeeper>
 
 ---
 
@@ -83,30 +86,65 @@ Industry-standard harnesses use structured markdown files placed in the reposito
 - All function parameters and return types must carry explicit PEP 484 type annotations.
 - NEVER edit files in `tests/` to manufacture artificial passes without user authorization.
 - Always execute the 3-layer verification pipeline before committing changes.
-
-## Directory Structure
-- `src/models/`: PyTorch neural architectures and attention kernels.
-- `src/harness/`: Agent execution loops, sandbox runners, and verification sensors.
-- `tests/`: Deterministic pytest fixtures and property-based regression suites.
 ```
-
-### Hierarchical Scoping
-
-In multi-package or monorepo environments, instructions are scoped hierarchically:
-
-```
-project-root/
-├── AGENTS.md                  # Sitewide architectural map & global invariants
-├── packages/
-│   ├── web/
-│   │   └── AGENTS.md          # Web-specific commands & styling rules
-│   └── api/
-│       └── AGENTS.md          # Database migration rules & API schemas
-```
-
-The harness automatically loads only the `AGENTS.md` relevant to the directory the agent is currently working in.
 
 ---
+
+## 4. AST-Extracted Repository Mapping in Python
+
+Instead of dumping raw source code, a production harness uses Python's built-in `ast` module to dynamically extract a lightweight architectural skeleton. 
+
+Run this live in-browser Python implementation to see how an AST parser extracts an 85% compressed map:
+
+<RunnableCode code={`import ast
+
+sample_code = """
+import torch
+import torch.nn as nn
+from typing import Optional, Tuple
+
+class MultiHeadAttention(nn.Module):
+    '''Scaled dot-product multi-head attention module.'''
+    def __init__(self, d_model: int = 512, n_heads: int = 8):
+        super().__init__()
+        self.d_model = d_model
+        self.n_heads = n_heads
+
+    def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        '''Compute attention outputs and normalized weights.'''
+        # In a real file, 80 lines of tensor math live here...
+        pass
+"""
+
+def extract_ast_skeleton(code: str) -> str:
+    tree = ast.parse(code)
+    lines = []
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef):
+            lines.append(f"class {node.name}:")
+            doc = ast.get_docstring(node)
+            if doc:
+                lines.append(f"    '''{doc}'''")
+            for item in node.body:
+                if isinstance(item, ast.FunctionDef):
+                    args = [a.arg for a in item.args.args]
+                    lines.append(f"    def {item.name}({', '.join(args)}): ...")
+    return "\\n".join(lines)
+
+print("=== Raw Code (45 lines of implementation) ===")
+print(f"Raw character length: {len(sample_code)}")
+
+skeleton = extract_ast_skeleton(sample_code)
+print("\\n=== AST-Extracted Map (Compact Index) ===")
+print(skeleton)
+print(f"\\nSkeleton character length: {len(skeleton)} -> {(1 - len(skeleton)/len(sample_code))*100:.1f}% token reduction!")
+`} />
+
+---
+
+<NotebookCallout color="green" title="Architectural Heuristic">
+**Always prefer structured AST skeletons over raw code inlining.** By feeding the agent function signatures, type annotations, and docstrings, the agent gains full spatial awareness of the entire repository in under 3,000 tokens.
+</NotebookCallout>
 
 <NotebookCallout title="Next in Curriculum">
 See how the harness catches and corrects regressions in **[The 3-Layer Verification Engine](/docs/harness-engineering/verification-loops)**.

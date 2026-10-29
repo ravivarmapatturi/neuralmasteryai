@@ -5,6 +5,10 @@ description: "Managing working memory, multi-session task persistence, structure
 ---
 
 import ContextCompactionVisualizer from '../../../viz/diagrams/ContextCompactionVisualizer';
+import AnthropicSupervisorTriadVisualizer from '../../../viz/diagrams/AnthropicSupervisorTriadVisualizer';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
 # State, Continuity & Memory Compaction
@@ -13,7 +17,13 @@ A typical production engineering task requires 15 to 40 distinct tool invocation
 
 In naked model architectures, a restarted session begins with total amnesia. The agent inspects files it already edited, re-implements already finished modules, or accidentally reverts its own work.
 
-This chapter details how an engineering harness manages working memory, structured persistence, and context compaction.
+<ELI5>
+
+Imagine working on a multi-day construction project. If you wake up every morning with total memory loss and have to guess what was built by wandering around the site, you'll end up tearing down finished walls and forgetting the plumbing.
+
+Instead, the foreman leaves a waterproof clipboard on the job site: a checklist of completed rooms, pending tasks, and architectural blueprints (`feature_list.json`). No matter who starts the shift, they check the clipboard and get straight to work.
+
+</ELI5>
 
 ---
 
@@ -23,13 +33,29 @@ Inspect how a harness compresses tens of thousands of tokens of accumulated logs
 
 <ContextCompactionVisualizer />
 
+<PredictFirst
+  question="When an agent's conversational history is aggressively compacted by 70% to fit within budget, what is the single most reliable mechanism to prevent it from repeating work it completed 20 turns ago?"
+  options={[
+    "Asking the model in the system prompt to remember everything it did earlier.",
+    "Relying on an LLM-generated conversational summary of past turns.",
+    "Maintaining an externalized, structured state file (e.g. feature_list.json) on disk that marks completed tasks with deterministic test hashes.",
+    "Increasing the model's temperature parameter so it tries new things."
+  ]}
+  correctIndex={2}
+  explanation="Anthropic's long-running agent research proved that conversational summaries suffer from semantic loss: the summarizing model frequently drops nuanced implementation details, leading the worker agent to re-investigate or re-write existing code. An externalized JSON checklist provides rigid ground truth that survives restarts and context compactions."
+/>
+
 ---
 
 ## 2. Anthropic's State-Externalization Pattern: `feature_list.json`
 
 In Anthropic's research on long-running application development, agents that rely on conversational memory inevitably suffer from **amnesia** or **context anxiety**.
 
-The solution is the **State-Externalization Pattern**: keeping task state outside the volatile LLM context window in structured on-disk files:
+The solution is the **State-Externalization Pattern**: keeping task state outside the volatile LLM context window in structured on-disk files.
+
+Observe how externalized state guides coordination across agent roles:
+
+<AnthropicSupervisorTriadVisualizer />
 
 ```json
 {
@@ -68,60 +94,87 @@ The solution is the **State-Externalization Pattern**: keeping task state outsid
 }
 ```
 
-Alongside `feature_list.json`, the harness maintains a rolling human-readable `progress.txt` capturing high-level engineering notes.
+<GoDeeper title="Go deeper: Why conversational summaries are inferior to deterministic state artifacts">
 
-### Why Structured Checklists Win
+When an agent loop compacts memory, naive frameworks invoke a summarizer LLM: *"Summarize the past 15 turns in 2 paragraphs."*
 
-1. **Deterministic Recovery**: If the agent's process is killed mid-task, the new turn reads `feature_list.json` and immediately resumes the first pending item without re-discovering the codebase.
-2. **Ground Truth Over Narrative**: The model cannot convince itself that task 4 is done if the JSON array marks it `"pending"`.
-3. **Subagent Delegation**: A supervisor agent can partition the checklist into isolated subtasks, dispatching them to parallel worker harnesses.
+This introduces three critical failure modes:
+1. **Hallucinated Progress**: The summarizer often assumes an intent to fix a bug means the bug was actually fixed.
+2. **Context Bleed**: Error tracebacks disappear into vague statements like *"We fixed an index error"*, losing the exact line number.
+3. **Cumulative Drift**: Over 50 turns, each summary summarizes the previous summary, creating a game of telephone where original user constraints are completely erased.
+
+By keeping `feature_list.json` on disk, the state remains deterministic, machine-readable, and immune to summarization drift.
+
+</GoDeeper>
 
 ---
 
-## 3. Python Memory Compaction Implementation
+## 3. Python Compaction Algorithm: Live Interactive Runner
 
-Below is a production compaction algorithm in Python using `tiktoken`:
+Below is a production compaction engine in Python. Run this live in-browser demo to see how old, verbose tool outputs are pruned while keeping recent turns and state checklists completely intact:
 
-```python
-import tiktoken
-from pydantic import BaseModel
+<RunnableCode code={`from dataclasses import dataclass
+from typing import List
 
-class TurnMessage(BaseModel):
+@dataclass
+class Message:
     role: str
     content: str
-    is_tool_output: bool = False
+    is_tool_trace: bool = False
 
-def compact_conversation_history(
-    messages: list[TurnMessage],
-    max_tokens: int = 24_000,
-    model_name: str = "cl100k_base",
-) -> list[TurnMessage]:
-    """Compacts old tool churn into structured state, keeping token budget optimal."""
-    enc = tiktoken.get_encoding(model_name)
-    total_tokens = sum(len(enc.encode(m.content)) for m in messages)
+def estimate_tokens(text: str) -> int:
+    # Approximate rule of thumb: ~4 characters per token
+    return max(1, len(text) // 4)
+
+def compact_conversation(messages: List[Message], budget_tokens: int = 150) -> List[Message]:
+    total_tokens = sum(estimate_tokens(m.content) for m in messages)
+    print(f"Initial Token Count: {total_tokens} tokens (Budget: {budget_tokens})")
     
-    if total_tokens <= max_tokens:
+    if total_tokens <= budget_tokens:
         return messages
 
-    # Phase 1: Prune verbose tool outputs older than the last 3 turns
-    pruned: list[TurnMessage] = []
-    recent_threshold = len(messages) - 6
-    
-    for idx, msg in enumerate(messages):
-        if idx < recent_threshold and msg.is_tool_output:
-            # Replace 5,000-line tool outputs with a 1-line semantic marker
-            pruned.append(TurnMessage(
+    # Compaction Strategy:
+    # 1. Keep the initial system instruction (turn 0)
+    # 2. Keep the last 2 turns intact
+    # 3. Collapse old tool outputs in between into compact semantic markers
+    compacted: List[Message] = []
+    recent_cutoff = len(messages) - 2
+
+    for i, msg in enumerate(messages):
+        if i > 0 and i < recent_cutoff and msg.is_tool_trace:
+            # Prune noisy 500-token tool logs into a 5-token marker
+            compacted.append(Message(
                 role=msg.role,
-                content="[Tool execution succeeded; verified by harness sensor]",
-                is_tool_output=True,
+                content="[Tool log pruned: verified pass by pytest]",
+                is_tool_trace=True
             ))
         else:
-            pruned.append(msg)
-            
-    return pruned
-```
+            compacted.append(msg)
+
+    new_total = sum(estimate_tokens(m.content) for m in compacted)
+    print(f"Compacted Token Count: {new_total} tokens -> Saved {total_tokens - new_total} tokens!\\n")
+    return compacted
+
+# Simulate an agent conversation with verbose test outputs
+history = [
+    Message("system", "You are an autonomous Python harness agent working on feature_list.json"),
+    Message("user", "Run the test suite and fix test_attention.py"),
+    Message("tool", "PASSED test_1\\nPASSED test_2\\nFAILED test_3 (AttributeError: 'NoneType' object has no attribute 'dim')\\n" * 15, is_tool_trace=True),
+    Message("agent", "I found the NoneType bug in forward(); patching line 42 now."),
+    Message("tool", "PASSED test_1\\nPASSED test_2\\nPASSED test_3\\n[100% passed in 1.4s]\\n" * 10, is_tool_trace=True),
+    Message("agent", "All tests now pass. Updating feature_list.json.")
+]
+
+compacted_history = compact_conversation(history, budget_tokens=150)
+for m in compacted_history:
+    print(f"[{m.role.upper()}]: {m.content[:75]}...")
+`} />
 
 ---
+
+<NotebookCallout color="blue" title="State Persistence Principle">
+**Treat the filesystem as the source of truth, not the context window.** Always write task status to `feature_list.json` and human milestones to `progress.txt`. When context is cleared or refreshed, reloading these two files restores full autonomous momentum.
+</NotebookCallout>
 
 <NotebookCallout title="Next in Curriculum">
 Learn how autonomous agents govern multi-step execution in **[Autonomous Loops & Supervisors](/docs/harness-engineering/autonomous-loops-and-supervisors)**.
