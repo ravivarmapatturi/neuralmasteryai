@@ -1,0 +1,162 @@
+---
+title: "Harness Architecture & Sandboxing"
+sidebar_position: 3
+description: "The execution loop, MicroVM and container isolation, command whitelists, process supervision, and tool execution boundaries for autonomous AI agents."
+---
+
+import AgentHarnessArchitectureVisualizer from '../../../viz/diagrams/AgentHarnessArchitectureVisualizer';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
+
+# Harness Architecture & Sandboxing
+
+A production harness must bridge two contradictory requirements: giving an AI agent enough power to execute complex code changes while strictly bounding its **blast radius** to prevent catastrophic operations, host corruption, or data exfiltration.
+
+This chapter walks through the architectural mechanics of the outer execution loop, sandboxing layers, and tool dispatching protocols.
+
+---
+
+## 1. The Outer Execution Loop
+
+An autonomous agent does not execute as an open prompt. It runs inside a tightly supervised state machine managed by the harness runtime:
+
+```
+                  ┌──────────────────────┐
+                  │      User Goal       │
+                  └──────────┬───────────┘
+                             │
+                             ▼
+                  ┌──────────────────────┐
+            ┌────►│   Context Assembly   │
+            │     │  (Rules + Memory)    │
+            │     └──────────┬───────────┘
+            │                │
+            │                ▼
+            │     ┌──────────────────────┐
+            │     │   Model Inference    │
+            │     │ (Structured Tool Req)│
+            │     └──────────┬───────────┘
+            │                │
+            │                ▼
+            │     ┌──────────────────────┐
+            │     │   Sandbox Boundary   │
+            │     │   Permission Check   │
+            │     └──────────┬───────────┘
+            │                │
+            │                ▼
+            │     ┌──────────────────────┐
+            │     │    Tool Execution    │
+            │     │ (Captures Exit/Logs) │
+            │     └──────────┬───────────┘
+            │                │
+            │                ▼
+            │     ┌──────────────────────┐
+            │     │ 3-Layer Verification │
+            │     └──────────┬───────────┘
+            │                │
+            │          Passed? No
+            └────────────────┤
+                             │ Yes
+                             ▼
+                  ┌──────────────────────┐
+                  │ State Compaction &   │
+                  │ Task Completion      │
+                  └──────────────────────┘
+```
+
+### The Turn Contract
+
+Each turn in the harness satisfies a formal contract:
+
+1. **Pre-turn Invariant**: The workspace is clean or has a known diff recorded in git index.
+2. **Action Invariant**: The model may only emit structured tool calls conforming to a declared JSON Schema. Raw text with implied terminal commands is rejected before execution.
+3. **Post-turn Invariant**: Execution output (stdout, stderr, exit code) is captured, bounded in size, and sanitized before returning to the model context.
+
+---
+
+## 2. Sandboxing Technologies: Containing Blast Radius
+
+When an autonomous agent writes and executes code, running commands directly on the host machine is a catastrophic vulnerability. A model hallucinating `rm -rf /` or executing a rogue Python script can wipe home directories or leak credentials.
+
+A production harness employs layered isolation:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      HOST ENVIRONMENT                       │
+│                                                             │
+│   ┌─────────────────────────────────────────────────────┐   │
+│   │             HARNESS SUPERVISOR PROCESS              │   │
+│   │   • API Keys & Secret Management                    │   │
+│   │   • Token Counter & Billing Audit                   │   │
+│   │   • Telemetry & Audit Log Writer                    │   │
+│   └──────────────────────────┬──────────────────────────┘   │
+│                              │ Dispatches via gRPC / IPC    │
+│                              ▼                              │
+│   ┌─────────────────────────────────────────────────────┐   │
+│   │            ISOLATED SANDBOX RUNTIME                 │   │
+│   │   (Docker Container / gVisor / Firecracker MicroVM) │   │
+│   │                                                     │   │
+│   │   • Read/Write: Limited to /workspace/project       │   │
+│   │   • Read-Only:  System binaries & Node/Python libs  │   │
+│   │   • Network:    Disabled or Whitelisted Proxy Only  │   │
+│   │   • Process:    PID limit (prevents fork-bombs)     │   │
+│   │   • Timeouts:   Strict 30s wall-clock timeout       │   │
+│   └─────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Isolation Tiers Compared
+
+| Tier | Technology | Boot Time | Isolation Level | Best Used For |
+| :--- | :--- | :--- | :--- | :--- |
+| **Tier 1: OS-Level Jail** | Linux namespaces + `chroot` / `bwrap` | ~10ms | Moderate | Local CLI tools (e.g. Claude Code, Codex CLI) |
+| **Tier 2: User-Space Kernel** | Docker with `gVisor` (`runsc`) | ~200ms | High | Cloud evaluation & CI harnesses |
+| **Tier 3: MicroVM** | AWS Firecracker / Fly.io Machines | ~150ms | Complete hardware virtualization | Multi-tenant untrusted user code execution |
+
+---
+
+## 3. Tool Dispatch & Schema Validation
+
+Every tool exposed to the model must be strictly typed. Using Pydantic or Zod, schemas validate every parameter before the sandbox is touched:
+
+```python
+from pydantic import BaseModel, Field
+import asyncio
+from typing import Any
+
+class RunCommandArgs(BaseModel):
+    command: str = Field(description="The exact shell command to execute")
+    working_directory: str = Field(default="/workspace/repo")
+    timeout_seconds: float = Field(default=15.0, le=60.0)
+    allow_network: bool = Field(default=False)
+
+async def dispatch_tool(name: str, raw_args: dict[str, Any], sandbox: PythonSandbox) -> str:
+    if name == "run_command":
+        # 1. Pydantic Schema Validation
+        args = RunCommandArgs.model_validate(raw_args)
+
+        # 2. Security Interceptor Check
+        if is_forbidden_command(args.command):
+            raise SecurityException(f"Command blocked by harness security policy: {args.command}")
+
+        # 3. Dispatch to Isolated Python Subprocess Sandbox
+        return await sandbox.execute(
+            command=args.command,
+            cwd=args.working_directory,
+            timeout=args.timeout_seconds,
+            network=args.allow_network,
+        )
+    raise ValueError(f"Unknown tool: {name}")
+```
+
+### Command Interception & Dangerous Patterns
+
+The harness automatically intercepts and blocks unsafe commands before they hit the shell:
+- **Destructive Deletion**: Commands containing `rm -rf /` or recursive deletion targeting parent paths.
+- **Credential Probing**: Inspecting `~/.ssh`, `~/.aws`, `.env` files without explicit developer authorization.
+- **Network Exfiltration**: Disallowing raw `curl` or `wget` piping directly to `bash`.
+
+---
+
+<NotebookCallout title="Next in Curriculum">
+Learn how to organize repository instructions and prevent prompt bloat in **[Context & Instruction Architecture](/docs/harness-engineering/context-and-instruction-design)**.
+</NotebookCallout>

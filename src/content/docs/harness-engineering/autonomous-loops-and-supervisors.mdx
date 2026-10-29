@@ -1,0 +1,164 @@
+---
+title: "Autonomous Loops & Supervisors"
+sidebar_position: 7
+description: "Designing autonomous goal loops, Maker-Checker supervisor architectures, cycle detection, budget triggers, and production halting conditions."
+---
+
+import HarnessAblationStudio from '../../../viz/diagrams/HarnessAblationStudio';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
+
+# Autonomous Loops & Supervisors
+
+The defining characteristic of an autonomous agent is its ability to run in an unattended loop: receiving a high-level goal, decomposing it into subtasks, executing changes, verifying results, and iterating until the objective is accomplished.
+
+However, unbounded autonomous loops introduce critical engineering hazards: **infinite cycling**, **runaway token expenditure**, and **drift from the original specification**.
+
+This chapter details the design of goal loops, halting conditions, and the Maker-Checker supervisor pattern.
+
+---
+
+## 1. Goal Loops vs Single-Turn Q&A
+
+A conventional assistant operates in a **Single-Turn Request/Response** mode: the human must evaluate every step and manually prompt the next action.
+
+An **Autonomous Goal Loop** delegates the execution loop to the harness:
+
+```
+                      ┌───────────────────────────┐
+                      │    User Dispatches Goal   │
+                      │  "Implement feature X"    │
+                      └─────────────┬─────────────┘
+                                    │
+                                    ▼
+                      ┌───────────────────────────┐
+                ┌────►│   Harness Evaluates Loop  │◄───┐
+                │     │   Iteration & Budget Cap  │    │
+                │     └─────────────┬─────────────┘    │
+                │                   │                  │
+                │                   ▼                  │
+                │     ┌───────────────────────────┐    │
+                │     │   Worker Agent Executes   │    │
+                │     │      Subtask In Focus     │    │
+                │     └─────────────┬─────────────┘    │
+                │                   │                  │
+                │                   ▼                  │
+                │     ┌───────────────────────────┐    │
+                │     │   Supervisor / Verifier   │    │
+                │     │    Audits Changed Code    │    │
+                │     └─────────────┬─────────────┘    │
+                │                   │                  │
+           Pass │                   ▼                  │ Fail
+         Check  │            All Invariants            │ (Inject
+                │               Passed?                │ Diagnostic)
+                │              /       \               │
+                │          Yes/         \No            │
+                │            /           \             │
+                │           ▼             ▼            │
+                │     ┌───────────┐ ┌─────────────┐    │
+                │     │ Check Off │ │ Cycle Check │────┘
+                │     │ Subtask   │ │ & Fix Turn  │
+                │     └─────┬─────┘ └─────────────┘
+                │           │
+                │     More  │
+                │    Tasks? │
+                └───────────┤
+                            │ All Done
+                            ▼
+                      ┌───────────────────────────┐
+                      │ Final Integration Pass &  │
+                      │ Complete User Notification│
+                      └───────────────────────────┘
+```
+
+---
+
+## 2. Halting Conditions & Guardrails
+
+To prevent runaway loops that deplete API credits or loop indefinitely, a production harness enforces four strict halting conditions:
+
+### 1. Step & Budget Caps
+- **Turn Limit**: A hard ceiling on maximum autonomous turns (e.g. 25 turns per task). If the agent fails to converge within 25 turns, the harness halts execution, preserves working git diffs, and alerts the operator.
+- **Cost Budget**: Token consumption is audited every step. If expenditure exceeds a predetermined threshold (e.g. $2.00 on a single ticket), execution suspends.
+
+### 2. Cycle Detection
+Agents frequently get trapped repeating the identical sequence:
+1. Make an edit to file A.
+2. Run test, hit error in file B.
+3. Edit file B, hit error back in file A.
+4. Repeat endlessly.
+
+The harness hashes file states and tool outputs. If the exact same AST or error hash is observed 3 times within 5 turns, the harness intervenes with a **Circuit Breaker** instruction forcing the model to step back and re-read foundational requirements.
+
+---
+
+## 3. Anthropic's Multi-Agent Triad (Planner-Generator-Evaluator)
+
+When a single model acts as both author and auditor of its own code, cognitive bias and token repetition lead to blindness: the model believes its code is correct because it wrote it.
+
+Anthropic's long-running agent research formalizes this as the **Triad Pattern** (inspired by Generative Adversarial Networks):
+
+```
+┌─────────────────────────────────┐
+│         PLANNER AGENT           │
+│ • Decomposes high-level goal    │
+│ • Writes feature_list.json      │
+│ • Emits acceptance criteria     │
+└────────────────┬────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────┐         ┌─────────────────────────────────┐
+│        GENERATOR (MAKER)        │         │        EVALUATOR (CHECKER)      │
+│ • Writes code and refactors     │         │ • Strictly read-only tools      │
+│ • Edits Python source files     │  ----►  │ • Independent system prompt     │
+│ • Runs local ruff / pytest      │         │ • Adversarial edge-case tests   │
+│ • Submits patch for audit       │         │ • Approves or rejects patch     │
+└─────────────────────────────────┘         └─────────────────────────────────┘
+```
+
+### The Invariant
+The Generator agent **never** has permission to approve its own changes. The Evaluator executes in an isolated context without the Generator's chain of thought, evaluating the code purely on its objective merits, type safety, and test coverage.
+
+---
+
+## 4. OpenAI's Pattern: Background Entropy & Garbage Collection Agents
+
+In OpenAI's 1-million-line production Codex experiment, a critical finding emerged: autonomous agents write code faster than human teams, but they also accumulate subtle technical debt (stale comments, duplicate utility functions, dead imports).
+
+To solve this, the harness runs automated **Entropy Collection Agents** asynchronously:
+
+```python
+import asyncio
+from pyharness.agents import GarbageCollectorAgent
+from pyharness.sensors import AstAnalyzer
+
+async def run_entropy_maintenance(repo_path: str):
+    """OpenAI background entropy worker: audits dead code and doc drift."""
+    analyzer = AstAnalyzer(repo_path)
+    dead_symbols = analyzer.find_unused_functions()
+    stale_docs = analyzer.find_undocumented_endpoints()
+
+    if dead_symbols or stale_docs:
+        gc_agent = GarbageCollectorAgent(model="claude-3-7-sonnet")
+        cleanup_plan = await gc_agent.propose_prune(dead_symbols, stale_docs)
+        
+        # Dispatch to 3-layer verifier before staging
+        verification = await gc_agent.verify_cleanup(cleanup_plan)
+        if verification.passed:
+            await gc_agent.submit_maintenance_pr(cleanup_plan)
+```
+
+Running entropy passes every 24 hours prevents autonomous codebases from decaying into "AI slop."
+
+---
+
+## 5. Empirical Performance Across Tasks
+
+The ablation studio below shows how closing the loop with automated supervision and halting controls transforms reliability across diverse task categories:
+
+<HarnessAblationStudio />
+
+---
+
+<NotebookCallout title="Track Complete">
+You have mastered the foundational pillars of Harness Engineering. Return to the **[Harness Engineering Roadmap](/docs/harness-engineering/roadmap)** or dive into building your own sandboxed agent loop.
+</NotebookCallout>

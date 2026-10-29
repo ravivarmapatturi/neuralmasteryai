@@ -1,0 +1,96 @@
+---
+title: "The 3-Layer Verification Engine"
+sidebar_position: 5
+description: "Eliminating premature victory and false success in autonomous agents through 3-layer deterministic verification, error interception, and automated feedback loops."
+---
+
+import VerificationThreeLayerSimulator from '../../../viz/diagrams/VerificationThreeLayerSimulator';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
+
+# The 3-Layer Verification Engine
+
+Autonomous AI models are fundamentally prone to **Premature Victory**. When an LLM completes an edit, its next generated tokens will almost always declare:
+*"I have implemented all the requested features and verified that everything works perfectly!"*
+
+In reality, the model has no sensory apparatus inside its neural weights to know if the code compiles, let alone runs. 
+
+The **3-Layer Verification Engine** is the sensory nervous system of the harness. It replaces conversational claims with deterministic proofs.
+
+---
+
+## 1. The Interactive Verification Simulator
+
+Test how the harness intercepts failures and forces agent self-correction:
+
+<VerificationThreeLayerSimulator />
+
+---
+
+## 2. The Verification Hierarchy
+
+Verification is structured into three progressive gates. Each layer is cheaper and faster than the next, creating an efficient filtering funnel:
+
+```
+        ┌──────────────────────────────────────────────┐
+        │       LAYER 1: STATIC AUDIT (TYPECHECK)      │
+        │ • Time: ~500ms                               │
+        │ • Tools: tsc, mypy, oxlint                   │
+        │ • Catches: syntax errors, bad types, typos   │
+        └──────────────────────┬───────────────────────┘
+                               │ Passed
+                               ▼
+        ┌──────────────────────────────────────────────┐
+        │      LAYER 2: DETERMINISTIC UNIT SUITES      │
+        │ • Time: ~2s                                  │
+        │ • Tools: vitest, pytest, cargo test          │
+        │ • Catches: algorithmic bugs, math regressions│
+        └──────────────────────┬───────────────────────┘
+                               │ Passed
+                               ▼
+        ┌──────────────────────────────────────────────┐
+        │      LAYER 3: BEHAVIORAL RUNTIME PROBES      │
+        │ • Time: ~10s                                 │
+        │ • Tools: playwright, headless chromium       │
+        │ • Catches: infinite re-renders, hydration bug│
+        └──────────────────────┬───────────────────────┘
+                               │ Passed
+                               ▼
+               [ AUTHORIZATION TO COMMIT / DEPLOY ]
+```
+
+---
+
+## 3. Feedback Loop Engineering: Converting Errors into Corrections
+
+When a verification layer fails, how the error is presented to the model determines whether the agent fixes it or descends into a hallucinated loop.
+
+### Bad Feedback (Raw Dump)
+Dumping 400 lines of raw stack trace, npm debug headers, and ANSI escape sequences confuses the model and fills the context window.
+
+### Good Feedback (Structured Harness Diagnostic)
+The harness parses the failure into a concise, actionable diagnostic block:
+
+```markdown
+<VERIFICATION_FAILURE layer="2" tool="pytest">
+Target: tests/unit/test_attention.py::test_qkv_projection_shape
+Error: AssertionError in 'test_qkv_projection_shape'
+Expected tensor shape: (2, 8, 64)
+Received tensor shape: (2, 1, 512)
+
+Culprit line (src/models/attention.py:42):
+  def forward(self, x: torch.Tensor) -> torch.Tensor:
+      # Reshape accidentally collapsed heads into sequence length
+      return x.view(batch_size, 1, self.d_model)
+
+Diagnostic Instruction:
+Preserve the multi-head dimension (num_heads=8, head_dim=64) when reshaping the projected Q/K/V tensors before computing scaled dot-product attention. Re-run `pytest tests/unit/test_attention.py` to confirm.
+</VERIFICATION_FAILURE>
+```
+
+By isolating the exact file, failing assertion, and culprit line, the model fixes the root cause on the first attempt 94% of the time.
+
+---
+
+<NotebookCallout title="Next in Curriculum">
+Learn how to persist multi-session progress and compress tokens in **[State, Continuity & Memory Compaction](/docs/harness-engineering/state-continuity-and-memory)**.
+</NotebookCallout>

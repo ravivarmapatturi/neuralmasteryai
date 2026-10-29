@@ -1,0 +1,103 @@
+---
+title: "Harness Engineering — Roadmap"
+sidebar_position: 1
+description: "The complete curriculum for AI Harness Engineering in Python: turning raw LLM reasoning into autonomous production systems through OpenAI's Codex patterns, Anthropic's long-running agent harnesses, and deterministic 3-layer verification."
+---
+
+import AgentHarnessArchitectureVisualizer from '../../../viz/diagrams/AgentHarnessArchitectureVisualizer';
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
+
+# Python Harness Engineering — Roadmap
+
+Raw foundation models are stochastic next-token predictors. Left on their own in an open prompt loop, even frontier models hit severe pathologies: **premature victory** (claiming success without verifying), **context rot & context anxiety** (rushing or degrading as context fills), and **unbounded blast radius** (mutating production state).
+
+**Harness Engineering** is the technical discipline that closes the loop:
+
+$$\text{Agent} = \text{Model} + \text{Harness}$$
+
+While the model acts as the reasoning engine, the **harness** is the cybernetic chassis: it provides the instruction boundaries (`AGENTS.md`), the sandboxed execution environment, the automated multi-layer verification sensors, and the state compaction engine.
+
+> **Why Python Native?** Early developer tutorials (such as *Hands-On Harness Engineering*) introduced harnesses through Node.js and TypeScript CLI tooling. However, the production frontier of AI engineering—PyTorch models, tensor kernels, vLLM serving, LangGraph agents, evaluation suites, and Pyodide sandboxes—is **overwhelmingly Python-native**. In this track, we engineer the complete reference harness in modern Python (Python 3.12+, Pydantic v2, pytest, ruff, mypy, and asyncio), synthesizing foundational research from **OpenAI** (*"Harness engineering: leveraging Codex in an agent-first world"*), **Anthropic** (*"Effective harnesses for long-running agents"* and *"Harness design for long-running application development"*), and the **Awesome Harness Engineering** community.
+
+<AgentHarnessArchitectureVisualizer />
+
+<ELI5>
+
+Think of an LLM like an incredibly powerful Formula 1 engine. If you leave that engine sitting on the garage floor and pour fuel into it, it makes deafening noise and spins at 15,000 RPM, but it cannot steer, brake, or win a race. 
+
+The **Harness** is the car built around that engine: the chassis, steering wheel, hydraulic brakes, telemetry sensors, and roll cage. The engine doesn't decide where to go or verify whether it stayed on the track—the harness guides it, limits its speed around corners, catches errors before a crash, and drives lap after lap reliably.
+
+</ELI5>
+
+---
+
+## The Curriculum Track
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                 PYTHON HARNESS ENGINEERING CURRICULUM                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                       │
+         ┌─────────────────────────────┼─────────────────────────────┐
+         ▼                             ▼                             ▼
+┌─────────────────┐           ┌─────────────────┐           ┌─────────────────┐
+│  1. Foundations │           │ 2. Python       │           │ 3. 3-Layer      │
+│  & Architecture │           │    Sandboxing   │           │    Verification │
+│  [Overview]     │           │ [pyharness]     │           │ [Ruff/Mypy/Test]│
+└─────────────────┘           └─────────────────┘           └─────────────────┘
+         │                             │                             │
+         └─────────────────────────────┼─────────────────────────────┘
+                                       ▼
+         ┌───────────────────────────────────────────────────────────┐
+         ▼                                                           ▼
+┌─────────────────────────────────┐         ┌─────────────────────────────────┐
+│     4. Context Architecture     │         │    5. State Continuity & Loops  │
+│  AGENTS.md & Instruction Budget │         │    Anthropic Triad & FeatureList│
+└─────────────────────────────────┘         └─────────────────────────────────┘
+```
+
+### 1. [Python Harness Engineering Overview](/docs/harness-engineering/overview)
+- The core formula: $\text{Agent} = \text{Model} + \text{Harness}$.
+- Why prompt engineering fails for autonomous agents: premature victory, context rot, and context anxiety.
+- OpenAI's 1-million-line experiment: building software where humans write zero lines of code.
+- Interactive system architecture: Naked Model vs Full Production Harness.
+- Empirical ablation studies: Task completion shifts from 14% to 92%.
+
+### 2. [Harness Architecture & Python Sandboxing](/docs/harness-engineering/harness-architecture)
+- The outer execution loop: context assembly, model invocation, tool dispatch, verification, state update.
+- Sandboxing boundaries in Python: `asyncio.subprocess`, `resource.setrlimit`, MicroVMs, and timeout caps.
+- Dangerous command interception and blast-radius control.
+- Structured tool protocols (Pydantic v2 schemas, strict type enforcement, error interception).
+
+### 3. [Context & Instruction Architecture: AGENTS.md](/docs/harness-engineering/context-and-instruction-design)
+- The "Map vs Manual" rule from real-world agent environments.
+- Scoped instruction files: `AGENTS.md`, `CLAUDE.md`, and directory-level rules.
+- The 32k instruction budget: avoiding attention dispersion and context anxiety.
+- Progressive disclosure: dynamically loading Python skills and AST tools on demand.
+
+### 4. [The 3-Layer Verification Engine: Ruff, Mypy & Pytest](/docs/harness-engineering/verification-loops)
+- Eliminating Premature Victory: never trusting the model's claim of completion.
+- Layer 1: Static analysis (`ruff check .`, `mypy --strict`, AST validation).
+- Layer 2: Deterministic test execution (`pytest -v`, property testing with `hypothesis`).
+- Layer 3: Dynamic and behavioral verification (headless browsers, HTTP health probes, runtime invariants).
+- Injecting sensor feedback into next-turn model context for automated self-correction.
+
+### 5. [State Externalization & Memory Compaction](/docs/harness-engineering/state-continuity-and-memory)
+- Anthropic's state-externalization pattern: `feature_list.json`, rolling `progress.txt`, and git diff snapshots.
+- Working memory vs episodic memory vs persistent state artifacts.
+- Multi-session continuity: surviving process restarts, subagent delegation, and crashes.
+- Context compaction algorithms in Python: resetting 120k tokens of churn to 8k tokens of clean state.
+
+### 6. [Autonomous Goal Loops, Triads & Entropy Maintenance](/docs/harness-engineering/autonomous-loops-and-supervisors)
+- Goal loops vs single-turn Q&A loops.
+- Halting conditions: budget caps, cycle detection, convergence triggers.
+- The Multi-Agent Triad (Planner-Generator-Evaluator): isolating execution agents from auditor agents.
+- Background entropy and garbage collection agents (OpenAI pattern): continuously pruning stale code and docs.
+- Trajectory logging (`transcript.jsonl`), telemetry, and security monitoring.
+
+---
+
+<NotebookCallout title="The Harness Engineer's Creed">
+"The model is a rented commodity; the harness is the enterprise asset. Do not spend your career fine-tuning prompts to coax a stochastic model into good behavior. Build the deterministic harness that makes bad behavior impossible."
+</NotebookCallout>

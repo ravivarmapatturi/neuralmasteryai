@@ -1,0 +1,128 @@
+---
+title: "State, Continuity & Memory Compaction"
+sidebar_position: 6
+description: "Managing working memory, multi-session task persistence, structured feature checklists, and token compaction algorithms for long-running AI agents."
+---
+
+import ContextCompactionVisualizer from '../../../viz/diagrams/ContextCompactionVisualizer';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
+
+# State, Continuity & Memory Compaction
+
+A typical production engineering task requires 15 to 40 distinct tool invocations across multiple hours. If an agent process crashes, restarts, or switches context, how does it know what was already done and what remains?
+
+In naked model architectures, a restarted session begins with total amnesia. The agent inspects files it already edited, re-implements already finished modules, or accidentally reverts its own work.
+
+This chapter details how an engineering harness manages working memory, structured persistence, and context compaction.
+
+---
+
+## 1. The Context Compaction Pipeline
+
+Inspect how a harness compresses tens of thousands of tokens of accumulated logs while preserving 100% of the active task state:
+
+<ContextCompactionVisualizer />
+
+---
+
+## 2. Anthropic's State-Externalization Pattern: `feature_list.json`
+
+In Anthropic's research on long-running application development, agents that rely on conversational memory inevitably suffer from **amnesia** or **context anxiety**.
+
+The solution is the **State-Externalization Pattern**: keeping task state outside the volatile LLM context window in structured on-disk files:
+
+```json
+{
+  "task": "build-python-attention-kernel",
+  "version": "1.0.0",
+  "checklist": [
+    {
+      "id": "qkv_projection",
+      "label": "Implement Q/K/V linear projections with PyTorch",
+      "status": "passed",
+      "tests": ["pytest tests/unit/test_attention.py::test_qkv_shapes"]
+    },
+    {
+      "id": "causal_masking",
+      "label": "Generate autoregressive lower-triangular causal mask",
+      "status": "passed",
+      "tests": ["pytest tests/unit/test_attention.py::test_causal_mask"]
+    },
+    {
+      "id": "flash_attention_kernel",
+      "label": "Tiled online softmax kernel with Triton / PyTorch C++",
+      "status": "in_progress",
+      "tests": ["pytest tests/unit/test_flash.py"]
+    },
+    {
+      "id": "fastapi_serving_endpoint",
+      "label": "FastAPI streaming inference route with healthcheck",
+      "status": "pending",
+      "tests": ["pytest tests/e2e/test_api.py"]
+    }
+  ],
+  "active_working_files": [
+    "src/models/flash_attention.py",
+    "tests/unit/test_flash.py"
+  ]
+}
+```
+
+Alongside `feature_list.json`, the harness maintains a rolling human-readable `progress.txt` capturing high-level engineering notes.
+
+### Why Structured Checklists Win
+
+1. **Deterministic Recovery**: If the agent's process is killed mid-task, the new turn reads `feature_list.json` and immediately resumes the first pending item without re-discovering the codebase.
+2. **Ground Truth Over Narrative**: The model cannot convince itself that task 4 is done if the JSON array marks it `"pending"`.
+3. **Subagent Delegation**: A supervisor agent can partition the checklist into isolated subtasks, dispatching them to parallel worker harnesses.
+
+---
+
+## 3. Python Memory Compaction Implementation
+
+Below is a production compaction algorithm in Python using `tiktoken`:
+
+```python
+import tiktoken
+from pydantic import BaseModel
+
+class TurnMessage(BaseModel):
+    role: str
+    content: str
+    is_tool_output: bool = False
+
+def compact_conversation_history(
+    messages: list[TurnMessage],
+    max_tokens: int = 24_000,
+    model_name: str = "cl100k_base",
+) -> list[TurnMessage]:
+    """Compacts old tool churn into structured state, keeping token budget optimal."""
+    enc = tiktoken.get_encoding(model_name)
+    total_tokens = sum(len(enc.encode(m.content)) for m in messages)
+    
+    if total_tokens <= max_tokens:
+        return messages
+
+    # Phase 1: Prune verbose tool outputs older than the last 3 turns
+    pruned: list[TurnMessage] = []
+    recent_threshold = len(messages) - 6
+    
+    for idx, msg in enumerate(messages):
+        if idx < recent_threshold and msg.is_tool_output:
+            # Replace 5,000-line tool outputs with a 1-line semantic marker
+            pruned.append(TurnMessage(
+                role=msg.role,
+                content="[Tool execution succeeded; verified by harness sensor]",
+                is_tool_output=True,
+            ))
+        else:
+            pruned.append(msg)
+            
+    return pruned
+```
+
+---
+
+<NotebookCallout title="Next in Curriculum">
+Learn how autonomous agents govern multi-step execution in **[Autonomous Loops & Supervisors](/docs/harness-engineering/autonomous-loops-and-supervisors)**.
+</NotebookCallout>
