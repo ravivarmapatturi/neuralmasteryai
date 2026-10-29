@@ -63,20 +63,17 @@ export default function BlogPostPage() {
 
   const date = filePost?.date ?? stored?.date;
   const minutes = filePost?.readingMinutes ?? readingMinutes(stored!.body);
+  const tags = filePost?.tags ?? stored?.tags ?? [];
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--nm-bg)' }}>
       <Navbar />
+      <ReadingProgress articleRef={articleRef} />
       <main className="nm-blog-shell">
         <div className="nm-post-grid">
           <div className="nm-post-main">
-            <p
-              style={{
-                margin: '0 0 0.5rem',
-                fontSize: 14,
-                color: 'var(--nm-text-muted)',
-              }}
-            >
+            <header className="nm-post-header">
+              <p className="nm-post-eyebrow">
               <Link to="/blog" style={{ color: 'var(--nm-accent-primary)' }}>
                 Blog
               </Link>
@@ -91,12 +88,16 @@ export default function BlogPostPage() {
                   </Link>
                 </>
               )}
-            </p>
-            {(filePost?.tags ?? stored?.tags ?? []).length > 0 && (
-              <div style={{ margin: '0 0 1.25rem' }}>
-                <TagList tags={filePost?.tags ?? stored?.tags ?? []} variant="inline" />
-              </div>
-            )}
+              </p>
+              {tags.length > 0 && (
+                <div className="nm-post-tags">
+                  <TagList tags={tags.slice(0, 3)} variant="inline" />
+                </div>
+              )}
+              <h1 className="nm-post-title">{title}</h1>
+              {description && <p className="nm-post-standfirst">{description}</p>}
+              <div className="nm-post-author"><span className="nm-post-author-mark">RV</span><span><strong>Ravi Varma Patturi</strong><small>Neural Mastery · technical field notes</small></span></div>
+            </header>
             {series && <BlogSeriesBox {...series} variant="inline" />}
             <article className="prose" ref={articleRef}>
               {Component ? (
@@ -146,6 +147,24 @@ export default function BlogPostPage() {
       </main>
     </div>
   );
+}
+
+function ReadingProgress({ articleRef }: { articleRef: React.RefObject<HTMLElement | null> }) {
+  const [progress, setProgress] = useState(0);
+  useEffect(() => {
+    const update = () => {
+      const article = articleRef.current;
+      if (!article) return;
+      const start = article.getBoundingClientRect().top + window.scrollY - 120;
+      const total = Math.max(article.offsetHeight - window.innerHeight, 1);
+      setProgress(Math.max(0, Math.min(100, ((window.scrollY - start) / total) * 100)));
+    };
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => { window.removeEventListener('scroll', update); window.removeEventListener('resize', update); };
+  }, [articleRef]);
+  return <div className="nm-reading-progress" aria-hidden="true"><span style={{ width: `${progress}%` }} /></div>;
 }
 
 /** End-of-post "Mark as read": earns BLOG_READ_POINTS once per post, through

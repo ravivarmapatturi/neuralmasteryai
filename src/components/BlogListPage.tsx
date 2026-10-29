@@ -69,15 +69,23 @@ export default function BlogListPage() {
   const allTags = [...new Set(rows.flatMap((row) => row.tags))].sort((a, b) => a.localeCompare(b));
 
   const featured = activeTag ? [] : BLOG_SERIES.filter((series) => getSeriesPosts(series.slug).length > 0);
+  const latest = shown[0];
+  const remaining = latest ? shown.slice(1) : shown;
 
   return (
     <div className="nb-theme" style={{ minHeight: '100vh' }}>
       <Navbar />
       <main className="nm-blog-shell">
-        <header className="nm-blog-header">
-          <div>
-            <h1 className="nb-heading">Blog</h1>
-            <p>Posts on new AI releases and longer series on how real systems work, explained from the ideas they build on.</p>
+        <header className="nm-blog-header nm-blog-hero">
+          <div className="nm-blog-hero-copy">
+            <p className="nm-blog-eyebrow">Neural Mastery / Field notes</p>
+            <h1 className="nb-heading">The thinking behind the machines.</h1>
+            <p>Clear, practical essays on AI releases, agent systems, and the ideas that make modern models work.</p>
+            <div className="nm-blog-stats" aria-label="Blog stats">
+              <span><strong>{rows.length}</strong> essays</span>
+              <span><strong>{allTags.length}</strong> topics</span>
+              <span><strong>{BLOG_SERIES.length}</strong> series</span>
+            </div>
           </div>
           {isAdmin && (
             <Link to="/blog/write" className="nm-button nm-button-primary" style={{ background: 'var(--nb-cobalt)' }}>
@@ -90,6 +98,7 @@ export default function BlogListPage() {
           <div className="nm-blog-main">
             {featured.map((series) => {
               const parts = getSeriesPosts(series.slug);
+              const representative = parts.length > 3 ? [parts[0], parts[Math.floor(parts.length / 2)], parts[parts.length - 1]] : parts;
               return (
                 <section key={series.slug} className="nm-blog-feature" aria-label={`${series.title} series`}>
                   <p className="nm-blog-kicker">
@@ -99,13 +108,15 @@ export default function BlogListPage() {
                     <Link to={`/blog/${parts[0].slug}`}>{series.title}</Link>
                   </h2>
                   <p className="nm-blog-feature-desc">{series.description}</p>
+                  <div className="nm-series-summary"><span className="nm-series-dot" aria-hidden="true" /><strong>{parts.length === series.plannedParts.length ? 'Complete guide' : 'In progress'}</strong><span>{parts.length} chapters · read in order</span></div>
                   <ol>
-                    {parts.map((post) => (
+                    {representative.map((post) => (
                       <li key={post.slug}>
                         <Link to={`/blog/${post.slug}`}>{series.plannedParts[(post.part ?? 1) - 1]}</Link>
                       </li>
                     ))}
                   </ol>
+                  {parts.length > representative.length && <p className="nm-series-more-label">Showing 3 representative chapters · <Link to={`/blog/${parts[0].slug}`}>explore the series →</Link></p>}
                 </section>
               );
             })}
@@ -118,8 +129,20 @@ export default function BlogListPage() {
             {shown.length === 0 ? (
               <p className="nb-body">{activeTag ? `No posts tagged "${activeTag}" yet.` : 'No posts yet.'}</p>
             ) : (
-              <ol className="nm-blog-list">
-                {shown.map((post) => (
+              <>
+                {latest && !activeTag && (
+                  <article className="nm-blog-latest">
+                    <div className="nm-blog-latest-art" aria-hidden="true"><span>NM</span></div>
+                    <div className="nm-blog-latest-body">
+                      <p className="nm-blog-kicker">Latest essay · {latest.readingMinutes} min read</p>
+                      <h2><Link to={latest.draft ? `/blog/write/${latest.slug}` : `/blog/${latest.slug}`}>{latest.title}</Link></h2>
+                      {latest.description && <p className="nm-blog-desc">{latest.description}</p>}
+                      <Link className="nm-blog-read-link" to={latest.draft ? `/blog/write/${latest.slug}` : `/blog/${latest.slug}`}>Read the essay <span aria-hidden="true">→</span></Link>
+                    </div>
+                  </article>
+                )}
+                <ol className="nm-blog-list">
+                {remaining.map((post) => (
                   <li key={post.slug}>
                     <p className="nm-blog-date">
                       {post.draft ? 'Draft' : post.date ? formatPostDate(post.date) : ''}
@@ -134,7 +157,8 @@ export default function BlogListPage() {
                     </div>
                   </li>
                 ))}
-              </ol>
+                </ol>
+              </>
             )}
           </div>
 
