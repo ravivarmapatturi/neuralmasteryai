@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useFocusMusic } from '../../contexts/FocusMusicContext';
+import { FOCUS_TRACKS } from '../../data/focusTracks';
 
 interface FocusMusicPopoverProps {
   isOpen: boolean;
@@ -12,11 +13,13 @@ export default function FocusMusicPopover({ isOpen, onClose }: FocusMusicPopover
     playing,
     volume,
     currentTrack,
+    play,
     toggle,
     setVolume,
     setEnabled,
     nextTrack,
     previousTrack,
+    setTrackById,
   } = useFocusMusic();
 
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -59,7 +62,7 @@ export default function FocusMusicPopover({ isOpen, onClose }: FocusMusicPopover
     >
       <div className="nm-focus-popover-header">
         <div className="nm-focus-title-group">
-          <span className="nm-focus-eyebrow">FOCUS MODE</span>
+          <span className="nm-focus-eyebrow">FOCUS MODE · LO-FI & CHILL</span>
           <h4 className="nm-focus-track-title">{currentTrack.title}</h4>
           <span className="nm-focus-track-artist">{currentTrack.artist}</span>
         </div>
@@ -74,7 +77,7 @@ export default function FocusMusicPopover({ isOpen, onClose }: FocusMusicPopover
       </div>
 
       <p className="nm-focus-microcopy">
-        Ambient sound for deep learning.
+        {currentTrack.description}
       </p>
 
       {/* Transport Controls */}
@@ -124,6 +127,31 @@ export default function FocusMusicPopover({ isOpen, onClose }: FocusMusicPopover
           className="nm-focus-vol-slider"
         />
         <span className="nm-focus-vol-pct">{volumePct}%</span>
+      </div>
+
+      {/* 4 Curated Study Stations */}
+      <div className="nm-focus-station-list">
+        <span className="nm-focus-station-label">STUDY & CHILL TRACKS</span>
+        {FOCUS_TRACKS.map((t) => {
+          const isSelected = t.id === currentTrack.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              className={`nm-focus-station-item ${isSelected ? 'is-active' : ''}`}
+              onClick={() => {
+                setTrackById(t.id);
+                if (!playing) play();
+              }}
+            >
+              <div className="nm-station-info">
+                <strong>{t.title}</strong>
+                <span>{t.durationEstimate}</span>
+              </div>
+              {isSelected && <span className="nm-station-dot">{playing ? '▶ Playing' : 'Selected'}</span>}
+            </button>
+          );
+        })}
       </div>
 
       {/* Focus Music Toggle Switch (Persistent Preference) */}

@@ -4,7 +4,6 @@ import LiveComputation from './home/LiveComputation';
 import { LiveStatsTicker } from './home/LiveStats';
 import AgentGraphSketch from './notebook/AgentGraphSketch';
 import { SketchUnderline } from './notebook/RoughShape';
-import HomeBlogPreview from './home/HomeBlogPreview';
 import { getFlatPages, getPracticeProblems } from '../lib/contentTree';
 import { SECTION_META, SECTION_ORDER, groupLandingRoute, groupPageRoutes } from '../data/sectionMeta';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
@@ -149,9 +148,6 @@ export default function ChooserPage() {
             </div>
           </div>
         </section>
-
-        {/* Section 4: Editorial Notebook & Series Preview */}
-        <HomeBlogPreview />
 
       </main>
     </div>

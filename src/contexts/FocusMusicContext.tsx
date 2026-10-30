@@ -22,6 +22,7 @@ interface FocusMusicContextType {
   setEnabled: (val: boolean) => void;
   nextTrack: () => void;
   previousTrack: () => void;
+  setTrackById: (id: string) => void;
 }
 
 const STORAGE_KEY_ENABLED = 'nm_focus_music_enabled';
@@ -43,6 +44,7 @@ const defaultContextValue: FocusMusicContextType = {
   setEnabled: () => {},
   nextTrack: () => {},
   previousTrack: () => {},
+  setTrackById: () => {},
 };
 
 const FocusMusicContext = createContext<FocusMusicContextType | null>(null);
@@ -233,6 +235,16 @@ export function FocusMusicProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const setTrackById = useCallback((id: string) => {
+    const idx = FOCUS_TRACKS.findIndex((t) => t.id === id);
+    if (idx !== -1) {
+      setTrackIndex(idx);
+      try {
+        localStorage.setItem(STORAGE_KEY_TRACK, id);
+      } catch {}
+    }
+  }, []);
+
   // Setup Media Session Action Handlers
   useEffect(() => {
     if (typeof window === 'undefined' || !('mediaSession' in navigator)) return;
@@ -312,6 +324,7 @@ export function FocusMusicProvider({ children }: { children: ReactNode }) {
         setEnabled,
         nextTrack,
         previousTrack,
+        setTrackById,
       }}
     >
       {children}
