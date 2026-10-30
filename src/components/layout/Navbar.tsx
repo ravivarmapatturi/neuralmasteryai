@@ -6,6 +6,7 @@ import AuthButton from './AuthButton';
 import StreakBadge from './StreakBadge';
 import { MoonIcon, SidebarIcon, SunIcon } from '../icons/UiIcons';
 import BrandMark from '../brand/BrandMark';
+import FocusMusicControl from '../focus-music/FocusMusicControl';
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform ?? navigator.userAgent);
 const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -206,6 +207,7 @@ export default function Navbar({
           >
             Progress
           </Link>
+          <FocusMusicControl />
           <button
             type="button"
             onClick={() => setSearchOpen(true)}
@@ -314,6 +316,9 @@ export default function Navbar({
                 {item.label}
               </Link>
             ))}
+            <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--nm-border)' }}>
+              <FocusMusicControl />
+            </div>
           </nav>
         </>
       )}

@@ -5,6 +5,7 @@ import { ThemeProvider } from './theme/ThemeProvider';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProgressProvider } from './contexts/ProgressContext';
 import { GamificationProvider } from './contexts/GamificationContext';
+import { FocusMusicProvider } from './contexts/FocusMusicContext';
 import DocLayout from './components/layout/DocLayout';
 import PracticeProblemLayout from './components/layout/PracticeProblemLayout';
 import ChooserPage from './components/ChooserPage';
@@ -14,6 +15,7 @@ import PracticeTrackPage from './components/PracticeTrackPage';
 import ProgressPage from './components/ProgressPage';
 import BlogListPage from './components/BlogListPage';
 import BlogPostPage from './components/BlogPostPage';
+import BlogSeriesPage from './components/BlogSeriesPage';
 import BlogEditorPage from './components/BlogEditorPage';
 import ProfilePage from './components/ProfilePage';
 import LeaderboardPage from './components/LeaderboardPage';
@@ -52,8 +54,9 @@ export default function App() {
       <AuthProvider>
         <ProgressProvider>
           <GamificationProvider>
-            <ConfettiCanvas />
-            <MDXProvider components={mdxComponents}>
+            <FocusMusicProvider>
+              <ConfettiCanvas />
+              <MDXProvider components={mdxComponents}>
 
               {/* Reads Vite's own BASE_URL (derived from vite.config.ts's
                   `base`) instead of a second hardcoded copy of the same
@@ -74,6 +77,7 @@ export default function App() {
                       <Route path="/practice/track/:topicSlug" element={<PracticeTrackPage />} />
                       <Route path="/practice/:slug" element={<PracticeProblemLayout />} />
                       <Route path="/blog" element={<BlogListPage />} />
+                      <Route path="/blog/series/:seriesSlug" element={<BlogSeriesPage />} />
                       <Route path="/blog/write" element={<BlogEditorPage />} />
                       <Route path="/blog/write/:slug" element={<BlogEditorPage />} />
                       <Route path="/blog/:slug" element={<BlogPostPage />} />
@@ -93,7 +97,8 @@ export default function App() {
                 </div>
               </BrowserRouter>
             </MDXProvider>
-          </GamificationProvider>
+          </FocusMusicProvider>
+        </GamificationProvider>
         </ProgressProvider>
       </AuthProvider>
     </ThemeProvider>

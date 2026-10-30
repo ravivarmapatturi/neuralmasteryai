@@ -8,6 +8,7 @@ import { listAllPosts, listPublishedPosts, readingMinutes, useIsAdmin, type Stor
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useDocumentMeta } from '../lib/useDocumentMeta';
 import BlogCover from './BlogCover';
+import NetflixSeriesCarousel from './NetflixSeriesCarousel';
 
 interface Row {
   slug: string;
@@ -17,6 +18,8 @@ interface Row {
   readingMinutes: number;
   draft: boolean;
   tags: string[];
+  series?: string | null;
+  part?: number | null;
 }
 
 function fromStored(post: StoredPost): Row {
@@ -28,6 +31,8 @@ function fromStored(post: StoredPost): Row {
     readingMinutes: readingMinutes(post.body),
     draft: post.status !== 'published',
     tags: post.tags,
+    series: null,
+    part: null,
   };
 }
 
@@ -63,6 +68,8 @@ export default function BlogListPage() {
       readingMinutes: p.readingMinutes,
       draft: false,
       tags: p.tags,
+      series: p.series,
+      part: p.part,
     })),
     ...stored.map(fromStored),
   ].sort((a, b) => Number(b.draft) - Number(a.draft) || (b.date ?? '').localeCompare(a.date ?? ''));
@@ -99,26 +106,10 @@ export default function BlogListPage() {
           <div className="nm-blog-main">
             {featured.map((series) => {
               const parts = getSeriesPosts(series.slug);
-              const representative = parts.length > 3 ? [parts[0], parts[Math.floor(parts.length / 2)], parts[parts.length - 1]] : parts;
               return (
-                <section key={series.slug} className="nm-blog-feature" aria-label={`${series.title} series`}>
-                  <p className="nm-blog-kicker">
-                    Series · {parts.length} of {series.plannedParts.length} parts published
-                  </p>
-                  <h2>
-                    <Link to={`/blog/${parts[0].slug}`}>{series.title}</Link>
-                  </h2>
-                  <p className="nm-blog-feature-desc">{series.description}</p>
-                  <div className="nm-series-summary"><span className="nm-series-dot" aria-hidden="true" /><strong>{parts.length === series.plannedParts.length ? 'Complete guide' : 'In progress'}</strong><span>{parts.length} chapters · read in order</span></div>
-                  <ol>
-                    {representative.map((post) => (
-                      <li key={post.slug}>
-                        <Link to={`/blog/${post.slug}`}>{series.plannedParts[(post.part ?? 1) - 1]}</Link>
-                      </li>
-                    ))}
-                  </ol>
-                  {parts.length > representative.length && <p className="nm-series-more-label">Showing 3 representative chapters · <Link to={`/blog/${parts[0].slug}`}>explore the series →</Link></p>}
-                </section>
+                <div key={series.slug} className="nm-blog-featured-wrap">
+                  <NetflixSeriesCarousel series={series} parts={parts} />
+                </div>
               );
             })}
 
@@ -144,17 +135,33 @@ export default function BlogListPage() {
                 )}
                 <ol className="nm-blog-list">
                 {remaining.map((post) => (
-                  <li key={post.slug}>
-                    <p className="nm-blog-date">
-                      {post.draft ? 'Draft' : post.date ? formatPostDate(post.date) : ''}
-                      <span>{post.readingMinutes} min read</span>
-                    </p>
-                    <div>
+                  <li key={post.slug} className="nm-blog-list-item">
+                    <Link
+                      to={post.draft ? `/blog/write/${post.slug}` : `/blog/${post.slug}`}
+                      className="nm-blog-item-media"
+                      tabIndex={-1}
+                      aria-hidden="true"
+                    >
+                      <BlogCover slug={post.slug} series={post.series} className="nm-blog-item-cover" />
+                    </Link>
+                    <div className="nm-blog-item-content">
+                      <div className="nm-blog-meta-strip">
+                        {post.series ? (
+                          <span className="nm-blog-card-series-pill">
+                            HOW US HEALTHCARE WORKS · PART {post.part} / 18
+                          </span>
+                        ) : (
+                          <span className="nm-blog-card-category-pill">ESSAY</span>
+                        )}
+                        <span className="nm-blog-date">
+                          {post.draft ? 'Draft' : post.date ? formatPostDate(post.date) : ''} · {post.readingMinutes} min read
+                        </span>
+                      </div>
                       <h2>
                         <Link to={post.draft ? `/blog/write/${post.slug}` : `/blog/${post.slug}`}>{post.title}</Link>
                       </h2>
                       {post.description && <p className="nm-blog-desc">{post.description}</p>}
-                      {post.tags.length > 0 && <TagList tags={post.tags} active={activeTag} variant="inline" />}
+                      {post.tags.length > 0 && <TagList tags={post.tags.slice(0, 3)} active={activeTag} variant="inline" />}
                     </div>
                   </li>
                 ))}
@@ -183,7 +190,7 @@ export default function BlogListPage() {
                   const parts = getSeriesPosts(series.slug);
                   return (
                     <li key={series.slug}>
-                      {parts.length > 0 ? <Link to={`/blog/${parts[0].slug}`}>{series.title}</Link> : series.title}
+                      <Link to={`/blog/series/${series.slug}`}>{series.title}</Link>
                       <span>
                         {parts.length} of {series.plannedParts.length} parts
                       </span>
