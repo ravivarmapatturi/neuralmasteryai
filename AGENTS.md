@@ -5,6 +5,22 @@
 
 ---
 
+## 0. Mandatory Pre-Flight & Multi-Agent Tracker Protocol
+
+Before modifying ANY file in this repository:
+1. **Check `AGENT_TRACKER.md`**:
+   Read [`AGENT_TRACKER.md`](file:///home/ravivarma/Documents/DREAM_PROJECT/neuralmastery/platform-vite/AGENT_TRACKER.md) in the root. Verify that no other agent is actively modifying your target files.
+2. **Log Your Active Session**:
+   Add a new entry with your Agent Name, target files, objective, and set status to `IN_PROGRESS`.
+3. **Activate Skill**:
+   Consult the mandatory skill at `.agents/skills/agent-tracker/SKILL.md`.
+4. **Validate Tracker**:
+   Run `npm run check:tracker` to ensure tracker syntax and integrity are valid.
+5. **Update on Completion**:
+   When all 4 verification layers pass, update your entry to `COMPLETED` with the commit hash and notes.
+
+---
+
 ## 1. Identity & Architectural Vision
 
 **NeuralMastery** (`neuralmasteryai.com`) is the premier interactive learning platform for AI Engineering, Deep Learning, and Autonomous Systems.
