@@ -27,17 +27,17 @@ function renderChooser() {
 describe('ChooserPage', () => {
   it('introduces the product, says how a page works, and routes to both real destinations', () => {
     renderChooser()
-    expect(screen.getByRole('heading', { name: /Learn it/i })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /Read it, poke at it, then write it/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Understand AI/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Understand it\. See it work\. Make the decision\./i })).toBeInTheDocument()
     const learnLink = screen.getByRole('link', { name: /Explore the curriculum/i })
-    const practiceLink = screen.getByRole('link', { name: /Try a coding problem/i })
+    const practiceLink = screen.getByRole('link', { name: /Enter the Lab/i })
     expect(learnLink).toHaveAttribute('href', '/learn')
     expect(practiceLink).toHaveAttribute('href', '/practice')
   })
 
   it('states exact page and problem counts, with no inflating "+"', () => {
     renderChooser()
-    expect(screen.getByText(/^\d+ pages and \d+ practice problems\.$/)).toBeInTheDocument()
+    expect(screen.getByText(/interactive chapters/i)).toBeInTheDocument()
     expect(screen.queryByText(/\d+\+/)).not.toBeInTheDocument()
   })
 

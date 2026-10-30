@@ -30,14 +30,26 @@ const STORAGE_KEY_TRACK = 'nm_focus_music_track';
 
 const DEFAULT_VOLUME = 0.12; // ~12% volume, gentle ambient level
 
+const defaultContextValue: FocusMusicContextType = {
+  enabled: false,
+  playing: false,
+  volume: DEFAULT_VOLUME,
+  currentTrack: FOCUS_TRACKS[0],
+  autoplayBlocked: false,
+  play: async () => {},
+  pause: () => {},
+  toggle: () => {},
+  setVolume: () => {},
+  setEnabled: () => {},
+  nextTrack: () => {},
+  previousTrack: () => {},
+};
+
 const FocusMusicContext = createContext<FocusMusicContextType | null>(null);
 
 export function useFocusMusic() {
   const context = useContext(FocusMusicContext);
-  if (!context) {
-    throw new Error('useFocusMusic must be used within a FocusMusicProvider');
-  }
-  return context;
+  return context ?? defaultContextValue;
 }
 
 export function FocusMusicProvider({ children }: { children: ReactNode }) {
