@@ -1,0 +1,190 @@
+---
+title: "Continuous Batching & Speculative Decoding"
+sidebar_position: 4
+description: "High-throughput serving architectures: iteration-level continuous batching, the bubble latency trap, Speculative Decoding mathematical guarantees, and Tree Attention."
+---
+
+import SpeculativeDecodingSimulator from '../../../viz/diagrams/SpeculativeDecodingSimulator';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
+
+# Continuous Batching & Speculative Decoding
+
+In cloud AI serving, static request batching introduces catastrophic latency overheads: fast 10-token queries sit stranded in memory waiting for slow 1,000-token queries to finish, creating massive "inference bubbles" where GPUs burn energy transferring weights for half-empty batches.
+
+This chapter details the two core algorithmic breakthroughs that solve this bottleneck: **Continuous Batching** (iteration-level scheduling) and **Speculative Decoding** (draft-verify acceleration).
+
+<ELI5>
+
+Imagine a restaurant where the kitchen refuses to serve anyone at a table until every single person has finished dessert. If one guest orders a 7-course meal while others just wanted a coffee, everyone is trapped sitting at the table for two hours. That is **Static Batching**.
+
+**Continuous Batching** is a restaurant that brings the bill to the coffee drinker immediately, cleans the chair in 10 seconds, and seats a new guest right away, keeping every seat occupied at every minute.
+
+**Speculative Decoding** is a clever waiter who knows you always order coffee after dinner: they bring the cup out before you even ask. If you wanted coffee, you save 5 minutes. If you say no, they take it back and bring tea, with zero harm done.
+
+</ELI5>
+
+---
+
+## 1. The Bubble Problem in Static Batching
+
+In traditional deep learning serving (e.g. TorchServe, Triton dynamic batching), sequences are batched at the **Request Level**:
+
+```
+Static Batch (Request Level):
+Req 1 (3 tokens):   [Tok 1][Tok 2][Tok 3][PAD  ][PAD  ][PAD  ] (Trapped idle!)
+Req 2 (6 tokens):   [Tok 1][Tok 2][Tok 3][Tok 4][Tok 5][Tok 6] (Finishes batch)
+                       ▲                     ▲
+                       │                     │
+                Tokens Generated      Wasted Padding Bubbles
+```
+
+Because sequence lengths follow a long-tailed Pareto distribution, padding tokens consume up to **70% of execution time**.
+
+### Continuous Batching (Iteration-Level Scheduling)
+
+Introduced in the Orca paper (OSDI 2022) and popularized by vLLM, **Continuous Batching** operates at the granularity of individual forward pass iterations:
+
+```
+Iteration-Level Continuous Batching:
+Step 1:  [Req A (tok 1)] [Req B (tok 1)] [Req C (tok 4)]
+Step 2:  [Req A (tok 2)] [Req B (tok 2)] [Req C (tok 5)] -> Req B completes!
+Step 3:  [Req A (tok 3)] [Req D (prefill)] [Req C (tok 6)] -> Req D inserted!
+```
+
+Whenever a sequence emits an `<EOS>` (end of sentence) token, its physical memory is reclaimed, and a new waiting request's prefill or decode step is immediately scheduled in the very next iteration.
+
+---
+
+## 2. Speculative Decoding: Overcoming the Memory Bandwidth Bottleneck
+
+During autoregressive decoding, generating each token requires streaming every single model parameter from high-bandwidth memory (HBM) into on-chip cache. For a 70B parameter model in FP16, this means loading **140 GB across the memory bus for every single token**.
+
+**Speculative Decoding** (Leviathan et al., Chen et al.) overcomes this by converting memory-bandwidth bound generation into compute-bound verification:
+
+<SpeculativeDecodingSimulator />
+
+<PredictFirst
+  question="Why can the large target model verify K tokens in parallel in a single forward pass, while generating those same K tokens autoregressively would have required K sequential forward passes?"
+  options={[
+    "Because the target model uses an approximate heuristic that ignores attention masks.",
+    "Because during verification, all K candidate tokens and their positions are already known in advance, allowing the target model to process them as a single prompt matrix with causal masking (GEMM) in one pass.",
+    "Because speculative decoding disables layer normalization.",
+    "Because the draft model shares GPU registers with the target model."
+  ]}
+  correctIndex={1}
+  explanation="Autoregressive generation is sequential because token k+1 depends on the unknown token k. But during verification, the draft model has already guessed tokens 1 through K! The target model can therefore feed all K tokens into its causal attention matrix in parallel in one forward pass, paying the memory-read cost of its 140 GB weights exactly once."
+/>
+
+---
+
+## 3. Mathematical Proof: Exact Distributional Match
+
+A common misconception is that Speculative Decoding is an approximation technique that degrades model quality. **It does not.** The output probability distribution is mathematically identical to sampling directly from the target model.
+
+### The Modified Rejection Sampling Algorithm
+
+Let $p(x)$ be the probability distribution of the large target model, and $q(x)$ be the probability distribution of the small draft model.
+
+For each candidate token $x_i$ proposed by the draft model:
+
+1. Sample $r \sim U(0, 1)$.
+2. If $r \le \min\left(1, \frac{p(x_i)}{q(x_i)}\right)$, **ACCEPT** $x_i$.
+3. If $r > \min\left(1, \frac{p(x_i)}{q(x_i)}\right)$, **REJECT** $x_i$ and halt verification.
+4. Resample the replacement token from the normalized positive residual distribution:
+   $$p'(x) = \frac{\max(0, p(x) - q(x))}{\sum_y \max(0, p(y) - q(y))}$$
+
+<GoDeeper title="Go deeper: Mathematical proof that marginal distribution equals p(x)">
+
+Let $P(x)$ be the net probability that token $x$ is emitted by the combined draft-verify system:
+
+$$P(x) = q(x) \min\left(1, \frac{p(x)}{q(x)}\right) + \left(1 - \sum_y q(y) \min\left(1, \frac{p(y)}{q(y)}\right)\right) p'(x)$$
+
+Note that $q(x) \min\left(1, \frac{p(x)}{q(x)}\right) = \min(q(x), p(x))$.
+
+The probability of rejection is:
+$$1 - \sum_y \min(q(y), p(y)) = \sum_y (p(y) - \min(q(y), p(y))) = \sum_y \max(0, p(y) - q(y))$$
+
+Multiplying by $p'(x)$ cancels the denominator:
+$$P(x) = \min(q(x), p(x)) + \max(0, p(x) - q(x)) = p(x)$$
+
+**Conclusion**: The output distribution $P(x)$ is identically equal to $p(x)$! Speculative decoding is an **exact lossless acceleration**.
+
+</GoDeeper>
+
+---
+
+## 4. Tree Attention & Medusa Heads
+
+While standard Speculative Decoding drafts a linear sequence of $K$ tokens, modern production architectures expand the draft space into a tree structure:
+
+```
+Linear Draft:
+[Token 1] ───► [Token 2] ───► [Token 3] ───► [Token 4]
+
+Tree Attention (Medusa / EAGLE):
+                 ┌───► [Branch A: token 2a] ───► [Token 3a]
+[Token 1] ───────┤
+                 └───► [Branch B: token 2b] ───► [Token 3b]
+```
+
+Using custom **Tree Attention Masks**, the target model verifies multiple candidate paths simultaneously in a single forward pass, raising the average accepted tokens per step from $2.1$ to over $3.6$.
+
+---
+
+## 5. Python Simulation: Speculative Decoding Speedup Calculator
+
+Run this live in-browser Python implementation to compute the expected speedup for any draft model and acceptance rate:
+
+<RunnableCode code={`def calculate_speculative_speedup(
+    draft_horizon_k: int,
+    acceptance_rate: float,
+    draft_latency_ms: float,
+    target_latency_ms: float
+):
+    # Expected number of accepted tokens before first rejection:
+    # E[N] = (1 - alpha^(K+1)) / (1 - alpha)
+    alpha = acceptance_rate
+    k = draft_horizon_k
+    
+    expected_accepted_tokens = sum(alpha**i for i in range(k + 1))
+    
+    # Cost per speculative step:
+    # 1 Target forward pass + K * Draft forward passes
+    step_latency_ms = target_latency_ms + (k * draft_latency_ms)
+    
+    # Baseline: generating same tokens autoregressively with Target only
+    baseline_latency_ms = expected_accepted_tokens * target_latency_ms
+    
+    speedup = baseline_latency_ms / step_latency_ms
+    
+    return {
+        "expected_tokens_per_step": round(expected_accepted_tokens, 2),
+        "step_latency_ms": round(step_latency_ms, 2),
+        "speedup_factor": round(speedup, 2)
+    }
+
+print("=== Speculative Decoding Speedup Analysis ===")
+print("Setup: Draft=LLaMA-3-8B (3ms) | Target=LLaMA-3-70B (30ms)\\n")
+
+for k_val in [2, 3, 4, 5]:
+    res = calculate_speculative_speedup(
+        draft_horizon_k=k_val,
+        acceptance_rate=0.75,
+        draft_latency_ms=3.0,
+        target_latency_ms=30.0
+    )
+    print(f"Horizon K={k_val} | Expected Tokens/Step: {res['expected_tokens_per_step']} | Speedup: {res['speedup_factor']}x")
+`} />
+
+---
+
+<NotebookCallout color="amber" title="Production Serving Principle">
+**Pair architectures with matching tokenizers.** Speculative decoding requires the draft model and target model to share the exact same vocabulary and tokenizer byte-mapping. If tokens do not align, candidate tokens cannot be evaluated directly in target embeddings.
+</NotebookCallout>
+
+<NotebookCallout title="Next in Curriculum">
+Explore numerical precision, scale factors, and FP8/INT4 kernels in **[Quantization & Model Compression](/docs/inference-engineering/quantization-and-compression)**.
+</NotebookCallout>

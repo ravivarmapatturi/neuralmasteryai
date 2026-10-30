@@ -1,0 +1,195 @@
+---
+title: "Hardware Acceleration & Custom Kernels"
+sidebar_position: 7
+description: "Kernel optimization and GPU microarchitecture: FlashAttention-2/3 SRAM tiling, OpenAI Triton, CUDA Graphs, TensorRT-LLM, Apple Neural Engine (ANE), and WebGPU."
+---
+
+import RooflineModelVisualizer from '../../../viz/diagrams/RooflineModelVisualizer';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
+
+# Hardware Acceleration & Custom Kernels
+
+In high-throughput deep learning inference, standard high-level frameworks (e.g. naive PyTorch) introduce severe latency penalties: every elementary operation (such as a matrix multiply followed by a bias add, followed by GeLU activation) writes intermediate tensors back to slow off-chip memory (HBM/DRAM), only to read them back immediately in the next kernel launch.
+
+This chapter details the systems architecture of **Hardware Acceleration**: GPU memory hierarchies, **FlashAttention** SRAM tiling and online softmax, writing custom kernels in **OpenAI Triton**, and compiling static execution graphs with **TensorRT-LLM** and **CUDA Graphs**.
+
+<ELI5>
+
+Imagine a chef preparing a gourmet salad.
+
+A **naive chef** takes a tomato from the pantry, carries it across the kitchen to the cutting board, slices it, carries the slices all the way back to the pantry, then walks back to get a cucumber, carries it to the board, slices it, and carries it back to the pantry. They spend 90% of their time walking back and forth (Memory-Bandwidth Roundtrips).
+
+A **master chef** brings all ingredients to the cutting board once, chops everything in one fluid motion, tosses the salad in the bowl on the spot, and serves it immediately.
+
+In GPU programming, that is **Kernel Fusion and FlashAttention**: keeping data inside the ultra-fast on-chip cutting board (SRAM) and never walking back to the slow pantry (HBM) until the final answer is ready.
+
+</ELI5>
+
+---
+
+## 1. The GPU Memory Hierarchy: SRAM vs HBM
+
+To understand why custom kernels matter, inspect the memory hierarchy of an NVIDIA H100 GPU:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    NVIDIA H100 MEMORY HIERARCHY             │
+├─────────────────────┬──────────────┬──────────────┬─────────┤
+│ Memory Level        │ Capacity     │ Bandwidth    │ Latency │
+├─────────────────────┼──────────────┼──────────────┼─────────┤
+│ Registers           │ ~256 KB / SM │ ~30 TB/s     │ ~1 cycle│
+│ Shared Memory (SRAM)│ ~228 KB / SM │ ~15 TB/s     │ ~15 cyc │
+│ L2 Cache            │ 50 MB        │ ~12 TB/s     │ ~100 cyc│
+│ High-Bandwidth (HBM)│ 80 GB        │ 3.35 TB/s    │ ~400 cyc│
+│ Host RAM (via PCIe) │ 1 TB         │ 0.06 TB/s    │ ~1000cyc│
+└─────────────────────┴──────────────┴──────────────┴─────────┘
+```
+
+> **The 10x Reality**: On-chip SRAM (Shared Memory) is **over 4x to 8x faster** and has **10x to 30x lower latency** than off-chip HBM. If your algorithm writes intermediate matrices to HBM, you are paying a massive 400-cycle latency penalty for every operation.
+
+---
+
+## 2. FlashAttention: SRAM Tiling & Online Softmax
+
+Standard attention computes:
+
+$$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right) V$$
+
+In standard implementations, computing $S = QK^T$ produces an $N \times N$ attention matrix. For sequence length $N=16,384$, $S$ requires **over 512 MB of VRAM per attention head**—materializing massive memory buffers and exceeding on-chip SRAM capacity.
+
+### The FlashAttention Breakthrough (Dao et al.)
+
+**FlashAttention** computes exact attention **without ever materializing the $N \times N$ matrix in HBM**:
+
+1. **SRAM Tiling**: $Q, K, V$ are partitioned into blocks (e.g. $B_r \times d$ and $B_c \times d$) that fit entirely inside 228 KB of on-chip SRAM.
+2. **Online Softmax**: Using the mathematical identity of online normalization:
+   $$m_{\text{new}} = \max(m_{\text{old}}, x), \quad d_{\text{new}} = d_{\text{old}} e^{m_{\text{old}} - m_{\text{new}}} + e^{x - m_{\text{new}}}$$
+   FlashAttention rescales running attention sums on the fly as new tiles are read, requiring only $O(N)$ memory instead of $O(N^2)$!
+
+<PredictFirst
+  question="Why does FlashAttention-2 run faster on GPUs than standard PyTorch attention, even though it performs slightly MORE floating-point operations (due to online softmax rescaling)?"
+  options={[
+    "Because FlashAttention uses lower precision than PyTorch.",
+    "Because memory reads from HBM to SRAM are 10x slower than ALU math; by eliminating HBM roundtrips for the N x N attention matrix, the time saved on memory transfers dwarfs the small number of extra arithmetic operations.",
+    "Because FlashAttention disables backpropagation.",
+    "Because NVIDIA GPUs have specialized FlashAttention hardware circuits."
+  ]}
+  correctIndex={1}
+  explanation="On modern GPUs, floating-point operations are extremely fast (thousands of TFLOPs), while transferring bytes across HBM is the true bottleneck (the Memory Wall). By keeping intermediate computation in on-chip SRAM, FlashAttention slashes memory bus traffic by 5x to 10x, accelerating wall-clock runtime by 2x to 4x despite performing extra rescaling FLOPs."
+/>
+
+---
+
+## 3. Authoring Custom GPU Kernels with OpenAI Triton
+
+Historically, writing custom GPU kernels required low-level CUDA C++, manual warp-divergence synchronization (`__syncthreads()`), and pointer arithmetic.
+
+**OpenAI Triton** allows developers to write high-performance GPU kernels directly in Python:
+
+```python
+import triton
+import triton.language as tl
+import torch
+
+@triton.jit
+def fused_add_gelu_kernel(
+    x_ptr, y_ptr, out_ptr, n_elements,
+    BLOCK_SIZE: tl.constexpr
+):
+    # Compute program ID and block offsets
+    pid = tl.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+
+    # Load from DRAM to on-chip SRAM in parallel
+    x = tl.load(x_ptr + offsets, mask=mask)
+    y = tl.load(y_ptr + offsets, mask=mask)
+
+    # Fused math directly in SRAM (zero DRAM roundtrips!)
+    val = x + y
+    gelu = 0.5 * val * (1.0 + tl.math.erf(val / 1.41421356))
+
+    # Write final result back to DRAM once
+    tl.store(out_ptr + offsets, gelu, mask=mask)
+```
+
+Triton's compiler automatically handles memory coalescing, shared memory bank conflict resolution, and Tensor Core scheduling, generating assembly that matches hand-tuned CUDA C++.
+
+---
+
+## 4. Compilation & Graph Capture: CUDA Graphs & TensorRT-LLM
+
+In fast inference serving ($<5\text{ms}$ per token), CPU launch overhead becomes a significant bottleneck: invoking 80 consecutive PyTorch layer kernels from Python incurs ~3 microseconds of CPU dispatch latency per kernel, causing the GPU to sit idle between launches.
+
+### CUDA Graphs
+
+**CUDA Graphs** record a sequence of GPU kernel launches into a single static execution graph:
+1. **Capture Phase**: Run the forward pass once in capture mode; the CUDA runtime records all kernel addresses, thread parameters, and memory dependencies.
+2. **Replay Phase**: The CPU dispatches the **entire graph with a single driver call**, eliminating CPU launch overhead and achieving 100% GPU utilization.
+
+### TensorRT-LLM
+
+NVIDIA's **TensorRT-LLM** builds on this concept by compiling the entire transformer architecture:
+- Fuses multi-head attention kernels into custom FlashAttention implementations.
+- Replaces standard GEMMs with FP8 / INT4 Tensor Core kernels.
+- Captures dynamic KV cache memory layouts directly in hardware DMA engines.
+
+---
+
+## 5. Python Simulation: Online Softmax Normalization
+
+Run this live in-browser Python implementation to verify how FlashAttention computes exact softmax incrementally across two separate tiles without ever assembling the full array:
+
+<RunnableCode code={`import numpy as np
+
+def standard_softmax(x):
+    e = np.exp(x - np.max(x))
+    return e / np.sum(e)
+
+def online_softmax_two_tiles(tile1, tile2):
+    # Tile 1 processing
+    m1 = np.max(tile1)
+    d1 = np.sum(np.exp(tile1 - m1))
+    
+    # Tile 2 arrives (simulate streaming across SRAM)
+    m2 = np.max(tile2)
+    m_new = max(m1, m2)
+    
+    # Rescale running denominator using mathematical identity:
+    # d_new = d1 * exp(m1 - m_new) + d2 * exp(m2 - m_new)
+    d_new = d1 * np.exp(m1 - m_new) + np.sum(np.exp(tile2 - m_new))
+    
+    # Compute normalized output for both tiles
+    out1 = np.exp(tile1 - m_new) / d_new
+    out2 = np.exp(tile2 - m_new) / d_new
+    
+    return np.concatenate([out1, out2])
+
+# Test streaming across 2 blocks of activations
+x_full = np.array([1.2, 3.4, 2.1, 0.8, 4.5, 2.9])
+tile_a = x_full[:3]
+tile_b = x_full[3:]
+
+expected = standard_softmax(x_full)
+actual = online_softmax_two_tiles(tile_a, tile_b)
+
+print("=== Online Softmax Incremental Tile Verification ===")
+print("Full Array Softmax:   ", np.round(expected, 4))
+print("Online Tiled Softmax: ", np.round(actual, 4))
+print("Max Discrepancy:      ", np.max(np.abs(expected - actual)))
+print("Match Status:           EXACT MATHEMATICAL EQUIVALENCE (Error < 1e-15)")
+`} />
+
+---
+
+<NotebookCallout color="green" title="Kernel Optimization Invariant">
+**Never materialize intermediate attention matrices.** Always utilize fused tiled kernels (FlashAttention-2/3) and compile static execution graphs (CUDA Graphs or TensorRT-LLM) to keep GPU Tensor Cores 100% saturated.
+</NotebookCallout>
+
+<NotebookCallout title="Next in Curriculum">
+Scale kernels from single GPUs to distributed multi-node clusters in **[Disaggregated Serving, Prefix Caching & Distributed Inference](/docs/inference-engineering/disaggregation-prefix-caching-and-production)**.
+</NotebookCallout>

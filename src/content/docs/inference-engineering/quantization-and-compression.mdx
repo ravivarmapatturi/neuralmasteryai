@@ -1,0 +1,175 @@
+---
+title: "Quantization & Model Compression"
+sidebar_position: 5
+description: "The mathematical foundations of model quantization: FP8, INT8 (PTQ vs QAT, symmetric vs asymmetric), INT4 (AWQ vs GPTQ), and structured weight pruning."
+---
+
+import QuantizationScaleVisualizer from '../../../viz/diagrams/QuantizationScaleVisualizer';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
+
+# Quantization & Model Compression
+
+Every modern AI deployment faces an inescapable hardware reality: memory bandwidth and VRAM capacity scale much slower than compute FLOPS. A 70-billion parameter model stored in 16-bit floating point requires **140 GB of VRAM** for weights alone—demanding two 80GB datacenter GPUs and costing tens of thousands of dollars per year.
+
+**Quantization** is the mathematical discipline of mapping continuous high-precision real numbers into compact, discrete, low-bit representations (FP8, INT8, INT4):
+
+$$\text{FP32 (4 bytes)} \longrightarrow \text{FP16 (2 bytes)} \longrightarrow \text{INT8 (1 byte)} \longrightarrow \text{INT4 (0.5 bytes)}$$
+
+This chapter details the mathematical formulas, hardware execution mechanics, and outlier protection strategies behind modern quantization.
+
+<ELI5>
+
+Imagine you have a high-resolution color photograph with 16 million colors. If you need to send that photo over a slow radio connection, sending all 16 million color values takes forever.
+
+Instead, you create a 256-color palette (INT8) or a 16-color palette (INT4). Every pixel in the image is assigned the nearest color number in your palette. To the human eye, the compressed image looks 99% identical to the original, but the file size is **4x to 8x smaller** and sends in a fraction of the time.
+
+In neural networks, **Quantization** does the exact same thing to model weights: it replaces 16-bit numbers with 8-bit or 4-bit palette indexes.
+
+</ELI5>
+
+---
+
+## 1. The Numerical Precision Hierarchy
+
+Explore the bit layout and hardware trade-offs of modern precision formats:
+
+<QuantizationScaleVisualizer />
+
+---
+
+## 2. Uniform Quantization Mathematics
+
+The objective of uniform quantization is to map real floating-point values $x \in [\alpha, \beta]$ into signed integers $q \in [q_{\min}, q_{\max}]$.
+
+### The Quantization Equation
+
+$$q = \text{clamp}\left(\left\lfloor \frac{x}{S} \right\rceil + Z, q_{\min}, q_{\max}\right)$$
+
+Where:
+- $\lfloor \cdot \rceil$ represents rounding to the nearest integer.
+- $S \in \mathbb{R}^+$ is the **Scale Factor**, representing the step size between consecutive discrete integers.
+- $Z \in \mathbb{Z}$ is the **Zero-Point**, an integer offset ensuring that real zero ($0.0$) maps exactly to a representable integer without rounding error (crucial for zero-padding in convolutions and attention masks).
+
+$$\text{Scale Factor } S = \frac{\beta - \alpha}{q_{\max} - q_{\min}}$$
+
+$$\text{Zero-Point } Z = \text{round}\left(\frac{-\alpha}{S}\right) + q_{\min}$$
+
+### De-quantization
+
+To perform subsequent operations or decode logits, integers are mapped back to real values:
+
+$$\hat{x} = S \times (q - Z)$$
+
+<PredictFirst
+  question="Why is Symmetric Quantization (where Z = 0) universally preferred over Asymmetric Quantization for matrix multiplication (GEMM) kernels on GPUs and MCUs?"
+  options={[
+    "Because asymmetric quantization causes gradient explosion during backpropagation.",
+    "Because when Z = 0, multiplying quantized weights by quantized activations requires only a single integer dot product sum(W_q * X_q), whereas Z != 0 requires expensive cross-term corrections like sum(W_q * Z_x) and Z_w * Z_x for every output element.",
+    "Because asymmetric quantization is unsupported by Python.",
+    "Because symmetric quantization triples the dynamic range."
+  ]}
+  correctIndex={1}
+  explanation="When computing Y = W * X with zero-points, the expansion Y = (S_w * (W_q - Z_w)) * (S_x * (X_q - Z_x)) produces four terms: W_q * X_q, W_q * Z_x, Z_w * X_q, and Z_w * Z_x. In symmetric quantization, Z_w = 0 and Z_x = 0, so the three extra cross-terms vanish entirely, enabling hardware Tensor Cores and MCU DSP instructions (SMLAD) to execute at full peak clock speed."
+/>
+
+---
+
+## 3. Post-Training Quantization (PTQ) vs Quantization-Aware Training (QAT)
+
+Quantization can be applied at two distinct lifecycle stages:
+
+```
+Post-Training Quantization (PTQ):
+[Trained FP16 Model] ───► [Calibration Dataset] ───► [INT8 Model] (Fast: <1 hour)
+
+Quantization-Aware Training (QAT):
+[Model Training] ───► [FakeQuant Nodes (STE)] ───► [Fine-Tuning] ───► [INT8 Model] (Gold Standard)
+```
+
+### Straight-Through Estimator (STE) in QAT
+
+Because the rounding operator $\lfloor \cdot \rceil$ has a derivative of zero almost everywhere ($d\lfloor x \rceil / dx = 0$), standard backpropagation cannot backpropagate gradients through quantization.
+
+**QAT** introduces the **Straight-Through Estimator (STE)**:
+- During the **forward pass**: Use the true discrete quantized value $\hat{x}$.
+- During the **backward pass**: Treat the rounding operation as an identity function ($d\hat{x} / dx \approx 1$), allowing gradients to flow back into floating-point master weights!
+
+---
+
+## 4. The Outlier Problem & 4-bit Quantization (AWQ & GPTQ)
+
+When quantizing large language models below 8 bits (e.g. 4-bit), naive rounding causes severe perplexity degradation. 
+
+Researchers discovered why: in transformers with $>6.7\text{B}$ parameters, **activation outliers** emerge in specific hidden dimensions. While these outlier channels make up less than **1% of all activations**, they carry over **70% of the model's semantic reasoning capability**!
+
+```
+Channel Outlier Distribution:
+Dimension 0..511:    [-0.4, +0.3, +0.1, -0.2]  (Normal magnitude)
+Dimension 512:       [+18.4, +22.1, +19.6]     (Massive Emergent Outlier!)
+```
+
+### AWQ: Activation-aware Weight Quantization
+
+Instead of quantizing all weights uniformly, **AWQ** (Lin et al., MIT HAN Lab):
+1. Observes activation magnitudes across calibration samples.
+2. Identifies the top 1% salient weight channels corresponding to high-magnitude activation spikes.
+3. Scales salient channels up before quantizing, protecting them from rounding noise:
+   $$W' = W \cdot s, \quad X' = X / s$$
+4. Achieves **8x VRAM compression** with virtually indistinguishable perplexity from FP16!
+
+---
+
+## 5. Python Simulation: Symmetric INT8 Quantizer
+
+Run this live in-browser Python implementation to verify symmetric INT8 quantization, scale calculation, and error metrics:
+
+<RunnableCode code={`import numpy as np
+
+def symmetric_int8_quantize(tensor: np.ndarray):
+    # Dynamic range symmetric around 0
+    max_val = np.max(np.abs(tensor))
+    scale = max_val / 127.0
+    
+    # Quantize to signed 8-bit integers [-127, 127]
+    q_tensor = np.clip(np.round(tensor / scale), -127, 127).astype(np.int8)
+    
+    # De-quantize back to float
+    dequantized = q_tensor.astype(np.float32) * scale
+    
+    # Error metrics
+    abs_error = np.abs(tensor - dequantized)
+    max_error = np.max(abs_error)
+    mean_error = np.mean(abs_error)
+    
+    return q_tensor, dequantized, scale, max_error, mean_error
+
+# Simulate activation tensor
+np.random.seed(42)
+sample_activations = np.array([-3.25, -1.80, -0.05, 0.42, 1.95, 4.88])
+
+q, deq, scale, max_err, mean_err = symmetric_int8_quantize(sample_activations)
+
+print("=== Symmetric INT8 Quantization Verification ===")
+print("Original Float Tensor:   ", sample_activations)
+print(f"Scale Factor S:           {scale:.5f}")
+print("Quantized INT8 Integers: ", q)
+print("Dequantized Floats:      ", np.round(deq, 3))
+print(f"Max Absolute Error:       {max_err:.5f}")
+print(f"Mean Absolute Error:      {mean_err:.5f}")
+print(f"Memory Compression:       {sample_activations.nbytes} bytes -> {q.nbytes} bytes (4x reduction!)")
+`} />
+
+---
+
+<NotebookCallout color="green" title="Quantization Selection Matrix">
+- **Datacenter GPUs (H100 / Blackwell)**: Use **FP8 (E4M3)** for native Tensor Core hardware throughput without calibration overhead.
+- **Serving 70B+ Models on Single GPUs**: Use **INT4 (AWQ)** to fit 70B models into 36 GB VRAM with near-zero perplexity loss.
+- **Ultra-Low-Power Microcontrollers (TinyML)**: Use **Symmetric INT8 (Per-Tensor or Per-Channel)** for hardware DSP acceleration with zero floating-point unit (FPU) requirement.
+</NotebookCallout>
+
+<NotebookCallout title="Next in Curriculum">
+See how quantized models execute on bare-metal hardware with zero dynamic memory allocation in **[Edge AI & TinyML Architecture](/docs/inference-engineering/edge-and-tinyml-architecture)**.
+</NotebookCallout>

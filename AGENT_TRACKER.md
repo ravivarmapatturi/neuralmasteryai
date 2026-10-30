@@ -19,6 +19,7 @@
 | `2026-10-29T23:49:31+05:30` | `Antigravity` | `main` | `AGENTS.md`, `src/content/docs/harness-engineering/` | Create root AGENTS.md contract and enforce first-party authoring standards | `COMPLETED` | Typecheck, Links (Passed) | Established repository-wide operating invariants and purged meta-commentary (`005c6316`). |
 | `2026-10-30T00:18:04+05:30` | `Antigravity` | `main` | `AGENTS.md`, `overview.mdx`, `context-and-instruction-design.mdx` | Fix Pyodide worker multi-line string IndentationError with textwrap.dedent | `COMPLETED` | Typecheck, Links, Vitest (Passed) | Documented Section 8 in AGENTS.md; tested in Pyodide WASM runtime (`4137fedf`). |
 | `2026-10-30T10:38:00+05:30` | `Antigravity` | `main` | `AGENT_TRACKER.md`, `.agent/skills/`, `scripts/` | Create automated agent tracker harness, validation CLI, and mandatory check skill | `COMPLETED` | Typecheck, Links, Vitest, Build (Passed) | Established repository-wide agent tracker sheet, validation script, and .agents skill. |
+| `2026-10-30T11:05:00+05:30` | `Antigravity` | `main` | `src/content/docs/inference-engineering/`, `src/viz/` | Build Inference Engineering & Edge AI track with interactive visualizers | `COMPLETED` | Typecheck, Links, Vitest, Build (Passed) | 8 deep-dive chapters + 5 interactive visualizers (Roofline, PagedAttention, SpeculativeDecoding, TensorArena, QuantizationScale) + PD Disaggregation & Radix prefix caching. |
 
 ---
 

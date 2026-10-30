@@ -1,0 +1,310 @@
+---
+title: "Disaggregated Serving, Prefix Caching & Distributed Inference"
+sidebar_position: 8
+description: "Advanced datacenter serving architecture: Prefill-Decode (PD) disaggregation, Radix Tree prefix caching, Tensor vs Expert parallelism for MoE models, and production SLO management."
+---
+
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
+
+# Disaggregated Serving, Prefix Caching & Distributed Inference
+
+When scaling LLMs to thousands of concurrent users, traditional monolithic serving engines hit a fundamental wall: **the structural conflict between Prefill and Decode**.
+
+Prefill is compute-bound, processing thousands of input tokens in parallel with high operational intensity. Decode is memory-bandwidth bound, generating one token at a time with near-zero operational intensity. When both run on the same GPU, long prefills cause severe **head-of-line blocking**, inducing massive Inter-Token Latency (ITL) jitter for active users.
+
+In this chapter, we engineer the modern distributed serving architectures that solve this bottleneck: **Prefill-Decode (PD) Disaggregation**, **Radix Tree Prefix Caching**, and **Topology-Aware Model Parallelism** (Tensor, Pipeline, and Expert Parallelism for frontier MoE architectures).
+
+<ELI5>
+
+Imagine a high-end coffee shop that only has one worker. One customer orders 50 catered drinks for an office meeting (a giant prompt / prefill), while five other customers are standing in line waiting for a single sip of espresso (token decoding). If the barista stops to brew all 50 catered drinks, the five espresso drinkers wait 20 minutes for their next sip.
+
+**Disaggregated Serving** separates the shop into two specialized stations: a high-capacity brewing station dedicated solely to large catering orders (Prefill nodes), and rapid-fire espresso machines dedicated solely to pouring one cup at a time (Decode nodes). The brewing station makes the coffee concentrate (KV cache) and pipes it across the counter (over high-speed NVLink/RDMA) to the espresso team.
+
+**Prefix Caching** is having pre-brewed signature blends ready to pour: if 100 customers order the exact same specialty cold brew (shared system prompt or documents), the barista skips brewing entirely and serves it instantly.
+
+</ELI5>
+
+---
+
+## 1. The Prefill-Decode Interference Problem
+
+In traditional monolithic serving (e.g., standard vLLM or Hugging Face TGI), incoming requests enter a shared continuous batch:
+
+```
+Monolithic Co-located Batch (Severe ITL Jitter):
+Iter 1: [Req A: decode tok 12] [Req B: decode tok 45] [Req C: PREFILL 4,096 tokens!] 
+         └───────────────────────┬──────────────────────────────────────────┘
+                                 │
+                   GPU Tensor Cores 100% saturated with GEMM;
+                   Req A and Req B experience an ITL latency spike of 450ms!
+```
+
+### The Two Contrasting Regimes
+
+| Metric / Attribute | Prefill Phase (Prompt Processing) | Decode Phase (Token Generation) |
+| :--- | :--- | :--- |
+| **Operational Bottleneck** | **Compute-Bound** (Matrix-Matrix GEMM) | **Memory-Bandwidth-Bound** (Matrix-Vector GEMV) |
+| **Arithmetic Intensity** | High (~100 to 250 FLOP/byte) | Extremely Low (~1 to 2 FLOP/byte) |
+| **Primary User Metric** | **Time-To-First-Token (TTFT)** | **Inter-Token Latency (ITL)** / Tokens-Per-Sec |
+| **Optimal Hardware Setup** | High compute density, lower Tensor Parallelism | Maximum HBM bandwidth, higher Tensor Parallelism |
+
+When a 4,096-token prefill shares a forward pass with ongoing decode requests, the forward pass time jumps from 15ms to 400ms. To the user reading streamed text, generation suddenly freezes—violating real-time voice and streaming Service Level Objectives (SLOs).
+
+---
+
+## 2. Prefill-Decode (PD) Disaggregated Serving Architecture
+
+Disaggregated serving (pioneered by systems like Splitwise, DistServe, Mooncake, and NVIDIA Dynamo) physically splits the inference pipeline across specialized hardware nodes:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    DISAGGREGATED SERVING ARCHITECTURE                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                       │ Incoming Prompt
+                                       ▼
+                         ┌───────────────────────────┐
+                         │   Intelligent Router &    │
+                         │   Cache-Aware Dispatcher  │
+                         └─────────────┬─────────────┘
+                                       │
+                ┌──────────────────────┴──────────────────────┐
+                ▼                                             ▼
+┌───────────────────────────────┐             ┌───────────────────────────────┐
+│     PREFILL WORKER POOL       │             │      DECODE WORKER POOL       │
+│  (Compute-Optimized, TP=1/2)  │             │   (Memory-Optimized, TP=4/8)  │
+│                               │             │                               │
+│ • Runs prompt GEMM in FP8     │             │ • Runs iteration decode loop  │
+│ • Generates initial KV Cache  │             │ • Zero prefill interference   │
+│ • Emits Token 1               │             │ • Ultra-stable ITL (10-15ms)  │
+└───────────────┬───────────────┘             └───────────────▲───────────────┘
+                │                                             │
+                └─────────── Transmit KV Cache ───────────────┘
+                    (via RDMA / RoCE / NVLink-C2C Network)
+```
+
+### How Disaggregation Works
+
+1. **Prompt Ingestion**: The router receives an incoming prompt sequence.
+2. **Dedicated Prefill Execution**: A prefill worker executes the full causal prompt pass in parallel, computing the prompt KV cache and sampling the first output token.
+3. **KV Cache Transfer**: The prefill worker transfers the completed KV cache across the high-speed network fabric (InfiniBand, RoCE v2, or NVLink) directly into the decode worker's physical memory pool.
+4. **Isolated Decode Loop**: The decode worker appends the first token, assumes ownership of the request, and performs continuous autoregressive decoding with zero compute interference.
+
+### Conditional Disaggregation
+
+In production clusters, transferring small KV caches introduces network serialization overhead. Systems use **Conditional Disaggregation**:
+- **Short prompts ($< 256$ tokens)**: Executed locally on the decode worker to avoid network transfer latency.
+- **Long prompts ($\ge 256$ tokens)**: Dispatched to dedicated prefill workers to protect decode workers from head-of-line blocking.
+
+<PredictFirst
+  question="Why does the Prefill engine typically operate with a LOWER Tensor Parallelism (TP) degree than the Decode engine in a disaggregated cluster?"
+  options={[
+    "Because prefill cannot be parallelized across GPUs.",
+    "Because prefill is compute-bound with high batch size, achieving high GPU utilization without needing multi-GPU tensor sharding; decode is memory-bound and requires aggregating the HBM bandwidth of many GPUs (high TP) to meet low ITL targets.",
+    "Because NVLink only works during the decode phase.",
+    "Because prefill requires 64-bit precision."
+  ]}
+  correctIndex={1}
+  explanation="Prefill processes all prompt tokens simultaneously in a large GEMM with operational intensity well above the roofline knee. A single GPU (TP=1) or pair (TP=2) can easily achieve 70%+ Model FLOPs Utilization (MFU). In contrast, decode processes one token per sequence (GEMV) where memory bandwidth is the bottleneck. Aggregating 4 or 8 GPUs via TP multiplies total available memory bandwidth (e.g. 8x 3.35 TB/s = 26.8 TB/s on H100), slashing per-token read latency."
+/>
+
+---
+
+## 3. Prefix Caching & Radix Tree Management
+
+Modern agentic workflows, long-document RAG, and multi-turn conversations reuse massive amounts of prompt text. Re-running prefill on identical tokens burns expensive compute and spikes TTFT.
+
+**Prefix Caching** retains the KV cache of previously processed tokens in memory across independent requests.
+
+```
+Request 1: [System Prompt (2,048 tokens)] + [Doc A (4,096 tokens)] + [Question 1]
+                                 ▲
+                                 │ Cached in Radix Tree!
+Request 2: [System Prompt (2,048 tokens)] + [Doc A (4,096 tokens)] + [Question 2]
+                                 ▲
+                       (Skip 6,144 tokens!)
+                       Pre-fill takes 5ms instead of 350ms!
+```
+
+### RadixAttention (SGLang & vLLM APC)
+
+Rather than storing independent linear prompt caches, state-of-the-art inference engines organize KV cache blocks as a **Radix Tree** (a space-optimized Trie):
+
+```
+                      [Root: System Prompt]
+                            /        \
+                           /          \
+               [Tool Defs A]          [Tool Defs B]
+                  /      \                  \
+                 /        \                  \
+          [Doc A-1]      [Doc A-2]          [Doc B-1]
+```
+
+- **Prefix Sharing**: Any node in the tree can be shared by thousands of active requests.
+- **LRU Eviction**: When GPU memory pressure rises, an LRU (Least Recently Used) policy evicts leaf nodes while preserving high-frequency ancestor nodes (like core system prompts).
+- **Cache-Aware Routing**: The cluster load balancer hashes the prompt prefix and routes incoming requests to the specific GPU worker whose local memory already contains that Radix branch.
+
+---
+
+## 4. Distributed Model Parallelism: TP vs PP vs EP
+
+When frontier models exceed the memory capacity of a single GPU (e.g., DeepSeek-V3 with 671 billion parameters requires $>700$ GB for FP8 weights alone), inference must be partitioned across multiple GPUs.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                 INFERENCE PARALLELISM STRATEGIES COMPARED                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. Tensor Parallelism (TP) - Intra-Node via NVLink (Low Latency):
+   Matrix W1 sharded column-wise; Matrix W2 sharded row-wise.
+   Requires an All-Reduce collective operation per Transformer layer.
+
+2. Pipeline Parallelism (PP) - Inter-Node via InfiniBand (High Throughput):
+   Layers 1-16 on Node 1 ──► Layers 17-32 on Node 2 ──► Layers 33-48 on Node 3.
+   Introduces pipeline bubbles; suited for batch throughput, not single-user ITL.
+
+3. Expert Parallelism (EP) - MoE Routing via All-to-All:
+   Attention layers sharded via TP; MoE Feed-Forward Experts sharded across nodes.
+   Tokens routed dynamically to expert GPUs via fast All-to-All collectives.
+```
+
+### DeepSeek-V3 & Frontier MoE Inference Architecture
+
+Frontier MoE models like DeepSeek-V3 (671B total parameters, 37B active parameters per token) require **Dual-Topology Parallelism**:
+- **Attention Layers**: Replicated or sharded via Tensor Parallelism ($TP=4$) across dense intra-node NVLink.
+- **Expert Layers**: Sharded via Expert Parallelism ($EP=64$ or $EP=128$) across multiple nodes connected via RoCE/InfiniBand.
+- **Multi-Head Latent Attention (MLA)**: Compresses the KV cache into a low-dimensional latent space ($d_c = 512$), reducing KV cache memory footprint by **$5\times$ to $7\times$** compared to standard MHA/GQA.
+
+---
+
+## 5. Production Latency Metrics & Sizing Equation
+
+In production inference engineering, system performance is governed by strict Service Level Agreements (SLAs).
+
+```
+Total Request Latency = TTFT + (Output Tokens × ITL)
+```
+
+1. **Time-To-First-Token (TTFT)**: Latency from HTTP request arrival to the emission of the first token. Dominated by queueing delay and prefill GEMM speed.
+2. **Inter-Token Latency (ITL)**: Time between consecutive streamed tokens. Dominated by GPU memory bandwidth and decode Tensor Parallelism.
+3. **Time-Per-Output-Token (TPOT)**: Average duration per output token across the entire sequence.
+
+### GPU VRAM Allocation Sizing Formula
+
+To determine the minimum number of GPUs required to serve a model under concurrent load:
+
+$$VRAM_{\text{req}} = \text{Model Weights} + \text{KV Cache Pool} + \text{Activation Working Memory}$$
+
+$$\text{KV Cache Pool} = B_{\max} \times L_{\max} \times 2 \times n_{\text{layers}} \times n_{\text{kv\_heads}} \times d_{\text{head}} \times \text{bytes\_per\_elem}$$
+
+---
+
+## 6. Python Simulation: Prefix Radix Tree Cache Simulator
+
+Run this live in-browser Python implementation to simulate how a Radix Tree cache eliminates redundant prefill compute across multi-turn agent interactions:
+
+<RunnableCode code={`class RadixNode:
+    def __init__(self, token_chunk):
+        self.chunk = token_chunk
+        self.children = {}
+        self.cached_blocks = len(token_chunk)
+
+class RadixPrefixCache:
+    def __init__(self, cost_per_token_ms=0.05):
+        self.root = RadixNode([])
+        self.cost_per_token_ms = cost_per_token_ms
+        self.total_tokens_saved = 0
+        self.total_tokens_processed = 0
+
+    def query_and_insert(self, token_sequence):
+        curr = self.root
+        matched_tokens = 0
+        remaining = list(token_sequence)
+
+        # Traverse matching prefixes
+        while remaining:
+            first_tok = remaining[0]
+            if first_tok in curr.children:
+                child = curr.children[first_tok]
+                chunk_len = len(child.chunk)
+                if remaining[:chunk_len] == child.chunk:
+                    matched_tokens += chunk_len
+                    remaining = remaining[chunk_len:]
+                    curr = child
+                else:
+                    break
+            else:
+                break
+
+        # Insert remainder into cache
+        if remaining:
+            new_node = RadixNode(remaining)
+            curr.children[remaining[0]] = new_node
+
+        total_seq_len = len(token_sequence)
+        tokens_to_compute = total_seq_len - matched_tokens
+        
+        self.total_tokens_saved += matched_tokens
+        self.total_tokens_processed += total_seq_len
+
+        ttft_uncached_ms = total_seq_len * self.cost_per_token_ms
+        ttft_cached_ms = (tokens_to_compute * self.cost_per_token_ms) + 1.2 # 1.2ms lookup overhead
+        speedup = ttft_uncached_ms / max(ttft_cached_ms, 0.1)
+
+        return {
+            "total_tokens": total_seq_len,
+            "cache_hit_tokens": matched_tokens,
+            "tokens_computed": tokens_to_compute,
+            "ttft_ms": round(ttft_cached_ms, 2),
+            "baseline_ttft_ms": round(ttft_uncached_ms, 2),
+            "speedup": round(speedup, 2)
+        }
+
+# Simulate realistic multi-turn agent interaction
+system_prompt = [101, 2045, 3012, 4050, 1100] * 200 # 1,000 tokens system context
+doc_context   = [5001, 5002, 5003, 5004] * 500       # 2,000 tokens document
+user_turn_1   = [9001, 9002, 9003]                   # 3 tokens query
+user_turn_2   = [9004, 9005, 9006, 9007]             # 4 tokens query
+
+cache = RadixPrefixCache(cost_per_token_ms=0.08)
+
+print("=== Radix Prefix Caching Execution Log ===")
+
+# Turn 1: Cold start (Full cache miss on doc context)
+prompt_1 = system_prompt + doc_context + user_turn_1
+res1 = cache.query_and_insert(prompt_1)
+print(f"Turn 1 -> Hit: {res1['cache_hit_tokens']} tok | TTFT: {res1['ttft_ms']}ms | Speedup: {res1['speedup']}x")
+
+# Turn 2: Exact same system prompt + doc context + new query (Cache HIT!)
+prompt_2 = system_prompt + doc_context + user_turn_2
+res2 = cache.query_and_insert(prompt_2)
+print(f"Turn 2 -> Hit: {res2['cache_hit_tokens']} tok | TTFT: {res2['ttft_ms']}ms | Speedup: {res2['speedup']}x")
+
+hit_rate = (cache.total_tokens_saved / cache.total_tokens_processed) * 100
+print(f"\\nAggregate Cache Efficiency: {hit_rate:.1f}% tokens reused from KV cache.")
+`} />
+
+---
+
+<GoDeeper title="Go deeper: Dynamic autoscaling and scale-to-zero economics">
+
+In production environments (e.g. AWS EKS, RunPod, Baseten, TensorWave), GPU cost dominates operating expenses. Serving a $40/hour 8xH100 node while traffic is dormant incinerates capital.
+
+### Modern Autoscaling Triad
+1. **Concurrency-Based Scaling**: Kubernetes Horizontal Pod Autoscaler (HPA) triggers scaling not on CPU/memory usage, but on **In-Flight Requests per Replica** (`requests_in_flight / max_concurrency > 0.8`).
+2. **Cold Start Optimization**: Loading a 140 GB model from S3 into GPU VRAM can take 5 to 10 minutes. Production systems use fast parallel downloaders (e.g. `s5cmd`), local NVMe caching, and pre-compiled model formats (`safetensors` with direct DMA `mmap`) to slash cold starts to under 25 seconds.
+3. **Scale-to-Zero with Rapid Warmup**: Scale idle model replicas to 0 pods during nighttime troughs, holding ingress requests in a gateway queue while a warm standby worker is provisioned.
+
+</GoDeeper>
+
+---
+
+<NotebookCallout color="green" title="Architectural Golden Rule">
+**Decouple compute-bound prefill from memory-bound decode.** As context windows scale to 128k+ tokens, monolithic serving guarantees severe tail-latency violations. Deploy disaggregated architectures and Radix prefix caching to achieve deterministic, rock-solid sub-20ms streaming latency.
+</NotebookCallout>
+
+<NotebookCallout title="Track Complete">
+You have mastered the complete systems stack of Inference Engineering: from low-level GPU SRAM kernels and INT4 quantization, to ultra-low-power TinyML microcontroller arenas, up to hyperscale disaggregated cloud serving clusters. Return to the **[Inference Engineering Roadmap](/docs/inference-engineering/roadmap)** to review the full curriculum.
+</NotebookCallout>

@@ -1,0 +1,250 @@
+---
+title: "Inference Engineering: Systems, Scale & Edge Deployment"
+sidebar_position: 2
+description: "The complete technical guide to Inference Engineering -- from high-throughput datacenter LLM serving with vLLM, PagedAttention, and Speculative Decoding down to ultra-low-power Edge AI and TinyML."
+---
+
+import RooflineModelVisualizer from '../../../viz/diagrams/RooflineModelVisualizer';
+import PagedAttentionVisualizer from '../../../viz/diagrams/PagedAttentionVisualizer';
+import SpeculativeDecodingSimulator from '../../../viz/diagrams/SpeculativeDecodingSimulator';
+import TinyMLTensorArenaVisualizer from '../../../viz/diagrams/TinyMLTensorArenaVisualizer';
+import QuantizationScaleVisualizer from '../../../viz/diagrams/QuantizationScaleVisualizer';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
+
+# Inference Engineering: Systems, Scale & Edge Deployment
+
+In modern AI engineering, training a foundation model represents less than 15% of the total lifecycle cost. The remaining 85% is consumed by **inference serving**—the operational compute required to execute millions of forward passes across production applications, robotics, smartphones, and edge devices.
+
+Inference is not a simple function execution. It is a systems-level battle against hardware physical boundaries:
+1. **The Prefill vs Decode Phase Dilemma**: Processing the user prompt is compute-bound; generating subsequent tokens autoregressively is strictly memory-bandwidth bound.
+2. **The KV Cache Memory Explosion**: Storing past Key and Value activations for 4k-128k context windows rapidly exhausts GPU VRAM, causing memory fragmentation and limiting concurrent batch sizes.
+3. **The Edge Constraint Envelope**: Deploying vision and sensory models to microcontrollers (TinyML) where SRAM is capped at 256 KB, requiring zero dynamic memory allocation and INT8 quantization.
+
+We engineer our inference systems across this complete continuum: from multi-GPU vLLM clusters down to bare-metal ARM Cortex-M microcontrollers.
+
+<ELI5>
+
+Imagine you manage a high-speed express train station.
+
+**Prompt Processing (Prefill)** is when 500 passengers arrive at once: you open all turnstiles in parallel, check tickets instantly, and fill the train cars to capacity (Compute-Bound).
+
+**Token Generation (Decode)** is what happens after the train departs: the train must stop at 50 consecutive stations, and at every single station, only *one* person gets on. The train has to brake, open the doors, let one passenger step inside, and accelerate back to top speed 50 times in a row. It feels horribly inefficient because you are moving an entire 100-ton train for one person (Memory-Bandwidth-Bound).
+
+**Inference Engineering** is the discipline of fixing this: packing multiple passenger streams together on the fly (Continuous Batching), guessing what stations people want in advance (Speculative Decoding), packing baggage tighter (Quantization), and building ultra-light electric scooters for field medics who have no train tracks (TinyML on Edge Microcontrollers).
+
+</ELI5>
+
+---
+
+## 1. The Roofline Model: Hardware Operational Regimes
+
+Every piece of compute hardware—from an 80GB NVIDIA H100 GPU down to a $2 ESP32 microcontroller—operates under the mathematical boundaries of the **Roofline Model**:
+
+<RooflineModelVisualizer />
+
+### The Two Operational Regimes
+
+The peak attainable throughput of a model on a given hardware accelerator is bounded by:
+
+$$\text{Attainable Performance (TFLOPs/s)} = \min\left(\text{Peak Compute}, \text{Operational Intensity} \times \text{Memory Bandwidth}\right)$$
+
+Where **Operational Intensity** ($I$) is defined as:
+
+$$I = \frac{\text{Total Floating Point Operations (FLOPs)}}{\text{Total Bytes Transferred from Memory (Bytes)}}$$
+
+The **Knee of the Roofline** occurs at:
+
+$$I_{\text{knee}} = \frac{\text{Peak Compute Capacity (FLOPs/s)}}{\text{Peak Memory Bandwidth (Bytes/s)}}$$
+
+- **Compute-Bound Regime ($I > I_{\text{knee}}$)**: The arithmetic intensity is high enough that the execution units (ALUs / Tensor Cores) are saturated. Performance is limited by compute FLOPs.
+- **Memory-Bandwidth-Bound Regime ($I < I_{\text{knee}}$)**: The execution units sit idle waiting for weights and activations to arrive across the memory bus. Performance is limited by memory bandwidth.
+
+<PredictFirst
+  question="Why does increasing the serving batch size (e.g. from batch size 1 to batch size 64) during autoregressive token decoding dramatically increase token throughput without linearly increasing latency?"
+  options={[
+    "Because the GPU automatically increases its core clock frequency when batch sizes exceed 32.",
+    "Because the model weights (e.g. 140 GB for a 70B model) only need to be read from HBM once to compute the next token for all 64 sequences in parallel, increasing arithmetic intensity by 64x and moving the workload toward the compute-bound ceiling.",
+    "Because batching compresses the KV cache using Huffman coding.",
+    "Because PyTorch skips layer normalization during batched execution."
+  ]}
+  correctIndex={1}
+  explanation="In batch size 1 decoding, 140 GB of model weights are transferred across HBM to compute 1 token (Operational Intensity ≈ 1 FLOP/byte). With batch size 64, that exact same 140 GB of weights is transferred to compute 64 tokens in parallel (Operational Intensity ≈ 64 FLOPs/byte). Arithmetic intensity increases 64x, converting memory-bound idle time into productive compute cycles."
+/>
+
+---
+
+## 2. KV Cache Optimization & PagedAttention
+
+In modern transformer models, recomputing past keys and values at every token generation step scales quadratically: $O(L^2)$. To achieve linear generation time, models store past Key and Value projection vectors in a **KV Cache**.
+
+However, the memory footprint of the KV Cache grows rapidly with sequence length:
+
+$$\text{KV Cache Size per Request (Bytes)} = 2 \times 2 \times n_{\text{layers}} \times n_{\text{heads}} \times d_{\text{head}} \times L \times \text{Precision Bytes}$$
+
+### PagedAttention vs Contiguous Allocation
+
+In naive inference servers, memory for each request was allocated contiguously for the request's `max_seq_len`. This caused **60% to 80% of VRAM to be wasted** due to over-reservation and memory fragmentation.
+
+Explore how PagedAttention (vLLM) resolves memory fragmentation using virtual memory paging:
+
+<PagedAttentionVisualizer />
+
+<GoDeeper title="Go deeper: Mathematical breakdown of the KV Cache footprint">
+
+Consider serving LLaMA-3-70B:
+- Layers ($n_{\text{layers}}$): 80
+- Key/Value Heads ($n_{\text{kv\_heads}}$, Grouped-Query Attention): 8
+- Head Dimension ($d_{\text{head}}$): 128
+- Precision: 16-bit float (2 bytes)
+
+For a single token:
+$$\text{Bytes per token} = 2 (\text{K and V}) \times 80 \times 8 \times 128 \times 2 = 327,680 \text{ bytes} \approx 320 \text{ KB / token}$$
+
+For a sequence length of 8,192 tokens:
+$$\text{KV Cache for 1 Request} = 8,192 \times 320 \text{ KB} \approx 2.62 \text{ GB VRAM}$$
+
+If serving 100 concurrent requests at 8k context length, the KV Cache alone consumes **262 GB of VRAM**—exceeding three 80GB GPUs just for memory storage! PagedAttention ensures every physical memory page is filled to capacity, eliminating fragmentation waste.
+
+</GoDeeper>
+
+---
+
+## 3. High-Throughput Serving: Continuous Batching & Speculative Decoding
+
+Traditional batching (Static Batching) waits for all sequences in a batch to finish before accepting new requests. Because different sequences generate different lengths, shorter sequences sit idle (creating "inference bubbles") while waiting for the longest sequence.
+
+**Continuous Batching** (iteration-level scheduling) evaluates scheduling after every single token generation step: finished sequences are evicted immediately and new requests are inserted into the running iteration.
+
+### Accelerating Generation: Speculative Decoding
+
+Autoregressive token generation requires sequential execution. **Speculative Decoding** breaks this sequential dependency by pairing a small, fast Draft Model with a large Target Model:
+
+<SpeculativeDecodingSimulator />
+
+### The Speculative Decoding Guarantees
+
+1. **Parallel Verification**: The target model evaluates all $K$ draft tokens in a single parallel forward pass ($O(1)$ verification).
+2. **Exact Distributional Fidelity**: Using modified rejection sampling, tokens are accepted with probability:
+   $$\alpha_i = \min\left(1, \frac{P_{\text{target}}(x_i)}{P_{\text{draft}}(x_i)}\right)$$
+   If a token is rejected, the target model resamples a replacement token from the normalized residual distribution:
+   $$P_{\text{resample}}(x) = \text{relu}\left(P_{\text{target}}(x) - P_{\text{draft}}(x)\right)$$
+   This guarantees that the final output distribution is **mathematically identical** to sampling directly from the large target model!
+
+---
+
+## 4. Quantization: Compressing Precision for Datacenter & Edge
+
+Quantization maps continuous 32-bit or 16-bit floating point numbers into discrete low-bit integer or floating representations (FP8, INT8, INT4):
+
+<QuantizationScaleVisualizer />
+
+### Uniform Affine INT8 Quantization
+
+The fundamental quantization mapping from real float $x \in [\alpha, \beta]$ to an 8-bit integer $q \in [-128, 127]$ is:
+
+$$q = \text{clamp}\left(\left\lfloor \frac{x}{S} \right\rceil + Z, -128, 127\right)$$
+
+Where the **Scale factor** ($S$) and **Zero-point** ($Z$) are defined as:
+
+$$S = \frac{\beta - \alpha}{q_{\max} - q_{\min}} = \frac{\beta - \alpha}{255}$$
+
+$$Z = \text{round}\left(\frac{-\alpha}{S}\right) + q_{\min}$$
+
+De-quantization reconstructs the approximate floating-point value:
+
+$$\hat{x} = S \times (q - Z)$$
+
+In **Symmetric Quantization** (used for zero-centered weights), $Z = 0$ and $S = \frac{\max(|x|)}{127}$, eliminating integer offset additions during matrix multiplications.
+
+---
+
+## 5. Inference on the Edge: TinyML & Microcontrollers
+
+Moving inference to embedded microcontrollers (ARM Cortex-M0/M4/M7, ESP32, RISC-V) introduces an entirely different set of physical constraints:
+- **Zero Operating System**: Bare-metal C++ execution with no virtual memory or swap space.
+- **Microsecond Memory Budget**: Typically 64 KB to 256 KB of SRAM and 512 KB to 1 MB of Flash ROM.
+- **Zero Dynamic Allocation**: `malloc` and `free` lead to heap fragmentation and embedded Hard Fault crashes.
+
+### The Static Tensor Arena
+
+Explore how TensorFlow Lite Micro structures memory execution inside embedded microcontrollers:
+
+<TinyMLTensorArenaVisualizer />
+
+### The Three Invariants of Microcontroller Inference
+
+1. **eXecute In Place (XIP)**: Quantized INT8 model weights reside permanently in non-volatile Flash memory (ROM) and are read directly, consuming zero bytes of precious SRAM.
+2. **The Static Tensor Arena**: A single static byte buffer (`uint8_t tensor_arena[ARENA_SIZE]`) is allocated at startup.
+3. **Activation Lifetime Reuse**: Intermediate tensor activations share memory offsets. Once Layer 1 finishes, Layer 3 reuses that identical physical SRAM address.
+
+---
+
+## 6. Live Interactive Inference Calculation in Python
+
+Test this real, in-browser Python implementation to calculate the exact VRAM footprint, KV cache size, and memory bandwidth throughput for any model architecture:
+
+<RunnableCode code={`import math
+
+def calculate_inference_profile(
+    params_billions: float = 70.0,
+    context_length: int = 4096,
+    batch_size: int = 16,
+    precision_bits: int = 16,
+    n_layers: int = 80,
+    n_kv_heads: int = 8,
+    d_head: int = 128,
+    gpu_bandwidth_gbs: float = 2039.0 # NVIDIA A100 HBM2e
+):
+    bytes_per_param = precision_bits / 8.0
+    
+    # 1. Static Model Weights Footprint
+    weights_vram_gb = (params_billions * 1e9 * bytes_per_param) / (1024**3)
+    
+    # 2. KV Cache Footprint
+    # 2 (K & V) * layers * kv_heads * head_dim * precision_bytes * seq_len * batch
+    bytes_per_token_kv = 2 * n_layers * n_kv_heads * d_head * bytes_per_param
+    kv_cache_total_gb = (bytes_per_token_kv * context_length * batch_size) / (1024**3)
+    
+    total_vram_gb = weights_vram_gb + kv_cache_total_gb
+    
+    # 3. Memory Bandwidth Bounded Decode Speed (Batch Size = 1)
+    # Each token requires transferring all model weights across HBM
+    max_decode_tok_per_sec_b1 = (gpu_bandwidth_gbs * 1e9) / (params_billions * 1e9 * bytes_per_param)
+    
+    return {
+        "weights_vram_gb": round(weights_vram_gb, 2),
+        "kv_cache_gb": round(kv_cache_total_gb, 2),
+        "total_vram_gb": round(total_vram_gb, 2),
+        "max_tok_per_sec_b1": round(max_decode_tok_per_sec_b1, 1),
+    }
+
+profile = calculate_inference_profile(
+    params_billions=70.0,
+    context_length=4096,
+    batch_size=16,
+    precision_bits=16
+)
+
+print("=== LLaMA-3-70B (FP16) Inference Profile ===")
+print(f"Model Weights VRAM: {profile['weights_vram_gb']} GB")
+print(f"KV Cache VRAM (Batch 16, 4k Context): {profile['kv_cache_gb']} GB")
+print(f"Total VRAM Required: {profile['total_vram_gb']} GB")
+print(f"Max Decode Speed (Batch 1, A100 2TB/s): {profile['max_tok_per_sec_b1']} tokens/sec")
+`} />
+
+---
+
+<NotebookCallout color="green" title="Systems Architecture Takeaway">
+**Inference is a systems-algorithm co-design problem.** In the cloud, maximize batch size and arithmetic intensity with PagedAttention and speculative decoding. On the edge, eliminate dynamic allocation with static tensor arenas and compress model weights with symmetric INT8 quantization.
+</NotebookCallout>
+
+Explore the deep-dive chapters in this track:
+- **[The Roofline Model & KV Cache Mechanics](/docs/inference-engineering/roofline-and-kv-cache)**
+- **[Continuous Batching & Speculative Decoding](/docs/inference-engineering/continuous-batching-and-speculative-decoding)**
+- **[Quantization & Model Compression](/docs/inference-engineering/quantization-and-compression)**
+- **[Edge AI & TinyML Architecture](/docs/inference-engineering/edge-and-tinyml-architecture)**
+- **[Hardware Acceleration & Custom Kernels](/docs/inference-engineering/hardware-acceleration-and-kernels)**
+- **[Disaggregated Serving, Prefix Caching & Distributed Inference](/docs/inference-engineering/disaggregation-prefix-caching-and-production)**
