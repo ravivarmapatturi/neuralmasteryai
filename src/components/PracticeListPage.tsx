@@ -144,6 +144,35 @@ export default function PracticeListPage() {
           </div>
         </section>
 
+        {/* Flagship Live Project: Build an Agent */}
+        <section style={{ padding: 'clamp(2.5rem, 5vw, 4rem) 0', borderBottom: '1px solid var(--nb-rule)' }}>
+          <div className="nm-landing-shell" style={{ maxWidth: 900 }}>
+            <p className="nb-eyebrow">FLAGSHIP SYSTEMS PROJECT</p>
+            <h2 className="nb-heading" style={{ fontSize: 'clamp(1.5rem, 3vw, 2.1rem)', margin: '0 0 0.75rem' }}>
+              {agent.title}, in {agentRows.length} stages
+            </h2>
+            <p className="nb-body" style={{ maxWidth: 640, margin: 0 }}>
+              You write the program behind every AI agent, one piece at a time, and each stage starts from the code of
+              the stage before. The model is scripted, so your tests are exact. Stage 1 is right here: make the four
+              visible cases pass, then submit to run the hidden ones.
+            </p>
+            <div className="nm-practice-live" style={{ marginTop: '1.75rem' }}>
+              {agentRows[0] && <PracticePlayground problemId={agentRows[0].page.problemId!} awardPermalink={agentRows[0].page.route} />}
+            </div>
+            <ol style={{ margin: '1.75rem 0 0', padding: 0, listStyle: 'none', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '0.35rem 1.5rem' }}>
+              {agentRows.map((r, i) => (
+                <li key={r.page.route} style={{ display: 'flex', gap: '0.6rem', alignItems: 'baseline' }}>
+                  <span className="nb-hand" style={{ color: 'var(--nb-cobalt)', minWidth: '1.6rem' }}>{String(i + 1).padStart(2, '0')}</span>
+                  <Link to={r.page.route} style={{ color: 'var(--nb-ink)', textDecoration: 'none', fontSize: '0.92rem' }}>
+                    {r.page.title}
+                    {solvedRoutes.has(r.page.route) && <span style={{ color: 'var(--nb-green)' }}> ✓</span>}
+                  </Link>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </section>
+
         {/* Section: What becomes valuable when implementation becomes cheap? */}
         <div className="nm-landing-shell">
           <AiEraSkillsComparison />
@@ -154,7 +183,7 @@ export default function PracticeListPage() {
           <ProgressRadar />
         </div>
 
-        {/* Interactive Engineering Labs: Decision, Failure, Ship, Agent */}
+        {/* Interactive Engineering Labs: Decision, Failure, Ship */}
         <section className="nm-interactive-labs-wrapper">
           <div className="nm-landing-shell">
             <div className="nm-labs-wrapper-header">
@@ -190,13 +219,6 @@ export default function PracticeListPage() {
                 >
                   03. Review Lab ("Would You Ship This?")
                 </button>
-                <button
-                  type="button"
-                  className={`nm-ltab ${activeLabTab === 'agent' ? 'is-active' : ''}`}
-                  onClick={() => setActiveLabTab('agent')}
-                >
-                  04. Capstone (Build an Agent in 12 Stages)
-                </button>
               </div>
             </div>
 
@@ -205,25 +227,6 @@ export default function PracticeListPage() {
               {activeLabTab === 'decision' && <DecisionLab />}
               {activeLabTab === 'failure' && <FailureLab />}
               {activeLabTab === 'ship' && <WouldYouShipThis />}
-              {activeLabTab === 'agent' && (
-                <div className="nm-agent-capstone-lab">
-                  <div className="nm-lab-badge-row">
-                    <span className="nm-lab-type-badge">TYPE: ORCHESTRATE & CAPSTONE</span>
-                    <span className="nm-lab-status-badge">BROWSER PYTHON SANDBOX</span>
-                  </div>
-                  <h3 style={{ margin: '0.5rem 0', fontSize: '1.4rem' }}>{agent.title}, in 12 Architectural Stages</h3>
-                  <p className="nb-body" style={{ margin: '0 0 1.5rem', color: 'var(--nm-text-secondary)' }}>
-                    {agent.summary} Stage 1 is live below. Solve it directly in your browser:
-                  </p>
-                  {agentRows[0] && (
-                    <PracticePlayground problemId={agentRows[0].page.problemId!} awardPermalink={agentRows[0].page.route} />
-                  )}
-                  <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span className="nb-hand">Stage 1 of 12 · Parsing tool call AST tokens</span>
-                    <Link to={`/practice/track/${agent.slug}`} className="nm-text-link">View all 12 stages →</Link>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </section>

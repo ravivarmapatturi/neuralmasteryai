@@ -10,11 +10,19 @@ export interface FocusTrack {
 export const FOCUS_TRACKS: FocusTrack[] = [
   {
     id: 'lofi-study',
-    title: 'Lo-Fi Study Beats',
+    title: 'Lo-Fi Chill Study Beats',
     artist: 'Neural Mastery',
-    description: 'Chill 75 BPM lo-fi hip hop with warm Rhodes chords, gentle kicks, and vinyl crackle.',
+    description: 'Chill 75 BPM lo-fi hip hop with warm Rhodes piano chords, gentle kicks, and tape crackle.',
     src: '/audio/lofi-study.wav',
     durationEstimate: 'Continuous Lo-Fi Beat',
+  },
+  {
+    id: 'bamboo-flute',
+    title: 'Chinese Bamboo Flute & Guzheng',
+    artist: 'Traditional Asian Strings & Flute',
+    description: 'Authentic relaxing Chinese bamboo flute (Dizi), guzheng, and erhu for deep calm, focus, and study.',
+    src: '/audio/bamboo-flute.mp3',
+    durationEstimate: '10 Min Flow Loop',
   },
   {
     id: 'deep-focus',
@@ -32,12 +40,5 @@ export const FOCUS_TRACKS: FocusTrack[] = [
     src: '/audio/late-night.wav',
     durationEstimate: 'Continuous Chill Groove',
   },
-  {
-    id: 'chill-study',
-    title: 'Chill Study Flow',
-    artist: 'Neural Mastery',
-    description: '10Hz alpha-wave binaural study pad to maintain calm mental endurance.',
-    src: '/audio/chill-study.wav',
-    durationEstimate: 'Binaural Flow Pad',
-  },
 ];
+

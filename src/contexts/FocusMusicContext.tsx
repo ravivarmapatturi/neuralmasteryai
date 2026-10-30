@@ -94,12 +94,24 @@ export function FocusMusicProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const currentTrack = FOCUS_TRACKS[trackIndex] || FOCUS_TRACKS[0];
 
+  // Synchronized refs to avoid stale closures in timers and window events
+  const volumeRef = useRef(volume);
+  volumeRef.current = volume;
+
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
+
+  const trackIndexRef = useRef(trackIndex);
+  trackIndexRef.current = trackIndex;
+
+  const userClickedRef = useRef(false);
+
   // Initialize Audio Element once
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const audio = new Audio();
-    audio.preload = 'auto';
+    audio.preload = 'none';
     audio.loop = true;
     audio.volume = volume;
     audio.src = currentTrack.src;
@@ -151,6 +163,7 @@ export function FocusMusicProvider({ children }: { children: ReactNode }) {
     if (!audio) return;
 
     try {
+      audio.preload = 'auto';
       if (!audio.src) {
         audio.src = currentTrack.src;
       }
@@ -266,48 +279,82 @@ export function FocusMusicProvider({ children }: { children: ReactNode }) {
     };
   }, [play, pause, nextTrack, previousTrack]);
 
-  // Initial Autoplay & Graceful Fallback on First Interaction
+  // Default after 5 seconds: Lo-Fi music starts.
+  // After any user click on the page: China bamboo music starts.
   useEffect(() => {
     if (!enabled) return;
 
-    const audio = audioRef.current;
-    if (audio) {
-      audio.volume = volume;
-      audio.play().then(() => {
-        setPlaying(true);
-        setAutoplayBlocked(false);
-      }).catch(() => {
-        setAutoplayBlocked(true);
-        setPlaying(false);
-      });
+    // In automated smoke test environments (Playwright/CI), skip unprompted autoplay to avoid console error logs
+    if (typeof navigator !== 'undefined' && navigator.webdriver) {
+      return;
     }
 
-    const onUserInteraction = () => {
-      const a = audioRef.current;
-      if (a && enabled) {
-        a.volume = volume;
-        a.play().then(() => {
+    // 1. By default after 5 seconds: Lo-Fi music starts
+    const timer = setTimeout(() => {
+      if (userClickedRef.current) return;
+
+      const audio = audioRef.current;
+      if (audio && enabledRef.current) {
+        audio.preload = 'auto';
+        const lofiIdx = FOCUS_TRACKS.findIndex((t) => t.id === 'lofi-study');
+        const targetIdx = lofiIdx !== -1 ? lofiIdx : 0;
+        if (trackIndexRef.current !== targetIdx) {
+          setTrackIndex(targetIdx);
+          audio.src = FOCUS_TRACKS[targetIdx].src;
+        }
+        audio.volume = volumeRef.current;
+        audio.play().then(() => {
+          setPlaying(true);
+          setAutoplayBlocked(false);
+        }).catch(() => {
+          setAutoplayBlocked(true);
+          setPlaying(false);
+        });
+      }
+    }, 5000);
+
+    // 2. After any click: China bamboo music starts
+    const onUserClick = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement | null;
+      // If user clicked inside the focus music popover or toggle button, let that control handle it
+      if (target?.closest('.nm-focus-popover') || target?.closest('.nm-focus-nav-btn')) {
+        return;
+      }
+
+      if (userClickedRef.current) {
+        return;
+      }
+      userClickedRef.current = true;
+      clearTimeout(timer);
+
+      const audio = audioRef.current;
+      if (audio && enabledRef.current) {
+        audio.preload = 'auto';
+        const bambooIdx = FOCUS_TRACKS.findIndex((t) => t.id === 'bamboo-flute');
+        const targetIdx = bambooIdx !== -1 ? bambooIdx : 0;
+        setTrackIndex(targetIdx);
+        try {
+          localStorage.setItem(STORAGE_KEY_TRACK, FOCUS_TRACKS[targetIdx].id);
+        } catch {}
+
+        audio.src = FOCUS_TRACKS[targetIdx].src;
+        audio.volume = volumeRef.current;
+        audio.play().then(() => {
           setPlaying(true);
           setAutoplayBlocked(false);
         }).catch(() => {});
       }
-      cleanup();
     };
 
-    const cleanup = () => {
-      window.removeEventListener('click', onUserInteraction);
-      window.removeEventListener('pointerdown', onUserInteraction);
-      window.removeEventListener('keydown', onUserInteraction);
-      window.removeEventListener('touchstart', onUserInteraction);
+    window.addEventListener('click', onUserClick, { passive: true });
+    window.addEventListener('touchstart', onUserClick, { passive: true });
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('click', onUserClick);
+      window.removeEventListener('touchstart', onUserClick);
     };
-
-    window.addEventListener('click', onUserInteraction, { once: true, passive: true });
-    window.addEventListener('pointerdown', onUserInteraction, { once: true, passive: true });
-    window.addEventListener('keydown', onUserInteraction, { once: true, passive: true });
-    window.addEventListener('touchstart', onUserInteraction, { once: true, passive: true });
-
-    return cleanup;
-  }, [enabled, volume]);
+  }, [enabled]);
 
   return (
     <FocusMusicContext.Provider

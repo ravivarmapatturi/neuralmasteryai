@@ -151,7 +151,7 @@ async function main() {
     // one browser, and swaps 'networkidle' (waits for zero network
     // activity) for 'domcontentloaded' + the existing waitForSelector,
     // which is what was actually gating readiness anyway.
-    const CONCURRENCY = 4;
+    const CONCURRENCY = 8;
     const browser = await chromium.launch();
     let cursor = 0;
     async function worker() {
@@ -177,8 +177,6 @@ async function main() {
           }
         }
 
-        await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-        await page.waitForTimeout(200);
         const html = await page.content();
 
         const pagefindOutFile = outputPathForRoute(route, PRERENDER_DIR);
