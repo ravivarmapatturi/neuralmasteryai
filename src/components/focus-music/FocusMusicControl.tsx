@@ -3,7 +3,7 @@ import { useFocusMusic } from '../../contexts/FocusMusicContext';
 import FocusMusicPopover from './FocusMusicPopover';
 
 export default function FocusMusicControl() {
-  const { enabled, playing } = useFocusMusic();
+  const { enabled, playing, play } = useFocusMusic();
   const [popoverOpen, setPopoverOpen] = useState(false);
 
   return (
@@ -11,7 +11,12 @@ export default function FocusMusicControl() {
       <button
         type="button"
         className={`nm-focus-nav-btn ${playing ? 'is-playing' : ''} ${!enabled ? 'is-disabled' : ''}`}
-        onClick={() => setPopoverOpen((prev) => !prev)}
+        onClick={() => {
+          setPopoverOpen((prev) => !prev);
+          if (!playing && enabled) {
+            play();
+          }
+        }}
         aria-label={playing ? 'Focus music is playing. Open settings' : 'Focus music is paused. Open settings'}
         aria-expanded={popoverOpen}
         title="Focus Mode (Ambient Sound)"
