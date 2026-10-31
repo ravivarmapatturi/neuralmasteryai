@@ -183,16 +183,15 @@ test.describe('Visualization', () => {
   test('practice page playground runs Python in the browser and reports test results', async ({ page }) => {
     test.setTimeout(60000);
     const errors = collectConsoleErrors(page);
-    // Stage 1 of Build an Agent runs inline on /practice. Its starter is a
-    // stub, so the run reports failures -- what matters is that Pyodide
-    // loaded, executed the code and scored every visible case.
-    await page.goto('practice');
-    const playground = page.locator('.nm-practice-live');
+    // The implementation exercise lives in its dedicated workspace; Labs
+    // introduces design experiments rather than embedding raw test fixtures.
+    await page.goto('practice/agent-parse-tool-call');
+    const playground = page.locator('.nm-practice-workspace');
     await playground.scrollIntoViewIfNeeded();
     await expect(playground).toBeVisible();
 
     await playground.getByRole('button', { name: /Run/i }).click();
-    await expect(playground.locator('text=/\\d+\\/\\d+ passed/')).toBeVisible({ timeout: 45000 });
+    await expect(playground.getByRole('button', { name: /Results \(\d+\/\d+\)/ })).toBeVisible({ timeout: 45000 });
     expect(errors.errors()).toEqual([]);
   });
 });

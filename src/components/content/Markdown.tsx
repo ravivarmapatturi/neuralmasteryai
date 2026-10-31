@@ -12,12 +12,15 @@ import { mdxComponents } from './mdxComponents';
 
 // singleDollarTextMath off: in a blog post "$5" means money, so maths needs
 // $$...$$ (inline or on its own line). MDX pages keep single-dollar maths.
-const processor = unified()
+const makeProcessor = (inlineMath: boolean) => unified()
   .use(remarkParse)
   .use(remarkGfm)
-  .use(remarkMath, { singleDollarTextMath: false })
+  .use(remarkMath, { singleDollarTextMath: inlineMath })
   .use(remarkRehype)
   .use(rehypeKatex);
+
+const processor = makeProcessor(false);
+const inlineMathProcessor = makeProcessor(true);
 
 /**
  * Renders markdown written in the blog editor with the same plugins
@@ -26,10 +29,11 @@ const processor = unified()
  * page inside `.prose`. Raw HTML in the markdown is not rendered
  * (remark-rehype drops it by default), so a post can't inject markup.
  */
-export default function Markdown({ source }: { source: string }) {
+export default function Markdown({ source, inlineMath = false }: { source: string; inlineMath?: boolean }) {
   const content = useMemo(() => {
-    const tree = processor.runSync(processor.parse(source)) as Root;
+    const active = inlineMath ? inlineMathProcessor : processor;
+    const tree = active.runSync(active.parse(source)) as Root;
     return toJsxRuntime(tree, { Fragment, jsx, jsxs, components: mdxComponents as never });
-  }, [source]);
+  }, [source, inlineMath]);
   return content;
 }

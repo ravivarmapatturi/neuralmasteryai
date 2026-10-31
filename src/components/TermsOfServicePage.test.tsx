@@ -21,10 +21,11 @@ function renderTerms() {
 }
 
 describe('TermsOfServicePage', () => {
-  it('states the basic, honest terms for a free, solo-maintained site', () => {
+  it('states educational use, responsible conduct and service limitations', () => {
     renderTerms()
     expect(screen.getByRole('heading', { name: /Terms of Service/i })).toBeInTheDocument()
-    expect(screen.getByText(/free educational site/i)).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /No warranty/i })).toBeInTheDocument()
+    expect(screen.getByText(/Neural Mastery is an educational platform/i)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Responsible use/i })).toBeInTheDocument()
+    expect(screen.getByText(/without warranties to the extent permitted by law/i)).toBeInTheDocument()
   })
 })

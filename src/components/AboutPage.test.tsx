@@ -21,10 +21,11 @@ function renderAbout() {
 }
 
 describe('AboutPage', () => {
-  it('describes the real product and links to GitHub as the real contact channel, not a fabricated one', () => {
+  it('states the AI era learning mission and links to the requested X account', () => {
     renderAbout()
     expect(screen.getByRole('heading', { name: /About Neural Mastery/i })).toBeInTheDocument()
-    const link = screen.getByRole('link', { name: /Open an issue on GitHub/i })
-    expect(link).toHaveAttribute('href', 'https://github.com/ravivarmapatturi/NeuralMastery-vite/issues')
+    expect(screen.getByText(/what to learn and how to learn in the AI era/)).toBeInTheDocument()
+    const link = screen.getByRole('link', { name: /@NeuralMastery on X/i })
+    expect(link).toHaveAttribute('href', 'https://x.com/NeuralMastery')
   })
 })

@@ -17,3 +17,22 @@ it('gives a typing fallback when speech recognition is unavailable', () => {
   fireEvent.click(screen.getByText('Answer with microphone'));
   expect(screen.getByRole('status')).toHaveTextContent('Voice input is unavailable');
 });
+it('finds an existing ML bank question and checks its original numerical answer', () => {
+  render(<MemoryRouter><InterviewPage /></MemoryRouter>);
+  fireEvent.change(screen.getByLabelText('Topic'),{target:{value:'classical-ml-questions'}});
+  fireEvent.change(screen.getByLabelText('Search interview questions'),{target:{value:'5-fold cross-validation on 10,000'}});
+  fireEvent.click(screen.getByRole('button',{name:/5-fold cross-validation on 10,000/}));
+  fireEvent.change(screen.getByLabelText(/Your numerical answer/),{target:{value:'8000'}});
+  fireEvent.click(screen.getByRole('button',{name:'Review my answer →'}));
+  expect(screen.getByText('Correct calculation.')).toBeInTheDocument();
+  expect(screen.getByRole('link',{name:/original study guide/})).toHaveAttribute('href','/docs/interview-prep/classical-ml-questions');
+});
+it('retains original choice grading and exposes all preparation guides', () => {
+  render(<MemoryRouter><InterviewPage /></MemoryRouter>);
+  fireEvent.change(screen.getByLabelText('Search interview questions'),{target:{value:'tree with no depth limit'}});
+  fireEvent.click(screen.getByRole('button',{name:/tree with no depth limit/}));
+  fireEvent.click(screen.getByLabelText(/Limit the tree/));
+  fireEvent.click(screen.getByRole('button',{name:'Review my answer →'}));
+  expect(screen.getByText('Correct choice.')).toBeInTheDocument();
+  expect(screen.getByText('Preparation library · 13 guides')).toBeInTheDocument();
+});

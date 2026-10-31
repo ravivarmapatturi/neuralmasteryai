@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { MDXProvider } from '@mdx-js/react';
 import { mdxComponents } from './components/content/mdxComponents';
@@ -11,7 +12,7 @@ import PracticeProblemLayout from './components/layout/PracticeProblemLayout';
 import ChooserPage from './components/ChooserPage';
 import Home from './components/Home';
 import PracticeListPage from './components/PracticeListPage';
-import InterviewPage from './components/InterviewPage';
+const InterviewPage = lazy(() => import('./components/InterviewPage')); // Load question banks only when opened.
 import PracticeTrackPage from './components/PracticeTrackPage';
 import ProgressPage from './components/ProgressPage';
 import BlogListPage from './components/BlogListPage';
@@ -75,7 +76,7 @@ export default function App() {
                       <Route path="/" element={<ChooserPage />} />
                       <Route path="/learn" element={<Home />} />
                       <Route path="/labs" element={<PracticeListPage />} />
-                      <Route path="/interview" element={<InterviewPage />} />
+                      <Route path="/interview" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading interview questions…</p>}><InterviewPage /></Suspense>} />
                       <Route path="/practice" element={<Navigate to="/labs" replace />} />
                       <Route path="/practice/track/:topicSlug" element={<PracticeTrackPage />} />
                       <Route path="/practice/:slug" element={<PracticeProblemLayout />} />
