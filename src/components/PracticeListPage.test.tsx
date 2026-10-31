@@ -37,7 +37,7 @@ describe('PracticeListPage', () => {
     renderList()
     const total = getPracticeProblems().length
     expect(screen.getByText(new RegExp(`${total}`))).toBeInTheDocument()
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/Practice engineering/i)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/Design a system/i)
     expect(document.body.textContent).not.toMatch(/1549|1,549|Real, Hands-On/)
   })
 

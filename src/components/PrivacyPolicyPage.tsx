@@ -1,94 +1,18 @@
-import Navbar from './layout/Navbar';
-import { useDocumentTitle } from '../lib/useDocumentTitle';
-import { useDocumentMeta } from '../lib/useDocumentMeta';
-
-/**
- * Honest, specific to what this site actually does -- not generic
- * boilerplate. Every claim here is checked directly against the real
- * implementation (src/lib/firebase.ts, src/contexts/AuthContext.tsx,
- * src/contexts/ProgressContext.tsx, src/contexts/GamificationContext.tsx,
- * src/components/AnalyticsTracker.tsx) at the time this was written --
- * if any of those change what they actually do, this page needs updating
- * to match, not the other way around.
- */
+import InformationPage from './InformationPage';
 export default function PrivacyPolicyPage() {
-  useDocumentTitle('Privacy Policy');
-  useDocumentMeta('Privacy Policy', 'What Neural Mastery actually collects and stores, and why -- checked directly against the real implementation.');
-
-  return (
-    <div style={{ minHeight: '100%', background: 'var(--nm-bg)' }}>
-      <Navbar />
-      <main>
-        <section style={{ maxWidth: 700, margin: '0 auto', padding: '3rem 1.5rem 4rem' }}>
-          <h1 style={{ fontSize: 'clamp(1.6rem, 4vw, 2.2rem)', fontWeight: 800, color: 'var(--nm-text-primary)', marginBottom: '0.5rem' }}>
-            Privacy Policy
-          </h1>
-          <p style={{ fontSize: 13, color: 'var(--nm-text-muted)', marginBottom: '2rem' }}>Last updated September 2026.</p>
-          <div style={{ fontSize: 15, lineHeight: 1.75, color: 'var(--nm-text-secondary)' }}>
-            <p>
-              This page describes what Neural Mastery actually collects and stores, in plain terms — not a generic template.
-              If you don't sign in, almost nothing described below applies to you; your progress and points are tracked only
-              in your own browser's local storage and never sent anywhere.
-            </p>
-
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--nm-text-primary)', marginTop: '2rem', marginBottom: '0.75rem' }}>
-              If you sign in with Google
-            </h2>
-            <p>
-              Signing in uses Firebase Authentication with Google as the only sign-in method offered — there's no separate
-              password to create or for us to store. We receive your Google account's display name, email address, and
-              profile photo URL from Google, which Firebase uses to identify your account.
-            </p>
-            <p>
-              Once signed in, your page-completion checklist, points, streak, and practice-problem history are stored in
-              Cloud Firestore, tied to your account, so they sync across devices. A denormalized subset of this — your
-              display name, all-time points, and this week's points — is written to a separate, publicly-readable
-              leaderboard record, since the site's leaderboard feature needs to compare users against each other. Your
-              detailed page-by-page progress and practice history are <em>not</em> part of that public record.
-            </p>
-
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--nm-text-primary)', marginTop: '2rem', marginBottom: '0.75rem' }}>
-              Analytics
-            </h2>
-            <p>
-              The site uses Google Analytics (GA4) via Firebase to understand real, aggregate usage (which pages get visited,
-              roughly how much). There is no consent-banner UI yet, so analytics runs with Google's Consent Mode set to denied
-              by default for every visitor — no tracking cookie is set, and no per-visitor data is collected. Google's Consent
-              Mode still sends aggregated, cookieless signal even when denied (this is how Consent Mode is designed to work,
-              not a workaround), which is why some anonymous, non-per-visitor usage data still reaches Google. We never
-              enable ad-related tracking (ad_storage, ad_user_data, ad_personalization) — this site runs no ads or
-              remarketing, so there's no use for that data regardless of consent.
-            </p>
-            <p>
-              To count visits, the site also uses Cloudflare Web Analytics. It sets no cookies and doesn't fingerprint
-              or track you across sites: it records the page, the referring site, your country, and your browser and
-              device type, and reports them only as totals. The "people visited this week" line on the homepage
-              comes from our own small counter, which stores one number per day for visits and one for page views,
-              with nothing about who you are.
-            </p>
-
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--nm-text-primary)', marginTop: '2rem', marginBottom: '0.75rem' }}>
-              What we don't do
-            </h2>
-            <p>
-              We don't sell your data. We don't share it with anyone beyond the Google/Firebase infrastructure the site itself
-              runs on and Cloudflare's visit counter. We don't run ads. We don't have a mailing list.
-            </p>
-
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--nm-text-primary)', marginTop: '2rem', marginBottom: '0.75rem' }}>
-              Your data, your control
-            </h2>
-            <p>
-              You can sign out at any time; your account data stays in Firestore for if you sign back in. To have your
-              account data deleted entirely, open an issue on the project's{' '}
-              <a href="https://github.com/ravivarmapatturi/NeuralMastery-vite/issues" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--nm-accent-primary)' }}>
-                GitHub repository
-              </a>{' '}
-              — see the <a href="/about" style={{ color: 'var(--nm-accent-primary)' }}>About page</a> for why that's the real contact channel this project has.
-            </p>
-          </div>
-        </section>
-      </main>
-    </div>
-  );
+  return <InformationPage title="Privacy Policy" description="How Neural Mastery handles account information, learning progress, and website usage data." updated>
+    <p>This policy explains how Neural Mastery handles information when you use the platform.</p>
+    <h2>Accounts and learning progress</h2>
+    <p>You can explore the learning content without an account. Your browser stores local progress, preferences, and saved lab notes. If you sign in with Google or email and password, Firebase handles authentication. Account information and learning progress are stored using Firebase services to support your account and sync progress across devices.</p>
+    <p>Your display name and points may appear on the public leaderboard. Your detailed learning history is not part of that public record.</p>
+    <h2>Interview practice</h2>
+    <p>Typed answers and self review stay in your browser. If you use the microphone, your browser’s speech provider may process audio remotely. Where model feedback is available, your answer text is sent to the review service only when you request it.</p>
+    <h2>Website analytics and advertising</h2>
+    <p>We use Google Analytics, Cloudflare Web Analytics, and a visit counter to understand usage and improve the platform. Service providers may receive information such as the page visited, referring site, IP address, and browser or device details. Google Analytics storage consent is set to denied by default; limited cookieless signals may still be sent.</p>
+    <p>The site includes Google AdSense. Google and other advertising providers may use cookies or similar technologies to serve and measure ads, including personalization based on visits to this and other websites, subject to their settings and applicable consent requirements. See <a href="https://policies.google.com/technologies/partner-sites" target="_blank" rel="noopener noreferrer">how Google uses data</a> and manage personalization in <a href="https://myadcenter.google.com/" target="_blank" rel="noopener noreferrer">Google’s ad settings</a>.</p>
+    <h2>Your choices</h2>
+    <p>You can clear locally saved information through your browser settings. Signing out does not delete account data. For access, correction, or deletion requests, contact <a href="https://x.com/NeuralMastery" target="_blank" rel="noopener noreferrer">@NeuralMastery on X</a>. We may need to verify account ownership before acting on a request.</p>
+    <h2>Changes and contact</h2>
+    <p>We will update this page when our data practices change. For privacy questions, contact <a href="https://x.com/NeuralMastery" target="_blank" rel="noopener noreferrer">@NeuralMastery on X</a>.</p>
+  </InformationPage>;
 }

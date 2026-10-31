@@ -34,7 +34,8 @@ const urls = [
   ...trackSlugs.map((slug) => ({ loc: `${SITE_URL}/practice/track/${slug}`, lastmod: null })),
   { loc: `${SITE_URL}/`, lastmod: null },
   { loc: `${SITE_URL}/learn`, lastmod: null },
-  { loc: `${SITE_URL}/practice`, lastmod: null },
+  { loc: `${SITE_URL}/labs`, lastmod: null },
+  { loc: `${SITE_URL}/interview`, lastmod: null },
   { loc: `${SITE_URL}/blog`, lastmod: null },
   ...JSON.parse(readFileSync(resolve(import.meta.dirname, '..', 'src', 'data', 'blogMeta.generated.json'), 'utf8')).map((p) => ({
     loc: `${SITE_URL}/blog/${p.slug}`,

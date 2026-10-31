@@ -44,7 +44,9 @@ export default function BlogListPage() {
   useDocumentMeta('Blog', 'Posts on new AI releases: the older ideas each one builds on, and how it works, with the maths and code.');
   const isAdmin = useIsAdmin();
   const [stored, setStored] = useState<StoredPost[]>([]);
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
+  const [query, setQuery] = useState('');
+  const collection = params.get('collection') ?? 'all';
   const activeTag = params.get('tag');
 
   useEffect(() => {
@@ -73,10 +75,10 @@ export default function BlogListPage() {
     })),
     ...stored.map(fromStored),
   ].sort((a, b) => Number(b.draft) - Number(a.draft) || (b.date ?? '').localeCompare(a.date ?? ''));
-  const shown = activeTag ? rows.filter((row) => row.tags.includes(activeTag)) : rows;
+  const shown = rows.filter(row => (!activeTag || row.tags.includes(activeTag)) && (collection === 'ai' ? !row.slug.startsWith('us-healthcare-') : collection === 'healthcare' ? row.slug.startsWith('us-healthcare-') : true) && `${row.title} ${row.description ?? ''} ${row.tags.join(' ')}`.toLowerCase().includes(query.trim().toLowerCase()));
   const allTags = [...new Set(rows.flatMap((row) => row.tags))].sort((a, b) => a.localeCompare(b));
 
-  const featured = activeTag ? [] : BLOG_SERIES.filter((series) => getSeriesPosts(series.slug).length > 0);
+  const featured = activeTag || collection === 'ai' || query.trim() ? [] : BLOG_SERIES.filter((series) => getSeriesPosts(series.slug).length > 0);
   const latest = shown[0];
   const remaining = latest ? shown.slice(1) : shown;
 
@@ -102,6 +104,10 @@ export default function BlogListPage() {
           )}
         </header>
 
+        <div className="nm-blog-browse">
+          <div role="group" aria-label="Choose an essay collection">{[['all','All essays'],['ai','AI engineering'],['healthcare','Healthcare systems']].map(([id,label]) => <button key={id} type="button" aria-pressed={collection === id} onClick={() => { const next = new URLSearchParams(params); if (id === 'all') next.delete('collection'); else next.set('collection',id); next.delete('tag'); setParams(next); }}>{label}</button>)}</div>
+          <input type="search" value={query} onChange={e => setQuery(e.target.value)} aria-label="Search essays" placeholder="Find an idea, model, or system…" />
+        </div>
         <div className="nm-blog-grid">
           <div className="nm-blog-main">
             {featured.map((series) => {
@@ -119,7 +125,7 @@ export default function BlogListPage() {
               </p>
             )}
             {shown.length === 0 ? (
-              <p className="nb-body">{activeTag ? `No posts tagged "${activeTag}" yet.` : 'No posts yet.'}</p>
+              <p className="nb-body">{activeTag ? `No posts tagged "${activeTag}" match these filters.` : 'No essays match this search. Try another topic.'}</p>
             ) : (
               <>
                 {latest && !activeTag && (

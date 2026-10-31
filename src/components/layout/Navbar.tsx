@@ -165,12 +165,13 @@ export default function Navbar({
             Learn
           </Link>
           <Link
-            to="/practice"
+            to="/labs"
             className="nm-practice-link"
             style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--nm-text-primary)', textDecoration: 'none', fontSize: 14, fontFamily: "'Kalam', 'Comic Sans MS', cursive" }}
           >
-            Practice
+            Labs
           </Link>
+          <Link to="/interview" className="nm-nav-link">Interview</Link>
           <Link
             to="/blog"
             className="nm-navbar-blog-link"
@@ -295,8 +296,9 @@ export default function Navbar({
             </div>
             {[
               { to: learnDestination, label: 'Learn' },
-              { to: '/practice', label: 'Practice' },
+              { to: '/labs', label: 'Labs' },
               { to: '/blog', label: 'Blog' },
+              { to: '/interview', label: 'Interview' },
               { to: '/leaderboard', label: 'Leaderboard' },
               { to: '/progress', label: 'Progress' },
             ].map((item) => (

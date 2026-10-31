@@ -107,3 +107,18 @@ describe('AuthButton: signed-out sign-in panel', () => {
     expect(screen.getByText(/already has an account/i).textContent).toMatch(/Google/i)
   })
 })
+
+it('offers labeled inputs and a password visibility control in a dismissible dialog', async () => {
+  renderButton()
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole('button', { name: 'Sign in' }))
+  expect(screen.getByRole('dialog', { name: 'Welcome back' })).toBeInTheDocument()
+  expect(screen.getByLabelText('Email address')).toHaveAttribute('type', 'email')
+  const password = screen.getByLabelText('Password', { exact: true })
+  expect(password).toHaveAttribute('type', 'password')
+  await user.click(screen.getByRole('button', { name: 'Show password' }))
+  expect(password).toHaveAttribute('type', 'text')
+  await user.keyboard('{Escape}')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Sign in' })).toHaveFocus()
+})

@@ -1,72 +1,19 @@
-import Navbar from './layout/Navbar';
-import { useDocumentTitle } from '../lib/useDocumentTitle';
-import { useDocumentMeta } from '../lib/useDocumentMeta';
-
-/**
- * Basic, honest terms matching what this actually is -- a free, solo-
- * maintained educational site, not a company with a legal team. Kept
- * simple rather than lifted from a template that implies infrastructure
- * (a support org, an SLA, a formal dispute process) this project doesn't
- * have.
- */
+import { Link } from 'react-router-dom';
+import InformationPage from './InformationPage';
 export default function TermsOfServicePage() {
-  useDocumentTitle('Terms of Service');
-  useDocumentMeta('Terms of Service', 'The basic, honest terms for using Neural Mastery -- a free educational site.');
-
-  return (
-    <div style={{ minHeight: '100%', background: 'var(--nm-bg)' }}>
-      <Navbar />
-      <main>
-        <section style={{ maxWidth: 700, margin: '0 auto', padding: '3rem 1.5rem 4rem' }}>
-          <h1 style={{ fontSize: 'clamp(1.6rem, 4vw, 2.2rem)', fontWeight: 800, color: 'var(--nm-text-primary)', marginBottom: '0.5rem' }}>
-            Terms of Service
-          </h1>
-          <p style={{ fontSize: 13, color: 'var(--nm-text-muted)', marginBottom: '2rem' }}>Last updated September 2026.</p>
-          <div style={{ fontSize: 15, lineHeight: 1.75, color: 'var(--nm-text-secondary)' }}>
-            <p>
-              Neural Mastery is a free educational site, built and maintained by one person. These terms are intentionally
-              simple, matching what this actually is — not a template written for a company with a legal department.
-            </p>
-
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--nm-text-primary)', marginTop: '2rem', marginBottom: '0.75rem' }}>
-              The service
-            </h2>
-            <p>
-              The site is free to use, with or without a Google sign-in. Signing in adds cross-device sync for your progress,
-              points, and streak, and a spot on the leaderboard — it isn't required to read any content or run any practice
-              problem.
-            </p>
-
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--nm-text-primary)', marginTop: '2rem', marginBottom: '0.75rem' }}>
-              No warranty
-            </h2>
-            <p>
-              The site is provided as-is, with no warranty of any kind. Content may contain errors — if you find one, please
-              report it (see the <a href="/about" style={{ color: 'var(--nm-accent-primary)' }}>About page</a>). We make no
-              guarantee the site will be available at any given time, or that your data will never be lost, though we have no
-              intention of losing it.
-            </p>
-
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--nm-text-primary)', marginTop: '2rem', marginBottom: '0.75rem' }}>
-              Your conduct
-            </h2>
-            <p>
-              Don't attempt to abuse, disrupt, or gain unauthorized access to the site or its backing services (Firebase
-              Authentication, Firestore, Analytics). Practice-problem code runs entirely in your own browser (via Pyodide), so
-              it can't affect anyone but you.
-            </p>
-
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--nm-text-primary)', marginTop: '2rem', marginBottom: '0.75rem' }}>
-              Changes
-            </h2>
-            <p>
-              These terms, the site's content, and its features may change at any time — this is an actively developed
-              project, not a finished, frozen product. Material changes to what data is collected will be reflected in the{' '}
-              <a href="/privacy" style={{ color: 'var(--nm-accent-primary)' }}>Privacy Policy</a>.
-            </p>
-          </div>
-        </section>
-      </main>
-    </div>
-  );
+  return <InformationPage title="Terms of Service" description="Terms for using Neural Mastery’s educational content and tools." updated>
+    <p>These terms apply to your use of Neural Mastery’s learning content, labs, interview practice, and related features.</p>
+    <h2>Using the platform</h2>
+    <p>Neural Mastery is an educational platform. You can read content and explore learning tools without signing in. An account enables features such as progress syncing and participation in the leaderboard. Keep your account credentials secure.</p>
+    <h2>Responsible use</h2>
+    <p>Use the platform lawfully and respectfully. Do not disrupt the service, attempt unauthorized access, misuse other users’ information, or submit content that infringes someone else’s rights.</p>
+    <h2>Content and learning tools</h2>
+    <p>Lessons, examples, simulations, and interview feedback are provided for learning. They may contain errors or simplifications. Check important results independently before using them in real systems. Learning outcomes, interview results, and uninterrupted availability are not guaranteed.</p>
+    <p>Respect the ownership and licenses of the platform’s content, code, and materials from others. Materials with a separate license remain subject to that license.</p>
+    <h2>Availability and updates</h2>
+    <p>We may update content, change features, or suspend access to address misuse or service issues. The service is provided as available, without warranties to the extent permitted by law. Nothing in these terms limits rights that cannot legally be excluded.</p>
+    <h2>Privacy and contact</h2>
+    <p>Read our <Link to="/privacy">Privacy Policy</Link> for information about data handling. For questions, feedback, or issues, contact <a href="https://x.com/NeuralMastery" target="_blank" rel="noopener noreferrer">@NeuralMastery on X</a>.</p>
+    <p>We will post changes to these terms here and update the date above.</p>
+  </InformationPage>;
 }

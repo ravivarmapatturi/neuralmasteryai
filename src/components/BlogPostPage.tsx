@@ -13,6 +13,7 @@ import { getStoredPost, readingMinutes, useIsAdmin, type StoredPost } from '../l
 import { useGamification } from '../contexts/GamificationContext';
 import { BLOG_READ_POINTS, hasAward } from '../lib/gamification';
 import BlogCover from './BlogCover';
+import BlogMechanism from './BlogMechanism';
 
 /** /blog/:slug: one post, in the same prose styles as the Learn pages.
  * File-based posts render their MDX; editor-written posts are fetched from
@@ -102,6 +103,7 @@ export default function BlogPostPage() {
             </header>
             {series && <BlogSeriesBox {...series} variant="inline" />}
             <article className="prose" ref={articleRef}>
+              <BlogMechanism key={slug} slug={slug} />
               {Component ? (
                 <Suspense
                   fallback={

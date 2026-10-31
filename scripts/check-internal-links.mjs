@@ -41,7 +41,7 @@ const BLOG_FILES = walk(join(import.meta.dirname, '..', 'src', 'content', 'blog'
 // shape is checked against what the app will ACTUALLY render at, not just
 // "does a file exist at this literal path".
 const PRACTICE_SLUGS = JSON.parse(readFileSync(new URL('../src/data/practiceSlugs.generated.json', import.meta.url), 'utf8'));
-const validRoutes = new Set(['/practice', '/blog']);
+const validRoutes = new Set(['/practice', '/labs', '/interview', '/blog']);
 // Blog posts: /blog/<slug> for every src/content/blog/<slug>.mdx.
 for (const f of readdirSync(new URL('../src/content/blog/', import.meta.url))) if (f.endsWith('.mdx')) validRoutes.add(`/blog/${f.slice(0, -4)}`);
 // Track pages: /practice/track/<slug> for every catalogue track (slugs read

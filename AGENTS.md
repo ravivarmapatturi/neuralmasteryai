@@ -169,3 +169,7 @@ When embedding interactive Python code via `<RunnableCode code={\`...\`} />`, un
    - Every snippet embedded in \`<RunnableCode>\` MUST be tested to ensure it runs to completion with zero uncaught exceptions in Pyodide.
    - Rely strictly on Python standard library modules (\`ast\`, \`textwrap\`, \`re\`, \`json\`, \`hashlib\`, \`dataclasses\`, \`typing\`) or preloaded Pyodide packages (\`numpy\`).
    - Do not require outbound network calls inside browser Pyodide without explicit fallback handling.
+
+## 9. Human-centered visual learning
+
+For blog, lab, interview, and educational visualization changes, read and apply [the visual learning skill](.agents/skills/visual-learning/SKILL.md). Teach mechanisms with contextual diagrams and experiments; write instructions for human learners. `/labs` is the discovery destination; existing `/practice/...` exercise links remain compatible.

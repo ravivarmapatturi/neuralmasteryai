@@ -11,6 +11,7 @@ import PracticeProblemLayout from './components/layout/PracticeProblemLayout';
 import ChooserPage from './components/ChooserPage';
 import Home from './components/Home';
 import PracticeListPage from './components/PracticeListPage';
+import InterviewPage from './components/InterviewPage';
 import PracticeTrackPage from './components/PracticeTrackPage';
 import ProgressPage from './components/ProgressPage';
 import BlogListPage from './components/BlogListPage';
@@ -73,7 +74,9 @@ export default function App() {
                     <Routes>
                       <Route path="/" element={<ChooserPage />} />
                       <Route path="/learn" element={<Home />} />
-                      <Route path="/practice" element={<PracticeListPage />} />
+                      <Route path="/labs" element={<PracticeListPage />} />
+                      <Route path="/interview" element={<InterviewPage />} />
+                      <Route path="/practice" element={<Navigate to="/labs" replace />} />
                       <Route path="/practice/track/:topicSlug" element={<PracticeTrackPage />} />
                       <Route path="/practice/:slug" element={<PracticeProblemLayout />} />
                       <Route path="/blog" element={<BlogListPage />} />

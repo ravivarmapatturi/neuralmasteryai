@@ -5,40 +5,12 @@ export interface FocusTrack {
   description: string;
   src: string;
   durationEstimate: string;
+  sourceUrl: string;
+  license: string;
+  licenseUrl: string;
 }
-
 export const FOCUS_TRACKS: FocusTrack[] = [
-  {
-    id: 'lofi-study',
-    title: 'Lo-Fi Chill Study Beats',
-    artist: 'Neural Mastery',
-    description: 'Chill 75 BPM lo-fi hip hop with warm Rhodes piano chords, gentle kicks, and tape crackle.',
-    src: '/audio/lofi-study.wav',
-    durationEstimate: 'Continuous Lo-Fi Beat',
-  },
-  {
-    id: 'bamboo-flute',
-    title: 'Chinese Bamboo Flute & Guzheng',
-    artist: 'Traditional Asian Strings & Flute',
-    description: 'Authentic relaxing Chinese bamboo flute (Dizi), guzheng, and erhu for deep calm, focus, and study.',
-    src: '/audio/bamboo-flute.mp3',
-    durationEstimate: '10 Min Flow Loop',
-  },
-  {
-    id: 'deep-focus',
-    title: 'Deep Focus (432Hz)',
-    artist: 'Neural Mastery',
-    description: 'Warm 432Hz ambient harmonic drone designed for spatial focus and deep reading.',
-    src: '/audio/deep-focus.wav',
-    durationEstimate: 'Continuous Ambient Drone',
-  },
-  {
-    id: 'late-night',
-    title: 'Late Night Coding',
-    artist: 'Neural Mastery',
-    description: 'Slow-tempo lo-fi groove with sub-bass and gentle tape saturation for debugging.',
-    src: '/audio/late-night.wav',
-    durationEstimate: 'Continuous Chill Groove',
-  },
+  { id: 'bamboo-flute', title: 'Bamboo flute, guzheng & erhu', artist: 'Instrumental collection', description: 'Bamboo flute, guzheng and erhu in a long, uninterrupted instrumental collection.', src: '/audio/bamboo-collection.m4a', durationEstimate: '3 hr 18 min · loops', sourceUrl: '/audio/ATTRIBUTION.md', license: 'Provided collection', licenseUrl: '/audio/ATTRIBUTION.md' },
+  { id: 'lofi-study', title: 'Cloud Watching', artist: 'Purrple Cat', description: 'Gentle instrumental lo-fi from Indigo Dreams (2019).', src: '/audio/cloud-watching.ogg', durationEstimate: '2:48 · loops', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Purrple_Cat_-_Cloud_Watching.ogg', license: 'CC BY 4.0', licenseUrl: 'https://creativecommons.org/licenses/by/4.0/' },
+  { id: 'white-noise', title: 'White noise', artist: 'Wikimedia Commons · Zginder', description: 'Steady broadband noise. Start at a low volume and adjust for comfort.', src: '/audio/white-noise.ogg', durationEstimate: '10-second sample · loops', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Whitenoisesound.ogg', license: 'Public domain', licenseUrl: 'https://commons.wikimedia.org/wiki/File:Whitenoisesound.ogg' },
 ];
-

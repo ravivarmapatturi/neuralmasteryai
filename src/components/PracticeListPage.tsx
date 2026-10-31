@@ -1,13 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Navbar from './layout/Navbar';
-import PracticePlayground from './content/PracticePlayground';
-import AiEraSkillsComparison from './practice/AiEraSkillsComparison';
+import DesignExperiment from './practice/DesignExperiment';
 import SkillsMapVisualizer from './practice/SkillsMapVisualizer';
 import DecisionLab from './practice/DecisionLab';
 import FailureLab from './practice/FailureLab';
 import WouldYouShipThis from './practice/WouldYouShipThis';
-import ProgressRadar from './practice/ProgressRadar';
 import { getPracticeProblems, type DocPage } from '../lib/contentTree';
 import { CATALOG, type CatalogTrack } from '../data/practiceCatalog';
 import { isSolved } from '../lib/mastery';
@@ -79,20 +77,17 @@ export default function PracticeListPage() {
     : [];
 
   // Filtered tracks / problems based on active entry path
-  const displayedTracks = useMemo(() => {
-    if (activePath === 'types' && typeFilter !== 'all') {
-      return CATALOG.filter((t) => rows.some((r) => r.track.slug === t.slug && r.type === typeFilter));
-    }
-    if (activePath === 'levels' && careerFilter !== 'all') {
-      return CATALOG.filter((t) => assignCareerLevel(t.level, t.slug) === careerFilter);
-    }
-    return CATALOG;
-  }, [activePath, typeFilter, careerFilter, rows]);
+  const displayedTracks = useMemo(() => CATALOG.filter(track => {
+    if (activePath === 'levels' && careerFilter !== 'all' && assignCareerLevel(track.level, track.slug) !== careerFilter) return false;
+    return rows.some(r => r.track.slug === track.slug
+      && (activePath !== 'types' || typeFilter === 'all' || r.type === typeFilter)
+      && (!q || `${r.page.title} ${r.track.title} ${r.type}`.toLowerCase().includes(q)));
+  }), [activePath, typeFilter, careerFilter, rows, q]);
 
-  useDocumentTitle('Engineering Lab — Practice in the AI Era');
+  useDocumentTitle('Labs — Design, test, understand');
   useDocumentMeta(
-    'Engineering Lab — Practice in the AI Era',
-    `${rows.length} engineering challenges. Practice engineering, not syntax: design architectures, evaluate failure modes, debug agent loops, and navigate physical trade-offs.`,
+    'Labs — Design, test, understand',
+    `${rows.length} engineering challenges. Explore systems through experiments: design architectures, evaluate failure modes, debug agent loops, and navigate physical trade-offs.`,
   );
 
   return (
@@ -105,22 +100,21 @@ export default function PracticeListPage() {
             <div className="nm-lab-hero-copy">
               <span className="nb-eyebrow">ENGINEERING LAB · NEURAL MASTERY</span>
               <h1 className="nb-heading nm-lab-hero-title">
-                Practice engineering,<br />
-                <span style={{ color: 'var(--nb-teal)' }}>not syntax.</span>
+                Design a system.<br />
+                <span style={{ color: 'var(--nb-teal)' }}>Find out where it breaks.</span>
               </h1>
               <p className="nb-body nm-lab-hero-lead">
-                AI can generate an implementation. Your job is to know what to ask for, what architecture fits,
-                what failed, how to measure it, and whether the result is good enough to ship.
+                Start with a real problem. Sketch how the pieces connect, choose an approach, and test what happens when the conditions change. Leave with a decision you can explain.
               </p>
 
               <div className="nm-lab-stats-strip">
                 <div className="nm-lchip">
                   <span className="nm-lchip-dot is-green" />
-                  <strong>{rows.length}</strong> verified challenges
+                  <strong>{rows.length}</strong> build exercises
                 </div>
                 <div className="nm-lchip">
                   <span className="nm-lchip-dot is-cobalt" />
-                  <strong>8</strong> challenge paradigms
+                  <strong>8</strong> ways to explore
                 </div>
                 <div className="nm-lchip">
                   <span className="nm-lchip-dot is-amber" />
@@ -144,56 +138,36 @@ export default function PracticeListPage() {
           </div>
         </section>
 
-        {/* Flagship Live Project: Build an Agent */}
-        <section style={{ padding: 'clamp(2.5rem, 5vw, 4rem) 0', borderBottom: '1px solid var(--nb-rule)' }}>
-          <div className="nm-landing-shell" style={{ maxWidth: 900 }}>
-            <p className="nb-eyebrow">FLAGSHIP SYSTEMS PROJECT</p>
-            <h2 className="nb-heading" style={{ fontSize: 'clamp(1.5rem, 3vw, 2.1rem)', margin: '0 0 0.75rem' }}>
-              {agent.title}, in {agentRows.length} stages
-            </h2>
-            <p className="nb-body" style={{ maxWidth: 640, margin: 0 }}>
-              You write the program behind every AI agent, one piece at a time, and each stage starts from the code of
-              the stage before. The model is scripted, so your tests are exact. Stage 1 is right here: make the four
-              visible cases pass, then submit to run the hidden ones.
-            </p>
-            <div className="nm-practice-live" style={{ marginTop: '1.75rem' }}>
-              {agentRows[0] && <PracticePlayground problemId={agentRows[0].page.problemId!} awardPermalink={agentRows[0].page.route} />}
-            </div>
-            <ol style={{ margin: '1.75rem 0 0', padding: 0, listStyle: 'none', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '0.35rem 1.5rem' }}>
-              {agentRows.map((r, i) => (
-                <li key={r.page.route} style={{ display: 'flex', gap: '0.6rem', alignItems: 'baseline' }}>
-                  <span className="nb-hand" style={{ color: 'var(--nb-cobalt)', minWidth: '1.6rem' }}>{String(i + 1).padStart(2, '0')}</span>
-                  <Link to={r.page.route} style={{ color: 'var(--nb-ink)', textDecoration: 'none', fontSize: '0.92rem' }}>
-                    {r.page.title}
-                    {solvedRoutes.has(r.page.route) && <span style={{ color: 'var(--nb-green)' }}> ✓</span>}
-                  </Link>
-                </li>
-              ))}
-            </ol>
-          </div>
+        <div className="nm-landing-shell" style={{ paddingBlock: '2rem' }}><DesignExperiment /></div>
+        <section className="nm-landing-shell" style={{ paddingBlock: '2rem' }}>
+          <p className="nb-eyebrow">BUILD IT YOURSELF</p>
+          <h2>{agent.title}</h2>
+          <p>Explore the working parts of an agent, from reading a request to checking its actions. Each stage gives you a small system to build and inspect.</p>
+          <Link className="nm-button nm-button-primary" to={agentRows[0]?.page.route ?? '/learn'}>Open the first build →</Link>
+          <details style={{ marginTop: '1.5rem' }}><summary>Explore all {agentRows.length} stages</summary><ol>{agentRows.map(r => <li key={r.page.route}><Link to={r.page.route}>{r.page.title}{solvedRoutes.has(r.page.route) ? ' ✓' : ''}</Link></li>)}</ol></details>
         </section>
 
-        {/* Section: What becomes valuable when implementation becomes cheap? */}
-        <div className="nm-landing-shell">
-          <AiEraSkillsComparison />
-        </div>
-
-        {/* Holistic Multi-dimensional Mastery Progress */}
-        <div className="nm-landing-shell" style={{ marginTop: '3rem' }}>
-          <ProgressRadar />
-        </div>
+        <section className="nm-landing-shell" style={{ paddingBlock: '2rem' }}>
+          <p className="nb-eyebrow">SKILLS TO BUILD</p><h2>What will you get better at?</h2>
+          <div className="nm-lab-skill-grid">{[
+            ['Frame the problem', 'Turn a vague request into a clear goal, constraints, and a way to recognize success.', 'Write a short brief'],
+            ['Design the system', 'Decide where information lives, how components connect, and how failures are contained.', 'Draw a system map'],
+            ['Test an assumption', 'Change one thing, compare results, and check whether the evidence supports your prediction.', 'Keep an experiment log'],
+            ['Make a decision', 'Explain which trade-off you chose, what could go wrong, and when you would revisit it.', 'Save a decision note'],
+          ].map(([title, description, outcome], i) => <article key={title}><span className="nb-eyebrow">0{i+1}</span><h3>{title}</h3><p>{description}</p><strong>{outcome} →</strong></article>)}</div>
+          <p style={{ lineHeight: 1.7 }}>Understanding code, data, and model behavior still matters. These labs connect that knowledge to the choices you make when building with AI.</p>
+        </section>
 
         {/* Interactive Engineering Labs: Decision, Failure, Ship */}
         <section className="nm-interactive-labs-wrapper">
           <div className="nm-landing-shell">
             <div className="nm-labs-wrapper-header">
-              <span className="nb-eyebrow">HIGH-STAKES SIMULATION BENCHMARKS</span>
+              <span className="nb-eyebrow">TRY A DIFFERENT KIND OF PROBLEM</span>
               <h2 className="nb-heading" style={{ fontSize: 'clamp(1.7rem, 3.5vw, 2.5rem)', margin: '0 0 0.5rem' }}>
                 Interactive Engineering Labs
               </h2>
               <p className="nb-body" style={{ margin: 0, color: 'var(--nm-text-secondary)', maxWidth: 680 }}>
-                Step beyond unit test passing. Experience real-world systems engineering: configure architectural trade-offs,
-                diagnose production degradation incidents, and review AI pull requests.
+                Compare a search architecture, investigate an unreliable assistant, or review a change before release. Each exercise asks you to explain your reasoning.
               </p>
 
               {/* Lab Switcher Tabs */}
@@ -231,16 +205,16 @@ export default function PracticeListPage() {
           </div>
         </section>
 
-        {/* Three Ways into Practice Section */}
+        {/* Find your next lab Section */}
         <section className="nm-three-paths-section">
           <div className="nm-landing-shell">
             <div className="nm-paths-header">
-              <span className="nb-eyebrow">CURRICULUM ARCHITECTURE</span>
+              <span className="nb-eyebrow">EXPLORE THE COLLECTION</span>
               <h2 className="nb-heading" style={{ fontSize: 'clamp(1.7rem, 3.5vw, 2.4rem)', margin: '0 0 0.5rem' }}>
-                Three Ways into Practice
+                Find your next lab
               </h2>
               <p className="nb-body" style={{ margin: 0, color: 'var(--nm-text-secondary)' }}>
-                Choose the lens that matches your engineering objective: navigate by interconnected skills, challenge paradigm, or career depth.
+                Browse by the skill you want to strengthen, the kind of problem you enjoy, or your experience.
               </p>
 
               {/* Path Navigation Pills */}
@@ -250,21 +224,21 @@ export default function PracticeListPage() {
                   className={`nm-ppill ${activePath === 'skills' ? 'is-active' : ''}`}
                   onClick={() => setActivePath('skills')}
                 >
-                  Path A — Skill Map (8 Connected Families)
+                  By skill
                 </button>
                 <button
                   type="button"
                   className={`nm-ppill ${activePath === 'types' ? 'is-active' : ''}`}
                   onClick={() => setActivePath('types')}
                 >
-                  Path B — Challenge Type (Design, Debug, Decide, etc.)
+                  By activity
                 </button>
                 <button
                   type="button"
                   className={`nm-ppill ${activePath === 'levels' ? 'is-active' : ''}`}
                   onClick={() => setActivePath('levels')}
                 >
-                  Path C — Career Level (Foundation → AI-Native)
+                  By experience
                 </button>
               </div>
             </div>
@@ -280,7 +254,7 @@ export default function PracticeListPage() {
             {activePath === 'types' && (
               <div className="nm-path-view nm-path-types">
                 <div className="nm-type-filter-bar">
-                  <span className="nm-type-filter-label">Filter by Challenge Paradigm:</span>
+                  <span className="nm-type-filter-label">Choose an activity:</span>
                   <div className="nm-type-filter-buttons">
                     {(['all', 'IMPLEMENT', 'DEBUG', 'DESIGN', 'DECIDE', 'EVALUATE', 'SPECIFY', 'REVIEW', 'INCIDENT', 'ORCHESTRATE'] as ChallengeFilter[]).map((t) => (
                       <button
@@ -289,7 +263,7 @@ export default function PracticeListPage() {
                         className={`nm-tf-btn ${typeFilter === t ? 'is-active' : ''}`}
                         onClick={() => setTypeFilter(t)}
                       >
-                        {t === 'all' ? 'All Types' : `TYPE: ${t}`}
+                        {t === 'all' ? 'All Types' : t.charAt(0) + t.slice(1).toLowerCase()}
                       </button>
                     ))}
                   </div>
@@ -331,7 +305,7 @@ export default function PracticeListPage() {
               <input
                 type="search"
                 className="nm-catalog-search-input"
-                placeholder="Search all 243 problems by keyword, system component, or type..."
+                placeholder="Search by topic, system, or skill…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 aria-label="Search problems"
@@ -351,8 +325,9 @@ export default function PracticeListPage() {
 
             {/* Catalog Tracks Grid */}
             <div className="nm-catalog-tracks-list">
+              {displayedTracks.length === 0 && <p role="status">No exercises match these filters. Try a broader topic or choose All Types.</p>}
               {displayedTracks.map((track) => {
-                const trackRows = rows.filter((r) => r.track.slug === track.slug);
+                const trackRows = rows.filter(r => r.track.slug === track.slug && (activePath !== 'types' || typeFilter === 'all' || r.type === typeFilter) && (!q || `${r.page.title} ${r.track.title} ${r.type}`.toLowerCase().includes(q)));
                 const trackCareer = assignCareerLevel(track.level, track.slug);
 
                 return (

@@ -14,9 +14,9 @@ export default function WouldYouShipThis() {
   const checklist = [
     { id: 'c1', label: 'Security: No raw string interpolation into SQL or subprocess commands', pass: false, note: 'CRITICAL: Raw query is passed to cursor without parameter binding' },
     { id: 'c2', label: 'Concurrency: Async lock protects shared cache from race conditions', pass: false, note: 'MISSING: Multiple concurrent coroutines will perform redundant cache writes' },
-    { id: 'c3', label: 'Error Handling: Fallback graceful return on model provider 500/timeout', pass: true, note: 'PRESENT: Circuit breaker timeout wrapper returns cached stale response' },
-    { id: 'c4', label: 'Observability: Traces contain tenant IDs and token counts', pass: true, note: 'PRESENT: OpenTelemetry spans record standard attributes' },
-    { id: 'c5', label: 'Cost: Token usage bounded by hard prompt length truncate', pass: true, note: 'PRESENT: Max tokens budget is enforced before call' },
+    { id: 'c3', label: 'Error handling: Database and cache failures have an explicit recovery path', pass: false, note: 'MISSING: The shown method does not handle database or cache exceptions.' },
+    { id: 'c4', label: 'Observability: Failed queries and background writes can be traced', pass: false, note: 'MISSING: There are no spans or error records in the shown code; the background write is not awaited.' },
+    { id: 'c5', label: 'Cache keys: The same query has a stable key across server processes', pass: false, note: 'MISSING: Python hash() is process-dependent; use a stable digest and include the source version in the key.' },
   ];
 
   return (
@@ -29,7 +29,7 @@ export default function WouldYouShipThis() {
       <div className="nm-ship-header">
         <h3 className="nm-ship-title">Challenge: Would You Ship This AI-Generated Pull Request?</h3>
         <p className="nm-ship-desc">
-          A junior developer used an autonomous coding agent to implement the production <em>Tenant Knowledge Retrieval Service</em>.
+          A teammate proposes this <em>Tenant Knowledge Retrieval Service</em> for release. This is a fictional review exercise.
           The test suite passed 100%. Inspect the code, evaluate security and concurrency, and make the ship decision.
         </p>
       </div>

@@ -47,7 +47,7 @@ export default function FailureLab() {
         </h3>
         <p className="nm-incident-desc">
           Customers are reporting that multi-turn customer support tasks fail silently halfway through resolution.
-          No crashes or 500 errors were thrown. Inspect the production telemetry and identify the root cause.
+          No crashes or 500 errors were thrown. Inspect the traces and identify the root cause. The incident, logs, and metrics are fictional teaching data.
         </p>
 
         <div className="nm-incident-stats-row">

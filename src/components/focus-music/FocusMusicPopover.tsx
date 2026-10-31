@@ -1,176 +1,41 @@
 import { useEffect, useRef } from 'react';
 import { useFocusMusic } from '../../contexts/FocusMusicContext';
-import { FOCUS_TRACKS } from '../../data/focusTracks';
 
-interface FocusMusicPopoverProps {
-  isOpen: boolean;
-  onClose: () => void;
-}
-
+interface FocusMusicPopoverProps { isOpen: boolean; onClose: () => void }
+const sounds = [
+  { id: 'bamboo-flute', label: 'Bamboo', mark: '〰' },
+  { id: 'lofi-study', label: 'Lo-fi', mark: '♫' },
+  { id: 'white-noise', label: 'White noise', mark: '≋' },
+];
 export default function FocusMusicPopover({ isOpen, onClose }: FocusMusicPopoverProps) {
-  const {
-    enabled,
-    playing,
-    volume,
-    currentTrack,
-    play,
-    toggle,
-    setVolume,
-    setEnabled,
-    nextTrack,
-    previousTrack,
-    setTrackById,
-  } = useFocusMusic();
-
-  const popoverRef = useRef<HTMLDivElement>(null);
-
-  // Close when clicking outside
+  const { playing, volume, currentTrack, autoplayBlocked, error, play, setVolume, setEnabled, setTrackById } = useFocusMusic();
+  const panel = useRef<HTMLDivElement>(null);
+  const firstChoice = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!isOpen) return;
-
-    const handlePointerDown = (e: MouseEvent | TouchEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        onClose();
-      }
+    const previous = document.activeElement as HTMLElement | null;
+    firstChoice.current?.focus();
+    const outside = (event: PointerEvent) => {
+      const target = event.target as HTMLElement;
+      if (!panel.current?.contains(target) && !target.closest('.nm-focus-nav-btn')) onClose();
     };
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('touchstart', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-
+    const keyboard = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', keyboard);
     return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('touchstart', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', keyboard);
+      previous?.focus();
     };
   }, [isOpen, onClose]);
-
   if (!isOpen) return null;
-
-  const volumePct = Math.round(volume * 100);
-
-  return (
-    <div
-      ref={popoverRef}
-      className="nm-focus-popover"
-      role="dialog"
-      aria-label="Focus Mode Settings"
-    >
-      <div className="nm-focus-popover-header">
-        <div className="nm-focus-title-group">
-          <span className="nm-focus-eyebrow">FOCUS MODE · LO-FI & CHILL</span>
-          <h4 className="nm-focus-track-title">{currentTrack.title}</h4>
-          <span className="nm-focus-track-artist">{currentTrack.artist}</span>
-        </div>
-        <button
-          type="button"
-          className="nm-focus-close-btn"
-          onClick={onClose}
-          aria-label="Close Focus Mode popover"
-        >
-          ✕
-        </button>
-      </div>
-
-      <p className="nm-focus-microcopy">
-        {currentTrack.description}
-      </p>
-
-      {/* Transport Controls */}
-      <div className="nm-focus-transport">
-        <button
-          type="button"
-          className="nm-focus-tbtn"
-          onClick={previousTrack}
-          aria-label="Previous focus track"
-          title="Previous focus track"
-        >
-          ◀
-        </button>
-        <button
-          type="button"
-          className="nm-focus-tbtn is-play-pause"
-          onClick={toggle}
-          aria-label={playing ? 'Pause focus music' : 'Play focus music'}
-          title={playing ? 'Pause' : 'Play'}
-        >
-          {playing ? '❚❚' : '▶'}
-        </button>
-        <button
-          type="button"
-          className="nm-focus-tbtn"
-          onClick={nextTrack}
-          aria-label="Next focus track"
-          title="Next focus track"
-        >
-          ▶
-        </button>
-      </div>
-
-      {/* Volume Slider */}
-      <div className="nm-focus-volume-control">
-        <span className="nm-focus-vol-icon" aria-hidden="true">
-          {volume === 0 ? '🔇' : volume < 0.3 ? '🔈' : volume < 0.7 ? '🔉' : '🔊'}
-        </span>
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.01"
-          value={volume}
-          onChange={(e) => setVolume(parseFloat(e.target.value))}
-          aria-label="Focus music volume slider"
-          className="nm-focus-vol-slider"
-        />
-        <span className="nm-focus-vol-pct">{volumePct}%</span>
-      </div>
-
-      {/* 4 Curated Study Stations */}
-      <div className="nm-focus-station-list">
-        <span className="nm-focus-station-label">STUDY & CHILL TRACKS</span>
-        {FOCUS_TRACKS.map((t) => {
-          const isSelected = t.id === currentTrack.id;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              className={`nm-focus-station-item ${isSelected ? 'is-active' : ''}`}
-              onClick={() => {
-                setTrackById(t.id);
-                if (!playing) play();
-              }}
-            >
-              <div className="nm-station-info">
-                <strong>{t.title}</strong>
-                <span>{t.durationEstimate}</span>
-              </div>
-              {isSelected && <span className="nm-station-dot">{playing ? '▶ Playing' : 'Selected'}</span>}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Focus Music Toggle Switch (Persistent Preference) */}
-      <div className="nm-focus-toggle-row">
-        <div className="nm-focus-toggle-label">
-          <strong>Focus sound</strong>
-          <span>{enabled ? 'Active across pages' : 'Disabled'}</span>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={enabled}
-          className={`nm-focus-switch ${enabled ? 'is-on' : 'is-off'}`}
-          onClick={() => setEnabled(!enabled)}
-          aria-label="Toggle focus music enabled"
-        >
-          <span className="nm-focus-switch-thumb" />
-        </button>
-      </div>
+  return <div ref={panel} className="nm-focus-popover nm-sound-panel" role="dialog" aria-label="Focus sound">
+    <header><strong>Focus sound</strong><button type="button" onClick={onClose} aria-label="Close focus sound">×</button></header>
+    <div className="nm-sound-choices" role="group" aria-label="Choose a sound">
+      {sounds.map((sound, index) => <button ref={index === 0 ? firstChoice : undefined} key={sound.id} type="button" aria-pressed={currentTrack.id === sound.id} onClick={() => { setTrackById(sound.id); void play(); }}><span aria-hidden="true">{sound.mark}</span>{sound.label}</button>)}
     </div>
-  );
+    <div className="nm-sound-playback"><button type="button" className="nm-sound-play" onClick={() => playing ? setEnabled(false) : void play()} aria-label={playing ? 'Pause focus sound' : 'Play focus sound'}>{playing ? 'Ⅱ' : '▶'}</button><label><span className="sr-only">Volume</span><input type="range" min="0" max="1" step="0.01" value={volume} onChange={e => setVolume(Number(e.target.value))} aria-label="Focus sound volume" /></label><span>{Math.round(volume * 100)}%</span></div>
+    {(autoplayBlocked || error) && <p className="nm-sound-status" role="status">{error ? 'Unable to play. Try another sound.' : 'Press Play to start.'}</p>}
+    <footer><span>Pauses when you leave this tab</span><a href="/audio/ATTRIBUTION.md" target="_blank" rel="noreferrer" aria-label="Audio credits">Credits ↗</a></footer>
+  </div>;
 }

@@ -54,14 +54,14 @@ export default function ChooserPage() {
                 </Link>
                 <Link
                   className="nm-button nm-button-secondary"
-                  to="/practice"
+                  to="/labs"
                   style={{ borderColor: 'var(--nb-rule)', color: 'var(--nb-ink)', background: 'color-mix(in srgb, var(--nb-paper-alt) 90%, transparent)' }}
                 >
-                  Enter the Lab <Arrow />
+                  Explore Labs <Arrow />
                 </Link>
               </div>
               <p className="nb-hand" style={{ marginTop: '2rem', color: 'var(--nb-ink-soft)', fontSize: '1rem' }}>
-                {pages.length} pages and {problems.length} practice problems.
+                {pages.length} pages and {problems.length} build exercises.
               </p>
             </div>
             <div>

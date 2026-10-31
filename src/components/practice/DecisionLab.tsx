@@ -15,7 +15,7 @@ export default function DecisionLab() {
   const [model, setModel] = useState<Model>('medium');
   const [caching, setCaching] = useState<Caching>('query');
 
-  // Dynamic calculation based on physical laws and economics
+  // Illustrative teaching assumptions; these coefficients are not measured benchmarks.
   const stats = useMemo(() => {
     let latency = 120; // base network + orchestrator ms
     let cost = 1200; // base infra hosting
@@ -134,9 +134,10 @@ export default function DecisionLab() {
     <div className="nm-decision-lab" aria-label="Interactive Decision Lab: Production RAG">
       <div className="nm-lab-badge-row">
         <span className="nm-lab-type-badge">TYPE: DESIGN & DECIDE</span>
-        <span className="nm-lab-status-badge">LIVE SIMULATION</span>
+        <span className="nm-lab-status-badge">ILLUSTRATIVE MODEL</span>
       </div>
 
+      <p style={{ color: 'var(--nm-text-secondary)', lineHeight: 1.6 }}>These numbers are a simplified teaching model. Use them to explore trade-offs, then benchmark your own workload; they are not measured production results.</p>
       <div className="nm-lab-scenario">
         <h3 className="nm-lab-scenario-title">Scenario: Design a 10M-Document Production RAG System</h3>
         <div className="nm-lab-constraints">

@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import BrandMark from '../brand/BrandMark';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { PersonIcon } from '../icons/UiIcons';
@@ -46,136 +48,68 @@ function messageForAuthError(err: unknown): string {
 function SignInPanel({ onClose }: { onClose: () => void }) {
   const { signInWithGoogle, signUpWithEmail, signInWithEmail } = useAuth();
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
+  const dialog = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    dialog.current?.querySelector<HTMLButtonElement>('.nm-auth-google')?.focus();
+    const keyboard = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { onClose(); return; }
+      if (event.key !== 'Tab') return;
+      const elements = Array.from(dialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), a[href]') ?? []);
+      const first = elements[0], last = elements[elements.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener('keydown', keyboard);
+    return () => { document.body.style.overflow = overflow; document.removeEventListener('keydown', keyboard); previous?.focus(); };
+  }, [onClose]);
   async function handleGoogle() {
-    setBusy(true);
-    setError(null);
-    try {
-      await signInWithGoogle();
-      onClose();
-    } catch {
-      // Popup closed/blocked, or a real network failure -- either way
-      // there's nothing more useful to do than let the visitor retry.
-    } finally {
-      setBusy(false);
-    }
+    setBusy(true); setError(null);
+    try { await signInWithGoogle(); onClose(); }
+    catch (err) { setError(messageForAuthError(err)); }
+    finally { setBusy(false); }
   }
-
-  async function handleEmailSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
+  async function handleEmailSubmit(event: React.FormEvent) {
+    event.preventDefault(); setBusy(true); setError(null);
     try {
-      if (mode === 'signup') await signUpWithEmail(email, password);
-      else await signInWithEmail(email, password);
+      if (mode === 'signup') await signUpWithEmail(email.trim(), password);
+      else await signInWithEmail(email.trim(), password);
       onClose();
-    } catch (err) {
-      setError(messageForAuthError(err));
-    } finally {
-      setBusy(false);
-    }
+    } catch (err) { setError(messageForAuthError(err)); }
+    finally { setBusy(false); }
   }
-
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        top: '110%',
-        right: 0,
-        zIndex: 91,
-        width: 260,
-        padding: '0.9rem',
-        borderRadius: 10,
-        border: '1px solid var(--nm-border)',
-        background: 'var(--nm-surface)',
-        boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
-      }}
-    >
-      <button
-        type="button"
-        onClick={handleGoogle}
-        disabled={busy}
-        style={{
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 8,
-          fontSize: 13,
-          fontWeight: 600,
-          color: 'var(--nm-text-primary)',
-          background: 'transparent',
-          border: '1px solid var(--nm-border)',
-          borderRadius: 8,
-          padding: '0.5rem 0.6rem',
-          cursor: busy ? 'default' : 'pointer',
-          opacity: busy ? 0.6 : 1,
-        }}
-      >
-        Continue with Google
-      </button>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0.75rem 0', fontSize: 11, color: 'var(--nm-text-muted)' }}>
-        <div style={{ flex: 1, height: 1, background: 'var(--nm-border)' }} />
-        or
-        <div style={{ flex: 1, height: 1, background: 'var(--nm-border)' }} />
-      </div>
-
-      <form onSubmit={handleEmailSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <input
-          type="email"
-          required
-          autoComplete="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          style={{ fontSize: 13, padding: '0.45rem 0.6rem', borderRadius: 8, border: '1px solid var(--nm-border)', background: 'var(--nm-bg)', color: 'var(--nm-text-primary)' }}
-        />
-        <input
-          type="password"
-          required
-          minLength={6}
-          autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          style={{ fontSize: 13, padding: '0.45rem 0.6rem', borderRadius: 8, border: '1px solid var(--nm-border)', background: 'var(--nm-bg)', color: 'var(--nm-text-primary)' }}
-        />
-        {error && <p style={{ margin: 0, fontSize: 12, color: 'var(--nm-accent-danger)', lineHeight: 1.4 }}>{error}</p>}
-        <button
-          type="submit"
-          disabled={busy}
-          style={{
-            fontSize: 13,
-            fontWeight: 700,
-            color: 'var(--nm-bg)',
-            background: 'var(--nm-accent-primary)',
-            border: 'none',
-            borderRadius: 8,
-            padding: '0.5rem 0.6rem',
-            cursor: busy ? 'default' : 'pointer',
-            opacity: busy ? 0.6 : 1,
-          }}
-        >
-          {busy ? 'Please wait…' : mode === 'signup' ? 'Create account' : 'Sign in'}
+  return createPortal(
+    <div className="nm-auth-overlay" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+      <div ref={dialog} className="nm-auth-dialog" role="dialog" aria-modal="true" aria-labelledby="nm-auth-title" aria-describedby="nm-auth-description">
+        <button type="button" className="nm-auth-close" aria-label="Close sign in" onClick={onClose}>×</button>
+        <div className="nm-auth-brand"><BrandMark size={32} /><span>Neural Mastery</span></div>
+        <h2 id="nm-auth-title">{mode === 'signup' ? 'Create your account' : 'Welcome back'}</h2>
+        <p id="nm-auth-description">{mode === 'signup' ? 'Save your progress and build your understanding of AI.' : 'Pick up where you left off.'}</p>
+        <button type="button" className="nm-auth-google" disabled={busy} onClick={handleGoogle}>
+          <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.39-.18-2.05H12v3.88h5.38a4.6 4.6 0 0 1-2 3.02v2.51h3.24c1.9-1.75 2.98-4.33 2.98-7.36Z"/><path fill="#34A853" d="M12 22c2.7 0 4.96-.9 6.62-2.41l-3.24-2.51c-.9.6-2.05.96-3.38.96-2.6 0-4.8-1.76-5.59-4.12H3.06v2.59A10 10 0 0 0 12 22Z"/><path fill="#FBBC05" d="M6.41 13.92a6 6 0 0 1 0-3.84V7.49H3.06a10 10 0 0 0 0 9.02l3.35-2.59Z"/><path fill="#EA4335" d="M12 5.96c1.47 0 2.79.51 3.82 1.51l2.87-2.87A9.6 9.6 0 0 0 12 2a10 10 0 0 0-8.94 5.49l3.35 2.59C7.2 7.72 9.4 5.96 12 5.96Z"/></svg>
+          Continue with Google
         </button>
-      </form>
-
-      <button
-        type="button"
-        onClick={() => {
-          setMode((m) => (m === 'signin' ? 'signup' : 'signin'));
-          setError(null);
-        }}
-        style={{ marginTop: 8, width: '100%', textAlign: 'center', fontSize: 12, color: 'var(--nm-accent-primary)', background: 'transparent', border: 'none', cursor: 'pointer' }}
-      >
-        {mode === 'signup' ? 'Already have an account? Sign in' : "New here? Create an account"}
-      </button>
-    </div>
+        <div className="nm-auth-divider"><span>or use your email</span></div>
+        <form onSubmit={handleEmailSubmit} aria-busy={busy}>
+          <label htmlFor="nm-auth-email">Email address</label>
+          <input id="nm-auth-email" name="email" type="email" required autoComplete="email" placeholder="Email" value={email} disabled={busy} onChange={event => setEmail(event.target.value)} />
+          <label htmlFor="nm-auth-password">Password</label>
+          <div className="nm-auth-password"><input id="nm-auth-password" name="password" type={showPassword ? 'text' : 'password'} required minLength={6} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} placeholder="Password" value={password} disabled={busy} onChange={event => setPassword(event.target.value)} /><button type="button" disabled={busy} onClick={() => setShowPassword(value => !value)} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? 'Hide' : 'Show'}</button></div>
+          {mode === 'signup' && <small>Use at least 6 characters.</small>}
+          {error && <p className="nm-auth-error" role="alert">{error}</p>}
+          <button className="nm-auth-submit" type="submit" disabled={busy}>{busy ? 'Please wait…' : mode === 'signup' ? 'Create account' : 'Sign in'}</button>
+        </form>
+        <button type="button" className="nm-auth-mode" disabled={busy} onClick={() => { setMode(value => value === 'signin' ? 'signup' : 'signin'); setError(null); setPassword(''); setShowPassword(false); }}>{mode === 'signup' ? 'Already have an account? Sign in' : 'New here? Create an account'}</button>
+        <div className="nm-auth-legal"><Link to="/privacy" onClick={onClose}>Privacy</Link><span>·</span><Link to="/terms" onClick={onClose}>Terms</Link></div>
+      </div>
+    </div>, document.body,
   );
 }
 
@@ -195,6 +129,7 @@ function SignInPanel({ onClose }: { onClose: () => void }) {
 export default function AuthButton() {
   const { user, loading, signOutUser } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
 
   if (loading) return null; // avoid flashing "Sign in" before the real (likely signed-in) state is known
 
@@ -226,8 +161,7 @@ export default function AuthButton() {
         </button>
         {menuOpen && (
           <>
-            <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setMenuOpen(false)} />
-            <SignInPanel onClose={() => setMenuOpen(false)} />
+            <SignInPanel onClose={closeMenu} />
           </>
         )}
       </div>

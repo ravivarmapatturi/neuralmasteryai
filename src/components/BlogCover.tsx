@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import TopicArtwork from './TopicArtwork';
 
 export type CoverVariant =
   | 'healthcare-map'
@@ -88,7 +89,7 @@ export default function BlogCover({
       aria-label={`Editorial visual: ${meta.label}`}
     >
       <div className="nm-blog-cover-label">{meta.label}</div>
-      <svg viewBox="0 0 600 310" aria-hidden="true" focusable="false">
+      {['jeva', 'jepa', 'kimi', 'skills', 'memory', 'gui'].includes(variant) ? <TopicArtwork kind={variant} /> : <svg viewBox="0 0 600 310" aria-hidden="true" focusable="false">
         {/* 1. US Healthcare: The Map */}
         {variant === 'healthcare-map' && (
           <>
@@ -297,7 +298,7 @@ export default function BlogCover({
             <text x="462" y="122">AUDITED LOG</text>
             <text x="462" y="142" style={{ fontSize: 8 }}>Deterministic Checks</text>
             <path d="M280 170v40" />
-            <text x="280" y="230" style={{ fontSize: 9 }}>Zero Hallucination Verification</text>
+            <text x="280" y="230" style={{ fontSize: 9 }}>Source and policy checks</text>
           </>
         )}
 
@@ -413,7 +414,7 @@ export default function BlogCover({
             <text x="300" y="240" style={{ fontSize: 10 }}>NEURAL MASTERY ARCHITECTURE</text>
           </>
         )}
-      </svg>
+      </svg>}
     </div>
   );
 }

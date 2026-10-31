@@ -106,7 +106,7 @@ function routesFromContentTree() {
 // '/', '/learn', '/progress', '/practice') -- each one genuinely 404'd
 // on the live site (real HTTP 404 status, confirmed via a real website
 // audit 2026-10-07), the identical bug this list exists to prevent.
-const APP_ROUTES = ['/', '/learn', '/progress', '/practice', '/profile', '/leaderboard', '/about', '/privacy', '/terms'];
+const APP_ROUTES = ['/', '/learn', '/progress', '/labs', '/interview', '/practice', '/profile', '/leaderboard', '/about', '/privacy', '/terms'];
 // The blog list and every post (src/data/blogMeta.generated.json).
 const BLOG_ROUTES = ['/blog', '/blog/write', ...JSON.parse(readFileSync(join(ROOT, 'src', 'data', 'blogMeta.generated.json'), 'utf8')).map((p) => `/blog/${p.slug}`)];
 
