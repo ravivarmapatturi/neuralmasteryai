@@ -62,8 +62,19 @@
         ]
       }
     </script>
-    <!-- Google AdSense Verification & Ad Serving -->
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4080476661803295" crossorigin="anonymous"></script>
+    <!-- Google AdSense: the meta tag verifies the site; the ad script loads only on the
+         production domain so local dev, previews and CI smoke tests stay free of its
+         third-party frame errors. -->
+    <meta name="google-adsense-account" content="ca-pub-4080476661803295" />
+    <script>
+      if (/(^|\.)neuralmasteryai\.com$/.test(location.hostname)) {
+        var s = document.createElement('script');
+        s.async = true;
+        s.crossOrigin = 'anonymous';
+        s.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4080476661803295';
+        document.head.appendChild(s);
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

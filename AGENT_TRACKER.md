@@ -48,3 +48,4 @@ Before writing any code or making edits:
 - [ ] Add your entry to the table above with status `IN_PROGRESS`.
 - [ ] Read `AGENTS.md` to ensure full compliance with coding and content invariants.
 - [ ] Run `node scripts/check-agent-tracker.mjs` to validate tracker format integrity.
+| `2026-11-01T16:30:00+05:30` | `Claude-Code` | `main` | `AGENTS.md`, `.agents/skills/`, `src/styles/theme.css`, `index.html`, `scripts/prerender-for-pagefind.mjs`, 3 MDX callouts | Shared agent harness + skills; fix mobile navbar overflow, AdSense console errors, invalid callout colour, prerender RAM | `COMPLETED` | Typecheck, Links, 502 Tests, Build, Pagefind, Smoke 11/11 (Passed) | New skills: learn-page, blog-post, lab, interview-question, visualization, ui-design, writing-voice, ship-gate. |

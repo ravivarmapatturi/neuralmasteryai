@@ -5,6 +5,51 @@
 
 ---
 
+## Team, lanes and skills (read first)
+
+Agents here: **Claude Code** (lead/reviewer, UX + visual quality sign-off), **Codex** (features, interview/practice engine, scripts), **agy / Antigravity** (content tracks, MDX chapters, visualizers). The user's latest instruction overrides lanes. `CLAUDE.md` and `GEMINI.md` point to this file; skills live only in `.agents/skills/` (`.agent/skills` and `.claude/skills` are symlinks).
+
+| Skill | Use it when |
+| --- | --- |
+| `agent-tracker` | Before touching any file, and at the end. |
+| `learn-page` | Writing or deepening any page in `src/content/docs/`. |
+| `blog-post` | Any post in `src/content/blog/`. |
+| `lab` | Any lab, practice problem or exercise (`/labs`). |
+| `interview-question` | Any interview question, bank or study guide. |
+| `visualization` | Any diagram or interactive component in `src/viz/`. |
+| `ui-design` | Any page layout, component, navigation or styling change. |
+| `writing-voice` | Any human-facing text. Includes the banned-phrase grep. |
+| `visual-learning` | Teaching philosophy behind all of the above. |
+| `ship-gate` | Before saying "done", committing, or pushing. Mandatory. |
+
+You never need a prompt to repeat these rules: pick the skills that match the files you touch and follow them.
+
+---
+
+## This machine has 8 GB RAM (hard rule for every agent)
+
+- Run **one** heavy command at a time. Never run the build, Playwright, a dev server and a second agent's build together.
+- `npm run build` peaks around 5 GB. Before it, check `free -g` shows at least 5 GB available; if not, skip it and let CI run the full build.
+- Kill what you started when done (`pkill -f "vite build"`, `pkill -f static-server.cjs`, Playwright browsers).
+- Never start a second autonomous agent loop while another agent is building.
+
+## How to build, test and run (Neural Mastery, `platform-vite`)
+
+```bash
+npm ci                                   # once, or after package-lock changes
+npm run dev                              # dev server on :5173 (light, use for UI work)
+npm run typecheck                        # Layer 1
+npm run check:links                      # Layer 2
+npx vitest run                           # Layer 3 (full suite, ~500 tests)
+NODE_OPTIONS="--max-old-space-size=6144" npm run build   # Layer 4, writes dist/
+PRERENDER_CONCURRENCY=2 npm run pagefind   # prerender + search index (needed before smoke tests); 2 pages max on this machine
+npx playwright test tests/smoke.spec.ts --workers=1  # E2E smoke on dist via scripts/static-server.cjs :4173
+node scripts/generate-page-meta.mjs      # after adding/renaming MDX
+```
+CI (`.github/workflows/ci.yml`) runs exactly: unit tests, typecheck, build, check:links, pagefind, smoke. Push to `main` on `origin` deploys.
+
+---
+
 ## 0. Mandatory Pre-Flight & Multi-Agent Tracker Protocol
 
 Before modifying ANY file in this repository:
@@ -23,10 +68,10 @@ Before modifying ANY file in this repository:
 
 ## 1. Identity & Architectural Vision
 
-**NeuralMastery** (`neuralmasteryai.com`) is the premier interactive learning platform for AI Engineering, Deep Learning, and Autonomous Systems.
+**NeuralMastery** (`neuralmasteryai.com`) is an interactive learning platform for AI Engineering, Deep Learning, and Autonomous Systems.
 
 The codebase is built on:
-- **Core Framework**: React 18 + TypeScript + Vite + Tailwind/Custom CSS Tokens.
+- **Core Framework**: React 19 + TypeScript + Vite + Tailwind/Custom CSS Tokens.
 - **Content System**: MDX (`@mdx-js/react`) with custom React pedagogical components and interactive SVG visualizations.
 - **In-Browser Execution**: WebAssembly Pyodide runtime (`RunnableCode`) executing real Python code client-side.
 - **Search & Static Generation**: Pagefind headless indexing over 1,800+ prerendered static routes.
@@ -46,8 +91,8 @@ Autonomous models are prone to **Premature Victory**: claiming a task is complet
    Before asking for user sign-off or pushing commits, execute:
    - **Layer 1: Typecheck**: `npm run typecheck` (`tsc -b` must exit 0).
    - **Layer 2: Internal Links**: `npm run check:links` (0 broken internal prose or anchor links).
-   - **Layer 3: Unit Tests**: `npx vitest run` (or targeted test suites in `src/lib/` or `src/components/`).
-   - **Layer 4: Static Build**: `NODE_OPTIONS="--max-old-space-size=8192" npm run build` (dist/ generated with 0 errors).
+   - **Layer 3: Unit Tests**: full `npx vitest run` (targeted suites are fine while iterating, never as the final gate).
+   - **Layer 4: Static Build**: `NODE_OPTIONS="--max-old-space-size=6144" npm run build` (dist/ generated with 0 errors).
 
 ---
 
@@ -79,7 +124,7 @@ Every major learning chapter must maintain this standard:
 | Dedicated Interactive Visualizers | **Step-Through SVG Diagrams**: Featuring playback buttons, step toggles, or parameter sliders using `useVizTokens()`. Never rely on static ASCII art alone when an interactive diagram can be built. |
 | `<RunnableCode>` | **Live In-Browser Python**: Executable Pyodide code snippets allowing learners to run, modify, and inspect actual output in the browser. |
 | `<GoDeeper title="...">` | **Advanced Systems / Math Proofs**: Expandable accordions for formal derivations, kernel internals, or asymptotic bounds. |
-| `<NotebookCallout color="...">` | **Color-Coded Invariants**: Amber (`color="amber"`) for critical warnings, Blue (`color="blue"`) for core takeaways, Green (`color="green"`) for architectural heuristics. |
+| `<NotebookCallout color="...">` | **Color-Coded Invariants**: Amber (`color="amber"`) for critical warnings, Cobalt (`color="cobalt"`) for core takeaways (there is no `blue`), Green (`color="green"`) for architectural heuristics. |
 
 ---
 
@@ -106,7 +151,7 @@ All interactive visualizations in `src/viz/` must obey the design token system:
 
 1. **Node.js Heap Allocation**:
    The repository contains 1,835+ MDX routes. Running Vite or Rollup without expanded heap will result in `JavaScript heap out of memory` (Exit code 134).
-   - **Always prepend**: `NODE_OPTIONS="--max-old-space-size=8192"` to all `npm run build` commands.
+   - **Always prepend**: `NODE_OPTIONS="--max-old-space-size=6144"` to all `npm run build` commands.
 2. **Metadata Regeneration**:
    When adding, removing, or renaming MDX files or category JSONs:
    - Run: `node scripts/generate-page-meta.mjs`

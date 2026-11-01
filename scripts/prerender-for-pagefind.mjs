@@ -151,7 +151,8 @@ async function main() {
     // one browser, and swaps 'networkidle' (waits for zero network
     // activity) for 'domcontentloaded' + the existing waitForSelector,
     // which is what was actually gating readiness anyway.
-    const CONCURRENCY = 8;
+    // PRERENDER_CONCURRENCY=2 keeps peak RAM ~1.5 GB on 8 GB dev machines; CI keeps 8.
+    const CONCURRENCY = Number(process.env.PRERENDER_CONCURRENCY) || 8;
     const browser = await chromium.launch();
     let cursor = 0;
     async function worker() {

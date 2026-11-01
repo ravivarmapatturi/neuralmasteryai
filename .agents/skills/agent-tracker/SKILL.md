@@ -63,10 +63,10 @@ Never claim completion without executing the 4-layer verification gate:
    npm run check:links
 
    # Layer 3: Unit Tests
-   npx vitest run src/lib/contentTree.test.ts
+   npx vitest run
 
    # Layer 4: Static Build (Memory Cap 8192)
-   NODE_OPTIONS="--max-old-space-size=8192" npm run build
+   NODE_OPTIONS="--max-old-space-size=6144" npm run build
    ```
 2. **Update Tracker Entry to `COMPLETED`**:
    Once all layers pass, edit your row in `AGENT_TRACKER.md`:
