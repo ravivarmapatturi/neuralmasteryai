@@ -5,6 +5,9 @@ date: 2026-10-23
 tags: [agents, agent skills, MCP, context engineering]
 ---
 
+import SkillContextBudget from '../../viz/diagrams/SkillContextBudget';
+
+
 # Agent Skills, Explained: What They Are and How They Differ From MCP
 
 On 22 October 2026, Anthropic [donated Agent Skills](https://www.anthropic.com/news/donating-agent-skills-to-the-agentic-ai-foundation) to the Agentic AI Foundation, the Linux Foundation group that already looks after MCP. The standard was published in December 2025. Since then more than 70 agent platforms have adopted it, including ChatGPT, Cursor, GitHub Copilot and VS Code, and Anthropic counts about a million published skills and nearly 280 million installs.
@@ -68,6 +71,8 @@ The design idea worth remembering is that an agent loads a skill in three stages
 3. **Only if needed**, the files in `scripts/`, `references/` and `assets/`.
 
 Compare that with the system-prompt approach. With 50 skills, the agent carries about 50 × 100 = 5,000 tokens of descriptions. Putting all 50 sets of instructions in the system prompt instead could mean up to 50 × 5,000 = 250,000 tokens on every call, more than many models can hold at all. And because an agent re-sends its context on every turn, tokens that are always loaded are paid for again and again. We looked at how much that adds up in [the previous post on agent memory and cost](/blog/do-agents-need-a-memory-system).
+
+<SkillContextBudget />
 
 This is the same principle as good [context engineering](/docs/agents/context-engineering): give the model what this step needs, not everything it might ever need.
 

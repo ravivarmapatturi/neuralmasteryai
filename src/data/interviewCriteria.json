@@ -1,0 +1,59 @@
+{
+  "_about": "Question-specific grading criteria and follow-ups, keyed by question id. Overrides the generic defaults from the export script. Each criterion is one checkable thing a strong answer contains. See .agents/skills/interview-question/SKILL.md.",
+  "classical-ml-questions:cml-high-variance-tree": {
+    "criteria": ["Names the 28-point train/validation gap as high variance (overfitting)", "Proposes constraining the tree: max_depth, min_samples_leaf or pruning", "Mentions averaging trees (random forest) as an alternative", "Says what to check if the gap persists: leakage, label noise or a shifted validation set"],
+    "followup": "You limit depth and validation stays at 71%. What do you look at next?"
+  },
+  "classical-ml-questions:cml-high-bias": {
+    "criteria": ["Identifies low, close train and validation scores as high bias (underfitting)", "Uses the 95% human score as the reference for how much is achievable", "Proposes more capacity, better features, less regularisation or longer training", "Explains why collecting more data will not fix underfitting"],
+    "followup": "How would you know you had fixed bias and not just moved to overfitting?"
+  },
+  "classical-ml-questions:cml-kfold-rows": {
+    "criteria": ["Computes 10,000 × 4/5 = 8,000 training rows per model", "Notes each row is used for validation exactly once across the five runs"],
+    "followup": "When is k-fold cross-validation the wrong choice?"
+  },
+  "classical-ml-questions:cml-time-series-split": {
+    "criteria": ["Explains that random folds put future days in training (temporal leakage)", "Proposes a time-based split: train before a cut-off, test after", "Mentions a rolling or expanding window for repeated evaluation", "States the principle: validation must mimic how the model is used in production"],
+    "followup": "How large a gap would you leave between the training cut-off and the test window, and why?"
+  },
+  "classical-ml-questions:cml-leaky-feature": {
+    "criteria": ["Asks whether the value is known at prediction time", "Recognises account_closure_reason is written when the outcome happens (target leakage)", "Removes the feature and anything derived from it", "Expects AUC to drop to a believable number and treats 0.99 as a warning sign"],
+    "followup": "How would you catch this kind of leak automatically before training?"
+  },
+  "classical-ml-questions:cml-smote-before-split": {
+    "criteria": ["Explains SMOTE interpolates between real minority points", "Identifies that resampling before the split leaks near-copies of test rows into training", "Fixes it: split first, resample only the training data, inside a pipeline per CV fold", "Questions whether resampling is needed at all versus class weights and threshold tuning"],
+    "followup": "Do you need resampling at all here?"
+  },
+  "classical-ml-questions:cml-precision": {
+    "criteria": ["Computes precision = 15 / 50 = 0.3", "Interprets it: 30% of flagged transactions are fraud", "Names who bears the cost of low precision (the review team)"],
+    "followup": "Who in the business cares most about precision here, and why?"
+  },
+  "classical-ml-questions:cml-recall": {
+    "criteria": ["Computes recall = 15 / 20 = 0.75", "Interprets it: the model catches three quarters of the fraud", "Explains that lowering the threshold raises recall and usually lowers precision"],
+    "followup": "How would you raise recall, and what does it cost?"
+  },
+  "classical-ml-questions:cml-f1": {
+    "criteria": ["Computes F1 = 2 × 0.3 × 0.75 / 1.05 ≈ 0.429", "Explains the harmonic mean is pulled towards the lower of precision and recall", "Names a case where F1 is the wrong metric (unequal error costs)"],
+    "followup": "When would you not use F1 to choose between two models?"
+  },
+  "classical-ml-questions:cml-accuracy-imbalance": {
+    "criteria": ["Explains 99% accuracy is what always predicting 'not fraud' scores", "Recommends precision and recall at the operating threshold", "Recommends PR-AUC for comparing models on the rare class", "Explains why ROC-AUC can look optimistic under heavy imbalance"],
+    "followup": "Why can ROC-AUC look good while the model is useless for the rare class?"
+  },
+  "classical-ml-questions:cml-base-rate": {
+    "criteria": ["Works through a concrete population (e.g. 100,000 people: 100 sick, 99 true positives, 999 false positives)", "Computes the positive predictive value ≈ 99 / 1,098 ≈ 0.09", "Explains that a rare condition makes even an accurate test mostly produce false positives", "Connects it to Bayes' rule or the base rate"],
+    "followup": "How would you change the screening process to make a positive result more trustworthy?"
+  },
+  "classical-ml-questions:cml-threshold-capacity": {
+    "criteria": ["Lets the review capacity (200 cases a day) set the threshold: rank and take the top k", "Evaluates with precision@k", "Compares the cost of missed fraud with the cost of a review", "Mentions revisiting the threshold as fraud volume or model scores drift"],
+    "followup": "Fraud volume doubles next month. What changes in your threshold policy?"
+  },
+  "classical-ml-questions:cml-calibration": {
+    "criteria": ["Distinguishes ranking quality (AUC) from probability accuracy (calibration)", "Checks a reliability diagram or Brier score", "Fixes miscalibration with Platt scaling or isotonic regression on held-out data", "Explains why prices need calibrated probabilities, not just a good ranking"],
+    "followup": "Which would you pick, Platt scaling or isotonic regression, with 2,000 validation examples?"
+  },
+  "classical-ml-questions:cml-log-loss": {
+    "criteria": ["Computes −ln(0.9) ≈ 0.105", "Contrasts it with a confident miss: −ln(0.1) ≈ 2.30", "Explains log loss punishes confident wrong predictions heavily"],
+    "followup": "Why might a team choose log loss over accuracy when training and comparing models?"
+  }
+}

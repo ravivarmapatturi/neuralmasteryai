@@ -36,3 +36,19 @@ it('retains original choice grading and exposes all preparation guides', () => {
   expect(screen.getByText('Correct choice.')).toBeInTheDocument();
   expect(screen.getByText('Preparation library · 13 guides')).toBeInTheDocument();
 });
+it('answer-shape starters insert each move and light it up', () => {
+  render(<MemoryRouter><InterviewPage /></MemoryRouter>);
+  expect(screen.getByLabelText('Answer structure: 0 of 4 moves used')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button',{name:/^Clarify/}));
+  expect(screen.getByLabelText('Your answer')).toHaveValue('First, I would clarify ');
+  fireEvent.click(screen.getByRole('button',{name:/^Verify/}));
+  expect(screen.getByLabelText('Answer structure: 2 of 4 moves used')).toBeInTheDocument();
+});
+it('uses question-specific criteria when an override exists', () => {
+  render(<MemoryRouter><InterviewPage /></MemoryRouter>);
+  fireEvent.change(screen.getByLabelText('Search interview questions'),{target:{value:'tree with no depth limit'}});
+  fireEvent.click(screen.getByRole('button',{name:/tree with no depth limit/}));
+  fireEvent.click(screen.getByLabelText(/Limit the tree/));
+  fireEvent.click(screen.getByRole('button',{name:'Review my answer →'}));
+  expect(screen.getByText(/Names the 28-point train\/validation gap/)).toBeInTheDocument();
+});

@@ -20,7 +20,7 @@ Neural Mastery looks like **a well-kept engineering notebook**: warm paper surfa
 
 - CSS: `var(--nm-*)` from `src/styles/theme.css` (surfaces, text, border, accent). JS/SVG: `useVizTokens()`.
 - New colour → add a token in both places and in light + dark. Never raw hex in components.
-- Fonts: body/UI sans (`--font-sans`), code mono, Kalam only for hand-drawn notebook accents (diagram labels, nav highlights). Never Kalam for body paragraphs.
+- Fonts: follow the theme as it is. Kalam is the site's hand-drawn notebook voice (article prose, headings, nav, diagram labels); UI controls and dense data use `--font-sans`; code uses mono. Don't introduce new font families.
 
 ## AI-slop tells: banned
 
