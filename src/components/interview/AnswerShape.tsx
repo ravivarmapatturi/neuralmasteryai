@@ -12,7 +12,8 @@ export function movesUsed(answer: string): boolean[] {
     /\b(clarify|clarifying|first, i would|i'd ask|assum)/.test(a),
     /\b(approach|i would (build|use|start|design)|my design|i'd (build|use))/.test(a),
     /\b(trade-?off|downside|cost|instead|alternatively|unless)\b/.test(a),
-    /\b(verify|measure|test|evaluat|metric|monitor|a\/b)/.test(a),
+    // Verification intent, not any use of the word "test" ("testing on the weeks after" is part of the approach).
+    /\b(verify|verified|measure|evaluate (it|whether|the (fix|change|result))|metric|monitor|a\/b|i would (test|check|confirm)|i'd (test|check|confirm)|to confirm|check (that|whether))/.test(a),
   ];
 }
 

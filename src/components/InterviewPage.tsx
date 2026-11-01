@@ -76,6 +76,7 @@ export default function InterviewPage() {
   return <div className="nb-theme" style={{ minHeight: '100vh' }}><Navbar /><main className="nm-interview-shell">
     <p className="nb-eyebrow">INTERVIEW / THINK IT THROUGH</p><h1 className="nb-heading">Explain the choices behind your solution.</h1>
     <p className="nm-interview-lead">{bankQuestions.length} questions from our existing Interview Prep banks, plus {guidedQuestions.length} guided scenarios. Choose a topic, answer out loud or in writing, and compare with the worked explanation.</p>
+    <Link to="/interview/mock" className="nm-mock-cta"><strong>Ready to practise for real? Start a mock interview →</strong><span>Answer out loud and get a report on what to improve. Free, and your voice stays on your device.</span></Link>
     <details className="nm-interview-guides"><summary>Preparation library · {interviewGuides.length} guides</summary><div>{interviewGuides.map(guide => <Link key={guide.slug} to={guide.route}><strong>{guide.title.replace(/ — The Full Bank$/, '')}</strong><span>{guide.description}</span></Link>)}</div></details>
     <div className="nm-interview-layout"><aside aria-label="Interview questions">
       <button type="button" className="nm-button nm-interview-surprise" onClick={() => select(Math.floor(Math.random() * questions.length))}>Surprise me with a question</button>
