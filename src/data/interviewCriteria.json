@@ -279,5 +279,221 @@
   "llm-serving-and-fine-tuning-questions:ft-data-quality": {
     "criteria": ["Chooses the 1,000 expert-written examples for teaching instruction-following style", "Explains that alignment tuning mainly teaches format and behaviour the pretrained model can already support", "Explains that noisy examples teach inconsistent behaviour and errors", "Distinguishes a genuinely new skill as a case that needs more data while retaining quality"],
     "followup": "How would you clean the 100,000 scraped examples?"
+  },
+  "qa-quick-reference:0686ffdebb6f": {
+    "criteria": ["Defines a foundation model as a large model pretrained at scale on broad data", "Explains that one foundation model can adapt to many downstream tasks", "Contrasts adaptation by prompting or fine-tuning with training a separate model from scratch per task"],
+    "followup": "When would you still train a task-specific model instead?"
+  },
+  "qa-quick-reference:ee37eab62c02": {
+    "criteria": ["Defines an LLM as a neural network, usually a decoder-only Transformer", "States that pretraining predicts the next token from preceding tokens", "Explains that chat, code, and reasoning behaviour emerge from scale and post-training on top of that objective"],
+    "followup": "If the objective is only next-token prediction, where does instruction following come from?"
+  },
+  "qa-quick-reference:a90852b31b07": {
+    "criteria": ["Defines tokenization as mapping text into a fixed vocabulary of subword units", "Explains that character tokenization creates excessively long sequences", "Explains that whole-word tokenization needs an unbounded vocabulary and cannot handle unseen words"],
+    "followup": "How does tokenization affect context length and inference cost?"
+  },
+  "qa-quick-reference:qa-bpe-rare-word": {
+    "criteria": ["Explains that BPE builds a vocabulary by repeatedly merging frequent adjacent byte or character pairs", "States that the rare word falls back to several smaller subword pieces", "Distinguishes rare-word splitting from the single-token representation common words may receive"],
+    "followup": "Why do frequent words tend to use fewer BPE tokens?"
+  },
+  "qa-quick-reference:cfeb2ec2bf65": {
+    "criteria": ["Defines embeddings as dense numeric vectors for tokens, sentences, or documents", "Explains that semantic similarity maps to geometric closeness", "Connects embeddings to the representations consumed by attention and retrieval"],
+    "followup": "How would you test whether an embedding model captures similarity for your domain?"
+  },
+  "qa-quick-reference:qa-positional-encoding": {
+    "criteria": ["States that the encoder would treat the two token orderings equivalently without positional information", "Explains that self-attention alone is permutation-invariant", "Explains that positional encoding injects token order so the meanings can differ"],
+    "followup": "How do relative positional encodings differ from absolute ones?"
+  },
+  "qa-quick-reference:90e4b1c73699": {
+    "criteria": ["Defines self-attention as each token weighting other tokens when updating its representation", "Explains that Query, Key, and Value projections come from the same input sequence", "Connects attention weights to the relevance of other positions"],
+    "followup": "What is the computational cost of full self-attention as sequence length grows?"
+  },
+  "qa-quick-reference:b1df57199f99": {
+    "criteria": ["Defines Query as what the current position seeks", "Defines Key as what each position offers", "Explains that Query-Key similarity produces weights used to combine Values"],
+    "followup": "Why are Query, Key, and Value separate learned projections?"
+  },
+  "qa-quick-reference:qa-sqrt-dk": {
+    "criteria": ["Explains that unscaled dot products grow with key dimension", "Explains that large scores saturate softmax toward one-hot weights and near-zero gradients", "Explains that division by sqrt(d_k) keeps scores in a trainable range"],
+    "followup": "Why is the scale sqrt(d_k) rather than d_k?"
+  },
+  "qa-quick-reference:dcd9920ddca7": {
+    "criteria": ["Defines multi-head attention as parallel smaller attention computations with separate projections", "Explains that the head outputs are concatenated", "Explains that separate heads can specialise in different relationships instead of averaging them into one head"],
+    "followup": "What trade-off changes when you increase the number of heads at fixed model width?"
+  },
+  "qa-quick-reference:qa-cross-attention": {
+    "criteria": ["States that decoder cross-attention queries come from the decoder", "States that keys and values come from the encoder output", "Contrasts cross-attention with self-attention, where all three projections come from one sequence"],
+    "followup": "Why can the decoder cache cross-attention keys and values during generation?"
+  },
+  "qa-quick-reference:qa-causal-mask": {
+    "criteria": ["Explains that the missing mask lets each position inspect future target tokens during training", "Identifies the resulting low loss as leakage", "Explains that generation fails because future tokens do not exist at inference time"],
+    "followup": "How would you detect a missing causal mask before a full training run?"
+  },
+  "qa-quick-reference:qa-kv-cache-size": {
+    "criteria": ["Computes 2 × 24 × 16 × 64 × 2 = 98,304 bytes = 96 KiB per token", "Accounts for keys and values across every layer and KV head", "Explains that caching avoids recomputing all prior token projections during each decode step"],
+    "followup": "How much cache would one 4,000-token conversation require?"
+  },
+  "qa-quick-reference:qa-rag-or-finetune": {
+    "criteria": ["Chooses retrieval for the daily-changing price list", "Explains that retrieval updates through re-indexing rather than retraining", "Explains that fine-tuning is slow to update and does not reliably cite current sources"],
+    "followup": "What would make fine-tuning useful alongside retrieval here?"
+  },
+  "qa-quick-reference:9f86bd1675da": {
+    "criteria": ["Describes chunking source documents and embedding each chunk", "Describes indexing embeddings and embedding the incoming query", "Describes retrieving nearest chunks and supplying them with the query as LLM context"],
+    "followup": "At which pipeline stage would you diagnose a relevant document that is never retrieved?"
+  },
+  "qa-quick-reference:qa-chunk-size": {
+    "criteria": ["Identifies the 2,000-token chunks as too large for precise clause retrieval", "Explains that irrelevant text dilutes the chunk embedding and retrieval precision", "Contrasts this with chunks that are too small to preserve necessary surrounding context"],
+    "followup": "How would you choose a better chunk size empirically?"
+  },
+  "qa-quick-reference:qa-dense-sparse": {
+    "criteria": ["Chooses sparse BM25 retrieval for the exact error code", "Explains that sparse retrieval matches literal keywords, identifiers, and jargon", "Explains that dense semantic retrieval can miss rare exact terms while finding broader paraphrases"],
+    "followup": "How would you combine exact-code and semantic retrieval in one system?"
+  },
+  "qa-quick-reference:8c1f29816cef": {
+    "criteria": ["Defines BM25 as a sparse ranking function based on query-term overlap", "Explains diminishing returns for repeated term frequency", "Explains document-length normalisation and notes that BM25 requires no learned embeddings"],
+    "followup": "Why does BM25 still make a strong retrieval baseline?"
+  },
+  "qa-quick-reference:qa-rrf-score": {
+    "criteria": ["Computes 1/(60 + 1) + 1/(60 + 3) = 1/61 + 1/63 = 0.0323", "Explains that reciprocal rank fusion combines ranks rather than raw scores", "Explains that rank-only fusion works when cosine and BM25 scores are not directly comparable"],
+    "followup": "What changes when you increase the RRF constant k?"
+  },
+  "qa-quick-reference:qa-why-rerank-shortlist": {
+    "criteria": ["Explains that a cross-encoder's joint query-document pass is too expensive over 10 million documents", "Uses cheap bi-encoder similarity for corpus-scale candidate retrieval", "Uses the more accurate cross-encoder only to reorder a small shortlist"],
+    "followup": "How would you choose the shortlist size for reranking?"
+  },
+  "qa-quick-reference:qa-bi-encoder-precompute": {
+    "criteria": ["Chooses a bi-encoder because it represents queries and documents independently", "Explains that document vectors can be computed and indexed before queries arrive", "Contrasts this with a cross-encoder that jointly processes each query-document pair"],
+    "followup": "What accuracy does independent encoding give up compared with a cross-encoder?"
+  },
+  "qa-quick-reference:qa-graphrag-when": {
+    "criteria": ["Chooses a multi-hop question requiring facts chained across documents", "Explains that GraphRAG represents entities and relationships in a knowledge graph", "Explains that graph traversal can connect facts a single chunk-similarity search will not"],
+    "followup": "What ingestion work must happen before GraphRAG can answer that question?"
+  },
+  "qa-quick-reference:qa-faithfulness": {
+    "criteria": ["Chooses faithfulness as the metric for unsupported answer claims", "Defines faithfulness as whether the answer follows from retrieved context", "Distinguishes it from retrieval relevance and context precision or recall"],
+    "followup": "How would you score faithfulness when no exact reference answer exists?"
+  },
+  "qa-quick-reference:qa-topk-hurts": {
+    "criteria": ["Attributes the quality drop to irrelevant or redundant chunks diluting useful evidence", "Connects the larger context to lost-in-the-middle effects and context rot", "Explains that increasing top-k can reduce attention to the chunks that answer the query"],
+    "followup": "How would you tune top-k without hiding retrieval recall failures?"
+  },
+  "qa-quick-reference:a23d90828199": {
+    "criteria": ["Contrasts standard RAG's single fixed retrieve-then-generate pass with an agent-controlled loop", "Explains that the agent decides whether and what to retrieve", "Explains that the agent can reformulate a query or retrieve again after weak initial results"],
+    "followup": "What new failure modes does the retrieval loop introduce?"
+  },
+  "qa-quick-reference:qa-crag": {
+    "criteria": ["Identifies corrective RAG as the pattern", "Explains that a grader checks retrieved chunks for relevance and sufficiency before generation", "Explains that a failed grade triggers query rewriting, broader retrieval, or web search"],
+    "followup": "How would you validate the retrieval grader before relying on it?"
+  },
+  "qa-quick-reference:5da690649c81": {
+    "criteria": ["Defines Self-RAG as a model trained to emit reflection tokens during generation", "Explains that the model decides when retrieval is needed", "Explains that it critiques passage relevance and whether its output is grounded"],
+    "followup": "How is Self-RAG operationally different from a separate corrective-RAG grader?"
+  },
+  "qa-quick-reference:qa-adaptive-rag": {
+    "criteria": ["Chooses adaptive RAG with a query-complexity router", "Routes simple factual requests to no retrieval or one retrieval pass", "Routes genuinely complex questions to decomposition or multi-hop retrieval"],
+    "followup": "How would you train or evaluate the complexity router?"
+  },
+  "qa-quick-reference:qa-raptor": {
+    "criteria": ["Chooses RAPTOR's tree of recursively clustered summaries", "Explains that upper summary nodes serve broad thematic questions", "Explains that leaf chunks preserve the detail needed for narrow factual questions"],
+    "followup": "What information can be lost when cluster summaries are generated?"
+  },
+  "qa-quick-reference:5a11f2549901": {
+    "criteria": ["Explains that both methods preserve document context that isolated chunk embeddings lose", "Explains that contextual retrieval prepends an LLM-generated context blurb before embedding", "Explains that late chunking embeds the full document first and pools contextualised token embeddings afterward"],
+    "followup": "Which method changes the indexed text, and why does that matter?"
+  },
+  "qa-quick-reference:qa-cag-manual": {
+    "criteria": ["Chooses cache-augmented generation by loading the entire manual into context", "Explains that the design can reuse the corpus KV cache and skip selective retrieval", "Limits the recommendation to a corpus that genuinely fits the model context"],
+    "followup": "What would make you replace this design with retrieval later?"
+  },
+  "qa-quick-reference:qa-hyde": {
+    "criteria": ["Chooses hypothetical document embeddings to bridge the terse-query and formal-document gap", "Explains that an LLM first generates a hypothetical answer", "Explains that searching with the hypothetical answer's embedding can align better with relevant document language"],
+    "followup": "What risk does a wrong hypothetical answer introduce?"
+  },
+  "qa-quick-reference:e1cce5204340": {
+    "criteria": ["Explains that ColBERT retains a separate embedding for each token", "Defines MaxSim as matching each query token to its best document token and summing", "Explains that document token embeddings remain precomputable while preserving more interaction than one pooled vector"],
+    "followup": "What storage cost does late interaction add over a bi-encoder?"
+  },
+  "qa-quick-reference:qa-rag-injection": {
+    "criteria": ["Treats retrieved document text as untrusted data rather than instructions", "Restricts agent actions behind separate confirmation or authorization", "Adds output filtering as another damage-limiting layer", "Explains that indexing a malicious document can inject instructions into model context"],
+    "followup": "How would you test whether the agent follows instructions hidden in retrieved documents?"
+  },
+  "qa-quick-reference:qa-acl-where": {
+    "criteria": ["Enforces access control during retrieval with user-scoped metadata filters", "Explains that unauthorized chunks must never enter the model context", "Rejects output filtering as too late because the model has already read the data"],
+    "followup": "How would you prevent cached retrieval results from crossing the same access boundary?"
+  },
+  "qa-quick-reference:qa-ingestion-tables": {
+    "criteria": ["Investigates PDF parsing and document ingestion before retrieval", "Explains that corrupted extracted text poisons chunking, embedding, and retrieval downstream", "Proposes a layout-aware parser for multi-column pages and tables"],
+    "followup": "How would you verify that table rows survived ingestion correctly?"
+  },
+  "qa-quick-reference:8a0912ef538b": {
+    "criteria": ["Defines multimodal embeddings as placing images and text in one vector space", "Explains that a text query can retrieve a semantically matching image, chart, or diagram", "Connects this shared space to RAG questions whose evidence is visual"],
+    "followup": "How would you pass a retrieved chart to a model that can answer from it?"
+  },
+  "qa-quick-reference:f9592a217214": {
+    "criteria": ["Contrasts fixed offline test-set metrics with continuous monitoring of live traffic", "Tracks drift in retrieval quality over time", "Uses end-to-end query traces to diagnose individual bad answers", "Identifies an LLM judge as a scalable but model-based production signal"],
+    "followup": "How would you calibrate the production judge against human review?"
+  },
+  "qa-quick-reference:qa-finetune-embeddings": {
+    "criteria": ["Proposes fine-tuning the embedding model on the 5,000 labelled legal query-passage pairs", "Uses contrastive or triplet loss to pull relevant pairs together and irrelevant pairs apart", "Explains that domain relevance differs from generic semantic similarity"],
+    "followup": "How would you construct hard negatives for this fine-tuning run?"
+  },
+  "qa-quick-reference:qa-semantic-cache-risk": {
+    "criteria": ["Identifies cross-tenant cache leakage as the most serious failure", "Explains that a loose similarity threshold can match merely similar queries", "Explains that reusing the matched answer can cross a user data boundary"],
+    "followup": "How would you partition and validate the cache to prevent cross-tenant reuse?"
+  },
+  "qa-quick-reference:qa-embedding-mismatch": {
+    "criteria": ["Identifies incompatible old and new embedding vectors in the same index", "Explains that switching models requires fully re-embedding existing documents", "Distinguishes this migration failure from a reranker that incorrectly reorders valid candidates"],
+    "followup": "How would you migrate embedding models without serving mixed vector spaces?"
+  },
+  "qa-quick-reference:469b48a92e43": {
+    "criteria": ["Defines a single LLM call as input-to-output execution that then stops", "Defines an agent as a loop around the model", "Explains that the loop can call tools, observe results, and choose additional actions before answering"],
+    "followup": "What termination controls would you add to that loop?"
+  },
+  "qa-quick-reference:qa-who-executes-tools": {
+    "criteria": ["States that the calling application executes the function", "Explains that the model only emits a structured function name and arguments", "Explains that the application returns the tool result to model context"],
+    "followup": "What validation must the application perform before executing the arguments?"
+  },
+  "qa-quick-reference:17ea31e1bbad": {
+    "criteria": ["Defines ReAct as interleaving reasoning, actions, and observations", "Explains that an action is commonly a tool call", "Explains that each observation informs the next reasoning step"],
+    "followup": "When would a fixed workflow be safer than a ReAct loop?"
+  },
+  "qa-quick-reference:qa-plan-vs-react": {
+    "criteria": ["Chooses plan-and-execute for the twenty-step task", "Explains that it creates the full ordered plan before execution", "Contrasts it with ReAct deciding only the next action on each turn", "Allows replanning when an execution step fails"],
+    "followup": "What kind of task uncertainty would make ReAct the better choice?"
+  },
+  "qa-quick-reference:e7be3929e2a5": {
+    "criteria": ["Defines reflection as evaluating a prior output against the task", "Explains that the agent revises the output before finalising", "Limits the value to tasks where first-pass errors are detectable through critique"],
+    "followup": "How would you prevent self-critique from merely endorsing the first answer?"
+  },
+  "qa-quick-reference:7d40cf308f34": {
+    "criteria": ["Explains that a single agent handles the whole task in one growing context", "Explains that multiple agents divide subtasks and can use separate context windows", "Balances parallelism and subtask focus against added coordination complexity"],
+    "followup": "What evidence would justify the coordination cost of multiple agents?"
+  },
+  "qa-quick-reference:qa-topology-debug": {
+    "criteria": ["Chooses a hierarchical topology for ease of debugging", "Explains that one orchestrator delegates work and combines results", "Contrasts it with harder-to-converge peer-to-peer coordination and less fixed blackboard contributors"],
+    "followup": "What information would you log at each delegation boundary?"
+  },
+  "qa-quick-reference:e59ee9c1169d": {
+    "criteria": ["Defines the supervisor pattern as dynamic hierarchical delegation", "Explains that the supervisor loops and reroutes work using intermediate results", "Contrasts it with a static orchestrator that commits to one delegation plan upfront"],
+    "followup": "How would you keep a supervisor from routing indefinitely?"
+  },
+  "qa-quick-reference:qa-mcp-integrations": {
+    "criteria": ["Computes 5 × 20 = 100 bespoke app-tool integrations", "Computes the MCP alternative as 5 clients + 20 servers = 25 implementations", "Explains that MCP changes integration growth from N × M to N + M"],
+    "followup": "What does MCP standardise, and what security decisions remain with the host application?"
+  },
+  "qa-quick-reference:7af006ebc845": {
+    "criteria": ["Defines short-term memory as conversation and tool state held in the current context window", "Defines long-term memory as information persisted outside context across sessions", "Explains that using long-term memory becomes a retrieval problem"],
+    "followup": "How would you decide what deserves long-term storage?"
+  },
+  "qa-quick-reference:e2d8e7419c8d": {
+    "criteria": ["Defines prompt engineering as writing and organising instructions", "Defines context engineering as managing the full multi-turn context state", "Includes conversation history, tool results, retrieved documents, and memory in that broader state"],
+    "followup": "What would you remove first when an agent's context becomes too large?"
+  },
+  "qa-quick-reference:qa-lost-in-middle": {
+    "criteria": ["Names the position-specific failure as lost in the middle", "Explains that recall can be stronger at the beginning than in the middle of a long context", "Distinguishes this positional effect from general context degradation caused by sheer token volume"],
+    "followup": "How would you restructure the context to make the fact easier to use?"
+  },
+  "qa-quick-reference:qa-subagents": {
+    "criteria": ["Proposes a focused sub-agent with its own clean context for each research subtask", "Returns only a condensed summary to the parent", "Explains that this prevents full working traces from degrading later parent-agent steps"],
+    "followup": "What details must the sub-agent summary preserve for the parent to verify it?"
   }
 }
