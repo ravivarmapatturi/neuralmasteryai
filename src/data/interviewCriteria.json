@@ -95,5 +95,97 @@
   "classical-ml-questions:cml-ab-peeking": {
     "criteria": ["Explains that repeatedly checking and stopping at p < 0.05 inflates the false-positive rate", "States that a conventional p-value assumes a preselected sample size and one analysis", "Proposes either a fixed sample size or a monitoring-safe method such as group-sequential boundaries", "Names always-valid sequential p-values as another valid option"],
     "followup": "What else can invalidate an A/B test?"
+  },
+  "deep-learning-training-questions:dl-initial-loss": {
+    "criteria": ["Computes the initial cross-entropy as −ln(1/10) = ln(10) = 2.303", "Explains that uniform predictions assign probability 1/10 to each class", "Diagnoses a much higher first loss as oversized initial logits and a much lower loss as possible label leakage"],
+    "followup": "The first loss is 40. What's wrong?"
+  },
+  "deep-learning-training-questions:dl-flat-loss": {
+    "criteria": ["Interprets loss stuck at ln(10) as outputs remaining uniform", "Proposes overfitting one batch as the first debugging test", "Names a broken gradient or optimiser path such as a missing optimizer.step() as a likely cause", "Explains that the one-batch test separates implementation failure from a hard learning problem"],
+    "followup": "It overfits one batch but not the full data. Now what?"
+  },
+  "deep-learning-training-questions:dl-val-rises": {
+    "criteria": ["Names the diverging train and validation losses as overfitting to training-set noise", "Proposes stopping at the best validation epoch", "Proposes reducing the gap with regularisation, augmentation, a smaller model, or more data", "Explains that rising loss with improving accuracy can mean increasingly confident mistakes"],
+    "followup": "Validation accuracy still improves while validation loss rises. How?"
+  },
+  "deep-learning-training-questions:dl-oscillating": {
+    "criteria": ["Identifies an excessively high learning rate as the primary cause", "Proposes lowering the learning rate and adding warmup", "Distinguishes a tiny batch by noting its noisy loss should still trend down on average", "Proposes a learning-rate range test to locate where loss begins to diverge"],
+    "followup": "How would a batch that's too small look different?"
+  },
+  "deep-learning-training-questions:dl-nan-fp16": {
+    "criteria": ["Explains that fp16 activation or gradient overflow produces infinity and then NaN", "Proposes bf16 first when the hardware supports it", "Proposes dynamic loss scaling, gradient clipping, or a lower learning rate for fp16", "Names unstable unclamped softmax or logarithm operations as another place to inspect"],
+    "followup": "Why does loss scaling exist?"
+  },
+  "deep-learning-training-questions:dl-eval-mode": {
+    "criteria": ["Identifies the missing model.eval() call", "Explains that dropout remains random and batch norm uses current-batch statistics in training mode", "Proposes torch.no_grad() to reduce evaluation memory", "Restores model.train() before training resumes"],
+    "followup": "What does batch norm do differently in eval mode?"
+  },
+  "deep-learning-training-questions:dl-warmup": {
+    "criteria": ["Computes lr = 3e-4 × 500 / 2,000 = 7.5e-05", "Explains that warmup limits badly directed early updates before Adam's moment estimates settle", "Notes that warmup is especially useful for transformers trained with large learning rates"],
+    "followup": "Why does Adam need warmup at all?"
+  },
+  "deep-learning-training-questions:dl-cosine": {
+    "criteria": ["Computes cos(π/2) = 0 and lr = 0.5 × 3e-4 = 1.5e-04", "States that cosine decay falls slowly at the start and end and fastest in the middle", "Explains that smaller late-stage steps help the model settle instead of bouncing around a minimum"],
+    "followup": "Why decay the learning rate at all?"
+  },
+  "deep-learning-training-questions:dl-adamw": {
+    "criteria": ["Explains that Adam rescales an L2 gradient with its adaptive denominator", "Explains that AdamW applies lr × weight_decay × w separately from the adaptive update", "Concludes that decoupling makes regularisation behave like true weight decay", "Notes that biases and normalisation weights are usually excluded from decay"],
+    "followup": "What weight decay is typical for transformers?"
+  },
+  "deep-learning-training-questions:dl-batch-lr": {
+    "criteria": ["Applies the SGD linear-scaling rule by multiplying the learning rate by 4", "Pairs the larger learning rate with warmup", "Distinguishes Adam-style optimisation by naming square-root scaling as a common heuristic", "Treats either rule as a starting point to validate with a short sweep"],
+    "followup": "When does linear scaling stop working?"
+  },
+  "deep-learning-training-questions:dl-grad-clip": {
+    "criteria": ["Attributes intermittent spikes to rare batches producing very large gradients", "Proposes clipping the global gradient norm", "Explains that norm clipping preserves gradient direction while bounding the step", "Suggests lowering the learning rate or inspecting bad batches and Adam settings if spikes persist"],
+    "followup": "Would you clip by value or by norm?"
+  },
+  "deep-learning-training-questions:dl-he-init": {
+    "criteria": ["Computes std = sqrt(2/512) = 0.0625", "Explains that the factor of 2 compensates for ReLU zeroing about half its inputs", "Connects the scale to keeping activation variance roughly constant across layers"],
+    "followup": "What happens with standard deviation 0.01 in a 50-layer ReLU network?"
+  },
+  "deep-learning-training-questions:dl-batchnorm-small": {
+    "criteria": ["Explains that two-example batch statistics are too noisy for batch norm", "Explains that noisy running statistics also create a train/evaluation mismatch", "Proposes GroupNorm or LayerNorm because they normalise within each example", "Proposes SyncBatchNorm when statistics can be aggregated across GPUs"],
+    "followup": "Why do transformers use LayerNorm?"
+  },
+  "deep-learning-training-questions:dl-residual": {
+    "criteria": ["Distinguishes worse training accuracy in the deeper model as degradation rather than overfitting", "Proposes residual connections of the form x + f(x)", "Explains that residual connections make the identity function easy to represent", "Explains that the identity derivative gives gradients a direct path around the block"],
+    "followup": "Why does x + f(x) help gradients?"
+  },
+  "deep-learning-training-questions:dl-linear-params": {
+    "criteria": ["Computes 4,096 × 4,096 weights + 4,096 biases = 16,781,312 parameters", "Separates the 16,777,216 weights from the 4,096 biases", "Connects large projection layers to most parameters in transformer attention and MLP blocks"],
+    "followup": "How many parameters are in the MLP of a block with hidden size 4,096 and a 4× expansion?"
+  },
+  "deep-learning-training-questions:dl-conv-params": {
+    "criteria": ["Computes 128 × (3 × 3 × 64 + 1) = 73,856 parameters", "Explains that the image dimensions do not affect the parameter count", "Explains that convolutional parameters are shared across spatial positions"],
+    "followup": "What is the compute for a 56×56 output?"
+  },
+  "deep-learning-training-questions:dl-weights-memory": {
+    "criteria": ["Computes 7 × 10^9 parameters × 2 bytes = 14 GB", "States that bf16 uses two bytes per parameter", "Distinguishes weight memory from additional KV-cache and activation memory"],
+    "followup": "How much would the weights take in int4?"
+  },
+  "deep-learning-training-questions:dl-adam-memory": {
+    "criteria": ["Computes 2 + 2 + 4 + 4 + 4 = 16 bytes per parameter and 7 × 10^9 × 16 = 112 GB", "Accounts for bf16 weights and gradients plus fp32 master weights and two Adam moments", "Explains that the 112 GB excludes activations and motivates sharding or LoRA"],
+    "followup": "What does ZeRO stage 3 or FSDP do with this memory?"
+  },
+  "deep-learning-training-questions:dl-oom-accumulate": {
+    "criteria": ["Proposes gradient accumulation to preserve an effective batch of 32 with smaller micro-batches", "Explains that several forward/backward passes precede one optimizer.step()", "Notes the batch-normalisation exception to mathematical equivalence", "Proposes activation checkpointing or mixed precision for additional memory savings"],
+    "followup": "What does activation checkpointing cost?"
+  },
+  "deep-learning-training-questions:dl-effective-batch": {
+    "criteria": ["Computes effective batch = 8 × 16 × 4 = 512", "Identifies micro-batch size, accumulation steps, and data-parallel GPU count as the three factors", "Uses the effective batch rather than the micro-batch when reasoning about learning rate"],
+    "followup": "You move to 8 GPUs and want the same effective batch. What changes?"
+  },
+  "deep-learning-training-questions:dl-training-time": {
+    "criteria": ["Computes throughput = 8 × 50,000 = 400,000 tokens/s and time = 10^9 / 400,000 = 2,500 seconds = 41.7 minutes", "States that the arithmetic ignores data loading, evaluation, checkpointing, and communication", "Adds a 20–40% planning margin for those overheads"],
+    "followup": "Would scaling from 8 to 64 GPUs make the run exactly 8× faster?"
+  },
+  "deep-learning-training-questions:dl-bf16": {
+    "criteria": ["Chooses bf16 because its 8-bit exponent gives it the same numeric range as fp32", "Contrasts bf16's 7 mantissa bits with fp16's greater precision but narrow range", "Explains that training is more sensitive to overflow and underflow than reduced precision", "Explains that bf16 generally avoids dynamic loss scaling"],
+    "followup": "Where does bf16's low precision hurt?"
+  },
+  "deep-learning-training-questions:dl-augment-split": {
+    "criteria": ["Identifies augmented near-duplicates across splits as leakage", "Proposes splitting by original-image group before augmentation", "Restricts augmentation to the training split, preferably on the fly", "Proposes perceptual hashes or embedding similarity to detect cross-split near-duplicates"],
+    "followup": "What other kinds of groups can leak across a split like this?"
   }
 }
