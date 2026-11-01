@@ -37,6 +37,16 @@ npm run typecheck
 
 Commit each bank separately: `feat(interview): specific criteria for <bank> (<n> questions)`.
 
+## Hard gate (added after review)
+
+The first RAG attempt was rejected: all 117 entries were answer sentences with "States:/Explains:" labels. Before every commit run:
+
+```bash
+npm run check:criteria
+```
+
+It must print `0 problem(s)`. It rejects labelled fragments, criteria that don't start with a verb, criteria over 160 characters, and 14-word runs copied from the answer. Do not generate criteria with a script: write each one from reading the answer.
+
 ## Done when
 
-The node one-liner prints `241 of 241`, every test passes, and the tracker row is marked `COMPLETED`. This is light work: no build needed, and it's safe to run while nothing else heavy is running.
+`npm run check:criteria` prints `241 of 241` and `0 problem(s)`, every test passes, and the tracker row is marked `COMPLETED`. This is light work: no build needed, and it's safe to run while nothing else heavy is running.
