@@ -187,5 +187,97 @@
   "deep-learning-training-questions:dl-augment-split": {
     "criteria": ["Identifies augmented near-duplicates across splits as leakage", "Proposes splitting by original-image group before augmentation", "Restricts augmentation to the training split, preferably on the fly", "Proposes perceptual hashes or embedding similarity to detect cross-split near-duplicates"],
     "followup": "What other kinds of groups can leak across a split like this?"
+  },
+  "llm-serving-and-fine-tuning-questions:srv-decode-bound": {
+    "criteria": ["Identifies single-sequence decode as memory-bandwidth-bound", "Explains that every generated token streams the model weights for relatively few operations", "Contrasts decode with compute-bound parallel prefill", "Explains that batching reuses one weight read across multiple sequences"],
+    "followup": "What improves single-user decode speed?"
+  },
+  "llm-serving-and-fine-tuning-questions:srv-decode-ceiling": {
+    "criteria": ["Computes 2 × 10^12 bytes/s / (14 × 10^9 bytes) = 143 tokens/s", "Explains that the estimate assumes every weight is read once per token", "Notes that KV-cache reads and sub-peak kernel bandwidth make real throughput lower"],
+    "followup": "What happens to this ceiling with a batch of 32?"
+  },
+  "llm-serving-and-fine-tuning-questions:srv-decode-int4": {
+    "criteria": ["Computes 2 × 10^12 / (3.5 × 10^9) = 571 tokens/s", "Identifies the ceiling as four times the bf16 result because int4 moves one quarter of the weight bytes", "Explains that on-the-fly dequantisation and quality loss can reduce the practical benefit"],
+    "followup": "What does int4 cost you?"
+  },
+  "llm-serving-and-fine-tuning-questions:srv-kv-per-token": {
+    "criteria": ["Computes 2 × 32 × 8 × 128 × 2 = 131,072 bytes = 128 KiB per token", "Accounts for both keys and values at every layer and KV head", "Explains that grouped-query attention cuts this cache by 4× relative to 32 KV heads"],
+    "followup": "Why doesn't the number of query heads appear?"
+  },
+  "llm-serving-and-fine-tuning-questions:srv-kv-8k": {
+    "criteria": ["Computes 8,192 × 128 KiB = 1,048,576 KiB = 1 GiB per sequence", "Connects long-context serving cost to KV-cache growth", "Distinguishes the per-sequence cache from the model's fixed weight memory"],
+    "followup": "How much KV cache would a 128k-token context need?"
+  },
+  "llm-serving-and-fine-tuning-questions:srv-kv-concurrency": {
+    "criteria": ["Computes 40 GiB / 1 GiB per sequence = 40 concurrent sequences", "Identifies KV-cache capacity as the concurrency limit after weights are loaded", "Explains that paged attention avoids reserving a maximum-length cache for sequences that stay short"],
+    "followup": "How else can you fit more concurrent sequences?"
+  },
+  "llm-serving-and-fine-tuning-questions:srv-gqa": {
+    "criteria": ["Explains that grouped-query attention shares one key-value head across several query heads", "Connects fewer KV heads to proportionally smaller cache and decode bandwidth", "Distinguishes multi-query attention as the one-KV-head extreme", "Notes that the more aggressive multi-query design can cost more quality"],
+    "followup": "Can you convert a multi-head model to grouped-query attention?"
+  },
+  "llm-serving-and-fine-tuning-questions:srv-continuous-batching": {
+    "criteria": ["Explains that static batching leaves finished request slots idle until the longest response ends", "Explains that continuous batching evicts finished sequences and inserts new requests at each decode step", "Connects continuous batching and paged KV caches to higher GPU throughput", "Names scheduling complexity and prefill/decode contention as costs"],
+    "followup": "What does continuous batching cost?"
+  },
+  "llm-serving-and-fine-tuning-questions:srv-ttft": {
+    "criteria": ["Identifies time to first token as the degraded metric", "Separates TTFT into queueing and prompt prefill", "Proposes prefix caching, context trimming, chunked prefill, or additional capacity", "Separates TTFT reporting from time per output token because they have different causes"],
+    "followup": "How would you measure where TTFT goes?"
+  },
+  "llm-serving-and-fine-tuning-questions:srv-prefix-cache": {
+    "criteria": ["Chooses prefix caching for the shared 3,000-token system prompt", "Explains that cached KV blocks avoid repeating prefill for identical tokens", "Places stable prompt content before variable content to maximise the reusable prefix", "Explains that an early changing token invalidates the cache for all later tokens"],
+    "followup": "What breaks prefix caching?"
+  },
+  "llm-serving-and-fine-tuning-questions:srv-speculative": {
+    "criteria": ["Computes (1 − 0.8^5) / (1 − 0.8) = 3.36 tokens per large-model pass", "Includes the large model's guaranteed correction or continuation token in the expectation", "Explains that memory-bound verification of four tokens costs roughly one ordinary decode pass"],
+    "followup": "When does speculative decoding not help?"
+  },
+  "llm-serving-and-fine-tuning-questions:srv-temp0": {
+    "criteria": ["Explains that temperature zero still depends on tiny logit differences", "Connects those differences to batch-dependent kernel choice and reduction order", "Explains that nearly tied tokens can flip and make the remaining generation diverge", "Names batch-invariant kernels as a deterministic but slower option"],
+    "followup": "Why does nondeterminism at temperature zero matter for evaluation?"
+  },
+  "llm-serving-and-fine-tuning-questions:ft-rag-or-finetune": {
+    "criteria": ["Chooses retrieval-augmented generation for a policy manual that changes weekly", "Explains that retrieval keeps knowledge current and supports citations", "Distinguishes fine-tuning as a tool for behaviour, format, tone, or task skill", "Proposes combining light fine-tuning with retrieval when both behaviour and current facts matter"],
+    "followup": "When would you fine-tune this support bot as well?"
+  },
+  "llm-serving-and-fine-tuning-questions:ft-lora-what": {
+    "criteria": ["Defines the LoRA update as W + (α/r)BA with low-rank A and B matrices", "Explains that only A and B receive gradients and optimiser state", "Connects the low-rank trainable matrices to smaller memory use and checkpoints", "Explains that adapters can be merged for zero extra inference cost or swapped per customer"],
+    "followup": "Which model matrices do people usually adapt with LoRA?"
+  },
+  "llm-serving-and-fine-tuning-questions:ft-lora-params": {
+    "criteria": ["Computes 4,096 × 16 + 16 × 4,096 = 131,072 trainable parameters", "Contrasts the adapter with the original matrix's 16,777,216 parameters", "Explains that the two trainable matrices have shapes 4,096 × 16 and 16 × 4,096"],
+    "followup": "Why can such a small adapter work?"
+  },
+  "llm-serving-and-fine-tuning-questions:ft-lora-pct": {
+    "criteria": ["Computes 131,072 / 16,777,216 × 100 = 0.781%", "Places the result within the stated 0.1–1% typical whole-model range", "Explains that optimiser-state memory shrinks with the trainable parameter count"],
+    "followup": "Does training fewer parameters mean worse results?"
+  },
+  "llm-serving-and-fine-tuning-questions:ft-qlora": {
+    "criteria": ["Explains that QLoRA stores frozen base weights in 4-bit NormalFloat", "Explains that base weights are dequantised during the forward pass while bf16 LoRA adapters receive gradients", "Names paged optimisers as the mechanism for handling memory spikes", "Contrasts the 7B base-weight footprint of about 3.5 GB with 14 GB in bf16"],
+    "followup": "What is the QLoRA trade-off?"
+  },
+  "llm-serving-and-fine-tuning-questions:ft-tokens": {
+    "criteria": ["Computes 10,000 × 1,500 × 3 = 45,000,000 = 45 million training tokens", "Connects token count to hosted fine-tuning cost", "Explains that dividing tokens by processing throughput estimates training time"],
+    "followup": "Is three epochs a good default for this dataset?"
+  },
+  "llm-serving-and-fine-tuning-questions:ft-forgetting": {
+    "criteria": ["Names catastrophic forgetting from training only on a narrow legal distribution", "Proposes replaying 10–30% general instruction data", "Proposes a smaller learning rate, fewer epochs, or LoRA to reduce general-capability damage", "Requires a fixed general-task evaluation alongside the legal-task evaluation before shipping"],
+    "followup": "How would you detect this regression before launch?"
+  },
+  "llm-serving-and-fine-tuning-questions:ft-loss-vs-quality": {
+    "criteria": ["Explains that teacher-forced validation always supplies the correct previous token", "Explains that inference compounds errors from the model's own generated tokens", "Notes that lower loss can reflect copying reference phrasing without better task performance", "Chooses checkpoints using generated-output evaluation on held-out prompts"],
+    "followup": "Which checkpoint would you ship?"
+  },
+  "llm-serving-and-fine-tuning-questions:ft-chat-template": {
+    "criteria": ["Checks for a mismatch between training and serving chat templates first", "Names role markers, special tokens, and the end-of-turn token as format-critical", "Explains that a missing stop token makes the model unable to recognise the end of its turn", "Uses the tokenizer's template in both paths and tests the served endpoint with a training prompt"],
+    "followup": "What makes the model stop generating?"
+  },
+  "llm-serving-and-fine-tuning-questions:ft-dpo": {
+    "criteria": ["Explains that PPO-based RLHF trains a reward model and then optimises a policy with reinforcement learning and a KL penalty", "Explains that DPO directly raises preferred-answer likelihood relative to rejected answers and a reference model", "Identifies DPO as simpler and more stable than the PPO pipeline", "Names preference overfitting, length drift, or style drift as risks controlled partly by beta"],
+    "followup": "What can go wrong with DPO?"
+  },
+  "llm-serving-and-fine-tuning-questions:ft-data-quality": {
+    "criteria": ["Chooses the 1,000 expert-written examples for teaching instruction-following style", "Explains that alignment tuning mainly teaches format and behaviour the pretrained model can already support", "Explains that noisy examples teach inconsistent behaviour and errors", "Distinguishes a genuinely new skill as a case that needs more data while retaining quality"],
+    "followup": "How would you clean the 100,000 scraped examples?"
   }
 }
