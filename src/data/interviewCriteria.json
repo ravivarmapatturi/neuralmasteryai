@@ -495,5 +495,1014 @@
   "qa-quick-reference:qa-subagents": {
     "criteria": ["Proposes a focused sub-agent with its own clean context for each research subtask", "Returns only a condensed summary to the parent", "Explains that this prevents full working traces from degrading later parent-agent steps"],
     "followup": "What details must the sub-agent summary preserve for the parent to verify it?"
+  },
+  "rag-interview-questions:f5c12c573de0": {
+    "criteria": [
+      "States: Don't start listing components",
+      "Explains: Ask clarifying questions first",
+      "Identifies: what's the corpus (structured, unstructured, both), how fresh does it need to be, what's the query volume and latency budget, who are the users and what access-control boundaries exist between them, and what does \"correct\" mean for this domain (exact facts",
+      "Describes: The answer changes substantially based on these, and jumping straight to \"I'd use Pinecone and GPT-4\" without asking signals you've memorized a stack, not that you can design one"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:60066a4a1419": {
+    "criteria": [
+      "States: An offline (indexing) pipeline",
+      "Explains: and an online (serving) pipeline",
+      "Identifies: query understanding, retrieval, reranking, context assembly, generation, guardrails",
+      "Describes: Splitting them matters because they have completely different performance profiles: the offline pipeline is throughput-oriented and can tolerate latency (hours is fine), while the online pipeline is latency-critical and runs on every single user request"
+    ],
+    "followup": "How would you compare this chunking choice against an alternative on a fixed retrieval set?"
+  },
+  "rag-interview-questions:rag-debug-stage-first": {
+    "criteria": [
+      "States: Don't jump straight to changing prompts",
+      "Explains: localize the failure to a specific pipeline stage first",
+      "Identifies: Check, in order: was the document actually ingested and indexed",
+      "Describes: did an access-control or metadata filter silently exclude it"
+    ],
+    "followup": "What trace or metric would you inspect first for a real query that fails this check?"
+  },
+  "rag-interview-questions:2e13795da5b5": {
+    "criteria": [
+      "States: When the corpus is small-to-medium, queries are mostly single-fact lookups rather than multi-hop or synthesis questions, latency and cost need to stay minimal, and the team doesn't have the operational capacity to run and monitor a more complex pipeline",
+      "Explains: Naive RAG's real value is that its failure modes are simple and legible",
+      "Identifies: when it's wrong, it's usually obviously wrong in a way that's easy to diagnose, which isn't true once you add agentic loops or multi-stage reranking"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:3a10c5cac37f": {
+    "criteria": [
+      "States: Naive → Advanced (add hybrid search, reranking, query rewriting) → Modular (pluggable, routable components) → Agentic (an LLM decides the retrieval strategy per-query), each stage motivated by a specific, measured failure the previous stage couldn't fix",
+      "Explains: never by \"agents are powerful\" or \"reranking always helps\" in the abstract",
+      "Identifies: The discipline: add one component at a time, measure its effect on a fixed probe/golden set, and only keep it if it moves the metric",
+      "Describes: a component justified by intuition rather than a measured plateau is usually premature"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:462d2fe379be": {
+    "criteria": [
+      "States: splitting far smaller than needed \"because smaller is more precise,\" without ever measuring that it helps",
+      "Explains: start around 512 tokens and measure first",
+      "Identifies: reaching for an agentic loop before confirming the failure is actually a multi-hop problem a loop would fix",
+      "Describes: adding reranker latency/cost to every query when the first-stage retriever was never actually the bottleneck"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:rag-ft-long-context": {
+    "criteria": [
+      "States: Ask what's actually changing: if the facts need to stay current or come from documents too numerous to bake into weights, that's RAG's job",
+      "Explains: if what needs to change is tone, format, or a narrow skill rather than facts, that's fine-tuning's job",
+      "Identifies: if the corpus is small and bounded (a single long document or a handful of files) and you can afford the token cost of stuffing it into context every call, long-context avoids a retrieval step's precision risk entirely",
+      "Describes: These aren't mutually exclusive"
+    ],
+    "followup": "Which held-out examples would show whether this model-side choice improved grounded answers?"
+  },
+  "rag-interview-questions:rag-chunk-code": {
+    "criteria": [
+      "States: Code has semantic boundaries defined by its AST, not by sentences or paragraphs",
+      "Explains: the natural chunk unit is a function or method (preserving its signature, docstring, and body together), falling back to class-level chunks for small classes",
+      "Identifies: Use a real parser (tree-sitter, or Python's own ast module) to find exact boundary positions rather than splitting on newlines, since a newline mid-expression isn't a semantic boundary at all",
+      "Describes: fixed-character chunking will routinely cut a function signature in half, which breaks both retrieval (the chunk no longer reads as \"the function that does X\") and any downstream code generation grounded in it"
+    ],
+    "followup": "How would you compare this chunking choice against an alternative on a fixed retrieval set?"
+  },
+  "rag-interview-questions:91ab7f6540d9": {
+    "criteria": [
+      "States: Content-type-aware chunking, not one strategy applied uniformly: detect text/table/image regions separately (a PDF layout tool can give you bounding boxes), chunk prose sections by header/paragraph boundaries with some overlap, extract tables and serialize",
+      "Explains: and run charts/figures through a vision-capable model to generate a text description that gets embedded in place of the image. Every chunk should also carry page number and section-title metadata",
+      "Identifies:  since financial reports are often queried by location (\"page 47, liquidity risk\") as much as by content"
+    ],
+    "followup": "How would you compare this chunking choice against an alternative on a fixed retrieval set?"
+  },
+  "rag-interview-questions:81d655b86d86": {
+    "criteria": [
+      "States: PDFs (text-layer or scanned/OCR), live websites (often JS-rendered, which a plain HTML scraper won't see), databases via SQL, REST APIs, and SaaS tools like Notion via their own SDKs",
+      "Explains: each needs a genuinely different extraction tool, and using the wrong one doesn't degrade gracefully, it returns nothing (a web scraper on a PDF, or a PDF parser on a JS-rendered page)",
+      "Identifies: A production pipeline should validate that extraction actually produced non-empty text before proceeding",
+      "Describes: a blank result from what should be a text-bearing PDF usually means it's actually a scanned image and needs to be routed to OCR instead"
+    ],
+    "followup": "What validation would stop a malformed document from entering the index?"
+  },
+  "rag-interview-questions:575cc6c04f5a": {
+    "criteria": [
+      "States: By what the documents actually contain and what throughput you need: pdfplumber if the documents are table-heavy and you need structured table extraction (it's the slowest of the three, but the most accurate on tables)",
+      "Explains: PyMuPDF if you need high throughput and layout-aware extraction at scale",
+      "Identifies: pypdf if you need a pure-Python dependency with no compiled C libraries, for environments where that matters more than speed or table fidelity",
+      "Describes: None of the three handle scanned PDFs with no text layer"
+    ],
+    "followup": "What validation would stop a malformed document from entering the index?"
+  },
+  "rag-interview-questions:rag-chunk-too-long": {
+    "criteria": [
+      "States: it gets silently truncated, and the back half of the chunk is quietly dropped from the index with no warning anywhere in the pipeline",
+      "Explains: This is dangerous precisely because it's silent: a chunking strategy that occasionally produces oversized chunks (long tables, dense legal clauses, un-split long paragraphs) can be losing real content from the index indefinitely without anyone noticing, since",
+      "Identifies: the system just retrieves worse on exactly the content that got truncated"
+    ],
+    "followup": "How would you compare this chunking choice against an alternative on a fixed retrieval set?"
+  },
+  "rag-interview-questions:7ea5129725e0": {
+    "criteria": [
+      "States: Queries are short, keyword-like phrases (\"Python async error\") while documents are long and descriptive prose",
+      "Explains: embedding both into the same space causes a real distributional mismatch, where the query vector often doesn't land close to a genuinely relevant document vector purely because of this length/style gap, not because they're semantically unrelated",
+      "Identifies: HyDE sidesteps it by embedding a generated hypothetical answer instead of the raw query, putting the search vector into document-like space",
+      "Describes: INSTRUCTOR prepends a task-specific instruction (\"Represent this query for searching technical documents\") that shifts the embedding toward the target distribution"
+    ],
+    "followup": "Which retrieval metric and hard-negative set would you use to validate this embedding decision?"
+  },
+  "rag-interview-questions:5e132e72450b": {
+    "criteria": [
+      "States: Three options depending on budget: swap to a multilingual model (multilingual-e5-large, LaBSE) trained across 100+ languages with cross-lingual alignment",
+      "Explains: lower ceiling than a strong monolingual model but broad coverage out of the box",
+      "Identifies: translate the query to the corpus's primary language before embedding, which is simple and high-quality but adds a translation API call's latency and cost on every query",
+      "Describes: or fine-tune a multilingual model on domain-specific cross-lingual pairs if off-the-shelf quality genuinely isn't enough"
+    ],
+    "followup": "Which retrieval metric and hard-negative set would you use to validate this embedding decision?"
+  },
+  "rag-interview-questions:rag-billion-vectors": {
+    "criteria": [
+      "Computes: 10⁹ × 768 × 4 bytes = 3.07 TB, before the index structure itself",
+      "Explains: No single machine holds that in RAM, which is why quantisation and sharding stop being optional at this scale",
+      "Identifies: Three things become mandatory at that scale, not optional optimizations: quantization (IVF+PQ compresses a vector from ~3KB down to roughly 96 bytes"
+    ],
+    "followup": "Which retrieval metric and hard-negative set would you use to validate this embedding decision?"
+  },
+  "rag-interview-questions:rag-diskann": {
+    "criteria": [
+      "States: Once the corpus is large enough that an in-memory HNSW graph becomes RAM-prohibitive",
+      "Explains: roughly past 100–200M vectors, and certainly in the 1B+ range, where HNSW's full-precision, fully-resident graph would need several terabytes of RAM",
+      "Identifies: DiskANN keeps only PQ-compressed vectors in RAM for graph navigation and stores full-precision vectors on SSD, fetched only to re-rank a small final candidate set",
+      "Describes: published numbers show ~95% recall at low-single-digit-millisecond latency over a billion points on a single node with just tens of gigabytes of RAM"
+    ],
+    "followup": "Which retrieval metric and hard-negative set would you use to validate this embedding decision?"
+  },
+  "rag-interview-questions:3d6a2d33d3cd": {
+    "criteria": [
+      "States: After a restart or a new node joining, the index graph has to be loaded from disk into RAM before it can serve fast approximate search",
+      "Explains: until that finishes, queries either fall back to slow linear scan or fail outright",
+      "Identifies: Mitigations: pre-warm with a batch of probe queries right after load, before accepting real traffic",
+      "Describes: never restart the primary node directly, scale via warm read replicas instead"
+    ],
+    "followup": "Which retrieval metric and hard-negative set would you use to validate this embedding decision?"
+  },
+  "rag-interview-questions:230ea10b8577": {
+    "criteria": [
+      "States: Serverless (Pinecone Serverless, Zilliz Cloud Serverless) bills per operation and per-GB stored, so idle time costs almost nothing",
+      "Explains: ideal for bursty or intermittent traffic",
+      "Identifies: but the first query to a cold namespace after inactivity can take hundreds of milliseconds to a couple of seconds while it loads into a shared worker, and that latency is architectural, not something you can tune away",
+      "Describes: Provisioned/dedicated deployments charge a fixed cost per node-hour regardless of utilization but stay warm with consistent low latency and no cold-start penalty"
+    ],
+    "followup": "Which retrieval metric and hard-negative set would you use to validate this embedding decision?"
+  },
+  "rag-interview-questions:rag-rerank-first": {
+    "criteria": [
+      "States: The reranker, in nearly every case",
+      "Explains: It needs less labeled data (pairwise cross-encoder training is more data-efficient than bi-encoder contrastive training), and critically, it requires no re-indexing when it changes",
+      "Identifies: it only rescores an already-retrieved candidate set, so you can iterate on it daily",
+      "Describes: An embedding fine-tune forces a full corpus re-embed before you can even evaluate the change in production, which is a far more expensive and slower feedback loop"
+    ],
+    "followup": "Which retrieval metric and hard-negative set would you use to validate this embedding decision?"
+  },
+  "rag-interview-questions:rag-hard-negatives": {
+    "criteria": [
+      "States: Random negatives are usually trivially irrelevant to the query, so the model learns almost nothing from them",
+      "Explains: it already knew they didn't match",
+      "Identifies: Hard negatives, mined via BM25 or the model's own current encodings, are lexically or semantically close to the query without actually being relevant, which is exactly the decision boundary the model actually needs to learn to improve",
+      "Describes: The catch is hard-negative mining can surface genuine false negatives"
+    ],
+    "followup": "Which retrieval metric and hard-negative set would you use to validate this embedding decision?"
+  },
+  "rag-interview-questions:3c9457d43706": {
+    "criteria": [
+      "States: Every vector in the entire corpus has to be regenerated, because old and new embeddings live in geometrically incompatible spaces",
+      "Explains: you cannot mix vectors from two model versions in one index without silently corrupting every similarity comparison involving one old and one new vector",
+      "Identifies: In practice that means budgeting real compute and hours-to-days of pipeline time to re-embed the full corpus, building the new index alongside the old one and cutting over atomically (blue/green) rather than updating in place, and having a plan for documents"
+    ],
+    "followup": "Which retrieval metric and hard-negative set would you use to validate this embedding decision?"
+  },
+  "rag-interview-questions:aecd9ff3fe5c": {
+    "criteria": [
+      "States: It's when gradient updates optimized entirely for domain data overwrite general-purpose semantic representations the model learned during pretraining",
+      "Explains: the model gets measurably better on your domain but quietly worse at everything else",
+      "Identifies: Detect it by holding out a general-domain eval slice (a BEIR subset, for example) alongside your domain eval set, and reporting recall/MRR/NDCG on both before and after fine-tuning",
+      "Describes: a healthy fine-tune shows a large domain gain with only minor general-slice drift, while a sharp general-slice drop signals forgetting rather than genuine adaptation"
+    ],
+    "followup": "Which retrieval metric and hard-negative set would you use to validate this embedding decision?"
+  },
+  "rag-interview-questions:bfbbfd3c81a1": {
+    "criteria": [
+      "States: Advanced RAG is Naive RAG plus a defined set of pre- and post-retrieval enhancements applied as a fixed pipeline: query rewriting/HyDE before search, hybrid dense+sparse retrieval instead of dense alone, and a reranking pass before generation",
+      "Explains: It's still a single fixed pass end to end",
+      "Identifies: the thing that distinguishes it from Modular RAG isn't the techniques themselves, it's that Advanced RAG bakes them into one unchangeable sequence rather than exposing them as swappable, routable components"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:548f7d703d2f": {
+    "criteria": [
+      "States: Modular RAG restructures the pipeline into independently swappable components",
+      "Explains: a router that picks which retrieval strategy or data source to use per query, pluggable retrievers, a fusion module, memory",
+      "Identifies: rather than one fixed sequence",
+      "Describes: The single distinguishing mechanism is the routing/orchestration layer: Advanced RAG always runs the same steps in the same order"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:68adb8eaa723": {
+    "criteria": [
+      "States: A small, fast \"drafter\" model partitions retrieved documents into subsets and generates a candidate answer plus rationale from each subset in parallel",
+      "Explains: a larger \"verifier\" model then reads all the drafts and rationales (not the raw documents) and picks the best one",
+      "Identifies: borrowing the same draft-then-verify shape as speculative decoding, but applied to RAG's retrieve-then-generate step instead of token generation",
+      "Describes: It pays off when you have enough traffic to amortize running two models and your corpus naturally partitions into genuinely distinguishable subsets"
+    ],
+    "followup": "How would you compare this chunking choice against an alternative on a fixed retrieval set?"
+  },
+  "rag-interview-questions:464a23ee38fb": {
+    "criteria": [
+      "States: Instead of retrieving a small set of precise chunks, it stuffs a much larger span of raw document(s)",
+      "Explains: sometimes a coarse-selected document is fed in nearly whole",
+      "Identifies: directly into a long-context model's window, trading retrieval precision for not having to get chunk boundaries exactly right",
+      "Describes: It's worth it when your corpus is small enough to plausibly fit (hundreds of documents, not hundreds of thousands), when precise chunk-boundary retrieval keeps failing on your content, or when prompt caching on a stable document set makes the token cost of"
+    ],
+    "followup": "How would you compare this chunking choice against an alternative on a fixed retrieval set?"
+  },
+  "rag-interview-questions:aa993df62e4b": {
+    "criteria": [
+      "States: RAFT trains explicitly on retrieval's actual failure distribution: each training example includes the real golden document plus several distractor documents a retriever would plausibly surface",
+      "Explains: and critically, some fraction of examples omit the golden document entirely so the model also learns when not to trust the \"retrieved\" context and fall back to its own reasoning. Standard fine-tuning on clean QA pairs never exposes the model to distractors or",
+      "Identifies: so it doesn't learn the specific skill RAFT targets: staying reliable when retrieval is imperfect",
+      "Describes: which it always eventually is in production"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:1bea9812d7a6": {
+    "criteria": [
+      "States: Both generate several rephrasings of the query and retrieve for each",
+      "Explains: the difference is in how the results combine",
+      "Identifies: Multi-query retrieval takes a simple union of the result sets",
+      "Describes: RAG-Fusion instead merges the ranked lists via Reciprocal Rank Fusion, so a document that ranks well across several of the rephrasings is rewarded for that consistency rather than just being counted once like everything else in the union"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:rag-multihop-chain": {
+    "criteria": [
+      "Computes: Four individually good hops give a chain that's right only about two thirds of the time, because each hop builds on the last one's answer",
+      "Explains: It retrieves and reasons across several sequential hops",
+      "Identifies: each hop's query is informed by what the previous hop found"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:da872d982290": {
+    "criteria": [
+      "States: It builds a knowledge-graph-like index (inspired loosely by how the hippocampus indexes associative memory) and, at query time, seeds Personalized PageRank on the entities mentioned in the query to find the most relevant connected subgraph",
+      "Explains: PageRank over simple BFS/DFS because it naturally handles multiple, weighted paths to a candidate answer",
+      "Identifies: a node reachable by several independent, meaningful routes accumulates more relevance score than one reachable by a single long accidental path, which a pure breadth/depth traversal has no way to express"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:4b87c24eacc4": {
+    "criteria": [
+      "States: KAG adds \"mutual indexing\" (keeping the knowledge graph and the source text tightly linked so reasoning can fall back to raw text when the graph is incomplete) and logical-form-guided reasoning, where parts of a query are answered by deterministic logical",
+      "Explains: and nothing to fall back on when the graph itself simply doesn't contain a needed fact",
+      "Identifies: and nothing to fall back on when the graph itself simply doesn't contain a needed fact"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:2ff790e9ef2a": {
+    "criteria": [
+      "States: Both use a graph structure for multi-hop reasoning but push the exploration work onto something other than an LLM manually traversing edges",
+      "Explains: GraphReader has an agent explore the graph step by step and carry forward only compressed findings (so the full document never has to sit in context at once)",
+      "Identifies: GNN-RAG instead trains an actual graph neural network to do the retrieval/traversal itself and hands its output to the LLM only for final verbalization",
+      "Describes: a learned retrieval mechanism rather than an agentic exploration loop"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:647a45474ff5": {
+    "criteria": [
+      "States: REALM trains its retriever end-to-end, jointly with the language model, through a latent-variable objective",
+      "Explains: the retriever learns directly from downstream task loss which documents are actually useful, rather than being frozen or trained separately",
+      "Identifies: It's significant as the architecture that first proved joint retriever training was possible at all, but its asynchronous-index-refresh problem (the retriever's embeddings and the serving index drift apart during training) was awkward enough that most RAG"
+    ],
+    "followup": "What measurable failure would justify replacing this approach with a more complex one?"
+  },
+  "rag-interview-questions:c894675504ab": {
+    "criteria": [
+      "States: RETRO retrieves nearest-neighbor chunks from a (frozen, unlearned) massive datastore and injects them into generation via chunked cross-attention",
+      "Explains: each output chunk attends to the retrieved neighbors of the input chunk immediately preceding it, rather than concatenating retrieved text into the prompt",
+      "Identifies: Because the retriever is frozen (no joint training) and the datastore lookup is a cheap nearest-neighbor search rather than something requiring gradient updates, RETRO can scale its external datastore to sizes (trillions of tokens) that would be completely"
+    ],
+    "followup": "How would you compare this chunking choice against an alternative on a fixed retrieval set?"
+  },
+  "rag-interview-questions:e024704d168b": {
+    "criteria": [
+      "States: Atlas jointly trains a retriever and a reader (Fusion-in-Decoder-style) and is evaluated specifically on how well it performs with very few labeled training examples",
+      "Explains: Retrieval is unusually powerful in the few-shot regime because it supplies the factual knowledge a model would otherwise need many labeled examples to memorize",
+      "Identifies: with retrieval doing that work, the few available labeled examples can be spent entirely on teaching the model the task (how to read and answer), not on teaching it facts it can instead look up"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:5d8b21d8a9d5": {
+    "criteria": [
+      "States: Each retrieved passage is encoded independently by the encoder (cheap, and parallelizable), and only the decoder attends jointly across all of their encoded representations when generating the answer",
+      "Explains: evidence from different passages can only interact inside the decoder, never earlier",
+      "Identifies: This scales far better than concatenation because the expensive quadratic self-attention cost of the encoder is paid per-passage rather than across the full concatenated length of all passages at once, letting FiD fuse far more passages than a"
+    ],
+    "followup": "Which bottleneck would appear next as traffic grows, and how would you measure it?"
+  },
+  "rag-interview-questions:d718bc92e167": {
+    "criteria": [
+      "States: It explores multiple reasoning branches in parallel, each potentially triggering its own conditional retrieval, and prunes weaker branches rather than committing to one linear think-retrieve-think chain the way ReAct does",
+      "Explains: It's worth the extra cost specifically for questions where the right reasoning path genuinely isn't obvious upfront and backtracking would otherwise mean restarting the whole chain",
+      "Identifies: not for straightforward lookups where a linear loop was already going to work"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:770a297b7987": {
+    "criteria": [
+      "States: DPR is the paper that established the now-default dense retrieval architecture: a bi-encoder, trained with contrastive loss to pull relevant query-passage pairs together in embedding space, compared by inner product (or cosine similarity) instead of",
+      "Explains: Its lasting contribution is proving that learned dense representations could outperform classical sparse retrieval on open-domain QA at all",
+      "Identifies: essentially every dense-retrieval architecture discussed elsewhere on this page descends from this result"
+    ],
+    "followup": "Which retrieval metric and hard-negative set would you use to validate this embedding decision?"
+  },
+  "rag-interview-questions:cbd03ce2fa8c": {
+    "criteria": [
+      "States: WebGPT's model weights themselves",
+      "Explains: encode when to search, click, and quote, learned via RLHF by training a reward model on human preferences between pairs of full browsing transcripts",
+      "Identifies: Prompted tool use relies on an already-capable general model's in-context reasoning about when to call a tool",
+      "Describes: WebGPT instead fine-tunes the policy itself specifically for the browsing task, which was a meaningfully different (and at the time, novel) approach before general-purpose models got good enough at prompted tool use to make this specific route less common"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:241264b7c92c": {
+    "criteria": [
+      "States: A standard RAG system asked to output structured JSON can produce a structurally valid response with semantically hallucinated field values — it has no mechanism distinguishing \"I found this in the retrieved passage\" from \"I'm generating a plausible-sounding",
+      "Explains:  rather than just checking the output parses as valid JSON",
+      "Identifies:  rather than just checking the output parses as valid JSON"
+    ],
+    "followup": "What trace or metric would you inspect first for a real query that fails this check?"
+  },
+  "rag-interview-questions:c596059798d2": {
+    "criteria": [
+      "States: Both build a hierarchical tree of summaries, but the tree boundaries differ fundamentally: Recursive Document Summarization builds top-down within each source document (every node belongs to exactly one document, preserving provenance), while RAPTOR clusters",
+      "Explains: Choose document-level recursive summarization when provenance matters (citing exactly which document a summary came from)",
+      "Identifies: choose RAPTOR when cross-document thematic clustering is the actual goal"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:fbc0e6c47e54": {
+    "criteria": [
+      "States: Search-R1 trains the retrieve-or-reason decision itself via reinforcement learning against task reward, rather than relying on a frozen model's prompted judgment about when to search",
+      "Explains: It's the RL-trained analogue of what Agentic RAG does with prompting",
+      "Identifies: same behavioral shape (deciding whether/when to search mid-reasoning), but the policy is learned from outcome reward instead of being a frozen model following in-context instructions"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:29e1db44106a": {
+    "criteria": [
+      "States: The distinctive mechanism is upfront decomposition into independently parallelizable sub-questions",
+      "Explains: not simply running more search rounds in a loop",
+      "Identifies: A single agentic loop with a higher iteration cap still processes searches sequentially within one growing shared context (hitting the same \"lost in the middle\" risk that long accumulated context always has)",
+      "Describes: Deep Research instead splits the research brief into sub-questions narrow enough for dedicated sub-agents to research independently and in parallel, each in its own isolated context, merging findings only at the end"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:4fdc66d88cf6": {
+    "criteria": [
+      "States: MemoRAG generates a corpus-aware \"draft\" or clue before retrieval, from a model that has actually compressed the entire corpus",
+      "Explains: effectively asking \"given everything this corpus contains, what would evidence supporting an answer to this query actually look like,\" rather than relying on the raw query's vocabulary alone to drive embedding similarity",
+      "Identifies: RAPTOR, by contrast, builds its hierarchy once at index time and doesn't generate anything new per-query",
+      "Describes: MemoRAG's distinctive step happens at query time, informed by global corpus understanding the raw query alone wouldn't carry"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:df58f195e84a": {
+    "criteria": [
+      "States: LongRAG rebalances retrieval-unit size, not retrieval timing",
+      "Explains: it groups text into units roughly 30x larger than typical RAG chunks, deliberately making the retrieval problem easier (fewer, more distinguishable units to search among) at the cost of making the reading problem harder (the reader has to find and synthesize",
+      "Identifies: Long-context RAG is about stuffing a large span of raw text into the model at generation time",
+      "Describes: LongRAG is specifically about what size the retrieval units themselves should be"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:780cadd18047": {
+    "criteria": [
+      "States: VisRAG treats the rendered page image as the sole unit of both retrieval and generation, with no text-extraction step anywhere in the pipeline",
+      "Explains: every other architecture, including standard Multimodal RAG and Table-Aware RAG, still extracts and normalizes content into text (or a text-adjacent structured form) at some point before embedding or generation",
+      "Identifies: VisRAG instead bets entirely on a vision-language model's ability to perceive text, tables, figures, and layout jointly from raw pixels, for both deciding relevance and producing the final answer"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:675a0594a722": {
+    "criteria": [
+      "States: It defers all LLM-based summarization from index time to query time",
+      "Explains: instead of GraphRAG's \"summarize every community whether or not it's ever queried,\" it only summarizes the specific subgraph a given query's relevance-testing loop actually surfaces",
+      "Identifies: The index itself is built with zero LLM calls (just cheap, deterministic noun-phrase extraction and co-occurrence counting), which is exactly what keeps indexing cost comparable to plain vector RAG rather than paying GraphRAG's and LightRAG's substantial"
+    ],
+    "followup": "Which retrieval metric and hard-negative set would you use to validate this embedding decision?"
+  },
+  "rag-interview-questions:6893bd11f0ba": {
+    "criteria": [
+      "States: It treats \"what the model already knows\" as an explicit, tagged, competing information source rather than an implicit fallback the model quietly leans on",
+      "Explains: Standard RAG conditions generation on retrieved passages and hopes the model's own judgment sensibly fills any gaps",
+      "Identifies: Astute RAG instead deliberately elicits the model's internal knowledge, tags it exactly like an external retrieved passage, and runs both through the same explicit consolidation/conflict-resolution step",
+      "Describes: rather than one silently overriding the other with no visibility into which actually won"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:40a39971d741": {
+    "criteria": [
+      "States: Both make the retrieve-or-reason choice a first-class decision at every reasoning step",
+      "Explains: a step can resolve entirely from parametric memory with no retrieval call at all",
+      "Identifies: CoRAG, by contrast, chains a sequence of retrieval steps where retrieval happens at every step of the chain by construction",
+      "Describes: its tunable dimension is chain length and what to retrieve at each hop, not whether to retrieve at all"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:65b32d8406f9": {
+    "criteria": [
+      "States: CoRAG fine-tunes a model specifically on retrieval-reasoning chains proven correct via rejection sampling",
+      "Explains: so the query-reformulation skill itself is optimized against outcome correctness rather than whatever a frozen model happens to produce when prompted to \"think step by step and search.\" Because chain length is something the training process explicitly learned",
+      "Identifies:  it becomes a tunable lever at inference time — you can trade more hops (more compute, better odds on hard questions) for fewer (cheaper, fine for easy ones) as a deliberate dial, not just an emergent side effect of prompting"
+    ],
+    "followup": "What trace or metric would you inspect first for a real query that fails this check?"
+  },
+  "rag-interview-questions:0d43829e2301": {
+    "criteria": [
+      "States: RQ-RAG is a fine-tuned, per-query action-selection policy expressed via special control tokens",
+      "Explains: rather than applying one hand-chosen transformation uniformly to every query, the model decides, per query, which of several operations (rewrite, decompose, disambiguate, or none) actually fits",
+      "Identifies: A compound question gets decomposed, an ambiguous one gets disambiguated, an already-fine query passes through untouched",
+      "Describes: this per-query adaptivity is exactly what a single fixed prompted strategy applied to every query can't do"
+    ],
+    "followup": "Which retrieval metric and hard-negative set would you use to validate this embedding decision?"
+  },
+  "rag-interview-questions:bde08b30b0eb": {
+    "criteria": [
+      "States: REFRAG compresses every retrieved chunk to a single dense embedding by default, with a lightweight RL-trained policy selectively \"expanding\" only the chunks it judges important back into full raw tokens for that specific query",
+      "Explains: Standard RAG only has two states per chunk",
+      "Identifies: fully included, or not retrieved at all",
+      "Describes: while REFRAG adds a third: \"included, but compressed, with the option to zoom in,\" which is what lets it extend effective usable context roughly 16x at a comparable latency budget, instead of forcing a flat tradeoff between context breadth and decoding speed"
+    ],
+    "followup": "How would you compare this chunking choice against an alternative on a fixed retrieval set?"
+  },
+  "rag-interview-questions:069959a1f3ba": {
+    "criteria": [
+      "States: Instead of retrieving documents to ground a factual answer, it retrieves similar past examples (demonstrations) to populate a dynamic few-shot prompt for in-context learning",
+      "Explains: common in text-to-SQL and other structured-generation tasks where \"show it a similar solved case\" beats a static hand-picked few-shot set",
+      "Identifies: The retrieval target is categorically different: not \"facts relevant to this question\" but \"prior demonstrations whose pattern this new case should follow.\""
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:8d64013fc8da": {
+    "criteria": [
+      "States: It replaces a fixed, pre-indexed corpus with live web search and page fetching as the retrieval mechanism",
+      "Explains: which introduces problems corpus-based RAG doesn't have at all: source quality and reliability vary per result and have to be actively assessed, citation tracking has to be a first-class architectural component (not an afterthought) since users need to verify",
+      "Identifies: and the fetch layer itself is a real security surface — an attacker-controlled page can attempt prompt injection or redirect the fetcher to internal/unintended endpoints",
+      "Describes: which a closed, pre-vetted corpus simply can't do"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:rag-citation-grounded": {
+    "criteria": [
+      "States: A citation just means the model pointed at some passage near the claim",
+      "Explains: it doesn't guarantee that specific passage actually entails the specific claim being made next to it",
+      "Identifies: Real verifiability requires checking at the claim level: citation precision (of the passages cited, how many genuinely support the claim), citation recall (of the claims made, how many have any supporting citation at all), and attribution accuracy (does the",
+      "Describes: three genuinely separate failure modes a model can hit independently even while technically \"citing sources.\""
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:e09bf2405833": {
+    "criteria": [
+      "States: Techniques span the whole pipeline: on-device or federated embedding so raw sensitive text never leaves a trust boundary, differential privacy noise added to retrieval signals or training data, and strict output filtering/redaction for PII before a response",
+      "Explains: The hard part in an interview answer isn't naming the techniques, it's being honest that most of them trade real quality or latency for privacy guarantees",
+      "Identifies: there's no free version of this, and the right combination depends entirely on the actual threat model (internal misuse vs. external breach vs. regulatory compliance)"
+    ],
+    "followup": "How would you test this control with a realistic unauthorized or adversarial request?"
+  },
+  "rag-interview-questions:rag-tables": {
+    "criteria": [
+      "States: Standard RAG treats a table as just another block of prose and chunks it by character count, which destroys the row/column structure that gives a table its meaning",
+      "Explains: a chunk boundary can split a row from its header, or merge unrelated rows together with no indication of which value belongs to which column",
+      "Identifies: Table-Aware RAG's distinctive mechanism is structure-preserving linearization: explicitly parsing rows, columns, and headers into a structured representation first, then converting that structure back into text designed for retrieval and arithmetic reasoning",
+      "Describes: either full-table Markdown, or per-row chunks with the header re-attached to every single row so each chunk stays self-contained"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:0e42b0267711": {
+    "criteria": [
+      "States: The distinctive mechanism is continuous, incremental index updates as new data arrives, rather than periodic batch re-indexing",
+      "Explains: new documents (or events) become searchable within seconds to minutes instead of waiting for the next scheduled rebuild",
+      "Identifies: This matters for use cases like live news, fast-moving incident response, or trading desks, where a correct answer five minutes ago can be actively wrong right now, and a standard nightly-rebuild RAG pipeline's staleness window is itself the failure mode"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:2a003e9f0582": {
+    "criteria": [
+      "States: LightRAG indexes at two levels simultaneously",
+      "Explains: fine-grained entity-level relationships for specific queries, and higher-level thematic summaries for broad ones",
+      "Identifies: and lets a query mode choose which level (or both) to search, without needing GraphRAG's expensive community-detection clustering step at index time",
+      "Describes: The practical consequence is a meaningfully cheaper, faster index build, at the cost of GraphRAG's more thorough corpus-wide thematic coverage from pre-computed community summaries"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:rag-stop-agent-loop": {
+    "criteria": [
+      "States: Combine four stopping conditions rather than relying on just one: a hard iteration cap as the absolute last resort (e.g. max 6 loops)",
+      "Explains: a semantic-drift check that flags when the agent starts issuing near-duplicate retrieval queries (high cosine similarity to a prior query in the same loop signals it's spinning)",
+      "Identifies: a cheap sufficiency check, where a small model reads the accumulated context and outputs a simple yes/no on whether it's enough to answer",
+      "Describes: and a token/cost budget guard that stops before the context window or a spend limit is hit"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:72c0456edd4a": {
+    "criteria": [
+      "States: ReAct interleaves reasoning and retrieval in a serial loop, where each observation informs the next step",
+      "Explains: highly adaptive, since it can change approach mid-loop, but every hop adds latency because steps can't run in parallel",
+      "Identifies: Plan-and-Execute separates planning from execution: one call produces a full task list up front, then everything in it runs in parallel",
+      "Describes: faster when the task decomposes predictably, but brittle, since there's no replanning if the upfront plan turns out to be wrong partway through"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:29498a8959bc": {
+    "criteria": [
+      "States: It re-reads the retrieved chunk it just cited alongside the model's own draft answer and checks whether the chunk actually supports the specific claim being made",
+      "Explains: not just whether some chunk was retrieved at all, but whether this particular sentence is traceable to this particular chunk's text",
+      "Identifies: A single-pass system has no mechanism to catch the case where a plausible-sounding number or fact simply wasn't in the retrieved context at all",
+      "Describes: a reflection agent flags that case and can trigger a more targeted re-retrieval before the draft ever reaches the user"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:e04431638f8d": {
+    "criteria": [
+      "States: Instrument three things specifically: per-iteration traces (log each step's query, which tool was called, a summary of the result, and tokens used, with an iteration index, so you can replay the whole chain)",
+      "Explains: the terminal reason the loop stopped (reached a real answer, hit the iteration cap, tripped the drift check, or exhausted budget",
+      "Identifies: distinguishing \"answered correctly\" from \"gave up\" is not optional for debugging)",
+      "Describes: and user-visible citations tracing which retrieved passages actually contributed to the final answer"
+    ],
+    "followup": "What trace or metric would you inspect first for a real query that fails this check?"
+  },
+  "rag-interview-questions:b423fe789243": {
+    "criteria": [
+      "States: Match the framework to what's actually hard about the use case, not to popularity",
+      "Explains: LlamaIndex if the core problem is RAG pipeline quality itself (chunking, indexing, retrieval)",
+      "Identifies: LangChain for general-purpose orchestration gluing together many different tool types",
+      "Describes: LangGraph or CrewAI when the design is genuinely multi-agent with distinct roles that need to converse or loop, and you want explicit, inspectable control over a cyclic execution graph"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:6df860b79c40": {
+    "criteria": [
+      "States: Take \"my basement flooded from a burst pipe and my car got water damage, am I covered?\"",
+      "Explains: single-shot RAG embeds the whole compound question once and runs one search, which creates three distinct failure points: if auto and homeowner's policies live in the same index, whichever has denser chunks near that embedding dominates the top-k and the",
+      "Identifies: even if both surface, nothing checks that the retrieved \"water damage\" clause actually addresses flood specifically (homeowner's policies typically exclude flood while covering other water damage",
+      "Describes: a distinction a single pass has no mechanism to check)"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:rag-kg-vs-vector": {
+    "criteria": [
+      "States: A vector index retrieves by embedding similarity, which is excellent for open-ended semantic queries but has no mechanism for following explicit entity relationships across documents",
+      "Explains: it can't natively answer \"who leads the company that acquired the company that made this product.\" A knowledge graph stores entities and typed relationships explicitly, enabling that kind of multi-hop structured traversal directly, but it's a worse fit for",
+      "Identifies: Production systems commonly run both: vector search to find semantic entry points into the graph, graph traversal for the relational reasoning once you're in"
+    ],
+    "followup": "Which retrieval metric and hard-negative set would you use to validate this embedding decision?"
+  },
+  "rag-interview-questions:977228530d6e": {
+    "criteria": [
+      "States: A tiered approach, cheapest first: normalize surface forms (lowercase, strip punctuation, expand known abbreviations)",
+      "Explains: apply a curated alias table for known synonyms (ticker symbols, legal name variants)",
+      "Identifies: use embedding similarity to cluster candidate names above a cosine threshold (roughly 0.92 is a common starting point)",
+      "Describes: and for genuinely ambiguous remaining cases, prompt an LLM with surrounding context to make the call"
+    ],
+    "followup": "What validation would stop a malformed document from entering the index?"
+  },
+  "rag-interview-questions:7a2d1d1912d0": {
+    "criteria": [
+      "States: Without knowing which source document produced a given edge, you can't incrementally update the graph when that document changes or gets deleted",
+      "Explains: you'd have no way to know which edges to remove, and would be forced to rebuild the entire graph from scratch on every single document change",
+      "Identifies: With provenance tracked per edge, a document update becomes a targeted operation: delete that document's edges, re-extract from the new version, done",
+      "Describes: the difference between an incremental update pipeline and a full rebuild every time anything changes"
+    ],
+    "followup": "What measurable failure would justify replacing this approach with a more complex one?"
+  },
+  "rag-interview-questions:rag-graphrag-global": {
+    "criteria": [
+      "States: Local search behaves like standard knowledge-graph RAG: vector similarity finds entry-point entities, then it expands into their graph neighborhood to assemble context for one generation call",
+      "Explains: cheap and precise for entity-anchored questions",
+      "Identifies: Global search instead map-reduces over pre-generated community summaries (computed once at index time via Leiden clustering): each relevant community summary independently produces a partial answer, and those partial answers get ranked and merged into one",
+      "Describes: costs more per query, but it's the only mode that can actually answer broad, thematic, corpus-wide questions, since the expensive summarization work was already paid for once upfront rather than repeated per query"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:3539b741e0a0": {
+    "criteria": [
+      "States: When queries genuinely require multi-hop reasoning across named entities, when you need to retrieve by relationship type rather than general topical similarity (\"find all companies Apple acquired\"), when entity deduplication materially affects answer quality",
+      "Explains: Stick with vector retrieval when queries are primarily free-form/semantic, the corpus lacks any clear entity structure to exploit, or build time is genuinely constrained",
+      "Identifies: a graph you don't have time to build and maintain correctly is worse than no graph at all"
+    ],
+    "followup": "Which retrieval metric and hard-negative set would you use to validate this embedding decision?"
+  },
+  "rag-interview-questions:8c679f7614b2": {
+    "criteria": [
+      "States: A sliding window keeps only the last N turns verbatim",
+      "Explains: once it fills, older turns are simply dropped, and the system loses all memory of earlier conversation context, even context that might matter several turns later",
+      "Identifies: Compress-and-carry periodically compresses older turns into a short running summary and carries that summary forward instead of the raw turns, so the context cost grows with summary length rather than linearly with session length",
+      "Describes: the tradeoff is the summary loses precision (exact quotes, fine phrasing nuance), which is why it's usually paired with a sliding window over the most recent few turns kept verbatim for immediate fidelity"
+    ],
+    "followup": "Which bottleneck would appear next as traffic grows, and how would you measure it?"
+  },
+  "rag-interview-questions:5746c08f66d6": {
+    "criteria": [
+      "States: Standard approaches manage memory entirely outside the model",
+      "Explains: the application layer decides what to keep, archive, or drop",
+      "Identifies: MemGPT instead gives the model explicit memory-management tools (append to working memory, search archival memory, insert into archival memory) and lets the model itself decide when to invoke them, the same way it decides when to call a retrieval tool",
+      "Describes: The upside is the model can reason about what's actually worth remembering in a way a fixed window or summary rule can't (\"this constraint will matter several turns from now\")"
+    ],
+    "followup": "Which bottleneck would appear next as traffic grows, and how would you measure it?"
+  },
+  "rag-interview-questions:d84fe768bce9": {
+    "criteria": [
+      "States: After each session ends, run a lightweight extraction pass asking \"what did we learn about this user's preferences, constraints, or domain knowledge this session,\" and store only those extracted facts in a per-user namespaced vector store",
+      "Explains: At the start of a new session, retrieve the most relevant stored facts for the opening query and inject them as a brief \"user context\" block in the system prompt",
+      "Identifies: Storing semantic summaries rather than full transcripts is both cheaper and aligned with minimal-data-retention practice",
+      "Describes: you rarely actually need the verbatim history, just the durable facts it revealed"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:rag-conversational-drift": {
+    "criteria": [
+      "States: It's when a multi-turn system's retrieval quality degrades specifically because follow-up queries lose the context that made them meaningful in isolation",
+      "Explains: \"did it affect enterprise customers?\" means nothing to a retriever without knowing what \"it\" refers to from three turns ago",
+      "Identifies: The most common root cause is skipping query condensation/rewriting before retrieval: embedding the raw follow-up as-is, rather than first rewriting it into a self-contained query using the conversation history, almost guarantees the retriever searches on an"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:3f8a7262d314": {
+    "criteria": [
+      "States: It trains contrastively on hundreds of millions of naturally co-occurring (image, alt-text) pairs scraped from the web",
+      "Explains: with a loss that pulls each image's embedding close to its paired text embedding and pushes it away from the other images in the same training batch",
+      "Identifies: Because both encoders are trained to land in the same shared vector space, a text query can be embedded and compared directly against image embeddings by ordinary cosine similarity at retrieval time, with no classification head or extra alignment step needed"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:e5fb03a0a4b0": {
+    "criteria": [
+      "States: Early fusion combines raw multimodal inputs before encoding, requiring one architecture capable of processing both modalities jointly from the start",
+      "Explains: Late fusion encodes each modality independently with its own best-in-class encoder (text with a strong text embedder, images with CLIP) and combines the resulting vectors afterward",
+      "Identifies: and this is what production systems overwhelmingly use, because it lets you swap in the best available encoder per modality without retraining anything else, index everything in one shared vector store with a single ANN query across modalities, and add a"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:b88e0cc1b1d2": {
+    "criteria": [
+      "States: Parse each document and route by content type: text blocks chunked and embedded with a text encoder",
+      "Explains: figures extracted as images and embedded with CLIP (or captioned via a vision-language model and embedded as text, for cases where a text query is more likely than an image query)",
+      "Identifies: tables linearized to Markdown and embedded as text",
+      "Describes: Store everything in one index with a modality metadata field so retrieval can span all three at once from a single text query embedding"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:097fdadb227e": {
+    "criteria": [
+      "States: Real query sampling (drawn from actual production logs or a representative spread of query types, not just whatever's easy to think of), relevant-passage labeling (manual annotation is the gold standard but expensive; LLM-assisted labeling scales further but",
+      "Explains: which is useful information, not noise to ignore)",
+      "Identifies: and wiring the resulting set into CI so every pipeline change gets measured against it automatically rather than relying on someone remembering to run an eval manually before merging"
+    ],
+    "followup": "What trace or metric would you inspect first for a real query that fails this check?"
+  },
+  "rag-interview-questions:c868c82156ef": {
+    "criteria": [
+      "States: ARES adds calibrated confidence intervals to judge scores at the cost of needing domain fine-tuning and a few hundred human labels",
+      "Explains: worth it when you need statistically defensible scores, not just a point estimate",
+      "Identifies: RAGChecker gives claim-level diagnostics that separate retriever failure from generator failure, useful specifically when RAGAS or production has already flagged that something's wrong but not which stage",
+      "Describes: ConsJudge trains a judge model from judgment-consistency signals rather than human labels or a stronger reference model, useful if you want your own judge without depending on either"
+    ],
+    "followup": "What trace or metric would you inspect first for a real query that fails this check?"
+  },
+  "rag-interview-questions:d5a3534e7a0f": {
+    "criteria": [
+      "States: Three genuinely separate metrics, because they catch three different failure modes: citation precision (of the passages actually cited, what fraction genuinely support the claim next to them",
+      "Explains: measured via NLI entailment between the cited passage and the specific claim)",
+      "Identifies: citation recall (of the claims the response makes, what fraction have any citation at all",
+      "Describes: requires segmenting the response into atomic claims first)"
+    ],
+    "followup": "What trace or metric would you inspect first for a real query that fails this check?"
+  },
+  "rag-interview-questions:c4ef3aa62750": {
+    "criteria": [
+      "States: Automated exact-match metrics are useless here, so lean on two complementary LLM-judge patterns instead: rubric-based absolute scoring (define explicit dimensions",
+      "Explains: relevance, completeness, accuracy, citation quality",
+      "Identifies: and have a strong judge model score each independently, which forces reproducibility and makes variance explainable) and pairwise preference (show the judge two responses",
+      "Describes: and ask which is better overall"
+    ],
+    "followup": "What trace or metric would you inspect first for a real query that fails this check?"
+  },
+  "rag-interview-questions:20227eb24da9": {
+    "criteria": [
+      "States: \"You can't\" is the wrong answer here",
+      "Explains: Reference-free LLM-as-judge techniques genuinely work for faithfulness specifically, because checking whether an answer's claims are supported by the retrieved context only needs the context and the answer",
+      "Identifies: it never needed a gold reference answer in the first place",
+      "Describes: Combine that with behavioral signals from live traffic (regeneration rate, rephrase rate, escalation rate) to triangulate overall quality without any labeled data at all"
+    ],
+    "followup": "What trace or metric would you inspect first for a real query that fails this check?"
+  },
+  "rag-interview-questions:rag-thumbs-up": {
+    "criteria": [
+      "States: Not necessarily, and taking it at face value is a real mistake",
+      "Explains: explicit feedback like thumbs typically comes from under 5% of users, and that sliver is heavily skewed toward either very angry or unusually engaged users, which says very little about the silent majority who never clicked anything",
+      "Identifies: A more reliable read comes from composite implicit signals instead",
+      "Describes: no regeneration, no rephrase, no escalation within the session, taken together"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:rag-offline-online": {
+    "criteria": [
+      "States: Don't default to blaming the users or assuming the eval was wrong",
+      "Explains: this is the classic online/offline divergence, and it has a few concrete, checkable causes: the golden dataset is cleaner and narrower than real live traffic (distribution shift), the change may have overfit specifically to the fixed golden set without",
+      "Identifies: Check the unanswerable-question rate and compare query distributions between the golden set and live traffic before concluding anything about the model itself regressed"
+    ],
+    "followup": "What measurable failure would justify replacing this approach with a more complex one?"
+  },
+  "rag-interview-questions:071ba09a3098": {
+    "criteria": [
+      "States: The full trace: the raw query and the rewritten/condensed version if query transformation ran, retrieved chunk IDs and their scores, reranked chunk IDs and scores if reranking ran, the final assembled prompt that actually went to the model, model parameters",
+      "Explains: and any sampled judge scores for that request. Without per-stage chunk IDs and scores specifically",
+      "Identifies:  you cannot localize a production failure to retrieval, reranking, or generation after the fact — you're stuck guessing"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:rag-judge-drift": {
+    "criteria": [
+      "States: Don't assume your system broke",
+      "Explains: the drop could be coming from the judge itself",
+      "Identifies: Providers silently update underlying judge models, and that alone can shift every score without any genuine change in your system's output quality",
+      "Describes: The fix is scoring a fixed sentinel set daily (same inputs, same expected scores, run every day regardless of anything else)"
+    ],
+    "followup": "Which held-out examples would show whether this model-side choice improved grounded answers?"
+  },
+  "rag-interview-questions:9f3bd5252ad2": {
+    "criteria": [
+      "States: Four layers, and naming all four (in order) is what separates a senior answer from \"we have an eval set\": a pre-deploy CI gate running the golden-dataset eval that blocks the deploy on any metric regression beyond threshold",
+      "Explains: a canary rollout to a small traffic slice, comparing guardrail metrics (latency, error rate, refusal rate) and judge scores canary-vs-control before full rollout",
+      "Identifies: post-rollout online signals (regeneration rate, rephrase rate, thumbs ratio, escalation rate) watched against a pre-deploy baseline window",
+      "Describes: and trace-level triage when any signal fires"
+    ],
+    "followup": "What trace or metric would you inspect first for a real query that fails this check?"
+  },
+  "rag-interview-questions:rag-cost-dominant": {
+    "criteria": [
+      "States: At typical production scale, embedding and vector search together are a small fraction of cost (roughly 5% each), reranking (if used) a bit more, but LLM generation",
+      "Explains: input tokens plus output tokens",
+      "Identifies: is overwhelmingly the dominant cost, often 80% combined between the two",
+      "Describes: That's exactly why prompt caching and model tiering (the two levers that directly attack generation cost) are usually the highest-ROI place to start cutting spend, not retrieval-side optimization, which is tempting to focus on but rarely where the actual"
+    ],
+    "followup": "Which bottleneck would appear next as traffic grows, and how would you measure it?"
+  },
+  "rag-interview-questions:rag-prompt-cache-saving": {
+    "criteria": [
+      "Computes: The 6,000 cached tokens now cost 10% of normal, a saving of 90% on 6,000 of the 6,500 input tokens: 6,000 × 0.9 ÷ 6,500 = 83.1%",
+      "Explains: That only holds if the prefix stays byte-identical and requests arrive within the cache's lifetime",
+      "Identifies: The provider caches the computed KV attention tensors for the static part of your prompt (a system prompt, a stable reference-document prefix) and charges a small fraction of the full input-token price on a cache hit instead of full price"
+    ],
+    "followup": "Which bottleneck would appear next as traffic grows, and how would you measure it?"
+  },
+  "rag-interview-questions:9c40f93cebcb": {
+    "criteria": [
+      "States: Assigning each pipeline stage to the cheapest model that clears that stage's specific quality bar, rather than running the same large model everywhere",
+      "Explains: routing/classification, simple query rewrites, and binary relevance checks are all usually safe to downgrade to a small, fast model, while multi-document synthesis, complex reasoning chains, and ambiguous or nuance-sensitive generation stay on the larger model",
+      "Identifies: The discipline that makes this safe: measure the quality regression empirically per stage rather than assuming a stage is \"simple enough\"",
+      "Describes: a stage that looks trivial can still have a real quality cliff on a cheaper model if you never checked"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:fd1cae4c06c0": {
+    "criteria": [
+      "States: In rough ROI order: enable prompt caching on the static system prompt and any stable reference material first",
+      "Explains: this alone commonly cuts 70–95% of the cost on cached prefixes",
+      "Identifies: set tight, type-specific max_tokens budgets rather than one generous default for every query",
+      "Describes: add a cheap classifier to route simple factual queries to a smaller model instead of your default large one"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:df566f8b56dc": {
+    "criteria": [
+      "States: Exact-match caching keys on the verbatim query string",
+      "Explains: only byte-identical repeats hit",
+      "Identifies: Semantic caching embeds the incoming query and checks similarity against previously-served queries, so differently-phrased-but-equivalent questions can share a cached response, at the real cost of false-positive risk (similar embeddings, genuinely different",
+      "Describes: Provider-side prompt caching is a different thing entirely"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:rag-cache-stampede": {
+    "criteria": [
+      "States: A popular cache entry expires (or the cache is cold after a restart), and many concurrent requests for that same key all miss simultaneously, each independently re-running the expensive underlying operation",
+      "Explains: generation, re-embedding, retrieval",
+      "Identifies: wasting compute and potentially overwhelming the backend all at once",
+      "Describes: Standard preventions: request coalescing/single-flight (only the first miss actually recomputes"
+    ],
+    "followup": "Which bottleneck would appear next as traffic grows, and how would you measure it?"
+  },
+  "rag-interview-questions:rag-dont-cache": {
+    "criteria": [
+      "States: Four cases: when responses are genuinely personalized or user-context-dependent (a cached answer for one user is simply wrong for another)",
+      "Explains: when the knowledge base updates more frequently than your cache TTL (you'd be serving stale answers by design)",
+      "Identifies: when the query distribution is long-tailed enough that nearly every query is unique (hit rate approaches zero, so the caching infrastructure adds complexity for essentially no benefit)",
+      "Describes: and when a strict freshness SLA requires every answer to reflect the absolute latest documents, which any caching layer structurally works against"
+    ],
+    "followup": "Which bottleneck would appear next as traffic grows, and how would you measure it?"
+  },
+  "rag-interview-questions:4cd8afc91b12": {
+    "criteria": [
+      "States: A practical router has three parts: a rule-based pre-filter for deterministic cases (explicit entity codes route to an exact-match path, greetings route to a cached response), a lightweight classifier for genuine semantic intent classification on everything",
+      "Explains: even if the router initially classifies a query as simple, if the retrieved results score poorly, it falls through to a more thorough tier automatically rather than returning a weak answer",
+      "Identifies: The router itself should stay cheap and fast (under roughly 50ms added latency, a tiny fraction of a cent per call) to remain a net positive",
+      "Describes: track tier distribution as an ongoing KPI, since a creeping share of traffic landing in the expensive tier can mean either the router is miscategorizing or the real query mix has genuinely shifted"
+    ],
+    "followup": "Which bottleneck would appear next as traffic grows, and how would you measure it?"
+  },
+  "rag-interview-questions:d362d057aaa3": {
+    "criteria": [
+      "States: Multiple retrieval strategies (or query reformulations, or retrievers over different sub-corpora) run in parallel",
+      "Explains: and their results get merged into one ranked list",
+      "Identifies: typically via Reciprocal Rank Fusion since it handles differently-scaled result lists without needing score calibration",
+      "Describes: RAG-Fusion is exactly this pattern specialized to one specific fan-out source: multiple LLM-generated rephrasings of the same query, rather than multiple genuinely different retrieval strategies or sub-corpora"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:f14d75460f40": {
+    "criteria": [
+      "States: It's specifically when a multi-turn system's retrieval degrades because a follow-up query has lost the context that made it meaningful, as opposed to a single-turn retrieval failure which has nothing to do with conversation history at all",
+      "Explains: Detect it proactively by monitoring the similarity between a condensed/rewritten follow-up query and the raw retrieval results it produces",
+      "Identifies: a sharp drop in retrieved-result relevance scores right after a topic-shift-shaped follow-up is a strong leading indicator, worth catching before it ever reaches a visibly wrong answer"
+    ],
+    "followup": "What trace or metric would you inspect first for a real query that fails this check?"
+  },
+  "rag-interview-questions:rag-p99-doubled": {
+    "criteria": [
+      "States: Localize before you guess: check whether it's a specific pipeline stage (a slow vector DB index after a cold start or node change, a reranker that started receiving a larger-than-usual candidate set, a prompt-caching cache-miss spike from a prefix that",
+      "Explains: Pull per-stage latency from your traces rather than only looking at end-to-end p99",
+      "Identifies: \"it got slower\" isn't actionable, \"retrieval p99 tripled specifically\" is"
+    ],
+    "followup": "Which bottleneck would appear next as traffic grows, and how would you measure it?"
+  },
+  "rag-interview-questions:2bc9224e23a1": {
+    "criteria": [
+      "States: Symptoms are what users or monitoring actually see",
+      "Explains: irrelevant answers, \"I don't know\" responses, low confidence scores",
+      "Identifies: root causes are what actually produced them",
+      "Describes: embedding-space mismatch between query and document vocabulary (the semantic gap problem), a chunking strategy that split the relevant fact across a boundary, a stale index missing recently-added content, or a mis-tuned top-k"
+    ],
+    "followup": "What trace or metric would you inspect first for a real query that fails this check?"
+  },
+  "rag-interview-questions:b712e77b8bca": {
+    "criteria": [
+      "States: It's when one technique's failure actively propagates and amplifies through the rest of the pipeline rather than staying contained",
+      "Explains: the canonical example is HyDE: if the generated hypothetical document is itself subtly wrong, the system doesn't just fail to retrieve the best chunk, it confidently retrieves chunks relevant to the wrong hypothetical, which can look more convincing (and be",
+      "Identifies: In multi-hop RAG the same shape shows up as a wrong intermediate fact at hop one actively steering every subsequent hop further from the correct answer, rather than each hop failing independently"
+    ],
+    "followup": "What trace or metric would you inspect first for a real query that fails this check?"
+  },
+  "rag-interview-questions:688d3385bca1": {
+    "criteria": [
+      "States: A naive fix (more frequent full rebuilds) doesn't scale and still leaves a staleness window between rebuilds",
+      "Explains: The real fix is detecting exactly which documents changed",
+      "Identifies: via a content hash or modification timestamp tracked per source document",
+      "Describes: and re-embedding only those, incrementally, continuously, rather than paying the cost and staleness window of a periodic full rebuild"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:a606e67386ea": {
+    "criteria": [
+      "States: Root causes span several dimensions: a domain shift the original embedding model was never trained for, a language the model has weak coverage of, an architecture change when swapping embedding models without fully re-embedding the existing index (leaving old",
+      "Explains: The symptom is usually subtle rather than catastrophic",
+      "Identifies: retrieval quality silently degrades in a way that looks like \"the model got worse at understanding queries\" when it's actually a mismatch between how the query and the stored documents were embedded, not a quality regression in either encoder individually"
+    ],
+    "followup": "Which retrieval metric and hard-negative set would you use to validate this embedding decision?"
+  },
+  "rag-interview-questions:e0c916e86d58": {
+    "criteria": [
+      "States: Sanitization fails because an attacker can rephrase malicious instructions in countless ways that never match a fixed filter pattern",
+      "Explains: \"ignore previous instructions\" gets blocked, but a thousand semantically-equivalent rewordings don't",
+      "Identifies: System-prompt hardening fails for a more structural reason: when a retrieved document contains conflicting instructions, the model has no principled way to always weight the older, more abstract system prompt over the more recent, more specific instruction",
+      "Describes: in practice, the more recent and specific instruction often wins, regardless of which one the system intended to be authoritative"
+    ],
+    "followup": "How would you test this control with a realistic unauthorized or adversarial request?"
+  },
+  "rag-interview-questions:c52c8f35379e": {
+    "criteria": [
+      "States: Layer multiple partial defenses rather than relying on one: structural separation (clearly delimit retrieved content from trusted instructions, e.g. with XML-style tags the model is prompted to treat context as data, never as commands), content filtering at",
+      "Explains: The honest framing for an interview: this raises the cost and reduces the success rate of an attack, it does not eliminate the risk",
+      "Identifies: claiming a \"solved\" defense is itself a red flag in an answer"
+    ],
+    "followup": "How would you test this control with a realistic unauthorized or adversarial request?"
+  },
+  "rag-interview-questions:d65eb132225b": {
+    "criteria": [
+      "States: Seven steps, in order: clarify requirements first (single org or multi-tenant, how fresh must permission checks be",
+      "Explains: minutes or seconds, what scale of users/groups)",
+      "Identifies: ingestion via a connector that produces chunks plus embeddings plus resolved per-chunk ACL metadata",
+      "Describes: identity resolution where the user's group memberships get expanded at query time and cached with a short TTL"
+    ],
+    "followup": "How would you test this control with a realistic unauthorized or adversarial request?"
+  },
+  "rag-interview-questions:rag-post-acl-stage": {
+    "criteria": [
+      "States: Any stage added after the ACL gate that touches document content can reintroduce a leak even though retrieval itself was correctly filtered",
+      "Explains: a reranker that re-queries the index for more candidates without reapplying the filter, a semantic cache that returns an answer generated under a different, broader-permission user's session, a \"related documents\" link-expansion step that follows references",
+      "Identifies: The principle worth stating explicitly: authorization has to be enforced at the last point document content enters the prompt, and every component between retrieval and generation has to be either ACL-aware itself or provably content-blind"
+    ],
+    "followup": "How would you compare this chunking choice against an alternative on a fixed retrieval set?"
+  },
+  "rag-interview-questions:46c7fd012825": {
+    "criteria": [
+      "States: By the time restricted content reaches the model it has already crossed the trust boundary",
+      "Explains: it may be logged or retained by the model provider regardless of what the final visible output ends up saying",
+      "Identifies: Output filtering also depends on correctly recognizing and stripping every possible leak after the fact (often via a second LLM-as-guard), and that detection step is bypassable the same way any LLM behavior is bypassable"
+    ],
+    "followup": "How would you test this control with a realistic unauthorized or adversarial request?"
+  },
+  "rag-interview-questions:rag-post-filter-recall": {
+    "criteria": [
+      "Computes: 100 × 0.02 = 2 results, and often zero",
+      "Explains: Filtering after an approximate top-k throws away almost everything for users who can see little",
+      "Identifies: That's why the fix is to filter during the search, or partition by permission"
+    ],
+    "followup": "How would you test this control with a realistic unauthorized or adversarial request?"
+  },
+  "rag-interview-questions:af14ef959196": {
+    "criteria": [
+      "States: Beyond a naive cross-tenant leak (Tenant A's cached answer served to Tenant B's semantically-similar query), there are two subtler ones: a timing side-channel, where a cache hit (fast) versus a cache miss (slow) lets one tenant infer whether another tenant",
+      "Explains: and document-ID leakage in cache metadata, where an implementation that caches retrieved chunk IDs alongside the answer exposes which documents are relevant to a topic even if the answer text itself is withheld",
+      "Identifies: The fix for all three is the same: namespace every cache key by tenant/user ID and include a hash of the current permission set in the key, not just the query embedding"
+    ],
+    "followup": "How would you test this control with a realistic unauthorized or adversarial request?"
+  },
+  "rag-interview-questions:cdccadc5f125": {
+    "criteria": [
+      "States: Three layers together: a short TTL on any cached permission data (5–60 seconds for sensitive data, with every cache read checking freshness against the TTL)",
+      "Explains: a late-binding check on the final top-k that re-verifies the user's current permissions against the authoritative source right before generation, not against stale index metadata",
+      "Identifies: and session/cache invalidation triggered by the permission-change event itself",
+      "Describes: when a revocation fires, invalidate active sessions that may hold a cached answer referencing the now-revoked document, and flush any semantic-cache entries whose source documents include it"
+    ],
+    "followup": "How would you test this control with a realistic unauthorized or adversarial request?"
+  },
+  "rag-interview-questions:b2fe1318151c": {
+    "criteria": [
+      "States: Structural isolation (a separate namespace, index, or cluster per tenant) makes offboarding trivial",
+      "Explains: drop the tenant's namespace or index, which doubles as a clean, demonstrable answer to a right-to-erasure request",
+      "Identifies: A shared index requires a delete-by-filter pass across every chunk belonging to that tenant, plus real verification that the vectors are actually gone from both the live index and any backups or snapshots",
+      "Describes: an operation that's genuinely easy to get subtly wrong (partial deletes, lingering tombstones in the HNSW graph, or backups quietly retaining vectors the live system reports as deleted)"
+    ],
+    "followup": "How would you test this control with a realistic unauthorized or adversarial request?"
+  },
+  "rag-interview-questions:bcf8b4d2f56d": {
+    "criteria": [
+      "States: Requirements first: strict per-tenant isolation (structural, not filter-based, given the sensitivity), citation at the passage level since legal answers are worthless without exact attribution, and an audit trail since this is a compliance-sensitive domain",
+      "Explains: Architecture: per-tenant index partitions (not a shared index with a filter",
+      "Identifies: the stakes are too high for the HNSW-recall and leakage risks a shared index introduces), citation enforced via NLI-checked attribution at generation time rather than trusted model-reported citations, a late-binding permission check even within a single",
+      "Describes: The interview signal here is naming the isolation-model tradeoff explicitly (structural vs. shared-plus-filter) and justifying it against this specific domain's stakes, not defaulting to whichever is cheaper"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
+  },
+  "rag-interview-questions:9219b939f9c2": {
+    "criteria": [
+      "States: Check, roughly in this order of likelihood and cheapness-to-check: has the source corpus itself changed in a way that broke a downstream assumption (a new document format, a schema change in an ingested database)",
+      "Explains: has the embedding or generation model been silently updated on the provider side (providers do this without always announcing it clearly)",
+      "Identifies: has traffic mix shifted (a new, harder query distribution rather than an actual system regression)",
+      "Describes: and has the index gone stale or partially corrupted (a failed incremental update left it partially out of sync)"
+    ],
+    "followup": "What trace or metric would you inspect first for a real query that fails this check?"
+  },
+  "rag-interview-questions:rag-embedding-migration": {
+    "criteria": [
+      "States: Blue/green, never in-place: build the new index fully from the new embedding model alongside the still-serving old index, verify the new index's quality against your golden set before any traffic touches it, then cut over atomically once validated",
+      "Explains: never partially update one index with a mix of old and new vectors, since they live in geometrically incompatible spaces and mixing them silently corrupts every similarity score involving one of each",
+      "Identifies: Handle the migration window explicitly too: any document ingested while the rebuild is in progress needs to be embedded with both models (or the cutover needs to be fast enough that the window is negligible), or it risks landing in the wrong index with the"
+    ],
+    "followup": "Which retrieval metric and hard-negative set would you use to validate this embedding decision?"
+  },
+  "rag-interview-questions:5d9b8c2a0b2d": {
+    "criteria": [
+      "States: CAG makes sense specifically when the corpus is small enough to fully fit in a model's KV cache budget and is relatively stable",
+      "Explains: a single product manual, a fixed set of policy documents",
+      "Identifies: because it sidesteps every retrieval-quality failure mode by construction (there's no \"wrong chunk retrieved\" if nothing was ever selectively retrieved at all)",
+      "Describes: It stops making sense the moment the corpus grows past the cache budget, updates frequently enough that cache invalidation becomes constant, or genuinely needs to scale beyond what any single context window can hold"
+    ],
+    "followup": "Which bottleneck would appear next as traffic grows, and how would you measure it?"
+  },
+  "rag-interview-questions:9d5eba796e50": {
+    "criteria": [
+      "States: A two-tier retrieval architecture from day one, even if the corpus is small initially: coarse retrieval combining BM25 (which scales to any corpus size via an inverted index) with quantized dense embeddings to pull a few thousand candidates from the full",
+      "Explains: Partition the index by a natural dimension (topic, date, document type) from the start so sharding is a configuration change later, not a rewrite",
+      "Identifies: retrofitting partitioning onto a system designed as one flat index is far more painful than building it in from the first version"
+    ],
+    "followup": "Which bottleneck would appear next as traffic grows, and how would you measure it?"
+  },
+  "rag-interview-questions:6d88306c9184": {
+    "criteria": [
+      "States: Walk through the real tradeoffs rather than just asserting RAG is better: fine-tuning bakes facts into weights, which means every single update to the knowledge base requires retraining",
+      "Explains: infeasible for anything that changes daily or weekly",
+      "Identifies: fine-tuning also can't cite sources, since facts get blended into the weights with no traceable provenance back to a specific document, which matters enormously for trust and auditability",
+      "Describes: and fine-tuning on a large, diverse document set is actually quite data- and compute-expensive relative to RAG's \"re-index the new document\" update cost"
+    ],
+    "followup": "How would you prove this retrieval change improves end-to-end answers rather than only an offline proxy?"
   }
 }
