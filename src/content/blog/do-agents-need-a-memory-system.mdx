@@ -5,6 +5,9 @@ date: 2026-10-23
 tags: [agents, agent memory, LLM cost, prompt caching]
 ---
 
+import AgentTurnCost from '../../viz/diagrams/blog/AgentTurnCost';
+
+
 # Do AI Agents Need a Memory System? What Two New Papers Found
 
 Two papers this week caught the attention of people who build agents. [MemoryTax](https://arxiv.org/abs/2610.29823) (21 October 2026) tested agent memory on a 419-turn conversation. With Claude Opus 5.5, an agent that simply *searched the raw conversation* scored 99%, while the best memory framework scored 95% and cost more to set up. [TurnCost](https://arxiv.org/abs/2610.15093) looked at 600 coding-agent sessions and found that the number of turns explains most of a session's cost, while the size of tool outputs explains almost none of it.
@@ -88,6 +91,8 @@ Two lessons fall out of it:
 
 - **Without caching, the same session costs about five times as much.** TurnCost found that pricing a session as if nothing were cached overstates real costs by about 7×. If you estimate agent costs from list input prices, your estimate is probably wrong by that much.
 - **Cutting turns beats shrinking outputs.** In this example, ten fewer turns saves almost four times as much as halving every tool output.
+
+<AgentTurnCost />
 
 The paper also tested handing tool output to a cheaper model to summarise. That increased total cost in half of the settings tested, and simply truncating long outputs did as well or better in all 20 comparisons. The authors are careful to say this is about cost only: they didn't measure whether fewer turns or truncated outputs change task success.
 

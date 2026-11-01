@@ -10,14 +10,20 @@ const mechanisms: Record<string, Mechanism> = {
   'do-agents-need-a-memory-system': { title: 'Follow a fact across two turns', question: 'How can an agent use information from an earlier conversation?', steps: ['A fact is stated', 'Keep the history', 'Find the evidence', 'Build the prompt'], notes: ['A user mentions a preference. That information exists in the current interaction.', 'The application stores the conversation, or a derived memory. The model does not retain a private copy between calls.', 'A later request searches or selects relevant history. A summary can be cheaper to retrieve, but may omit details.', 'The selected evidence is included in the next prompt. Compare this approach with simply providing the original history.'] },
   'world-models-verify-gui-agents': { title: 'Predict before clicking', question: 'How can a GUI agent check whether an action is likely to help?', steps: ['Observe screen', 'Propose action', 'Predict outcome', 'Compare & verify'], notes: ['The current screen is the evidence for the agent’s next action.', 'The agent proposes a click, keystroke, or other interaction.', 'A world model estimates the resulting state. This is a prediction, not an observation of the real application.', 'After acting, compare the actual screen with the expected state. A plausible prediction is not enough to confirm success.'] },
 };
+// Stage of the coverage → care → claim → payment journey each part is about.
+const HEALTHCARE_STAGE: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 2, 5: 0, 6: 0, 7: 1, 8: 0, 9: 1, 10: 1, 11: 1, 12: 2, 13: 2, 14: 2, 15: 3, 16: 3, 17: 2, 18: 3 };
+
 export default function BlogMechanism({ slug }: { slug: string }) {
   const t = useVizTokens();
-  const [step, setStep] = useState(0);
+  // Healthcare series: each part opens on the journey stage it covers.
+  const part = Number(slug.match(/^us-healthcare-(\d+)-/)?.[1] ?? 0);
+  const stage = part ? HEALTHCARE_STAGE[part] ?? 0 : undefined;
+  const [step, setStep] = useState(stage ?? 0);
   const [tokens, setTokens] = useState(8);
   const attention = slug === 'kimi-k3-linear-attention';
   const m = mechanisms[slug] ?? (slug.startsWith('us-healthcare-') ? {
     title: 'Place this topic in the healthcare journey',
-    question: 'Series overview: follow how coverage, care, and payment connect. The details vary by plan and service.',
+    question: 'The whole series follows one journey: coverage, care, the claim, and payment. The highlighted stage is where this part sits. The details vary by plan and service.',
     steps: ['Check coverage', 'Receive care', 'Review the claim', 'Explain payment'],
     notes: [
       'Enrollment and eligibility establish who is covered and when. Benefits, network rules, and coverage policies determine which questions to check before a service.',
@@ -38,10 +44,10 @@ export default function BlogMechanism({ slug }: { slug: string }) {
     </svg>
   </VisualizationContainer>;
   return <VisualizationContainer title={m.title} footer="Select a numbered step to inspect how the information moves through the system.">
-    <VisualizationHeader eyebrow="FOLLOW THE IDEA" title={m.title} description={m.question} />
+    <VisualizationHeader eyebrow={stage !== undefined ? `YOU ARE HERE · PART ${part}` : 'FOLLOW THE IDEA'} title={m.title} description={m.question} />
     <svg viewBox="0 0 420 280" role="img" aria-label={`Step ${step+1}: ${m.steps[step]}. ${m.notes[step]}`}>
       <path d="M100 55H320V180H100" stroke={t.border} strokeWidth="3" />
-      {m.steps.map((label,i) => <g key={label}><circle cx={i === 0 || i === 3 ? 100 : 320} cy={i < 2 ? 55 : 180} r="28" fill={i <= step ? t.accentSecondary : t.surfaceAlt} stroke={t.border} strokeWidth="2" /><text x={i === 0 || i === 3 ? 100 : 320} y={i < 2 ? 61 : 186} textAnchor="middle" fontSize="18" fill={i <= step ? t.background : t.textPrimary}>{i+1}</text><text x={i === 0 || i === 3 ? 100 : 320} y={i < 2 ? 110 : 235} textAnchor="middle" fontSize="17" fill={t.textPrimary}>{label}</text></g>)}
+      {m.steps.map((label,i) => <g key={label}>{stage === i && <circle cx={i === 0 || i === 3 ? 100 : 320} cy={i < 2 ? 55 : 180} r="37" fill="none" stroke={t.accentPrimary} strokeWidth="3" strokeDasharray="5 4"><title>This part</title></circle>}<circle cx={i === 0 || i === 3 ? 100 : 320} cy={i < 2 ? 55 : 180} r="28" fill={i <= step ? t.accentSecondary : t.surfaceAlt} stroke={t.border} strokeWidth="2" /><text x={i === 0 || i === 3 ? 100 : 320} y={i < 2 ? 61 : 186} textAnchor="middle" fontSize="18" fill={i <= step ? t.background : t.textPrimary}>{i+1}</text><text x={i === 0 || i === 3 ? 100 : 320} y={i < 2 ? 110 : 235} textAnchor="middle" fontSize="17" fill={t.textPrimary}>{label}</text></g>)}
     </svg>
     <div className="nm-mechanism-controls" aria-label="Diagram steps">{m.steps.map((label,i) => <button type="button" key={label} aria-pressed={step === i} onClick={() => setStep(i)}>{i+1}. {label}</button>)}</div>
     <p aria-live="polite" style={{ color:t.textSecondary }}>{m.notes[step]}</p>

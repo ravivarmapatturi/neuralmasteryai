@@ -5,6 +5,9 @@ date: 2026-10-25
 tags: [LLM architecture, linear attention, mixture of experts, open models]
 ---
 
+import DeltaRuleMemory from '../../viz/diagrams/blog/DeltaRuleMemory';
+
+
 # Kimi K3.1 and the Road From Softmax Attention to Kimi Delta Attention
 
 On 23 October 2026, Moonshot AI released [Kimi K3.1 Pro](https://www.alphaxiv.org/abs/2610.kimi-k3-1-pro), a post-trained version of its open model [Kimi K3](https://arxiv.org/abs/2607.24653). Moonshot reports 65.7% on Terminal-Bench 4.0, against 66.4% for Claude Opus 5.5, and says the full weights will be published by 4 November. The model has 2.8 trillion parameters, of which 104 billion are active for each token, and a context window of one million tokens.
@@ -56,6 +59,8 @@ S_t = (I - \beta_t k_t k_t^\top)\, S_{t-1} + \beta_t k_t v_t^\top
 $$
 
 The first factor erases the memory's content along the direction $k_t$; the second writes the new value there.
+
+<DeltaRuleMemory />
 
 Here is the difference on a toy memory: 64 dimensions, 20 key-value pairs written, then key 0 rewritten with a new value.
 
