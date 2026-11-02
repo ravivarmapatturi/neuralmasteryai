@@ -179,6 +179,9 @@ async function main() {
           }
         }
 
+        // '#root' matches before a lazy route's chunk arrives, so wait out its Suspense fallback.
+        await page.waitForFunction(() => ![...document.querySelectorAll('[role="status"]')].some((el) => /^Loading/.test(el.textContent ?? '')), undefined, { timeout: 15000 }).catch(() => {});
+
         const html = await page.content();
 
         const pagefindOutFile = outputPathForRoute(route, PRERENDER_DIR);
