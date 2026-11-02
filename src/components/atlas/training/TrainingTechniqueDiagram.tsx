@@ -162,7 +162,7 @@ export default function TrainingTechniqueDiagram({ kind, name }: Props) {
     }
   })();
 
-  return <svg viewBox="0 0 310 90" width="100%" role="img" aria-label={`${name} mechanism`}>
+  return <svg viewBox="0 0 370 90" width="100%" role="img" aria-label={`${name} mechanism`}>
     <defs><marker id={markerId} markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill={t.edge}/></marker></defs>
     {content}
   </svg>;
