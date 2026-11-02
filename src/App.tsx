@@ -23,6 +23,7 @@ import BlogEditorPage from './components/BlogEditorPage';
 import ProfilePage from './components/ProfilePage';
 import LeaderboardPage from './components/LeaderboardPage';
 import AboutPage from './components/AboutPage';
+import AtlasHubPage from './components/AtlasHubPage';
 import PrivacyPolicyPage from './components/PrivacyPolicyPage';
 import TermsOfServicePage from './components/TermsOfServicePage';
 import NotFoundPage from './components/NotFoundPage';
@@ -90,6 +91,9 @@ export default function App() {
                       <Route path="/progress" element={<ProgressPage />} />
                       <Route path="/profile" element={<ProfilePage />} />
                       <Route path="/leaderboard" element={<LeaderboardPage />} />
+                      <Route path="/atlas" element={<AtlasHubPage />} />
+                      <Route path="/docs/deep-learning/training-technique-atlas" element={<Navigate to="/docs/atlas/training" replace />} />
+                      <Route path="/docs/inference-engineering/technique-atlas" element={<Navigate to="/docs/atlas/inference" replace />} />
                       <Route path="/about" element={<AboutPage />} />
                       <Route path="/privacy" element={<PrivacyPolicyPage />} />
                       <Route path="/terms" element={<TermsOfServicePage />} />

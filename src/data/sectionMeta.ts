@@ -95,6 +95,7 @@ export const SECTION_META: Record<string, SectionMetaEntry> = {
       { dir: 'ml-system-design', label: 'ML System Design' },
       { dir: 'mlops', label: 'MLOps' },
       { dir: 'inference-engineering', label: 'Inference Engineering & Edge AI' },
+      { dir: 'atlas', label: 'Atlas', landing: '/atlas' },
       { dir: 'databases', label: 'Databases' },
       { dir: 'frameworks', label: 'Frameworks' },
       { dir: 'cli-reference', label: 'CLI Reference' },
