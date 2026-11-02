@@ -2,10 +2,11 @@ import { Link } from 'react-router-dom';
 import InformationPage from './InformationPage';
 
 const LIVE = [
+  { to: '/docs/atlas/agent-protocols', title: 'Agent Protocols Atlas', body: '22 steps from remote procedure calls and REST to function calling, MCP and agent-to-agent protocols.' },
   { to: '/docs/atlas/training', title: 'Training Atlas', body: '39 techniques for training models, from data preparation to evaluation.' },
   { to: '/docs/atlas/inference', title: 'Inference Atlas', body: '30 techniques for serving models, from choosing the next token to running a fleet.' },
 ];
-const COMING = ['Agent Protocols: REST APIs to MCP', 'Agent Architecture', 'RAG and Retrieval', 'LLM Architecture', 'Prompt to Context', 'Evaluation and Observability', 'AI Safety and Security', 'On-Device AI', 'Vision and Multimodal', 'Speech and Audio', 'MLOps to LLMOps', 'AI Hardware'];
+const COMING = ['Agent Architecture', 'RAG and Retrieval', 'LLM Architecture', 'Prompt to Context', 'Evaluation and Observability', 'AI Safety and Security', 'On-Device AI', 'Vision and Multimodal', 'Speech and Audio', 'MLOps to LLMOps', 'AI Hardware'];
 
 /** /atlas: maps of whole fields, each told in date order. */
 export default function AtlasHubPage() {

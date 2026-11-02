@@ -1,0 +1,41 @@
+---
+title: "Agent Protocols Atlas"
+sidebar_position: 1
+description: "Trace how software systems learned to talk, from remote procedure calls and REST to function calling, MCP and agent-to-agent protocols."
+---
+
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import AgentProtocolsAtlas from '../../../components/atlas/protocols/AgentProtocolsAtlas';
+
+# Agent Protocols Atlas
+
+An agent calling a tool looks new, but much of it is old. A generated stub from 1984, a JSON message, a schema and an OAuth token are all still in that call. What is new is who decides to make it: a model, working from a description, at runtime. This atlas follows that story in date order, so you can see which problem each layer solved.
+
+<ELI5>
+
+Think of an office. A remote call is phoning a colleague. REST is an agreed way of asking the records room for a file. OAuth is a visitor badge that opens only certain doors. Function calling is a new assistant who writes down which call should be made, while you still make it. MCP is a standard socket, so any assistant can use any office equipment. A2A is how assistants from different companies hand work to each other.
+
+</ELI5>
+
+<PredictFirst
+  question="When a model uses function calling, what actually runs the function?"
+  options={[
+    'The model runs it on the provider’s servers',
+    'Your application runs it, then sends the result back to the model',
+    'The JSON Schema runs it automatically',
+    'MCP is required to run it',
+  ]}
+  correctIndex={1}
+  explanation="The model only returns a function name and arguments. Your code decides whether to run it, runs it, and returns the result. This is why model output has to be checked before anything happens."
+/>
+
+Open an entry and read it in order: the limit it answered, what changed, then the exchange in the diagram.
+
+<AgentProtocolsAtlas />
+
+## The Layers Still Stack
+
+These entries did not replace each other. A single MCP tool call can use a schema to describe the tool, JSON-RPC for the message, HTTP to carry it, OAuth to authorize it, and a REST API behind the server. When a call fails, work through those layers one at a time.
+
+Protocols in the last era are still changing, so check the current specification before you build on the details here.
