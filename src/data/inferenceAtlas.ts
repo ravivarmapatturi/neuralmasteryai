@@ -109,6 +109,72 @@ const decodingEntries: InferenceAtlasEntry[] = [
   },
 ];
 
-export const inferenceAtlasEntries: InferenceAtlasEntry[] = [...decodingEntries];
+const portableEntries: InferenceAtlasEntry[] = [
+  {
+    id: 'pruning', name: 'Weight pruning', year: 1989, era: 'Portable, smaller execution', category: 'Compression', diagram: 'pruning',
+    source: { label: 'LeCun et al., Optimal Brain Damage', url: 'https://proceedings.neurips.cc/paper/1989/hash/6c9882bbac1c7093bd25041881277658-Abstract.html' }, learnPath: '/docs/inference-engineering/quantization-and-compression',
+    whatItIs: 'Pruning removes weights, channels, or blocks judged unimportant. It attacked model size directly, where decoding changes only how an unchanged model selects outputs.', previousLimit: 'Sampling controls do not reduce parameter memory or arithmetic.',
+    requestState: 'The request is unchanged; runtime loads a sparse or structurally smaller weight tensor plus any sparse index metadata.', example: 'A 2×3 matrix with one near-zero column becomes a 2×2 dense matrix after structured column pruning.',
+    metrics: 'Measure sparsity, model bytes, task quality, latency, and realized hardware speedup. Unstructured sparsity can shrink files without accelerating dense kernels.', avoid: 'Avoid unstructured pruning when the target accelerator lacks an efficient sparse kernel.', replacedBy: 'Structured pruning, distillation, and low-bit quantization are easier to realize on common hardware.', cameBefore: 'Dense networks with every trained parameter retained.', ledTo: 'Hardware-aware structured sparsity and compression stacks.',
+  },
+  {
+    id: 'static-quantization', name: 'Static quantization', year: 2017, era: 'Portable, smaller execution', category: 'Compression', diagram: 'static-quant',
+    source: { label: 'Jacob et al., Integer-Arithmetic-Only Inference', url: 'https://arxiv.org/abs/1712.05877' }, learnPath: '/docs/inference-engineering/quantization-and-compression',
+    whatItIs: 'Static quantization chooses activation ranges from representative calibration data and stores fixed scales for integer execution. It removed the per-request range calculation of dynamic schemes and enabled integer-only operator pipelines.', previousLimit: 'Floating-point models consume more memory bandwidth and may not run efficiently on integer accelerators.',
+    requestState: 'The request is ordinary input; runtime uses precomputed weight and activation scales from a calibration set such as 500 representative images.', example: 'Calibration observes x∈[−1,3], derives one scale and zero-point, then maps x=.5 to an INT8 code.',
+    metrics: 'Compare task quality, calibration coverage, model bytes, latency, and integer-kernel coverage. Poor calibration clips real requests outside the observed range.', avoid: 'Avoid when representative calibration data is unavailable or input ranges drift sharply.', replacedBy: 'Quantization-aware training improves difficult models; weight-only methods fit LLM deployment better.', cameBefore: 'Floating-point inference and runtime-selected ranges.', ledTo: 'Quantization-aware training and calibrated LLM activation quantization.',
+  },
+  {
+    id: 'onnx', name: 'ONNX graph exchange', year: 2017, era: 'Portable, smaller execution', category: 'Runtime', diagram: 'onnx',
+    source: { label: 'ONNX documentation', url: 'https://onnx.ai/onnx/intro/' }, learnPath: '/docs/inference-engineering/hardware-acceleration-and-kernels',
+    whatItIs: 'ONNX serializes a typed operator graph, parameters, and opset version independently of the training framework. It solved the need to rebuild a model by hand for each inference runtime.', previousLimit: 'Framework-native checkpoints bind execution to one framework’s operators and serialization.',
+    requestState: 'A request provides named tensors; runtime state is an optimized graph, initializers, provider-specific kernels, and allocated tensor buffers.', example: 'input[1,3,224,224] → Conv → Relu → output[1,64,112,112], with weights stored as graph initializers.',
+    metrics: 'Check numerical parity, unsupported or fallback operators, load time, latency, and provider coverage.', avoid: 'Avoid exporting models whose custom or dynamic operators have no faithful ONNX representation.', replacedBy: 'ONNX remains active; specialized compiler IRs and runtime-native formats may outperform it on one target.', cameBefore: 'Training-framework checkpoints as deployment artifacts.', ledTo: 'Portable graph optimization and execution providers.',
+  },
+  {
+    id: 'wasm', name: 'WebAssembly inference', year: 2019, era: 'Portable, smaller execution', category: 'Deployment', diagram: 'wasm',
+    source: { label: 'W3C WebAssembly Core Specification 1.0', url: 'https://www.w3.org/TR/wasm-core-1/' }, learnPath: '/docs/inference-engineering/edge-and-tinyml-architecture',
+    whatItIs: 'WebAssembly executes a validated binary module inside a browser sandbox with linear memory. It brought portable CPU inference to clients without a native install or server round trip.', previousLimit: 'ONNX describes a graph but still needs an execution target available on the device.',
+    requestState: 'The page passes typed arrays into module memory; state includes compiled code, a linear-memory buffer, model weights, and reusable tensor arenas.', example: 'A 224×224 RGB image becomes a Float32Array copied into linear memory before calling infer(ptr).',
+    metrics: 'Measure module download and compile time, peak linear memory, warm latency, and output parity.', avoid: 'Avoid for models whose weights exceed practical download or client-memory budgets.', replacedBy: 'WebGPU handles parallel accelerator work; WASM remains a CPU fallback and preprocessing runtime.', cameBefore: 'JavaScript kernels and server-only inference.', ledTo: 'Browser runtimes with WASM fallback and WebGPU acceleration.',
+  },
+  {
+    id: 'dynamic-quantization', name: 'Dynamic quantization', year: 2020, era: 'Portable, smaller execution', category: 'Compression', diagram: 'dynamic-quant',
+    source: { label: 'PyTorch dynamic quantization tutorial', url: 'https://docs.pytorch.org/tutorials/advanced/dynamic_quantization_tutorial.html' }, learnPath: '/docs/inference-engineering/quantization-and-compression',
+    whatItIs: 'Dynamic quantization stores weights in low precision but computes activation scales from each runtime input. It removes calibration-data preparation while still reducing weight traffic.', previousLimit: 'Static quantization needs a representative calibration set and fixed activation ranges.',
+    requestState: 'The request supplies floating activations; runtime scans the current tensor for a range, quantizes it, runs the integer operator, then dequantizes as needed.', example: 'A request vector [−.2,.4,1.6] determines its activation scale immediately before a quantized linear layer.',
+    metrics: 'Measure weight bytes, range-computation overhead, operator coverage, latency, and task quality.', avoid: 'Avoid when per-input quantization overhead dominates small operators or integer kernels are missing.', replacedBy: 'Static calibration for stable high-throughput paths; weight-only LLM quantization for memory-bound decoding.', cameBefore: 'Static calibrated integer inference.', ledTo: 'Easy post-training CPU compression workflows.',
+  },
+  {
+    id: 'gptq', name: 'GPTQ', year: 2022, era: 'Portable, smaller execution', category: 'Compression', diagram: 'gptq',
+    source: { label: 'Frantar et al., GPTQ', url: 'https://arxiv.org/abs/2210.17323' }, learnPath: '/docs/inference-engineering/quantization-and-compression',
+    whatItIs: 'GPTQ quantizes a pretrained transformer layer by layer, using approximate second-order information to compensate remaining weights as each weight is rounded. It made accurate 3–4 bit weight-only post-training quantization practical for very large models.', previousLimit: 'Independent rounding ignores how weight errors interact through layer inputs.',
+    requestState: 'Requests remain token IDs; runtime loads packed low-bit weights plus group scales while activations stay at higher precision.', example: 'A calibration matrix X guides whether weight .38 rounds up or down and how the unquantized neighbors are adjusted.',
+    metrics: 'Measure perplexity or task quality, bits per weight, calibration time, model bytes, kernel latency, and tokens per second.', avoid: 'Avoid when no matching packed-weight kernel exists or rapid conversion matters more than final quality.', replacedBy: 'AWQ uses activation salience; newer formats and kernels package several weight-only recipes.', cameBefore: 'Naive per-weight low-bit rounding.', ledTo: 'Widely deployed 4-bit weight-only LLM inference.',
+  },
+  {
+    id: 'awq', name: 'AWQ', year: 2023, era: 'Portable, smaller execution', category: 'Compression', diagram: 'awq',
+    source: { label: 'Lin et al., AWQ', url: 'https://arxiv.org/abs/2306.00978' }, learnPath: '/docs/inference-engineering/quantization-and-compression',
+    whatItIs: 'AWQ identifies channels whose weights are salient under observed activations and protects them through per-channel scaling before low-bit rounding. It addressed weight-only quantization error without reconstructing every weight through a second-order solve.', previousLimit: 'GPTQ’s reconstruction is effective but more involved, while naive rounding treats every channel alike.',
+    requestState: 'Requests are unchanged; runtime holds packed weights, per-group scales, and higher-precision activations.', example: 'If one input channel has consistently large activations, its weights receive a protective scale before 4-bit quantization.',
+    metrics: 'Measure task quality, bits per weight, calibration cost, kernel throughput, and end-to-end memory use.', avoid: 'Avoid assuming a quantized checkpoint accelerates hardware without an AWQ-compatible kernel.', replacedBy: 'AWQ remains active alongside GPTQ and hardware-specific low-bit formats.', cameBefore: 'Second-order and uniform weight-only quantization.', ledTo: 'Activation-aware low-bit serving kernels.',
+  },
+  {
+    id: 'gguf', name: 'GGUF model format', year: 2023, era: 'Portable, smaller execution', category: 'Runtime', diagram: 'gguf',
+    source: { label: 'GGUF specification', url: 'https://github.com/ggml-org/ggml/blob/master/docs/gguf.md' }, learnPath: '/docs/inference-engineering/edge-and-tinyml-architecture',
+    whatItIs: 'GGUF stores model tensors together with typed metadata in one file designed for efficient loading and memory mapping. It solved the brittle separation of quantized tensor files, tokenizer metadata, and architecture settings in local inference.', previousLimit: 'A quantization algorithm does not by itself define a portable, self-describing deployment artifact.',
+    requestState: 'The request is tokenized locally; runtime memory-maps tensor blocks and reads tokenizer, architecture, and quantization metadata from the same file.', example: 'One file contains Q4_K tensor blocks plus context length, vocabulary, and tokenizer fields.',
+    metrics: 'Check file size, load time, resident memory, supported metadata, output parity, and tokens per second.', avoid: 'Avoid when the serving runtime or accelerator expects a different native format.', replacedBy: 'GGUF superseded earlier GGML-family files and continues to evolve through versioned metadata.', cameBefore: 'Separate or weakly versioned local-model artifacts.', ledTo: 'Single-file local CPU/GPU inference distribution.',
+  },
+  {
+    id: 'webgpu', name: 'WebGPU inference', year: 2023, era: 'Portable, smaller execution', category: 'Deployment', diagram: 'webgpu',
+    source: { label: 'W3C WebGPU specification', url: 'https://www.w3.org/TR/webgpu/' }, learnPath: '/docs/inference-engineering/edge-and-tinyml-architecture',
+    whatItIs: 'WebGPU exposes portable GPU compute pipelines, buffers, and command submission to the web platform. It moves parallel tensor operations off the CPU where WASM alone cannot efficiently saturate the client GPU.', previousLimit: 'WASM offers portable CPU execution but no standard direct GPU compute model.',
+    requestState: 'A browser request becomes GPU buffers; runtime holds compiled shader pipelines, bind groups, weight buffers, and command encoders.', example: 'Token embeddings and a weight tile enter storage buffers; a WGSL matrix kernel writes the next activation buffer.',
+    metrics: 'Measure first-run pipeline compilation, upload time, warm latency, memory, battery use, and browser coverage.', avoid: 'Avoid when client GPU support, memory, privacy policy, or download size cannot meet the application envelope.', replacedBy: 'WebGPU complements rather than replaces WASM: runtimes use WASM for control/CPU fallback and WebGPU for parallel kernels.', cameBefore: 'WASM CPU inference and vendor-specific browser GPU paths.', ledTo: 'Private, offline-capable browser model execution.',
+  },
+];
+
+export const inferenceAtlasEntries: InferenceAtlasEntry[] = [...decodingEntries, ...portableEntries];
 
 export const inferenceAtlasCategories: Array<'All' | InferenceAtlasCategory> = ['All', 'Decoding', 'Runtime', 'Compression', 'Kernel', 'Serving', 'Deployment', 'Measurement'];
