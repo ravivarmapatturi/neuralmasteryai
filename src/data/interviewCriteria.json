@@ -1499,5 +1499,41 @@
   },
   "rag-interview-questions:d65eb132225b": {
     "criteria": ["Clarifies tenancy, permission-freshness, user, and group scale requirements", "Ingests chunks with resolved per-chunk ACL metadata", "Expands current group membership and pre-filters permissions inside ANN retrieval", "Rechecks final top-k permissions against the authoritative source and fails closed", "Scopes citations, caches, model retention, and audit logs to the same access policy"], "followup": "How short should the group-membership cache TTL be, and what determines that choice?"
+  },
+  "rag-interview-questions:rag-post-acl-stage": {
+    "criteria": ["Identifies link expansion into an unauthorized document as a post-retrieval leak", "Explains that rerankers, caches, and memory layers can also bypass an earlier ACL gate", "Enforces authorization at the last point where content enters the prompt", "Requires every intermediate component to be ACL-aware or content-blind", "Rejects trusting the initial retrieval filter to protect later content access"], "followup": "How would you test that every post-retrieval component preserves the permission boundary?"
+  },
+  "rag-interview-questions:46c7fd012825": {
+    "criteria": ["Explains that restricted content crosses the trust boundary as soon as the model receives it", "Notes that the provider may log or retain content even if output filtering hides it", "Explains that an LLM output guard can miss or be induced to miss leaks", "Enforces access control on retrieval input rather than generated output"], "followup": "Where else could restricted content cross a trust boundary before generation?"
+  },
+  "rag-interview-questions:rag-post-filter-recall": {
+    "criteria": ["Computes 100 × 0.02 = 2 permitted results on average", "Explains that post-filtering can leave few or zero relevant results", "Proposes filtering during search or partitioning by permission", "Explains how filtered HNSW traversal can become stranded among ineligible vectors"], "followup": "At what permission match rate would you switch from approximate search to brute force?"
+  },
+  "rag-interview-questions:af14ef959196": {
+    "criteria": ["Identifies cross-tenant answer leakage from semantically similar cache keys", "Explains the hit-versus-miss timing side channel across tenants", "Identifies relevant document IDs as sensitive cache metadata", "Namespaces keys by tenant or user and hashes the current permission set into the key"], "followup": "How would you prevent response timing from revealing whether a protected cache entry exists?"
+  },
+  "rag-interview-questions:cdccadc5f125": {
+    "criteria": ["Uses a short TTL for cached permission data and checks freshness on every read", "Rechecks current authority permissions on final top-k immediately before generation", "Invalidates affected sessions and semantic-cache entries when revocation events arrive", "Blocks the user's next query from reusing content whose access was revoked"], "followup": "What should an in-flight generation do if revocation arrives after retrieval but before response delivery?"
+  },
+  "rag-interview-questions:b2fe1318151c": {
+    "criteria": ["Deletes a structurally isolated tenant by dropping its namespace, index, or cluster", "Deletes a shared-index tenant with a filter across every owned chunk", "Verifies removal from the live vector index, backups, and snapshots", "Identifies partial deletes and lingering graph tombstones as shared-index risks"], "followup": "What evidence would you retain to prove erasure without retaining the tenant's deleted content?"
+  },
+  "rag-interview-questions:bcf8b4d2f56d": {
+    "criteria": ["Chooses structural per-tenant index partitions for strict law-firm isolation", "Enforces passage-level citations with entailment checks", "Rechecks permissions for access tiers within each firm before generation", "Audits the user, applied filter, and retrieved chunk IDs per query", "Justifies stronger isolation by the legal domain's leakage and compliance stakes"], "followup": "How would you rotate one firm's encryption keys without affecting other tenants?"
+  },
+  "rag-interview-questions:9219b939f9c2": {
+    "criteria": ["Checks for source format or schema changes that broke ingestion assumptions", "Checks for silent embedding or generation model updates", "Compares the current query mix with the earlier stable period", "Verifies index freshness and incremental-update integrity", "Investigates cheap likely causes systematically instead of guessing a fix"], "followup": "Which trace or sentinel would distinguish provider-model drift from a traffic-mix shift?"
+  },
+  "rag-interview-questions:rag-embedding-migration": {
+    "criteria": ["Builds a complete new-model index beside the still-serving old index", "Validates the new index on the golden set before switching traffic", "Cuts over atomically after validation", "Rejects mixing old and new embeddings because their vector spaces are incompatible", "Updates both indexes for documents ingested during the migration window"], "followup": "How would you roll back safely if online retrieval quality drops after cutover?"
+  },
+  "rag-interview-questions:5d9b8c2a0b2d": {
+    "criteria": ["Chooses Cache-Augmented Generation for a stable corpus that fits fully in the KV-cache budget", "Explains that full cached context removes selective-retrieval failure modes", "Rejects CAG when the corpus exceeds context capacity or changes frequently", "Proposes a hybrid with a cached stable core and a retrieved changing slice"], "followup": "How would you measure whether cache invalidation frequency has made CAG more expensive than RAG?"
+  },
+  "rag-interview-questions:9d5eba796e50": {
+    "criteria": ["Builds a coarse first tier from BM25 and quantized dense retrieval", "Narrows billions of documents to a few thousand candidates cheaply", "Reranks only the reduced candidate set with a cross-encoder or ColBERT", "Partitions by a natural dimension from the first version", "Explains that early partitioning turns later sharding into configuration rather than redesign"], "followup": "How would you choose a partition key without creating hot or imbalanced shards?"
+  },
+  "rag-interview-questions:6d88306c9184": {
+    "criteria": ["Explains that changing facts require repeated fine-tuning but only re-indexing in RAG", "Explains that fine-tuned weights cannot provide traceable document citations", "Compares fine-tuning data and compute costs with incremental indexing", "Keeps fine-tuning for tone, format, or narrow skills rather than factual storage", "Connects RAG to current, attributable knowledge at larger corpus scale"], "followup": "When would you combine fine-tuning for behavior with RAG for knowledge?"
   }
 }
