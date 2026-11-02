@@ -1,0 +1,219 @@
+---
+title: "Context Architecture & Token Economics"
+sidebar_position: 1
+description: "Foundational principles of context engineering: attention dispersion, the lost-in-the-middle effect, token budgeting waterfalls, and KV-cache alignment."
+---
+
+import ContextBudgetWaterfallVisualizer from '../../../viz/diagrams/ContextBudgetWaterfallVisualizer';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
+
+# Context Architecture & Token Economics
+
+In modern autonomous AI systems, the prompt is not a static string written by a human prompter. It is a dynamic, continuously shifting working memory space constructed by an automated harness on every inference cycle.
+
+**Context Engineering** is the systems discipline of curating, sizing, and scheduling the optimal working set of tokens inside a model's attention window. While prompt engineering focuses on wording instructions, context engineering controls the data pipeline that feeds the attention layer: token allocation budgets, tool schema discovery, external memory retrieval, and key-value cache alignment.
+
+<ELI5>
+
+Think of a large language model as a computer processor (CPU), and its context window as the system RAM.
+
+If you open 500 browser tabs and run 20 background applications, the computer's RAM fills up, the operating system starts swapping memory to disk, and everything slows to a crawl. You don't make the processor faster by opening more tabs; you make it faster by closing the tabs you aren't using and keeping only the active task in RAM.
+
+Context engineering is the memory manager for the AI. It ensures that on every single turn, only the highest-signal tokens occupy the model's active RAM.
+
+</ELI5>
+
+## Why This Exists
+
+When frontier models expanded context windows from 8,000 tokens to 128,000, 200,000, and over a million tokens, many engineering teams assumed that token capacity limits had ceased to matter. They began dumping whole repositories, full API documentation manuals, and complete database schemas into every request.
+
+In production, unmanaged context triggers three physical failure modes:
+
+1. **Attention Dispersion & Lost in the Middle**: Attention is a competitive softmax allocation. When a prompt contains 80,000 tokens, the attention score assigned to any single token is diluted across thousands of distractors. Research by Liu et al. (2023) demonstrated that model recall falls significantly when key facts or negative constraints sit in the middle 60% of an extended prompt.
+2. **Context Anxiety and Premature Halting**: As token usage approaches 65% to 70% of maximum window capacity, models exhibit higher failure rates: prematurely declaring tasks complete without running tests, omitting function arguments, or repeating previously failed commands.
+3. **Quadratic Cumulative Token Costs**: In an autonomous multi-turn agent loop, every token in the prefix is re-sent on every turn. Carrying an unmanaged 80,000-token prompt over a 20-turn session requires paying for **1.6 million cumulative input tokens**, turning a simple bugfix into a multi-dollar API charge.
+
+## The Benchmark Reality: Codebase Scale Failures
+
+Most tutorials evaluate prompts against small toy scripts where full file inlining fits easily inside a 32k window. When that same uncurated agent is deployed against enterprise repositories, naive architectures fail completely.
+
+In a benchmark published by Sourcegraph (Tanner, 2026), an autonomous coding agent was assigned to trace and modify a resource allocation mechanism across a Go codebase spanning **1.4 million lines across 22,000 files**:
+- Without context engineering, the agent began inlining entire parent directories, rapidly exhausting its 128k context window with tangential helper functions.
+- Trapped in an attention-diluted state, the agent navigated through files for **6,000 seconds (100 minutes)**, generated hundreds of irrelevant file reads, and scored **zero on the benchmark**.
+- When equipped with context engineering—using an AST spatial map, deferred tool discovery, and two-pass compaction—the same model resolved the issue in under 4 minutes, using fewer than 9,000 active tokens per turn.
+
+The underlying model was identical; the difference was entirely in how the harness scheduled tokens into its attention window.
+
+## The Five Pillars of Context Engineering
+
+Formalized across enterprise production agent harnesses, context engineering decomposes into five operational pillars:
+
+1. **Context Sizing**: Establishing strict static token ceilings for every prompt layer, ensuring that dynamic turn growth cannot starve reasoning headroom.
+2. **Context Retrieval**: Extracting precise, high-affinity code snippets using semantic vector search, BM25 keyword indices, and language-aware AST extractors rather than raw file dumps.
+3. **Context Formatting**: Enforcing consistent schema boundaries using Markdown headers and XML envelopes (`<system_contract>`, `<file_map>`, `<diagnostic>`), which frontier models parse with higher structural fidelity than unstructured prose.
+4. **Context Compaction**: Pruning redundant compiler traces, intermediate scratchpad tokens, and completed subtask details into compact deterministic state checkpoints.
+5. **Context Isolation**: Spawning separate child subagents with independent, specialized context windows for disjoint subtasks, preventing tangential search queries from polluting the primary supervisor's attention space.
+
+## The Shape of It
+
+Context engineering structures the window as a strict budget waterfall, separating static prompt infrastructure from dynamic turn state:
+
+<ContextBudgetWaterfallVisualizer />
+
+<PredictFirst
+  question="In a 128,000-token context window, why does an unmanaged prompt using 80,200 tokens (62.6% utilization) perform worse at complex reasoning than an engineered prompt using only 8,000 tokens (6.2% utilization)?"
+  options={[
+    "Because the GPU driver artificially throttles inference speed when memory usage exceeds 50%.",
+    "Softmax attention dilution: 72,000 irrelevant tokens dilute the attention weights away from critical system invariants, causing the model to miss negative constraints and hallucinate unmapped APIs.",
+    "Because the model's tokenizer drops tokens randomly when the sequence exceeds 64,000 tokens.",
+    "Because prompt caching only works on prompts smaller than 10,000 tokens."
+  ]}
+  correctIndex={1}
+  explanation="Transformer self-attention computes an N x N dot-product matrix. As uncurated tokens accumulate, the softmax probability mass spreads across thousands of irrelevant keys, decreasing the signal-to-noise ratio and causing attention heads to overlook explicit constraints located in the prompt."
+/>
+
+## The Anatomy of an Agent Context Window
+
+A production autonomous agent context window contains five distinct structural layers, each requiring independent lifecycle management:
+
+| Layer | Typical Unmanaged Size | Typical Engineered Size | Lifecycle | Eviction / Optimization Strategy |
+| :--- | :--- | :--- | :--- | :--- |
+| **1. Root System Contract** | 4,200 tokens | 1,800 tokens | Immutable across entire session | Compact `AGENTS.md` format; static for KV cache hit |
+| **2. Tool Schemas** | 12,000 tokens (40 tools) | 600 tokens (Names only) | Dynamic discovery | Load full parameter JSON schemas only on demand |
+| **3. Spatial Repository Map** | 28,000 tokens (Raw code) | 1,400 tokens (AST signatures) | Updated on file mutations | Python `ast.parse` signature extraction |
+| **4. Working Memory / State** | 36,000 tokens (Raw traces) | 4,200 tokens (Checklist) | Compacted every 3-4 turns | Two-pass compaction: prune old compiler stdout |
+| **5. Free Reasoning Headroom** | 47,800 tokens (37.4%) | **120,000 tokens (93.8%)** | Reserved for output generation | Maintained above 70% to eliminate context anxiety |
+
+<GoDeeper title="Go deeper: Mathematical proof of attention dispersion under softmax scaling">
+
+In scaled dot-product attention, the attention weights are computed as:
+
+$$\alpha_i = \frac{e^{(q \cdot k_i) / \sqrt{d_k}}}{\sum_{j=1}^N e^{(q \cdot k_j) / \sqrt{d_k}}}$$
+
+Let $k^*$ be the key vector corresponding to the single critical constraint in the system prompt, and let $S^* = (q \cdot k^*) / \sqrt{d_k}$ be its dot-product score.
+
+If the prompt contains $N$ total tokens, where $N - 1$ tokens are irrelevant noise with an average dot-product score $\bar{S}_{\text{noise}}$, the denominator expands:
+
+$$\sum_{j=1}^N e^{S_j} = e^{S^*} + (N - 1) \cdot e^{\bar{S}_{\text{noise}}}$$
+
+As sequence length $N$ scales from 1,000 to 100,000 tokens with noisy files and compiler logs, the noise sum $(N - 1) \cdot e^{\bar{S}_{\text{noise}}}$ grows by orders of magnitude. The relative attention weight $\alpha^*$ assigned to the critical instruction decays towards zero, mathematically guaranteeing constraint violation.
+
+</GoDeeper>
+
+## A Full Worked Example: Budget Waterfall Comparison
+
+Consider an autonomous coding agent evaluating an issue in a 60-file repository:
+
+1. **Unmanaged Strategy**:
+   - System prompt with extensive guidelines: 4,200 tokens
+   - 40 inlined MCP and bash tool schemas: 12,000 tokens
+   - 4 full source code files inlined into prompt: 28,000 tokens
+   - 8 turns of raw conversation with unpruned pytest logs: 36,000 tokens
+   - **Total context used**: $4,200 + 12,000 + 28,000 + 36,000 = \mathbf{80,200 \text{ tokens}}$ ($62.6\%$ window saturation). Attention dispersion is severe.
+
+2. **Engineered Strategy**:
+   - Curated root system contract: 1,800 tokens
+   - Deferred tool schema discovery (tool names and 1-line summaries): 600 tokens
+   - AST-extracted class and method signatures: 1,400 tokens
+   - Compacted working state checklist (`feature_list.json`) + last 2 active turns: 4,200 tokens
+   - **Total context used**: $1,800 + 600 + 1,400 + 4,200 = \mathbf{8,000 \text{ tokens}}$ ($6.2\%$ window saturation). Free reasoning headroom: **120,000 tokens (93.8%)**.
+
+### Run It Yourself
+
+Execute this self-contained Python script to analyze how context engineering transforms working window utilization and attention headroom:
+
+<RunnableCode code={`def calculate_context_waterfall(
+    system_tokens: int,
+    tool_tokens: int,
+    file_tokens: int,
+    history_tokens: int,
+    window_limit: int = 128000
+) -> dict:
+    """Calculates context layer allocation and attention headroom."""
+    total_used = system_tokens + tool_tokens + file_tokens + history_tokens
+    headroom = window_limit - total_used
+    utilization_pct = (total_used / window_limit) * 100
+    
+    regime = "Optimal (< 20% utilization)" if utilization_pct < 20 else "Attention Dispersion (> 50%)"
+    
+    return {
+        "total_used": total_used,
+        "headroom": headroom,
+        "utilization_pct": round(utilization_pct, 2),
+        "regime": regime
+    }
+
+# Compare Unmanaged vs Engineered setups
+unmanaged = calculate_context_waterfall(
+    system_tokens=4200,
+    tool_tokens=12000,
+    file_tokens=28000,
+    history_tokens=36000
+)
+
+engineered = calculate_context_waterfall(
+    system_tokens=1800,
+    tool_tokens=600,
+    file_tokens=1400,
+    history_tokens=4200
+)
+
+print("=== Context Allocation Waterfall Profile ===\\n")
+print("1. Unmanaged Setup (Naive Inlining):")
+print(f"   Tokens Used: {unmanaged['total_used']:,} / 128,000 ({unmanaged['utilization_pct']}%)")
+print(f"   Headroom:    {unmanaged['headroom']:,} tokens")
+print(f"   Regime:      {unmanaged['regime']}\\n")
+
+print("2. Engineered Setup (Curated Architecture):")
+print(f"   Tokens Used: {engineered['total_used']:,} / 128,000 ({engineered['utilization_pct']}%)")
+print(f"   Headroom:    {engineered['headroom']:,} tokens")
+print(f"   Regime:      {engineered['regime']}\\n")
+
+tokens_saved = unmanaged['total_used'] - engineered['total_used']
+print(f"Net Savings: {tokens_saved:,} tokens ({(tokens_saved / unmanaged['total_used']) * 100:.1f}% reduction)")
+
+# Try it: Adjust history_tokens in engineered above to see the effect of longer sessions.
+`} />
+
+## Common Problems & Fixes
+
+1. **Context Anxiety Inducing Premature Completion**: When context utilization exceeds 70%, the model declares victory without testing.
+   - *Fix*: Keep active context utilization below 30% by pruning raw tool outputs and offloading state to disk.
+2. **Cache Misses from Dynamic Prefix Shuffling**: Inserting session timestamps or random UUIDs at the start of the prompt busts provider KV prompt caches.
+   - *Fix*: Ensure the first 2,048 tokens are strictly identical across requests to achieve 100% prefix cache reuse.
+3. **Accidental Loss of Negative Constraints during Compaction**: Compacting conversation history wipes out critical warnings ("do not edit files in tests/").
+   - *Fix*: Negative constraints must reside permanently in the immutable root system prompt, never in transient conversational turns.
+
+<NotebookCallout color="cobalt" title="The Working Set Invariant">
+Never treat the context window as a data warehouse. Treat it as a high-speed L1 CPU cache: load only the minimal high-signal working set required for the immediate decision step, and evict intermediate artifacts instantly.
+</NotebookCallout>
+
+## When *Not* to Use It
+
+| Situation | Better Choice | Why |
+| :--- | :--- | :--- |
+| Simple single-turn question answering | Zero-shot direct prompt | In a single turn with no tools or files, context management pipelines add unnecessary architectural indirection. |
+| Whole-document legal contract proofreading | Single large window inlining | Legal contracts require continuous cross-referencing across clauses; compacting text risks losing legal nuance. |
+| Pure vector retrieval (RAG) QA | Top-k document ranking | Standard vector search ranks passages once; multi-stage context engineering is designed for multi-turn agent loops. |
+
+## Remember
+
+| Idea | Core Rule |
+| :--- | :--- |
+| **Context vs Window** | The window is physical hardware capacity; context is the curated working set you schedule into it. |
+| **Softmax Dilution** | Attention weights decay as irrelevant noise tokens accumulate in the window. |
+| **Headroom Invariant** | Maintain at least 70% free headroom to eliminate context anxiety and premature victory. |
+| **Layered Waterfall** | Separate root contract, deferred tool schemas, AST maps, and working memory. |
+| **Cache Alignment** | Place static instructions at the prompt head to maximize KV cache reuse. |
+
+Next: [Token Budgeting & Sliding Compaction](/docs/context-engineering/token-budgeting-and-compaction) -- sliding windows, token counting heuristics, and state checklists.
+
+## Sources
+
+- Nelson F. Liu et al., *Lost in the Middle: How Language Models Use Long Contexts*, Transactions of the ACL: [https://arxiv.org/abs/2307.03172](https://arxiv.org/abs/2307.03172) (2023)
+- Matt Tanner, *Context Engineering for AI Agents: Complete 2026 Guide*, Sourcegraph: [https://sourcegraph.com/blog/context-engineering](https://sourcegraph.com/blog/context-engineering) (2026)
+- Aron Schuhmann and Sam Bhagwat, *Context Engineering for AI Agents: A Practical Guide*, Mastra: [https://mastra.ai/articles/context-engineering](https://mastra.ai/articles/context-engineering) (2026)
+- Anthropic Prompt Caching Architecture Guide: [https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching](https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching) (2024)
