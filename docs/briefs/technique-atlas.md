@@ -21,3 +21,8 @@ Merge or adjust an item only where that is more accurate, and list changes in no
 ## Quality
 Depth over speed: every diagram written by hand and specific. Do not generate diagrams with a generic script. If you cannot finish everything, ship fewer complete entries and list exactly what is missing. Render test for the sheet, and data tests that each entry has all fields and a URL.
 Gate: npm run typecheck, npm run check:links, npx vitest run --maxWorkers=2. Write docs/briefs/atlas-notes.md.
+
+## Added requirement from the owner: read as a chronological story
+Style reference: Sebastian Raschka, "Language Models for Text Classification: From Bag-of-Words to Jev" (Ahead of AI, 2026): https://magazine.sebastianraschka.com/p/classifier-history-and-jev
+Use it only as a reference for structure: strictly chronological, grouped into eras, a short narrative opening each era, and each technique presented as the answer to the previous one's limit, with a concrete small example and a figure. Do not copy its text or figures; write and draw everything originally. Default view of each atlas is this chronological story; the filter and search stay available. Every entry states what came before it and what it led to.
+Coverage is mandatory: every listed technique must ship in the first delivery unless no real source can verify it; name any exception.
