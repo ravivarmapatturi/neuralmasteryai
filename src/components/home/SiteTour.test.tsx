@@ -1,19 +1,29 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import SiteTour from './SiteTour';
 
-const show = (url = '/') => render(<MemoryRouter initialEntries={[url]}><SiteTour /></MemoryRouter>);
+const Where = () => <output>{useLocation().pathname}</output>;
+const show = (url = '/') => render(<MemoryRouter initialEntries={[url]}><Where /><SiteTour /></MemoryRouter>);
 
 describe('SiteTour', () => {
   beforeEach(() => localStorage.clear());
 
-  it('shows on a first visit and steps through to the end', () => {
+  it('opens each page as the visitor presses Next and Back', () => {
     show();
-    expect(screen.getByRole('heading', { name: 'Learn' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    expect(screen.getByRole('heading', { name: 'Labs' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Open Labs/ })).toHaveAttribute('href', '/labs');
+    expect(screen.getByRole('heading', { name: /Welcome/ })).toBeInTheDocument();
+    for (const [name, path] of [['Learn', '/learn'], ['Labs', '/labs'], ['Interview', '/interview'], ['Blog', '/blog'], ['Progress', '/progress']]) {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+      expect(screen.getByRole('heading', { name })).toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent(path);
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.getByRole('status')).toHaveTextContent('/blog');
+  });
+
+  it('does not interrupt a visitor landing on a lesson', () => {
+    show('/docs/agents/overview');
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('stays closed after being skipped', () => {

@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
 import Navbar from './layout/Navbar';
 import LiveComputation from './home/LiveComputation';
-import SiteTour from './home/SiteTour';
 import { LiveStatsTicker } from './home/LiveStats';
 import AgentGraphSketch from './notebook/AgentGraphSketch';
 import { SketchUnderline } from './notebook/RoughShape';
@@ -151,7 +150,6 @@ export default function ChooserPage() {
         </section>
 
       </main>
-      <SiteTour />
     </div>
   );
 }

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import './siteTour.css';
 
 const SEEN_KEY = 'nm-site-tour-seen';
 
 const STEPS = [
+  { title: 'Welcome to Neural Mastery', to: '/', body: 'This short tour opens each main area of the site. Press Next to go to the first one, or skip it at any time.' },
   { title: 'Learn', to: '/learn', body: 'Start here if you are building your foundations. Lessons run in reading order, from the maths through LLMs and agents, with visualizations you can change.' },
   { title: 'Labs', to: '/labs', body: 'Practise what you read. Write and run Python in the browser, and test your work against real exercises.' },
   { title: 'Interview', to: '/interview', body: 'Prepare for AI engineering interviews with question banks, or speak your answers in a mock interview and get a report.' },
@@ -20,9 +21,11 @@ function rememberTourSeen() {
   try { localStorage.setItem(SEEN_KEY, '1'); } catch { /* Tour simply won't be remembered. */ }
 }
 
-/** First-visit guide to the site's main areas. Mounted on the home page only, so a visitor landing on a lesson is never interrupted. */
+/** First-visit guide to the site's main areas. Mounted once around the routes so it follows the visitor between pages, but it only starts on the home page, so a visitor landing on a lesson is never interrupted. */
 export default function SiteTour() {
   const [params, setParams] = useSearchParams();
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
   const replay = params.get('tour') === '1';
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
@@ -30,8 +33,8 @@ export default function SiteTour() {
 
   // Decided in an effect, and skipped for automated browsers, so prerendered HTML and search snapshots never contain the tour.
   useEffect(() => {
-    if (replay || (!navigator.webdriver && !hasSeenTour())) { setStep(0); setOpen(true); }
-  }, [replay]);
+    if (replay || (pathname === '/' && !navigator.webdriver && !hasSeenTour())) { rememberTourSeen(); setStep(0); setOpen(true); }
+  }, [replay, pathname]);
 
   useEffect(() => { if (open) cardRef.current?.focus({ preventScroll: true }); }, [open]);
 
@@ -39,6 +42,11 @@ export default function SiteTour() {
     rememberTourSeen();
     setOpen(false);
     if (replay) setParams({}, { replace: true });
+  };
+
+  const goTo = (next: number) => {
+    setStep(next);
+    navigate(STEPS[next].to);
   };
 
   if (!open) return null;
@@ -52,10 +60,9 @@ export default function SiteTour() {
       </div>
       <h2 id="nm-tour-title">{current.title}</h2>
       <p>{current.body}</p>
-      <Link className="nm-tour__open" to={current.to} onClick={rememberTourSeen}>Open {current.title} <span aria-hidden="true">→</span></Link>
       <div className="nm-tour__actions">
-        <button type="button" disabled={step === 0} onClick={() => setStep(step - 1)}>Back</button>
-        <button type="button" className="nm-tour__next" onClick={() => last ? close() : setStep(step + 1)}>{last ? 'Done' : 'Next'}</button>
+        <button type="button" disabled={step === 0} onClick={() => goTo(step - 1)}>Back</button>
+        <button type="button" className="nm-tour__next" onClick={() => last ? close() : goTo(step + 1)}>{last ? 'Done' : 'Next'}</button>
       </div>
     </div>
   );

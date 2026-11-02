@@ -22,6 +22,7 @@ import BlogSeriesPage from './components/BlogSeriesPage';
 import BlogEditorPage from './components/BlogEditorPage';
 import ProfilePage from './components/ProfilePage';
 import LeaderboardPage from './components/LeaderboardPage';
+import SiteTour from './components/home/SiteTour';
 import AboutPage from './components/AboutPage';
 import AtlasHubPage from './components/AtlasHubPage';
 import PrivacyPolicyPage from './components/PrivacyPolicyPage';
@@ -103,6 +104,7 @@ export default function App() {
                       <Route path="*" element={<NotFoundPage />} />
                     </Routes>
                   </div>
+                  <SiteTour />
                   <Footer />
                 </div>
               </BrowserRouter>
