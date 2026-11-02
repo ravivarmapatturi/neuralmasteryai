@@ -1,0 +1,355 @@
+---
+title: "Agent Observability Architecture & Production Telemetry"
+description: "Design production telemetry harnesses, hierarchical trace graphs, token cost accounting, and loop detection for autonomous multi-turn agents."
+sidebar_position: 1
+---
+
+import { ELI5 } from '../../../components/ELI5';
+import { PredictFirst } from '../../../components/PredictFirst';
+import { GoDeeper } from '../../../components/GoDeeper';
+import { NotebookCallout } from '../../../components/NotebookCallout';
+import { RunnableCode } from '../../../components/RunnableCode';
+import { AgentTraceWaterfallVisualizer } from '../../../viz/diagrams/AgentTraceWaterfallVisualizer';
+
+# Agent Observability Architecture & Production Telemetry
+
+Traditional application performance monitoring (APM) was designed for synchronous, deterministic systems: a user clicks a button, a frontend issues an HTTP request, a microservice executes an SQL query, and a response returns in 80 milliseconds. In that paradigm, tracing an execution path involves recording a linear sequence of distributed spans connected by a single trace ID.
+
+Autonomous agents shatter these assumptions. An agent executing a software engineering task does not follow a predefined call graph. It operates across non-deterministic loops, issues recursive subagent calls, modifies local operating system state, reads files, runs compilers, retries failed actions, and changes its plan dynamically based on model outputs. When an agent spins out of control, consumes $45 in API calls, or silently corrupts a database, traditional APM logs provide zero insight into *why* the decision was made.
+
+Production agent engineering requires a dedicated **Agent Observability Architecture**: an instrumentation layer that captures not only latency and errors, but also prompt context evolution, token economics, tool execution graphs, and behavioral anomalies.
+
+<ELI5>
+Imagine watching an air traffic control radar versus watching a black-box flight recorder. 
+
+Traditional APM is like radar: it tells you an airplane was at point A, then point B, and arrived at point C 20 minutes late. 
+
+Agent Observability is the flight recorder: it records the cockpit voice conversation, the pilot's line of sight, every toggle switch flipped, the engine temperature sensors, and the copilot's warnings. When an autonomous flight veers off course, you do not just want to know that the plane ended up in the wrong city—you need to hear the exact internal conversation and see the exact sensor reading that convinced the autopilot to change direction.
+</ELI5>
+
+---
+
+## 1. The Four Pillars of Agent Observability
+
+To achieve full operational visibility into autonomous systems, production telemetry is structured around four distinct pillars:
+
+```
++--------------------------------------------------------------------------+
+|                       Four Pillars of Agent Observability                |
++--------------------+--------------------+--------------------------------+
+|  1. Execution DAG  |  2. Token Economics|  3. Context Snapshots          |
+|  Hierarchical      |  Financial cost,   |  Full prompt state,            |
+|  trace tree: root  |  cache hit ratios, |  token budgeting watermark,    |
+|  task -> turns ->  |  completion vs     |  and compaction audit log at   |
+|  tool invocations. |  prompt tokens.    |  each decision turn.           |
++--------------------+--------------------+--------------------------------+
+|                     4. Guardrail & Anomaly Telemetry                     |
+|  Infinite loop detection, tool argument validation errors, policy        |
+|  violations, and token burn velocity alarms.                             |
++--------------------------------------------------------------------------+
+```
+
+1. **Hierarchical Execution Traces (The DAG)**: Rather than flat logs, every autonomous run is structured as a Directed Acyclic Graph (DAG). The root span represents the high-level task (`agent.run`). Child spans represent individual reasoning turns (`agent.turn`), inside which nested spans track model inference (`model.generation`) and environment side-effects (`tool.execution`).
+2. **Token Economics & Financial Accounting**: Tracking input tokens, output tokens, cached tokens, and provider costs per task, turn, and user. Without granular attribution, teams cannot identify which prompt instructions or tools are driving 80% of API bills.
+3. **Context Evolution Snapshots**: Recording what the model observed at turn $t$. If an agent hallucinates a non-existent parameter at turn 12, inspecting the exact context snapshot at turn 12 reveals whether earlier compaction dropped the schema or whether the model suffered attention degradation.
+4. **Behavioral Anomaly & Safety Telemetry**: Algorithmic sentinels that detect cyclical execution loops (e.g. calling `git status` 6 times consecutively), output degeneration, excessive tool error rates, and security policy violations.
+
+---
+
+## 2. Interactive Execution Trace Waterfall
+
+Below is an interactive trace waterfall showing a multi-turn software repair session (`trace_run_8812`). Step through the turns to observe how parent spans parent child model calls and tool executions, and inspect the duration, token counts, and exit statuses across the run.
+
+<AgentTraceWaterfallVisualizer />
+
+---
+
+## 3. The Anatomy of an OpenTelemetry GenAI Span
+
+To prevent vendor lock-in, modern agent platforms align their telemetry with the **OpenTelemetry Semantic Conventions for Generative AI Systems**. 
+
+Every inference call and tool execution emits an OTel-compliant span enriched with standardized attributes:
+
+```
+Root Span: agent.run (trace_id: 4bf92f35, span_id: a101)
+  ├── Turn 1: agent.turn (span_id: b201)
+  │     ├── LLM: model.generation (span_id: c301, 1,450ms)
+  │     │     ├── gen_ai.system: "anthropic"
+  │     │     ├── gen_ai.request.model: "claude-3-7-sonnet"
+  │     │     ├── gen_ai.usage.prompt_tokens: 1200
+  │     │     ├── gen_ai.usage.completion_tokens: 150
+  │     │     └── gen_ai.response.finish_reasons: ["tool_use"]
+  │     └── Tool: tool.execution:read_file (span_id: c302, 12ms)
+  │           ├── tool.name: "read_file"
+  │           ├── tool.arguments: {"path": "auth/session.py"}
+  │           └── status.code: "OK"
+  └── Turn 2: agent.turn (span_id: b202)
+        ├── LLM: model.generation (span_id: c401, 1,820ms)
+        └── Tool: tool.execution:run_pytest (span_id: c402, 4,200ms)
+              ├── tool.name: "run_pytest"
+              └── status.code: "ERROR" (AssertionError: test_jwt_drift)
+```
+
+### Standard Attribute Schema
+
+| Attribute Key | Type | Description | Example |
+| :--- | :--- | :--- | :--- |
+| `gen_ai.system` | string | LLM vendor or engine | `"anthropic"`, `"openai"`, `"vllm"` |
+| `gen_ai.request.model` | string | Target model identifier | `"claude-3-7-sonnet"`, `"gpt-4o"` |
+| `gen_ai.usage.prompt_tokens` | int | Total input tokens in turn | `1850` |
+| `gen_ai.usage.completion_tokens` | int | Tokens generated by model | `200` |
+| `gen_ai.usage.cache_read_tokens` | int | Tokens read from KV cache | `1200` |
+| `gen_ai.usage.cache_write_tokens` | int | Tokens written to KV cache | `650` |
+| `agent.turn_index` | int | Turn counter in current session | `2` |
+| `tool.name` | string | Dispatched tool function name | `"run_pytest"` |
+| `tool.exit_code` | int | Process return code | `1` |
+
+---
+
+## 4. Anomaly Detection: Identifying Death Spirals Early
+
+<PredictFirst
+  question="An autonomous agent encounters a permissions error while attempting to edit a protected configuration file. In an unmonitored harness, what is the most common behavioral failure mode?"
+  options={[
+    "The agent immediately raises an exception and cleanly terminates the session within 1 turn.",
+    "The agent enters an infinite retry loop, repeating identical shell commands or minor prompt variations until context or token budget hard-caps are exhausted.",
+    "The agent automatically escalates privileges using sudo without prompt instructions."
+  ]}
+  answerIndex={1}
+  explanation="Without observability-driven cycle detection, agents frequently enter 'Death Spirals': observing an error message, generating an apology in reasoning tokens, and attempting the exact same failing tool call again. Cycle detectors monitor tool repetition histograms and fire circuit breakers after 3 identical failing attempts."
+/>
+
+### The Algorithmic Loop Sentinel
+
+To protect against infinite loops, the observability layer computes a rolling tool signature hash over the last $K$ turns:
+
+$$\text{Sig}_t = \text{MD5}(\text{tool\_name} + \text{canonical\_json}(\text{arguments}))$$
+
+If $\text{Sig}_t == \text{Sig}_{t-1} == \text{Sig}_{t-2}$ and the tool exit status was `ERROR`, the loop detector triggers an immediate circuit breaker:
+
+$$\text{Trigger Condition}: \sum_{i=0}^{N-1} \mathbb{I}(\text{Sig}_{t-i} == \text{Sig}_t \land \text{Status}_{t-i} == \text{ERROR}) \ge 3$$
+
+Rather than allowing the model to burn tokens across 50 repetitive attempts, the supervisor halts execution, injects a diagnostic intervention prompt into context, or routes the task to a human-in-the-loop fallback.
+
+---
+
+## 5. Implementation: OpenTelemetry Agent Telemetry Tracer
+
+Below is a production-grade Python tracing harness. It constructs hierarchical spans compliant with OpenTelemetry GenAI semantic conventions, computes token economics, tracks cache hit ratios, and evaluates cycle detection rules.
+
+<RunnableCode code={`import time
+import json
+import uuid
+import hashlib
+from dataclasses import dataclass, field
+from typing import List, Dict, Any, Optional
+
+@dataclass
+class Span:
+    span_id: str
+    parent_id: Optional[str]
+    name: str
+    start_ns: int
+    end_ns: int = 0
+    attributes: Dict[str, Any] = field(default_factory=dict)
+    events: List[Dict[str, Any]] = field(default_factory=list)
+
+class ProductionAgentTracer:
+    """
+    OpenTelemetry-compatible tracing harness for autonomous agents.
+    Tracks hierarchical spans, token economics, and detects execution loops.
+    """
+    def __init__(self, trace_id: Optional[str] = None):
+        self.trace_id = trace_id or str(uuid.uuid4()).replace('-', '')[:16]
+        self.spans: List[Span] = []
+        self.tool_call_history: List[str] = []
+
+    def start_span(self, name: str, parent_id: Optional[str] = None, attributes: Optional[Dict[str, Any]] = None) -> Span:
+        span = Span(
+            span_id=str(uuid.uuid4())[:8],
+            parent_id=parent_id,
+            name=name,
+            start_ns=time.time_ns(),
+            attributes=attributes or {}
+        )
+        self.spans.append(span)
+        return span
+
+    def end_span(self, span: Span, status: str = "OK", extra_attributes: Optional[Dict[str, Any]] = None) -> None:
+        span.end_ns = time.time_ns()
+        span.attributes["status"] = status
+        if extra_attributes:
+            span.attributes.update(extra_attributes)
+
+    def record_tool_dispatch(self, tool_name: str, args: Dict[str, Any], status: str) -> bool:
+        """
+        Records tool execution and detects cyclic loops.
+        Returns True if execution is safe, False if an infinite loop is detected.
+        """
+        # Canonical signature
+        payload_str = f"{tool_name}:{json.dumps(args, sort_keys=True)}"
+        sig = hashlib.md5(payload_str.encode()).hexdigest()[:8]
+        self.tool_call_history.append((sig, status))
+
+        # Check last 3 calls for identical error loop
+        if len(self.tool_call_history) >= 3:
+            recent = self.tool_call_history[-3:]
+            if all(s == sig and stat == "ERROR" for s, stat in recent):
+                print(f"[CIRCUIT BREAKER] Loop detected for tool {tool_name} with signature {sig}!")
+                return False
+        return True
+
+    def generate_trace_summary(self) -> Dict[str, Any]:
+        """Calculates total prompt tokens, completion tokens, latency, and cost."""
+        prompt_tokens = 0
+        completion_tokens = 0
+        cache_read_tokens = 0
+        tool_count = 0
+
+        for s in self.spans:
+            if s.name == "model.generation":
+                prompt_tokens += s.attributes.get("gen_ai.usage.prompt_tokens", 0)
+                completion_tokens += s.attributes.get("gen_ai.usage.completion_tokens", 0)
+                cache_read_tokens += s.attributes.get("gen_ai.usage.cache_read_tokens", 0)
+            elif s.name.startswith("tool.execution"):
+                tool_count += 1
+
+        # Anthropic Claude 3.7 Sonnet pricing: $3.00/1M prompt, $0.30/1M cache read, $15.00/1M completion
+        uncached_prompt = max(0, prompt_tokens - cache_read_tokens)
+        cost = (uncached_prompt * 3.0 / 1e6) + (cache_read_tokens * 0.30 / 1e6) + (completion_tokens * 15.0 / 1e6)
+
+        return {
+            "trace_id": self.trace_id,
+            "total_spans": len(self.spans),
+            "tool_executions": tool_count,
+            "prompt_tokens_total": prompt_tokens,
+            "cache_read_tokens": cache_read_tokens,
+            "completion_tokens_total": completion_tokens,
+            "cache_hit_ratio": round(cache_read_tokens / max(1, prompt_tokens), 4),
+            "total_financial_cost_usd": round(cost, 6)
+        }
+
+# Verification & Test Execution
+tracer = ProductionAgentTracer("trace_run_8812")
+root = tracer.start_span("agent.run", attributes={"task": "Fix JWT expiration drift"})
+
+# Turn 1: Inspect code
+t1 = tracer.start_span("agent.turn", parent_id=root.span_id, attributes={"turn_index": 1})
+llm_1 = tracer.start_span("model.generation", parent_id=t1.span_id, attributes={
+    "gen_ai.system": "anthropic",
+    "gen_ai.request.model": "claude-3-7-sonnet",
+    "gen_ai.usage.prompt_tokens": 1200,
+    "gen_ai.usage.cache_read_tokens": 0,
+    "gen_ai.usage.completion_tokens": 150
+})
+tracer.end_span(llm_1)
+
+tool_1 = tracer.start_span("tool.execution:read_file", parent_id=t1.span_id, attributes={"tool.name": "read_file"})
+tracer.record_tool_dispatch("read_file", {"path": "auth/session.py"}, "OK")
+tracer.end_span(tool_1, status="OK")
+tracer.end_span(t1)
+
+# Turn 2: Run test suite (fails)
+t2 = tracer.start_span("agent.turn", parent_id=root.span_id, attributes={"turn_index": 2})
+llm_2 = tracer.start_span("model.generation", parent_id=t2.span_id, attributes={
+    "gen_ai.system": "anthropic",
+    "gen_ai.request.model": "claude-3-7-sonnet",
+    "gen_ai.usage.prompt_tokens": 1850,
+    "gen_ai.usage.cache_read_tokens": 1200,
+    "gen_ai.usage.completion_tokens": 200
+})
+tracer.end_span(llm_2)
+
+tool_2 = tracer.start_span("tool.execution:run_pytest", parent_id=t2.span_id, attributes={"tool.name": "run_pytest"})
+tracer.record_tool_dispatch("run_pytest", {"target": "tests/test_auth.py"}, "ERROR")
+tracer.end_span(tool_2, status="ERROR", extra_attributes={"error.type": "AssertionError"})
+tracer.end_span(t2)
+
+tracer.end_span(root)
+
+summary = tracer.generate_trace_summary()
+print("Trace Summary Telemetry:")
+print(json.dumps(summary, indent=2))
+
+# Invariant Assertions
+assert summary["trace_id"] == "trace_run_8812"
+assert summary["prompt_tokens_total"] == 3050
+assert summary["cache_read_tokens"] == 1200
+assert summary["tool_executions"] == 2
+print("\nAll OpenTelemetry telemetry invariants verified.")
+`} />
+
+---
+
+## 6. Real Production Configuration: OpenTelemetry Collector Config
+
+In cloud infrastructure, agent pods export traces via the OpenTelemetry Protocol (OTLP/gRPC) to an OpenTelemetry Collector, which forwards traces to backends like Honeycomb, Datadog, or SigNoz:
+
+```yaml
+# /etc/otelcol/config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 256
+  filter/genai:
+    spans:
+      include:
+        match_type: strict
+        attributes:
+          - key: gen_ai.system
+
+exporters:
+  otlp/honeycomb:
+    endpoint: "api.honeycomb.io:443"
+    headers:
+      "x-honeycomb-team": "${HONEYCOMB_API_KEY}"
+      "x-honeycomb-dataset": "autonomous-agents-production"
+  logging:
+    verbosity: detailed
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/honeycomb, logging]
+```
+
+---
+
+## 7. When to Use It and When Not to Use It
+
+| Scenario | Recommended Strategy | Why? | Anti-Pattern |
+| :--- | :--- | :--- | :--- |
+| **Multi-Turn Autonomous Agents** | Full Hierarchical OTel Tracing + Cycle Sentinel | Captures causal reasoning DAGs, catches expensive infinite loops, and tracks token economics per turn. | Emitting flat unstructured stdout print logs that cannot be correlated to specific turns. |
+| **High-Volume Micro-Classifiers** | Lightweight OpenTelemetry Metrics (Counter / Histogram) | Full span payload tracing per classification adds unnecessary network overhead for 5ms single-turn queries. | Generating 10-span trace trees for a single sentiment analysis call. |
+| **Regulated Financial / Healthcare Agents** | Full Trace Recording + PII Scrubbing Processor | Auditing requires reconstructing every tool call and model reasoning step that led to an automated decision. | Disabling prompt recording to save storage, making post-incident compliance audits impossible. |
+| **Local Unit Testing & Sandboxes** | In-Memory Fast Tracer | Sending external gRPC OTLP packets during localized unit test execution adds flakiness and latency. | Requiring a live external Datadog collector daemon to run local pytest suites. |
+
+---
+
+## 8. Core Invariants to Remember
+
+| Concept | Invariant Rule | Operational Consequence |
+| :--- | :--- | :--- |
+| **Deterministic Span Hierarchy** | Every tool execution span MUST have a parent `agent.turn` span. | Orphan spans prevent trace backends from grouping tool calls with the LLM reasoning that generated them. |
+| **Prompt Cache Attribution** | Always distinguish `cache_read_tokens` from raw input tokens. | Conflating cached and uncached input tokens miscalculates API operational costs by up to 10×. |
+| **Cycle Circuit Breakers** | Halt or intervene if the same tool fails 3 times consecutively with identical arguments. | Without circuit breakers, agents burn through context windows and API budgets in recursive death spirals. |
+| **Zero Raw Secret Logging** | Sanitize API keys, bearer tokens, and credentials before recording tool attributes. | Unsanitized environment variables logged into distributed tracing spans cause critical security leaks. |
+
+---
+
+## Sources
+
+- OpenTelemetry Authors. (2024). *Semantic Conventions for Generative AI Operations*. OpenTelemetry Specification. [https://opentelemetry.io/docs/specs/semconv/gen-ai/](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
+- OpenTelemetry Community. (2024). *OpenTelemetry Python Instrumentation for LLMs and Agents*. GitHub Repository. [https://github.com/open-telemetry/opentelemetry-python](https://github.com/open-telemetry/opentelemetry-python)
+- Datadog Engineering. (2024). *LLM Observability: Monitoring AI Agents, Latency, and Cost at Scale*. Datadog Architecture Documentation. [https://docs.datadoghq.com/llm_observability/](https://docs.datadoghq.com/llm_observability/)
+- Anthropic Engineering. (2024). *Evaluating and Monitoring Frontier Models in Production*. Anthropic Engineering Insights. [https://docs.anthropic.com/en/docs/build-with-claude/eval-guide](https://docs.anthropic.com/en/docs/build-with-claude/eval-guide)

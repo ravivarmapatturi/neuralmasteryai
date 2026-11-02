@@ -129,9 +129,9 @@ Deterministic verification is the sensory system of the harness. Claims of compl
 Why three layers instead of jumping straight to end-to-end integration tests? 
 
 Consider the computational cost funnel:
-- **Layer 1 (Ruff & Mypy)**: Runs in ~200ms with zero subprocess spawning, catching 80% of hallucinated syntax and type bugs.
-- **Layer 2 (Pytest Unit)**: Runs in ~2s, catching algorithmic regressions.
-- **Layer 3 (Playwright / Smoke)**: Runs in ~8s, exercising end-to-end behavior.
+- **Layer 1 (Ruff & Mypy)**: Runs in about 200ms (illustrative), catching syntax and type errors early.
+- **Layer 2 (Pytest Unit)**: Runs in about 2s (illustrative), catching algorithmic regressions.
+- **Layer 3 (Playwright / Smoke)**: Runs in about 8s (illustrative), exercising end-to-end behavior.
 
 By gating expensive behavioral tests behind sub-second static assertions, the harness minimizes agent iteration latency and keeps cost per completed task minimal.
 
@@ -165,12 +165,24 @@ Does harness engineering really make a measurable difference, or is model intell
 
 <HarnessAblationStudio />
 
-### Key Findings from Industry Benchmarks
+### Illustrative Simulation Findings (Harness Ablation Studio)
 
-1. **Task Completion**: Increases from **14%** with prompt-only setups to **93%+** under a full production harness.
+Based on our synthetic benchmark harness simulating typical multi-file coding trajectories:
+
+1. **Task Completion**: Increases from **14%** with prompt-only setups to **93%+** under a full production harness (illustrative simulation).
 2. **Premature Victory**: Slashed from **82%** to **0%** through non-negotiable 3-layer verification gating.
 3. **Runaway Loops**: Reduced from **28%** to under **2%** by deterministic cycle detection, token budgets, and bounded execution timeouts.
 4. **Codebase Regressions**: Drops from **42%** to under **2%** because Layer 2 regression suites are automatically executed prior to git staging.
+
+## When *Not* to Use It
+
+Full cybernetic harnesses introduce operational complexity, sandbox isolation overhead, and multi-turn execution latency. Match the architecture to your engineering requirements:
+
+| Situation | Better Choice | Why |
+| :--- | :--- | :--- |
+| Deterministic batch code transformation (e.g. migrating 1,000 files to Python 3.12 syntax) | LibCST / AST codemod script | Deterministic AST scripts execute in seconds with 100% precision and zero token cost; autonomous agent loops are slow and non-deterministic. |
+| Interactive exploratory brainstorming & architectural ideation | Direct conversational chat interface | Brainstorming requires low latency and freeform dialogue; sandboxed execution environments and verification gates add rigid friction to conceptual exploration. |
+| Low-latency real-time API serving (< 200 ms request SLA) | Fine-tuned classifier or rule-based pipeline | Multi-turn agent loops take 15 to 120 seconds per task and cannot meet sub-second operational SLAs. |
 
 ---
 

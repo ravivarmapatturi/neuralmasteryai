@@ -5,6 +5,7 @@ description: "High-throughput serving architectures: iteration-level continuous 
 ---
 
 import SpeculativeDecodingSimulator from '../../../viz/diagrams/SpeculativeDecodingSimulator';
+import TreeAttentionDraftDiagram from '../../../viz/diagrams/TreeAttentionDraftDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -12,7 +13,7 @@ import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
 # Continuous Batching & Speculative Decoding
 
-In cloud AI serving, static request batching introduces catastrophic latency overheads: fast 10-token queries sit stranded in memory waiting for slow 1,000-token queries to finish, creating massive "inference bubbles" where GPUs burn energy transferring weights for half-empty batches.
+In cloud AI serving, static request batching introduces severe latency penalties: fast 10-token queries sit stranded in memory waiting for slow 1,000-token queries to complete, creating massive "inference bubbles" where GPUs burn energy transferring weights for half-empty batches.
 
 This chapter details the two core algorithmic breakthroughs that solve this bottleneck: **Continuous Batching** (iteration-level scheduling) and **Speculative Decoding** (draft-verify acceleration).
 
@@ -26,43 +27,18 @@ Imagine a restaurant where the kitchen refuses to serve anyone at a table until 
 
 </ELI5>
 
----
+## Why This Exists
 
-## 1. The Bubble Problem in Static Batching
+Traditional deep learning frameworks (such as TorchServe or early Triton serving engines) inherited request batching paradigms from computer vision and classification models. In those architectures, every input produces an output of fixed dimension in a single forward pass.
 
-In traditional deep learning serving (e.g. TorchServe, Triton dynamic batching), sequences are batched at the **Request Level**:
+Autoregressive language models break this paradigm completely:
+1. **Long-Tailed Output Lengths**: One user asks for a simple boolean check (generating 2 tokens); another asks for a full codebase refactoring (generating 2,048 tokens).
+2. **Padding Bubble Inefficiencies**: In static batching, all sequences in a batch must pad their dimensions to match the longest active sequence. When a short sequence finishes at step 10, it consumes GPU memory and compute cycles as empty padding for the remaining 2,038 steps. In typical production traffic, **padding bubbles waste 60% to 75% of GPU FLOPs**.
+3. **The Memory-Bandwidth Wall in Generation**: During autoregressive decoding, generating each token requires streaming every single model parameter from high-bandwidth memory (HBM) into on-chip cache. For a 70B parameter model in FP16, this means loading **140 GB across the memory bus for every single token**.
 
-```
-Static Batch (Request Level):
-Req 1 (3 tokens):   [Tok 1][Tok 2][Tok 3][PAD  ][PAD  ][PAD  ] (Trapped idle!)
-Req 2 (6 tokens):   [Tok 1][Tok 2][Tok 3][Tok 4][Tok 5][Tok 6] (Finishes batch)
-                       ▲                     ▲
-                       │                     │
-                Tokens Generated      Wasted Padding Bubbles
-```
+## The Shape of It
 
-Because sequence lengths follow a long-tailed Pareto distribution, padding tokens consume up to **70% of execution time**.
-
-### Continuous Batching (Iteration-Level Scheduling)
-
-Introduced in the Orca paper (OSDI 2022) and popularized by vLLM, **Continuous Batching** operates at the granularity of individual forward pass iterations:
-
-```
-Iteration-Level Continuous Batching:
-Step 1:  [Req A (tok 1)] [Req B (tok 1)] [Req C (tok 4)]
-Step 2:  [Req A (tok 2)] [Req B (tok 2)] [Req C (tok 5)] -> Req B completes!
-Step 3:  [Req A (tok 3)] [Req D (prefill)] [Req C (tok 6)] -> Req D inserted!
-```
-
-Whenever a sequence emits an `<EOS>` (end of sentence) token, its physical memory is reclaimed, and a new waiting request's prefill or decode step is immediately scheduled in the very next iteration.
-
----
-
-## 2. Speculative Decoding: Overcoming the Memory Bandwidth Bottleneck
-
-During autoregressive decoding, generating each token requires streaming every single model parameter from high-bandwidth memory (HBM) into on-chip cache. For a 70B parameter model in FP16, this means loading **140 GB across the memory bus for every single token**.
-
-**Speculative Decoding** (Leviathan et al., Chen et al.) overcomes this by converting memory-bandwidth bound generation into compute-bound verification:
+Continuous batching and speculative decoding address both ends of this bottleneck: continuous batching saturates GPU memory allocation across requests, while speculative decoding converts memory-bound token decoding into parallel compute-bound verification.
 
 <SpeculativeDecodingSimulator />
 
@@ -78,9 +54,57 @@ During autoregressive decoding, generating each token requires streaming every s
   explanation="Autoregressive generation is sequential because token k+1 depends on the unknown token k. But during verification, the draft model has already guessed tokens 1 through K! The target model can therefore feed all K tokens into its causal attention matrix in parallel in one forward pass, paying the memory-read cost of its 140 GB weights exactly once."
 />
 
----
+## The Bubble Problem in Static Batching vs Iteration-Level Scheduling
 
-## 3. Mathematical Proof: Exact Distributional Match
+In static batching, requests enter a lockstep batch:
+
+```
+Static Batch (Request Level):
+Req 1 (3 tokens):   [Tok 1][Tok 2][Tok 3][PAD  ][PAD  ][PAD  ] (Trapped idle!)
+Req 2 (6 tokens):   [Tok 1][Tok 2][Tok 3][Tok 4][Tok 5][Tok 6] (Finishes batch)
+                       ▲                     ▲
+                       │                     │
+                Tokens Generated      Wasted Padding Bubbles
+```
+
+### Continuous Batching (Iteration-Level Scheduling)
+
+Introduced in the Orca paper (Yu et al., OSDI 2022) and popularized by vLLM, **Continuous Batching** operates at the granularity of individual forward pass iterations:
+
+```
+Iteration-Level Continuous Batching:
+Step 1:  [Req A (tok 1)] [Req B (tok 1)] [Req C (tok 4)]
+Step 2:  [Req A (tok 2)] [Req B (tok 2)] [Req C (tok 5)] -> Req B completes!
+Step 3:  [Req A (tok 3)] [Req D (prefill)] [Req C (tok 6)] -> Req D inserted!
+```
+
+Whenever a sequence emits an `<EOS>` (end of sentence) token, its physical memory blocks are reclaimed, and a new waiting request's prefill or decode step is immediately scheduled in the very next iteration. Hardware utilization remains consistently above 80%.
+
+## Speculative Decoding: Overcoming the Memory Bandwidth Bottleneck
+
+While continuous batching optimizes cluster-wide concurrency, individual user latency (TPOT) remains bound by memory bandwidth. At batch size 1, an NVIDIA H100 GPU generates tokens at a fraction of its theoretical compute capacity because it must stream 140 GB of model weights for each generated token.
+
+**Speculative Decoding** (Leviathan et al., Chen et al.) overcomes this by pairing the large target model with a lightweight, high-speed draft model:
+1. **Draft Phase**: A small, fast draft model (e.g. LLaMA-3-8B) generates a speculative horizon of $K$ candidate tokens sequentially. Because the draft model is 10× smaller, it generates tokens at sub-3ms latency.
+2. **Verify Phase**: The large target model (e.g. LLaMA-3-70B) accepts all $K$ candidate tokens simultaneously. Because all $K$ tokens are known, the target model processes them in parallel as a single causal prompt pass (compute-bound GEMM).
+3. **Acceptance Evaluation**: The target model evaluates each token in sequence. If all $K$ tokens match target probabilities, the system advances by $K+1$ tokens in the time of a single target forward pass.
+
+### Production Serving Configuration
+
+To serve models with speculative decoding enabled in vLLM:
+
+```bash
+# Serve Llama-3-70B accelerated by a Llama-3-8B draft model
+vllm serve meta-llama/Meta-Llama-3-70B-Instruct \
+  --speculative-model meta-llama/Meta-Llama-3-8B-Instruct \
+  --num-speculative-tokens 4 \
+  --use-v2-block-manager \
+  --gpu-memory-utilization 0.92 \
+  --tensor-parallel-size 4 \
+  --port 8000
+```
+
+## Mathematical Proof: Exact Distributional Match
 
 A common misconception is that Speculative Decoding is an approximation technique that degrades model quality. **It does not.** The output probability distribution is mathematically identical to sampling directly from the target model.
 
@@ -89,8 +113,7 @@ A common misconception is that Speculative Decoding is an approximation techniqu
 Let $p(x)$ be the probability distribution of the large target model, and $q(x)$ be the probability distribution of the small draft model.
 
 For each candidate token $x_i$ proposed by the draft model:
-
-1. Sample $r \sim U(0, 1)$.
+1. Sample a random uniform number $r \sim U(0, 1)$.
 2. If $r \le \min\left(1, \frac{p(x_i)}{q(x_i)}\right)$, **ACCEPT** $x_i$.
 3. If $r > \min\left(1, \frac{p(x_i)}{q(x_i)}\right)$, **REJECT** $x_i$ and halt verification.
 4. Resample the replacement token from the normalized positive residual distribution:
@@ -114,29 +137,37 @@ $$P(x) = \min(q(x), p(x)) + \max(0, p(x) - q(x)) = p(x)$$
 
 </GoDeeper>
 
----
-
-## 4. Tree Attention & Medusa Heads
+## Tree Attention & Medusa Heads
 
 While standard Speculative Decoding drafts a linear sequence of $K$ tokens, modern production architectures expand the draft space into a tree structure:
 
-```
-Linear Draft:
-[Token 1] ───► [Token 2] ───► [Token 3] ───► [Token 4]
+<TreeAttentionDraftDiagram />
 
-Tree Attention (Medusa / EAGLE):
-                 ┌───► [Branch A: token 2a] ───► [Token 3a]
-[Token 1] ───────┤
-                 └───► [Branch B: token 2b] ───► [Token 3b]
-```
+Using custom **Tree Attention Masks**, the target model verifies multiple candidate paths simultaneously in a single forward pass, raising the average accepted tokens per step from ~2.1 to over 3.6 (Cai et al., 2024, Medusa benchmark).
 
-Using custom **Tree Attention Masks**, the target model verifies multiple candidate paths simultaneously in a single forward pass, raising the average accepted tokens per step from $2.1$ to over $3.6$.
+## A Full Worked Example: Expected Speedup Analysis
 
----
+Consider serving LLaMA-3-70B (target model, 30 ms per forward pass) paired with LLaMA-3-8B (draft model, 3 ms per forward pass).
+- Draft horizon: $K = 4$ tokens.
+- Empirical acceptance rate: $\alpha = 0.75$.
 
-## 5. Python Simulation: Speculative Decoding Speedup Calculator
+The expected number of accepted tokens $\mathbb{E}[N]$ is the geometric sum:
+$$\mathbb{E}[N] = \sum_{i=0}^K \alpha^i = 1 + 0.75 + 0.75^2 + 0.75^3 + 0.75^4 = 1 + 0.75 + 0.5625 + 0.4219 + 0.3164 = 3.05 \text{ tokens}$$
 
-Run this live in-browser Python implementation to compute the expected speedup for any draft model and acceptance rate:
+Total step latency:
+$$\text{Latency}_{\text{step}} = \text{Latency}_{\text{target}} + (K \times \text{Latency}_{\text{draft}}) = 30 + (4 \times 3) = 42.0 \text{ ms}$$
+
+Baseline autoregressive execution time for 3.05 tokens:
+$$\text{Latency}_{\text{baseline}} = 3.05 \times 30.0 = 91.5 \text{ ms}$$
+
+Wall-clock speedup:
+$$\text{Speedup} = \frac{91.5}{42.0} = 2.18\times$$
+
+The serving system generates over **2.18× more tokens per second** with mathematical equivalence to the 70B model.
+
+### Run It Yourself
+
+Execute this self-contained Python script to analyze how draft horizons and acceptance rates alter wall-clock speedup:
 
 <RunnableCode code={`def calculate_speculative_speedup(
     draft_horizon_k: int,
@@ -144,18 +175,17 @@ Run this live in-browser Python implementation to compute the expected speedup f
     draft_latency_ms: float,
     target_latency_ms: float
 ):
-    # Expected number of accepted tokens before first rejection:
-    # E[N] = (1 - alpha^(K+1)) / (1 - alpha)
+    """Calculates expected token yield and wall-clock speedup factor."""
     alpha = acceptance_rate
     k = draft_horizon_k
     
+    # Expected accepted tokens: geometric series sum
     expected_accepted_tokens = sum(alpha**i for i in range(k + 1))
     
-    # Cost per speculative step:
-    # 1 Target forward pass + K * Draft forward passes
+    # Step latency: 1 Target forward pass + K * Draft forward passes
     step_latency_ms = target_latency_ms + (k * draft_latency_ms)
     
-    # Baseline: generating same tokens autoregressively with Target only
+    # Baseline autoregressive generation time for same token yield
     baseline_latency_ms = expected_accepted_tokens * target_latency_ms
     
     speedup = baseline_latency_ms / step_latency_ms
@@ -177,14 +207,47 @@ for k_val in [2, 3, 4, 5]:
         target_latency_ms=30.0
     )
     print(f"Horizon K={k_val} | Expected Tokens/Step: {res['expected_tokens_per_step']} | Speedup: {res['speedup_factor']}x")
+
+# Try it: Change acceptance_rate to 0.50 above to see when draft models cease to provide speedup.
 `} />
 
----
+## Common Problems & Fixes
+
+1. **Vocabulary / Tokenizer Mismatches**: The draft model was trained with a different byte-pair encoding than the target model, producing invalid candidate indices.
+   - *Fix*: Both models must share the identical tokenizer configuration and vocabulary size. Verify token alignment in pre-flight checks.
+2. **Draft Model Slowdown Under High Concurrency**: Under heavy cluster batching ($B \ge 64$), the GPU becomes compute-bound, reducing the latency gap between draft and target models.
+   - *Fix*: Disable speculative decoding dynamically when serving concurrency exceeds the compute saturation threshold ($B > 32$).
+3. **Low Acceptance Rates on Code Syntax**: A generic draft model proposes incorrect indentation or imports, causing acceptance rates to plummet below 40%.
+   - *Fix*: Fine-tune the draft model on the target domain (e.g. code repositories) to boost candidate alignment.
 
 <NotebookCallout color="amber" title="Production Serving Principle">
-**Pair architectures with matching tokenizers.** Speculative decoding requires the draft model and target model to share the exact same vocabulary and tokenizer byte-mapping. If tokens do not align, candidate tokens cannot be evaluated directly in target embeddings.
+Pair architectures with matching tokenizers. Speculative decoding requires the draft model and target model to share the exact same vocabulary and tokenizer byte-mapping. If tokens do not align, candidate tokens cannot be evaluated directly in target embeddings.
 </NotebookCallout>
 
-<NotebookCallout title="Next in Curriculum">
-Explore numerical precision, scale factors, and FP8/INT4 kernels in **[Quantization & Model Compression](/docs/inference-engineering/quantization-and-compression)**.
-</NotebookCallout>
+## When *Not* to Use It
+
+| Situation | Better Choice | Why |
+| :--- | :--- | :--- |
+| Heavy batch serving ($B \ge 64$) | Standard continuous batching without speculation | At large batch sizes, the GPU is already compute-saturated; draft verification overhead slows throughput. |
+| Memory-constrained single GPU | INT4 quantized target model | Running draft and target models concurrently requires VRAM allocation for two separate weight sets. |
+| Highly stochastic creative writing (high temperature) | Autoregressive sampling | Low sampling overlap degrades acceptance rate $\alpha$, rendering speculation slower than baseline. |
+
+## Remember
+
+| Idea | Core Rule |
+| :--- | :--- |
+| **Continuous Batching** | Iteration-level scheduling eliminates padding bubbles and evicts finished requests instantly. |
+| **Speculative Decoding** | Draft $K$ tokens fast; verify in parallel in one target forward pass. |
+| **Lossless Quality** | Modified rejection sampling guarantees identical output distribution to the target model. |
+| **Tree Attention** | Verify branching candidates simultaneously to raise tokens-per-step above 3.5. |
+| **Acceptance Threshold** | Speculation yields speedup only when acceptance rate $\alpha > \text{Latency}_{\text{draft}} / \text{Latency}_{\text{target}}$. |
+
+Next: [Quantization & Model Compression](/docs/inference-engineering/quantization-and-compression) -- numerical representations, scale factors, and FP8/INT4 kernels.
+
+## Sources
+
+- Gyeong-In Yu et al., *Orca: A Distributed Serving System for Transformer-Based Generative Models*, OSDI: [https://www.usenix.org/conference/osdi22/presentation/yu](https://www.usenix.org/conference/osdi22/presentation/yu) (2022)
+- Yaniv Leviathan, Matan Kalman, and Yossi Matias, *Fast Inference from Transformers via Speculative Decoding*, ICML: [https://arxiv.org/abs/2211.17192](https://arxiv.org/abs/2211.17192) (2022)
+- Charlie Chen et al., *Accelerating Large Language Model Decoding with Speculative Sampling*: [https://arxiv.org/abs/2302.01318](https://arxiv.org/abs/2302.01318) (2023)
+- Tianle Cai et al., *Medusa: Simple LLM Generation Fast Forwarding with Multiple Decoding Heads*: [https://arxiv.org/abs/2401.10774](https://arxiv.org/abs/2401.10774) (2024)
+- vLLM Engine Architecture & Continuous Batching Documentation: [https://docs.vllm.ai/en/latest/](https://docs.vllm.ai/en/latest/) (2024)

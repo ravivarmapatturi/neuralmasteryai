@@ -5,6 +5,7 @@ description: "The complete curriculum for Inference Engineering & Edge AI: from 
 ---
 
 import RooflineModelVisualizer from '../../../viz/diagrams/RooflineModelVisualizer';
+import InferenceCurriculumDiagram from '../../../viz/diagrams/InferenceCurriculumDiagram';
 import PagedAttentionVisualizer from '../../../viz/diagrams/PagedAttentionVisualizer';
 import TinyMLTensorArenaVisualizer from '../../../viz/diagrams/TinyMLTensorArenaVisualizer';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
@@ -53,41 +54,13 @@ Explore the Roofline Model across modern inference hardware:
 
 ## The Curriculum Track
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                 INFERENCE ENGINEERING & EDGE AI CURRICULUM                  │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                       │
-         ┌─────────────────────────────┼─────────────────────────────┐
-         ▼                             ▼                             ▼
-┌─────────────────┐           ┌─────────────────┐           ┌─────────────────┐
-│ 1. Foundations  │           │ 2. Roofline     │           │ 3. Continuous   │
-│ & Systems Stack │           │ & KV Cache      │           │    Batching     │
-│ [Overview]      │           │ [PagedAttention]│           │ [Speculative]   │
-└─────────────────┘           └─────────────────┘           └─────────────────┘
-         │                             │                             │
-         └─────────────────────────────┼─────────────────────────────┘
-                                       ▼
-         ┌───────────────────────────────────────────────────────────┐
-         ▼                                                           ▼
-┌─────────────────────────────────┐         ┌─────────────────────────────────┐
-│ 4. Quantization & Compression   │         │ 5. Edge AI & TinyML             │
-│ FP8, INT8, AWQ, Sparsity        │         │ MCU Arenas & TFLite Micro       │
-└─────────────────────────────────┘         └─────────────────────────────────┘
-                                       │
-         ┌─────────────────────────────┴─────────────────────────────┐
-         ▼                                                           ▼
-┌─────────────────────────────────────┐     ┌─────────────────────────────────────┐
-│ 6. Hardware Kernels & Acceleration  │     │ 7. Disaggregation & Prefix Caching  │
-│ FlashAttention, Triton, TensorRT    │     │ PD Separation, Radix Trees, MoE EP  │
-└─────────────────────────────────────┘     └─────────────────────────────────────┘
-```
+<InferenceCurriculumDiagram />
 
 ### 1. [Inference Engineering Overview](/docs/inference-engineering/overview)
 - The end-to-end inference lifecycle: Prefill vs Decode phases.
 - Latency metrics that matter: Time To First Token (TTFT), Time Per Output Token (TPOT), and P99 latency.
 - The cost equation of model serving: VRAM footprint, FLOPS utilization (MFU), and dollar-per-million-tokens.
-- Architectural deep dive: Cloud cluster serving vs on-device edge execution.
+- Systems architecture: Cloud cluster serving vs on-device edge execution.
 
 ### 2. [The Roofline Model & KV Cache Mechanics](/docs/inference-engineering/roofline-and-kv-cache)
 - The Roofline Model: Arithmetic Intensity, memory-bound vs compute-bound regimes.
@@ -126,6 +99,16 @@ Explore the Roofline Model across modern inference hardware:
 - Prefix Caching & Radix Trees: SGLang RadixAttention and vLLM Automatic Prefix Caching (APC) for multi-turn chats, RAG prompts, and agent workflows.
 - Distributed Model Parallelism: Megatron-LM Tensor Parallelism (TP), Pipeline Parallelism (PP), and Expert Parallelism (EP) for frontier MoE architectures (DeepSeek-V3).
 - Production Serving Metrics: TTFT, ITL, TPOT, P99 tail latency SLOs, and concurrency-based Kubernetes autoscaling.
+
+## When *Not* to Use It
+
+Applying high-concurrency distributed serving optimizations to every project creates excessive infrastructure debt:
+
+| Situation | Better Choice | Why |
+| :--- | :--- | :--- |
+| Single-user local developer CLI tool | Local Ollama / `llama.cpp` on unified memory | Multi-instance PD disaggregation and InfiniBand networking add vast infrastructure overhead with zero benefit on a single workstation. |
+| Strict deterministic offline ETL transformation | CPU-based Hugging Face batch pipeline | Complex speculative decoding and dynamic KV caching add non-deterministic runtime overhead without aiding offline throughput. |
+| Tiny models (&lt; 500M parameters) on high-end GPUs | Standard cuBLAS PyTorch forward pass | At tiny model sizes, memory transfer is minimal and default PyTorch kernels easily saturate memory bandwidth. |
 
 ---
 

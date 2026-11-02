@@ -13,45 +13,61 @@ import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
 # The Roofline Model & KV Cache Mechanics
 
-Serving large language models presents an architectural paradox: the exact same model running on the exact same GPU behaves like two completely different computational workloads depending on whether it is processing input tokens or generating output tokens.
+Serving large language models presents an architectural paradox: the exact same neural network weights running on the exact same GPU behave like two completely different computational workloads depending on whether the model is ingesting input tokens or generating output tokens.
 
-This chapter details the physics of GPU execution: the **Roofline Model**, the mathematical separation between the **Prefill** and **Decode** phases, the exact memory scaling of the **KV Cache**, and how **PagedAttention** eliminates memory fragmentation.
+This chapter details the physical constraints of GPU execution: the **Roofline Model**, the mathematical separation between the **Prefill** and **Decode** phases, the exact memory scaling of the **KV Cache**, and how **PagedAttention** eliminates memory fragmentation in production clusters.
 
 <ELI5>
 
 Imagine reading a 10-page essay versus writing a 10-page essay.
 
-When you **read** the essay (Prefill), your brain takes in whole paragraphs at once. You are using 100% of your cognitive reading capacity (Compute-Bound).
+When you **read** the essay (Prefill), your brain ingests entire sentences at once. You are operating at your maximum reading speed, fully engaging your analytical comprehension (Compute-Bound).
 
-When you **write** the essay word by word (Decode), your hand can only move so fast. You know what you want to write, but you have to write one letter at a time, repeatedly dipping your pen into the ink bottle. Your brain is barely working hard, but you are waiting on the physical speed of the pen (Memory-Bandwidth-Bound).
+When you **write** the essay word by word (Decode), your hand can only move so fast. You already know what sentence to write, but you have to write one character at a time, repeatedly dipping your pen into the ink well. Your brain is barely working hard, but you are waiting on the physical speed of the pen moving across paper (Memory-Bandwidth-Bound).
 
 In LLM serving, we use the **Roofline Model** to map out where these two phases sit on physical chips.
 
 </ELI5>
 
----
+## Why This Exists
 
-## 1. The Roofline Model & Operational Regimes
+Engineers new to deep learning inference often assume that GPU utilization scales with model parameter count: if a 70-billion-parameter model runs on an NVIDIA H100 GPU, the GPU's Tensor Cores must be fully utilized.
 
-The Roofline Model defines the attainable performance of any kernel or workload on hardware:
+In production serving, this assumption is false. When generating text for a single user, an H100 GPU sits more than **85% idle**, not because the model is too small, but because the operation is starved for memory bandwidth.
+
+Two distinct hardware bottlenecks govern transformer execution:
+1. **The Compute Ceiling (TFLOPS)**: The maximum number of floating-point arithmetic operations the GPU's execution units can execute per second.
+2. **The Memory Wall (GB/s)**: The maximum rate at which bytes can be read from off-chip High Bandwidth Memory (HBM) into on-chip registers and SRAM.
+
+Understanding which bottleneck bounds each phase dictates every decision in systems serving: batch sizing, quantization, key-value caching policies, and cluster sizing.
+
+## The Shape of It
+
+The Roofline Model visualizes attainable performance as a function of **Arithmetic Intensity**:
 
 <RooflineModelVisualizer />
 
 ### Deriving Operational Intensity
 
-For any neural network operation, the **Operational Intensity** ($I$) is:
+For any neural network operation, the **Arithmetic Intensity** ($I$) is defined as:
 
-$$I = \frac{\text{Floating Point Operations (FLOPs)}}{\text{Bytes Read from Memory (Bytes)}}$$
+$$I = \frac{\text{Floating Point Operations (FLOPs)}}{\text{Memory Transfers (Bytes)}}$$
 
 Consider multiplying an activation matrix $X \in \mathbb{R}^{B \times d}$ by a weight matrix $W \in \mathbb{R}^{d \times d_{\text{out}}}$:
-- Total FLOPs: $2 \times B \times d \times d_{\text{out}}$ (1 multiply and 1 add per element).
-- Bytes read (assuming weights dominate): $d \times d_{\text{out}} \times \text{bytes\_per\_elem}$.
+- Total FLOPs: $2 \times B \times d \times d_{\text{out}}$ (one multiply and one add per matrix element).
+- Bytes transferred from HBM (assuming model weights dominate): $d \times d_{\text{out}} \times \text{bytes\_per\_elem}$.
 
-Thus, the arithmetic intensity is:
+Dividing total FLOPs by total bytes transferred yields:
 
 $$I = \frac{2 \times B \times d \times d_{\text{out}}}{d \times d_{\text{out}} \times \text{bytes\_per\_elem}} = \frac{2 \times B}{\text{bytes\_per\_elem}}$$
 
-> **The Batch Size Relationship**: Notice that $d$ and $d_{\text{out}}$ cancel out! Arithmetic intensity is directly proportional to **Batch Size ($B$)**. At batch size $B=1$ (single user decode), arithmetic intensity is roughly $2 / 2 = 1.0$ FLOP/byte—deep inside the memory-bandwidth-bound region. At batch size $B=64$, arithmetic intensity jumps to $64$ FLOPs/byte, moving close to the compute roof!
+Notice that the model dimensions $d$ and $d_{\text{out}}$ cancel out completely. Arithmetic intensity depends almost exclusively on **Batch Size ($B$)** and numerical precision:
+- **At Batch Size $B=1$ (Single-user token decoding in FP16)**:
+  $$I = \frac{2 \times 1}{2} = 1.0 \text{ FLOP/byte}$$
+  An arithmetic intensity of $1.0$ sits deep on the left side of the roofline curve: purely memory-bandwidth bound.
+- **At Batch Size $B=64$ (Batched serving in FP16)**:
+  $$I = \frac{2 \times 64}{2} = 64 \text{ FLOPs/byte}$$
+  The operation moves up the sloped roofline, extracting substantially higher computational throughput from the chip.
 
 <PredictFirst
   question="Why does an NVIDIA H100 GPU (1,979 TFLOPs FP8, 3,350 GB/s HBM3) have a knee intensity of ~590 FLOPs/byte, while an older V100 GPU had a knee of only ~140 FLOPs/byte?"
@@ -65,77 +81,105 @@ $$I = \frac{2 \times B \times d \times d_{\text{out}}}{d \times d_{\text{out}} \
   explanation="In chip architecture, compute density scales much faster than off-chip memory bandwidth (the 'Memory Wall'). Because H100 compute increased dramatically faster than memory bus bandwidth, its knee point shifted right from 140 to ~590 FLOPs/byte. This makes small-batch inference even more memory-bandwidth bound on newer chips!"
 />
 
----
+## Prefill vs Decode Phases in LLMs
 
-## 2. Prefill vs Decode Phases in LLMs
+An LLM request is serviced in two fundamentally distinct operational phases:
 
-An LLM request is serviced in two fundamentally distinct phases:
-
-| Metric | Prefill Phase (Prompt Processing) | Decode Phase (Token Generation) |
+| Metric | Prefill Phase (Prompt Ingestion) | Decode Phase (Token Generation) |
 | :--- | :--- | :--- |
-| **Input** | Prompt tokens ($N$ tokens at once) | Exactly 1 token per sequence |
-| **Operation** | General Matrix-Matrix Multiply (GEMM) | General Matrix-Vector Multiply (GEMV) |
-| **Bottleneck** | **Compute-Bound** (High FLOPs/byte) | **Memory-Bandwidth-Bound** (Low FLOPs/byte) |
-| **Latency Metric** | Time-To-First-Token (**TTFT**) | Time-Per-Output-Token (**TPOT**) |
-| **Hardware Saturation** | Tensor Cores run at 70-85% MFU | Tensor Cores sit idle >80% of the time |
+| **Input Tokens per Forward Pass** | All prompt tokens ($N$ tokens simultaneously) | Exactly 1 token per sequence |
+| **Mathematical Kernel** | General Matrix-Matrix Multiply (**GEMM**) | General Matrix-Vector Multiply (**GEMV**) |
+| **Operational Bottleneck** | **Compute-Bound** (High FLOPs/byte) | **Memory-Bandwidth-Bound** (Low FLOPs/byte) |
+| **Primary User Metric** | Time-To-First-Token (**TTFT**) | Time-Per-Output-Token (**TPOT**) |
+| **Hardware Saturation** | Tensor Cores operate at 70-85% MFU | Tensor Cores sit idle >80% of execution time |
 
----
+Because prefill operates on full sequence matrices, its high arithmetic intensity saturates GPU tensor cores. Decode operates on single vectors, requiring the GPU to stream every parameter from HBM into on-chip cache just to calculate a single next token.
 
-## 3. The KV Cache Memory Formula
+## The KV Cache Memory Formula
 
-During autoregressive decoding at step $t$, the attention calculation needs to attend to all past tokens $1 \dots t-1$. Rather than recomputing earlier key and value vectors from raw embeddings, they are stored in the **KV Cache**.
+During autoregressive generation at step $t$, the self-attention layer must compute dot products between the current query $q_t$ and all past keys and values $k_{1 \dots t-1}, v_{1 \dots t-1}$. Rather than recomputing earlier key and value vectors from raw embeddings across every layer, the runtime caches them in GPU memory as the **KV Cache**.
 
-The exact memory footprint for a single request of length $L$ tokens is:
+The exact memory footprint for a request of sequence length $L$ tokens is:
 
 $$\text{Memory}_{\text{KV}} = 2 \times n_{\text{layers}} \times n_{\text{kv\_heads}} \times d_{\text{head}} \times L \times \text{bytes\_per\_elem}$$
 
 Where:
-- The factor of $2$ accounts for both **Key** and **Value** tensors.
+- The factor of $2$ accounts for storing both **Key** and **Value** tensors.
 - $n_{\text{layers}}$ is the number of transformer blocks.
-- $n_{\text{kv\_heads}}$ is the number of key/value heads (in Multi-Head Attention, $n_{\text{kv\_heads}} = n_{\text{heads}}$; in Grouped-Query Attention, $n_{\text{kv\_heads}} \ll n_{\text{heads}}$).
+- $n_{\text{kv\_heads}}$ is the number of key/value heads (in standard Multi-Head Attention, $n_{\text{kv\_heads}} = n_{\text{heads}}$; in Grouped-Query Attention, $n_{\text{kv\_heads}} \ll n_{\text{heads}}$).
 - $d_{\text{head}}$ is the dimension of each attention head.
 - $L$ is sequence length.
+- $\text{bytes\_per\_elem}$ is numerical precision ($2$ for FP16/BF16, $1$ for FP8).
 
 <GoDeeper title="Go deeper: How Grouped-Query Attention (GQA) saved KV Cache bandwidth">
 
-In standard Multi-Head Attention (MHA, e.g. LLaMA-1), each of the 32 query heads has its own dedicated key and value head ($n_{\text{kv\_heads}} = 32$).
+In standard Multi-Head Attention (MHA, e.g. original LLaMA-1), each query head has its own dedicated key and value head ($n_{\text{kv\_heads}} = 32$).
 
-In **Grouped-Query Attention (GQA)** (used in LLaMA-2-70B, LLaMA-3, and Mistral):
-- Query heads are grouped into clusters (e.g. 8 groups of 8 heads = 64 query heads).
+In **Grouped-Query Attention (GQA)** (adopted by LLaMA-2-70B, LLaMA-3, and Mistral):
+- Query heads are clustered into groups (e.g. 8 groups of 4 heads = 32 query heads).
 - All heads in a group share a **single** Key head and Value head ($n_{\text{kv\_heads}} = 8$).
 
-**Impact**: GQA cuts KV Cache memory consumption and HBM memory bandwidth traffic by **8x**! A 70B model's KV Cache per token drops from 2,560 KB down to 320 KB per token, allowing 8x larger serving batches in the same GPU VRAM.
+**Impact**: GQA cuts KV Cache memory consumption and HBM memory bus traffic by **4× to 8×**. A 70B model's KV Cache per token drops from 2,560 KB down to 320 KB per token, allowing 8× larger batch concurrency within the same GPU VRAM.
 
 </GoDeeper>
 
----
+## PagedAttention: Virtual Memory for LLM Serving
 
-## 4. PagedAttention: Virtual Memory for LLM Serving
+In early serving frameworks (such as Hugging Face Transformers), memory for an incoming sequence was allocated contiguously based on the user's maximum requested length (`max_tokens = 4096`).
 
-In traditional serving frameworks, memory for a request was allocated contiguously for the user's `max_tokens` setting.
+This contiguous allocation caused massive **memory fragmentation**:
+1. **Reserved Over-allocation**: If a user set `max_tokens=4096` but the model generated only 150 tokens, the remaining 3,946 token slots were locked and unusable by other requests.
+2. **External Fragmentation**: Virtual memory allocators could not locate contiguous free memory chunks, causing out-of-memory crashes even when 60% of total VRAM was technically free.
 
-Explore how PagedAttention partitions KV blocks into non-contiguous physical pages:
+Explore how PagedAttention solves this using operating-system-style paging:
 
 <PagedAttentionVisualizer />
 
-### The PagedAttention Mechanism
+### The PagedAttention Mechanism (Kwon et al., 2023)
 
-1. **Logical to Physical Mapping**: The KV Cache of a sequence is split into fixed-size logical blocks (e.g. 16 tokens per block).
-2. **Block Table**: The serving engine maintains a routing table that maps logical block numbers to arbitrary physical memory frames allocated from a global GPU memory pool.
-3. **Zero External Fragmentation**: Because every physical block has the exact same size, the memory allocator never needs to find contiguous blocks.
-4. **Copy-on-Write for Parallel Sampling**: When an agent or user branches into multiple outputs (e.g. Speculative Decoding, beam search, or tree-of-thought), child sequences share the parent prompt's physical blocks until one of them writes a new token.
+1. **Logical to Physical Mapping**: The KV Cache of a sequence is partitioned into fixed-size logical blocks (typically 16 tokens per block).
+2. **Block Table**: The serving engine maintains a Page Table mapping logical block numbers to arbitrary physical memory frames allocated from a global GPU memory pool.
+3. **Zero External Fragmentation**: Because every physical block is identical in size, the memory allocator never searches for contiguous memory spans.
+4. **Copy-on-Write for Parallel Sampling**: When an agent or user branches into multiple outputs (e.g. speculative decoding, beam search, or parallel tool calls), child sequences share the parent prompt's physical blocks until one of them generates a divergent token.
 
----
+### Production Serving Configuration
 
-## 5. Python Simulation: KV Cache Profiler
+To serve models with PagedAttention and bounded memory allocation, configure `vllm` with explicit memory parameters:
 
-Run this live in-browser Python implementation to compute the exact KV Cache memory scaling across sequence lengths and batch sizes:
+```bash
+# Serve Llama-3-8B with PagedAttention and GQA on a single GPU
+vllm serve meta-llama/Meta-Llama-3-8B-Instruct \
+  --gpu-memory-utilization 0.90 \
+  --block-size 16 \
+  --max-model-len 8192 \
+  --max-num-seqs 256 \
+  --port 8000
+```
+
+## A Full Worked Example: KV Cache Sizing Across Context Lengths
+
+Consider serving Meta LLaMA-3-8B in FP16 precision ($2$ bytes per element):
+- Architecture: $n_{\text{layers}} = 32$, $n_{\text{kv\_heads}} = 8$ (GQA), $d_{\text{head}} = 128$.
+- Bytes per token:
+  $$\text{Bytes per token} = 2 \times 32 \times 8 \times 128 \times 2 = 131,072 \text{ bytes} = 128 \text{ KB per token}$$
+
+For a concurrent serving batch of $B = 32$ requests:
+- At sequence length $L = 4,096$ tokens:
+  $$\text{Total Memory} = 131,072 \times 4,096 \times 32 = 17,179,869,184 \text{ bytes} = 16.0 \text{ GB}$$
+- At sequence length $L = 16,384$ tokens:
+  $$\text{Total Memory} = 131,072 \times 16,384 \times 32 = 68,719,476,736 \text{ bytes} = 64.0 \text{ GB}$$
+
+On an 80 GB GPU where model weights consume 16 GB, running 32 concurrent requests at 16k tokens completely saturates physical VRAM, requiring KV cache quantization or disaggregation.
+
+### Run It Yourself
+
+Execute this self-contained Python implementation to profile KV cache memory scaling across sequence lengths:
 
 <RunnableCode code={`def calculate_kv_cache(
     batch_size: int,
     seq_len: int,
     n_layers: int = 32,
-    n_kv_heads: int = 8,  # GQA (e.g. LLaMA-3-8B)
+    n_kv_heads: int = 8,  # GQA (Meta LLaMA-3-8B)
     d_head: int = 128,
     precision_bytes: int = 2 # FP16
 ) -> dict:
@@ -150,18 +194,51 @@ Run this live in-browser Python implementation to compute the exact KV Cache mem
         "total_gb": round(total_gb, 2)
     }
 
-print("=== KV Cache Memory Scaling (LLaMA-3-8B GQA) ===")
+print("=== KV Cache Memory Scaling (LLaMA-3-8B GQA) ===\\n")
 for seq in [512, 2048, 4096, 8192, 16384]:
     res = calculate_kv_cache(batch_size=32, seq_len=seq)
     print(f"Batch=32 | SeqLen={seq:5d} -> KV Cache: {res['total_gb']:5.2f} GB ({res['total_mb']} MB)")
+
+# Try it: Change precision_bytes to 1 above to simulate FP8 KV cache quantization.
 `} />
 
----
+## Common Problems & Fixes
+
+1. **GPU Out-Of-Memory Crashes during Long Decoding**: Requests grow beyond allocated memory, triggering sudden CUDA OOM exceptions.
+   - *Fix*: Enable PagedAttention preemption (`vllm` automatically preempts lowest-priority requests, swapping their KV blocks to CPU RAM or recomputing them later).
+2. **Severe Inter-Token Latency Jitter under Mixed Traffic**: Long prompt prefills share execution cycles with active decoding requests.
+   - *Fix*: Deploy Prefill-Decode disaggregation or enable chunked prefill (`--enable-chunked-prefill`) to chop large prompts into 512-token segments.
+3. **Low Hardware Utilization on Single-User Chatbots**: An agent runs at batch size $B=1$, wasting 85% of GPU compute capacity.
+   - *Fix*: Use speculative decoding with a fast draft model to generate 3 to 5 tokens per memory access pass.
 
 <NotebookCallout color="cobalt" title="Roofline Rule of Thumb">
-**Always balance TTFT and TPOT.** When serving interactive conversational agents, separate your clusters or workers into specialized **Prefill Nodes** (optimized for dense compute throughput) and **Decode Nodes** (optimized for memory bandwidth and PagedAttention batch concurrency).
+Always balance TTFT and TPOT. When serving interactive conversational agents, separate your clusters or workers into specialized Prefill Nodes (optimized for dense compute throughput) and Decode Nodes (optimized for memory bandwidth and PagedAttention batch concurrency).
 </NotebookCallout>
 
-<NotebookCallout title="Next in Curriculum">
-Learn how iteration-level scheduling and draft models accelerate generation in **[Continuous Batching & Speculative Decoding](/docs/inference-engineering/continuous-batching-and-speculative-decoding)**.
-</NotebookCallout>
+## When *Not* to Use It
+
+| Situation | Better Choice | Why |
+| :--- | :--- | :--- |
+| Offline bulk batch processing (e.g. embedding millions of documents) | Maximum batch size without KV caching | Embedding models are encoder-only; they run purely in prefill with no sequential decode phase. |
+| Edge microcontrollers with < 2 MB RAM | Fixed-memory TinyML models | PagedAttention tables and dynamic KV buffers require megabytes of memory allocation overhead. |
+| Single-turn classification tasks | Stateless forward pass | Output sequence length is 1 token; maintaining a multi-turn KV cache adds unnecessary lookup overhead. |
+
+## Remember
+
+| Idea | Core Rule |
+| :--- | :--- |
+| **Arithmetic Intensity** | Operations per byte transferred: $I = \text{FLOPs} / \text{Bytes}$. |
+| **Prefill Phase** | Compute-bound GEMM; saturates GPU tensor cores and dictates TTFT. |
+| **Decode Phase** | Memory-bandwidth-bound GEMV; reads all weights for each token and dictates TPOT. |
+| **KV Cache Scaling** | Memory scales linearly with sequence length: $2 \times L \times n_{\text{layers}} \times n_{\text{kv\_heads}} \times d_{\text{head}}$. |
+| **PagedAttention** | Uses virtual memory paging to reduce KV cache fragmentation from 60-80% to under 4% (Kwon et al., 2023). |
+
+Next: [Continuous Batching & Speculative Decoding](/docs/inference-engineering/continuous-batching-and-speculative-decoding) -- iteration-level scheduling and draft model verification.
+
+## Sources
+
+- Samuel Williams, Andrew Waterman, and David Patterson, *Roofline: An Insightful Visual Performance Model for Multicore Architectures*, Communications of the ACM: [https://dl.acm.org/doi/10.1145/1498765.1498785](https://dl.acm.org/doi/10.1145/1498765.1498785) (2009)
+- Woosuk Kwon et al., *Efficient Memory Management for Large Language Model Serving with PagedAttention*, SOSP: [https://arxiv.org/abs/2309.06180](https://arxiv.org/abs/2309.06180) (2023)
+- Joshua Ainslie et al., *GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints*: [https://arxiv.org/abs/2305.13245](https://arxiv.org/abs/2305.13245) (2023)
+- Tom B. Brown et al., *Language Models are Few-Shot Learners* (Scaling Laws and Contexts): [https://arxiv.org/abs/2005.14165](https://arxiv.org/abs/2005.14165) (2020)
+- Meta LLaMA 3 Architecture Specification and Open Weights: [https://github.com/meta-llama/llama3](https://github.com/meta-llama/llama3) (2024)

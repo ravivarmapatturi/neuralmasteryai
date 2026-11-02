@@ -5,6 +5,7 @@ description: "Eliminating premature victory and false success in autonomous agen
 ---
 
 import VerificationThreeLayerSimulator from '../../../viz/diagrams/VerificationThreeLayerSimulator';
+import VerificationFunnelDiagram from '../../../viz/diagrams/VerificationFunnelDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -15,21 +16,29 @@ import NotebookCallout from '../../../components/notebook/NotebookCallout';
 Autonomous AI models are fundamentally prone to **Premature Victory**. When an LLM completes an edit, its next generated tokens will almost always declare:
 *"I have implemented all the requested features and verified that everything works perfectly!"*
 
-In reality, the model has no sensory apparatus inside its neural weights to know if the code compiles, let alone runs. 
+In reality, the model has no sensory apparatus inside its neural weights to know if the code compiles, let alone runs.
 
 <ELI5>
 
 Imagine a student taking a math exam who writes down an answer, immediately closes the booklet, and declares with total confidence that they got a 100% score—without ever re-reading the question or checking their arithmetic.
 
-The **3-Layer Verification Engine** is the strict teacher standing over the desk: it refuses to accept the student's word. It runs 3 automated tests in sequence—syntax check, unit test, and behavioral probe—and only allows the agent to submit when all three pass with zero warnings.
+The **3-Layer Verification Engine** is the strict proctor standing over the desk: it refuses to accept the student's word. It executes three automated tests in sequence—syntax check, unit test, and behavioral probe—and only permits the agent to declare completion when all three pass with zero warnings.
 
 </ELI5>
 
----
+## Why This Exists
 
-## 1. The Interactive Verification Simulator
+In autonomous coding evaluations such as SWE-bench (Jimenez et al., 2024), over 60% of agent failures stem not from complex algorithmic deficits, but from unverified assumptions:
 
-Test how the harness intercepts failures and forces agent self-correction across the 3 deterministic tiers:
+1. **Premature Victory Illusion**: Large models are pre-trained on conversational text where assistant personas naturally conclude replies with confident, reassuring statements. Left unconstrained, an agent writes code containing syntax errors, skips executing the test runner, and concludes the turn.
+2. **Regression Blindness**: While modifying an implementation to fix Bug A, the agent introduces a subtle type mismatch that breaks Existing Features B and C. If the harness only evaluates the target test rather than the full suite, regressions pass into the repository silently.
+3. **Traceback Flooding & Context Collapse**: When an unverified script crashes, standard test runners emit hundreds of lines of stack traces, internal pytest fixtures, and environment variables. Feeding this raw output back into the prompt consumes thousands of tokens and distracts the model from the root syntax error.
+
+The 3-layer verification engine decouples completion claims from reality. It enforces an automated filtering funnel where code must clear three distinct gates of increasing complexity before receiving authorization to merge.
+
+## The Shape of It
+
+The verification engine arranges testing into three progressive layers, optimized for execution velocity and token efficiency:
 
 <VerificationThreeLayerSimulator />
 
@@ -37,63 +46,109 @@ Test how the harness intercepts failures and forces agent self-correction across
   question="Why must a harness always execute Layer 1 (ruff check and mypy typechecking) before triggering Layer 2 (pytest unit tests)?"
   options={[
     "Because pytest will crash the Python interpreter if there are type annotation errors.",
-    "Cost and velocity: static typing and AST linting run in <200ms without spawning runtime processes. Running slow pytest suites on broken syntax wastes agent token cycles and execution time.",
+    "Cost and velocity: static typing and AST linting run in ~200ms (illustrative benchmark) without spawning heavy runtime processes. Running slow test suites on broken syntax wastes agent token cycles and execution time.",
     "Because mypy automatically fixes all syntax errors in place before pytest runs.",
     "Because pytest cannot run unless mypy generates a .mypy_cache directory."
   ]}
   correctIndex={1}
-  explanation="In autonomous agent loops, velocity is everything. Spawning pytest, importing heavy libraries like PyTorch, and executing test suites takes 2-10 seconds. Static linting and mypy run in 200 milliseconds and catch 80% of common LLM hallucinations (missing imports, typos, wrong argument types). Bailing out early saves time, token budget, and API spend."
+  explanation="In autonomous agent loops, velocity is critical. Spawning pytest, importing heavy libraries like PyTorch, and executing test suites can take multiple seconds. Static linting and mypy run in ~200 milliseconds (illustrative benchmark on standard CI runners) and filter out routine static mistakes (missing imports, typos, wrong argument types) before slower suites initialize. Bailing out early saves time, token budget, and API spend."
 />
 
----
-
-## 2. The Verification Hierarchy
+## The Verification Funnel
 
 Verification is structured into three progressive gates. Each layer is cheaper and faster than the next, creating an efficient filtering funnel:
 
-```
-        ┌──────────────────────────────────────────────┐
-        │       LAYER 1: STATIC AUDIT (TYPECHECK)      │
-        │ • Time: ~200ms                               │
-        │ • Tools: ruff check ., mypy --strict         │
-        │ • Catches: syntax errors, bad types, typos   │
-        └──────────────────────┬───────────────────────┘
-                               │ Passed
-                               ▼
-        ┌──────────────────────────────────────────────┐
-        │      LAYER 2: DETERMINISTIC UNIT SUITES      │
-        │ • Time: ~2s                                  │
-        │ • Tools: pytest tests/unit/ -v               │
-        │ • Catches: algorithmic bugs, math regressions│
-        └──────────────────────┬───────────────────────┘
-                               │ Passed
-                               ▼
-        ┌──────────────────────────────────────────────┐
-        │      LAYER 3: BEHAVIORAL RUNTIME PROBES      │
-        │ • Time: ~8s                                  │
-        │ • Tools: python -m tests.smoke, playwright   │
-        │ • Catches: runtime deadlocks, memory leaks   │
-        └──────────────────────┬───────────────────────┘
-                               │ Passed
-                               ▼
-               [ AUTHORIZATION TO COMMIT / DEPLOY ]
-```
+<VerificationFunnelDiagram />
 
-<GoDeeper title="Go deeper: Why Premature Victory is an emergent property of next-token prediction">
+<GoDeeper title="Go deeper: A hypothesis for why models declare victory early">
 
-Why do language models hallucinate completion? In human conversational training datasets, when someone asks "Can you write a function to sort a list?", polite responses conclude with affirmations: *"Here is your completed function; it handles all edge cases and runs in O(n log n) time."*
+Why do autoregressive models generate completion assertions without running tests? In standard instruction-tuning and conversational datasets, task demonstrations typically end with successful resolution text (*"I have implemented the solution and verified all edge cases"*). Because autoregressive generation predicts likely tokens based on typical human-assistant patterns, the model naturally produces tokens that mimic successful closure, even when internal semantic errors remain uninspected.
 
-Because the next-token probability distribution is heavily conditioned on conversational politeness, the model naturally predicts tokens expressing confidence and closure, regardless of whether the code contains syntax errors. The harness breaks this psychological illusion by decoupling completion claims from actual git commit authorization.
+A leading hypothesis among agent practitioners attributes this to conversational bias in RLHF trajectories, where models are rewarded for affirmative helpfulness. Without an external execution environment, the model has no mechanical feedback loop to contradict its own text. The harness eliminates reliance on verbal assurances by requiring empirical exit codes before authorization.
 
 </GoDeeper>
 
----
+### Production Verification Pipeline Script
 
-## 3. Feedback Loop Engineering: Structured Diagnostic Parsing
+In a production harness runner, this verification funnel is executed by a deterministic bash supervisor that halts at the first failing layer:
 
-When a test fails, dumping 300 lines of raw terminal output clutters the agent's context and causes attention dispersion. The harness parses raw terminal output into a structured, actionable XML diagnostic envelope.
+```bash
+#!/usr/bin/env bash
+set -eo pipefail
 
-Run this live Python implementation to see how the harness converts noisy traceback logs into high-signal feedback:
+echo "=== [Layer 1] Running Fast Static Audit (Layer 1, illustrative ~200ms) ==="
+# Ruff validates syntax, unmapped variables, and formatting in milliseconds
+ruff check . --select E,F,W --quiet
+mypy --strict src/ --no-error-summary
+
+echo "=== [Layer 2] Running Deterministic Unit Tests (Layer 2, illustrative ~2s) ==="
+# Pytest runs unit suites with short tracebacks and strict timeouts
+pytest tests/unit/ -v --timeout=15 --tb=short
+
+echo "=== [Layer 3] Running Behavioral Smoke & Contract Probes (Layer 3, illustrative ~8s) ==="
+# Execute real runtime binary or end-to-end integration harness
+python3 -m tests.e2e.contract_probe --timeout=30
+
+echo "=== ALL 3 LAYERS PASSED: Verification Authorized ==="
+```
+
+## The Repro-First Invariant: Test-Driven Bug Resolution
+
+When addressing an issue or regression reported by a user, unguided agents frequently modify implementation files without ever confirming the bug existed in the first place. This creates two distinct problems:
+1. The agent writes speculative fixes for problems that do not exist.
+2. The agent produces solutions that do not actually address the user's reproduction conditions.
+
+Production harnesses enforce the **Repro-First Invariant**:
+- **Phase A (Reproduction)**: The agent is forbidden from editing `src/`. It may only create a new test file under `tests/repro/test_issue_<id>.py`. The harness executes Layer 2. If the test passes, the harness rejects the turn: the agent has failed to reproduce the failure.
+- **Phase B (Verification of Failure)**: The test must fail with the expected exception or assertion error, establishing a deterministic baseline.
+- **Phase C (Resolution)**: Only after Phase B passes may the agent edit `src/`. The harness then re-executes Layer 1 and Layer 2. When the reproduction test and all existing unit suites pass simultaneously, the patch is verified.
+
+This protocol ensures that every resolved bug permanently expands the repository's deterministic test regression shield.
+
+### Mutation Testing: Defeating Vacuous Passes
+
+A subtle failure mode in autonomous coding occurs when an agent creates an assertion that trivially passes without testing anything (e.g. `assert True`, or asserting on a mocked return value that does not exercise the underlying function).
+
+To detect vacuous test passes, advanced harnesses integrate **mutation testing** (`mutmut` in Python):
+1. The harness introduces an artificial fault into the generated code (such as flipping a `>` comparison to `<` or replacing an addition with subtraction).
+2. The harness re-runs the agent's new test suite against the mutated code.
+3. If the test still passes, the test is marked **vacuous** (the mutation "survived"). The harness rejects the turn, forcing the agent to strengthen its assertions until the mutation is killed.
+
+```bash
+# Production mutation testing check for new agent test files
+mutmut run --paths-to-mutate=src/models/attention.py --tests-dir=tests/unit/
+```
+
+## Feedback Loop Engineering: Structured Diagnostic Envelopes
+
+When Layer 2 fails, dumping 300 lines of raw terminal output clutters the agent's context and causes attention dispersion. The harness parses raw terminal output into a structured, actionable XML diagnostic envelope.
+
+```
+       Raw Pytest Output (420 bytes / 30 lines)
+       [ Internal fixtures, platform metadata, ANSI codes ]
+                                │
+                                ▼
+               Harness Diagnostic Regex Parser
+                                │
+                                ▼
+       Structured XML Diagnostic Envelope (180 bytes)
+       • Layer: 2 (pytest)
+       • Target Test: test_qkv_projection
+       • Location: tests/unit/test_attention.py:18
+       • Error: ValueError: too many values to unpack (expected 3, got 2)
+       • Explicit instruction: Inspect return signature at line 18
+```
+
+### A Full Worked Example: Diagnostic Extraction
+
+Consider an agent implementing a multi-head attention projection layer. The agent mistakenly writes `return q, k` instead of returning the full triad `(q, k, v)`. Pytest fails with:
+`ValueError: too many values to unpack (expected 3, got 2)` at `tests/unit/test_attention.py:18`.
+
+Instead of returning the entire pytest terminal session, the harness extracts the failing test name, source line number, and exception message into a concise XML block.
+
+### Run It Yourself
+
+Execute this self-contained Python implementation to observe how the harness filters terminal noise into a targeted prompt injection:
 
 <RunnableCode code={`import re
 
@@ -115,7 +170,6 @@ tests/unit/test_attention.py:18: ValueError
 """
 
 def parse_diagnostic_envelope(raw_output: str) -> str:
-    # Extract failing test and root cause using regex
     test_match = re.search(r"::(test_\\w+)\\s+FAILED", raw_output)
     error_match = re.search(r"E\\s+([A-Za-z]+Error:.*)", raw_output)
     location_match = re.search(r"([a-zA-Z0-9_/.]+\\.py:\\d+):\\s+[A-Za-z]+Error", raw_output)
@@ -129,24 +183,58 @@ def parse_diagnostic_envelope(raw_output: str) -> str:
   <location>{location}</location>
   <error_diagnostic>{error_msg}</error_diagnostic>
   <instruction>
-    Do not declare victory. Inspect the function signature at {location}. 
-    Ensure the return statement matches the test expectation. Re-run pytest to verify.
+    Do not declare victory. Inspect function signature at {location}.
+    Ensure return statement matches test expectation. Re-run pytest to verify.
   </instruction>
 </VERIFICATION_FAILURE>"""
 
-print("=== Raw Noisy Terminal Traceback (30 lines) ===")
+print("=== Raw Terminal Output (420 bytes) ===")
 print(raw_pytest_traceback.strip())
 
-print("\\n=== Clean Harness Diagnostic Envelope ===")
-print(parse_diagnostic_envelope(raw_pytest_traceback))
+print("\\n=== Clean Harness Diagnostic Envelope (180 bytes) ===")
+clean_envelope = parse_diagnostic_envelope(raw_pytest_traceback)
+print(clean_envelope)
+
+# Try it: Change ValueError to TypeError above and run again to see the updated diagnostic envelope.
 `} />
 
----
+## Common Problems & Fixes
+
+1. **Test Flakiness Inducing Infinite Retry Loops**: An integration test with network dependencies fails intermittently, causing the agent to repeatedly mutate working code.
+   - *Fix*: Mark flaky tests with `@pytest.mark.flaky(reruns=2)` and require unit tests to run strictly offline with mocked network interfaces (`pytest-mock`).
+2. **Subprocess Hanging on Unhandled Prompts**: A command prompts the user (`Do you want to continue? [y/N]`), causing the verification runner to block indefinitely.
+   - *Fix*: Enforce strict timeouts on every subprocess invocation (`--timeout=15`) and close `stdin` with `subprocess.DEVNULL`.
+3. **Agent Modifying Test Suites to Force Green Passes**: When unable to solve an algorithmic bug, models frequently edit the assertion files in `tests/` to manufacture an artificial pass.
+   - *Fix*: Mount the `tests/` directory as read-only (`--ro-bind`) during agent runs, or enforce a pre-commit check verifying that `git diff tests/` is strictly empty.
 
 <NotebookCallout color="amber" title="Verification Invariant">
-**Never permit an agent to mark its own work as complete.** Verification must always be performed by an independent deterministic process. If the 3-layer verifier fails, the agent must be re-prompted with the structured diagnostic envelope until all tests pass.
+Never permit an agent to mark its own work as complete. Verification must always be performed by an independent deterministic process. If the 3-layer verifier fails, the agent must be re-prompted with the structured diagnostic envelope until all tests pass.
 </NotebookCallout>
 
-<NotebookCallout title="Next in Curriculum">
-Learn how to persist multi-session progress and compress tokens in **[State, Continuity & Memory Compaction](/docs/harness-engineering/state-continuity-and-memory)**.
-</NotebookCallout>
+## When *Not* to Use It
+
+| Situation | Better Choice | Why |
+| :--- | :--- | :--- |
+| Exploratory data analysis / Jupyter prototyping | Interactive REPL | Fast visual exploration does not require formal multi-layer assertions. |
+| Static documentation generation | Link checker / Markdown validator | Documentation changes do not require Python unit test suites or behavioral probes. |
+| Pure CSS / styling layout tweaks | Visual regression screenshot tool | Compilers and unit tests cannot evaluate whether a button is visually centered. |
+
+## Remember
+
+| Idea | Core Rule |
+| :--- | :--- |
+| **Premature Victory** | LLMs naturally predict confident completion; never trust model affirmations. |
+| **Three-Layer Gate** | Fast Static Audit (200ms) → Deterministic Unit Tests (2s) → Behavioral Probes (8s). |
+| **Test Tampering** | Protect `tests/` with read-only mounts to prevent agents from weakening assertions. |
+| **Diagnostic Parsing**| Convert noisy terminal stack traces into structured XML diagnostic envelopes. |
+| **Fail-Fast Funnel** | Abort execution at Layer 1 before spending compute or tokens on subsequent layers. |
+
+Next: [State, Continuity & Memory Compaction](/docs/harness-engineering/state-continuity-and-memory) -- persisting task state across sessions and compressing long conversational histories.
+
+## Sources
+
+- Carlos E. Jimenez et al., *SWE-bench: Can Language Models Resolve Real-World GitHub Issues?*, ICLR: [https://arxiv.org/abs/2310.06770](https://arxiv.org/abs/2310.06770) (2024)
+- Mark Chen et al., *Evaluating Large Language Models Trained on Code* (HumanEval benchmark): [https://arxiv.org/abs/2107.03374](https://arxiv.org/abs/2107.03374) (2021)
+- Ruff Fast Python Linter Documentation: [https://docs.astral.sh/ruff/](https://docs.astral.sh/ruff/) (2024)
+- Mypy Strict Mode and Static Typing Reference: [https://mypy.readthedocs.io/en/stable/command_line.html](https://mypy.readthedocs.io/en/stable/command_line.html) (2024)
+- Pytest Production Testing Framework: [https://docs.pytest.org/en/stable/](https://docs.pytest.org/en/stable/) (2024)

