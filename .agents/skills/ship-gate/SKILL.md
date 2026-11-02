@@ -12,6 +12,7 @@ A task is done only when every check below was **run in this session** and you s
 ```bash
 npm run typecheck
 npm run check:links
+npm run check:mdx        # tests and typecheck do NOT compile MDX; one bad page fails the whole deploy
 npx vitest run
 NODE_OPTIONS="--max-old-space-size=6144" npm run build
 ```
@@ -35,3 +36,7 @@ For any page, component or viz change: open it in the dev server (built-in brows
 - Stage only task files. Never commit `scratch/`, `test-results/`, `dist/`, `helpers/*.md` scratch notes or screenshots.
 - Conventional commit message. Push to `origin` only — never to the `newrepo` remote unless the user asks.
 - Mark your `AGENT_TRACKER.md` row `COMPLETED` with commit SHA, or `BLOCKED` with the exact failing output.
+
+## 5. After every push
+
+Confirm the Deploy run for your commit succeeded with `gh run list`. Pushing is not shipping.
