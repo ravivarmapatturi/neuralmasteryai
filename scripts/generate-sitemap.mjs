@@ -25,6 +25,7 @@ function walk(dir) {
 // Hidden problems keep working URLs but aren't advertised to crawlers.
 const practiceSlugs = JSON.parse(readFileSync(resolve(import.meta.dirname, '..', 'src', 'data', 'practiceSlugs.generated.json'), 'utf8'));
 const trackSlugs = [...readFileSync(resolve(import.meta.dirname, '..', 'src', 'data', 'practiceCatalog.ts'), 'utf8').matchAll(/^    slug: '([a-z0-9-]+)',$/gm)].map((m) => m[1]);
+const glossarySlugs = [...readFileSync(resolve(import.meta.dirname, '..', 'src', 'data', 'glossary.ts'), 'utf8').matchAll(/^  t\('([a-z0-9-]+)'/gm)].map((m) => m[1]);
 
 const files = walk(docsDir).filter((f) => {
   const rel = relative(docsDir, f).replace(/\.mdx$/, '').split('\\').join('/');
@@ -36,6 +37,8 @@ const urls = [
   { loc: `${SITE_URL}/learn`, lastmod: null },
   { loc: `${SITE_URL}/labs`, lastmod: null },
   { loc: `${SITE_URL}/atlas`, lastmod: null },
+  { loc: `${SITE_URL}/glossary`, lastmod: null },
+  ...glossarySlugs.map((slug) => ({ loc: `${SITE_URL}/glossary/${slug}`, lastmod: null })),
   { loc: `${SITE_URL}/interview`, lastmod: null },
   { loc: `${SITE_URL}/blog`, lastmod: null },
   ...JSON.parse(readFileSync(resolve(import.meta.dirname, '..', 'src', 'data', 'blogMeta.generated.json'), 'utf8')).map((p) => ({

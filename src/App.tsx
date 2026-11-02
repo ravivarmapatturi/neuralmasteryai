@@ -25,6 +25,8 @@ import LeaderboardPage from './components/LeaderboardPage';
 import SiteTour from './components/home/SiteTour';
 import AboutPage from './components/AboutPage';
 import AtlasHubPage from './components/AtlasHubPage';
+import GlossaryPage from './components/glossary/GlossaryPage';
+import GlossaryTermPage from './components/glossary/GlossaryTermPage';
 import PrivacyPolicyPage from './components/PrivacyPolicyPage';
 import TermsOfServicePage from './components/TermsOfServicePage';
 import NotFoundPage from './components/NotFoundPage';
@@ -93,6 +95,8 @@ export default function App() {
                       <Route path="/profile" element={<ProfilePage />} />
                       <Route path="/leaderboard" element={<LeaderboardPage />} />
                       <Route path="/atlas" element={<AtlasHubPage />} />
+                      <Route path="/glossary" element={<GlossaryPage />} />
+                      <Route path="/glossary/:slug" element={<GlossaryTermPage />} />
                       <Route path="/docs/deep-learning/training-technique-atlas" element={<Navigate to="/docs/atlas/training" replace />} />
                       <Route path="/docs/inference-engineering/technique-atlas" element={<Navigate to="/docs/atlas/inference" replace />} />
                       <Route path="/about" element={<AboutPage />} />
