@@ -1,0 +1,203 @@
+---
+title: "What Is Changing in AI Engineering and What to Learn Next"
+description: "Why learning agentic engineering backwards breaks in production, what 2026 hiring data asks for, and the four disciplines to study in order."
+date: 2026-11-02
+tags: [ai engineering, agents, context engineering, evaluation, inference]
+---
+
+import AiEngineeringLearningLadder from '../../viz/diagrams/AiEngineeringLearningLadder';
+
+# What Is Changing in AI Engineering and What to Learn Next
+
+In May 2026, developer Gnana published an [empirical analysis on DEV Community](https://dev.to/gnana_6392e836fd500a957dc/ai-engineer-skills-companies-want-in-2026-3449-posting-analysis-5f9l) examining 3,449 active AI Engineer job listings on the InterviewStack.io job board. The data showed that Python (71%) and LLM integration (66%) have become baseline expectations. The largest compensation premiums did not attach to framework wrappers or agent swarms; they attached to distributed systems ($180,000 median base) and production data pipelines. Simultaneously, an October 2026 press release from OMC Cloud citing [Gartner market forecasts](https://www.einpresswire.com/article/949027583/inference-overtakes-training-2026-is-the-year-ai-moved-into-production) projected cloud AI inference spending to reach $23.3 billion in 2026, overtaking the $19 billion projected for model training. The operational centre of gravity has shifted from training models to running and evaluating them reliably.
+
+If you are deciding what to study, this guide provides the sequence to follow. We outline why starting with multi-agent swarms creates unmaintainable failures, and we detail the four core disciplines to master in order: single-agent context engineering, automated tracing and evals, the Model Context Protocol (MCP), and inference serving economics.
+
+## 1. Why engineers learn agentic systems backward
+
+In June 2026, engineer Hoang Nguyen observed in a [practical roadmap on Codeaholicguy](https://codeaholicguy.com/2026/06/10/a-practical-roadmap-to-learn-agentic-engineering/) that many practitioners begin at the wrong end of the stack. They attempt to configure multi-agent swarms, wire dozens of external tools, or orchestrate parallel autonomous loops before they can direct a single model to complete a 50-line pull request reliably.
+
+When a single agent fails, the root cause is almost always uncurated context, vague instructions, or missing verification. If you cannot guide one model through a scoped task with strict input boundaries, wrapping four agents into a committee does not fix the defect. It multiplies token consumption, compounds hallucinations, and turns debugging into guesswork.
+
+Agentic systems remain software engineering systems. The models supply non-deterministic reasoning, but your architecture governs what they see, which tools they can invoke, and how their output gets validated.
+
+<AiEngineeringLearningLadder />
+
+## 2. Discipline 1: One reliable agent and context engineering
+
+The first skill to build is context engineering for a single agent. In September 2026, Sourcegraph engineer Matt Tanner published a [comprehensive analysis of context engineering](https://sourcegraph.com/blog/context-engineering). Tanner distinguishes prompt engineering—refining a static string at design time—from context engineering, which is the runtime systems pipeline that constructs, filters, and evicts tokens on every single model turn.
+
+In a benchmark cited by Sourcegraph, an agent without deliberate context filtering navigated a 1.4-million-line Go repository across 22,000 files. Left without scope constraints, the agent searched blindly for 6,000 seconds, exhausted its operating window, and failed completely. The model did not fail because it lacked Go comprehension; it failed because the harness flooded its attention window with irrelevant files.
+
+Writing in August 2026, Aron Schuhmann and Sam Bhagwat at Mastra (a developer tools vendor) [described this dynamic](https://mastra.ai/articles/context-engineering) using Andrej Karpathy's framing: the language model functions as a central processing unit (CPU), while the context window functions as volatile random-access memory (RAM). Your code acts as the operating system kernel. It must schedule the exact working set into that RAM on every cycle.
+
+To master this discipline, study:
+- **System prompt boundaries**: Setting immutable role instructions and output schemas.
+- **Dynamic tool schema discovery**: Loading lightweight tool names and short descriptions upfront (~100 tokens each), fetching full JSON parameter schemas only when the model requests that specific tool.
+- **Context pruning**: Evicting completed scratchpads, stale compiler error logs, and low-relevance retrieval chunks before each inference call.
+
+Learn the underlying mechanisms in our [Harness Architecture guide](/docs/harness-engineering/harness-architecture) and [Context Design chapter](/docs/harness-engineering/context-and-instruction-design).
+
+## 3. Discipline 2: Tracing and evals before autonomy
+
+Once you can guide a single model through a basic prompt, do not add autonomous loops until you have built deterministic evaluations. When you modify an agent's prompt or retrieval ranking, you cannot determine whether you improved system accuracy without an evaluation harness.
+
+In production, agents fail in subtle ways:
+1. **Tool selection drift**: An instruction change causes the model to pick `grep_search` instead of `read_symbol_definition`.
+2. **Context bloat**: An agent retains old conversation history, gradually degrading reasoning performance as token depth approaches window boundaries.
+3. **Assertion divergence**: The generated code passes syntax checks but fails semantic contracts.
+
+Build an offline test suite containing at least 30 real task scenarios with known input-output pairs. Instrument each agent turn with OpenTelemetry-compatible traces that capture:
+- Exact input tokens and system messages
+- Tool call names and input arguments
+- Tool execution status and latency
+- Output token counts and completion codes
+
+Before giving an agent permission to execute terminal commands autonomously, enforce a three-layer verification gate: unit test execution, static analysis, and programmatic assertions. Review our reference implementation in [Harness Verification Loops](/docs/harness-engineering/verification-loops) and [AI Evaluation Fundamentals](/docs/ai-evaluation/evaluation-fundamentals).
+
+## 4. Discipline 3: Model Context Protocol (MCP) for system boundaries
+
+Once your single agent and evaluation harness work predictably, integrate external systems through standardized protocols. In December 2025, Wes Reisz hosted an [InfoQ podcast on scaling agents](https://www.infoq.com/podcasts/platform-engineering-scaling-agents/) with LinkedIn platform leaders Karthik Ramgopal and Prince Valluri. Ramgopal described how engineering teams across LinkedIn initially built siloed proof-of-concept scripts with custom wrappers around databases, code search, and deployment tooling. This fragmented approach created duplicate plumbing and security risks.
+
+LinkedIn's platform group addressed this by adopting the Model Context Protocol (MCP) to establish unified governance, structured tool specifications, and standardized communication between agents and internal resources.
+
+MCP separates concerns into two distinct roles:
+- **The Host / Client**: The agent harness (such as Claude Code or custom enterprise orchestration runners) that manages session state, model queries, and tool execution policies.
+- **The Server**: A standalone process exposing specific capabilities (such as database query execution, git repository inspection, or issue tracker retrieval) over JSON-RPC 2.0 via standard input/output (`stdio`) or Server-Sent Events (`SSE`).
+
+Adopt MCP when you have a real integration boundary between different systems or services. If your agent only runs a local Python script inside its own directory, an external MCP server adds operational indirection without technical benefit. If your agent must interact with a production PostgreSQL replica, Jira, and GitHub across different authentication domains, MCP provides clean protocol isolation.
+
+Inspect how MCP handles message framing and capability negotiation in our [MCP Overview](/docs/agents/mcp/overview).
+
+## 5. Discipline 4: Inference economics and serving physics
+
+The final layer is understanding what happens when a model generates tokens in production. The OMC Cloud press release citing Gartner's cloud infrastructure forecast ($23.3 billion on inference versus $19 billion on training) underscores that inference cost and latency dictate production viability.
+
+When serving models in production, two metrics govern user experience and hardware spend:
+- **Time to First Token (TTFT)**: The latency required to process prompt tokens and populate the key-value (KV) cache (the prefill phase). Prefill is compute-bound.
+- **Time Per Output Token (TPOT)**: The latency required to generate each subsequent token sequentially (the decode phase). Decode is memory-bandwidth bound.
+
+Because the autoregressive decode phase must read model weights from high-bandwidth memory (HBM) to compute every single token, naive serving leaves GPU tensor cores idle while waiting for memory transfers.
+
+Production serving architectures solve this with three techniques:
+1. **Continuous batching (vLLM, Orca)**: Injecting new requests into existing iteration loops without waiting for earlier sequences to complete.
+2. **PagedAttention**: Allocating KV-cache memory in non-contiguous virtual blocks, reducing VRAM fragmentation from 60-80% down to under 4%.
+3. **Prefix caching**: Reusing precomputed KV states for shared system prompts and agent instructions across turns, reducing TTFT by 3× to 5× on multi-turn interactions.
+
+Study the mathematical derivations in [Roofline and KV Cache](/docs/inference-engineering/roofline-and-kv-cache) and [Continuous Batching and Speculative Decoding](/docs/inference-engineering/continuous-batching-and-speculative-decoding).
+
+## 6. A worked context management harness
+
+Below is a self-contained Python reference implementation demonstrating two core context engineering practices: lazy tool schema staging and dynamic history pruning under strict token constraints.
+
+```python
+import json
+from dataclasses import dataclass
+from typing import Any, Dict, List
+
+@dataclass
+class ContextTurn:
+    role: str
+    content: str
+    tokens: int
+
+class AgentContextManager:
+    """Manages an agent context window with tool discovery and token bounds."""
+
+    def __init__(self, token_limit: int = 4096):
+        self.token_limit = token_limit
+        self.system_prompt = "You are an automated code analysis assistant."
+        self.system_tokens = 10
+        self.history: List[ContextTurn] = []
+        # Registered tools store brief descriptions (~15 tokens)
+        self.registered_tools: Dict[str, Dict[str, Any]] = {}
+        # Active tools store complete parameter schemas (~120 tokens)
+        self.active_tool_schemas: Dict[str, Dict[str, Any]] = {}
+
+    def register_tool(self, name: str, summary: str, full_schema: Dict[str, Any]):
+        """Register tool metadata for discovery without loading full schemas."""
+        self.registered_tools[name] = {"summary": summary, "full_schema": full_schema}
+
+    def stage_tool_schema(self, name: str):
+        """Load complete JSON parameter schema into the active prompt window."""
+        if name in self.registered_tools and name not in self.active_tool_schemas:
+            self.active_tool_schemas[name] = self.registered_tools[name]["full_schema"]
+
+    def add_message(self, role: str, content: str, tokens: int):
+        """Append a message turn and enforce the context budget."""
+        self.history.append(ContextTurn(role=role, content=content, tokens=tokens))
+        self.prune_if_needed()
+
+    def prune_if_needed(self):
+        """Evict oldest conversation turns if token budget is exceeded."""
+        tool_overhead = len(self.registered_tools) * 15 + len(self.active_tool_schemas) * 120
+        used = self.system_tokens + tool_overhead + sum(t.tokens for t in self.history)
+        while used > self.token_limit and len(self.history) > 1:
+            dropped = self.history.pop(0)
+            used -= dropped.tokens
+
+    def report(self) -> Dict[str, Any]:
+        """Return context allocation metrics."""
+        tool_overhead = len(self.registered_tools) * 15 + len(self.active_tool_schemas) * 120
+        total_tokens = self.system_tokens + tool_overhead + sum(t.tokens for t in self.history)
+        return {
+            "total_tokens": total_tokens,
+            "token_limit": self.token_limit,
+            "turns_retained": len(self.history),
+            "staged_schemas": list(self.active_tool_schemas.keys()),
+        }
+
+if __name__ == "__main__":
+    # Initialize with a strict 350-token window
+    manager = AgentContextManager(token_limit=350)
+    manager.register_tool(
+        "query_sql",
+        "Executes read-only SQL on the analytics database.",
+        {"type": "object", "properties": {"query": {"type": "string"}}},
+    )
+    manager.register_tool(
+        "git_diff",
+        "Computes git unified diff between two revisions.",
+        {"type": "object", "properties": {"rev_a": {"type": "string"}, "rev_b": {"type": "string"}}},
+    )
+
+    manager.add_message("user", "Check recent schema migration status.", tokens=90)
+    # Model requests query_sql; harness stages full schema
+    manager.stage_tool_schema("query_sql")
+    manager.add_message("assistant", "Executed query on schema_migrations table.", tokens=100)
+    # Additional user query arrives
+    manager.add_message("user", "Check git diff for the migration script.", tokens=110)
+
+    summary = manager.report()
+    print("Context Allocation Report:")
+    print(json.dumps(summary, indent=2))
+    assert summary["total_tokens"] <= 350, "Budget exceeded!"
+    print("Verification passed: oldest turn pruned cleanly to preserve window bounds.")
+```
+
+## 7. Where this roadmap breaks
+
+This ordered sequence applies to software engineering assistants, customer support agents, and analytical pipelines. There are specific scenarios where alternative architectures take precedence:
+
+- **Independent, parallel subagents**: While monolithic agents with bloated contexts degrade quickly, Anthropic research demonstrated that multi-agent systems with *isolated contexts* outperform single-agent setups on extensive open-ended research. When subtasks are strictly disjoint, launching separate subagents with clean context windows avoids attention dilution.
+- **High-throughput deterministic paths**: If an operation follows a rigid decision tree (such as parsing credit card statements or converting CSV headers), do not build an agent. A deterministic Python script or a single structured-output prompt is faster, cheaper, and 100% reliable.
+- **Embedded and edge constraints**: On mobile phones or edge microcontrollers, cloud APIs and complex MCP orchestrations are impractical. In those environments, model quantization (INT4, FP8) and on-device runtimes (GGML, ONNX Runtime, ExecuTorch) supersede agent frameworks.
+
+## Summary
+
+| Step | Focus | Core Metric | Failure Mode if Skipped |
+|---|---|---|---|
+| **1. One Agent & Context** | Prompt boundaries, tool schema discovery, context eviction | Window token count, signal-to-noise ratio | Agent enters hallucination or infinite search loops |
+| **2. Tracing & Evals** | Deterministic assertions, OpenTelemetry spans, regression gates | Pass rate on golden test set, trace coverage | Prompt edits break existing capabilities silently |
+| **3. MCP Integration** | JSON-RPC 2.0 interface, tool-host decoupling | Tool invocation latency, protocol compliance | Brittle, bespoke glue code for every internal API |
+| **4. Inference Economics** | Prefix caching, continuous batching, memory sizing | TTFT, TPOT, KV-cache VRAM fragmentation | Server out-of-memory crashes and prohibitive API costs |
+
+## Further reading
+
+- On this site: [Harness Architecture](/docs/harness-engineering/harness-architecture), [Verification Loops](/docs/harness-engineering/verification-loops), [Roofline and KV Cache](/docs/inference-engineering/roofline-and-kv-cache), [MCP Protocol Overview](/docs/agents/mcp/overview), and [AI Evaluation Fundamentals](/docs/ai-evaluation/evaluation-fundamentals).
+- Hoang Nguyen, [A Practical Roadmap to Learn Agentic Engineering](https://codeaholicguy.com/2026/06/10/a-practical-roadmap-to-learn-agentic-engineering/) (June 2026).
+- Matt Tanner, [Context Engineering for AI Agents: Complete 2026 Guide](https://sourcegraph.com/blog/context-engineering) (Sourcegraph, September 2026).
+- Wesley Reisz, Karthik Ramgopal, and Prince Valluri, [Platform Engineering for AI: Scaling Agents and MCP at LinkedIn](https://www.infoq.com/podcasts/platform-engineering-scaling-agents/) (InfoQ Podcast, December 2025).
+- Aron Schuhmann and Sam Bhagwat, [Context Engineering for AI Agents: A Practical Guide](https://mastra.ai/articles/context-engineering) (Mastra vendor article, August 2026).
+- OMC Cloud / EIN Presswire citing Gartner forecasts, [Inference Overtakes Training: 2026 Is the Year AI Moved Into Production](https://www.einpresswire.com/article/949027583/inference-overtakes-training-2026-is-the-year-ai-moved-into-production) (October 2026).
+- Gnana, [AI Engineer Skills Companies Want in 2026: 3,449-Posting Analysis](https://dev.to/gnana_6392e836fd500a957dc/ai-engineer-skills-companies-want-in-2026-3449-posting-analysis-5f9l) (DEV Community / InterviewStack.io job board analysis, May 2026).
