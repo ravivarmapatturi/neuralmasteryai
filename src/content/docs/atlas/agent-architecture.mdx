@@ -1,0 +1,41 @@
+---
+title: "Agent Architecture Atlas"
+sidebar_position: 2
+description: "Trace agent control flow from prompt chains and tool loops to graph runtimes, multi-agent supervisors and long-running harnesses."
+---
+
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import AgentArchitectureAtlas from '../../../components/atlas/agents/AgentArchitectureAtlas';
+
+# Agent Architecture Atlas
+
+A capable model does not determine whether an agent finishes a long task. The surrounding control flow decides what the model sees, which actions it may take, how failures change the next attempt and what survives when one context window ends. This atlas follows the architectures that made those decisions explicit, in date order.
+
+<ELI5>
+
+Think of preparing a complex meal. A prompt chain is a recipe with fixed steps. A tool loop lets the cook inspect each result before choosing what to do next. A supervisor gives separate jobs to several cooks. A harness keeps the recipe, ingredients, timers, safety rules and progress notes organized, so another shift can continue the meal without guessing what happened.
+
+</ELI5>
+
+<PredictFirst
+  question="A coding agent must continue work after its current context window ends. What matters most for the next window?"
+  options={[
+    'A longer hidden reasoning trace from the previous window',
+    'A durable handoff backed by files, commits and fresh test results',
+    'More agents discussing the task before the window closes',
+    'Repeating the full conversation in the next prompt',
+  ]}
+  correctIndex={1}
+  explanation="The next context cannot inspect hidden reasoning and a full transcript contains too much noise. Durable artifacts state what changed, version control shows the exact diff, and fresh tests provide evidence about the current state."
+/>
+
+Open an entry and read it in order: the limit it answered, what changed, then the mechanism in the diagram.
+
+<AgentArchitectureAtlas />
+
+## The Architecture Surrounds the Model
+
+These entries did not replace one another. A production research agent can route the request, ask an orchestrator to create parallel searches, run each worker as a ReAct loop, compact the findings into a smaller context and store a cited report for the next session. The architecture is the set of choices that connects those parts and limits their behavior.
+
+The diagrams show control flow, not model internals. When a system fails, identify which layer made the decision: the model, the tool interface, the router, the memory policy, the graph transition or the durable harness.
