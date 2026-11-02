@@ -91,6 +91,25 @@ export default function TrainingTechniqueDiagram({ kind, name }: Props) {
         <rect x="12" y="20" width="55" height="46" rx="6" style={box}/><path d="M24 54 L37 36 L47 47 L57 30" stroke={t.accentPrimary} fill="none"/><path d="M67 43 L114 43" style={line}/>
         <rect x="122" y="10" width="52" height="38" rx="5" style={box}/><rect x="189" y="31" width="52" height="38" rx="5" style={box}/><rect x="256" y="14" width="42" height="51" rx="5" style={box}/><text x="125" y="82" style={muted}>crop · flip · color; same label</text>
       </>;
+      case 'teacher-forcing': return <>
+        {['BOS','I','run'].map((v,i)=><g key={v}><rect x={12+i*92} y="12" width="54" height="26" rx="6" style={box}/><text x={21+i*92} y="30" style={label}>{v}</text><path d={`M${39+i*92} 38 L${39+i*92} 60`} style={line}/><text x={20+i*92} y="78" style={muted}>{['I','run','EOS'][i]}</text></g>)}
+        <text x="210" y="9" style={{...muted, fill:t.accentPrimary}}>true previous tokens</text>
+      </>;
+      case 'next-token': return <>
+        {['the','cat','sat'].map((v,i)=><g key={v}><rect x={12+i*82} y="24" width="58" height="32" rx="7" style={box}/><text x={25+i*82} y="45" style={label}>{v}</text>{i<2&&<path d={`M${70+i*82} 40 L${92+i*82} 40`} style={line}/>}</g>)}<text x="245" y="45" style={{...label, fill:t.accentPrimary}}>target</text><text x="90" y="78" style={muted}>each prefix predicts its next token</text>
+      </>;
+      case 'gradient-checkpointing': return <>
+        {[25,65,105,145,185,225,265].map((x,i)=><circle key={x} cx={x} cy="34" r="10" fill={i===0||i===3||i===6?t.accentPrimary:t.surfaceAlt} stroke={t.border}/>)}<path d="M35 34 H255" style={{...line, markerEnd:'none'}}/><path d="M145 66 Q205 82 265 66" style={{...line, stroke:t.accentWarn}}/><text x="10" y="82" style={muted}>save green checkpoints; recompute amber segment</text>
+      </>;
+      case 'mixed-precision': return <>
+        <rect x="10" y="13" width="75" height="30" rx="7" style={box}/><text x="23" y="33" style={label}>FP16 ops</text><path d="M85 28 L136 28" style={line}/><rect x="141" y="13" width="76" height="30" rx="7" style={box}/><text x="151" y="33" style={label}>scaled g</text><path d="M217 28 L264 28" style={line}/><text x="268" y="25" style={label}>FP32</text><text x="268" y="42" style={muted}>step</text><text x="66" y="72" style={{...muted, fill:t.accentPrimary}}>scale before backward · unscale before update</text>
+      </>;
+      case 'gradient-accumulation': return <>
+        {[20,75,130,185].map((x,i)=><g key={x}><rect x={x} y="16" width="40" height="28" rx="6" style={box}/><text x={x+11} y="35" style={label}>g{i+1}</text></g>)}<path d="M40 48 Q125 77 205 48" style={{...line, markerEnd:'none'}}/><path d="M205 48 L253 48" style={line}/><text x="258" y="44" style={label}>one</text><text x="258" y="61" style={muted}>step</text><text x="77" y="82" style={muted}>sum four microbatches</text>
+      </>;
+      case 'distributed-training': return <>
+        {[25,105,185,265].map((x,i)=><g key={x}><rect x={x-20} y="12" width="40" height="28" rx="6" style={box}/><text x={x-7} y="31" style={label}>GPU{i+1}</text></g>)}<path d="M25 50 C25 82 265 82 265 50 M265 50 C265 62 25 62 25 50" style={{...line, markerEnd:'none'}}/><text x="105" y="82" style={{...muted, fill:t.accentPrimary}}>all-reduce gradients</text>
+      </>;
       default: return <text x="12" y="45" style={label}>Mechanism diagram follows in its era commit.</text>;
     }
   })();
