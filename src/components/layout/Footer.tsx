@@ -39,6 +39,9 @@ export default function Footer() {
       >
         <span>© {year} Neural Mastery</span>
         <nav style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }} aria-label="Footer">
+          <Link to="/?tour=1" style={{ color: 'inherit' }}>
+            Site tour
+          </Link>
           <Link to="/about" style={{ color: 'inherit' }}>
             About
           </Link>
