@@ -1409,5 +1409,50 @@
   },
   "rag-interview-questions:3f8a7262d314": {
     "criteria": ["Describes contrastive training on naturally paired web images and alt text", "Pulls matched image and text embeddings together while separating in-batch mismatches", "Places both modalities in one shared vector space", "Explains that text queries can retrieve images directly with cosine similarity"], "followup": "What kinds of noisy web pairs can distort the shared embedding space?"
+  },
+  "rag-interview-questions:e5fb03a0a4b0": {
+    "criteria": ["Distinguishes joint raw-input encoding from independently encoding each modality", "Identifies late fusion as the common production choice", "Explains that separate encoders can be upgraded or extended without retraining the whole system", "Explains that fused vectors support one approximate-nearest-neighbor search across modalities"], "followup": "When would early fusion's joint cross-modal reasoning justify its training cost?"
+  },
+  "rag-interview-questions:b88e0cc1b1d2": {
+    "criteria": ["Routes prose, figures, and tables through content-specific extraction and encoding", "Embeds figures with CLIP or captions them for text-oriented retrieval", "Linearizes tables into Markdown before text embedding", "Stores modality metadata in a shared index", "Flags uncaptioned figures because text queries may not retrieve them reliably"], "followup": "How would you preserve a figure's relationship to the paragraph that discusses it?"
+  },
+  "rag-interview-questions:097fdadb227e": {
+    "criteria": ["Samples real or representative production queries rather than only easy invented ones", "Labels relevant passages manually or with spot-checked LLM assistance", "Measures agreement between annotators to expose ambiguous ground truth", "Runs the evaluation set automatically in CI for every pipeline change"], "followup": "How would you keep the golden set representative as live query traffic changes?"
+  },
+  "rag-interview-questions:c868c82156ef": {
+    "criteria": ["Chooses ARES when calibrated confidence intervals justify domain tuning and human labels", "Uses RAGChecker to separate retriever failures from generator failures at claim level", "Uses ConsJudge to train a judge from consistency signals without human labels", "Uses FaithJudge for independently compared hallucination rates"], "followup": "Which framework would you use first when production quality drops but the failing stage is unknown?"
+  },
+  "rag-interview-questions:d5a3534e7a0f": {
+    "criteria": ["Measures citation precision as the share of cited passages that support their claims", "Measures citation recall after splitting the response into atomic claims", "Checks whether the particular cited passage entails the attributed claim", "Distinguishes attribution errors from claims unsupported by every passage"], "followup": "How would you score a claim that requires evidence from two cited passages together?"
+  },
+  "rag-interview-questions:c4ef3aa62750": {
+    "criteria": ["Rejects exact match for open-ended answers with several valid formulations", "Scores explicit dimensions such as relevance, completeness, accuracy, and citation quality", "Uses pairwise preference to anchor judgment to a concrete baseline and candidate", "Calibrates automated judgments against human-labeled examples"], "followup": "How would you control position bias in pairwise judging?"
+  },
+  "rag-interview-questions:20227eb24da9": {
+    "criteria": ["Uses reference-free judging to test whether answer claims follow from retrieved context", "Explains why faithfulness evaluation needs context and answer but no gold response", "Combines judge scores with regeneration, rephrase, and escalation rates"], "followup": "Which quality dimensions still require human labels or stronger assumptions?"
+  },
+  "rag-interview-questions:rag-thumbs-up": {
+    "criteria": ["Rejects the 92% thumbs-up rate as sufficient evidence of system quality", "Explains that explicit feedback comes from a small self-selected user subset", "Combines implicit signals such as regeneration, rephrasing, and escalation", "Rejects extrapolating the vocal subset's feedback to the silent majority"], "followup": "How would you estimate whether the users who leave feedback differ from everyone else?"
+  },
+  "rag-interview-questions:rag-offline-online": {
+    "criteria": ["Identifies distribution shift between a narrow golden set and live traffic", "Identifies overfitting to a fixed evaluation set as another cause", "Checks whether live traffic contains unanswerable questions missing from the curated set", "Compares offline and live query distributions before blaming the model"], "followup": "How would you add live failures to the evaluation set without overfitting to recent complaints?"
+  },
+  "rag-interview-questions:071ba09a3098": {
+    "criteria": ["Logs both the raw query and any rewritten or condensed query", "Records retrieved and reranked chunk IDs with their scores", "Stores the actual assembled prompt, model parameters, and token usage", "Includes sampled judge scores", "Explains that per-stage evidence localizes retrieval, reranking, or generation failures"], "followup": "How would you redact sensitive content while preserving enough trace detail to debug failures?"
+  },
+  "rag-interview-questions:rag-judge-drift": {
+    "criteria": ["Checks for judge-model drift before assuming the RAG system regressed", "Runs an unchanged sentinel set against the judge every day", "Uses sentinel score movement to separate provider changes from output-quality changes", "Rejects investigating the production pipeline first when no system deploy occurred"], "followup": "What would you do if the sentinel set confirms the judge changed?"
+  },
+  "rag-interview-questions:9f3bd5252ad2": {
+    "criteria": ["Blocks pre-deploy regressions with a thresholded golden-set CI gate", "Compares canary and control traffic on guardrails and judge scores", "Monitors post-rollout behavioral signals against a pre-deploy baseline", "Uses request traces to localize the failed pipeline stage", "Promotes confirmed production failures into the golden set"], "followup": "Which canary metric would trigger an automatic rollback, and how would you set its threshold?"
+  },
+  "rag-interview-questions:rag-cost-dominant": {
+    "criteria": ["Identifies LLM input and output generation as the dominant per-query cost", "Places embedding and vector search at roughly 5% each in the stated typical breakdown", "Prioritizes prompt caching and model tiering over retrieval optimization", "Rejects retrieval tuning as the first cost lever when generation consumes about 80%"], "followup": "How would you verify that this cost breakdown holds for your own traffic?"
+  },
+  "rag-interview-questions:rag-prompt-cache-saving": {
+    "criteria": ["Computes 6,000 × 0.9 ÷ 6,500 = 83.1% input-cost reduction", "Requires the 6,000-token prefix to remain byte-identical", "Requires requests to reuse the prefix within the cache lifetime"], "followup": "How would the saving change if only half of requests hit the cache?"
+  },
+  "rag-interview-questions:9c40f93cebcb": {
+    "criteria": ["Assigns each pipeline stage to the cheapest model that meets its measured quality bar", "Downgrades routing, simple rewriting, and binary relevance checks when validated", "Keeps complex synthesis, reasoning, and nuance-sensitive generation on a larger model", "Measures stage-specific regression instead of assuming a task is simple"], "followup": "How would you design the stage-level evaluation needed before downgrading a model?"
   }
 }
