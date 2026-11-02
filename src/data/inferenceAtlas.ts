@@ -213,6 +213,79 @@ const memoryEntries: InferenceAtlasEntry[] = [
   },
 ];
 
-export const inferenceAtlasEntries: InferenceAtlasEntry[] = [...decodingEntries, ...portableEntries, ...memoryEntries];
+const servingEntries: InferenceAtlasEntry[] = [
+  {
+    id: 'static-batching', name: 'Static batching', year: 2012, era: 'Production serving systems', category: 'Serving', diagram: 'static-batch',
+    source: { label: 'Krizhevsky et al., ImageNet Classification with Deep CNNs', url: 'https://proceedings.neurips.cc/paper/2012/hash/c399862d3b9d6b76c8436e924a68c45b-Abstract.html' }, learnPath: '/docs/inference-engineering/continuous-batching-and-speculative-decoding',
+    whatItIs: 'Static batching stacks a fixed set of inputs and executes them as one tensor batch. It amortizes weight reads and kernel launches across requests, but the batch boundary stays fixed until every member finishes.', previousLimit: 'One request at a time underuses parallel accelerators and rereads the same weights for little work.',
+    requestState: 'A queue forms B compatible shapes; runtime holds one batch tensor and one completion barrier.', example: 'Four padded prompts form input_ids[4,128]; the next batch waits until all four sequences leave the current loop.',
+    metrics: 'Measure batch formation delay, throughput, utilization, padding waste, and per-request latency.', avoid: 'Avoid for variable-length autoregressive requests under continuous arrival, where short members wait behind long ones.', replacedBy: 'Continuous batching reschedules the active set at token boundaries.', cameBefore: 'Single-example execution.', ledTo: 'Dynamic and continuous request schedulers.',
+  },
+  {
+    id: 'autoscaling-cold-start', name: 'Autoscaling and cold-start control', year: 2015, era: 'Production serving systems', category: 'Serving', diagram: 'autoscale',
+    source: { label: 'Kubernetes workload autoscaling documentation', url: 'https://kubernetes.io/docs/concepts/workloads/autoscaling/' }, learnPath: '/docs/inference-engineering/disaggregation-prefix-caching-and-production',
+    whatItIs: 'Autoscaling changes replica capacity from observed demand, while cold-start control keeps enough warm model processes to absorb startup delay. It solved the mismatch between variable traffic and fixed, expensive accelerator fleets.', previousLimit: 'Static capacity either queues bursts or leaves paid accelerators idle.',
+    requestState: 'Requests enter a queue; control state includes queue depth, concurrency, latency signals, desired replicas, image/model load progress, and warm capacity.', example: 'Queue depth rises from 2 to 40, desired replicas move from 2 to 5, and one warm spare serves traffic while three models load.',
+    metrics: 'Track queue delay, p95/p99 latency, cold-start duration, scale-up lag, utilization, rejected requests, and cost.', avoid: 'Avoid scaling directly on noisy instantaneous GPU utilization without stabilization and capacity limits.', replacedBy: 'Predictive scaling, warm pools, and request-aware metrics refine reactive replica scaling.', cameBefore: 'Fixed inference fleets.', ledTo: 'Queue-aware and serverless accelerator orchestration.',
+  },
+  {
+    id: 'ttft-tps-p99', name: 'TTFT, TPS, and p99 measurement', year: 2019, era: 'Production serving systems', category: 'Measurement', diagram: 'latency-metrics',
+    source: { label: 'MLPerf Inference benchmark', url: 'https://arxiv.org/abs/1911.02549' }, learnPath: '/docs/inference-engineering/disaggregation-prefix-caching-and-production',
+    whatItIs: 'Streaming inference separates time to first token (TTFT), generation rate in tokens per second (TPS), and tail latency such as p99. These metrics expose prompt delay, steady decode speed, and rare slow requests that one average latency hides.', previousLimit: 'End-to-end mean latency mixes prefill and decode and conceals the slowest user experiences.',
+    requestState: 'Record arrival, first-token, every-token, and completion timestamps plus prompt/output lengths and load.', example: 'Arrival 0 ms, first token 180 ms, final token 980 ms for 21 tokens gives TTFT 180 ms and 25 output tokens/s after the first token.',
+    metrics: 'Read TTFT against prompt length, inter-token latency or TPS against batch load, and p99 only with the sample window and population stated.', avoid: 'Avoid comparing TPS without defining per-request versus aggregate rate, tokenizer, output length, and concurrency.', replacedBy: 'These remain core; service-level objectives and goodput add correctness under latency constraints.', cameBefore: 'One aggregate latency or throughput number.', ledTo: 'Phase-aware scheduling, benchmarking, and SLOs.',
+  },
+  {
+    id: 'continuous-batching', name: 'Continuous batching', year: 2022, era: 'Production serving systems', category: 'Serving', diagram: 'continuous-batch',
+    source: { label: 'Yu et al., Orca', url: 'https://www.usenix.org/conference/osdi22/presentation/yu' }, learnPath: '/docs/inference-engineering/continuous-batching-and-speculative-decoding',
+    whatItIs: 'Continuous batching rebuilds the active batch at iteration boundaries: completed sequences leave and waiting requests enter. It removes static batching’s wait for the longest generation before reclaiming a slot.', previousLimit: 'Static batches strand capacity when request output lengths differ.',
+    requestState: 'The scheduler tracks waiting and running queues, each sequence’s KV blocks, current token, and remaining constraints.', example: 'At step 3 request A finishes; request D joins B and C for step 4 without waiting for their completions.',
+    metrics: 'Measure aggregate TPS, queue time, request latency percentiles, active slots, and fairness under load.', avoid: 'Avoid unconstrained admission that raises throughput while violating per-request latency targets.', replacedBy: 'Chunked prefill and SLO-aware schedulers refine iteration-level batching.', cameBefore: 'Fixed request batches.', ledTo: 'Modern LLM serving loops and paged cache allocation.',
+  },
+  {
+    id: 'speculative-decoding', name: 'Speculative decoding', year: 2023, era: 'Production serving systems', category: 'Serving', diagram: 'speculative',
+    source: { label: 'Leviathan et al., Fast Inference from Transformers via Speculative Decoding', url: 'https://arxiv.org/abs/2211.17192' }, learnPath: '/docs/inference-engineering/continuous-batching-and-speculative-decoding',
+    whatItIs: 'A cheap draft model proposes several tokens and the target model verifies them in one parallel pass with a correction rule that preserves the target distribution. It reduces sequential target-model decode steps when draft acceptance is high.', previousLimit: 'Ordinary autoregressive generation invokes the large model once per emitted token.',
+    requestState: 'Runtime holds target and draft caches, proposed tokens, both models’ probabilities, acceptance RNG state, and rollback positions.', example: 'The draft proposes [the, cat, sat]; the target accepts the first two, rejects “sat”, samples a correction, and resumes there.',
+    metrics: 'Measure accepted tokens per target pass, end-to-end speedup, draft overhead, latency, and output-distribution parity.', avoid: 'Avoid when draft acceptance is low, draft execution is expensive, or memory cannot hold both states.', replacedBy: 'Self-speculation and multi-token prediction remove or alter the separate draft model.', cameBefore: 'One full target-model pass per generated token.', ledTo: 'Parallel token proposal and verification systems.',
+  },
+  {
+    id: 'model-routing', name: 'Model routing', year: 2023, era: 'Production serving systems', category: 'Serving', diagram: 'routing',
+    source: { label: 'Chen et al., FrugalGPT', url: 'https://arxiv.org/abs/2305.05176' }, learnPath: '/docs/inference-engineering/disaggregation-prefix-caching-and-production',
+    whatItIs: 'A model router selects a model or cascade from request features, predicted quality, cost, and latency constraints. It avoids sending every request to the most expensive general model.', previousLimit: 'One-model serving pays peak cost even for requests a smaller model can answer well.',
+    requestState: 'The request carries prompt and policy context; router state includes candidate health, price/latency estimates, features, and sometimes confidence from an earlier response.', example: 'A short classification request goes to a small model; a low-confidence legal synthesis escalates to a stronger model.',
+    metrics: 'Measure task success by route, cost, latency, escalation rate, calibration, and policy violations.', avoid: 'Avoid opaque routing without per-route evaluation, fallbacks, and privacy/data-residency constraints.', replacedBy: 'Learned and SLO-aware routers refine rules and cascades; no universal router replaces evaluation.', cameBefore: 'All traffic sent to one model endpoint.', ledTo: 'Heterogeneous fleets and quality-cost optimization.',
+  },
+  {
+    id: 'semantic-caching', name: 'Semantic caching', year: 2023, era: 'Production serving systems', category: 'Serving', diagram: 'semantic-cache',
+    source: { label: 'GPTCache paper', url: 'https://arxiv.org/abs/2308.05049' }, learnPath: '/docs/inference-engineering/disaggregation-prefix-caching-and-production',
+    whatItIs: 'Semantic caching embeds a request and reuses a stored response when similarity and policy thresholds indicate equivalent intent. It extends exact-key caches to paraphrases, saving the entire model call on a hit.', previousLimit: 'Exact caches miss “reset my password” when the stored key says “how do I change my password?”.',
+    requestState: 'State includes request embeddings, response payloads, model/version metadata, tenant scope, freshness, and similarity thresholds.', example: 'A new embedding has cosine similarity .96 to a tenant-scoped cached FAQ entry and passes its .94 illustrative threshold.',
+    metrics: 'Measure hit rate, false-hit rate, saved latency/cost, staleness, and quality by threshold. Similarity is not equivalence.', avoid: 'Avoid for personalized, rapidly changing, safety-critical, or side-effecting requests without strict validation.', replacedBy: 'Verified caches combine semantic retrieval with structured keys, policy checks, and freshness rules.', cameBefore: 'Exact request/response caches.', ledTo: 'Intent-aware inference reuse.',
+  },
+  {
+    id: 'prefix-caching', name: 'Prefix caching', year: 2023, era: 'Production serving systems', category: 'Runtime', diagram: 'prefix-cache',
+    source: { label: 'Zheng et al., SGLang and RadixAttention', url: 'https://arxiv.org/abs/2312.07104' }, learnPath: '/docs/inference-engineering/disaggregation-prefix-caching-and-production',
+    whatItIs: 'Prefix caching indexes reusable KV-cache blocks by shared token prefixes, often in a radix tree. It skips prefill computation for repeated system prompts, documents, or few-shot examples rather than merely reusing final responses.', previousLimit: 'A normal KV cache belongs to one live request and is discarded even when the next request starts with identical tokens.',
+    requestState: 'The request’s token IDs walk a prefix index; state includes immutable KV blocks, block hashes or radix edges, reference counts, and eviction metadata.', example: 'Two requests share [system, policy, examples]; the second reuses those KV blocks and computes only its new user suffix.',
+    metrics: 'Measure cached-token hit rate, TTFT reduction, cache bytes, eviction rate, and isolation correctness.', avoid: 'Avoid cross-tenant reuse without security boundaries or when prefixes rarely repeat.', replacedBy: 'Automatic prefix caching and hierarchical cache tiers refine lookup and eviction.', cameBefore: 'Per-request KV caches only.', ledTo: 'Shared prompt state and cache-aware scheduling.',
+  },
+  {
+    id: 'structured-output', name: 'Structured output', year: 2024, era: 'Production serving systems', category: 'Decoding', diagram: 'structured',
+    source: { label: 'OpenAI structured outputs documentation', url: 'https://developers.openai.com/api/docs/guides/structured-outputs' }, learnPath: '/docs/llms-genai/foundation-model-internals',
+    whatItIs: 'Structured decoding masks tokens that would make the partial output invalid under a schema or grammar. It guarantees syntactic shape during generation instead of asking the model to repair invalid JSON afterward.', previousLimit: 'Prompting and sampling can still emit missing fields, wrong types, or broken delimiters.',
+    requestState: 'The request includes a schema; runtime holds the token prefix, parser/automaton state, and the currently allowed token set.', example: 'After {"age":, the grammar permits number tokens but masks a quoted object key until the numeric value completes.',
+    metrics: 'Measure schema-valid rate, semantic/task correctness, latency overhead, refusal handling, and schema coverage.', avoid: 'Avoid confusing schema validity with factual or business-rule correctness.', replacedBy: 'Grammar and schema constrained decoding remain current; application validation is still required.', cameBefore: 'Prompt-only JSON generation and parse-retry loops.', ledTo: 'Typed model interfaces and tool invocation.',
+  },
+  {
+    id: 'disaggregated-prefill-decode', name: 'Disaggregated prefill and decode', year: 2024, era: 'Production serving systems', category: 'Serving', diagram: 'disaggregated',
+    source: { label: 'Zhong et al., DistServe', url: 'https://arxiv.org/abs/2401.09670' }, learnPath: '/docs/inference-engineering/disaggregation-prefix-caching-and-production',
+    whatItIs: 'Disaggregation runs compute-heavy prompt prefill and bandwidth-heavy token decode on separately managed workers, transferring KV state between them. It prevents long prefills from interfering with latency-sensitive decode iterations and lets each phase scale independently.', previousLimit: 'Co-locating both phases on one worker couples two resource profiles and creates interference.',
+    requestState: 'A gateway sends prompt tokens to a prefill worker, transfers produced KV tensors, then a decode worker owns the streaming sequence.', example: 'A 4k-token prompt prefills on worker P; its KV blocks cross the fabric once, then worker D emits 80 tokens.',
+    metrics: 'Measure TTFT, inter-token latency, KV transfer time/bytes, phase utilization, goodput, and tail latency.', avoid: 'Avoid when KV transfer cost or network reliability exceeds interference savings, especially for short prompts.', replacedBy: 'Phase-aware schedulers and disaggregated systems continue to refine placement and transfer.', cameBefore: 'Prefill and decode sharing the same replica.', ledTo: 'Phase-specific fleets and independent scaling.',
+  },
+];
+
+export const inferenceAtlasEntries: InferenceAtlasEntry[] = [...decodingEntries, ...portableEntries, ...memoryEntries, ...servingEntries];
 
 export const inferenceAtlasCategories: Array<'All' | InferenceAtlasCategory> = ['All', 'Decoding', 'Runtime', 'Compression', 'Kernel', 'Serving', 'Deployment', 'Measurement'];
