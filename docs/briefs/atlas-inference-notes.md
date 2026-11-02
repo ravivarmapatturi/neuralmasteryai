@@ -26,4 +26,10 @@ Each entry has a hand-authored SVG specification with its own labelled state tra
 
 ## Verification record
 
-Pending final typecheck, link check, full Vitest run with two workers, and responsive light/dark render review. The repository brief explicitly says not to run the local production build on this 8 GB machine.
+- `npm run typecheck`: passed.
+- `npm run check:links`: passed across 1,852 MDX files.
+- `npx vitest run --maxWorkers=2`: 85 files and 534 tests passed.
+- Targeted atlas tests: data completeness, source URL shape, search, category filter, expansion, and accessible mechanism diagram passed.
+- Render review: passed at 375×900 and 1440×1000 in light and dark themes; zero horizontal overflow and zero page/console errors.
+- Banned-phrase scan and `git diff --check`: passed.
+- Production build: intentionally not run because the atlas brief explicitly prohibits a local build on this 8 GB machine.
