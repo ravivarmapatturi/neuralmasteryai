@@ -1,0 +1,410 @@
+---
+title: "Dynamic Tool Discovery, Semantic Routing & Schema Pruning"
+description: "Scale autonomous agents from 10 to 1,000 tools using semantic tool routing, meta-discovery registries, and dynamic schema pruning without exhausting context."
+sidebar_position: 3
+---
+
+import { ELI5 } from '../../../components/ELI5';
+import { PredictFirst } from '../../../components/PredictFirst';
+import { GoDeeper } from '../../../components/GoDeeper';
+import { NotebookCallout } from '../../../components/NotebookCallout';
+import { RunnableCode } from '../../../components/RunnableCode';
+
+# Dynamic Tool Discovery, Semantic Routing & Schema Pruning
+
+Early autonomous agent tutorials demonstrate tool calling by defining three or four JSON functions directly inside the API request payload. However, enterprise systems quickly amass hundreds of specialized APIs: git operations, cloud provisioning, SQL interfaces, ticket tracking, observability queries, and communication channels. Ingesting every tool schema into every API call exhausts input token limits, degrades model reasoning, and drives up token expenses.
+
+Effective context engineering treats tool calling as an information retrieval problem: rather than forcing the model to read an entire catalog of schemas upfront, the harness dynamically indexes, filters, and prunes tool definitions at each execution step.
+
+<ELI5>
+Imagine walking into a workshop with 500 specialized tools hanging on the wall. If an apprentice tries to hold all 500 tools in their arms before starting to fix a kitchen sink, they will drop everything, get confused, and have no hands free to do actual work.
+
+Instead, a smart apprentice looks at the pipe, walks over to the plumbing cabinet, grabs just two tools—a pipe wrench and Teflon tape—and leaves the welding torches, chainsaw, and drywall knives on the shelves. Dynamic tool discovery gives the agent a catalog index so it only brings the exact tools needed for the immediate step into active memory.
+</ELI5>
+
+---
+
+## 1. The Saturation Bottleneck: The Cost of Tool Bloat
+
+When an agent platform registers 200 distinct tools, each accompanied by an OpenAPI or JSONSchema definition detailing parameters, types, enums, and docstrings, the prompt overhead explodes:
+
+$$\text{Total Tool Overhead} = \sum_{i=1}^{M} \text{Tokens}(\text{Schema}_i)$$
+
+If each tool schema averages 250 tokens:
+
+$$200 \text{ tools} \times 250 \text{ tokens} = 50{,}000 \text{ tokens per turn}$$
+
+For an agent loop running 15 turns to resolve an issue:
+
+$$15 \text{ turns} \times 50{,}000 \text{ tokens} = 750{,}000 \text{ input tokens}$$
+
+At current frontier pricing ($3.00 per million input tokens), tool schemas alone cost $2.25 per run and consume nearly 40% of a 128,000-token context window on static overhead.
+
+```
++-----------------------------------------------------------------------+
+|  Static Injection (Anti-Pattern): 200 Tools = 50,000 tokens / turn    |
+|  [Tool 1][Tool 2][Tool 3] ... [Tool 199][Tool 200]                   |
+|  Context Window: [ ============================== 50k Tools = ] [Task] |
++-----------------------------------------------------------------------+
+
++-----------------------------------------------------------------------+
+|  Dynamic Discovery (Production): Top 4 Tools = 1,000 tokens / turn    |
+|  Tool Registry Index (Vector/BM25) ---> Selects [GitDiff, PyTest]    |
+|  Context Window: [ = 1k Tools = ] [Task & History ...................] |
+|  Reduction: 98% token savings, 0% schema dilution                     |
++-----------------------------------------------------------------------+
+```
+
+Furthermore, empirical testing shows that exposing an LLM to hundreds of simultaneously active tools degrades selection accuracy. The probability of the model picking an incorrect tool or hallucinating non-existent parameters increases monotonically with catalog size.
+
+---
+
+## 2. The Multi-Tier Tool Selection Architecture
+
+To support hundreds of enterprise capabilities without blowing up context, production agent harnesses employ a two-phase selection architecture:
+
+```
++--------------------------------------------------------------------------+
+|                              User Task Intent                            |
+|             "Check recent git commit and run failed pytest suite"         |
++------------------------------------+-------------------------------------+
+                                     |
+                                     v
++--------------------------------------------------------------------------+
+|                   Phase 1: Deterministic / Semantic Router               |
+|      BM25 Token Inverted Index + Cosine Similarity on Dense Embeddings    |
++------------------------------------+-------------------------------------+
+                                     |
+              +----------------------+----------------------+
+              | Top 4 Candidate Tools Filtered             | Tool Discovery Meta-Tool
+              v                                            v
++-----------------------------+             +------------------------------+
+| Active Tool Schemas Injected|             | search_tools(query, domain)  |
+| - git_diff                  |             | (Fallback discovery hook)    |
+| - run_pytest                |             +------------------------------+
+| - read_file                 |
+| - git_log                   |
++-----------------------------+
+              |
+              v
++--------------------------------------------------------------------------+
+|                       Model Generation & Execution                       |
+|         Model calls 'run_pytest' with zero context bloat (1,000 tokens)  |
++--------------------------------------------------------------------------+
+```
+
+### The Three Retrieval Paradigms
+
+1. **Deterministic Domain Routing**: If an agent transitions into a known sub-state (e.g. "Database Migration State"), the harness injects only the database tool suite (`run_sql_query`, `explain_analyze`, `rollback_migration`).
+2. **Dense Vector Tool Retrieval**: Each tool description is embedded using an embedding model (such as `text-embedding-3-small`). At turn $t$, the user prompt and recent conversation history are embedded and matched against the tool catalog via cosine similarity:
+   $$\text{Score}(Q, T_i) = \frac{\mathbf{e}_Q \cdot \mathbf{e}_{T_i}}{\|\mathbf{e}_Q\| \|\mathbf{e}_{T_i}\|}$$
+3. **The Meta-Tool Pattern (`search_tools`)**: The agent is provided with only 3–5 baseline tools plus a special discovery tool:
+   ```json
+   {
+     "name": "search_tools",
+     "description": "Find and activate specialized tools by keywords or domain tags.",
+     "parameters": {
+       "type": "object",
+       "properties": {
+         "query": { "type": "string", "description": "e.g. 'stripe refund customer' or 'docker build'" },
+         "domain": { "type": "string", "enum": ["git", "cloud", "database", "finance", "k8s"] }
+       },
+       "required": ["query"]
+     }
+   }
+   ```
+   When the agent realizes it needs to execute a database rollback, it calls `search_tools(query="postgres rollback")`. The harness executes the query against its vector store, dynamically appends the schema for `rollback_migration` to the active session tools for turn $t+1$, and allows the agent to call it.
+
+---
+
+## 3. Tool Selection Degradation: The Saturation Curve
+
+<PredictFirst
+  question="When an agent is presented with 10 tools versus 150 tools in its system prompt for a software refactoring task, how does the tool selection error rate (calling wrong tool or invalid params) change?"
+  options={[
+    "Error rate remains constant because transformer attention calculates exact pairwise token affinities regardless of list length.",
+    "Error rate increases non-linearly: accuracy typically drops from >95% with 10 tools to <70% with 150 tools due to parameter interference and attention distraction.",
+    "Error rate decreases with 150 tools because the model has more granular tool choices available to pick from."
+  ]}
+  answerIndex={1}
+  explanation="Empirical benchmarks (such as Berkeley Function Calling Leaderboard and ToolBench) reveal that tool selection accuracy suffers non-linear degradation as tool counts scale past 20-30 schemas. Parameter names collide, docstring subtleties blur, and the model frequently hallucinates arguments across similar tool signatures."
+/>
+
+### Schema Interference and Attention Drift
+
+Why does tool selection degrade? Two primary factors govern this failure mode:
+
+1. **Namespace Collision & Near-Neighbor Confusion**: Consider having both `fetch_customer_by_id` and `get_customer_record`. When both are present in context, their semantic definitions overlap heavily. The model often generates a hybrid call combining the argument signature of tool A with the name of tool B.
+2. **Context Window Contention**: Long tool definitions push the actual prompt and conversation history further up the context window. As discussed in token budgeting, tokens pushed into the middle region of the attention matrix suffer reduced retrieval fidelity.
+
+By filtering down to top-$K$ ($K \le 5$) candidates per turn, namespaces remain orthogonal and attention remains focused on the user's specific problem.
+
+---
+
+## 4. Schema Pruning: Stripping Parameter Noise
+
+Even after filtering to 5 tools, schemas can still be unnecessarily verbose. Software interfaces often contain dozens of optional tuning flags, debugging parameters, and backward-compatibility fields that an agent rarely touches.
+
+Production harnesses apply **Schema Pruning** before serializing tools into the JSON request:
+
+```python
+# Raw Full Schema (380 tokens):
+{
+  "name": "run_docker_container",
+  "description": "Spins up an isolated container instance with network bridging, volume mounts, resource quotas, and tty binding...",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "image": {"type": "string", "description": "Docker image repository tag"},
+      "command": {"type": "string", "description": "Command string to run"},
+      "cpu_quota": {"type": "integer", "description": "Microseconds of CPU quota per period", "default": 100000},
+      "memory_mb": {"type": "integer", "description": "RAM cap in MB", "default": 2048},
+      "cap_add": {"type": "array", "items": {"type": "string"}, "description": "Linux capabilities"},
+      "dns_servers": {"type": "array", "items": {"type": "string"}},
+      "mac_address": {"type": "string"}
+    },
+    "required": ["image"]
+  }
+}
+
+# Pruned Minimal Schema (110 tokens):
+{
+  "name": "run_docker_container",
+  "description": "Spins up an isolated container instance.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "image": {"type": "string", "description": "Docker image tag"},
+      "command": {"type": "string", "description": "Command string to run"}
+    },
+    "required": ["image"]
+  }
+}
+```
+
+By hiding non-essential optional parameters during standard execution steps, token consumption drops by over 70%, and parameter validation errors vanish.
+
+---
+
+## 5. Implementation: Semantic Tool Registry & Dynamic Injector
+
+Below is an executable Python implementation of a semantic tool discovery registry. It maintains a catalog, computes lexical-semantic affinity scores, dynamically filters top-$K$ candidate tools, and serializes pruned schemas into an OpenAI/Anthropic-compatible payload.
+
+<RunnableCode code={`import json
+import math
+from dataclasses import dataclass, field
+from typing import List, Dict, Any, Optional
+
+@dataclass
+class ToolDefinition:
+    name: str
+    description: str
+    parameters: Dict[str, Any]
+    tags: List[str]
+    token_cost: int
+
+class SemanticToolRegistry:
+    """
+    Maintains a catalog of tools, performing lexical & semantic matching
+    to inject only the top-K relevant tool schemas into active context.
+    """
+    def __init__(self):
+        self.catalog: Dict[str, ToolDefinition] = {}
+
+    def register(self, name: str, description: str, parameters: Dict[str, Any], tags: List[str], token_cost: int = 250) -> None:
+        self.catalog[name] = ToolDefinition(
+            name=name,
+            description=description,
+            parameters=parameters,
+            tags=tags,
+            token_cost=token_cost
+        )
+
+    def route_tools(self, task_prompt: str, top_k: int = 3, pinned_tools: Optional[List[str]] = None) -> List[ToolDefinition]:
+        """
+        Calculates cosine-style token overlap scores across tool metadata
+        and returns the top-K tools, always ensuring pinned tools are included.
+        """
+        pinned_tools = pinned_tools or []
+        task_tokens = set(task_prompt.lower().replace('_', ' ').replace('-', ' ').split())
+        
+        scored: List[tuple[float, ToolDefinition]] = []
+        for name, tool in self.catalog.items():
+            if name in pinned_tools:
+                continue  # Handled separately to guarantee inclusion
+            
+            tool_corpus = f"{tool.name} {tool.description} {' '.join(tool.tags)}".lower().replace('_', ' ')
+            tool_tokens = set(tool_corpus.split())
+            
+            # Token intersection score
+            intersection = task_tokens.intersection(tool_tokens)
+            score = len(intersection) / (math.sqrt(len(task_tokens)) * math.sqrt(len(tool_tokens)) + 1e-5)
+            scored.append((score, tool))
+
+        # Sort descending by relevance score
+        scored.sort(key=lambda item: item[0], reverse=True)
+        
+        # Assemble results: pinned first, then highest scoring
+        results: List[ToolDefinition] = [self.catalog[name] for name in pinned_tools if name in self.catalog]
+        for _, tool in scored:
+            if len(results) >= top_k:
+                break
+            results.append(tool)
+            
+        return results
+
+    def serialize_active_schema(self, active_tools: List[ToolDefinition], prune_optional: bool = True) -> Dict[str, Any]:
+        """
+        Serializes tools into standard API function schema format.
+        When prune_optional=True, strips extraneous unrequired descriptions.
+        """
+        serialized = []
+        total_tokens = 0
+        
+        for t in active_tools:
+            params = t.parameters
+            if prune_optional and "properties" in params:
+                req = set(params.get("required", []))
+                # Prune properties that are not required if count is high
+                pruned_props = {
+                    k: v for k, v in params["properties"].items() 
+                    if k in req or len(params["properties"]) <= 3
+                }
+                params = {"type": "object", "properties": pruned_props, "required": list(req)}
+            
+            serialized.append({
+                "type": "function",
+                "function": {
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": params
+                }
+            })
+            total_tokens += t.token_cost
+
+        return {
+            "tools": serialized,
+            "tool_count": len(serialized),
+            "estimated_token_overhead": total_tokens
+        }
+
+# Verification & Test Setup
+registry = SemanticToolRegistry()
+
+# Register diverse tool catalog across engineering disciplines
+registry.register("git_diff", "Inspect file diffs between git working tree and HEAD", 
+                  {"type": "object", "properties": {"path": {"type": "string"}, "staged": {"type": "boolean"}}, "required": ["path"]},
+                  ["git", "diff", "vcs", "code"], token_cost=220)
+
+registry.register("run_pytest", "Execute automated test suite via pytest and capture stdout", 
+                  {"type": "object", "properties": {"target": {"type": "string"}, "verbose": {"type": "boolean"}}, "required": ["target"]},
+                  ["test", "pytest", "python", "unit"], token_cost=240)
+
+registry.register("sql_query", "Execute read-only SQL queries on Postgres reporting database", 
+                  {"type": "object", "properties": {"sql": {"type": "string"}}, "required": ["sql"]},
+                  ["database", "sql", "postgres", "query"], token_cost=260)
+
+registry.register("s3_upload", "Upload binary build artifacts to Amazon S3 storage", 
+                  {"type": "object", "properties": {"bucket": {"type": "string"}, "key": {"type": "string"}}, "required": ["bucket", "key"]},
+                  ["aws", "s3", "cloud", "storage"], token_cost=230)
+
+registry.register("slack_alert", "Post message to incident on-call channel", 
+                  {"type": "object", "properties": {"channel": {"type": "string"}, "text": {"type": "string"}}, "required": ["text"]},
+                  ["slack", "alert", "notify", "chat"], token_cost=210)
+
+# Simulate User Intent
+prompt = "Run unit test suite on auth module and check git diff on failure"
+print(f"Task Prompt: '{prompt}'")
+
+# Route top 2 relevant tools, with git_diff pinned
+active = registry.route_tools(prompt, top_k=2, pinned_tools=["git_diff"])
+schema = registry.serialize_active_schema(active)
+
+print(f"\nDiscovered Tools ({schema['tool_count']}): {[t.name for t in active]}")
+print(f"Active Tool Token Overhead: {schema['estimated_token_overhead']} tokens (Catalog total was 1,160 tokens)")
+print(f"Token Reduction: {((1160 - schema['estimated_token_overhead']) / 1160) * 100:.1f}%")
+
+# Invariant Assertion
+tool_names = [t.name for t in active]
+assert "git_diff" in tool_names and "run_pytest" in tool_names
+print("\nAssertion passed: Semantic routing accurately selected git_diff and run_pytest.")
+`} />
+
+---
+
+## 6. Real Production Configuration: Dynamic MCP Discovery Gateway
+
+In modern enterprise architectures utilizing the Model Context Protocol (MCP), agents connect to dozens of disparate MCP servers. Below is a production gateway configuration showing how semantic filtering sits between client agents and external tool servers:
+
+```json
+{
+  "mcp_gateway": {
+    "version": "2026.1.0",
+    "router": {
+      "mode": "hybrid_vector_bm25",
+      "embedding_model": "text-embedding-3-small",
+      "max_active_tools_per_turn": 6,
+      "relevance_threshold": 0.42,
+      "cache_ttl_seconds": 3600
+    },
+    "static_pinned_tools": [
+      "read_file",
+      "edit_file",
+      "search_tools"
+    ],
+    "servers": [
+      {
+        "name": "github-mcp",
+        "url": "http://internal-mcp.infra:8081",
+        "catalog_size": 42,
+        "domains": ["vcs", "pull_requests", "issues", "commits"]
+      },
+      {
+        "name": "aws-mcp",
+        "url": "http://internal-mcp.infra:8082",
+        "catalog_size": 115,
+        "domains": ["cloud", "s3", "ec2", "cloudwatch", "lambda"]
+      },
+      {
+        "name": "datadog-mcp",
+        "url": "http://internal-mcp.infra:8083",
+        "catalog_size": 28,
+        "domains": ["metrics", "traces", "logs", "alerts"]
+      }
+    ]
+  }
+}
+```
+
+When an agent needs to check Datadog APM traces, the gateway dynamically surfaces `query_datadog_traces` and `get_service_error_rate` into context, while holding the 115 AWS tools dormant.
+
+---
+
+## 7. When to Use It and When Not to Use It
+
+| Scenario | Recommended Strategy | Why? | Anti-Pattern |
+| :--- | :--- | :--- | :--- |
+| **Small Specialized Agents (< 8 tools)** | Static Schema Injection | The entire catalog consumes under 2,000 tokens. Filtering adds routing latency with zero context benefit. | Building complex vector search indexes for an agent that only reads and writes files. |
+| **Enterprise Agent Hubs (50+ tools)** | Hybrid Vector/BM25 Discovery + Meta-Tool | Prevents 30k+ token overhead per turn, lowers API bills by 85%, and eliminates parameter confusion. | Injecting the entire company API swagger specification into the system prompt. |
+| **Strict Security / Audited Workflows** | Role-Based Access Control (RBAC) Whitelist | Certain tools (e.g. `delete_database_cluster`) must never even be discoverable by unprivileged agents. | Relying on system prompt instructions ("Please do not call delete_db") instead of hardware-level routing. |
+| **Real-Time Interactive Voice Agents** | Pre-computed Static Subset | Dynamic vector retrieval adds 40–100ms of round-trip latency to the conversational turn. | Executing synchronous external database vector queries on every spoken utterance. |
+
+---
+
+## 8. Core Invariants to Remember
+
+| Concept | Invariant Rule | Operational Consequence |
+| :--- | :--- | :--- |
+| **Tool Budget Ceiling** | Active tool schemas must never exceed 15% of the total usable input budget. | Oversized tool catalogs starve the agent of working memory for reasoning and code reading. |
+| **The Pinned Core** | Fundamental observation tools (`read_file`, `search_tools`) must remain permanently active. | If an agent evicts its discovery tool, it becomes permanently blind to the rest of the catalog. |
+| **Prefix Cache Alignment** | Sort active tools deterministically (e.g. alphabetically by tool name). | Randomly shuffled tool lists break KV cache prefix matches on every single turn. |
+| **Orthogonal Signatures** | Never present two tools with identical parameter descriptions in the same turn. | Ambiguous tool signatures trigger parameter hallucination and schema validation rejections. |
+
+---
+
+## Sources
+
+- Anthropic Engineering. (2024). *Model Context Protocol (MCP) Specification*. Model Context Protocol Documentation. [https://modelcontextprotocol.io/introduction](https://modelcontextprotocol.io/introduction)
+- Patil, S. G., Zhang, T., Wang, X., & Gonzalez, J. E. (2023). *Gorilla: Large Language Model Connected with Massive APIs*. arXiv preprint. [https://arxiv.org/abs/2305.15334](https://arxiv.org/abs/2305.15334)
+- Berkeley Artificial Intelligence Research (BAIR). (2024). *The Berkeley Function-Calling Leaderboard (BFCL)*. Gorilla BAIR Blog. [https://gorilla.cs.berkeley.edu/blogs/8_berkeley_function_calling_leaderboard.html](https://gorilla.cs.berkeley.edu/blogs/8_berkeley_function_calling_leaderboard.html)
+- OpenAI Platform Documentation. (2024). *Function Calling and Tool Use in OpenAI Models*. OpenAI Guides. [https://platform.openai.com/docs/guides/function-calling](https://platform.openai.com/docs/guides/function-calling)
