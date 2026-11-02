@@ -5,6 +5,7 @@ description: "Managing working memory, multi-session task persistence, structure
 ---
 
 import ContextCompactionVisualizer from '../../../viz/diagrams/ContextCompactionVisualizer';
+import TwoPassCompactionFlowDiagram from '../../../viz/diagrams/TwoPassCompactionFlowDiagram';
 import AnthropicSupervisorTriadVisualizer from '../../../viz/diagrams/AnthropicSupervisorTriadVisualizer';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
@@ -178,26 +179,7 @@ Consider an agent running a test-fix cycle. Its raw conversational history conta
 
 The target context budget for conversation history is **150 tokens**.
 
-```
-           Raw Conversation History (551 Tokens)
-   [ System: 15 tokens | User: 12 tokens | Tool logs: 430 tokens | Agent: 94 tokens ]
-                                │
-                                ▼
-        ┌──────────────────────────────────────────────┐
-        │ Pass 1: Prune Old Tool Traces (> 2 turns)    │
-        │ Replace raw pytest outputs with status tags  │
-        └───────────────────────┬──────────────────────┘
-                                │
-                                ▼
-        ┌──────────────────────────────────────────────┐
-        │ Pass 2: Truncate Verbose Recent Tool Logs    │
-        │ Retain pass/fail assertion and timing line   │
-        └───────────────────────┬──────────────────────┘
-                                │
-                                ▼
-           Compacted Context History (76 Tokens)
-   [ 86.2% token reduction — 100% of user constraints & agent conclusions preserved ]
-```
+<TwoPassCompactionFlowDiagram />
 
 ### Run It Yourself
 

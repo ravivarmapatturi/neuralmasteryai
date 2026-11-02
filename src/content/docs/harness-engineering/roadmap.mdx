@@ -5,6 +5,7 @@ description: "The complete curriculum for AI Harness Engineering in Python: turn
 ---
 
 import AgentHarnessArchitectureVisualizer from '../../../viz/diagrams/AgentHarnessArchitectureVisualizer';
+import HarnessCurriculumDiagram from '../../../viz/diagrams/HarnessCurriculumDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5 } from '../../../components/content/ExpandableDepth';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
@@ -40,35 +41,14 @@ The **Harness** is the car built around that engine: the chassis, steering wheel
     "The user did not provide enough examples in few-shot prompting."
   ]}
   correctIndex={1}
-  explanation="Empirical ablation studies demonstrate that holding the foundation model constant while upgrading the harness elevates task completion from 14% to over 93%. Model intelligence is rarely the limiting factor; missing verification sensors, context rot, and unconstrained action spaces account for the vast majority of autonomous failures."
+  explanation="In benchmark harness environments, holding the foundation model constant while providing automated verification sensors and sandboxed execution raises task completion dramatically. Model intelligence is rarely the limiting factor in unattended coding; missing verification sensors, context rot, and unconstrained action spaces account for the vast majority of autonomous failures."
 />
 
 ---
 
 ## The Curriculum Track
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                 PYTHON HARNESS ENGINEERING CURRICULUM                       │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                       │
-         ┌─────────────────────────────┼─────────────────────────────┐
-         ▼                             ▼                             ▼
-┌─────────────────┐           ┌─────────────────┐           ┌─────────────────┐
-│  1. Foundations │           │ 2. Python       │           │ 3. 3-Layer      │
-│  & Architecture │           │    Sandboxing   │           │    Verification │
-│  [Overview]     │           │ [pyharness]     │           │ [Ruff/Mypy/Test]│
-└─────────────────┘           └─────────────────┘           └─────────────────┘
-         │                             │                             │
-         └─────────────────────────────┼─────────────────────────────┘
-                                       ▼
-         ┌───────────────────────────────────────────────────────────┐
-         ▼                                                           ▼
-┌─────────────────────────────────┐         ┌─────────────────────────────────┐
-│     4. Context Architecture     │         │    5. State Continuity & Loops  │
-│  AGENTS.md & Instruction Budget │         │    Anthropic Triad & FeatureList│
-└─────────────────────────────────┘         └─────────────────────────────────┘
-```
+<HarnessCurriculumDiagram />
 
 ### 1. [Python Harness Engineering Overview](/docs/harness-engineering/overview)
 - The core formula: $\text{Agent} = \text{Model} + \text{Harness}$.
@@ -108,6 +88,16 @@ The **Harness** is the car built around that engine: the chassis, steering wheel
 - The Multi-Agent Triad (Planner-Generator-Evaluator): isolating execution agents from auditor agents.
 - Background entropy and garbage collection agents (OpenAI pattern): continuously pruning stale code and docs.
 - Trajectory logging (`transcript.jsonl`), telemetry, and security monitoring.
+
+## When *Not* to Use It
+
+Applying an autonomous multi-step harness across every engineering task creates unnecessary latency and cost overhead:
+
+| Situation | Better Choice | Why |
+| :--- | :--- | :--- |
+| Simple query answering over static documentation | Standard Vector Search (RAG) | Read-only questions do not execute commands or edit files; harness sandboxing adds unnecessary overhead. |
+| Deterministic CI linters and formatting | Pre-commit hooks (`ruff`, `prettier`) | Deterministic formatters execute in < 100 ms with zero token cost; delegating formatting to autonomous agents is wasteful. |
+| Strict linear workflows with zero ambiguity | Airflow / Prefect / Temporal workflow | If execution paths are strictly fixed, stochastic agent supervisors add non-deterministic points of failure. |
 
 ---
 

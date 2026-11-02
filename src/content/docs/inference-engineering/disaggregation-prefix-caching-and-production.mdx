@@ -5,6 +5,8 @@ description: "Advanced datacenter serving architecture: Prefill-Decode (PD) disa
 ---
 
 import DisaggregationPrefixCachingVisualizer from '../../../viz/diagrams/DisaggregationPrefixCachingVisualizer';
+import DisaggregatedServingArchDiagram from '../../../viz/diagrams/DisaggregatedServingArchDiagram';
+import RadixTreePrefixDiagram from '../../../viz/diagrams/RadixTreePrefixDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -74,31 +76,7 @@ Disaggregated serving physically decouples the prefill and decode stages across 
 
 Disaggregated serving (pioneered by systems like Splitwise, DistServe, Mooncake, and NVIDIA Dynamo) physically splits the inference pipeline across specialized hardware nodes:
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                    DISAGGREGATED SERVING ARCHITECTURE                       │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                       │ Incoming Prompt
-                                       ▼
-                         ┌───────────────────────────┐
-                         │   Intelligent Router &    │
-                         │   Cache-Aware Dispatcher  │
-                         └─────────────┬─────────────┘
-                                       │
-                ┌──────────────────────┴──────────────────────┐
-                ▼                                             ▼
-┌───────────────────────────────┐             ┌───────────────────────────────┐
-│     PREFILL WORKER POOL       │             │      DECODE WORKER POOL       │
-│  (Compute-Optimized, TP=1/2)  │             │   (Memory-Optimized, TP=4/8)  │
-│                               │             │                               │
-│ • Runs prompt GEMM in FP8     │             │ • Runs iteration decode loop  │
-│ • Generates initial KV Cache  │             │ • Zero prefill interference   │
-│ • Emits Token 1               │             │ • Ultra-stable ITL (10-15ms)  │
-└───────────────┬───────────────┘             └───────────────▲───────────────┘
-                │                                             │
-                └─────────── Transmit KV Cache ───────────────┘
-                    (via RDMA / RoCE / NVLink-C2C Network)
-```
+<DisaggregatedServingArchDiagram />
 
 ### How Disaggregation Works
 
@@ -139,26 +117,13 @@ Traditional LRU caches struggle with branching conversation histories: if two us
 
 A **Radix Tree** (compressed trie) structures KV cache memory at token-sequence boundaries. Common prefixes are retained as tree nodes, and branching queries allocate new child nodes:
 
-```
-               [Root]
-                 │
-                 ▼
-       ["You are an expert..."] (System Prompt: 1,024 tokens)
-                 │
-       ┌─────────┴─────────┐
-       ▼                   ▼
- [User Turn 1]       [User Turn 2]
- (Doc A: 4k tok)     (Doc B: 4k tok)
-       │                   │
-       ▼                   ▼
- [KV Reused!]        [KV Reused!]
-```
+<RadixTreePrefixDiagram />
 
 When an agent prompt arrives:
 1. The engine tokenizes the input and traverses the Radix Tree.
 2. Reusable KV cache blocks are matched and mapped directly into the GPU Page Table.
 3. Only the non-overlapping token suffix is dispatched to Tensor Cores for prefill.
-4. On a 10,000-token prompt with 9,500 tokens of cached prefix, **TTFT drops from 420ms to 15ms** (a 28× acceleration!).
+4. On a 10,000-token prompt with 9,500 tokens of cached prefix, **TTFT drops from 420ms to 15ms** (illustrative benchmark profile on an 8x H100 cluster; a 28× acceleration).
 
 ## Worked Example & Runnable Code: Radix Prefix Cache Simulator
 

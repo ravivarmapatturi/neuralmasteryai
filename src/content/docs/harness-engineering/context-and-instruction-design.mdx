@@ -29,8 +29,8 @@ In Harness Engineering, we keep the model's workbench clean. We provide a concis
 
 As frontier context windows expanded from 8,000 tokens to 200,000 and beyond, teams began inlining whole repositories into initial system prompts. This naive approach produces four consistent operational defects:
 
-1. **Lost in the Middle (Attention Degradation)**: Research by Liu et al. (2023) established that transformer self-attention allocates highest fidelity to tokens at the absolute beginning and end of a context window. Instructions and assertions placed in the middle of a 100,000-token prompt exhibit up to 40% lower recall than when presented in focused windows.
-2. **Context Anxiety & Premature Victory**: As active context usage passes 65-70% of available capacity, model generations show higher rates of truncated reasoning, repetitive tool polling, or premature declarations that tasks are complete without running tests.
+1. **Lost in the Middle (Attention Degradation)**: Research by Liu et al. (2023, *Lost in the Middle*) established that transformer self-attention allocates highest fidelity to tokens at the beginning and end of a context window. Key facts placed in the middle of long contexts suffer substantially lower retrieval and reasoning accuracy than when positioned near the prompt boundaries.
+2. **Context Saturation & Premature Victory**: As active context usage approaches high percentages of available window capacity, models exhibit degraded instruction adherence, repetitive tool polling, or premature declarations that tasks are complete without running tests.
 3. **Quadratic Cost and Latency Scaling**: An autonomous agent executes multiple sequential turns. In a 15-turn task, carrying 80,000 tokens of static code means paying for 1.2 million cumulative input tokens, drastically increasing cost while slowing response times.
 4. **Instruction Contradiction**: When broad documentation contains outdated architectural decisions alongside new guidelines, the model cannot distinguish current invariants from historical artifacts, leading to regressive edits.
 
@@ -65,9 +65,9 @@ As an agent edits code, executes tests, and receives compiler outputs, its worki
 
 <GoDeeper title="Go deeper: Why attention dispersal creates 'Context Anxiety' in long-running runs">
 
-In multi-turn autonomous coding runs, agents often exhibit what practitioners term **Context Anxiety**: as the token count crosses 60-70% of the active context window, the model's likelihood of abruptly declaring premature victory or emitting truncated code spikes dramatically. 
+In multi-turn autonomous coding runs, agents often exhibit what practitioners term **Context Anxiety**: as the token count crosses 60-70% of the active context window, the model's likelihood of abruptly declaring premature victory or emitting truncated code increases.
 
-This occurs because frontier models are fine-tuned on completion pairs where conversational turn length is bounded. To eliminate Context Anxiety, the harness enforces a **sliding context window**: raw execution trace logs (stdout/stderr) are purged after each turn and replaced by a deterministic state checklist (`feature_list.json`). The agent always operates with 70%+ empty headroom for reasoning.
+A prevalent hypothesis among LLM systems engineers attributes this pattern to fine-tuning data distributions: conversational instruction datasets predominantly contain short-horizon tasks that resolve within modest turn counts, rarely reinforcing deep reasoning at near-exhaustion window thresholds. Regardless of the exact causal driver, the operational solution is mechanical: the harness enforces a **sliding context window**, purging raw terminal execution logs after each turn and maintaining ground truth in an external state checklist (`feature_list.json`). This ensures the agent consistently maintains sufficient headroom for reasoning.
 
 </GoDeeper>
 

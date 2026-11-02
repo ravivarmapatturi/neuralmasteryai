@@ -6,6 +6,7 @@ description: "The execution loop, MicroVM and container isolation, command white
 
 import AgentHarnessArchitectureVisualizer from '../../../viz/diagrams/AgentHarnessArchitectureVisualizer';
 import SubprocessSandboxVisualizer from '../../../viz/diagrams/SubprocessSandboxVisualizer';
+import PreDispatchInterceptorDiagram from '../../../viz/diagrams/PreDispatchInterceptorDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -132,33 +133,13 @@ docker run --rm \
 ## A Full Worked Example: Process Supervision & Interception
 
 Consider an autonomous coding agent evaluating a pull request. The agent proposes three distinct commands across its trajectory:
-1. `pytest tests/unit/test_router.py -v` (a valid test suite run taking 312 ms and 48 MB RAM)
+1. `pytest tests/unit/test_router.py -v` (an illustrative test suite run taking ~312 ms and 48 MB RAM)
 2. `cat /etc/shadow || cat ~/.ssh/id_ed25519` (an illegal credential probe)
 3. `rm -rf / --no-preserve-root` (a catastrophic deletion command)
 
 The harness supervisor intercepts each command, applies static AST and regex heuristics, and dispatches only valid commands into the sandbox jail while enforcing process-group timeouts.
 
-```
-       [ Model Emits Tool Call: run_command(cmd) ]
-                           │
-                           ▼
-          ┌───────────────────────────────────┐
-          │  Harness Pre-Dispatch Interceptor  │
-          │  • Checks regex forbidden patterns│
-          │  • Verifies path whitelist        │
-          └─────────────────┬─────────────────┘
-                            │
-              ┌─────────────┴─────────────┐
-              │ Pattern Matches?          │
-             YES                         NO
-              │                           │
-              ▼                           ▼
-   [ REJECT TURN ]               [ SPAWN PROCESS GROUP ]
-   Exit: 126                     os.setsid()
-   Stdout: ""                    bwrap --unshare-all
-   Stderr: "SECURITY_VIOLATION"  cgroups: pids.max=64, mem=512MB
-   Duration: 2 ms                Duration: 312 ms (Pytest)
-```
+<PreDispatchInterceptorDiagram />
 
 ### Run It Yourself
 

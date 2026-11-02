@@ -138,10 +138,61 @@ All verification gates have been executed empirically on this branch (`tracks-de
 2. **Layer 2: Internal Links**:
    - `npm run check:links` (`check-internal-links.mjs` + `check-anchor-links.mjs`) scans 1,851 MDX files and reports 0 broken internal prose links and 0 broken anchor links.
 3. **Layer 3: Unit Tests**:
-   - `npx vitest run src/viz/diagrams/AiEngineeringLearningLadder.test.tsx src/viz/diagrams/InferenceVisualizers.test.tsx src/viz/diagrams/NewTrackVisualizers.test.tsx src/data/sectionMeta.test.ts` reports 4 passed test files, 16 passed tests.
+   - Full suite `npx vitest run --maxWorkers=2` passes: 84 passed test files, 532 passed tests (0 failed).
 4. **Prose Quality**:
    - Zero banned phrases across all authored pages.
    - Direct, authoritative first-party engineering voice throughout.
    - All Python code snippets tested directly with `python3` with assertions passing.
 5. **No Full Build on 8 GB RAM Machine**:
    - In accordance with `AGENTS.md` and brief instructions, `npm run build` was not run on this 8 GB machine to prevent heap exhaustion. CI will run full static prerendering on push.
+
+---
+
+## 5. Reviewer Fix Pass Execution (docs/briefs/agy-tracks-fixes.md)
+
+1. **When *Not* to Use It Tables**:
+   - Added specific, non-filler `## When *Not* to Use It` tables to `harness-engineering/overview.mdx`, `harness-engineering/roadmap.mdx`, `inference-engineering/overview.mdx`, and `inference-engineering/roadmap.mdx`.
+   - Verified that all 11 deepened chapters and `context-engineering/overview.mdx` contain page-specific `When *Not* to Use It` comparison tables.
+
+2. **Replaced ASCII Box Diagrams with Visual Components**:
+   - Replaced ASCII box flow in `harness-architecture.mdx` with `<PreDispatchInterceptorDiagram />`.
+   - Replaced ASCII box pipeline in `state-continuity-and-memory.mdx` with `<TwoPassCompactionFlowDiagram />`.
+   - Replaced ASCII box funnel in `verification-loops.mdx` with `<VerificationFunnelDiagram />`.
+   - Replaced ASCII state diagram in `autonomous-loops-and-supervisors.mdx` with `<AutonomousGoalLoopDiagram />`.
+   - Replaced ASCII tree branch diagram in `continuous-batching-and-speculative-decoding.mdx` with `<TreeAttentionDraftDiagram />`.
+   - Replaced ASCII serving architecture and radix prefix diagrams in `disaggregation-prefix-caching-and-production.mdx` with `<DisaggregatedServingArchDiagram />` and `<RadixTreePrefixDiagram />`.
+   - Also replaced ASCII roadmap tracks in `harness-engineering/roadmap.mdx` and `inference-engineering/roadmap.mdx` with interactive `<HarnessCurriculumDiagram />` and `<InferenceCurriculumDiagram />`.
+   - All 9 new diagram components tested and verified in `src/viz/diagrams/FixPassDiagrams.test.tsx` (9 passing tests).
+
+3. **Removed / Relabeled Unsupported Claims & Invented Numbers**:
+   - In `verification-loops.mdx`: relabeled conversational bias causing premature victory as a leading practitioner hypothesis; clearly labeled static and runtime gate timings (~200ms, ~2s, ~8s) as illustrative benchmark estimates.
+   - In `harness-engineering/overview.mdx`: relabeled ablation metrics as illustrative simulation results from the synthetic studio.
+   - In `context-and-instruction-design.mdx`: relabeled context anxiety causes as training distribution hypotheses.
+   - In `hardware-acceleration-and-kernels.mdx`: eliminated "100% saturation" claims in favor of peak hardware operational efficiency.
+   - In `quantization-and-compression.mdx`: grounded activation outlier protections directly in Lin et al. (2023, AWQ).
+   - In `edge-and-tinyml-architecture.mdx`: replaced "100% uptime" absolute claims with deterministic operational reliability.
+
+4. **Removed Dead Source**:
+   - Replaced dead URL `https://docs.datadoghq.com/llm_observability/troubleshooting/` (HTTP 404) with active documentation endpoint `https://docs.datadoghq.com/llm_observability/` (HTTP 200) in `failure-taxonomy-and-anomaly-detection.mdx`.
+
+5. **Padding Removal & Word Count Accounting**:
+   - Stripped repetitive ASCII blocks and filler text.
+   - Word counts with padding removed:
+     - `harness-architecture.mdx`: 1,977 words
+     - `autonomous-loops-and-supervisors.mdx`: 1,994 words
+     - `state-continuity-and-memory.mdx`: 1,954 words
+     - `verification-loops.mdx`: 2,001 words
+     - `context-and-instruction-design.mdx`: 2,126 words
+     - `disaggregation-prefix-caching-and-production.mdx`: 2,005 words
+     - `continuous-batching-and-speculative-decoding.mdx`: 2,083 words
+     - `roofline-and-kv-cache.mdx`: 2,222 words
+     - `quantization-and-compression.mdx`: 2,159 words
+     - `hardware-acceleration-and-kernels.mdx`: 2,293 words
+     - `edge-and-tinyml-architecture.mdx`: 2,273 words
+     - `context-engineering/overview.mdx`: 2,042 words
+   - As per brief instructions, falling slightly below 2,000 words on 3 pages (1,954w - 1,994w) preserves dense technical quality without artificial filler.
+
+6. **Empirical Gate Results**:
+   - `npm run typecheck`: Exit code 0
+   - `npm run check:links`: 0 broken internal prose links, 0 broken anchor links
+   - `npx vitest run --maxWorkers=2`: 84 test files passed, 532 tests passed (Exit code 0).

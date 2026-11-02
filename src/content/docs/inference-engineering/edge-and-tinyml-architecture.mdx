@@ -41,7 +41,7 @@ On bare-metal microcontrollers, this paradigm triggers fatal hardware crashes:
 2. **Fatal Heap Fragmentation**: When a program repeatedly allocates and frees variable-sized activation buffers (`malloc` followed by `free`), memory breaks into non-contiguous gaps. After several hours of continuous sensor polling, `malloc()` inevitably fails to locate a contiguous block, triggering an unrecoverable **Hard Fault exception** and resetting the device.
 3. **Severe Static Current Leakage**: Volatile SRAM requires continuous electrical current to retain charge. Microcontrollers minimize battery drain by keeping SRAM sizes tiny (e.g. 128 KB). Storing static neural network weights in SRAM drains battery cells within days.
 
-To achieve multi-year battery life and 100% operational uptime, production TinyML architectures enforce two systems invariants: **Zero Dynamic Heap Allocation** and **eXecute In Place (XIP)**.
+To achieve multi-year battery life and deterministic operational reliability, production TinyML architectures enforce two systems invariants: **Zero Dynamic Heap Allocation** and **eXecute In Place (XIP)**.
 
 ## The Shape of It
 
@@ -72,7 +72,7 @@ Under the **eXecute In Place (XIP)** architecture, model weights are memory-mapp
     "Because Flash ROM wears out after 1,000 malloc cycles."
   ]}
   correctIndex={1}
-  explanation="Microcontrollers have no virtual memory management unit (MMU) to defragment memory pages. When layer activations of varying sizes (e.g. 24 KB, then 16 KB, then 8 KB) are repeatedly allocated and freed on the heap, the memory space becomes fragmented into tiny unusable islands. To guarantee 100% uptime, production TinyML frameworks (TFLite Micro) completely ban dynamic allocation and use a pre-planned static Tensor Arena."
+  explanation="Microcontrollers have no virtual memory management unit (MMU) to defragment memory pages. When layer activations of varying sizes (e.g. 24 KB, then 16 KB, then 8 KB) are repeatedly allocated and freed on the heap, the memory space becomes fragmented into tiny unusable islands. To prevent heap fragmentation panics and out-of-memory crashes, production TinyML frameworks (TFLite Micro) ban dynamic allocation and use a pre-planned static Tensor Arena."
 />
 
 ## The Static Tensor Arena: Zero Dynamic Allocation

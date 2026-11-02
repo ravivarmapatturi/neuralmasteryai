@@ -88,7 +88,7 @@ $$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)
 
 As the sequence length $N$ grows, the denominator of the softmax function $\sum_{j=1}^{N} \exp(q_i k_j^T / \sqrt{d_k})$ aggregates probability mass across thousands of unrelated tokens. Softmax distributes fractional probability across noisy background context, creating an attention noise floor:
 
-1. **Primacy Bias**: Early tokens (system prompt, initial instructions) receive elevated attention mass due to positional priors and standard pre-training attention sinks.
+1. **Primacy Bias**: Early tokens (system prompt, initial instructions) receive disproportionate attention mass due to positional priors and standard pre-training attention sinks.
 2. **Recency Bias**: The most recent tokens (the immediate prompt and latest tool output) have high localized attention weight due to causal autoregressive structure.
 3. **The Attention Valley (Tokens $0.25 N$ to $0.75 N$)**: Intermediate tool executions, file contents read 8 turns ago, and temporary debug scripts fall into this central valley. Their attention scores drown beneath accumulated softmax denominator mass.
 

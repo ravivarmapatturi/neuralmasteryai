@@ -5,6 +5,7 @@ description: "High-throughput serving architectures: iteration-level continuous 
 ---
 
 import SpeculativeDecodingSimulator from '../../../viz/diagrams/SpeculativeDecodingSimulator';
+import TreeAttentionDraftDiagram from '../../../viz/diagrams/TreeAttentionDraftDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -140,17 +141,9 @@ $$P(x) = \min(q(x), p(x)) + \max(0, p(x) - q(x)) = p(x)$$
 
 While standard Speculative Decoding drafts a linear sequence of $K$ tokens, modern production architectures expand the draft space into a tree structure:
 
-```
-Linear Draft:
-[Token 1] ───► [Token 2] ───► [Token 3] ───► [Token 4]
+<TreeAttentionDraftDiagram />
 
-Tree Attention (Medusa / EAGLE):
-                 ┌───► [Branch A: token 2a] ───► [Token 3a]
-[Token 1] ───────┤
-                 └───► [Branch B: token 2b] ───► [Token 3b]
-```
-
-Using custom **Tree Attention Masks**, the target model verifies multiple candidate paths simultaneously in a single forward pass, raising the average accepted tokens per step from $2.1$ to over $3.6$.
+Using custom **Tree Attention Masks**, the target model verifies multiple candidate paths simultaneously in a single forward pass, raising the average accepted tokens per step from ~2.1 to over 3.6 (Cai et al., 2024, Medusa benchmark).
 
 ## A Full Worked Example: Expected Speedup Analysis
 

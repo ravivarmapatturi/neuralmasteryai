@@ -5,6 +5,7 @@ description: "Eliminating premature victory and false success in autonomous agen
 ---
 
 import VerificationThreeLayerSimulator from '../../../viz/diagrams/VerificationThreeLayerSimulator';
+import VerificationFunnelDiagram from '../../../viz/diagrams/VerificationFunnelDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -45,51 +46,25 @@ The verification engine arranges testing into three progressive layers, optimize
   question="Why must a harness always execute Layer 1 (ruff check and mypy typechecking) before triggering Layer 2 (pytest unit tests)?"
   options={[
     "Because pytest will crash the Python interpreter if there are type annotation errors.",
-    "Cost and velocity: static typing and AST linting run in <200ms without spawning runtime processes. Running slow pytest suites on broken syntax wastes agent token cycles and execution time.",
+    "Cost and velocity: static typing and AST linting run in ~200ms (illustrative benchmark) without spawning heavy runtime processes. Running slow test suites on broken syntax wastes agent token cycles and execution time.",
     "Because mypy automatically fixes all syntax errors in place before pytest runs.",
     "Because pytest cannot run unless mypy generates a .mypy_cache directory."
   ]}
   correctIndex={1}
-  explanation="In autonomous agent loops, velocity is everything. Spawning pytest, importing heavy libraries like PyTorch, and executing test suites takes 2-10 seconds. Static linting and mypy run in 200 milliseconds and catch 80% of common LLM hallucinations (missing imports, typos, wrong argument types). Bailing out early saves time, token budget, and API spend."
+  explanation="In autonomous agent loops, velocity is critical. Spawning pytest, importing heavy libraries like PyTorch, and executing test suites can take multiple seconds. Static linting and mypy run in ~200 milliseconds (illustrative benchmark on standard CI runners) and filter out routine static mistakes (missing imports, typos, wrong argument types) before slower suites initialize. Bailing out early saves time, token budget, and API spend."
 />
 
 ## The Verification Funnel
 
 Verification is structured into three progressive gates. Each layer is cheaper and faster than the next, creating an efficient filtering funnel:
 
-```
-        ┌──────────────────────────────────────────────┐
-        │       LAYER 1: STATIC AUDIT (TYPECHECK)      │
-        │ • Time: ~200ms                               │
-        │ • Tools: ruff check ., mypy --strict         │
-        │ • Catches: syntax errors, bad types, typos   │
-        └──────────────────────┬───────────────────────┘
-                               │ Passed
-                               ▼
-        ┌──────────────────────────────────────────────┐
-        │      LAYER 2: DETERMINISTIC UNIT SUITES      │
-        │ • Time: ~2s                                  │
-        │ • Tools: pytest tests/unit/ -v               │
-        │ • Catches: algorithmic bugs, math regressions│
-        └──────────────────────┬───────────────────────┘
-                               │ Passed
-                               ▼
-        ┌──────────────────────────────────────────────┐
-        │      LAYER 3: BEHAVIORAL RUNTIME PROBES      │
-        │ • Time: ~8s                                  │
-        │ • Tools: python -m tests.smoke, playwright   │
-        │ • Catches: runtime deadlocks, memory leaks   │
-        └──────────────────────┬───────────────────────┘
-                               │ Passed
-                               ▼
-                [ AUTHORIZATION TO COMMIT / DEPLOY ]
-```
+<VerificationFunnelDiagram />
 
 <GoDeeper title="Go deeper: Why Premature Victory is an emergent property of next-token prediction">
 
-Why do language models hallucinate completion? In human conversational training datasets, when someone asks "Can you write a function to sort a list?", polite responses conclude with affirmations: *"Here is your completed function; it handles all edge cases and runs in O(n log n) time."*
+Why do autoregressive models generate completion assertions without running tests? In standard instruction-tuning and conversational datasets, task demonstrations typically end with successful resolution text (*"I have implemented the solution and verified all edge cases"*). Because autoregressive generation predicts likely tokens based on typical human-assistant patterns, the model naturally produces tokens that mimic successful closure, even when internal semantic errors remain uninspected.
 
-Because the next-token probability distribution is heavily conditioned on conversational politeness, the model naturally predicts tokens expressing confidence and closure, regardless of whether the code contains syntax errors. The harness breaks this psychological illusion by decoupling completion claims from actual git commit authorization.
+A leading hypothesis among agent practitioners attributes this to conversational bias in RLHF trajectories, where models are rewarded for affirmative helpfulness. Without an external execution environment, the model has no mechanical feedback loop to contradict its own text. The harness eliminates reliance on verbal assurances by requiring empirical exit codes before authorization.
 
 </GoDeeper>
 
@@ -101,16 +76,16 @@ In a production harness runner, this verification funnel is executed by a determ
 #!/usr/bin/env bash
 set -eo pipefail
 
-echo "=== [Layer 1] Running Fast Static Audit (<200ms) ==="
+echo "=== [Layer 1] Running Fast Static Audit (Layer 1, illustrative ~200ms) ==="
 # Ruff validates syntax, unmapped variables, and formatting in milliseconds
 ruff check . --select E,F,W --quiet
 mypy --strict src/ --no-error-summary
 
-echo "=== [Layer 2] Running Deterministic Unit Tests (~2s) ==="
+echo "=== [Layer 2] Running Deterministic Unit Tests (Layer 2, illustrative ~2s) ==="
 # Pytest runs unit suites with short tracebacks and strict timeouts
 pytest tests/unit/ -v --timeout=15 --tb=short
 
-echo "=== [Layer 3] Running Behavioral Smoke & Contract Probes (~8s) ==="
+echo "=== [Layer 3] Running Behavioral Smoke & Contract Probes (Layer 3, illustrative ~8s) ==="
 # Execute real runtime binary or end-to-end integration harness
 python3 -m tests.e2e.contract_probe --timeout=30
 

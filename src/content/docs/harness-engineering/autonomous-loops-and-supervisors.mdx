@@ -5,6 +5,7 @@ description: "Designing autonomous goal loops, Maker-Checker supervisor architec
 ---
 
 import AnthropicSupervisorTriadVisualizer from '../../../viz/diagrams/AnthropicSupervisorTriadVisualizer';
+import AutonomousGoalLoopDiagram from '../../../viz/diagrams/AutonomousGoalLoopDiagram';
 import OpenAIEntropyVisualizer from '../../../viz/diagrams/OpenAIEntropyVisualizer';
 import HarnessAblationStudio from '../../../viz/diagrams/HarnessAblationStudio';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
@@ -42,52 +43,7 @@ The supervisor harness solves these challenges by implementing an outer control 
 
 An autonomous goal loop runs as a supervised state machine that delegates execution to workers while reserving commit authority for verifiers:
 
-```
-                      ┌───────────────────────────┐
-                      │    User Dispatches Goal   │
-                      │  "Implement feature X"    │
-                      └─────────────┬─────────────┘
-                                    │
-                                    ▼
-                      ┌───────────────────────────┐
-                ┌────►│   Harness Evaluates Loop  │◄───┐
-                │     │   Iteration & Budget Cap  │    │
-                │     └─────────────┬─────────────┘    │
-                │                   │                  │
-                │                   ▼                  │
-                │     ┌───────────────────────────┐    │
-                │     │   Worker Agent Executes   │    │
-                │     │      Subtask In Focus     │    │
-                │     └─────────────┬─────────────┘    │
-                │                   │                  │
-                │                   ▼                  │
-                │     ┌───────────────────────────┐    │
-                │     │   Supervisor / Verifier   │    │
-                │     │    Audits Changed Code    │    │
-                │     └─────────────┬─────────────┘    │
-                │                   │                  │
-           Pass │                   ▼                  │ Fail
-         Check  │            All Invariants            │ (Inject
-                │               Passed?                │ Diagnostic)
-                │              /       \               │
-                │          Yes/         \No            │
-                │            /           \             │
-                │           ▼             ▼            │
-                │     ┌───────────┐ ┌─────────────┐    │
-                │     │ Check Off │ │ Cycle Check │────┘
-                │     │ Subtask   │ │ & Fix Turn  │
-                │     └─────┬─────┘ └─────────────┘
-                │           │
-                │     More  │
-                │    Tasks? │
-                └───────────┤
-                            │ All Done
-                            ▼
-                      ┌───────────────────────────┐
-                      │ Final Integration Pass &  │
-                      │ Complete User Notification│
-                      └───────────────────────────┘
-```
+<AutonomousGoalLoopDiagram />
 
 <PredictFirst
   question="If an autonomous coding loop gets stuck in an oscillating ping-pong loop (editing File A breaks File B, editing File B breaks File A), what will happen if you only enforce a step cap (e.g. max 30 turns) without cycle detection?"

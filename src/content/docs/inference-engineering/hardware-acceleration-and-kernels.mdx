@@ -143,7 +143,7 @@ In low-latency inference serving ($< 10\text{ ms}$ per token), CPU launch overhe
 
 **CUDA Graphs** record a sequence of GPU kernel launches into a single static execution graph:
 1. **Capture Phase**: Run the forward pass once in capture mode; the CUDA driver records all kernel addresses, thread parameters, and memory dependencies.
-2. **Replay Phase**: The CPU dispatches the **entire graph with a single driver call**, eliminating CPU launch overhead and achieving 100% GPU saturation.
+2. **Replay Phase**: The CPU dispatches the **entire graph with a single driver call**, eliminating CPU launch overhead and maximizing GPU compute utilization.
 
 ```python
 # Real production CUDA Graph capture in PyTorch
@@ -259,7 +259,7 @@ print("Status:                EXACT MATHEMATICAL EQUIVALENCE (Error < 1e-15)")
    - *Fix*: Pass `num_warps=4` or `num_stages=3` to the `@triton.jit` decorator to guide the compiler's register allocator.
 
 <NotebookCallout color="green" title="Kernel Optimization Invariant">
-Never materialize intermediate attention matrices. Always utilize fused tiled kernels (FlashAttention-2/3) and compile static execution graphs (CUDA Graphs or TensorRT-LLM) to keep GPU Tensor Cores 100% saturated.
+Never materialize intermediate attention matrices. Always utilize fused tiled kernels (FlashAttention-2/3) and compile static execution graphs (CUDA Graphs or TensorRT-LLM) to keep GPU Tensor Cores operating at peak hardware efficiency.
 </NotebookCallout>
 
 ## When *Not* to Use It
