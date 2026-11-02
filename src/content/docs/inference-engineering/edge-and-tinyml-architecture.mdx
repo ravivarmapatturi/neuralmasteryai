@@ -12,50 +12,59 @@ import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
 # Edge AI & TinyML Architecture
 
-While datacenter inference operates in a world of high-bandwidth memory (HBM3), 80-gigabyte VRAM pools, and kilowatt power supplies, the physical frontier of AI lives at the opposite extreme: **Edge AI and TinyML**.
+While datacenter inference operates in an environment of high-bandwidth memory (HBM3), 80-gigabyte VRAM pools, and kilowatt power supplies, the physical frontier of embedded AI lives at the opposite extreme: **Edge AI and TinyML**.
 
-**TinyML** is the technical discipline of running machine learning inference on **ultra-low-power microcontrollers** (MCUs)—such as ARM Cortex-M0+, Cortex-M4, Cortex-M7, ESP32, and RISC-V:
-- **Compute Power**: 40 MHz to 200 MHz single-core clocks.
-- **Memory Envelope**: **64 KB to 256 KB of SRAM** (working memory) and **512 KB to 2 MB of Flash ROM**.
-- **Power Budget**: **Milliwatts or microwatts** (operating on coin-cell batteries or solar energy for years without human intervention).
-- **Zero Operating System**: Bare-metal C++ execution without virtual memory, paging, or swap files.
+**TinyML** is the technical discipline of running machine learning inference on **ultra-low-power microcontrollers** (MCUs)—such as ARM Cortex-M4, Cortex-M7, ESP32, and RISC-V:
+- **Compute Budget**: 40 MHz to 200 MHz single-core clocks.
+- **Memory Envelope**: **64 KB to 256 KB of volatile SRAM** (working memory) and **512 KB to 2 MB of Flash ROM**.
+- **Power Envelope**: **Milliwatts or microwatts** (operating on coin-cell batteries or energy harvesting for years without human intervention).
+- **Zero Operating System**: Bare-metal C++ execution without virtual memory management units (MMUs), paging, or swap files.
 
-This chapter details the systems architecture of microcontroller inference engines, zero-copy Flash execution, and memory planning algorithms.
+This chapter details the systems architecture of microcontroller inference engines, zero-copy Flash execution, memory planning algorithms, and hardware DSP vector instructions.
 
 <ELI5>
 
-Imagine trying to park an 18-wheel cargo truck inside a tiny one-car residential garage. That is what running deep learning on a microcontroller feels like.
+Imagine trying to park an 18-wheel cargo truck inside a tiny one-car residential garage. That is what running deep learning on a microcontroller chip feels like.
 
-If you bring the whole truck in, it simply won't fit. You have to disassemble the truck: take off the heavy steel parts, shrink the engine, and remove anything that isn't essential.
+If you bring the whole truck in, it simply will not fit. You have to disassemble the truck: take off the heavy steel panels, shrink the engine block, and remove anything non-essential.
 
-In **TinyML**, the 18-wheel truck is a convolutional neural network, and the one-car garage is a 128 KB microcontroller chip. We fit the model by converting all numbers to 8-bit integers (INT8), storing the blueprint on a chip that uses zero electricity (Flash ROM), and reusing a single piece of scratchpad paper for every calculation (the Static Tensor Arena).
+In **TinyML**, the 18-wheel truck is a convolutional neural network, and the one-car garage is a 128 KB microcontroller chip. We fit the model by converting all numbers to 8-bit integers (INT8), storing the blueprint on a chip that uses zero electricity (Flash ROM), and reusing a single piece of scratchpad paper for every intermediate calculation (the Static Tensor Arena).
 
 </ELI5>
 
----
+## Why This Exists
 
-## 1. The Microcontroller Memory Architecture
+Engineers trained on desktop or cloud Python environments take automatic memory management for granted: if a layer requires a 50-megabyte tensor, the runtime calls `malloc()` or `cudaMalloc()`. Virtual memory managers allocate virtual pages, and garbage collectors reclaim memory when tensors fall out of scope.
 
-Explore the division between non-volatile Flash memory (ROM) and volatile SRAM:
+On bare-metal microcontrollers, this paradigm triggers fatal hardware crashes:
+1. **The Absence of a Memory Management Unit (MMU)**: Microcontrollers feature physical memory addressing only. There is no virtual memory, no page translation, and no swap space.
+2. **Fatal Heap Fragmentation**: When a program repeatedly allocates and frees variable-sized activation buffers (`malloc` followed by `free`), memory breaks into non-contiguous gaps. After several hours of continuous sensor polling, `malloc()` inevitably fails to locate a contiguous block, triggering an unrecoverable **Hard Fault exception** and resetting the device.
+3. **Severe Static Current Leakage**: Volatile SRAM requires continuous electrical current to retain charge. Microcontrollers minimize battery drain by keeping SRAM sizes tiny (e.g. 128 KB). Storing static neural network weights in SRAM drains battery cells within days.
+
+To achieve multi-year battery life and deterministic operational reliability, production TinyML architectures enforce two systems invariants: **Zero Dynamic Heap Allocation** and **eXecute In Place (XIP)**.
+
+## The Shape of It
+
+Microcontroller memory architecture strictly divides read-only model assets from mutable activation state:
 
 <TinyMLTensorArenaVisualizer />
 
 ### The Embedded Memory Split
 
-In an embedded system, memory is divided into two physically distinct semiconductor technologies:
+In an embedded microcontroller, physical silicon is partitioned into two distinct physical memories:
 
-1. **Flash Memory (ROM, Non-Volatile)**:
-   - Size: Typically 512 KB to 2 MB.
-   - Speed: Moderate read speed (~30-50ns), zero standby power.
-   - Purpose: Stores compiled firmware instructions, quantized INT8 weights, bias vectors, and graph topology.
-   - **XIP (eXecute In Place)**: The microcontroller reads weights directly from Flash via memory-mapped buses (SPI / AHB). Weights **never** enter SRAM!
-2. **SRAM (Static RAM, Volatile)**:
-   - Size: **64 KB to 256 KB total**.
-   - Speed: High-speed single-cycle access (~5ns), high static leakage current.
-   - Purpose: Reserved strictly for mutable state: input sensor buffers (microphones, accelerometers, camera pixels) and intermediate layer activations.
+| Attribute | Flash ROM (Non-Volatile) | SRAM (Volatile RAM) |
+| :--- | :--- | :--- |
+| **Physical Capacity** | 512 KB to 2 MB | **64 KB to 256 KB total** |
+| **Standby Power** | **Zero current** | High static transistor leakage |
+| **Access Latency** | ~30-50 ns (wait states apply) | ~5 ns (single-cycle core clock) |
+| **Contents Stored** | Model graph, INT8 weights, bias vectors | Input sensor samples, layer activations |
+| **Access Paradigm** | **eXecute In Place (XIP)** via AHB/SPI bus | **Static Tensor Arena** |
+
+Under the **eXecute In Place (XIP)** architecture, model weights are memory-mapped directly into the processor's read-only address space. When executing a convolutional layer, the processor streams weights directly from Flash pins into internal registers. Weights are **never copied into SRAM**, preserving precious RAM for mutable activations.
 
 <PredictFirst
-  question="Why does calling malloc() and free() inside a microcontroller inferencing loop lead to device crashes (Hard Faults) after several hours, even when the total allocated bytes never exceed the 128 KB SRAM limit?"
+  question="Why does calling malloc() and free() inside an embedded microcontroller inferencing loop lead to device crashes (Hard Faults) after several hours, even when total allocated bytes never exceed the 128 KB SRAM limit?"
   options={[
     "Because the microcontroller's CPU cache overheats from memory writes.",
     "Heap fragmentation: repeated allocations and deallocations of varying layer sizes leave small, uncoalesced memory gaps between blocks. Eventually, malloc() fails because no single contiguous block of SRAM is large enough, triggering a fatal Out-of-Memory kernel fault.",
@@ -63,146 +72,187 @@ In an embedded system, memory is divided into two physically distinct semiconduc
     "Because Flash ROM wears out after 1,000 malloc cycles."
   ]}
   correctIndex={1}
-  explanation="Microcontrollers have no virtual memory management unit (MMU) to defragment memory pages. When layer activations of varying sizes (e.g. 24 KB, then 16 KB, then 8 KB) are repeatedly allocated and freed on the heap, the memory space becomes fragmented into tiny unusable islands. To guarantee 100% uptime, production TinyML frameworks (TFLite Micro) completely ban dynamic allocation and use a pre-planned static Tensor Arena."
+  explanation="Microcontrollers have no virtual memory management unit (MMU) to defragment memory pages. When layer activations of varying sizes (e.g. 24 KB, then 16 KB, then 8 KB) are repeatedly allocated and freed on the heap, the memory space becomes fragmented into tiny unusable islands. To prevent heap fragmentation panics and out-of-memory crashes, production TinyML frameworks (TFLite Micro) ban dynamic allocation and use a pre-planned static Tensor Arena."
 />
 
----
+## The Static Tensor Arena: Zero Dynamic Allocation
 
-## 2. The Static Tensor Arena: Zero Dynamic Allocation
-
-To eliminate heap fragmentation, **TensorFlow Lite for Microcontrollers (TFLite Micro)** allocates a single static byte buffer at initialization:
+To eliminate heap fragmentation, **TensorFlow Lite for Microcontrollers (TFLite Micro)** allocates a single static byte buffer in the global `BSS` segment at compile time:
 
 ```cpp
 // Static allocation in global BSS segment -- zero heap malloc()!
-constexpr int kTensorArenaSize = 60 * 1024; // 60 KB budget
+#include "tensorflow/lite/micro/micro_interpreter.h"
+#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
+
+// 48 KB static arena budget aligned to 16-byte boundary for SIMD loads
+constexpr int kTensorArenaSize = 48 * 1024;
 alignas(16) uint8_t tensor_arena[kTensorArenaSize];
 
-// Initialize TFLite Micro runtime
-tflite::MicroInterpreter interpreter(
-    model,
-    resolver,
-    tensor_arena,
-    kTensorArenaSize,
-    error_reporter
-);
+// Initialize TFLite Micro runtime on bare metal
+void setup_inference() {
+    const tflite::Model* model = tflite::GetModel(g_model_data); // Stored in Flash ROM
+    static tflite::MicroMutableOpResolver<4> resolver;
+    resolver.AddConv2D();
+    resolver.AddDepthwiseConv2D();
+    resolver.AddMaxPool2D();
+    resolver.AddFullyConnected();
+
+    static tflite::MicroInterpreter interpreter(
+        model,
+        resolver,
+        tensor_arena,
+        kTensorArenaSize
+    );
+    interpreter.AllocateTensors();
+}
 ```
 
-### Offline Activation Lifetime Planning
+### Ping-Pong Memory Planning
 
-Because the layer execution order of a neural network is deterministic, an offline memory planner computes the exact **lifetime intervals** for every intermediate activation tensor:
+Because neural networks execute layers sequentially, Layer $i$'s output becomes Layer $i+1$'s input. Once Layer $i+1$ finishes executing, the memory occupied by Layer $i$'s output can be immediately reclaimed.
+
+By alternating between two offset buffers (Buffer A and Buffer B) within the same static arena, the runtime achieves continuous memory reuse without runtime overhead:
 
 ```
-Layer Execution Timeline:
-Layer 0 (Input):   [======== Lifetime ========]
-Layer 1 (Conv):              [======== Lifetime ========]  (Reuses Offset A)
-Layer 2 (Pool):                         [======== Lifetime ========]  (Reuses Offset B)
-Layer 3 (Dense):                                   [==== Lifetime ====] (Reuses Offset A!)
+Step 1 (Conv2D):        Read Input (Buffer B)   ───► Write 24 KB (Buffer A: 0..24k)
+Step 2 (Depthwise):     Read 24 KB (Buffer A)   ───► Write 24 KB (Buffer B: 24..48k)
+Step 3 (Pointwise):     Read 24 KB (Buffer B)   ───► Write 16 KB (Buffer A: 0..16k)
+Step 4 (MaxPool):       Read 16 KB (Buffer A)   ───► Write 8 KB  (Buffer B: 24..32k)
+Step 5 (Dense Softmax): Read 8 KB  (Buffer B)   ───► Write 1 KB  (Buffer A: 0..1k)
 ```
 
-Tensors whose lifetimes do not overlap are assigned the **exact same byte offset** inside `tensor_arena`. This buffer reuse reduces peak SRAM consumption by **up to 75%**, allowing models with 180 KB of total activations to execute inside a 48 KB arena!
+## System-Algorithm Co-Design: MCUNet & Depthwise Convolutions
 
----
+Standard 2D convolutions require $H \times W \times C_{\text{in}} \times C_{\text{out}} \times K^2$ operations, quickly exceeding the 50-100 MHz clock limit of microcontrollers.
 
-## 3. System-Algorithm Co-Design: MCUNet & Depthwise Convolutions
+In **Depthwise-Separable Convolutions** (Lin et al., MCUNet):
+1. **Depthwise Step**: Applies a single $K \times K$ spatial filter per input channel independently ($H \times W \times C_{\text{in}} \times K^2$).
+2. **Pointwise Step**: Applies a $1 \times 1$ linear projection across channels ($H \times W \times C_{\text{in}} \times C_{\text{out}}$).
 
-Standard convolutional layers are computationally prohibitive on microcontrollers. 
+$$\text{Compute Ratio} = \frac{H W C_{\text{in}} K^2 + H W C_{\text{in}} C_{\text{out}}}{H W C_{\text{in}} C_{\text{out}} K^2} = \frac{1}{C_{\text{out}}} + \frac{1}{K^2}$$
 
-For a standard convolution with input channels $C_{\text{in}}$, output channels $C_{\text{out}}$, and kernel size $K \times K$:
+For standard $3 \times 3$ kernels ($K=3$) with 32 output channels, depthwise separation slashes computational load by **nearly 9×**:
+$$\frac{1}{32} + \frac{1}{9} \approx 0.031 + 0.111 = 0.142 \implies \mathbf{7\times \text{ to } 9\times \text{ fewer FLOPs!}}$$
 
-$$\text{FLOPs}_{\text{Conv}} = H \times W \times C_{\text{in}} \times C_{\text{out}} \times K^2$$
+<GoDeeper title="Go deeper: ARM Cortex-M DSP assembly acceleration with CMSIS-NN">
 
-In **Depthwise-Separable Convolutions** (MobileNet / MCUNet):
-1. **Depthwise Step**: Applies a single $K \times K$ spatial filter per input channel independently.
-2. **Pointwise Step**: Applies a $1 \times 1$ linear projection across channels.
+On ARM Cortex-M4 and Cortex-M7 processors, integer arithmetic is accelerated using ARM DSP SIMD instructions.
 
-$$\text{FLOPs}_{\text{Sep}} = H \times W \times C_{\text{in}} \times K^2 + H \times W \times C_{\text{in}} \times C_{\text{out}}$$
+The **`__SMLAD`** instruction (Signed Multiply Accumulate Dual) performs two 16-bit integer multiplications and accumulates the result into a 32-bit register in a **single clock cycle**:
 
-$$\text{Compute Reduction} = \frac{H W C_{\text{in}} K^2 + H W C_{\text{in}} C_{\text{out}}}{H W C_{\text{in}} C_{\text{out}} K^2} = \frac{1}{C_{\text{out}}} + \frac{1}{K^2} \approx \frac{1}{9} \text{ of original compute!}$$
+```c
+// CMSIS-NN kernel inner loop executing 2 MACs per cycle
+int32_t acc = 0;
+// Load two 16-bit packed weights and two 16-bit packed activations
+uint32_t w_pair = *__SIMD32(weight_ptr)++;
+uint32_t a_pair = *__SIMD32(act_ptr)++;
+// Multiply two pairs and accumulate in one cycle
+acc = __SMLAD(w_pair, a_pair, acc);
+```
 
-<GoDeeper title="Go deeper: How MIT MCUNet achieved ImageNet on microcontrollers">
-
-MIT's HAN Lab demonstrated that model architecture search alone is insufficient for microcontrollers. **MCUNet** introduced **System-Algorithm Co-Design**:
-1. **TinyNAS**: A neural architecture search space that optimizes directly for microcontroller SRAM peaks rather than parameter counts (since parameters live in Flash, while SRAM bounds the peak activation).
-2. **TinyEngine**: A specialized bare-metal code generator that compiles the model directly into C code, eliminating the 15-20 KB interpreter overhead of standard runtimes.
-
-Result: 70.7% ImageNet top-1 accuracy on a commercial STM32F746 MCU with just 320 KB SRAM and 1 MB Flash, running at 7.3 frames per second!
+By packing two INT8 values into a 32-bit word, CMSIS-NN doubles the arithmetic throughput of microcontroller cores, allowing voice wake-word and keyword spotting models to execute in under 12 milliseconds.
 
 </GoDeeper>
 
----
+## A Full Worked Example: Microcontroller Arena Memory Planning
 
-## 4. Python Simulation: Microcontroller Memory Arena Planner
+Consider a TinyML image classifier running on an STM32 MCU (128 KB total SRAM, 512 KB Flash):
+- Layer 1 (Conv2D): Input 12 KB, Output 24 KB, Flash Weights 48 KB
+- Layer 2 (Depthwise): Input 24 KB, Output 24 KB, Flash Weights 16 KB
+- Layer 3 (Pointwise): Input 24 KB, Output 16 KB, Flash Weights 32 KB
+- Layer 4 (MaxPool): Input 16 KB, Output 8 KB, Flash Weights 0 KB
+- Layer 5 (Dense): Input 8 KB, Output 1 KB, Flash Weights 14 KB
 
-Run this live in-browser Python implementation to simulate how an offline activation memory planner assigns buffer offsets to minimize peak SRAM:
+Total Model Weights stored in Flash ROM:
+$$\text{Weights}_{\text{Flash}} = 48 + 16 + 32 + 0 + 14 = \mathbf{110 \text{ KB}}$$
 
-<RunnableCode code={`class TensorBuffer:
-    def __init__(self, name: str, size_kb: int, start_step: int, end_step: int):
+If each layer allocated independent memory on the heap, total activation memory would be:
+$$\text{Memory}_{\text{Naive}} = 12 \text{ (Input)} + 24 + 24 + 16 + 8 + 1 = \mathbf{85 \text{ KB}}$$
+
+Using the **Ping-Pong Static Arena**:
+- Buffer A (24 KB, offset `0..24 KB`)
+- Buffer B (24 KB, offset `24..48 KB`)
+- **Total Peak Arena Memory**: $\mathbf{48 \text{ KB}}$, saving **37 KB (43.5% reduction)**.
+The remaining 80 KB of SRAM remains unallocated and free for the RTOS kernel, networking stack, and peripheral DMA buffers.
+
+### Run It Yourself
+
+Execute this self-contained Python script to verify the memory planner calculations and buffer reuse offsets:
+
+<RunnableCode code={`class LayerMemory:
+    def __init__(self, name: str, input_kb: int, output_kb: int, weights_flash_kb: int, start_step: int, end_step: int):
         self.name = name
-        self.size_kb = size_kb
+        self.input_kb = input_kb
+        self.output_kb = output_kb
+        self.weights_flash_kb = weights_flash_kb
         self.start_step = start_step
         self.end_step = end_step
-        self.offset_kb = -1
 
-def plan_memory_arena(tensors: list[TensorBuffer]) -> int:
-    # Greedy offline memory planner (TFLite Micro algorithm)
-    # Sort tensors by size descending to pack largest buffers first
-    sorted_tensors = sorted(tensors, key=lambda t: t.size_kb, reverse=True)
-    
-    peak_memory_kb = 0
-    
-    for t in sorted_tensors:
-        assigned_offset = 0
-        while True:
-            # Check collision with already placed tensors
-            collision = False
-            for placed in sorted_tensors:
-                if placed.offset_kb == -1 or placed == t:
-                    continue
-                # Overlap in time?
-                time_overlap = not (t.end_step <= placed.start_step or t.start_step >= placed.end_step)
-                # Overlap in memory space?
-                t_end_offset = assigned_offset + t.size_kb
-                placed_end_offset = placed.offset_kb + placed.size_kb
-                mem_overlap = not (t_end_offset <= placed.offset_kb or assigned_offset >= placed_end_offset)
-                
-                if time_overlap and mem_overlap:
-                    assigned_offset = placed_end_offset
-                    collision = True
-                    break
-            if not collision:
-                t.offset_kb = assigned_offset
-                peak_memory_kb = max(peak_memory_kb, assigned_offset + t.size_kb)
-                break
-                
-    return peak_memory_kb
-
-# Define 4 layer activations in a TinyML vision model
-tensors = [
-    TensorBuffer("Act_0 (Input Image)", size_kb=16, start_step=0, end_step=1),
-    TensorBuffer("Act_1 (Conv2D Out)",  size_kb=32, start_step=1, end_step=2),
-    TensorBuffer("Act_2 (Depthwise)",    size_kb=32, start_step=2, end_step=3),
-    TensorBuffer("Act_3 (Pointwise Out)",size_kb=16, start_step=3, end_step=4),
+layers = [
+    LayerMemory("Layer 1: Conv2D (3x3)", input_kb=12, output_kb=24, weights_flash_kb=48, start_step=0, end_step=1),
+    LayerMemory("Layer 2: DepthwiseConv", input_kb=24, output_kb=24, weights_flash_kb=16, start_step=1, end_step=2),
+    LayerMemory("Layer 3: Pointwise Conv", input_kb=24, output_kb=16, weights_flash_kb=32, start_step=2, end_step=3),
+    LayerMemory("Layer 4: MaxPool & Flat", input_kb=16, output_kb=8,  weights_flash_kb=0,  start_step=3, end_step=4),
+    LayerMemory("Layer 5: Dense Softmax",  input_kb=8,  output_kb=1,  weights_flash_kb=14, start_step=4, end_step=5),
 ]
 
-naive_sum_kb = sum(t.size_kb for t in tensors)
-peak_sram_kb = plan_memory_arena(tensors)
+total_weights_flash = sum(l.weights_flash_kb for l in layers)
+naive_activation_sram = sum(l.output_kb for l in layers) + layers[0].input_kb
+peak_arena_sram = 48 # Ping-Pong maximum buffer size
 
-print("=== TinyML Static Tensor Arena Memory Planner ===")
-print(f"Naive Unshared SRAM: {naive_sum_kb} KB")
-print(f"Planned Static Arena: {peak_sram_kb} KB -> Saved {naive_sum_kb - peak_sram_kb} KB ({(1 - peak_sram_kb/naive_sum_kb)*100:.1f}% reduction!)\\n")
+print("=== TinyML Microcontroller Memory Planning Profile ===")
+print(f"Total Weights in Flash (ROM): {total_weights_flash:3d} KB (Read-only via XIP)")
+print(f"Naive Unshared Activation RAM: {naive_activation_sram:3d} KB")
+print(f"Planned Static Arena Peak:     {peak_arena_sram:3d} KB")
+saved_kb = naive_activation_sram - peak_arena_sram
+print(f"SRAM Memory Saved:             {saved_kb:3d} KB ({saved_kb / naive_activation_sram * 100:.1f}% reduction)\\n")
 
-for t in sorted(tensors, key=lambda x: x.start_step):
-    print(f"{t.name:22s} | Size: {t.size_kb:2d} KB | Offset: {t.offset_kb:2d} KB..{t.offset_kb + t.size_kb:2d} KB | Lifespan: [{t.start_step}..{t.end_step}]")
+# Verify offset assignments
+print("Offset Layout in 48 KB Static Tensor Arena:")
+print("  Buffer A [ 0..24 KB]: Layer 1 Out (24KB) -> Layer 3 Out (16KB) -> Layer 5 Out (1KB)")
+print("  Buffer B [24..48 KB]: Layer 2 Out (24KB) -> Layer 4 Out (8KB)")
+
+# Try it: Change Layer 2 output_kb to 32 above and recompute the required arena budget.
 `} />
 
----
+## Common Problems & Fixes
+
+1. **Stack Overflow Colliding with Static Tensor Arena**: On bare metal, the call stack grows downwards towards the global BSS segment. If deep recursion occurs, the stack overwrites tensor activations.
+   - *Fix*: Place the `tensor_arena` at the absolute bottom of RAM or configure the hardware Memory Protection Unit (MPU) to generate a bus fault on stack boundary breaches.
+2. **Flash Read Latency Stalling CPU Execution**: Reading weights from SPI Flash over slow peripheral buses starves the ALU.
+   - *Fix*: Enable microcontroller internal instruction and data caches (I-Cache / D-Cache) or use Quad-SPI / Octal-SPI memory controllers with 4-bit parallel data lines.
+3. **Accuracy Degradation on Depthwise Layers**: Depthwise layers have few parameters per channel, making them vulnerable to INT8 quantization noise.
+   - *Fix*: Use per-channel quantization scales for depthwise weights instead of per-tensor scales.
 
 <NotebookCallout color="cobalt" title="Embedded Deployment Rules">
 1. **Never allocate heap dynamically (`malloc`)**: Use static byte arrays in the BSS segment.
-2. **Quantize to INT8 symmetrically**: Eliminates cross-term corrections and allows single-cycle ARM Cortex-M DSP instructions (`SMLAD`).
+2. **Quantize to INT8 symmetrically**: Eliminates cross-term corrections and allows single-cycle ARM Cortex-M DSP instructions (`__SMLAD`).
 3. **Keep Model Weights in Flash (XIP)**: Never copy weights into SRAM.
 </NotebookCallout>
 
-<NotebookCallout title="Next in Curriculum">
-Learn how modern accelerators fuse operators and eliminate memory roundtrips in **[Hardware Acceleration & Custom Kernels](/docs/inference-engineering/hardware-acceleration-and-kernels)**.
-</NotebookCallout>
+## When *Not* to Use It
+
+| Situation | Better Choice | Why |
+| :--- | :--- | :--- |
+| Generative text generation (LLMs $> 1\text{B}$) | Edge Linux SBC (Raspberry Pi 5 / Jetson) | Microcontrollers with 256 KB RAM cannot hold billion-parameter KV caches or token vocabularies. |
+| Multi-task applications with dynamic batching | Cloud API or local server | Microcontrollers operate strictly at batch size $B=1$ on real-time hardware sensor streams. |
+| Frequent continuous learning / on-device training | Federated edge server | Flash ROM write cycles are limited (typically ~10,000 to 100,000 writes); repeated training runs wear out Flash silicon. |
+
+## Remember
+
+| Idea | Core Rule |
+| :--- | :--- |
+| **SRAM vs Flash** | Flash ROM stores read-only weights (XIP); SRAM stores mutable activations only. |
+| **No Malloc** | Banning dynamic heap allocation eliminates fatal memory fragmentation faults. |
+| **Static Tensor Arena**| Pre-plan buffer offsets offline so non-overlapping layer activations share memory. |
+| **Ping-Pong Buffers** | Alternate between two memory blocks to cut peak activation SRAM by 40% to 75%. |
+| **CMSIS-NN & SIMD** | Use DSP instructions (`__SMLAD`) to execute two INT8 multiply-accumulates per clock cycle. |
+
+Next: [Hardware Acceleration & Custom Kernels](/docs/inference-engineering/hardware-acceleration-and-kernels) -- GPU memory tiling, FlashAttention, and compiling static execution graphs.
+
+## Sources
+
+- Ji Lin et al., *MCUNet: Tiny Deep Learning on IoT Devices*, NeurIPS: [https://arxiv.org/abs/2007.10319](https://arxiv.org/abs/2007.10319) (2020)
+- Colby Banbury et al., *Benchmarking TinyML Systems: Challenges and Direction*: [https://arxiv.org/abs/2003.04821](https://arxiv.org/abs/2003.04821) (2020)
+- ARM CMSIS-NN Optimized Neural Network Kernels for Cortex-M: [https://github.com/ARM-software/CMSIS-NN](https://github.com/ARM-software/CMSIS-NN) (2024)
+- TensorFlow Lite for Microcontrollers Architecture Specification: [https://www.tensorflow.org/lite/microcontrollers](https://www.tensorflow.org/lite/microcontrollers) (2024)

@@ -77,6 +77,7 @@ export const SECTION_META: Record<string, SectionMetaEntry> = {
     subsections: [
       { dir: 'agents', label: 'Agents' },
       { dir: 'harness-engineering', label: 'Harness Engineering' },
+      { dir: 'context-engineering', label: 'Context Engineering', landing: '/docs/context-engineering/overview' },
       { dir: 'ai-for-science', label: 'AI for Science' },
       { dir: 'domain-applications', label: 'Domain AI Applications' },
     ],
@@ -110,6 +111,7 @@ export const SECTION_META: Record<string, SectionMetaEntry> = {
     leadsTo: 'Research & Build',
     subsections: [
       { dir: 'ai-evaluation', label: 'AI Evaluation' },
+      { dir: 'agent-observability', label: 'Agent Observability', landing: '/docs/agent-observability/overview' },
       { dir: 'ai-security', label: 'AI Security' },
       { dir: 'ai-safety', label: 'AI Safety & Alignment' },
       { dir: 'interpretability', label: 'Interpretability' },

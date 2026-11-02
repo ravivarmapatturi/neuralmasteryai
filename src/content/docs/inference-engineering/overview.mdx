@@ -235,6 +235,16 @@ print(f"Total VRAM Required: {profile['total_vram_gb']} GB")
 print(f"Max Decode Speed (Batch 1, A100 2TB/s): {profile['max_tok_per_sec_b1']} tokens/sec")
 `} />
 
+## When *Not* to Use It
+
+Advanced inference engineering optimizations require cluster orchestration and engineering maintenance. Match the infrastructure to your workload:
+
+| Situation | Better Choice | Why |
+| :--- | :--- | :--- |
+| Low-traffic internal prototype (&lt; 10 requests/hour) | Managed Cloud API (OpenAI / Anthropic / Bedrock) | Dedicated GPU cluster hosting ($2,000+/mo) and kernel engineering far exceed API usage costs at low volumes. |
+| Non-latency-sensitive offline batch labeling (overnight jobs) | Saturated static batching on spot instances | Iteration-level continuous batching and speculative decoding optimize interactive token latency; bulk jobs maximize raw throughput at lower operational complexity. |
+| Rapid experimental research & architecture exploration | PyTorch eager mode | Compiling static CUDA graphs, custom Triton kernels, and AWQ quantization weights slows research iteration cycles. |
+
 ---
 
 <NotebookCallout color="green" title="Systems Architecture Takeaway">

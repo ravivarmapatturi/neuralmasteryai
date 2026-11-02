@@ -1,0 +1,376 @@
+---
+title: "Token Budgeting, Sliding Windows & Compaction Strategies"
+description: "Engineer deterministic context budgets, dynamic sliding windows, AST compaction, and prefix-cache-preserving summarization for production agents."
+sidebar_position: 2
+---
+
+import { ELI5 } from '../../../components/ELI5';
+import { PredictFirst } from '../../../components/PredictFirst';
+import { GoDeeper } from '../../../components/GoDeeper';
+import { NotebookCallout } from '../../../components/NotebookCallout';
+import { RunnableCode } from '../../../components/RunnableCode';
+import { ContextBudgetWaterfallVisualizer } from '../../../viz/diagrams/ContextBudgetWaterfallVisualizer';
+
+# Token Budgeting, Sliding Windows & Compaction Strategies
+
+Large language models process input through finite, discrete context windows. While advertised context capacities have expanded from 8,192 tokens to 128,000, 1,000,000, or even 2,000,000 tokens, treating the context window as an unbounded append-only log introduces catastrophic latency, astronomical operating expenses, and severe retrieval degradation. Effective autonomous systems manage tokens as a scarce hardware resource through deterministic budget allocation and systematic compaction.
+
+<ELI5>
+Think of an agent's context window like a ship's cargo hold. You have a fixed weight capacity. You must always reserve room for the navigation crew and emergency survival gear (system prompt and tool definitions), and you must reserve empty space to load the final cargo you were sent to retrieve (the model's generated output response). 
+
+If your daily operational records fill the rest of the hold completely, the ship sinks. A token budget manager acts as the cargo master: once the logs reach 80% capacity, it consolidates routine daily notes into a dense, one-paragraph captain's log, throws out the temporary scrap paper, and ensures the ship continues sailing smoothly without spilling into expensive overtime.
+</ELI5>
+
+---
+
+## 1. The Anatomy of Context Allocation
+
+A production context window must never be treated as an unstructured bucket of text. Unconstrained concatenation leads directly to context exhaustion errors (`context_length_exceeded`) or silent attention degradation. 
+
+We partition every request into four distinct, mathematically bounded zones:
+
+1. **The Immutable Prefix Zone ($B_{\text{prefix}}$)**: System instructions, role definitions, formatting rules, and tool schemas. This prefix must remain byte-identical across consecutive turns to maximize prompt cache hits.
+2. **The Pinned Anchor Zone ($B_{\text{anchor}}$)**: The initial user goal, core acceptance criteria, active file paths, and environment constraints. This context must never be purged or summarized away.
+3. **The Ephemeral Working Zone ($B_{\text{work}}$)**: Multi-turn tool invocation calls, raw stdout/stderr execution outputs, intermediate scratchpads, and conversational turns. This zone grows dynamically and is the primary target for compaction.
+4. **The Reserved Generation Zone ($B_{\text{gen}}$)**: The token headroom strictly set aside for the model's completion response (specified via `max_tokens` or `max_completion_tokens`).
+
+$$\text{Budget}_{\text{total}} = B_{\text{prefix}} + B_{\text{anchor}} + B_{\text{work}} + B_{\text{gen}}$$
+
+```
++-------------------------------------------------------------------------+
+|                      Total Model Context Window (W)                     |
++------------------------------------+------------------------------------+
+|         Usable Input Budget        |   Reserved Completion Headroom     |
+|             (W - B_gen)            |               (B_gen)              |
++------------------+-----------------+------------------------------------+
+| Immutable Prefix | Pinned Anchors  |     Dynamic Working Memory         |
+|  (System + Tools)| (Original Goal) |     (Tool calls, raw logs, turns)  |
+|     [Cached]     |    [Static]     |     [Compaction & Eviction Zone]   |
++------------------+-----------------+------------------------------------+
+```
+
+When an agent loops through 20 turns of code editing, file reading, and test execution, $B_{\text{work}}$ expands monotonically. If an engineer sets `max_tokens = 4096` on a 32,768-token model, the total usable input budget is exactly:
+
+$$\text{Budget}_{\text{usable}} = 32{,}768 - 4{,}096 = 28{,}672 \text{ tokens}$$
+
+If the system prompt and tool schemas consume 4,000 tokens, the dynamic working memory has an absolute ceiling of $28{,}672 - 4{,}000 = 24{,}672$ tokens before the model fails or drops critical instructions.
+
+---
+
+## 2. Interactive Budget Allocation & Watermark Trigger
+
+The visualizer below illustrates the four zones across active agent turns. Notice how the compaction trigger fires when the dynamic buffer crosses the high-watermark threshold (80% of usable input capacity), compressing intermediate tool traces into structured memory while keeping the cached prefix untouched.
+
+<ContextBudgetWaterfallVisualizer />
+
+---
+
+## 3. The Mathematics of Degradation: Needle-in-a-Haystack & Lost in the Middle
+
+Why not simply expand the context window to 1,000,000 tokens and avoid compaction altogether? Empirical evaluation reveals that context quality does not remain constant as token counts scale.
+
+<PredictFirst
+  question="If you place a critical security rule in the exact middle (turn 15 of 30) of a 64,000-token context window versus placing it at the very top (system prompt) or very bottom (latest user turn), how does retrieval accuracy change?"
+  options={[
+    "Retrieval accuracy is identical across all positions because modern multi-head self-attention computes all-to-all token dot products.",
+    "Retrieval accuracy degrades significantly in the middle of the context window (a U-shaped performance curve), dropping by up to 20-40% on complex reasoning tasks.",
+    "Retrieval accuracy is highest in the exact middle because positional encodings (RoPE) assign central frequencies higher weight."
+  ]}
+  answerIndex={1}
+  explanation="Empirical research on transformer attention (Liu et al., 'Lost in the Middle') demonstrates that LLM retrieval follows a pronounced U-shaped curve. Models attend reliably to tokens at the very beginning (primacy effect) and tokens at the very end (recency effect), but experience severe attention dilution in the central 30-70% region of extended context windows."
+/>
+
+### The U-Shaped Attention Curve
+
+In standard multi-head self-attention, each query token attends to all previous key tokens via the softmax distribution:
+
+$$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V$$
+
+As the sequence length $N$ grows, the denominator of the softmax function $\sum_{j=1}^{N} \exp(q_i k_j^T / \sqrt{d_k})$ aggregates probability mass across thousands of unrelated tokens. Softmax distributes fractional probability across noisy background context, creating an attention noise floor:
+
+1. **Primacy Bias**: Early tokens (system prompt, initial instructions) receive disproportionate attention mass due to positional priors and standard pre-training attention sinks.
+2. **Recency Bias**: The most recent tokens (the immediate prompt and latest tool output) have high localized attention weight due to causal autoregressive structure.
+3. **The Attention Valley (Tokens $0.25 N$ to $0.75 N$)**: Intermediate tool executions, file contents read 8 turns ago, and temporary debug scripts fall into this central valley. Their attention scores drown beneath accumulated softmax denominator mass.
+
+```
+Retrieval
+Accuracy
+ 100% | *                                                   *
+      |  *                                                 *
+      |   *                                               *
+  50% |    *                                             *
+      |     *                                           *
+      |      * * * * * * * * * * * * * * * * * * * * * *
+   0% +-------------------------------------------------------+
+      0% (Start: System)         50% (Middle)       100% (Recent)
+                     Token Position in Context Window
+```
+
+Therefore, context compaction is not merely a cost-reduction tactic—it is a correctness requirement. Removing stale, irrelevant tool traces directly restores the signal-to-noise ratio of the attention matrix.
+
+---
+
+## 4. Compaction Paradigms: Truncation, AST Filtering & Semantic Folding
+
+When dynamic working memory approaches the high-watermark limit, the context engine must evict or condense tokens. Production systems employ three distinct compaction tiers.
+
+### Tier 1: FIFO Sliding Windows (Destructive)
+
+The simplest approach drops the oldest messages once a threshold is reached. While computationally trivial ($O(1)$), naive sliding windows are fatal for software engineering agents:
+- If turn 1 defined the target function signature and turn 2 read the schema, dropping turns 1 and 2 leaves the model blind to the original user intent.
+- Dropping an assistant `tool_use` message while retaining its corresponding `tool_result` violates OpenAI/Anthropic API schemas and causes hard HTTP 400 errors.
+
+### Tier 2: AST-Aware Selective Compaction (Structural)
+
+Software agents frequently read entire source code files into context to modify a single method. Retaining a 2,000-line file in working context is inefficient. 
+
+An AST-aware compaction engine parses the file via Python's `ast` module or tree-sitter, strips internal function implementations, and leaves behind only class skeletons, signatures, and docstrings:
+
+```python
+# Before Compaction (850 tokens):
+class DatabasePool:
+    def __init__(self, dsn: str, min_conn: int = 5, max_conn: int = 20):
+        self.dsn = dsn
+        self.min_conn = min_conn
+        # ... 40 lines of connection validation, socket setup, and threadpool init ...
+
+    def execute_query(self, sql: str, params: tuple) -> list[dict]:
+        # ... 65 lines of cursor allocation, retry loops, transaction rollback ...
+        return rows
+
+# After AST Compaction (95 tokens):
+class DatabasePool:
+    def __init__(self, dsn: str, min_conn: int = 5, max_conn: int = 20): ...
+    def execute_query(self, sql: str, params: tuple) -> list[dict]: ...
+```
+
+This reduces token consumption by 88% while preserving 100% of the type and interface information required for the agent to construct valid downstream code.
+
+### Tier 3: Semantic Folding & Memory Distillation
+
+Semantic folding replaces a contiguous sequence of intermediate execution turns with a concise, factual summary generated by a secondary lightweight model (such as Claude 3.5 Haiku or GPT-4o-mini).
+
+To preserve deterministic execution, the distillation prompt must follow a strict schema:
+- **Files Modified**: Exact paths written or edited.
+- **Commands Executed**: Shell invocations and exit codes.
+- **Discovered Invariants**: Test results, error root causes, and verified assumptions.
+- **Discarded Data**: Raw file dumps, verbose linter messages, and stack traces.
+
+```json
+{
+  "compaction_type": "semantic_distillation",
+  "turns_covered": [3, 4, 5, 6],
+  "preserved_facts": {
+    "target_file": "src/auth/session.py",
+    "failing_test": "test_jwt_expiration_handles_clock_drift",
+    "root_cause": "datetime.utcnow() lacked timezone awareness in Python 3.12",
+    "verified_fix": "Replaced with datetime.now(timezone.utc)"
+  }
+}
+```
+
+---
+
+## 5. Implementation: Deterministic Context Budget Engine
+
+Below is a production-grade context budget manager. It tracks token counts, respects immutable prefix caching boundaries, reserves completion headroom, and triggers multi-tier compaction when the 80% watermark is breached.
+
+<RunnableCode code={`import json
+from dataclasses import dataclass, field
+from typing import List, Dict, Any, Optional
+
+@dataclass
+class Message:
+    role: str
+    content: str
+    token_count: int
+    is_pinned: bool = False
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+class ContextBudgetManager:
+    """
+    Manages deterministic context budgeting across 4 zones:
+    1. Immutable Prefix (System + Tool Schemas) -> Preserves KV Cache
+    2. Pinned Anchors (User Goal) -> Never Evicted
+    3. Dynamic Working Buffer (Tool Calls & Results) -> Subject to Compaction
+    4. Reserved Completion Headroom -> Strictly Preserved for Generation
+    """
+    def __init__(self, max_context: int = 32000, max_output_tokens: int = 4000, watermark_ratio: float = 0.80):
+        self.max_context = max_context
+        self.max_output_tokens = max_output_tokens
+        self.watermark_ratio = watermark_ratio
+        
+        # Hard ceiling for input tokens
+        self.usable_input_budget = self.max_context - self.max_output_tokens  # 28,000
+        self.high_watermark = int(self.usable_input_budget * self.watermark_ratio)  # 22,400
+        
+        self.system_prompt: Optional[Message] = None
+        self.tool_definitions: List[Message] = []
+        self.history: List[Message] = []
+
+    def set_system_prompt(self, text: str, token_count: int) -> None:
+        self.system_prompt = Message(role='system', content=text, token_count=token_count, is_pinned=True)
+
+    def set_tool_schemas(self, schema_text: str, token_count: int) -> None:
+        self.tool_definitions = [Message(role='tools', content=schema_text, token_count=token_count, is_pinned=True)]
+
+    @property
+    def immutable_prefix_tokens(self) -> int:
+        sys_tokens = self.system_prompt.token_count if self.system_prompt else 0
+        tool_tokens = sum(t.token_count for t in self.tool_definitions)
+        return sys_tokens + tool_tokens
+
+    @property
+    def total_input_tokens(self) -> int:
+        return self.immutable_prefix_tokens + sum(m.token_count for m in self.history)
+
+    def append_turn(self, role: str, content: str, token_count: int, is_pinned: bool = False) -> None:
+        msg = Message(role=role, content=content, token_count=token_count, is_pinned=is_pinned)
+        self.history.append(msg)
+        
+        # Check watermark against usable input budget
+        if self.total_input_tokens >= self.high_watermark:
+            print(f"[WATERMARK BREACH] Total input ({self.total_input_tokens} tokens) >= Watermark ({self.high_watermark}). Compacting...")
+            self._compact_working_memory()
+
+    def _compact_working_memory(self) -> None:
+        """
+        Executes multi-tier compaction:
+        1. Protects pinned messages (User task statement).
+        2. Protects the most recent 4 turns (immediate conversational recency).
+        3. Compacts older unpinned turns into a factual synthesis block.
+        """
+        pinned_messages = [m for m in self.history if m.is_pinned]
+        unpinned_messages = [m for m in self.history if not m.is_pinned]
+        
+        # Keep latest 4 turns intact
+        keep_recent_count = 4
+        if len(unpinned_messages) <= keep_recent_count:
+            print("[WARN] Working memory too short to compact unpinned turns.")
+            return
+
+        to_compact = unpinned_messages[:-keep_recent_count]
+        recent_turns = unpinned_messages[-keep_recent_count:]
+        
+        tokens_before = sum(m.token_count for m in to_compact)
+        
+        # Synthesize compacted summary
+        summary_payload = {
+            "compacted_turns": len(to_compact),
+            "evicted_tokens": tokens_before,
+            "status": "Intermediate tool execution output compressed into state summary."
+        }
+        # Fixed representation cost of synthesis
+        synthesis_tokens = 250
+        summary_msg = Message(
+            role='system_memory',
+            content=json.dumps(summary_payload, indent=2),
+            token_count=synthesis_tokens,
+            is_pinned=True
+        )
+        
+        self.history = pinned_messages + [summary_msg] + recent_turns
+        tokens_saved = tokens_before - synthesis_tokens
+        print(f"[COMPACTION COMPLETE] Reclaimed {tokens_saved} tokens. New total input: {self.total_input_tokens} tokens.")
+
+# Verification Harness
+mgr = ContextBudgetManager(max_context=32000, max_output_tokens=4000, watermark_ratio=0.80)
+mgr.set_system_prompt("Production Agent Harness v2.4", 1500)
+mgr.set_tool_schemas("Registered Tools: [read_file, edit_file, run_command, git_status]", 2500)
+
+print(f"Initial Immutable Prefix: {mgr.immutable_prefix_tokens} tokens (Prompt Cached)")
+print(f"Usable Input Ceiling: {mgr.usable_input_budget} tokens | High-Watermark: {mgr.high_watermark} tokens")
+
+# Pinned User Goal
+mgr.append_turn('user', 'Fix JWT expiration drift in auth/session.py and verify test suite.', 500, is_pinned=True)
+
+# Simulate 8 iterative execution steps (2,300 tokens per tool turn)
+for step in range(1, 9):
+    mgr.append_turn('assistant', f'Calling tool: inspect_source_code(step={step})', 100)
+    mgr.append_turn('tool', f'Payload dump for step {step}: [150 lines of code and AST tree data...]', 2200)
+
+print(f"Final Context State: {mgr.total_input_tokens} tokens across {len(mgr.history)} history records.")
+for i, m in enumerate(mgr.history):
+    print(f"  [{i}] role={m.role:<14} pinned={str(m.is_pinned):<5} tokens={m.token_count}")
+`} />
+
+---
+
+## 6. Real Production Configuration: Anthropic & OpenAI Watermarks
+
+In production API environments, context limits vary widely depending on tier, model version, and cost constraints. Below is a production environment configuration template for automated token budgeting across multiple providers:
+
+```bash
+# Production Agent Context Management Configuration
+# Saved in /etc/agent-harness/budget-limits.json
+
+{
+  "providers": {
+    "anthropic": {
+      "claude-3-7-sonnet": {
+        "max_context": 200000,
+        "reserved_completion_tokens": 8192,
+        "high_watermark_ratio": 0.75,
+        "compaction_target_ratio": 0.40,
+        "prompt_cache_min_tokens": 1024,
+        "ast_pruning_enabled": true
+      },
+      "claude-3-5-haiku": {
+        "max_context": 200000,
+        "reserved_completion_tokens": 4096,
+        "high_watermark_ratio": 0.80,
+        "compaction_target_ratio": 0.50,
+        "prompt_cache_min_tokens": 2048,
+        "ast_pruning_enabled": false
+      }
+    },
+    "openai": {
+      "gpt-4o": {
+        "max_context": 128000,
+        "reserved_completion_tokens": 4096,
+        "high_watermark_ratio": 0.80,
+        "compaction_target_ratio": 0.45,
+        "prompt_cache_min_tokens": 1024,
+        "ast_pruning_enabled": true
+      }
+    }
+  },
+  "compaction_rules": {
+    "preserve_initial_user_turn": true,
+    "preserve_recent_turns": 4,
+    "evict_raw_tool_stdout_older_than_turns": 3,
+    "strip_line_numbers_on_compaction": true
+  }
+}
+```
+
+---
+
+## 7. When to Use It and When Not to Use It
+
+| Scenario | Recommended Strategy | Why? | Anti-Pattern |
+| :--- | :--- | :--- | :--- |
+| **Multi-Turn Coding Agents** | Tier 2 (AST Pruning) + Tier 3 (Semantic Folding) | Retains code contracts and test results without filling 128k context with dead AST nodes. | Appending every file read verbatim until an API context error terminates the run. |
+| **One-Shot Document Q&A** | Fixed Single Turn with Strict Truncation | No multi-turn state exists; context degradation in single-turn queries is minimized by placing question last. | Running complex semantic distillation loops on a single user query. |
+| **High-Frequency Tool Swarms** | Micro-Summaries ($O(1)$ tool logs) | Intermediate tools (e.g. `ls`, `grep`) generate thousands of tokens with only 2 lines of signal. | Preserving entire 500-line shell directory dumps in working context. |
+| **Security & Compliance Audits** | Verbatim Context with External Indexing | Summaries can accidentally drop critical audit trail hashes or timestamp nuances. | Over-aggressive semantic folding that hallucinates missing compliance parameters. |
+
+---
+
+## 8. Core Invariants to Remember
+
+| Concept | Invariant Rule | Operational Consequence |
+| :--- | :--- | :--- |
+| **Prefix Cache Integrity** | Never modify system prompts or tool schemas after initialization. | Any edit to early tokens invalidates the entire downstream KV cache, multiplying latency by 5–10×. |
+| **Reserved Output Space** | Always subtract `max_output_tokens` from total context before setting the input ceiling. | Omitting output headroom causes silent string truncations or `finish_reason: length` failures mid-generation. |
+| **The 80% Watermark** | Trigger compaction well before the physical hard limit is breached. | Waiting until 99% capacity causes prompt expansion during parallel tool execution to crash the session. |
+| **The U-Curve Law** | Essential invariants must live at token position zero (system prompt) or the final turn. | Information buried in the middle 50% of an uncompacted 100k token window suffers up to 30% higher retrieval failure. |
+
+---
+
+## Sources
+
+- Liu, N. F., Lin, K., Hewitt, J., Paranjape, A., Bevilacqua, M., Petroni, F., & Liang, P. (2024). *Lost in the Middle: How Language Models Use Long Contexts*. Transactions of the Association for Computational Linguistics, 12, 157–173. [https://arxiv.org/abs/2307.03172](https://arxiv.org/abs/2307.03172)
+- Anthropic Engineering. (2024). *Prompt Caching: Accelerating Developer Workflows and Lowering Latency*. Anthropic Documentation. [https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching](https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching)
+- OpenAI Platform Documentation. (2024). *Prompt Caching in the OpenAI API*. OpenAI Documentation. [https://platform.openai.com/docs/guides/prompt-caching](https://platform.openai.com/docs/guides/prompt-caching)
+- Kamradt, G. (2023). *Needle In A Haystack: Pressure Testing LLM Context Windows*. GitHub Analysis & Research Repository. [https://github.com/gkamradt/LLMTest_NeedleInAHaystack](https://github.com/gkamradt/LLMTest_NeedleInAHaystack)

@@ -4,7 +4,7 @@ sidebar_position: 7
 description: "Kernel optimization and GPU microarchitecture: FlashAttention-2/3 SRAM tiling, OpenAI Triton, CUDA Graphs, TensorRT-LLM, Apple Neural Engine (ANE), and WebGPU."
 ---
 
-import RooflineModelVisualizer from '../../../viz/diagrams/RooflineModelVisualizer';
+import KernelMemoryHierarchyVisualizer from '../../../viz/diagrams/KernelMemoryHierarchyVisualizer';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -12,82 +12,92 @@ import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
 # Hardware Acceleration & Custom Kernels
 
-In high-throughput deep learning inference, standard high-level frameworks (e.g. naive PyTorch) introduce severe latency penalties: every elementary operation (such as a matrix multiply followed by a bias add, followed by GeLU activation) writes intermediate tensors back to slow off-chip memory (HBM/DRAM), only to read them back immediately in the next kernel launch.
+In high-throughput deep learning inference, standard high-level frameworks (such as uncompiled PyTorch) introduce severe latency penalties: every elementary operation (such as a matrix multiplication followed by a bias addition and a GeLU activation) writes intermediate tensors back to slow off-chip memory (HBM/DRAM), only to read them back immediately in the subsequent kernel launch.
 
-This chapter details the systems architecture of **Hardware Acceleration**: GPU memory hierarchies, **FlashAttention** SRAM tiling and online softmax, writing custom kernels in **OpenAI Triton**, and compiling static execution graphs with **TensorRT-LLM** and **CUDA Graphs**.
+This chapter details the systems architecture of **Hardware Acceleration**: GPU physical memory hierarchies, **FlashAttention** SRAM tiling and online softmax mathematics, writing custom GPU kernels in **OpenAI Triton**, and compiling static execution graphs with **TensorRT-LLM** and **CUDA Graphs**.
 
 <ELI5>
 
-Imagine a chef preparing a gourmet salad.
+Imagine a chef preparing a gourmet meal.
 
-A **naive chef** takes a tomato from the pantry, carries it across the kitchen to the cutting board, slices it, carries the slices all the way back to the pantry, then walks back to get a cucumber, carries it to the board, slices it, and carries it back to the pantry. They spend 90% of their time walking back and forth (Memory-Bandwidth Roundtrips).
+A **naive chef** walks to the pantry to grab a tomato, walks all the way across the kitchen to the prep counter, chops the tomato, carries the slices all the way back to the pantry to store them, then walks back to grab a cucumber, chops it, and carries the slices back to the pantry. They spend 90% of their day walking back and forth across the kitchen floor (Memory Bandwidth Roundtrips).
 
-A **master chef** brings all ingredients to the cutting board once, chops everything in one fluid motion, tosses the salad in the bowl on the spot, and serves it immediately.
+A **master chef** brings all required ingredients onto the prep counter at once, chops everything in one continuous sequence, tosses the dish in a bowl right there, and plates the final meal.
 
-In GPU programming, that is **Kernel Fusion and FlashAttention**: keeping data inside the ultra-fast on-chip cutting board (SRAM) and never walking back to the slow pantry (HBM) until the final answer is ready.
+In GPU programming, that is **Kernel Fusion and FlashAttention**: keeping intermediate tensors inside the ultra-fast on-chip prep counter (SRAM) and never walking back to the slow pantry (HBM) until the final output matrix is computed.
 
 </ELI5>
 
----
+## Why This Exists
 
-## 1. The GPU Memory Hierarchy: SRAM vs HBM
+Modern GPU compute capabilities have outpaced memory transfer bandwidth by an order of magnitude. On an NVIDIA H100 SXM5 GPU:
+- **FP16 Tensor Core Compute**: 989 TFLOPS ($989 \times 10^{12}$ floating-point operations per second).
+- **HBM3 Memory Bandwidth**: 3.35 TB/s ($3.35 \times 10^{12}$ bytes per second).
 
-To understand why custom kernels matter, inspect the memory hierarchy of an NVIDIA H100 GPU:
+This creates an operational ratio: to keep Tensor Cores fully saturated, an algorithm must execute nearly **300 floating-point operations for every single byte loaded from HBM**. 
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    NVIDIA H100 MEMORY HIERARCHY             │
-├─────────────────────┬──────────────┬──────────────┬─────────┤
-│ Memory Level        │ Capacity     │ Bandwidth    │ Latency │
-├─────────────────────┼──────────────┼──────────────┼─────────┤
-│ Registers           │ ~256 KB / SM │ ~30 TB/s     │ ~1 cycle│
-│ Shared Memory (SRAM)│ ~228 KB / SM │ ~15 TB/s     │ ~15 cyc │
-│ L2 Cache            │ 50 MB        │ ~12 TB/s     │ ~100 cyc│
-│ High-Bandwidth (HBM)│ 80 GB        │ 3.35 TB/s    │ ~400 cyc│
-│ Host RAM (via PCIe) │ 1 TB         │ 0.06 TB/s    │ ~1000cyc│
-└─────────────────────┴──────────────┴──────────────┴─────────┘
-```
+Standard transformer implementations fail this threshold miserably:
+1. **The Attention Memory Wall**: Standard attention calculates $S = QK^T$, writes the entire $N \times N$ score matrix to HBM, reads it back to compute $\text{softmax}(S)$, writes the attention probabilities $P$ to HBM, and reads $P$ back to multiply by $V$. For a sequence of 16,384 tokens across 32 heads in FP16, this requires **over 32 GB of memory bandwidth per layer** just to shuffle intermediate activations that are discarded immediately afterwards.
+2. **Launch Latency Overhead**: Launching dozens of tiny CUDA kernels from Python incurs 3 to 5 microseconds of CPU driver latency per launch, leaving the GPU idle while waiting for the next instruction.
+3. **Register Spilling**: Unoptimized kernel compilers exceed the 256 KB per-Streaming-Multiprocessor (SM) register file, spilling local variables into slower memory and cutting arithmetic throughput by half.
 
-> **The 10x Reality**: On-chip SRAM (Shared Memory) is **over 4x to 8x faster** and has **10x to 30x lower latency** than off-chip HBM. If your algorithm writes intermediate matrices to HBM, you are paying a massive 400-cycle latency penalty for every operation.
+## The Shape of It
 
----
+Custom kernels eliminate off-chip roundtrips by keeping tensors tiled within on-chip memory:
 
-## 2. FlashAttention: SRAM Tiling & Online Softmax
-
-Standard attention computes:
-
-$$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right) V$$
-
-In standard implementations, computing $S = QK^T$ produces an $N \times N$ attention matrix. For sequence length $N=16,384$, $S$ requires **over 512 MB of VRAM per attention head**—materializing massive memory buffers and exceeding on-chip SRAM capacity.
-
-### The FlashAttention Breakthrough (Dao et al.)
-
-**FlashAttention** computes exact attention **without ever materializing the $N \times N$ matrix in HBM**:
-
-1. **SRAM Tiling**: $Q, K, V$ are partitioned into blocks (e.g. $B_r \times d$ and $B_c \times d$) that fit entirely inside 228 KB of on-chip SRAM.
-2. **Online Softmax**: Using the mathematical identity of online normalization:
-   $$m_{\text{new}} = \max(m_{\text{old}}, x), \quad d_{\text{new}} = d_{\text{old}} e^{m_{\text{old}} - m_{\text{new}}} + e^{x - m_{\text{new}}}$$
-   FlashAttention rescales running attention sums on the fly as new tiles are read, requiring only $O(N)$ memory instead of $O(N^2)$!
+<KernelMemoryHierarchyVisualizer />
 
 <PredictFirst
-  question="Why does FlashAttention-2 run faster on GPUs than standard PyTorch attention, even though it performs slightly MORE floating-point operations (due to online softmax rescaling)?"
+  question="Why does FlashAttention-2 run significantly faster on GPUs than standard PyTorch attention, even though it performs slightly MORE floating-point operations (due to online softmax rescaling)?"
   options={[
-    "Because FlashAttention uses lower precision than PyTorch.",
-    "Because memory reads from HBM to SRAM are 10x slower than ALU math; by eliminating HBM roundtrips for the N x N attention matrix, the time saved on memory transfers dwarfs the small number of extra arithmetic operations.",
-    "Because FlashAttention disables backpropagation.",
-    "Because NVIDIA GPUs have specialized FlashAttention hardware circuits."
+    "Because FlashAttention uses lower precision arithmetic than PyTorch.",
+    "Because reading bytes from HBM to SRAM is 10x slower than math on Tensor Cores; by eliminating HBM roundtrips for the N x N attention matrix, the time saved on memory transfers dwarfs the small arithmetic cost of online rescaling.",
+    "Because FlashAttention disables backpropagation during inference.",
+    "Because NVIDIA GPUs feature proprietary FlashAttention silicon circuits."
   ]}
   correctIndex={1}
-  explanation="On modern GPUs, floating-point operations are extremely fast (thousands of TFLOPs), while transferring bytes across HBM is the true bottleneck (the Memory Wall). By keeping intermediate computation in on-chip SRAM, FlashAttention slashes memory bus traffic by 5x to 10x, accelerating wall-clock runtime by 2x to 4x despite performing extra rescaling FLOPs."
+  explanation="On modern GPUs, arithmetic logic units (Tensor Cores) operate at near-terabyte clock speeds, while moving bytes across the physical memory bus to HBM is the true physical bottleneck (the Memory Wall). By keeping intermediate computation in on-chip SRAM, FlashAttention slashes memory bus traffic by 5x to 10x, accelerating wall-clock execution by 2x to 4x despite performing extra rescaling FLOPs."
 />
 
----
+## The GPU Memory Hierarchy: SRAM vs HBM
 
-## 3. Authoring Custom GPU Kernels with OpenAI Triton
+To author performant kernels, an engineer must program against the physical hierarchy of the accelerator:
 
-Historically, writing custom GPU kernels required low-level CUDA C++, manual warp-divergence synchronization (`__syncthreads()`), and pointer arithmetic.
+| Memory Level | Capacity (H100) | Bandwidth | Latency (Clock Cycles) | Programming Scope |
+| :--- | :--- | :--- | :--- | :--- |
+| **Registers (RF)** | ~256 KB per SM (~32 MB total) | ~300 TB/s | ~1 cycle | Private to single thread |
+| **Shared Memory (SRAM)** | ~228 KB per SM (~30 MB total) | ~33 TB/s | ~15-25 cycles | Shared across thread block |
+| **L2 Cache** | 50 MB total | ~12 TB/s | ~150-200 cycles | Shared across all SMs |
+| **High-Bandwidth Memory (HBM3)** | 80 GB | 3.35 TB/s | ~400-600 cycles | Global device memory |
+| **Host System RAM (PCIe 5.0)** | 1 TB to 2 TB | 0.064 TB/s | ~1,000+ cycles | CPU main memory |
 
-**OpenAI Triton** allows developers to write high-performance GPU kernels directly in Python:
+On-chip SRAM is **10× faster** than off-chip HBM3. An algorithm that reads and writes intermediate matrices to HBM spends 90% of its execution cycles stalling for memory lines.
+
+<GoDeeper title="Go deeper: Mathematical derivation of the Online Softmax algorithm">
+
+Standard softmax over a vector $x \in \mathbb{R}^N$ requires two sequential passes:
+1. Compute the maximum $m = \max_i x_i$ to prevent numerical overflow.
+2. Compute the normalization denominator $d = \sum_{i=1}^N e^{x_i - m}$.
+
+In FlashAttention, $x$ arrives in small blocks (tiles) that fit in SRAM. When a new block $x^{(2)}$ arrives with local maximum $m_2$ and local sum $d_2$, FlashAttention merges it with previous state $(m_1, d_1)$ using the online recurrence:
+
+$$m_{\text{new}} = \max(m_1, m_2)$$
+
+$$d_{\text{new}} = d_1 \cdot e^{m_1 - m_{\text{new}}} + d_2 \cdot e^{m_2 - m_{\text{new}}}$$
+
+The running output vector $O$ is rescaled instantaneously without ever materializing all elements at once:
+
+$$O_{\text{new}} = O_1 \cdot \left(\frac{d_1 \cdot e^{m_1 - m_{\text{new}}}}{d_{\text{new}}}\right) + O_2 \cdot \left(\frac{e^{m_2 - m_{\text{new}}}}{d_{\text{new}}}\right)$$
+
+This mathematical formulation enables exact attention computation in $O(N)$ memory with zero numerical error.
+
+</GoDeeper>
+
+## Authoring Custom GPU Kernels with OpenAI Triton
+
+Historically, writing custom GPU kernels required low-level CUDA C++, manual warp-divergence synchronization (`__syncthreads()`), and raw pointer arithmetic.
+
+**OpenAI Triton** allows developers to author high-performance GPU kernels directly in Python. Triton abstracts thread blocks into multi-dimensional arrays, automatically compiling them into optimized PTX assembly:
 
 ```python
 import triton
@@ -99,77 +109,128 @@ def fused_add_gelu_kernel(
     x_ptr, y_ptr, out_ptr, n_elements,
     BLOCK_SIZE: tl.constexpr
 ):
-    # Compute program ID and block offsets
+    """Fuses elementwise addition and GeLU activation into a single SRAM pass."""
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
 
-    # Load from DRAM to on-chip SRAM in parallel
+    # Load activations from slow HBM into fast on-chip SRAM registers
     x = tl.load(x_ptr + offsets, mask=mask)
     y = tl.load(y_ptr + offsets, mask=mask)
 
-    # Fused math directly in SRAM (zero DRAM roundtrips!)
+    # Compute fused arithmetic entirely within registers
     val = x + y
-    gelu = 0.5 * val * (1.0 + tl.math.erf(val / 1.41421356))
+    # Fast approximation of GeLU activation: 0.5 * x * (1 + erf(x / sqrt(2)))
+    gelu = 0.5 * val * (1.0 + tl.math.erf(val * 0.70710678118))
 
-    # Write final result back to DRAM once
+    # Write final result back to HBM once
     tl.store(out_ptr + offsets, gelu, mask=mask)
+
+def launch_fused_add_gelu(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    output = torch.empty_like(x)
+    n_elements = x.numel()
+    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    fused_add_gelu_kernel[grid](x, y, output, n_elements, BLOCK_SIZE=1024)
+    return output
 ```
 
-Triton's compiler automatically handles memory coalescing, shared memory bank conflict resolution, and Tensor Core scheduling, generating assembly that matches hand-tuned CUDA C++.
+## Compilation & Graph Capture: CUDA Graphs & TensorRT-LLM
 
----
-
-## 4. Compilation & Graph Capture: CUDA Graphs & TensorRT-LLM
-
-In fast inference serving ($<5\text{ms}$ per token), CPU launch overhead becomes a significant bottleneck: invoking 80 consecutive PyTorch layer kernels from Python incurs ~3 microseconds of CPU dispatch latency per kernel, causing the GPU to sit idle between launches.
+In low-latency inference serving ($< 10\text{ ms}$ per token), CPU launch overhead becomes a primary bottleneck: invoking 80 consecutive PyTorch layer kernels from Python incurs ~3 microseconds of CPU dispatch latency per kernel, causing the GPU to sit idle between launches.
 
 ### CUDA Graphs
 
 **CUDA Graphs** record a sequence of GPU kernel launches into a single static execution graph:
-1. **Capture Phase**: Run the forward pass once in capture mode; the CUDA runtime records all kernel addresses, thread parameters, and memory dependencies.
-2. **Replay Phase**: The CPU dispatches the **entire graph with a single driver call**, eliminating CPU launch overhead and achieving 100% GPU utilization.
+1. **Capture Phase**: Run the forward pass once in capture mode; the CUDA driver records all kernel addresses, thread parameters, and memory dependencies.
+2. **Replay Phase**: The CPU dispatches the **entire graph with a single driver call**, eliminating CPU launch overhead and maximizing GPU compute utilization.
 
-### TensorRT-LLM
+```python
+# Real production CUDA Graph capture in PyTorch
+static_input = torch.zeros(1, 1024, device='cuda')
+# Warmup iterations to initialize memory allocators
+for _ in range(3):
+    static_output = model(static_input)
+torch.cuda.synchronize()
 
-NVIDIA's **TensorRT-LLM** builds on this concept by compiling the entire transformer architecture:
-- Fuses multi-head attention kernels into custom FlashAttention implementations.
-- Replaces standard GEMMs with FP8 / INT4 Tensor Core kernels.
-- Captures dynamic KV cache memory layouts directly in hardware DMA engines.
+# Record graph
+graph = torch.cuda.CUDAGraph()
+with torch.cuda.graph(graph):
+    static_output = model(static_input)
 
----
+# Replay during production serving (sub-millisecond execution)
+def infer_step(new_input):
+    static_input.copy_(new_input)
+    graph.replay()
+    return static_output
+```
 
-## 5. Python Simulation: Online Softmax Normalization
+### TensorRT-LLM Production Compilation
 
-Run this live in-browser Python implementation to verify how FlashAttention computes exact softmax incrementally across two separate tiles without ever assembling the full array:
+NVIDIA's **TensorRT-LLM** compiles the entire transformer graph into fused engine binaries:
+
+```bash
+# Build optimized TensorRT-LLM engine for Llama-3-8B on an H100 GPU
+trtllm-build \
+  --checkpoint_dir /models/llama-3-8b-tp1 \
+  --output_dir /engines/llama-3-8b \
+  --gemm_plugin float16 \
+  --gpt_attention_plugin float16 \
+  --paged_kv_cache enable \
+  --tokens_per_block 64 \
+  --max_batch_size 64 \
+  --max_input_len 4096 \
+  --max_output_len 512
+```
+
+## A Full Worked Example: Online Softmax Across SRAM Tiles
+
+Consider an activation vector of length 6: `x = [1.2, 3.4, 2.1, 0.8, 4.5, 2.9]`.
+We simulate an on-chip SRAM capacity of only 3 elements, forcing the computation into two sequential tiles:
+- **Tile 1**: `[1.2, 3.4, 2.1]`
+  - Maximum $m_1 = 3.4$
+  - Exponentials: $e^{1.2-3.4} = 0.1108$, $e^{3.4-3.4} = 1.0$, $e^{2.1-3.4} = 0.2725$
+  - Denominator sum $d_1 = 0.1108 + 1.0 + 0.2725 = 1.3833$
+- **Tile 2**: `[0.8, 4.5, 2.9]`
+  - Maximum $m_2 = 4.5$
+  - New global maximum $m_{\text{new}} = \max(3.4, 4.5) = 4.5$
+  - Rescaling factor: $e^{m_1 - m_{\text{new}}} = e^{3.4 - 4.5} = e^{-1.1} = 0.3329$
+  - Updated denominator:
+    $$d_{\text{new}} = 1.3833 \times 0.3329 + (e^{0.8-4.5} + e^{4.5-4.5} + e^{2.9-4.5}) = 0.4605 + (0.0247 + 1.0 + 0.2019) = 1.6871$$
+- **Final Normalized Output**: Both tiles are divided by $d_{\text{new}}$, yielding `[0.0219, 0.1973, 0.0538, 0.0147, 0.5927, 0.1197]`, matching the global softmax down to 15 decimal places with zero precision loss.
+
+### Run It Yourself
+
+Execute this self-contained Python script to verify the numerical equivalence of online tiled softmax against standard softmax:
 
 <RunnableCode code={`import numpy as np
 
 def standard_softmax(x):
+    """Computes baseline two-pass softmax requiring full vector in memory."""
     e = np.exp(x - np.max(x))
     return e / np.sum(e)
 
 def online_softmax_two_tiles(tile1, tile2):
-    # Tile 1 processing
+    """Computes online tiled softmax across two separate SRAM chunks."""
+    # Process Tile 1
     m1 = np.max(tile1)
     d1 = np.sum(np.exp(tile1 - m1))
     
-    # Tile 2 arrives (simulate streaming across SRAM)
+    # Process Tile 2 and merge state
     m2 = np.max(tile2)
     m_new = max(m1, m2)
     
-    # Rescale running denominator using mathematical identity:
-    # d_new = d1 * exp(m1 - m_new) + d2 * exp(m2 - m_new)
+    # Rescale running denominator:
+    # d_new = d1 * exp(m1 - m_new) + sum(exp(tile2 - m_new))
     d_new = d1 * np.exp(m1 - m_new) + np.sum(np.exp(tile2 - m_new))
     
-    # Compute normalized output for both tiles
+    # Normalize both tiles using the global rescaled denominator
     out1 = np.exp(tile1 - m_new) / d_new
     out2 = np.exp(tile2 - m_new) / d_new
     
     return np.concatenate([out1, out2])
 
-# Test streaming across 2 blocks of activations
+# Worked example activation vector
 x_full = np.array([1.2, 3.4, 2.1, 0.8, 4.5, 2.9])
 tile_a = x_full[:3]
 tile_b = x_full[3:]
@@ -180,16 +241,51 @@ actual = online_softmax_two_tiles(tile_a, tile_b)
 print("=== Online Softmax Incremental Tile Verification ===")
 print("Full Array Softmax:   ", np.round(expected, 4))
 print("Online Tiled Softmax: ", np.round(actual, 4))
-print("Max Discrepancy:      ", np.max(np.abs(expected - actual)))
-print("Match Status:           EXACT MATHEMATICAL EQUIVALENCE (Error < 1e-15)")
+max_err = np.max(np.abs(expected - actual))
+print(f"Max Absolute Error:    {max_err:.2e}")
+assert max_err < 1e-15, "Numerical divergence detected!"
+print("Status:                EXACT MATHEMATICAL EQUIVALENCE (Error < 1e-15)")
+
+# Try it: Change the numbers in tile_b above and run again to verify online rescaling holds.
 `} />
 
----
+## Common Problems & Fixes
+
+1. **Shared Memory Bank Conflicts in Custom Triton Kernels**: Multiple threads in a warp access the same 32-bit shared memory bank simultaneously, serializing memory access.
+   - *Fix*: Pad shared memory arrays by 1 element (`tl.zeros([BLOCK_SIZE + 1], dtype=tl.float32)`) or use Triton's built-in block swizzling to offset access strides.
+2. **Dynamic Sequence Shape Graph Invalidations**: CUDA Graphs require static tensor shapes; varying prompt lengths force expensive graph re-captures.
+   - *Fix*: Bucket input sequences into discrete power-of-two lengths (e.g. 128, 256, 512, 1024, 2048) and maintain a separate pre-captured CUDA Graph for each bucket.
+3. **Register Spilling Degrading Occupancy**: Adding too many intermediate variables in a Triton kernel exceeds the 255 register-per-thread limit, spilling variables into slower local memory.
+   - *Fix*: Pass `num_warps=4` or `num_stages=3` to the `@triton.jit` decorator to guide the compiler's register allocator.
 
 <NotebookCallout color="green" title="Kernel Optimization Invariant">
-**Never materialize intermediate attention matrices.** Always utilize fused tiled kernels (FlashAttention-2/3) and compile static execution graphs (CUDA Graphs or TensorRT-LLM) to keep GPU Tensor Cores 100% saturated.
+Never materialize intermediate attention matrices. Always utilize fused tiled kernels (FlashAttention-2/3) and compile static execution graphs (CUDA Graphs or TensorRT-LLM) to keep GPU Tensor Cores operating at peak hardware efficiency.
 </NotebookCallout>
 
-<NotebookCallout title="Next in Curriculum">
-Scale kernels from single GPUs to distributed multi-node clusters in **[Disaggregated Serving, Prefix Caching & Distributed Inference](/docs/inference-engineering/disaggregation-prefix-caching-and-production)**.
-</NotebookCallout>
+## When *Not* to Use It
+
+| Situation | Better Choice | Why |
+| :--- | :--- | :--- |
+| Rapid exploratory prototyping in research | Standard PyTorch eager mode | Custom Triton kernels require manual compilation and debugging; eager PyTorch is faster for prototyping. |
+| CPU-only edge deployment (Raspberry Pi / x86) | GGML / llama.cpp / ONNX Runtime | Triton and TensorRT-LLM compile specifically for NVIDIA GPUs; ARM and x86 require SIMD AVX/NEON kernels. |
+| Small batch size with short sequence length (< 64) | Built-in cuBLAS GEMM | At tiny sequence lengths, attention memory overhead is negligible and cuBLAS GEMMs are already fully optimized. |
+
+## Remember
+
+| Idea | Core Rule |
+| :--- | :--- |
+| **SRAM vs HBM** | On-chip SRAM is 10× faster than off-chip HBM; eliminate memory bus roundtrips. |
+| **FlashAttention** | Tile $Q, K, V$ into SRAM blocks and compute online softmax without materializing $N \times N$. |
+| **OpenAI Triton** | Author high-performance fused GPU kernels in Python without writing low-level CUDA C++. |
+| **CUDA Graphs** | Eliminate CPU driver dispatch latency by recording static execution graphs. |
+| **TensorRT-LLM** | Compile full transformer architectures with fused plugins and paged KV cache engines. |
+
+Next: Scale kernels across distributed clusters in **[Disaggregated Serving, Prefix Caching & Distributed Inference](/docs/inference-engineering/disaggregation-prefix-caching-and-production)**.
+
+## Sources
+
+- Tri Dao et al., *FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness*, NeurIPS: [https://arxiv.org/abs/2205.14135](https://arxiv.org/abs/2205.14135) (2022)
+- Tri Dao, *FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning*: [https://arxiv.org/abs/2307.08691](https://arxiv.org/abs/2307.08691) (2023)
+- Philippe Tillet et al., *Triton: An Intermediate Language and Compiler for Tiled Neural Network Computations*: [https://triton-lang.org/](https://triton-lang.org/) (2024)
+- NVIDIA TensorRT-LLM Framework and Engine Reference: [https://github.com/NVIDIA/TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) (2024)
+- NVIDIA CUDA Programming Guide (CUDA Graphs): [https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html) (2024)

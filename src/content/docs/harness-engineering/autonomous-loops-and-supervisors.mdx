@@ -5,6 +5,7 @@ description: "Designing autonomous goal loops, Maker-Checker supervisor architec
 ---
 
 import AnthropicSupervisorTriadVisualizer from '../../../viz/diagrams/AnthropicSupervisorTriadVisualizer';
+import AutonomousGoalLoopDiagram from '../../../viz/diagrams/AutonomousGoalLoopDiagram';
 import OpenAIEntropyVisualizer from '../../../viz/diagrams/OpenAIEntropyVisualizer';
 import HarnessAblationStudio from '../../../viz/diagrams/HarnessAblationStudio';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
@@ -14,72 +15,35 @@ import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
 # Autonomous Loops & Supervisors
 
-The defining characteristic of an autonomous agent is its ability to run in an unattended loop: receiving a high-level goal, decomposing it into subtasks, executing changes, verifying results, and iterating until the objective is accomplished.
+The defining characteristic of an autonomous agent is its ability to operate in an unattended cybernetic loop: receiving an open-ended goal, decomposing it into subtasks, executing code modifications, verifying results against compilers, and iterating until all requirements are met.
 
-However, unbounded autonomous loops introduce critical engineering hazards: **infinite cycling**, **runaway token expenditure**, and **drift from the original specification**.
+However, unbounded autonomous loops introduce critical engineering failure modes: **infinite oscillation cycles**, **runaway token expenditure**, and **drift from the original specification**.
 
 <ELI5>
 
-If you ask an autonomous agent to build a multi-page app without supervision, it's like leaving an over-enthusiastic junior developer alone in the office for a weekend: they might rewrite the entire database, install 30 unnecessary libraries, get stuck in an endless loop trying to center a button, and spend $500 in cloud credits.
+If you ask an autonomous agent to build a multi-page app without supervision, it is like leaving an over-enthusiastic junior developer alone in the office for an entire weekend: they might rewrite the database schema, install 30 conflicting libraries, get trapped in an endless loop trying to center a button, and burn $500 in cloud credits.
 
-The **Supervisor Harness** provides the guardrails: it limits the number of attempts, stops the agent when it loops in circles, and assigns an independent "Checker" agent to approve every pull request.
+The **Supervisor Harness** provides the physical guardrails: it limits the number of attempts, halts execution when the agent loops in circles, and assigns an independent "Checker" agent with a clean context to approve every commit.
 
 </ELI5>
 
----
+## Why This Exists
 
-## 1. Goal Loops vs Single-Turn Q&A
+A conventional assistant operates in a **Single-Turn Request/Response** mode: the human engineer evaluates every line of diff, catches errors, and manually prompts the next step. While safe, this bounds productivity to the human's immediate typing speed.
 
-A conventional assistant operates in a **Single-Turn Request/Response** mode: the human must evaluate every step and manually prompt the next action.
+When teams remove the human from the inner loop to achieve autonomous execution, three predictable failure modes emerge:
 
-An **Autonomous Goal Loop** delegates the execution loop to the harness:
+1. **Circular Dependency Ping-Pong**: When resolving complex architectural errors (such as circular imports in Python), a worker agent without cycle memory edits Module A, which breaks Module B; it then edits Module B, which re-breaks Module A. Left unconstrained, the agent oscillates until it exhausts its token budget or hard turn cap.
+2. **Confirmation Bias & Self-Grading Sycophancy**: Language models suffer from psychological confirmation bias when evaluating their own code. When a model that wrote a flawed patch is asked *"Did you verify that this handles all edge cases?"*, its internal attention patterns strongly bias it toward answering *"Yes, the logic is sound and all constraints are satisfied."*
+3. **Runaway Cost Velocity**: Without explicit rate governors, an agent caught in a rapid tool loop can dispatch hundreds of API calls in minutes, accumulating hundreds of dollars in provider invoices on fruitless retries.
 
-```
-                      ┌───────────────────────────┐
-                      │    User Dispatches Goal   │
-                      │  "Implement feature X"    │
-                      └─────────────┬─────────────┘
-                                    │
-                                    ▼
-                      ┌───────────────────────────┐
-                ┌────►│   Harness Evaluates Loop  │◄───┐
-                │     │   Iteration & Budget Cap  │    │
-                │     └─────────────┬─────────────┘    │
-                │                   │                  │
-                │                   ▼                  │
-                │     ┌───────────────────────────┐    │
-                │     │   Worker Agent Executes   │    │
-                │     │      Subtask In Focus     │    │
-                │     └─────────────┬─────────────┘    │
-                │                   │                  │
-                │                   ▼                  │
-                │     ┌───────────────────────────┐    │
-                │     │   Supervisor / Verifier   │    │
-                │     │    Audits Changed Code    │    │
-                │     └─────────────┬─────────────┘    │
-                │                   │                  │
-           Pass │                   ▼                  │ Fail
-         Check  │            All Invariants            │ (Inject
-                │               Passed?                │ Diagnostic)
-                │              /       \               │
-                │          Yes/         \No            │
-                │            /           \             │
-                │           ▼             ▼            │
-                │     ┌───────────┐ ┌─────────────┐    │
-                │     │ Check Off │ │ Cycle Check │────┘
-                │     │ Subtask   │ │ & Fix Turn  │
-                │     └─────┬─────┘ └─────────────┘
-                │           │
-                │     More  │
-                │    Tasks? │
-                └───────────┤
-                            │ All Done
-                            ▼
-                      ┌───────────────────────────┐
-                      │ Final Integration Pass &  │
-                      │ Complete User Notification│
-                      └───────────────────────────┘
-```
+The supervisor harness solves these challenges by implementing an outer control plane with deterministic circuit breakers, token velocity limits, and a strict Maker-Checker architectural separation.
+
+## The Shape of It
+
+An autonomous goal loop runs as a supervised state machine that delegates execution to workers while reserving commit authority for verifiers:
+
+<AutonomousGoalLoopDiagram />
 
 <PredictFirst
   question="If an autonomous coding loop gets stuck in an oscillating ping-pong loop (editing File A breaks File B, editing File B breaks File A), what will happen if you only enforce a step cap (e.g. max 30 turns) without cycle detection?"
@@ -93,18 +57,92 @@ An **Autonomous Goal Loop** delegates the execution loop to the harness:
   explanation="Language models have no internal memory of past turns once older tool logs are compacted. Without explicit cycle detection tracking file hashes and error signatures, the agent exhibits 'Markovian amnesia': seeing only the immediate error in File B, it re-introduces the fix for File A that broke it, ping-ponging until the turn ceiling is exhausted."
 />
 
----
+## Anthropic's Multi-Agent Supervisor Triad
 
-## 2. Cycle Detection & Circuit Breakers in Python
+When a single model acts as both author and auditor of its own code, confirmation bias leads to blindness: the model believes its code is correct because it wrote it.
 
-To prevent infinite oscillation, the harness hashes workspace diffs and error outputs after each turn. If the identical state hash repeats, a **Circuit Breaker** halts the loop.
+Anthropic's long-running agent research formalizes the **Supervisor Triad**:
 
-Run this live in-browser Python implementation to see how the cycle detector detects an oscillating agent:
+<AnthropicSupervisorTriadVisualizer />
+
+The triad divides responsibilities across three distinct, isolated roles:
+
+1. **The Planner**: Receives the user goal, inspects the repository map (`AGENTS.md`), and decomposes the goal into a sequential checklist written to `feature_list.json`. The Planner never writes production code.
+2. **The Generator (Worker)**: Operates inside the execution sandbox. It picks the current checklist item, reads relevant files, and modifies code. It runs until it believes the task is complete.
+3. **The Evaluator (Checker)**: Spun up with a completely fresh, unpolluted context window. It receives only the unified `git diff` generated by the worker and the requirement specification. It executes the 3-layer verification engine independently. If verification passes, it commits the changes; if it fails, it injects an XML diagnostic envelope back into the Generator.
+
+<GoDeeper title="Go deeper: Why Maker-Checker separation eliminates Confirmation Bias in AI">
+
+In psychology and agentic systems, **Confirmation Bias** describes how an agent evaluates its own output. When the Generator agent writes a function, its internal attention heads are biased toward the prompt path that led to that implementation. If you prompt it *"Did you make any errors?"*, it reliably hallucinates *"No, the logic is sound."*
+
+By instantiating a completely separate **Evaluator Agent** with a fresh context window containing only the file diff and the requirements in `AGENTS.md`, the Evaluator examines the patch with zero preconceptions or sycophancy, catching edge cases the Generator missed.
+
+</GoDeeper>
+
+## Production Supervisor Loop Configuration
+
+In production harnesses, the supervisor enforces hard operating constraints via environment variables or a YAML configuration:
+
+```yaml
+# supervisor_policy.yaml - Production Autonomous Loop Guardrails
+supervisor:
+  # Hard ceilings to prevent runaway processes
+  max_iterations_per_task: 15
+  global_timeout_seconds: 1800 # 30 minutes max
+  max_budget_usd: 2.50
+
+  # Velocity governors (leaky bucket rate limiting)
+  token_velocity:
+    max_input_tokens_per_hour: 500000
+    max_output_tokens_per_hour: 40000
+    cooldown_on_exhaustion_sec: 120
+
+  # Circuit breaker thresholds
+  cycle_detector:
+    hash_algorithm: "sha256"
+    repetition_threshold: 2 # Trip if identical state hash observed twice
+    action_on_trip: "halt_and_reprompt_architectural_refactor"
+
+  # Process sandbox limits
+  sandbox:
+    memory_limit_mb: 2048
+    max_subprocesses: 64
+    network_egress: false
+```
+
+## A Full Worked Example: State Fingerprinting & Circuit Breakers
+
+Consider an agent attempting to resolve a circular dependency between `router.py` and `handler.py`. The agent generates three sequential turns:
+
+1. **Turn 1**: Modifies `router.py` with `import handler`. The Python interpreter raises `ImportError: cannot import name router from partially initialized module`. The harness fingerprints this state to hash `[fc207e10]`.
+2. **Turn 2**: Modifies `handler.py` with `import router`. The interpreter raises `ImportError: cannot import name handler from partially initialized module`. State hash is `[bfd76fa9]`.
+3. **Turn 3**: Reverts `handler.py` and re-attempts `router.py` with `import handler`. State hash calculates to `[fc207e10]`.
+
+Because hash `[fc207e10]` has now been observed **2 times** (matching the repetition threshold), the circuit breaker trips immediately. It halts the loop before Turn 4 can execute, preventing 12 additional wasted turns.
+
+```
+       Turn 1: router.py  ──> State Hash [fc207e10] (Count: 1)
+                                      │
+       Turn 2: handler.py ──> State Hash [bfd76fa9] (Count: 1)
+                                      │
+       Turn 3: router.py  ──> State Hash [fc207e10] (Count: 2)
+                                      │
+                                      ▼
+             [ CIRCUIT BREAKER TRIPPED: REPETITION DETECTED ]
+             • Action: Halt execution loop
+             • Strategy: Flush turn history, inject architectural refactor prompt
+```
+
+### Run It Yourself
+
+Execute this self-contained Python implementation of the deterministic cycle detector:
 
 <RunnableCode code={`import hashlib
-from typing import List, Dict
+from typing import List, Dict, Any
 
 class CycleDetector:
+    """Detects oscillation cycles in autonomous agent execution loops."""
+
     def __init__(self, repeat_threshold: int = 2):
         self.history: List[str] = []
         self.threshold = repeat_threshold
@@ -127,62 +165,79 @@ detector = CycleDetector(repeat_threshold=2)
 
 # Simulated Agent Turns (Ping-Pong oscillation between router.py and handler.py)
 simulated_turns = [
-    {"file": "router.py", "diff": "import handler", "err": "ImportError: cannot import name 'router' from partially initialized module"},
-    {"file": "handler.py", "diff": "import router", "err": "ImportError: cannot import name 'handler' from partially initialized module"},
-    {"file": "router.py", "diff": "import handler", "err": "ImportError: cannot import name 'router' from partially initialized module"}, # Repeated!
+    {"file": "router.py", "diff": "import handler", "err": "ImportError: cannot import name router from partially initialized module"},
+    {"file": "handler.py", "diff": "import router", "err": "ImportError: cannot import name handler from partially initialized module"},
+    {"file": "router.py", "diff": "import handler", "err": "ImportError: cannot import name router from partially initialized module"},
 ]
 
+print("=== Autonomous Loop Cycle Detector Verification ===\\n")
 for t in simulated_turns:
     tripped = detector.record_and_check(t["file"], t["diff"], t["err"])
     if tripped:
         print("Harness Action: Halting loop, injecting architectural refactor prompt into agent context.\\n")
         break
+
+# Try it: Change repeat_threshold to 3 above to see what happens when more repetitions are allowed.
 `} />
 
----
+## Background Entropy & Garbage Collection Agents
 
-## 3. Anthropic's Multi-Agent Triad (Planner-Generator-Evaluator)
+In large autonomous deployments, agents write code rapidly but introduce subtle code decay over dozens of iterations: orphaned imports, stale comments, unused helper functions, and misaligned indentation.
 
-When a single model acts as both author and auditor of its own code, confirmation bias leads to blindness: the model believes its code is correct because it wrote it.
-
-Anthropic's long-running agent research formalizes the **Supervisor Triad**:
-
-<AnthropicSupervisorTriadVisualizer />
-
-<GoDeeper title="Go deeper: Why Maker-Checker separation eliminates Confirmation Bias in AI">
-
-In psychology and agentic systems, **Confirmation Bias** describes how an agent evaluates its own output. When the Generator agent writes a function, its internal attention heads are biased toward the prompt path that led to that implementation. If you prompt it *"Did you make any errors?"*, it reliably hallucinates *"No, the logic is sound."*
-
-By instantiating a completely separate **Evaluator Agent** with a fresh context window containing only the file diff and the requirements in `AGENTS.md`, the Evaluator examines the patch with zero preconceptions or sycophancy, catching edge cases the Generator missed.
-
-</GoDeeper>
-
----
-
-## 4. OpenAI's Pattern: Background Entropy & Garbage Collection Agents
-
-In OpenAI's 1-million-line production Codex experiment, a critical finding emerged: autonomous agents write code faster than human teams, but they also accumulate subtle technical debt (stale comments, duplicate utility functions, dead imports).
-
-To solve this, the harness runs automated **Entropy Collection Agents** asynchronously:
+To counter this decay, OpenAI's production engineering methodology introduces asynchronous **Entropy Collection Agents**:
 
 <OpenAIEntropyVisualizer />
 
-Running entropy passes continuously prevents autonomous codebases from decaying into "AI slop."
+Entropy agents run outside the critical user path:
+- **Dead Code Scavengers**: Periodically run `vulture` or `deadcode` to purge unreferenced functions created during exploratory debugging turns.
+- **Import Consolidators**: Run `ruff check --select I --fix` to organize module imports alphabetically and eliminate duplicate bindings.
+- **Documentation Re-synchronizers**: Compare docstring parameters against actual function AST signatures to ensure parameter names match reality.
 
----
+## Empirical Performance Across Benchmarks
 
-## 5. Empirical Performance Across Tasks
-
-The ablation studio below shows how closing the loop with automated supervision and halting controls transforms reliability across diverse task categories:
+Closing the autonomous loop with verification gates and circuit breakers transforms reliability across diverse task categories:
 
 <HarnessAblationStudio />
 
----
+Without harness supervision, success rates drop dramatically on multi-file tasks because small errors compound into unrecoverable hallucinations. Structured supervision restores deterministic quality.
+
+## Common Problems & Fixes
+
+1. **Deadlock from Strict Evaluator Rejections**: The Generator and Evaluator get into a permanent disagreement: Generator believes its patch satisfies requirements, but Evaluator repeatedly rejects with minor formatting nitpicks.
+   - *Fix*: Implement an **Escalation Arbiter**: if Evaluator rejects 3 times on formatting or non-functional criteria, the harness runs automated formatters (`ruff format`) and escalates to human review.
+2. **Context Bloat inside the Supervisor**: The supervisor process accumulates all historical worker traces, becoming slow and expensive.
+   - *Fix*: Keep the supervisor completely stateless. Pass only the unified git diff and structured test status to the supervisor on each turn.
+3. **Premature Halting from False-Positive Cycle Hits**: An agent legitimately re-touches a file to add a new function, but the error message from an unrelated test matches earlier output.
+   - *Fix*: Include the git unified diff (`diff_text`) in the SHA256 hash payload. Two turns on the same file with different code diffs produce distinct fingerprints.
 
 <NotebookCallout color="amber" title="Supervisor Golden Rule">
-**An agent should never judge its own work.** Always enforce the Maker-Checker separation: the Generator proposes patches inside the sandbox, while an independent Evaluator verifies deterministic proofs and signs off on git commits.
+An agent should never judge its own work. Always enforce the Maker-Checker separation: the Generator proposes patches inside the sandbox, while an independent Evaluator verifies deterministic proofs and signs off on git commits.
 </NotebookCallout>
 
-<NotebookCallout title="Track Complete">
-You have mastered the foundational pillars of Harness Engineering. Return to the **[Harness Engineering Roadmap](/docs/harness-engineering/roadmap)** or dive into building your own sandboxed agent loop.
-</NotebookCallout>
+## When *Not* to Use It
+
+| Situation | Better Choice | Why |
+| :--- | :--- | :--- |
+| Single-turn code translation or linting | Direct single-pass LLM call | Static conversions have no intermediate state; multi-agent loops add latency and token overhead. |
+| Time-critical user request (< 3 seconds) | Synchronous endpoint | Autonomous multi-agent loops require multiple turns and minutes to execute. |
+| Production hotfix on mission-critical database | Human engineer with manual review | High-risk infrastructure changes should not be delegated to unattended autonomous loops. |
+
+## Remember
+
+| Idea | Core Rule |
+| :--- | :--- |
+| **Maker-Checker** | Decouple code generation from evaluation; use fresh contexts for auditing. |
+| **Circuit Breakers** | Fingerprint turns with SHA256 hashes to halt circular ping-pong loops. |
+| **Token Velocity** | Enforce hourly token consumption ceilings to prevent runaway billing. |
+| **Entropy Collectors**| Run asynchronous background agents to sweep dead code and stale imports. |
+| **Structured Halting**| Halt on repeat hashes, budget exhaustion, or 100% verification pass. |
+
+Next: Return to the **[Harness Engineering Roadmap](/docs/harness-engineering/roadmap)** to review the end-to-end curriculum.
+
+## Sources
+
+- Anthropic Research, *Building Effective Agents*: [https://www.anthropic.com/research/building-effective-agents](https://www.anthropic.com/research/building-effective-agents) (2024)
+- Qingyun Wu et al., *AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation*: [https://arxiv.org/abs/2308.08155](https://arxiv.org/abs/2308.08155) (2023)
+- Sirui Hong et al., *MetaGPT: Meta Programming for A Multi-Agent Collaborative Framework*: [https://arxiv.org/abs/2308.00352](https://arxiv.org/abs/2308.00352) (2023)
+- LangGraph Hierarchical Multi-Agent Supervisor Teams: [https://langchain-ai.github.io/langgraph/tutorials/multi_agent/hierarchical_agent_teams/](https://langchain-ai.github.io/langgraph/tutorials/multi_agent/hierarchical_agent_teams/) (2024)
+- SWE-bench Verified Benchmark: [https://www.swebench.com/](https://www.swebench.com/) (2024)

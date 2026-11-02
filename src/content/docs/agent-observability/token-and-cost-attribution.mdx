@@ -1,0 +1,336 @@
+---
+title: "Token Accounting, Cost Attribution & Latency Profiling"
+description: "Model multi-tier token economics, prompt cache write/read financial attribution, real-time burn velocity alarms, and TTFT latency profiling."
+sidebar_position: 3
+---
+
+import { ELI5 } from '../../../components/ELI5';
+import { PredictFirst } from '../../../components/PredictFirst';
+import { GoDeeper } from '../../../components/GoDeeper';
+import { NotebookCallout } from '../../../components/NotebookCallout';
+import { RunnableCode } from '../../../components/RunnableCode';
+
+# Token Accounting, Cost Attribution & Latency Profiling
+
+In traditional software systems, compute costs correlate directly with CPU hours, network egress, and persistent database storage. These expenses are predictable and change gradually over billing cycles. Autonomous AI systems overturn this predictability: a single buggy regex or an unconstrained agent loop can trigger 50 recursive tool calls, burn through 2,000,000 tokens, and incur $30 in API charges in under four minutes.
+
+Furthermore, provider pricing is no longer a simple flat rate per token. With the industry-wide rollout of prompt caching, an input token can be billed at three entirely different price points: an uncached input token, a cache-write token (billed at a 25% premium on creation), or a cache-read token (discounted by 90%). 
+
+Managing enterprise agents requires **Token Accounting & Financial Attribution**: a granular metering layer that attributes costs per tenant, detects burn velocity spikes, and profiles prefill versus generation latency.
+
+<ELI5>
+Imagine a taxi ride with dynamic congestion tolling. If you drive down the regular highway, you pay standard mileage ($3.00 per mile). If the taxi driver registers for an express fast-lane pass at the entrance gate, they pay an upfront registration fee ($3.75 for that mile). But for every subsequent mile the taxi stays in the express carpool lane, the toll drops to just 30 cents per mile!
+
+If an autonomous chauffeur misses the express exit and drives in circles on the tollway for 20 miles, you get a shocking $80 bill. A token ledger acts as the passenger's live fare meter: it verifies the driver is taking advantage of the discounted carpool lane, shows exactly how much each turn costs, and slams on the brakes if the trip bill threatens to exceed your budget.
+</ELI5>
+
+---
+
+## 1. The Multi-Tier Token Pricing Formula
+
+In modern frontier APIs (Anthropic Claude 3.7 Sonnet, OpenAI GPT-4o, Google Gemini 1.5 Pro), token pricing is divided into four distinct billing categories:
+
+$$\text{Cost}_{\text{turn}} = (T_{\text{in\_raw}} \times P_{\text{in}}) + (T_{\text{cache\_read}} \times P_{\text{read}}) + (T_{\text{cache\_write}} \times P_{\text{write}}) + (T_{\text{out}} \times P_{\text{out}})$$
+
+Where:
+- $T_{\text{in\_raw}}$: Uncached input tokens that must be processed through full attention prefill.
+- $T_{\text{cache\_read}}$: Tokens retrieved directly from GPU KV cache (billed at an ~80–90% discount).
+- $T_{\text{cache\_write}}$: Prefix tokens written to the persistent cache on the initial turn (billed at an ~25% premium).
+- $T_{\text{out}}$: Autoregressively generated output tokens (typically 4–5× more expensive than base input tokens).
+
+```
++-------------------------------------------------------------------------+
+|                  Pricing Comparison (Claude 3.7 Sonnet Tier)            |
++--------------------------+---------------------+------------------------+
+| Token Category           | Rate per 1M Tokens  | Relative Cost Ratio    |
++--------------------------+---------------------+------------------------+
+| Uncached Input (P_in)    | $3.00               | 1.0x (Baseline)        |
+| Cache Read (P_read)      | $0.30               | 0.1x (90% Discount)    |
+| Cache Write (P_write)    | $3.75               | 1.25x (+25% Creation)  |
+| Output Generation (P_out)| $15.00              | 5.0x (Compute Heavy)   |
++--------------------------+---------------------+------------------------+
+```
+
+### Worked Financial Example: 10-Turn Refactoring Session
+
+Consider an autonomous agent executing a 10-turn software refactoring task:
+- System prompt + tool catalog: 4,000 tokens (written to cache on Turn 1).
+- Average conversational turn growth: 1,000 tokens per turn of diffs and tool results.
+- Total input tokens processed across the 10 turns: 120,000 tokens.
+- Of these, 96,000 tokens are cache hits ($T_{\text{cache\_read}}$, 80% hit ratio).
+- 4,000 tokens are cache writes ($T_{\text{cache\_write}}$ on Turn 1).
+- 20,000 tokens are new uncached turn inputs ($T_{\text{in\_raw}}$).
+- Total generated output across 10 turns: 2,500 tokens ($T_{\text{out}}$).
+
+Let us calculate the exact cost:
+
+$$C_{\text{in\_raw}} = 20{,}000 \times \frac{\$3.00}{10^6} = \$0.0600$$
+
+$$C_{\text{cache\_read}} = 96{,}000 \times \frac{\$0.30}{10^6} = \$0.0288$$
+
+$$C_{\text{cache\_write}} = 4{,}000 \times \frac{\$3.75}{10^6} = \$0.0150$$
+
+$$C_{\text{out}} = 2{,}500 \times \frac{\$15.00}{10^6} = \$0.0375$$
+
+$$\text{Total Session Cost} = \$0.0600 + \$0.0288 + \$0.0150 + \$0.0375 = \mathbf{\$0.1413}$$
+
+Without prompt caching, all 120,000 input tokens would be billed at the standard rate of $3.00/1M:
+
+$$C_{\text{uncached\_baseline}} = \left(120{,}000 \times \frac{\$3.00}{10^6}\right) + \left(2{,}500 \times \frac{\$15.00}{10^6}\right) = \$0.3600 + \$0.0375 = \mathbf{\$0.3975}$$
+
+$$\text{Net Financial Savings} = \frac{\$0.3975 - \$0.1413}{\$0.3975} = \mathbf{64.45\%}$$
+
+Observability dashboards must track these distinct buckets: if cache hit ratios drop from 80% to 10%, operational costs will nearly triple with zero change in user traffic.
+
+---
+
+## 2. Real-Time Token Burn Velocity Alarms
+
+<PredictFirst
+  question="An agent is executing an autonomous data analysis script. At turn 6, an unhandled exception causes the agent to dump a 15MB CSV file into stdout on each subsequent attempt. What observability metric fires first to prevent a massive billing overrun?"
+  options={[
+    "Total session duration timeout (30 minutes).",
+    "Token Burn Velocity Alarm: Delta tokens per minute (dTokens/dt) crossing the rate threshold within 10 seconds.",
+    "Database disk space usage alert on the SQLite episodic log."
+  ]}
+  answerIndex={1}
+  explanation="Total duration timeouts take 30 minutes to trigger, by which time hundreds of thousands of tokens have already been billed. Real-time observability engines monitor first-derivative Token Burn Velocity (tokens consumed per second or cost incurred per minute). A spike from 50 tokens/s to 4,000 tokens/s triggers an immediate circuit breaker within a single turn."
+/>
+
+### The Derivative Burn Velocity Formula
+
+We define the token burn velocity $V_t$ at turn $t$ as:
+
+$$V_t = \frac{\Delta \text{Tokens}_t}{\Delta t_{\text{seconds}}} = \frac{\text{Tokens}_t - \text{Tokens}_{t-1}}{t_{\text{end}} - t_{\text{start}}}$$
+
+And the financial velocity $F_t$ ($/minute) as:
+
+$$F_t = V_t \times \bar{P}_{\text{effective}} \times 60$$
+
+If $F_t > \text{Ceiling}_{\text{rate}}$ (for example, exceeding $2.00/minute), the harness trips a circuit breaker, halts the agent before the next turn, and marks the trace with `status.error = "BURN_VELOCITY_EXCEEDED"`.
+
+```
+Cost / Min
+ $5.00 |                                 * (Spike: 15MB CSV Dump)
+       |                                / \
+ $2.00 |-------------------------------*---*----------------- [ALARM THRESHOLD: $2.00/min]
+       |                              /     \ (Circuit Breaker Tripped)
+ $0.50 |   *-------*-------*---------*       *
+ $0.00 +-----------------------------------------------------
+         Turn 1  Turn 2  Turn 3   Turn 4   Turn 5 (Halted)
+```
+
+---
+
+## 3. Multi-Tenant Cost Attribution (Chargeback & Showback)
+
+In enterprise platforms serving multiple internal teams or external customers, API costs must not disappear into a single centralized engineering pool. Every agent execution span is stamped with financial metadata:
+
+```
+                      [Enterprise API Gateway]
+                                 |
+         +-----------------------+-----------------------+
+         |                                               |
+         v                                               v
+  [Team Alpha / Auth]                             [Team Beta / Analytics]
+  - 142 Sessions                                  - 89 Sessions
+  - Cache Hit Ratio: 86.4%                        - Cache Hit Ratio: 32.1%
+  - Spend: $14.20                                 - Spend: $78.50
+  - Heuristic: High KV reuse                      - Heuristic: Broken cache prefix!
+```
+
+By tracking cache hit ratios by team, platform engineers immediately discover that Team Beta was prepending random timestamps to their system prompt, completely breaking prefix caching and inflating their cloud bill by 5×.
+
+---
+
+## 4. Latency Profiling: Prefill vs. Decode Decomposition
+
+Latency monitoring in autonomous agents must not treat inference as an opaque block of time. Total inference duration is the sum of four discrete components:
+
+$$t_{\text{total}} = t_{\text{queue}} + t_{\text{prefill}} + t_{\text{decode}} + t_{\text{network}}$$
+
+```
++--------------------------------------------------------------------------+
+|  Stage               | Driver                                            |
++----------------------+---------------------------------------------------+
+|  1. Queue Time       | Provider GPU scheduling saturation & rate limits |
+|  2. Prefill (TTFT)   | Input prompt sequence length (O(N^2) or linear)  |
+|  3. Decode (TPOT)    | Autoregressive output generation length (tokens/s)|
+|  4. Network Latency  | TCP/TLS handshake and payload streaming transfer  |
++--------------------------------------------------------------------------+
+```
+
+When profiling an agent turn taking 3,800ms:
+- If $t_{\text{prefill}}$ is 3,200ms and $t_{\text{decode}}$ is 600ms, the agent is bottlenecked by prompt size. Solution: apply AST compaction and dynamic tool pruning.
+- If $t_{\text{prefill}}$ is 200ms and $t_{\text{decode}}$ is 3,600ms, the model is generating excessively verbose reasoning chains. Solution: enforce stricter output schemas or switch to speculative decoding.
+
+---
+
+## 5. Implementation: Financial Ledger & Velocity Limiter
+
+Below is an executable Python implementation of a production token accounting ledger. It tracks uncached input, cache hits, cache writes, and output tokens, calculates exact multi-tier costs, computes counterfactual savings, and enforces hard burn velocity limits.
+
+<RunnableCode code={`from dataclasses import dataclass, field
+from typing import Dict, Any, List
+
+@dataclass
+class ModelPricing:
+    name: str
+    uncached_input_per_m: float
+    cache_read_per_m: float
+    cache_write_per_m: float
+    output_per_m: float
+
+class TokenFinancialLedger:
+    """
+    Precision multi-tier token accounting and financial attribution engine.
+    Computes exact costs, cache hit efficiency, and enforces real-time budget ceilings.
+    """
+    def __init__(self, pricing: ModelPricing, session_budget_usd: float = 0.50):
+        self.pricing = pricing
+        self.session_budget_usd = session_budget_usd
+        self.turns: List[Dict[str, Any]] = []
+
+    def record_turn(self, turn_index: int, uncached_in: int, cache_read: int, cache_write: int, output_tokens: int) -> Dict[str, Any]:
+        cost_uncached = (uncached_in * self.pricing.uncached_input_per_m) / 1e6
+        cost_read = (cache_read * self.pricing.cache_read_per_m) / 1e6
+        cost_write = (cache_write * self.pricing.cache_write_per_m) / 1e6
+        cost_out = (output_tokens * self.pricing.output_per_m) / 1e6
+        turn_total = cost_uncached + cost_read + cost_write + cost_out
+
+        cumulative_spend = sum(t["cost_usd"] for t in self.turns) + turn_total
+        
+        record = {
+            "turn": turn_index,
+            "uncached_input": uncached_in,
+            "cache_read": cache_read,
+            "cache_write": cache_write,
+            "output": output_tokens,
+            "cost_usd": round(turn_total, 6),
+            "cumulative_spend_usd": round(cumulative_spend, 6)
+        }
+        self.turns.append(record)
+
+        # Budget Ceiling Enforcement
+        if cumulative_spend > self.session_budget_usd:
+            raise RuntimeError(
+                f"[FINANCIAL CIRCUIT BREAKER] Session spend ${cumulative_spend:.4f} "
+                f"breached ceiling ${self.session_budget_usd:.2f} at turn {turn_index}!"
+            )
+        return record
+
+    def compute_financial_audit(self) -> Dict[str, Any]:
+        total_uncached = sum(t["uncached_input"] for t in self.turns)
+        total_read = sum(t["cache_read"] for t in self.turns)
+        total_write = sum(t["cache_write"] for t in self.turns)
+        total_out = sum(t["output"] for t in self.turns)
+        actual_spend = sum(t["cost_usd"] for t in self.turns)
+
+        # Counterfactual: Cost if prompt caching was completely disabled
+        total_input_tokens = total_uncached + total_read + total_write
+        uncached_input_cost = (total_input_tokens * self.pricing.uncached_input_per_m) / 1e6
+        output_cost = (total_out * self.pricing.output_per_m) / 1e6
+        counterfactual_spend = uncached_input_cost + output_cost
+        savings = counterfactual_spend - actual_spend
+
+        return {
+            "model": self.pricing.name,
+            "completed_turns": len(self.turns),
+            "total_input_tokens": total_input_tokens,
+            "cache_hit_ratio": round(total_read / max(1, total_input_tokens), 4),
+            "actual_spend_usd": round(actual_spend, 4),
+            "uncached_counterfactual_usd": round(counterfactual_spend, 4),
+            "net_savings_usd": round(savings, 4),
+            "savings_percentage": round((savings / max(1e-5, counterfactual_spend)) * 100, 2)
+        }
+
+# Verification & Test Execution
+sonnet_rates = ModelPricing(
+    name="claude-3-7-sonnet",
+    uncached_input_per_m=3.00,
+    cache_read_per_m=0.30,
+    cache_write_per_m=3.75,
+    output_per_m=15.00
+)
+
+ledger = TokenFinancialLedger(sonnet_rates, session_budget_usd=0.50)
+
+# Turn 1: Cache creation (4,000 tokens written to cache)
+ledger.record_turn(turn_index=1, uncached_in=1000, cache_read=0, cache_write=4000, output_tokens=250)
+
+# Turns 2-10: 9 consecutive cache-hit turns
+for turn in range(2, 11):
+    ledger.record_turn(turn_index=turn, uncached_in=2111, cache_read=10666, cache_write=0, output_tokens=250)
+
+audit = ledger.compute_financial_audit()
+print("Session Financial Audit:")
+for k, v in audit.items():
+    print(f"  {k}: {v}")
+
+# Mathematical Invariant Assertions
+assert audit["actual_spend_usd"] == 0.1413
+assert audit["uncached_counterfactual_usd"] == 0.3975
+assert audit["savings_percentage"] == 64.45
+print("\nAll token accounting and financial invariants verified.")
+`} />
+
+---
+
+## 6. Real Production Configuration: FinOps Metric Alerts
+
+In Prometheus and Grafana alerting stacks, platform engineers configure alerting rules over OpenTelemetry metrics exported from agent workers:
+
+```yaml
+# /etc/prometheus/rules/agent_cost_alerts.yml
+groups:
+  - name: agent_financial_guardrails
+    rules:
+      - alert: AgentCacheEfficiencyDegraded
+        expr: (sum(rate(gen_ai_usage_cache_read_tokens[5m])) / sum(rate(gen_ai_usage_prompt_tokens[5m]))) < 0.50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Agent KV Cache Hit Ratio dropped below 50%"
+          description: "Tenant {{ $labels.tenant_id }} is modifying system prompt prefixes, causing high API costs."
+
+      - alert: AgentBurnVelocityExceeded
+        expr: sum(rate(gen_ai_financial_cost_total_usd[1m])) by (agent_session_id) > 2.00
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Agent burn velocity exceeded $2.00/min"
+          description: "Session {{ $labels.agent_session_id }} is burning tokens excessively. Halting pod."
+```
+
+---
+
+## 7. When to Use It and When Not to Use It
+
+| Scenario | Recommended Strategy | Why? | Anti-Pattern |
+| :--- | :--- | :--- | :--- |
+| **Multi-Turn Production Autonomous Agents** | Granular Multi-Tier Accounting + Velocity Circuit Breakers | Catches runaway tool loops before $50 bills accumulate and attributes costs per tenant. | Relying on monthly cloud provider invoices to discover a broken loop from three weeks ago. |
+| **One-Off Ad-Hoc Prototyping** | Fixed Provider Hard Spend Limits | Complex FinOps tracking adds setup friction when evaluating model capability locally. | Over-engineering Prometheus multi-tenant ledgers for a local hackathon script. |
+| **B2B SaaS with Per-Seat Pricing** | Showback Dashboards by Customer ID | Enables pricing plans based on real margins and flags unprofitable power users. | Ingesting all customer tokens into a single blended gross margin metric. |
+| **Deterministic Code Formatters (Prettier/Ruff)** | Zero LLM Accounting | Deterministic compilers cost $0.00 in LLM tokens; do not route them through LLM accounting layers. | Wrapping local linter executions in LLM token telemetry spans. |
+
+---
+
+## 8. Core Invariants to Remember
+
+| Concept | Invariant Rule | Operational Consequence |
+| :--- | :--- | :--- |
+| **Four-Tier Cost Distinction** | Never calculate costs using a single blended input token rate. | Conflating cache reads ($0.30) with uncached inputs ($3.00) produces up to 300% accounting errors. |
+| **First-Derivative Alarms** | Monitor tokens per second ($V_t$) in addition to cumulative spend. | Cumulative caps take minutes to trigger; velocity spikes catch runaway loops in seconds. |
+| **Cache Hit Ratio Baseline** | Multi-turn agent systems must maintain $\ge 75\%$ prompt cache hit ratios. | Cache hit ratios below 50% signal that dynamic variables are improperly positioned in the prompt prefix. |
+| **Decoupled Latency Metrics** | Always measure Time-To-First-Token (TTFT) separately from generation rate. | Conflating prefill and decode times misdirects optimization efforts between prompt size and model hardware. |
+
+---
+
+## Sources
+
+- Anthropic Engineering. (2024). *Prompt Caching: Accelerating Developer Workflows and Lowering Latency*. Anthropic Documentation. [https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching](https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching)
+- OpenAI Platform Documentation. (2024). *Prompt Caching in the OpenAI API*. OpenAI Documentation. [https://platform.openai.com/docs/guides/prompt-caching](https://platform.openai.com/docs/guides/prompt-caching)
+- FinOps Foundation. (2023). *FinOps Framework for Cloud and AI Engineering*. FinOps Standards. [https://www.finops.org/framework/](https://www.finops.org/framework/)
+- OpenTelemetry Authors. (2024). *Semantic Conventions for Generative AI Metrics*. OpenTelemetry Specification. [https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/)

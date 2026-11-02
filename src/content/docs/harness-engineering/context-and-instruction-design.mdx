@@ -13,28 +13,40 @@ import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
 # Context & Instruction Architecture
 
-In modern AI engineering, the way documentation and rules are provided to an agent is as critical as the code itself. Developers often believe that more context is always better—dumping thousands of lines of documentation, architecture manuals, and code snippets into an instruction file.
+In modern autonomous systems, how instructions, schemas, and repository files are presented to a language model determines execution reliability. Many developers assume that expanding context windows means more information is always better, dumping thousands of lines of documentation and code into a single prompt.
 
-In practice, this causes **instruction rot** and **attention dispersion**. Frontier transformers suffer from the "lost-in-the-middle" effect: the larger the context, the less reliably the model obeys individual constraints.
+In production, uncurated prompts trigger **attention dispersion** and **context degradation**. Large models suffer from position-dependent retrieval decay: as irrelevant tokens accumulate in the attention window, the probability that the model obeys critical negative constraints drops sharply.
 
 <ELI5>
 
-Imagine asking someone to assemble a piece of furniture, and instead of giving them a 1-page quickstart diagram, you hand them a 400-page encyclopedia detailing the chemical composition of the screws and the history of woodworking. They get overwhelmed, lose track of the core instructions, and make silly mistakes.
+Imagine asking a technician to repair a complex piece of equipment. Instead of handing them a single-page schematic showing where parts connect, you dump a 600-page historical archive onto their workbench detailing the mining history of the metal fasteners and every discarded blueprint from ten years ago. The technician gets overwhelmed, overlooks the primary safety warning, and replaces the wrong valve.
 
-In Harness Engineering, we keep instructions razor-sharp. We give the agent a compact **Map** of where things live, and let it pull detailed manuals only when it specifically needs them.
+In Harness Engineering, we keep the model's workbench clean. We provide a concise **Map** of where subsystems live, and allow the model to pull specific **Manuals** only when it reaches that exact step.
 
 </ELI5>
 
----
+## Why This Exists
 
-## 1. The Instruction Budget & Map vs Manual
+As frontier context windows expanded from 8,000 tokens to 200,000 and beyond, teams began inlining whole repositories into initial system prompts. This naive approach produces four consistent operational defects:
 
-A production harness treats token space like CPU cache. Every instruction carries an **opportunity cost**:
+1. **Lost in the Middle (Attention Degradation)**: Research by Liu et al. (2023, *Lost in the Middle*) established that transformer self-attention allocates highest fidelity to tokens at the beginning and end of a context window. Key facts placed in the middle of long contexts suffer substantially lower retrieval and reasoning accuracy than when positioned near the prompt boundaries.
+2. **Context Saturation & Premature Victory**: As active context usage approaches high percentages of available window capacity, models exhibit degraded instruction adherence, repetitive tool polling, or premature declarations that tasks are complete without running tests.
+3. **Quadratic Cost and Latency Scaling**: An autonomous agent executes multiple sequential turns. In a 15-turn task, carrying 80,000 tokens of static code means paying for 1.2 million cumulative input tokens, drastically increasing cost while slowing response times.
+4. **Instruction Contradiction**: When broad documentation contains outdated architectural decisions alongside new guidelines, the model cannot distinguish current invariants from historical artifacts, leading to regressive edits.
+
+## The Shape of It
+
+The instruction architecture organizes repository information into two tiers: the **Map** (loaded at startup) and the **Manual** (loaded on-demand):
 
 <InstructionBudgetVisualizer />
 
+### The Map vs Manual Principle
+
+- **The Map (`AGENTS.md`)**: A compact, static file (under 2,500 tokens) positioned in the root directory. It contains the technology stack, build commands, test runners, and negative invariants ("never bypass access control"). It acts as a spatial directory indexing the repository.
+- **The Manual (Dynamic Skills & Sub-documents)**: Detailed procedure guides (API references, database migration recipes, CSS design tokens) stored in modular folders. The agent reads these files only when a task targets that specific subsystem.
+
 <PredictFirst
-  question="If an engineer dumps an entire 80,000-token repository into Claude 3.7 or GPT-4o's 128k/200k context window before asking for a bugfix, what is the most common observed failure mode?"
+  question="If an engineer dumps an entire 80,000-token repository into Claude 3.7 or GPT-4o's context window before asking for a bugfix, what is the most common observed failure mode?"
   options={[
     "The model runs out of GPU memory and throws a hardware CUDA OOM exception.",
     "Attention dispersion: the model's softmax attention weights flatten over the noisy tokens, causing it to violate negative constraints and generate subtle hallucinated APIs.",
@@ -45,68 +57,134 @@ A production harness treats token space like CPU cache. Every instruction carrie
   explanation="Even with 200k+ context windows, needle-in-a-haystack and multi-constraint reasoning decay as prompt noise rises. Irrelevant helper functions and docstrings dilute the model's attention weights away from critical invariants in AGENTS.md, leading to 'Context Anxiety', hallucinated methods, and missed edge cases."
 />
 
----
+## Dynamic Compaction Across Turns
 
-## 2. Dynamic Compaction & Token Pressure
-
-As an agent edits code, executes tests, and receives compiler outputs, its working memory fills rapidly. A robust harness continuously compacts conversational history into structured external state:
+As an agent edits code, executes tests, and receives compiler outputs, its working memory fills rapidly. A production harness continuously compacts conversational history into structured external state artifacts:
 
 <ContextCompactionVisualizer />
 
 <GoDeeper title="Go deeper: Why attention dispersal creates 'Context Anxiety' in long-running runs">
 
-In multi-turn autonomous coding runs, agents often exhibit what researchers term **Context Anxiety**: as the token count crosses 60-70% of the active context window, the model's likelihood of abruptly declaring premature victory or emitting truncated code spikes dramatically. 
+In multi-turn autonomous coding runs, agents often exhibit what practitioners term **Context Anxiety**: as the token count crosses 60-70% of the active context window, the model's likelihood of abruptly declaring premature victory or emitting truncated code increases.
 
-This occurs because frontier models are fine-tuned on completion pairs where conversational turn length is bounded. To eliminate Context Anxiety, the harness enforces a **sliding context window**: raw execution trace logs (stdout/stderr) are purged after each turn and replaced by a deterministic state checklist (`feature_list.json`). The agent always operates with 70%+ empty headroom for reasoning.
+A prevalent hypothesis among LLM systems engineers attributes this pattern to fine-tuning data distributions: conversational instruction datasets predominantly contain short-horizon tasks that resolve within modest turn counts, rarely reinforcing deep reasoning at near-exhaustion window thresholds. Regardless of the exact causal driver, the operational solution is mechanical: the harness enforces a **sliding context window**, purging raw terminal execution logs after each turn and maintaining ground truth in an external state checklist (`feature_list.json`). This ensures the agent consistently maintains sufficient headroom for reasoning.
 
 </GoDeeper>
 
----
+### The Worked Numbers: Compaction in Practice
 
-## 3. The `AGENTS.md` Standard
+Consider a 12-turn debugging session across a 60-file Python repository:
 
-Industry-standard harnesses use structured markdown files placed in the repository root to establish the project map:
+1. **Naive Accumulation**:
+   - Base System Prompt: 3,500 tokens
+   - Tool Schemas: 2,200 tokens
+   - Uncompacted turns: 12 turns × 8,500 tokens (raw file contents + test outputs) = 102,000 tokens
+   - **Total context**: $3,500 + 2,200 + 102,000 = 107,700$ tokens (saturating 84% of a 128k window, inducing severe attention degradation).
+
+2. **Harness Compaction with State Artifacts**:
+   - Base System Prompt: 3,500 tokens
+   - Tool Schemas: 2,200 tokens
+   - Structured State Artifact (`feature_list.json`): 2,400 tokens
+   - Working Window (last 3 active turns): $3 \times 3,200 = 9,600$ tokens
+   - **Total context**: $3,500 + 2,200 + 2,400 + 9,600 = 17,700$ tokens.
+
+By purging stale execution traces and maintaining state in external JSON artifacts, the harness reduces token consumption by **83.6%**, keeping the model inside its high-attention operating regime.
+
+### Prefix Cache Alignment and Breakpoints
+
+Frontier provider APIs (such as Anthropic Claude and OpenAI) employ prefix caching based on exact token prefix matching. When writing harness prompts, developers must respect cache alignment invariants:
+
+- **1,024-Token Minimum Checkpoints**: Cache breakpoints require at least 1,024 tokens to activate. If your base `AGENTS.md` and tool schemas total only 800 tokens, the provider cannot cache the block. Augment the static prefix with standard library signatures or system definitions to clear the threshold.
+- **Cache Eviction on Byte Shifts**: Changing even a single character, timestamp, or dynamic session ID inside the early prefix invalidates all subsequent cached tokens across every following turn. Keep the prefix strictly static. Dynamic session values, clock times, and scratchpad outputs must always reside at the absolute tail of the payload.
+
+## Production `AGENTS.md` Specification
+
+Below is an authoritative reference configuration for an `AGENTS.md` file designed for autonomous code editing:
 
 ```markdown
-# Repository Map for AI Agents (Python Stack)
+# AGENTS.md — Repository Operating Contract
 
-## Core Tech Stack
-- Backend & ML: Python 3.12 + FastAPI + PyTorch + Pydantic v2
-- Tooling: uv / poetry for environment isolation
-- Verification: pytest (`pytest -v`), mypy (`mypy --strict`), ruff (`ruff check .`)
+> Scope: Core invariants for all autonomous agents operating in this repository.
 
-## Build & Verification Commands
-- Static audit & lint: `ruff check . && ruff format --check .`
-- Type validation: `mypy --strict src/`
-- Unit test suite: `pytest tests/unit/ -v`
-- Integration / smoke test: `pytest tests/e2e/ -v`
+## 1. System Environment
+- Runtime: Python 3.12 (CPython x86_64)
+- Package Manager: uv
+- Frameworks: FastAPI 0.115, Pydantic 2.10, PyTorch 2.5
+- Workspace Root: /workspace/repo
 
-## Code Invariants
-- NEVER use bare `try/except Exception: pass` to swallow errors.
-- All function parameters and return types must carry explicit PEP 484 type annotations.
-- NEVER edit files in `tests/` to manufacture artificial passes without user authorization.
-- Always execute the 3-layer verification pipeline before committing changes.
+## 2. Verification Gate (Run in Order)
+1. Layer 1 (Format): `ruff check . && ruff format --check .`
+2. Layer 2 (Types): `mypy --strict src/`
+3. Layer 3 (Unit Tests): `pytest tests/unit/ -v`
+4. Layer 4 (Integration): `pytest tests/integration/ -v`
+
+## 3. Negative Invariants (Hard Prohibitions)
+- NEVER commit changes if any layer of the verification gate fails.
+- NEVER use wildcard imports (`from module import *`).
+- NEVER catch bare `except Exception: pass` without structured logging.
+- NEVER modify files outside the designated feature directory.
+- NEVER remove or weaken existing unit test assertions to manufacture a pass.
 ```
 
----
+## A Full Worked Example: AST-Extracted Repository Mapping
 
-## 4. AST-Extracted Repository Mapping in Python
+Instead of feeding thousands of raw source lines into the prompt, a production harness parses source files using Python's standard library `ast` module. It extracts class signatures, method parameters, and docstrings while stripping implementation bodies.
 
-Instead of dumping raw source code, a production harness uses Python's built-in `ast` module to dynamically extract a lightweight architectural skeleton. 
+```
+   Raw Python File (1,394 bytes)
+   [ Full method logic, loops, internal variables ]
+                          │
+                          ▼
+             Python AST Parser (`ast.parse`)
+                          │
+                          ▼
+   AST-Extracted Map (364 bytes)
+   • class MultiHeadAttention(d_model, n_heads)
+   • def forward(q, k, v)
+   • class TransformerBlock(d_model)
+   [ 73.9% token reduction while preserving spatial index ]
+```
 
-Run this live in-browser Python implementation to see how an AST parser extracts an 85% compressed map:
+### Run It Yourself
+
+Execute this self-contained script to verify AST-based signature compression:
 
 <RunnableCode code={`import ast
 import textwrap
 
 sample_code = """
 class MultiHeadAttention:
+    \"\"\"Multi-head attention projection layer.\"\"\"
     def __init__(self, d_model: int = 512, n_heads: int = 8):
         self.d_model = d_model
         self.n_heads = n_heads
+        self.head_dim = d_model // n_heads
+        self.q_proj = [[0.0] * d_model for _ in range(d_model)]
+        self.k_proj = [[0.0] * d_model for _ in range(d_model)]
+        self.v_proj = [[0.0] * d_model for _ in range(d_model)]
+        self.out_proj = [[0.0] * d_model for _ in range(d_model)]
 
     def forward(self, q, k, v):
-        pass
+        \"\"\"Compute scaled dot-product attention across heads.\"\"\"
+        scores = []
+        for i in range(len(q)):
+            row = []
+            for j in range(len(k)):
+                dot = sum(q[i][d] * k[j][d] for d in range(self.head_dim))
+                row.append(dot / (self.head_dim ** 0.5))
+            scores.append(row)
+        return scores
+
+class TransformerBlock:
+    \"\"\"Standard Transformer decoder layer with self-attention and MLP.\"\"\"
+    def __init__(self, d_model: int = 512):
+        self.attn = MultiHeadAttention(d_model)
+        self.mlp_w1 = [[0.01] * d_model for _ in range(d_model * 4)]
+        self.mlp_w2 = [[0.01] * (d_model * 4) for _ in range(d_model)]
+
+    def execute_layer(self, x):
+        attn_out = self.attn.forward(x, x, x)
+        return attn_out
 """
 
 def extract_ast_skeleton(code: str) -> str:
@@ -115,28 +193,69 @@ def extract_ast_skeleton(code: str) -> str:
     lines = []
     for node in tree.body:
         if isinstance(node, ast.ClassDef):
-            lines.append(f"class {node.name}:")
+            doc = ast.get_docstring(node)
+            doc_str = f" # {doc}" if doc else ""
+            lines.append(f"class {node.name}:{doc_str}")
             for item in node.body:
                 if isinstance(item, ast.FunctionDef):
                     args = [a.arg for a in item.args.args]
-                    lines.append(f"    def {item.name}({', '.join(args)}): ...")
+                    fdoc = ast.get_docstring(item)
+                    fdoc_str = f" # {fdoc}" if fdoc else ""
+                    lines.append(f"    def {item.name}({', '.join(args)}): ...{fdoc_str}")
     return "\\n".join(lines)
 
-print("=== Raw Code ===")
-print(f"Raw character length: {len(sample_code)}")
-
+raw_len = len(sample_code.strip())
 skeleton = extract_ast_skeleton(sample_code)
-print("\\n=== AST-Extracted Map (Compact Index) ===")
+skel_len = len(skeleton)
+
+print("=== AST-Extracted Repository Map ===")
 print(skeleton)
-print(f"\\nSkeleton character length: {len(skeleton)} -> {(1 - len(skeleton)/len(sample_code))*100:.1f}% token reduction!")
+print(f"\\nRaw bytes:      {raw_len}")
+print(f"Skeleton bytes: {skel_len}")
+reduction = (1 - skel_len / raw_len) * 100
+print(f"Token reduction: {reduction:.1f}%")
+
+# Try it: Add a new class or helper method above and run again to see the extracted signature.
 `} />
 
----
+## Common Problems & Fixes
+
+1. **Instruction Conflict Drift**: When instructions span multiple READMEs and markdown files, an agent follows outdated rules.
+   - *Fix*: Declare a single authoritative entry point (`AGENTS.md`) and state explicitly that root rules override any conflicting instructions in nested directories.
+2. **Loss of Session Continuity after Context Compaction**: When old turns are purged, the agent forgets earlier user decisions.
+   - *Fix*: Write key decisions into an append-only transaction ledger (`DECISIONS.md` or `feature_list.json`) that re-enters context as part of the immutable prompt prefix.
+3. **Prompt Cache Invalidation**: Modifying system prompt text on every turn invalidates the provider's prompt cache (KV cache), increasing API cost and latency by 3× to 5×.
+   - *Fix*: Structure the context window with all static prefixes (system prompt, tool schemas, repository map) first, placing dynamic turn data strictly at the end.
 
 <NotebookCallout color="green" title="Architectural Heuristic">
-**Always prefer structured AST skeletons over raw code inlining.** By feeding the agent function signatures, type annotations, and docstrings, the agent gains full spatial awareness of the entire repository in under 3,000 tokens.
+Always prefer structured AST skeletons over raw code inlining. By feeding the agent function signatures, type annotations, and docstrings, the agent gains full spatial awareness of the entire repository in under 3,000 tokens.
 </NotebookCallout>
 
-<NotebookCallout title="Next in Curriculum">
-See how the harness catches and corrects regressions in **[The 3-Layer Verification Engine](/docs/harness-engineering/verification-loops)**.
-</NotebookCallout>
+## When *Not* to Use It
+
+| Situation | Better Choice | Why |
+| :--- | :--- | :--- |
+| Single-file bug fix with clear error trace | Direct file prompt | When the bug is contained in one 50-line file, repository mapping adds unnecessary overhead. |
+| Open-ended exploratory code search | Semantic vector retrieval (RAG) | AST skeletons capture structure, but cannot locate concepts described in colloquial natural language. |
+| Non-code document synthesis | Hierarchical document summarization | Python AST parsers only operate on formal syntaxes; markdown and prose require semantic chunking. |
+
+## Remember
+
+| Idea | Core Rule |
+| :--- | :--- |
+| **Map vs Manual** | Keep the root map under 2,500 tokens; load deep manuals on demand. |
+| **AST Extraction** | Replace raw source code with class and function signatures for spatial indexing. |
+| **Context Anxiety** | Maintain at least 30-40% free headroom in the context window across turns. |
+| **Prompt Caching** | Place static instructions at the start of the prompt to maximize KV cache hits. |
+| **External State** | Persist task progress in structured JSON files rather than raw conversation history. |
+
+Next: [Verification Loops & Test Automation](/docs/harness-engineering/verification-loops) -- how the harness validates agent patches before committing.
+
+## Sources
+
+- Nelson F. Liu et al., *Lost in the Middle: How Language Models Use Long Contexts*, Transactions of the ACL: [https://arxiv.org/abs/2307.03172](https://arxiv.org/abs/2307.03172) (2023)
+- Anthropic Prompt Engineering Overview: [https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/overview](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/overview) (2024)
+- Anthropic Prompt Caching Guide: [https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching](https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching) (2024)
+- OpenAI Prompt Engineering Guide: [https://platform.openai.com/docs/guides/prompt-engineering](https://platform.openai.com/docs/guides/prompt-engineering) (2024)
+- Agent Skills Open Specification: [https://agentskills.io/specification](https://agentskills.io/specification) (2025)
+- Matt Tanner, *Context Engineering for AI Agents: Complete 2026 Guide*, Sourcegraph: [https://sourcegraph.com/blog/context-engineering](https://sourcegraph.com/blog/context-engineering) (2026)
