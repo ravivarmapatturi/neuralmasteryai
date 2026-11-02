@@ -1,0 +1,44 @@
+---
+title: "Inference Technique Atlas"
+sidebar_position: 3
+description: "Trace 30 inference techniques chronologically, from token selection through quantized runtimes, memory-aware kernels, and distributed serving."
+---
+
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import InferenceAtlas from '../../../components/atlas/inference/InferenceAtlas';
+
+# Inference Technique Atlas
+
+Inference did not improve through one line of tricks. Each era changed the object engineers had to manage: first a probability distribution, then a portable model artifact, then the memory traffic inside a transformer, and finally a fleet of requests sharing accelerators. This atlas keeps those layers separate while showing how one limit created the next technique.
+
+<ELI5>
+
+Imagine serving dinner in a restaurant. Choosing the next token is deciding which dish leaves the kitchen. Quantization and portable runtimes change the cookware so the same recipe fits a smaller kitchen. KV caches and fused kernels stop the staff from fetching the same ingredients repeatedly. Batching, routing, and autoscaling coordinate the whole dining room. A faster choice at one layer cannot repair a bottleneck at another, so we trace them in the order they appeared.
+
+</ELI5>
+
+<PredictFirst
+  question="A server has low GPU arithmetic utilization during token-by-token decoding. Which change addresses the cause most directly?"
+  options={[
+    'Increase temperature so the probability distribution is flatter',
+    'Batch more active sequences so one weight read advances several requests',
+    'Add a repetition penalty to reduce output loops',
+    'Use beam search so the model explores more sequences',
+  ]}
+  correctIndex={1}
+  explanation="Autoregressive decode commonly waits on model-weight memory traffic. Batching lets one weight read serve several active sequences, increasing arithmetic intensity. Temperature, repetition penalties, and beam search change token selection; beam search can add work rather than fix the memory bottleneck."
+/>
+
+## Read the Story Before Choosing a Tool
+
+Open an entry and follow four things in order: the limit it answered, the request and runtime state it introduced, the concrete trace, and the metric that reveals whether it helped. The diagram uses the same example as the prose. Search and category filters narrow the reference without changing chronological order.
+
+<InferenceAtlas />
+
+## The Stack Still Has Layers
+
+A schema-constrained decoder can guarantee valid JSON syntax, but it cannot reduce KV-cache memory. A 4-bit checkpoint can reduce weight traffic, but it cannot make a cold replica warm. Continuous batching can raise aggregate throughput while making an individual request wait longer. We therefore measure the layer we changed: output validity for decoding, bytes and kernel coverage for compression, memory traffic for kernels, and TTFT, TPS, tail latency, and goodput for serving.
+
+The practical sequence is diagnostic. Measure first, identify the constrained resource, then choose the earliest technique in the atlas that removes that exact limit without introducing a worse one. Continue with [Roofline and KV Cache](/docs/inference-engineering/roofline-and-kv-cache) when the profile points to data movement, or [Continuous Batching and Speculative Decoding](/docs/inference-engineering/continuous-batching-and-speculative-decoding) when the scheduler or sequential decode dominates.
+
