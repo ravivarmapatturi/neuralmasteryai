@@ -1,0 +1,399 @@
+---
+title: "OpenTelemetry Spans, Trace Trees & Agent Execution Graphs"
+description: "Instrument multi-agent architectures using OpenTelemetry GenAI semantic conventions, W3C trace context propagation, and streaming span events."
+sidebar_position: 2
+---
+
+import { ELI5 } from '../../../components/ELI5';
+import { PredictFirst } from '../../../components/PredictFirst';
+import { GoDeeper } from '../../../components/GoDeeper';
+import { NotebookCallout } from '../../../components/NotebookCallout';
+import { RunnableCode } from '../../../components/RunnableCode';
+
+# OpenTelemetry Spans, Trace Trees & Agent Execution Graphs
+
+When building single-turn LLM features, logging an API request and its completion payload is straightforward. However, modern production architectures rely on multi-agent collaboration: an orchestrator agent breaks down a task, invokes a researcher subagent in an isolated sandbox, triggers a code-writer subagent across a message broker, and collects reviews from a verification subagent.
+
+If these components emit isolated logs, debugging production failures becomes nearly impossible. When a downstream reviewer rejects a patch, engineers cannot trace which upstream orchestrator prompt instruction or tool result led to the flaw.
+
+Production agent engineering solves this by implementing **Distributed Tracing** via the **OpenTelemetry (OTel)** framework and **W3C Trace Context** standards.
+
+<ELI5>
+Imagine a construction company building a skyscraper. The general contractor (orchestrator agent) receives architectural blueprints and hands specific work orders to the plumbing contractor (subagent 1) and electrical contractor (subagent 2).
+
+If the electrical contractor cuts a pipe by mistake, shouting at the electrician does not tell you why they did it. But if every single work order carries an official project tracking number stamped on the header (W3C trace context), the building inspector can trace the mistake back up the chain and see that the plumbing supervisor gave the electrician outdated floor diagrams twenty minutes earlier.
+</ELI5>
+
+---
+
+## 1. The Anatomy of an Agent Execution Graph
+
+In traditional web applications, distributed tracing follows a linear chain of microservices: Client $\to$ Gateway $\to$ Service A $\to$ Service B $\to$ Database.
+
+In autonomous agent systems, execution forms a dynamic **Directed Acyclic Graph (DAG)** with fan-out, fan-in, and recursive branches:
+
+```
+                          [agent.orchestrator]
+                      (Root Trace: 4bf92f35...)
+                                 |
+         +-----------------------+-----------------------+
+         |                                               |
+         v                                               v
+  [agent.turn: 1]                                 [agent.turn: 2]
+  ├── [model.generation]                          ├── [subagent.dispatch: researcher]
+  │     (Anthropic Claude 3.7)                    │     (Async Task Queue: Redis)
+  └── [tool.execution: fetch_repo]                │              |
+                                                  │              v
+                                                  │       [subagent.execute]
+                                                  │       ├── [model.generation]
+                                                  │       └── [tool.execution: grep]
+                                                  v
+                                          [subagent.collect_result]
+                                          (Context merged into parent turn)
+```
+
+### OTel Span Kinds in Agent Architectures
+
+OpenTelemetry defines five standard span kinds. Mapping them correctly to agent concepts is essential for visualization engines to render the call tree accurately:
+
+1. **`SpanKind.INTERNAL`**: High-level orchestrator tasks, reasoning loops, prompt construction, and internal memory lookups.
+2. **`SpanKind.CLIENT`**: Outbound HTTP or gRPC API calls to model providers (OpenAI, Anthropic, local vLLM instances).
+3. **`SpanKind.PRODUCER`**: Asynchronous dispatch of subagent workloads onto task queues (Celery, BullMQ, Kafka).
+4. **`SpanKind.CONSUMER`**: Background worker process dequeuing and executing a subagent job.
+5. **`SpanKind.SERVER`**: Inbound webhook or MCP gateway endpoint processing incoming tool execution requests.
+
+---
+
+## 2. Context Propagation Across Network Boundaries: W3C Trace Context
+
+When an orchestrator spawns a subagent running on a separate container or virtual machine, the trace context must bridge the process boundary. We achieve this using the **W3C Trace Context** specification.
+
+The carrier header contains four fields formatted as a hyphen-delimited string:
+
+$$\text{traceparent} = \text{version}-\text{trace\_id}-\text{parent\_span\_id}-\text{trace\_flags}$$
+
+$$\text{Example}: \texttt{00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01}$$
+
+```
++--------------------------------------------------------------------------+
+|  Field            | Hex Length | Value in Example                        |
++-------------------+------------+-----------------------------------------+
+|  version          | 2 chars    | 00 (Current W3C standard version)       |
+|  trace_id         | 32 chars   | 4bf92f3577b34da6a3ce929d0e0e4736        |
+|  parent_span_id   | 16 chars   | 00f067aa0ba902b7                        |
+|  trace_flags      | 2 chars    | 01 (Recorded / Sampled flag enabled)    |
++--------------------------------------------------------------------------+
+```
+
+### Propagating Session Baggage (W3C Baggage Header)
+
+While `traceparent` identifies where a span sits in the call tree, engineers frequently need to propagate user-level and cost-center metadata across all downstream agent nodes without re-querying the database at each hop. The **W3C Baggage** header accompanies `traceparent` to pass cross-cutting key-value pairs:
+
+```http
+traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+baggage: user_id=usr_9918,org_id=org_enterprise,budget_ceiling_usd=0.50,tier=prod
+```
+
+When the subagent initializes its execution context, it automatically extracts these baggage items and stamps them onto every child span. If an individual subagent turn approaches the `budget_ceiling_usd` limit, it can terminate gracefully before incurring overages.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "execute_subtask",
+  "params": {
+    "task": "Review git diff for security vulnerabilities",
+    "context": {
+      "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+      "baggage": "user_id=usr_9918,budget_ceiling_usd=0.50",
+      "tracestate": "vendor=neuralmastery,tier=prod"
+    }
+  }
+}
+```
+
+The subagent parses `traceparent`, sets `trace_id = 4bf92f35...` and `parent_span_id = 00f067aa...`, ensuring that all subagent spans nest directly beneath the orchestrator's dispatch span in Honeycomb or Datadog.
+
+---
+
+## 3. Streaming Span Events: Capturing Latency Dynamics
+
+<PredictFirst
+  question="When an agent streams responses from an LLM API, why is measuring total span duration alone (e.g. 4,200ms) insufficient for diagnosing user-perceived performance bottlenecks?"
+  options={[
+    "Total span duration does not differentiate between Time-To-First-Token (TTFT, model prefill latency) and Time-Per-Output-Token (TPOT, autoregressive generation throughput).",
+    "Streaming tokens disables distributed tracing spans in OpenTelemetry entirely.",
+    "Total span duration fails to record the total number of bytes transferred across the TCP socket."
+  ]}
+  answerIndex={0}
+  explanation="Total request duration conflates prefill latency (TTFT) with generation speed. A 4-second request could mean a 3.8s TTFT with 50 tokens/s generation (prefill bottleneck), or a 200ms TTFT with 5 tokens/s generation (speculative decoding / bandwidth bottleneck). Observability harnesses emit span events on token chunks to measure both independently."
+/>
+
+### Prefill vs. Generation Latency Metrics
+
+In production inference, latency is partitioned into two orthogonal metrics:
+
+$$\text{TTFT} = t_{\text{chunk\_0}} - t_{\text{request\_sent}}$$
+
+$$\text{Generation Speed} = \frac{N_{\text{completion\_tokens}}}{t_{\text{stream\_end}} - t_{\text{chunk\_0}}} \text{ (tokens/second)}$$
+
+```
+Timeline:
+0ms              340ms                                           1,850ms
+[-- TTFT: 340ms --][---------- Autoregressive Generation: 1,510ms ---------]
+ Request Sent     First Token                                   Stream End
+ (Prefill Stage)  Arrival                                       (210 tokens generated)
+                                                                Rate: 139.1 tokens/sec
+```
+
+By recording `llm.first_token_time` as a timestamped span event, APM systems immediately flag whether slow agent responses stem from massive input prompt context (high TTFT) or compute-starved inference hardware (low tokens/sec).
+
+---
+
+## 4. OpenTelemetry GenAI Semantic Conventions
+
+The OpenTelemetry project standardizes semantic conventions for Generative AI systems. Adhering to these conventions ensures automatic dashboard generation across Jaeger, Datadog, Dynatrace, New Relic, and Honeycomb.
+
+### Mandatory Span Attributes
+
+```python
+# GenAI Model Generation Span Attributes
+attributes = {
+    # System Identification
+    "gen_ai.system": "anthropic",
+    "gen_ai.request.model": "claude-3-7-sonnet",
+    "gen_ai.response.model": "claude-3-7-sonnet-20250219",
+    
+    # Hyperparameters
+    "gen_ai.request.temperature": 0.2,
+    "gen_ai.request.max_tokens": 4096,
+    
+    # Token Consumption Accounting
+    "gen_ai.usage.prompt_tokens": 3450,
+    "gen_ai.usage.completion_tokens": 210,
+    "gen_ai.usage.cache_read_tokens": 2800,
+    "gen_ai.usage.cache_write_tokens": 650,
+    
+    # Execution Metadata
+    "gen_ai.response.finish_reasons": ["tool_use"],
+    "agent.session_id": "sess_8812_prod",
+    "agent.turn_index": 3
+}
+```
+
+---
+
+## 5. Implementation: Distributed Agent Tracer with Context Propagation
+
+Below is an executable Python implementation of an OpenTelemetry-compliant distributed agent tracer. It creates hierarchical spans, injects and extracts W3C `traceparent` headers across subagents, and calculates streaming latency metrics.
+
+<RunnableCode code={`import time
+import json
+import uuid
+from typing import Dict, Any, Optional, List
+
+def format_traceparent(trace_id: str, span_id: str, sampled: bool = True) -> str:
+    """Formats standard W3C traceparent header: 00-traceid-spanid-flags"""
+    flags = "01" if sampled else "00"
+    return f"00-{trace_id}-{span_id}-{flags}"
+
+def parse_traceparent(header_value: str) -> Dict[str, str]:
+    """Parses W3C traceparent header string into its 4 constituent fields."""
+    parts = header_value.strip().split("-")
+    if len(parts) != 4 or parts[0] != "00":
+        raise ValueError(f"Invalid W3C traceparent header: {header_value}")
+    return {
+        "version": parts[0],
+        "trace_id": parts[1],
+        "parent_span_id": parts[2],
+        "flags": parts[3]
+    }
+
+class OpenTelemetrySpan:
+    def __init__(self, trace_id: str, span_id: str, parent_id: Optional[str], name: str, attributes: Dict[str, Any]):
+        self.trace_id = trace_id
+        self.span_id = span_id
+        self.parent_id = parent_id
+        self.name = name
+        self.attributes = attributes
+        self.start_time = time.time()
+        self.end_time: Optional[float] = None
+        self.events: List[Dict[str, Any]] = []
+
+    def add_event(self, event_name: str, payload: Optional[Dict[str, Any]] = None) -> None:
+        self.events.append({
+            "name": event_name,
+            "timestamp": time.time(),
+            "payload": payload or {}
+        })
+
+    def end(self, status: str = "OK") -> None:
+        self.end_time = time.time()
+        self.attributes["status.code"] = status
+
+class DistributedAgentTracer:
+    """
+    Manages trace lifecycles, span hierarchies, and cross-boundary context propagation.
+    """
+    def __init__(self, trace_id: Optional[str] = None):
+        self.trace_id = trace_id or uuid.uuid4().hex
+        self.spans: List[OpenTelemetrySpan] = []
+
+    def start_span(self, name: str, parent_id: Optional[str] = None, attributes: Optional[Dict[str, Any]] = None) -> OpenTelemetrySpan:
+        span_id = uuid.uuid4().hex[:16]
+        span = OpenTelemetrySpan(
+            trace_id=self.trace_id,
+            span_id=span_id,
+            parent_id=parent_id,
+            name=name,
+            attributes=attributes or {}
+        )
+        self.spans.append(span)
+        return span
+
+    def inject_w3c_carrier(self, span: OpenTelemetrySpan) -> Dict[str, str]:
+        """Injects W3C headers into carrier dictionary for HTTP/RPC transport."""
+        return {
+            "traceparent": format_traceparent(self.trace_id, span.span_id, sampled=True)
+        }
+
+    @classmethod
+    def from_carrier(cls, carrier: Dict[str, str]) -> "DistributedAgentTracer":
+        """Instantiates a tracer from an extracted W3C carrier."""
+        ctx = parse_traceparent(carrier["traceparent"])
+        return cls(trace_id=ctx["trace_id"])
+
+# Verification & Test Pipeline
+print("--- 1. Orchestrator Initializes Root Trace ---")
+orchestrator_tracer = DistributedAgentTracer("4bf92f3577b34da6a3ce929d0e0e4736")
+
+root_span = orchestrator_tracer.start_span("agent.orchestrator", attributes={
+    "task.goal": "Audit authentication module for timezone flaws"
+})
+
+# Turn 1 Span
+turn_span = orchestrator_tracer.start_span("agent.turn", parent_id=root_span.span_id, attributes={"turn_index": 1})
+
+# Inject W3C Carrier for Subagent Dispatch
+carrier = orchestrator_tracer.inject_w3c_carrier(turn_span)
+print(f"Injected W3C traceparent header: {carrier['traceparent']}")
+
+print("\n--- 2. Subagent Receives Task in Worker Process ---")
+subagent_tracer = DistributedAgentTracer.from_carrier(carrier)
+parent_span_id = parse_traceparent(carrier["traceparent"])["parent_span_id"]
+
+subagent_span = subagent_tracer.start_span(
+    "subagent.code_reviewer",
+    parent_id=parent_span_id,
+    attributes={
+        "gen_ai.system": "anthropic",
+        "gen_ai.request.model": "claude-3-7-sonnet",
+        "gen_ai.usage.prompt_tokens": 1850,
+        "gen_ai.usage.completion_tokens": 210
+    }
+)
+
+# Simulate Streaming Events
+subagent_span.add_event("gen_ai.first_token", {"ttft_ms": 340})
+subagent_span.add_event("gen_ai.stream_complete", {"tokens_per_sec": 139.1})
+subagent_span.end(status="OK")
+
+turn_span.end(status="OK")
+root_span.end(status="OK")
+
+print(f"Subagent Trace ID: {subagent_span.trace_id}")
+print(f"Subagent Span ID:  {subagent_span.span_id}")
+print(f"Subagent Parent:   {subagent_span.parent_id}")
+print(f"Recorded Events:   {[e['name'] for e in subagent_span.events]}")
+
+# Assertions
+assert subagent_span.trace_id == "4bf92f3577b34da6a3ce929d0e0e4736"
+assert subagent_span.parent_id == turn_span.span_id
+assert len(subagent_span.events) == 2
+print("\nDistributed OpenTelemetry trace hierarchy verified successfully.")
+`} />
+
+---
+
+## 6. Real Production Configuration: Python OpenTelemetry SDK Auto-Instrumentation
+
+In Python agent runtimes, we configure the OpenTelemetry TracerProvider with batch processors, OTLP gRPC exporters, and custom GenAI enrichers:
+
+```python
+# tracer_setup.py - Production OpenTelemetry Initialization
+import os
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import Resource
+
+def configure_production_tracer(service_name: str = "agent-orchestrator") -> trace.Tracer:
+    resource = Resource.create({
+        "service.name": service_name,
+        "deployment.environment": os.getenv("APP_ENV", "production"),
+        "service.version": "2.4.0"
+    })
+    
+    provider = TracerProvider(resource=resource)
+    
+    # Configure gRPC OTLP Exporter pointing to internal cluster collector
+    otlp_exporter = OTLPSpanExporter(
+        endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "otel-collector.monitoring:4317"),
+        insecure=True
+    )
+    
+    processor = BatchSpanProcessor(
+        otlp_exporter,
+        max_queue_size=2048,
+        schedule_delay_millis=500,
+        max_export_batch_size=512
+    )
+    provider.add_span_processor(processor)
+    trace.set_tracer_provider(provider)
+    
+    return trace.get_tracer(service_name)
+```
+
+### Tail-Based Sampling Strategies for Cost Control
+
+In high-throughput environments executing millions of agent turns daily, recording 100% of successful, routine spans creates massive network and storage costs. However, head-based sampling (flipping a coin when a trace starts) risks dropping the rare 1% of runs that encounter critical tool failures or loop anomalies.
+
+Production agent platforms employ **Tail-Based Sampling** inside the OpenTelemetry Collector:
+1. All spans belonging to an active trace are buffered in collector memory for up to 30 seconds.
+2. The collector evaluates sampling rules only after the trace completes:
+   - If any span inside the trace has `status.code == ERROR`, retain 100% of the trace.
+   - If total token count exceeds 50,000 tokens or duration exceeds 30 seconds, retain 100% of the trace.
+   - If all turns succeed within normal latency bounds, sample down to 5%.
+
+This guarantees that 100% of bugs, timeouts, and anomalous runs are captured for post-mortem debugging while reducing APM ingestion volume by over 80%.
+
+---
+
+## 7. When to Use It and When Not to Use It
+
+| Scenario | Recommended Strategy | Why? | Anti-Pattern |
+| :--- | :--- | :--- | :--- |
+| **Multi-Agent Orchestrations** | Full W3C Context Propagation + OTel Spans | Bridges async boundaries across Redis, Celery, or HTTP microservices into a single causal tree. | Passing raw string logs between subagents without parent span IDs. |
+| **Streaming UI Chatbots** | Span Events on Token Chunks (`gen_ai.first_token`) | Measures TTFT independently from generation throughput, isolating prefill bottlenecks. | Only logging latency after the full 5-minute stream concludes. |
+| **Batch Offline Model Eval** | Bulk Span Sampling (10% sample rate) | Running 50,000 automated benchmark runs with 100% trace recording overwhelms APM ingest quotas. | Ingesting gigabytes of repetitive evaluation spans into high-cost commercial APM tiers. |
+| **Embedded Microcontroller AI** | Local Binary Ring Buffer | Microcontrollers (Cortex-M) lack network stacks and memory to run Python OTel gRPC collectors. | Attempting to import heavy OpenTelemetry SDK libraries on embedded microcontrollers. |
+
+---
+
+## 8. Core Invariants to Remember
+
+| Concept | Invariant Rule | Operational Consequence |
+| :--- | :--- | :--- |
+| **W3C Format Invariant** | Always inject and parse standard 4-part `00-{traceid}-{spanid}-{flags}` headers. | Non-standard trace headers break distributed context propagation when calling third-party services. |
+| **TTFT Event Timing** | Record `first_token` event precisely when byte 0 of stream chunk 1 arrives. | Delaying TTFT measurement until buffering completion masks network prefill delays. |
+| **Root Trace Continuity** | Every spawned subagent MUST inherit the root `trace_id` of the parent orchestrator. | Generating new trace IDs per subagent fragments a single user task into unlinked traces. |
+| **Attribute Normalization** | Stick strictly to `gen_ai.*` semantic convention keys rather than custom strings. | Ad-hoc keys like `model_name` or `input_tokens` prevent standard APM dashboard plugins from working. |
+
+---
+
+## Sources
+
+- OpenTelemetry Authors. (2024). *OpenTelemetry Semantic Conventions for Gen AI Spans*. OpenTelemetry Specification. [https://opentelemetry.io/docs/specs/semconv/gen-ai/](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
+- World Wide Web Consortium (W3C). (2021). *W3C Trace Context Specification (Recommendation)*. W3C Standards. [https://www.w3.org/TR/trace-context/](https://www.w3.org/TR/trace-context/)
+- Sambasivan, R. R., Zheng, A. X., De Rosa, M., Krevat, E., Whitman, S., Stroucken, M., Wang, W., & Ganger, G. R. (2016). *So, you want to trace your distributed system? Key design insights from years of provenance research*. ACM SIGOPS Operating Systems Review. [https://dl.acm.org/doi/10.1145/3015318.3015325](https://dl.acm.org/doi/10.1145/3015318.3015325)
+- OpenTelemetry Community. (2024). *Python SDK for OpenTelemetry*. GitHub Repository. [https://github.com/open-telemetry/opentelemetry-python](https://github.com/open-telemetry/opentelemetry-python)
