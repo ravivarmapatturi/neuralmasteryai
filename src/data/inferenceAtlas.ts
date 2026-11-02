@@ -175,6 +175,44 @@ const portableEntries: InferenceAtlasEntry[] = [
   },
 ];
 
-export const inferenceAtlasEntries: InferenceAtlasEntry[] = [...decodingEntries, ...portableEntries];
+const memoryEntries: InferenceAtlasEntry[] = [
+  {
+    id: 'roofline', name: 'Roofline analysis', year: 2009, era: 'Memory-aware transformers', category: 'Measurement', diagram: 'roofline',
+    source: { label: 'Williams et al., Roofline', url: 'https://crd.lbl.gov/assets/pubs_presos/roofline-ieee.pdf' }, learnPath: '/docs/inference-engineering/roofline-and-kv-cache',
+    whatItIs: 'The roofline model bounds attainable performance by the lower of peak compute and memory bandwidth multiplied by arithmetic intensity. It explains why adding FLOPs hardware does not accelerate a workload that mostly moves bytes.', previousLimit: 'A peak-FLOPs number cannot identify whether a kernel waits on arithmetic units or memory.',
+    requestState: 'Profile a representative request; runtime measurements need operation count, bytes moved, achieved throughput, peak compute, and peak bandwidth.', example: 'A kernel with 10 FLOP/byte on hardware with 1 TB/s bandwidth has a 10 TFLOP/s bandwidth roof even if peak compute is 100 TFLOP/s.',
+    metrics: 'Plot achieved FLOP/s against FLOP/byte. Points below both roofs have additional inefficiency; moving right means more work per byte.', avoid: 'Avoid treating the bound as a latency prediction or ignoring cache hierarchy and communication.', replacedBy: 'Hierarchical and communication rooflines refine it; the original remains the first diagnostic.', cameBefore: 'Peak compute as the main performance headline.', ledTo: 'IO-aware attention and memory-bound decode analysis.',
+  },
+  {
+    id: 'kv-cache', name: 'KV cache', year: 2017, era: 'Memory-aware transformers', category: 'Runtime', diagram: 'kv-cache',
+    source: { label: 'Vaswani et al., Attention Is All You Need', url: 'https://arxiv.org/abs/1706.03762' }, learnPath: '/docs/inference-engineering/roofline-and-kv-cache',
+    whatItIs: 'Autoregressive decoding stores each layer’s past key and value vectors and computes only the new token’s projections. It eliminates recomputing the full prefix at every generation step.', previousLimit: 'Without cached state, generating token t repeats attention projections for tokens 1…t−1.',
+    requestState: 'The request starts with prompt tokens; state grows by one K row and one V row per layer for every generated token.', example: 'After “the cat”, each layer holds K₁,K₂ and V₁,V₂; decoding “sat” appends K₃,V₃ instead of rebuilding all six vectors.',
+    metrics: 'Measure bytes per token, maximum concurrent sequences, time to first token, and inter-token latency. Cache memory grows with sequence length, layers, and KV heads.', avoid: 'Avoid retaining abandoned or completed request caches; tiny sequences may not justify complex cache management.', replacedBy: 'Paged allocation and shared-prefix caching manage the same cached tensors more efficiently.', cameBefore: 'Full-prefix recomputation at each step.', ledTo: 'GQA, paged KV caches, prefix caching, and phase disaggregation.',
+  },
+  {
+    id: 'flash-attention', name: 'FlashAttention', year: 2022, era: 'Memory-aware transformers', category: 'Kernel', diagram: 'flash',
+    source: { label: 'Dao et al., FlashAttention', url: 'https://arxiv.org/abs/2205.14135' }, learnPath: '/docs/inference-engineering/hardware-acceleration-and-kernels',
+    whatItIs: 'FlashAttention tiles Q, K, and V through fast on-chip SRAM and performs an online softmax without materializing the full attention matrix in high-bandwidth memory. It computes exact attention while reducing expensive memory traffic.', previousLimit: 'Standard attention writes and rereads the N×N score and probability matrices.',
+    requestState: 'The request supplies Q/K/V tensors; the kernel state is one query tile, streamed key/value tiles, running maxima, sums, and output accumulators.', example: 'A Q tile meets K/V block 1 then block 2; running softmax statistics rescale the partial output without storing the full score grid.',
+    metrics: 'Measure wall-clock latency, HBM reads/writes, achieved bandwidth, memory footprint, and numerical error.', avoid: 'Avoid assuming it removes quadratic arithmetic; benefit depends on shapes and available optimized kernels.', replacedBy: 'FlashAttention-2/3 refine work partitioning and hardware use while preserving the IO-aware method.', cameBefore: 'Attention kernels that materialized intermediate matrices.', ledTo: 'Fused, tiled exact-attention kernels.',
+  },
+  {
+    id: 'gqa', name: 'Grouped-query attention (GQA)', year: 2023, era: 'Memory-aware transformers', category: 'Kernel', diagram: 'gqa',
+    source: { label: 'Ainslie et al., GQA', url: 'https://arxiv.org/abs/2305.13245' }, learnPath: '/docs/inference-engineering/roofline-and-kv-cache',
+    whatItIs: 'GQA gives several query heads one shared key head and value head. It preserves more head diversity than multi-query attention while reducing KV-cache size and bandwidth relative to one KV pair per query head.', previousLimit: 'Multi-head attention duplicates K/V state for every query head; multi-query attention shares one pair across all heads.',
+    requestState: 'Requests are unchanged; runtime maps each query-head group to one cached K/V head.', example: 'Eight query heads form two groups of four, so the cache stores two K heads and two V heads rather than eight of each.',
+    metrics: 'Measure task quality, KV bytes per token, memory bandwidth, batch capacity, and tokens per second.', avoid: 'Avoid converting an existing model without training or uptraining support and quality evaluation.', replacedBy: 'GQA is a current middle ground; MHA or MQA may still fit quality or efficiency extremes.', cameBefore: 'Multi-head and multi-query attention.', ledTo: 'Smaller caches and higher-concurrency LLM serving.',
+  },
+  {
+    id: 'paged-kv-cache', name: 'Paged KV cache', year: 2023, era: 'Memory-aware transformers', category: 'Runtime', diagram: 'paged-kv',
+    source: { label: 'Kwon et al., PagedAttention', url: 'https://arxiv.org/abs/2309.06180' }, learnPath: '/docs/inference-engineering/roofline-and-kv-cache',
+    whatItIs: 'Paged KV caching divides each request’s logical cache into fixed-size blocks mapped to non-contiguous physical blocks. It avoids reserving one maximum-length contiguous region and enables block sharing between related sequences.', previousLimit: 'A contiguous KV cache wastes reserved tail space and suffers fragmentation as request lengths vary.',
+    requestState: 'Each request owns a logical block table; the shared allocator tracks free physical blocks and reference counts.', example: 'Logical blocks [0,1,2] map to physical blocks [7,3,11]; a forked beam can share [7,3] and allocate only its new tail.',
+    metrics: 'Measure useful KV bytes versus reserved bytes, fragmentation, concurrent sequences, scheduler throughput, and lookup overhead.', avoid: 'Avoid for fixed-shape batches where simple contiguous buffers already fit and minimize indirection.', replacedBy: 'Paged caches remain standard; prefix-aware and tiered caches extend the block manager.', cameBefore: 'One contiguous cache allocation per sequence.', ledTo: 'High-occupancy continuous batching and prefix block reuse.',
+  },
+];
+
+export const inferenceAtlasEntries: InferenceAtlasEntry[] = [...decodingEntries, ...portableEntries, ...memoryEntries];
 
 export const inferenceAtlasCategories: Array<'All' | InferenceAtlasCategory> = ['All', 'Decoding', 'Runtime', 'Compression', 'Kernel', 'Serving', 'Deployment', 'Measurement'];
