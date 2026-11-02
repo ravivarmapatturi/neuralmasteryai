@@ -119,6 +119,45 @@ export default function TrainingTechniqueDiagram({ kind, name }: Props) {
       case 'jepa': return <>
         <rect x="8" y="15" width="62" height="52" rx="6" style={box}/><rect x="20" y="26" width="29" height="25" fill={t.accentPrimary} opacity=".75"/><text x="12" y="82" style={muted}>context</text><path d="M70 41 L123 41" style={line}/><rect x="128" y="22" width="62" height="38" rx="7" style={box}/><text x="139" y="45" style={label}>predictor</text><path d="M190 41 L239 41" style={line}/><rect x="245" y="22" width="54" height="38" rx="7" fill={t.surfaceAlt} stroke={t.accentSecondary}/><text x="253" y="38" style={label}>target</text><text x="252" y="54" style={muted}>latent</text>
       </>;
+      case 'curriculum': return <>
+        {[12,70,128,186,244].map((x,i)=><rect key={x} x={x} y={58-i*11} width="42" height={18+i*5} rx="5" fill={t.surfaceAlt} stroke={i<2?t.accentPrimary:i<4?t.accentWarn:t.accentDanger}/>)}<path d="M25 80 Q151 5 286 18" style={line}/><text x="13" y="15" style={muted}>easy → prerequisites → hard</text>
+      </>;
+      case 'active-learning': return <>
+        <circle cx="42" cy="43" r="27" style={box}/><text x="25" y="39" style={label}>pool</text><text x="24" y="55" style={muted}>unlabeled</text><path d="M69 43 L120 43" style={line}/><text x="126" y="38" style={label}>query</text><text x="126" y="55" style={muted}>uncertain</text><path d="M181 43 L226 43" style={line}/><rect x="232" y="23" width="62" height="40" rx="7" style={box}/><text x="241" y="47" style={label}>human y</text><path d="M263 66 Q151 88 52 69" style={{...line, stroke:t.accentPrimary}}/>
+      </>;
+      case 'distillation': return <>
+        <rect x="10" y="13" width="77" height="50" rx="8" style={box}/><text x="24" y="34" style={label}>teacher</text><text x="20" y="51" style={muted}>.70 .25 .05</text><path d="M87 38 L157 38" style={line}/><text x="106" y="28" style={muted}>soft targets</text><rect x="163" y="20" width="54" height="36" rx="8" fill={t.surfaceAlt} stroke={t.accentPrimary}/><text x="172" y="42" style={label}>student</text><path d="M217 38 L270 38" style={line}/><text x="274" y="42" style={label}>small</text>
+      </>;
+      case 'sft': return <>
+        <rect x="10" y="18" width="84" height="48" rx="7" style={box}/><text x="20" y="38" style={label}>prompt</text><text x="20" y="55" style={muted}>+ target</text><path d="M94 42 L150 42" style={line}/><rect x="156" y="18" width="80" height="48" rx="7" style={box}/><text x="171" y="38" style={label}>pretrained</text><text x="181" y="55" style={muted}>all weights</text><path d="M236 42 L279 42" style={line}/><text x="282" y="38" style={label}>task</text><text x="282" y="55" style={muted}>model</text>
+      </>;
+      case 'prefix-tuning': return <>
+        {[16,48,80].map((x,i)=><rect key={x} x={x} y="16" width="25" height="50" rx="5" fill={t.accentPurple} opacity={.55+i*.12}/>)}<text x="14" y="82" style={muted}>learned prefix</text><path d="M107 41 L151 41" style={line}/><rect x="157" y="15" width="84" height="52" rx="7" style={box}/><text x="171" y="37" style={label}>frozen layer</text><text x="171" y="54" style={muted}>K/V attention</text><path d="M241 41 L288 41" style={line}/>
+      </>;
+      case 'lora': return <>
+        <rect x="10" y="14" width="72" height="54" rx="7" style={box}/><text x="26" y="38" style={label}>frozen W</text><text x="30" y="55" style={muted}>d × d</text><text x="99" y="45" style={label}>+</text><rect x="125" y="24" width="28" height="34" fill={t.surfaceAlt} stroke={t.accentPrimary}/><text x="134" y="45" style={label}>B</text><rect x="171" y="31" width="58" height="20" fill={t.surfaceAlt} stroke={t.accentPrimary}/><text x="195" y="46" style={label}>A</text><path d="M231 41 L277 41" style={line}/><text x="280" y="45" style={label}>Wx+BAx</text>
+      </>;
+      case 'instruction-tuning': return <>
+        {['translate','classify','answer'].map((v,i)=><g key={v}><rect x="8" y={6+i*27} width="72" height="21" rx="5" style={box}/><text x="15" y={21+i*27} style={muted}>{v}</text><path d={`M80 ${16+i*27} L138 41`} style={line}/></g>)}<rect x="143" y="20" width="70" height="42" rx="7" style={box}/><text x="155" y="45" style={label}>one model</text><path d="M213 41 L266 41" style={line}/><text x="270" y="36" style={label}>unseen</text><text x="270" y="53" style={muted}>instruction</text>
+      </>;
+      case 'rlhf-ppo': return <>
+        <rect x="8" y="18" width="57" height="44" rx="7" style={box}/><text x="18" y="38" style={label}>policy</text><text x="15" y="54" style={muted}>rollout</text><path d="M65 40 L111 40" style={line}/><rect x="117" y="18" width="68" height="44" rx="7" style={box}/><text x="129" y="38" style={label}>reward</text><text x="130" y="54" style={muted}>+ KL</text><path d="M185 40 L228 40" style={line}/><rect x="234" y="18" width="62" height="44" rx="7" style={box}/><text x="245" y="45" style={label}>PPO</text><path d="M265 66 Q125 88 35 66" style={{...line, stroke:t.accentPrimary}}/>
+      </>;
+      case 'constitutional-ai': return <>
+        <rect x="7" y="10" width="62" height="29" rx="6" style={box}/><text x="16" y="30" style={label}>response</text><path d="M69 25 L116 25" style={line}/><rect x="121" y="7" width="77" height="35" rx="6" style={box}/><text x="132" y="22" style={label}>principle</text><text x="135" y="36" style={muted}>critique</text><path d="M198 25 L246 25" style={line}/><text x="250" y="29" style={label}>revise</text><path d="M278 36 Q230 79 160 61 Q91 46 36 67" style={{...line, stroke:t.accentPrimary}}/><text x="93" y="84" style={muted}>preferred synthetic pair</text>
+      </>;
+      case 'dpo': return <>
+        <text x="10" y="27" style={{...label, fill:t.accentPrimary}}>chosen log π/πref ↑</text><path d="M34 36 L139 36" style={{...line, stroke:t.accentPrimary}}/><text x="10" y="68" style={{...label, fill:t.accentDanger}}>rejected log π/πref ↓</text><path d="M34 77 L139 77" style={{...line, stroke:t.accentDanger}}/><text x="163" y="52" style={label}>pairwise</text><text x="163" y="69" style={muted}>logistic loss</text><path d="M225 56 L284 56" style={line}/>
+      </>;
+      case 'qlora': return <>
+        <rect x="8" y="16" width="84" height="48" rx="7" style={box}/><text x="20" y="37" style={label}>frozen base</text><text x="27" y="54" style={muted}>4-bit NF4</text><text x="104" y="44" style={label}>+</text><rect x="130" y="20" width="54" height="40" rx="7" fill={t.surfaceAlt} stroke={t.accentPrimary}/><text x="142" y="37" style={label}>LoRA</text><text x="139" y="53" style={muted}>16-bit</text><path d="M184 40 L238 40" style={line}/><text x="243" y="35" style={label}>dequantize</text><text x="243" y="53" style={muted}>for matmul</text>
+      </>;
+      case 'kto': return <>
+        <rect x="10" y="12" width="81" height="28" rx="6" fill={t.surfaceAlt} stroke={t.accentPrimary}/><text x="20" y="31" style={label}>desirable</text><rect x="10" y="50" width="81" height="28" rx="6" fill={t.surfaceAlt} stroke={t.accentDanger}/><text x="18" y="69" style={label}>undesirable</text><path d="M91 26 L157 42 M91 64 L157 48" style={line}/><text x="164" y="39" style={label}>value vs</text><text x="164" y="56" style={muted}>KL reference</text><path d="M224 45 L284 45" style={line}/>
+      </>;
+      case 'grpo': return <>
+        <text x="8" y="17" style={label}>one prompt</text><path d="M62 21 L103 42" style={line}/>{[122,154,186,218].map((x,i)=><g key={x}><circle cx={x} cy="42" r="12" fill={i===1||i===3?t.accentPrimary:t.surfaceAlt} stroke={t.border}/><text x={x-3} y="46" style={label}>{i===1||i===3?'1':'0'}</text></g>)}<path d="M232 42 L273 42" style={line}/><text x="276" y="37" style={label}>group</text><text x="276" y="54" style={muted}>advantage</text><text x="103" y="78" style={muted}>compare sampled rewards; no critic</text>
+      </>;
       default: return <text x="12" y="45" style={label}>Mechanism diagram follows in its era commit.</text>;
     }
   })();
