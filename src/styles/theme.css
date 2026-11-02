@@ -190,7 +190,13 @@ body {
 .prose h2 { font-size: 1.5rem; font-weight: 700; margin: 2.25rem 0 0.75rem; letter-spacing: -0.01em; }
 .prose h3 { font-size: 1.15rem; font-weight: 700; margin: 1.75rem 0 0.5rem; }
 .prose p { margin: 0 0 1rem; color: var(--nm-text-primary); }
-.prose a { color: var(--nm-accent-secondary); }
+.prose a {
+  color: var(--nm-accent-secondary);
+  /* Citation labels are usually prose, but some pages intentionally show the
+     full URL. Let those labels break inside the reading column instead of
+     establishing a wider mobile page. */
+  overflow-wrap: anywhere;
+}
 .prose ul, .prose ol { margin: 0 0 1rem; padding-left: 1.5rem; }
 .prose li { margin-bottom: 0.35rem; }
 .prose strong { font-weight: 700; }
@@ -298,6 +304,17 @@ html, body {
   overflow-x: auto;
   overflow-y: hidden;
   padding: 2px 0;
+}
+/* Inline maths can also be intrinsically wider than the prose column. This is
+   especially easy to trigger when source text contains several currency
+   amounts: remark-math may treat the text between dollar signs as one formula.
+   Keep that formula locally scrollable just like display maths. */
+.prose .katex:not(.katex-display > .katex) {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  vertical-align: middle;
 }
 
 /* The doc shell's sidebar (260px) and table of contents (220px) are fixed-

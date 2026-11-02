@@ -102,5 +102,16 @@ export default function CodeEditor({
   // #282c34 matches oneDark's own real background (Atom One Dark) --
   // only used here as the pre-mount placeholder color so there's no
   // flash of a different background before CodeMirror itself paints.
-  return <div ref={containerRef} style={{ height: '100%', background: '#282c34' }} />;
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        height: '100%',
+        minWidth: 0,
+        maxWidth: '100%',
+        overflow: 'hidden',
+        background: '#282c34',
+      }}
+    />
+  );
 }
