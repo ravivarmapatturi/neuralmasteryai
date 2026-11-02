@@ -68,8 +68,8 @@ const decodingEntries: InferenceAtlasEntry[] = [
     avoid: 'Avoid for conversational sampling where diversity matters or where beam width makes latency unacceptable.', replacedBy: 'Sampling became the default for open-ended generation; constrained or diverse beam variants remain useful for structured sequence tasks.', cameBefore: 'Exhaustive tree search and single-path decoding.', ledTo: 'Greedy decoding as its width-one special case and later constrained search.',
   },
   {
-    id: 'greedy-decoding', name: 'Greedy decoding', year: 1986, era: 'Choosing the next token', category: 'Decoding', diagram: 'greedy',
-    source: { label: 'Rumelhart et al., Learning Representations by Back-propagating Errors', url: 'https://www.nature.com/articles/323533a0' }, learnPath: '/docs/llms-genai/foundation-model-internals',
+    id: 'greedy-decoding', name: 'Greedy decoding', year: 2014, era: 'Choosing the next token', category: 'Decoding', diagram: 'greedy',
+    source: { label: 'Sutskever et al., Sequence to Sequence Learning (beam of size 1)', url: 'https://arxiv.org/abs/1409.3215' }, learnPath: '/docs/llms-genai/foundation-model-internals',
     whatItIs: 'Greedy decoding emits the highest-probability token at every step. It makes beam width one cheap and deterministic, but it optimizes each choice rather than the probability of the final sequence.',
     previousLimit: 'Beam search stores and scores several live hypotheses.', requestState: 'The request needs a maximum length and stop tokens; state is one prefix plus its cached activations.',
     example: 'With {sat: .55, slept: .30, ran: .15}, the next token is always “sat”.', metrics: 'Measure exact-match quality, latency, and tokens per second. A stable result does not imply the globally most probable sequence.',
@@ -77,7 +77,7 @@ const decodingEntries: InferenceAtlasEntry[] = [
   },
   {
     id: 'temperature', name: 'Temperature sampling', year: 2015, era: 'Choosing the next token', category: 'Decoding', diagram: 'temperature',
-    source: { label: 'Sutskever et al., Sequence to Sequence Learning', url: 'https://arxiv.org/abs/1409.3215' }, learnPath: '/docs/llms-genai/foundation-model-internals',
+    source: { label: 'Hinton et al., Distilling the Knowledge in a Neural Network', url: 'https://arxiv.org/abs/1503.02531' }, learnPath: '/docs/llms-genai/foundation-model-internals',
     whatItIs: 'Temperature divides logits before softmax: values below one sharpen the distribution and values above one flatten it. It solved the all-or-nothing choice between greedy output and unconstrained sampling.',
     previousLimit: 'Greedy decoding cannot express controlled randomness.', requestState: 'The request supplies temperature T; runtime holds the current logits and a random-number-generator state.',
     example: 'Logits [2, 1, 0] become more peaked at T=.5 and flatter at T=2 before a token is sampled.', metrics: 'Track entropy, diversity, task success, and invalid-output rate. Temperature changes relative probabilities; it does not remove low-probability tokens.',
@@ -184,8 +184,8 @@ const memoryEntries: InferenceAtlasEntry[] = [
     metrics: 'Plot achieved FLOP/s against FLOP/byte. Points below both roofs have additional inefficiency; moving right means more work per byte.', avoid: 'Avoid treating the bound as a latency prediction or ignoring cache hierarchy and communication.', replacedBy: 'Hierarchical and communication rooflines refine it; the original remains the first diagnostic.', cameBefore: 'Peak compute as the main performance headline.', ledTo: 'IO-aware attention and memory-bound decode analysis.',
   },
   {
-    id: 'kv-cache', name: 'KV cache', year: 2017, era: 'Memory-aware transformers', category: 'Runtime', diagram: 'kv-cache',
-    source: { label: 'Vaswani et al., Attention Is All You Need', url: 'https://arxiv.org/abs/1706.03762' }, learnPath: '/docs/inference-engineering/roofline-and-kv-cache',
+    id: 'kv-cache', name: 'KV cache', year: 2019, era: 'Memory-aware transformers', category: 'Runtime', diagram: 'kv-cache',
+    source: { label: 'OpenAI GPT-2 reference code (cached past keys and values)', url: 'https://github.com/openai/gpt-2/blob/master/src/model.py' }, learnPath: '/docs/inference-engineering/roofline-and-kv-cache',
     whatItIs: 'Autoregressive decoding stores each layer’s past key and value vectors and computes only the new token’s projections. It eliminates recomputing the full prefix at every generation step.', previousLimit: 'Without cached state, generating token t repeats attention projections for tokens 1…t−1.',
     requestState: 'The request starts with prompt tokens; state grows by one K row and one V row per layer for every generated token.', example: 'After “the cat”, each layer holds K₁,K₂ and V₁,V₂; decoding “sat” appends K₃,V₃ instead of rebuilding all six vectors.',
     metrics: 'Measure bytes per token, maximum concurrent sequences, time to first token, and inter-token latency. Cache memory grows with sequence length, layers, and KV heads.', avoid: 'Avoid retaining abandoned or completed request caches; tiny sequences may not justify complex cache management.', replacedBy: 'Paged allocation and shared-prefix caching manage the same cached tensors more efficiently.', cameBefore: 'Full-prefix recomputation at each step.', ledTo: 'GQA, paged KV caches, prefix caching, and phase disaggregation.',

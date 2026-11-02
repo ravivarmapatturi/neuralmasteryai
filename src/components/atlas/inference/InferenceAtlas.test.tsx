@@ -39,6 +39,14 @@ describe('InferenceAtlas', () => {
     fireEvent.change(screen.getByLabelText('Search techniques'), { target: { value: 'shared key' } });
     fireEvent.click(screen.getByRole('button', { name: /GQA/ }));
     expect(screen.getAllByText('Eight query heads form two groups of four, so the cache stores two K heads and two V heads rather than eight of each.')).toHaveLength(2);
-    expect(screen.getByRole('img', { name: /Four query heads share/ })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /Query heads fan into two shared/ })).toBeInTheDocument();
   });
+});
+
+it('gives every entry its own hand-drawn diagram', async () => {
+  const { inferenceDiagramKinds } = await import('./InferenceTechniqueDiagram');
+  const { inferenceAtlasEntries } = await import('../../../data/inferenceAtlas');
+  const kinds = inferenceAtlasEntries.map(entry => entry.diagram);
+  expect(new Set(kinds).size).toBe(kinds.length);
+  for (const kind of kinds) expect(inferenceDiagramKinds).toContain(kind);
 });
