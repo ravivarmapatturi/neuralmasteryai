@@ -1037,5 +1037,332 @@
       "Explains that this prevents full working traces from degrading later parent-agent steps"
     ],
     "followup": "What details must the sub-agent summary preserve for the parent to verify it?"
+  },
+  "rag-interview-questions:f5c12c573de0": {
+    "criteria": [
+      "Asks what kinds of content make up the corpus and how fresh they must remain",
+      "Clarifies query volume, latency targets, users, and access boundaries",
+      "Defines correctness for the domain before selecting components",
+      "Avoids prescribing a vendor stack until the requirements are known"
+    ],
+    "followup": "Which requirement would most change your initial architecture?"
+  },
+  "rag-interview-questions:60066a4a1419": {
+    "criteria": [
+      "Separates ingest, chunking, embedding, and indexing into an offline pipeline",
+      "Groups retrieval, reranking, context assembly, generation, and guardrails into online serving",
+      "Contrasts throughput-oriented indexing with latency-critical per-request serving"
+    ],
+    "followup": "Which artifacts must be versioned across the offline and online pipelines?"
+  },
+  "rag-interview-questions:rag-debug-stage-first": {
+    "criteria": [
+      "Localizes the failure before changing prompts or components",
+      "Checks ingestion, indexing, permissions, metadata filters, and chunk boundaries",
+      "Traces query transformation, retrieval rank, context truncation, and model use",
+      "Explains that each failed stage requires a different remedy"
+    ],
+    "followup": "What trace would you capture to distinguish retrieval failure from generation failure?"
+  },
+  "rag-interview-questions:2e13795da5b5": {
+    "criteria": [
+      "Chooses naive RAG for a small or medium corpus dominated by single-fact lookups",
+      "Connects the choice to tight latency, cost, or operational-capacity limits",
+      "Explains that simple failure modes are easier to observe and diagnose",
+      "Avoids agentic or reranking complexity without a measured need"
+    ],
+    "followup": "What measured failure would justify moving beyond naive RAG?"
+  },
+  "rag-interview-questions:3a10c5cac37f": {
+    "criteria": [
+      "Orders the evolution as naive, advanced, modular, then agentic RAG",
+      "Names hybrid search, reranking, and query rewriting as advanced-stage additions",
+      "Requires each transition to address a measured failure in the previous stage",
+      "Tests one new component at a time against a fixed golden set",
+      "Keeps a component only when it improves the chosen metric"
+    ],
+    "followup": "What evidence would justify the move from modular to agentic retrieval?"
+  },
+  "rag-interview-questions:462d2fe379be": {
+    "criteria": [
+      "Corrects over-chunking by starting near 512 tokens and measuring the result",
+      "Rejects agentification unless a verified multi-hop failure calls for it",
+      "Adds reranking only after first-stage retrieval is shown to be the bottleneck",
+      "Isolates tenants by namespace instead of relying on one shared filtered index",
+      "Maintains a fixed probe set in CI to detect retrieval regressions"
+    ],
+    "followup": "Which anti-pattern creates the greatest security risk, and why?"
+  },
+  "rag-interview-questions:rag-ft-long-context": {
+    "criteria": [
+      "Assigns current policy facts and exact clauses to RAG",
+      "Uses fine-tuning for brand voice, output format, or a narrow behavior",
+      "Reserves long context for a bounded corpus that fits the token and cost budget",
+      "Combines fine-tuning for voice with retrieval for changing facts",
+      "Explains that long context removes retrieval-precision risk when the corpus fits"
+    ],
+    "followup": "How would you verify that every cited clause matches the current manual?"
+  },
+  "rag-interview-questions:rag-chunk-code": {
+    "criteria": [
+      "Chunks code at function or method boundaries while preserving signature, docstring, and body",
+      "Uses class-level chunks when a small class is the better semantic unit",
+      "Parses boundaries with tree-sitter or Python AST rather than newline splitting",
+      "Explains how fixed character cuts damage retrieval and grounded code generation"
+    ],
+    "followup": "How would you handle a function that exceeds the embedding model's input limit?"
+  },
+  "rag-interview-questions:91ab7f6540d9": {
+    "criteria": [
+      "Detects prose, tables, and figures as separate layout regions",
+      "Chunks prose along section and paragraph boundaries with overlap",
+      "Serializes extracted tables as Markdown instead of mixing them into prose",
+      "Embeds text descriptions generated for charts and figures",
+      "Attaches page number and section title to every chunk"
+    ],
+    "followup": "How would you evaluate retrieval separately for prose, tables, and charts?"
+  },
+  "rag-interview-questions:81d655b86d86": {
+    "criteria": [
+      "Names PDFs, dynamic websites, databases, APIs, and SaaS tools as distinct ingestion sources",
+      "Matches OCR, browser rendering, SQL, REST, or SDK extraction to the source",
+      "Explains that a mismatched extractor may return no content instead of a clear error",
+      "Validates that extraction produced non-empty text before indexing",
+      "Routes a scanned PDF without a text layer to OCR"
+    ],
+    "followup": "What ingestion checks would quarantine a document before it reaches the index?"
+  },
+  "rag-interview-questions:575cc6c04f5a": {
+    "criteria": [
+      "Selects pdfplumber for table-heavy documents where table fidelity matters",
+      "Selects PyMuPDF for fast layout-aware extraction at scale",
+      "Selects pypdf when a pure-Python dependency matters more than speed",
+      "Routes scanned PDFs to OCR because none of the three reads absent text layers"
+    ],
+    "followup": "How would you benchmark the three libraries on your own document mix?"
+  },
+  "rag-interview-questions:rag-chunk-too-long": {
+    "criteria": [
+      "States that the embedding input is silently truncated rather than rejected",
+      "Identifies the missing tail as content that never enters the vector index",
+      "Explains why oversized tables, clauses, or paragraphs can degrade retrieval unnoticed",
+      "Treats the absence of an explicit pipeline error as the core operational danger"
+    ],
+    "followup": "What validation would catch oversized chunks before embedding?"
+  },
+  "rag-interview-questions:7ea5129725e0": {
+    "criteria": [
+      "Defines the mismatch between short keyword queries and long descriptive documents",
+      "Explains that the style and length gap can separate otherwise relevant vectors",
+      "Uses HyDE to embed a hypothetical document-like answer",
+      "Uses INSTRUCTOR to add a task-specific representation instruction",
+      "Uses E5 query and passage prefixes learned during training"
+    ],
+    "followup": "How would you compare these three methods on a held-out retrieval set?"
+  },
+  "rag-interview-questions:5e132e72450b": {
+    "criteria": [
+      "Proposes a cross-lingual model such as multilingual-e5-large or LaBSE",
+      "Trades broad language coverage against a lower ceiling than a strong monolingual model",
+      "Considers translating queries into the corpus language with added latency and cost",
+      "Proposes domain-specific cross-lingual fine-tuning when packaged models fall short",
+      "Validates the choice on held-out examples in the target language"
+    ],
+    "followup": "How would you build relevance labels in a language your team does not speak?"
+  },
+  "rag-interview-questions:rag-billion-vectors": {
+    "criteria": [
+      "Computes 10^9 × 768 × 4 bytes = 3.07 TB before index overhead",
+      "Concludes that one machine cannot hold the uncompressed vectors in RAM",
+      "Names quantization, sharding, and tiered storage as requirements at this scale"
+    ],
+    "followup": "How would product quantization change the memory estimate?"
+  },
+  "rag-interview-questions:rag-diskann": {
+    "criteria": [
+      "Chooses DiskANN for 1.5 billion vectors on a 64 GB RAM node with SSD",
+      "Rejects HNSW because its full graph would require terabytes of resident memory",
+      "Explains that DiskANN navigates compressed vectors in RAM and reranks SSD-resident vectors",
+      "Accepts the SSD-read latency because the 5 ms budget is not sub-millisecond"
+    ],
+    "followup": "What changes if the latency target drops below one millisecond?"
+  },
+  "rag-interview-questions:3d6a2d33d3cd": {
+    "criteria": [
+      "Defines cold start as loading the search graph from disk into RAM after restart or scale-out",
+      "Notes that queries may become slow linear scans or fail until loading completes",
+      "Proposes probe queries to warm a node before admitting production traffic",
+      "Uses warm replicas and avoids restarting the primary in place",
+      "Uses memory locking or memory-mapped files to control paging and startup"
+    ],
+    "followup": "How would your readiness probe know the index is warm enough?"
+  },
+  "rag-interview-questions:230ea10b8577": {
+    "criteria": [
+      "Explains that serverless charges for operations and storage while minimizing idle cost",
+      "Identifies cold-namespace latency as an architectural serverless tradeoff",
+      "Explains that provisioned nodes cost while idle but remain warm and predictable",
+      "Chooses provisioned capacity for sustained traffic and serverless for low or spiky demand"
+    ],
+    "followup": "At what traffic pattern would you switch from serverless to provisioned capacity?"
+  },
+  "rag-interview-questions:rag-rerank-first": {
+    "criteria": [
+      "Chooses to fine-tune the reranker before the embedding model",
+      "Explains that pairwise reranker training needs less labeled data",
+      "Notes that reranker changes rescore candidates without rebuilding the index",
+      "Contrasts daily reranker iteration with the full re-embedding required by embedding changes"
+    ],
+    "followup": "What evidence would make you fine-tune the embedding model first instead?"
+  },
+  "rag-interview-questions:rag-hard-negatives": {
+    "criteria": [
+      "Explains that random negatives are often too easy to teach a useful boundary",
+      "Defines hard negatives as plausible but irrelevant results mined from BM25 or current embeddings",
+      "Connects hard negatives to learning distinctions among semantically similar candidates",
+      "Identifies genuine unlabeled matches as false negatives that can poison training",
+      "Filters suspicious negatives with a strong cross-encoder score"
+    ],
+    "followup": "How would you measure whether hard-negative mining improved retrieval without adding label noise?"
+  },
+  "rag-interview-questions:3c9457d43706": {
+    "criteria": ["Regenerates the entire corpus because model versions produce incompatible vector spaces", "Builds the replacement index beside the live index and cuts over atomically", "Versions documents arriving during migration so each uses the intended embedding model"],
+    "followup": "How would you handle documents written while the new index is building?"
+  },
+  "rag-interview-questions:aecd9ff3fe5c": {
+    "criteria": ["Defines catastrophic forgetting as domain updates damaging general semantic representations", "Evaluates a general-domain slice alongside the domain set before and after tuning", "Compares recall, MRR, or NDCG to separate adaptation from broad regression"],
+    "followup": "What amount of general-domain regression would you accept for a domain gain?"
+  },
+  "rag-interview-questions:bfbbfd3c81a1": {
+    "criteria": ["Defines Advanced RAG as a fixed pipeline extending naive retrieval", "Adds query rewriting or HyDE, hybrid retrieval, and reranking", "Distinguishes it from Modular RAG by its unchanging execution sequence"],
+    "followup": "Which measured failure would you address with each enhancement?"
+  },
+  "rag-interview-questions:548f7d703d2f": {
+    "criteria": ["Defines Modular RAG as independently swappable retrieval components", "Names routing, pluggable retrievers, fusion, or memory as modules", "Identifies per-query routing as the mechanism separating it from Advanced RAG"],
+    "followup": "What signals should the router use to choose a retrieval path?"
+  },
+  "rag-interview-questions:68adb8eaa723": {
+    "criteria": ["Explains that parallel drafter calls answer from distinct document subsets", "Uses a larger verifier to choose among drafts and rationales", "Limits the design to traffic that amortizes two models and subsets that can disagree", "Explains why low traffic or nearly identical subsets erase the benefit"],
+    "followup": "How would you partition documents so the drafts provide useful diversity?"
+  },
+  "rag-interview-questions:464a23ee38fb": {
+    "criteria": ["Defines long-context RAG as sending coarse-selected documents or large spans directly to the model", "Trades precise chunk retrieval for tolerance of imperfect chunk boundaries", "Chooses it for a bounded corpus or stable content benefiting from prompt caching", "Rejects it when the corpus cannot fit the available context window"],
+    "followup": "How would you compare long-context cost and accuracy with chunked retrieval?"
+  },
+  "rag-interview-questions:aa993df62e4b": {
+    "criteria": ["Trains RAFT examples with a golden document and plausible retrieved distractors", "Omits the golden document from some examples to teach robustness to retrieval misses", "Contrasts this with clean QA tuning that never exposes retrieval failures"],
+    "followup": "How would you choose the ratio of golden-present to golden-absent examples?"
+  },
+  "rag-interview-questions:1bea9812d7a6": {
+    "criteria": ["Generates multiple query rephrasings and retrieves for each", "Fuses ranked lists with Reciprocal Rank Fusion instead of taking their union", "Rewards documents that rank consistently across several rephrasings"],
+    "followup": "How would you choose the number and diversity of query rewrites?"
+  },
+  "rag-interview-questions:rag-multihop-chain": {
+    "criteria": ["Computes 0.9^4 = 0.656 end-to-end reliability", "Explains that each hop conditions the next retrieval query", "Identifies compounded early-hop errors as the central multi-hop risk"],
+    "followup": "How would you stop a weak intermediate answer from contaminating later hops?"
+  },
+  "rag-interview-questions:da872d982290": {
+    "criteria": ["Builds a graph-like index and seeds Personalized PageRank from query entities", "Uses PageRank to combine evidence from multiple weighted paths", "Explains that BFS or DFS cannot reward several independent routes to the same node"],
+    "followup": "How would entity-linking errors affect HippoRAG retrieval?"
+  },
+  "rag-interview-questions:4b87c24eacc4": {
+    "criteria": ["Links graph nodes back to source text through mutual indexing", "Uses logical-form operations for deterministic graph reasoning", "Falls back to raw text when the graph lacks a required fact", "Contrasts this with GraphRAG community summaries that cannot verify formal multi-step reasoning"],
+    "followup": "Which query types benefit most from logical-form-guided reasoning?"
+  },
+  "rag-interview-questions:2ff790e9ef2a": {
+    "criteria": ["Explains that both methods offload graph exploration from direct LLM edge traversal", "Describes GraphReader as an agent carrying compressed findings across steps", "Describes GNN-RAG as a trained graph network retrieving evidence for final LLM verbalization"],
+    "followup": "When would you prefer learned graph retrieval over agentic exploration?"
+  },
+  "rag-interview-questions:647a45474ff5": {
+    "criteria": ["Defines REALM as joint end-to-end training of retriever and language model", "Explains that downstream task loss teaches which documents help", "Identifies asynchronous index refresh and embedding drift as its deployment obstacle", "Names joint retriever training as its historical contribution"],
+    "followup": "How would stale index embeddings affect REALM training?"
+  },
+  "rag-interview-questions:c894675504ab": {
+    "criteria": ["Retrieves neighbor chunks from a frozen external datastore", "Injects neighbors through chunked cross-attention rather than prompt concatenation", "Explains that frozen retrieval and cheap lookup permit a trillion-token datastore"],
+    "followup": "What information can be lost when retrieval is tied to the preceding input chunk?"
+  },
+  "rag-interview-questions:e024704d168b": {
+    "criteria": ["Defines Atlas as joint training of a retriever and Fusion-in-Decoder reader", "Explains that retrieval supplies facts otherwise learned from many examples", "Uses scarce labels to teach the answering task rather than factual memorization"],
+    "followup": "How would Atlas behave when the required fact is absent from its index?"
+  },
+  "rag-interview-questions:5d8b21d8a9d5": {
+    "criteria": ["Encodes each retrieved passage independently and in parallel", "Lets only the decoder attend jointly across passage representations", "Explains that per-passage encoding avoids quadratic attention over one concatenated input"],
+    "followup": "What bottleneck remains as the number of retrieved passages grows?"
+  },
+  "rag-interview-questions:d718bc92e167": {
+    "criteria": ["Explores several reasoning and retrieval branches in parallel", "Prunes weak branches instead of committing to one ReAct-style chain", "Reserves the extra cost for ambiguous paths where backtracking matters", "Rejects the approach for straightforward lookups"],
+    "followup": "How would you score and prune branches without discarding the eventual best path?"
+  },
+  "rag-interview-questions:770a297b7987": {
+    "criteria": ["Defines DPR as a contrastively trained query-passage bi-encoder", "Scores learned dense representations with inner product or cosine similarity", "Names proof that dense retrieval could beat sparse open-domain QA as its foundational contribution"],
+    "followup": "What kinds of queries can BM25 still handle better than DPR?"
+  },
+  "rag-interview-questions:cbd03ce2fa8c": {
+    "criteria": ["Explains that WebGPT learns search, click, and quote behavior in model weights", "Trains a reward model from human preferences over browsing transcripts", "Contrasts policy fine-tuning with prompted tool use by a general model"],
+    "followup": "What failure modes should human preference data penalize in browsing traces?"
+  },
+  "rag-interview-questions:241264b7c92c": {
+    "criteria": ["Distinguishes valid JSON syntax from factual support for each field value", "Enforces the schema at the API or tool-call layer rather than only in a prompt", "Uses an NLI check to test whether cited text entails each claimed field"],
+    "followup": "What should the system emit when a required field is not entailed by any passage?"
+  },
+  "rag-interview-questions:c596059798d2": {
+    "criteria": ["Builds recursive summaries top-down within each source document", "Preserves single-document provenance at every recursive node", "Contrasts RAPTOR's bottom-up semantic clusters that can cross document boundaries", "Chooses recursive summaries for citations and RAPTOR for cross-document themes"], "followup": "How would you preserve citations through several summary levels?"
+  },
+  "rag-interview-questions:fbc0e6c47e54": {
+    "criteria": ["Trains the retrieve-or-reason decision with reinforcement learning", "Optimizes the search policy against task outcomes", "Contrasts learned decisions with a frozen model following agentic prompts"], "followup": "What reward would teach the policy not to search unnecessarily?"
+  },
+  "rag-interview-questions:29e1db44106a": {
+    "criteria": ["Decomposes the brief upfront into independent sub-questions", "Runs sub-agents in parallel with isolated contexts", "Merges condensed findings only after the separate investigations", "Contrasts this with a longer sequential loop accumulating one shared context"], "followup": "Which dependencies between sub-questions would prevent parallel execution?"
+  },
+  "rag-interview-questions:4fdc66d88cf6": {
+    "criteria": ["Compresses the full corpus into a model that creates a query-time clue", "Uses that clue to describe likely evidence before retrieval", "Contrasts query-time corpus awareness with RAPTOR's fixed index-time hierarchy"], "followup": "How would you detect a misleading MemoRAG clue?"
+  },
+  "rag-interview-questions:df58f195e84a": {
+    "criteria": ["Defines LongRAG by retrieval units about 30 times larger than standard chunks", "Explains that fewer distinct units simplify retrieval but burden the reader", "Distinguishes retrieval-unit sizing from long-context generation"], "followup": "How would you choose the retrieval-unit size for your corpus?"
+  },
+  "rag-interview-questions:780cadd18047": {
+    "criteria": ["Uses rendered page images as the units for both retrieval and generation", "Eliminates text extraction and normalization from the pipeline", "Relies on a vision-language model to interpret text, tables, figures, and layout jointly"], "followup": "How would you evaluate retrieval when the indexed unit is a page image?"
+  },
+  "rag-interview-questions:675a0594a722": {
+    "criteria": ["Defers LLM summarization until a query identifies a relevant subgraph", "Builds the index with noun-phrase extraction and co-occurrence counts but no LLM calls", "Contrasts this with GraphRAG and LightRAG paying summarization cost upfront"], "followup": "What latency does query-time summarization add to LazyGraphRAG?"
+  },
+  "rag-interview-questions:6893bd11f0ba": {
+    "criteria": ["Elicits the model's prior knowledge as an explicit tagged source", "Processes prior knowledge and retrieved passages through one consolidation step", "Resolves conflicts visibly instead of letting parametric memory override context silently"], "followup": "How should the system respond when prior knowledge conflicts with retrieved evidence?"
+  },
+  "rag-interview-questions:40a39971d741": {
+    "criteria": ["Lets Auto-RAG and DeepRAG choose retrieval or parametric reasoning at every step", "Explains that CoRAG retrieves at every hop by construction", "Identifies chain length rather than retrieval presence as CoRAG's adjustable dimension", "Connects conditional retrieval to lower cost on knowledge-independent steps"], "followup": "How would you train a reliable retrieve-or-reason decision?"
+  },
+  "rag-interview-questions:65b32d8406f9": {
+    "criteria": ["Trains on correct retrieval-reasoning chains selected through rejection sampling", "Optimizes query reformulation against answer correctness", "Uses trained chain length as an inference-time tradeoff between compute and hard-question accuracy"], "followup": "How would you choose chain length dynamically at inference time?"
+  },
+  "rag-interview-questions:0d43829e2301": {
+    "criteria": ["Uses special control tokens to select a query operation per request", "Chooses among rewriting, decomposition, disambiguation, or no change", "Contrasts adaptive selection with applying HyDE or Step-Back to every query"], "followup": "What training labels teach the correct transformation action?"
+  },
+  "rag-interview-questions:bde08b30b0eb": {
+    "criteria": ["Compresses retrieved chunks to dense embeddings by default", "Uses an RL-trained policy to expand selected chunks into raw tokens", "Adds a compressed-but-included state between full inclusion and exclusion", "Connects selective expansion to broader effective context at comparable latency"], "followup": "What signal should trigger expansion of a compressed chunk?"
+  },
+  "rag-interview-questions:069959a1f3ba": {
+    "criteria": ["Retrieves similar solved examples rather than factual documents", "Builds a dynamic few-shot prompt from those demonstrations", "Targets reusable solution patterns for tasks such as text-to-SQL"], "followup": "How would you prevent a superficially similar but structurally wrong example from being retrieved?"
+  },
+  "rag-interview-questions:8d64013fc8da": {
+    "criteria": ["Replaces a fixed corpus with live search and page fetching", "Evaluates source quality and tracks citations as first-class concerns", "Identifies prompt injection from hostile pages as a web-specific risk", "Protects the fetcher from redirects to internal or unintended endpoints"], "followup": "How would you isolate fetched web content from agent instructions?"
+  },
+  "rag-interview-questions:rag-citation-grounded": {
+    "criteria": ["Rejects citation presence alone as evidence of support", "Measures citation precision as the share of cited passages that support claims", "Measures citation recall as the share of claims with supporting citations", "Checks attribution accuracy with claim-level entailment"], "followup": "How would you score a claim supported only by combining two passages?"
+  },
+  "rag-interview-questions:e09bf2405833": {
+    "criteria": ["Keeps raw text inside a trust boundary through on-device or federated embedding", "Adds differential privacy noise to retrieval signals or training data", "Filters or redacts PII before returning output", "Selects controls from the stated misuse, breach, or compliance threat model", "Acknowledges privacy tradeoffs in quality or latency"], "followup": "Which threat model would make on-device embedding necessary?"
+  },
+  "rag-interview-questions:rag-tables": {
+    "criteria": ["Explains how character chunking detaches values from headers and row structure", "Parses rows, columns, and headers before embedding", "Linearizes tables as Markdown or self-contained row chunks", "Repeats headers on per-row chunks to preserve meaning"], "followup": "How would you evaluate arithmetic questions over retrieved tables?"
+  },
+  "rag-interview-questions:0e42b0267711": {
+    "criteria": ["Updates the index continuously as documents or events arrive", "Makes new content searchable within seconds or minutes rather than after a batch rebuild", "Connects low staleness to live news, incidents, or trading use cases"], "followup": "How would you keep incremental updates consistent with deletions and corrections?"
+  },
+  "rag-interview-questions:2a003e9f0582": {
+    "criteria": ["Indexes fine entity relationships and broad thematic summaries together", "Routes each query to the local level, global level, or both", "Avoids GraphRAG's index-time community clustering cost", "Trades cheaper indexing for less complete corpus-wide thematic coverage"], "followup": "How would you decide whether a query needs local or global retrieval?"
+  },
+  "rag-interview-questions:rag-stop-agent-loop": {
+    "criteria": ["Sets a hard maximum iteration count", "Detects near-duplicate retrieval queries as semantic drift", "Uses a cheap sufficiency check over accumulated evidence", "Stops at a token or monetary budget", "Treats the hard cap and budget as safety nets rather than normal completion"], "followup": "How would you validate that the sufficiency model does not stop too early?"
   }
 }
