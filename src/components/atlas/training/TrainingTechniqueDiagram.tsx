@@ -76,6 +76,21 @@ export default function TrainingTechniqueDiagram({ kind, name }: Props) {
         <line x1="18" y1="72" x2="292" y2="72" stroke={t.border}/><path d="M18 70 L64 18 Q180 20 292 69" style={{...line, markerEnd:'none'}}/>
         <line x1="64" y1="14" x2="64" y2="75" stroke={t.accentWarn} strokeDasharray="4 3"/><text x="18" y="14" style={muted}>warmup</text><text x="171" y="40" style={muted}>cosine decay</text>
       </>;
+      case 'bptt': return <>
+        {[34,104,174,244].map((x,i)=><g key={x}><rect x={x-20} y="28" width="40" height="28" rx="7" style={box}/><text x={x-8} y="47" style={label}>h{i+1}</text>{i<3&&<path d={`M${x+20} 42 L${x+48} 42`} style={line}/>}</g>)}
+        <path d="M244 67 L174 67 L104 67 L34 67" style={{...line, stroke:t.accentDanger}}/><text x="75" y="84" style={{...muted, fill:t.accentDanger}}>loss gradient through shared recurrence</text>
+      </>;
+      case 'cnn-training': return <>
+        <rect x="12" y="10" width="76" height="66" style={box}/><path d="M22 20 H78 M22 34 H78 M22 48 H78 M22 62 H78 M26 16 V70 M42 16 V70 M58 16 V70 M74 16 V70" stroke={t.border}/><rect x="42" y="34" width="32" height="28" fill="none" stroke={t.accentPrimary} strokeWidth="3"/>
+        <path d="M92 43 L146 43" style={line}/><rect x="152" y="25" width="42" height="36" style={box}/><text x="161" y="47" style={label}>3×3</text><path d="M194 43 L246 43" style={line}/><text x="253" y="37" style={label}>feature</text><text x="253" y="54" style={muted}>map</text>
+      </>;
+      case 'transfer-learning': return <>
+        <rect x="10" y="14" width="88" height="52" rx="8" style={box}/><text x="22" y="36" style={label}>source</text><text x="22" y="53" style={muted}>features</text><path d="M98 40 L157 40" style={line}/><rect x="162" y="14" width="58" height="52" rx="8" fill={t.surfaceAlt} stroke={t.accentPrimary}/><text x="173" y="36" style={label}>freeze</text><text x="177" y="53" style={muted}>or tune</text><path d="M220 40 L270 40" style={line}/><text x="273" y="36" style={label}>target</text><text x="273" y="53" style={muted}>head</text>
+      </>;
+      case 'augmentation': return <>
+        <rect x="12" y="20" width="55" height="46" rx="6" style={box}/><path d="M24 54 L37 36 L47 47 L57 30" stroke={t.accentPrimary} fill="none"/><path d="M67 43 L114 43" style={line}/>
+        <rect x="122" y="10" width="52" height="38" rx="5" style={box}/><rect x="189" y="31" width="52" height="38" rx="5" style={box}/><rect x="256" y="14" width="42" height="51" rx="5" style={box}/><text x="125" y="82" style={muted}>crop · flip · color; same label</text>
+      </>;
       default: return <text x="12" y="45" style={label}>Mechanism diagram follows in its era commit.</text>;
     }
   })();
