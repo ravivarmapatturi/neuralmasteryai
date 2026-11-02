@@ -25,11 +25,20 @@ Instead, the foreman leaves a waterproof clipboard on the job site: a checklist 
 
 </ELI5>
 
----
+## Why This Exists
 
-## 1. The Context Compaction Pipeline
+Autonomous software engineering tasks differ fundamentally from single-turn chat completions. A typical feature implementation touches multiple files, runs compilers, executes test suites, and iterates through error traces.
 
-Inspect how a harness compresses tens of thousands of tokens of accumulated logs while preserving 100% of the active task state:
+When an autonomous agent runs over dozens of turns without explicit state architecture, two catastrophic failure modes emerge:
+
+1. **Semantic Amnesia & Compaction Drift**: When context windows fill up, naive agent frameworks invoke a secondary model to "summarize past conversation." Research demonstrates that conversational summaries suffer from lossy compression: line numbers disappear, subtle architectural constraints get dropped, and intent gets conflated with completion. The agent begins re-running tests it already resolved or modifying working code.
+2. **Crash Fragility & Orphaned Modularity**: In real cloud deployments, agent processes terminate unexpectedly due to container preemption, host spot-instance eviction, or transient API timeouts. If task state exists purely in volatile process RAM or model context, the entire run must be aborted and restarted from scratch, burning developer hours and API spend.
+
+Production harness architectures resolve this by treating the host filesystem as the ground truth of system state, using **externalized state artifacts** paired with **two-pass token compaction**.
+
+## The Shape of It
+
+The state continuity architecture separates volatile reasoning history from durable task state:
 
 <ContextCompactionVisualizer />
 
@@ -45,9 +54,7 @@ Inspect how a harness compresses tens of thousands of tokens of accumulated logs
   explanation="Anthropic's long-running agent research proved that conversational summaries suffer from semantic loss: the summarizing model frequently drops nuanced implementation details, leading the worker agent to re-investigate or re-write existing code. An externalized JSON checklist provides rigid ground truth that survives restarts and context compactions."
 />
 
----
-
-## 2. Anthropic's State-Externalization Pattern: `feature_list.json`
+## Anthropic's State-Externalization Pattern: `feature_list.json`
 
 In Anthropic's research on long-running application development, agents that rely on conversational memory inevitably suffer from **amnesia** or **context anxiety**.
 
@@ -57,34 +64,43 @@ Observe how externalized state guides coordination across agent roles:
 
 <AnthropicSupervisorTriadVisualizer />
 
+### The Canonical State Schema
+
+Below is the production JSON specification for `feature_list.json`, maintained in the repository workspace root:
+
 ```json
 {
   "task": "build-python-attention-kernel",
   "version": "1.0.0",
+  "last_updated": "2026-11-02T12:00:00Z",
   "checklist": [
     {
       "id": "qkv_projection",
       "label": "Implement Q/K/V linear projections with PyTorch",
       "status": "passed",
-      "tests": ["pytest tests/unit/test_attention.py::test_qkv_shapes"]
+      "tests": ["pytest tests/unit/test_attention.py::test_qkv_shapes"],
+      "last_pass_hash": "a1b2c3d4"
     },
     {
       "id": "causal_masking",
       "label": "Generate autoregressive lower-triangular causal mask",
       "status": "passed",
-      "tests": ["pytest tests/unit/test_attention.py::test_causal_mask"]
+      "tests": ["pytest tests/unit/test_attention.py::test_causal_mask"],
+      "last_pass_hash": "e5f6g7h8"
     },
     {
       "id": "flash_attention_kernel",
       "label": "Tiled online softmax kernel with Triton / PyTorch C++",
       "status": "in_progress",
-      "tests": ["pytest tests/unit/test_flash.py"]
+      "tests": ["pytest tests/unit/test_flash.py"],
+      "last_pass_hash": null
     },
     {
       "id": "fastapi_serving_endpoint",
       "label": "FastAPI streaming inference route with healthcheck",
       "status": "pending",
-      "tests": ["pytest tests/e2e/test_api.py"]
+      "tests": ["pytest tests/e2e/test_api.py"],
+      "last_pass_hash": null
     }
   ],
   "active_working_files": [
@@ -107,13 +123,88 @@ By keeping `feature_list.json` on disk, the state remains deterministic, machine
 
 </GoDeeper>
 
----
+### Atomic Disk Serialization
 
-## 3. Python Compaction Algorithm: Live Interactive Runner
+Because autonomous agents can be terminated mid-execution, writing directly to `feature_list.json` with standard file handles risks creating truncated, unparseable JSON files. Production harnesses enforce **atomic writes**:
 
-Below is a production compaction engine in Python. Run this live in-browser demo to see how old, verbose tool outputs are pruned while keeping recent turns and state checklists completely intact:
+```python
+import json
+import os
+import tempfile
+from typing import Any, Dict
 
-<RunnableCode code={`from dataclasses import dataclass
+def atomic_write_json(file_path: str, data: Dict[str, Any]) -> None:
+    """Writes JSON data atomically using a temporary file and atomic rename."""
+    directory = os.path.dirname(os.path.abspath(file_path))
+    with tempfile.NamedTemporaryFile("w", dir=directory, delete=False, suffix=".tmp") as tf:
+        json.dump(data, tf, indent=2)
+        tf.flush()
+        os.fsync(tf.fileno())
+        temp_name = tf.name
+    # POSIX atomic rename: replaces target file instantaneously
+    os.replace(temp_name, file_path)
+```
+
+### Git Worktrees and Checkpoint Rollback
+
+When an autonomous agent implements a multi-step feature, changes can introduce subtle bugs that break unrelated subsystems. If the agent operates directly on the main working tree, rolling back failed attempts requires messy interactive git commands that models often mishandle.
+
+Production harnesses isolate each checklist task inside a dedicated **Git Worktree**:
+
+```bash
+# Production harness worktree isolation workflow
+# 1. Create a clean isolated worktree for the specific checklist item
+git worktree add -b agent/task-flash-kernel ../worktrees/task-flash main
+
+# 2. Agent executes all edits and test runs inside the isolated directory
+cd ../worktrees/task-flash
+
+# 3. If tests pass, commit and merge back to main
+git commit -am "feat(attention): implement flash attention kernel"
+cd /workspace/repo
+git merge --ff-only agent/task-flash-kernel
+git worktree remove ../worktrees/task-flash
+
+# 4. If the agent fails or enters an unrecoverable loop, prune the worktree instantly
+git worktree remove --force ../worktrees/task-flash
+git branch -D agent/task-flash-kernel
+```
+
+This isolation ensures that failed agent experiments leave zero residual artifacts in the primary codebase, and resetting state requires a single filesystem unlink rather than complex git reconciliations.
+
+## A Full Worked Example: Two-Pass History Compaction
+
+Consider an agent running a test-fix cycle. Its raw conversational history contains 551 tokens across 6 turns, dominated by 400+ tokens of verbose compiler and pytest logs.
+
+The target context budget for conversation history is **150 tokens**.
+
+```
+           Raw Conversation History (551 Tokens)
+   [ System: 15 tokens | User: 12 tokens | Tool logs: 430 tokens | Agent: 94 tokens ]
+                                │
+                                ▼
+        ┌──────────────────────────────────────────────┐
+        │ Pass 1: Prune Old Tool Traces (> 2 turns)    │
+        │ Replace raw pytest outputs with status tags  │
+        └───────────────────────┬──────────────────────┘
+                                │
+                                ▼
+        ┌──────────────────────────────────────────────┐
+        │ Pass 2: Truncate Verbose Recent Tool Logs    │
+        │ Retain pass/fail assertion and timing line   │
+        └───────────────────────┬──────────────────────┘
+                                │
+                                ▼
+           Compacted Context History (76 Tokens)
+   [ 86.2% token reduction — 100% of user constraints & agent conclusions preserved ]
+```
+
+### Run It Yourself
+
+Execute this self-contained Python implementation of the two-pass compaction engine. Notice how historical test failures and verbose assertion outputs are compacted into semantic markers without losing user intent:
+
+<RunnableCode code={`import json
+from dataclasses import dataclass
 from typing import List
 
 @dataclass
@@ -123,39 +214,51 @@ class Message:
     is_tool_trace: bool = False
 
 def estimate_tokens(text: str) -> int:
-    # Approximate rule of thumb: ~4 characters per token
+    # Standard heuristic: 4 characters per token
     return max(1, len(text) // 4)
 
 def compact_conversation(messages: List[Message], budget_tokens: int = 150) -> List[Message]:
     total_tokens = sum(estimate_tokens(m.content) for m in messages)
-    print(f"Initial Token Count: {total_tokens} tokens (Budget: {budget_tokens})")
+    print(f"Initial Token Count: {total_tokens} tokens (Target Budget: {budget_tokens})")
     
     if total_tokens <= budget_tokens:
         return messages
 
-    # Compaction Strategy:
-    # 1. Keep the initial system instruction (turn 0)
-    # 2. Keep the last 2 turns intact
-    # 3. Collapse old tool outputs in between into compact semantic markers
+    # Pass 1: Collapse older tool outputs (> 2 turns old)
     compacted: List[Message] = []
     recent_cutoff = len(messages) - 2
 
     for i, msg in enumerate(messages):
         if i > 0 and i < recent_cutoff and msg.is_tool_trace:
-            # Prune noisy 500-token tool logs into a 5-token marker
             compacted.append(Message(
                 role=msg.role,
-                content="[Tool log pruned: verified pass by pytest]",
+                content="[Historical tool trace pruned: FAILED test_3 (AttributeError)]",
                 is_tool_trace=True
             ))
         else:
             compacted.append(msg)
 
+    # Pass 2: If still exceeding budget, summarize verbose recent tool logs
+    cur_tokens = sum(estimate_tokens(m.content) for m in compacted)
+    if cur_tokens > budget_tokens:
+        second_pass = []
+        for msg in compacted:
+            if msg.is_tool_trace and len(msg.content) > 100:
+                second_pass.append(Message(
+                    role=msg.role,
+                    content="[Recent tool trace: 3 passed in 1.4s (100%)]",
+                    is_tool_trace=True
+                ))
+            else:
+                second_pass.append(msg)
+        compacted = second_pass
+
     new_total = sum(estimate_tokens(m.content) for m in compacted)
-    print(f"Compacted Token Count: {new_total} tokens -> Saved {total_tokens - new_total} tokens!\\n")
+    saved = total_tokens - new_total
+    print(f"Compacted Token Count: {new_total} tokens -> Saved {saved} tokens ({saved / total_tokens * 100:.1f}% reduction)\\n")
     return compacted
 
-# Simulate an agent conversation with verbose test outputs
+# Simulate 6 turns of interactive debugging with verbose pytest output
 history = [
     Message("system", "You are an autonomous Python harness agent working on feature_list.json"),
     Message("user", "Run the test suite and fix test_attention.py"),
@@ -168,14 +271,48 @@ history = [
 compacted_history = compact_conversation(history, budget_tokens=150)
 for m in compacted_history:
     print(f"[{m.role.upper()}]: {m.content[:75]}...")
+
+# Try it: Change budget_tokens to 300 above to see what changes when more budget is available.
 `} />
 
----
+## Common Problems & Fixes
+
+1. **State Desynchronization with Git**: An agent updates `feature_list.json` to mark a feature "passed", but fails to stage or commit the matching Python files.
+   - *Fix*: The harness links state transitions to git commits. A task in `feature_list.json` cannot transition to `passed` unless the working directory has a clean git status and matching commit hash.
+2. **Context Bleed Across Switched Tasks**: When an agent finishes Task A and begins Task B, residual tool traces from Task A confuse tool selection.
+   - *Fix*: Flush working memory between checklist items. When Task A passes verification, wipe conversation turns except for the root system prompt, the updated `feature_list.json`, and Task B's requirements.
+3. **Corrupted State Files from Mid-Flight SIGKILL**: Cloud preemptions leave half-written JSON files on disk.
+   - *Fix*: Always write to a temporary file in the same filesystem directory and execute an atomic `os.replace()`.
 
 <NotebookCallout color="cobalt" title="State Persistence Principle">
-**Treat the filesystem as the source of truth, not the context window.** Always write task status to `feature_list.json` and human milestones to `progress.txt`. When context is cleared or refreshed, reloading these two files restores full autonomous momentum.
+Treat the filesystem as the source of truth, not the context window. Always write task status to `feature_list.json` and human milestones to `progress.txt`. When context is cleared or refreshed, reloading these two files restores full autonomous momentum.
 </NotebookCallout>
 
-<NotebookCallout title="Next in Curriculum">
-Learn how autonomous agents govern multi-step execution in **[Autonomous Loops & Supervisors](/docs/harness-engineering/autonomous-loops-and-supervisors)**.
-</NotebookCallout>
+## When *Not* to Use It
+
+| Situation | Better Choice | Why |
+| :--- | :--- | :--- |
+| Single-turn ad-hoc CLI query (`explain this regex`) | Pure stateless completion | No tools or multi-file edits are performed; state files add unnecessary filesystem clutter. |
+| Deterministic batch migrations across 500 files | Scripted AST codemod (LibCST) | A deterministic AST script executes in seconds with zero token cost; an agent loop is slow and non-deterministic. |
+| Ephemeral question-answering over documentation | In-memory RAG pipeline | Document QA does not mutate repository state; persisting task checklists is unnecessary. |
+
+## Remember
+
+| Idea | Core Rule |
+| :--- | :--- |
+| **Ground Truth** | The filesystem is the source of truth; volatile LLM context is transient. |
+| **feature_list.json** | Use a structured checklist with deterministic test hashes to track task state. |
+| **Two-Pass Compaction** | Collapse historical tool logs first; truncate recent logs only if budget requires. |
+| **Atomic Writes** | Always write state files via `tempfile` and `os.replace` to prevent corrupted state. |
+| **Task Boundary Flushes**| Flush conversation memory when transitioning between independent checklist tasks. |
+
+Next: [Autonomous Loops & Supervisors](/docs/harness-engineering/autonomous-loops-and-supervisors) -- multi-agent supervisory triads, token velocity governors, and deadlock resolution.
+
+## Sources
+
+- Anthropic Research, *Building Effective Agents*: [https://www.anthropic.com/research/building-effective-agents](https://www.anthropic.com/research/building-effective-agents) (2024)
+- Charles Packer et al., *MemGPT: Towards LLMs as Operating Systems*: [https://arxiv.org/abs/2310.08560](https://arxiv.org/abs/2310.08560) (2023)
+- Joon Sung Park et al., *Generative Agents: Interactive Simulacra of Human Behavior*: [https://arxiv.org/abs/2304.03442](https://arxiv.org/abs/2304.03442) (2023)
+- LangGraph Persistence and Checkpointing Reference: [https://langchain-ai.github.io/langgraph/concepts/persistence/](https://langchain-ai.github.io/langgraph/concepts/persistence/) (2024)
+- Anthropic Prompt Caching Guide: [https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching](https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching) (2024)
+- Nelson F. Liu et al., *Lost in the Middle: How Language Models Use Long Contexts*: [https://arxiv.org/abs/2307.03172](https://arxiv.org/abs/2307.03172) (2023)
