@@ -4,6 +4,12 @@ import TopicArtwork from './TopicArtwork';
 export type CoverVariant =
   | 'healthcare-map'
   | 'healthcare-coverage'
+  | 'healthcare-costshare'
+  | 'healthcare-eligibility'
+  | 'healthcare-um'
+  | 'healthcare-visit'
+  | 'healthcare-sop'
+  | 'healthcare-providerpay'
   | 'healthcare-codes'
   | 'healthcare-policy'
   | 'healthcare-network'
@@ -22,20 +28,17 @@ export type CoverVariant =
   | 'gui'
   | 'default';
 
+// One cover per part, so no two parts of the series open on the same picture.
+const HEALTHCARE_COVER: Record<number, CoverVariant> = {
+  1: 'healthcare-map', 2: 'healthcare-coverage', 3: 'healthcare-costshare', 4: 'healthcare-codes', 5: 'healthcare-policy', 6: 'healthcare-eligibility',
+  7: 'healthcare-network', 8: 'healthcare-benefits', 9: 'healthcare-um', 10: 'healthcare-priorauth', 11: 'healthcare-caremgmt', 12: 'healthcare-visit',
+  13: 'healthcare-claims', 14: 'healthcare-sop', 15: 'healthcare-payment', 16: 'healthcare-providerpay', 17: 'healthcare-pharmacy', 18: 'healthcare-ai',
+};
+
 export function variantFor(slug: string, series?: string | null): CoverVariant {
-  if (slug.includes('us-healthcare-1-') || slug === 'us-healthcare-1-the-map') return 'healthcare-map';
-  if (slug.includes('us-healthcare-2-') || slug.includes('us-healthcare-3-')) return 'healthcare-coverage';
-  if (slug.includes('us-healthcare-4-') || slug.includes('code-systems')) return 'healthcare-codes';
-  if (slug.includes('us-healthcare-5-') || slug.includes('coverage-policy')) return 'healthcare-policy';
-  if (slug.includes('us-healthcare-6-') || slug.includes('us-healthcare-7-') || slug.includes('network-management')) return 'healthcare-network';
-  if (slug.includes('us-healthcare-8-') || slug.includes('us-healthcare-9-') || slug.includes('utilization')) return 'healthcare-benefits';
-  if (slug.includes('us-healthcare-10-') || slug.includes('prior-auth')) return 'healthcare-priorauth';
-  if (slug.includes('us-healthcare-11-') || slug.includes('care-management')) return 'healthcare-caremgmt';
-  if (slug.includes('us-healthcare-12-') || slug.includes('us-healthcare-13-') || slug.includes('us-healthcare-14-') || slug.includes('claim')) return 'healthcare-claims';
-  if (slug.includes('us-healthcare-15-') || slug.includes('us-healthcare-16-') || slug.includes('payment') || slug.includes('paid')) return 'healthcare-payment';
-  if (slug.includes('us-healthcare-17-') || slug.includes('pharmacy') || slug.includes('pbm')) return 'healthcare-pharmacy';
-  if (slug.includes('us-healthcare-18-') || slug.includes('data-rules-ai')) return 'healthcare-ai';
-  if (series === 'us-healthcare' || slug.startsWith('us-healthcare-')) return 'healthcare-map';
+  const part = slug.match(/^us-healthcare-(\d+)-/)?.[1];
+  if (part) return HEALTHCARE_COVER[Number(part)] ?? 'healthcare-map';
+  if (series === 'us-healthcare') return 'healthcare-map';
 
   if (slug.includes('jeva') || slug.includes('decision')) return 'jeva';
   if (slug.includes('jepa') || slug.includes('classifiers') || slug.includes('vision')) return 'jepa';
@@ -49,13 +52,19 @@ export function variantFor(slug: string, series?: string | null): CoverVariant {
 const METADATA: Record<CoverVariant, { label: string; accent: string }> = {
   'healthcare-map': { label: 'MEMBER  →  PROVIDER  →  PAYER', accent: '#bb654b' },
   'healthcare-coverage': { label: 'MEDICARE  /  MEDICAID  /  COMMERCIAL', accent: '#315c63' },
+  'healthcare-costshare': { label: 'DEDUCTIBLE  →  COINSURANCE  →  OOP MAX', accent: '#935e06' },
+  'healthcare-eligibility': { label: '834 ENROLL  →  270 ASK  →  271 ANSWER', accent: '#1f793c' },
+  'healthcare-um': { label: 'BEFORE  /  DURING  /  AFTER CARE', accent: '#6d3fb8' },
+  'healthcare-visit': { label: '837 CLAIM  →  SCRUBBER  →  PAYER', accent: '#315c63' },
+  'healthcare-sop': { label: 'STEP BY STEP  /  PAY, DENY OR PEND', accent: '#1d4fc4' },
+  'healthcare-providerpay': { label: 'FEE FOR SERVICE  →  CAPITATION', accent: '#0f766e' },
   'healthcare-codes': { label: 'ICD-10  ×  CPT  ×  HCPCS  ×  DRG', accent: '#6d3fb8' },
   'healthcare-policy': { label: 'NCD  /  LCD  /  MEDICAL NECESSITY', accent: '#0f766e' },
   'healthcare-network': { label: 'CONTRACTING  →  CREDENTIALING', accent: '#1d4fc4' },
-  'healthcare-benefits': { label: 'BENEFIT ACCUMULATOR  /  RULES', accent: '#935e06' },
+  'healthcare-benefits': { label: 'PLAN DOCUMENT  →  SYSTEM RULES', accent: '#935e06' },
   'healthcare-priorauth': { label: 'E-PA  →  CLINICAL RULES  →  DECISION', accent: '#be3b2d' },
   'healthcare-caremgmt': { label: 'RISK STRATIFICATION  →  HEDIS', accent: '#1f793c' },
-  'healthcare-claims': { label: '837 CLAIM  →  SCRUBBER  →  835 ERA', accent: '#bb654b' },
+  'healthcare-claims': { label: 'ELIGIBILITY  →  PRICING  →  835', accent: '#bb654b' },
   'healthcare-payment': { label: 'PAYMENT INTEGRITY  /  FWA DETECTION', accent: '#be3b2d' },
   'healthcare-pharmacy': { label: 'FORMULARY  →  REBATES  →  PBM', accent: '#935e06' },
   'healthcare-ai': { label: 'FHIR JSON  →  REASONING  →  AUDIT', accent: '#0f766e' },
@@ -178,7 +187,7 @@ export default function BlogCover({
         )}
 
         {/* 6. US Healthcare: Benefit Digitization */}
-        {variant === 'healthcare-benefits' && (
+        {variant === 'healthcare-costshare' && (
           <>
             <rect x="70" y="90" width="140" height="70" rx="6" />
             <text x="140" y="125">DEDUCTIBLE</text>
@@ -212,7 +221,7 @@ export default function BlogCover({
             <rect x="420" y="145" width="120" height="38" rx="6" strokeDasharray="3 3" />
             <text x="480" y="169" style={{ fontSize: 10 }}>PEER REVIEW</text>
             <path d="M280 170v40" />
-            <text x="280" y="230" style={{ fontSize: 9 }}>72-Hour Statutory SLA</text>
+            <text x="280" y="230" style={{ fontSize: 9 }}>Urgent or standard deadline</text>
           </>
         )}
 
@@ -222,8 +231,8 @@ export default function BlogCover({
             <polygon points="170,80 270,240 70,240" />
             <path d="M104 185h132M137 132h66" />
             <text x="170" y="115" style={{ fontSize: 8 }}>HIGH 5%</text>
-            <text x="170" y="160" style={{ fontSize: 8 }}>RISING 20%</text>
-            <text x="170" y="215" style={{ fontSize: 8 }}>LOW RISK 75%</text>
+            <text x="170" y="160" style={{ fontSize: 8 }}>RISING</text>
+            <text x="170" y="215" style={{ fontSize: 8 }}>LOW RISK</text>
             <path d="M270 160h70" />
             <rect x="340" y="125" width="190" height="70" rx="8" />
             <text x="435" y="155">HEDIS MEASURES</text>
@@ -232,7 +241,7 @@ export default function BlogCover({
         )}
 
         {/* 9. US Healthcare: Claims Adjudication */}
-        {variant === 'healthcare-claims' && (
+        {variant === 'healthcare-visit' && (
           <>
             <rect x="50" y="90" width="95" height="60" rx="6" />
             <text x="97" y="125">837 CLAIM</text>
@@ -247,7 +256,7 @@ export default function BlogCover({
             <rect x="465" y="90" width="95" height="60" rx="6" />
             <text x="512" y="125">835 ERA</text>
             <path d="M350 160v40" />
-            <text x="350" y="220" style={{ fontSize: 9 }}>Payment Integrity Audit</text>
+            <text x="350" y="220" style={{ fontSize: 9 }}>Pend or deny goes back to the provider</text>
           </>
         )}
 
@@ -262,7 +271,7 @@ export default function BlogCover({
             <rect x="370" y="75" width="100" height="40" rx="6" />
             <text x="420" y="100" style={{ fontSize: 9 }}>UNBUNDLING</text>
             <path d="M240 115v41M420 115v41" strokeDasharray="3 3" />
-            <text x="300" y="235">STATISTICAL FWA ANOMALY ENGINE</text>
+            <text x="300" y="235">FLAGS NEED HUMAN REVIEW</text>
           </>
         )}
 
@@ -299,6 +308,93 @@ export default function BlogCover({
             <text x="462" y="142" style={{ fontSize: 8 }}>Deterministic Checks</text>
             <path d="M280 170v40" />
             <text x="280" y="230" style={{ fontSize: 9 }}>Source and policy checks</text>
+          </>
+        )}
+
+        {variant === 'healthcare-benefits' && (
+          <>
+            <rect x="60" y="75" width="105" height="140" rx="4" />
+            <text x="112" y="105">EOC</text>
+            <path d="M78 125h70M78 145h70M78 165h70M78 185h45" />
+            <path d="M165 145h70" />
+            <rect x="235" y="85" width="130" height="120" rx="8" />
+            <text x="300" y="120">BENEFIT RULES</text>
+            <text x="300" y="150" style={{ fontSize: 9 }}>Service category</text>
+            <text x="300" y="170" style={{ fontSize: 9 }}>Cost share · Limits</text>
+            <path d="M365 145h70" />
+            <rect x="435" y="105" width="115" height="80" rx="8" />
+            <text x="492" y="150">CLAIM SYSTEM</text>
+          </>
+        )}
+
+        {variant === 'healthcare-eligibility' && (
+          <>
+            <rect x="50" y="110" width="115" height="70" rx="8" />
+            <text x="107" y="150">EMPLOYER</text>
+            <path d="M165 145h85" />
+            <text x="207" y="133" style={{ fontSize: 10 }}>834</text>
+            <rect x="250" y="95" width="110" height="100" rx="8" />
+            <text x="305" y="150">PAYER</text>
+            <path d="M440 125h-80M360 165h80" />
+            <text x="400" y="113" style={{ fontSize: 10 }}>270</text>
+            <text x="400" y="185" style={{ fontSize: 10 }}>271</text>
+            <rect x="440" y="110" width="115" height="70" rx="8" />
+            <text x="497" y="150">PROVIDER</text>
+          </>
+        )}
+
+        {variant === 'healthcare-um' && (
+          <>
+            <path d="M60 150h480" strokeWidth="3" />
+            <rect x="230" y="125" width="140" height="50" rx="6" />
+            <text x="300" y="155">HOSPITAL STAY</text>
+            <circle cx="130" cy="150" r="9" fill="currentColor" />
+            <circle cx="300" cy="90" r="9" fill="currentColor" />
+            <path d="M300 99v26" />
+            <circle cx="470" cy="150" r="9" fill="currentColor" />
+            <text x="130" y="195">PROSPECTIVE</text>
+            <text x="300" y="70">CONCURRENT</text>
+            <text x="470" y="195">RETROSPECTIVE</text>
+          </>
+        )}
+
+        {variant === 'healthcare-claims' && (
+          <>
+            <path d="M60 125h480" strokeWidth="3" />
+            {['MEMBER', 'CODES', 'BENEFITS', 'PRICING', 'PAY'].map((label, i) => <g key={label}>
+              <circle cx={85 + i * 107} cy="125" r="12" fill="currentColor" />
+              <text x={85 + i * 107} y="165" style={{ fontSize: 10 }}>{label}</text>
+            </g>)}
+            <path d="M192 137v48" strokeDasharray="4 4" />
+            <rect x="130" y="185" width="124" height="42" rx="6" />
+            <text x="192" y="211">PEND OR DENY</text>
+          </>
+        )}
+
+        {variant === 'healthcare-sop' && (
+          <>
+            {['Check the claim', 'Confirm the member', 'Check the benefit', 'Check the policy'].map((label, i) => <g key={label}>
+              <rect x="110" y={62 + i * 48} width="24" height="24" rx="3" />
+              <path d={`M115 ${74 + i * 48}l5 6 9-12`} />
+              <text x="150" y={79 + i * 48} style={{ textAnchor: 'start' }}>{label}</text>
+            </g>)}
+            <path d="M340 145h60" />
+            <polygon points="450,105 500,145 450,185 400,145" />
+            <text x="450" y="149" style={{ fontSize: 9 }}>DECIDE</text>
+            <text x="450" y="210" style={{ fontSize: 10 }}>PAY · DENY · PEND</text>
+          </>
+        )}
+
+        {variant === 'healthcare-providerpay' && (
+          <>
+            <path d="M70 200h460" strokeWidth="3" />
+            <path d="M520 192l12 8-12 8" />
+            {[[110, 'FEE FOR', 'SERVICE'], [300, 'BUNDLED', 'PAYMENT'], [490, 'CAPITATION', 'PMPM']].map(([x, a, b], i) => <g key={String(a)}>
+              <rect x={Number(x) - 18} y={170 - i * 45} width="36" height={30 + i * 45} rx="3" />
+              <text x={Number(x)} y="225" style={{ fontSize: 10 }}>{a}</text>
+              <text x={Number(x)} y="241" style={{ fontSize: 9 }}>{b}</text>
+            </g>)}
+            <text x="300" y="70" style={{ fontSize: 10 }}>MORE FINANCIAL RISK ON THE PROVIDER</text>
           </>
         )}
 

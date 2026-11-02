@@ -11,28 +11,13 @@ const mechanisms: Record<string, Mechanism> = {
   'world-models-verify-gui-agents': { title: 'Predict before clicking', question: 'How can a GUI agent check whether an action is likely to help?', steps: ['Observe screen', 'Propose action', 'Predict outcome', 'Compare & verify'], notes: ['The current screen is the evidence for the agent’s next action.', 'The agent proposes a click, keystroke, or other interaction.', 'A world model estimates the resulting state. This is a prediction, not an observation of the real application.', 'After acting, compare the actual screen with the expected state. A plausible prediction is not enough to confirm success.'] },
   'what-is-changing-in-ai-engineering-and-what-to-learn-next': { title: 'The four disciplines of AI engineering', question: 'In what order should an engineer master the production AI stack?', steps: ['One reliable agent', 'Tracing & evals', 'MCP interfaces', 'Inference economics'], notes: ['Master guiding a single model with precise context curation and output validation before adding autonomy.', 'Add deterministic assertion test suites and tracing spans so prompt or code changes are measurable.', 'Adopt Model Context Protocol when crossing real architectural boundaries between agents and data sources.', 'Optimize KV cache memory, prefix caching, and batching economics once the application enters production volume.'] },
 };
-// Stage of the coverage → care → claim → payment journey each part is about.
-const HEALTHCARE_STAGE: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 2, 5: 0, 6: 0, 7: 1, 8: 0, 9: 1, 10: 1, 11: 1, 12: 2, 13: 2, 14: 2, 15: 3, 16: 3, 17: 2, 18: 3 };
 
 export default function BlogMechanism({ slug }: { slug: string }) {
   const t = useVizTokens();
-  // Healthcare series: each part opens on the journey stage it covers.
-  const part = Number(slug.match(/^us-healthcare-(\d+)-/)?.[1] ?? 0);
-  const stage = part ? HEALTHCARE_STAGE[part] ?? 0 : undefined;
-  const [step, setStep] = useState(stage ?? 0);
+  const [step, setStep] = useState(0);
   const [tokens, setTokens] = useState(8);
   const attention = slug === 'kimi-k3-linear-attention';
-  const m = mechanisms[slug] ?? (slug.startsWith('us-healthcare-') ? {
-    title: 'Place this topic in the healthcare journey',
-    question: 'The whole series follows one journey: coverage, care, the claim, and payment. The highlighted stage is where this part sits. The details vary by plan and service.',
-    steps: ['Check coverage', 'Receive care', 'Review the claim', 'Explain payment'],
-    notes: [
-      'Enrollment and eligibility establish who is covered and when. Benefits, network rules, and coverage policies determine which questions to check before a service.',
-      'A provider delivers and documents care. Some services require prior authorization; authorization alone does not guarantee payment.',
-      'The claim describes the service using billing codes. The payer reviews eligibility, benefits, coverage rules, and contract terms to decide how it is processed.',
-      'The payment or denial is explained in remittance and benefit documents. The member may owe a portion of the cost, and errors or denials may need correction or appeal.',
-    ],
-  } : undefined);
+  const m = mechanisms[slug];
   if (!m && !attention) return null;
   if (attention) return <VisualizationContainer title="Growing history and fixed-size state" footer="Illustrative storage comparison: full attention retains token keys and values; a recurrent linear layer updates a state with fixed dimensions. Actual byte counts depend on the architecture, precision, and implementation.">
     <VisualizationHeader eyebrow="EXPLORE THE MECHANISM" title="More history. Two ways to store it." description="Move the slider and compare what each layer keeps. Fixed-size state compresses information; it does not preserve an exact copy of every token." />
@@ -45,10 +30,10 @@ export default function BlogMechanism({ slug }: { slug: string }) {
     </svg>
   </VisualizationContainer>;
   return <VisualizationContainer title={m.title} footer="Select a numbered step to inspect how the information moves through the system.">
-    <VisualizationHeader eyebrow={stage !== undefined ? `YOU ARE HERE · PART ${part}` : 'FOLLOW THE IDEA'} title={m.title} description={m.question} />
+    <VisualizationHeader eyebrow="FOLLOW THE IDEA" title={m.title} description={m.question} />
     <svg viewBox="0 0 420 280" role="img" aria-label={`Step ${step+1}: ${m.steps[step]}. ${m.notes[step]}`}>
       <path d="M100 55H320V180H100" stroke={t.border} strokeWidth="3" />
-      {m.steps.map((label,i) => <g key={label}>{stage === i && <circle cx={i === 0 || i === 3 ? 100 : 320} cy={i < 2 ? 55 : 180} r="37" fill="none" stroke={t.accentPrimary} strokeWidth="3" strokeDasharray="5 4"><title>This part</title></circle>}<circle cx={i === 0 || i === 3 ? 100 : 320} cy={i < 2 ? 55 : 180} r="28" fill={i <= step ? t.accentSecondary : t.surfaceAlt} stroke={t.border} strokeWidth="2" /><text x={i === 0 || i === 3 ? 100 : 320} y={i < 2 ? 61 : 186} textAnchor="middle" fontSize="18" fill={i <= step ? t.background : t.textPrimary}>{i+1}</text><text x={i === 0 || i === 3 ? 100 : 320} y={i < 2 ? 110 : 235} textAnchor="middle" fontSize="17" fill={t.textPrimary}>{label}</text></g>)}
+      {m.steps.map((label,i) => <g key={label}><circle cx={i === 0 || i === 3 ? 100 : 320} cy={i < 2 ? 55 : 180} r="28" fill={i <= step ? t.accentSecondary : t.surfaceAlt} stroke={t.border} strokeWidth="2" /><text x={i === 0 || i === 3 ? 100 : 320} y={i < 2 ? 61 : 186} textAnchor="middle" fontSize="18" fill={i <= step ? t.background : t.textPrimary}>{i+1}</text><text x={i === 0 || i === 3 ? 100 : 320} y={i < 2 ? 110 : 235} textAnchor="middle" fontSize="17" fill={t.textPrimary}>{label}</text></g>)}
     </svg>
     <div className="nm-mechanism-controls" aria-label="Diagram steps">{m.steps.map((label,i) => <button type="button" key={label} aria-pressed={step === i} onClick={() => setStep(i)}>{i+1}. {label}</button>)}</div>
     <p aria-live="polite" style={{ color:t.textSecondary }}>{m.notes[step]}</p>
