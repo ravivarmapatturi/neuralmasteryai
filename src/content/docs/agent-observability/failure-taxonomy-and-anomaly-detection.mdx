@@ -1,0 +1,335 @@
+---
+title: "Agent Failure Taxonomy, Loop Detection & Anomaly Alarms"
+description: "Categorize multi-turn agent failure modes, implement algorithmic loop detection sentinels, ping-pong cycle breakers, and premature victory guards."
+sidebar_position: 4
+---
+
+import { ELI5 } from '../../../components/ELI5';
+import { PredictFirst } from '../../../components/PredictFirst';
+import { GoDeeper } from '../../../components/GoDeeper';
+import { NotebookCallout } from '../../../components/NotebookCallout';
+import { RunnableCode } from '../../../components/RunnableCode';
+
+# Agent Failure Taxonomy, Loop Detection & Anomaly Alarms
+
+Traditional web services fail in well-understood ways: database connection timeouts (HTTP 504), unhandled null pointer exceptions (HTTP 500), or invalid authorization tokens (HTTP 401). In all these cases, execution halts immediately with an explicit error stack trace.
+
+Autonomous agents fail completely differently. A malfunctioning agent rarely crashes with an unhandled exception. Instead, it enters subtle, non-deterministic failure modes: repeating identical failed shell commands in an infinite loop, ping-ponging endlessly between two diagnostic scripts, hallucinating parameters for tools that do not exist, or declaring "I have successfully fixed the bug" without running a single verification test.
+
+To operate agents reliably in production, engineering teams must establish an **Agent Failure Taxonomy** and deploy runtime **Anomaly Detection Sentinels** that intercept behavioral degradation before tokens, compute, and systems are compromised.
+
+<ELI5>
+Imagine a robotic vacuum cleaner cleaning a large house. 
+
+If the vacuum's battery dies, it stops (traditional software crash). That is easy to understand.
+
+But what if the vacuum drives into a corner, bumps into the wall, turns 180 degrees, bumps into a chair, turns 180 degrees, and bumps into the wall again—forever? The motor is running, the wheels are turning, and the lights are green, but no cleaning is happening. 
+
+An anomaly sentinel is the ceiling camera watching the room. Once it notices the vacuum has bounced between the exact same two spots three times, it steps in, pauses the motor, and redirects the vacuum into the open hallway.
+</ELI5>
+
+---
+
+## 1. The Autonomous Agent Failure Taxonomy
+
+Observability audits of frontier models across thousands of software engineering tasks reveal six fundamental failure classes:
+
+```
++--------------------------------------------------------------------------+
+|                  The Six Core Agent Failure Classes                      |
++--------------------------+-----------------------+-----------------------+
+|  1. Direct Failure Loops |  2. Ping-Pong Cycles  |  3. Premature Victory |
+|  Repeating identical     |  Oscillating between  |  Declaring completion |
+|  failing tool invocation |  two competing tools  |  without executing    |
+|  3+ times consecutively. |  (e.g., git <-> grep).|  verification tests.  |
++--------------------------+-----------------------+-----------------------+
+|  4. Semantic Stuttering  |  5. Tool Hallucination|  6. Cascading Drift   |
+|  Degenerate repetition   |  Calling non-existent |  Losing track of the  |
+|  of phrases or markdown  |  tools or passing     |  original user goal   |
+|  headers in reasoning.   |  invalid JSON types.  |  due to context loss. |
++--------------------------+-----------------------+-----------------------+
+```
+
+### Class 1: Direct Failure Loops (The Death Spiral)
+
+The model attempts an action (e.g. `edit_file("config/database.yml")`), receives an operating system error (`Permission denied, exit code 13`), apologizes in its internal reasoning chain (*"I apologize for the error, let me edit the file now"*), and immediately issues the exact same failing tool call. Without runtime intervention, this loop repeats until the token budget or step ceiling is reached.
+
+### Class 2: Ping-Pong Tool Oscillation
+
+Rather than repeating a single tool, the agent oscillates between two tools:
+- Turn $t$: `run_command("npm test")` $\to$ fails due to missing module.
+- Turn $t+1$: `run_command("npm install")` $\to$ succeeds.
+- Turn $t+2$: `run_command("npm test")` $\to$ fails due to missing module.
+- Turn $t+3$: `run_command("npm install")` $\to$ succeeds.
+
+The agent lacks the state continuity to recognize that running the install command did not resolve the underlying dependency configuration issue.
+
+### Class 3: Premature Victory (The Complacency Trap)
+
+The agent modifies source code, encounters an ambiguous linter warning, and outputs: *"The issue has been completely fixed and all test suites pass with zero errors."* In reality, the agent never executed the test suite (`npm test` or `pytest`), leaving broken code in the repository.
+
+---
+
+## 2. Mathematical Detection: Signatures, Distance & Cycles
+
+To intercept these failure modes in real time, the observability sentinel computes execution telemetry signatures at each turn.
+
+<PredictFirst
+  question="Why is simple string matching on raw tool arguments insufficient for detecting execution loops in multi-turn agents?"
+  options={[
+    "JSON serialization order is non-deterministic: `{'a': 1, 'b': 2}` and `{'b': 2, 'a': 1}` generate different raw strings despite identical semantics.",
+    "String matching requires O(N!) factorial computational complexity on modern CPUs.",
+    "String matching triggers false alarms whenever an agent uses whitespace indentation."
+  ]}
+  answerIndex={0}
+  explanation="In JSON payloads, dictionary keys can serialize in arbitrary orders, and models frequently alternate between single and double quotes or adjust minor whitespace. Production loop sentinels canonicalize arguments (sorting keys deterministically) before computing cryptographic hashes."
+/>
+
+### The Canonical Signature Function
+
+For any tool call with name $N$ and parameter dictionary $P$, we compute the canonical execution signature $\sigma$:
+
+$$\sigma = \text{SHA-256}\Big(N \;\parallel\; \text{Serialize}_{\text{sorted}}(P)\Big)_{[0:12]}$$
+
+```python
+# Canonical Serialization:
+# Both {"path": "auth.py", "line": 42} and {"line": 42, "path": "auth.py"}
+# produce the identical canonical string: '{"line":42,"path":"auth.py"}'
+```
+
+### The Consecutive Loop Detector
+
+Given a sequence of execution outcomes $\{(\sigma_t, e_t)\}_{t=1}^T$ where $e_t \in \mathbb{Z}$ is the process exit code:
+
+$$\text{LoopTrigger}(T) = \bigwedge_{i=0}^{K-1} \Big(\sigma_{T-i} = \sigma_T \;\land\; e_{T-i} \ne 0\Big)$$
+
+When $K = 3$, three consecutive identical tool calls that failed trip the circuit breaker.
+
+### The Ping-Pong Oscillation Detector
+
+For an alternating window of length 4:
+
+$$\text{OscillationTrigger}(T) = \Big(\sigma_T = \sigma_{T-2}\Big) \;\land\; \Big(\sigma_{T-1} = \sigma_{T-3}\Big) \;\land\; \Big(\sigma_T \ne \sigma_{T-1}\Big)$$
+
+If this condition evaluates to true, the sentinel halts the oscillation and forces the agent to alter its execution strategy.
+
+---
+
+## 3. The Premature Victory Guard: Assertion Telemetry
+
+How do we eliminate Premature Victory failures? The observability harness tracks **Verification State Invariants**.
+
+A task cannot transition to status `COMPLETED` unless a verified execution span satisfying three criteria exists in the trace:
+1. **Target Verification Tool**: The execution span corresponds to a designated test runner (`run_pytest`, `npm_test`, `cargo_test`).
+2. **Freshness Invariant**: The test execution span occurred *after* the most recent write or edit tool span ($t_{\text{test}} > t_{\text{last\_edit}}$).
+3. **Exit Code Zero**: The test runner exited with status code `0` and verified zero assertion failures.
+
+```
++--------------------------------------------------------------------------+
+|                     Premature Victory Guard Verification                 |
++--------------------------------------------------------------------------+
+|  Turn 1: edit_file("src/auth.py")        -> t_edit = 1,450ms             |
+|  Turn 2: edit_file("src/session.py")     -> t_edit = 2,800ms             |
+|  Turn 3: Model says "Done!"              -> REJECTED BY GUARD!           |
+|          Reason: No verification test span exists with t > 2,800ms.      |
+|  Turn 4: run_pytest("tests/test_auth.py")-> t_test = 4,100ms, exit=0     |
+|  Turn 5: Model says "Done!"              -> ACCEPTED (Proof verified).   |
++--------------------------------------------------------------------------+
+```
+
+If the agent claims victory without satisfying the invariant, the harness rejects the completion message, injects a prompt correction (*"Verification proof required: execute test suite before concluding"*), and continues the session.
+
+---
+
+## 4. Semantic Stuttering & Thought Chain Degeneration
+
+Under high context pressure, LLM autoregressive generation can suffer from degenerate token loops: repeating the same 10-token phrase 50 times in the scratchpad.
+
+Observability harnesses monitor the **Repetition Entropy** of the generated reasoning tokens:
+
+$$H_{\text{rep}} = -\sum_{g \in G_4} P(g) \log_2 P(g)$$
+
+Where $G_4$ is the set of 4-gram token sequences in the completion. If $H_{\text{rep}}$ falls below a critical threshold ($\le 2.1$), the generation engine detects token stuttering, cancels the stream, and resets the sampling temperature.
+
+---
+
+## 5. Implementation: Anomaly Sentinel & Circuit Breaker Engine
+
+Below is an executable Python implementation of the agent anomaly sentinel. It detects direct repetitive loops, ping-pong oscillations, and enforces premature victory verification guards.
+
+<RunnableCode code={`import hashlib
+import json
+from dataclasses import dataclass, field
+from typing import List, Dict, Any, Optional
+
+@dataclass
+class ToolExecutionRecord:
+    turn: int
+    tool_name: str
+    arguments: Dict[str, Any]
+    exit_code: int
+    timestamp_ms: int
+    error_message: Optional[str] = None
+
+class ProductionAnomalySentinel:
+    """
+    Monitors agent execution stream in real-time to intercept:
+    1. Direct Repetitive Failure Loops (Death Spirals)
+    2. Ping-Pong Tool Oscillations
+    3. Premature Victory without test verification
+    """
+    def __init__(self, loop_threshold: int = 3):
+        self.loop_threshold = loop_threshold
+        self.history: List[ToolExecutionRecord] = []
+        self.last_edit_timestamp: int = 0
+        self.last_test_passed_timestamp: int = 0
+
+    def compute_signature(self, tool_name: str, args: Dict[str, Any]) -> str:
+        """Generates deterministic canonical hash of tool and arguments."""
+        canonical_json = json.dumps(args, sort_keys=True, separators=(',', ':'))
+        payload = f"{tool_name}:{canonical_json}".encode('utf-8')
+        return hashlib.sha256(payload).hexdigest()[:12]
+
+    def record_tool_call(self, turn: int, tool: str, args: Dict[str, Any], exit_code: int, timestamp_ms: int, error: Optional[str] = None) -> Optional[str]:
+        record = ToolExecutionRecord(turn, tool, args, exit_code, timestamp_ms, error)
+        self.history.append(record)
+
+        # Track modification and verification timestamps
+        if tool in ["edit_file", "write_file", "apply_patch"]:
+            self.last_edit_timestamp = timestamp_ms
+        elif tool in ["run_pytest", "npm_test", "run_test_suite"] and exit_code == 0:
+            self.last_test_passed_timestamp = timestamp_ms
+
+        # 1. Check Direct Repetitive Failure Loop
+        if len(self.history) >= self.loop_threshold:
+            recent = self.history[-self.loop_threshold:]
+            current_sig = self.compute_signature(tool, args)
+            if all(self.compute_signature(r.tool_name, r.arguments) == current_sig and r.exit_code != 0 for r in recent):
+                return (
+                    f"CIRCUIT_BREAKER: Direct failure loop detected. "
+                    f"Tool '{tool}' failed {self.loop_threshold} consecutive times with exit code {exit_code}."
+                )
+
+        # 2. Check Ping-Pong Oscillation (Window of 4)
+        if len(self.history) >= 4:
+            r1, r2, r3, r4 = self.history[-4:]
+            sig1, sig2 = self.compute_signature(r1.tool_name, r1.arguments), self.compute_signature(r2.tool_name, r2.arguments)
+            sig3, sig4 = self.compute_signature(r3.tool_name, r3.arguments), self.compute_signature(r4.tool_name, r4.arguments)
+            
+            if sig1 == sig3 and sig2 == sig4 and sig1 != sig2:
+                return (
+                    f"CIRCUIT_BREAKER: Ping-pong oscillation detected between "
+                    f"'{r1.tool_name}' and '{r2.tool_name}' across turns {r1.turn}-{r4.turn}."
+                )
+
+        return None
+
+    def evaluate_victory_claim(self) -> tuple[bool, str]:
+        """
+        Enforces the Premature Victory Guard:
+        Requires that a passing test execution occurred AFTER the latest file edit.
+        """
+        if self.last_edit_timestamp == 0:
+            return True, "No edits made; victory claim valid."
+            
+        if self.last_test_passed_timestamp > self.last_edit_timestamp:
+            return True, f"Verified: Passing test at {self.last_test_passed_timestamp}ms > edit at {self.last_edit_timestamp}ms."
+        else:
+            return False, (
+                f"REJECTED: Premature victory! Code edited at {self.last_edit_timestamp}ms, "
+                f"but last passing test was at {self.last_test_passed_timestamp}ms."
+            )
+
+# Verification & Test Execution
+sentinel = ProductionAnomalySentinel(loop_threshold=3)
+
+print("--- Scenario 1: Intercepting Direct Failure Loop ---")
+# Simulate agent encountering permission error trying to edit database.yml
+alert_turn1 = sentinel.record_tool_call(1, "edit_file", {"path": "config/database.yml"}, 13, 1000, "Permission denied")
+alert_turn2 = sentinel.record_tool_call(2, "edit_file", {"path": "config/database.yml"}, 13, 2000, "Permission denied")
+alert_turn3 = sentinel.record_tool_call(3, "edit_file", {"path": "config/database.yml"}, 13, 3000, "Permission denied")
+
+print(f"Turn 1 Alert: {alert_turn1}")
+print(f"Turn 2 Alert: {alert_turn2}")
+print(f"Turn 3 Alert: {alert_turn3}")
+assert alert_turn3 is not None and "Direct failure loop" in alert_turn3
+
+print("\n--- Scenario 2: Premature Victory Guard ---")
+guard_sentinel = ProductionAnomalySentinel(loop_threshold=3)
+# Agent modifies file at t = 5000ms
+guard_sentinel.record_tool_call(1, "edit_file", {"path": "auth/session.py"}, 0, 5000)
+
+# Model claims victory immediately without running test
+valid, reason = guard_sentinel.evaluate_victory_claim()
+print(f"Victory Claim 1: Valid={valid} | Reason: {reason}")
+assert not valid
+
+# Agent runs test suite at t = 8000ms and passes
+guard_sentinel.record_tool_call(2, "run_pytest", {"target": "tests/"}, 0, 8000)
+valid2, reason2 = guard_sentinel.evaluate_victory_claim()
+print(f"Victory Claim 2: Valid={valid2} | Reason: {reason2}")
+assert valid2
+
+print("\nAll anomaly detection and victory guard invariants verified.")
+`} />
+
+---
+
+## 6. Real Production Configuration: Supervisor Intervention Policy
+
+When an anomaly sentinel trips a circuit breaker, how should the supervisor container respond? Below is an enterprise supervisor policy configuration:
+
+```json
+{
+  "supervisor_policy": {
+    "version": "1.4.0",
+    "circuit_breakers": {
+      "direct_loop": {
+        "consecutive_threshold": 3,
+        "action": "inject_diagnostic_prompt",
+        "diagnostic_template": "SUPERVISOR ALERT: You have attempted to call tool '{tool_name}' 3 times with identical failing arguments. You are forbidden from calling '{tool_name}' on the next turn. Stop, review the error message, and formulate an alternative approach."
+      },
+      "ping_pong": {
+        "window_size": 4,
+        "action": "force_scratchpad_reflection",
+        "diagnostic_template": "SUPERVISOR ALERT: Oscillation detected between tools '{tool_a}' and '{tool_b}'. State your hypothesis for why the previous tool execution failed before taking further action."
+      },
+      "premature_victory": {
+        "action": "reject_and_force_verification",
+        "diagnostic_template": "SUPERVISOR ALERT: Your task completion assertion was rejected. You modified files at timestamp {t_edit} but have not executed the test suite since. Execute the verification test suite now."
+      }
+    }
+  }
+}
+```
+
+---
+
+## 7. When to Use It and When Not to Use It
+
+| Scenario | Recommended Strategy | Why? | Anti-Pattern |
+| :--- | :--- | :--- | :--- |
+| **Autonomous Coding Agents** | Canonical Hash Sentinel + Premature Victory Guard | Guarantees code is genuinely verified by tests before commits and prevents permission death spirals. | Trusting model natural language statements (*"I have verified everything works!"*) without empirical proof. |
+| **Creative Writing Assistants** | Lightweight Repetition Penalty Only | Tool loop sentinels are unnecessary when no tools or state modifications are involved. | Applying strict test assertion guards to an agent generating fiction or blog posts. |
+| **High-Risk Infrastructure Automation** | Hard Kill Circuit Breaker | If an agent repeatedly fails a Terraform or Kubernetes deployment command, halt immediately to prevent cloud outages. | Allowing an agent to retry destructive cloud deletion commands 10 times in a loop. |
+| **Deterministic Data ETL Pipelines** | Standard Airflow / Prefect Retries | Deterministic ETL jobs with exponential backoff handle transient network errors better than LLM supervisors. | Inserting an LLM loop sentinel into a deterministic SQL copy job. |
+
+---
+
+## 8. Core Invariants to Remember
+
+| Concept | Invariant Rule | Operational Consequence |
+| :--- | :--- | :--- |
+| **Argument Canonicalization** | Always sort JSON keys before hashing tool call arguments. | Unsorted keys cause identical tool calls to generate mismatched hashes, evading loop detection. |
+| **The Freshness Test Invariant** | Verification test execution MUST have a timestamp strictly greater than the latest edit. | Running tests before making code changes does not prove that subsequent edits work. |
+| **Consecutive Fail Limit** | Trip circuit breakers after at most 3 consecutive identical failures. | Permitting 10+ identical retries wastes thousands of tokens without discovering new information. |
+| **Intervention over Termination** | Favor injecting diagnostic supervisor hints over terminating the process immediately. | Injecting hints allows frontier models to self-correct and recover from permission or path hurdles. |
+
+---
+
+## Sources
+
+- Wang, G., Xie, Y., Jiang, Y., Mandlekar, A., Xiao, C., Zhu, Y., Fan, L., & Anandkumar, A. (2023). *Voyager: An Open-Ended Embodied Agent with Large Language Models*. arXiv preprint. [https://arxiv.org/abs/2305.16291](https://arxiv.org/abs/2305.16291)
+- Shinn, N., Cassano, F., Gopinath, A., Narasimhan, K., & Yao, S. (2023). *Reflexion: Language Agents with Verbal Reinforcement Learning*. Advances in Neural Information Processing Systems (NeurIPS). [https://arxiv.org/abs/2303.11366](https://arxiv.org/abs/2303.11366)
+- Anthropic Engineering. (2024). *Building Effective Agents: Architectures, Guardrails, and Evals*. Anthropic Research & Engineering. [https://www.anthropic.com/research/building-effective-agents](https://www.anthropic.com/research/building-effective-agents)
+- Datadog LLM Observability Team. (2024). *Detecting Anomalies and Loops in Autonomous LLM Chains*. Datadog Architecture Insights. [https://docs.datadoghq.com/llm_observability/troubleshooting/](https://docs.datadoghq.com/llm_observability/troubleshooting/)
