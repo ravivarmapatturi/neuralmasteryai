@@ -1454,5 +1454,50 @@
   },
   "rag-interview-questions:9c40f93cebcb": {
     "criteria": ["Assigns each pipeline stage to the cheapest model that meets its measured quality bar", "Downgrades routing, simple rewriting, and binary relevance checks when validated", "Keeps complex synthesis, reasoning, and nuance-sensitive generation on a larger model", "Measures stage-specific regression instead of assuming a task is simple"], "followup": "How would you design the stage-level evaluation needed before downgrading a model?"
+  },
+  "rag-interview-questions:fd1cae4c06c0": {
+    "criteria": ["Prioritizes caching stable prompt prefixes before smaller optimizations", "Sets query-type-specific output-token limits", "Routes simple factual queries to a validated smaller model", "Adds semantic caching and retrieved-context compression where traffic supports them", "Measures each saving against the golden set before stacking changes"], "followup": "Which cost lever would you test first if most prompts have no reusable prefix?"
+  },
+  "rag-interview-questions:df566f8b56dc": {
+    "criteria": ["Defines exact-match caching as requiring a byte-identical query", "Defines semantic caching as matching embedded queries with false-positive intent risk", "Defines provider prompt caching as reusing static-prefix KV tensors while still running inference", "Distinguishes stored-response caches from discounted provider inference"], "followup": "How would you choose a safe similarity threshold for semantic caching?"
+  },
+  "rag-interview-questions:rag-cache-stampede": {
+    "criteria": ["Explains that concurrent misses for one expired key duplicate an expensive backend operation", "Uses single-flight or locking so one caller repopulates the entry", "Spreads refreshes with probabilistic early expiration", "Warms known popular keys after restarts or before traffic spikes", "Rejects letting every miss independently recompute the same value"], "followup": "What should waiting requests do if the single recomputation fails?"
+  },
+  "rag-interview-questions:rag-dont-cache": {
+    "criteria": ["Rejects caching responses whose content depends on the individual user's context", "Rejects cache lifetimes longer than the knowledge base's update interval", "Rejects caching for long-tailed traffic with negligible repeat queries", "Rejects caching when every answer must reflect the latest documents", "Explains that caching either serves stale data or adds complexity without useful hits"], "followup": "Could permission-scoped keys make any personalized responses safe to cache?"
+  },
+  "rag-interview-questions:4cd8afc91b12": {
+    "criteria": ["Routes deterministic cases with rules before invoking a semantic classifier", "Uses a lightweight classifier for the remaining intent decisions", "Promotes low-confidence or poor-retrieval cases to a more thorough tier", "Keeps router overhead below roughly 50 ms and a tiny fraction of a cent", "Tracks tier distribution to detect routing errors or traffic shifts"], "followup": "How would you calibrate the confidence threshold for promotion to the expensive tier?"
+  },
+  "rag-interview-questions:d362d057aaa3": {
+    "criteria": ["Runs several query reformulations, retrieval strategies, or sub-corpus searches in parallel", "Merges the separate result lists into one ranking", "Uses Reciprocal Rank Fusion to avoid calibrating incompatible score scales", "Identifies RAG-Fusion as fan-out over LLM-generated rephrasings of one query"], "followup": "How would you prevent near-duplicate results from dominating the fused ranking?"
+  },
+  "rag-interview-questions:f14d75460f40": {
+    "criteria": ["Defines context drift as retrieval degradation caused by a follow-up losing conversational meaning", "Distinguishes it from an unrelated single-turn retrieval miss", "Monitors relevance between the condensed follow-up and retrieved results", "Treats a relevance drop after a topic-shaped follow-up as a leading warning"], "followup": "How would you distinguish a real topic change from accidental context loss?"
+  },
+  "rag-interview-questions:rag-p99-doubled": {
+    "criteria": ["Localizes the regression with per-stage latency traces before proposing a fix", "Checks retrieval cold starts, reranker candidate growth, and prompt-cache miss spikes", "Checks whether traffic shifted toward expensive tiers or additional hops", "Rejects diagnosing from end-to-end p99 alone because it does not identify the slow stage"], "followup": "What trace comparison would separate a cache-miss spike from a provider latency regression?"
+  },
+  "rag-interview-questions:2bc9224e23a1": {
+    "criteria": ["Distinguishes visible symptoms such as irrelevant answers from mechanisms that caused them", "Names embedding mismatch, chunk boundaries, stale content, or top-k tuning as root causes", "Explains that one symptom can arise from several different causes", "Rejects adding more context before identifying the failed mechanism"], "followup": "What evidence would distinguish a chunk-boundary problem from an embedding mismatch?"
+  },
+  "rag-interview-questions:b712e77b8bca": {
+    "criteria": ["Defines cascading failure as an early error steering later pipeline stages", "Shows how an incorrect HyDE document retrieves convincing evidence for the wrong premise", "Shows how a wrong first-hop fact redirects later multi-hop queries", "Contrasts propagation with an isolated miss that does not alter subsequent steps"], "followup": "Where would you place validation checks to stop a bad intermediate fact from propagating?"
+  },
+  "rag-interview-questions:688d3385bca1": {
+    "criteria": ["Explains why frequent full rebuilds still leave a staleness window and do not scale", "Tracks content hashes or modification timestamps per source document", "Updates only changed documents through a continuous incremental embedding pipeline", "Recognizes that stale content can produce a confident but outdated answer"], "followup": "How would you process deletions so removed documents disappear from every index and cache?"
+  },
+  "rag-interview-questions:a606e67386ea": {
+    "criteria": ["Names domain or language shift as causes of incompatible query and document representations", "Identifies mixed old and new embedding vectors after an incomplete model migration", "Includes model-version drift as another source of mismatch", "Recognizes silent retrieval degradation rather than an obvious encoder failure"], "followup": "What offline test would confirm that query and document embeddings are geometrically incompatible?"
+  },
+  "rag-interview-questions:e0c916e86d58": {
+    "criteria": ["Explains that fixed sanitization patterns miss semantically equivalent attack wording", "Explains that models may follow a recent specific retrieved instruction over an abstract system rule", "Distinguishes the filter-evasion problem from the instruction-priority problem", "Rejects either sanitization or prompt hardening as a complete defense"], "followup": "Which controls outside the model reduce the impact when an injection succeeds?"
+  },
+  "rag-interview-questions:c52c8f35379e": {
+    "criteria": ["Separates trusted instructions from retrieved data with explicit structural delimiters", "Flags injection-like content during ingestion while accounting for false positives", "Sandboxes document processing that executes code or fetches content", "Inspects outputs and limits every context to the minimum privileges it needs", "States that layered controls reduce risk rather than eliminate it"], "followup": "How would you test this defense stack against new injection variants?"
+  },
+  "rag-interview-questions:d65eb132225b": {
+    "criteria": ["Clarifies tenancy, permission-freshness, user, and group scale requirements", "Ingests chunks with resolved per-chunk ACL metadata", "Expands current group membership and pre-filters permissions inside ANN retrieval", "Rechecks final top-k permissions against the authoritative source and fails closed", "Scopes citations, caches, model retention, and audit logs to the same access policy"], "followup": "How short should the group-membership cache TTL be, and what determines that choice?"
   }
 }
