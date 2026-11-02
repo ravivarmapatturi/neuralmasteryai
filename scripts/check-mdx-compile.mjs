@@ -20,10 +20,11 @@ for (const f of files) {
     const hit = ['', '.tsx', '.ts', '.jsx', '.js', '.mdx', '/index.tsx', '/index.ts'].map(e => base + e).find(c => existsSync(c) && statSync(c).isFile());
     if (!hit) { bad++; console.log(`${f}: missing import ${m[2]} (${m[1]})`); continue; }
     if (!/\.tsx?$/.test(hit)) continue;
-    const src = readFileSync(hit, 'utf8');
+    const src = readFileSync(hit, 'utf8').replace(/^export\s+default\b.*$/gm, '');
+    const hasDefault = /^export\s+default\b|as default/m.test(readFileSync(hit, 'utf8'));
     const named = m[1].match(/\{([^}]*)\}/)?.[1].split(',').map(x => x.trim().split(/\s+as\s+/)[0]).filter(Boolean) ?? [];
     for (const n of named) if (!new RegExp(`export[^\\n]*\\b${n}\\b`).test(src) && !new RegExp(`\\b${n}\\b[^\\n]*\\}\\s*from|export\\s*\\{[^}]*\\b${n}\\b`).test(src)) { bad++; console.log(`${f}: ${hit.split('/src/')[1]} has no export ${n}`); }
-    if (/^[A-Za-z_]/.test(m[1]) && !/export\s+default|as default/.test(src)) { bad++; console.log(`${f}: ${hit.split('/src/')[1]} has no default export`); }
+    if (/^[A-Za-z_]/.test(m[1]) && !hasDefault) { bad++; console.log(`${f}: ${hit.split('/src/')[1]} has no default export`); }
   }
 }
 console.log(`check-mdx-compile: ${files.length} files, ${bad} failed.`);
