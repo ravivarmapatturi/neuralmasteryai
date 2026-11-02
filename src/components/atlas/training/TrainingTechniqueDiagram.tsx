@@ -110,6 +110,15 @@ export default function TrainingTechniqueDiagram({ kind, name }: Props) {
       case 'distributed-training': return <>
         {[25,105,185,265].map((x,i)=><g key={x}><rect x={x-20} y="12" width="40" height="28" rx="6" style={box}/><text x={x-7} y="31" style={label}>GPU{i+1}</text></g>)}<path d="M25 50 C25 82 265 82 265 50 M265 50 C265 62 25 62 25 50" style={{...line, markerEnd:'none'}}/><text x="105" y="82" style={{...muted, fill:t.accentPrimary}}>all-reduce gradients</text>
       </>;
+      case 'contrastive': return <>
+        <rect x="10" y="13" width="54" height="32" rx="6" style={box}/><text x="23" y="34" style={label}>view A</text><rect x="10" y="51" width="54" height="32" rx="6" style={box}/><text x="23" y="72" style={label}>view B</text><path d="M64 29 L130 40 M64 67 L130 48" style={line}/><circle cx="153" cy="44" r="18" style={box}/><path d="M171 44 L227 44" style={line}/><circle cx="249" cy="44" r="12" fill={t.accentPrimary}/><circle cx="286" cy="22" r="9" fill={t.accentDanger}/><text x="226" y="78" style={muted}>pull pair; push others</text>
+      </>;
+      case 'mae': return <>
+        {[0,1,2,3].flatMap(r=>[0,1,2,3].map(c=><rect key={`${r}-${c}`} x={12+c*24} y={8+r*18} width="20" height="14" fill={(r+c)%3===0?t.surfaceAlt:t.textMuted} stroke={t.border}/>))}<path d="M112 42 L162 42" style={line}/><rect x="168" y="20" width="47" height="44" rx="7" style={box}/><text x="176" y="39" style={label}>visible</text><text x="178" y="55" style={muted}>encoder</text><path d="M215 42 L259 42" style={line}/><text x="262" y="37" style={label}>rebuild</text><text x="262" y="54" style={muted}>masked</text>
+      </>;
+      case 'jepa': return <>
+        <rect x="8" y="15" width="62" height="52" rx="6" style={box}/><rect x="20" y="26" width="29" height="25" fill={t.accentPrimary} opacity=".75"/><text x="12" y="82" style={muted}>context</text><path d="M70 41 L123 41" style={line}/><rect x="128" y="22" width="62" height="38" rx="7" style={box}/><text x="139" y="45" style={label}>predictor</text><path d="M190 41 L239 41" style={line}/><rect x="245" y="22" width="54" height="38" rx="7" fill={t.surfaceAlt} stroke={t.accentSecondary}/><text x="253" y="38" style={label}>target</text><text x="252" y="54" style={muted}>latent</text>
+      </>;
       default: return <text x="12" y="45" style={label}>Mechanism diagram follows in its era commit.</text>;
     }
   })();
