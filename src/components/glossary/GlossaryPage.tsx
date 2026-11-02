@@ -1,9 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useDocumentTitle } from '../../lib/useDocumentTitle';
+import { useDocumentMeta } from '../../lib/useDocumentMeta';
 import Navbar from '../layout/Navbar';
 import { GLOSSARY_FIELDS, glossaryTerms } from '../../data/glossary';
 
 export default function GlossaryPage() {
+  useDocumentTitle('AI Glossary: 100 AI engineering terms explained');
+  useDocumentMeta('AI Glossary: 100 AI engineering terms explained', 'Plain-English definitions of 100 AI engineering terms, each with a diagram, an example and what it is often confused with.');
   const [query, setQuery] = useState('');
   const [field, setField] = useState('All');
   const results = useMemo(() => glossaryTerms.filter((entry) => {

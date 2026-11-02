@@ -6,6 +6,7 @@ import { withinTolerance } from './content/InterviewCheck';
 import { bankQuestions, interviewGuides, type InterviewQuestion } from '../data/interviewCatalog';
 import { requestInterviewReview, type InterviewReview } from '../lib/interviewReview';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
+import { useDocumentMeta } from '../lib/useDocumentMeta';
 import { useFocusMusic } from '../contexts/FocusMusicContext';
 import AnswerShape from './interview/AnswerShape';
 
@@ -20,6 +21,7 @@ const guidedQuestions = [
 const questions: InterviewQuestion[] = [...guidedQuestions.map((q,i) => ({ ...q, id: `guided-${i}`, bank: 'guided', kind: 'explanation' as const })), ...bankQuestions];
 export default function InterviewPage() {
   useDocumentTitle('Interview — Explain your engineering decisions');
+  useDocumentMeta('Interview — Explain your engineering decisions', 'AI engineering interview questions with answer criteria, plus a free spoken mock interview that runs in your browser and gives you a report.');
   const endpoint = import.meta.env.VITE_INTERVIEW_REVIEW_URL as string | undefined;
   const [modelReview, setModelReview] = useState<InterviewReview | null>(null);
   const [reviewing, setReviewing] = useState(false);

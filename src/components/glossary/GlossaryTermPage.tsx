@@ -1,4 +1,6 @@
 import { Link, useParams } from 'react-router-dom';
+import { useDocumentTitle } from '../../lib/useDocumentTitle';
+import { useDocumentMeta } from '../../lib/useDocumentMeta';
 import Navbar from '../layout/Navbar';
 import NotFoundPage from '../NotFoundPage';
 import { glossaryBySlug, glossaryTerms } from '../../data/glossary';
@@ -7,6 +9,9 @@ import GlossaryDiagram from './GlossaryDiagram';
 export default function GlossaryTermPage() {
   const { slug } = useParams();
   const entry = slug ? glossaryBySlug.get(slug) : undefined;
+  const heading = entry ? `${entry.term}: AI glossary` : 'AI glossary';
+  useDocumentTitle(heading);
+  useDocumentMeta(heading, entry?.oneLine ?? 'Plain-English definitions of AI engineering terms, each with a diagram.');
   if (!entry) return <NotFoundPage/>;
   const index = glossaryTerms.indexOf(entry);
   const previous = glossaryTerms[(index - 1 + glossaryTerms.length) % glossaryTerms.length];
