@@ -14,8 +14,20 @@ import { PauseTracker, type PauseReport, DEFAULT_PAUSE_THRESHOLDS } from '../lib
 import { AudioVADPipeline } from '../lib/speechTest/vad';
 import { computeWER, type WERResult } from '../lib/speechTest/wer';
 
-const FIXED_READING_PARAGRAPH =
-  'A foundation model is trained on broad data at scale and can be adapted to a wide range of downstream tasks, whereas a traditional machine learning model is trained on a specific dataset for a single dedicated task.';
+export const FIXED_READING_PARAGRAPHS = [
+  {
+    id: 'foundation',
+    label: 'Foundation Models (Standard)',
+    text: 'A foundation model is trained on broad data at scale and can be adapted to a wide range of downstream tasks, whereas a traditional machine learning model is trained on a specific dataset for a single dedicated task.',
+  },
+  {
+    id: 'benchmark',
+    label: 'LibriSpeech Audio Benchmark',
+    text: 'He hoped there would be stew for dinner, turnips and carrots and bruised potatoes, and fat mutton pieces to be ladled out in thick, peppered flower-fat and sauce.',
+  },
+] as const;
+
+export const FIXED_READING_PARAGRAPH = FIXED_READING_PARAGRAPHS[0].text;
 
 const FREE_ANSWER_PROMPT =
   'What is a foundation model, and how is it different from a regular ML model?';
@@ -46,6 +58,7 @@ export default function SpeechTestPage() {
   }, []);
 
   const [selectedEngineId, setSelectedEngineId] = useState<EngineId>('browser');
+  const [selectedParagraphId, setSelectedParagraphId] = useState<'foundation' | 'benchmark'>('foundation');
   const [activeTab, setActiveTab] = useState<'fixed' | 'free'>('fixed');
   const [isRecording, setIsRecording] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
@@ -108,12 +121,13 @@ export default function SpeechTestPage() {
 
   const currentEngine = enginesRef.current[selectedEngineId];
   const currentMetrics = metrics[selectedEngineId];
+  const activeParagraph = FIXED_READING_PARAGRAPHS.find((p) => p.id === selectedParagraphId) ?? FIXED_READING_PARAGRAPHS[0];
 
-  // Compute Word Error Rate against the fixed paragraph
+  // Compute Word Error Rate against the selected paragraph
   const werResult: WERResult = useMemo(() => {
     const transcript = currentMetrics.partialText || currentMetrics.finalText;
-    return computeWER(FIXED_READING_PARAGRAPH, transcript);
-  }, [currentMetrics.partialText, currentMetrics.finalText]);
+    return computeWER(activeParagraph.text, transcript);
+  }, [currentMetrics.partialText, currentMetrics.finalText, activeParagraph.text]);
 
   // Handle engine selection & explicit on-demand load
   const handleSelectEngine = async (id: EngineId) => {
@@ -196,7 +210,7 @@ export default function SpeechTestPage() {
         name: currentEngine.name,
       },
       evaluationMode: activeTab,
-      prompt: activeTab === 'fixed' ? FIXED_READING_PARAGRAPH : FREE_ANSWER_PROMPT,
+      prompt: activeTab === 'fixed' ? activeParagraph.text : FREE_ANSWER_PROMPT,
       recognizedTranscript: currentMetrics.partialText || currentMetrics.finalText,
       metrics: {
         timeToFirstWordMs: currentMetrics.timeToFirstWordMs,
@@ -460,9 +474,32 @@ export default function SpeechTestPage() {
 
           {activeTab === 'fixed' ? (
             <div>
-              <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: 'var(--nm-text-muted)' }}>
-                Read this paragraph aloud to compute real-time Word Error Rate (WER) against reference ground truth:
-              </p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--nm-text-muted)' }}>
+                  Read this paragraph aloud to compute real-time Word Error Rate (WER) against reference ground truth:
+                </p>
+                <div style={{ display: 'flex', gap: '0.25rem' }}>
+                  {FIXED_READING_PARAGRAPHS.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      data-testid={`select-paragraph-${p.id}`}
+                      onClick={() => setSelectedParagraphId(p.id)}
+                      style={{
+                        padding: '0.25rem 0.5rem',
+                        fontSize: '0.75rem',
+                        borderRadius: '4px',
+                        border: '1px solid var(--nm-border)',
+                        backgroundColor: selectedParagraphId === p.id ? 'var(--nm-accent-primary)' : 'var(--nm-bg)',
+                        color: selectedParagraphId === p.id ? '#ffffff' : 'var(--nm-text-muted)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <blockquote
                 style={{
                   margin: '0 0 0.75rem 0',
@@ -475,7 +512,7 @@ export default function SpeechTestPage() {
                   lineHeight: 1.5,
                 }}
               >
-                “{FIXED_READING_PARAGRAPH}”
+                “{activeParagraph.text}”
               </blockquote>
             </div>
           ) : (
@@ -505,22 +542,25 @@ export default function SpeechTestPage() {
                 type="button"
                 data-testid="button-start-test"
                 onClick={handleStart}
+                disabled={currentMetrics.status === 'loading'}
                 style={{
                   padding: '0.6rem 1.25rem',
-                  backgroundColor: 'var(--nm-accent-primary)',
+                  backgroundColor: currentMetrics.status === 'loading' ? 'var(--nm-text-muted)' : 'var(--nm-accent-primary)',
                   color: '#ffffff',
                   fontWeight: 700,
                   fontSize: '0.95rem',
                   borderRadius: '6px',
                   border: 'none',
-                  cursor: 'pointer',
+                  cursor: currentMetrics.status === 'loading' ? 'wait' : 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '0.5rem',
                 }}
               >
                 <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#ffffff' }} />
-                Start Microphone Test
+                {currentMetrics.status === 'loading'
+                  ? `Loading Model (${currentMetrics.downloadProgressPct}%)...`
+                  : 'Start Microphone Test'}
               </button>
             ) : (
               <button
@@ -803,15 +843,9 @@ export default function SpeechTestPage() {
                     {isCutIn ? `Cut in: ${state.cutInCount} time${state.cutInCount > 1 ? 's' : ''}!` : 'No cut-in'}
                   </div>
 
-                  <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.75rem', color: 'var(--nm-text-muted)', lineHeight: 1.3 }}>
-                    {t <= 1.5
-                      ? 'Aggressive: often cuts in while interviewee pauses to think.'
-                      : t <= 2.5
-                      ? 'Standard: may cut in on complex multi-part reasoning.'
-                      : t <= 4.0
-                      ? 'Patient: accommodates natural pauses between thoughts.'
-                      : 'Very patient: slow to advance after interviewee finishes.'}
-                  </p>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--nm-text-muted)', marginTop: '0.25rem' }}>
+                    Clean ends: <strong>{state.cleanEndCount}</strong>
+                  </div>
                 </div>
               );
             })}

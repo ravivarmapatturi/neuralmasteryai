@@ -258,7 +258,11 @@ export class BrowserSpeechEngine extends BaseSpeechEngine {
 export class MoonshineEngine extends BaseSpeechEngine {
   readonly id = 'moonshine';
   readonly name = 'Moonshine Tiny Streaming (On-Device WASM)';
-  private mic: any = null;
+  private transcriber: any = null;
+  private streamInstance: any = null;
+  private audioContext: AudioContext | null = null;
+  private processorNode: ScriptProcessorNode | null = null;
+  private isRunning = false;
 
   constructor() {
     super();
@@ -277,7 +281,7 @@ export class MoonshineEngine extends BaseSpeechEngine {
       this.updateMetrics({
         status: 'error',
         errorMessage: msg,
-        downloadBytes: 64600000, // Manifest total: 13.2MB wasm + 51.4MB model weights
+        downloadBytes: 64597708, // 13.2MB wasm + 51.4MB model weights
         device: 'WASM (Requires COOP/COEP SharedArrayBuffer)',
         loadTimeMs: Math.round(performance.now() - startTime),
       });
@@ -285,22 +289,22 @@ export class MoonshineEngine extends BaseSpeechEngine {
     }
 
     try {
-      const { MicTranscriber, ModelArch } = await import('@moonshine-ai/moonshine-wasm');
-      this.mic = new MicTranscriber()
-        .language('en')
-        .modelArch(ModelArch.TinyStreaming);
-
-      this.updateMetrics({
-        downloadProgressPct: 50,
-        downloadBytes: 32000000,
+      const { Transcriber, ModelArch } = await import('@moonshine-ai/moonshine-wasm');
+      this.transcriber = await Transcriber.load({
+        language: 'en',
+        modelArch: ModelArch.TinyStreaming,
+        onProgress: (p: number) => {
+          this.updateMetrics({
+            downloadProgressPct: Math.round(p * 100),
+            downloadBytes: Math.round(64597708 * Math.min(1, p)),
+          });
+        },
       });
-
-      await this.mic.load();
 
       const loadTime = Math.round(performance.now() - startTime);
       this.updateMetrics({
         status: 'ready',
-        downloadBytes: 64600000, // 64.6 MB total download
+        downloadBytes: 64597708, // 64.6 MB total download (13.2MB wasm + 51.4MB weights)
         downloadProgressPct: 100,
         loadTimeMs: loadTime,
         errorMessage: null,
@@ -316,48 +320,86 @@ export class MoonshineEngine extends BaseSpeechEngine {
     }
   }
 
-  public async start(_stream: MediaStream): Promise<void> {
-    if (!this.mic) {
+  public async start(stream: MediaStream): Promise<void> {
+    if (!this.transcriber) {
       await this.load();
     }
+    this.isRunning = true;
     this.hasEmittedFirstWord = false;
     this.speechStartTime = null;
     this.listeningStartTime = performance.now();
     this.updateMetrics({ status: 'listening', partialText: '', errorMessage: null });
 
-    this.mic.onText((text: string) => {
-      const now = performance.now();
-      if (!this.hasEmittedFirstWord && text.trim().length > 0) {
-        this.hasEmittedFirstWord = true;
-        const refStart = this.speechStartTime ?? this.listeningStartTime ?? now;
-        this.updateMetrics({ timeToFirstWordMs: Math.max(0, Math.round(now - refStart)) });
-      }
-      const lag = Math.max(20, Math.round(now - (this.speechStartTime ?? now)));
-      this.updateMetrics({
-        partialText: text,
-        lagBehindSpeechMs: Math.min(lag, 350),
-      });
-    });
-
-    this.mic.onLine((line: { text: string }) => {
-      const nextFinal = (this.metrics.finalText + ' ' + line.text).trim();
-      this.updateMetrics({ finalText: nextFinal });
-    });
-
     try {
-      await this.mic.start();
+      this.streamInstance = this.transcriber.createStream();
+      this.streamInstance.start();
+
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      this.audioContext = new AudioCtx({ sampleRate: 16000 });
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume();
+      }
+
+      const source = this.audioContext.createMediaStreamSource(stream);
+      this.processorNode = this.audioContext.createScriptProcessor(4096, 1, 1);
+
+      this.processorNode.onaudioprocess = (e) => {
+        if (!this.isRunning || !this.streamInstance) return;
+        const data = e.inputBuffer.getChannelData(0);
+        this.streamInstance.addAudio(data, 16000);
+        const t = this.streamInstance.transcribe();
+        if (t && t.lines && t.lines.length > 0) {
+          const text = t.lines.map((l: any) => l.text).join(' ').trim();
+          if (text) {
+            const now = performance.now();
+            if (!this.hasEmittedFirstWord && text.length > 0) {
+              this.hasEmittedFirstWord = true;
+              const refStart = this.speechStartTime ?? this.listeningStartTime ?? now;
+              this.updateMetrics({ timeToFirstWordMs: Math.max(0, Math.round(now - refStart)) });
+            }
+            const lag = Math.max(20, Math.round(now - (this.speechStartTime ?? now)));
+            this.updateMetrics({
+              partialText: text,
+              finalText: text,
+              lagBehindSpeechMs: Math.min(lag, 450),
+            });
+          }
+        }
+      };
+
+      source.connect(this.processorNode);
+      this.processorNode.connect(this.audioContext.destination);
     } catch (err) {
       this.updateMetrics({ status: 'error', errorMessage: `Failed to start Moonshine: ${(err as Error).message}` });
     }
   }
 
   public async stop(): Promise<void> {
-    if (this.mic) {
+    this.isRunning = false;
+    if (this.processorNode) {
       try {
-        await this.mic.stop();
+        this.processorNode.disconnect();
       } catch {
         // Ignore
       }
+      this.processorNode = null;
+    }
+    if (this.audioContext && this.audioContext.state !== 'closed') {
+      try {
+        await this.audioContext.close();
+      } catch {
+        // Ignore
+      }
+      this.audioContext = null;
+    }
+    if (this.streamInstance) {
+      try {
+        this.streamInstance.stop();
+        this.streamInstance.close();
+      } catch {
+        // Ignore
+      }
+      this.streamInstance = null;
     }
     this.updateMetrics({ status: 'ready' });
   }
@@ -375,13 +417,13 @@ export class MoonshineEngine extends BaseSpeechEngine {
 
   public destroy(): void {
     this.stop();
-    if (this.mic) {
+    if (this.transcriber) {
       try {
-        this.mic.close();
+        this.transcriber.close();
       } catch {
         // Ignore
       }
-      this.mic = null;
+      this.transcriber = null;
     }
     this.listeners.clear();
   }
@@ -398,7 +440,9 @@ export class SherpaOnnxEngine extends BaseSpeechEngine {
   private audioContext: AudioContext | null = null;
   private processorNode: ScriptProcessorNode | null = null;
   private recognizer: any = null;
-  private streamHandle: any = null;
+  private pcmBuffer: number[] = [];
+  private isDecoding = false;
+  private decodeIntervalId: any = null;
 
   constructor() {
     super();
@@ -417,7 +461,7 @@ export class SherpaOnnxEngine extends BaseSpeechEngine {
       this.updateMetrics({
         status: 'error',
         errorMessage: msg,
-        downloadBytes: 87800000, // 13.3MB WASM + 74.4MB Data bundle
+        downloadBytes: 87340000, // 13.4MB WASM + 73.8MB Data bundle
         device: 'WASM (Requires COOP/COEP SharedArrayBuffer)',
         loadTimeMs: Math.round(performance.now() - startTime),
       });
@@ -425,17 +469,62 @@ export class SherpaOnnxEngine extends BaseSpeechEngine {
     }
 
     try {
-      // Load sherpa-onnx scripts from public folder
       this.updateMetrics({ downloadBytes: 40000000, downloadProgressPct: 50 });
 
-      // Check if sherpa scripts are loaded
-      if (typeof (window as any).createOnlineRecognizer === 'undefined') {
+      // Configure locateFile before loading sherpa scripts
+      if (typeof window !== 'undefined') {
+        (window as any).Module = (window as any).Module || {};
+        (window as any).Module.locateFile = (p: string) => '/sherpa-onnx/' + p;
+      }
+
+      if (typeof (window as any).OfflineRecognizer === 'undefined') {
+        await this.loadScript('/sherpa-onnx/sherpa-onnx-wasm-main-vad-asr.js');
         await this.loadScript('/sherpa-onnx/sherpa-onnx-asr.js');
       }
 
+      await new Promise<void>((resolve, reject) => {
+        const mod = (window as any).Module;
+        if (mod && (mod.calledRun || (window as any).OfflineRecognizer)) {
+          resolve();
+          return;
+        }
+        if (mod) {
+          const prevInit = mod.onRuntimeInitialized;
+          mod.onRuntimeInitialized = () => {
+            if (prevInit) prevInit();
+            resolve();
+          };
+        }
+        setTimeout(() => {
+          if ((window as any).OfflineRecognizer) resolve();
+          else reject(new Error('sherpa-onnx runtime initialization timeout'));
+        }, 12000);
+      });
+
+      const config = {
+        featConfig: { sampleRate: 16000, featureDim: 80 },
+        modelConfig: {
+          transducer: {
+            encoder: '/transducer-encoder.onnx',
+            decoder: '/transducer-decoder.onnx',
+            joiner: '/transducer-joiner.onnx',
+          },
+          tokens: '/tokens.txt',
+          numThreads: 1,
+          provider: 'cpu',
+          debug: 0,
+        },
+        decodingMethod: 'greedy_search',
+      };
+      const RecognizerCls = (window as any).OfflineRecognizer || (globalThis as any).OfflineRecognizer;
+      if (!RecognizerCls) {
+        throw new Error('OfflineRecognizer constructor is not available on window or globalThis');
+      }
+      this.recognizer = new RecognizerCls(config, (window as any).Module);
+
       this.updateMetrics({
         status: 'ready',
-        downloadBytes: 87800000,
+        downloadBytes: 87340000, // 87.3 MB total
         downloadProgressPct: 100,
         loadTimeMs: Math.round(performance.now() - startTime),
         errorMessage: null,
@@ -467,44 +556,69 @@ export class SherpaOnnxEngine extends BaseSpeechEngine {
   }
 
   public async start(stream: MediaStream): Promise<void> {
+    if (!this.recognizer) {
+      await this.load();
+    }
     this.isRunning = true;
     this.hasEmittedFirstWord = false;
     this.speechStartTime = null;
     this.listeningStartTime = performance.now();
+    this.pcmBuffer = [];
     this.updateMetrics({ status: 'listening', partialText: '', errorMessage: null });
 
     try {
-      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      this.audioContext = new AudioCtx({ sampleRate: 16000 });
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume();
+      }
       const source = this.audioContext.createMediaStreamSource(stream);
       this.processorNode = this.audioContext.createScriptProcessor(4096, 1, 1);
 
       this.processorNode.onaudioprocess = (e) => {
         if (!this.isRunning) return;
         const inputData = e.inputBuffer.getChannelData(0);
-        // If recognizer is active, feed waveform
-        if (this.recognizer && this.streamHandle) {
-          this.streamHandle.acceptWaveform(16000, inputData);
-          while (this.recognizer.isReady(this.streamHandle)) {
-            this.recognizer.decode(this.streamHandle);
-          }
-          const text = this.recognizer.getResult(this.streamHandle).text;
-          if (text) {
-            const now = performance.now();
-            if (!this.hasEmittedFirstWord) {
-              this.hasEmittedFirstWord = true;
-              const refStart = this.speechStartTime ?? this.listeningStartTime ?? now;
-              this.updateMetrics({ timeToFirstWordMs: Math.max(0, Math.round(now - refStart)) });
-            }
-            this.updateMetrics({
-              partialText: text,
-              lagBehindSpeechMs: Math.max(20, Math.round(now - (this.speechStartTime ?? now))),
-            });
-          }
+        for (let i = 0; i < inputData.length; i++) {
+          this.pcmBuffer.push(inputData[i]);
         }
       };
 
       source.connect(this.processorNode);
       this.processorNode.connect(this.audioContext.destination);
+
+      // Early decode at ~2.5s to emit initial partial words and capture timeToFirstWordMs
+      this.decodeIntervalId = setInterval(() => {
+        if (!this.isRunning || this.isDecoding || !this.recognizer) return;
+        if (!this.hasEmittedFirstWord && this.pcmBuffer.length >= 40000) {
+          this.isDecoding = true;
+          try {
+            const floatArr = new Float32Array(this.pcmBuffer);
+            const offlineStream = this.recognizer.createStream();
+            offlineStream.acceptWaveform(16000, floatArr);
+            this.recognizer.decode(offlineStream);
+            const res = this.recognizer.getResult(offlineStream);
+            offlineStream.free();
+            if (res && res.text) {
+              const text = res.text.trim();
+              if (text) {
+                const now = performance.now();
+                this.hasEmittedFirstWord = true;
+                const refStart = this.speechStartTime ?? this.listeningStartTime ?? now;
+                this.updateMetrics({
+                  timeToFirstWordMs: Math.max(0, Math.round(now - refStart)),
+                  partialText: text,
+                  finalText: text,
+                  lagBehindSpeechMs: Math.max(20, Math.round(now - (this.speechStartTime ?? now))),
+                });
+              }
+            }
+          } catch {
+            // Ignore
+          } finally {
+            this.isDecoding = false;
+          }
+        }
+      }, 500);
     } catch (err) {
       this.updateMetrics({ status: 'error', errorMessage: `Audio capture error: ${(err as Error).message}` });
     }
@@ -512,6 +626,39 @@ export class SherpaOnnxEngine extends BaseSpeechEngine {
 
   public async stop(): Promise<void> {
     this.isRunning = false;
+    if (this.decodeIntervalId) {
+      clearInterval(this.decodeIntervalId);
+      this.decodeIntervalId = null;
+    }
+
+    // Run final decode on complete accumulated audio
+    if (this.recognizer && this.pcmBuffer.length > 0) {
+      try {
+        const floatArr = new Float32Array(this.pcmBuffer);
+        const offlineStream = this.recognizer.createStream();
+        offlineStream.acceptWaveform(16000, floatArr);
+        this.recognizer.decode(offlineStream);
+        const res = this.recognizer.getResult(offlineStream);
+        offlineStream.free();
+        if (res && res.text) {
+          const text = res.text.trim();
+          const now = performance.now();
+          if (!this.hasEmittedFirstWord && text.length > 0) {
+            this.hasEmittedFirstWord = true;
+            const refStart = this.speechStartTime ?? this.listeningStartTime ?? now;
+            this.updateMetrics({ timeToFirstWordMs: Math.max(0, Math.round(now - refStart)) });
+          }
+          this.updateMetrics({
+            partialText: text,
+            finalText: text,
+            lagBehindSpeechMs: Math.max(20, Math.round(now - (this.speechStartTime ?? now))),
+          });
+        }
+      } catch {
+        // Ignore
+      }
+    }
+
     if (this.processorNode) {
       try {
         this.processorNode.disconnect();
@@ -532,8 +679,14 @@ export class SherpaOnnxEngine extends BaseSpeechEngine {
   }
 
   public reset(): void {
+    if (this.decodeIntervalId) {
+      clearInterval(this.decodeIntervalId);
+      this.decodeIntervalId = null;
+    }
+    this.isDecoding = false;
     this.hasEmittedFirstWord = false;
     this.speechStartTime = null;
+    this.pcmBuffer = [];
     this.updateMetrics({
       partialText: '',
       finalText: '',
@@ -544,6 +697,14 @@ export class SherpaOnnxEngine extends BaseSpeechEngine {
 
   public destroy(): void {
     this.stop();
+    if (this.recognizer) {
+      try {
+        this.recognizer.free();
+      } catch {
+        // Ignore
+      }
+      this.recognizer = null;
+    }
     this.listeners.clear();
   }
 }

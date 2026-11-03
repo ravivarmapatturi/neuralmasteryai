@@ -17,10 +17,11 @@ export class AudioVADPipeline {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private animFrameId: number | null = null;
+  private monitorIntervalId: number | null = null;
   private isSpeaking = false;
   private callbacks: VADCallbacks;
   private vadInstance: any = null;
-  private rmsSpeechThreshold = 0.02; // threshold for fallback voice activity detection
+  private rmsSpeechThreshold = 0.015; // threshold for fallback voice activity detection
   private silenceFramesCount = 0;
   private speechFramesCount = 0;
 
@@ -59,11 +60,20 @@ export class AudioVADPipeline {
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       this.audioContext = new AudioCtx({ sampleRate: 16000 });
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume();
+      }
       const source = this.audioContext.createMediaStreamSource(this.mediaStream);
       this.analyser = this.audioContext.createAnalyser();
       this.analyser.fftSize = 512;
       this.analyser.smoothingTimeConstant = 0.2;
       source.connect(this.analyser);
+
+      // Connect to destination through a silent gain node to ensure WebAudio clock runs in all environments
+      const silentGain = this.audioContext.createGain();
+      silentGain.gain.value = 0;
+      this.analyser.connect(silentGain);
+      silentGain.connect(this.audioContext.destination);
 
       this.startVolumeMonitoring();
     } catch (e) {
@@ -138,21 +148,25 @@ export class AudioVADPipeline {
         } else {
           this.silenceFramesCount++;
           this.speechFramesCount = 0;
-          if (this.silenceFramesCount >= 15 && this.isSpeaking) {
-            // Approx 250ms of sustained quiet
+          if (this.silenceFramesCount >= 10 && this.isSpeaking) {
+            // Approx 250-300ms of sustained quiet
             this.isSpeaking = false;
             this.callbacks.onSpeechEnd(now);
           }
         }
       }
-
-      this.animFrameId = requestAnimationFrame(checkLevel);
     };
 
-    this.animFrameId = requestAnimationFrame(checkLevel);
+    // Use setInterval so volume calculation never stalls if RAF is throttled in headless Chrome
+    this.monitorIntervalId = window.setInterval(checkLevel, 30);
   }
 
   public stop(): void {
+    if (this.monitorIntervalId !== null) {
+      clearInterval(this.monitorIntervalId);
+      this.monitorIntervalId = null;
+    }
+
     if (this.animFrameId !== null) {
       cancelAnimationFrame(this.animFrameId);
       this.animFrameId = null;

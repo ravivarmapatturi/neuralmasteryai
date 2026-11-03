@@ -2009,3 +2009,12 @@ if (typeof process == 'object' && typeof process.versions == 'object' &&
     OfflineRecognizer,
   };
 }
+
+if (typeof window !== 'undefined') {
+  window.OfflineRecognizer = OfflineRecognizer;
+  window.createOnlineRecognizer = createOnlineRecognizer;
+}
+if (typeof globalThis !== 'undefined') {
+  globalThis.OfflineRecognizer = OfflineRecognizer;
+  globalThis.createOnlineRecognizer = createOnlineRecognizer;
+}
