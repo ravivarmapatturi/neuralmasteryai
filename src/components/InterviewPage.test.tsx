@@ -1,7 +1,16 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import InterviewPage from './InterviewPage';
+const engine = vi.hoisted(() => ({ startRecording: vi.fn(), initEngine: vi.fn(), transcribe: vi.fn() }));
+vi.mock('../lib/mockInterview/engine', () => engine);
+class FakeSpeech {
+  static last: FakeSpeech; static starts = 0;
+  continuous = false; interimResults = false; lang = ''; onresult: any = null; onerror: any = null; onend: any = null;
+  constructor() { FakeSpeech.last = this; }
+  start() { FakeSpeech.starts++; }
+  stop() { this.onend?.(); }
+}
 vi.mock('./layout/Navbar', () => ({ default: () => <nav>Navigation</nav> }));
 it('lets a learner answer, review criteria, and start a new question cleanly', () => {
   render(<MemoryRouter><InterviewPage /></MemoryRouter>);
@@ -51,4 +60,42 @@ it('uses question-specific criteria when an override exists', () => {
   fireEvent.click(screen.getByLabelText(/Limit the tree/));
   fireEvent.click(screen.getByRole('button',{name:'Review my answer →'}));
   expect(screen.getByText(/Names the 28-point train\/validation gap/)).toBeInTheDocument();
+});
+
+describe('microphone', () => {
+  beforeEach(() => { FakeSpeech.starts = 0; (window as any).SpeechRecognition = FakeSpeech; vi.clearAllMocks(); });
+  afterEach(() => { delete (window as any).SpeechRecognition; });
+  const say = (text: string) => act(() => FakeSpeech.last.onresult({ results: [{ isFinal: true, 0: { transcript: text } }] }));
+  it('keeps listening and keeps earlier words when the browser ends on silence', () => {
+    render(<MemoryRouter><InterviewPage /></MemoryRouter>);
+    fireEvent.click(screen.getByText('Answer with microphone'));
+    say('first part');
+    act(() => { vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 5000); FakeSpeech.last.onend(); });
+    vi.restoreAllMocks();
+    expect(FakeSpeech.starts).toBe(2);
+    expect(screen.getByText('Stop microphone')).toBeInTheDocument();
+    say('second part');
+    expect(screen.getByLabelText('Your answer')).toHaveValue('first part second part');
+    fireEvent.click(screen.getByText('Stop microphone'));
+    expect(FakeSpeech.starts).toBe(2);
+    expect(screen.getByText('Answer with microphone')).toBeInTheDocument();
+  });
+  it('falls back to on-device transcription when the speech service fails', async () => {
+    engine.startRecording.mockResolvedValue({ stop: async () => ({ audio: new Float32Array(1), seconds: 1 }), cancel: vi.fn() });
+    engine.initEngine.mockResolvedValue(true);
+    engine.transcribe.mockResolvedValue('spoken answer');
+    render(<MemoryRouter><InterviewPage /></MemoryRouter>);
+    fireEvent.click(screen.getByText('Answer with microphone'));
+    act(() => { FakeSpeech.last.onerror({ error: 'network' }); FakeSpeech.last.onend(); });
+    await screen.findByText(/Recording on this device/);
+    fireEvent.click(screen.getByText('Stop microphone'));
+    await waitFor(() => expect(screen.getByLabelText('Your answer')).toHaveValue('spoken answer'));
+  });
+  it('explains a blocked microphone', () => {
+    render(<MemoryRouter><InterviewPage /></MemoryRouter>);
+    fireEvent.click(screen.getByText('Answer with microphone'));
+    act(() => { FakeSpeech.last.onerror({ error: 'not-allowed' }); FakeSpeech.last.onend(); });
+    expect(screen.getByRole('status')).toHaveTextContent('microphone is blocked');
+    expect(engine.startRecording).not.toHaveBeenCalled();
+  });
 });

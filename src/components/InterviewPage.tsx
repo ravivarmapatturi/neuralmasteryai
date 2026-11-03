@@ -8,10 +8,11 @@ import { requestInterviewReview, type InterviewReview } from '../lib/interviewRe
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useDocumentMeta } from '../lib/useDocumentMeta';
 import { useFocusMusic } from '../contexts/FocusMusicContext';
+import { initEngine, startRecording, transcribe } from '../lib/mockInterview/engine';
 import AnswerShape from './interview/AnswerShape';
 
 type SpeechResult = { results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }> };
-type SpeechSession = { continuous: boolean; interimResults: boolean; lang: string; start(): void; stop(): void; onresult: ((e: SpeechResult) => void) | null; onerror: (() => void) | null; onend: (() => void) | null };
+type SpeechSession = { continuous: boolean; interimResults: boolean; lang: string; start(): void; stop(): void; onresult: ((e: SpeechResult) => void) | null; onerror: ((e: { error?: string }) => void) | null; onend: (() => void) | null };
 const guidedQuestions = [
   { area: 'AI system design', title: 'How would you build a support assistant that answers from company documents?', context: 'The documents change every week. Customers need answers they can trust. Talk through your design before choosing a model.', criteria: ['Clarify the users, scope, and success criteria.', 'Explain retrieval and how answers cite their sources.', 'Describe what happens when evidence is missing or outdated.', 'Plan evaluation, latency, cost, and monitoring.'], answer: 'I would first ask which questions the assistant should handle and when it should hand off to a person. I would index approved documents with version information, retrieve relevant passages, and ask the model to answer with citations. If the evidence is missing, it should say so. I would test on real support questions, including unanswerable ones, and measure grounded answers, latency, and cost before a limited rollout.', followup: 'A document changes after indexing. How do you prevent the assistant from quoting the old policy?' },
   { area: 'Experiment design', title: 'A larger model gives better demos. Would you switch the product to it?', context: 'The larger model costs three times as much. The team has seen five impressive examples.', criteria: ['Define what “better” means for users.', 'Compare models on representative and difficult examples.', 'Measure cost and response time alongside quality.', 'Describe rollout, monitoring, and rollback.'], answer: 'Five examples are a reason to investigate, not enough evidence to switch. I would agree on a task-specific rubric, build a representative evaluation set, and compare both models under the same conditions. I would check important failure cases and inspect cost and latency. If the improvement matters to users, I would run a limited rollout with monitoring and a rollback plan.', followup: 'What would you do if the new model wins on average but fails more often for one group of users?' },
@@ -35,6 +36,8 @@ export default function InterviewPage() {
   const [review, setReview] = useState(false);
   const [checked, setChecked] = useState<number[]>([]);
   const [listening, setListening] = useState(false);
+  const keepListening = useRef(false);
+  const deviceRecording = useRef<Awaited<ReturnType<typeof startRecording>> | null>(null);
   const [message, setMessage] = useState('');
   const session = useRef<SpeechSession | null>(null);
   const { pause } = useFocusMusic();
@@ -46,6 +49,7 @@ export default function InterviewPage() {
       session.current.onend = null;
       session.current.stop();
     }
+    deviceRecording.current?.cancel();
     request.current?.abort();
   }, []);
   const assess = async () => {
@@ -58,9 +62,26 @@ export default function InterviewPage() {
     catch { if (request.current === controller) setMessage('Automatic review is unavailable. Your answer is still here; use the checklist.'); }
     finally { clearTimeout(timeout); if (request.current === controller) setReviewing(false); }
   };
-  const stop = () => { session.current?.stop(); setListening(false); };
+  const stop = () => {
+    keepListening.current = false;
+    session.current?.stop();
+    setListening(false);
+    const recording = deviceRecording.current;
+    if (!recording) return;
+    deviceRecording.current = null;
+    setMessage('Transcribing on this device. The first time downloads the speech model.');
+    void (async () => {
+      try {
+        const { audio } = await recording.stop();
+        await initEngine();
+        const text = (await transcribe(audio)).trim();
+        if (text) setAnswer(prev => (prev.trim() ? prev.trimEnd() + ' ' : '') + text);
+        setMessage(text ? 'Done. Edit the transcript if needed.' : 'No speech was heard. Please try again, or type your answer.');
+      } catch { setMessage('Could not transcribe that recording. Please type your answer.'); }
+    })();
+  };
   const answerBox = useRef<HTMLTextAreaElement | null>(null);
-  const select = (i: number) => { if (session.current) { session.current.onresult = null; session.current.onerror = null; session.current.onend = null; } stop(); session.current = null; request.current?.abort(); request.current = null; setReviewing(false); setModelReview(null); setIndex(i); setAnswer(''); setSelectedOption(null); setNumericResponse(''); setReview(false); setChecked([]); setMessage(''); };
+  const select = (i: number) => { if (session.current) { session.current.onresult = null; session.current.onerror = null; session.current.onend = null; } deviceRecording.current?.cancel(); deviceRecording.current = null; stop(); session.current = null; request.current?.abort(); request.current = null; setReviewing(false); setModelReview(null); setIndex(i); setAnswer(''); setSelectedOption(null); setNumericResponse(''); setReview(false); setChecked([]); setMessage(''); };
   const insertStarter = (text: string) => { setAnswer(prev => (prev.trim() ? prev.trimEnd() + '\n\n' : '') + text); setReview(false); requestAnimationFrame(() => { const el = answerBox.current; if (el) { el.focus(); el.selectionStart = el.selectionEnd = el.value.length; } }); };
   const record = () => {
     const speechWindow = window as unknown as { SpeechRecognition?: new () => SpeechSession; webkitSpeechRecognition?: new () => SpeechSession };
@@ -69,11 +90,38 @@ export default function InterviewPage() {
     pause();
     const speech = new Constructor(); session.current = speech;
     speech.continuous = true; speech.interimResults = false; speech.lang = 'en-US';
+    keepListening.current = true;
     const baseline = answer.trim();
-    speech.onresult = event => { if (session.current !== speech) return; let text = baseline ? baseline + ' ' : ''; for (let i = 0; i < event.results.length; i++) if (event.results[i].isFinal) text += event.results[i][0].transcript + ' '; setAnswer(text.trim()); };
-    speech.onerror = () => { setListening(false); setMessage('Voice input stopped. Check microphone permission, or type your answer.'); };
-    speech.onend = () => setListening(false);
-    try { speech.start(); setListening(true); setMessage('Listening. Stop when you finish, then edit the transcript if needed.'); } catch { setMessage('Could not start the microphone. Please try again.'); }
+    // The browser ends a session on silence and clears results, so keep what earlier sessions heard
+    let earlier = '';
+    let current = '';
+    let startedAt = 0;
+    let quickEnds = 0;
+    let useDevice = false;
+    const begin = () => { startedAt = Date.now(); speech.start(); };
+    speech.onresult = event => { if (session.current !== speech) return; current = ''; for (let i = 0; i < event.results.length; i++) if (event.results[i].isFinal) current += event.results[i][0].transcript + ' '; setAnswer([baseline, earlier, current].filter(Boolean).join(' ').trim()); quickEnds = 0; };
+    speech.onerror = event => {
+      if (event.error === 'no-speech' || event.error === 'aborted') return;
+      if (event.error === 'not-allowed' || event.error === 'audio-capture') { keepListening.current = false; setListening(false); setMessage('The microphone is blocked. Allow it in your browser settings, or type your answer.'); return; }
+      useDevice = true;
+    };
+    speech.onend = () => {
+      if (session.current !== speech) return;
+      earlier = [earlier, current].filter(Boolean).join(' ').trim(); current = '';
+      if (!keepListening.current) { setListening(false); return; }
+      quickEnds = Date.now() - startedAt < 1500 ? quickEnds + 1 : 0;
+      if (useDevice || quickEnds >= 3) { keepListening.current = false; session.current = null; void recordOnDevice(); return; }
+      try { begin(); } catch { setListening(false); }
+    };
+    try { begin(); setListening(true); setMessage('Listening. Stop when you finish, then edit the transcript if needed.'); } catch { void recordOnDevice(); }
+  };
+  // Some browsers have the speech API but no working service behind it
+  const recordOnDevice = async () => {
+    try {
+      deviceRecording.current = await startRecording();
+      setListening(true);
+      setMessage('Recording on this device. Press Stop microphone when you finish, and we will transcribe it here.');
+    } catch { setListening(false); setMessage('Could not start the microphone. Allow it in your browser settings, or type your answer.'); }
   };
   return <div className="nb-theme" style={{ minHeight: '100vh' }}><Navbar /><main className="nm-interview-shell">
     <p className="nb-eyebrow">INTERVIEW / THINK IT THROUGH</p><h1 className="nb-heading">Explain the choices behind your solution.</h1>
