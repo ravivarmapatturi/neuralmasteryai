@@ -14,6 +14,12 @@ export default defineConfig({
   // GitHub Pages project-site subpath -- was '/NeuralMastery-vite/' before
   // the custom domain went live (see public/CNAME).
   base: '/',
+  build: {
+    target: 'esnext',
+  },
+  worker: {
+    format: 'es',
+  },
   // Nested agent worktrees are separate apps and can exhaust OS file watchers.
   server: { watch: { ignored: ['**/.claude/**', '**/scratch/**'] } },
   plugins: [
