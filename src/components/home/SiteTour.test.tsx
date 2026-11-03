@@ -7,7 +7,7 @@ const Where = () => <output>{useLocation().pathname}</output>;
 const show = (url = '/') => render(<MemoryRouter initialEntries={[url]}><Where /><SiteTour /></MemoryRouter>);
 
 describe('SiteTour', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => sessionStorage.clear());
 
   it('opens each page as the visitor presses Next and Back', () => {
     show();
@@ -36,7 +36,7 @@ describe('SiteTour', () => {
   });
 
   it('replays from the footer link even after being seen', () => {
-    localStorage.setItem('nm-site-tour-seen', '1');
+    sessionStorage.setItem('nm-site-tour-seen', '1');
     show('/?tour=1');
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });

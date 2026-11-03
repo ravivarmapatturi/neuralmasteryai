@@ -1,21 +1,47 @@
 import { Link } from 'react-router-dom';
-import InformationPage from './InformationPage';
+import Navbar from './layout/Navbar';
+import { useDocumentTitle } from '../lib/useDocumentTitle';
+import { useDocumentMeta } from '../lib/useDocumentMeta';
+import './atlasHub.css';
 
-const LIVE = [
-  { to: '/docs/atlas/agent-protocols', title: 'Agent Protocols Atlas', body: '22 steps from remote procedure calls and REST to function calling, MCP and agent-to-agent protocols.' },
-  { to: '/docs/atlas/agent-architecture', title: 'Agent Architecture Atlas', body: '21 steps from prompt chains and tool loops to supervisors, context engineering and long-running harnesses.' },
-  { to: '/docs/atlas/training', title: 'Training Atlas', body: '39 techniques for training models, from data preparation to evaluation.' },
-  { to: '/docs/atlas/inference', title: 'Inference Atlas', body: '30 techniques for serving models, from choosing the next token to running a fleet.' },
+// Counts and year ranges come from src/data/*Atlas.ts; update them when an atlas changes.
+const ATLASES = [
+  { to: '/docs/atlas/agent-protocols', title: 'Agent Protocols', years: '1984–2025', count: 22, question: 'How did software learn to talk to software, and then to models?', body: 'From remote procedure calls through REST and OAuth to function calling, MCP and agent-to-agent protocols.' },
+  { to: '/docs/atlas/agent-architecture', title: 'Agent Architecture', years: '2021–2025', count: 21, question: 'How did a chained prompt become a long-running agent?', body: 'From prompt chaining and ReAct through planning, memory and multi-agent systems to today\'s harnesses.' },
+  { to: '/docs/atlas/training', title: 'Training', years: '1951–2024', count: 39, question: 'What made neural networks trainable at scale?', body: 'The techniques behind training, from data preparation and optimisation to evaluation.' },
+  { to: '/docs/atlas/inference', title: 'Inference', years: '1977–2024', count: 30, question: 'How does a trained model answer quickly and cheaply?', body: 'From choosing the next token through quantization and caching to serving a fleet of requests.' },
 ];
-const COMING = ['RAG and Retrieval', 'LLM Architecture', 'Prompt to Context', 'Evaluation and Observability', 'AI Safety and Security', 'On-Device AI', 'Vision and Multimodal', 'Speech and Audio', 'MLOps to LLMOps', 'AI Hardware'];
 
-/** /atlas: maps of whole fields, each told in date order. */
+/** /atlas: each atlas tells one field's history in date order. */
 export default function AtlasHubPage() {
-  return <InformationPage title="Atlas" description="Maps of whole AI fields in date order: what each technique fixed, and what it led to.">
-    <p className="nm-information-lead">Each atlas follows one field in date order, so you can see what problem each technique solved and what came next.</p>
-    <h2>Available now</h2>
-    {LIVE.map((atlas) => <p key={atlas.to}><Link to={atlas.to}><strong>{atlas.title}</strong></Link><br />{atlas.body}</p>)}
-    <h2>Coming next</h2>
-    <ul>{COMING.map((name) => <li key={name}>{name}</li>)}</ul>
-  </InformationPage>;
+  useDocumentTitle('Atlas: how AI fields developed, in date order');
+  useDocumentMeta('Atlas: how AI fields developed, in date order', 'Follow one AI field from its first technique to today: what each step fixed, what it led to, with a diagram and source for every entry.');
+  return (
+    <div className="nb-theme atlas-hub">
+      <Navbar />
+      <main className="nm-landing-shell">
+        <header className="atlas-hub__head">
+          <h1 className="nb-heading">Atlas</h1>
+          <p className="nb-body">Each atlas follows one field in date order. See what problem every technique solved and what came next, with a diagram and a source for each entry.</p>
+        </header>
+        <ul className="atlas-hub__list">
+          {ATLASES.map((atlas) => (
+            <li key={atlas.to}>
+              <Link to={atlas.to} className="atlas-hub__card">
+                <div className="atlas-hub__cover" aria-hidden="true">
+                  <span>{atlas.years}</span>
+                </div>
+                <div className="atlas-hub__body">
+                  <p className="atlas-hub__meta">{atlas.count} entries</p>
+                  <h2>{atlas.title}</h2>
+                  <p className="atlas-hub__question">{atlas.question}</p>
+                  <p>{atlas.body}</p>
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </main>
+    </div>
+  );
 }

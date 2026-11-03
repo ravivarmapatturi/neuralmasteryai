@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useColorMode } from '../../theme/ThemeProvider';
 import SearchModal from './SearchModal';
 import AuthButton from './AuthButton';
@@ -19,8 +19,7 @@ export default function Navbar({
   menuButtonRef?: RefObject<HTMLButtonElement | null>;
 }) {
   const { colorMode, toggleColorMode } = useColorMode();
-  const isHome = useLocation().pathname === '/';
-  const learnDestination = isHome ? '/docs/deep-learning/attention-transformers' : '/learn';
+  const learnDestination = '/learn';
   const [searchOpen, setSearchOpen] = useState(false);
   const [primaryMenuOpen, setPrimaryMenuOpen] = useState(false);
   const primaryMenuPanelRef = useRef<HTMLElement>(null);

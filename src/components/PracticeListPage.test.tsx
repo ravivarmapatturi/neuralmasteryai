@@ -37,7 +37,7 @@ describe('PracticeListPage', () => {
     renderList()
     const total = getPracticeProblems().length
     expect(screen.getByText(new RegExp(`${total}`))).toBeInTheDocument()
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/Design a system/i)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/Labs/i)
     expect(document.body.textContent).not.toMatch(/1549|1,549|Real, Hands-On/)
   })
 
@@ -57,7 +57,7 @@ describe('PracticeListPage', () => {
     const stageLink = screen.getAllByRole('link', { name: /The Agent Loop/ })[0]
     expect(stageLink).toHaveAttribute('href', '/practice/agent-loop')
     expect(stageLink).toHaveTextContent('✓')
-    expect(screen.getByText(/solved solutions/i)).toBeInTheDocument()
+    expect(screen.getByText(/1 solved/i)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Continue Build an Agent/ })).toBeInTheDocument()
   })
 

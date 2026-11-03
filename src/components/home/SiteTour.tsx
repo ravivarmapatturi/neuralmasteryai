@@ -14,14 +14,14 @@ const STEPS = [
 ];
 
 function hasSeenTour() {
-  try { return localStorage.getItem(SEEN_KEY) === '1'; } catch { return true; } // Storage blocked: don't show the tour on every visit.
+  try { return sessionStorage.getItem(SEEN_KEY) === '1'; } catch { return true; } // Storage blocked: don't show the tour on every visit.
 }
 
 function rememberTourSeen() {
-  try { localStorage.setItem(SEEN_KEY, '1'); } catch { /* Tour simply won't be remembered. */ }
+  try { sessionStorage.setItem(SEEN_KEY, '1'); } catch { /* Tour simply won't be remembered. */ }
 }
 
-/** First-visit guide to the site's main areas. Mounted once around the routes so it follows the visitor between pages, but it only starts on the home page, so a visitor landing on a lesson is never interrupted. */
+/** Guide shown once per browser session (each new visit) to the site's main areas. Mounted once around the routes so it follows the visitor between pages, but it only starts on the home page, so a visitor landing on a lesson is never interrupted. */
 export default function SiteTour() {
   const [params, setParams] = useSearchParams();
   const { pathname } = useLocation();
