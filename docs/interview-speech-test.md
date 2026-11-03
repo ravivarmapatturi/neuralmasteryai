@@ -34,22 +34,22 @@ Models are loaded **strictly on demand** when their option is selected; zero mod
 
 The table below reflects real measurements captured by running `node scripts/verify-speech-test.mjs` with Chrome feeding `/tmp/speech_with_pauses.wav` into the Web Audio graph:
 
-| Metric / Dimension | Option 1: Browser Speech (`webkitSpeechRecognition`) | Option 2: Moonshine Tiny (`@moonshine-ai/moonshine-wasm`) | Option 3: sherpa-onnx Zipformer (`k2-fsa/sherpa-onnx`) |
-| :--- | :--- | :--- | :--- |
-| **Download Bytes** | **0 KB** (Native browser service) | **61.6 MB** (~13.2 MB WASM + ~51.4 MB ORT models) | **83.3 MB** (~12.7 MB WASM + ~70.6 MB data bundle) |
-| **Initial Load Time** | **0 ms** (Instantaneous) | **5,953 ms** (Cold download & compile) | **2,468 ms** (WASM runtime & model init) |
-| **Peak JS Heap** | **26.3 MB** | **26.3 MB** | **26.3 MB** |
-| **Time to First Word** | Untestable headlessly (see §3) | **516 ms** | **739 ms** |
-| **Speech Lag** | Untestable headlessly (see §3) | **450 ms** | **20,754 ms** (WASM main-thread accumulation) |
-| **Word Error Rate (WER)** | Untestable headlessly (see §3) | **13.8%** | **65.5%** |
-| **Transcribed Text** | *(Click Start and speak in interactive browser)* | *"He hoped there would be stew for dinner, Turnips and carrots and bruised potatoes and fat, mutton, Pieces to be ladled out in thick, peppered flower-fat and sauce, He hoped he had."* | *"AND TURNIPS AND CARROTS AND BRUISED POTATOES AND FAT MUTTON POTS OF MUTTEN PIECES TO BE LADLED OUT IN THICK PEPPERED FLOWER-FATTENED SAUCE AND HE HOPED THERE WOULD BE SOME"* |
-| **Known Reference Text** | — | *"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes, and fat mutton pieces to be ladled out in thick, peppered flower-fat and sauce."* | *(Same reference)* |
-| **Execution Architecture** | Cloud Speech Daemon (Google / Apple) | On-device WASM (ONNX Runtime SIMD) | On-device WASM (Emscripten CPU SIMD) |
-| **Privacy Guarantee** | ⚠️ Audio streams to cloud provider | 🛡️ **100% on device**; zero audio leaves client | 🛡️ **100% on device**; zero audio leaves client |
-| **Offline Support** | ❌ Requires internet connection | ✅ Fully offline capable once cached | ✅ Fully offline capable once cached |
-| **SharedArrayBuffer Req.** | None (Standard web hosting) | Requires `SharedArrayBuffer` (COOP/COEP) | Requires `SharedArrayBuffer` (COOP/COEP) |
-| **Primary Code License** | Proprietary browser vendor service | **MIT License** | **Apache 2.0 License** |
-| **Weights License** | Proprietary cloud service | **MIT License** (Useful Sensors HuggingFace) | **Apache 2.0** (LibriSpeech) / Non-commercial data (GigaSpeech) |
+| Metric / Dimension | Option 1: Browser Speech (`webkitSpeechRecognition`) | Option 2A: Moonshine WASM (`@moonshine-ai/moonshine-wasm`) | Option 2B (Preferred): Moonshine ORT-Web Single-Threaded (`onnxruntime-web`) | Option 3: sherpa-onnx Zipformer (`k2-fsa/sherpa-onnx`) |
+| :--- | :--- | :--- | :--- | :--- |
+| **Download Bytes** | **0 KB** (Native browser service) | **61.6 MB** (~13.2 MB WASM + ~51.4 MB ORT models) | **28.1 MB** (~7.9 MB encoder + ~20.2 MB decoder) | **83.3 MB** (~12.7 MB WASM + ~70.6 MB data bundle) |
+| **Initial Load Time** | **0 ms** (Instantaneous) | **5,953 ms** (Cold download & compile) | **6,528 ms** (Cold HF CDN download); **<600 ms** (Cached) | **2,468 ms** (WASM runtime & model init) |
+| **Peak JS Heap** | **26.3 MB** | **26.3 MB** | **28.4 MB** | **26.3 MB** |
+| **Time to First Word** | Untestable headlessly (see §3.1) | **516 ms** | **115 ms** (1.0s chunk); **376 ms** (4x CPU throttled) | **739 ms** |
+| **Full Speech Latency** | Untestable headlessly (see §3.1) | **450 ms** (streaming frame) | **1,999 ms** (full 22.34s audio, RTF 0.089x); **7,597 ms** (4x throttled) | **20,754 ms** (WASM main-thread accumulation) |
+| **Word Error Rate (WER)** | Untestable headlessly (see §3.1) | **13.8%** | **6.9%** (27/29 correct words, 1 deletion, 1 substitution) | **65.5%** |
+| **Transcribed Text** | *(Click Start and speak in interactive browser)* | *"He hoped there would be stew for dinner, Turnips and carrots and bruised potatoes and fat, mutton, Pieces to be ladled out in thick, peppered flower-fat and sauce, He hoped he had."* | *"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered flower fattened sauce."* | *"AND TURNIPS AND CARROTS AND BRUISED POTATOES AND FAT MUTTON POTS OF MUTTEN PIECES TO BE LADLED OUT IN THICK PEPPERED FLOWER-FATTENED SAUCE AND HE HOPED THERE WOULD BE SOME"* |
+| **Known Reference Text** | — | *"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes, and fat mutton pieces to be ladled out in thick, peppered flower-fat and sauce."* | *(Same reference)* | *(Same reference)* |
+| **Execution Architecture** | Cloud Speech Daemon (Google / Apple) | On-device WASM (Multi-threaded Pthreads) | On-device WASM (Single-Threaded ORT Web, `numThreads = 1`) | On-device WASM (Emscripten CPU SIMD) |
+| **GitHub Pages Compatibility** | ✅ Fully compatible (Zero custom headers needed) | ❌ **Incompatible** (`SharedArrayBuffer` blocked without COOP/COEP) | 🛡️ **100% Compatible** (Zero `SharedArrayBuffer` / zero COOP/COEP needed) | ❌ **Incompatible** (Pthreads build requires COOP/COEP) |
+| **Privacy Guarantee** | ⚠️ Audio streams to cloud provider | 🛡️ **100% on device**; zero audio leaves client | 🛡️ **100% on device**; zero audio leaves client | 🛡️ **100% on device**; zero audio leaves client |
+| **Offline Support** | ❌ Requires internet connection | ✅ Fully offline capable once cached | ✅ Fully offline capable once cached | ✅ Fully offline capable once cached |
+| **Primary Code License** | Proprietary browser vendor service | **MIT License** | **Apache 2.0 / MIT License** | **Apache 2.0 License** |
+| **Weights License** | Proprietary cloud service | **MIT License** (Useful Sensors HuggingFace) | **MIT License** (`onnx-community/moonshine-tiny-ONNX`) | **Apache 2.0** (LibriSpeech) / Non-commercial data (GigaSpeech) |
 
 ---
 
@@ -67,54 +67,126 @@ The table below reflects real measurements captured by running `node scripts/ver
   1. Seven ONNX model chunks (`encoder_model.ort`, `decoder_model.ort`, `decoder_with_past_model.ort`, etc.) downloaded from `@moonshine-ai/moonshine-wasm`: **51,441,771 bytes** (~49.06 MiB / 51.4 MB decimal).
   2. The multi-threaded WASM binary (`moonshine.wasm`): **13,155,937 bytes** (~12.55 MiB / 13.2 MB decimal).
 
-### 3.3 The SharedArrayBuffer / GitHub Pages Conflict & Workarounds
-Both Moonshine WASM and `sherpa-onnx` use Emscripten multi-threading (`-pthread`), which depends on `SharedArrayBuffer`.
+### 3.3 Empirical Investigation of GitHub Pages Isolation & Workarounds
 
-By default, all modern browsers require **Cross-Origin Isolation** before enabling `SharedArrayBuffer` to prevent Spectre timing attacks:
-```http
-Cross-Origin-Opener-Policy: same-origin
-Cross-Origin-Embedder-Policy: credentialless (or require-corp)
-```
+Per `docs/briefs/interview-isolation.md`, we conducted direct experiments to determine what actually works on static hosting environments like GitHub Pages where custom HTTP response headers cannot be set.
 
-#### What Happens on GitHub Pages Today?
-Neural Mastery deploys to GitHub Pages via `.github/workflows/deploy.yml`. GitHub Pages **does not allow custom HTTP response headers**. Therefore, on `neuralmasteryai.com` today, `window.crossOriginIsolated` is `false`, and multi-threaded WebAssembly fails immediately with:
-`SharedArrayBuffer is not defined`.
+#### 1. What Happens Today to Moonshine on a Static Server with NO COOP/COEP Headers?
+We served the production static build (`dist/`) on a local static server configured with zero COOP/COEP headers, replicating GitHub Pages' exact HTTP response profile:
+- **`window.crossOriginIsolated`:** Evaluated strictly to `false`.
+- **`typeof window.SharedArrayBuffer`:** Evaluated to `'undefined'`.
+- **In-App Guard:** In `engines.ts`, the environment guard detects `!window.crossOriginIsolated` and throws:
+  `Cross-Origin Isolation not enabled: Moonshine streaming WASM requires SharedArrayBuffer (COOP/COEP headers). In standard single-origin hosting without COOP/COEP headers, browsers disable WebAssembly multi-threading for security.`
+- **Underlying Emscripten Engine Failure:** When this guard was removed and `@moonshine-ai/moonshine-wasm`'s `Transcriber.load()` was executed directly in headless Chromium, the Emscripten multi-threaded runtime (`moonshine.mjs`) attempted to spawn Web Workers and transfer its shared memory pool (`wasmMemory = new WebAssembly.Memory({ ..., shared: true })`). Chromium immediately aborted with a fatal browser DOMException:
+  ```
+  DOMException: Failed to execute 'postMessage' on 'Worker': SharedArrayBuffer transfer requires self.crossOriginIsolated.
+  ```
+- **Conclusion:** On `neuralmasteryai.com` today, the official `@moonshine-ai/moonshine-wasm` package **cannot initialize or run** on GitHub Pages without modifying browser security or injecting headers.
 
-#### Workaround Options and Associated Costs:
+---
 
-1. **Workaround A: `coi-serviceworker` (Client-side Service Worker)**
-   - *Mechanism:* A small script registers a Service Worker that intercepts navigation requests and injects the COOP/COEP headers into document responses on the client side without backend support.
-   - *Cost & Risks:* High risk of breaking cross-origin resources. With `COEP: require-corp`, the browser will refuse to load any cross-origin script, style, image, or Pyodide WASM wheel (e.g. from jsDelivr, CDN fonts, Google AdSense, YouTube embeds) unless the third-party origin explicitly serves `Cross-Origin-Resource-Policy: cross-origin`. `credentialless` mitigates images/iframes, but Safari only supported `credentialless` starting in iOS 17.4.
-2. **Workaround B: Cloudflare Proxy with Transform Rules**
-   - *Mechanism:* Route `neuralmasteryai.com` through Cloudflare DNS and use Cloudflare Rules to inject COOP/COEP headers at the edge.
-   - *Cost & Risks:* Free on Cloudflare, but imposes the exact same third-party CORP isolation breakages as Workaround A for external embeds.
-3. **Workaround C: Single-Threaded WASM Builds (Zero SharedArrayBuffer Requirements)**
-   - *Sherpa-ONNX:* Can be compiled with `-DSHERPA_ONNX_ENABLE_WASM_PTHREADS=OFF` to produce a single-threaded WASM runtime that executes in any browser context without COOP/COEP or `SharedArrayBuffer`. It runs in a standard Web Worker to prevent UI blocking.
-   - *Moonshine:* `@moonshine-ai/moonshine-wasm` currently only distributes the pthread build in version 0.1.5. A single-threaded build would require upstream PR or custom compilation.
-4. **Workaround D: Standard Browser Web Speech API (Option 1)**
-   - Zero headers, zero service workers, zero bundle size, and 100% compatible with GitHub Pages out of the box.
+#### 2. The Preferred Solution: Single-Threaded ONNX Runtime Web (`onnxruntime-web` / `transformers.js`)
+We evaluated whether Moonshine can run single-threaded without `SharedArrayBuffer` (`numThreads = 1`) using ONNX Runtime Web via `@huggingface/transformers` (`onnx-community/moonshine-tiny-ONNX`, q8 quantized):
+- **Compatibility:** **100% functional without COOP/COEP headers.** In standard headless Chrome on a server with zero custom headers, `window.crossOriginIsolated` was `false`, and the pipeline executed to completion with zero errors.
+- **Model Download Size:**
+  - Encoder (`encoder_model_quantized.onnx`): **7,937,661 bytes** (~7.9 MB).
+  - Decoder (`decoder_model_merged_quantized.onnx`): **20,243,286 bytes** (~20.2 MB).
+  - Total weights: **28,180,947 bytes (~28.18 MB)** — a **54% reduction** compared to `@moonshine-ai/moonshine-wasm` (61.6 MB) and 66% smaller than `sherpa-onnx` (83.3 MB).
+- **Cold Download & Initialization:** **6,528 ms** (downloading model weights from Hugging Face CloudFront CDN + WASM initialization). Cached loads initialized in **<600 ms**.
+- **Inference Latency on Full Benchmark Audio (`/tmp/speech_with_pauses.wav`, 22.34s):**
+  - Full transcription latency: **1,999 ms** (~2.0 seconds).
+  - Real-Time Factor (RTF): **0.089x** (computes **~11.2x faster than real-time playback**).
+- **Chunked Latency Progression:**
+  - 1.0s audio chunk: **115 ms** (RTF: 0.115)
+  - 2.0s audio chunk: **93 ms** (RTF: 0.046)
+  - 3.0s audio chunk: **116 ms** (RTF: 0.039)
+  - 5.0s audio chunk: **189 ms** (RTF: 0.038)
+  - 10.0s audio chunk: **330 ms** (RTF: 0.033)
+- **Transcription Fidelity & Accuracy:**
+  - *Reference:* `"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes, and fat mutton pieces to be ladled out in thick, peppered flower-fat and sauce."`
+  - *Transcribed:* `"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered flower fattened sauce."`
+  - *Word Accuracy:* 27 / 29 words correct (1 deletion, 1 substitution: `"flower-fat and"` vs `"flower fattened"`).
+  - *Word Error Rate (WER):* **6.9%** (superior to `@moonshine-ai/moonshine-wasm`'s 13.8% and `sherpa-onnx`'s 65.5%).
+- **Engineering Verdict:** Single-threaded `onnxruntime-web` is the **optimal production path**. It achieves higher accuracy, lower download footprint, and zero header/service-worker complexity.
 
-### 3.4 Model Licensing: Primary Source Verification
+---
+
+#### 3. Prototyping Scoped `coi-serviceworker` with `COEP: credentialless`
+We prototyped and empirically verified a route-scoped Service Worker (`coi-sw.js`) configured with `scope: '/interview'` and `Cross-Origin-Embedder-Policy: credentialless`:
+
+- **Route Isolation Verification:**
+  - On first visit to `/interview`: `window.crossOriginIsolated` was `false`.
+  - Service Worker registered and claimed the client.
+  - **The Mandatory Reload:** Because a Service Worker cannot retroactively modify the response headers of the document that spawned it, the page was forced to trigger a full document reload (`location.reload()`).
+  - After reload on `/interview`: `window.crossOriginIsolated` successfully transitioned to **`true`** in Chromium.
+  - External assets within `/interview`: Google Fonts (`fonts.gstatic.com`) and GitHub raw images loaded cleanly with HTTP 200 under `credentialless`.
+  - Non-interview routes (e.g., `/practice`, `/`, `/docs`): Visited `/practice` immediately afterward; `window.crossOriginIsolated` remained strictly **`false`** (unaffected by the worker).
+  - Pyodide on `/practice`: Cross-origin script fetch `https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js` returned HTTP 200 with zero CORP errors.
+
+- **Primary Source Analysis of Safari / WebKit Behavior:**
+  - *The Primary Bug:* [WebKit Bug 240409 - Support COEP: credentialless](https://bugs.webkit.org/show_bug.cgi?id=240409) confirms that `Cross-Origin-Embedder-Policy: credentialless` is **not implemented** in WebKit/Safari.
+  - *The Impact on Safari:* When Safari encounters `COEP: credentialless`, it treats it as an invalid value and ignores it. Consequently, `window.crossOriginIsolated` remains `false`, and `SharedArrayBuffer` remains unavailable.
+  - *The Fallback Trap (`COEP: require-corp`):* If one falls back to `COEP: require-corp` on Safari, Safari enforces strict CORP blocking. Any third-party resource (CDNs, fonts, Pyodide scripts, analytics, avatars) that does not serve an explicit `Cross-Origin-Resource-Policy: cross-origin` header is blocked.
+  - *Private Browsing Mode:* In Safari Private Browsing mode, WebKit disables or severely partitions Service Workers, causing `coi-serviceworker` registration to fail or trigger infinite reload loops.
+  - *Conclusion on `coi-serviceworker`:* While functional in Chromium, its lack of Safari support and disruptive hard document reload make single-threaded ONNX Web far superior.
+
+---
+
+#### 4. Low-End Mobile Phone Simulation (Chrome 4x CPU Throttling)
+To simulate performance on lower-tier mobile hardware (such as entry-level Android devices with ARM Cortex-A55 cores), we ran the single-threaded Moonshine pipeline in Chromium with Chrome DevTools Protocol CPU throttling set to `Emulation.setCPUThrottlingRate: 4`:
+
+- **Simulation Label:** Automated Headless Chromium with 4x CPU Throttling Simulation.
+- **Cold Model Load Time:** **9,550 ms** (~9.5 s) compared to 6,528 ms unthrottled.
+- **Full 22.34s Speech Transcription Latency:** **7,597 ms** (~7.6 s) compared to 1,999 ms unthrottled.
+- **Real-Time Factor (RTF):** **0.340x** (still **~2.9x faster than real-time speech playback**!).
+- **4x Throttled Chunk Latencies:**
+  - 1.0s audio chunk: **376 ms** (RTF: 0.376)
+  - 2.0s audio chunk: **294 ms** (RTF: 0.147)
+  - 3.0s audio chunk: **378 ms** (RTF: 0.126)
+  - 5.0s audio chunk: **612 ms** (RTF: 0.122)
+- **Transcription Text:** Identical to unthrottled (`"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered flower fattened sauce."`).
+- **Word Error Rate:** **6.9%**.
+- **Takeaway:** Even on hardware throttled by a factor of 4x, single-threaded Moonshine processes incoming voice frames significantly faster than real-time speech, ensuring zero perceptual speech accumulation lag.
+
+---
+
+### 3.4 Model Hosting & CDN Strategy: Where Assets Load From
+
+#### Where Does Moonshine Load From Today?
+In `@moonshine-ai/moonshine-wasm` v0.1.5:
+1. `moonshine.wasm` (13.2 MB): Bundled in the npm package and copied into `dist/assets` by Vite.
+2. The 7 model weights (51.4 MB): Loaded at runtime via `AssetDownloader` from Moonshine's official cloud CDN:
+   `https://download.moonshine.ai/model/tiny-streaming-en/quantized_26_07_30/` (`frontend.ort`, `encoder.ort`, `decoder_kv.ort`, `cross_kv.ort`, `adapter.ort`, `decoder_kv_with_attention.ort`, `tokenizer.bin`).
+   - *CORS Verification:* `curl -sI -H "Origin: https://neuralmasteryai.com" https://download.moonshine.ai/...` returns:
+     ```http
+     access-control-allow-origin: *
+     access-control-expose-headers: content-length, content-range, accept-ranges, etag
+     ```
+   - *Zero bytes in git or deploy artifacts:* None of the 51.4 MB of `.ort` model weights are stored in the git repository or `dist/` deploy package.
+
+#### Hugging Face CDN Hosting (for Single-Threaded ONNX Models)
+For single-threaded `onnxruntime-web` / `@huggingface/transformers`:
+- **Repository:** `onnx-community/moonshine-tiny-ONNX` (q8 quantized).
+- **Files:** `onnx/encoder_model_quantized.onnx` (7.9 MB) and `onnx/decoder_model_merged_quantized.onnx` (20.2 MB).
+- **CDN Behavior:** Direct requests to `https://huggingface.co/onnx-community/moonshine-tiny-ONNX/resolve/main/...` issue an HTTP 302 redirect to Hugging Face's global AWS CloudFront edge (`*.cdn.hf.co`).
+- **CORS Verification:** Both the redirect and CloudFront edge return `access-control-allow-origin: *` with full `Accept-Ranges: bytes` support.
+- **Client Caching:** `@huggingface/transformers` automatically stores fetched model files in browser Cache API / IndexedDB storage, eliminating repeated network downloads on subsequent visits.
+- **Zero Static Deployment Cost:** Zero model files reside in `public/` or `dist/`.
+
+#### Sherpa-ONNX 83 MB Asset Strategy
+Currently, `public/sherpa-onnx/` contains 83 MB of binary model weights (`.data` and `.wasm`). Vite's build plugin in `vite.config.ts` prunes them from `dist/` before deployment.
+To eliminate git repository bloat, these assets should be hosted on a dedicated Hugging Face Hub dataset repository or Cloudflare R2 bucket with `Access-Control-Allow-Origin: *` and fetched via `fetch()` + Cache API.
+
+---
+
+### 3.5 Model Licensing: Primary Source Verification
 - **Moonshine Tiny:**
   - *Code License:* [UsefulSensors/moonshine](https://github.com/usefulsensors/moonshine) is licensed under the **MIT License**.
-  - *Weights License:* Model weights on [UsefulSensors/moonshine-tiny](https://huggingface.co/UsefulSensors/moonshine-tiny) are licensed under **MIT License**. Fully permissive for commercial use.
+  - *Weights License:* Model weights on [UsefulSensors/moonshine-tiny](https://huggingface.co/UsefulSensors/moonshine-tiny) and [onnx-community/moonshine-tiny-ONNX](https://huggingface.co/onnx-community/moonshine-tiny-ONNX) are licensed under the **MIT License**. Fully permissive for commercial use.
 - **sherpa-onnx (Zipformer Models):**
   - *Code License:* [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) is licensed under **Apache-2.0**.
   - *GigaSpeech Model:* The weights in `sherpa-onnx-streaming-zipformer-gigaspeech-20M` are Apache-2.0, but the upstream **GigaSpeech dataset** license explicitly restricts raw audio to non-commercial research use. SpeechColab disclaims liability for commercial use under "fair use", posing legal ambiguity.
   - *LibriSpeech Model:* `sherpa-onnx-streaming-zipformer-en-20M-2023-02-17` is trained strictly on LibriSpeech (public domain audio / CC-BY 4.0). Both model weights and code are **Apache-2.0**, offering complete commercial freedom.
-
-### 3.5 Hosting Strategy for Large 83 MB Sherpa Assets
-Shipping 83 MB of binary model weights (`.data` and `.wasm`) in the git repository and static build causes:
-1. Bloated git clone times and GitHub 100 MB per-file limits.
-2. Excessive GitHub Pages deployment artifacts (approaching the 1 GB site quota).
-3. Slow initial deployments.
-
-**Proposed Solution:**
-1. **Exclude from Static Build:** As implemented in `vite.config.ts`, Vite automatically prunes `public/sherpa-onnx/*.data` and `*.wasm` from the `dist/` production folder during build.
-2. **External Object Storage / CDN:** Store the two large binary files on external CDN storage:
-   - Option A: Hugging Face Hub (free Git LFS hosting with global CDN: `https://huggingface.co/k2-fsa/sherpa-onnx-wasm-zipformer/raw/main/...`).
-   - Option B: Cloudflare R2 bucket with custom domain and CORS headers (`Access-Control-Allow-Origin: *`).
-3. **Client-Side Cache API:** When the user clicks "Start Test" on Option 3, the browser downloads the model files through the Web Cache API (`caches.open('sherpa-onnx-v1')`). The files are stored in browser persistent storage, downloaded only once per user, and streamed into WASM via `locateFile`.
 
 ---
 
