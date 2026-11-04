@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import Navbar from './layout/Navbar';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useDocumentMeta } from '../lib/useDocumentMeta';
+import { AtlasTimeline } from './atlas/AtlasTimeline';
 import './atlasHub.css';
 
 // Counts and year ranges come from src/data/*Atlas.ts; update them when an atlas changes.
@@ -22,8 +23,9 @@ export default function AtlasHubPage() {
       <main className="nm-landing-shell">
         <header className="atlas-hub__head">
           <h1 className="nb-heading">Atlas</h1>
-          <p className="nb-body">Each atlas follows one field in date order. See what problem every technique solved and what came next, with a diagram and a source for each entry.</p>
+          <p className="nb-body">112 techniques across four fields, in date order. Lines show what led to what.</p>
         </header>
+        <AtlasTimeline />
         <ul className="atlas-hub__list">
           {ATLASES.map((atlas) => (
             <li key={atlas.to}>
