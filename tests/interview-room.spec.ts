@@ -70,7 +70,7 @@ test.describe('Interview Room (/interview/room)', () => {
     const callText = await page.locator('.call').textContent();
     const nextText = await page.locator('.next').textContent();
     const rows = await page.locator('.rows .row').all();
-    const markedText = await page.locator('.stack .live').textContent();
+    const markedText = await page.locator('.stack .live').first().textContent();
 
     // Must fail on empty results
     expect(callText?.trim().length).toBeGreaterThan(10);
