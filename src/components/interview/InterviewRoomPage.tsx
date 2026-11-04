@@ -35,6 +35,8 @@ import {
 } from '../../lib/interviewRoom/qualitySettings';
 import { embed, nli, loadJudge } from '../../lib/mockInterview/engine';
 import { playInterviewerAudio } from '../../lib/interviewRoom/voiceAudio';
+import { SileroVADDetector } from '../../lib/interviewRoom/sileroVad';
+import { LiveWaveform } from './LiveWaveform';
 import type { JudgeModels } from '../../lib/answerJudge';
 import './interviewRoom.css';
 
@@ -164,6 +166,7 @@ export default function InterviewRoomPage() {
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
   const stopAudioPlaybackRef = useRef<(() => void) | null>(null);
   const startListeningStepRef = useRef<() => void>(() => {});
+  const vadDetectorRef = useRef<SileroVADDetector | null>(null);
 
   // Initialize background models on mount or when quality setting changes
   useEffect(() => {
@@ -310,6 +313,22 @@ export default function InterviewRoomPage() {
         // Start capture exactly at listening: request active microphone stream
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaStreamRef.current = stream;
+
+        // Initialize Silero VAD end-of-speech detector
+        const vad = new SileroVADDetector({
+          endOfSpeechPauseSeconds: END_OF_ANSWER_PAUSE_SECONDS,
+          onSpeechStart: () => {
+            hasSpokenRef.current = true;
+            lastSpeechTimeRef.current = Date.now();
+          },
+          onEndOfAnswer: () => {
+            if (!isTransitioningRef.current) {
+              handleAnswerFinished();
+            }
+          },
+        });
+        vadDetectorRef.current = vad;
+
         await engineRef.current.start(stream);
 
         engineRef.current.subscribe((m) => {
@@ -317,6 +336,7 @@ export default function InterviewRoomPage() {
           if (text) {
             hasSpokenRef.current = true;
             lastSpeechTimeRef.current = Date.now();
+            vadDetectorRef.current?.processFrame(0.9, Date.now());
             setLiveTranscript(text);
 
             const words = text.split(/\s+/);
@@ -330,7 +350,7 @@ export default function InterviewRoomPage() {
           }
         });
 
-        // End-of-answer pause detection monitor
+        // End-of-answer pause detection monitor with Silero VAD
         if (silenceTimerRef.current) clearInterval(silenceTimerRef.current);
         silenceTimerRef.current = setInterval(() => {
           if (isTransitioningRef.current) return;
@@ -341,6 +361,7 @@ export default function InterviewRoomPage() {
           if (!hasSpokenRef.current) return;
           const lastActive = Math.max(lastSpeechTimeRef.current, engineLastSpeech);
           const silenceDuration = (Date.now() - lastActive) / 1000;
+          vadDetectorRef.current?.processFrame(0.01, Date.now());
           if (silenceDuration >= END_OF_ANSWER_PAUSE_SECONDS) {
             // Long pause detected! Conclude answer
             handleAnswerFinished();
@@ -836,11 +857,24 @@ export default function InterviewRoomPage() {
                   rows={6}
                 />
               ) : (
-                <div className="live" id="live">
-                  {settledWords}{' '}
-                  <span className="fresh">{freshWords}</span>
-                  <span className="caret"></span>
-                </div>
+                <>
+                  <LiveWaveform
+                    active={true}
+                    stream={mediaStreamRef.current}
+                    height={44}
+                    style={{
+                      margin: '10px 0 12px 0',
+                      border: '1px solid var(--line)',
+                      background: 'var(--surface)',
+                      borderRadius: '8px',
+                    }}
+                  />
+                  <div className="live" id="live">
+                    {settledWords}{' '}
+                    <span className="fresh">{freshWords}</span>
+                    <span className="caret"></span>
+                  </div>
+                </>
               )}
 
               <div>
