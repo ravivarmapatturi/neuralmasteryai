@@ -1,0 +1,777 @@
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Link } from 'react-router-dom';
+import { useDocumentTitle } from '../../lib/useDocumentTitle';
+import { useDocumentMeta } from '../../lib/useDocumentMeta';
+import { interviewRoomQuestions } from '../../lib/interviewRoom/questions';
+import type {
+  InterviewRoomQuestion,
+  TurnRecord,
+  QuestionDebrief,
+  EvaluatedPoint,
+} from '../../lib/interviewRoom/types';
+import {
+  correctInterviewTerms,
+  detectMisconceptions,
+  evaluatePoints,
+  chooseDialogueAction,
+  generateDebrief,
+  END_OF_ANSWER_PAUSE_SECONDS,
+} from '../../lib/interviewRoom/dialogue';
+import { MoonshineSingleThreadEngine } from '../../lib/speechTest/engines';
+import './interviewRoom.css';
+
+type ScreenState = 'setup' | 'mic' | 'speaking' | 'listening' | 'evaluating' | 'debrief';
+
+export default function InterviewRoomPage() {
+  useDocumentTitle('Neural Mastery · Interview Room');
+  useDocumentMeta(
+    'Neural Mastery · Spoken Interview Room',
+    'Real-time spoken AI engineering interview room. Practice out loud with browser speech synthesis and on-device transcription and evaluation.'
+  );
+
+  // Dynamically load Google Fonts only while on this route
+  useEffect(() => {
+    const fontId = 'nm-interview-room-fonts';
+    let link = document.getElementById(fontId) as HTMLLinkElement | null;
+    if (!link) {
+      link = document.createElement('link');
+      link.id = fontId;
+      link.rel = 'stylesheet';
+      link.href =
+        'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Source+Sans+3:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap';
+      document.head.appendChild(link);
+    }
+    return () => {
+      // Remove fonts when navigating away to keep styling scoped
+      const existing = document.getElementById(fontId);
+      if (existing) existing.remove();
+    };
+  }, []);
+
+  // Configuration options
+  const [track, setTrack] = useState('genai');
+  const [level, setLevel] = useState('mid');
+  const [lengthSetting, setLengthSetting] = useState('1'); // '1' or '3'
+
+  // Screen and flow state
+  const [screen, setScreen] = useState<ScreenState>('setup');
+  const [questionIndex, setQuestionIndex] = useState(0);
+  const [turnIndex, setTurnIndex] = useState(0);
+  const [history, setHistory] = useState<TurnRecord[]>([]);
+
+  // Current question and turn
+  const questionsToRun = lengthSetting === '3' ? interviewRoomQuestions.slice(0, 3) : [interviewRoomQuestions[0]];
+  const currentQuestion: InterviewRoomQuestion = questionsToRun[questionIndex] || interviewRoomQuestions[0];
+  const [currentSpokenText, setCurrentSpokenText] = useState(currentQuestion.spoken_question);
+  const [currentTextQuestion, setCurrentTextQuestion] = useState(currentQuestion.spoken_question);
+  const [showQuestionText, setShowQuestionText] = useState(false);
+
+  // Speech and live transcription
+  const [isTypingMode, setIsTypingMode] = useState(false);
+  const [liveTranscript, setLiveTranscript] = useState('');
+  const [settledWords, setSettledWords] = useState('');
+  const [freshWords, setFreshWords] = useState('');
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [statusMessage, setStatusMessage] = useState('');
+
+  // Debrief result
+  const [debrief, setDebrief] = useState<QuestionDebrief | null>(null);
+  const [usefulFeedback, setUsefulFeedback] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('nm_interview_room_useful');
+    } catch {
+      return null;
+    }
+  });
+
+  // Background speech engine
+  const engineRef = useRef<MoonshineSingleThreadEngine | null>(null);
+  const [modelStatus, setModelStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [modelProgressPct, setModelProgressPct] = useState(0);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const timerIntervalRef = useRef<any>(null);
+  const silenceTimerRef = useRef<any>(null);
+  const lastSpeechTimeRef = useRef<number>(0);
+  const hasSpokenRef = useRef(false);
+  const isTransitioningRef = useRef(false);
+
+  // Initialize background models on mount
+  useEffect(() => {
+    const engine = new MoonshineSingleThreadEngine();
+    engineRef.current = engine;
+    setModelStatus('loading');
+
+    const unsubscribe = engine.subscribe((m) => {
+      if (m.status === 'ready') {
+        setModelStatus('ready');
+      } else if (m.status === 'error') {
+        setModelStatus('error');
+      }
+      if (m.downloadProgressPct != null) {
+        setModelProgressPct(m.downloadProgressPct);
+      }
+    });
+
+    engine.load().catch((err) => {
+      console.warn('[InterviewRoom] Model preloading notice:', err.message);
+      setModelStatus('error');
+    });
+
+    return () => {
+      unsubscribe();
+      try {
+        engine.destroy();
+      } catch {
+        // Ignore
+      }
+      engineRef.current = null;
+    };
+  }, []);
+
+  // Cleanup media & speech on unmount
+  useEffect(() => {
+    return () => {
+      try {
+        window.speechSynthesis?.cancel();
+      } catch {}
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      if (silenceTimerRef.current) clearInterval(silenceTimerRef.current);
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+        mediaStreamRef.current = null;
+      }
+    };
+  }, []);
+
+  // Progress tag displayed in the top bar
+  const getProgressTag = (): string => {
+    if (screen === 'setup' || screen === 'mic') return '';
+    if (screen === 'debrief') {
+      return `Debrief · GenAI Engineer, mid-level`;
+    }
+    const qTotal = questionsToRun.length;
+    const qNum = questionIndex + 1;
+    if (turnIndex > 0) return 'Follow-up';
+    return `Question ${qNum} of ${qTotal}`;
+  };
+
+  // Speaks the current question aloud using best available voice
+  const speakCurrentQuestion = useCallback((text: string, onDone: () => void) => {
+    if (!('speechSynthesis' in window)) {
+      onDone();
+      return;
+    }
+
+    try {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      const voices = window.speechSynthesis.getVoices();
+      const inVoice = voices.find(
+        (v) => v.lang.toLowerCase().startsWith('en-in') || /india/i.test(v.name)
+      );
+      const enVoice = voices.find((v) => v.lang.toLowerCase().startsWith('en'));
+      const voice = inVoice || enVoice;
+      if (voice) u.voice = voice;
+      u.lang = voice?.lang || 'en-IN';
+      u.rate = 0.98;
+
+      let finished = false;
+      const complete = () => {
+        if (!finished) {
+          finished = true;
+          onDone();
+        }
+      };
+
+      u.onend = complete;
+      u.onerror = complete;
+
+      window.speechSynthesis.speak(u);
+      // Fallback timeout in case speech synthesis stalls
+      setTimeout(complete, Math.max(3500, text.split(' ').length * 500));
+    } catch {
+      onDone();
+    }
+  }, []);
+
+  // Start interviewer speaking
+  const startSpeakingStep = useCallback(
+    (spokenText: string, textQuestion: string) => {
+      setScreen('speaking');
+      setCurrentSpokenText(spokenText);
+      setCurrentTextQuestion(textQuestion);
+      setShowQuestionText(false);
+
+      speakCurrentQuestion(spokenText, () => {
+        startListeningStep();
+      });
+    },
+    [speakCurrentQuestion]
+  );
+
+  // Start listening step
+  const startListeningStep = useCallback(async () => {
+    setScreen('listening');
+    setLiveTranscript('');
+    setSettledWords('');
+    setFreshWords('');
+    setElapsedSeconds(0);
+    hasSpokenRef.current = false;
+    lastSpeechTimeRef.current = Date.now();
+    isTransitioningRef.current = false;
+
+    // Start elapsed clock
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    timerIntervalRef.current = setInterval(() => {
+      setElapsedSeconds((s) => s + 1);
+    }, 1000);
+
+    // If using mic and engine
+    if (!isTypingMode && mediaStreamRef.current && engineRef.current) {
+      try {
+        await engineRef.current.start(mediaStreamRef.current);
+
+        engineRef.current.subscribe((m) => {
+          const text = (m.partialText || m.finalText || '').trim();
+          if (text) {
+            hasSpokenRef.current = true;
+            lastSpeechTimeRef.current = Date.now();
+            setLiveTranscript(text);
+
+            const words = text.split(/\s+/);
+            if (words.length <= 3) {
+              setSettledWords('');
+              setFreshWords(text);
+            } else {
+              setSettledWords(words.slice(0, words.length - 3).join(' '));
+              setFreshWords(words.slice(words.length - 3).join(' '));
+            }
+          }
+        });
+
+        // End-of-answer pause detection monitor
+        if (silenceTimerRef.current) clearInterval(silenceTimerRef.current);
+        silenceTimerRef.current = setInterval(() => {
+          if (!hasSpokenRef.current || isTransitioningRef.current) return;
+          const silenceDuration = (Date.now() - lastSpeechTimeRef.current) / 1000;
+          if (silenceDuration >= END_OF_ANSWER_PAUSE_SECONDS) {
+            // Long pause detected! Conclude answer
+            handleAnswerFinished();
+          }
+        }, 500);
+      } catch (err) {
+        console.warn('[InterviewRoom] Mic start error:', err);
+        setIsTypingMode(true);
+      }
+    }
+  }, [isTypingMode]);
+
+  // Finish current answer turn (via pause timeout or "I'm finished" button)
+  const handleAnswerFinished = useCallback(async () => {
+    if (isTransitioningRef.current) return;
+    isTransitioningRef.current = true;
+
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    if (silenceTimerRef.current) clearInterval(silenceTimerRef.current);
+
+    setScreen('evaluating');
+    setStatusMessage('Reviewing your response...');
+
+    let answerText = liveTranscript.trim();
+
+    // If using live audio engine, stop it to get batch pass
+    if (!isTypingMode && engineRef.current) {
+      try {
+        await engineRef.current.stop();
+        const metrics = engineRef.current.getMetrics();
+        const batchPass = metrics.batchTranscript || metrics.finalText || metrics.partialText;
+        if (batchPass && batchPass.trim()) {
+          answerText = batchPass.trim();
+        }
+      } catch (err) {
+        console.warn('[InterviewRoom] Engine stop notice:', err);
+      }
+    }
+
+    // Apply technical term corrections
+    const cleanAnswer = correctInterviewTerms(answerText, currentQuestion.id);
+
+    // Record turn in history
+    const turnRecord: TurnRecord = {
+      turnIndex,
+      questionText: currentTextQuestion,
+      spokenText: currentSpokenText,
+      isFollowUp: turnIndex > 0,
+      learnerAnswer: cleanAnswer,
+    };
+    const newHistory = [...history, turnRecord];
+    setHistory(newHistory);
+
+    // Evaluate against rubrics across all answers for this question
+    const allAnswers = newHistory.map((t) => t.learnerAnswer).filter(Boolean).join(' ');
+    const misconception = detectMisconceptions(allAnswers, currentQuestion);
+    const evaluatedPoints: EvaluatedPoint[] = await evaluatePoints(allAnswers, currentQuestion);
+
+    // Decide next step via Dialogue Rules
+    const action = chooseDialogueAction(
+      turnIndex,
+      newHistory,
+      cleanAnswer,
+      currentQuestion,
+      evaluatedPoints,
+      misconception
+    );
+
+    if (action.type === 'follow_up') {
+      const nextTurn = turnIndex + 1;
+      setTurnIndex(nextTurn);
+      startSpeakingStep(action.spokenQuestion, action.textQuestion);
+    } else {
+      // Debrief step
+      const debriefData = generateDebrief(currentQuestion, newHistory, evaluatedPoints);
+      setDebrief(debriefData);
+      setScreen('debrief');
+    }
+  }, [liveTranscript, isTypingMode, turnIndex, currentTextQuestion, currentSpokenText, history, currentQuestion, startSpeakingStep]);
+
+  // Begin interview from setup
+  const handleBegin = () => {
+    setScreen('mic');
+  };
+
+  // Request microphone permission
+  const handleAllowMic = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      setIsTypingMode(false);
+      setTurnIndex(0);
+      setHistory([]);
+      startSpeakingStep(currentQuestion.spoken_question, currentQuestion.spoken_question);
+    } catch (err) {
+      console.warn('[InterviewRoom] Mic permission denied/failed:', err);
+      setStatusMessage('Microphone access unavailable. Continuing with text input.');
+      setIsTypingMode(true);
+      setTurnIndex(0);
+      setHistory([]);
+      startSpeakingStep(currentQuestion.spoken_question, currentQuestion.spoken_question);
+    }
+  };
+
+  // Fallback to typing mode directly
+  const handleFallbackTyping = () => {
+    setIsTypingMode(true);
+    setTurnIndex(0);
+    setHistory([]);
+    startSpeakingStep(currentQuestion.spoken_question, currentQuestion.spoken_question);
+  };
+
+  // Restart / Answer again
+  const handleAnswerAgain = () => {
+    setTurnIndex(0);
+    setHistory([]);
+    setDebrief(null);
+    startSpeakingStep(currentQuestion.spoken_question, currentQuestion.spoken_question);
+  };
+
+  // Next question in multi-question round
+  const handleNextQuestion = () => {
+    const nextIdx = questionIndex + 1;
+    setQuestionIndex(nextIdx);
+    setTurnIndex(0);
+    setHistory([]);
+    setDebrief(null);
+    const nextQ = questionsToRun[nextIdx];
+    if (nextQ) {
+      startSpeakingStep(nextQ.spoken_question, nextQ.spoken_question);
+    } else {
+      setScreen('setup');
+    }
+  };
+
+  // Start over completely
+  const handleRestart = () => {
+    try {
+      window.speechSynthesis?.cancel();
+    } catch {}
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      mediaStreamRef.current = null;
+    }
+    setScreen('setup');
+    setQuestionIndex(0);
+    setTurnIndex(0);
+    setHistory([]);
+    setDebrief(null);
+  };
+
+  // Record useful feedback
+  const handleUseful = (val: 'yes' | 'no') => {
+    setUsefulFeedback(val);
+    try {
+      localStorage.setItem('nm_interview_room_useful', val);
+    } catch {}
+  };
+
+  const formatClock = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${String(s).padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="interview-room-wrap">
+      <div className="wrap">
+        {/* Top Header */}
+        <div className="top">
+          <span>Neural Mastery · Interview</span>
+          <span id="progress">{getProgressTag()}</span>
+        </div>
+
+        {/* Main Stage */}
+        <main id="room" className="stack" aria-live="polite">
+          {/* SCREEN 1: SETUP */}
+          {screen === 'setup' && (
+            <>
+              <h1>Practise the real thing.</h1>
+              <p>
+                The interviewer asks out loud. You answer out loud. You get the debrief at the end, as
+                you would after a real round.
+              </p>
+
+              <div className="fields">
+                <label htmlFor="track">
+                  Track
+                  <select id="track" value={track} onChange={(e) => setTrack(e.target.value)}>
+                    <option value="genai">GenAI Engineer</option>
+                    <option value="ml" disabled>
+                      ML Engineer (in review)
+                    </option>
+                    <option value="ds" disabled>
+                      Data Scientist (in review)
+                    </option>
+                    <option value="mlops" disabled>
+                      MLOps Engineer (in review)
+                    </option>
+                  </select>
+                </label>
+
+                <label htmlFor="level">
+                  Level
+                  <select id="level" value={level} onChange={(e) => setLevel(e.target.value)}>
+                    <option value="mid">Mid-level (2–5 years)</option>
+                    <option value="junior" disabled>
+                      Junior (coming soon)
+                    </option>
+                    <option value="senior" disabled>
+                      Senior (coming soon)
+                    </option>
+                  </select>
+                </label>
+
+                <label htmlFor="length">
+                  Length
+                  <select
+                    id="length"
+                    value={lengthSetting}
+                    onChange={(e) => setLengthSetting(e.target.value)}
+                  >
+                    <option value="1">1 question (focused practice)</option>
+                    <option value="3">3 questions (full round)</option>
+                  </select>
+                </label>
+              </div>
+
+              {/* Background Model Preloading Status */}
+              <div
+                style={{
+                  fontSize: '13px',
+                  color: 'var(--soft)',
+                  fontFamily: 'var(--mono)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                {modelStatus === 'loading' && (
+                  <span>Preparing speech model (Moonshine Tiny)... {modelProgressPct}%</span>
+                )}
+                {modelStatus === 'ready' && (
+                  <span style={{ color: 'var(--good)' }}>● Speech model ready on device</span>
+                )}
+                {modelStatus === 'error' && (
+                  <span>Speech model loading in background. Voice & typing both available.</span>
+                )}
+              </div>
+
+              <div className="actions">
+                <button className="primary" id="begin" onClick={handleBegin}>
+                  Start the interview
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* SCREEN 2: MICROPHONE ALLOWANCE */}
+          {screen === 'mic' && (
+            <>
+              <h2>Allow your microphone</h2>
+              <p>
+                You only do this once. After that the interview runs by voice, with nothing to click while
+                you answer.
+              </p>
+
+              {statusMessage && <p className="note">{statusMessage}</p>}
+
+              <div className="actions">
+                <button className="primary" id="mic" onClick={handleAllowMic}>
+                  Enable microphone and begin
+                </button>
+                <button type="button" onClick={handleFallbackTyping}>
+                  Or type your answers
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* SCREEN 3: INTERVIEWER SPEAKING */}
+          {screen === 'speaking' && (
+            <>
+              <div className="who on">
+                <span className="bars">
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                </span>
+                <span>Interviewer is speaking</span>
+              </div>
+
+              <div>
+                <button id="show" onClick={() => setShowQuestionText(!showQuestionText)}>
+                  {showQuestionText ? 'Hide question text' : 'Repeat the question as text'}
+                </button>
+                {showQuestionText && (
+                  <p id="qtext" style={{ marginTop: '10px' }}>
+                    {currentTextQuestion}
+                  </p>
+                )}
+              </div>
+
+              <div className="actions">
+                <button
+                  type="button"
+                  style={{ fontSize: '13px', padding: '6px 12px' }}
+                  onClick={() => {
+                    try {
+                      window.speechSynthesis?.cancel();
+                    } catch {}
+                    startListeningStep();
+                  }}
+                >
+                  Skip speaking →
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* SCREEN 4: LISTENING */}
+          {screen === 'listening' && (
+            <>
+              <div className="who on">
+                <span className="bars">
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                </span>
+                <span>
+                  Listening · <span className="clock" id="clock">{formatClock(elapsedSeconds)}</span> ·{' '}
+                  {isTypingMode ? 'Type your answer' : 'Your answer'}
+                </span>
+              </div>
+
+              {isTypingMode ? (
+                <textarea
+                  className="live"
+                  style={{ width: '100%', minHeight: '160px', resize: 'vertical' }}
+                  value={liveTranscript}
+                  onChange={(e) => setLiveTranscript(e.target.value)}
+                  placeholder="Type your explanation as you would talk it through with an interviewer..."
+                  rows={6}
+                />
+              ) : (
+                <div className="live" id="live">
+                  {settledWords}{' '}
+                  <span className="fresh">{freshWords}</span>
+                  <span className="caret"></span>
+                </div>
+              )}
+
+              <div>
+                <button id="show" onClick={() => setShowQuestionText(!showQuestionText)}>
+                  {showQuestionText ? 'Hide question text' : 'Repeat the question as text'}
+                </button>
+                {showQuestionText && (
+                  <p id="qtext" style={{ marginTop: '10px' }}>
+                    {currentTextQuestion}
+                  </p>
+                )}
+              </div>
+
+              <p className="note" id="end">
+                When you stop talking for a few seconds, the interviewer continues.
+              </p>
+
+              <div className="actions">
+                <button className="primary" id="done" onClick={handleAnswerFinished}>
+                  I'm finished
+                </button>
+                <button id="skip" onClick={handleAnswerFinished}>
+                  Skip ahead
+                </button>
+                {!isTypingMode && (
+                  <button type="button" onClick={() => setIsTypingMode(true)}>
+                    Switch to typing
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* SCREEN: EVALUATING TRANSITION */}
+          {screen === 'evaluating' && (
+            <div className="stack" style={{ textAlign: 'center', padding: '40px 0' }}>
+              <div className="who on" style={{ justifyContent: 'center' }}>
+                <span className="bars">
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                </span>
+                <span>{statusMessage}</span>
+              </div>
+            </div>
+          )}
+
+          {/* SCREEN 5: DEBRIEF */}
+          {screen === 'debrief' && debrief && (
+            <>
+              {/* Call banner */}
+              <div className="call">
+                <span style={{ font: '500 13px var(--mono)' }}>Interviewer's call on this question</span>
+                <strong>{debrief.overallCall}</strong>
+                <p>{debrief.overallSummary}</p>
+              </div>
+
+              {/* Practise this next */}
+              <div className="next">
+                <h3>Practise this next</h3>
+                <p style={{ marginTop: '6px' }}>{debrief.practiceAction}</p>
+                <div className="actions" style={{ marginTop: '12px' }}>
+                  <button className="primary" id="again" onClick={handleAnswerAgain}>
+                    Answer it again
+                  </button>
+                  <Link
+                    to={debrief.practiceRoute}
+                    className="btn-link"
+                    style={{ textDecoration: 'none' }}
+                  >
+                    Open {debrief.practiceTitle} ↗
+                  </Link>
+                </div>
+              </div>
+
+              {/* Rubric rows */}
+              <div className="rows">
+                {debrief.rows.map((row, i) => (
+                  <div className="row" key={i}>
+                    <div className="stack" style={{ gap: '6px' }}>
+                      <b>{row.label}</b>
+                      <span className={`pill ${row.pillClass}`}>{row.pill}</span>
+                    </div>
+                    <div>
+                      <p>{row.text}</p>
+                      {row.quote && <blockquote>{row.quote}</blockquote>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Marked answer */}
+              <div className="stack">
+                <h3>Your answer, marked</h3>
+                <p
+                  className="live"
+                  style={{ minHeight: 0 }}
+                  dangerouslySetInnerHTML={{ __html: debrief.markedAnswerHtml }}
+                />
+                <p className="note">Green: covered. Amber: recheck or not heard yet.</p>
+              </div>
+
+              {/* Was this useful? Local storage widget */}
+              <div
+                style={{
+                  padding: '12px 16px',
+                  background: 'var(--surface)',
+                  border: '1px solid var(--line)',
+                  borderRadius: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '8px',
+                }}
+              >
+                <span style={{ fontSize: '15px', fontWeight: 600 }}>Was this debrief useful?</span>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    className={usefulFeedback === 'yes' ? 'primary' : ''}
+                    style={{ padding: '6px 14px', fontSize: '14px' }}
+                    onClick={() => handleUseful('yes')}
+                  >
+                    Yes
+                  </button>
+                  <button
+                    type="button"
+                    className={usefulFeedback === 'no' ? 'primary' : ''}
+                    style={{ padding: '6px 14px', fontSize: '14px' }}
+                    onClick={() => handleUseful('no')}
+                  >
+                    No
+                  </button>
+                  {usefulFeedback && (
+                    <span style={{ fontSize: '13px', color: 'var(--soft)' }}>
+                      Thank you! Saved locally.
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div className="actions">
+                {questionIndex + 1 < questionsToRun.length ? (
+                  <button className="primary" id="next-q" onClick={handleNextQuestion}>
+                    Next question →
+                  </button>
+                ) : (
+                  <button id="restart" onClick={handleRestart}>
+                    Start over
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </main>
+
+        {/* Footnote */}
+        <p className="note" id="foot">
+          Automated estimate: speech recognition can mishear words and accent nuances. All speech
+          processing, transcription, and evaluations run locally in your browser; your audio and
+          answers never leave this device.
+        </p>
+      </div>
+    </div>
+  );
+}

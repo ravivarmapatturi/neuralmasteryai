@@ -3,7 +3,7 @@
 // Whisper base.en for speech-to-text and all-MiniLM-L6-v2 for comparing an
 // answer with each criterion. Models download once and are cached by the browser.
 // Same loading pattern as VaayuEdge's browser engine.
-import { env, pipeline } from '@huggingface/transformers';
+import { AutoModelForSequenceClassification, AutoTokenizer, env, pipeline } from '@huggingface/transformers';
 
 const MODELS = { asr: 'onnx-community/whisper-base.en', embed: 'Xenova/all-MiniLM-L6-v2' } as const;
 type Task = keyof typeof MODELS;
@@ -12,6 +12,21 @@ env.allowLocalModels = false;
 env.useBrowserCache = true;
 
 const pipes: Partial<Record<Task, Promise<any>>> = {};
+
+// Small entailment model that judges whether a sentence agrees with a point.
+const JUDGE = 'Xenova/mobilebert-uncased-mnli';
+let judge: Promise<{ tokenizer: any; model: any }> | null = null;
+function loadJudge() {
+  if (!judge) {
+    const progress_callback = (p: any) => { if (p.status === 'progress') self.postMessage({ type: 'progress', task: 'judge', file: p.file, loaded: p.loaded, total: p.total }); };
+    judge = Promise.all([
+      AutoTokenizer.from_pretrained(JUDGE, { progress_callback } as any),
+      AutoModelForSequenceClassification.from_pretrained(JUDGE, { dtype: 'q8', device: 'wasm', progress_callback } as any),
+    ]).then(([tokenizer, model]) => ({ tokenizer, model }));
+    judge.catch(() => { judge = null; });
+  }
+  return judge;
+}
 
 async function device(): Promise<'webgpu' | 'wasm'> {
   try { return (await (navigator as any).gpu?.requestAdapter()) ? 'webgpu' : 'wasm'; } catch { return 'wasm'; }
@@ -52,6 +67,25 @@ self.onmessage = async (e: MessageEvent) => {
       const asr = await load('asr');
       const out = await asr(payload.audio as Float32Array, { chunk_length_s: 30, stride_length_s: 5 });
       result = String(out.text ?? '').trim();
+    } else if (op === 'loadSpeech') {
+      await load('asr');
+      result = true;
+    } else if (op === 'loadJudge') {
+      await Promise.all([load('embed'), loadJudge()]);
+      result = true;
+    } else if (op === 'nli') {
+      const { tokenizer, model } = await loadJudge();
+      const labels = model.config.id2label as Record<number, string>;
+      const scores = [];
+      for (const [premise, claim] of payload.pairs as [string, string][]) {
+        const { logits } = await model(tokenizer(premise, { text_pair: claim, truncation: true }));
+        const exp = (Array.from(logits.data) as number[]).map(Math.exp);
+        const total = exp.reduce((a, b) => a + b, 0);
+        const row: Record<string, number> = {};
+        exp.forEach((v, i) => { row[labels[i].toLowerCase()] = v / total; });
+        scores.push({ entails: row.entailment, conflicts: row.contradiction });
+      }
+      result = scores;
     } else if (op === 'embed') {
       const fe = await load('embed');
       const out = await fe(payload.texts as string[], { pooling: 'mean', normalize: true });

@@ -1,0 +1,299 @@
+{
+  "_metadata": {
+    "label": "AI-written and not expert-reviewed",
+    "description": "Interview room content for GenAI Engineer track (3 core questions aligned with Neural Mastery criteria, under-20-word spoken follow-ups, robust misconception detectors, and direct Neural Mastery practice links).",
+    "evaluation_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "calibrated_thresholds": {
+      "covered": 0.50,
+      "partial": 0.35,
+      "missed": "< 0.35"
+    },
+    "dialogue_rules": {
+      "rule_1_advance_on_excellent": "If all points are covered with similarity >= 0.50 and no misconceptions, move on immediately without probing.",
+      "rule_2_max_two_followups": "No question receives more than 2 follow-up probes. Conclude and transition after turn 2.",
+      "rule_3_misconception_priority": "A detected misconception takes precedence on turn 1, phrased conversationally using candidate words.",
+      "rule_4_single_gap_probe": "If points are missed, probe the single most critical unaddressed claim in under 20 words.",
+      "rule_5_progressive_resolution": "If candidate clarifies the probed point on turn 2, acknowledge and advance immediately."
+    }
+  },
+  "questions": [
+    {
+      "id": "genai-fm-fundamentals",
+      "title": "What is a foundation model, and how is it different from a regular ML model?",
+      "spoken_question": "Could you walk me through what a foundation model actually is, and how you think about it differently from a traditional, task-specific ML model?",
+      "points": [
+        {
+          "id": "p1_pretraining_scale",
+          "claim": "Pretrained at scale on massive, broad datasets to learn general representations rather than trained on narrow, task-specific data.",
+          "follow_up_spoken": "How does the training data and scale differ from training a traditional model?",
+          "follow_up_template": "You mentioned '{phrase}'. How does that training differ from pretraining a foundation model?",
+          "next_practice": {
+            "route": "/docs/llms-genai/foundation-model-internals",
+            "title": "Foundation Model Internals",
+            "action": "Review pretraining objectives and multi-modal representation architectures in Foundation Model Internals."
+          }
+        },
+        {
+          "id": "p2_downstream_adaptability",
+          "claim": "Acts as a shared base that can adapt to many different downstream tasks through prompting or fine-tuning.",
+          "follow_up_spoken": "How does one foundation model adapt to different tasks without retraining from scratch?",
+          "follow_up_template": "You mentioned '{phrase}'. How does adapting one base model compare to training separate models?",
+          "next_practice": {
+            "route": "/docs/llms-genai/prompt-engineering",
+            "title": "Prompt Engineering and Task Adaptation",
+            "action": "Practice zero-shot prompting and few-shot task adaptation in Prompt Engineering."
+          }
+        },
+        {
+          "id": "p3_scratch_vs_adaptation",
+          "claim": "Contrasts adapting a common base with building and maintaining bespoke models from scratch for each task.",
+          "follow_up_spoken": "How do you decide between fine-tuning a base model and training from scratch?",
+          "follow_up_template": "You mentioned '{phrase}'. When is adapting a foundation model better than training from scratch?",
+          "next_practice": {
+            "route": "/docs/interview-prep/qa-quick-reference",
+            "title": "LLM & Foundation Models Quick Reference",
+            "action": "Compare adaptation versus task-specific training trade-offs in QA Quick Reference."
+          }
+        },
+        {
+          "id": "p4_engineering_tradeoffs",
+          "claim": "Explains when traditional ML is still preferred, such as tabular datasets, strict low-latency budgets, or deterministic explainability.",
+          "follow_up_spoken": "When would you still pick XGBoost or logistic regression over a foundation model?",
+          "follow_up_template": "You mentioned '{phrase}'. When would you still choose a traditional model instead?",
+          "next_practice": {
+            "route": "/docs/interview-prep/classical-ml-questions",
+            "title": "Classical ML Interview Questions",
+            "action": "Review when to choose GBDTs, logistic regression, and linear models in Classical ML Interview Questions."
+          }
+        }
+      ],
+      "wrong_answer_probes": [
+        {
+          "id": "w1_next_token_only",
+          "misconception": "Defines foundation model strictly as next-token prediction",
+          "regex_patterns": [
+            "foundation(?:al)?\\s+models?\\s+(?:is|are|means?)\\s+(?:just|only|simply|basically)?\\s*(?:a\\s+)?(?:probabilistic\\s+)?(?:models?\\s+that\\s+)?(?:tries\\s+to\\s+)?predict(?:s|ing)?\\s+(?:the\\s+)?next\\s+token",
+            "foundation(?:al)?\\s+models?\\s+(?:just\\s+)?tries\\s+to\\s+predict\\s+(?:the\\s+)?next\\s+token",
+            "based\\s+upon\\s+(?:the\\s+)?previous\\s+tokens?\\s+(?:and\\s+)?(?:it\\s+)?tries\\s+to\\s+predict\\s+(?:the\\s+)?next\\s+token",
+            "\\b(?:just|only|strictly)\\s+(?:a\\s+)?next-?token\\s+predictor"
+          ],
+          "spoken_probe": "Does next-token prediction apply to foundation models in vision or audio?",
+          "spoken_probe_template": "You mentioned '{phrase}'. Does that apply to foundation models in vision or audio?"
+        },
+        {
+          "id": "w2_classical_obsolete",
+          "misconception": "Believes foundation models render traditional ML obsolete for all use cases",
+          "regex_patterns": [
+            "(?:traditional|classical|regular)\\s+ml\\s+is\\s+(?:now\\s+)?(?:completely\\s+)?(?:obsolete|outdated|dead|replaced\\s+by\\s+foundation)",
+            "traditional\\s+ml\\s+is\\s+obsolete",
+            "no\\s+need\\s+for\\s+(?:traditional|classical|regular)\\s+ml\\s+anymore"
+          ],
+          "spoken_probe": "When would you still choose a model like XGBoost over a foundation model?",
+          "spoken_probe_template": "You mentioned '{phrase}'. When would you still choose XGBoost over a foundation model?"
+        }
+      ],
+      "signals": {
+        "fundamentals": {
+          "weak": "Defines foundation models purely as ChatGPT or next-token text generation, or claims traditional ML is obsolete.",
+          "solid": "Defines broad large-scale pretraining, adaptation to multiple tasks, and contrasts with single-task training.",
+          "strong": "Articulates pretraining representation learning across modalities, explains transfer dynamics, and identifies concrete tabular or latency boundaries."
+        },
+        "depth_when_probed": {
+          "weak": "Struggles when probed on non-text models or cannot explain why classical models are still widely used.",
+          "solid": "Clarifies that foundation models include vision and audio representations, and names concrete use cases for classical models.",
+          "strong": "Analyzes pretraining objectives (contrastive, masked, autoregressive), data efficiency of transfer, and serving economics."
+        },
+        "trade_offs": {
+          "weak": "Treats foundation models as unconditionally superior with no operational drawbacks.",
+          "solid": "Compares pretraining vs adaptation costs, serving latency, GPU hardware requirements, and tabular performance.",
+          "strong": "Evaluates total cost of ownership, cold-start latency, memory constraints, and data governance boundaries."
+        }
+      }
+    },
+    {
+      "id": "genai-rag-vs-finetuning",
+      "title": "When should you use Retrieval-Augmented Generation (RAG) versus fine-tuning, and how do you decide between them?",
+      "spoken_question": "Suppose an engineering team wants to build an internal assistant over company documentation that updates frequently. How do you evaluate whether to use RAG, fine-tuning, or both?",
+      "points": [
+        {
+          "id": "p1_knowledge_vs_behavior",
+          "claim": "Chooses RAG for dynamic or frequently changing data, and fine-tuning for style, tone, format, or task behavior.",
+          "follow_up_spoken": "How do you decide whether a problem needs new knowledge or new behavior?",
+          "follow_up_template": "You mentioned '{phrase}'. How does that help decide between RAG and fine-tuning?",
+          "next_practice": {
+            "route": "/docs/visual-lab/rag-pipeline-simulator",
+            "title": "RAG Pipeline Simulator",
+            "action": "Simulate chunking, embedding lookup, and context injection in the RAG Pipeline Simulator."
+          }
+        },
+        {
+          "id": "p2_freshness_update_speed",
+          "claim": "Explains that RAG updates by re-indexing documents while fine-tuning requires slow and expensive retraining.",
+          "follow_up_spoken": "When source documents change daily, what is the operational downside of fine-tuning?",
+          "follow_up_template": "You mentioned '{phrase}'. What happens to retraining costs when documents change daily?",
+          "next_practice": {
+            "route": "/docs/llms-genai/rag",
+            "title": "Retrieval-Augmented Generation Architecture",
+            "action": "Review real-time document indexing and vector store updates in Retrieval-Augmented Generation."
+          }
+        },
+        {
+          "id": "p3_verifiability_citations",
+          "claim": "Explains that RAG provides traceable citations and access control, while fine-tuning cannot reliably cite sources.",
+          "follow_up_spoken": "If users need exact source citations for compliance, why does fine-tuning fail?",
+          "follow_up_template": "You mentioned '{phrase}'. How does RAG handle exact source citations compared to fine-tuning?",
+          "next_practice": {
+            "route": "/docs/ai-evaluation/llm-rag-agent-evaluation",
+            "title": "LLM, RAG & Agent Evaluation",
+            "action": "Evaluate source attribution, faithfulness, and citation verification in LLM & RAG Evaluation."
+          }
+        },
+        {
+          "id": "p4_combining_both",
+          "claim": "Combines fine-tuning for style, format, or behavior with retrieval for dynamic document facts.",
+          "follow_up_spoken": "When would you combine fine-tuning for style with RAG for document retrieval?",
+          "follow_up_template": "You mentioned '{phrase}'. When would you combine fine-tuning with RAG for document retrieval?",
+          "next_practice": {
+            "route": "/docs/interview-prep/rag-interview-questions",
+            "title": "RAG Interview Questions",
+            "action": "Study hybrid architectures combining fine-tuning for behavior and RAG for knowledge in RAG Interview Questions."
+          }
+        }
+      ],
+      "wrong_answer_probes": [
+        {
+          "id": "w1_finetune_for_knowledge",
+          "misconception": "Believes fine-tuning is the standard way to inject new factual knowledge or internal documents",
+          "regex_patterns": [
+            "fine-?tune\\s+(?:the\\s+model\\s+)?(?:with|on)\\s+(?:our|the|company|new)?\\s*documents?\\s+(?:every|nightly|daily|to\\s+learn|so\\s+it\\s+learns)",
+            "fine-?tuning\\s+will\\s+memorize\\s+(?:all\\s+)?(?:the\\s+)?facts",
+            "train\\s+(?:the\\s+model\\s+)?on\\s+(?:the|our)\\s+documents?\\s+whenever\\s+they\\s+change"
+          ],
+          "spoken_probe": "What happens to fine-tuned weights when tomorrow's documents contradict yesterday's?",
+          "spoken_probe_template": "You mentioned '{phrase}'. What happens to fine-tuned weights when tomorrow's documents contradict yesterday's?"
+        },
+        {
+          "id": "w2_mutually_exclusive",
+          "misconception": "Believes RAG and fine-tuning are mutually exclusive alternatives",
+          "regex_patterns": [
+            "rag\\s+is\\s+only\\s+(?:for\\s+)?when\\s+you\\s+(?:dont|do\\s+not|lack)\\s+(?:have\\s+)?(?:enough\\s+)?gpu",
+            "(?:either|choose\\s+between)\\s+rag\\s+or\\s+fine-?tuning\\s+(?:never\\s+both|mutually\\s+exclusive)",
+            "rag\\s+is\\s+(?:just\\s+)?a\\s+poor\\s+mans?\\s+fine-?tuning"
+          ],
+          "spoken_probe": "Could you describe a pipeline where you would use both together?",
+          "spoken_probe_template": "You mentioned '{phrase}'. Could you describe a pipeline where you would use both together?"
+        }
+      ],
+      "signals": {
+        "fundamentals": {
+          "weak": "Suggests fine-tuning to memorize changing documents or treats RAG as merely a low-GPU workaround.",
+          "solid": "Clearly distinguishes RAG for dynamic knowledge/citations and fine-tuning for format, style, and task behavior.",
+          "strong": "Delineates parametric vs non-parametric memory and explains when hybrid pipelines are appropriate."
+        },
+        "depth_when_probed": {
+          "weak": "Cannot explain how document updates affect model retraining or why fine-tuned models hallucinate citations.",
+          "solid": "Explains catastrophic forgetting, re-indexing operational speed, and citation verification mechanisms.",
+          "strong": "Discusses context length cost curves, precision vs recall in chunk retrieval, and fine-tuning small specialized adapters."
+        },
+        "trade_offs": {
+          "weak": "Only mentions GPU cost without considering inference latency, index maintenance, or document ACLs.",
+          "solid": "Weighs retrieval latency and context token costs against training pipeline maintenance and model drift.",
+          "strong": "Quantifies break-even request volumes, chunking trade-offs, cache invalidation, and data governance isolation."
+        }
+      }
+    },
+    {
+      "id": "genai-lora-production-serving",
+      "title": "What is LoRA (Low-Rank Adaptation), and why is it preferred over full fine-tuning for production LLMs?",
+      "spoken_question": "When fine-tuning an LLM for a production task, most teams use LoRA instead of updating all the weights. Could you explain how LoRA works under the hood and why it has become the production default?",
+      "points": [
+        {
+          "id": "p1_matrix_decomposition",
+          "claim": "Freezes the base model weights and trains two small low-rank matrices instead of updating all weights.",
+          "follow_up_spoken": "What is mathematically happening to the base weights during a LoRA forward pass?",
+          "follow_up_template": "You mentioned '{phrase}'. What is happening to the base weights during a LoRA forward pass?",
+          "next_practice": {
+            "route": "/docs/practice-problems/lora-linear-layer",
+            "title": "LoRA Linear Layer Lab",
+            "action": "Implement a low-rank adapter linear layer from scratch in the LoRA Linear Layer coding problem."
+          }
+        },
+        {
+          "id": "p2_optimizer_memory_savings",
+          "claim": "Cuts GPU memory during training by only storing gradients and optimizer states for the small adapter matrices.",
+          "follow_up_spoken": "Where does the GPU memory savings come from during LoRA training?",
+          "follow_up_template": "You mentioned '{phrase}'. Where do the GPU memory savings come from during training?",
+          "next_practice": {
+            "route": "/docs/interview-prep/llm-serving-and-fine-tuning-questions",
+            "title": "LLM Serving and Fine-Tuning Questions",
+            "action": "Calculate AdamW optimizer memory savings and VRAM budgets in LLM Serving and Fine-Tuning."
+          }
+        },
+        {
+          "id": "p3_zero_latency_merge",
+          "claim": "Adds zero extra latency at inference because adapter weights can be merged directly into the base weights before serving.",
+          "follow_up_spoken": "Does serving a LoRA adapter add latency during inference, and can that be avoided?",
+          "follow_up_template": "You mentioned '{phrase}'. Can the adapter be merged into base weights before serving?",
+          "next_practice": {
+            "route": "/docs/inference-engineering/quantization-and-compression",
+            "title": "Model Compression and Inference Engineering",
+            "action": "Analyze weight merging, tensor fusion, and latency impacts in Quantization and Compression."
+          }
+        },
+        {
+          "id": "p4_multitenant_serving",
+          "claim": "Enables multi-tenant serving by letting a single base model dynamically swap small adapters for different tasks.",
+          "follow_up_spoken": "How does LoRA help when serving dozens of task-specific adapters on one GPU?",
+          "follow_up_template": "You mentioned '{phrase}'. How does LoRA help when serving multiple adapters on one GPU?",
+          "next_practice": {
+            "route": "/docs/mlops/llm-hosting-and-serving-patterns",
+            "title": "LLM Hosting and Serving Patterns",
+            "action": "Explore dynamic multi-LoRA adapter routing and GPU serving architectures in LLM Hosting Patterns."
+          }
+        }
+      ],
+      "wrong_answer_probes": [
+        {
+          "id": "w1_quantization_confusion",
+          "misconception": "Believes LoRA quantizes or compresses the base model weights",
+          "regex_patterns": [
+            "(?:lora|laura)\\s+(?:is|are)\\s+(?:a\\s+)?(?:compression|quantization)\\s+technique\\s+(?:that\\s+quantizes)?",
+            "(?:lora|laura)\\s+quantizes\\s+(?:the\\s+)?weights",
+            "(?:lora|laura)\\s+compresses\\s+weights\\s+(?:down\\s+)?to\\s+[0-9]-bit",
+            "compression\\s+technique\\s+that\\s+quantizes\\s+(?:the\\s+)?weights\\s+down\\s+to"
+          ],
+          "spoken_probe": "Does standard LoRA quantize weights, or keep them in floating point?",
+          "spoken_probe_template": "You mentioned '{phrase}'. Does standard LoRA quantize weights, or keep them in floating point?"
+        },
+        {
+          "id": "w2_latency_overhead_inference",
+          "misconception": "Believes LoRA must remain a separate computational layer during inference that adds latency",
+          "regex_patterns": [
+            "adds\\s+(?:some\\s+)?latency\\s+(?:to\\s+every|during\\s+every|at)\\s+(?:generated\\s+token|inference\\s+time)",
+            "(?:must\\s+run|runs)\\s+as\\s+a\\s+separate\\s+layer\\s+during\\s+inference",
+            "(?:lora|laura)\\s+(?:always\\s+)?slows\\s+down\\s+(?:inference|generation)"
+          ],
+          "spoken_probe": "Can the adapter be merged into base weights before serving?",
+          "spoken_probe_template": "You mentioned '{phrase}'. Can the adapter be merged into base weights before serving?"
+        }
+      ],
+      "signals": {
+        "fundamentals": {
+          "weak": "Claims LoRA is a quantization method like INT4, or cannot describe what is frozen versus trained.",
+          "solid": "Explains decomposing Delta W into low-rank matrices B and A, freezing base weights, and cutting trainable parameters.",
+          "strong": "Formulates the rank decomposition W0 + (alpha/r)*B*A, specifies matrix shapes and initialization, and explains why rank can be small."
+        },
+        "depth_when_probed": {
+          "weak": "Does not understand where memory savings come from or thinks inference is always slowed down.",
+          "solid": "Identifies that AdamW optimizer states dominate training VRAM, and explains zero-latency merging.",
+          "strong": "Compares multi-LoRA dynamic batching kernels (S-LoRA/Punica) against weight merging for single-tenant throughput."
+        },
+        "trade_offs": {
+          "weak": "Believes LoRA is identical to full fine-tuning with zero trade-offs in expressive power.",
+          "solid": "Evaluates parameter efficiency vs capacity on extreme domain shifts, and discusses rank selection.",
+          "strong": "Analyzes memory footprint under concurrent adapter requests, catastrophic forgetting mitigation, and rank selection heuristics."
+        }
+      }
+    }
+  ]
+}

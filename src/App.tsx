@@ -14,6 +14,7 @@ import Home from './components/Home';
 import PracticeListPage from './components/PracticeListPage';
 const InterviewPage = lazy(() => import('./components/InterviewPage')); // Load question banks only when opened.
 const MockInterviewPage = lazy(() => import('./components/interview/MockInterviewPage')); // Speech models load only when a session starts.
+const InterviewRoomPage = lazy(() => import('./components/interview/InterviewRoomPage')); // Spoken room with on-device speech & evaluation.
 const SpeechTestPage = lazy(() => import('./components/SpeechTestPage'));
 const VoiceTestPage = lazy(() => import('./components/VoiceTestPage'));
 import PracticeTrackPage from './components/PracticeTrackPage';
@@ -86,6 +87,7 @@ export default function App() {
                       <Route path="/lab/speech-test" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading speech test lab…</p>}><SpeechTestPage /></Suspense>} />
                       <Route path="/lab/voice-test" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading voice test lab…</p>}><VoiceTestPage /></Suspense>} />
                       <Route path="/interview" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading interview questions…</p>}><InterviewPage /></Suspense>} />
+                      <Route path="/interview/room" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading interview room…</p>}><InterviewRoomPage /></Suspense>} />
                       <Route path="/interview/mock" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading mock interview…</p>}><MockInterviewPage /></Suspense>} />
                       <Route path="/practice" element={<Navigate to="/labs" replace />} />
                       <Route path="/practice/track/:topicSlug" element={<PracticeTrackPage />} />

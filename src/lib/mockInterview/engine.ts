@@ -26,6 +26,9 @@ function call<T>(op: string, payload?: unknown, transfer: Transferable[] = []): 
 export const onProgress = (l: (p: Progress) => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
 export const initEngine = () => call<boolean>('init');
 export const transcribe = (audio: Float32Array) => call<string>('transcribe', { audio }, [audio.buffer]);
+export const loadSpeech = () => call<boolean>('loadSpeech');
+export const loadJudge = () => call<boolean>('loadJudge');
+export const nli = (pairs: [string, string][]) => call<{ entails: number; conflicts: number }[]>('nli', { pairs });
 export const embed = (texts: string[]) => call<number[][]>('embed', { texts });
 
 /** Record from the microphone; resolves with 16 kHz mono PCM and the duration in seconds. */
@@ -38,6 +41,15 @@ export async function startRecording() {
   rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
   rec.start(1000);
   return {
+    /** Everything heard so far, decoded without stopping the recording. */
+    snapshot: async () => {
+      if (!chunks.length) return new Float32Array(0);
+      const ctx = new AudioContext({ sampleRate: 16000 });
+      try {
+        const decoded = await ctx.decodeAudioData(await new Blob(chunks, { type: rec.mimeType }).arrayBuffer());
+        return new Float32Array(decoded.getChannelData(0));
+      } finally { await ctx.close(); }
+    },
     stop: () => new Promise<{ audio: Float32Array; seconds: number }>((resolve, reject) => {
       rec.onstop = async () => {
         stream.getTracks().forEach(t => t.stop());
