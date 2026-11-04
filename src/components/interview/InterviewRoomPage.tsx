@@ -18,6 +18,8 @@ import {
   END_OF_ANSWER_PAUSE_SECONDS,
 } from '../../lib/interviewRoom/dialogue';
 import { MoonshineSingleThreadEngine } from '../../lib/speechTest/engines';
+import { embed, nli, loadJudge } from '../../lib/mockInterview/engine';
+import type { JudgeModels } from '../../lib/answerJudge';
 import './interviewRoom.css';
 
 type ScreenState = 'setup' | 'mic' | 'speaking' | 'listening' | 'evaluating' | 'debrief';
@@ -84,10 +86,16 @@ export default function InterviewRoomPage() {
     }
   });
 
-  // Background speech engine
+  // Background speech & judge engine
   const engineRef = useRef<MoonshineSingleThreadEngine | null>(null);
+  const judgeModelsRef = useRef<JudgeModels>({
+    embed: (texts: string[]) => embed(texts),
+    nli: (pairs: [string, string][]) => nli(pairs),
+  });
   const [modelStatus, setModelStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [modelProgressPct, setModelProgressPct] = useState(0);
+  const [currentProbedPointId, setCurrentProbedPointId] = useState<string | undefined>(undefined);
+  const [currentProbedMisconceptionId, setCurrentProbedMisconceptionId] = useState<string | undefined>(undefined);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const timerIntervalRef = useRef<any>(null);
   const silenceTimerRef = useRef<any>(null);
@@ -100,6 +108,11 @@ export default function InterviewRoomPage() {
     const engine = new MoonshineSingleThreadEngine();
     engineRef.current = engine;
     setModelStatus('loading');
+
+    // Preload judge models (all-MiniLM-L6-v2 and mobilebert NLI) in background worker
+    loadJudge().catch((err) => {
+      console.warn('[InterviewRoom] Judge model preloading notice:', err.message);
+    });
 
     const unsubscribe = engine.subscribe((m) => {
       if (m.status === 'ready') {
@@ -171,8 +184,12 @@ export default function InterviewRoomPage() {
       );
       const enVoice = voices.find((v) => v.lang.toLowerCase().startsWith('en'));
       const voice = inVoice || enVoice;
-      if (voice) u.voice = voice;
-      u.lang = voice?.lang || 'en-IN';
+      if (voice) {
+        u.voice = voice;
+        u.lang = voice.lang;
+      } else {
+        u.lang = 'en-US';
+      }
       u.rate = 0.98;
 
       let finished = false;
@@ -302,15 +319,17 @@ export default function InterviewRoomPage() {
       questionText: currentTextQuestion,
       spokenText: currentSpokenText,
       isFollowUp: turnIndex > 0,
+      probedPointId: currentProbedPointId,
+      probedMisconceptionId: currentProbedMisconceptionId,
       learnerAnswer: cleanAnswer,
     };
     const newHistory = [...history, turnRecord];
     setHistory(newHistory);
 
-    // Evaluate against rubrics across all answers for this question
+    // Evaluate against rubrics across all answers for this question using real MiniLM & NLI judge models
     const allAnswers = newHistory.map((t) => t.learnerAnswer).filter(Boolean).join(' ');
     const misconception = detectMisconceptions(allAnswers, currentQuestion);
-    const evaluatedPoints: EvaluatedPoint[] = await evaluatePoints(allAnswers, currentQuestion);
+    const evaluatedPoints: EvaluatedPoint[] = await evaluatePoints(allAnswers, currentQuestion, judgeModelsRef.current);
 
     // Decide next step via Dialogue Rules
     const action = chooseDialogueAction(
@@ -325,14 +344,18 @@ export default function InterviewRoomPage() {
     if (action.type === 'follow_up') {
       const nextTurn = turnIndex + 1;
       setTurnIndex(nextTurn);
+      setCurrentProbedPointId(action.probedPointId);
+      setCurrentProbedMisconceptionId(action.probedMisconceptionId);
       startSpeakingStep(action.spokenQuestion, action.textQuestion);
     } else {
       // Debrief step
+      setCurrentProbedPointId(undefined);
+      setCurrentProbedMisconceptionId(undefined);
       const debriefData = generateDebrief(currentQuestion, newHistory, evaluatedPoints);
       setDebrief(debriefData);
       setScreen('debrief');
     }
-  }, [liveTranscript, isTypingMode, turnIndex, currentTextQuestion, currentSpokenText, history, currentQuestion, startSpeakingStep]);
+  }, [liveTranscript, isTypingMode, turnIndex, currentTextQuestion, currentSpokenText, history, currentQuestion, currentProbedPointId, currentProbedMisconceptionId, startSpeakingStep]);
 
   // Begin interview from setup
   const handleBegin = () => {
@@ -424,7 +447,9 @@ export default function InterviewRoomPage() {
       <div className="wrap">
         {/* Top Header */}
         <div className="top">
-          <span>Neural Mastery · Interview</span>
+          <Link to="/interview" id="exit-room" style={{ textDecoration: 'none', color: 'inherit' }}>
+            Neural Mastery · Interview
+          </Link>
           <span id="progress">{getProgressTag()}</span>
         </div>
 

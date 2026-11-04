@@ -4,6 +4,7 @@
 
 import type {
   InterviewRoomQuestion,
+  QuestionPoint,
   EvaluatedPoint,
   DetectedMisconception,
   TurnRecord,
@@ -329,10 +330,35 @@ export function chooseDialogueAction(
 }
 
 /**
+ * Call rule:
+ * - 'Strong': candidate covered >= 75% of evaluation points (e.g. 3 of 4, or 4 of 4)
+ * - 'Getting there': candidate covered at least 1 evaluation point (between 25% and 74%)
+ * - 'Needs work': candidate covered 0 evaluation points (0%)
+ */
+export function computeOverallCall(
+  coveredCount: number,
+  totalCount: number
+): 'Strong' | 'Getting there' | 'Needs work' {
+  if (totalCount === 0 || coveredCount === 0) return 'Needs work';
+  const ratio = coveredCount / totalCount;
+  if (ratio >= 0.75) return 'Strong';
+  return 'Getting there';
+}
+
+/**
+ * Extracts a concise human-readable topic name from a point's claim.
+ */
+export function getPointShortName(point: QuestionPoint): string {
+  const match = point.claim.split(/[,;]|\brather than\b|\binstead of\b/i)[0].trim();
+  return match.charAt(0).toLowerCase() + match.slice(1);
+}
+
+/**
  * Generate debrief scorecard matching the reference mock-up:
- * - Overall call (Strong, Getting there, Needs work)
+ * - Overall call (Strong, Getting there, Needs work) via clear tested rule
+ * - Overall summary built sentence-by-sentence from what actually happened
  * - Next practice topic & action
- * - Signal rows with pre-written rubric text and real quotes
+ * - Signal rows with pre-written rubric text and candidate evidence (or explicit 'No evidence heard')
  * - Marked transcript
  */
 export function generateDebrief(
@@ -342,23 +368,52 @@ export function generateDebrief(
 ): QuestionDebrief {
   const allAnswers = turns.map(t => t.learnerAnswer).filter(Boolean).join(' ');
   const coveredPoints = evaluatedPoints.filter(p => p.status === 'covered');
+  const notHeardPoints = evaluatedPoints.filter(p => p.status !== 'covered');
   const coveredCount = coveredPoints.length;
   const totalCount = evaluatedPoints.length;
 
-  // Overall call
-  let overallCall: 'Strong' | 'Getting there' | 'Needs work' = 'Getting there';
-  let overallSummary = '';
+  // 1. Overall call: strictly evaluated via computeOverallCall
+  const overallCall = computeOverallCall(coveredCount, totalCount);
 
-  if (coveredCount >= totalCount) {
-    overallCall = 'Strong';
-    overallSummary = 'You covered all core dimensions of the question clearly, contrasting trade-offs and specifying practical engineering constraints.';
-  } else if (coveredCount >= 2) {
-    overallCall = 'Getting there';
-    overallSummary = 'You reasoned well through parts of the design, but missed key foundational distinctions before being probed. Tighten the opening definition.';
+  // 2. Build summary sentence-by-sentence from empirical results:
+  // Sentence 1: Points covered
+  let sentCovered = '';
+  if (coveredCount === totalCount) {
+    sentCovered = `You covered all ${totalCount} core dimensions: ${coveredPoints.map(p => getPointShortName(p.point)).join('; ')}.`;
+  } else if (coveredCount > 0) {
+    sentCovered = `You covered ${coveredCount} of ${totalCount} evaluation points: ${coveredPoints.map(p => getPointShortName(p.point)).join('; ')}.`;
   } else {
-    overallCall = 'Needs work';
-    overallSummary = 'The response remained high-level and missed the core architectural mechanisms. Focus on specific systems trade-offs and definitions.';
+    sentCovered = `You did not address any of the ${totalCount} core evaluation points in your answer.`;
   }
+
+  // Sentence 2: Points not heard
+  let sentNotHeard = '';
+  if (notHeardPoints.length > 0) {
+    sentNotHeard = `We did not hear evidence for: ${notHeardPoints.map(p => getPointShortName(p.point)).join('; ')}.`;
+  } else {
+    sentNotHeard = `No core technical criteria were left unaddressed.`;
+  }
+
+  // Sentence 3: Evidence or probes
+  let sentEvidence = '';
+  const probedMisconceptionTurn = turns.find(t => t.probedMisconceptionId);
+  const bestQuotePoint = coveredPoints.find(p => p.evidenceQuote && p.evidenceQuote.trim().length > 0);
+
+  if (probedMisconceptionTurn) {
+    const probe = question.wrong_answer_probes.find(w => w.id === probedMisconceptionTurn.probedMisconceptionId);
+    const probeDesc = probe ? `misconception (${probe.misconception})` : 'misconception';
+    if (bestQuotePoint?.evidenceQuote) {
+      sentEvidence = `Your opening included a ${probeDesc} that was probed in follow-up. Demonstrated evidence heard: "${bestQuotePoint.evidenceQuote.trim()}".`;
+    } else {
+      sentEvidence = `Your opening included a ${probeDesc} that was probed during the interview.`;
+    }
+  } else if (bestQuotePoint?.evidenceQuote) {
+    sentEvidence = `Demonstrated evidence heard: "${bestQuotePoint.evidenceQuote.trim()}".`;
+  } else if (coveredCount === 0) {
+    sentEvidence = `No direct evidence or verifiable technical claims were observed in your response.`;
+  }
+
+  const overallSummary = [sentCovered, sentNotHeard, sentEvidence].filter(Boolean).join(' ');
 
   // Next practice recommendation from first unaddressed or partial point
   const gapPoint = evaluatedPoints.find(p => p.status === 'not_heard_yet') ||
@@ -389,7 +444,7 @@ export function generateDebrief(
       pill: 'Partly there',
       pillClass: 'ok',
       text: question.signals.fundamentals.solid,
-      quote: p1Evidence,
+      quote: p1Evidence || 'No direct evidence heard in answer.',
     });
   } else {
     rows.push({
@@ -397,35 +452,47 @@ export function generateDebrief(
       pill: 'Not heard yet',
       pillClass: 'gap',
       text: question.signals.fundamentals.weak,
-      quote: p1Evidence,
+      quote: 'No evidence heard in answer.',
     });
   }
 
   // 2. Depth when probed
   const probedTurns = turns.filter(t => t.isFollowUp && t.learnerAnswer.trim().length > 0);
   const probedQuote = probedTurns.length > 0 ? `"${probedTurns[0].learnerAnswer.trim().slice(0, 120)}..."` : undefined;
-  if (probedTurns.length > 0 && coveredCount >= 2) {
+
+  if (probedTurns.length > 0) {
+    if (coveredCount >= 2) {
+      rows.push({
+        label: 'Depth when probed',
+        pill: 'Solid',
+        pillClass: 'strong',
+        text: question.signals.depth_when_probed.solid,
+        quote: probedQuote,
+      });
+    } else {
+      rows.push({
+        label: 'Depth when probed',
+        pill: 'Partly there',
+        pillClass: 'ok',
+        text: question.signals.depth_when_probed.weak,
+        quote: probedQuote || 'No substantive evidence heard when probed.',
+      });
+    }
+  } else if (coveredCount === totalCount) {
     rows.push({
       label: 'Depth when probed',
-      pill: 'Solid',
+      pill: 'Not probed',
       pillClass: 'strong',
-      text: question.signals.depth_when_probed.solid,
-      quote: probedQuote,
-    });
-  } else if (probedTurns.length > 0) {
-    rows.push({
-      label: 'Depth when probed',
-      pill: 'Partly there',
-      pillClass: 'ok',
-      text: question.signals.depth_when_probed.weak,
-      quote: probedQuote,
+      text: 'Candidate addressed all core points on opening turn without requiring a follow-up probe.',
+      quote: 'Not probed — criteria satisfied on opening turn.',
     });
   } else {
     rows.push({
       label: 'Depth when probed',
-      pill: 'Solid',
-      pillClass: 'strong',
-      text: question.signals.depth_when_probed.strong,
+      pill: 'Not heard yet',
+      pillClass: 'gap',
+      text: question.signals.depth_when_probed.weak,
+      quote: 'No evidence heard when probed.',
     });
   }
 
@@ -446,7 +513,7 @@ export function generateDebrief(
       pill: 'Partly there',
       pillClass: 'ok',
       text: question.signals.trade_offs.solid,
-      quote: tradeOffQuote,
+      quote: tradeOffQuote || 'No direct evidence heard in answer.',
     });
   } else {
     rows.push({
@@ -454,7 +521,7 @@ export function generateDebrief(
       pill: 'Not heard yet',
       pillClass: 'gap',
       text: question.signals.trade_offs.weak,
-      quote: tradeOffQuote,
+      quote: 'No evidence heard in answer.',
     });
   }
 

@@ -4,8 +4,6 @@ import { useDocumentTitle } from '../lib/useDocumentTitle';
 import {
   BaseSpeechEngine,
   BrowserSpeechEngine,
-  MoonshineEngine,
-  SherpaOnnxEngine,
   MoonshineSingleThreadEngine,
   type EngineMetrics,
   detectBrowser,
@@ -33,7 +31,7 @@ export const FIXED_READING_PARAGRAPH = FIXED_READING_PARAGRAPHS[0].text;
 const FREE_ANSWER_PROMPT =
   'What is a foundation model, and how is it different from a regular ML model?';
 
-type EngineId = 'browser' | 'moonshine' | 'sherpa' | 'moonshine-single';
+type EngineId = 'browser' | 'moonshine-single';
 
 export default function SpeechTestPage() {
   useDocumentTitle('Live Speech & End-of-Answer Test Lab');
@@ -77,16 +75,12 @@ export default function SpeechTestPage() {
   // Speech engines instances (lazy initialized)
   const enginesRef = useRef<Record<EngineId, BaseSpeechEngine>>({
     browser: new BrowserSpeechEngine(),
-    moonshine: new MoonshineEngine(),
     'moonshine-single': new MoonshineSingleThreadEngine(),
-    sherpa: new SherpaOnnxEngine(),
   });
 
   const [metrics, setMetrics] = useState<Record<EngineId, EngineMetrics>>({
     browser: enginesRef.current.browser.getMetrics(),
-    moonshine: enginesRef.current.moonshine.getMetrics(),
     'moonshine-single': enginesRef.current['moonshine-single'].getMetrics(),
-    sherpa: enginesRef.current.sherpa.getMetrics(),
   });
 
   const pipelineRef = useRef<AudioVADPipeline | null>(null);
@@ -390,7 +384,7 @@ export default function SpeechTestPage() {
             <span style={{ fontSize: '0.8rem', color: 'var(--nm-text-muted)' }}>Models load only when selected</span>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.75rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.75rem' }}>
             {/* Option 1 */}
             <button
               type="button"
@@ -413,51 +407,7 @@ export default function SpeechTestPage() {
               </p>
             </button>
 
-            {/* Option 2 */}
-            <button
-              type="button"
-              onClick={() => handleSelectEngine('moonshine')}
-              style={{
-                textAlign: 'left',
-                padding: '0.75rem 0.9rem',
-                borderRadius: '6px',
-                border: selectedEngineId === 'moonshine' ? '2px solid var(--nm-accent-primary)' : '1px solid var(--nm-border)',
-                backgroundColor: selectedEngineId === 'moonshine' ? 'var(--nm-surface-alt)' : 'var(--nm-bg)',
-                cursor: 'pointer',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-                <strong style={{ fontSize: '0.95rem' }}>2. Moonshine Tiny</strong>
-                <span style={{ fontSize: '0.7rem', color: 'var(--nm-accent-primary)', fontWeight: 600 }}>~64 MB WASM</span>
-              </div>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--nm-text-secondary)' }}>
-                Official Useful Sensors / moonshine-ai streaming tiny on device via WebAssembly.
-              </p>
-            </button>
-
-            {/* Option 3 */}
-            <button
-              type="button"
-              onClick={() => handleSelectEngine('sherpa')}
-              style={{
-                textAlign: 'left',
-                padding: '0.75rem 0.9rem',
-                borderRadius: '6px',
-                border: selectedEngineId === 'sherpa' ? '2px solid var(--nm-accent-warn)' : '1px solid var(--nm-border)',
-                backgroundColor: selectedEngineId === 'sherpa' ? 'var(--nm-surface-alt)' : 'var(--nm-bg)',
-                cursor: 'pointer',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-                <strong style={{ fontSize: '0.95rem' }}>3. sherpa-onnx</strong>
-                <span style={{ fontSize: '0.7rem', color: 'var(--nm-accent-warn)', fontWeight: 600 }}>~84 MB WASM</span>
-              </div>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--nm-text-secondary)' }}>
-                k2-fsa WebAssembly streaming English model (Zipformer GigaSpeech / 20M).
-              </p>
-            </button>
-
-            {/* Option 4 */}
+            {/* Option 2: Moonshine Tiny Single-Threaded */}
             <button
               type="button"
               onClick={() => handleSelectEngine('moonshine-single')}
@@ -471,8 +421,8 @@ export default function SpeechTestPage() {
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-                <strong style={{ fontSize: '0.95rem' }}>4. Moonshine Tiny (Single-Threaded)</strong>
-                <span style={{ fontSize: '0.7rem', color: 'var(--nm-accent-success)', fontWeight: 600 }}>~28 MB · No COOP/COEP</span>
+                <strong style={{ fontSize: '0.95rem' }}>2. Moonshine Tiny (Single-Threaded)</strong>
+                <span style={{ fontSize: '0.7rem', color: 'var(--nm-accent-success)', fontWeight: 600 }}>~28 MB · Zero COOP/COEP</span>
               </div>
               <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--nm-text-secondary)' }}>
                 Web Worker single-threaded ONNX Web. Growing audio windows, live partial words & stable settled prefix.
@@ -489,8 +439,7 @@ export default function SpeechTestPage() {
               </span>
             ) : (
               <span>
-                <strong>Privacy guarantee:</strong> Option {selectedEngineId === 'moonshine' ? '2 (Moonshine)' : selectedEngineId === 'moonshine-single' ? '4 (Moonshine Single-Threaded)' : '3 (sherpa-onnx)'}{' '}
-                runs 100% on device. Zero audio or transcript leaves your browser.
+                <strong>Privacy guarantee:</strong> Option 2 (Moonshine Single-Threaded) runs 100% on device. Zero audio or transcript leaves your browser.
               </span>
             )}
           </div>

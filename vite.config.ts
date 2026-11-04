@@ -1,6 +1,4 @@
 import { defineConfig } from 'vite'
-import fs from 'node:fs'
-import path from 'node:path'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import mdx from '@mdx-js/rollup'
@@ -51,25 +49,6 @@ export default defineConfig({
     // text directly (its frontmatter block especially) fails to parse.
     react(),
     tailwindcss(),
-    {
-      name: 'exclude-sherpa-large-assets-from-build',
-      closeBundle() {
-        // Do not ship 83 MB of heavy sherpa wasm/data in public static deploys
-        const distSherpa = path.resolve(__dirname, 'dist', 'sherpa-onnx');
-        if (fs.existsSync(distSherpa)) {
-          const files = fs.readdirSync(distSherpa);
-          for (const file of files) {
-            if (file.endsWith('.data') || file.endsWith('.wasm')) {
-              try {
-                fs.unlinkSync(path.join(distSherpa, file));
-              } catch {
-                // Ignore
-              }
-            }
-          }
-        }
-      },
-    },
   ],
   resolve: {
     alias: {
