@@ -5,6 +5,9 @@ import {
   BaseSpeechEngine,
   BrowserSpeechEngine,
   MoonshineSingleThreadEngine,
+  MoonshineBaseEngine,
+  WhisperTinyEngine,
+  WhisperBaseEngine,
   type EngineMetrics,
   detectBrowser,
   getJSHeapMB,
@@ -31,7 +34,7 @@ export const FIXED_READING_PARAGRAPH = FIXED_READING_PARAGRAPHS[0].text;
 const FREE_ANSWER_PROMPT =
   'What is a foundation model, and how is it different from a regular ML model?';
 
-type EngineId = 'browser' | 'moonshine-single';
+type EngineId = 'browser' | 'moonshine-single' | 'moonshine-base' | 'whisper-tiny' | 'whisper-base';
 
 export default function SpeechTestPage() {
   useDocumentTitle('Live Speech & End-of-Answer Test Lab');
@@ -76,11 +79,17 @@ export default function SpeechTestPage() {
   const enginesRef = useRef<Record<EngineId, BaseSpeechEngine>>({
     browser: new BrowserSpeechEngine(),
     'moonshine-single': new MoonshineSingleThreadEngine(),
+    'moonshine-base': new MoonshineBaseEngine(),
+    'whisper-tiny': new WhisperTinyEngine(),
+    'whisper-base': new WhisperBaseEngine(),
   });
 
   const [metrics, setMetrics] = useState<Record<EngineId, EngineMetrics>>({
     browser: enginesRef.current.browser.getMetrics(),
     'moonshine-single': enginesRef.current['moonshine-single'].getMetrics(),
+    'moonshine-base': enginesRef.current['moonshine-base'].getMetrics(),
+    'whisper-tiny': enginesRef.current['whisper-tiny'].getMetrics(),
+    'whisper-base': enginesRef.current['whisper-base'].getMetrics(),
   });
 
   const pipelineRef = useRef<AudioVADPipeline | null>(null);
@@ -421,11 +430,77 @@ export default function SpeechTestPage() {
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-                <strong style={{ fontSize: '0.95rem' }}>2. Moonshine Tiny (Single-Threaded)</strong>
+                <strong style={{ fontSize: '0.95rem' }}>2. Moonshine Tiny</strong>
                 <span style={{ fontSize: '0.7rem', color: 'var(--nm-accent-success)', fontWeight: 600 }}>~28 MB · Zero COOP/COEP</span>
               </div>
               <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--nm-text-secondary)' }}>
-                Web Worker single-threaded ONNX Web. Growing audio windows, live partial words & stable settled prefix.
+                Fast default for live words on constrained CPU (0.06x RTF). Single-threaded WASM.
+              </p>
+            </button>
+
+            {/* Option 3: Moonshine Base */}
+            <button
+              type="button"
+              onClick={() => handleSelectEngine('moonshine-base')}
+              style={{
+                textAlign: 'left',
+                padding: '0.75rem 0.9rem',
+                borderRadius: '6px',
+                border: selectedEngineId === 'moonshine-base' ? '2px solid var(--nm-accent-primary)' : '1px solid var(--nm-border)',
+                backgroundColor: selectedEngineId === 'moonshine-base' ? 'var(--nm-surface-alt)' : 'var(--nm-bg)',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                <strong style={{ fontSize: '0.95rem' }}>3. Moonshine Base</strong>
+                <span style={{ fontSize: '0.7rem', color: 'var(--nm-accent-primary)', fontWeight: 600 }}>~62 MB · High Accuracy</span>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--nm-text-secondary)' }}>
+                Higher capacity Moonshine model with 2.9% average WER and 90.9% technical term accuracy.
+              </p>
+            </button>
+
+            {/* Option 4: Whisper Tiny.en */}
+            <button
+              type="button"
+              onClick={() => handleSelectEngine('whisper-tiny')}
+              style={{
+                textAlign: 'left',
+                padding: '0.75rem 0.9rem',
+                borderRadius: '6px',
+                border: selectedEngineId === 'whisper-tiny' ? '2px solid var(--nm-accent-secondary)' : '1px solid var(--nm-border)',
+                backgroundColor: selectedEngineId === 'whisper-tiny' ? 'var(--nm-surface-alt)' : 'var(--nm-bg)',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                <strong style={{ fontSize: '0.95rem' }}>4. Whisper Tiny.en</strong>
+                <span style={{ fontSize: '0.7rem', color: 'var(--nm-accent-secondary)', fontWeight: 600 }}>~40 MB · OpenAI</span>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--nm-text-secondary)' }}>
+                OpenAI Whisper Tiny inside live segment pipeline with phrase commits.
+              </p>
+            </button>
+
+            {/* Option 5: Whisper Base.en */}
+            <button
+              type="button"
+              onClick={() => handleSelectEngine('whisper-base')}
+              style={{
+                textAlign: 'left',
+                padding: '0.75rem 0.9rem',
+                borderRadius: '6px',
+                border: selectedEngineId === 'whisper-base' ? '2px solid var(--nm-accent-primary)' : '1px solid var(--nm-border)',
+                backgroundColor: selectedEngineId === 'whisper-base' ? 'var(--nm-surface-alt)' : 'var(--nm-bg)',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                <strong style={{ fontSize: '0.95rem' }}>5. Whisper Base.en</strong>
+                <span style={{ fontSize: '0.7rem', color: 'var(--nm-accent-primary)', fontWeight: 600 }}>~77 MB · Better Accuracy</span>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--nm-text-secondary)' }}>
+                Best term accuracy for technical domains (0% WER on clean speech).
               </p>
             </button>
           </div>
@@ -439,7 +514,7 @@ export default function SpeechTestPage() {
               </span>
             ) : (
               <span>
-                <strong>Privacy guarantee:</strong> Option 2 (Moonshine Single-Threaded) runs 100% on device. Zero audio or transcript leaves your browser.
+                <strong>Privacy guarantee:</strong> Options 2-5 run 100% on device via WebAssembly/WebGPU. Zero audio or transcript leaves your browser.
               </span>
             )}
           </div>
@@ -778,8 +853,8 @@ export default function SpeechTestPage() {
             </div>
           )}
 
-          {/* Update Interval & Word Revisions (Option 4 / Single-Threaded) */}
-          {selectedEngineId === 'moonshine-single' && (
+          {/* Update Interval & Word Revisions (On-device engines) */}
+          {selectedEngineId !== 'browser' && (
             <>
               <div data-testid="metric-update-interval" style={{ backgroundColor: 'var(--nm-surface)', border: '1px solid var(--nm-border)', borderRadius: '6px', padding: '0.75rem' }}>
                 <span style={{ fontSize: '0.75rem', color: 'var(--nm-text-muted)', display: 'block' }}>Update Interval</span>
@@ -874,8 +949,8 @@ export default function SpeechTestPage() {
             </div>
           )}
 
-          {/* Batch Pass Comparison (Option 4) */}
-          {selectedEngineId === 'moonshine-single' && currentMetrics.batchTranscript && (
+          {/* Batch Pass Comparison */}
+          {selectedEngineId !== 'browser' && currentMetrics.batchTranscript && (
             <div
               data-testid="batch-comparison-box"
               style={{

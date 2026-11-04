@@ -1,7 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { computeWER, normalizeText } from './wer';
 import { PauseTracker } from './pauseTracker';
-import { MoonshineSingleThreadEngine, alignAndAppendPhrases, normalizeASRText, trimAudioSilence } from './engines';
+import {
+  MoonshineSingleThreadEngine,
+  MoonshineBaseEngine,
+  WhisperTinyEngine,
+  WhisperBaseEngine,
+  alignAndAppendPhrases,
+  normalizeASRText,
+  trimAudioSilence,
+} from './engines';
 
 describe('Word Error Rate (WER)', () => {
   it('normalizes punctuation, case, and whitespace', () => {
@@ -209,6 +217,30 @@ describe('MoonshineSingleThreadEngine', () => {
     expect(metrics.timeToFirstWordMs).toBeNull();
     expect(metrics.earlierWordRevisions).toBe(0);
     expect(metrics.updateIntervalMs).toBeNull();
+  });
+
+  it('configures MoonshineBaseEngine with 62MB size and correct model id', () => {
+    const engine = new MoonshineBaseEngine();
+    const metrics = engine.getMetrics();
+    expect(engine.id).toBe('moonshine-base');
+    expect(engine.modelId).toBe('onnx-community/moonshine-base-ONNX');
+    expect(metrics.downloadBytes).toBe(62000000);
+  });
+
+  it('configures WhisperTinyEngine with 40MB size and correct model id', () => {
+    const engine = new WhisperTinyEngine();
+    const metrics = engine.getMetrics();
+    expect(engine.id).toBe('whisper-tiny');
+    expect(engine.modelId).toBe('onnx-community/whisper-tiny.en');
+    expect(metrics.downloadBytes).toBe(39800000);
+  });
+
+  it('configures WhisperBaseEngine with 77MB size and correct model id', () => {
+    const engine = new WhisperBaseEngine();
+    const metrics = engine.getMetrics();
+    expect(engine.id).toBe('whisper-base');
+    expect(engine.modelId).toBe('onnx-community/whisper-base.en');
+    expect(metrics.downloadBytes).toBe(77000000);
   });
 });
 

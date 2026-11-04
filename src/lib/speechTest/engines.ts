@@ -368,9 +368,23 @@ export function trimAudioSilence(
  * - Retains all audio in a session buffer to verify whether final text equals
  *   a batch pass over the same audio.
  */
-export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
-  readonly id = 'moonshine-single';
-  readonly name = 'Moonshine Tiny, single-threaded (ORT Web / transformers.js)';
+export interface SingleThreadASROptions {
+  id?: string;
+  name?: string;
+  modelId?: string;
+  device?: 'wasm' | 'webgpu';
+  dtype?: string;
+  downloadBytes?: number;
+}
+
+export class SingleThreadASREngine extends BaseSpeechEngine {
+  readonly id: string;
+  readonly name: string;
+  readonly modelId: string;
+  readonly device: 'wasm' | 'webgpu';
+  readonly dtype: string;
+  readonly expectedDownloadBytes: number;
+
   private worker: Worker | null = null;
   private audioContext: AudioContext | null = null;
   private processorNode: ScriptProcessorNode | null = null;
@@ -400,18 +414,26 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
   private updateIntervals: number[] = [];
   private earlierWordRevisions = 0;
 
-  constructor() {
+  constructor(options: SingleThreadASROptions = {}) {
     super();
-    this.metrics.device = 'WASM (Single-Threaded, No COOP/COEP needed)';
-    this.metrics.downloadBytes = 28180947; // 28.18 MB total (7.9 MB encoder + 20.2 MB decoder)
+    this.id = options.id || 'moonshine-single';
+    this.name = options.name || 'Moonshine Tiny, single-threaded (ORT Web / transformers.js)';
+    this.modelId = options.modelId || 'onnx-community/moonshine-tiny-ONNX';
+    this.device = options.device || 'wasm';
+    this.dtype = options.dtype || 'q8';
+    this.expectedDownloadBytes = options.downloadBytes || 28180947;
+
+    this.metrics.device =
+      this.device === 'webgpu'
+        ? 'WebGPU (Single-Threaded Worker, No COOP/COEP needed)'
+        : 'WASM (Single-Threaded, No COOP/COEP needed)';
+    this.metrics.downloadBytes = this.expectedDownloadBytes;
     this.metrics.earlierWordRevisions = 0;
     this.metrics.revisionsPerWord = 0;
   }
 
   public override onSpeechActivity(isSpeaking: boolean, timestamp?: number): void {
     super.onSpeechActivity(isSpeaking, timestamp);
-    // Voice activity detection state is tracked; onaudioprocess coordinates
-    // silence pause commits (~750ms-1s silence) without premature micro-pause cutting.
   }
 
   public async load(): Promise<void> {
@@ -434,14 +456,14 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
             const pct = total ? Math.min(100, Math.round((loaded / total) * 100)) : 50;
             this.updateMetrics({
               downloadProgressPct: pct,
-              downloadBytes: total ? loaded : Math.round(28180947 * (pct / 100)),
+              downloadBytes: total ? loaded : Math.round(this.expectedDownloadBytes * (pct / 100)),
             });
           } else if (type === 'init_done') {
             const finalLoadTime = loadTimeMs || Math.round(performance.now() - startTime);
             this.updateMetrics({
               status: 'ready',
               downloadProgressPct: 100,
-              downloadBytes: 28180947,
+              downloadBytes: this.expectedDownloadBytes,
               loadTimeMs: finalLoadTime,
               errorMessage: null,
             });
@@ -459,7 +481,15 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
           reject(new Error(msg));
         };
 
-        this.worker.postMessage({ id: 'init', op: 'init' });
+        this.worker.postMessage({
+          id: 'init',
+          op: 'init',
+          payload: {
+            modelId: this.modelId,
+            device: this.device,
+            dtype: this.dtype,
+          },
+        });
       } catch (err) {
         const msg = (err as Error).message;
         this.updateMetrics({ status: 'error', errorMessage: msg });
@@ -887,5 +917,64 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
       this.worker = null;
     }
     this.listeners.clear();
+  }
+}
+
+/**
+ * Pre-configured Single-Threaded Engines:
+ * 1. Moonshine Tiny (Default, 28 MB)
+ * 2. Moonshine Base (62 MB)
+ * 3. Whisper Tiny.en (40 MB)
+ * 4. Whisper Base.en (77 MB)
+ */
+export class MoonshineSingleThreadEngine extends SingleThreadASREngine {
+  constructor(device: 'wasm' | 'webgpu' = 'wasm') {
+    super({
+      id: 'moonshine-single',
+      name: 'Moonshine Tiny, single-threaded (ORT Web / transformers.js)',
+      modelId: 'onnx-community/moonshine-tiny-ONNX',
+      device,
+      dtype: 'q8',
+      downloadBytes: 28180947,
+    });
+  }
+}
+
+export class MoonshineBaseEngine extends SingleThreadASREngine {
+  constructor(device: 'wasm' | 'webgpu' = 'wasm') {
+    super({
+      id: 'moonshine-base',
+      name: 'Moonshine Base, single-threaded (ORT Web / transformers.js)',
+      modelId: 'onnx-community/moonshine-base-ONNX',
+      device,
+      dtype: 'q8',
+      downloadBytes: 62000000,
+    });
+  }
+}
+
+export class WhisperTinyEngine extends SingleThreadASREngine {
+  constructor(device: 'wasm' | 'webgpu' = 'wasm') {
+    super({
+      id: 'whisper-tiny',
+      name: 'Whisper Tiny.en, single-threaded (ORT Web / transformers.js)',
+      modelId: 'onnx-community/whisper-tiny.en',
+      device,
+      dtype: 'q8',
+      downloadBytes: 39800000,
+    });
+  }
+}
+
+export class WhisperBaseEngine extends SingleThreadASREngine {
+  constructor(device: 'wasm' | 'webgpu' = 'wasm') {
+    super({
+      id: 'whisper-base',
+      name: 'Whisper Base.en, single-threaded (ORT Web / transformers.js)',
+      modelId: 'onnx-community/whisper-base.en',
+      device,
+      dtype: 'q8',
+      downloadBytes: 77000000,
+    });
   }
 }
