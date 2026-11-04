@@ -22,3 +22,7 @@ Done means: unit tests for the dialogue logic and term correction; Playwright ru
 The user has shown docs/interview-room-reference.html to clients, who liked it. The live room must match it: same screens in the same order, same layout, type, colours in both themes, copy, live-transcript treatment, "Repeat the question as text", "Skip ahead", and debrief structure (call, Practise this next with Answer it again, rows with pills and quotes, marked answer, Start over). Port its CSS scoped to this route, and load its fonts only here. Remove the "Mock-up" footnote. Compare screenshots of each screen side by side at 1440 and 375, in light and dark, and commit them.
 
 Differences allowed only where the mock-up would mislead: the footnote becomes a short honest note that this is an automated estimate and speech can be misheard. Track, level and length controls: show only options with real content; report any that cannot be offered yet rather than showing dead ones. Debrief text comes from pre-written rubrics with the learner's own quotes, never invented.
+
+## Release rule
+The user wants this released soon and improved afterwards. Build one complete, working flow; do not gold-plate. Add a small "Was this useful?" yes/no on the debrief, stored in localStorage only; no answer text goes anywhere. Use the live speech pipeline already in src/lib/speechTest (segment commit, 0 revisions, 3.4% WER on the clip).
+Do not leave long commands unattended: wrap any test run in a timeout and never wait on a task beyond 5 minutes.
