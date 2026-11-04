@@ -42,9 +42,13 @@ export default function VisualizationContainer({
         boxShadow: t.mode === 'dark' ? '0 8px 24px rgba(0, 0, 0, 0.35)' : '0 8px 24px rgba(20, 22, 26, 0.08)',
         fontFamily: FONT_FAMILY,
         color: t.textPrimary,
+        maxWidth: '100%',
+        boxSizing: 'border-box',
       }}
     >
-      {children}
+      <div className="nm-viz-content" style={{ overflowX: 'auto', maxWidth: '100%', WebkitOverflowScrolling: 'touch' }}>
+        {children}
+      </div>
       {footer && (
         <div
           id={footerId}

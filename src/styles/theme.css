@@ -212,6 +212,7 @@ body {
    images but left text stuck at 760px. That asymmetry is the bug.) */
 .prose {
   max-width: 100%;
+  overflow-wrap: break-word;
   /* Bumped from 1.7/16px -- handwriting-style faces need more room per
      line and a slightly larger base size to stay as legible as a
      purpose-built serif did at the old values, same reasoning as the
@@ -251,7 +252,7 @@ body {
 .prose > img { display: block; }
 .prose del { color: var(--nm-text-muted); }
 .prose blockquote { margin: 0 0 1rem; padding: 0.25rem 1rem; border-left: 3px solid var(--nm-border); color: var(--nm-text-secondary); }
-.prose code { font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 0.88em; background: var(--nm-surface-alt); padding: 0.15em 0.4em; border-radius: 4px; }
+.prose code { font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 0.88em; background: var(--nm-surface-alt); padding: 0.15em 0.4em; border-radius: 4px; overflow-wrap: break-word; word-break: break-word; }
 
 /* Pagefind's search-result excerpts wrap matched terms in <mark> -- style
    to read as a highlight, not the browser default yellow-on-black block. */
@@ -312,20 +313,24 @@ html, body {
   background: var(--nm-bg);
   color: var(--nm-text-primary);
 }
-.prose pre code { background: none; padding: 0; } /* fenced code blocks style the <pre>, not each inline <code> inside it */
+.prose pre code { background: none; padding: 0; overflow-wrap: normal; word-break: normal; white-space: pre; } /* fenced code blocks style the <pre>, not each inline <code> inside it */
 /* Long code lines (a long import statement, a chained call) can render wider
    than the viewport on mobile -- scroll the block horizontally instead of
    blowing out the page's layout width, same fix already applied to KaTeX
    display math below. */
-.prose pre {
+.prose pre,
+pre.shiki,
+.shiki {
   overflow-x: auto;
+  max-width: 100%;
 }
 /* A wide table (several columns of real content, e.g. a 4-way
    architecture comparison) can render wider than the viewport on mobile,
    same problem as long code lines above -- display:block turns the table
    itself into a horizontally-scrollable region instead of blowing out
    the page's layout width, without needing a wrapper element in the MDX. */
-.prose > table { display: block; overflow-x: auto; border-collapse: collapse; margin: 0 0 1.5rem; font-size: 14px; }
+.prose table,
+.prose > table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 0 0 1.5rem; font-size: 14px; }
 .prose th, .prose td { border: 1px solid var(--nm-border); padding: 0.5rem 0.85rem; text-align: left; vertical-align: top; }
 .prose th { background: var(--nm-surface); font-weight: 700; color: var(--nm-text-primary); }
 .prose td { color: var(--nm-text-secondary); }
@@ -831,7 +836,7 @@ html, body {
 
 /* Fenced code blocks in prose (MDXCodeBlock.tsx): space below as well as
    above, so the next paragraph doesn't sit on the block's bottom edge. */
-.nm-prose-code { margin: 0.75rem 0 1.25rem; }
+.nm-prose-code { margin: 0.75rem 0 1.25rem; max-width: 100%; overflow-x: auto; }
 
 /* Brand mark (BrandMark.tsx): a hairline edge in dark mode, where the dark
    tile would otherwise disappear into the dark navbar. */

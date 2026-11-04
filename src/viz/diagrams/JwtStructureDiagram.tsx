@@ -35,7 +35,7 @@ export default function JwtStructureDiagram() {
           </span>
         ))}
       </div>
-      <div style={{ marginTop: 10, padding: '0.6rem 0.8rem', borderRadius: 7, background: `${colorFor(active)}12`, border: `1px solid ${colorFor(active)}40`, fontFamily: 'monospace', fontSize: 11, color: t.textSecondary }}>
+      <div style={{ marginTop: 10, padding: '0.6rem 0.8rem', borderRadius: 7, background: `${colorFor(active)}12`, border: `1px solid ${colorFor(active)}40`, fontFamily: 'monospace', fontSize: 11, color: t.textSecondary, overflowX: 'auto', maxWidth: '100%' }}>
         {PARTS[active].text}
       </div>
       <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color: t.textMuted, marginTop: 8 }}>
