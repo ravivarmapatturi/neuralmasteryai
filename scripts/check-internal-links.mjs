@@ -41,7 +41,7 @@ const BLOG_FILES = walk(join(import.meta.dirname, '..', 'src', 'content', 'blog'
 // shape is checked against what the app will ACTUALLY render at, not just
 // "does a file exist at this literal path".
 const PRACTICE_SLUGS = JSON.parse(readFileSync(new URL('../src/data/practiceSlugs.generated.json', import.meta.url), 'utf8'));
-const validRoutes = new Set(['/practice', '/labs', '/atlas', '/glossary', '/interview', '/interview/room', '/blog']);
+const validRoutes = new Set(['/practice', '/labs', '/atlas', '/glossary', '/interview', '/interview/questions', '/blog']);
 const GLOSSARY_SRC = readFileSync(new URL('../src/data/glossary.ts', import.meta.url), 'utf8');
 for (const [, slug] of GLOSSARY_SRC.matchAll(/^  t\('([a-z0-9-]+)'/gm)) validRoutes.add(`/glossary/${slug}`);
 // Blog posts: /blog/<slug> for every src/content/blog/<slug>.mdx.

@@ -13,8 +13,7 @@ import ChooserPage from './components/ChooserPage';
 import Home from './components/Home';
 import PracticeListPage from './components/PracticeListPage';
 const InterviewPage = lazy(() => import('./components/InterviewPage')); // Load question banks only when opened.
-const MockInterviewPage = lazy(() => import('./components/interview/MockInterviewPage')); // Speech models load only when a session starts.
-const InterviewRoomPage = lazy(() => import('./components/interview/InterviewRoomPage')); // Spoken room with on-device speech & evaluation.
+const SimpleInterviewPage = lazy(() => import('./components/interview/SimpleInterviewPage')); // Spoken room with on-device speech & evaluation.
 const SpeechTestPage = lazy(() => import('./components/SpeechTestPage'));
 const VoiceTestPage = lazy(() => import('./components/VoiceTestPage'));
 import PracticeTrackPage from './components/PracticeTrackPage';
@@ -90,9 +89,10 @@ export default function App() {
                           <Route path="/lab/voice-test" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading voice test lab…</p>}><VoiceTestPage /></Suspense>} />
                         </>
                       )}
-                      <Route path="/interview" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading interview questions…</p>}><InterviewPage /></Suspense>} />
-                      <Route path="/interview/room" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading interview room…</p>}><InterviewRoomPage /></Suspense>} />
-                      <Route path="/interview/mock" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading mock interview…</p>}><MockInterviewPage /></Suspense>} />
+                      <Route path="/interview" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading interview practice…</p>}><SimpleInterviewPage /></Suspense>} />
+                      <Route path="/interview/questions" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading interview questions…</p>}><InterviewPage /></Suspense>} />
+                      <Route path="/interview/room" element={<Navigate to="/interview" replace />} />
+                      <Route path="/interview/mock" element={<Navigate to="/interview" replace />} />
                       <Route path="/practice" element={<Navigate to="/labs" replace />} />
                       <Route path="/practice/track/:topicSlug" element={<PracticeTrackPage />} />
                       <Route path="/practice/:slug" element={<PracticeProblemLayout />} />

@@ -107,7 +107,7 @@ function routesFromContentTree() {
 // on the live site (real HTTP 404 status, confirmed via a real website
 // audit 2026-10-07), the identical bug this list exists to prevent.
 const GLOSSARY_SLUGS = [...readFileSync(join(ROOT, 'src', 'data', 'glossary.ts'), 'utf8').matchAll(/^  t\('([a-z0-9-]+)'/gm)].map((match) => match[1]);
-const APP_ROUTES = ['/', '/learn', '/progress', '/labs', '/atlas', '/glossary', ...GLOSSARY_SLUGS.map((slug) => `/glossary/${slug}`), '/interview', '/interview/room', '/practice', '/profile', '/leaderboard', '/about', '/privacy', '/terms'];
+const APP_ROUTES = ['/', '/learn', '/progress', '/labs', '/atlas', '/glossary', ...GLOSSARY_SLUGS.map((slug) => `/glossary/${slug}`), '/interview', '/interview/questions', '/practice', '/profile', '/leaderboard', '/about', '/privacy', '/terms'];
 // The blog list and every post (src/data/blogMeta.generated.json).
 const BLOG_ROUTES = ['/blog', '/blog/write', ...JSON.parse(readFileSync(join(ROOT, 'src', 'data', 'blogMeta.generated.json'), 'utf8')).map((p) => `/blog/${p.slug}`)];
 

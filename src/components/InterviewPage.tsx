@@ -126,7 +126,7 @@ export default function InterviewPage() {
   return <div className="nb-theme" style={{ minHeight: '100vh' }}><Navbar /><main className="nm-interview-shell">
     <p className="nb-eyebrow">INTERVIEW / THINK IT THROUGH</p><h1 className="nb-heading">Explain the choices behind your solution.</h1>
     <p className="nm-interview-lead">{bankQuestions.length} questions from our existing Interview Prep banks, plus {guidedQuestions.length} guided scenarios. Choose a topic, answer out loud or in writing, and compare with the worked explanation.</p>
-    <Link to="/interview/room" className="nm-mock-cta"><strong>Practise the real thing · Enter the Interview Room →</strong><span>The interviewer asks out loud. You answer out loud. Get an instant debrief with rubrics and quotes, running privately in your browser.</span></Link>
+    <Link to="/interview" className="nm-mock-cta"><strong>Practise the real thing · Start speaking practice →</strong><span>The interviewer asks out loud. You answer out loud. Get an instant debrief with rubrics and quotes, running privately in your browser.</span></Link>
     <details className="nm-interview-guides"><summary>Preparation library · {interviewGuides.length} guides</summary><div>{interviewGuides.map(guide => <Link key={guide.slug} to={guide.route}><strong>{guide.title.replace(/ — The Full Bank$/, '')}</strong><span>{guide.description}</span></Link>)}</div></details>
     <div className="nm-interview-layout"><aside aria-label="Interview questions">
       <button type="button" className="nm-button nm-interview-surprise" onClick={() => select(Math.floor(Math.random() * questions.length))}>Surprise me with a question</button>
