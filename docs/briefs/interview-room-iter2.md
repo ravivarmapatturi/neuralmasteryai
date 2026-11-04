@@ -9,3 +9,11 @@ Version 1 is going live. Improve in this order, one commit each:
 4. Real-speech verify on 2 more questions with spoken WAVs, WER under 25%. Same gates: typecheck, links, vitest, build, 375px.
 
 Commit and paste real debrief text. Do not claim anything you did not run.
+
+## Added after this brief (same branch, separate commits, after items 1-4)
+5. Pre-recorded interviewer audio: ../../interview-voice-audio with a manifest from the voice task, once it exists. Serve as static files, lazy-loaded per clip, and use them in place of browser speech. Browser voice is only a last-resort fallback. The user called the browser voice "like a ghost". Follow-ups must be the fixed recorded text; do not speak dynamic quotes.
+6. Quality setting on the setup screen, same design: Fast (default), Better accuracy, Best feedback, with real download sizes. Device check using navigator.gpu and deviceMemory recommends one, warns before large downloads, and drops down a level on failure. Only ship an option once measured better: Better accuracy needs a real WER comparison against Moonshine on your speech WAVs; Best feedback is hidden until the LLM test below passes.
+7. Borrow from activated-intelligence/voice-chat (MIT, keep attribution): Silero VAD end-of-speech and live waveform on the listening screen, hands-free call feel. Read its code first; no new default downloads above 5 MB.
+8. Fix: /interview/room returns HTTP 404 status from static hosting; prerender it so the status is 200 and it's in the sitemap. Remove /lab/ routes from production build.
+9. LLM debrief test, offline only, no UI: run a Qwen 1.5B class model (use the repo's WebLLM model) in headless Chrome if WebGPU allows, or via CPU GGUF with the same model otherwise, on 40 rows from ../../vaayuedge-model/docs/evidence/interview-judge/gold.jsonl plus the foundation-model next-token answer, using a rubric-grounded JSON prompt. Report agreement with labels against the current judge, invented claims count, latency, RAM. State a recommendation. Say if the machine could not run it.
+Check free -g before anything heavy; one heavy job at a time.
