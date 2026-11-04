@@ -27,8 +27,10 @@ test.describe('Interview Room (/interview/room)', () => {
 
     await page.goto(`http://localhost:${PORT}/interview`, { waitUntil: 'domcontentloaded' });
     await expect(page.locator('h1')).toHaveText('Practise out loud.');
-    await expect(page.locator('.si-topic')).toHaveCount(6);
+    await expect(page.locator('.si-topic')).toHaveCount(11);
     await page.click('.si-topic:has-text("RAG and retrieval")');
+    await expect(page.locator('.si-list li')).toHaveCount(4);
+    await page.click('#start-topic');
     await expect(page.locator('.si-progress')).toContainText('Question 1 of 4');
 
     await page.click('button:has-text("Skip to answering")');

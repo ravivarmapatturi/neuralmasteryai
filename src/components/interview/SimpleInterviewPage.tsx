@@ -5,17 +5,56 @@ import { interviewRoomQuestions } from '../../lib/interviewRoom/questions';
 import { correctInterviewTerms } from '../../lib/interviewRoom/dialogue';
 import { createASREngineForQuality } from '../../lib/interviewRoom/qualitySettings';
 import type { SingleThreadASREngine } from '../../lib/speechTest/engines';
+import { bankQuestions } from '../../data/interviewCatalog';
 import modelAnswers from '../../data/interviewModelAnswers.json';
 import './interviewRoom.css';
 import './simpleInterview.css';
 
-type Step = 'topics' | 'asking' | 'answering' | 'finishing' | 'answer' | 'done';
+type Step = 'topics' | 'list' | 'asking' | 'answering' | 'finishing' | 'answer' | 'done';
 
-const topics = modelAnswers.topics;
-const answers = modelAnswers.answers as Record<string, string>;
+interface PracticeQuestion {
+  id: string;
+  title: string;
+  answer: string;
+  options?: string[];
+}
+
+function tidyAnswer(text: string) {
+  return text
+    .split('**Follow-ups')[0]
+    .replace(/See \[[^\]]*\]\([^)]*\)\.?/g, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\*\*|`/g, '')
+    .trim();
+}
+
+const curatedAnswers = modelAnswers.answers as Record<string, string>;
+const topics: { id: string; title: string; questions: PracticeQuestion[] }[] = [
+  ...modelAnswers.topics.map((t) => ({
+    id: t.id,
+    title: t.title,
+    questions: t.questions.map((id) => ({
+      id,
+      title: interviewRoomQuestions.find((q) => q.id === id)?.title ?? '',
+      answer: curatedAnswers[id],
+    })),
+  })),
+  ...[...new Set(bankQuestions.map((q) => q.area))].map((area) => ({
+    id: area,
+    title: `${area} question bank`,
+    questions: bankQuestions
+      .filter((q) => q.area === area)
+      .map((q) => ({
+        id: q.id,
+        title: q.title,
+        answer: tidyAnswer(q.answer),
+        options: q.options?.map((o) => o.text),
+      })),
+  })),
+];
 
 function clipUrl(name: string) {
-  return `/audio/interview-voice/${name}.opus`;
+  return `/audio/interview-voice/${name.replace(':', '__')}.opus`;
 }
 
 function looksLikePhone() {
@@ -42,8 +81,8 @@ export default function SimpleInterviewPage() {
   const enginePromiseRef = useRef<Promise<void> | null>(null);
 
   const topic = topics[topicIndex];
-  const questionId = topic.questions[questionIndex];
-  const question = interviewRoomQuestions.find((q) => q.id === questionId);
+  const question = topic.questions[questionIndex];
+  const questionId = question.id;
 
   const stopAudio = useCallback(() => {
     if (audioRef.current) {
@@ -146,8 +185,12 @@ export default function SimpleInterviewPage() {
   const beginTopic = (index: number) => {
     void prepareEngine().catch(() => undefined);
     setTopicIndex(index);
-    setQuestionIndex(0);
-    ask(topics[index].questions[0]);
+    setStep('list');
+  };
+
+  const startQuestion = (index: number) => {
+    setQuestionIndex(index);
+    ask(topic.questions[index].id);
   };
 
   const finishAnswer = async () => {
@@ -177,7 +220,7 @@ export default function SimpleInterviewPage() {
       return;
     }
     setQuestionIndex(next);
-    ask(topic.questions[next]);
+    ask(topic.questions[next].id);
   };
 
   const backToTopics = () => {
@@ -205,7 +248,7 @@ export default function SimpleInterviewPage() {
           <>
             <h1>Practise out loud.</h1>
             <p className="si-lede">
-              Pick a topic. You will hear a question, answer it in your own words, then hear and read a model answer.
+              Pick a topic, then any of its questions. You will hear a question, answer it in your own words, then hear and read a model answer.
             </p>
             <div className="si-topics">
               {topics.map((t, i) => (
@@ -219,12 +262,12 @@ export default function SimpleInterviewPage() {
             </div>
             <p className="si-note">
               Your voice is processed in your browser and is not uploaded. Looking for the written list?{' '}
-              <Link to="/interview/questions">See all interview questions</Link>.
+              <Link to="/interview/questions">See the written question list</Link>.
             </p>
           </>
         )}
 
-        {step !== 'topics' && step !== 'done' && question && (
+        {step !== 'topics' && step !== 'list' && step !== 'done' && (
           <>
             <div className="si-progress">
               <button type="button" className="si-link" onClick={backToTopics}>
@@ -235,6 +278,36 @@ export default function SimpleInterviewPage() {
               </span>
             </div>
             <h2>{question.title}</h2>
+            {question.options && (
+              <ol className="si-options" type="A">
+                {question.options.map((o) => (
+                  <li key={o}>{o}</li>
+                ))}
+              </ol>
+            )}
+          </>
+        )}
+
+        {step === 'list' && (
+          <>
+            <button type="button" className="si-link" onClick={backToTopics}>
+              ← Topics
+            </button>
+            <h2>{topic.title}</h2>
+            <div className="si-actions">
+              <button type="button" className="si-primary" id="start-topic" onClick={() => startQuestion(0)}>
+                Start from the first question
+              </button>
+            </div>
+            <ol className="si-list">
+              {topic.questions.map((q, i) => (
+                <li key={q.id}>
+                  <button type="button" onClick={() => startQuestion(i)}>
+                    {q.title}
+                  </button>
+                </li>
+              ))}
+            </ol>
           </>
         )}
 
@@ -306,7 +379,7 @@ export default function SimpleInterviewPage() {
             <p className="si-yours">{transcript || 'No answer was captured.'}</p>
             <h3>Model answer</h3>
             <p className="si-model" id="model-answer">
-              {answers[questionId]}
+              {question.answer}
             </p>
             <div className="si-actions">
               <button type="button" className="si-primary" id="next" onClick={nextQuestion}>
