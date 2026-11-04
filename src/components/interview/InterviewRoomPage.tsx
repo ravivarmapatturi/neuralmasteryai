@@ -244,9 +244,12 @@ export default function InterviewRoomPage() {
     }, 1000);
 
     // If using mic and engine
-    if (!isTypingMode && mediaStreamRef.current && engineRef.current) {
+    if (!isTypingMode && engineRef.current) {
       try {
-        await engineRef.current.start(mediaStreamRef.current);
+        // Start capture exactly at listening: request active microphone stream
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaStreamRef.current = stream;
+        await engineRef.current.start(stream);
 
         engineRef.current.subscribe((m) => {
           const text = (m.partialText || m.finalText || '').trim();
@@ -310,6 +313,12 @@ export default function InterviewRoomPage() {
       }
     }
 
+    // Stop active mic tracks so capture does not leak across turns or into interviewer speaking
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      mediaStreamRef.current = null;
+    }
+
     // Apply technical term corrections
     const cleanAnswer = correctInterviewTerms(answerText, currentQuestion.id);
 
@@ -365,8 +374,11 @@ export default function InterviewRoomPage() {
   // Request microphone permission
   const handleAllowMic = async () => {
     try {
+      // Prompt/check permission once
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaStreamRef.current = stream;
+      // Stop initial stream immediately so fake audio device / mic is not streaming during interviewer speaking
+      stream.getTracks().forEach((t) => t.stop());
+      mediaStreamRef.current = null;
       setIsTypingMode(false);
       setTurnIndex(0);
       setHistory([]);

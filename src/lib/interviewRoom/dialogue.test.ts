@@ -7,6 +7,7 @@ import {
   generateDebrief,
   computeOverallCall,
   getPointShortName,
+  isValidEvidenceQuote,
   END_OF_ANSWER_PAUSE_SECONDS,
 } from './dialogue';
 import { interviewRoomQuestions } from './questions';
@@ -161,6 +162,90 @@ describe('Interview Room Dialogue & Logic', () => {
       }));
       const action = chooseDialogueAction(1, history, 'clarified', qFoundation, points, null);
       expect(action.type).toBe('debrief');
+    });
+
+    it('never repeats the same follow-up probe and advances to next unaddressed point', () => {
+      // Turn 0 probed point 1
+      const history: TurnRecord[] = [
+        {
+          turnIndex: 0,
+          questionText: qFoundation.spoken_question,
+          spokenText: qFoundation.spoken_question,
+          isFollowUp: false,
+          learnerAnswer: 'Poor opening answer.',
+        },
+        {
+          turnIndex: 1,
+          questionText: qFoundation.points[0].follow_up_spoken,
+          spokenText: qFoundation.points[0].follow_up_spoken,
+          isFollowUp: true,
+          probedPointId: qFoundation.points[0].id,
+          learnerAnswer: 'Another poor answer that still does not cover point 0.',
+        },
+      ];
+      // All points are still not heard yet
+      const points = qFoundation.points.map(point => ({
+        point,
+        status: 'not_heard_yet' as const,
+        confidence: 10,
+      }));
+
+      // Turn 1 evaluation: choose action for next turn
+      const action = chooseDialogueAction(1, history, 'answer', qFoundation, points, null);
+      expect(action.type).toBe('follow_up');
+      if (action.type === 'follow_up') {
+        // Must NOT probe point 0 again! It must probe point 1
+        expect(action.probedPointId).toBe(qFoundation.points[1].id);
+        expect(action.spokenQuestion).not.toBe(qFoundation.points[0].follow_up_spoken);
+      }
+    });
+
+    it('advances to debrief when no unprobed points are left', () => {
+      const history: TurnRecord[] = [
+        {
+          turnIndex: 0,
+          questionText: qFoundation.spoken_question,
+          spokenText: qFoundation.spoken_question,
+          isFollowUp: false,
+          learnerAnswer: 'Opening',
+        },
+        {
+          turnIndex: 1,
+          questionText: qFoundation.points[0].follow_up_spoken,
+          spokenText: qFoundation.points[0].follow_up_spoken,
+          isFollowUp: true,
+          probedPointId: qFoundation.points[0].id,
+          learnerAnswer: 'Turn 1 answer',
+        },
+      ];
+      // Suppose only point 0 was unaddressed, and points 1, 2, 3 were covered
+      const points = qFoundation.points.map((point, i) => ({
+        point,
+        status: i === 0 ? ('not_heard_yet' as const) : ('covered' as const),
+        confidence: i === 0 ? 10 : 90,
+      }));
+
+      // Point 0 was already probed, so no unprobed unaddressed points remain
+      const action = chooseDialogueAction(1, history, 'answer', qFoundation, points, null);
+      expect(action.type).toBe('debrief');
+    });
+  });
+
+  describe('isValidEvidenceQuote', () => {
+    it('accepts substantive sentences with relevant key terms', () => {
+      const sent = 'A foundation model is pretrained at scale on massive broad datasets.';
+      expect(isValidEvidenceQuote(sent, 'p1_pretraining_scale')).toBe(true);
+    });
+
+    it('rejects short noise fragments or sentences under 4 words', () => {
+      expect(isValidEvidenceQuote('Poopins.', 'p1_pretraining_scale')).toBe(false);
+      expect(isValidEvidenceQuote('Where are', 'p1_pretraining_scale')).toBe(false);
+      expect(isValidEvidenceQuote('', 'p1_pretraining_scale')).toBe(false);
+    });
+
+    it('rejects sentences without any matching key terms', () => {
+      const noise = 'Poopins however computers are really nice and interesting devices.';
+      expect(isValidEvidenceQuote(noise, 'p1_pretraining_scale')).toBe(false);
     });
   });
 
@@ -338,6 +423,40 @@ describe('Interview Room Dialogue & Logic', () => {
       expect(debrief.rows[1].label).toBe('Depth when probed');
       expect(debrief.rows[1].pill).toBe('Partly there');
       expect(debrief.rows[1].quote).toContain('In vision foundation models learn representations');
+    });
+
+    it('does not quote noise like "Poopins" and reports "No evidence heard when probed"', () => {
+      const turns: TurnRecord[] = [
+        {
+          turnIndex: 0,
+          questionText: qFoundation.spoken_question,
+          spokenText: qFoundation.spoken_question,
+          isFollowUp: false,
+          learnerAnswer: 'A foundation model tries to predict next token. Classical models like XGBoost are cheaper.',
+        },
+        {
+          turnIndex: 1,
+          questionText: 'Does that apply to vision and audio?',
+          spokenText: 'Does that apply to vision and audio?',
+          isFollowUp: true,
+          probedMisconceptionId: 'w1_next_token_only',
+          learnerAnswer: 'Poopins. Random noise without any technical content.',
+        },
+      ];
+
+      const evaluated = [
+        { point: qFoundation.points[0], status: 'not_heard_yet' as const, confidence: 10 },
+        { point: qFoundation.points[1], status: 'not_heard_yet' as const, confidence: 10 },
+        { point: qFoundation.points[2], status: 'not_heard_yet' as const, confidence: 10 },
+        { point: qFoundation.points[3], status: 'covered' as const, confidence: 85, evidenceQuote: 'Classical models like XGBoost are cheaper.' },
+      ];
+
+      const debrief = generateDebrief(qFoundation, turns, evaluated);
+      const depthRow = debrief.rows.find(r => r.label === 'Depth when probed');
+      expect(depthRow).toBeDefined();
+      expect(depthRow?.pill).toBe('Not heard yet');
+      expect(depthRow?.quote).toBe('No evidence heard when probed.');
+      expect(depthRow?.quote).not.toContain('Poopins');
     });
   });
 

@@ -464,10 +464,6 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
   }
 
   public async start(stream: MediaStream): Promise<void> {
-    if (!this.worker || this.metrics.status !== 'ready') {
-      await this.load();
-    }
-
     this.isRunning = true;
     this.isWorkerBusy = false;
     this.isCommitting = false;
@@ -501,6 +497,7 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
       isIdenticalToBatch: undefined,
     });
 
+    // 1. Immediately create and connect the Web Audio graph to buffer audio from mic start
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
     this.audioContext = new AudioCtx({ sampleRate: 16000 });
     if (this.audioContext.state === 'suspended') {
@@ -516,7 +513,7 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
       const copy = new Float32Array(channelData.length);
       copy.set(channelData);
 
-      // Keep complete audio in session history
+      // Keep complete audio in session history from the very first frame!
       this.sessionChunks.push(copy);
       this.totalSessionSamples += copy.length;
 
@@ -543,14 +540,21 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
         this.hasSpeechInCurrentSegment &&
         this.silenceFramesCount >= 3 &&
         this.currentSegmentSamples >= 16000 &&
-        !this.isCommitting
+        !this.isCommitting &&
+        this.worker &&
+        this.metrics.status === 'listening'
       ) {
         this.commitCurrentSegment(false);
       }
 
       // Max window duration trigger: ~8.5 seconds (136,000 samples)
       // Commit settled phrase and maintain ~1.25s overlap so window edges never cut words
-      if (this.currentSegmentSamples >= 136000 && !this.isCommitting) {
+      if (
+        this.currentSegmentSamples >= 136000 &&
+        !this.isCommitting &&
+        this.worker &&
+        this.metrics.status === 'listening'
+      ) {
         this.commitCurrentSegment(true);
       }
     };
@@ -560,6 +564,11 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
     silentGain.gain.value = 0.00001;
     this.processorNode.connect(silentGain);
     silentGain.connect(this.audioContext.destination);
+
+    // 2. Load worker if not already initialized (audio is already buffering into sessionChunks!)
+    if (!this.worker || this.metrics.status !== 'ready') {
+      await this.load();
+    }
 
     // Setup worker listener for transcription results
     if (this.worker) {
@@ -767,7 +776,7 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
       }
     }
 
-    // Run batch pass over full session audio to measure whether live text equals batch pass
+    // Run final pass over ALL session audio in order!
     let batchTranscript = '';
     let isIdenticalToBatch = false;
 
@@ -779,11 +788,14 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
         offset += chunk.length;
       }
 
+      const cleanAudio = trimAudioSilence(fullAudio);
+      const audioToBatch = cleanAudio.length >= 4000 ? cleanAudio : fullAudio;
+
       await new Promise<void>((resolve) => {
         const timeout = setTimeout(() => {
           this.worker?.removeEventListener('message', handler);
           resolve();
-        }, 8000);
+        }, 20000);
 
         const handler = (e: MessageEvent) => {
           if (e.data.type === 'batch_result') {
@@ -799,10 +811,14 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
         };
         this.worker?.addEventListener('message', handler);
         this.worker?.postMessage(
-          { id: Date.now(), op: 'batch', payload: { audio: fullAudio.buffer } },
-          [fullAudio.buffer]
+          { id: Date.now(), op: 'batch', payload: { audio: audioToBatch.buffer } },
+          [audioToBatch.buffer]
         );
       });
+
+      if (batchTranscript && batchTranscript.trim().length > 0) {
+        this.committedText = batchTranscript.trim();
+      }
 
       const cleanLive = normalizeASRText(this.committedText);
       const cleanBatch = normalizeASRText(batchTranscript);

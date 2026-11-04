@@ -64,7 +64,7 @@ export function correctInterviewTerms(text: string, questionId?: string): string
  */
 const POINT_KEY_TERMS: Record<string, string[]> = {
   // genai-fm-fundamentals
-  p1_pretraining_scale: ['pretrain', 'scale', 'massive', 'broad', 'general', 'large data', 'huge'],
+  p1_pretraining_scale: ['pretrain', 'scale', 'massive', 'broad', 'general', 'large data', 'huge', 'representation', 'modalit', 'vision', 'audio'],
   p2_downstream_adaptability: ['adapt', 'downstream', 'prompt', 'fine-tun', 'transfer', 'base model', 'multiple task'],
   p3_scratch_vs_adaptation: ['scratch', 'bespoke', 'adapt', 'maintain', 'single task', 'specific model'],
   p4_engineering_tradeoffs: ['trade-off', 'cheap', 'cost', 'latency', 'hardware', 'cpu', 'gpu', 'xgboost', 'tabular', 'deterministic'],
@@ -97,6 +97,33 @@ export function guardBuzzwords(answer: string, pointId: string): boolean {
 
   const lower = clean.toLowerCase();
   return keyTerms.some(term => lower.includes(term.toLowerCase()));
+}
+
+/**
+ * Validates that an evidence quote is not noise (e.g. STT hallucination, garbled words,
+ * or unrelated sentence). A valid quote must contain at least 4 words and match a known
+ * key term from the evaluated point or domain.
+ */
+export function isValidEvidenceQuote(sentence: string | undefined, pointId?: string): boolean {
+  if (!sentence) return false;
+  const clean = sentence.trim();
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (words.length < 4) return false;
+
+  const lower = clean.toLowerCase();
+
+  // If pointId is provided, check if it contains any key term for that point
+  if (pointId && POINT_KEY_TERMS[pointId]) {
+    const keyTerms = POINT_KEY_TERMS[pointId];
+    if (keyTerms.some(k => lower.includes(k.toLowerCase()))) {
+      return true;
+    }
+  }
+
+  // Check across all point key terms for this domain
+  return Object.values(POINT_KEY_TERMS).some(terms =>
+    terms.some(k => lower.includes(k.toLowerCase()))
+  );
 }
 
 /**
@@ -288,8 +315,24 @@ export function chooseDialogueAction(
     return { type: 'debrief' };
   }
 
-  // Rule 3: Misconception priority on turn 0 -> follow-up on turn 1
-  if (turnIndex === 0 && misconception) {
+  // Collect all previously asked probe IDs and probe questions to ensure no probe is ever repeated
+  const probedPointIds = new Set(
+    history.map(h => h.probedPointId).filter((id): id is string => Boolean(id))
+  );
+  const probedMisconceptionIds = new Set(
+    history.map(h => h.probedMisconceptionId).filter((id): id is string => Boolean(id))
+  );
+  const askedQuestions = new Set(
+    history.map(h => h.spokenText?.trim()).filter(Boolean)
+  );
+
+  // Rule 3: Misconception priority on turn 0 -> follow-up on turn 1 (if not already probed)
+  if (
+    turnIndex === 0 &&
+    misconception &&
+    !probedMisconceptionIds.has(misconception.probe.id) &&
+    !askedQuestions.has(misconception.spokenQuestion.trim())
+  ) {
     return {
       type: 'follow_up',
       spokenQuestion: misconception.spokenQuestion,
@@ -305,7 +348,9 @@ export function chooseDialogueAction(
       const point = evaluatedPoints.find(p => p.point.id === lastTurn.probedPointId);
       if (point && point.status === 'covered') {
         // Learner clarified probed point! If remaining points are reasonably covered, advance
-        const remainingUnaddressed = evaluatedPoints.filter(p => p.status === 'not_heard_yet');
+        const remainingUnaddressed = evaluatedPoints.filter(
+          p => p.status === 'not_heard_yet' && !probedPointIds.has(p.point.id)
+        );
         if (remainingUnaddressed.length <= 1) {
           return { type: 'debrief' };
         }
@@ -313,9 +358,16 @@ export function chooseDialogueAction(
     }
   }
 
-  // Rule 4: Probe single most critical unaddressed claim
-  const unaddressed = evaluatedPoints.find(p => p.status === 'not_heard_yet') ||
-                      evaluatedPoints.find(p => p.status === 'partial');
+  // Rule 4: Probe single most critical unaddressed claim that has NOT already been probed
+  const unaddressed = evaluatedPoints.find(
+    p => p.status === 'not_heard_yet' &&
+         !probedPointIds.has(p.point.id) &&
+         !askedQuestions.has(p.point.follow_up_spoken.trim())
+  ) || evaluatedPoints.find(
+    p => p.status === 'partial' &&
+         !probedPointIds.has(p.point.id) &&
+         !askedQuestions.has(p.point.follow_up_spoken.trim())
+  );
 
   if (unaddressed) {
     return {
@@ -326,6 +378,7 @@ export function chooseDialogueAction(
     };
   }
 
+  // If no unprobed claims remain, move on to debrief
   return { type: 'debrief' };
 }
 
@@ -397,7 +450,7 @@ export function generateDebrief(
   // Sentence 3: Evidence or probes
   let sentEvidence = '';
   const probedMisconceptionTurn = turns.find(t => t.probedMisconceptionId);
-  const bestQuotePoint = coveredPoints.find(p => p.evidenceQuote && p.evidenceQuote.trim().length > 0);
+  const bestQuotePoint = coveredPoints.find(p => p.evidenceQuote && isValidEvidenceQuote(p.evidenceQuote, p.point.id));
 
   if (probedMisconceptionTurn) {
     const probe = question.wrong_answer_probes.find(w => w.id === probedMisconceptionTurn.probedMisconceptionId);
@@ -429,14 +482,15 @@ export function generateDebrief(
 
   // 1. Fundamentals
   const p1 = evaluatedPoints.find(p => p.point.id.includes('p1')) || evaluatedPoints[0];
-  const p1Evidence = p1?.evidenceQuote ? `"${p1.evidenceQuote.trim()}"` : undefined;
+  const p1HasValidQuote = p1?.status === 'covered' && isValidEvidenceQuote(p1.evidenceQuote, p1.point.id);
+  const p1Evidence = p1HasValidQuote ? `"${p1.evidenceQuote!.trim()}"` : undefined;
   if (p1?.status === 'covered') {
     rows.push({
       label: 'Fundamentals',
       pill: 'Strong',
       pillClass: 'strong',
       text: question.signals.fundamentals.strong,
-      quote: p1Evidence,
+      quote: p1Evidence || 'No evidence heard in answer.',
     });
   } else if (p1?.status === 'partial') {
     rows.push({
@@ -444,7 +498,7 @@ export function generateDebrief(
       pill: 'Partly there',
       pillClass: 'ok',
       text: question.signals.fundamentals.solid,
-      quote: p1Evidence || 'No direct evidence heard in answer.',
+      quote: p1Evidence || 'No evidence heard in answer.',
     });
   } else {
     rows.push({
@@ -456,26 +510,57 @@ export function generateDebrief(
     });
   }
 
-  // 2. Depth when probed
-  const probedTurns = turns.filter(t => t.isFollowUp && t.learnerAnswer.trim().length > 0);
-  const probedQuote = probedTurns.length > 0 ? `"${probedTurns[0].learnerAnswer.trim().slice(0, 120)}..."` : undefined;
+  // 2. Depth when probed: strictly rests ONLY on answers given after a follow-up
+  const followUpTurns = turns.filter(t => t.isFollowUp && t.learnerAnswer && t.learnerAnswer.trim().length > 0);
+  const followUpText = followUpTurns.map(t => t.learnerAnswer.trim()).join(' ');
+  const followUpSentences = splitAnswer(followUpText);
 
-  if (probedTurns.length > 0) {
-    if (coveredCount >= 2) {
-      rows.push({
-        label: 'Depth when probed',
-        pill: 'Solid',
-        pillClass: 'strong',
-        text: question.signals.depth_when_probed.solid,
-        quote: probedQuote,
-      });
+  if (followUpTurns.length > 0) {
+    const followUpLower = followUpText.toLowerCase();
+    let followUpCoveredPoint = false;
+    let matchingProbedSentence: string | undefined;
+
+    for (const sent of followUpSentences) {
+      for (const ep of evaluatedPoints) {
+        if (isValidEvidenceQuote(sent, ep.point.id)) {
+          if (!matchingProbedSentence) {
+            matchingProbedSentence = sent;
+          }
+          const keyTerms = POINT_KEY_TERMS[ep.point.id] || [];
+          const matchesInFollowUp = keyTerms.filter(k => followUpLower.includes(k.toLowerCase())).length;
+          if (ep.status === 'covered' && matchesInFollowUp >= 2 && guardBuzzwords(followUpText, ep.point.id)) {
+            followUpCoveredPoint = true;
+          }
+        }
+      }
+    }
+
+    if (matchingProbedSentence) {
+      if (followUpCoveredPoint) {
+        rows.push({
+          label: 'Depth when probed',
+          pill: 'Solid',
+          pillClass: 'strong',
+          text: question.signals.depth_when_probed.solid,
+          quote: `"${matchingProbedSentence.trim()}"`,
+        });
+      } else {
+        rows.push({
+          label: 'Depth when probed',
+          pill: 'Partly there',
+          pillClass: 'ok',
+          text: question.signals.depth_when_probed.weak,
+          quote: `"${matchingProbedSentence.trim()}"`,
+        });
+      }
     } else {
+      // Probed answer did not match any point or key term (noise, unaddressed, or silence)
       rows.push({
         label: 'Depth when probed',
-        pill: 'Partly there',
-        pillClass: 'ok',
+        pill: 'Not heard yet',
+        pillClass: 'gap',
         text: question.signals.depth_when_probed.weak,
-        quote: probedQuote || 'No substantive evidence heard when probed.',
+        quote: 'No evidence heard when probed.',
       });
     }
   } else if (coveredCount === totalCount) {
@@ -498,14 +583,15 @@ export function generateDebrief(
 
   // 3. Trade-offs
   const tradeOffPoint = evaluatedPoints.find(p => p.point.id.includes('tradeoffs') || p.point.id.includes('p4') || p.point.id.includes('p2'));
-  const tradeOffQuote = tradeOffPoint?.evidenceQuote ? `"${tradeOffPoint.evidenceQuote.trim()}"` : undefined;
+  const tradeOffHasValidQuote = tradeOffPoint?.status === 'covered' && isValidEvidenceQuote(tradeOffPoint.evidenceQuote, tradeOffPoint.point.id);
+  const tradeOffQuote = tradeOffHasValidQuote ? `"${tradeOffPoint.evidenceQuote!.trim()}"` : undefined;
   if (tradeOffPoint?.status === 'covered') {
     rows.push({
       label: 'Trade-offs',
       pill: 'Strong',
       pillClass: 'strong',
       text: question.signals.trade_offs.strong,
-      quote: tradeOffQuote,
+      quote: tradeOffQuote || 'No evidence heard in answer.',
     });
   } else if (tradeOffPoint?.status === 'partial') {
     rows.push({
@@ -513,7 +599,7 @@ export function generateDebrief(
       pill: 'Partly there',
       pillClass: 'ok',
       text: question.signals.trade_offs.solid,
-      quote: tradeOffQuote || 'No direct evidence heard in answer.',
+      quote: tradeOffQuote || 'No evidence heard in answer.',
     });
   } else {
     rows.push({

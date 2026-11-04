@@ -15,6 +15,55 @@ const AUDIO_STRONG = path.resolve(ROOT, 'scripts', 'speech-benchmarks', 'audio',
 const AUDIO_WEAK = path.resolve(ROOT, 'scripts', 'speech-benchmarks', 'audio', 'answer-weak.wav');
 const AUDIO_NEXT_TOKEN = path.resolve(ROOT, 'scripts', 'speech-benchmarks', 'audio', 'answer-next-token.wav');
 
+const KNOWN_SCRIPTS = {
+  'Strong Answer':
+    'A foundation model is pretrained at scale on massive broad datasets across diverse modalities to learn general representations rather than trained on narrow task specific data. It acts as a versatile shared base that can adapt to many different downstream tasks through prompting or fine tuning without retraining from scratch. Classical machine learning models like XGBoost or logistic regression are still preferred for structured tabular datasets, strict low latency budgets, or deterministic explainability.',
+  'Weak Answer':
+    'Well machine learning models are computer algorithms that learn from data. Some models are big and some models are small and computers use them to process numbers.',
+  'Foundation Model Next-Token Answer':
+    'A foundation model is basically a probabilistic model that tries to predict the next token based on previous tokens. However, classical models like XGBoost are much cheaper and faster for tabular data.',
+};
+
+function normalizeTextForWER(text) {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s']|_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean);
+}
+
+function computeWER(reference, hypothesis) {
+  const refWords = normalizeTextForWER(reference);
+  const hypWords = normalizeTextForWER(hypothesis);
+  const n = refWords.length;
+  const m = hypWords.length;
+  if (n === 0) {
+    return { wer: m === 0 ? 0 : 1, werPercent: m === 0 ? 0 : 100, referenceWordCount: 0, hypothesisWordCount: m, edits: m };
+  }
+  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = 0; i <= n; i++) dp[i][0] = i;
+  for (let j = 0; j <= m; j++) dp[0][j] = j;
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      if (refWords[i - 1] === hypWords[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = Math.min(dp[i - 1][j - 1] + 1, dp[i][j - 1] + 1, dp[i - 1][j] + 1);
+      }
+    }
+  }
+  const rawWer = dp[n][m] / n;
+  return {
+    wer: Math.round(rawWer * 1000) / 1000,
+    werPercent: Math.round(rawWer * 1000) / 10,
+    edits: dp[n][m],
+    referenceWordCount: n,
+    hypothesisWordCount: m,
+  };
+}
+
 function getWavDurationMs(wavPath) {
   const bytes = fs.statSync(wavPath).size;
   // 16kHz, 16-bit (2 bytes per sample), mono = 32,000 bytes/sec = 32 bytes/ms
@@ -70,7 +119,7 @@ async function runScenario(scenarioName, wavPath) {
     args: [
       '--use-fake-ui-for-media-stream',
       '--use-fake-device-for-media-stream',
-      `--use-file-for-fake-audio-capture=${wavPath}`,
+      `--use-file-for-fake-audio-capture=${wavPath}%noloop`,
       '--allow-file-access',
     ],
   });
@@ -237,8 +286,54 @@ async function runScenario(scenarioName, wavPath) {
       };
     });
 
+    // Compute and verify Word Error Rate (WER) against known reference script
+    const knownScript = KNOWN_SCRIPTS[scenarioName];
+    const wer = computeWER(knownScript || '', actualTranscript);
     console.log(`\n--- RESULTS FOR ${scenarioName} ---`);
+    console.log(`Known Reference Script: "${knownScript || ''}"`);
     console.log(`Actual Transcript Captured: "${actualTranscript.trim()}"`);
+    console.log(`WER: ${wer.werPercent}% (${wer.edits} edits / ${wer.referenceWordCount} reference words)`);
+
+    if (wer.wer > 0.25) {
+      throw new Error(`CRITICAL PASS FAILURE: WER ${wer.werPercent}% exceeds 25% threshold for ${scenarioName}!`);
+    }
+    console.log(`✓ WER requirement satisfied: ${wer.werPercent}% < 25%`);
+
+    // Verify dialogue invariants: Never repeat a probe in a question
+    const probeQuestions = followUpsChosen.map(f => f.probeQuestion.trim());
+    const uniqueProbes = new Set(probeQuestions);
+    if (uniqueProbes.size !== probeQuestions.length) {
+      throw new Error(`CRITICAL FAILURE: Duplicate follow-up probe asked! Probes: ${JSON.stringify(probeQuestions)}`);
+    }
+    console.log(`✓ Invariant satisfied: Zero duplicate probes asked (${followUpsChosen.length} unique follow-ups).`);
+
+    // Verify debrief invariants: No noise quoted
+    for (const row of debrief.rows) {
+      if (row.quote && (/poopin/i.test(row.quote) || /fungi/i.test(row.quote))) {
+        throw new Error(`CRITICAL FAILURE: Noise detected in debrief quote: ${row.quote}`);
+      }
+    }
+    if (/poopin/i.test(debrief.overallSummary) || /fungi/i.test(debrief.overallSummary)) {
+      throw new Error(`CRITICAL FAILURE: Noise detected in debrief summary: ${debrief.overallSummary}`);
+    }
+    console.log(`✓ Invariant satisfied: Zero noise detected in debrief quotes.`);
+
+    // Verify Depth when probed rests only on answers given after a follow-up
+    const depthRow = debrief.rows.find(r => r.label === 'Depth when probed');
+    if (!depthRow) {
+      throw new Error('Debrief is missing "Depth when probed" signal row!');
+    }
+    if (followUpsChosen.length === 0) {
+      if (depthRow.pill !== 'Not probed') {
+        throw new Error(`Expected 'Not probed' when no follow-ups were asked, got ${depthRow.pill}`);
+      }
+    } else {
+      if (depthRow.pill === 'Not probed') {
+        throw new Error(`Expected probed pill when follow-ups were asked, got 'Not probed'`);
+      }
+    }
+    console.log(`✓ Invariant satisfied: "Depth when probed" correctly evaluated (${depthRow.pill}).`);
+
     console.log(`Follow-ups Chosen (${followUpsChosen.length}):`, JSON.stringify(followUpsChosen, null, 2));
     console.log(`Overall Call: ${debrief.overallCall}`);
     console.log(`Overall Summary: ${debrief.overallSummary}`);
@@ -252,7 +347,9 @@ async function runScenario(scenarioName, wavPath) {
 
     return {
       scenarioName,
+      knownScript,
       actualTranscript: actualTranscript.trim(),
+      wer,
       followUpsChosen,
       debrief,
     };
