@@ -84,8 +84,12 @@ export default function App() {
                       <Route path="/" element={<ChooserPage />} />
                       <Route path="/learn" element={<Home />} />
                       <Route path="/labs" element={<PracticeListPage />} />
-                      <Route path="/lab/speech-test" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading speech test lab…</p>}><SpeechTestPage /></Suspense>} />
-                      <Route path="/lab/voice-test" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading voice test lab…</p>}><VoiceTestPage /></Suspense>} />
+                      {(!import.meta.env.PROD || import.meta.env.VITE_ENABLE_LABS === 'true') && (
+                        <>
+                          <Route path="/lab/speech-test" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading speech test lab…</p>}><SpeechTestPage /></Suspense>} />
+                          <Route path="/lab/voice-test" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading voice test lab…</p>}><VoiceTestPage /></Suspense>} />
+                        </>
+                      )}
                       <Route path="/interview" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading interview questions…</p>}><InterviewPage /></Suspense>} />
                       <Route path="/interview/room" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading interview room…</p>}><InterviewRoomPage /></Suspense>} />
                       <Route path="/interview/mock" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading mock interview…</p>}><MockInterviewPage /></Suspense>} />

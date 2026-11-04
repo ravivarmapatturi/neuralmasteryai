@@ -40,6 +40,7 @@ const urls = [
   { loc: `${SITE_URL}/glossary`, lastmod: null },
   ...glossarySlugs.map((slug) => ({ loc: `${SITE_URL}/glossary/${slug}`, lastmod: null })),
   { loc: `${SITE_URL}/interview`, lastmod: null },
+  { loc: `${SITE_URL}/interview/room`, lastmod: null },
   { loc: `${SITE_URL}/blog`, lastmod: null },
   ...JSON.parse(readFileSync(resolve(import.meta.dirname, '..', 'src', 'data', 'blogMeta.generated.json'), 'utf8')).map((p) => ({
     loc: `${SITE_URL}/blog/${p.slug}`,
