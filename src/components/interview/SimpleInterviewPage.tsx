@@ -6,6 +6,7 @@ import { createASREngineForQuality } from '../../lib/interviewRoom/qualitySettin
 import type { SingleThreadASREngine } from '../../lib/speechTest/engines';
 import practice from '../../data/interviewPractice.json';
 import { InterviewGraph } from './InterviewGraph';
+import Navbar from '../layout/Navbar';
 import './interviewRoom.css';
 import './simpleInterview.css';
 
@@ -214,6 +215,8 @@ export default function SimpleInterviewPage() {
   );
 
   return (
+    <>
+    <Navbar />
     <div className="interview-room-wrap simple-interview">
       <div className={`si-card${step === 'topics' ? ' si-card-wide' : ''}`}>
         {step === 'topics' && (
@@ -395,5 +398,6 @@ export default function SimpleInterviewPage() {
         )}
       </div>
     </div>
+    </>
   );
 }
