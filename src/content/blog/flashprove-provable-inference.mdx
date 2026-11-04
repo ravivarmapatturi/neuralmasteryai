@@ -1,0 +1,142 @@
+---
+title: "Proving Which Model Answered: From Trusting the API to FlashProve"
+description: "Anthropic's FlashProve proves a reply came from a committed 400-billion-parameter model, at 70-95x the GPU time of serving it. Here is the line of methods that led there and what the proof does not cover."
+date: 2026-11-04
+tags: [AI security, inference, mixture of experts]
+---
+
+import ProofAuditRate from '../../viz/diagrams/blog/ProofAuditRate';
+
+
+# Proving Which Model Answered: From Trusting the API to FlashProve
+
+When you pay a router for a frontier model, nothing in the reply tells you that model wrote it. On 2 November 2026, Anthropic published [FlashProve](https://www.anthropic.com/research/provable-inference), an open-source prototype that attaches a cryptographic proof to the reply instead. For Llama 4 Maverick, a 400-billion-parameter model, Anthropic reports that one H100 proves about 110 tokens per second, each proof is about 19 MB, and an ordinary CPU checks it in 17 to 21 seconds. The only earlier proof of that model it knows of took 14.3 hours for 1,000 tokens and produced a 93.6 GB proof.
+
+Those numbers need careful reading, and we will get to what they leave out. First, this post follows the methods that led here: output audits, trusted hardware, and nearly a decade of zero-knowledge proofs for neural networks. Each one answers a limit of the one before. By the end you will know what a proof of inference does and doesn't tell you, why mixture-of-experts models made this one feasible, and how to reason about the cost of using one.
+
+## 1. A reply carries no identity
+
+You might expect a signature or TLS to settle this. They don't, because they answer a different question. TLS shows which server you talked to, and a signature shows who vouches for the reply. Neither says which weights produced it, and a compromised or cost-cutting server can sign whatever it likes.
+
+The obvious fix is to rerun the model and compare. Anthropic's post explains why that fails: frontier weights are private, and even with the weights the check would need far more compute than a user or most evaluators have. So we need evidence that can be checked without the weights and without a GPU.
+
+## 2. Watching the outputs: cheap, and easy to fool
+
+The first attempts treat the API as a black box. Send it prompts, then test statistically whether the replies look like the claimed model. [Cai, Shi, Zhao and Song (2025)](https://arxiv.org/abs/2504.04715) audited this approach and found statistical tests on text need many queries and fail against subtle substitutions. Comparing log-probabilities does not rescue it, because production inference is nondeterministic enough to break the comparison.
+
+Their conclusion pointed at hardware. If behaviour can't identify a model, attest to what the machine loaded.
+
+## 3. Trusted hardware: fast, if you trust the chip
+
+A **trusted execution environment** (TEE) is a hardware-isolated area that can sign a statement about the code and data running inside it. This is very cheap at runtime. [Zhu et al. (2024)](https://arxiv.org/abs/2409.03992) measured under 7% overhead for typical LLM queries on NVIDIA Hopper GPUs in confidential computing mode.
+
+The limit is the root of trust. You rely on the manufacturer, and on the hardware resisting whoever physically holds it, which in this scenario is the party you are checking. [TEE.fail](https://tee.fail/) extracted Intel's attestation key, and signing keys from an AMD confidential VM, using a DDR5 memory interposer its authors say should cost under $1,000. It does not attack NVIDIA's confidential computing directly, but it undermines the CPU attestation that chain relies on, and the authors' advice comes down to physical security of the servers.
+
+Anthropic describes TEEs and cryptography as complementary, and that seems right to us. The next step removes the hardware from the trust story, and pays for it in compute.
+
+## 4. Zero-knowledge proofs: no hardware trust, enormous cost
+
+A **zkSNARK** (zero-knowledge succinct argument of knowledge) is a short certificate that a computation ran correctly. It is checked far faster than the computation itself, and it reveals nothing beyond the result. Pair it with a **commitment**, a short fingerprint that pins down one exact set of weights while hiding them, and you can state the claim we want: the committed weights, run on this prompt, produce these tokens. Forging a proof of a false claim means breaking a cryptographic assumption rather than a piece of hardware.
+
+The research line, known as zkML, started very small. [SafetyNets](https://proceedings.neurips.cc/paper_files/paper/2017/file/6048ff4e8cb07aa60b6777b6f7384d52-Paper.pdf) (2017) handled a two-convolution MNIST network. [zkCNN](https://eprint.iacr.org/2021/673) (2021) reached VGG-16, with 15 million parameters, at 88.3 seconds per proof. [Kang et al. (2022)](https://arxiv.org/abs/2210.08674) proved a full-resolution ImageNet model.
+
+## 5. Transformers: the bill arrives per token
+
+Transformers made the cost brutal, since generating one token runs the whole network. The figures below are from [Anthropic's survey of prior work](https://www.anthropic.com/research/provable-inference), so treat them as one party's summary, measured on different hardware and with different definitions of a token.
+
+| System | Model | Reported cost |
+|---|---|---|
+| [ZKML](https://ddkang.github.io/papers/2024/zkml-eurosys.pdf) | GPT-2, 117M parameters | About 159 s per token |
+| [zkLLM](https://arxiv.org/abs/2404.16109) (2024) | LLaMA-2, 13B | About 15 min for a 2,048-token input |
+| [VerInf](https://github.com/JamesPetrie/VerInf) | Llama 4 Maverick, 400B | 14.3 h for 1,000 tokens; 93.6 GB proof |
+| [DeepProve](https://eprint.iacr.org/2026/1112) | Gemma 3 | About 1.4 tokens/s on one machine |
+| [Attestable](https://attestable.com/blog/proving-llms-scale) (commercial, no open library) | Gemma 4, dense 31B | 53-77 tokens/s on one H100 |
+| [FlashProve](https://github.com/anthropics/FlashProve) (2026) | Llama 4 Maverick, 400B | About 110 tokens/s on one H100; 19 MB proof |
+
+The limit at each stage was the same: proving time grew with every parameter the model touched, so large models stayed out of reach. FlashProve's main answer comes from the architecture of the model itself.
+
+## 6. Prove only the experts that ran
+
+In a [mixture-of-experts model](/docs/llms-genai/foundation-model-internals#mixture-of-experts-moe), each layer has many expert sub-networks and a router that picks a few for each token. Llama 4 Maverick has 400 billion parameters, and only about 17 billion are used per token. FlashProve's prover work per token scales with those 17 billion, or 4.25% of the model, roughly 23.5 times less than touching everything. The proof still hides which experts ran.
+
+Two more design choices matter. Proving happens after the fact, in batches: the prover reads finished text in one parallel pass and opens the weight commitment once per batch. The weights also stay in ordinary memory and stream through the GPU, so one 80 GB GPU with about 290 GB of host memory is enough for a model whose [4-bit quantized](/docs/inference-engineering/quantization-and-compression) weights take about 232 GB.
+
+The commitment takes about 39 minutes to make and is good for about 16 million requests. A client downloads about 6.5 MB once, then one proof per request. Anthropic says Claude produced the system's improvements and that its decisions can be hard to evaluate, so the release includes Lean proofs: machine-checked statements of soundness, completeness and zero knowledge, which a person can audit more easily than the optimized code. The C++ verifier people would actually run is tested against the Lean one, not proved correct.
+
+## 7. What an audit costs, and what it catches
+
+Here is the catch for anyone planning to deploy this. Anthropic measured proving a batch of 24 requests at about 72 times the per-GPU time vLLM takes to process them, and about 94 times at vLLM's highest tested load. Proving every request would multiply your GPU bill by roughly 73 to 95.
+
+So the natural question is how much proving you actually need. Anthropic's post frames post-hoc proving as covering a subset of tokens. A simple way to use that is random audits: after the reply has been served, pick a request at random and demand its proof. The provider can't know in advance which replies will be checked, so it has to serve the committed model every time or accept the risk.
+
+The sketch below is ours, not a FlashProve feature. Only the overhead is measured; the traffic numbers are illustrative.
+
+<ProofAuditRate />
+
+Three things show up when you move the sliders. Auditing 1% of requests costs 1.72x the GPU time at the 72x overhead, far below 73x. With a provider swapping 1% of its traffic, that audit rate gives a 9.5% chance of a catch over 1,000 requests, 63.2% over 10,000 and effectively certainty over 100,000. And detection depends on audits times swaps times volume, so a large provider can be held to account with a very low audit rate: 0.1% over 100,000 requests also gives 63.2%, for 1.07x the GPU time.
+
+The same sum in Python, if you want to try your own traffic:
+
+```python
+def caught(audit, swapped, exposed, requests):
+    """Chance that at least one audit exposes a swapped request."""
+    return 1 - (1 - audit * swapped * exposed) ** requests
+
+def gpu_cost(audit, overhead=72):
+    """GPU time relative to serving alone. 72x is Anthropic's measurement."""
+    return 1 + audit * overhead
+
+print(round(caught(0.01, 0.01, 1.0, 10_000), 3))    # 0.632
+print(round(caught(0.01, 0.01, 0.5, 10_000), 3))    # 0.393
+print(round(gpu_cost(0.01), 2))                     # 1.72
+```
+
+The `exposed` term is doing quiet work. It is the chance that one audit of a swapped request really does expose it, and the next section explains why you can't assume it is 1.
+
+## 8. Where it breaks
+
+**The headline rate counts prompt tokens.** The [performance guide](https://github.com/anthropics/FlashProve/blob/main/guide/performance.md) says 110 tokens per second is a steady prefill rate: each request's 1,024 prompt tokens are counted and nothing is generated. With every token of a stored reply checked, it reports 39.1 tokens per second counting reply tokens alone. It also misses the project's 100 tokens-per-second target, at 88.81, once committing is spread over the first 1,000 requests.
+
+**Real replies mostly don't pass the strict check.** The soundness theorem covers exact match, where every output token must be the integer model's top choice. Its top token differs from the floating-point model's at 6.81% of positions on the [report's](https://github.com/anthropics/FlashProve/blob/main/paper/paper.pdf) test texts, and at 9.41% on natural passages. The [known limits page](https://github.com/anthropics/FlashProve/blob/main/guide/known-limits.md) records that none of 96 honest replies scored from each of two stock engines would pass exact match.
+
+Serving therefore expects a looser clipped-gap policy, which limits how far replies stray from the top choice on average. There, an accept says only that the reply meets the limits, and 28 of 32 replies with one token swapped for the second choice met limits fitted to honest replies. A targeted edit can hide inside that margin, which is what `exposed` stands for above. The project recommends no particular limits and says to accept only exact match if you can't assess them.
+
+**A yes doesn't say whose model it is.** A provider can commit to any weights, including a small or degenerate model. You need the commitment ID from a party you trust, never from the server you are checking. A proof also covers only the positions it names, and a reply cut short verifies as a shorter one.
+
+**The scope is narrow today.** Contexts stop at 1,024 tokens, far short of real chat sessions. The system assumes a mixture-of-experts model and does not hide the architecture. Side channels such as timing are out of scope. Zero knowledge is proved for the protocol rather than the programs, so read the project's [weight-hiding guide](https://github.com/anthropics/FlashProve/blob/main/guide/weight-hiding.md) before committing weights that must stay secret.
+
+**The numbers are the vendor's.** Every FlashProve figure here comes from Anthropic, which calls this intermediate progress, and the repository is marked as an unmaintained research artifact. We found no independent replication two days after release, and we have not run it ourselves.
+
+## 9. Checking a proof yourself
+
+The [README](https://github.com/anthropics/FlashProve) gives a route that needs no GPU and under 2 GB of RAM, using a stored example from a small synthetic model:
+
+```bash
+verifier/build.sh
+bin/cp_verify examples/accepted-proof/config examples/accepted-proof/ivk examples/accepted-proof/example.req examples/accepted-proof/example.y examples/accepted-proof/example.proof -id "$(cat examples/accepted-proof/ID.txt)"
+```
+
+The README expects a last line of `YES` and exit code 0. It shows only that the verifier works, and says nothing about a served model. Read that last line in any real use too, because a clipped-gap accept also exits 0.
+
+## The line in one table
+
+| Step | Evidence you get | What it fixed | What it left |
+|---|---|---|---|
+| Trust the API | Provider's word | Nothing to run | No evidence at all |
+| Output audits | Statistical resemblance | Works from outside | Query-heavy; misses subtle swaps |
+| TEEs | Hardware attestation | Under 7% overhead | Trust the chip and whoever holds it |
+| Early zkML | Proof, small networks | Removes hardware trust | Far too slow for LLMs |
+| FlashProve (2026) | Proof, 400B MoE model | Seconds to verify; 70-95x to prove | Short contexts, integer model, policy gap |
+
+## What this changes
+
+Provable inference has moved from "only for toy models" to "two orders of magnitude over serving", which is expensive but within reach of an audit budget. That doesn't yet give you proof that your router served the model you bought, because the gap between integer and floating-point inference still has to be closed, or at least bounded in a way people trust. You can now read a claim about verifiable inference and ask the questions that decide its worth: which tokens were checked, under which policy, against whose commitment, and at what share of traffic.
+
+## Further reading
+
+- On this site: [AI security overview](/docs/ai-security/overview); [mixture of experts](/docs/llms-genai/foundation-model-internals#mixture-of-experts-moe); [LLM inference engines and vLLM](/docs/mlops/llm-inference-engines); [quantization and compression](/docs/inference-engineering/quantization-and-compression); [Kimi K3.1 and attention memory](/blog/kimi-k3-linear-attention), another large mixture-of-experts model
+- Rinberg, Allain et al., [Progress on provable inference for large language models](https://www.anthropic.com/research/provable-inference) (Anthropic, 2 November 2026), with [code, proofs and report](https://github.com/anthropics/FlashProve)
+- Cai, Shi, Zhao and Song, [Are You Getting What You Pay For? Auditing Model Substitution in LLM APIs](https://arxiv.org/abs/2504.04715) (2025)
+- Zhu et al., [Confidential Computing on NVIDIA Hopper GPUs: A Performance Benchmark Study](https://arxiv.org/abs/2409.03992) (2024)
+- Sun, Li and Zhang, [zkLLM: Zero Knowledge Proofs for Large Language Models](https://arxiv.org/abs/2404.16109) (2024)
+- [TEE.fail](https://tee.fail/) (2025)
