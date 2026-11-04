@@ -11,6 +11,8 @@ import type {
   TurnRecord,
   QuestionDebrief,
   DebriefSignalRow,
+  QuestionSessionRecord,
+  SessionDebrief,
 } from './types';
 import type { JudgeModels } from '../answerJudge';
 import { splitAnswer } from '../answerJudge';
@@ -773,5 +775,111 @@ export function generateDebrief(
     rows,
     markedAnswerHtml: markedHtml.trim() || allAnswers,
     cleanTranscript: allAnswers,
+  };
+}
+
+/**
+ * Generate session debrief aggregating performance across multiple questions:
+ * - One overall call across questions
+ * - Cross-question summary highlighting covered concepts and priority gaps
+ * - Single priority "Practise this next" link
+ * - Preserves detailed per-question record for deep review
+ */
+export function generateSessionDebrief(
+  records: QuestionSessionRecord[]
+): SessionDebrief {
+  if (records.length === 0) {
+    return {
+      overallCall: 'Needs work',
+      overallSummary: 'No questions were completed in this session.',
+      practiceTitle: 'LLM & Foundation Models Quick Reference',
+      practiceAction: 'Review foundational concepts and trade-offs before starting an interview round.',
+      practiceRoute: '/docs/interview-prep/qa-quick-reference',
+      questionDebriefs: [],
+    };
+  }
+
+  if (records.length === 1) {
+    const single = records[0].debrief;
+    return {
+      overallCall: single.overallCall,
+      overallSummary: single.overallSummary,
+      practiceTitle: single.practiceTitle,
+      practiceAction: single.practiceAction,
+      practiceRoute: single.practiceRoute,
+      questionDebriefs: records,
+    };
+  }
+
+  let totalPoints = 0;
+  let totalCovered = 0;
+  const coveredTopics: string[] = [];
+  const missedTopics: string[] = [];
+
+  for (const r of records) {
+    const covered = r.evaluatedPoints.filter(p => p.status === 'covered');
+    const missed = r.evaluatedPoints.filter(p => p.status !== 'covered');
+    totalPoints += r.evaluatedPoints.length;
+    totalCovered += covered.length;
+    for (const c of covered) coveredTopics.push(getPointShortLabel(c.point));
+    for (const m of missed) missedTopics.push(getPointShortLabel(m.point));
+  }
+
+  const overallCall = computeOverallCall(totalCovered, totalPoints);
+  const qCount = records.length;
+  const strongCount = records.filter(r => r.debrief.overallCall === 'Strong').length;
+
+  const summaryParts: string[] = [];
+  if (overallCall === 'Strong') {
+    summaryParts.push(
+      `Strong performance across the session: you answered with authority on ${strongCount} of ${qCount} questions, covering ${totalCovered} of ${totalPoints} technical dimensions.`
+    );
+    if (coveredTopics.length > 0) {
+      summaryParts.push(
+        `Demonstrated depth on ${formatNaturalList(coveredTopics.slice(0, 3))}.`
+      );
+    }
+    if (missedTopics.length > 0) {
+      summaryParts.push(
+        `To reach senior bar, tighten up on ${formatNaturalList(missedTopics.slice(0, 2), 'and')}.`
+      );
+    }
+  } else if (overallCall === 'Getting there') {
+    summaryParts.push(
+      `You showed working engineering knowledge across ${qCount} questions, covering ${totalCovered} of ${totalPoints} core evaluation criteria.`
+    );
+    if (coveredTopics.length > 0) {
+      summaryParts.push(
+        `Clear answers on ${formatNaturalList(coveredTopics.slice(0, 2))}.`
+      );
+    }
+    if (missedTopics.length > 0) {
+      summaryParts.push(
+        `Focus follow-up practice on ${formatNaturalList(missedTopics.slice(0, 3), 'and')}.`
+      );
+    }
+  } else {
+    summaryParts.push(
+      `Across ${qCount} questions, your answers remained mostly high-level or ungrounded, covering ${totalCovered} of ${totalPoints} technical criteria.`
+    );
+    if (missedTopics.length > 0) {
+      summaryParts.push(
+        `Review the core mechanisms for ${formatNaturalList(missedTopics.slice(0, 3), 'and')}.`
+      );
+    }
+  }
+
+  const prioritizedRecord =
+    records.find(r => r.debrief.overallCall === 'Needs work') ||
+    records.find(r => r.debrief.overallCall === 'Getting there') ||
+    records[0];
+
+  return {
+    overallCall,
+    overallSummary: summaryParts.join(' '),
+    practiceTitle: prioritizedRecord.debrief.practiceTitle,
+    practiceAction: prioritizedRecord.debrief.practiceAction,
+    practiceRoute: prioritizedRecord.debrief.practiceRoute,
+    questionDebriefs: records,
   };
 }

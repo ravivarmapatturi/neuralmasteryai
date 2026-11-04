@@ -5,6 +5,7 @@ import {
   detectMisconceptions,
   chooseDialogueAction,
   generateDebrief,
+  generateSessionDebrief,
   computeOverallCall,
   getPointShortName,
   isValidEvidenceQuote,
@@ -458,6 +459,90 @@ describe('Interview Room Dialogue & Logic', () => {
       expect(depthRow?.pill).toBe('Not heard yet');
       expect(depthRow?.quote).toBe('No evidence heard when probed.');
       expect(depthRow?.quote).not.toContain('Poopins');
+    });
+  });
+
+  describe('generateSessionDebrief', () => {
+    it('aggregates multiple question debriefs into one overall session call', () => {
+      const q1 = interviewRoomQuestions[0];
+      const q2 = interviewRoomQuestions[1];
+
+      const r1Turns: TurnRecord[] = [
+        {
+          turnIndex: 0,
+          questionText: q1.spoken_question,
+          spokenText: q1.spoken_question,
+          isFollowUp: false,
+          learnerAnswer: 'A foundation model is pretrained at scale on broad datasets and adapts to downstream tasks. XGBoost is cheaper for tabular data.',
+        },
+      ];
+      const r1Evaluated = [
+        { point: q1.points[0], status: 'covered' as const, confidence: 90, evidenceQuote: 'pretrained at scale on broad datasets' },
+        { point: q1.points[1], status: 'covered' as const, confidence: 90, evidenceQuote: 'adapts to downstream tasks' },
+        { point: q1.points[2], status: 'covered' as const, confidence: 85, evidenceQuote: 'adapts to downstream tasks' },
+        { point: q1.points[3], status: 'covered' as const, confidence: 90, evidenceQuote: 'XGBoost is cheaper for tabular data' },
+      ];
+      const d1 = generateDebrief(q1, r1Turns, r1Evaluated);
+
+      const r2Turns: TurnRecord[] = [
+        {
+          turnIndex: 0,
+          questionText: q2.spoken_question,
+          spokenText: q2.spoken_question,
+          isFollowUp: false,
+          learnerAnswer: 'RAG is for dynamic knowledge updates with citations while fine-tuning is for tone and style.',
+        },
+      ];
+      const r2Evaluated = [
+        { point: q2.points[0], status: 'covered' as const, confidence: 90, evidenceQuote: 'RAG is for dynamic knowledge updates' },
+        { point: q2.points[1], status: 'covered' as const, confidence: 90, evidenceQuote: 'citations' },
+        { point: q2.points[2], status: 'not_heard_yet' as const, confidence: 10 },
+        { point: q2.points[3], status: 'not_heard_yet' as const, confidence: 10 },
+      ];
+      const d2 = generateDebrief(q2, r2Turns, r2Evaluated);
+
+      const session = generateSessionDebrief([
+        { question: q1, turns: r1Turns, evaluatedPoints: r1Evaluated, debrief: d1 },
+        { question: q2, turns: r2Turns, evaluatedPoints: r2Evaluated, debrief: d2 },
+      ]);
+
+      expect(session.overallCall).toBe('Strong'); // 6 of 8 points = 75% -> Strong
+      expect(session.overallSummary).toContain('Strong performance across the session');
+      expect(session.overallSummary).toContain('covering 6 of 8 technical dimensions');
+      expect(session.questionDebriefs.length).toBe(2);
+      expect(session.practiceTitle).toBeDefined();
+    });
+
+    it('identifies areas for improvement when session performance is mixed', () => {
+      const q1 = interviewRoomQuestions[0];
+      const q2 = interviewRoomQuestions[1];
+
+      const r1Turns: TurnRecord[] = [{ turnIndex: 0, questionText: q1.spoken_question, spokenText: q1.spoken_question, isFollowUp: false, learnerAnswer: 'XGBoost is cheaper.' }];
+      const r1Evaluated = [
+        { point: q1.points[0], status: 'not_heard_yet' as const, confidence: 10 },
+        { point: q1.points[1], status: 'not_heard_yet' as const, confidence: 10 },
+        { point: q1.points[2], status: 'not_heard_yet' as const, confidence: 10 },
+        { point: q1.points[3], status: 'covered' as const, confidence: 85, evidenceQuote: 'XGBoost is cheaper' },
+      ];
+      const d1 = generateDebrief(q1, r1Turns, r1Evaluated);
+
+      const r2Turns: TurnRecord[] = [{ turnIndex: 0, questionText: q2.spoken_question, spokenText: q2.spoken_question, isFollowUp: false, learnerAnswer: 'RAG uses vector search.' }];
+      const r2Evaluated = [
+        { point: q2.points[0], status: 'covered' as const, confidence: 75, evidenceQuote: 'RAG uses vector search' },
+        { point: q2.points[1], status: 'not_heard_yet' as const, confidence: 10 },
+        { point: q2.points[2], status: 'not_heard_yet' as const, confidence: 10 },
+        { point: q2.points[3], status: 'not_heard_yet' as const, confidence: 10 },
+      ];
+      const d2 = generateDebrief(q2, r2Turns, r2Evaluated);
+
+      const session = generateSessionDebrief([
+        { question: q1, turns: r1Turns, evaluatedPoints: r1Evaluated, debrief: d1 },
+        { question: q2, turns: r2Turns, evaluatedPoints: r2Evaluated, debrief: d2 },
+      ]);
+
+      expect(session.overallCall).toBe('Getting there'); // 2 of 8 points = 25% -> Getting there
+      expect(session.overallSummary).toContain('You showed working engineering knowledge across 2 questions');
+      expect(session.questionDebriefs.length).toBe(2);
     });
   });
 

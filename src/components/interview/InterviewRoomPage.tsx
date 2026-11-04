@@ -12,6 +12,8 @@ import type {
   TurnRecord,
   QuestionDebrief,
   EvaluatedPoint,
+  QuestionSessionRecord,
+  SessionDebrief,
 } from '../../lib/interviewRoom/types';
 import {
   correctInterviewTerms,
@@ -19,6 +21,7 @@ import {
   evaluatePoints,
   chooseDialogueAction,
   generateDebrief,
+  generateSessionDebrief,
   END_OF_ANSWER_PAUSE_SECONDS,
 } from '../../lib/interviewRoom/dialogue';
 import { MoonshineSingleThreadEngine } from '../../lib/speechTest/engines';
@@ -98,6 +101,8 @@ export default function InterviewRoomPage() {
 
   // Debrief result
   const [debrief, setDebrief] = useState<QuestionDebrief | null>(null);
+  const [sessionDebrief, setSessionDebrief] = useState<SessionDebrief | null>(null);
+  const [completedRecords, setCompletedRecords] = useState<QuestionSessionRecord[]>([]);
   const [usefulFeedback, setUsefulFeedback] = useState<string | null>(() => {
     try {
       return localStorage.getItem('nm_interview_room_useful');
@@ -180,11 +185,14 @@ export default function InterviewRoomPage() {
   const getProgressTag = (): string => {
     if (screen === 'setup' || screen === 'mic') return '';
     if (screen === 'debrief') {
-      return `Debrief · GenAI Engineer, mid-level`;
+      const count = sessionDebrief?.questionDebriefs.length || completedRecords.length || 1;
+      return count > 1
+        ? `Debrief · GenAI Engineer, mid-level · ${count} questions`
+        : `Debrief · GenAI Engineer, mid-level`;
     }
     const qTotal = questionsToRun.length;
     const qNum = questionIndex + 1;
-    if (turnIndex > 0) return 'Follow-up';
+    if (turnIndex > 0) return `Question ${qNum} of ${qTotal} · Follow-up`;
     return `Question ${qNum} of ${qTotal}`;
   };
 
@@ -377,14 +385,38 @@ export default function InterviewRoomPage() {
       setCurrentProbedMisconceptionId(action.probedMisconceptionId);
       startSpeakingStep(action.spokenQuestion, action.textQuestion);
     } else {
-      // Debrief step
+      // Question completed
       setCurrentProbedPointId(undefined);
       setCurrentProbedMisconceptionId(undefined);
       const debriefData = generateDebrief(currentQuestion, newHistory, evaluatedPoints);
-      setDebrief(debriefData);
-      setScreen('debrief');
+      const newRecord: QuestionSessionRecord = {
+        question: currentQuestion,
+        turns: newHistory,
+        evaluatedPoints,
+        debrief: debriefData,
+      };
+      const updatedRecords = [...completedRecords, newRecord];
+      setCompletedRecords(updatedRecords);
+
+      if (questionIndex + 1 < questionsToRun.length) {
+        // Multi-question session: advance to next question with spoken transition
+        const nextIdx = questionIndex + 1;
+        setQuestionIndex(nextIdx);
+        setTurnIndex(0);
+        setHistory([]);
+        const nextQ = questionsToRun[nextIdx];
+        const transition = spokenTransitions[questionIndex % spokenTransitions.length] || '';
+        const spoken = transition ? `${transition} ${nextQ.spoken_question}` : nextQ.spoken_question;
+        startSpeakingStep(spoken, nextQ.spoken_question);
+      } else {
+        // All session questions completed: generate session debrief across questions
+        const sessionDebriefData = generateSessionDebrief(updatedRecords);
+        setSessionDebrief(sessionDebriefData);
+        setDebrief(debriefData);
+        setScreen('debrief');
+      }
     }
-  }, [liveTranscript, isTypingMode, turnIndex, currentTextQuestion, currentSpokenText, history, currentQuestion, currentProbedPointId, currentProbedMisconceptionId, startSpeakingStep]);
+  }, [liveTranscript, isTypingMode, turnIndex, currentTextQuestion, currentSpokenText, history, currentQuestion, currentProbedPointId, currentProbedMisconceptionId, startSpeakingStep, completedRecords, questionIndex, questionsToRun]);
 
   // Begin interview from setup
   const handleBegin = () => {
@@ -393,27 +425,33 @@ export default function InterviewRoomPage() {
     try {
       localStorage.setItem('nm_interview_room_session_idx', String(nextIdx));
     } catch {}
+    setCompletedRecords([]);
+    setSessionDebrief(null);
     setScreen('mic');
   };
 
   // Request microphone permission
   const handleAllowMic = async () => {
     try {
-      // Prompt/check permission once
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Stop initial stream immediately so fake audio device / mic is not streaming during interviewer speaking
       stream.getTracks().forEach((t) => t.stop());
       mediaStreamRef.current = null;
       setIsTypingMode(false);
+      setQuestionIndex(0);
       setTurnIndex(0);
       setHistory([]);
+      setCompletedRecords([]);
+      setSessionDebrief(null);
       startSpeakingStep(currentQuestion.spoken_question, currentQuestion.spoken_question);
     } catch (err) {
       console.warn('[InterviewRoom] Mic permission denied/failed:', err);
       setStatusMessage('Microphone access unavailable. Continuing with text input.');
       setIsTypingMode(true);
+      setQuestionIndex(0);
       setTurnIndex(0);
       setHistory([]);
+      setCompletedRecords([]);
+      setSessionDebrief(null);
       startSpeakingStep(currentQuestion.spoken_question, currentQuestion.spoken_question);
     }
   };
@@ -421,17 +459,23 @@ export default function InterviewRoomPage() {
   // Fallback to typing mode directly
   const handleFallbackTyping = () => {
     setIsTypingMode(true);
+    setQuestionIndex(0);
     setTurnIndex(0);
     setHistory([]);
+    setCompletedRecords([]);
+    setSessionDebrief(null);
     startSpeakingStep(currentQuestion.spoken_question, currentQuestion.spoken_question);
   };
 
   // Restart / Answer again
   const handleAnswerAgain = () => {
+    setQuestionIndex(0);
     setTurnIndex(0);
     setHistory([]);
     setDebrief(null);
-    startSpeakingStep(currentQuestion.spoken_question, currentQuestion.spoken_question);
+    setSessionDebrief(null);
+    setCompletedRecords([]);
+    startSpeakingStep(questionsToRun[0].spoken_question, questionsToRun[0].spoken_question);
   };
 
   // Next question in multi-question round
@@ -460,11 +504,13 @@ export default function InterviewRoomPage() {
       mediaStreamRef.current.getTracks().forEach((t) => t.stop());
       mediaStreamRef.current = null;
     }
-    setScreen('setup');
     setQuestionIndex(0);
     setTurnIndex(0);
     setHistory([]);
     setDebrief(null);
+    setSessionDebrief(null);
+    setCompletedRecords([]);
+    setScreen('setup');
   };
 
   // Record useful feedback
@@ -699,6 +745,11 @@ export default function InterviewRoomPage() {
                     Switch to typing
                   </button>
                 )}
+                {questionIndex + 1 < questionsToRun.length && (
+                  <button type="button" onClick={handleNextQuestion}>
+                    Next question →
+                  </button>
+                )}
               </div>
             </>
           )}
@@ -719,114 +770,190 @@ export default function InterviewRoomPage() {
           )}
 
           {/* SCREEN 5: DEBRIEF */}
-          {screen === 'debrief' && debrief && (
-            <>
-              {/* Call banner */}
-              <div className="call">
-                <span style={{ font: '500 13px var(--mono)' }}>Interviewer's call on this question</span>
-                <strong>{debrief.overallCall}</strong>
-                <p>{debrief.overallSummary}</p>
-              </div>
+          {screen === 'debrief' && (debrief || sessionDebrief) && (() => {
+            const activeDebrief: SessionDebrief =
+              sessionDebrief ||
+              generateSessionDebrief([
+                {
+                  question: currentQuestion,
+                  turns: history,
+                  evaluatedPoints: [],
+                  debrief: debrief!,
+                },
+              ]);
 
-              {/* Practise this next */}
-              <div className="next">
-                <h3>Practise this next</h3>
-                <p style={{ marginTop: '6px' }}>{debrief.practiceAction}</p>
-                <div className="actions" style={{ marginTop: '12px' }}>
-                  <button className="primary" id="again" onClick={handleAnswerAgain}>
-                    Answer it again
-                  </button>
-                  <Link
-                    to={debrief.practiceRoute}
-                    className="btn-link"
-                    style={{ textDecoration: 'none' }}
-                  >
-                    Open {debrief.practiceTitle} ↗
-                  </Link>
+            return (
+              <>
+                {/* Call banner */}
+                <div className="call">
+                  <span style={{ font: '500 13px var(--mono)' }}>
+                    {activeDebrief.questionDebriefs.length > 1
+                      ? `Interviewer's call across ${activeDebrief.questionDebriefs.length} questions`
+                      : "Interviewer's call on this question"}
+                  </span>
+                  <strong>{activeDebrief.overallCall}</strong>
+                  <p>{activeDebrief.overallSummary}</p>
                 </div>
-              </div>
 
-              {/* Rubric rows */}
-              <div className="rows">
-                {debrief.rows.map((row, i) => (
-                  <div className="row" key={i}>
-                    <div className="stack" style={{ gap: '6px' }}>
-                      <b>{row.label}</b>
-                      <span className={`pill ${row.pillClass}`}>{row.pill}</span>
-                    </div>
-                    <div>
-                      <p>{row.text}</p>
-                      {row.quote && <blockquote>{row.quote}</blockquote>}
-                    </div>
+                {/* Practise this next */}
+                <div className="next">
+                  <h3>Practise this next</h3>
+                  <p style={{ marginTop: '6px' }}>{activeDebrief.practiceAction}</p>
+                  <div className="actions" style={{ marginTop: '12px' }}>
+                    <button className="primary" id="again" onClick={handleAnswerAgain}>
+                      {activeDebrief.questionDebriefs.length > 1 ? 'Start another session' : 'Answer it again'}
+                    </button>
+                    <Link
+                      to={activeDebrief.practiceRoute}
+                      className="btn-link"
+                      style={{ textDecoration: 'none' }}
+                    >
+                      Open {activeDebrief.practiceTitle} ↗
+                    </Link>
                   </div>
-                ))}
-              </div>
-
-              {/* Marked answer */}
-              <div className="stack">
-                <h3>Your answer, marked</h3>
-                <p
-                  className="live"
-                  style={{ minHeight: 0 }}
-                  dangerouslySetInnerHTML={{ __html: debrief.markedAnswerHtml }}
-                />
-                <p className="note">Green: covered. Amber: recheck or not heard yet.</p>
-              </div>
-
-              {/* Was this useful? Local storage widget */}
-              <div
-                style={{
-                  padding: '12px 16px',
-                  background: 'var(--surface)',
-                  border: '1px solid var(--line)',
-                  borderRadius: '6px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  flexWrap: 'wrap',
-                  gap: '8px',
-                }}
-              >
-                <span style={{ fontSize: '15px', fontWeight: 600 }}>Was this debrief useful?</span>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <button
-                    type="button"
-                    className={usefulFeedback === 'yes' ? 'primary' : ''}
-                    style={{ padding: '6px 14px', fontSize: '14px' }}
-                    onClick={() => handleUseful('yes')}
-                  >
-                    Yes
-                  </button>
-                  <button
-                    type="button"
-                    className={usefulFeedback === 'no' ? 'primary' : ''}
-                    style={{ padding: '6px 14px', fontSize: '14px' }}
-                    onClick={() => handleUseful('no')}
-                  >
-                    No
-                  </button>
-                  {usefulFeedback && (
-                    <span style={{ fontSize: '13px', color: 'var(--soft)' }}>
-                      Thank you! Saved locally.
-                    </span>
-                  )}
                 </div>
-              </div>
 
-              {/* Action buttons */}
-              <div className="actions">
-                {questionIndex + 1 < questionsToRun.length ? (
-                  <button className="primary" id="next-q" onClick={handleNextQuestion}>
-                    Next question →
-                  </button>
+                {/* Question breakdown: Multi-question vs Single question */}
+                {activeDebrief.questionDebriefs.length > 1 ? (
+                  <div className="session-questions" style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+                    <h3 style={{ fontSize: '18px', fontWeight: 600, borderBottom: '1px solid var(--line)', paddingBottom: '8px', margin: 0 }}>
+                      Per-Question Breakdown
+                    </h3>
+                    {activeDebrief.questionDebriefs.map((record, i) => (
+                      <div key={record.question.id} className="stack" style={{ gap: '14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: '8px' }}>
+                          <div>
+                            <span style={{ fontSize: '12px', fontFamily: 'var(--mono)', color: 'var(--soft)' }}>
+                              Question {i + 1} of {activeDebrief.questionDebriefs.length}
+                            </span>
+                            <h4 style={{ fontSize: '16px', fontWeight: 600, margin: '2px 0 0 0' }}>
+                              {record.question.title}
+                            </h4>
+                          </div>
+                          <span
+                            className={`pill ${
+                              record.debrief.overallCall === 'Strong'
+                                ? 'strong'
+                                : record.debrief.overallCall === 'Getting there'
+                                ? 'ok'
+                                : 'gap'
+                            }`}
+                          >
+                            {record.debrief.overallCall}
+                          </span>
+                        </div>
+                        <p style={{ fontSize: '14px', lineHeight: 1.5, color: 'var(--text)' }}>
+                          {record.debrief.overallSummary}
+                        </p>
+                        <div className="rows">
+                          {record.debrief.rows.map((row, rIdx) => (
+                            <div className="row" key={rIdx}>
+                              <div className="stack" style={{ gap: '6px' }}>
+                                <b>{row.label}</b>
+                                <span className={`pill ${row.pillClass}`}>{row.pill}</span>
+                              </div>
+                              <div>
+                                <p>{row.text}</p>
+                                {row.quote && <blockquote>{row.quote}</blockquote>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="stack">
+                          <h5 style={{ fontSize: '13px', fontFamily: 'var(--mono)', color: 'var(--soft)', margin: 0 }}>
+                            Your answer, marked
+                          </h5>
+                          <p
+                            className="live"
+                            style={{ minHeight: 0, fontSize: '14px' }}
+                            dangerouslySetInnerHTML={{ __html: record.debrief.markedAnswerHtml }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 ) : (
+                  <>
+                    {/* Single question rubric rows */}
+                    <div className="rows">
+                      {activeDebrief.questionDebriefs[0].debrief.rows.map((row, i) => (
+                        <div className="row" key={i}>
+                          <div className="stack" style={{ gap: '6px' }}>
+                            <b>{row.label}</b>
+                            <span className={`pill ${row.pillClass}`}>{row.pill}</span>
+                          </div>
+                          <div>
+                            <p>{row.text}</p>
+                            {row.quote && <blockquote>{row.quote}</blockquote>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Marked answer */}
+                    <div className="stack">
+                      <h3>Your answer, marked</h3>
+                      <p
+                        className="live"
+                        style={{ minHeight: 0 }}
+                        dangerouslySetInnerHTML={{
+                          __html: activeDebrief.questionDebriefs[0].debrief.markedAnswerHtml,
+                        }}
+                      />
+                      <p className="note">Green: covered. Amber: recheck or not heard yet.</p>
+                    </div>
+                  </>
+                )}
+
+                {/* Was this useful? Local storage widget */}
+                <div
+                  style={{
+                    padding: '12px 16px',
+                    background: 'var(--surface)',
+                    border: '1px solid var(--line)',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '8px',
+                  }}
+                >
+                  <span style={{ fontSize: '15px', fontWeight: 600 }}>Was this debrief useful?</span>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      className={usefulFeedback === 'yes' ? 'primary' : ''}
+                      style={{ padding: '6px 14px', fontSize: '14px' }}
+                      onClick={() => handleUseful('yes')}
+                    >
+                      Yes
+                    </button>
+                    <button
+                      type="button"
+                      className={usefulFeedback === 'no' ? 'primary' : ''}
+                      style={{ padding: '6px 14px', fontSize: '14px' }}
+                      onClick={() => handleUseful('no')}
+                    >
+                      No
+                    </button>
+                    {usefulFeedback && (
+                      <span style={{ fontSize: '13px', color: 'var(--soft)' }}>
+                        Thank you! Saved locally.
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Action buttons */}
+                <div className="actions">
                   <button id="restart" onClick={handleRestart}>
                     Start over
                   </button>
-                )}
-              </div>
-            </>
-          )}
+                </div>
+              </>
+            );
+          })()}
         </main>
 
         {/* Footnote */}

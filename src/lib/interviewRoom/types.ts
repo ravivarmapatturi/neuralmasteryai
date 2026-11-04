@@ -83,3 +83,19 @@ export interface QuestionDebrief {
   markedAnswerHtml: string;
   cleanTranscript: string;
 }
+
+export interface QuestionSessionRecord {
+  question: InterviewRoomQuestion;
+  turns: TurnRecord[];
+  evaluatedPoints: EvaluatedPoint[];
+  debrief: QuestionDebrief;
+}
+
+export interface SessionDebrief {
+  overallCall: 'Strong' | 'Getting there' | 'Needs work';
+  overallSummary: string;
+  practiceTitle: string;
+  practiceAction: string;
+  practiceRoute: string;
+  questionDebriefs: QuestionSessionRecord[];
+}
