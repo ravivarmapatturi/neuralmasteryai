@@ -260,8 +260,8 @@ describe('Interview Room Dialogue & Logic', () => {
     });
 
     it('extracts concise lowercase point short name from claim', () => {
-      expect(getPointShortName(qFoundation.points[0])).toContain('pretrained at scale');
-      expect(getPointShortName(qFoundation.points[1])).toContain('acts as a shared base');
+      expect(getPointShortName(qFoundation.points[0])).toBe('pre-training at scale');
+      expect(getPointShortName(qFoundation.points[1])).toBe('downstream adaptability');
     });
   });
 
@@ -331,8 +331,7 @@ describe('Interview Room Dialogue & Logic', () => {
       const debrief = generateDebrief(qFoundation, turns, allMissed);
       expect(debrief.overallCall).toBe('Needs work');
       expect(debrief.overallSummary).toContain('You did not address any of the 4 core evaluation points');
-      expect(debrief.overallSummary).toContain('We did not hear evidence for:');
-      expect(debrief.overallSummary).toContain('pretrained at scale');
+      expect(debrief.overallSummary).toContain('pre-training at scale');
       expect(debrief.overallSummary).toContain('No direct evidence or verifiable technical claims were observed');
 
       // Verify all signal rows without evidence say so explicitly
@@ -364,7 +363,7 @@ describe('Interview Room Dialogue & Logic', () => {
       const debrief = generateDebrief(qFoundation, turns, allCovered);
       expect(debrief.overallCall).toBe('Strong');
       expect(debrief.overallSummary).toContain('You covered all 4 core dimensions:');
-      expect(debrief.overallSummary).toContain('No core technical criteria were left unaddressed.');
+      expect(debrief.overallSummary).toContain('Your explanation addressed each key requirement cleanly.');
       expect(debrief.overallSummary).toContain('Demonstrated evidence heard: "pretrained at scale on massive broad datasets".');
       // Depth when probed should be "Not probed" because all points were covered on turn 1
       expect(debrief.rows[1].pill).toBe('Not probed');
@@ -416,13 +415,15 @@ describe('Interview Room Dialogue & Logic', () => {
 
       const debrief = generateDebrief(qFoundation, turns, evaluated);
       expect(debrief.overallCall).toBe('Getting there');
-      expect(debrief.overallSummary).toContain('You covered 1 of 4 evaluation points');
-      expect(debrief.overallSummary).toContain('We did not hear evidence for');
+      expect(debrief.overallSummary).toContain('You covered engineering trade-offs, but we did not hear evidence for');
       expect(debrief.overallSummary).toContain('misconception (Defines foundation model strictly as next-token prediction)');
       expect(debrief.overallSummary).toContain('Demonstrated evidence heard: "XGBoost is cheaper for tabular data."');
       expect(debrief.rows[1].label).toBe('Depth when probed');
       expect(debrief.rows[1].pill).toBe('Partly there');
       expect(debrief.rows[1].quote).toContain('In vision foundation models learn representations');
+      expect(debrief.rows[2].label).toBe('Trade-offs');
+      expect(debrief.rows[2].pill).toBe('Strong');
+      expect(debrief.rows[2].quote).toContain('XGBoost is cheaper');
     });
 
     it('does not quote noise like "Poopins" and reports "No evidence heard when probed"', () => {
