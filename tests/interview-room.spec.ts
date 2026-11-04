@@ -53,9 +53,14 @@ test.describe('Interview Room (/interview/room)', () => {
       await page.waitForTimeout(1000);
       const call = await page.$('.call');
       if (call) break;
-      try {
-        await page.click('button:has-text("Skip speaking")', { timeout: 1500 });
-      } catch {}
+      // Interviewer clips can run longer than the wait, so skip whenever the button appears
+      for (let w = 0; w < 40; w++) {
+        if ((await page.$('textarea.live')) || (await page.$('.call'))) break;
+        const skip = await page.$('button:has-text("Skip speaking")');
+        if (skip) await skip.click().catch(() => {});
+        await page.waitForTimeout(500);
+      }
+      if (await page.$('.call')) break;
       await page.waitForSelector('textarea.live', { timeout: 10000 });
       await page.fill(
         'textarea.live',
