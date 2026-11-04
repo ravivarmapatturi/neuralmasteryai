@@ -21,6 +21,8 @@ test.describe('Interview Room (/interview/room)', () => {
     page.on('request', (req) => {
       if ((req.postData() || '').includes('probabilistic')) answersSent.push(req.url());
     });
+    // Nodes hold still under reduced motion, so the test can click them.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.addInitScript(() => {
       Object.defineProperty(navigator, 'mediaDevices', { value: { getUserMedia: () => Promise.reject(new Error('no mic')) } });
     });
