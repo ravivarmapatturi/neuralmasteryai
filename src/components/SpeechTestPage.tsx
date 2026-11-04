@@ -6,6 +6,7 @@ import {
   BrowserSpeechEngine,
   MoonshineEngine,
   SherpaOnnxEngine,
+  MoonshineSingleThreadEngine,
   type EngineMetrics,
   detectBrowser,
   getJSHeapMB,
@@ -32,7 +33,7 @@ export const FIXED_READING_PARAGRAPH = FIXED_READING_PARAGRAPHS[0].text;
 const FREE_ANSWER_PROMPT =
   'What is a foundation model, and how is it different from a regular ML model?';
 
-type EngineId = 'browser' | 'moonshine' | 'sherpa';
+type EngineId = 'browser' | 'moonshine' | 'sherpa' | 'moonshine-single';
 
 export default function SpeechTestPage() {
   useDocumentTitle('Live Speech & End-of-Answer Test Lab');
@@ -73,12 +74,14 @@ export default function SpeechTestPage() {
   const enginesRef = useRef<Record<EngineId, BaseSpeechEngine>>({
     browser: new BrowserSpeechEngine(),
     moonshine: new MoonshineEngine(),
+    'moonshine-single': new MoonshineSingleThreadEngine(),
     sherpa: new SherpaOnnxEngine(),
   });
 
   const [metrics, setMetrics] = useState<Record<EngineId, EngineMetrics>>({
     browser: enginesRef.current.browser.getMetrics(),
     moonshine: enginesRef.current.moonshine.getMetrics(),
+    'moonshine-single': enginesRef.current['moonshine-single'].getMetrics(),
     sherpa: enginesRef.current.sherpa.getMetrics(),
   });
 
@@ -371,6 +374,28 @@ export default function SpeechTestPage() {
                 k2-fsa WebAssembly streaming English model (Zipformer GigaSpeech / 20M).
               </p>
             </button>
+
+            {/* Option 4 */}
+            <button
+              type="button"
+              onClick={() => handleSelectEngine('moonshine-single')}
+              style={{
+                textAlign: 'left',
+                padding: '0.75rem 0.9rem',
+                borderRadius: '6px',
+                border: selectedEngineId === 'moonshine-single' ? '2px solid var(--nm-accent-success)' : '1px solid var(--nm-border)',
+                backgroundColor: selectedEngineId === 'moonshine-single' ? 'var(--nm-surface-alt)' : 'var(--nm-bg)',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                <strong style={{ fontSize: '0.95rem' }}>4. Moonshine Tiny (Single-Threaded)</strong>
+                <span style={{ fontSize: '0.7rem', color: 'var(--nm-accent-success)', fontWeight: 600 }}>~28 MB · No COOP/COEP</span>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--nm-text-secondary)' }}>
+                Web Worker single-threaded ONNX Web. Growing audio windows, live partial words & stable settled prefix.
+              </p>
+            </button>
           </div>
 
           {/* Privacy & Engine Notice */}
@@ -382,7 +407,7 @@ export default function SpeechTestPage() {
               </span>
             ) : (
               <span>
-                <strong>Privacy guarantee:</strong> Option {selectedEngineId === 'moonshine' ? '2 (Moonshine)' : '3 (sherpa-onnx)'}{' '}
+                <strong>Privacy guarantee:</strong> Option {selectedEngineId === 'moonshine' ? '2 (Moonshine)' : selectedEngineId === 'moonshine-single' ? '4 (Moonshine Single-Threaded)' : '3 (sherpa-onnx)'}{' '}
                 runs 100% on device. Zero audio or transcript leaves your browser.
               </span>
             )}
@@ -696,6 +721,26 @@ export default function SpeechTestPage() {
               </strong>
             </div>
           )}
+
+          {/* Update Interval & Word Revisions (Option 4 / Single-Threaded) */}
+          {selectedEngineId === 'moonshine-single' && (
+            <>
+              <div data-testid="metric-update-interval" style={{ backgroundColor: 'var(--nm-surface)', border: '1px solid var(--nm-border)', borderRadius: '6px', padding: '0.75rem' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--nm-text-muted)', display: 'block' }}>Update Interval</span>
+                <strong style={{ fontSize: '1.2rem', color: 'var(--nm-accent-secondary)' }}>
+                  {currentMetrics.updateIntervalMs !== undefined && currentMetrics.updateIntervalMs !== null
+                    ? `${currentMetrics.updateIntervalMs} ms`
+                    : '—'}
+                </strong>
+              </div>
+              <div data-testid="metric-word-revisions" style={{ backgroundColor: 'var(--nm-surface)', border: '1px solid var(--nm-border)', borderRadius: '6px', padding: '0.75rem' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--nm-text-muted)', display: 'block' }}>Earlier Word Changes</span>
+                <strong style={{ fontSize: '1.2rem', color: (currentMetrics.earlierWordRevisions ?? 0) === 0 ? 'var(--nm-accent-success)' : 'var(--nm-accent-warn)' }}>
+                  {currentMetrics.earlierWordRevisions ?? 0}
+                </strong>
+              </div>
+            </>
+          )}
         </section>
 
         {/* Live Partial & Final Transcript */}
@@ -733,7 +778,20 @@ export default function SpeechTestPage() {
             }}
           >
             {currentMetrics.partialText || currentMetrics.finalText ? (
-              <span>{currentMetrics.partialText || currentMetrics.finalText}</span>
+              <span>
+                {currentMetrics.finalText && currentMetrics.partialText.startsWith(currentMetrics.finalText) ? (
+                  <>
+                    <span>{currentMetrics.finalText}</span>
+                    {currentMetrics.partialText.length > currentMetrics.finalText.length && (
+                      <span style={{ color: 'var(--nm-accent-secondary)', marginLeft: '0.25rem', fontWeight: 500 }}>
+                        {currentMetrics.partialText.slice(currentMetrics.finalText.length).trim()}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <span>{currentMetrics.partialText || currentMetrics.finalText}</span>
+                )}
+              </span>
             ) : (
               <span style={{ color: 'var(--nm-text-muted)', fontStyle: 'italic' }}>
                 {isRecording

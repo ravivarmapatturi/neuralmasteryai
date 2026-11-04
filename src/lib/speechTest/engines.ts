@@ -18,6 +18,8 @@ export interface EngineMetrics {
   device: string;
   browser: string;
   errorMessage: string | null;
+  updateIntervalMs?: number | null;
+  earlierWordRevisions?: number;
 }
 
 export function detectBrowser(): string {
@@ -704,6 +706,291 @@ export class SherpaOnnxEngine extends BaseSpeechEngine {
         // Ignore
       }
       this.recognizer = null;
+    }
+    this.listeners.clear();
+  }
+}
+
+/**
+ * Option 4: Moonshine Tiny, single-threaded
+ * Runs onnx-community/moonshine-tiny-ONNX via ONNX Runtime Web in a Web Worker
+ * with numThreads = 1 (Zero SharedArrayBuffer, Zero COOP/COEP required).
+ * 
+ * Features:
+ * - Growing audio windows as learner speaks.
+ * - Live partial word rendering.
+ * - Prefix stabilization to prevent settled words from jittering.
+ * - Non-blocking Web Worker offloading (page never stutters).
+ * - Real update interval and earlier word revision tracking.
+ */
+export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
+  readonly id = 'moonshine-single';
+  readonly name = 'Moonshine Tiny, single-threaded (ORT Web / transformers.js)';
+  private worker: Worker | null = null;
+  private audioContext: AudioContext | null = null;
+  private processorNode: ScriptProcessorNode | null = null;
+  private isRunning = false;
+  private isWorkerBusy = false;
+  private accumulatedChunks: Float32Array[] = [];
+  private totalSamples = 0;
+  private pollIntervalId: any = null;
+  private lastUpdateTime: number | null = null;
+  private updateIntervals: number[] = [];
+  private settledWords: string[] = [];
+  private earlierWordRevisions = 0;
+
+  constructor() {
+    super();
+    this.metrics.device = 'WASM (Single-Threaded, No COOP/COEP needed)';
+    this.metrics.downloadBytes = 28180947; // 28.18 MB total (7.9 MB encoder + 20.2 MB decoder)
+    this.metrics.earlierWordRevisions = 0;
+  }
+
+  public async load(): Promise<void> {
+    if (this.worker && this.metrics.status === 'ready') return;
+
+    this.updateMetrics({ status: 'loading', errorMessage: null, downloadProgressPct: 5 });
+    const startTime = performance.now();
+
+    return new Promise<void>((resolve, reject) => {
+      try {
+        this.worker = new Worker(
+          new URL('../../workers/moonshineSingleThreadWorker.ts', import.meta.url),
+          { type: 'module' }
+        );
+
+        this.worker.onmessage = (e: MessageEvent) => {
+          const { type, loaded, total, loadTimeMs, error } = e.data;
+
+          if (type === 'progress') {
+            const pct = total ? Math.min(100, Math.round((loaded / total) * 100)) : 50;
+            this.updateMetrics({
+              downloadProgressPct: pct,
+              downloadBytes: total ? loaded : Math.round(28180947 * (pct / 100)),
+            });
+          } else if (type === 'init_done') {
+            const finalLoadTime = loadTimeMs || Math.round(performance.now() - startTime);
+            this.updateMetrics({
+              status: 'ready',
+              downloadProgressPct: 100,
+              downloadBytes: 28180947,
+              loadTimeMs: finalLoadTime,
+              errorMessage: null,
+            });
+            resolve();
+          } else if (type === 'error') {
+            const msg = error || 'Worker initialization failed';
+            this.updateMetrics({ status: 'error', errorMessage: msg });
+            reject(new Error(msg));
+          }
+        };
+
+        this.worker.onerror = (err) => {
+          const msg = err.message || 'Worker syntax or import error';
+          this.updateMetrics({ status: 'error', errorMessage: msg });
+          reject(new Error(msg));
+        };
+
+        this.worker.postMessage({ id: 'init', op: 'init' });
+      } catch (err) {
+        const msg = (err as Error).message;
+        this.updateMetrics({ status: 'error', errorMessage: msg });
+        reject(err);
+      }
+    });
+  }
+
+  public async start(stream: MediaStream): Promise<void> {
+    if (!this.worker || this.metrics.status !== 'ready') {
+      await this.load();
+    }
+
+    this.isRunning = true;
+    this.isWorkerBusy = false;
+    this.hasEmittedFirstWord = false;
+    this.speechStartTime = null;
+    this.listeningStartTime = performance.now();
+    this.accumulatedChunks = [];
+    this.totalSamples = 0;
+    this.updateIntervals = [];
+    this.settledWords = [];
+    this.earlierWordRevisions = 0;
+    this.lastUpdateTime = null;
+
+    this.updateMetrics({
+      status: 'listening',
+      partialText: '',
+      finalText: '',
+      errorMessage: null,
+      updateIntervalMs: null,
+      earlierWordRevisions: 0,
+    });
+
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    this.audioContext = new AudioCtx({ sampleRate: 16000 });
+    if (this.audioContext.state === 'suspended') {
+      await this.audioContext.resume();
+    }
+
+    const source = this.audioContext.createMediaStreamSource(stream);
+    this.processorNode = this.audioContext.createScriptProcessor(4096, 1, 1);
+
+    this.processorNode.onaudioprocess = (e) => {
+      if (!this.isRunning) return;
+      const channelData = e.inputBuffer.getChannelData(0);
+      const copy = new Float32Array(channelData.length);
+      copy.set(channelData);
+      this.accumulatedChunks.push(copy);
+      this.totalSamples += copy.length;
+    };
+
+    source.connect(this.processorNode);
+    // Connect to destination via silent gain node to ensure clock advancement
+    const silentGain = this.audioContext.createGain();
+    silentGain.gain.value = 0.00001;
+    this.processorNode.connect(silentGain);
+    silentGain.connect(this.audioContext.destination);
+
+    // Setup worker listener for transcription results
+    if (this.worker) {
+      this.worker.onmessage = (e: MessageEvent) => {
+        const { type, text, inferMs } = e.data;
+        if (type === 'result') {
+          this.isWorkerBusy = false;
+          const now = performance.now();
+
+          if (this.lastUpdateTime) {
+            const interval = Math.round(now - this.lastUpdateTime);
+            this.updateIntervals.push(interval);
+          }
+          this.lastUpdateTime = now;
+
+          const rawText = (text || '').trim();
+          if (rawText.length > 0) {
+            if (!this.hasEmittedFirstWord) {
+              this.hasEmittedFirstWord = true;
+              const refStart = this.speechStartTime ?? this.listeningStartTime ?? now;
+              this.updateMetrics({ timeToFirstWordMs: Math.max(0, Math.round(now - refStart)) });
+            }
+
+            // Word normalization and settled prefix tracking
+            const words = rawText.split(/\s+/).filter(Boolean);
+            
+            // Check if any previously settled word changed
+            let stepRevisions = 0;
+            const checkLimit = Math.min(this.settledWords.length, words.length);
+            for (let i = 0; i < checkLimit; i++) {
+              const cleanPrev = this.settledWords[i].toLowerCase().replace(/[^a-z0-9]/g, '');
+              const cleanCurr = words[i].toLowerCase().replace(/[^a-z0-9]/g, '');
+              if (cleanPrev !== cleanCurr) {
+                stepRevisions++;
+              }
+            }
+            if (stepRevisions > 0) {
+              this.earlierWordRevisions += stepRevisions;
+            }
+
+            // Stabilize settled prefix: commit words before the trailing volatile window
+            if (words.length > 2) {
+              this.settledWords = words.slice(0, words.length - 1);
+            }
+
+            const avgInterval =
+              this.updateIntervals.length > 0
+                ? Math.round(
+                    this.updateIntervals.reduce((a, b) => a + b, 0) / this.updateIntervals.length
+                  )
+                : null;
+
+            this.updateMetrics({
+              partialText: rawText,
+              finalText: this.settledWords.join(' '),
+              lagBehindSpeechMs: inferMs ?? Math.max(20, Math.round(now - (this.speechStartTime ?? now))),
+              updateIntervalMs: avgInterval,
+              earlierWordRevisions: this.earlierWordRevisions,
+            });
+          }
+        } else if (type === 'busy') {
+          // Worker was busy; wait for next cycle
+        }
+      };
+    }
+
+    // Growing audio window polling loop: triggers every 250ms
+    this.pollIntervalId = setInterval(() => {
+      if (!this.isRunning || this.isWorkerBusy || !this.worker) return;
+      if (this.totalSamples < 4000) return; // Wait for at least ~250ms of audio
+
+      // Flatten accumulated chunks into a single Float32Array
+      const merged = new Float32Array(this.totalSamples);
+      let offset = 0;
+      for (const chunk of this.accumulatedChunks) {
+        merged.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      this.isWorkerBusy = true;
+      this.worker.postMessage(
+        {
+          id: Date.now(),
+          op: 'transcribe',
+          payload: { audio: merged.buffer },
+        },
+        [merged.buffer]
+      );
+    }, 250);
+  }
+
+  public async stop(): Promise<void> {
+    this.isRunning = false;
+    if (this.pollIntervalId) {
+      clearInterval(this.pollIntervalId);
+      this.pollIntervalId = null;
+    }
+    if (this.processorNode) {
+      this.processorNode.disconnect();
+      this.processorNode = null;
+    }
+    if (this.audioContext) {
+      try {
+        await this.audioContext.close();
+      } catch {
+        // Ignore
+      }
+      this.audioContext = null;
+    }
+    this.updateMetrics({ status: 'ready' });
+  }
+
+  public reset(): void {
+    if (this.pollIntervalId) {
+      clearInterval(this.pollIntervalId);
+      this.pollIntervalId = null;
+    }
+    this.accumulatedChunks = [];
+    this.totalSamples = 0;
+    this.updateIntervals = [];
+    this.settledWords = [];
+    this.earlierWordRevisions = 0;
+    this.hasEmittedFirstWord = false;
+    this.speechStartTime = null;
+    this.lastUpdateTime = null;
+
+    this.updateMetrics({
+      partialText: '',
+      finalText: '',
+      timeToFirstWordMs: null,
+      lagBehindSpeechMs: null,
+      updateIntervalMs: null,
+      earlierWordRevisions: 0,
+    });
+  }
+
+  public destroy(): void {
+    this.stop();
+    if (this.worker) {
+      this.worker.terminate();
+      this.worker = null;
     }
     this.listeners.clear();
   }

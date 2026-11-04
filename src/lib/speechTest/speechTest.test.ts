@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { computeWER, normalizeText } from './wer';
 import { PauseTracker } from './pauseTracker';
+import { MoonshineSingleThreadEngine } from './engines';
 
 describe('Word Error Rate (WER)', () => {
   it('normalizes punctuation, case, and whitespace', () => {
@@ -184,5 +185,29 @@ describe('PauseTracker (End-of-Answer Voice Activity Detection)', () => {
     expect(clean.thresholds[1.5].cutInCount).toBe(0);
     expect(clean.thresholds[1.5].triggerCount).toBe(0);
     expect(clean.recentEvents).toEqual([]);
+  });
+});
+
+describe('MoonshineSingleThreadEngine', () => {
+  it('initializes with single-threaded WASM device and zero revisions', () => {
+    const engine = new MoonshineSingleThreadEngine();
+    const metrics = engine.getMetrics();
+    expect(engine.id).toBe('moonshine-single');
+    expect(metrics.device).toContain('Single-Threaded');
+    expect(metrics.device).toContain('No COOP/COEP needed');
+    expect(metrics.downloadBytes).toBe(28180947);
+    expect(metrics.earlierWordRevisions).toBe(0);
+    expect(metrics.updateIntervalMs).toBeUndefined();
+  });
+
+  it('resets streaming metrics cleanly', () => {
+    const engine = new MoonshineSingleThreadEngine();
+    engine.reset();
+    const metrics = engine.getMetrics();
+    expect(metrics.partialText).toBe('');
+    expect(metrics.finalText).toBe('');
+    expect(metrics.timeToFirstWordMs).toBeNull();
+    expect(metrics.earlierWordRevisions).toBe(0);
+    expect(metrics.updateIntervalMs).toBeNull();
   });
 });

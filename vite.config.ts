@@ -19,6 +19,16 @@ export default defineConfig({
   build: {
     target: 'esnext',
   },
+  esbuild: {
+    target: 'es2022',
+  },
+  optimizeDeps: {
+    esbuildOptions: {
+      target: 'es2022',
+    },
+    include: ['@huggingface/transformers'],
+    exclude: ['@ricky0123/vad-web', 'onnxruntime-web'],
+  },
   worker: {
     format: 'es',
   },

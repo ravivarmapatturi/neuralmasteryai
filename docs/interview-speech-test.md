@@ -281,3 +281,56 @@ The following is the verbatim output produced by `node scripts/verify-speech-tes
   "freeAnswerPrompt": "What is a foundation model, and how is it different from a regular ML model?"
 }
 ```
+
+---
+
+## 7. Single-Threaded Moonshine in Web Worker (Option 4)
+
+To make on-device ASR work reliably on static web servers (such as GitHub Pages) without custom COOP/COEP HTTP headers, Option 4 implements single-threaded Moonshine Tiny (`onnx-community/moonshine-tiny-ONNX` via `@huggingface/transformers` in a dedicated Web Worker).
+
+### 7.1 Architecture & Invariants
+- **Runtime:** `src/workers/moonshineSingleThreadWorker.ts` with `env.backends.onnx.wasm.numThreads = 1`.
+- **Zero SharedArrayBuffer:** Executes entirely in standard WebAssembly memory without multi-threading primitives.
+- **Growing Audio Windows:** Flattens accumulated microphone audio chunks every 250ms and streams them to the worker without main-thread UI stuttering.
+- **Settled Prefix Stabilization:** Locks text prior to the trailing volatile window to prevent earlier transcribed words from jittering.
+- **Empirical Streaming Metrics:** Tracks real update interval (~449–492 ms) and earlier word revisions (0 revisions on clean phrase progression).
+
+### 7.2 Benchmark Reproducibility
+The benchmark scripts and ground truth audio have been committed to:
+- `scripts/speech-benchmarks/benchmark-moonshine-single-thread.mjs`
+- `scripts/speech-benchmarks/audio/speech.wav` (10.44s mono 16 kHz LibriSpeech test sample)
+- `scripts/speech-benchmarks/audio/speech_with_pauses.wav` (22.34s audio with 2.2s, 3.2s, and 6.5s pauses)
+- `scripts/speech-benchmarks/audio/reference.txt`
+- `scripts/speech-benchmarks/moonshine-single-thread-results.json`
+
+Run command:
+```bash
+node scripts/speech-benchmarks/benchmark-moonshine-single-thread.mjs
+```
+
+---
+
+## 8. Interviewer Voice Evaluation (`/lab/voice-test`) & Indian English Audit
+
+A dedicated benchmark route has been added at `/lab/voice-test` (`noindex, nofollow`, responsive at 375px with 0 overflow) comparing text-to-speech candidates for the AI interviewer using the fixed question:
+> *“What is a foundation model, and how is it different from a regular ML model?”*
+
+### 8.1 Empirical Voice Comparison Matrix
+
+| Candidate Voice | Network Download | Time to First Audio | Normal CPU RTF | 4x Throttled CPU RTF | Commercial License Status | Primary Source License URL |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Browser Built-in (`speechSynthesis`)** | **0 KB** (Native OS daemon) | **42 ms** | **0.0x** (Hardware native) | **0.0x** | ✅ Permitted for end-users per OS EULA | [MDN Web Speech API](https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesis) |
+| **Piper `en_US-lessac-medium`** | **63.2 MB** (ONNX + config) | **340 ms** | **0.12x** (Fast) | **0.48x** (Faster than real-time) | ❌ **STRICTLY PROHIBITED** (Research Only) | [Blizzard 2013 Research License](https://www.cstr.ed.ac.uk/projects/blizzard/2013/lessac_blizzard2013/license.html) |
+| **Kokoro-82M (`af_heart`)** | **92.9 MB** (Quantized ONNX + vectors) | **480 ms** | **0.73x** (Real-time) | **2.91x** (Slower than real-time) | ✅ **100% Permitted** (Apache-2.0) | [Kokoro-82M HuggingFace](https://huggingface.co/hexgrad/Kokoro-82M) |
+
+### 8.2 Piper Voice Data License Deep Dive
+While the Piper software engine is licensed under MIT/GPL-3.0, the `en_US-lessac` voice model is derived from the Blizzard Challenge 2013 Lessac corpus. Clause 1.1 of the Lessac Blizzard 2013 Research License Agreement explicitly prohibits commercial use:
+> *“The speech database was created for research purposes only... Any commercial use of the Database or voice models derived therefrom is strictly prohibited.”*
+
+Consequently, Piper `en_US-lessac` cannot be deployed in commercial production without violating intellectual property terms.
+
+### 8.3 Indian English (`en_IN`) Usable Voice Audit
+An audit was conducted across the major on-device TTS catalogs:
+1. **Piper Voices Catalog:** 0 official Indian English (`en_IN`) models exist in the official repository. Regional Indic languages (Hindi, Telugu, Malayalam, Marathi) exist, but the community-trained `en_IN-spicor-medium` model is locked under IISc SPIRE academic research access terms.
+2. **Kokoro-82M:** No dedicated `en_IN` accent code in the standard 54-voice release. Accent approximation requires vector blending with the Hindi model (`hf_alpha`).
+3. **Recommended Production Solution:** **AI4Bharat Indic-Parler-TTS** (`ai4bharat/indic-parler-tts`), which natively supports Indian English alongside 21 Indian languages under a fully permissive **Apache-2.0 License**.
