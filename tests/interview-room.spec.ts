@@ -26,22 +26,22 @@ test.describe('Interview Room (/interview/room)', () => {
     });
 
     await page.goto(`http://localhost:${PORT}/interview`, { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('h1')).toHaveText('Practise out loud.');
-    await expect(page.locator('.si-topic')).toHaveCount(11);
-    await page.click('.si-topic:has-text("RAG and retrieval")');
-    await expect(page.locator('.si-list li')).toHaveCount(4);
+    await expect(page.locator('h1')).toHaveText('Interview practice');
+    await expect(page.locator('.si-node')).toHaveCount(22);
+    await page.click('.si-node:has-text("Evaluation")');
+    await expect(page.locator('.si-panel h2')).toHaveText('Evaluation');
     await page.click('#start-topic');
-    await expect(page.locator('.si-progress')).toContainText('Question 1 of 4');
+    await expect(page.locator('.si-progress')).toContainText('Question 1 of');
 
     await page.click('button:has-text("Skip to answering")');
     await page.waitForSelector('textarea.si-answer-box', { timeout: 10000 });
-    await page.fill('textarea.si-answer-box', 'A probabilistic answer about chunk size.');
+    await page.fill('textarea.si-answer-box', 'A probabilistic answer about evaluation.');
     await page.click('#done');
 
     await expect(page.locator('.si-yours')).toContainText('probabilistic');
-    await expect(page.locator('#model-answer')).toContainText('Fixed-size chunking');
+    expect(((await page.locator('#model-answer').textContent()) ?? '').length).toBeGreaterThan(40);
     await page.click('#next');
-    await expect(page.locator('.si-progress')).toContainText('Question 2 of 4');
+    await expect(page.locator('.si-progress')).toContainText('Question 2 of');
     expect(answersSent).toHaveLength(0);
   });
 

@@ -1,60 +1,37 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useDocumentMeta } from '../../lib/useDocumentMeta';
-import { interviewRoomQuestions } from '../../lib/interviewRoom/questions';
 import { correctInterviewTerms } from '../../lib/interviewRoom/dialogue';
 import { createASREngineForQuality } from '../../lib/interviewRoom/qualitySettings';
 import type { SingleThreadASREngine } from '../../lib/speechTest/engines';
-import { bankQuestions } from '../../data/interviewCatalog';
-import modelAnswers from '../../data/interviewModelAnswers.json';
+import practice from '../../data/interviewPractice.json';
+import { InterviewGraph } from './InterviewGraph';
 import './interviewRoom.css';
 import './simpleInterview.css';
 
-type Step = 'topics' | 'list' | 'asking' | 'answering' | 'finishing' | 'answer' | 'done';
+type Step = 'topics' | 'asking' | 'answering' | 'finishing' | 'answer' | 'done';
 
 interface PracticeQuestion {
   id: string;
   title: string;
   answer: string;
   options?: string[];
+  sourceUrl?: string;
 }
 
-function tidyAnswer(text: string) {
-  return text
-    .split('**Follow-ups')[0]
-    .replace(/See \[[^\]]*\]\([^)]*\)\.?/g, '')
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/\*\*|`/g, '')
-    .trim();
-}
-
-const curatedAnswers = modelAnswers.answers as Record<string, string>;
-const topics: { id: string; title: string; questions: PracticeQuestion[] }[] = [
-  ...modelAnswers.topics.map((t) => ({
-    id: t.id,
-    title: t.title,
-    questions: t.questions.map((id) => ({
-      id,
-      title: interviewRoomQuestions.find((q) => q.id === id)?.title ?? '',
-      answer: curatedAnswers[id],
-    })),
-  })),
-  ...[...new Set(bankQuestions.map((q) => q.area))].map((area) => ({
-    id: area,
-    title: `${area} question bank`,
-    questions: bankQuestions
-      .filter((q) => q.area === area)
-      .map((q) => ({
-        id: q.id,
-        title: q.title,
-        answer: tidyAnswer(q.answer),
-        options: q.options?.map((o) => o.text),
-      })),
-  })),
-];
+const topics = practice.topics as {
+  id: string;
+  title: string;
+  group: string;
+  about: string;
+  questions: PracticeQuestion[];
+}[];
+const graphTopics = topics.map((t) => ({ id: t.id, title: t.title, group: t.group, count: t.questions.length }));
+const totalQuestions = graphTopics.reduce((sum, t) => sum + t.count, 0);
+const firstTopic = Math.max(0, topics.findIndex((t) => t.id === 'rag'));
 
 function clipUrl(name: string) {
-  return `/audio/interview-voice/${name.replace(':', '__')}.opus`;
+  return `/audio/interview-voice/${name.replaceAll(':', '__')}.opus`;
 }
 
 function looksLikePhone() {
@@ -66,7 +43,7 @@ export default function SimpleInterviewPage() {
   useDocumentMeta('AI Interview Practice', 'Pick a topic, hear an AI engineering interview question, answer out loud, then hear and read a model answer. Runs in your browser.');
 
   const [step, setStep] = useState<Step>('topics');
-  const [topicIndex, setTopicIndex] = useState(0);
+  const [topicIndex, setTopicIndex] = useState(firstTopic);
   const [questionIndex, setQuestionIndex] = useState(0);
   const [transcript, setTranscript] = useState('');
   const [typing, setTyping] = useState(false);
@@ -182,13 +159,8 @@ export default function SimpleInterviewPage() {
     [play, startAnswering]
   );
 
-  const beginTopic = (index: number) => {
-    void prepareEngine().catch(() => undefined);
-    setTopicIndex(index);
-    setStep('list');
-  };
-
   const startQuestion = (index: number) => {
+    void prepareEngine().catch(() => undefined);
     setQuestionIndex(index);
     ask(topic.questions[index].id);
   };
@@ -243,31 +215,61 @@ export default function SimpleInterviewPage() {
 
   return (
     <div className="interview-room-wrap simple-interview">
-      <div className="si-card">
+      <div className={`si-card${step === 'topics' ? ' si-card-wide' : ''}`}>
         {step === 'topics' && (
           <>
-            <h1>Practise out loud.</h1>
+            <h1>Interview practice</h1>
             <p className="si-lede">
-              Pick a topic, then any of its questions. You will hear a question, answer it in your own words, then hear and read a model answer.
+              {graphTopics.length} topics, {totalQuestions} questions. Lines show which topics build on each other.
             </p>
-            <div className="si-topics">
-              {topics.map((t, i) => (
-                <button key={t.id} type="button" className="si-topic" onClick={() => beginTopic(i)}>
-                  <strong>{t.title}</strong>
-                  <span>
-                    {t.questions.length} {t.questions.length === 1 ? 'question' : 'questions'}
-                  </span>
-                </button>
-              ))}
+            <div className="si-map">
+              <InterviewGraph
+                topics={graphTopics}
+                activeId={topic.id}
+                onActivate={(id) => setTopicIndex(topics.findIndex((t) => t.id === id))}
+              />
+              <aside className="si-panel" aria-live="polite">
+                <select
+                  className="si-topic-select"
+                  aria-label="Topic"
+                  value={topic.id}
+                  onChange={(e) => setTopicIndex(topics.findIndex((t) => t.id === e.target.value))}
+                >
+                  {topics.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.title}
+                    </option>
+                  ))}
+                </select>
+                <p className="si-count">{topic.questions.length} questions</p>
+                <h2>{topic.title}</h2>
+                <p className="si-lede">{topic.about}</p>
+                <div className="si-actions">
+                  <button type="button" className="si-primary" id="start-topic" onClick={() => startQuestion(0)}>
+                    Start this topic
+                  </button>
+                </div>
+                <ol className="si-list">
+                  {topic.questions.map((q, i) => (
+                    <li key={q.id}>
+                      <button type="button" onClick={() => startQuestion(i)}>
+                        {q.title}
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              </aside>
             </div>
             <p className="si-note">
-              Your voice is processed in your browser and is not uploaded. Looking for the written list?{' '}
+              Your voice is processed in your browser and is not uploaded. Many questions are adapted from{' '}
+              <a href="https://github.com/rohitg00/ai-engineering-from-scratch">AI Engineering from Scratch</a> by Rohit
+              Ghumare (<a href="/ai-engineering-from-scratch-LICENSE.txt">MIT licence</a>).{' '}
               <Link to="/interview/questions">See the written question list</Link>.
             </p>
           </>
         )}
 
-        {step !== 'topics' && step !== 'list' && step !== 'done' && (
+        {step !== 'topics' && step !== 'done' && (
           <>
             <div className="si-progress">
               <button type="button" className="si-link" onClick={backToTopics}>
@@ -285,29 +287,6 @@ export default function SimpleInterviewPage() {
                 ))}
               </ol>
             )}
-          </>
-        )}
-
-        {step === 'list' && (
-          <>
-            <button type="button" className="si-link" onClick={backToTopics}>
-              ← Topics
-            </button>
-            <h2>{topic.title}</h2>
-            <div className="si-actions">
-              <button type="button" className="si-primary" id="start-topic" onClick={() => startQuestion(0)}>
-                Start from the first question
-              </button>
-            </div>
-            <ol className="si-list">
-              {topic.questions.map((q, i) => (
-                <li key={q.id}>
-                  <button type="button" onClick={() => startQuestion(i)}>
-                    {q.title}
-                  </button>
-                </li>
-              ))}
-            </ol>
           </>
         )}
 
@@ -381,6 +360,11 @@ export default function SimpleInterviewPage() {
             <p className="si-model" id="model-answer">
               {question.answer}
             </p>
+            {question.sourceUrl && (
+              <p className="si-note">
+                <a href={question.sourceUrl}>Full answer and follow-ups in AI Engineering from Scratch</a>
+              </p>
+            )}
             <div className="si-actions">
               <button type="button" className="si-primary" id="next" onClick={nextQuestion}>
                 {questionIndex + 1 < topic.questions.length ? 'Next question' : 'Finish topic'}
