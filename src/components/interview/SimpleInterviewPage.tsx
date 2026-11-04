@@ -39,6 +39,7 @@ export default function SimpleInterviewPage() {
   const streamRef = useRef<MediaStream | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const answeringRef = useRef(false);
+  const enginePromiseRef = useRef<Promise<void> | null>(null);
 
   const topic = topics[topicIndex];
   const questionId = topic.questions[questionIndex];
@@ -80,6 +81,26 @@ export default function SimpleInterviewPage() {
     streamRef.current = null;
   }, []);
 
+  // Download starts when the topic is chosen, so the first answer is not spoken into a loading model
+  const prepareEngine = useCallback(() => {
+    if (!enginePromiseRef.current) {
+      enginePromiseRef.current = (async () => {
+        let engine = createASREngineForQuality(looksLikePhone() ? 'fast' : 'better');
+        try {
+          await engine.load();
+        } catch {
+          engine = createASREngineForQuality('fast');
+          await engine.load();
+        }
+        engineRef.current = engine;
+      })().catch((err) => {
+        enginePromiseRef.current = null;
+        throw err;
+      });
+    }
+    return enginePromiseRef.current;
+  }, []);
+
   const startAnswering = useCallback(async () => {
     setStep('answering');
     setTranscript('');
@@ -93,19 +114,11 @@ export default function SimpleInterviewPage() {
         return;
       }
       streamRef.current = stream;
-      setMicStatus('Getting speech recognition ready on your device…');
-      if (!engineRef.current) {
-        let engine = createASREngineForQuality(looksLikePhone() ? 'fast' : 'better');
-        try {
-          await engine.load();
-        } catch {
-          engine = createASREngineForQuality('fast');
-          await engine.load();
-        }
-        engineRef.current = engine;
-      }
+      setMicStatus('Please wait, speech recognition is still getting ready on your device…');
+      await prepareEngine();
       if (!answeringRef.current) return;
       const engine = engineRef.current;
+      if (!engine) throw new Error('Speech engine unavailable');
       engine.reset();
       unsubscribeRef.current = engine.subscribe((m) => {
         const text = (m.partialText || m.finalText || '').trim();
@@ -118,7 +131,7 @@ export default function SimpleInterviewPage() {
       setTyping(true);
       setMicStatus('The microphone is not available, so please type your answer.');
     }
-  }, [typing, stopMic]);
+  }, [typing, stopMic, prepareEngine]);
 
   const ask = useCallback(
     (id: string) => {
@@ -131,6 +144,7 @@ export default function SimpleInterviewPage() {
   );
 
   const beginTopic = (index: number) => {
+    void prepareEngine().catch(() => undefined);
     setTopicIndex(index);
     setQuestionIndex(0);
     ask(topics[index].questions[0]);
