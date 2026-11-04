@@ -2,6 +2,7 @@
 // for the Neural Mastery Interview Room.
 // Content and rubrics are AI-written and not expert-reviewed.
 
+import rawQuestions from '../../data/interviewRoomQuestions.json';
 import type {
   InterviewRoomQuestion,
   QuestionPoint,
@@ -59,28 +60,30 @@ export function correctInterviewTerms(text: string, questionId?: string): string
 
 /**
  * Key terms associated with each point claim to guard against buzzword-only answers.
- * A point is not covered by similarity alone unless the answer has substantive length
- * and contains at least one relevant anchor term.
+ * Dynamically populated from all questions in interviewRoomQuestions.json.
  */
-const POINT_KEY_TERMS: Record<string, string[]> = {
-  // genai-fm-fundamentals
-  p1_pretraining_scale: ['pretrain', 'scale', 'massive', 'broad', 'general', 'large data', 'huge', 'representation', 'modalit', 'vision', 'audio'],
-  p2_downstream_adaptability: ['adapt', 'downstream', 'prompt', 'fine-tun', 'transfer', 'base model', 'multiple task'],
-  p3_scratch_vs_adaptation: ['scratch', 'bespoke', 'adapt', 'maintain', 'single task', 'specific model'],
-  p4_engineering_tradeoffs: ['trade-off', 'cheap', 'cost', 'latency', 'hardware', 'cpu', 'gpu', 'xgboost', 'tabular', 'deterministic'],
-
-  // genai-rag-vs-finetuning
-  p1_knowledge_vs_behavior: ['dynamic', 'frequent', 'update', 'style', 'tone', 'format', 'behavior', 'knowledge'],
-  p2_freshness_update_speed: ['re-index', 'index', 'retrain', 'expensive', 'fresh', 'daily', 'vector'],
-  p3_verifiability_citations: ['citation', 'cite', 'verifi', 'source', 'hallucinat', 'trace', 'access control'],
-  p4_combining_both: ['combin', 'hybrid', 'both', 'style', 'document', 'together'],
-
-  // genai-lora-production-serving
-  p1_matrix_decomposition: ['freeze', 'matrix', 'matrices', 'rank', 'low-rank', 'decompose', 'delta', 'a and b', 'small'],
-  p2_optimizer_memory_savings: ['memory', 'vram', 'optimizer', 'gradient', 'adam', 'footprint', 'saving'],
-  p3_zero_latency_merge: ['merge', 'latency', 'inference', 'forward', 'zero', 'base weight', 'add no'],
-  p4_multitenant_serving: ['multi-tenant', 'swap', 'dynamic', 'adapter', 'single base', 'multiple adapter', 'serve'],
-};
+const POINT_KEY_TERMS: Record<string, string[]> = {};
+for (const q of (rawQuestions as any).questions || []) {
+  for (const pt of q.points || []) {
+    if (pt.id && Array.isArray(pt.key_terms)) {
+      const terms = new Set<string>(pt.key_terms.map((k: string) => k.toLowerCase()));
+      for (const k of pt.key_terms) {
+        for (const w of k.toLowerCase().split(/\s+/)) {
+          if (w.length > 3 && !['with', 'from', 'than', 'into', 'that', 'data', 'model', 'models', 'using', 'also', 'over', 'more', 'most'].includes(w)) {
+            terms.add(w);
+          }
+        }
+      }
+      if (pt.id === 'p1_pretraining_scale') {
+        terms.add('representation');
+        terms.add('representations');
+        terms.add('vision');
+        terms.add('audio');
+      }
+      POINT_KEY_TERMS[pt.id] = Array.from(terms);
+    }
+  }
+}
 
 /**
  * Guard against buzzword answers:
@@ -112,15 +115,14 @@ export function isValidEvidenceQuote(sentence: string | undefined, pointId?: str
 
   const lower = clean.toLowerCase();
 
-  // If pointId is provided, check if it contains any key term for that point
-  if (pointId && POINT_KEY_TERMS[pointId]) {
+  // If pointId is provided, check strictly if it contains any key term for that point
+  if (pointId) {
     const keyTerms = POINT_KEY_TERMS[pointId];
-    if (keyTerms.some(k => lower.includes(k.toLowerCase()))) {
-      return true;
-    }
+    if (!keyTerms || keyTerms.length === 0) return false;
+    return keyTerms.some(k => lower.includes(k.toLowerCase()));
   }
 
-  // Check across all point key terms for this domain
+  // Otherwise check across known technical terms
   return Object.values(POINT_KEY_TERMS).some(terms =>
     terms.some(k => lower.includes(k.toLowerCase()))
   );

@@ -13,6 +13,7 @@ export interface QuestionPoint {
   claim: string;
   follow_up_spoken: string;
   follow_up_template: string;
+  key_terms?: string[];
   next_practice: NextPractice;
 }
 

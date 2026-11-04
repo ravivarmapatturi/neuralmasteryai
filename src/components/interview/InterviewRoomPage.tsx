@@ -1,8 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useDocumentTitle } from '../../lib/useDocumentTitle';
 import { useDocumentMeta } from '../../lib/useDocumentMeta';
-import { interviewRoomQuestions } from '../../lib/interviewRoom/questions';
+import {
+  interviewRoomQuestions,
+  spokenTransitions,
+  pickSessionQuestions,
+} from '../../lib/interviewRoom/questions';
 import type {
   InterviewRoomQuestion,
   TurnRecord,
@@ -53,7 +57,15 @@ export default function InterviewRoomPage() {
   // Configuration options
   const [track, setTrack] = useState('genai');
   const [level, setLevel] = useState('mid');
-  const [lengthSetting, setLengthSetting] = useState('1'); // '1' or '3'
+  const [lengthSetting, setLengthSetting] = useState<'4' | '2'>('4'); // '4' (20 min) or '2' (10 min)
+  const [sessionIndex, setSessionIndex] = useState(() => {
+    try {
+      const stored = localStorage.getItem('nm_interview_room_session_idx');
+      return stored ? parseInt(stored, 10) || 0 : 0;
+    } catch {
+      return 0;
+    }
+  });
 
   // Screen and flow state
   const [screen, setScreen] = useState<ScreenState>('setup');
@@ -62,7 +74,15 @@ export default function InterviewRoomPage() {
   const [history, setHistory] = useState<TurnRecord[]>([]);
 
   // Current question and turn
-  const questionsToRun = lengthSetting === '3' ? interviewRoomQuestions.slice(0, 3) : [interviewRoomQuestions[0]];
+  const questionCount = lengthSetting === '2' ? 2 : 4;
+  const questionsToRun = useMemo(() => {
+    let seedQ: string | undefined;
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      seedQ = params.get('q') || undefined;
+    }
+    return pickSessionQuestions(interviewRoomQuestions, questionCount, sessionIndex, seedQ);
+  }, [questionCount, sessionIndex]);
   const currentQuestion: InterviewRoomQuestion = questionsToRun[questionIndex] || interviewRoomQuestions[0];
   const [currentSpokenText, setCurrentSpokenText] = useState(currentQuestion.spoken_question);
   const [currentTextQuestion, setCurrentTextQuestion] = useState(currentQuestion.spoken_question);
@@ -368,6 +388,11 @@ export default function InterviewRoomPage() {
 
   // Begin interview from setup
   const handleBegin = () => {
+    const nextIdx = sessionIndex + 1;
+    setSessionIndex(nextIdx);
+    try {
+      localStorage.setItem('nm_interview_room_session_idx', String(nextIdx));
+    } catch {}
     setScreen('mic');
   };
 
@@ -418,7 +443,9 @@ export default function InterviewRoomPage() {
     setDebrief(null);
     const nextQ = questionsToRun[nextIdx];
     if (nextQ) {
-      startSpeakingStep(nextQ.spoken_question, nextQ.spoken_question);
+      const transition = spokenTransitions[questionIndex % spokenTransitions.length] || '';
+      const spoken = transition ? `${transition} ${nextQ.spoken_question}` : nextQ.spoken_question;
+      startSpeakingStep(spoken, nextQ.spoken_question);
     } else {
       setScreen('setup');
     }
@@ -511,10 +538,10 @@ export default function InterviewRoomPage() {
                   <select
                     id="length"
                     value={lengthSetting}
-                    onChange={(e) => setLengthSetting(e.target.value)}
+                    onChange={(e) => setLengthSetting(e.target.value as '4' | '2')}
                   >
-                    <option value="1">1 question (focused practice)</option>
-                    <option value="3">3 questions (full round)</option>
+                    <option value="4">20 minutes, 4 questions</option>
+                    <option value="2">10 minutes, 2 questions</option>
                   </select>
                 </label>
               </div>
