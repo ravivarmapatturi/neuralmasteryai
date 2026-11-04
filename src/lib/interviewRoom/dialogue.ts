@@ -35,7 +35,7 @@ export function correctInterviewTerms(text: string, questionId?: string): string
     [/\b(gpu|gpus)\b/gi, 'GPU'],
     [/\b(cpu|cpus)\b/gi, 'CPU'],
     [/\bvram\b/gi, 'VRAM'],
-    [/\bxg\s*boost\b/gi, 'XGBoost'],
+    [/\b(xg\s*boost|xg\s*b[o0]+[a-z]*)\b/gi, 'XGBoost'],
     [/\bpy\s*torch\b/gi, 'PyTorch'],
     [/\bonnx\b/gi, 'ONNX'],
     [/\badam\s*w\b/gi, 'AdamW'],

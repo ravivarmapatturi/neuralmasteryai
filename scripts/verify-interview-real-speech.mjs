@@ -14,6 +14,8 @@ const PORT = 4173;
 const AUDIO_STRONG = path.resolve(ROOT, 'scripts', 'speech-benchmarks', 'audio', 'answer-strong.wav');
 const AUDIO_WEAK = path.resolve(ROOT, 'scripts', 'speech-benchmarks', 'audio', 'answer-weak.wav');
 const AUDIO_NEXT_TOKEN = path.resolve(ROOT, 'scripts', 'speech-benchmarks', 'audio', 'answer-next-token.wav');
+const AUDIO_RAG = path.resolve(ROOT, 'scripts', 'speech-benchmarks', 'audio', 'answer-rag.wav');
+const AUDIO_LORA = path.resolve(ROOT, 'scripts', 'speech-benchmarks', 'audio', 'answer-lora.wav');
 
 const KNOWN_SCRIPTS = {
   'Strong Answer':
@@ -22,6 +24,10 @@ const KNOWN_SCRIPTS = {
     'Well machine learning models are computer algorithms that learn from data. Some models are big and some models are small and computers use them to process numbers.',
   'Foundation Model Next-Token Answer':
     'A foundation model is basically a probabilistic model that tries to predict the next token based on previous tokens. However, classical models like XGBoost are much cheaper and faster for tabular data.',
+  'RAG vs Fine-Tuning Answer':
+    'When company documentation updates frequently, RAG is preferred because updating vector indexes is cheap and immediate compared to retraining. RAG also provides verifiable source citations and document-level access control. Fine-tuning should only be used for style, tone, or formatting, or combined in a hybrid system.',
+  'LoRA Production Serving Answer':
+    'LoRA freezes the base model weights and represents the weight update as two low-rank matrices B and A. This drastically reduces GPU memory during training because optimizer states are only tracked for the adapter parameters. For serving, we keep one base model in VRAM and dynamically swap small adapter weights, or merge them directly for zero added latency.',
 };
 
 function normalizeTextForWER(text) {
@@ -107,10 +113,10 @@ async function checkHeaders(url) {
   });
 }
 
-async function runScenario(scenarioName, wavPath) {
+async function runScenario(scenarioName, wavPath, questionId) {
   const durationMs = getWavDurationMs(wavPath);
   console.log(`\n======================================================`);
-  console.log(`RUNNING SCENARIO: ${scenarioName}`);
+  console.log(`RUNNING SCENARIO: ${scenarioName} ${questionId ? `[Question: ${questionId}]` : ''}`);
   console.log(`Audio WAV: ${wavPath} (${fs.statSync(wavPath).size} bytes, ${(durationMs / 1000).toFixed(1)}s duration)`);
   console.log(`======================================================`);
 
@@ -152,7 +158,10 @@ async function runScenario(scenarioName, wavPath) {
     });
     page.on('pageerror', (err) => console.error('[Browser unhandled pageerror]:', err));
 
-    await page.goto(`http://localhost:${PORT}/interview/room`, { waitUntil: 'domcontentloaded' });
+    const targetUrl = questionId
+      ? `http://localhost:${PORT}/interview/room?count=1&q=${questionId}`
+      : `http://localhost:${PORT}/interview/room?count=1`;
+    await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
 
     // Step 1: Click start on setup screen
     await page.waitForSelector('#begin', { timeout: 15000 });
@@ -509,6 +518,26 @@ function getDirSize(dir) {
   return total;
 }
 
+async function test375pxResponsiveLayout() {
+  console.log(`\n======================================================`);
+  console.log(`VERIFYING 375px MOBILE RESPONSIVE LAYOUT (ZERO OVERFLOW)`);
+  console.log(`======================================================`);
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
+    await page.goto(`http://localhost:${PORT}/interview/room`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('#begin', { timeout: 15000 });
+    const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+    console.log(`Document scrollWidth at 375px: ${scrollWidth}px`);
+    if (scrollWidth > 375) {
+      throw new Error(`CRITICAL FAILURE: Horizontal overflow at 375px: scrollWidth = ${scrollWidth} > 375`);
+    }
+    console.log(`✓ 375px responsive check passed: scrollWidth === 375px (zero horizontal overflow).`);
+  } finally {
+    await browser.close();
+  }
+}
+
 async function main() {
   console.log('Starting static server on port ' + PORT + '...');
   const srv = await startStaticServer();
@@ -516,14 +545,17 @@ async function main() {
   try {
     await reportBundleSizes();
     await testStaticServerAndOtherRoutes();
+    await test375pxResponsiveLayout();
 
     const results = {};
-    results.strong = await runScenario('Strong Answer', AUDIO_STRONG);
-    results.weak = await runScenario('Weak Answer', AUDIO_WEAK);
-    results.nextToken = await runScenario('Foundation Model Next-Token Answer', AUDIO_NEXT_TOKEN);
+    results.strong = await runScenario('Strong Answer', AUDIO_STRONG, 'genai-fm-fundamentals');
+    results.weak = await runScenario('Weak Answer', AUDIO_WEAK, 'genai-fm-fundamentals');
+    results.nextToken = await runScenario('Foundation Model Next-Token Answer', AUDIO_NEXT_TOKEN, 'genai-fm-fundamentals');
+    results.rag = await runScenario('RAG vs Fine-Tuning Answer', AUDIO_RAG, 'genai-rag-vs-finetuning');
+    results.lora = await runScenario('LoRA Production Serving Answer', AUDIO_LORA, 'genai-lora-production-serving');
 
     console.log('\n======================================================');
-    console.log('ALL VERIFICATIONS PASSED CLEANLY');
+    console.log('ALL VERIFICATIONS PASSED CLEANLY (5/5 SPEECH SCENARIOS)');
     console.log('======================================================');
 
     fs.writeFileSync(

@@ -60,7 +60,7 @@ export default function InterviewRoomPage() {
   // Configuration options
   const [track, setTrack] = useState('genai');
   const [level, setLevel] = useState('mid');
-  const [lengthSetting, setLengthSetting] = useState<'4' | '2'>('4'); // '4' (20 min) or '2' (10 min)
+  const [lengthSetting, setLengthSetting] = useState<'4' | '2' | '1'>('4'); // '4' (20 min), '2' (10 min), or '1' (focused)
   const [sessionIndex, setSessionIndex] = useState(() => {
     try {
       const stored = localStorage.getItem('nm_interview_room_session_idx');
@@ -77,7 +77,16 @@ export default function InterviewRoomPage() {
   const [history, setHistory] = useState<TurnRecord[]>([]);
 
   // Current question and turn
-  const questionCount = lengthSetting === '2' ? 2 : 4;
+  const questionCount = useMemo(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const countParam = params.get('count');
+      if (countParam === '1') return 1;
+      if (countParam === '2') return 2;
+      if (countParam === '4') return 4;
+    }
+    return lengthSetting === '1' ? 1 : lengthSetting === '2' ? 2 : 4;
+  }, [lengthSetting]);
   const questionsToRun = useMemo(() => {
     let seedQ: string | undefined;
     if (typeof window !== 'undefined') {
@@ -300,8 +309,14 @@ export default function InterviewRoomPage() {
         // End-of-answer pause detection monitor
         if (silenceTimerRef.current) clearInterval(silenceTimerRef.current);
         silenceTimerRef.current = setInterval(() => {
-          if (!hasSpokenRef.current || isTransitioningRef.current) return;
-          const silenceDuration = (Date.now() - lastSpeechTimeRef.current) / 1000;
+          if (isTransitioningRef.current) return;
+          const engineLastSpeech = engineRef.current?.getLastAudioSpeechTime() || 0;
+          if (engineLastSpeech > 0) {
+            hasSpokenRef.current = true;
+          }
+          if (!hasSpokenRef.current) return;
+          const lastActive = Math.max(lastSpeechTimeRef.current, engineLastSpeech);
+          const silenceDuration = (Date.now() - lastActive) / 1000;
           if (silenceDuration >= END_OF_ANSWER_PAUSE_SECONDS) {
             // Long pause detected! Conclude answer
             handleAnswerFinished();
@@ -584,10 +599,11 @@ export default function InterviewRoomPage() {
                   <select
                     id="length"
                     value={lengthSetting}
-                    onChange={(e) => setLengthSetting(e.target.value as '4' | '2')}
+                    onChange={(e) => setLengthSetting(e.target.value as '4' | '2' | '1')}
                   >
                     <option value="4">20 minutes, 4 questions</option>
                     <option value="2">10 minutes, 2 questions</option>
+                    <option value="1">Focused practice, 1 question</option>
                   </select>
                 </label>
               </div>

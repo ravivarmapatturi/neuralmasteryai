@@ -54,6 +54,7 @@ export abstract class BaseSpeechEngine {
   protected speechStartTime: number | null = null;
   protected listeningStartTime: number | null = null;
   protected hasEmittedFirstWord = false;
+  protected lastAudioSpeechTime = 0;
 
   constructor() {
     this.metrics = {
@@ -94,6 +95,10 @@ export abstract class BaseSpeechEngine {
 
   public getMetrics(): EngineMetrics {
     return { ...this.metrics };
+  }
+
+  public getLastAudioSpeechTime(): number {
+    return this.lastAudioSpeechTime;
   }
 
   public onSpeechActivity(isSpeaking: boolean, timestamp?: number) {
@@ -484,6 +489,7 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
     this.updateIntervals = [];
     this.earlierWordRevisions = 0;
     this.lastUpdateTime = null;
+    this.lastAudioSpeechTime = 0;
 
     this.updateMetrics({
       status: 'listening',
@@ -531,6 +537,7 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
       if (rms >= 0.012) {
         this.hasSpeechInCurrentSegment = true;
         this.silenceFramesCount = 0;
+        this.lastAudioSpeechTime = Date.now();
       } else {
         this.silenceFramesCount++;
       }
