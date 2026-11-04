@@ -40,6 +40,10 @@ const CONTENT_TYPES = {
   '.woff2': 'font/woff2',
   '.ttf': 'font/ttf',
   '.txt': 'text/plain; charset=utf-8',
+  '.opus': 'audio/ogg; codecs=opus',
+  '.ogg': 'audio/ogg',
+  '.wav': 'audio/wav',
+  '.m4a': 'audio/mp4',
 };
 
 function send(res, status, filePath) {

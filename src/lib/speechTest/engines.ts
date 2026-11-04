@@ -415,7 +415,7 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
   }
 
   public async load(): Promise<void> {
-    if (this.worker && this.metrics.status === 'ready') return;
+    if (this.worker) return;
 
     this.updateMetrics({ status: 'loading', errorMessage: null, downloadProgressPct: 5 });
     const startTime = performance.now();
@@ -573,7 +573,7 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
     silentGain.connect(this.audioContext.destination);
 
     // 2. Load worker if not already initialized (audio is already buffering into sessionChunks!)
-    if (!this.worker || this.metrics.status !== 'ready') {
+    if (!this.worker) {
       await this.load();
     }
 

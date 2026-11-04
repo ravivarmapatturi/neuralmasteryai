@@ -346,7 +346,14 @@ export async function evaluatePoints(
 }
 
 export type DialogueAction =
-  | { type: 'follow_up'; spokenQuestion: string; textQuestion: string; probedPointId?: string; probedMisconceptionId?: string }
+  | {
+      type: 'follow_up';
+      spokenQuestion: string;
+      textQuestion: string;
+      probedPointId?: string;
+      probedMisconceptionId?: string;
+      clipId?: string;
+    }
   | { type: 'debrief' };
 
 /**
@@ -394,13 +401,15 @@ export function chooseDialogueAction(
     turnIndex === 0 &&
     misconception &&
     !probedMisconceptionIds.has(misconception.probe.id) &&
-    !askedQuestions.has(misconception.spokenQuestion.trim())
+    !askedQuestions.has(misconception.probe.spoken_probe.trim())
   ) {
+    const fixedProbe = misconception.probe.spoken_probe;
     return {
       type: 'follow_up',
-      spokenQuestion: misconception.spokenQuestion,
-      textQuestion: misconception.spokenQuestion,
+      spokenQuestion: fixedProbe,
+      textQuestion: fixedProbe,
       probedMisconceptionId: misconception.probe.id,
+      clipId: `${question.id}_${misconception.probe.id}_p`,
     };
   }
 
@@ -438,6 +447,7 @@ export function chooseDialogueAction(
       spokenQuestion: unaddressed.point.follow_up_spoken,
       textQuestion: unaddressed.point.follow_up_spoken,
       probedPointId: unaddressed.point.id,
+      clipId: `${question.id}_${unaddressed.point.id}_f`,
     };
   }
 

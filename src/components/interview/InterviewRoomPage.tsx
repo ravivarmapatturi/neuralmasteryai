@@ -26,6 +26,7 @@ import {
 } from '../../lib/interviewRoom/dialogue';
 import { MoonshineSingleThreadEngine } from '../../lib/speechTest/engines';
 import { embed, nli, loadJudge } from '../../lib/mockInterview/engine';
+import { playInterviewerAudio } from '../../lib/interviewRoom/voiceAudio';
 import type { JudgeModels } from '../../lib/answerJudge';
 import './interviewRoom.css';
 
@@ -75,6 +76,14 @@ export default function InterviewRoomPage() {
   const [questionIndex, setQuestionIndex] = useState(0);
   const [turnIndex, setTurnIndex] = useState(0);
   const [history, setHistory] = useState<TurnRecord[]>([]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__NM_CURRENT_TURN__ = turnIndex;
+      (window as any).__NM_CURRENT_SCREEN__ = screen;
+      (window as any).__NM_HISTORY__ = history;
+    }
+  }, [turnIndex, screen, history]);
 
   // Current question and turn
   const questionCount = useMemo(() => {
@@ -136,6 +145,9 @@ export default function InterviewRoomPage() {
   const lastSpeechTimeRef = useRef<number>(0);
   const hasSpokenRef = useRef(false);
   const isTransitioningRef = useRef(false);
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const stopAudioPlaybackRef = useRef<(() => void) | null>(null);
+  const startListeningStepRef = useRef<() => void>(() => {});
 
   // Initialize background models on mount
   useEffect(() => {
@@ -178,6 +190,10 @@ export default function InterviewRoomPage() {
   // Cleanup media & speech on unmount
   useEffect(() => {
     return () => {
+      if (stopAudioPlaybackRef.current) {
+        stopAudioPlaybackRef.current();
+        stopAudioPlaybackRef.current = null;
+      }
       try {
         window.speechSynthesis?.cancel();
       } catch {}
@@ -205,62 +221,39 @@ export default function InterviewRoomPage() {
     return `Question ${qNum} of ${qTotal}`;
   };
 
-  // Speaks the current question aloud using best available voice
-  const speakCurrentQuestion = useCallback((text: string, onDone: () => void) => {
-    if (!('speechSynthesis' in window)) {
-      onDone();
-      return;
-    }
-
-    try {
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      const voices = window.speechSynthesis.getVoices();
-      const inVoice = voices.find(
-        (v) => v.lang.toLowerCase().startsWith('en-in') || /india/i.test(v.name)
-      );
-      const enVoice = voices.find((v) => v.lang.toLowerCase().startsWith('en'));
-      const voice = inVoice || enVoice;
-      if (voice) {
-        u.voice = voice;
-        u.lang = voice.lang;
-      } else {
-        u.lang = 'en-US';
-      }
-      u.rate = 0.98;
-
-      let finished = false;
-      const complete = () => {
-        if (!finished) {
-          finished = true;
-          onDone();
-        }
-      };
-
-      u.onend = complete;
-      u.onerror = complete;
-
-      window.speechSynthesis.speak(u);
-      // Fallback timeout in case speech synthesis stalls
-      setTimeout(complete, Math.max(3500, text.split(' ').length * 500));
-    } catch {
-      onDone();
-    }
-  }, []);
-
-  // Start interviewer speaking
+  // Start interviewer speaking with pre-recorded static audio clips, falling back to speech synthesis
   const startSpeakingStep = useCallback(
-    (spokenText: string, textQuestion: string) => {
+    (spokenText: string, textQuestion: string, clipIds?: string[]) => {
+      if (stopAudioPlaybackRef.current) {
+        stopAudioPlaybackRef.current();
+        stopAudioPlaybackRef.current = null;
+      }
+
       setScreen('speaking');
       setCurrentSpokenText(spokenText);
       setCurrentTextQuestion(textQuestion);
       setShowQuestionText(false);
 
-      speakCurrentQuestion(spokenText, () => {
-        startListeningStep();
+      if (typeof window !== 'undefined' && (window as any).__NM_TEST_AUTOSKIP_SPEAKING__) {
+        startListeningStepRef.current();
+        return;
+      }
+
+      const cancel = playInterviewerAudio({
+        clipIds,
+        fallbackText: spokenText,
+        onDone: () => {
+          stopAudioPlaybackRef.current = null;
+          startListeningStepRef.current();
+        },
+        onActiveAudio: (audio) => {
+          activeAudioRef.current = audio;
+        },
       });
+
+      stopAudioPlaybackRef.current = cancel;
     },
-    [speakCurrentQuestion]
+    []
   );
 
   // Start listening step
@@ -328,6 +321,7 @@ export default function InterviewRoomPage() {
       }
     }
   }, [isTypingMode]);
+  startListeningStepRef.current = startListeningStep;
 
   // Finish current answer turn (via pause timeout or "I'm finished" button)
   const handleAnswerFinished = useCallback(async () => {
@@ -364,6 +358,9 @@ export default function InterviewRoomPage() {
 
     // Apply technical term corrections
     const cleanAnswer = correctInterviewTerms(answerText, currentQuestion.id);
+    if (typeof window !== 'undefined') {
+      (window as any).__NM_LAST_TURN_ANSWER__ = cleanAnswer;
+    }
 
     // Record turn in history
     const turnRecord: TurnRecord = {
@@ -398,7 +395,11 @@ export default function InterviewRoomPage() {
       setTurnIndex(nextTurn);
       setCurrentProbedPointId(action.probedPointId);
       setCurrentProbedMisconceptionId(action.probedMisconceptionId);
-      startSpeakingStep(action.spokenQuestion, action.textQuestion);
+      startSpeakingStep(
+        action.spokenQuestion,
+        action.textQuestion,
+        action.clipId ? [action.clipId] : undefined
+      );
     } else {
       // Question completed
       setCurrentProbedPointId(undefined);
@@ -420,9 +421,12 @@ export default function InterviewRoomPage() {
         setTurnIndex(0);
         setHistory([]);
         const nextQ = questionsToRun[nextIdx];
+        const transIndex = (questionIndex % 5) + 1;
+        const transClipId = `transition_0${transIndex}`;
+        const nextQClipId = `${nextQ.id}_q`;
         const transition = spokenTransitions[questionIndex % spokenTransitions.length] || '';
         const spoken = transition ? `${transition} ${nextQ.spoken_question}` : nextQ.spoken_question;
-        startSpeakingStep(spoken, nextQ.spoken_question);
+        startSpeakingStep(spoken, nextQ.spoken_question, [transClipId, nextQClipId]);
       } else {
         // All session questions completed: generate session debrief across questions
         const sessionDebriefData = generateSessionDebrief(updatedRecords);
@@ -457,7 +461,7 @@ export default function InterviewRoomPage() {
       setHistory([]);
       setCompletedRecords([]);
       setSessionDebrief(null);
-      startSpeakingStep(currentQuestion.spoken_question, currentQuestion.spoken_question);
+      startSpeakingStep(currentQuestion.spoken_question, currentQuestion.spoken_question, [`${currentQuestion.id}_q`]);
     } catch (err) {
       console.warn('[InterviewRoom] Mic permission denied/failed:', err);
       setStatusMessage('Microphone access unavailable. Continuing with text input.');
@@ -467,7 +471,7 @@ export default function InterviewRoomPage() {
       setHistory([]);
       setCompletedRecords([]);
       setSessionDebrief(null);
-      startSpeakingStep(currentQuestion.spoken_question, currentQuestion.spoken_question);
+      startSpeakingStep(currentQuestion.spoken_question, currentQuestion.spoken_question, [`${currentQuestion.id}_q`]);
     }
   };
 
@@ -479,7 +483,7 @@ export default function InterviewRoomPage() {
     setHistory([]);
     setCompletedRecords([]);
     setSessionDebrief(null);
-    startSpeakingStep(currentQuestion.spoken_question, currentQuestion.spoken_question);
+    startSpeakingStep(currentQuestion.spoken_question, currentQuestion.spoken_question, [`${currentQuestion.id}_q`]);
   };
 
   // Restart / Answer again
@@ -490,7 +494,7 @@ export default function InterviewRoomPage() {
     setDebrief(null);
     setSessionDebrief(null);
     setCompletedRecords([]);
-    startSpeakingStep(questionsToRun[0].spoken_question, questionsToRun[0].spoken_question);
+    startSpeakingStep(questionsToRun[0].spoken_question, questionsToRun[0].spoken_question, [`${questionsToRun[0].id}_q`]);
   };
 
   // Next question in multi-question round
@@ -502,9 +506,12 @@ export default function InterviewRoomPage() {
     setDebrief(null);
     const nextQ = questionsToRun[nextIdx];
     if (nextQ) {
+      const transIndex = (questionIndex % 5) + 1;
+      const transClipId = `transition_0${transIndex}`;
+      const nextQClipId = `${nextQ.id}_q`;
       const transition = spokenTransitions[questionIndex % spokenTransitions.length] || '';
       const spoken = transition ? `${transition} ${nextQ.spoken_question}` : nextQ.spoken_question;
-      startSpeakingStep(spoken, nextQ.spoken_question);
+      startSpeakingStep(spoken, nextQ.spoken_question, [transClipId, nextQClipId]);
     } else {
       setScreen('setup');
     }
@@ -512,6 +519,10 @@ export default function InterviewRoomPage() {
 
   // Start over completely
   const handleRestart = () => {
+    if (stopAudioPlaybackRef.current) {
+      stopAudioPlaybackRef.current();
+      stopAudioPlaybackRef.current = null;
+    }
     try {
       window.speechSynthesis?.cancel();
     } catch {}
@@ -689,6 +700,10 @@ export default function InterviewRoomPage() {
                   type="button"
                   style={{ fontSize: '13px', padding: '6px 12px' }}
                   onClick={() => {
+                    if (stopAudioPlaybackRef.current) {
+                      stopAudioPlaybackRef.current();
+                      stopAudioPlaybackRef.current = null;
+                    }
                     try {
                       window.speechSynthesis?.cancel();
                     } catch {}

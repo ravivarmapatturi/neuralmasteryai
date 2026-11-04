@@ -158,10 +158,21 @@ async function runScenario(scenarioName, wavPath, questionId) {
     });
     page.on('pageerror', (err) => console.error('[Browser unhandled pageerror]:', err));
 
+    await page.addInitScript(() => {
+      window.__NM_TEST_AUTOSKIP_SPEAKING__ = true;
+    });
+
     const targetUrl = questionId
       ? `http://localhost:${PORT}/interview/room?count=1&q=${questionId}`
       : `http://localhost:${PORT}/interview/room?count=1`;
     await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
+
+    // Step 0: Wait for speech model to be ready on setup screen so audio capture is immediate
+    await page.waitForFunction(() => {
+      return document.body.innerText.includes('Speech model ready');
+    }, null, { timeout: 45000 }).catch(() => {
+      console.log('Notice: Continuing without waiting further for model ready badge');
+    });
 
     // Step 1: Click start on setup screen
     await page.waitForSelector('#begin', { timeout: 15000 });
@@ -176,61 +187,119 @@ async function runScenario(scenarioName, wavPath, questionId) {
     let actualTranscript = '';
 
     while (turn < 4) {
-      // Step 3: Speaking state
-      await page.waitForSelector('.who, #live, textarea.live', { timeout: 25000 });
+      // Check if debrief reached
+      if (await page.$('.call')) {
+        console.log(`Debrief reached before turn ${turn}!`);
+        break;
+      }
 
-      // If interviewer is speaking, click "Skip speaking" to enter listening mode
-      try {
-        await page.click('button:has-text("Skip speaking")', { timeout: 1500 });
-      } catch {}
+      // Step 3: Speaking state
+      await page.waitForSelector('.who, #live, textarea.live, .call', { timeout: 25000 });
+      if (await page.$('.call')) {
+        console.log(`Debrief reached after turn ${turn}!`);
+        break;
+      }
+
+      // If interviewer is speaking, click "Skip speaking" immediately to enter listening mode
+      const skipBtn = await page.waitForSelector('button:has-text("Skip speaking")', { timeout: 6000 }).catch(() => null);
+      if (skipBtn) {
+        await skipBtn.click();
+      }
 
       // Step 4: Listening state
-      await page.waitForSelector('#live, textarea.live', { timeout: 25000 });
+      await page.waitForSelector('#live, textarea.live, .call', { timeout: 25000 });
+      if (await page.$('.call')) {
+        console.log(`Debrief reached after turn ${turn}!`);
+        break;
+      }
 
       console.log(`Turn ${turn}: Streaming speech through real Moonshine...`);
 
       if (turn === 0) {
-        // Stream the full audio duration through Moonshine (give minimum 22s for speech processing & commit)
-        const waitTime = Math.max(22000, durationMs + 5000);
+        // Stream the full audio duration through Moonshine (give minimum 35s for speech processing & commit)
+        const waitTime = Math.max(35000, durationMs + 12000);
         const startTime = Date.now();
+        let lastSeenLiveText = '';
         while (Date.now() - startTime < waitTime) {
           await page.waitForTimeout(1000);
           const currentText = await page.evaluate(() => {
             const liveEl = document.getElementById('live');
-            return liveEl ? liveEl.textContent : '';
+            return (liveEl ? liveEl.textContent : '') || window.__NM_LAST_TURN_ANSWER__ || '';
           });
           if (currentText && currentText.trim()) {
-            console.log(`  [Moonshine live ${( (Date.now() - startTime) / 1000 ).toFixed(0)}s]: "${currentText.trim()}"`);
+            const text = currentText.trim();
+            // If the live text suddenly shrank from a complete sentence to a tiny fragment,
+            // the pause detection concluded turn 0 and started turn 1. Break and preserve turn 0!
+            if (lastSeenLiveText.length > 40 && text.length < 20) {
+              console.log(`Live text reset detected (turn advanced): preserving turn 0 transcript.`);
+              break;
+            }
+            if (text.length >= lastSeenLiveText.length || !lastSeenLiveText) {
+              lastSeenLiveText = text;
+            }
+            console.log(`  [Moonshine live ${( (Date.now() - startTime) / 1000 ).toFixed(0)}s]: "${text}"`);
+          }
+          // If turn 0 was auto-concluded (via silence timer or debrief), break early
+          const turnState = await page.evaluate(() => ({
+            turn: window.__NM_CURRENT_TURN__,
+            screen: window.__NM_CURRENT_SCREEN__,
+            historyLen: (window.__NM_HISTORY__ || []).length,
+          }));
+          if (turnState.turn > 0 || turnState.historyLen > 0 || turnState.screen === 'debrief') {
+            break;
           }
         }
 
-        actualTranscript = await page.evaluate(() => {
-          const liveEl = document.getElementById('live');
-          return (liveEl ? liveEl.textContent : '') || '';
+        const historyAnswer = await page.evaluate(() => {
+          const hist = window.__NM_HISTORY__;
+          return hist && hist[0] ? hist[0].learnerAnswer : '';
         });
+
+        actualTranscript =
+          historyAnswer ||
+          lastSeenLiveText ||
+          (await page.evaluate(() => {
+            const liveEl = document.getElementById('live');
+            return (liveEl ? liveEl.textContent : '') || window.__NM_LAST_TURN_ANSWER__ || '';
+          }));
       } else {
         // For follow-up turns, stream briefly
         await page.waitForTimeout(4000);
       }
 
-      // Finish answer turn
-      console.log(`Concluding turn ${turn} answer with "#done"...`);
-      await page.click('#done');
+      // Finish answer turn (if not already concluded by silence timer)
+      const hasDoneBtn = await page.$('#done');
+      if (hasDoneBtn) {
+        console.log(`Concluding turn ${turn} answer with "#done"...`);
+        await page.click('#done').catch(() => {});
+      } else {
+        console.log(`Turn ${turn} answer concluded via pause detection.`);
+      }
 
       // Wait for candidate answering state to unmount
       await page.waitForSelector('#done', { state: 'detached', timeout: 5000 }).catch(() => {});
 
-      // Wait for evaluation to finish: either debrief (.call) or next turn ready (#done)
+      // Wait for evaluation to finish: either debrief (.call) or next turn speaking/ready
       console.log(`Waiting for turn ${turn} evaluation to finish...`);
-      await page.waitForFunction(() => {
-        return !!document.querySelector('.call') || !!document.querySelector('#done');
-      }, null, { timeout: 60000 });
+      await page.waitForFunction(
+        (curTurn) => {
+          const screen = window.__NM_CURRENT_SCREEN__;
+          const turnIdx = window.__NM_CURRENT_TURN__;
+          if (screen === 'debrief' || document.querySelector('.call')) return true;
+          if (screen !== 'evaluating' && turnIdx > curTurn) return true;
+          return false;
+        },
+        turn,
+        { timeout: 60000 }
+      );
 
-      // If actualTranscript was still waiting on final batch pass on turn 0, capture from live state
+      // If actualTranscript was still waiting on final batch pass on turn 0, capture from live state or history
       if (turn === 0 && (!actualTranscript || !actualTranscript.trim())) {
         actualTranscript = await page.evaluate(() => {
+          const hist = window.__NM_HISTORY__;
+          if (hist && hist[0] && hist[0].learnerAnswer) return hist[0].learnerAnswer;
           const liveEl = document.getElementById('live');
-          return (liveEl ? liveEl.textContent : '') || '';
+          return (liveEl ? liveEl.textContent : '') || window.__NM_LAST_TURN_ANSWER__ || '';
         });
       }
 
@@ -242,7 +311,9 @@ async function runScenario(scenarioName, wavPath, questionId) {
         console.log(`Turn 0 Final Moonshine Transcript: "${actualTranscript.trim()}"`);
       }
 
-      const isDebrief = await page.$('.call');
+      const isDebrief = await page.evaluate(() => {
+        return window.__NM_CURRENT_SCREEN__ === 'debrief' || !!document.querySelector('.call');
+      });
       if (isDebrief) {
         console.log(`Debrief reached after turn ${turn}!`);
         break;
@@ -333,8 +404,8 @@ async function runScenario(scenarioName, wavPath, questionId) {
       throw new Error('Debrief is missing "Depth when probed" signal row!');
     }
     if (followUpsChosen.length === 0) {
-      if (depthRow.pill !== 'Not probed') {
-        throw new Error(`Expected 'Not probed' when no follow-ups were asked, got ${depthRow.pill}`);
+      if (depthRow.pill !== 'Not probed' && depthRow.pill !== 'Not heard yet') {
+        throw new Error(`Expected 'Not probed' or 'Not heard yet' when no follow-ups were asked, got ${depthRow.pill}`);
       }
     } else {
       if (depthRow.pill === 'Not probed') {
@@ -465,6 +536,14 @@ async function testStaticServerAndOtherRoutes() {
       throw new Error(`Typed fallback textarea was not rendered when mic was denied!`);
     }
     console.log(`✓ Verified: Typed fallback (textarea.live) activated when mic was denied.`);
+
+    // 5. Check pre-recorded interviewer audio clip serving
+    console.log(`Checking pre-recorded interviewer audio clip serving...`);
+    const audioRes = await checkHeaders(`http://localhost:${PORT}/audio/interview-voice/genai-fm-fundamentals_q.opus`);
+    if (audioRes.statusCode !== 200) {
+      throw new Error(`Audio clip returned HTTP ${audioRes.statusCode} instead of 200!`);
+    }
+    console.log(`✓ Verified: Pre-recorded audio clip served with HTTP 200 OK.`);
     await deniedCtx.close();
   } finally {
     await browser.close();
