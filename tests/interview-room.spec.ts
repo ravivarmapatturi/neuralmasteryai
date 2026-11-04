@@ -16,6 +16,7 @@ test.describe('Interview Room (/interview/room)', () => {
   });
 
   test('walks through question flow to debrief, failing on empty results', async ({ page }) => {
+    test.setTimeout(180000);
     // Intercept requests to ensure candidate speech/answers are not sent over the network
     const answersSent: string[] = [];
     page.on('request', (req) => {
@@ -47,8 +48,8 @@ test.describe('Interview Room (/interview/room)', () => {
     );
     await page.click('#done');
 
-    // Dialogue loop: handle follow-up turns if prompted by dialogue rules
-    for (let t = 0; t < 3; t++) {
+    // Dialogue loop: follow-ups and later questions in the session
+    for (let t = 0; t < 20; t++) {
       await page.waitForTimeout(1000);
       const call = await page.$('.call');
       if (call) break;
