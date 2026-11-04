@@ -24,7 +24,15 @@ import {
   generateSessionDebrief,
   END_OF_ANSWER_PAUSE_SECONDS,
 } from '../../lib/interviewRoom/dialogue';
-import { MoonshineSingleThreadEngine } from '../../lib/speechTest/engines';
+import type { SingleThreadASREngine } from '../../lib/speechTest/engines';
+import {
+  detectDeviceCapability,
+  shouldWarnBeforeDownload,
+  createASREngineForQuality,
+  QUALITY_PROFILES,
+  type QualityOption,
+  type DeviceCapability,
+} from '../../lib/interviewRoom/qualitySettings';
 import { embed, nli, loadJudge } from '../../lib/mockInterview/engine';
 import { playInterviewerAudio } from '../../lib/interviewRoom/voiceAudio';
 import type { JudgeModels } from '../../lib/answerJudge';
@@ -129,8 +137,16 @@ export default function InterviewRoomPage() {
     }
   });
 
+  // Quality & capability settings
+  const [capability] = useState<DeviceCapability>(() => detectDeviceCapability());
+  const [qualitySetting, setQualitySetting] = useState<QualityOption>(() => capability.recommended);
+  const [qualityWarning, setQualityWarning] = useState<string | null>(() =>
+    shouldWarnBeforeDownload(capability.recommended, capability)
+  );
+  const [fallbackNotice, setFallbackNotice] = useState<string | null>(null);
+
   // Background speech & judge engine
-  const engineRef = useRef<MoonshineSingleThreadEngine | null>(null);
+  const engineRef = useRef<SingleThreadASREngine | null>(null);
   const judgeModelsRef = useRef<JudgeModels>({
     embed: (texts: string[]) => embed(texts),
     nli: (pairs: [string, string][]) => nli(pairs),
@@ -149,11 +165,12 @@ export default function InterviewRoomPage() {
   const stopAudioPlaybackRef = useRef<(() => void) | null>(null);
   const startListeningStepRef = useRef<() => void>(() => {});
 
-  // Initialize background models on mount
+  // Initialize background models on mount or when quality setting changes
   useEffect(() => {
-    const engine = new MoonshineSingleThreadEngine();
+    const engine = createASREngineForQuality(qualitySetting);
     engineRef.current = engine;
     setModelStatus('loading');
+    setModelProgressPct(0);
 
     // Preload judge models (all-MiniLM-L6-v2 and mobilebert NLI) in background worker
     loadJudge().catch((err) => {
@@ -165,6 +182,13 @@ export default function InterviewRoomPage() {
         setModelStatus('ready');
       } else if (m.status === 'error') {
         setModelStatus('error');
+        if (qualitySetting === 'better') {
+          console.warn('[InterviewRoom] Better accuracy model failed. Falling back to Fast.');
+          setFallbackNotice(
+            'Better accuracy model (~62 MB) could not be loaded on this device. Automatically switched to Fast (Moonshine Tiny).'
+          );
+          setQualitySetting('fast');
+        }
       }
       if (m.downloadProgressPct != null) {
         setModelProgressPct(m.downloadProgressPct);
@@ -174,6 +198,13 @@ export default function InterviewRoomPage() {
     engine.load().catch((err) => {
       console.warn('[InterviewRoom] Model preloading notice:', err.message);
       setModelStatus('error');
+      if (qualitySetting === 'better') {
+        console.warn('[InterviewRoom] Better accuracy model failed to load. Falling back to Fast.');
+        setFallbackNotice(
+          'Better accuracy model (~62 MB) could not be loaded on this device. Automatically switched to Fast (Moonshine Tiny).'
+        );
+        setQualitySetting('fast');
+      }
     });
 
     return () => {
@@ -185,7 +216,7 @@ export default function InterviewRoomPage() {
       }
       engineRef.current = null;
     };
-  }, []);
+  }, [qualitySetting]);
 
   // Cleanup media & speech on unmount
   useEffect(() => {
@@ -617,7 +648,65 @@ export default function InterviewRoomPage() {
                     <option value="1">Focused practice, 1 question</option>
                   </select>
                 </label>
+
+                <label htmlFor="quality">
+                  Quality
+                  <select
+                    id="quality"
+                    value={qualitySetting}
+                    onChange={(e) => {
+                      const nextQ = e.target.value as QualityOption;
+                      setQualitySetting(nextQ);
+                      setQualityWarning(shouldWarnBeforeDownload(nextQ, capability));
+                      setFallbackNotice(null);
+                    }}
+                  >
+                    {Object.values(QUALITY_PROFILES)
+                      .filter((p) => !p.hidden)
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.label} · {p.downloadSizeMB}
+                        </option>
+                      ))}
+                  </select>
+                  <span style={{ fontSize: '11px', color: 'var(--soft)', fontWeight: 400, marginTop: '2px' }}>
+                    {qualitySetting === capability.recommended
+                      ? `✓ Recommended: ${capability.reason}`
+                      : `Device recommendation: ${QUALITY_PROFILES[capability.recommended].label}`}
+                  </span>
+                </label>
               </div>
+
+              {/* Warnings and Fallback Notices */}
+              {qualityWarning && (
+                <div
+                  className="note"
+                  style={{
+                    fontSize: '13px',
+                    color: 'var(--warn)',
+                    padding: '8px 12px',
+                    background: 'var(--warn-fill)',
+                    borderRadius: '6px',
+                  }}
+                >
+                  ⚠️ {qualityWarning}
+                </div>
+              )}
+
+              {fallbackNotice && (
+                <div
+                  className="note"
+                  style={{
+                    fontSize: '13px',
+                    color: 'var(--bad)',
+                    padding: '8px 12px',
+                    background: 'var(--bad-fill)',
+                    borderRadius: '6px',
+                  }}
+                >
+                  ⚠️ {fallbackNotice}
+                </div>
+              )}
 
               {/* Background Model Preloading Status */}
               <div
@@ -631,10 +720,15 @@ export default function InterviewRoomPage() {
                 }}
               >
                 {modelStatus === 'loading' && (
-                  <span>Preparing speech model (Moonshine Tiny)... {modelProgressPct}%</span>
+                  <span>
+                    Preparing speech model ({QUALITY_PROFILES[qualitySetting].modelName})...{' '}
+                    {modelProgressPct}%
+                  </span>
                 )}
                 {modelStatus === 'ready' && (
-                  <span style={{ color: 'var(--good)' }}>● Speech model ready on device</span>
+                  <span style={{ color: 'var(--good)' }}>
+                    ● Speech model ready ({QUALITY_PROFILES[qualitySetting].modelName})
+                  </span>
                 )}
                 {modelStatus === 'error' && (
                   <span>Speech model loading in background. Voice & typing both available.</span>
