@@ -20,6 +20,9 @@ export interface EngineMetrics {
   errorMessage: string | null;
   updateIntervalMs?: number | null;
   earlierWordRevisions?: number;
+  revisionsPerWord?: number;
+  batchTranscript?: string;
+  isIdenticalToBatch?: boolean;
 }
 
 export function detectBrowser(): string {
@@ -155,7 +158,7 @@ export class BrowserSpeechEngine extends BaseSpeechEngine {
     const rec = new SpeechRec();
     rec.continuous = true;
     rec.interimResults = true;
-    rec.lang = 'en-US';
+    rec.lang = 'en-IN';
 
     rec.onstart = () => {
       this.updateMetrics({ status: 'listening' });
@@ -723,6 +726,109 @@ export class SherpaOnnxEngine extends BaseSpeechEngine {
  * - Non-blocking Web Worker offloading (page never stutters).
  * - Real update interval and earlier word revision tracking.
  */
+/**
+ * Normalizes text for ASR comparison and alignment.
+ */
+export function normalizeASRText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"']/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Aligns and appends a newly transcribed segment to committed text.
+ * If the new segment overlaps with the tail of the committed text (e.g. from
+ * boundary window overlap), it deduplicates the overlapping words so no words
+ * are repeated or cut.
+ */
+export function alignAndAppendPhrases(committed: string, nextText: string): string {
+  const comm = committed.trim();
+  const next = nextText.trim();
+  if (!comm) return next;
+  if (!next) return comm;
+
+  const clean = (w: string) => w.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const commWords = comm.split(/\s+/).filter(Boolean);
+  const nextWords = next.split(/\s+/).filter(Boolean);
+
+  const cleanComm = commWords.map(clean);
+  const cleanNext = nextWords.map(clean);
+
+  let maxMatch = 0;
+  const maxK = Math.min(8, cleanComm.length, cleanNext.length);
+
+  for (let k = maxK; k >= 1; k--) {
+    const tailComm = cleanComm.slice(cleanComm.length - k).join(' ');
+    const headNext = cleanNext.slice(0, k).join(' ');
+    if (tailComm === headNext) {
+      maxMatch = k;
+      break;
+    }
+  }
+
+  if (maxMatch > 0) {
+    const remaining = nextWords.slice(maxMatch);
+    if (remaining.length === 0) return comm;
+    return comm + ' ' + remaining.join(' ');
+  }
+
+  return comm + ' ' + next;
+}
+
+/**
+ * Trims excessive silence from the edges of an audio segment before passing to Moonshine.
+ * Moonshine Tiny predicts <|nospeech|> if audio contains multiple seconds of dead silence.
+ * Retains padSamples (~200ms = 3200 samples at 16kHz) to ensure speech onset/offset is intact.
+ */
+export function trimAudioSilence(
+  samples: Float32Array,
+  threshold = 0.008,
+  padSamples = 3200
+): Float32Array {
+  let start = 0;
+  for (let i = 0; i < samples.length - 320; i += 160) {
+    let sum = 0;
+    for (let j = 0; j < 320; j++) sum += samples[i + j] * samples[i + j];
+    if (Math.sqrt(sum / 320) > threshold) {
+      start = Math.max(0, i - padSamples);
+      break;
+    }
+  }
+
+  let end = samples.length;
+  for (let i = samples.length - 320; i >= 0; i -= 160) {
+    let sum = 0;
+    for (let j = 0; j < 320; j++) sum += samples[i + j] * samples[i + j];
+    if (Math.sqrt(sum / 320) > threshold) {
+      end = Math.min(samples.length, i + 320 + padSamples);
+      break;
+    }
+  }
+
+  if (start >= end || end - start < 1600) {
+    return new Float32Array(samples);
+  }
+
+  return samples.slice(start, end);
+}
+
+/**
+ * Option 4: Moonshine Tiny, single-threaded ONNX Web
+ *
+ * Runs onnx-community/moonshine-tiny-ONNX in a dedicated Web Worker
+ * with numThreads = 1 (Zero SharedArrayBuffer, Zero COOP/COEP required).
+ *
+ * Architecture:
+ * - Uses voice activity & pause detection to commit finished phrases: at each silence
+ *   or every ~8.5 seconds, the settled segment is frozen and appended.
+ * - Only the current segment is re-transcribed for low-latency live feedback.
+ * - Max-duration boundary commits maintain an audio overlap window (~1.25s) and
+ *   align/deduplicate boundary words so words are never cut at window edges.
+ * - Retains all audio in a session buffer to verify whether final text equals
+ *   a batch pass over the same audio.
+ */
 export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
   readonly id = 'moonshine-single';
   readonly name = 'Moonshine Tiny, single-threaded (ORT Web / transformers.js)';
@@ -731,12 +837,28 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
   private processorNode: ScriptProcessorNode | null = null;
   private isRunning = false;
   private isWorkerBusy = false;
-  private accumulatedChunks: Float32Array[] = [];
-  private totalSamples = 0;
+
+  // Complete session audio (never cleared during session, used for batch comparison)
+  private sessionChunks: Float32Array[] = [];
+  private totalSessionSamples = 0;
+
+  // Active phrase / segment audio
+  private currentSegmentChunks: Float32Array[] = [];
+  private currentSegmentSamples = 0;
+
+  // Committed frozen phrases and live text
+  private committedPhrases: string[] = [];
+  private committedText = '';
+  private currentInterimText = '';
+
+  // Voice activity & pause tracking
+  private silenceFramesCount = 0;
+  private hasSpeechInCurrentSegment = false;
+  private isCommitting = false;
+
   private pollIntervalId: any = null;
   private lastUpdateTime: number | null = null;
   private updateIntervals: number[] = [];
-  private settledWords: string[] = [];
   private earlierWordRevisions = 0;
 
   constructor() {
@@ -744,6 +866,13 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
     this.metrics.device = 'WASM (Single-Threaded, No COOP/COEP needed)';
     this.metrics.downloadBytes = 28180947; // 28.18 MB total (7.9 MB encoder + 20.2 MB decoder)
     this.metrics.earlierWordRevisions = 0;
+    this.metrics.revisionsPerWord = 0;
+  }
+
+  public override onSpeechActivity(isSpeaking: boolean, timestamp?: number): void {
+    super.onSpeechActivity(isSpeaking, timestamp);
+    // Voice activity detection state is tracked; onaudioprocess coordinates
+    // silence pause commits (~750ms-1s silence) without premature micro-pause cutting.
   }
 
   public async load(): Promise<void> {
@@ -807,13 +936,22 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
 
     this.isRunning = true;
     this.isWorkerBusy = false;
+    this.isCommitting = false;
     this.hasEmittedFirstWord = false;
     this.speechStartTime = null;
     this.listeningStartTime = performance.now();
-    this.accumulatedChunks = [];
-    this.totalSamples = 0;
+
+    this.sessionChunks = [];
+    this.totalSessionSamples = 0;
+    this.currentSegmentChunks = [];
+    this.currentSegmentSamples = 0;
+    this.committedPhrases = [];
+    this.committedText = '';
+    this.currentInterimText = '';
+
+    this.silenceFramesCount = 0;
+    this.hasSpeechInCurrentSegment = false;
     this.updateIntervals = [];
-    this.settledWords = [];
     this.earlierWordRevisions = 0;
     this.lastUpdateTime = null;
 
@@ -824,6 +962,9 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
       errorMessage: null,
       updateIntervalMs: null,
       earlierWordRevisions: 0,
+      revisionsPerWord: 0,
+      batchTranscript: undefined,
+      isIdenticalToBatch: undefined,
     });
 
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
@@ -840,12 +981,47 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
       const channelData = e.inputBuffer.getChannelData(0);
       const copy = new Float32Array(channelData.length);
       copy.set(channelData);
-      this.accumulatedChunks.push(copy);
-      this.totalSamples += copy.length;
+
+      // Keep complete audio in session history
+      this.sessionChunks.push(copy);
+      this.totalSessionSamples += copy.length;
+
+      // Keep in current active segment
+      this.currentSegmentChunks.push(copy);
+      this.currentSegmentSamples += copy.length;
+
+      // Energy (RMS) computation for local voice activity & pause detection
+      let sum = 0;
+      for (let i = 0; i < copy.length; i++) {
+        sum += copy[i] * copy[i];
+      }
+      const rms = Math.sqrt(sum / copy.length);
+
+      if (rms >= 0.012) {
+        this.hasSpeechInCurrentSegment = true;
+        this.silenceFramesCount = 0;
+      } else {
+        this.silenceFramesCount++;
+      }
+
+      // Natural pause trigger: ~750ms of silence (3 frames of 256ms) after speaking and at least 1s of audio
+      if (
+        this.hasSpeechInCurrentSegment &&
+        this.silenceFramesCount >= 3 &&
+        this.currentSegmentSamples >= 16000 &&
+        !this.isCommitting
+      ) {
+        this.commitCurrentSegment(false);
+      }
+
+      // Max window duration trigger: ~8.5 seconds (136,000 samples)
+      // Commit settled phrase and maintain ~1.25s overlap so window edges never cut words
+      if (this.currentSegmentSamples >= 136000 && !this.isCommitting) {
+        this.commitCurrentSegment(true);
+      }
     };
 
     source.connect(this.processorNode);
-    // Connect to destination via silent gain node to ensure clock advancement
     const silentGain = this.audioContext.createGain();
     silentGain.gain.value = 0.00001;
     this.processorNode.connect(silentGain);
@@ -854,8 +1030,25 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
     // Setup worker listener for transcription results
     if (this.worker) {
       this.worker.onmessage = (e: MessageEvent) => {
-        const { type, text, inferMs } = e.data;
-        if (type === 'result') {
+        const { type, text, inferMs, error } = e.data;
+
+        if (type === 'commit_result') {
+          this.isCommitting = false;
+          this.isWorkerBusy = false;
+          const rawText = (text || '').trim();
+          console.log('[MoonshineEngine] commit_result text:', JSON.stringify(rawText));
+          if (rawText.length > 0) {
+            this.committedText = alignAndAppendPhrases(this.committedText, rawText);
+            this.committedPhrases.push(rawText);
+            this.currentInterimText = '';
+
+            this.updateMetrics({
+              finalText: this.committedText,
+              partialText: this.committedText,
+              lagBehindSpeechMs: inferMs ?? 150,
+            });
+          }
+        } else if (type === 'result') {
           this.isWorkerBusy = false;
           const now = performance.now();
 
@@ -873,27 +1066,8 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
               this.updateMetrics({ timeToFirstWordMs: Math.max(0, Math.round(now - refStart)) });
             }
 
-            // Word normalization and settled prefix tracking
-            const words = rawText.split(/\s+/).filter(Boolean);
-            
-            // Check if any previously settled word changed
-            let stepRevisions = 0;
-            const checkLimit = Math.min(this.settledWords.length, words.length);
-            for (let i = 0; i < checkLimit; i++) {
-              const cleanPrev = this.settledWords[i].toLowerCase().replace(/[^a-z0-9]/g, '');
-              const cleanCurr = words[i].toLowerCase().replace(/[^a-z0-9]/g, '');
-              if (cleanPrev !== cleanCurr) {
-                stepRevisions++;
-              }
-            }
-            if (stepRevisions > 0) {
-              this.earlierWordRevisions += stepRevisions;
-            }
-
-            // Stabilize settled prefix: commit words before the trailing volatile window
-            if (words.length > 2) {
-              this.settledWords = words.slice(0, words.length - 1);
-            }
+            this.currentInterimText = rawText;
+            const liveCombined = alignAndAppendPhrases(this.committedText, this.currentInterimText);
 
             const avgInterval =
               this.updateIntervals.length > 0
@@ -903,42 +1077,97 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
                 : null;
 
             this.updateMetrics({
-              partialText: rawText,
-              finalText: this.settledWords.join(' '),
+              partialText: liveCombined,
+              finalText: this.committedText,
               lagBehindSpeechMs: inferMs ?? Math.max(20, Math.round(now - (this.speechStartTime ?? now))),
               updateIntervalMs: avgInterval,
               earlierWordRevisions: this.earlierWordRevisions,
             });
           }
         } else if (type === 'busy') {
-          // Worker was busy; wait for next cycle
+          this.isWorkerBusy = false;
+        } else if (type === 'error') {
+          this.isCommitting = false;
+          this.isWorkerBusy = false;
+          console.warn('[MoonshineWorker error]', error);
         }
       };
     }
 
-    // Growing audio window polling loop: triggers every 250ms
+    // Active segment interim polling loop: triggers every 300ms
     this.pollIntervalId = setInterval(() => {
-      if (!this.isRunning || this.isWorkerBusy || !this.worker) return;
-      if (this.totalSamples < 4000) return; // Wait for at least ~250ms of audio
+      if (!this.isRunning || this.isWorkerBusy || this.isCommitting || !this.worker) return;
+      if (this.currentSegmentSamples < 4000) return; // Wait for at least ~250ms of audio
 
-      // Flatten accumulated chunks into a single Float32Array
-      const merged = new Float32Array(this.totalSamples);
+      // Flatten current segment chunks
+      const merged = new Float32Array(this.currentSegmentSamples);
       let offset = 0;
-      for (const chunk of this.accumulatedChunks) {
+      for (const chunk of this.currentSegmentChunks) {
         merged.set(chunk, offset);
         offset += chunk.length;
       }
+
+      const clean = trimAudioSilence(merged);
+      if (clean.length < 3200) return;
 
       this.isWorkerBusy = true;
       this.worker.postMessage(
         {
           id: Date.now(),
           op: 'transcribe',
-          payload: { audio: merged.buffer },
+          payload: { audio: clean.buffer },
         },
-        [merged.buffer]
+        [clean.buffer]
       );
-    }, 250);
+    }, 300);
+  }
+
+  private commitCurrentSegment(hasOverlap: boolean): void {
+    if (this.currentSegmentSamples < 4000 || !this.worker) return;
+
+    this.isCommitting = true;
+    const samplesToCommit = this.currentSegmentSamples;
+    console.log('[MoonshineEngine] commitCurrentSegment, hasOverlap:', hasOverlap, 'samples:', samplesToCommit);
+
+    // Flatten current segment chunks
+    const merged = new Float32Array(samplesToCommit);
+    let offset = 0;
+    for (const chunk of this.currentSegmentChunks) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    if (hasOverlap) {
+      // Overlap and align: retain the last ~1.25s (20,000 samples) in the next segment
+      const overlapSamples = Math.min(20000, samplesToCommit);
+      const overlapChunk = merged.subarray(samplesToCommit - overlapSamples);
+      const overlapCopy = new Float32Array(overlapChunk.length);
+      overlapCopy.set(overlapChunk);
+      this.currentSegmentChunks = [overlapCopy];
+      this.currentSegmentSamples = overlapCopy.length;
+      this.hasSpeechInCurrentSegment = false;
+      this.silenceFramesCount = 0;
+    } else {
+      // Silence pause: clear current segment
+      this.currentSegmentChunks = [];
+      this.currentSegmentSamples = 0;
+      this.hasSpeechInCurrentSegment = false;
+      this.silenceFramesCount = 0;
+    }
+
+    const clean = trimAudioSilence(merged);
+    if (clean.length < 3200) {
+      this.isCommitting = false;
+      return;
+    }
+    this.worker.postMessage(
+      {
+        id: Date.now(),
+        op: 'commit',
+        payload: { audio: clean.buffer, hasOverlap },
+      },
+      [clean.buffer]
+    );
   }
 
   public async stop(): Promise<void> {
@@ -959,7 +1188,105 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
       }
       this.audioContext = null;
     }
-    this.updateMetrics({ status: 'ready' });
+
+    // If there is uncommitted speech in the segment, commit it now
+    if (this.currentSegmentSamples >= 4000 && this.worker) {
+      const remainingSamples = this.currentSegmentSamples;
+      const merged = new Float32Array(remainingSamples);
+      let offset = 0;
+      for (const chunk of this.currentSegmentChunks) {
+        merged.set(chunk, offset);
+        offset += chunk.length;
+      }
+      this.currentSegmentChunks = [];
+      this.currentSegmentSamples = 0;
+
+      const clean = trimAudioSilence(merged);
+      if (clean.length >= 3200) {
+        await new Promise<void>((resolve) => {
+          const timeout = setTimeout(() => {
+            this.worker?.removeEventListener('message', handler);
+            resolve();
+          }, 6000);
+
+          const handler = (e: MessageEvent) => {
+            if (e.data.type === 'commit_result') {
+              clearTimeout(timeout);
+              const raw = (e.data.text || '').trim();
+              if (raw.length > 0) {
+                this.committedText = alignAndAppendPhrases(this.committedText, raw);
+              }
+              this.worker?.removeEventListener('message', handler);
+              resolve();
+            } else if (e.data.type === 'error') {
+              clearTimeout(timeout);
+              this.worker?.removeEventListener('message', handler);
+              resolve();
+            }
+          };
+          this.worker?.addEventListener('message', handler);
+          this.worker?.postMessage(
+            { id: Date.now(), op: 'commit', payload: { audio: clean.buffer, hasOverlap: false } },
+            [clean.buffer]
+          );
+        });
+      }
+    }
+
+    // Run batch pass over full session audio to measure whether live text equals batch pass
+    let batchTranscript = '';
+    let isIdenticalToBatch = false;
+
+    if (this.totalSessionSamples >= 8000 && this.worker) {
+      const fullAudio = new Float32Array(this.totalSessionSamples);
+      let offset = 0;
+      for (const chunk of this.sessionChunks) {
+        fullAudio.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(() => {
+          this.worker?.removeEventListener('message', handler);
+          resolve();
+        }, 8000);
+
+        const handler = (e: MessageEvent) => {
+          if (e.data.type === 'batch_result') {
+            clearTimeout(timeout);
+            batchTranscript = (e.data.text || '').trim();
+            this.worker?.removeEventListener('message', handler);
+            resolve();
+          } else if (e.data.type === 'error') {
+            clearTimeout(timeout);
+            this.worker?.removeEventListener('message', handler);
+            resolve();
+          }
+        };
+        this.worker?.addEventListener('message', handler);
+        this.worker?.postMessage(
+          { id: Date.now(), op: 'batch', payload: { audio: fullAudio.buffer } },
+          [fullAudio.buffer]
+        );
+      });
+
+      const cleanLive = normalizeASRText(this.committedText);
+      const cleanBatch = normalizeASRText(batchTranscript);
+      isIdenticalToBatch = cleanLive.length > 0 && cleanLive === cleanBatch;
+    }
+
+    const words = this.committedText.split(/\s+/).filter(Boolean);
+    const revPerWord = words.length > 0 ? this.earlierWordRevisions / words.length : 0;
+
+    this.updateMetrics({
+      status: 'ready',
+      finalText: this.committedText,
+      partialText: this.committedText,
+      batchTranscript: batchTranscript || undefined,
+      isIdenticalToBatch,
+      revisionsPerWord: Math.round(revPerWord * 1000) / 1000,
+      earlierWordRevisions: this.earlierWordRevisions,
+    });
   }
 
   public reset(): void {
@@ -967,14 +1294,21 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
       clearInterval(this.pollIntervalId);
       this.pollIntervalId = null;
     }
-    this.accumulatedChunks = [];
-    this.totalSamples = 0;
+    this.sessionChunks = [];
+    this.totalSessionSamples = 0;
+    this.currentSegmentChunks = [];
+    this.currentSegmentSamples = 0;
+    this.committedPhrases = [];
+    this.committedText = '';
+    this.currentInterimText = '';
     this.updateIntervals = [];
-    this.settledWords = [];
     this.earlierWordRevisions = 0;
     this.hasEmittedFirstWord = false;
     this.speechStartTime = null;
     this.lastUpdateTime = null;
+    this.hasSpeechInCurrentSegment = false;
+    this.silenceFramesCount = 0;
+    this.isCommitting = false;
 
     this.updateMetrics({
       partialText: '',
@@ -983,6 +1317,9 @@ export class MoonshineSingleThreadEngine extends BaseSpeechEngine {
       lagBehindSpeechMs: null,
       updateIntervalMs: null,
       earlierWordRevisions: 0,
+      revisionsPerWord: 0,
+      batchTranscript: undefined,
+      isIdenticalToBatch: undefined,
     });
   }
 

@@ -62,9 +62,13 @@ export default function SpeechTestPage() {
   const [selectedParagraphId, setSelectedParagraphId] = useState<'foundation' | 'benchmark'>('foundation');
   const [activeTab, setActiveTab] = useState<'fixed' | 'free'>('fixed');
   const [isRecording, setIsRecording] = useState(false);
+  const [isBenchmarkPlaying, setIsBenchmarkPlaying] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [micError, setMicError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  const benchmarkContextRef = useRef<AudioContext | null>(null);
+  const benchmarkSourceRef = useRef<AudioBufferSourceNode | null>(null);
 
   // Pause tracking state
   const pauseTrackerRef = useRef<PauseTracker>(new PauseTracker(DEFAULT_PAUSE_THRESHOLDS));
@@ -148,7 +152,7 @@ export default function SpeechTestPage() {
     }
   };
 
-  const handleStart = async () => {
+  const handleStart = async (customStream?: MediaStream) => {
     setMicError(null);
     pauseTrackerRef.current.reset();
     setPauseReport(pauseTrackerRef.current.getReport());
@@ -172,7 +176,7 @@ export default function SpeechTestPage() {
       });
 
       pipelineRef.current = pipeline;
-      const stream = await pipeline.start();
+      const stream = await pipeline.start(customStream);
       mediaStreamRef.current = stream;
 
       // Ensure model is loaded first if not ready
@@ -185,14 +189,34 @@ export default function SpeechTestPage() {
     } catch (err: any) {
       setMicError(err.message || 'Could not start audio capture.');
       setIsRecording(false);
+      setIsBenchmarkPlaying(false);
     }
   };
 
-  const handleStop = async () => {
-    setIsRecording(false);
+  const handleStop = async (reason: string | React.MouseEvent = 'user') => {
+    const reasonStr = typeof reason === 'string' ? reason : 'user_click';
+    console.log('[SpeechTestPage] handleStop called with reason:', reasonStr);
+    setIsBenchmarkPlaying(false);
     setAudioLevel(0);
     pauseTrackerRef.current.finalize(performance.now());
     setPauseReport(pauseTrackerRef.current.getReport());
+
+    if (benchmarkSourceRef.current) {
+      try {
+        benchmarkSourceRef.current.stop();
+      } catch {
+        // Ignore
+      }
+      benchmarkSourceRef.current = null;
+    }
+    if (benchmarkContextRef.current) {
+      try {
+        await benchmarkContextRef.current.close();
+      } catch {
+        // Ignore
+      }
+      benchmarkContextRef.current = null;
+    }
 
     if (currentEngine) {
       await currentEngine.stop();
@@ -200,6 +224,64 @@ export default function SpeechTestPage() {
     if (pipelineRef.current) {
       pipelineRef.current.stop();
       pipelineRef.current = null;
+    }
+    setIsRecording(false);
+  };
+
+  const handlePlayBenchmarkAudio = async () => {
+    if (isRecording) {
+      await handleStop();
+      return;
+    }
+    setMicError(null);
+    setSelectedParagraphId('benchmark'); // Select benchmark reference text
+
+    try {
+      if (currentEngine.getMetrics().status === 'idle') {
+        await currentEngine.load();
+      }
+
+      const res = await fetch('/audio/speech_with_pauses.wav');
+      if (!res.ok) {
+        throw new Error('Benchmark audio at /audio/speech_with_pauses.wav could not be loaded.');
+      }
+      const arrayBuf = await res.arrayBuffer();
+
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const actx = new AudioCtx({ sampleRate: 16000 });
+      if (actx.state === 'suspended') {
+        await actx.resume();
+      }
+
+      const audioBuffer = await actx.decodeAudioData(arrayBuf);
+      const sourceNode = actx.createBufferSource();
+      sourceNode.buffer = audioBuffer;
+
+      const dest = actx.createMediaStreamDestination();
+      sourceNode.connect(dest);
+
+      // Connect to local speakers at moderate volume
+      const gain = actx.createGain();
+      gain.gain.value = 0.3;
+      sourceNode.connect(gain);
+      gain.connect(actx.destination);
+
+      benchmarkContextRef.current = actx;
+      benchmarkSourceRef.current = sourceNode;
+      setIsBenchmarkPlaying(true);
+
+      await handleStart(dest.stream);
+
+      sourceNode.onended = async () => {
+        console.log('[SpeechTestPage] sourceNode.onended fired');
+        setIsBenchmarkPlaying(false);
+        await handleStop('sourceNode.onended');
+      };
+
+      sourceNode.start(0);
+    } catch (err: any) {
+      setMicError(err.message || 'Failed to play benchmark audio');
+      setIsBenchmarkPlaying(false);
     }
   };
 
@@ -563,30 +645,55 @@ export default function SpeechTestPage() {
           {/* Audio & Recognition Controls */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
             {!isRecording ? (
-              <button
-                type="button"
-                data-testid="button-start-test"
-                onClick={handleStart}
-                disabled={currentMetrics.status === 'loading'}
-                style={{
-                  padding: '0.6rem 1.25rem',
-                  backgroundColor: currentMetrics.status === 'loading' ? 'var(--nm-text-muted)' : 'var(--nm-accent-primary)',
-                  color: '#ffffff',
-                  fontWeight: 700,
-                  fontSize: '0.95rem',
-                  borderRadius: '6px',
-                  border: 'none',
-                  cursor: currentMetrics.status === 'loading' ? 'wait' : 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                }}
-              >
-                <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#ffffff' }} />
-                {currentMetrics.status === 'loading'
-                  ? `Loading Model (${currentMetrics.downloadProgressPct}%)...`
-                  : 'Start Microphone Test'}
-              </button>
+              <>
+                <button
+                  type="button"
+                  data-testid="button-start-test"
+                  onClick={() => handleStart()}
+                  disabled={currentMetrics.status === 'loading'}
+                  style={{
+                    padding: '0.6rem 1.25rem',
+                    backgroundColor: currentMetrics.status === 'loading' ? 'var(--nm-text-muted)' : 'var(--nm-accent-primary)',
+                    color: '#ffffff',
+                    fontWeight: 700,
+                    fontSize: '0.95rem',
+                    borderRadius: '6px',
+                    border: 'none',
+                    cursor: currentMetrics.status === 'loading' ? 'wait' : 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                  }}
+                >
+                  <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#ffffff' }} />
+                  {currentMetrics.status === 'loading'
+                    ? `Loading Model (${currentMetrics.downloadProgressPct}%)...`
+                    : 'Start Microphone Test'}
+                </button>
+
+                <button
+                  type="button"
+                  data-testid="button-play-benchmark-audio"
+                  onClick={handlePlayBenchmarkAudio}
+                  disabled={currentMetrics.status === 'loading'}
+                  style={{
+                    padding: '0.6rem 1.1rem',
+                    backgroundColor: 'var(--nm-surface-alt)',
+                    color: 'var(--nm-accent-primary)',
+                    fontWeight: 600,
+                    fontSize: '0.9rem',
+                    borderRadius: '6px',
+                    border: '1px solid var(--nm-accent-primary)',
+                    cursor: currentMetrics.status === 'loading' ? 'wait' : 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                  }}
+                >
+                  <span>▶</span>
+                  {isBenchmarkPlaying ? 'Playing Benchmark Audio…' : 'Play Benchmark Audio (22s Clip)'}
+                </button>
+              </>
             ) : (
               <button
                 type="button"
@@ -739,6 +846,12 @@ export default function SpeechTestPage() {
                   {currentMetrics.earlierWordRevisions ?? 0}
                 </strong>
               </div>
+              <div data-testid="metric-batch-match" style={{ backgroundColor: 'var(--nm-surface)', border: '1px solid var(--nm-border)', borderRadius: '6px', padding: '0.75rem' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--nm-text-muted)', display: 'block' }}>Batch Pass Match</span>
+                <strong style={{ fontSize: '1.2rem', color: currentMetrics.isIdenticalToBatch ? 'var(--nm-accent-success)' : currentMetrics.isIdenticalToBatch === false ? 'var(--nm-accent-warn)' : 'var(--nm-text-muted)' }}>
+                  {currentMetrics.isIdenticalToBatch !== undefined ? (currentMetrics.isIdenticalToBatch ? '100% Match' : 'Different') : '—'}
+                </strong>
+              </div>
             </>
           )}
         </section>
@@ -809,6 +922,31 @@ export default function SpeechTestPage() {
               <span>Deletions: <strong>{werResult.deletions}</strong></span>
               <span>Insertions: <strong>{werResult.insertions}</strong></span>
               <span>Words recognized: <strong>{werResult.hypothesisWordCount} / {werResult.referenceWordCount}</strong></span>
+            </div>
+          )}
+
+          {/* Batch Pass Comparison (Option 4) */}
+          {selectedEngineId === 'moonshine-single' && currentMetrics.batchTranscript && (
+            <div
+              data-testid="batch-comparison-box"
+              style={{
+                marginTop: '0.75rem',
+                padding: '0.6rem 0.85rem',
+                backgroundColor: 'var(--nm-bg)',
+                border: '1px solid var(--nm-border)',
+                borderRadius: '6px',
+                fontSize: '0.85rem',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                <span style={{ fontWeight: 600, color: 'var(--nm-text-primary)' }}>Batch Pass over Same Audio:</span>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: currentMetrics.isIdenticalToBatch ? 'var(--nm-accent-success)' : 'var(--nm-accent-warn)' }}>
+                  {currentMetrics.isIdenticalToBatch ? '✓ Text equals batch pass' : 'Minor boundary variations'}
+                </span>
+              </div>
+              <p style={{ margin: 0, color: 'var(--nm-text-secondary)', fontStyle: 'italic', fontSize: '0.85rem' }}>
+                &ldquo;{currentMetrics.batchTranscript}&rdquo;
+              </p>
             </div>
           )}
         </section>

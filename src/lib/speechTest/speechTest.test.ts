@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { computeWER, normalizeText } from './wer';
 import { PauseTracker } from './pauseTracker';
-import { MoonshineSingleThreadEngine } from './engines';
+import { MoonshineSingleThreadEngine, alignAndAppendPhrases, normalizeASRText, trimAudioSilence } from './engines';
 
 describe('Word Error Rate (WER)', () => {
   it('normalizes punctuation, case, and whitespace', () => {
@@ -209,5 +209,49 @@ describe('MoonshineSingleThreadEngine', () => {
     expect(metrics.timeToFirstWordMs).toBeNull();
     expect(metrics.earlierWordRevisions).toBe(0);
     expect(metrics.updateIntervalMs).toBeNull();
+  });
+});
+
+describe('alignAndAppendPhrases & normalizeASRText', () => {
+  it('concatenates non-overlapping phrases across silence pauses', () => {
+    const p1 = 'He hoped there would be stew for dinner.';
+    const p2 = 'Turnips and carrots and bruised potatoes and fat mutton.';
+    const combined = alignAndAppendPhrases(p1, p2);
+    expect(combined).toBe('He hoped there would be stew for dinner. Turnips and carrots and bruised potatoes and fat mutton.');
+  });
+
+  it('aligns and deduplicates boundary words when audio windows overlap', () => {
+    const p1 = 'He hoped there would be stew for dinner turnips and carrots and bruised potatoes';
+    const p2 = 'bruised potatoes and fat mutton pieces to be ladled out in thick';
+    const combined = alignAndAppendPhrases(p1, p2);
+    expect(combined).toBe(
+      'He hoped there would be stew for dinner turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick'
+    );
+  });
+
+  it('handles empty committed or empty nextText gracefully', () => {
+    expect(alignAndAppendPhrases('', 'hello world')).toBe('hello world');
+    expect(alignAndAppendPhrases('hello world', '')).toBe('hello world');
+    expect(alignAndAppendPhrases('', '')).toBe('');
+  });
+
+  it('normalizes ASR text correctly for identical comparison', () => {
+    const t1 = 'He hoped there would be stew for dinner.';
+    const t2 = 'he hoped there would be stew for dinner';
+    expect(normalizeASRText(t1)).toBe(normalizeASRText(t2));
+  });
+
+  it('trims leading and trailing silence while preserving speech and padding', () => {
+    const sampleRate = 16000;
+    const totalSamples = sampleRate * 3; // 3 seconds
+    const audio = new Float32Array(totalSamples);
+    // Add artificial sine wave speech from 1.0s to 2.0s
+    for (let i = sampleRate; i < sampleRate * 2; i++) {
+      audio[i] = 0.2 * Math.sin((2 * Math.PI * 440 * i) / sampleRate);
+    }
+    const trimmed = trimAudioSilence(audio);
+    // Original was 48,000 samples. Trimmed should be ~16,000 + 2*3,200 padding = ~22,400 samples
+    expect(trimmed.length).toBeLessThan(audio.length);
+    expect(trimmed.length).toBeGreaterThan(16000);
   });
 });

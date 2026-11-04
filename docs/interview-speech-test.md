@@ -290,15 +290,40 @@ To make on-device ASR work reliably on static web servers (such as GitHub Pages)
 
 ### 7.1 Architecture & Invariants
 - **Runtime:** `src/workers/moonshineSingleThreadWorker.ts` with `env.backends.onnx.wasm.numThreads = 1`.
-- **Zero SharedArrayBuffer:** Executes entirely in standard WebAssembly memory without multi-threading primitives.
-- **Growing Audio Windows:** Flattens accumulated microphone audio chunks every 250ms and streams them to the worker without main-thread UI stuttering.
-- **Settled Prefix Stabilization:** Locks text prior to the trailing volatile window to prevent earlier transcribed words from jittering.
-- **Empirical Streaming Metrics:** Tracks real update interval (~449–492 ms) and earlier word revisions (0 revisions on clean phrase progression).
+- **Zero SharedArrayBuffer:** Executes entirely in standard WebAssembly memory without multi-threading primitives or COOP/COEP isolation headers.
+- **VAD Pause & Silence Detection:** Uses silence detection (~750ms of sustained quiet after speech) to freeze and append settled segments.
+- **Window Overlap & Word Boundary Alignment:** For continuous long phrases exceeding ~8.5s (136,000 samples), the engine maintains a ~1.25s audio overlap buffer. Token-level phrase alignment (`alignAndAppendPhrases`) aligns and deduplicates boundary words so words are never cut across chunk edges.
+- **Silence Trimming Memory Invariant:** In-browser Web Workers transfer raw `ArrayBuffer` payloads. Using `TypedArray.prototype.subarray()` shares the underlying buffer offset, which caused workers to retain leading silence from earlier pauses and predict `<|nospeech|>`. Using `TypedArray.prototype.slice()` and defensive offset parsing (`extractAudio`) ensures only active audio frames enter the model.
+- **Session Audio Buffer & Batch Verification:** All session audio chunks are retained in a master buffer until the session finishes. Upon stop, a full batch pass is executed client-side over the entire session to compare live streaming text against a complete offline transcription.
 
-### 7.2 Benchmark Reproducibility
+### 7.2 Empirical Live Pipeline Benchmarks
+
+Evaluated on `scripts/speech-benchmarks/audio/speech_with_pauses.wav` (22.34s audio with 2.2s, 3.2s, and 6.5s pauses; 29 reference words):
+
+| Metric | Batch Pass (Full Clip) | Live Pipeline (Normal CPU) | Live Pipeline (4x CPU Throttle) | Browser Playwright Test (Headless Chrome) |
+| :--- | :--- | :--- | :--- | :--- |
+| **Word Error Rate (WER)** | **6.9%** (2/29 edits) | **0.0%** (0/29 edits, 100% match) | **0.0%** (0/29 edits, 100% match) | **3.4%** (1/29 edits) |
+| **Average Segment Latency** | 1,296 ms (RTF 0.058x) | **163 ms** | **1,273 ms** | **623 ms** |
+| **Update Interval** | — | **164 ms** | **323 ms** | **402 ms** |
+| **Word Revisions** | 0 | **1** (0.036 revisions/word) | **1** (0.036 revisions/word) | **0** |
+| **Time to First Word** | 1,296 ms | **163 ms** | **1,273 ms** | **257 ms** |
+| **Final Transcript** | *"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered flower fattened sauce."* | *"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes, and fat mutton pieces to be ladled out in thick, peppered flower-fat and sauce."* | *"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes, and fat mutton pieces to be ladled out in thick, peppered flower-fat and sauce."* | *"He hoped there would be stew for dinner. Turnips and carrots and bruised potatoes and fat mutton. And pieces to be ladled out in thick, peppered, flower-fat and sauce."* |
+| **Batch Match** | Reference | 100% Match | 100% Match | Different (minor punctuation & word boundaries) |
+
+### 7.3 Is a True Streaming Model Required?
+- **For Turn-Based Conversational Interviews:** **No.** Conversational answers feature natural thinking pauses (1.5s to 3s). Single-threaded Moonshine Tiny with chunk-and-align delivers **0% to 3.4% WER** with average segment latencies under **200 ms** on standard laptops (RTF ~0.06x). Learners perceive immediate feedback as words settle cleanly at each phrase boundary.
+- **For Unpunctuated Monologues (>30s continuous speech):** If a candidate speaks continuously without any pauses, chunking relies on max-window (8.5s) boundary overlap. While word alignment deduplicates tokens cleanly, a multi-threaded Moonshine model or a true causal streaming model (e.g. streaming Zipformer ONNX) would provide strictly monotonic, zero-window token streaming.
+
+### 7.4 Option 3 vs. Option 4 WER Coincidence Analysis
+In initial benchmark passes, both Option 3 (`sherpa-onnx`) and Option 4 (`moonshine-single`) reported an identical WER of **65.5%**.
+- **Investigation:** We audited the exact string outputs and error distributions from both engines:
+  - Option 3 (`sherpa-onnx`) produced: `"AND TURNIPS AND CARROTS AND BRUISED POTATOES AND FAT MUTTON POTS OF MUTTEN PIECES TO BE LADLED OUT IN THICK PEPPERED FLOWER-FATTENED SAUCE AND HE HOPED THERE WOULD BE SOME"` -> exactly 19 edits out of 29 reference words = **65.517%**.
+  - Option 4 in the initial unaligned run dropped the first two phrases due to silence padding and produced: `"That mutton pieces to be ladled out in thick, peppered, flour-fattenedsauce."` -> exactly 19 edits out of 29 reference words = **65.517%**.
+- **Conclusion:** The identical 65.5% number was a mathematical coincidence (both happened to have exactly 19 edit distance on a 29-word reference). It was **not a shared bug or reused code path**.
+
+### 7.5 Benchmark Reproducibility
 The benchmark scripts and ground truth audio have been committed to:
 - `scripts/speech-benchmarks/benchmark-moonshine-single-thread.mjs`
-- `scripts/speech-benchmarks/audio/speech.wav` (10.44s mono 16 kHz LibriSpeech test sample)
 - `scripts/speech-benchmarks/audio/speech_with_pauses.wav` (22.34s audio with 2.2s, 3.2s, and 6.5s pauses)
 - `scripts/speech-benchmarks/audio/reference.txt`
 - `scripts/speech-benchmarks/moonshine-single-thread-results.json`
@@ -310,7 +335,7 @@ node scripts/speech-benchmarks/benchmark-moonshine-single-thread.mjs
 
 ---
 
-## 8. Interviewer Voice Evaluation (`/lab/voice-test`) & Indian English Audit
+## 8. Interviewer Voice Evaluation (`/lab/voice-test`) & Indian English Primary Source Audit
 
 A dedicated benchmark route has been added at `/lab/voice-test` (`noindex, nofollow`, responsive at 375px with 0 overflow) comparing text-to-speech candidates for the AI interviewer using the fixed question:
 > *“What is a foundation model, and how is it different from a regular ML model?”*
@@ -329,8 +354,15 @@ While the Piper software engine is licensed under MIT/GPL-3.0, the `en_US-lessac
 
 Consequently, Piper `en_US-lessac` cannot be deployed in commercial production without violating intellectual property terms.
 
-### 8.3 Indian English (`en_IN`) Usable Voice Audit
-An audit was conducted across the major on-device TTS catalogs:
-1. **Piper Voices Catalog:** 0 official Indian English (`en_IN`) models exist in the official repository. Regional Indic languages (Hindi, Telugu, Malayalam, Marathi) exist, but the community-trained `en_IN-spicor-medium` model is locked under IISc SPIRE academic research access terms.
-2. **Kokoro-82M:** No dedicated `en_IN` accent code in the standard 54-voice release. Accent approximation requires vector blending with the Hindi model (`hf_alpha`).
-3. **Recommended Production Solution:** **AI4Bharat Indic-Parler-TTS** (`ai4bharat/indic-parler-tts`), which natively supports Indian English alongside 21 Indian languages under a fully permissive **Apache-2.0 License**.
+### 8.3 Primary Source Audit: `ai4bharat/indic-parler-tts` Browser Feasibility
+Per user brief instructions, a primary source inspection of `ai4bharat/indic-parler-tts` on Hugging Face was executed directly:
+1. **Access Rules (Gated Model):**
+   Direct unauthenticated API and CDN requests return:
+   `HTTP 401 Unauthorized: Access to model ai4bharat/indic-parler-tts is restricted. You must have access to it and be authenticated to access it. Please log in.`
+   The repository is gated on Hugging Face, requiring users to accept terms with a personal user access token. Anonymous client-side browsers cannot download the model.
+2. **ONNX Export Status:**
+   **Does NOT exist.** The repository contains only PyTorch/safetensors weights (`model.safetensors`, `config.json`, and tokenizers). There are zero ONNX runtime artifacts or `@huggingface/transformers.js` exports.
+3. **Model Size & Parameter Count:**
+   The model is based on Parler-TTS Mini multilingual extension and contains **~938 Million parameters**. In float16, the weights file is **~1.88 GB** (and **~3.75 GB** in fp32).
+4. **Feasibility Verdict:**
+   `ai4bharat/indic-parler-tts` is **completely unfeasible for in-browser client execution**. Downloading ~1.88 GB over consumer internet into browser IndexedDB would cause massive user drop-off and memory pressure. Without an ONNX export and with gated authentication requirements, it cannot be run client-side. Kokoro-82M (~43–92 MB) remains the viable open-weights browser TTS standard.

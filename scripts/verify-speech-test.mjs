@@ -178,6 +178,7 @@ try {
       const getVal = (id) => document.querySelector(`[data-testid="${id}"] strong`)?.textContent?.trim() ?? '—';
       const errorEl = document.querySelector('[role="alert"]');
       const transcript = document.querySelector('[data-testid="live-transcript"]')?.textContent?.trim() ?? '';
+      const batchComparison = document.querySelector('[data-testid="batch-comparison-box"] p')?.textContent?.trim() ?? null;
       return {
         firstWordLag: getVal('metric-first-word'),
         speechLag: getVal('metric-speech-lag'),
@@ -187,6 +188,8 @@ try {
         wer: getVal('metric-wer'),
         updateInterval: getVal('metric-update-interval'),
         wordRevisions: getVal('metric-word-revisions'),
+        batchMatch: getVal('metric-batch-match'),
+        batchComparison,
         transcript,
         alertNotice: errorEl?.textContent?.trim() || null,
       };
@@ -229,19 +232,24 @@ try {
   await page.click('button:has-text("4. Moonshine Tiny")');
   await page.click('[data-testid="select-paragraph-benchmark"]');
   console.log('Waiting for single-threaded Moonshine model to load and ready in Web Worker...');
-  await page.waitForSelector('[data-testid="button-start-test"]:not([disabled])', { timeout: 45000 });
+  await page.waitForSelector('[data-testid="button-play-benchmark-audio"]:not([disabled])', { timeout: 45000 });
   await page.waitForTimeout(500);
 
-  const startBtn4 = await page.$('[data-testid="button-start-test"]');
-  if (!startBtn4) throw new Error('Start button not found for Option 4');
-  await startBtn4.click();
+  console.log('Playing benchmark audio (speech_with_pauses.wav, 22.34s with 3 thinking pauses)...');
+  await page.click('[data-testid="button-play-benchmark-audio"]');
 
-  console.log('Option 4 streaming audio (waiting 24 seconds for speech and pauses)...');
-  await page.waitForTimeout(24000);
+  // Wait for model load and recording to begin (stop button appears)
+  await page.waitForSelector('[data-testid="button-stop-test"]', { timeout: 45000 });
 
-  const stopBtn4 = await page.$('[data-testid="button-stop-test"]');
-  if (stopBtn4) await stopBtn4.click();
-  await page.waitForTimeout(1000);
+  console.log('Option 4 streaming benchmark audio through Web Audio graph and single-threaded worker (waiting for completion)...');
+  try {
+    // Wait for playback and commit to finish naturally (stop button disappears, start button returns)
+    await page.waitForSelector('[data-testid="button-start-test"]:not([disabled])', { timeout: 45000 });
+  } catch {
+    const stopBtn4 = await page.$('[data-testid="button-stop-test"]');
+    if (stopBtn4) await stopBtn4.click();
+  }
+  await page.waitForTimeout(2000);
 
   const opt4Metrics = await extractMetrics();
   console.log('Option 4 metrics:', opt4Metrics);
@@ -255,6 +263,12 @@ try {
   if (!opt4Metrics.wer || opt4Metrics.wer === '—') {
     hasFailure = true;
     failureReasons.push('Option 4 (Moonshine Single-Threaded) WER was not computed.');
+  } else {
+    const werNumeric = parseFloat(opt4Metrics.wer.replace('%', ''));
+    if (isNaN(werNumeric) || werNumeric > 25.0) {
+      hasFailure = true;
+      failureReasons.push(`Option 4 (Moonshine Single-Threaded) WER is ${opt4Metrics.wer}, which exceeds the 25% maximum threshold.`);
+    }
   }
   if (!opt4Metrics.firstWordLag || opt4Metrics.firstWordLag === '—') {
     hasFailure = true;

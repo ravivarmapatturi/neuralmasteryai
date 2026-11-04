@@ -29,30 +29,34 @@ export class AudioVADPipeline {
     this.callbacks = callbacks;
   }
 
-  public async start(): Promise<MediaStream> {
-    try {
-      this.mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          sampleRate: 16000,
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-    } catch (err: any) {
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        const msg = 'Microphone permission blocked or denied. Please grant microphone access in your browser address bar.';
-        this.callbacks.onError(msg);
-        throw new Error(msg);
-      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-        const msg = 'No microphone device found on this system.';
-        this.callbacks.onError(msg);
-        throw new Error(msg);
-      } else {
-        const msg = `Microphone error: ${err.message || err.name}`;
-        this.callbacks.onError(msg);
-        throw new Error(msg);
+  public async start(customStream?: MediaStream): Promise<MediaStream> {
+    if (customStream) {
+      this.mediaStream = customStream;
+    } else {
+      try {
+        this.mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            channelCount: 1,
+            sampleRate: 16000,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+      } catch (err: any) {
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          const msg = 'Microphone permission blocked or denied. Please grant microphone access in your browser address bar.';
+          this.callbacks.onError(msg);
+          throw new Error(msg);
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+          const msg = 'No microphone device found on this system.';
+          this.callbacks.onError(msg);
+          throw new Error(msg);
+        } else {
+          const msg = `Microphone error: ${err.message || err.name}`;
+          this.callbacks.onError(msg);
+          throw new Error(msg);
+        }
       }
     }
 

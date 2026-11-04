@@ -45,6 +45,16 @@ async function getTranscriber(): Promise<any> {
   return transcriberPromise;
 }
 
+function extractAudio(payload: any): Float32Array {
+  if (payload.audio instanceof Float32Array) {
+    return payload.audio;
+  }
+  const buffer = payload.audio as ArrayBuffer;
+  const byteOffset = payload.byteOffset || 0;
+  const length = payload.length ?? (buffer.byteLength - byteOffset) / 4;
+  return new Float32Array(buffer, byteOffset, length);
+}
+
 self.onmessage = async (e: MessageEvent) => {
   const { id, op, payload } = e.data;
 
@@ -69,12 +79,65 @@ self.onmessage = async (e: MessageEvent) => {
     try {
       const t0 = performance.now();
       const transcriber = await getTranscriber();
-      const audio = new Float32Array(payload.audio);
+      const audio = extractAudio(payload);
       const res = await transcriber(audio);
       const inferMs = Math.round(performance.now() - t0);
       self.postMessage({
         id,
         type: 'result',
+        text: (res?.text || '').trim(),
+        inferMs,
+        sampleCount: audio.length,
+      });
+    } catch (err) {
+      self.postMessage({ id, type: 'error', error: (err as Error).message });
+    } finally {
+      isBusy = false;
+    }
+    return;
+  }
+
+  if (op === 'commit') {
+    // If worker is busy with interim transcribe, wait until it finishes
+    while (isBusy) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    isBusy = true;
+    try {
+      const t0 = performance.now();
+      const transcriber = await getTranscriber();
+      const audio = extractAudio(payload);
+      const res = await transcriber(audio);
+      const inferMs = Math.round(performance.now() - t0);
+      self.postMessage({
+        id,
+        type: 'commit_result',
+        text: (res?.text || '').trim(),
+        inferMs,
+        sampleCount: audio.length,
+      });
+    } catch (err) {
+      self.postMessage({ id, type: 'error', error: (err as Error).message });
+    } finally {
+      isBusy = false;
+    }
+    return;
+  }
+
+  if (op === 'batch') {
+    while (isBusy) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    isBusy = true;
+    try {
+      const t0 = performance.now();
+      const transcriber = await getTranscriber();
+      const audio = extractAudio(payload);
+      const res = await transcriber(audio);
+      const inferMs = Math.round(performance.now() - t0);
+      self.postMessage({
+        id,
+        type: 'batch_result',
         text: (res?.text || '').trim(),
         inferMs,
         sampleCount: audio.length,
