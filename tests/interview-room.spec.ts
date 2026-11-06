@@ -42,6 +42,8 @@ test.describe('Interview Room (/interview/room)', () => {
 
     await expect(page.locator('.si-yours')).toContainText('probabilistic');
     expect(((await page.locator('#model-answer').textContent()) ?? '').length).toBeGreaterThan(40);
+    await page.click('#mark-complete');
+    await expect(page.locator('.si-done')).toContainText('+10 points');
     await page.click('#next');
     await expect(page.locator('.si-progress')).toContainText('Question 2 of');
     expect(answersSent).toHaveLength(0);

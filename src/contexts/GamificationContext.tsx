@@ -11,6 +11,7 @@ import {
   REVIEW_COMPLETED_POINTS,
   DEPTH_REVEAL_POINTS,
   BLOG_READ_POINTS,
+  INTERVIEW_COMPLETED_POINTS,
   hasAward,
   totalPoints,
   weeklyPoints as computeWeeklyPoints,
@@ -110,6 +111,8 @@ interface GamificationContextValue {
   awardArchitectureCompleted: (permalink: string, points?: number) => void;
   /** Marking a blog post read (BlogPostPage): once per post. */
   awardBlogRead: (slug: string) => void;
+  /** Marking an interview question complete on /interview: once per question, 10 points. */
+  awardInterviewCompleted: (questionId: string) => void;
 }
 
 const GamificationContext = createContext<GamificationContextValue | null>(null);
@@ -475,6 +478,7 @@ export function GamificationProvider({ children }: { children: React.ReactNode }
         flashcard: { title: 'Flashcard Revealed!', icon: '' },
         architecture: { title: 'Architecture Verified!', icon: '' },
         blog: { title: 'Post Read', icon: '' },
+        interview: { title: 'Question Completed!', icon: '' },
       };
       const toastMeta = TOAST_BY_KIND[kind];
       showRewardToast({
@@ -515,6 +519,10 @@ export function GamificationProvider({ children }: { children: React.ReactNode }
   );
   const awardDepthRevealed = useCallback((id: string) => award(id, 'depth', DEPTH_REVEAL_POINTS), [award]);
   const awardBlogRead = useCallback((slug: string) => award(`/blog/${slug}`, 'blog', BLOG_READ_POINTS), [award]);
+  const awardInterviewCompleted = useCallback(
+    (questionId: string) => award(`/interview#${questionId}`, 'interview', INTERVIEW_COMPLETED_POINTS),
+    [award],
+  );
   const awardSystemDesignCompleted = useCallback(
     (permalink: string) => award(permalink, 'design', SYSTEM_DESIGN_CHALLENGE_POINTS),
     [award],
@@ -588,6 +596,7 @@ export function GamificationProvider({ children }: { children: React.ReactNode }
     awardDepthRevealed,
     awardArchitectureCompleted,
     awardBlogRead,
+    awardInterviewCompleted,
   };
 
   return <GamificationContext.Provider value={value}>{children}</GamificationContext.Provider>;

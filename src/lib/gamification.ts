@@ -13,7 +13,7 @@ import { SECTION_META, SECTION_ORDER, getGroupForSubsection } from '../data/sect
 // histories is a plain, safe set union (see mergeEvents) instead of a
 // bespoke reconciliation for a mutable counter.
 
-export type AwardKind = 'mark' | 'complete' | 'design' | 'flashcard' | 'signin' | 'review' | 'depth' | 'architecture' | 'blog';
+export type AwardKind = 'mark' | 'complete' | 'design' | 'flashcard' | 'signin' | 'review' | 'depth' | 'architecture' | 'blog' | 'interview';
 
 export interface AwardEvent {
   permalink: string;
@@ -74,6 +74,9 @@ export const SYSTEM_DESIGN_CHALLENGE_POINTS = 100;
 /** Real difficulty-scaled point value for correctly wiring a production agent architecture.
  * Matches medium difficulty practice reward, awarded via 'architecture' kind. */
 export const ARCHITECTURE_COMPLETED_POINTS = 50;
+
+/** Practising one interview question to the end and marking it complete: once per question. */
+export const INTERVIEW_COMPLETED_POINTS = 10;
 
 /** Tiny, first-reveal-only award for the homepage's "Test yourself"
  * interview-question flashcards (see Home.tsx) -- deliberately much
@@ -407,6 +410,7 @@ export function computeRLValuation(
   else if (actionKind === 'architecture') immediateReward = ARCHITECTURE_COMPLETED_POINTS;
   else if (actionKind === 'flashcard') immediateReward = FLASHCARD_REVEAL_POINTS;
   else if (actionKind === 'blog') immediateReward = BLOG_READ_POINTS;
+  else if (actionKind === 'interview') immediateReward = INTERVIEW_COMPLETED_POINTS;
 
   const streak = computeStreak(activeDates, today);
   const streakBonus = 1.0 + 0.1 * Math.min(streak, 7);

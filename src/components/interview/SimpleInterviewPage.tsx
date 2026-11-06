@@ -7,6 +7,8 @@ import type { SingleThreadASREngine } from '../../lib/speechTest/engines';
 import practice from '../../data/interviewPractice.json';
 import { InterviewGraph } from './InterviewGraph';
 import Navbar from '../layout/Navbar';
+import { useGamification } from '../../contexts/GamificationContext';
+import { INTERVIEW_COMPLETED_POINTS, hasAward } from '../../lib/gamification';
 import './interviewRoom.css';
 import './simpleInterview.css';
 
@@ -50,6 +52,8 @@ export default function SimpleInterviewPage() {
   const [typing, setTyping] = useState(false);
   const [micStatus, setMicStatus] = useState('');
   const [reading, setReading] = useState(false);
+  const { events, awardInterviewCompleted } = useGamification();
+  const isDone = (id: string) => hasAward(events, `/interview#${id}`, 'interview');
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const engineRef = useRef<SingleThreadASREngine | null>(null);
@@ -244,7 +248,9 @@ export default function SimpleInterviewPage() {
                     </option>
                   ))}
                 </select>
-                <p className="si-count">{topic.questions.length} questions</p>
+                <p className="si-count">
+                  {topic.questions.length} questions · {topic.questions.filter((q) => isDone(q.id)).length} completed
+                </p>
                 <h2>{topic.title}</h2>
                 <p className="si-lede">{topic.about}</p>
                 <div className="si-actions">
@@ -255,7 +261,8 @@ export default function SimpleInterviewPage() {
                 <ol className="si-list">
                   {topic.questions.map((q, i) => (
                     <li key={q.id}>
-                      <button type="button" onClick={() => startQuestion(i)}>
+                      <button type="button" className={isDone(q.id) ? 'done' : undefined} onClick={() => startQuestion(i)}>
+                        {isDone(q.id) && <span className="si-tick">Completed</span>}
                         {q.title}
                       </button>
                     </li>
@@ -372,6 +379,13 @@ export default function SimpleInterviewPage() {
               <button type="button" className="si-primary" id="next" onClick={nextQuestion}>
                 {questionIndex + 1 < topic.questions.length ? 'Next question' : 'Finish topic'}
               </button>
+              {isDone(questionId) ? (
+                <span className="si-done" role="status">Completed · +{INTERVIEW_COMPLETED_POINTS} points</span>
+              ) : (
+                <button type="button" id="mark-complete" onClick={() => awardInterviewCompleted(questionId)}>
+                  Mark complete (+{INTERVIEW_COMPLETED_POINTS} points)
+                </button>
+              )}
               {reading ? (
                 <button type="button" onClick={stopAudio}>
                   Stop reading
