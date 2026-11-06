@@ -28,7 +28,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 1. done - Mark a question complete for 10 points, with completed ticks and counts.
 2. done - Move on to answering when a clip is missing or has not started within 4 seconds.
 3. next - In-browser Kokoro voice for questions without a recording.
-4. planned - Check the spoken answer against the model answer and show covered and missed points.
+4. done - Check the spoken answer against the model answer and show covered and missed points.
 5. done - Import the "frequent and must-know" repo questions first: rank by roles and rounds in the repo metadata.
 6. planned - Filter questions by round (screen, depth, system design) and by role.
 7. done - "Next unsolved question" button.

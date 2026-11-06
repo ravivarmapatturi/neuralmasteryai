@@ -7,6 +7,8 @@ import type { SingleThreadASREngine } from '../../lib/speechTest/engines';
 import practice from '../../data/interviewPractice.json';
 import { InterviewGraph } from './InterviewGraph';
 import Navbar from '../layout/Navbar';
+import { judgeAnswer, splitAnswer, type AnswerJudgement } from '../../lib/answerJudge';
+import { embed, loadJudge, nli } from '../../lib/mockInterview/engine';
 import { useGamification } from '../../contexts/GamificationContext';
 import { INTERVIEW_COMPLETED_POINTS, hasAward } from '../../lib/gamification';
 import './interviewRoom.css';
@@ -54,6 +56,7 @@ export default function SimpleInterviewPage() {
   const [typing, setTyping] = useState(false);
   const [micStatus, setMicStatus] = useState('');
   const [reading, setReading] = useState(false);
+  const [check, setCheck] = useState<AnswerJudgement | 'checking' | 'failed' | null>(null);
   const { events, awardInterviewCompleted } = useGamification();
   const isDone = (id: string) => hasAward(events, `/interview#${id}`, 'interview');
 
@@ -191,8 +194,19 @@ export default function SimpleInterviewPage() {
       }
     }
     stopMic();
-    setTranscript(correctInterviewTerms(finalText, questionId));
+    const spoken = correctInterviewTerms(finalText, questionId);
+    setTranscript(spoken);
     setStep('answer');
+    setCheck(null);
+    if (spoken.trim().split(/\s+/).length >= 5) {
+      // Each sentence of the model answer is one point to cover. Models run in a worker on this device.
+      setCheck('checking');
+      const points = splitAnswer(question.answer).slice(0, 6);
+      loadJudge()
+        .then(() => judgeAnswer(spoken, points, question.answer, { embed, nli }))
+        .then(setCheck)
+        .catch(() => setCheck('failed'));
+    }
     play(`${questionId}_a`, () => undefined);
   };
 
@@ -378,6 +392,27 @@ export default function SimpleInterviewPage() {
           <>
             <h3>Your answer</h3>
             <p className="si-yours">{transcript || 'No answer was captured.'}</p>
+            {check === 'checking' && (
+              <p className="si-status" role="status">
+                Checking your answer against the model answer on your device…
+              </p>
+            )}
+            {check === 'failed' && <p className="si-status">Answer checking could not load on this device.</p>}
+            {check && typeof check === 'object' && (
+              <div className="si-check">
+                <h3>How your answer compares · {check.score}%</h3>
+                <ul className="si-points">
+                  {check.points.map((p) => (
+                    <li key={p.point} className={p.verdict}>
+                      <span className="si-verdict">
+                        {p.verdict === 'covered' ? 'Covered' : p.verdict === 'partial' ? 'Partly covered' : p.verdict === 'conflict' ? 'Check this' : 'Missed'}
+                      </span>
+                      {p.point}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <h3>Model answer</h3>
             <p className="si-model" id="model-answer">
               {question.answer}
