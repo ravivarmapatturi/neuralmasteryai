@@ -29,10 +29,10 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 2. done - Move on to answering when a clip is missing or has not started within 4 seconds.
 3. next - In-browser Kokoro voice for questions without a recording.
 4. planned - Check the spoken answer against the model answer and show covered and missed points.
-5. planned - Import the "frequent and must-know" repo questions first: rank by roles and rounds in the repo metadata.
+5. done - Import the "frequent and must-know" repo questions first: rank by roles and rounds in the repo metadata.
 6. planned - Filter questions by round (screen, depth, system design) and by role.
-7. planned - "Next unsolved question" button.
-8. planned - Show follow-up questions and wrong answers from the repo after the model answer.
+7. done - "Next unsolved question" button.
+8. done - Show follow-up questions and wrong answers from the repo after the model answer.
 9. planned - Daily interview question on the home page.
 10. planned - Progress ring per topic node in the graph.
 11. planned - Resume where you left off.

@@ -78,8 +78,21 @@ for f in sorted((REPO / "interviews/questions").glob("*/*.md")):
     seen.append(w)
     prompt = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", prompt).replace("`", "")
     answer = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", m.group(1)).replace("`", "").replace("**", "").strip()
+    def bullets(heading):
+        part = re.search(rf"^## {heading}\n+(.*?)(?=\n## |\Z)", body, re.S | re.M)
+        if not part:
+            return []
+        items = re.findall(r"^- (.+)$", part.group(1), re.M)
+        return [re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", i).replace("`", "").replace("**", "") for i in items][:4]
     topics[meta["card"]]["questions"].append({"id": f"repo:{meta['card']}:{meta['id']}", "title": prompt, "answer": answer,
-                                              "sourceUrl": f"{GITHUB}/{meta['card']}/{f.name}"})
+                                              "sourceUrl": f"{GITHUB}/{meta['card']}/{f.name}",
+                                              "followUps": bullets("Follow-ups"), "wrongAnswers": bullets("Wrong answers"),
+                                              "priority": (meta.get("level", 2), -len(meta.get("roles") or []), -len(meta.get("rounds") or []))})
+# Must-know first: our hand-written questions, then repo questions by level (basic first) and how many roles ask them.
+for t in topics.values():
+    t["questions"].sort(key=lambda q: (0, 0, 0) if "priority" not in q else (1, *q["priority"]))
+    for q in t["questions"]:
+        q.pop("priority", None)
 out = {"groups": [g for g in cards["groups"] if g.get("id")], "topics": list(topics.values())}
 (ROOT / "src/data/interviewPractice.json").write_text(json.dumps(out, ensure_ascii=False))
 print(stats, sum(len(t["questions"]) for t in out["topics"]))

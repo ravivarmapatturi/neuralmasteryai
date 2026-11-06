@@ -20,6 +20,8 @@ interface PracticeQuestion {
   answer: string;
   options?: string[];
   sourceUrl?: string;
+  followUps?: string[];
+  wrongAnswers?: string[];
 }
 
 const topics = practice.topics as {
@@ -259,8 +261,13 @@ export default function SimpleInterviewPage() {
                 <h2>{topic.title}</h2>
                 <p className="si-lede">{topic.about}</p>
                 <div className="si-actions">
-                  <button type="button" className="si-primary" id="start-topic" onClick={() => startQuestion(0)}>
-                    Start this topic
+                  <button
+                    type="button"
+                    className="si-primary"
+                    id="start-topic"
+                    onClick={() => startQuestion(Math.max(0, topic.questions.findIndex((q) => !isDone(q.id))))}
+                  >
+                    {topic.questions.some((q) => isDone(q.id)) ? 'Next unsolved question' : 'Start this topic'}
                   </button>
                 </div>
                 <ol className="si-list">
@@ -375,6 +382,26 @@ export default function SimpleInterviewPage() {
             <p className="si-model" id="model-answer">
               {question.answer}
             </p>
+            {question.followUps && question.followUps.length > 0 && (
+              <>
+                <h3>Follow-ups you may get</h3>
+                <ul className="si-bullets">
+                  {question.followUps.map((f) => (
+                    <li key={f}>{f}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {question.wrongAnswers && question.wrongAnswers.length > 0 && (
+              <>
+                <h3>Common wrong answers</h3>
+                <ul className="si-bullets si-wrong">
+                  {question.wrongAnswers.map((w) => (
+                    <li key={w}>{w}</li>
+                  ))}
+                </ul>
+              </>
+            )}
             {question.sourceUrl && (
               <p className="si-note">
                 <a href={question.sourceUrl}>Full answer and follow-ups in AI Engineering from Scratch</a>
