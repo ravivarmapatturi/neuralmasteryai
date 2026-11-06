@@ -9,6 +9,7 @@ import { InterviewGraph } from './InterviewGraph';
 import Navbar from '../layout/Navbar';
 import { judgeAnswer, splitAnswer, type AnswerJudgement } from '../../lib/answerJudge';
 import { embed, loadJudge, nli } from '../../lib/mockInterview/engine';
+import { speakInBrowser } from '../../lib/interviewRoom/browserVoice';
 import { useGamification } from '../../contexts/GamificationContext';
 import { INTERVIEW_COMPLETED_POINTS, hasAward } from '../../lib/gamification';
 import './interviewRoom.css';
@@ -71,7 +72,13 @@ export default function SimpleInterviewPage() {
   const question = topic.questions[questionIndex];
   const questionId = question.id;
 
+  const voiceCancelRef = useRef<(() => void) | null>(null);
+  const [voiceLoading, setVoiceLoading] = useState<number | null>(null);
+
   const stopAudio = useCallback(() => {
+    voiceCancelRef.current?.();
+    voiceCancelRef.current = null;
+    setVoiceLoading(null);
     if (audioRef.current) {
       audioRef.current.onended = null;
       audioRef.current.onerror = null;
@@ -82,25 +89,39 @@ export default function SimpleInterviewPage() {
   }, []);
 
   const play = useCallback(
-    (name: string, onFinish: () => void) => {
+    (name: string, onFinish: () => void, text?: string) => {
       stopAudio();
       const audio = new Audio(clipUrl(name));
       audioRef.current = audio;
       setReading(true);
-      const finish = () => {
-        if (audioRef.current !== audio) return;
-        audioRef.current = null;
+      const done = () => {
+        voiceCancelRef.current = null;
+        setVoiceLoading(null);
         setReading(false);
         onFinish();
       };
-      audio.onended = finish;
-      audio.onerror = finish;
+      const finish = (missing: boolean) => {
+        if (audioRef.current !== audio) return;
+        audioRef.current = null;
+        // No recorded clip: generate the voice on this device instead (skipped on phones to spare memory).
+        if (missing && text && !looksLikePhone()) {
+          setVoiceLoading(0);
+          voiceCancelRef.current = speakInBrowser(text, done, (f) => setVoiceLoading(f), () => setVoiceLoading(null));
+          return;
+        }
+        done();
+      };
+      audio.onended = () => finish(false);
+      audio.onerror = () => finish(true);
       // A clip that has not started within 4 seconds is treated as missing, so the page never waits forever.
       const stalled = window.setTimeout(() => {
-        if (audioRef.current === audio && audio.currentTime === 0) finish();
+        if (audioRef.current === audio && audio.currentTime === 0) finish(true);
       }, 4000);
-      audio.onplaying = () => window.clearTimeout(stalled);
-      audio.play().catch(finish);
+      audio.onplaying = () => {
+        window.clearTimeout(stalled);
+        setVoiceLoading(null);
+      };
+      audio.play().catch(() => finish(true));
     },
     [stopAudio]
   );
@@ -167,9 +188,15 @@ export default function SimpleInterviewPage() {
   const ask = useCallback(
     (id: string) => {
       setStep('asking');
-      play(`${id}_q`, () => {
-        void startAnswering();
-      });
+      const q = topics.flatMap((t) => t.questions).find((x) => x.id === id);
+      const spoken = q ? q.title + (q.options ? ` The options are: ${q.options.join('. ')}` : '') : undefined;
+      play(
+        `${id}_q`,
+        () => {
+          void startAnswering();
+        },
+        spoken
+      );
     },
     [play, startAnswering]
   );
@@ -207,7 +234,7 @@ export default function SimpleInterviewPage() {
         .then(setCheck)
         .catch(() => setCheck('failed'));
     }
-    play(`${questionId}_a`, () => undefined);
+    play(`${questionId}_a`, () => undefined, question.answer);
   };
 
   const nextQuestion = () => {
@@ -329,7 +356,11 @@ export default function SimpleInterviewPage() {
         {step === 'asking' && (
           <div className="si-actions">
             <p className="si-status" role="status">
-              The interviewer is asking…
+              {voiceLoading === null
+                ? 'The interviewer is asking…'
+                : voiceLoading < 1
+                  ? `Preparing the voice on your device, first time only (${Math.round(voiceLoading * 100)}%)…`
+                  : 'Preparing the voice…'}
             </p>
             <button
               type="button"
@@ -458,7 +489,7 @@ export default function SimpleInterviewPage() {
                   Stop reading
                 </button>
               ) : (
-                <button type="button" onClick={() => play(`${questionId}_a`, () => undefined)}>
+                <button type="button" onClick={() => play(`${questionId}_a`, () => undefined, question.answer)}>
                   Read aloud
                 </button>
               )}
