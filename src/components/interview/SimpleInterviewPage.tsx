@@ -90,6 +90,11 @@ export default function SimpleInterviewPage() {
       };
       audio.onended = finish;
       audio.onerror = finish;
+      // A clip that has not started within 4 seconds is treated as missing, so the page never waits forever.
+      const stalled = window.setTimeout(() => {
+        if (audioRef.current === audio && audio.currentTime === 0) finish();
+      }, 4000);
+      audio.onplaying = () => window.clearTimeout(stalled);
       audio.play().catch(finish);
     },
     [stopAudio]

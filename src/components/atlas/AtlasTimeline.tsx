@@ -211,7 +211,7 @@ export function AtlasTimeline() {
             onClick={() => setActive(e.key)}
           >
             <span className="atlas-tl__dot" />
-            {near.has(e.key) && <span className={`atlas-tl__label${scale(e.year) > 0.7 && !vertical ? ' left' : ''}`}>{e.name}</span>}
+            {e.key === active && <span className={`atlas-tl__label${scale(e.year) > 0.7 && !vertical ? ' left' : ''}`}>{e.name}</span>}
           </button>
         ))}
       </div>

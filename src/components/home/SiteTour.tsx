@@ -38,6 +38,11 @@ export default function SiteTour() {
 
   useEffect(() => { if (open) cardRef.current?.focus({ preventScroll: true }); }, [open]);
 
+  // Navigating somewhere the tour did not send you counts as skipping it.
+  useEffect(() => {
+    if (open && pathname !== STEPS[step].to) { rememberTourSeen(); setOpen(false); }
+  }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const close = () => {
     rememberTourSeen();
     setOpen(false);
