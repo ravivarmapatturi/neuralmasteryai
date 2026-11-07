@@ -14,6 +14,7 @@ import {
   findResearchTrack,
   findStudyPlan,
   type PlanStep,
+  type StudyPlan,
 } from '../data/studyPlans';
 import ResearchArchitectureDiagram from '../viz/ResearchArchitectureDiagram';
 
@@ -232,7 +233,42 @@ export function StudyPlanPage() {
       <ol style={{ ...listStyle, marginTop: '2rem' }}>
         {steps.map((step, i) => <StepRow key={i} index={i} step={step} />)}
       </ol>
+      {c.problems > 0 && <PlanCertificate plan={plan} problems={c.problems} passed={c.passed} />}
     </Shell>
+  );
+}
+
+/** A printable certificate once every problem in the plan passes. It is made in
+ * the browser from saved progress, so it says so instead of claiming verification. */
+export function PlanCertificate({ plan, problems, passed }: { plan: StudyPlan; problems: number; passed: number }) {
+  const { displayName } = useGamification();
+  const [name, setName] = useState(displayName === 'Learner' ? '' : displayName);
+  if (passed < problems) {
+    return (
+      <p className="nb-body" style={{ ...metaStyle, marginTop: '2rem' }}>
+        Pass all {problems} problems to get a certificate for this plan ({passed} of {problems} passed).
+      </p>
+    );
+  }
+  const issued = new Date(Date.now()).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  return (
+    <section aria-labelledby="certificate-heading" style={{ marginTop: '2.5rem' }}>
+      <h2 id="certificate-heading" className="nb-heading" style={{ fontSize: '1.4rem', margin: '0 0 0.75rem' }}>Your certificate</h2>
+      <label className="nm-certificate-name">
+        Name on the certificate
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" maxLength={60} />
+      </label>
+      <div className="nm-certificate" role="img" aria-label={`Certificate: ${name || 'Learner'} completed ${plan.title}`}>
+        <p className="nm-certificate-kicker">Neural Mastery · Study plan certificate</p>
+        <p className="nm-certificate-name-line">{name || 'Learner'}</p>
+        <p>completed <strong>{plan.title}</strong>, passing all {problems} problems.</p>
+        <p className="nm-certificate-meta">Issued {issued} · neuralmasteryai.com/study-plans/{plan.slug}</p>
+        <p className="nm-certificate-meta">Generated in this browser from saved progress.</p>
+      </div>
+      <button type="button" className="nm-button nm-button-primary" style={{ marginTop: '1rem', background: 'var(--nb-cobalt)' }} onClick={() => window.print()}>
+        Print or save as PDF
+      </button>
+    </section>
   );
 }
 
