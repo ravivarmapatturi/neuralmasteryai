@@ -87,6 +87,7 @@ for f in sorted((REPO / "interviews/questions").glob("*/*.md")):
     topics[meta["card"]]["questions"].append({"id": f"repo:{meta['card']}:{meta['id']}", "title": prompt, "answer": answer,
                                               "sourceUrl": f"{GITHUB}/{meta['card']}/{f.name}",
                                               "followUps": bullets("Follow-ups"), "wrongAnswers": bullets("Wrong answers"),
+                                              "rounds": meta.get("rounds") or [], "roles": meta.get("roles") or [],
                                               "priority": (meta.get("level", 2), -len(meta.get("roles") or []), -len(meta.get("rounds") or []))})
 # Must-know first: our hand-written questions, then repo questions by level (basic first) and how many roles ask them.
 for t in topics.values():
