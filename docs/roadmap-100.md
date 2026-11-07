@@ -117,7 +117,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 90. done - Faster first load: the practice problem bank (about 7 MB) now loads only on practice routes.
 91. done - Search covers interview questions.
 92. done - SEO pages for each interview topic.
-93. planned - Certificates for completed study plans.
+93. done - Certificates for completed study plans.
 94. planned - Email-free progress export.
 95. planned - Accessibility pass: focus, labels, contrast.
 96. planned - Error tracking on the client.
