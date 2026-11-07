@@ -35,7 +35,7 @@ export default function AsyncEventLoopDiagram() {
   const gantt = (rows: typeof syncRows, label: string) => (
     <div>
       <div style={{ fontSize: DIAGRAM_TYPE.secondaryLabel.size, color: t.textMuted, margin: '8px 0 2px' }}>{label}</div>
-      <svg width={WIDTH} height={n * ROW_H + 8}>
+      <svg width={WIDTH} height={n * ROW_H + 8} viewBox={`0 0 ${WIDTH} ${n * ROW_H + 8}`} className="nm-fit-svg">
         {rows.map((r, i) => (
           <g key={i}>
             <rect x={PAD_L + r.cpuStart * scale} y={i * ROW_H} width={(r.cpuEnd - r.cpuStart) * scale} height={ROW_H - 3} fill={cpuColor} />

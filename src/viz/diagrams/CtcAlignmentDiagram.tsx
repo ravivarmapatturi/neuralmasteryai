@@ -50,7 +50,7 @@ export default function CtcAlignmentDiagram() {
         ]}
       />
       <div style={{ fontSize: DIAGRAM_TYPE.secondaryLabel.size, color: t.textMuted, margin: '10px 0 4px' }}>Per-frame model output</div>
-      <svg width={frames.length * CELL} height={CELL} style={{ display: 'block' }}>
+      <svg width={frames.length * CELL} height={CELL} viewBox={`0 0 ${frames.length * CELL} ${CELL}`} className="nm-fit-svg" style={{ display: 'block' }}>
         {frames.map((f, i) => (
           <g key={i}>
             <rect x={i * CELL} y={0} width={CELL - 1} height={CELL - 1} fill={f === BLANK ? t.surfaceAlt : `${color}22`} stroke={f === BLANK ? t.border : color} strokeWidth={1} />
@@ -62,7 +62,7 @@ export default function CtcAlignmentDiagram() {
       </svg>
 
       <div style={{ fontSize: DIAGRAM_TYPE.secondaryLabel.size, color: t.textMuted, margin: '10px 0 4px' }}>After merging consecutive duplicates</div>
-      <svg width={afterMerge.length * CELL} height={CELL} style={{ display: 'block' }}>
+      <svg width={afterMerge.length * CELL} height={CELL} viewBox={`0 0 ${afterMerge.length * CELL} ${CELL}`} className="nm-fit-svg" style={{ display: 'block' }}>
         {afterMerge.map((f, i) => (
           <g key={i}>
             <rect x={i * CELL} y={0} width={CELL - 1} height={CELL - 1} fill={f === BLANK ? t.surfaceAlt : `${color}22`} stroke={f === BLANK ? t.border : color} strokeWidth={1} />

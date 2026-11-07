@@ -29,7 +29,7 @@ export default function RebaseVsMergeDiagram() {
           Rebase
         </VizButton>
       </div>
-      <svg width={420} height={160}>
+      <svg width={420} height={160} viewBox={`0 0 ${420} ${160}`} className="nm-fit-svg">
         {/* main branch */}
         <SketchArrow points={[[20, 40], [mode === 'merge' ? 340 : 380, 40]]} color={mainColor} strokeWidth={2} arrowhead={false} id="rvm-main-1" />
         {[20, 120, 220].map((x, i) => (

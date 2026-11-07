@@ -34,7 +34,7 @@ export default function TtsPipelineDiagram() {
           </VizButton>
         ))}
       </div>
-      <svg width={WIDTH} height={HEIGHT} style={{ display: 'block', border: `1px solid ${t.border}`, borderRadius: 8 }}>
+      <svg width={WIDTH} height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="nm-fit-svg" style={{ display: 'block', border: `1px solid ${t.border}`, borderRadius: 8 }}>
         <rect width={WIDTH} height={HEIGHT} fill={t.surfaceAlt} />
         {stage === 'text' && (
           <text x={WIDTH / 2} y={HEIGHT / 2 + 6} textAnchor="middle" fontSize={18} fontFamily="monospace" fill={t.textPrimary}>

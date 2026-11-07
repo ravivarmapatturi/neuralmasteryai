@@ -30,7 +30,7 @@ export default function DnsResolutionDiagram() {
           Cached lookup
         </VizButton>
       </div>
-      <svg width={420} height={70}>
+      <svg width={420} height={70} viewBox={`0 0 ${420} ${70}`} className="nm-fit-svg">
         <rect x={0} y={20} width={(dnsMs / total) * 400} height={24} fill={cached ? `${color}55` : color} rx={4} />
         <rect x={(dnsMs / total) * 400} y={20} width={(CONNECT_MS / total) * 400} height={24} fill={t.textMuted} rx={4} />
         <text x={4} y={16} fontSize={10} fill={color}>DNS lookup: {dnsMs}ms</text>

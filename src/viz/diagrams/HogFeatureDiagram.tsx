@@ -63,7 +63,7 @@ export default function HogFeatureDiagram() {
           { value: 'diagonal', label: 'Diagonal edge' },
         ]}
       />
-      <svg width={N_CELLS * CELL_DRAW} height={N_CELLS * CELL_DRAW} style={{ marginTop: 8, display: 'block' }}>
+      <svg width={N_CELLS * CELL_DRAW} height={N_CELLS * CELL_DRAW} viewBox={`0 0 ${N_CELLS * CELL_DRAW} ${N_CELLS * CELL_DRAW}`} className="nm-fit-svg" style={{ marginTop: 8, display: 'block' }}>
         {cells.map((row, r) =>
           row.map((bins, c) => {
             const cx = c * CELL_DRAW + CELL_DRAW / 2;

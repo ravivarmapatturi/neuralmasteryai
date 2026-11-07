@@ -24,7 +24,7 @@ export default function CnnVsVitDiagram() {
           ViT (layer 1)
         </button>
       </div>
-      <svg width={grid * cell} height={grid * cell}>
+      <svg width={grid * cell} height={grid * cell} viewBox={`0 0 ${grid * cell} ${grid * cell}`} className="nm-fit-svg">
         {Array.from({ length: grid }).map((_, r) =>
           Array.from({ length: grid }).map((_, c) => {
             const isCenter = r === center.r && c === center.c;

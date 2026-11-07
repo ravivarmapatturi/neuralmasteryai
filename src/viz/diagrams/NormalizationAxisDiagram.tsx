@@ -42,7 +42,7 @@ export default function NormalizationAxisDiagram() {
       </div>
       <div style={{ display: 'flex', gap: 10 }}>
         <div>
-          <svg width={COLS * cell} height={ROWS * cell}>
+          <svg width={COLS * cell} height={ROWS * cell} viewBox={`0 0 ${COLS * cell} ${ROWS * cell}`} className="nm-fit-svg">
             {Array.from({ length: ROWS }).map((_, r) =>
               Array.from({ length: COLS }).map((_, c) => (
                 <rect key={`${r}-${c}`} x={c * cell} y={r * cell} width={cell - 2} height={cell - 2} rx={3} fill={isGrouped(r, c) ? `${color}40` : t.surfaceAlt} stroke={isGrouped(r, c) ? color : t.border} strokeWidth={isGrouped(r, c) ? 1.5 : 1} />

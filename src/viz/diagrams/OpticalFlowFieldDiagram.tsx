@@ -28,7 +28,7 @@ export default function OpticalFlowFieldDiagram() {
         <Slider label={`Motion dx`} value={dx} onChange={setDx} min={-3} max={3} format={(v) => `${v}`} />
         <Slider label={`Motion dy`} value={dy} onChange={setDy} min={-3} max={3} format={(v) => `${v}`} />
       </div>
-      <svg width={GRID * CELL} height={GRID * CELL} style={{ marginTop: 8, display: 'block' }}>
+      <svg width={GRID * CELL} height={GRID * CELL} viewBox={`0 0 ${GRID * CELL} ${GRID * CELL}`} className="nm-fit-svg" style={{ marginTop: 8, display: 'block' }}>
         {Array.from({ length: GRID }, (_, r) =>
           Array.from({ length: GRID }, (_, c) => {
             const cx = c * CELL + CELL / 2;

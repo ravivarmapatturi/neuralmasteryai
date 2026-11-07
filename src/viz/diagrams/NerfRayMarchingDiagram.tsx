@@ -60,7 +60,7 @@ export default function NerfRayMarchingDiagram() {
       <Slider label="Ray offset from object center" value={offset} onChange={setOffset} min={-3} max={3} step={0.25} format={(v) => v.toFixed(2)} />
 
       <div style={{ display: 'flex', gap: 20, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
-        <svg width={WIDTH - 100} height={RAY_H}>
+        <svg width={WIDTH - 100} height={RAY_H} viewBox={`0 0 ${WIDTH - 100} ${RAY_H}`} className="nm-fit-svg">
           <line x1={10} y1={RAY_H / 2} x2={WIDTH - 120} y2={RAY_H / 2} stroke={t.border} strokeWidth={1.5} />
           <circle cx={10} cy={RAY_H / 2} r={6} fill={t.textSecondary} />
           <text x={10} y={RAY_H / 2 + 20} textAnchor="middle" fontSize={9} fill={t.textMuted}>camera</text>
@@ -75,7 +75,7 @@ export default function NerfRayMarchingDiagram() {
       </div>
 
       <div style={{ fontSize: DIAGRAM_TYPE.secondaryLabel.size, color: t.textMuted, margin: '10px 0 4px' }}>Density along the ray</div>
-      <svg width={WIDTH - 20} height={BAR_H}>
+      <svg width={WIDTH - 20} height={BAR_H} viewBox={`0 0 ${WIDTH - 20} ${BAR_H}`} className="nm-fit-svg">
         {samples.map((s, i) => (
           <rect
             key={i}

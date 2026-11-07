@@ -36,7 +36,7 @@ export default function FlameGraphDiagram() {
 
   return (
     <VisualizationContainer footer={frame ? `${frame.name}: ${frame.width}% of total runtime.${frame.surprising ? ' Nobody expected JSON parsing to be the hot path -- but width in a flame graph doesn\'t lie about where time actually goes, regardless of intuition.' : ''}` : 'Hover a frame to see its share of total runtime.'}>
-      <svg width={WIDTH} height={4 * CELL_H + 10}>
+      <svg width={WIDTH} height={4 * CELL_H + 10} viewBox={`0 0 ${WIDTH} ${4 * CELL_H + 10}`} className="nm-fit-svg">
         {FRAMES.map((f) => {
           const x = (f.start / 100) * WIDTH;
           const w = (f.width / 100) * WIDTH;
