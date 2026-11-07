@@ -118,7 +118,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 91. done - Search covers interview questions.
 92. done - SEO pages for each interview topic.
 93. done - Certificates for completed study plans.
-94. planned - Email-free progress export.
+94. done - Email-free progress export (download and restore a JSON backup on /progress).
 95. planned - Accessibility pass: focus, labels, contrast.
 96. planned - Error tracking on the client.
 97. planned - Weekly CI smoke run on the live site.

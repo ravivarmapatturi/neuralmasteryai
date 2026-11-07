@@ -13,6 +13,7 @@ import { getPracticeTracks, buildTopicLabels } from '../lib/practiceTracks';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useDocumentMeta } from '../lib/useDocumentMeta';
 import ConfirmDialog from './common/ConfirmDialog';
+import ProgressBackup from './ProgressBackup';
 
 /** Best-effort title lookup for a permalink -- falls back to the raw path
  * for the (should-be-rare) case a stored permalink no longer matches any
@@ -404,6 +405,8 @@ export default function ProgressPage() {
             );
           })}
         </div>
+
+        <ProgressBackup />
 
         <button
           type="button"
