@@ -1,13 +1,16 @@
 import { useMemo, useState } from 'react';
+import { useAtlasHashEntry } from '../useAtlasHash';
 import VisualizationContainer from '../../../viz/primitives/VisualizationContainer';
 import VisualizationHeader from '../../../viz/primitives/VisualizationHeader';
 import { architectureEntries, architectureEras } from '../../../data/agentArchitectureAtlas';
 import ArchitectureDiagram from './ArchitectureDiagram';
 import '../inference/inferenceAtlas.css';
 
+const ids = architectureEntries.map((x) => x.id);
+
 export default function AgentArchitectureAtlas() {
   const [query, setQuery] = useState('');
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useAtlasHashEntry(ids);
   const q = query.trim().toLowerCase();
   const filtered = useMemo(() => architectureEntries.filter((entry) => !q || `${entry.name} ${entry.layer} ${entry.limit} ${entry.what}`.toLowerCase().includes(q)), [q]);
 
@@ -26,7 +29,7 @@ export default function AgentArchitectureAtlas() {
         <div className="inference-atlas__table">
           {entries.map((entry) => {
             const isOpen = open === entry.id;
-            return <article className="inference-atlas__entry" key={entry.id}>
+            return <article className="inference-atlas__entry" key={entry.id} id={entry.id}>
               <button className="inference-atlas__summary" type="button" aria-expanded={isOpen} aria-controls={`${entry.id}-details`} onClick={() => setOpen(isOpen ? null : entry.id)}>
                 <span className="inference-atlas__year">{entry.date}</span><span className="inference-atlas__name">{entry.name}</span><span className="inference-atlas__category">{entry.layer}</span><span className="inference-atlas__limit">{entry.limit}</span><span className="inference-atlas__chevron" data-open={isOpen} aria-hidden="true">›</span>
               </button>

@@ -1,13 +1,16 @@
 import { useMemo, useState } from 'react';
+import { useAtlasHashEntry } from '../useAtlasHash';
 import VisualizationContainer from '../../../viz/primitives/VisualizationContainer';
 import VisualizationHeader from '../../../viz/primitives/VisualizationHeader';
 import { protocolEntries, protocolEras } from '../../../data/agentProtocolsAtlas';
 import ProtocolDiagram from './ProtocolDiagram';
 import '../inference/inferenceAtlas.css';
 
+const ids = protocolEntries.map((x) => x.id);
+
 export default function AgentProtocolsAtlas() {
   const [query, setQuery] = useState('');
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useAtlasHashEntry(ids);
   const q = query.trim().toLowerCase();
   const filtered = useMemo(() => protocolEntries.filter((e) => !q || `${e.name} ${e.layer} ${e.limit} ${e.what}`.toLowerCase().includes(q)), [q]);
 
@@ -26,7 +29,7 @@ export default function AgentProtocolsAtlas() {
         <div className="inference-atlas__table">
           {entries.map((e) => {
             const isOpen = open === e.id;
-            return <article className="inference-atlas__entry" key={e.id}>
+            return <article className="inference-atlas__entry" key={e.id} id={e.id}>
               <button className="inference-atlas__summary" type="button" aria-expanded={isOpen} aria-controls={`${e.id}-details`} onClick={() => setOpen(isOpen ? null : e.id)}>
                 <span className="inference-atlas__year">{e.year}</span><span className="inference-atlas__name">{e.name}</span><span className="inference-atlas__category">{e.layer}</span><span className="inference-atlas__limit">{e.limit}</span><span className="inference-atlas__chevron" data-open={isOpen} aria-hidden="true">›</span>
               </button>

@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react';
+import { useAtlasHashEntry } from '../useAtlasHash';
 import VisualizationContainer from '../../../viz/primitives/VisualizationContainer';
 import VisualizationHeader from '../../../viz/primitives/VisualizationHeader';
 import { inferenceAtlasCategories, inferenceAtlasEntries, inferenceAtlasEras, type InferenceAtlasCategory } from '../../../data/inferenceAtlas';
 import InferenceTechniqueDiagram from './InferenceTechniqueDiagram';
 import './inferenceAtlas.css';
 
+const ids = inferenceAtlasEntries.map((x) => x.id);
+
 export default function InferenceAtlas() {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<'All' | InferenceAtlasCategory>('All');
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useAtlasHashEntry(ids);
   const normalized = query.trim().toLowerCase();
   const filtered = useMemo(() => inferenceAtlasEntries.filter((entry) => {
     const categoryMatches = category === 'All' || entry.category === category;
@@ -35,7 +38,7 @@ export default function InferenceAtlas() {
             <div className="inference-atlas__header" role="row"><span role="columnheader">Year</span><span role="columnheader">Technique</span><span role="columnheader">Category</span><span role="columnheader">Limit it answered</span><span aria-hidden="true" /></div>
             {entries.map((entry) => {
               const isOpen = open === entry.id;
-              return <article className="inference-atlas__entry" role="rowgroup" key={entry.id}>
+              return <article className="inference-atlas__entry" role="rowgroup" key={entry.id} id={entry.id}>
                 <button className="inference-atlas__summary" type="button" aria-expanded={isOpen} aria-controls={`${entry.id}-details`} onClick={() => setOpen(isOpen ? null : entry.id)}>
                   <span className="inference-atlas__year">{entry.year}</span><span className="inference-atlas__name">{entry.name}</span><span className="inference-atlas__category">{entry.category}</span><span className="inference-atlas__limit">{entry.previousLimit}</span><span className="inference-atlas__chevron" data-open={isOpen} aria-hidden="true">›</span>
                 </button>

@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { trainingAtlas, trainingCategories, trainingEras, type TrainingCategory } from '../../../data/trainingAtlas';
+import { atlasHashEntry, setAtlasHash } from '../useAtlasHash';
 import { useVizTokens } from '../../../theme/vizTokens';
 import TrainingTechniqueDiagram from './TrainingTechniqueDiagram';
 import './training-atlas.css';
@@ -9,6 +10,10 @@ const categoryLabel = (value: string) => value.replace('-', ' ').replace(/\b\w/g
 export default function TrainingAtlas() {
   const t = useVizTokens();
   const [query, setQuery] = useState('');
+  const [linked] = useState(() => atlasHashEntry(trainingAtlas.map((e) => e.id)));
+  useEffect(() => {
+    if (linked) document.getElementById(linked)?.scrollIntoView({ block: 'start' });
+  }, [linked]);
   const [category, setCategory] = useState<'all' | TrainingCategory>('all');
   const entries = useMemo(() => trainingAtlas
     .filter((entry) => category === 'all' || entry.category === category)
@@ -29,7 +34,7 @@ export default function TrainingAtlas() {
         <header><p style={{ color:t.accentPrimary }}>{era.years}</p><h2 id={`era-${era.id}`}>{era.label}</h2><p>{era.narrative}</p></header>
         <div className="training-atlas__table" role="table" aria-label={`${era.label} techniques`} style={{ borderColor:t.border }}>
           <div className="training-atlas__head" role="row" style={{ background:t.surfaceAlt, color:t.textSecondary }}><span role="columnheader">Year</span><span role="columnheader">Technique and progression</span><span role="columnheader">Category</span></div>
-          {eraEntries.map((entry) => <details key={entry.id} className="training-atlas__row" style={{ borderColor:t.border }}>
+          {eraEntries.map((entry) => <details key={entry.id} id={entry.id} open={entry.id === linked || undefined} onToggle={(e) => { if (e.currentTarget.open) setAtlasHash(entry.id); }} className="training-atlas__row" style={{ borderColor:t.border }}>
             <summary>
               <span className="training-atlas__year">{entry.year}</span>
               <span><strong>{entry.name}</strong><small style={{ color:t.textSecondary }}>{entry.cameBefore} → {entry.ledTo}</small></span>
