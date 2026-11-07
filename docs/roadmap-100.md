@@ -35,7 +35,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 8. done - Show follow-up questions and wrong answers from the repo after the model answer.
 9. done - Daily interview question on the home page.
 10. done - Progress ring per topic node in the graph.
-11. planned - Resume where you left off.
+11. done - Resume where you left off.
 12. planned - Keyboard shortcuts: space to answer, N for next.
 13. planned - Share a completed topic.
 14. planned - Interview leaderboard view.

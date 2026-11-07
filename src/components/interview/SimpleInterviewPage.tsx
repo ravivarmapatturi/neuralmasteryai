@@ -62,6 +62,16 @@ function locate(id: string | null) {
   return null;
 }
 
+const LAST_KEY = 'nm-interview-last';
+
+function readLast() {
+  try {
+    return localStorage.getItem(LAST_KEY);
+  } catch {
+    return null;
+  }
+}
+
 function clipUrl(name: string) {
   return `/audio/interview-voice/${name.replaceAll(':', '__')}.opus`;
 }
@@ -76,7 +86,9 @@ export default function SimpleInterviewPage() {
 
   const [params] = useSearchParams();
   // A link like /interview?q=<id> (the home page's daily question) opens on that question.
-  const [linked, setLinked] = useState(() => locate(params.get('q')));
+  // Otherwise it offers to resume the last question you opened.
+  const [resuming] = useState(() => !locate(params.get('q')) && !!locate(readLast()));
+  const [linked, setLinked] = useState(() => locate(params.get('q')) ?? locate(readLast()));
   const [step, setStep] = useState<Step>('topics');
   const [topicIndex, setTopicIndex] = useState(linked?.topic ?? firstTopic);
   const [questionIndex, setQuestionIndex] = useState(linked?.question ?? 0);
@@ -225,6 +237,11 @@ export default function SimpleInterviewPage() {
   const ask = useCallback(
     (id: string) => {
       setStep('asking');
+      try {
+        localStorage.setItem(LAST_KEY, id);
+      } catch {
+        // Private mode: resume is simply unavailable.
+      }
       const q = topics.flatMap((t) => t.questions).find((x) => x.id === id);
       const spoken = q ? q.title + (q.options ? ` The options are: ${q.options.join('. ')}` : '') : undefined;
       play(
@@ -370,7 +387,7 @@ export default function SimpleInterviewPage() {
                       startQuestion(linkedHere ? linkedHere.question : (shown.find(({ q }) => !isDone(q.id)) ?? shown[0]).i);
                     }}
                   >
-                    {linkedHere ? 'Start the linked question' : shown.some(({ q }) => isDone(q.id)) ? 'Next unsolved question' : 'Start this topic'}
+                    {linkedHere ? (resuming ? 'Resume where you left off' : 'Start the linked question') : shown.some(({ q }) => isDone(q.id)) ? 'Next unsolved question' : 'Start this topic'}
                   </button>
                 </div>
                 <ol className="si-list">
