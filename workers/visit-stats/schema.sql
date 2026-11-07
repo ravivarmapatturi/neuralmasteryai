@@ -3,3 +3,18 @@ CREATE TABLE IF NOT EXISTS daily (
   visits INTEGER NOT NULL DEFAULT 0,
   views INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS topic_daily (
+  day TEXT NOT NULL,
+  topic TEXT NOT NULL,
+  views INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, topic)
+);
+
+CREATE TABLE IF NOT EXISTS client_errors (
+  day TEXT NOT NULL,
+  message TEXT NOT NULL,
+  route TEXT NOT NULL,
+  count INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, message, route)
+);

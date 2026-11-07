@@ -22,7 +22,17 @@ function onProductionHost() {
  * first page of a browser session. Production host only, fire-and-forget:
  * sendBeacon with a text body needs no CORS preflight and never blocks the
  * page. Nothing identifying is sent, just "1" or "0". */
-export function countPageView() {
+/** The topic a route belongs to, for per-topic view counts: the Learn section
+ * for /docs/<section>/..., otherwise the first path segment ("labs",
+ * "interview", "blog"). Empty for the home page. */
+export function topicForPath(pathname: string): string {
+  const parts = pathname.split('/').filter(Boolean);
+  if (parts[0] === 'docs') return parts[1] ?? 'docs';
+  if (parts[0] === 'practice' || parts[0] === 'lab') return 'labs';
+  return parts[0] ?? '';
+}
+
+export function countPageView(pathname = '') {
   if (!onProductionHost()) return;
   let isNewVisit = false;
   try {
@@ -33,9 +43,36 @@ export function countPageView() {
   }
   try {
     navigator.sendBeacon(VISIT_STATS_URL + 'hit', isNewVisit ? '1' : '0');
+    const topic = topicForPath(pathname);
+    if (topic) navigator.sendBeacon(VISIT_STATS_URL + 'topic', topic);
   } catch {
     // Counting must never break the page.
   }
+}
+
+let reportedErrors = 0;
+
+/** Report one uncaught client error (message and route only, no stack, no
+ * user data) to the visit-stats Worker. Production host only, at most 5 per
+ * page load, so an error loop cannot flood the database. */
+export function reportClientError(message: string) {
+  if (!onProductionHost() || !message || reportedErrors >= 5) return;
+  reportedErrors++;
+  try {
+    navigator.sendBeacon(VISIT_STATS_URL + 'error', JSON.stringify({ message: message.slice(0, 300), route: window.location.pathname }));
+  } catch {
+    // Reporting must never break the page.
+  }
+}
+
+/** Listen for uncaught errors and unhandled promise rejections. Called once from main.tsx. */
+export function installErrorReporting() {
+  if (typeof window === 'undefined') return;
+  window.addEventListener('error', (e) => reportClientError(e.message || String(e.error ?? '')));
+  window.addEventListener('unhandledrejection', (e) => {
+    const r = e.reason as unknown;
+    reportClientError(`Unhandled rejection: ${r instanceof Error ? r.message : String(r)}`);
+  });
 }
 
 export interface SiteStats {

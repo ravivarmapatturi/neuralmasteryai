@@ -25,7 +25,7 @@ export default function AnalyticsTracker() {
   const location = useLocation();
 
   useEffect(() => {
-    countPageView();
+    countPageView(location.pathname);
     const timer = setTimeout(() => {
       import('../lib/firebase').then(({ trackPageView, trackFeatureEvent }) => {
         trackPageView(location.pathname, document.title);

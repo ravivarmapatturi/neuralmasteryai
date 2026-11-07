@@ -5,6 +5,9 @@ import './styles/theme.css';
 import './styles/notebook.css';
 import './styles/learning-experiences.css';
 import App from './App.tsx';
+import { installErrorReporting } from './components/home/LiveStats';
+
+installErrorReporting();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
