@@ -170,6 +170,7 @@ export default function Navbar({
           >
             Labs
           </Link>
+          <Link to="/study-plans" className="nm-nav-link">Study plans</Link>
           <Link to="/atlas" className="nm-nav-link">Atlas</Link>
           <Link to="/glossary" className="nm-nav-link nm-navbar-glossary-link">Glossary</Link>
           <Link to="/interview" className="nm-nav-link">Interview</Link>
@@ -298,6 +299,7 @@ export default function Navbar({
             {[
               { to: learnDestination, label: 'Learn' },
               { to: '/labs', label: 'Labs' },
+              { to: '/study-plans', label: 'Study plans' },
               { to: '/atlas', label: 'Atlas' },
               { to: '/glossary', label: 'Glossary' },
               { to: '/blog', label: 'Blog' },
