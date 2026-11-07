@@ -103,7 +103,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 87. done - Product menu regrouped like Products and Resources.
 88. done - Dark mode check on every new page.
 89. done - 375px overflow audit after each release (smoke test covers the main product pages).
-90. planned - Faster first load: split the largest data files.
+90. done - Faster first load: the practice problem bank (about 7 MB) now loads only on practice routes.
 91. planned - Search covers interview questions.
 92. planned - SEO pages for each interview topic.
 93. planned - Certificates for completed study plans.
