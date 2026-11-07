@@ -1,14 +1,20 @@
 import { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import Navbar from './layout/Navbar';
 import RankBadge from './RankBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
-import { useLeaderboard, type LeaderboardEntry } from '../lib/useLeaderboard';
-import { levelForPoints } from '../lib/gamification';
+import { useLeaderboard, type LeaderboardEntry, type LeaderboardTab } from '../lib/useLeaderboard';
+import { interviewPoints, levelForPoints } from '../lib/gamification';
 import { rankForLevel, RANK_TIERS, type RankTier } from '../lib/rankTiers';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useDocumentMeta } from '../lib/useDocumentMeta';
+
+const TABS: [LeaderboardTab, string][] = [
+  ['allTime', 'All-Time'],
+  ['weekly', 'This Week'],
+  ['interview', 'Interview'],
+];
 
 export default function LeaderboardPage() {
   useDocumentTitle('Leaderboard');
@@ -18,12 +24,13 @@ export default function LeaderboardPage() {
   );
 
   const { user, loading: authLoading, signInWithGoogle } = useAuth();
-  const { points, weeklyPoints, displayName: userDisplayName } = useGamification();
-  const [tab, setTab] = useState<'allTime' | 'weekly'>('allTime');
+  const { points, weeklyPoints, events, displayName: userDisplayName } = useGamification();
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState<LeaderboardTab>(params.get('tab') === 'interview' ? 'interview' : 'allTime');
   const [tierFilter, setTierFilter] = useState<string>('all');
   const { entries: remoteEntries, loading } = useLeaderboard(tab, 50);
 
-  const currentPoints = tab === 'allTime' ? points : weeklyPoints;
+  const currentPoints = tab === 'allTime' ? points : tab === 'weekly' ? weeklyPoints : interviewPoints(events);
   const userUid = user?.uid ?? 'local-visitor';
 
   // Combine remote entries with current user's local entry if not already present
@@ -107,44 +114,28 @@ export default function LeaderboardPage() {
               boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
             }}
           >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === 'allTime'}
-              onClick={() => setTab('allTime')}
-              style={{
-                padding: '8px 24px',
-                borderRadius: 9,
-                fontSize: 13,
-                fontWeight: 700,
-                border: 'none',
-                background: tab === 'allTime' ? 'var(--nm-accent-primary, #6366f1)' : 'transparent',
-                color: tab === 'allTime' ? '#fff' : 'var(--nm-text-muted)',
-                cursor: 'pointer',
-                transition: 'all 0.18s ease',
-              }}
-            >
-              All-Time
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === 'weekly'}
-              onClick={() => setTab('weekly')}
-              style={{
-                padding: '8px 24px',
-                borderRadius: 9,
-                fontSize: 13,
-                fontWeight: 700,
-                border: 'none',
-                background: tab === 'weekly' ? 'var(--nm-accent-primary, #6366f1)' : 'transparent',
-                color: tab === 'weekly' ? '#fff' : 'var(--nm-text-muted)',
-                cursor: 'pointer',
-                transition: 'all 0.18s ease',
-              }}
-            >
-              This Week
-            </button>
+            {TABS.map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={tab === id}
+                onClick={() => setTab(id)}
+                style={{
+                  padding: '8px 24px',
+                  borderRadius: 9,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  border: 'none',
+                  background: tab === id ? 'var(--nm-accent-primary, #6366f1)' : 'transparent',
+                  color: tab === id ? '#fff' : 'var(--nm-text-muted)',
+                  cursor: 'pointer',
+                  transition: 'all 0.18s ease',
+                }}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -205,7 +196,7 @@ export default function LeaderboardPage() {
           {/* Points */}
           <div style={{ padding: '1rem 1.25rem', borderRadius: 12, background: 'var(--nm-surface)', border: '1px solid var(--nm-border)' }}>
             <div style={{ fontSize: 12, color: 'var(--nm-text-muted)', marginBottom: 4 }}>
-              Your {tab === 'allTime' ? 'Total XP' : 'Weekly XP'}
+              Your {tab === 'allTime' ? 'Total XP' : tab === 'weekly' ? 'Weekly XP' : 'Interview XP'}
             </div>
             <div style={{ fontSize: 24, fontWeight: 900, color: 'var(--nm-accent-primary, #818cf8)' }}>
               {currentPoints} <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--nm-text-muted)' }}>pts</span>
@@ -317,7 +308,7 @@ export default function LeaderboardPage() {
                 Standings ({filteredEntries.length})
               </h2>
               <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--nm-text-muted)' }}>
-                {tab === 'allTime' ? 'All-time cumulative score' : 'Velocity during current week'}
+                {tab === 'allTime' ? 'All-time cumulative score' : tab === 'weekly' ? 'Velocity during current week' : 'Points from interview questions marked complete'}
               </p>
             </div>
 
@@ -364,7 +355,9 @@ export default function LeaderboardPage() {
             <div style={{ padding: '3.5rem', textAlign: 'center', color: 'var(--nm-text-muted)' }}>
               {tierFilter !== 'all'
                 ? `No learners found in the ${RANK_TIERS.find((t) => t.id === tierFilter)?.label ?? ''} tier yet.`
-                : tab === 'allTime'
+                : tab === 'interview'
+                  ? 'No interview points yet. Mark an interview question complete to appear here.'
+                  : tab === 'allTime'
                   ? 'No points on the leaderboard yet. Solve a practice problem to claim #1!'
                   : 'No points recorded this week yet. Solve a problem to take the top spot!'}
             </div>

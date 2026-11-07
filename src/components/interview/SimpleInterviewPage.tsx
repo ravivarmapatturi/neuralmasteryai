@@ -457,7 +457,8 @@ export default function SimpleInterviewPage() {
               Your voice is processed in your browser and is not uploaded. Many questions are adapted from{' '}
               <a href="https://github.com/rohitg00/ai-engineering-from-scratch">AI Engineering from Scratch</a> by Rohit
               Ghumare (<a href="/ai-engineering-from-scratch-LICENSE.txt">MIT licence</a>).{' '}
-              <Link to="/interview/questions">See the written question list</Link>.
+              <Link to="/interview/questions">See the written question list</Link> or the{' '}
+              <Link to="/leaderboard?tab=interview">interview leaderboard</Link>.
             </p>
           </>
         )}

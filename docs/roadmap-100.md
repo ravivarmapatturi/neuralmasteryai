@@ -38,7 +38,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 11. done - Resume where you left off.
 12. done - Keyboard shortcuts: space to answer, N for next.
 13. done - Share a completed topic.
-14. planned - Interview leaderboard view.
+14. done - Interview leaderboard view.
 15. planned - Mobile pass on the answer screen.
 
 ### Problems and labs (16-35)
