@@ -30,7 +30,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 3. done - On-device Kokoro voice for questions and answers without a recording (desktop only; first load downloads the model).
 4. done - Check the spoken answer against the model answer and show covered and missed points.
 5. done - Import the "frequent and must-know" repo questions first: rank by roles and rounds in the repo metadata.
-6. planned - Filter questions by round (screen, depth, system design) and by role.
+6. done - Filter questions by round (screen, depth, system design) and by role.
 7. done - "Next unsolved question" button.
 8. done - Show follow-up questions and wrong answers from the repo after the model answer.
 9. planned - Daily interview question on the home page.
@@ -42,16 +42,16 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 15. planned - Mobile pass on the answer screen.
 
 ### Problems and labs (16-35)
-16. planned - One Problems hub with filters: topic, difficulty, framework, solved.
-17. planned - Consistent problem page: description, theory, hints, examples, requirements.
-18. planned - Two-pane layout with test cases and results.
-19. planned - Per-problem notes saved locally.
+16. done - One Problems hub with filters: topic, difficulty, framework, solved.
+17. done - Consistent problem page: description, theory, hints, examples, requirements.
+18. done - Two-pane layout with test cases and results.
+19. done - Per-problem notes saved locally.
 20. planned - Show solution after a solve or an explicit reveal.
-21. planned - Points by difficulty shown on every problem.
-22. planned - Daily problem.
-23. planned - Solved and unsolved filter.
-24. planned - Related problems at the end of each problem.
-25. planned - Problem count and solved count on the hub.
+21. done - Points by difficulty shown on every problem.
+22. done - Daily problem.
+23. done - Solved and unsolved filter.
+24. done - Related problems at the end of each problem.
+25. done - Problem count and solved count on the hub.
 26-35. planned - Add problem sets: NumPy sheet, PyTorch sheet, autograd (micrograd) series, attention from scratch, tokenizer, optimizers, losses, metrics, RAG pieces, agent loop.
 
 ### Study plans, research and projects (36-55)
