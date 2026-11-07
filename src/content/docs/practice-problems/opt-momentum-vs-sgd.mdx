@@ -1,0 +1,61 @@
+---
+title: "Momentum Versus Plain SGD on a Ravine"
+description: "Optimizers, problem 6 of 6: Run plain gradient descent and heavy-ball momentum side by side on the same ill-conditioned bowl, record both loss curves, and measure how many steps each needs to get the loss under a target."
+difficulty: "hard"
+topic: "Optimizers"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Measure, don't assume
+
+"Momentum is faster" is true on some problems and not others. This problem measures it. On `f = 0.5 x^2 + 50 y^2` the curvature in `y` is 100 times the curvature in `x`. Plain gradient descent must keep `lr` below `1 / 50` to stay stable in `y`, and at that rate `x` shrinks by only 1.5% per step, so getting `x` from 10 to near 0 takes hundreds of steps.
+
+Momentum accumulates velocity along `x`, where every gradient points the same way. Its effective step there approaches `lr / (1 - momentum)`, 10 times larger at `momentum = 0.9`, while oscillations in `y` partly cancel. Run the first test and compare the step counts.
+
+## When it does not help
+
+On a round bowl (`a = b`) there is no ravine, and plain gradient descent with a good learning rate converges in a few steps; momentum can overshoot and take longer. And with `lr = 0.06` on `b = 20`, `lr * 2b = 2.4 > 2`, so SGD diverges in `y`. Heavy-ball momentum on a quadratic stays stable up to `lr * 2b < 2 * (1 + momentum)`, here 2.4 < 3, so at the same rate it converges. The third test shows both.
+
+> **Remember:** the condition number (largest curvature over smallest) decides how much momentum helps. Measure steps to a target loss, not just the final loss.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def compare_optimizers(a, b, x0, lr, momentum, steps):
+    def f(p):
+        return a * p[0] ** 2 + b * p[1] ** 2
+
+    def grad(p):
+        return [2 * a * p[0], 2 * b * p[1]]
+
+    def run(use_momentum):
+        p, v = list(x0), [0.0, 0.0]
+        first_below = None
+        for step in range(1, steps + 1):
+            g = grad(p)
+            if use_momentum:
+                v = [momentum * v[i] - lr * g[i] for i in range(2)]
+                p = [p[i] + v[i] for i in range(2)]
+            else:
+                p = [p[i] - lr * g[i] for i in range(2)]
+            if first_below is None and f(p) < 1e-3:
+                first_below = step
+        return f(p), first_below
+
+    sgd_loss, sgd_steps = run(False)
+    mom_loss, mom_steps = run(True)
+    return {
+        "sgd_loss": sgd_loss,
+        "momentum_loss": mom_loss,
+        "sgd_steps_to_1e-3": sgd_steps,
+        "momentum_steps_to_1e-3": mom_steps,
+        "sgd_diverged": sgd_loss > f(x0),
+    }
+```
+
+</Solution>

@@ -1,0 +1,42 @@
+---
+title: "Nesterov Momentum"
+description: "Optimizers, problem 3 of 6: Run Nesterov momentum on a simple bowl and see why evaluating the gradient at the look-ahead point damps the oscillation plain momentum suffers from."
+difficulty: "medium"
+topic: "Optimizers"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Narrow valleys make gradient descent zig-zag
+
+On `f = x^2 + 25 y^2` the slope in `y` is 25 times steeper than in `x`. A learning rate small enough not to blow up in `y` crawls in `x`. **Momentum** fixes the crawl by accumulating a velocity: consistent gradients in `x` add up step after step. But in `y` the velocity overshoots the valley floor, comes back, and overshoots again.
+
+**Nesterov momentum** (Nesterov, 1983; Sutskever et al., 2013 for deep learning) changes one thing: it computes the gradient at `p + momentum * v`, the point momentum is about to carry you to. If that point is already past the valley floor, the gradient there points back, and the velocity is corrected one step earlier than plain momentum would manage.
+
+## Same cost, better behaviour
+
+Nesterov needs exactly one gradient per step, like plain momentum. PyTorch exposes it as `SGD(..., momentum=0.9, nesterov=True)`. With `momentum = 0` both reduce to plain gradient descent, which the first test checks.
+
+> **Remember:** look ahead by `momentum * v`, take the gradient there, update the velocity, then move.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def nesterov_minimize(a, b, x0, lr, momentum, steps):
+    if a <= 0 or b <= 0:
+        raise ValueError("a and b must be positive")
+    p = list(x0)
+    v = [0.0, 0.0]
+    for _ in range(steps):
+        look = [p[0] + momentum * v[0], p[1] + momentum * v[1]]
+        grad = [2 * a * look[0], 2 * b * look[1]]
+        v = [momentum * v[i] - lr * grad[i] for i in range(2)]
+        p = [p[i] + v[i] for i in range(2)]
+    return [p[0], p[1], a * p[0] ** 2 + b * p[1] ** 2]
+```
+
+</Solution>

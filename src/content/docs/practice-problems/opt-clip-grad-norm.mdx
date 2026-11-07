@@ -1,0 +1,39 @@
+---
+title: "Clip Gradients by Global Norm"
+description: "Optimizers, problem 1 of 6: Stop one bad batch from wrecking training: if the gradient over all parameters is longer than max_norm, scale every gradient down by the same factor."
+difficulty: "easy"
+topic: "Optimizers"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## One spike, one ruined run
+
+Most training steps have modest gradients. Occasionally a batch with an unusual example, or a loss that briefly explodes, produces a gradient hundreds of times larger, and a single update throws the weights far from where they were. Large language model training runs report loss spikes like this as a routine problem.
+
+**Gradient clipping by global norm** treats all parameters as one long vector. If its length exceeds `max_norm`, every entry is multiplied by `max_norm / norm`. With gradients 3 and 4 the norm is 5; at `max_norm = 2.5` both are halved. The update still points the same way; only its length is capped.
+
+## Global, not per tensor
+
+Clipping each tensor separately changes the direction of the update, because tensors are scaled by different factors. `torch.nn.utils.clip_grad_norm_` uses one global norm, and a `max_norm` of 1.0 is a common default in transformer training recipes.
+
+> **Remember:** measure one norm over everything, scale everything by the same factor, and log the pre-clip norm. A rising pre-clip norm is an early warning.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import math
+
+def clip_grad_norm(grads, max_norm):
+    if max_norm <= 0:
+        raise ValueError("max_norm must be positive")
+    total = math.sqrt(sum(g * g for vec in grads for g in vec))
+    scale = max_norm / total if total > max_norm else 1.0
+    return {"total_norm": total, "grads": [[g * scale for g in vec] for vec in grads]}
+```
+
+</Solution>

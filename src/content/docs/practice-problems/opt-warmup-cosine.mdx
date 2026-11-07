@@ -1,0 +1,42 @@
+---
+title: "Warmup Then Cosine Decay"
+description: "Optimizers, problem 5 of 6: Write the learning-rate schedule used by most transformer pre-training runs: a linear warmup to the peak, then a cosine decay to a floor."
+difficulty: "medium"
+topic: "Optimizers"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Small, then large, then small again
+
+At step 0 the weights are random and Adam's second-moment estimate is built from a single gradient, so the per-parameter step sizes are unreliable. A large learning rate here can push a transformer into a state it never recovers from. A **linear warmup** ramps the learning rate from near zero to its peak over the first few hundred or thousand steps.
+
+After the peak, a **cosine decay** lowers the rate smoothly: slowly at first, fastest in the middle, slowly again near the end, where small steps let the model settle into a minimum. Many published pre-training recipes decay to a floor around 10% of the peak instead of zero, which is what `min_lr` is for.
+
+## The off-by-one in warmup
+
+`max_lr * step / warmup_steps` is exactly 0 at step 0, so the first update does nothing. Using `step + 1` makes step 0 take a small real step and makes the last warmup step reach exactly `max_lr`.
+
+> **Remember:** three regions, checked in order. Test the boundaries: step 0, the end of warmup, the end of training and beyond.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import math
+
+def lr_at(step, max_lr, warmup_steps, total_steps, min_lr):
+    if warmup_steps >= total_steps or min_lr > max_lr:
+        raise ValueError("need warmup_steps < total_steps and min_lr <= max_lr")
+    if step < warmup_steps:
+        return max_lr * (step + 1) / warmup_steps
+    if step >= total_steps:
+        return min_lr
+    progress = (step - warmup_steps) / (total_steps - warmup_steps)
+    return min_lr + 0.5 * (max_lr - min_lr) * (1 + math.cos(math.pi * progress))
+```
+
+</Solution>

@@ -148,6 +148,22 @@ export const CATALOG: CatalogTrack[] = [
     ],
   },
   {
+    slug: 'optimizers',
+    title: 'Optimizers',
+    summary: 'Gradient clipping, RMSProp, Nesterov, Lion, a warmup-cosine schedule, and a measured race between SGD and momentum.',
+    kind: 'set',
+    level: 'Intermediate',
+    learnRoute: '/docs/deep-learning/optimizers',
+    problems: [
+      'opt-clip-grad-norm',
+      'opt-rmsprop',
+      'opt-nesterov',
+      'opt-lion',
+      'opt-warmup-cosine',
+      'opt-momentum-vs-sgd',
+    ],
+  },
+  {
     slug: 'python-for-ai',
     title: 'Python for AI',
     summary: 'The everyday Python behind data and model code: dicts, nesting, text, caches and small parsers.',

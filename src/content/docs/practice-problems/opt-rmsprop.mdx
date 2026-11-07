@@ -1,0 +1,42 @@
+---
+title: "RMSProp Step"
+description: "Optimizers, problem 2 of 6: Give every parameter its own step size by dividing by a running average of its squared gradients."
+difficulty: "easy"
+topic: "Optimizers"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## One learning rate does not fit every parameter
+
+An embedding row for a rare word gets a gradient of 0.01 when it appears; a bias in the last layer gets gradients near 100. With one global learning rate, the first barely moves and the second overshoots. **RMSProp** (Hinton, 2012 lecture notes) divides each parameter's step by the root mean square of its recent gradients. A parameter with consistently large gradients takes proportionally smaller steps.
+
+In the second test both gradients are already at their typical size, so both parameters move by almost exactly `lr`, even though the gradients differ by a factor of 10,000.
+
+## The first-step surprise
+
+Starting from `sq_avg = 0`, the average after one step is only `(1 - alpha) * g^2`. With `alpha = 0.99` the denominator is `0.1 * |g|`, so the first step is 10 times `lr`. Adam's bias correction exists to fix exactly this.
+
+> **Remember:** RMSProp keeps a decaying average of `g^2` per parameter and divides by its square root.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import math
+
+def rmsprop_step(params, grads, sq_avg, lr, alpha=0.99, eps=1e-8):
+    if not (len(params) == len(grads) == len(sq_avg)):
+        raise ValueError("params, grads and sq_avg must have the same length")
+    new_p, new_sq = [], []
+    for p, g, s in zip(params, grads, sq_avg):
+        s = alpha * s + (1 - alpha) * g * g
+        new_p.append(p - lr * g / (math.sqrt(s) + eps))
+        new_sq.append(s)
+    return {"params": new_p, "sq_avg": new_sq}
+```
+
+</Solution>

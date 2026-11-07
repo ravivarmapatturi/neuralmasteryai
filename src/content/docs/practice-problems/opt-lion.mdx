@@ -1,0 +1,40 @@
+---
+title: "Lion: A Sign-Based Update"
+description: "Optimizers, problem 4 of 6: Implement Lion, an optimizer found by program search that keeps one moment instead of Adam's two and moves every parameter by exactly lr per step."
+difficulty: "medium"
+topic: "Optimizers"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Only the sign survives
+
+Adam scales each step by gradient statistics. **Lion** (Chen et al., 2023, found by automated program search) keeps only the sign: every parameter moves by exactly `lr`, up or down. A gradient of 0.001 and a gradient of -50 produce steps of the same size in opposite directions, as the first test shows.
+
+The direction comes from an interpolation between the stored momentum and the current gradient, using `beta1`. The momentum itself is then updated with a slower `beta2`. With momentum at -20 and a gradient of 1, the interpolation is still negative, so the parameter moves up even though this step's gradient says down: a single noisy batch cannot flip the direction.
+
+## Practical consequences
+
+Lion stores one moment per parameter instead of Adam's two, which saves memory on large models. Because steps never shrink with small gradients, the paper recommends a learning rate 3 to 10 times smaller than AdamW's, with weight decay scaled up to match.
+
+> **Remember:** Lion's step size is `lr` for every coordinate. Its two betas play different roles: `beta1` for the update, `beta2` for the stored momentum.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def lion_step(params, grads, m, lr, beta1=0.9, beta2=0.99, weight_decay=0.0):
+    def sign(x):
+        return 1.0 if x > 0 else -1.0 if x < 0 else 0.0
+    new_p, new_m = [], []
+    for p, g, mi in zip(params, grads, m):
+        c = beta1 * mi + (1 - beta1) * g          # interpolate for the update
+        new_p.append(p - lr * (sign(c) + weight_decay * p))
+        new_m.append(beta2 * mi + (1 - beta2) * g)  # slower average is stored
+    return {"params": new_p, "m": new_m}
+```
+
+</Solution>

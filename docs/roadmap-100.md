@@ -57,7 +57,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 28. done - Build Micrograd: a scalar autograd engine in 6 stages.
 29. done - Attention From Scratch: 6 problems (masking, multi-head, KV cache, GQA, ALiBi).
 30. done - Build a Tokenizer: 6 problems, characters to BPE with byte fallback.
-31. planned - Optimizers set.
+31. done - Optimizers: 6 problems (clipping, RMSProp, Nesterov, Lion, warmup-cosine, SGD vs momentum).
 32. planned - Losses set.
 33. planned - Metrics set.
 34. planned - RAG pieces set.

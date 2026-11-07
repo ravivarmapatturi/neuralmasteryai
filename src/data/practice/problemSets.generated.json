@@ -4828,5 +4828,843 @@
   "stage": "Build a Tokenizer",
   "stageNumber": 6,
   "points": 50
+ },
+ {
+  "id": "opt-clip-grad-norm",
+  "title": "Clip Gradients by Global Norm",
+  "difficulty": "easy",
+  "topic": "Optimizers",
+  "estimatedTime": "10 min",
+  "functionName": "clip_grad_norm",
+  "functionSignature": "clip_grad_norm(grads: list[list[float]], max_norm: float) -> dict",
+  "starterCode": "def clip_grad_norm(grads, max_norm):\n    # Your code here\n    pass\n",
+  "mission": "Stop one bad batch from wrecking training: if the gradient over all parameters is longer than max_norm, scale every gradient down by the same factor.",
+  "taskDescription": "Implement `clip_grad_norm(grads, max_norm)`. `grads` is a list of gradient vectors, one per parameter tensor. Compute the global L2 norm over all of them together. If it exceeds `max_norm`, multiply every entry by `max_norm / total_norm`; otherwise leave them unchanged. Return `{\"total_norm\": norm before clipping, \"grads\": clipped grads}`. Raise `ValueError` if `max_norm <= 0`.",
+  "constraints": [
+   "One norm over every parameter, not one per tensor.",
+   "The same scale factor for every entry, so the direction is unchanged.",
+   "Report the norm measured before clipping."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "3-4-5 gets halved",
+    "input": {
+     "grads": [
+      [
+       3
+      ],
+      [
+       4
+      ]
+     ],
+     "max_norm": 2.5
+    },
+    "expectedOutput": {
+     "total_norm": 5.0,
+     "grads": [
+      [
+       1.5
+      ],
+      [
+       2.0
+      ]
+     ]
+    }
+   },
+   {
+    "id": "tc2",
+    "label": "Under the limit is unchanged",
+    "input": {
+     "grads": [
+      [
+       0.1,
+       0.2
+      ],
+      [
+       0.2
+      ]
+     ],
+     "max_norm": 1
+    },
+    "expectedOutput": {
+     "total_norm": 0.30000000000000004,
+     "grads": [
+      [
+       0.1,
+       0.2
+      ],
+      [
+       0.2
+      ]
+     ]
+    }
+   },
+   {
+    "id": "tc3",
+    "label": "Bad max_norm",
+    "input": {
+     "grads": [
+      [
+       1
+      ]
+     ],
+     "max_norm": 0
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc4",
+    "label": "Exploding layer",
+    "input": {
+     "grads": [
+      [
+       0.5,
+       -0.5,
+       0.1
+      ],
+      [
+       120,
+       -80
+      ],
+      [
+       0.01
+      ]
+     ],
+     "max_norm": 1
+    },
+    "hidden": true,
+    "expectedOutput": {
+     "total_norm": 144.2238194612804,
+     "grads": [
+      [
+       0.0034668337162866106,
+       -0.0034668337162866106,
+       0.0006933667432573222
+      ],
+      [
+       0.8320400919087866,
+       -0.5546933946058576
+      ],
+      [
+       6.933667432573222e-05
+      ]
+     ]
+    }
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "total_norm = sqrt(sum of g * g over every entry of every vector).",
+   "strong": "scale = max_norm / total_norm only when total_norm > max_norm.",
+   "concept": "Clipping by global norm keeps the update direction and only limits its length."
+  },
+  "conceptConnections": [
+   {
+    "title": "Optimizers",
+    "route": "/docs/deep-learning/optimizers",
+    "description": "SGD, momentum, adaptive methods and schedules, and when each one helps."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Optimizers",
+  "stageNumber": 1,
+  "points": 25
+ },
+ {
+  "id": "opt-rmsprop",
+  "title": "RMSProp Step",
+  "difficulty": "easy",
+  "topic": "Optimizers",
+  "estimatedTime": "10 min",
+  "functionName": "rmsprop_step",
+  "functionSignature": "rmsprop_step(params: list[float], grads: list[float], sq_avg: list[float], lr: float, alpha: float = 0.99, eps: float = 1e-8) -> dict",
+  "starterCode": "def rmsprop_step(params, grads, sq_avg, lr, alpha=0.99, eps=1e-8):\n    # Your code here\n    pass\n",
+  "mission": "Give every parameter its own step size by dividing by a running average of its squared gradients.",
+  "taskDescription": "Implement `rmsprop_step(params, grads, sq_avg, lr, alpha=0.99, eps=1e-8)`. For each index: `sq = alpha * sq_avg + (1 - alpha) * g**2`, then `p = p - lr * g / (sqrt(sq) + eps)`. Return `{\"params\": [...], \"sq_avg\": [...]}`. Raise `ValueError` if the three lists differ in length.",
+  "constraints": [
+   "Update the squared average before using it.",
+   "eps is added after the square root.",
+   "Do not modify the input lists."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "First step from zero state",
+    "input": {
+     "params": [
+      1
+     ],
+     "grads": [
+      0.5
+     ],
+     "sq_avg": [
+      0
+     ],
+     "lr": 0.01,
+     "alpha": 0.9
+    },
+    "expectedOutput": {
+     "params": [
+      0.968377225398316
+     ],
+     "sq_avg": [
+      0.024999999999999994
+     ]
+    }
+   },
+   {
+    "id": "tc2",
+    "label": "Different scales, similar steps",
+    "input": {
+     "params": [
+      0,
+      0
+     ],
+     "grads": [
+      100,
+      0.01
+     ],
+     "sq_avg": [
+      10000,
+      0.0001
+     ],
+     "lr": 0.1
+    },
+    "expectedOutput": {
+     "params": [
+      -0.09999999999,
+      -0.0999999000001
+     ],
+     "sq_avg": [
+      10000.0,
+      0.0001
+     ]
+    }
+   },
+   {
+    "id": "tc3",
+    "label": "Length mismatch",
+    "input": {
+     "params": [
+      1,
+      2
+     ],
+     "grads": [
+      1
+     ],
+     "sq_avg": [
+      0,
+      0
+     ],
+     "lr": 0.1
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc4",
+    "label": "Zero gradient decays the average",
+    "input": {
+     "params": [
+      3,
+      -1
+     ],
+     "grads": [
+      0,
+      2
+     ],
+     "sq_avg": [
+      4,
+      1
+     ],
+     "lr": 0.05,
+     "alpha": 0.5
+    },
+    "hidden": true,
+    "expectedOutput": {
+     "params": [
+      3.0,
+      -1.0632455528033675
+     ],
+     "sq_avg": [
+      2.0,
+      2.5
+     ]
+    }
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Work element by element with zip(params, grads, sq_avg).",
+   "strong": "On the first step from sq_avg = 0, sqrt(sq) = sqrt(1 - alpha) * |g|, so the step is about lr / sqrt(1 - alpha), 10x lr at alpha = 0.99.",
+   "concept": "Dividing by the RMS of recent gradients equalises step sizes across parameters with very different gradient scales."
+  },
+  "conceptConnections": [
+   {
+    "title": "Optimizers",
+    "route": "/docs/deep-learning/optimizers",
+    "description": "SGD, momentum, adaptive methods and schedules, and when each one helps."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Optimizers",
+  "stageNumber": 2,
+  "points": 25
+ },
+ {
+  "id": "opt-nesterov",
+  "title": "Nesterov Momentum",
+  "difficulty": "medium",
+  "topic": "Optimizers",
+  "estimatedTime": "15-20 min",
+  "functionName": "nesterov_minimize",
+  "functionSignature": "nesterov_minimize(a: float, b: float, x0: list[float], lr: float, momentum: float, steps: int) -> list[float]",
+  "starterCode": "def nesterov_minimize(a, b, x0, lr, momentum, steps):\n    # Your code here\n    pass\n",
+  "mission": "Run Nesterov momentum on a simple bowl and see why evaluating the gradient at the look-ahead point damps the oscillation plain momentum suffers from.",
+  "taskDescription": "Minimise f(x, y) = a*x**2 + b*y**2 from `x0 = [x, y]`. Keep a velocity `v` starting at zero. Each step: evaluate the gradient at the look-ahead point `p + momentum * v`, then `v = momentum * v - lr * grad`, then `p = p + v`. After `steps` steps return `[x, y, f(x, y)]`. Raise `ValueError` if `a` or `b` is not positive.",
+  "constraints": [
+   "The gradient of a*x**2 + b*y**2 is [2*a*x, 2*b*y].",
+   "Evaluate the gradient at the look-ahead point, not at p.",
+   "Velocity starts at [0, 0]."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Zero momentum is gradient descent",
+    "input": {
+     "a": 1,
+     "b": 1,
+     "x0": [
+      1,
+      1
+     ],
+     "lr": 0.25,
+     "momentum": 0,
+     "steps": 1
+    },
+    "expectedOutput": [
+     0.5,
+     0.5,
+     0.5
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Ill-conditioned bowl",
+    "input": {
+     "a": 1,
+     "b": 25,
+     "x0": [
+      5,
+      1
+     ],
+     "lr": 0.015,
+     "momentum": 0.9,
+     "steps": 60
+    },
+    "expectedOutput": [
+     -0.0867207471034642,
+     3.6672151148978994e-20,
+     0.007520487978182994
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Bad curvature",
+    "input": {
+     "a": 0,
+     "b": 1,
+     "x0": [
+      1,
+      1
+     ],
+     "lr": 0.1,
+     "momentum": 0.9,
+     "steps": 1
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc4",
+    "label": "Long run",
+    "input": {
+     "a": 0.5,
+     "b": 10,
+     "x0": [
+      -3,
+      2
+     ],
+     "lr": 0.02,
+     "momentum": 0.95,
+     "steps": 200
+    },
+    "hidden": true,
+    "expectedOutput": [
+     0.0020541416370898355,
+     1.3289545528013168e-25,
+     2.109748932613055e-06
+    ]
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "look = [p[i] + momentum * v[i] for i in range(2)].",
+   "strong": "grad = [2 * a * look[0], 2 * b * look[1]]; update v, then p.",
+   "concept": "Plain momentum measures the slope where you are; Nesterov measures it where momentum is about to take you."
+  },
+  "conceptConnections": [
+   {
+    "title": "Optimizers",
+    "route": "/docs/deep-learning/optimizers",
+    "description": "SGD, momentum, adaptive methods and schedules, and when each one helps."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Optimizers",
+  "stageNumber": 3,
+  "points": 50
+ },
+ {
+  "id": "opt-lion",
+  "title": "Lion: A Sign-Based Update",
+  "difficulty": "medium",
+  "topic": "Optimizers",
+  "estimatedTime": "15-20 min",
+  "functionName": "lion_step",
+  "functionSignature": "lion_step(params: list[float], grads: list[float], m: list[float], lr: float, beta1: float = 0.9, beta2: float = 0.99, weight_decay: float = 0.0) -> dict",
+  "starterCode": "def lion_step(params, grads, m, lr, beta1=0.9, beta2=0.99, weight_decay=0.0):\n    # Your code here\n    pass\n",
+  "mission": "Implement Lion, an optimizer found by program search that keeps one moment instead of Adam's two and moves every parameter by exactly lr per step.",
+  "taskDescription": "Implement `lion_step(params, grads, m, lr, beta1=0.9, beta2=0.99, weight_decay=0.0)`. For each index: `c = beta1 * m + (1 - beta1) * g`; `p = p - lr * (sign(c) + weight_decay * p)`; then `m = beta2 * m + (1 - beta2) * g`. sign(0) is 0. Return `{\"params\": [...], \"m\": [...]}`.",
+  "constraints": [
+   "The update direction uses beta1; the stored moment uses beta2.",
+   "sign(0) = 0.",
+   "Weight decay is decoupled: lr * weight_decay * p, as in AdamW."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Every coordinate moves by lr",
+    "input": {
+     "params": [
+      1,
+      1,
+      1
+     ],
+     "grads": [
+      0.001,
+      -50,
+      0
+     ],
+     "m": [
+      0,
+      0,
+      0
+     ],
+     "lr": 0.1
+    },
+    "expectedOutput": {
+     "params": [
+      0.9,
+      1.1,
+      1.0
+     ],
+     "m": [
+      1.000000000000001e-05,
+      -0.5000000000000004,
+      0.0
+     ]
+    }
+   },
+   {
+    "id": "tc2",
+    "label": "Momentum can outvote the gradient",
+    "input": {
+     "params": [
+      0
+     ],
+     "grads": [
+      1
+     ],
+     "m": [
+      -20
+     ],
+     "lr": 0.01
+    },
+    "expectedOutput": {
+     "params": [
+      0.01
+     ],
+     "m": [
+      -19.79
+     ]
+    }
+   },
+   {
+    "id": "tc3",
+    "label": "Decoupled weight decay",
+    "input": {
+     "params": [
+      2,
+      -2
+     ],
+     "grads": [
+      0.5,
+      0.5
+     ],
+     "m": [
+      0,
+      0
+     ],
+     "lr": 0.1,
+     "weight_decay": 0.5
+    },
+    "expectedOutput": {
+     "params": [
+      1.8,
+      -2.0
+     ],
+     "m": [
+      0.0050000000000000044,
+      0.0050000000000000044
+     ]
+    }
+   },
+   {
+    "id": "tc4",
+    "label": "Several coordinates",
+    "input": {
+     "params": [
+      0.3,
+      -0.7,
+      1.2,
+      0
+     ],
+     "grads": [
+      0.2,
+      -0.1,
+      0,
+      3
+     ],
+     "m": [
+      0.1,
+      0.1,
+      -0.2,
+      0
+     ],
+     "lr": 0.003,
+     "beta1": 0.95,
+     "beta2": 0.98,
+     "weight_decay": 0.1
+    },
+    "hidden": true,
+    "expectedOutput": {
+     "params": [
+      0.29691,
+      -0.7027899999999999,
+      1.20264,
+      -0.003
+     ],
+     "m": [
+      0.10200000000000001,
+      0.096,
+      -0.196,
+      0.06000000000000005
+     ]
+    }
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "sign = 1 if c > 0 else -1 if c < 0 else 0.",
+   "strong": "Compute the update from the old m, then update m.",
+   "concept": "Every coordinate moves by lr regardless of gradient size, so Lion typically needs a 3-10x smaller learning rate than AdamW."
+  },
+  "conceptConnections": [
+   {
+    "title": "Optimizers",
+    "route": "/docs/deep-learning/optimizers",
+    "description": "SGD, momentum, adaptive methods and schedules, and when each one helps."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Optimizers",
+  "stageNumber": 4,
+  "points": 50
+ },
+ {
+  "id": "opt-warmup-cosine",
+  "title": "Warmup Then Cosine Decay",
+  "difficulty": "medium",
+  "topic": "Optimizers",
+  "estimatedTime": "15-20 min",
+  "functionName": "lr_at",
+  "functionSignature": "lr_at(step: int, max_lr: float, warmup_steps: int, total_steps: int, min_lr: float) -> float",
+  "starterCode": "def lr_at(step, max_lr, warmup_steps, total_steps, min_lr):\n    # Your code here\n    pass\n",
+  "mission": "Write the learning-rate schedule used by most transformer pre-training runs: a linear warmup to the peak, then a cosine decay to a floor.",
+  "taskDescription": "Implement `lr_at(step, max_lr, warmup_steps, total_steps, min_lr)`. For `step < warmup_steps` return `max_lr * (step + 1) / warmup_steps`. From `warmup_steps` to `total_steps`, decay with `min_lr + 0.5 * (max_lr - min_lr) * (1 + cos(pi * progress))` where `progress = (step - warmup_steps) / (total_steps - warmup_steps)`. For `step >= total_steps` return `min_lr`. Raise `ValueError` if `warmup_steps >= total_steps` or `min_lr > max_lr`.",
+  "constraints": [
+   "Warmup uses step + 1, so step 0 already has a non-zero learning rate.",
+   "The decay reaches exactly min_lr at total_steps.",
+   "Steps past the end stay at min_lr."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "First warmup step",
+    "input": {
+     "step": 0,
+     "max_lr": 0.001,
+     "warmup_steps": 100,
+     "total_steps": 1000,
+     "min_lr": 0.0001
+    },
+    "expectedOutput": 1e-05
+   },
+   {
+    "id": "tc2",
+    "label": "Peak at end of warmup",
+    "input": {
+     "step": 100,
+     "max_lr": 0.001,
+     "warmup_steps": 100,
+     "total_steps": 1000,
+     "min_lr": 0.0001
+    },
+    "expectedOutput": 0.001
+   },
+   {
+    "id": "tc3",
+    "label": "Halfway through decay",
+    "input": {
+     "step": 550,
+     "max_lr": 0.001,
+     "warmup_steps": 100,
+     "total_steps": 1000,
+     "min_lr": 0.0001
+    },
+    "expectedOutput": 0.00055
+   },
+   {
+    "id": "tc4",
+    "label": "After the end",
+    "input": {
+     "step": 5000,
+     "max_lr": 0.001,
+     "warmup_steps": 100,
+     "total_steps": 1000,
+     "min_lr": 0.0001
+    },
+    "expectedOutput": 0.0001
+   },
+   {
+    "id": "tc5",
+    "label": "Warmup longer than training",
+    "input": {
+     "step": 1,
+     "max_lr": 0.1,
+     "warmup_steps": 10,
+     "total_steps": 10,
+     "min_lr": 0
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc6",
+    "label": "Three quarters through decay",
+    "input": {
+     "step": 775,
+     "max_lr": 0.0003,
+     "warmup_steps": 100,
+     "total_steps": 1000,
+     "min_lr": 3e-05
+    },
+    "hidden": true,
+    "expectedOutput": 6.954058453981609e-05
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Handle the three regions in order: warmup, decay, after.",
+   "strong": "At step = warmup_steps progress is 0, so the cosine term gives max_lr.",
+   "concept": "Warmup lets Adam's moment estimates settle before steps get large."
+  },
+  "conceptConnections": [
+   {
+    "title": "Optimizers",
+    "route": "/docs/deep-learning/optimizers",
+    "description": "SGD, momentum, adaptive methods and schedules, and when each one helps."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Optimizers",
+  "stageNumber": 5,
+  "points": 50
+ },
+ {
+  "id": "opt-momentum-vs-sgd",
+  "title": "Momentum Versus Plain SGD on a Ravine",
+  "difficulty": "hard",
+  "topic": "Optimizers",
+  "estimatedTime": "25-35 min",
+  "functionName": "compare_optimizers",
+  "functionSignature": "compare_optimizers(a: float, b: float, x0: list[float], lr: float, momentum: float, steps: int) -> dict",
+  "starterCode": "def compare_optimizers(a, b, x0, lr, momentum, steps):\n    # Your code here\n    pass\n",
+  "mission": "Run plain gradient descent and heavy-ball momentum side by side on the same ill-conditioned bowl, record both loss curves, and measure how many steps each needs to get the loss under a target.",
+  "taskDescription": "Minimise f(x, y) = a*x**2 + b*y**2 from `x0` with both methods for `steps` steps. SGD: `p = p - lr * grad`. Momentum: `v = momentum * v - lr * grad; p = p + v` with v starting at zero. Return `{\"sgd_loss\": final SGD loss, \"momentum_loss\": final momentum loss, \"sgd_steps_to_1e-3\": first step count after which SGD's loss is below 0.001 or None, \"momentum_steps_to_1e-3\": the same for momentum, \"sgd_diverged\": True if SGD's final loss is larger than its starting loss}`.",
+  "constraints": [
+   "Both methods use the same lr and start point.",
+   "Step counts are 1-based: after the first update is step 1.",
+   "Use None when a method never gets below 0.001."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Ravine: momentum wins",
+    "input": {
+     "a": 0.5,
+     "b": 50,
+     "x0": [
+      10,
+      1
+     ],
+     "lr": 0.015,
+     "momentum": 0.9,
+     "steps": 300
+    },
+    "expectedOutput": {
+     "sgd_loss": 0.0057637920400386245,
+     "momentum_loss": 2.05775038818059e-12,
+     "sgd_steps_to_1e-3": null,
+     "momentum_steps_to_1e-3": 98,
+     "sgd_diverged": false
+    }
+   },
+   {
+    "id": "tc2",
+    "label": "Round bowl: SGD is already fast",
+    "input": {
+     "a": 1,
+     "b": 1,
+     "x0": [
+      1,
+      1
+     ],
+     "lr": 0.4,
+     "momentum": 0.5,
+     "steps": 30
+    },
+    "expectedOutput": {
+     "sgd_loss": 2.305843009213662e-42,
+     "momentum_loss": 1.6553759457200621e-09,
+     "sgd_steps_to_1e-3": 3,
+     "momentum_steps_to_1e-3": 7,
+     "sgd_diverged": false
+    }
+   },
+   {
+    "id": "tc3",
+    "label": "Learning rate too large for SGD",
+    "input": {
+     "a": 1,
+     "b": 20,
+     "x0": [
+      1,
+      1
+     ],
+     "lr": 0.06,
+     "momentum": 0.5,
+     "steps": 50
+    },
+    "expectedOutput": {
+     "sgd_loss": 8200372177699825.0,
+     "momentum_loss": 2.3323390894859268e-14,
+     "sgd_steps_to_1e-3": null,
+     "momentum_steps_to_1e-3": 10,
+     "sgd_diverged": true
+    }
+   },
+   {
+    "id": "tc4",
+    "label": "Very flat axis",
+    "input": {
+     "a": 0.05,
+     "b": 10,
+     "x0": [
+      20,
+      0.5
+     ],
+     "lr": 0.05,
+     "momentum": 0.95,
+     "steps": 400
+    },
+    "hidden": true,
+    "expectedOutput": {
+     "sgd_loss": 0.3626557704932833,
+     "momentum_loss": 2.9648237651073637e-09,
+     "sgd_steps_to_1e-3": null,
+     "momentum_steps_to_1e-3": 75,
+     "sgd_diverged": false
+    }
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Write one loop per method, recording f after each update.",
+   "strong": "For a quadratic, SGD diverges in a coordinate when lr * 2 * curvature > 2, i.e. lr > 1 / curvature.",
+   "concept": "Momentum's effective step size on consistent directions is lr / (1 - momentum), which is what lets it move along the flat axis."
+  },
+  "conceptConnections": [
+   {
+    "title": "Optimizers",
+    "route": "/docs/deep-learning/optimizers",
+    "description": "SGD, momentum, adaptive methods and schedules, and when each one helps."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Optimizers",
+  "stageNumber": 6,
+  "points": 100
  }
 ]
