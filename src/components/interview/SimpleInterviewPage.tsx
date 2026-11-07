@@ -89,8 +89,10 @@ export default function SimpleInterviewPage() {
   // Otherwise it offers to resume the last question you opened.
   const [resuming] = useState(() => !locate(params.get('q')) && !!locate(readLast()));
   const [linked, setLinked] = useState(() => locate(params.get('q')) ?? locate(readLast()));
+  const sharedTopic = topics.findIndex((t) => t.id === params.get('topic'));
   const [step, setStep] = useState<Step>('topics');
-  const [topicIndex, setTopicIndex] = useState(linked?.topic ?? firstTopic);
+  const [topicIndex, setTopicIndex] = useState(sharedTopic >= 0 ? sharedTopic : (linked?.topic ?? firstTopic));
+  const [shareStatus, setShareStatus] = useState('');
   const [questionIndex, setQuestionIndex] = useState(linked?.question ?? 0);
   const [transcript, setTranscript] = useState('');
   const [typing, setTyping] = useState(false);
@@ -311,6 +313,24 @@ export default function SimpleInterviewPage() {
     setStep('topics');
   };
 
+  useEffect(() => setShareStatus(''), [topicIndex]);
+
+  const shareTopic = async () => {
+    const done = topic.questions.filter((q) => isDone(q.id)).length;
+    const url = `${window.location.origin}/interview?topic=${topic.id}`;
+    const text = `I completed ${done} of ${topic.questions.length} ${topic.title} interview questions on Neural Mastery.`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `${topic.title} interview practice`, text, url });
+        return;
+      }
+      await navigator.clipboard.writeText(`${text} ${url}`);
+      setShareStatus('Link copied.');
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') setShareStatus(`Copy this link: ${url}`);
+    }
+  };
+
   // Space answers (or finishes answering), N moves to the next question. Ignored while typing or on a focused control.
   const keysRef = useRef<(e: KeyboardEvent) => void>(() => undefined);
   keysRef.current = (e) => {
@@ -413,6 +433,12 @@ export default function SimpleInterviewPage() {
                   >
                     {linkedHere ? (resuming ? 'Resume where you left off' : 'Start the linked question') : shown.some(({ q }) => isDone(q.id)) ? 'Next unsolved question' : 'Start this topic'}
                   </button>
+                  {topic.questions.every((q) => isDone(q.id)) && (
+                    <button type="button" onClick={shareTopic}>
+                      Share this topic
+                    </button>
+                  )}
+                  {shareStatus && <span className="si-done" role="status">{shareStatus}</span>}
                 </div>
                 <ol className="si-list">
                   {shown.length === 0 && <li className="si-empty">No questions in this topic match these filters.</li>}
@@ -605,11 +631,18 @@ export default function SimpleInterviewPage() {
         {step === 'done' && (
           <>
             <h2>That's the topic done.</h2>
-            <p className="si-lede">You answered all {topic.questions.length} questions in {topic.title}.</p>
+            <p className="si-lede">
+              You reached the end of {topic.title}. {topic.questions.filter((q) => isDone(q.id)).length} of{' '}
+              {topic.questions.length} questions are marked complete.
+            </p>
             <div className="si-actions">
               <button type="button" className="si-primary" onClick={backToTopics}>
                 Choose another topic
               </button>
+              <button type="button" onClick={shareTopic}>
+                Share this topic
+              </button>
+              {shareStatus && <span className="si-done" role="status">{shareStatus}</span>}
             </div>
           </>
         )}

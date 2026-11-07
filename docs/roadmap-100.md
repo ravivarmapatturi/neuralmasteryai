@@ -37,7 +37,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 10. done - Progress ring per topic node in the graph.
 11. done - Resume where you left off.
 12. done - Keyboard shortcuts: space to answer, N for next.
-13. planned - Share a completed topic.
+13. done - Share a completed topic.
 14. planned - Interview leaderboard view.
 15. planned - Mobile pass on the answer screen.
 
