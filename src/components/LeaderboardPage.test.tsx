@@ -34,7 +34,7 @@ function renderLeaderboard() {
 describe('LeaderboardPage', () => {
   beforeEach(() => {
     window.localStorage.clear();
-    vi.spyOn(leaderboardModule, 'useLeaderboard').mockImplementation((tab: 'allTime' | 'weekly') => {
+    vi.spyOn(leaderboardModule, 'useLeaderboard').mockImplementation((tab: string) => {
       if (tab === 'weekly') {
         return {
           entries: [

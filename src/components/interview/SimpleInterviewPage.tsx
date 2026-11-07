@@ -89,8 +89,10 @@ export default function SimpleInterviewPage() {
   // Otherwise it offers to resume the last question you opened.
   const [resuming] = useState(() => !locate(params.get('q')) && !!locate(readLast()));
   const [linked, setLinked] = useState(() => locate(params.get('q')) ?? locate(readLast()));
+  const sharedTopic = topics.findIndex((t) => t.id === params.get('topic'));
   const [step, setStep] = useState<Step>('topics');
-  const [topicIndex, setTopicIndex] = useState(linked?.topic ?? firstTopic);
+  const [topicIndex, setTopicIndex] = useState(sharedTopic >= 0 ? sharedTopic : (linked?.topic ?? firstTopic));
+  const [shareStatus, setShareStatus] = useState('');
   const [questionIndex, setQuestionIndex] = useState(linked?.question ?? 0);
   const [transcript, setTranscript] = useState('');
   const [typing, setTyping] = useState(false);
@@ -311,6 +313,24 @@ export default function SimpleInterviewPage() {
     setStep('topics');
   };
 
+  useEffect(() => setShareStatus(''), [topicIndex]);
+
+  const shareTopic = async () => {
+    const done = topic.questions.filter((q) => isDone(q.id)).length;
+    const url = `${window.location.origin}/interview?topic=${topic.id}`;
+    const text = `I completed ${done} of ${topic.questions.length} ${topic.title} interview questions on Neural Mastery.`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `${topic.title} interview practice`, text, url });
+        return;
+      }
+      await navigator.clipboard.writeText(`${text} ${url}`);
+      setShareStatus('Link copied.');
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') setShareStatus(`Copy this link: ${url}`);
+    }
+  };
+
   // Space answers (or finishes answering), N moves to the next question. Ignored while typing or on a focused control.
   const keysRef = useRef<(e: KeyboardEvent) => void>(() => undefined);
   keysRef.current = (e) => {
@@ -413,6 +433,12 @@ export default function SimpleInterviewPage() {
                   >
                     {linkedHere ? (resuming ? 'Resume where you left off' : 'Start the linked question') : shown.some(({ q }) => isDone(q.id)) ? 'Next unsolved question' : 'Start this topic'}
                   </button>
+                  {topic.questions.every((q) => isDone(q.id)) && (
+                    <button type="button" onClick={shareTopic}>
+                      Share this topic
+                    </button>
+                  )}
+                  {shareStatus && <span className="si-done" role="status">{shareStatus}</span>}
                 </div>
                 <ol className="si-list">
                   {shown.length === 0 && <li className="si-empty">No questions in this topic match these filters.</li>}
@@ -431,7 +457,8 @@ export default function SimpleInterviewPage() {
               Your voice is processed in your browser and is not uploaded. Many questions are adapted from{' '}
               <a href="https://github.com/rohitg00/ai-engineering-from-scratch">AI Engineering from Scratch</a> by Rohit
               Ghumare (<a href="/ai-engineering-from-scratch-LICENSE.txt">MIT licence</a>).{' '}
-              <Link to="/interview/questions">See the written question list</Link>.
+              <Link to="/interview/questions">See the written question list</Link> or the{' '}
+              <Link to="/leaderboard?tab=interview">interview leaderboard</Link>.
             </p>
           </>
         )}
@@ -497,7 +524,7 @@ export default function SimpleInterviewPage() {
                 {transcript || 'Your words will appear here as you speak.'}
               </div>
             )}
-            <div className="si-actions">
+            <div className="si-actions si-sticky">
               <button type="button" className="si-primary" id="done" onClick={finishAnswer}>
                 I'm done, show the answer
               </button>
@@ -578,7 +605,7 @@ export default function SimpleInterviewPage() {
                 <a href={question.sourceUrl}>Full answer and follow-ups in AI Engineering from Scratch</a>
               </p>
             )}
-            <div className="si-actions">
+            <div className="si-actions si-sticky">
               <button type="button" className="si-primary" id="next" onClick={nextQuestion}>
                 {questionIndex + 1 < topic.questions.length ? 'Next question' : 'Finish topic'}
               </button>
@@ -586,7 +613,7 @@ export default function SimpleInterviewPage() {
                 <span className="si-done" role="status">Completed · +{INTERVIEW_COMPLETED_POINTS} points</span>
               ) : (
                 <button type="button" id="mark-complete" onClick={() => awardInterviewCompleted(questionId)}>
-                  Mark complete (+{INTERVIEW_COMPLETED_POINTS} points)
+                  Mark complete<span className="si-wide-only"> (+{INTERVIEW_COMPLETED_POINTS} points)</span>
                 </button>
               )}
               {reading ? (
@@ -605,11 +632,18 @@ export default function SimpleInterviewPage() {
         {step === 'done' && (
           <>
             <h2>That's the topic done.</h2>
-            <p className="si-lede">You answered all {topic.questions.length} questions in {topic.title}.</p>
+            <p className="si-lede">
+              You reached the end of {topic.title}. {topic.questions.filter((q) => isDone(q.id)).length} of{' '}
+              {topic.questions.length} questions are marked complete.
+            </p>
             <div className="si-actions">
               <button type="button" className="si-primary" onClick={backToTopics}>
                 Choose another topic
               </button>
+              <button type="button" onClick={shareTopic}>
+                Share this topic
+              </button>
+              {shareStatus && <span className="si-done" role="status">{shareStatus}</span>}
             </div>
           </>
         )}

@@ -163,6 +163,11 @@ export function totalPoints(events: AwardEvent[]): number {
   return events.reduce((sum, e) => sum + e.points, 0);
 }
 
+/** Points from interview questions marked complete, for the interview leaderboard. */
+export function interviewPoints(events: AwardEvent[]): number {
+  return totalPoints(events.filter((e) => e.kind === 'interview'));
+}
+
 /** Monday-anchored start of the local week containing `d`. Real, stated
  * limitation: this is each user's OWN local week, not one globally
  * synchronized boundary -- two users in different timezones have their

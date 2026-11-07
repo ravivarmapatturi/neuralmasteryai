@@ -14,6 +14,7 @@ import {
   INTERVIEW_COMPLETED_POINTS,
   hasAward,
   totalPoints,
+  interviewPoints,
   weeklyPoints as computeWeeklyPoints,
   weekStartDateString,
   computeStreak,
@@ -207,6 +208,7 @@ function leaderboardFields(user: User, events: AwardEvent[], now: number, displa
   return {
     displayName: displayNameOverride || computeDisplayName(user),
     allTimePoints: totalPoints(events),
+    interviewPoints: interviewPoints(events),
     weeklyPoints: computeWeeklyPoints(events, new Date(now)),
     weekStart: weekStartDateString(new Date(now)),
     updatedAt: now,

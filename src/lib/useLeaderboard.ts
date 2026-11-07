@@ -37,7 +37,11 @@ const EXCLUDED_TEST_DISPLAY_NAMES = new Set(['Batman', 'rule-test']);
  * identity to rank), but every existing signed-in user's public entry is
  * visible regardless of the viewer's own auth state.
  */
-export function useLeaderboard(sortBy: 'allTime' | 'weekly', limitN = 25): { entries: LeaderboardEntry[]; loading: boolean } {
+export type LeaderboardTab = 'allTime' | 'weekly' | 'interview';
+
+const SORT_FIELD: Record<LeaderboardTab, string> = { allTime: 'allTimePoints', weekly: 'weeklyPoints', interview: 'interviewPoints' };
+
+export function useLeaderboard(sortBy: LeaderboardTab, limitN = 25): { entries: LeaderboardEntry[]; loading: boolean } {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -49,7 +53,7 @@ export function useLeaderboard(sortBy: 'allTime' | 'weekly', limitN = 25): { ent
     Promise.all([import('../lib/firebase'), import('firebase/firestore')])
       .then(([{ db }, { collection, query, orderBy, limit, onSnapshot }]) => {
         if (cancelled) return;
-        const field = sortBy === 'allTime' ? 'allTimePoints' : 'weeklyPoints';
+        const field = SORT_FIELD[sortBy];
         const q = query(collection(db, 'leaderboard'), orderBy(field, 'desc'), limit(limitN));
         unsubscribe = onSnapshot(
           q,
@@ -61,7 +65,7 @@ export function useLeaderboard(sortBy: 'allTime' | 'weekly', limitN = 25): { ent
                 return {
                   uid: d.id,
                   displayName: typeof data.displayName === 'string' ? data.displayName : 'Learner',
-                  points: (sortBy === 'allTime' ? data.allTimePoints : data.weeklyPoints) ?? 0,
+                  points: data[field] ?? 0,
                   allTimePoints: typeof data.allTimePoints === 'number' ? data.allTimePoints : undefined,
                 };
               })
