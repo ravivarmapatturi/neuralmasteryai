@@ -1,0 +1,38 @@
+---
+title: "Normalise Text Into Search Terms"
+description: "RAG Pieces, problem 1 of 6: Turn raw text into the terms a keyword index stores, so that 'Refund', 'refund,' and 'REFUND' all match the same query."
+difficulty: "easy"
+topic: "RAG Pieces"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Matching starts before search
+
+A keyword index can only match strings that are identical. "Refund", "refund," and "REFUND" are three different strings until something normalises them. So every keyword pipeline runs the same small function over each document when it is indexed and over each query when it is searched.
+
+This one lower-cases, splits on anything that is not a letter or digit, and drops **stopwords**, very common words like "the" and "of" that appear in nearly every document and so tell you nothing about which document is relevant.
+
+## Index and query must agree
+
+If documents are indexed with this function and queries are not, "Refund?" never matches. The function also makes choices that cost recall: "refunds" and "refund" stay different terms, and "GPT-4o" becomes `gpt` and `4o`. Production systems add stemming or a domain-specific tokenizer; whatever they choose, both sides run the same code.
+
+> **Remember:** one normalisation function, applied identically to documents and queries.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import re
+
+STOPWORDS = {"a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "is", "it", "of", "on", "or", "the", "to", "was", "with"}
+
+def terms(text):
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    return [w for w in words if w not in STOPWORDS]
+```
+
+</Solution>

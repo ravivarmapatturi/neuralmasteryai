@@ -1,0 +1,45 @@
+---
+title: "Drop Near-Duplicate Chunks"
+description: "RAG Pieces, problem 3 of 6: Remove chunks that are nearly identical to an earlier chunk before indexing, so the same paragraph copied across ten pages does not fill all ten retrieval slots."
+difficulty: "medium"
+topic: "RAG Pieces"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Duplicates crowd out answers
+
+Company wikis, docs sites and ticket exports repeat themselves: the same disclaimer on every page, the same setup steps copied into five guides. Index them all and a query about setup returns five copies of the same paragraph in its top five, and the one chunk with the actual answer falls to sixth.
+
+**Shingling** turns a chunk into the set of its consecutive 3-word runs. Two chunks that share most of their shingles share most of their wording, in order. **Jaccard similarity** (shared shingles over total distinct shingles) gives a score from 0 to 1. The second test's two API sentences differ by one trailing word: they share 10 of 11 distinct shingles, a Jaccard score of 0.91, above the 0.7 threshold.
+
+## Scaling up
+
+Comparing every chunk with every kept chunk is quadratic, fine for thousands of chunks and too slow for millions. **MinHash** with locality-sensitive hashing estimates Jaccard from short signatures and finds candidate pairs without comparing everything; deduplication of large training corpora uses this approach.
+
+> **Remember:** shingle, compare with Jaccard, keep the first copy. Deduplicate before indexing, not after retrieval.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def dedupe_chunks(chunks, threshold, shingle=3):
+    def shingles(text):
+        words = text.lower().split()
+        if len(words) < shingle:
+            return {tuple(words)}
+        return {tuple(words[i:i + shingle]) for i in range(len(words) - shingle + 1)}
+
+    kept, kept_sets = [], []
+    for i, text in enumerate(chunks):
+        s = shingles(text)
+        if all(len(s & k) / len(s | k) < threshold for k in kept_sets):
+            kept.append(i)
+            kept_sets.append(s)
+    return kept
+```
+
+</Solution>

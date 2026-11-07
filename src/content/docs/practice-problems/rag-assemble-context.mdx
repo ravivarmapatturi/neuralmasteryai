@@ -1,0 +1,47 @@
+---
+title: "Assemble Context From Retrieved Chunks"
+description: "RAG Pieces, problem 5 of 6: Turn a ranked list of chunks into a prompt-ready context: keep the best within a token budget, then restore document order and merge neighbouring chunks so the model reads whole passages."
+difficulty: "medium"
+topic: "RAG Pieces"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Score order is not reading order
+
+A retriever returns chunks by score. Chunk 2 of the FAQ might score highest and chunk 1, the sentence that sets it up, second. Pasted into the prompt in that order, the model reads the answer before its premise, and possibly with an unrelated chunk in between.
+
+Context assembly runs in two phases. **Select** by score until the token budget is spent, skipping any chunk that does not fit (a smaller, lower-scored chunk might). Then **order** the selection by document and position, and **merge** chunks that were adjacent in the source back into one passage.
+
+## Why merging helps
+
+Chunk boundaries are arbitrary: a 300-token splitter cuts mid-paragraph. Merging adjacent chunks restores the passage the author wrote, so a sentence like "This applies only to annual plans" stays attached to the policy it qualifies. Liu et al. (2023) also found that models use information at the start and end of a long context more reliably than information in the middle, which is one more reason to keep the context short and coherent.
+
+> **Remember:** select by score within the budget, then present in source order with neighbours merged.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def assemble_context(chunks, max_tokens):
+    chosen, used = [], 0
+    for c in sorted(chunks, key=lambda c: (-c["score"], c["doc"], c["pos"])):
+        if used + c["tokens"] <= max_tokens:
+            chosen.append(c)
+            used += c["tokens"]
+    passages = []
+    for c in sorted(chosen, key=lambda c: (c["doc"], c["pos"])):
+        last = passages[-1] if passages else None
+        if last and last["doc"] == c["doc"] and c["pos"] == last["end"] + 1:
+            last["end"] = c["pos"]
+            last["text"] += " " + c["text"]
+            last["tokens"] += c["tokens"]
+        else:
+            passages.append({"doc": c["doc"], "start": c["pos"], "end": c["pos"], "text": c["text"], "tokens": c["tokens"]})
+    return passages
+```
+
+</Solution>

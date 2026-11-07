@@ -1,0 +1,44 @@
+---
+title: "Check an Answer's Citations"
+description: "RAG Pieces, problem 6 of 6: Before showing a RAG answer, verify that every citation marker points at a real source and that every sentence carries one."
+difficulty: "medium"
+topic: "RAG Pieces"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Citations are claims too
+
+A RAG system that shows `[3]` next to a sentence is telling the user "source 3 says this". If only two sources were retrieved, the model invented that reference, and a reader who trusts the bracket has been misled. Checking citations mechanically before display is cheap and catches this every time.
+
+This check answers two questions. **Is every citation real?** Any number outside 1 to the number of sources is invalid. **Is every sentence cited?** A sentence with no marker is either common knowledge, a transition ("Is that all?"), or an unsupported claim. The check cannot tell which, but it can point a reviewer, or a stricter second pass, at exactly those sentences.
+
+## What it does not check
+
+A valid number does not mean the source supports the sentence. That needs a grounding check, comparing the sentence with the cited text, which is in the RAG and Retrieval track. The two checks together catch the most common RAG failures before a user sees them.
+
+> **Remember:** parse markers, validate numbers against the source list, and flag uncited sentences.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import re
+
+def check_citations(answer, sources):
+    sentences = [s for s in re.split(r"(?<=[.!?])\s+", answer.strip()) if s.strip()]
+    cited, invalid, uncited = set(), set(), []
+    for i, sentence in enumerate(sentences):
+        markers = re.findall(r"\[(\d+(?:\s*,\s*\d+)*)\]", sentence)
+        if not markers:
+            uncited.append(i)
+        for group in markers:
+            for num in (int(x) for x in group.split(",")):
+                (cited if 1 <= num <= len(sources) else invalid).add(num)
+    return {"cited": sorted(cited), "invalid": sorted(invalid), "uncited_sentences": uncited}
+```
+
+</Solution>

@@ -196,6 +196,22 @@ export const CATALOG: CatalogTrack[] = [
     ],
   },
   {
+    slug: 'rag-pieces',
+    title: 'RAG Pieces',
+    summary: 'The parts of a retrieval pipeline around the embeddings: term normalisation, BM25, near-duplicate removal, hybrid fusion, context assembly and citation checks.',
+    kind: 'set',
+    level: 'Intermediate',
+    learnRoute: '/docs/llms-genai/rag',
+    problems: [
+      'rag-normalize-terms',
+      'rag-bm25',
+      'rag-near-duplicates',
+      'rag-hybrid-fusion',
+      'rag-assemble-context',
+      'rag-check-citations',
+    ],
+  },
+  {
     slug: 'python-for-ai',
     title: 'Python for AI',
     summary: 'The everyday Python behind data and model code: dicts, nesting, text, caches and small parsers.',

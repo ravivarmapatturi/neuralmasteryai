@@ -1,0 +1,51 @@
+---
+title: "BM25 Scoring"
+description: "RAG Pieces, problem 2 of 6: Score documents against a keyword query with BM25, the ranking function that is still the baseline every dense retriever is compared against."
+difficulty: "medium"
+topic: "RAG Pieces"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Three ideas in one formula
+
+**BM25** (Robertson and Zaragoza, 2009) ranks documents for a keyword query and still beats many neural retrievers on out-of-domain search (Thakur et al., 2021, BEIR). It combines three intuitions.
+
+**Rare terms matter more.** `order` appears in all three documents of the first test, so it says little; `refund` appears in one, so it says a lot. The **inverse document frequency** `idf` encodes this.
+
+**Repetition helps, with diminishing returns.** A document that says "gpu" ten times is more about GPUs than one that says it once, but not ten times more. The `f * (k1 + 1) / (f + k1 * ...)` term rises quickly and then flattens towards `k1 + 1`. Compare the two GPU documents in the third test.
+
+**Long documents are not automatically better.** A long document contains more terms by chance, so `b` scales the saturation by document length relative to the average.
+
+## Why RAG systems still use it
+
+Dense embeddings blur exact identifiers: an error code, a product SKU, a function name. BM25 matches them exactly. That is why hybrid retrieval, BM25 plus embeddings, is the default in many production RAG systems.
+
+> **Remember:** BM25 = idf times saturated, length-normalised term frequency, summed over query terms.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import math
+from collections import Counter
+
+def bm25_scores(query, docs, k1=1.5, b=0.75):
+    if not docs:
+        raise ValueError("need at least one document")
+    n = len(docs)
+    avgdl = sum(len(d) for d in docs) / n
+    df = {t: sum(1 for d in docs if t in d) for t in set(query)}
+    idf = {t: math.log((n - df[t] + 0.5) / (df[t] + 0.5) + 1) for t in df}
+    scores = []
+    for doc in docs:
+        tf = Counter(doc)
+        norm = k1 * (1 - b + b * len(doc) / avgdl)
+        scores.append(sum(idf[t] * tf[t] * (k1 + 1) / (tf[t] + norm) for t in query if tf[t]))
+    return scores
+```
+
+</Solution>

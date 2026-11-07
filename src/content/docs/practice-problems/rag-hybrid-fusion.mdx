@@ -1,0 +1,47 @@
+---
+title: "Hybrid Retrieval With Score Normalisation"
+description: "RAG Pieces, problem 4 of 6: Combine keyword and embedding scores that live on different scales: normalise each to [0, 1], blend them, and return the top k."
+difficulty: "hard"
+topic: "RAG Pieces"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Two retrievers, two rulers
+
+Hybrid retrieval runs BM25 and a dense retriever and merges their lists. The obvious merge, adding the scores, fails quietly: BM25 scores here run from 1 to 25 while cosine similarities sit between 0.2 and 0.9. Added raw, the dense score barely changes the order, and you have built an expensive BM25.
+
+**Min-max normalisation** maps each retriever's scores onto [0, 1] before blending: the best chunk from each retriever becomes 1.0 and the worst becomes 0. `alpha` then means what it says, the weight on dense retrieval.
+
+## Edge cases that reach production
+
+A retriever that returns one result, or several with identical scores, has `max == min` and a division by zero. Treating them all as 1.0 keeps them. A chunk returned by only one retriever gets 0 from the other, which is a choice: it rewards agreement. **Reciprocal rank fusion** sidesteps score scales by using ranks instead; it is in the RAG and Retrieval track.
+
+> **Remember:** never add raw scores from different retrievers. Normalise each one, then blend.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def hybrid_top_k(bm25, dense, alpha, k):
+    if not 0 <= alpha <= 1:
+        raise ValueError("alpha must be in [0, 1]")
+
+    def norm(scores):
+        if not scores:
+            return {}
+        lo, hi = min(scores.values()), max(scores.values())
+        if hi == lo:
+            return {key: 1.0 for key in scores}
+        return {key: (v - lo) / (hi - lo) for key, v in scores.items()}
+
+    b, d = norm(bm25), norm(dense)
+    fused = {i: alpha * d.get(i, 0.0) + (1 - alpha) * b.get(i, 0.0) for i in set(b) | set(d)}
+    ranked = sorted(fused.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [[i, s] for i, s in ranked[:k]]
+```
+
+</Solution>
