@@ -1,0 +1,66 @@
+---
+title: "BPE: Train a Merge List"
+description: "Build a Tokenizer, problem 4 of 6: Learn a byte-pair-encoding merge list from raw text: split into words, start from characters, and repeatedly merge the most frequent pair."
+difficulty: "hard"
+topic: "Build a Tokenizer"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## The training loop is the last two problems, repeated
+
+Training BPE is counting and merging in a loop. Start from characters, count pairs, merge the winner, recount, and stop after a fixed number of merges. GPT-2 ran this for 50,000 merges (Radford et al., 2019); the vocabulary size is simply the number of merges plus the starting symbols.
+
+## The end-of-word marker
+
+Without a marker, the `er` at the end of `lower` and the `er` inside `eraser` would be the same token. Appending `</w>` to every word lets BPE learn `er</w>` as a suffix separately from `er` inside a word, and it tells the decoder where to put spaces back.
+
+## Why stop early
+
+`"ab"` has only two possible merges: `a b`, then `ab </w>`. After that every word is a single token and no pairs remain. Asking for 10 merges must not loop forever or invent pairs.
+
+> **Remember:** the output of training is an ordered merge list. Order matters, because encoding applies merges in the order they were learned.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def merge(tokens, pair, new_token):
+    """Replace every non-overlapping occurrence of pair, left to right."""
+    out, i = [], 0
+    while i < len(tokens):
+        if i + 1 < len(tokens) and (tokens[i], tokens[i + 1]) == pair:
+            out.append(new_token)
+            i += 2
+        else:
+            out.append(tokens[i])
+            i += 1
+    return out
+
+def train_bpe(text, num_merges):
+    freqs = {}
+    for word in text.split():
+        key = tuple(word) + ("</w>",)
+        freqs[key] = freqs.get(key, 0) + 1
+    merges = []
+    for _ in range(num_merges):
+        counts = {}
+        for toks, f in freqs.items():
+            for a, b in zip(toks, toks[1:]):
+                counts[(a, b)] = counts.get((a, b), 0) + f
+        if not counts:
+            break
+        pair = min(counts, key=lambda p: (-counts[p], p))
+        merges.append(list(pair))
+        new = {}
+        for toks, f in freqs.items():
+            key = tuple(merge(list(toks), pair, pair[0] + pair[1]))
+            new[key] = new.get(key, 0) + f
+        freqs = new
+    return merges
+```
+
+</Solution>

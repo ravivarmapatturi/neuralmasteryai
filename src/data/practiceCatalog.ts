@@ -132,6 +132,22 @@ export const CATALOG: CatalogTrack[] = [
     ],
   },
   {
+    slug: 'build-a-tokenizer',
+    title: 'Build a Tokenizer',
+    summary: 'From a character vocabulary to byte-pair encoding: count pairs, merge, train a merge list, encode new words, and fall back to bytes.',
+    kind: 'set',
+    level: 'Intermediate',
+    learnRoute: '/docs/llms-genai/foundation-model-internals',
+    problems: [
+      'tok-char-vocab',
+      'tok-bpe-pair-counts',
+      'tok-bpe-merge',
+      'tok-bpe-train',
+      'tok-bpe-encode',
+      'tok-byte-fallback',
+    ],
+  },
+  {
     slug: 'python-for-ai',
     title: 'Python for AI',
     summary: 'The everyday Python behind data and model code: dicts, nesting, text, caches and small parsers.',

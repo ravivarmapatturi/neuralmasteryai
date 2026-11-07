@@ -1,0 +1,52 @@
+---
+title: "BPE: Encode a Word With Ranked Merges"
+description: "Build a Tokenizer, problem 5 of 6: Tokenize a new word with a trained merge list, applying the highest-priority merge available at each step, the way GPT-2's tokenizer does."
+difficulty: "medium"
+topic: "Build a Tokenizer"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Replaying training on new text
+
+A trained BPE tokenizer is its merge list. To encode a word it has never seen, start from characters and keep applying merges, but in the order they were learned, not in the order they appear in the word.
+
+With merges `o w` (rank 0), `l o` (rank 1) and `l ow` (rank 2), the word `low` has both `l o` and `o w` available. Applying `l o` first would give `lo w`, and no merge combines `lo` with `w`. Applying the lower-ranked `o w` first gives `l ow`, then `low`: one token, as training intended.
+
+## A common bug
+
+Scanning the word once and merging pairs as they appear produces different tokens from training. The model then sees token sequences at inference that it rarely saw during training. Quality drops and nothing raises an error.
+
+> **Remember:** at each step, apply the best-ranked pair present. Stop when no present pair is in the merge list.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def merge(tokens, pair, new_token):
+    """Replace every non-overlapping occurrence of pair, left to right."""
+    out, i = [], 0
+    while i < len(tokens):
+        if i + 1 < len(tokens) and (tokens[i], tokens[i + 1]) == pair:
+            out.append(new_token)
+            i += 2
+        else:
+            out.append(tokens[i])
+            i += 1
+    return out
+
+def bpe_encode(word, merges):
+    rank = {tuple(m): i for i, m in enumerate(merges)}
+    tokens = list(word) + ["</w>"]
+    while True:
+        present = {(a, b) for a, b in zip(tokens, tokens[1:]) if (a, b) in rank}
+        if not present:
+            return tokens
+        best = min(present, key=rank.get)   # lowest rank = learned first
+        tokens = merge(tokens, best, best[0] + best[1])
+```
+
+</Solution>

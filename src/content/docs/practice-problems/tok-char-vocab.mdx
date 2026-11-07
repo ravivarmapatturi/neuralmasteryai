@@ -1,0 +1,33 @@
+---
+title: "Character Vocabulary With an Unknown Token"
+description: "Build a Tokenizer, problem 1 of 6: Build the simplest tokenizer: one id per character seen in a training corpus, with a reserved id for anything it has never seen."
+difficulty: "easy"
+topic: "Build a Tokenizer"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Text has to become integers
+
+A model's embedding table is indexed by integers, so every tokenizer is a mapping from text to ids that is fixed at training time. The simplest one gives each character its own id. On `"hello"` that is 4 characters plus a reserved **unknown token** for everything else.
+
+## The unknown token loses information
+
+Encode `"help!"` and the `p` and the `!` both become id 0. The model cannot tell them apart, and decoding gives back `<unk>` twice. Character vocabularies are small (English text needs about 100 ids), but sequences are long: one id per character means a 1,000-word document is roughly 6,000 tokens (estimate: about 6 characters per English word, counting the space). The next problems build **byte-pair encoding**, which merges frequent character pairs to make sequences shorter and falls back to bytes so nothing is unknown.
+
+> **Remember:** a vocabulary is a frozen list. Decide what happens to text outside it before you train.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def char_encode(corpus, text):
+    vocab = ["<unk>"] + sorted(set(corpus))
+    index = {ch: i for i, ch in enumerate(vocab)}
+    return {"vocab": vocab, "ids": [index.get(ch, 0) for ch in text]}
+```
+
+</Solution>

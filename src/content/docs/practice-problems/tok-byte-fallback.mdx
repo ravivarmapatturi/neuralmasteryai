@@ -1,0 +1,40 @@
+---
+title: "Byte Fallback for Unknown Characters"
+description: "Build a Tokenizer, problem 6 of 6: Never emit an unknown token: characters outside the vocabulary are encoded as their UTF-8 bytes, so any text round-trips exactly."
+difficulty: "medium"
+topic: "Build a Tokenizer"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## No text is unknown at the byte level
+
+Every string is a sequence of bytes, and there are only 256 possible bytes. A tokenizer that keeps 256 byte tokens in its vocabulary can encode anything: an emoji, a Hindi word, a binary blob pasted into a prompt. SentencePiece calls this **byte fallback**, and Llama's tokenizer uses it (Touvron et al., 2023).
+
+`é` is not in our small vocabulary, so it becomes its UTF-8 bytes `C3 A9`, written `<0xC3>` and `<0xA9>`. Decoding joins the bytes back and recovers `é` exactly.
+
+## The cost lands on some languages
+
+The fallback is lossless, but not cheap. Each Devanagari character is 3 bytes, so `नमस्ते` (6 characters) costs 18 tokens when none of it is in the vocabulary. With a vocabulary trained mostly on English, the same sentence can cost several times more tokens in Hindi than in English, which means higher API prices and shorter effective context for those users.
+
+> **Remember:** byte fallback trades sequence length for never losing information. Vocabulary coverage decides who pays that cost.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def byte_fallback_tokens(text, vocab):
+    known = set(vocab)
+    tokens = []
+    for ch in text:
+        if ch in known:
+            tokens.append(ch)
+        else:
+            tokens.extend(f"<0x{b:02X}>" for b in ch.encode("utf-8"))
+    return tokens
+```
+
+</Solution>

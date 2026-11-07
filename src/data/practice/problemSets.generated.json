@@ -4043,5 +4043,790 @@
   "stage": "Attention From Scratch",
   "stageNumber": 6,
   "points": 50
+ },
+ {
+  "id": "tok-char-vocab",
+  "title": "Character Vocabulary With an Unknown Token",
+  "difficulty": "easy",
+  "topic": "Build a Tokenizer",
+  "estimatedTime": "10 min",
+  "functionName": "char_encode",
+  "functionSignature": "char_encode(corpus: str, text: str) -> dict",
+  "starterCode": "def char_encode(corpus, text):\n    # Your code here\n    pass\n",
+  "mission": "Build the simplest tokenizer: one id per character seen in a training corpus, with a reserved id for anything it has never seen.",
+  "taskDescription": "Implement `char_encode(corpus, text)`. The vocabulary is `\"<unk>\"` at id 0, followed by every distinct character of `corpus` in sorted order. Encode `text` to ids, using 0 for characters not in the vocabulary. Return `{\"vocab\": [...], \"ids\": [...]}`.",
+  "constraints": [
+   "Id 0 is always `<unk>`.",
+   "Characters are sorted by Python's default string order.",
+   "Each character appears once in the vocabulary."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Every character known",
+    "input": {
+     "corpus": "abca",
+     "text": "cab"
+    },
+    "expectedOutput": {
+     "vocab": [
+      "<unk>",
+      "a",
+      "b",
+      "c"
+     ],
+     "ids": [
+      3,
+      1,
+      2
+     ]
+    }
+   },
+   {
+    "id": "tc2",
+    "label": "Unseen characters map to 0",
+    "input": {
+     "corpus": "hello",
+     "text": "help!"
+    },
+    "expectedOutput": {
+     "vocab": [
+      "<unk>",
+      "e",
+      "h",
+      "l",
+      "o"
+     ],
+     "ids": [
+      2,
+      1,
+      3,
+      0,
+      0
+     ]
+    }
+   },
+   {
+    "id": "tc3",
+    "label": "Empty text",
+    "input": {
+     "corpus": "xy",
+     "text": ""
+    },
+    "expectedOutput": {
+     "vocab": [
+      "<unk>",
+      "x",
+      "y"
+     ],
+     "ids": []
+    }
+   },
+   {
+    "id": "tc4",
+    "label": "Spaces and capitals are characters too",
+    "input": {
+     "corpus": "The cat sat",
+     "text": "That cat"
+    },
+    "hidden": true,
+    "expectedOutput": {
+     "vocab": [
+      "<unk>",
+      " ",
+      "T",
+      "a",
+      "c",
+      "e",
+      "h",
+      "s",
+      "t"
+     ],
+     "ids": [
+      2,
+      6,
+      3,
+      8,
+      1,
+      4,
+      3,
+      8
+     ]
+    }
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "sorted(set(corpus)) gives the characters in a stable order.",
+   "strong": "Build a dict from character to index once, then use .get(ch, 0) per character.",
+   "concept": "A tokenizer is a fixed mapping chosen at training time. Text it never saw still has to map somewhere."
+  },
+  "conceptConnections": [
+   {
+    "title": "Foundation model internals",
+    "route": "/docs/llms-genai/foundation-model-internals",
+    "description": "How text becomes token ids, and why the tokenizer shapes cost, context length and failure modes."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Build a Tokenizer",
+  "stageNumber": 1,
+  "points": 25
+ },
+ {
+  "id": "tok-bpe-pair-counts",
+  "title": "BPE: Count Adjacent Pairs",
+  "difficulty": "easy",
+  "topic": "Build a Tokenizer",
+  "estimatedTime": "10 min",
+  "functionName": "most_frequent_pair",
+  "functionSignature": "most_frequent_pair(words: dict[str, int]) -> list",
+  "starterCode": "def most_frequent_pair(words):\n    # Your code here\n    pass\n",
+  "mission": "Find the pair of adjacent tokens that occurs most often in a word-frequency table, the choice byte-pair encoding makes at every training step.",
+  "taskDescription": "Implement `most_frequent_pair(words)`. Each key is a word already split into tokens by single spaces (`\"l o w\"`), each value is how often that word occurs. Count every adjacent token pair, weighted by word frequency. Return `[first, second, count]` for the most frequent pair, breaking ties by the smallest `(first, second)` in string order. Return `None` if no word has two tokens.",
+  "constraints": [
+   "Weight each pair by the word's frequency.",
+   "Pairs never cross word boundaries.",
+   "Ties go to the lexicographically smallest pair."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Classic example",
+    "input": {
+     "words": {
+      "l o w": 5,
+      "l o w e r": 2,
+      "n e w e s t": 6,
+      "w i d e s t": 3
+     }
+    },
+    "expectedOutput": [
+     "e",
+     "s",
+     9
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Tie broken by string order",
+    "input": {
+     "words": {
+      "a b": 1,
+      "c d": 1
+     }
+    },
+    "expectedOutput": [
+     "a",
+     "b",
+     1
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "No pairs",
+    "input": {
+     "words": {
+      "a": 3,
+      "b": 1
+     }
+    },
+    "expectedOutput": null
+   },
+   {
+    "id": "tc4",
+    "label": "Repeated pair inside one word",
+    "input": {
+     "words": {
+      "a a a": 2,
+      "a b": 3
+     }
+    },
+    "hidden": true,
+    "expectedOutput": [
+     "a",
+     "a",
+     4
+    ]
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "zip(toks, toks[1:]) walks adjacent pairs of one word.",
+   "strong": "Pick with min(counts, key=lambda p: (-counts[p], p)).",
+   "concept": "Counting within words is why BPE never merges the end of one word with the start of the next."
+  },
+  "conceptConnections": [
+   {
+    "title": "Foundation model internals",
+    "route": "/docs/llms-genai/foundation-model-internals",
+    "description": "How text becomes token ids, and why the tokenizer shapes cost, context length and failure modes."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Build a Tokenizer",
+  "stageNumber": 2,
+  "points": 25
+ },
+ {
+  "id": "tok-bpe-merge",
+  "title": "BPE: Apply One Merge",
+  "difficulty": "easy",
+  "topic": "Build a Tokenizer",
+  "estimatedTime": "10 min",
+  "functionName": "merge",
+  "functionSignature": "merge(tokens: list[str], pair: list[str], new_token: str) -> list[str]",
+  "starterCode": "def merge(tokens, pair, new_token):\n    # Your code here\n    pass\n",
+  "mission": "Replace every occurrence of a pair of adjacent tokens with one merged token, scanning left to right so overlapping matches are handled the same way every time.",
+  "taskDescription": "Implement `merge(tokens, pair, new_token)`. Walk `tokens` left to right; whenever `tokens[i]` and `tokens[i + 1]` equal `pair`, emit `new_token` and skip both; otherwise emit `tokens[i]`. Return the new list.",
+  "constraints": [
+   "Matches do not overlap: in `a a a` the pair `a a` merges once, at the start.",
+   "Do not modify the input list.",
+   "A pair that never appears returns an equal copy."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Two matches",
+    "input": {
+     "tokens": [
+      "l",
+      "o",
+      "w",
+      "l",
+      "o"
+     ],
+     "pair": [
+      "l",
+      "o"
+     ],
+     "new_token": "lo"
+    },
+    "expectedOutput": [
+     "lo",
+     "w",
+     "lo"
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Overlap merges from the left",
+    "input": {
+     "tokens": [
+      "a",
+      "a",
+      "a"
+     ],
+     "pair": [
+      "a",
+      "a"
+     ],
+     "new_token": "aa"
+    },
+    "expectedOutput": [
+     "aa",
+     "a"
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "No match",
+    "input": {
+     "tokens": [
+      "x",
+      "y"
+     ],
+     "pair": [
+      "y",
+      "x"
+     ],
+     "new_token": "yx"
+    },
+    "expectedOutput": [
+     "x",
+     "y"
+    ]
+   },
+   {
+    "id": "tc4",
+    "label": "Four in a row",
+    "input": {
+     "tokens": [
+      "b",
+      "b",
+      "b",
+      "b",
+      "c"
+     ],
+     "pair": [
+      "b",
+      "b"
+     ],
+     "new_token": "bb"
+    },
+    "hidden": true,
+    "expectedOutput": [
+     "bb",
+     "bb",
+     "c"
+    ]
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Use an index you advance by 2 after a merge and by 1 otherwise.",
+   "strong": "while i < len(tokens): check i + 1 < len(tokens) before reading tokens[i + 1].",
+   "concept": "Left-to-right, non-overlapping is the convention BPE implementations use, so training and encoding agree."
+  },
+  "conceptConnections": [
+   {
+    "title": "Foundation model internals",
+    "route": "/docs/llms-genai/foundation-model-internals",
+    "description": "How text becomes token ids, and why the tokenizer shapes cost, context length and failure modes."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Build a Tokenizer",
+  "stageNumber": 3,
+  "points": 25
+ },
+ {
+  "id": "tok-bpe-train",
+  "title": "BPE: Train a Merge List",
+  "difficulty": "hard",
+  "topic": "Build a Tokenizer",
+  "estimatedTime": "25-35 min",
+  "functionName": "train_bpe",
+  "functionSignature": "train_bpe(text: str, num_merges: int) -> list[list[str]]",
+  "starterCode": "def train_bpe(text, num_merges):\n    # Your code here\n    pass\n",
+  "mission": "Learn a byte-pair-encoding merge list from raw text: split into words, start from characters, and repeatedly merge the most frequent pair.",
+  "taskDescription": "Implement `train_bpe(text, num_merges)`. Split `text` on whitespace into words and count them. Represent each word as its characters followed by an end-of-word marker `\"</w>\"`. Then repeat `num_merges` times: find the most frequent adjacent pair (ties to the smallest pair in string order), stop early if there is none, record it, and merge it in every word, with the new token being the two strings concatenated. Return the merges in order as `[first, second]` lists.",
+  "constraints": [
+   "Append `</w>` to every word so suffixes stay distinct from prefixes.",
+   "Stop early when no pair is left.",
+   "Use the same left-to-right merge as the previous problem."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Three merges",
+    "input": {
+     "text": "low low low lower newest newest",
+     "num_merges": 3
+    },
+    "expectedOutput": [
+     [
+      "l",
+      "o"
+     ],
+     [
+      "lo",
+      "w"
+     ],
+     [
+      "low",
+      "</w>"
+     ]
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Single word",
+    "input": {
+     "text": "aaa",
+     "num_merges": 2
+    },
+    "expectedOutput": [
+     [
+      "a",
+      "a"
+     ],
+     [
+      "a",
+      "</w>"
+     ]
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Stops when nothing is left",
+    "input": {
+     "text": "ab",
+     "num_merges": 10
+    },
+    "expectedOutput": [
+     [
+      "a",
+      "b"
+     ],
+     [
+      "ab",
+      "</w>"
+     ]
+    ]
+   },
+   {
+    "id": "tc4",
+    "label": "Longer corpus",
+    "input": {
+     "text": "the cat sat on the mat the cat ate",
+     "num_merges": 6
+    },
+    "hidden": true,
+    "expectedOutput": [
+     [
+      "a",
+      "t"
+     ],
+     [
+      "at",
+      "</w>"
+     ],
+     [
+      "e",
+      "</w>"
+     ],
+     [
+      "h",
+      "e</w>"
+     ],
+     [
+      "t",
+      "he</w>"
+     ],
+     [
+      "c",
+      "at</w>"
+     ]
+    ]
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Keep a dict mapping each word's token tuple to its count, and rebuild it after every merge.",
+   "strong": "Counts change after each merge, so recount pairs every iteration (fine at this size).",
+   "concept": "The merge list is the tokenizer. Encoding replays the merges in the same order."
+  },
+  "conceptConnections": [
+   {
+    "title": "Foundation model internals",
+    "route": "/docs/llms-genai/foundation-model-internals",
+    "description": "How text becomes token ids, and why the tokenizer shapes cost, context length and failure modes."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Build a Tokenizer",
+  "stageNumber": 4,
+  "points": 100
+ },
+ {
+  "id": "tok-bpe-encode",
+  "title": "BPE: Encode a Word With Ranked Merges",
+  "difficulty": "medium",
+  "topic": "Build a Tokenizer",
+  "estimatedTime": "15-20 min",
+  "functionName": "bpe_encode",
+  "functionSignature": "bpe_encode(word: str, merges: list[list[str]]) -> list[str]",
+  "starterCode": "def bpe_encode(word, merges):\n    # Your code here\n    pass\n",
+  "mission": "Tokenize a new word with a trained merge list, applying the highest-priority merge available at each step, the way GPT-2's tokenizer does.",
+  "taskDescription": "Implement `bpe_encode(word, merges)`. Start from the word's characters plus `\"</w>\"`. A merge's rank is its index in `merges` (0 is highest priority). Repeatedly find, among the adjacent pairs currently present, the one with the lowest rank; merge all its occurrences left to right; stop when no present pair has a rank. Return the final tokens.",
+  "constraints": [
+   "Always apply the best-ranked pair present, not the first pair in the word.",
+   "Merge every occurrence of that pair before choosing the next.",
+   "Pairs not in `merges` are never merged."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Rank decides, not position",
+    "input": {
+     "word": "low",
+     "merges": [
+      [
+       "o",
+       "w"
+      ],
+      [
+       "l",
+       "o"
+      ],
+      [
+       "l",
+       "ow"
+      ]
+     ]
+    },
+    "expectedOutput": [
+     "low",
+     "</w>"
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Suffix merge",
+    "input": {
+     "word": "lower",
+     "merges": [
+      [
+       "e",
+       "r"
+      ],
+      [
+       "er",
+       "</w>"
+      ],
+      [
+       "l",
+       "o"
+      ]
+     ]
+    },
+    "expectedOutput": [
+     "lo",
+     "w",
+     "er</w>"
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "No known merges",
+    "input": {
+     "word": "xyz",
+     "merges": [
+      [
+       "a",
+       "b"
+      ]
+     ]
+    },
+    "expectedOutput": [
+     "x",
+     "y",
+     "z",
+     "</w>"
+    ]
+   },
+   {
+    "id": "tc4",
+    "label": "Repeated letters",
+    "input": {
+     "word": "aaaa",
+     "merges": [
+      [
+       "a",
+       "a"
+      ],
+      [
+       "aa",
+       "aa"
+      ],
+      [
+       "aaaa",
+       "</w>"
+      ]
+     ]
+    },
+    "hidden": true,
+    "expectedOutput": [
+     "aaaa</w>"
+    ]
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Build rank = {tuple(m): i for i, m in enumerate(merges)} once.",
+   "strong": "Each loop: candidates = pairs present that are in rank; if none, stop; else merge min(candidates, key=rank.get).",
+   "concept": "Encoding replays training: the same merges, in the same priority order."
+  },
+  "conceptConnections": [
+   {
+    "title": "Foundation model internals",
+    "route": "/docs/llms-genai/foundation-model-internals",
+    "description": "How text becomes token ids, and why the tokenizer shapes cost, context length and failure modes."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Build a Tokenizer",
+  "stageNumber": 5,
+  "points": 50
+ },
+ {
+  "id": "tok-byte-fallback",
+  "title": "Byte Fallback for Unknown Characters",
+  "difficulty": "medium",
+  "topic": "Build a Tokenizer",
+  "estimatedTime": "15-20 min",
+  "functionName": "byte_fallback_tokens",
+  "functionSignature": "byte_fallback_tokens(text: str, vocab: list[str]) -> list[str]",
+  "starterCode": "def byte_fallback_tokens(text, vocab):\n    # Your code here\n    pass\n",
+  "mission": "Never emit an unknown token: characters outside the vocabulary are encoded as their UTF-8 bytes, so any text round-trips exactly.",
+  "taskDescription": "Implement `byte_fallback_tokens(text, vocab)`. For each character of `text`: if it is in `vocab`, emit it; otherwise emit one token per byte of its UTF-8 encoding, written as `<0xHH>` with two upper-case hex digits. Return the token list.",
+  "constraints": [
+   "Use UTF-8: `\"é\"` is 2 bytes, most emoji are 4.",
+   "Hex digits are upper case and zero-padded: `<0x0A>`.",
+   "Known characters are never split into bytes."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "All known",
+    "input": {
+     "text": "cat",
+     "vocab": [
+      "a",
+      "c",
+      "t"
+     ]
+    },
+    "expectedOutput": [
+     "c",
+     "a",
+     "t"
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Accented letter falls back to two bytes",
+    "input": {
+     "text": "café",
+     "vocab": [
+      "a",
+      "c",
+      "f"
+     ]
+    },
+    "expectedOutput": [
+     "c",
+     "a",
+     "f",
+     "<0xC3>",
+     "<0xA9>"
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Newline is one byte",
+    "input": {
+     "text": "a\nb",
+     "vocab": [
+      "a",
+      "b"
+     ]
+    },
+    "expectedOutput": [
+     "a",
+     "<0x0A>",
+     "b"
+    ]
+   },
+   {
+    "id": "tc4",
+    "label": "Emoji is four bytes",
+    "input": {
+     "text": "ok👍",
+     "vocab": [
+      "o",
+      "k"
+     ]
+    },
+    "hidden": true,
+    "expectedOutput": [
+     "o",
+     "k",
+     "<0xF0>",
+     "<0x9F>",
+     "<0x91>",
+     "<0x8D>"
+    ]
+   },
+   {
+    "id": "tc5",
+    "label": "Hindi text",
+    "input": {
+     "text": "नमस्ते",
+     "vocab": [
+      "न"
+     ]
+    },
+    "hidden": true,
+    "expectedOutput": [
+     "न",
+     "<0xE0>",
+     "<0xA4>",
+     "<0xAE>",
+     "<0xE0>",
+     "<0xA4>",
+     "<0xB8>",
+     "<0xE0>",
+     "<0xA5>",
+     "<0x8D>",
+     "<0xE0>",
+     "<0xA4>",
+     "<0xA4>",
+     "<0xE0>",
+     "<0xA5>",
+     "<0x87>"
+    ]
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "ch.encode(\"utf-8\") returns the bytes of one character.",
+   "strong": "f\"<0x{b:02X}>\" formats one byte.",
+   "concept": "With 256 byte tokens in the vocabulary, every possible string has an encoding."
+  },
+  "conceptConnections": [
+   {
+    "title": "Foundation model internals",
+    "route": "/docs/llms-genai/foundation-model-internals",
+    "description": "How text becomes token ids, and why the tokenizer shapes cost, context length and failure modes."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Build a Tokenizer",
+  "stageNumber": 6,
+  "points": 50
  }
 ]

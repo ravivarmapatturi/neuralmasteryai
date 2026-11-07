@@ -1,0 +1,41 @@
+---
+title: "BPE: Apply One Merge"
+description: "Build a Tokenizer, problem 3 of 6: Replace every occurrence of a pair of adjacent tokens with one merged token, scanning left to right so overlapping matches are handled the same way every time."
+difficulty: "easy"
+topic: "Build a Tokenizer"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## One rule, applied everywhere
+
+After choosing a pair, BPE rewrites the corpus so that pair is a single token. On `l o w l o` with the merge `l o -> lo`, the result is `lo w lo`: three tokens instead of five. Every merge shortens sequences, which is the point: fewer tokens per sentence means more text fits in a context window and each forward pass covers more content.
+
+## Overlaps need a convention
+
+In `a a a`, the pair `a a` occurs at positions 0 and 1, and the two occurrences share the middle `a`. Only one can merge. Scanning left to right and skipping both tokens after a merge gives `aa a`. Any consistent rule works, but training and encoding must use the same one, or text is tokenized differently at inference than during training.
+
+> **Remember:** merge left to right, skip both tokens after a match, never read past the end.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def merge(tokens, pair, new_token):
+    """Replace every non-overlapping occurrence of pair, left to right."""
+    pair = tuple(pair)
+    out, i = [], 0
+    while i < len(tokens):
+        if i + 1 < len(tokens) and (tokens[i], tokens[i + 1]) == pair:
+            out.append(new_token)
+            i += 2
+        else:
+            out.append(tokens[i])
+            i += 1
+    return out
+```
+
+</Solution>

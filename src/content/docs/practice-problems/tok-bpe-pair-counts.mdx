@@ -1,0 +1,46 @@
+---
+title: "BPE: Count Adjacent Pairs"
+description: "Build a Tokenizer, problem 2 of 6: Find the pair of adjacent tokens that occurs most often in a word-frequency table, the choice byte-pair encoding makes at every training step."
+difficulty: "easy"
+topic: "Build a Tokenizer"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## The statistic BPE runs on
+
+**Byte-pair encoding** (Sennrich et al., 2016) builds a vocabulary bottom-up. Start with single characters, find the adjacent pair that occurs most often, give it its own token, and repeat. This problem is the counting step.
+
+Training text is first split into words and counted, so the corpus `low low low low low lower lower newest...` becomes a small table: `"l o w": 5`, `"l o w e r": 2` and so on. Each pair inside a word is counted once per occurrence of the word. In the classic example, `e s` appears in `newest` (6 times) and `widest` (3 times), 9 in total, more than any other pair.
+
+## Ties need a rule
+
+Two pairs with the same count are common in small corpora. Picking either is valid BPE, but the resulting vocabularies differ, and a tokenizer that changes between two training runs on the same data breaks reproducibility. A fixed tie-break (here: smallest pair in string order) makes training deterministic.
+
+> **Remember:** count pairs inside words, weight by word frequency, and break ties the same way every time.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def pair_counts(words):
+    """words maps a space-separated token string to its frequency."""
+    counts = {}
+    for word, freq in words.items():
+        toks = word.split(" ")
+        for a, b in zip(toks, toks[1:]):
+            counts[(a, b)] = counts.get((a, b), 0) + freq
+    return counts
+
+def most_frequent_pair(words):
+    counts = pair_counts(words)
+    if not counts:
+        return None
+    best = min(counts, key=lambda p: (-counts[p], p))
+    return [best[0], best[1], counts[best]]
+```
+
+</Solution>
