@@ -93,8 +93,8 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 82. done - Home page: show the product working in the first screen.
 83. done - Real numbers on the home page (questions, problems, pages, study plans).
 84. done - Changelog page from git history.
-85. planned - Leaderboard: weekly and all-time.
-86. planned - Community solutions (needs sign-in and moderation).
+85. done - Leaderboard: weekly and all-time.
+86. skipped - Community solutions (needs sign-in and moderation; left for a later batch with a moderation queue).
 87. planned - Product menu regrouped like Products and Resources.
 88. planned - Dark mode check on every new page.
 89. planned - 375px overflow audit after each release.
