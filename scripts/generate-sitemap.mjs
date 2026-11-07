@@ -39,6 +39,8 @@ const urls = [
   { loc: `${SITE_URL}/labs`, lastmod: null },
   { loc: `${SITE_URL}/atlas`, lastmod: null },
   ...studyRoutes().map((route) => ({ loc: `${SITE_URL}${route}`, lastmod: null })),
+  { loc: `${SITE_URL}/interview/topics`, lastmod: null },
+  ...JSON.parse(readFileSync(resolve(import.meta.dirname, '..', 'src', 'data', 'interviewTopics.generated.json'), 'utf8')).map((t) => ({ loc: `${SITE_URL}/interview/topics/${t.slug}`, lastmod: null })),
   { loc: `${SITE_URL}/glossary`, lastmod: null },
   ...glossarySlugs.map((slug) => ({ loc: `${SITE_URL}/glossary/${slug}`, lastmod: null })),
   { loc: `${SITE_URL}/interview`, lastmod: null },

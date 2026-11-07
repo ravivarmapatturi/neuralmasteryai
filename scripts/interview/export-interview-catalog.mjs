@@ -43,8 +43,12 @@ const output = resolve(root, 'src/data/interviewCatalog.generated.json');
 if (process.argv.includes('--check')) { if (readFileSync(output, 'utf8') !== result) throw new Error('Interview catalogue is stale. Run npm run generate:interviews.'); }
 else {
   writeFileSync(output, result);
+  const byGuideCount = slug => questions.filter(q => q.bank === slug).length;
   // Small companion file so the home page and search can show counts without loading the full catalogue.
   const byGuide = Object.fromEntries(guides.map(g => [g.slug, questions.filter(q => q.bank === g.slug).length]));
+  // One SEO page per topic at /interview/topics/<slug>: the question titles grouped by section.
+  const topics = guides.filter(g => byGuideCount(g.slug) > 0).map(g => ({ slug: g.slug, title: g.title, description: g.description ?? '', guideRoute: g.route, questions: questions.filter(q => q.bank === g.slug).map(q => ({ id: q.id, title: q.title, section: q.section })) }));
+  writeFileSync(resolve(root, 'src/data/interviewTopics.generated.json'), JSON.stringify(topics) + '\n');
   // Titles only, for site search; loaded on the first search query.
   writeFileSync(resolve(root, 'src/data/interviewSearch.generated.json'), JSON.stringify(questions.map(q => ({ id: q.id, title: q.title, area: q.area }))) + '\n');
   writeFileSync(resolve(root, 'src/data/interviewCounts.generated.json'), JSON.stringify({ questions: questions.length, guides: guides.length, byGuide }, null, 2) + '\n');

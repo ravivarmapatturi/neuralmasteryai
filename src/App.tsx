@@ -15,6 +15,8 @@ import Home from './components/Home';
 const PracticeListPage = lazy(() => import('./components/PracticeListPage'));
 const InterviewPage = lazy(() => import('./components/InterviewPage')); // Load question banks only when opened.
 const SimpleInterviewPage = lazy(() => import('./components/interview/SimpleInterviewPage')); // Spoken room with on-device speech & evaluation.
+const InterviewTopicsPage = lazy(() => import('./components/interview/InterviewTopicPages').then((m) => ({ default: m.InterviewTopicsPage })));
+const InterviewTopicPage = lazy(() => import('./components/interview/InterviewTopicPages').then((m) => ({ default: m.InterviewTopicPage })));
 const ChangelogPage = lazy(() => import('./components/changelog/ChangelogPage'));
 const SpeechTestPage = lazy(() => import('./components/SpeechTestPage'));
 const VoiceTestPage = lazy(() => import('./components/VoiceTestPage'));
@@ -94,6 +96,8 @@ export default function App() {
                       )}
                       <Route path="/interview" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading interview practice…</p>}><SimpleInterviewPage /></Suspense>} />
                       <Route path="/interview/questions" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading interview questions…</p>}><InterviewPage /></Suspense>} />
+                      <Route path="/interview/topics" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading interview topics…</p>}><InterviewTopicsPage /></Suspense>} />
+                      <Route path="/interview/topics/:slug" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading interview topics…</p>}><InterviewTopicPage /></Suspense>} />
                       <Route path="/interview/room" element={<Navigate to="/interview" replace />} />
                       <Route path="/interview/mock" element={<Navigate to="/interview" replace />} />
                       <Route path="/practice" element={<Navigate to="/labs" replace />} />
