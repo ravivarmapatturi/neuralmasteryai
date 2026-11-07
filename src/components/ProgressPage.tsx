@@ -99,7 +99,7 @@ export default function ProgressPage() {
     <div style={{ minHeight: '100vh', background: 'var(--nm-bg)' }}>
       <Navbar />
 
-      <section style={{ maxWidth: 1040, margin: '0 auto', padding: '2.5rem 1.5rem 3rem' }}>
+      <main style={{ maxWidth: 1040, margin: '0 auto', padding: '2.5rem 1.5rem 3rem' }}>
         <header style={{ marginBottom: '2rem' }}>
           <h1 style={{ fontSize: 'clamp(1.6rem, 3.5vw, 2.1rem)', fontWeight: 800, color: 'var(--nm-text-primary)', margin: '0 0 0.6rem' }}>
             Your progress
@@ -412,7 +412,7 @@ export default function ProgressPage() {
         >
           Reset progress
         </button>
-      </section>
+      </main>
       <ConfirmDialog
         open={confirmResetOpen}
         title="Reset all progress?"
