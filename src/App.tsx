@@ -8,10 +8,11 @@ import { ProgressProvider } from './contexts/ProgressContext';
 import { GamificationProvider } from './contexts/GamificationContext';
 import { FocusMusicProvider } from './contexts/FocusMusicContext';
 import DocLayout from './components/layout/DocLayout';
-import PracticeProblemLayout from './components/layout/PracticeProblemLayout';
+// The practice problem bank is several MB; load it only on practice routes.
+const PracticeProblemLayout = lazy(() => import('./components/layout/PracticeProblemLayout'));
 import ChooserPage from './components/ChooserPage';
 import Home from './components/Home';
-import PracticeListPage from './components/PracticeListPage';
+const PracticeListPage = lazy(() => import('./components/PracticeListPage'));
 const InterviewPage = lazy(() => import('./components/InterviewPage')); // Load question banks only when opened.
 const SimpleInterviewPage = lazy(() => import('./components/interview/SimpleInterviewPage')); // Spoken room with on-device speech & evaluation.
 const ChangelogPage = lazy(() => import('./components/changelog/ChangelogPage'));
@@ -84,7 +85,7 @@ export default function App() {
                     <Routes>
                       <Route path="/" element={<ChooserPage />} />
                       <Route path="/learn" element={<Home />} />
-                      <Route path="/labs" element={<PracticeListPage />} />
+                      <Route path="/labs" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading labs…</p>}><PracticeListPage /></Suspense>} />
                       {(!import.meta.env.PROD || import.meta.env.VITE_ENABLE_LABS === 'true') && (
                         <>
                           <Route path="/lab/speech-test" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading speech test lab…</p>}><SpeechTestPage /></Suspense>} />
@@ -97,7 +98,7 @@ export default function App() {
                       <Route path="/interview/mock" element={<Navigate to="/interview" replace />} />
                       <Route path="/practice" element={<Navigate to="/labs" replace />} />
                       <Route path="/practice/track/:topicSlug" element={<PracticeTrackPage />} />
-                      <Route path="/practice/:slug" element={<PracticeProblemLayout />} />
+                      <Route path="/practice/:slug" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading problem…</p>}><PracticeProblemLayout /></Suspense>} />
                       <Route path="/blog" element={<BlogListPage />} />
                       <Route path="/blog/series/:seriesSlug" element={<BlogSeriesPage />} />
                       <Route path="/blog/write" element={<BlogEditorPage />} />
