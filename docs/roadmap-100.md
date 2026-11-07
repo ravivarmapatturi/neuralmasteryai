@@ -53,7 +53,15 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 24. done - Related problems at the end of each problem.
 25. done - Problem count and solved count on the hub.
 26. done - NumPy sheet (8 problems).
-27-35. planned - Add problem sets: PyTorch sheet, autograd (micrograd) series, attention from scratch, tokenizer, optimizers, losses, metrics, RAG pieces, agent loop.
+27. blocked - PyTorch sheet. The in-browser judge runs Pyodide, which cannot load PyTorch, so these problems could not be checked by real tests. Needs a server-side judge first.
+28. done - Build Micrograd: a scalar autograd engine in 6 stages.
+29. planned - Attention from scratch set.
+30. planned - Tokenizer set.
+31. planned - Optimizers set.
+32. planned - Losses set.
+33. planned - Metrics set.
+34. planned - RAG pieces set.
+35. planned - Agent loop set.
 
 ### Study plans, research and projects (36-55)
 36. done - Study Plans page (/study-plans) with named plans and practice sheets, each with problem, reading and passed counts.

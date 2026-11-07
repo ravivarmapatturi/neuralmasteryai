@@ -1,0 +1,61 @@
+---
+title: "Micrograd 1: A Value That Remembers Its Parents"
+description: "Build Micrograd, problem 1 of 6: Every autograd engine starts with a number that records which numbers and which operation produced it."
+difficulty: "easy"
+topic: "Build Micrograd"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## A number with a history
+
+Backpropagation needs to know, for every intermediate result, which values and which operation produced it. In this series we build **micrograd**, a scalar autograd engine in about 100 lines, the same idea PyTorch implements for tensors.
+
+The `Value` class wraps one float. When you write `Value(2) * 3`, `__mul__` returns a new `Value(6)` and stores two facts: its parents (`_prev`) and the operation (`_op = "*"`). Write `a * b + c` and you have built a three-level graph without calling anything special.
+
+## Plain numbers on the right
+
+`Value(2) * 3` calls `Value.__mul__` with `other = 3`, an int. Without wrapping it, `other.data` fails. Wrapping means constants become leaf nodes too, which is what lets stage 2 compute gradients through expressions like `2 * x + 1`.
+
+> **Remember:** the graph is recorded during the forward pass, one node per operation. Stage 2 walks it backwards.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import math
+
+class Value:
+    """A scalar that remembers how it was computed, so it can backpropagate."""
+
+    def __init__(self, data, _children=(), _op=""):
+        self.data = data
+        self.grad = 0.0
+        self._backward = lambda: None
+        self._prev = set(_children)
+        self._op = _op
+
+    def __repr__(self):
+        return f"Value(data={self.data}, grad={self.grad})"
+
+    def __add__(self, other):
+        other = other if isinstance(other, Value) else Value(other)
+        out = Value(self.data + other.data, (self, other), "+")
+        return out
+
+    def __mul__(self, other):
+        other = other if isinstance(other, Value) else Value(other)
+        out = Value(self.data * other.data, (self, other), "*")
+        return out
+
+
+def forward(a, b, c):
+    """Build L = a * b + c from Values and describe the result node."""
+    L = Value(a) * b + c
+    return {"value": L.data, "op": L._op, "children": sorted(ch.data for ch in L._prev)}
+```
+
+</Solution>

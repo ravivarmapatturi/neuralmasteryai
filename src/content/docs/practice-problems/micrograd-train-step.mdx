@@ -1,0 +1,153 @@
+---
+title: "Micrograd 6: Train a Model With SGD"
+description: "Build Micrograd, problem 6 of 6: Close the loop: forward pass, loss, backward, update, repeat."
+difficulty: "hard"
+topic: "Build Micrograd"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Five lines that train every model
+
+Gradient descent repeats one cycle: **zero** the gradients, run the **forward** pass, compute the **loss**, call **backward**, then **step** each parameter against its gradient. PyTorch spells it `optimizer.zero_grad(); loss = ...; loss.backward(); optimizer.step()`. Our version does the same with two Values.
+
+Fitting `y = 2x + 1` from `w = b = 0`, the first step's gradients point straight towards larger `w` and `b`. After a few hundred steps at a learning rate of 0.1 the fit is close to exact.
+
+## The bug every framework user hits once
+
+Our closures accumulate with `+=`, which stage 3 needed for reused nodes. It also means a second `backward()` adds to whatever is already in `.grad`. Skip the reset and step 2 uses the sum of two steps' gradients, step 3 the sum of three, and the updates grow until training diverges. PyTorch behaves exactly the same way, which is why `zero_grad()` exists.
+
+> **Remember:** zero, forward, backward, step. You have now built the engine and the loop that every deep learning framework wraps.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import math
+
+class Value:
+    """A scalar that remembers how it was computed, so it can backpropagate."""
+
+    def __init__(self, data, _children=(), _op=""):
+        self.data = data
+        self.grad = 0.0
+        self._backward = lambda: None
+        self._prev = set(_children)
+        self._op = _op
+
+    def __repr__(self):
+        return f"Value(data={self.data}, grad={self.grad})"
+
+    def __add__(self, other):
+        other = other if isinstance(other, Value) else Value(other)
+        out = Value(self.data + other.data, (self, other), "+")
+
+        def _backward():
+            # d(a + b)/da = 1: the gradient passes through unchanged.
+            self.grad += out.grad
+            other.grad += out.grad
+
+        out._backward = _backward
+        return out
+
+    def __mul__(self, other):
+        other = other if isinstance(other, Value) else Value(other)
+        out = Value(self.data * other.data, (self, other), "*")
+
+        def _backward():
+            # d(a * b)/da = b: each side gets the other side's value.
+            self.grad += other.data * out.grad
+            other.grad += self.data * out.grad
+
+        out._backward = _backward
+        return out
+
+    def __radd__(self, other):
+        return self + other
+
+    def __rmul__(self, other):
+        return self * other
+
+    def __neg__(self):
+        return self * -1
+
+    def __sub__(self, other):
+        return self + (-other)
+
+    def __rsub__(self, other):
+        return other + (-self)
+
+    def __pow__(self, k):
+        assert isinstance(k, (int, float)), "only constant exponents"
+        out = Value(self.data ** k, (self,), f"**{k}")
+
+        def _backward():
+            self.grad += k * self.data ** (k - 1) * out.grad
+
+        out._backward = _backward
+        return out
+
+    def __truediv__(self, other):
+        return self * other ** -1
+
+    def tanh(self):
+        t = math.tanh(self.data)
+        out = Value(t, (self,), "tanh")
+
+        def _backward():
+            self.grad += (1 - t * t) * out.grad
+
+        out._backward = _backward
+        return out
+
+    def relu(self):
+        out = Value(self.data if self.data > 0 else 0.0, (self,), "relu")
+
+        def _backward():
+            self.grad += (1.0 if out.data > 0 else 0.0) * out.grad
+
+        out._backward = _backward
+        return out
+
+    def backward(self):
+        # Order nodes so every node comes after everything it depends on.
+        topo, visited = [], set()
+
+        def build(v):
+            if v not in visited:
+                visited.add(v)
+                for child in v._prev:
+                    build(child)
+                topo.append(v)
+
+        build(self)
+        self.grad = 1.0
+        for v in reversed(topo):
+            v._backward()
+
+
+def train_linear(xs, ys, w, b, lr, steps):
+    if not xs or len(xs) != len(ys):
+        raise ValueError("need equal-length, non-empty xs and ys")
+    w, b = Value(w), Value(b)
+
+    def mse():
+        total = Value(0.0)
+        for x, y in zip(xs, ys):
+            total = total + (w * x + b - y) ** 2
+        return total / len(xs)
+
+    for _ in range(steps):
+        w.grad = 0.0           # zero_grad: closures accumulate with +=
+        b.grad = 0.0
+        loss = mse()
+        loss.backward()
+        w.data -= lr * w.grad  # step: move against the gradient
+        b.data -= lr * b.grad
+    return [w.data, b.data, mse().data]
+```
+
+</Solution>

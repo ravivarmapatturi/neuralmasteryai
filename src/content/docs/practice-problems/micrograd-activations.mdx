@@ -1,0 +1,149 @@
+---
+title: "Micrograd 4: Powers, tanh and ReLU"
+description: "Build Micrograd, problem 4 of 6: Add the non-linear operations a neural network needs, each with its derivative: x ** k, tanh and ReLU."
+difficulty: "medium"
+topic: "Build Micrograd"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Non-linearity, one derivative each
+
+A network made only of `+` and `*` is a polynomial in its inputs. Neural networks need a **non-linearity** between layers. We add three operations, and each brings its own local derivative.
+
+`x ** k` for a constant `k` has derivative `k * x ** (k - 1)`. That one rule also gives division: `a / b` is `a * b ** -1`. `tanh` squashes to (-1, 1), and its derivative is `1 - tanh(x) ** 2`; we already computed `tanh(x)` for the forward pass, so reuse it. ReLU passes positive values and zeroes the rest; its gradient is 1 where it passed the value and 0 where it did not.
+
+## Where gradients vanish
+
+At `x = 3`, `tanh` is 0.995 and its derivative is 0.0099. A deep stack of saturated tanh units multiplies many such small numbers together, and the gradient reaching the first layer is close to zero. ReLU's derivative is exactly 1 on the positive side, which is a large part of why it replaced tanh in deep networks.
+
+> **Remember:** every new operation is a forward formula plus a local derivative. `backward()` does not change.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import math
+
+class Value:
+    """A scalar that remembers how it was computed, so it can backpropagate."""
+
+    def __init__(self, data, _children=(), _op=""):
+        self.data = data
+        self.grad = 0.0
+        self._backward = lambda: None
+        self._prev = set(_children)
+        self._op = _op
+
+    def __repr__(self):
+        return f"Value(data={self.data}, grad={self.grad})"
+
+    def __add__(self, other):
+        other = other if isinstance(other, Value) else Value(other)
+        out = Value(self.data + other.data, (self, other), "+")
+
+        def _backward():
+            # d(a + b)/da = 1: the gradient passes through unchanged.
+            self.grad += out.grad
+            other.grad += out.grad
+
+        out._backward = _backward
+        return out
+
+    def __mul__(self, other):
+        other = other if isinstance(other, Value) else Value(other)
+        out = Value(self.data * other.data, (self, other), "*")
+
+        def _backward():
+            # d(a * b)/da = b: each side gets the other side's value.
+            self.grad += other.data * out.grad
+            other.grad += self.data * out.grad
+
+        out._backward = _backward
+        return out
+
+    def __radd__(self, other):
+        return self + other
+
+    def __rmul__(self, other):
+        return self * other
+
+    def __neg__(self):
+        return self * -1
+
+    def __sub__(self, other):
+        return self + (-other)
+
+    def __rsub__(self, other):
+        return other + (-self)
+
+    def __pow__(self, k):
+        assert isinstance(k, (int, float)), "only constant exponents"
+        out = Value(self.data ** k, (self,), f"**{k}")
+
+        def _backward():
+            self.grad += k * self.data ** (k - 1) * out.grad
+
+        out._backward = _backward
+        return out
+
+    def __truediv__(self, other):
+        return self * other ** -1
+
+    def tanh(self):
+        t = math.tanh(self.data)
+        out = Value(t, (self,), "tanh")
+
+        def _backward():
+            self.grad += (1 - t * t) * out.grad
+
+        out._backward = _backward
+        return out
+
+    def relu(self):
+        out = Value(self.data if self.data > 0 else 0.0, (self,), "relu")
+
+        def _backward():
+            self.grad += (1.0 if out.data > 0 else 0.0) * out.grad
+
+        out._backward = _backward
+        return out
+
+    def backward(self):
+        # Order nodes so every node comes after everything it depends on.
+        topo, visited = [], set()
+
+        def build(v):
+            if v not in visited:
+                visited.add(v)
+                for child in v._prev:
+                    build(child)
+                topo.append(v)
+
+        build(self)
+        self.grad = 1.0
+        for v in reversed(topo):
+            v._backward()
+
+
+def activation_grads(op, x):
+    """Apply one operation to Value(x), backpropagate, return [output, d output / dx]."""
+    v = Value(x)
+    if op == "tanh":
+        out = v.tanh()
+    elif op == "relu":
+        out = v.relu()
+    elif op == "cube":
+        out = v ** 3
+    elif op == "inverse":
+        out = v ** -1
+    else:  # "squash": tanh(2x + 1) / 2
+        out = (v * 2 + 1).tanh() / 2
+    out.backward()
+    return [out.data, v.grad]
+```
+
+</Solution>

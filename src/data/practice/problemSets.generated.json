@@ -1458,5 +1458,735 @@
   "stage": "NumPy Sheet",
   "stageNumber": 8,
   "points": 100
+ },
+ {
+  "id": "micrograd-value-ops",
+  "title": "Micrograd 1: A Value That Remembers Its Parents",
+  "difficulty": "easy",
+  "topic": "Build Micrograd",
+  "estimatedTime": "10 min",
+  "functionName": "forward",
+  "functionSignature": "forward(a: float, b: float, c: float) -> dict",
+  "starterCode": "import math\n\nclass Value:\n    \"\"\"A scalar that remembers how it was computed, so it can backpropagate.\"\"\"\n\n    def __init__(self, data, _children=(), _op=\"\"):\n        self.data = data\n        self.grad = 0.0\n        self._backward = lambda: None\n        self._prev = set(_children)\n        self._op = _op\n\n    def __repr__(self):\n        return f\"Value(data={self.data}, grad={self.grad})\"\n\n    def __add__(self, other):\n        # Your code here\n        raise NotImplementedError\n\n    def __mul__(self, other):\n        # Your code here\n        raise NotImplementedError\n\n\ndef forward(a, b, c):\n    \"\"\"Build L = a * b + c from Values and describe the result node.\"\"\"\n    L = Value(a) * b + c\n    return {\"value\": L.data, \"op\": L._op, \"children\": sorted(ch.data for ch in L._prev)}\n",
+  "mission": "Every autograd engine starts with a number that records which numbers and which operation produced it. Write addition and multiplication for Value so expressions build that graph as they compute.",
+  "taskDescription": "Implement `Value.__add__` and `Value.__mul__`. Each returns a new `Value` whose `data` is the result, whose `_prev` holds the two inputs and whose `_op` is `\"+\"` or `\"*\"`. A plain number on the right (`Value(2) * 3`) must be wrapped in a Value first. The provided `forward(a, b, c)` builds `a * b + c` and reports the final node.",
+  "constraints": [
+   "Wrap plain numbers: `other = other if isinstance(other, Value) else Value(other)`.",
+   "Pass the inputs as `_children` so `_prev` records them.",
+   "Leave gradients alone in this stage."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "2 * 3 + 4",
+    "input": {
+     "a": 2,
+     "b": 3,
+     "c": 4
+    },
+    "expectedOutput": {
+     "value": 10,
+     "op": "+",
+     "children": [
+      4,
+      6
+     ]
+    }
+   },
+   {
+    "id": "tc2",
+    "label": "Negative numbers",
+    "input": {
+     "a": -1.5,
+     "b": 2,
+     "c": 0.5
+    },
+    "expectedOutput": {
+     "value": -2.5,
+     "op": "+",
+     "children": [
+      -3.0,
+      0.5
+     ]
+    }
+   },
+   {
+    "id": "tc3",
+    "label": "Zero product",
+    "input": {
+     "a": 0,
+     "b": 7,
+     "c": -2
+    },
+    "hidden": true,
+    "expectedOutput": {
+     "value": -2,
+     "op": "+",
+     "children": [
+      -2,
+      0
+     ]
+    }
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "The result is Value(self.data + other.data, (self, other), \"+\").",
+   "strong": "In forward, `b` and `c` arrive as plain numbers, so Value(a) * b only works if __mul__ wraps them.",
+   "concept": "The graph is built as a side effect of ordinary arithmetic. That is what PyTorch calls define-by-run."
+  },
+  "conceptConnections": [
+   {
+    "title": "Neural network fundamentals",
+    "route": "/docs/deep-learning/neural-network-fundamentals",
+    "description": "Forward pass, backpropagation and the chain rule that this engine implements."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Build Micrograd",
+  "stageNumber": 1,
+  "points": 25
+ },
+ {
+  "id": "micrograd-local-backward",
+  "title": "Micrograd 2: Local Gradients for + and *",
+  "difficulty": "easy",
+  "topic": "Build Micrograd",
+  "estimatedTime": "10 min",
+  "functionName": "grads",
+  "functionSignature": "grads(a: float, b: float, c: float) -> list[float]",
+  "starterCode": "import math\n\nclass Value:\n    \"\"\"A scalar that remembers how it was computed, so it can backpropagate.\"\"\"\n\n    def __init__(self, data, _children=(), _op=\"\"):\n        self.data = data\n        self.grad = 0.0\n        self._backward = lambda: None\n        self._prev = set(_children)\n        self._op = _op\n\n    def __repr__(self):\n        return f\"Value(data={self.data}, grad={self.grad})\"\n\n    def __add__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data + other.data, (self, other), \"+\")\n        # Attach out._backward here.\n        return out\n\n    def __mul__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data * other.data, (self, other), \"*\")\n        # Attach out._backward here.\n        return out\n\n\ndef grads(a, b, c):\n    \"\"\"L = a * b + c. Run each node's _backward by hand, output first.\"\"\"\n    a, b, c = Value(a), Value(b), Value(c)\n    ab = a * b\n    L = ab + c\n    L.grad = 1.0\n    L._backward()\n    ab._backward()\n    return [L.data, a.grad, b.grad, c.grad]\n",
+  "mission": "Teach each operation its piece of the chain rule: a closure that takes the output's gradient and adds the right amount to each input's gradient.",
+  "taskDescription": "Give `__add__` and `__mul__` a `_backward` closure stored on the output node. For `out = a + b`, both inputs receive `out.grad`. For `out = a * b`, `a` receives `b.data * out.grad` and `b` receives `a.data * out.grad`. Use `+=`. The provided `grads(a, b, c)` calls the closures by hand for `L = a * b + c` and returns `[L, dL/da, dL/db, dL/dc]`.",
+  "constraints": [
+   "Accumulate with `+=`, never `=`: stage 3 reuses nodes, and `=` would drop gradient.",
+   "Each closure only uses its own inputs and `out.grad`.",
+   "Keep the forward results from stage 1 unchanged."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "2 * 3 + 4",
+    "input": {
+     "a": 2,
+     "b": 3,
+     "c": 4
+    },
+    "expectedOutput": [
+     10,
+     3.0,
+     2.0,
+     1.0
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Negative inputs",
+    "input": {
+     "a": -2,
+     "b": 5,
+     "c": 1
+    },
+    "expectedOutput": [
+     -9,
+     5.0,
+     -2.0,
+     1.0
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Fractions",
+    "input": {
+     "a": 0.5,
+     "b": -4,
+     "c": 10
+    },
+    "hidden": true,
+    "expectedOutput": [
+     8.0,
+     -4.0,
+     0.5,
+     1.0
+    ]
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Define def _backward(): ... inside __mul__, then set out._backward = _backward before returning.",
+   "strong": "The closure captures self, other and out, so it can read out.grad after the forward pass has finished.",
+   "concept": "The chain rule is local: each node only needs its inputs' values and its output's gradient."
+  },
+  "conceptConnections": [
+   {
+    "title": "Neural network fundamentals",
+    "route": "/docs/deep-learning/neural-network-fundamentals",
+    "description": "Forward pass, backpropagation and the chain rule that this engine implements."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": "micrograd-value-ops",
+  "stage": "Build Micrograd",
+  "stageNumber": 2,
+  "points": 25
+ },
+ {
+  "id": "micrograd-topological-backward",
+  "title": "Micrograd 3: backward() in Topological Order",
+  "difficulty": "medium",
+  "topic": "Build Micrograd",
+  "estimatedTime": "15-20 min",
+  "functionName": "grads_of",
+  "functionSignature": "grads_of(expr: str, x: float, y: float) -> list[float]",
+  "starterCode": "import math\n\nclass Value:\n    \"\"\"A scalar that remembers how it was computed, so it can backpropagate.\"\"\"\n\n    def __init__(self, data, _children=(), _op=\"\"):\n        self.data = data\n        self.grad = 0.0\n        self._backward = lambda: None\n        self._prev = set(_children)\n        self._op = _op\n\n    def __repr__(self):\n        return f\"Value(data={self.data}, grad={self.grad})\"\n\n    def __add__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data + other.data, (self, other), \"+\")\n\n        def _backward():\n            # d(a + b)/da = 1: the gradient passes through unchanged.\n            self.grad += out.grad\n            other.grad += out.grad\n\n        out._backward = _backward\n        return out\n\n    def __mul__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data * other.data, (self, other), \"*\")\n\n        def _backward():\n            # d(a * b)/da = b: each side gets the other side's value.\n            self.grad += other.data * out.grad\n            other.grad += self.data * out.grad\n\n        out._backward = _backward\n        return out\n\n    def __radd__(self, other):\n        return self + other\n\n    def __rmul__(self, other):\n        return self * other\n\n    def __neg__(self):\n        return self * -1\n\n    def __sub__(self, other):\n        return self + (-other)\n\n    def __rsub__(self, other):\n        return other + (-self)\n\n    def backward(self):\n        # Your code here\n        raise NotImplementedError\n\n\ndef grads_of(expr, x, y):\n    \"\"\"Build one of a few expressions, call backward(), report value and grads.\"\"\"\n    x, y = Value(x), Value(y)\n    if expr == \"reuse\":\n        L = x * x + x\n    elif expr == \"chain\":\n        L = (x * y + x) * y\n    elif expr == \"diamond\":\n        a = x * y\n        L = (a + a) * a\n    else:\n        L = x * y - y * 3\n    L.backward()\n    return [L.data, x.grad, y.grad]\n",
+  "mission": "Write the one method that turns local rules into full backpropagation: order the graph so every node's gradient is complete before it passes gradient on, then run each closure once.",
+  "taskDescription": "Implement `Value.backward()`. Build a list of every node reachable from `self` in **topological order** (each node after all of its inputs), set `self.grad = 1.0`, then call `_backward()` on each node in reverse order. The provided `grads_of(expr, x, y)` builds expressions that reuse nodes and returns `[L, dL/dx, dL/dy]`.",
+  "constraints": [
+   "Visit each node once, even if it is reachable along several paths.",
+   "Call every `_backward` exactly once, outputs before inputs.",
+   "The seed gradient of the output is 1.0."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "x * x + x reuses x",
+    "input": {
+     "expr": "reuse",
+     "x": 3,
+     "y": 0
+    },
+    "expectedOutput": [
+     12,
+     7.0,
+     0.0
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "(x*y + x) * y",
+    "input": {
+     "expr": "chain",
+     "x": 2,
+     "y": 3
+    },
+    "expectedOutput": [
+     24,
+     12.0,
+     14.0
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Diamond: a = x*y, (a + a) * a",
+    "input": {
+     "expr": "diamond",
+     "x": 1,
+     "y": 2
+    },
+    "expectedOutput": [
+     8,
+     16.0,
+     8.0
+    ]
+   },
+   {
+    "id": "tc4",
+    "label": "Subtraction",
+    "input": {
+     "expr": "minus",
+     "x": 4,
+     "y": -1
+    },
+    "hidden": true,
+    "expectedOutput": [
+     -1,
+     -1.0,
+     1.0
+    ]
+   },
+   {
+    "id": "tc5",
+    "label": "Diamond with negatives",
+    "input": {
+     "expr": "diamond",
+     "x": -1.5,
+     "y": 2
+    },
+    "hidden": true,
+    "expectedOutput": [
+     18.0,
+     -24.0,
+     18.0
+    ]
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "A depth-first search that appends a node after visiting all its children produces a topological order.",
+   "strong": "Keep a visited set. Then self.grad = 1.0 and for v in reversed(topo): v._backward().",
+   "concept": "Reverse topological order guarantees a node has received all of its gradient before it distributes any."
+  },
+  "conceptConnections": [
+   {
+    "title": "Neural network fundamentals",
+    "route": "/docs/deep-learning/neural-network-fundamentals",
+    "description": "Forward pass, backpropagation and the chain rule that this engine implements."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": "micrograd-local-backward",
+  "stage": "Build Micrograd",
+  "stageNumber": 3,
+  "points": 50
+ },
+ {
+  "id": "micrograd-activations",
+  "title": "Micrograd 4: Powers, tanh and ReLU",
+  "difficulty": "medium",
+  "topic": "Build Micrograd",
+  "estimatedTime": "15-20 min",
+  "functionName": "activation_grads",
+  "functionSignature": "activation_grads(op: str, x: float) -> list[float]",
+  "starterCode": "import math\n\nclass Value:\n    \"\"\"A scalar that remembers how it was computed, so it can backpropagate.\"\"\"\n\n    def __init__(self, data, _children=(), _op=\"\"):\n        self.data = data\n        self.grad = 0.0\n        self._backward = lambda: None\n        self._prev = set(_children)\n        self._op = _op\n\n    def __repr__(self):\n        return f\"Value(data={self.data}, grad={self.grad})\"\n\n    def __add__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data + other.data, (self, other), \"+\")\n\n        def _backward():\n            # d(a + b)/da = 1: the gradient passes through unchanged.\n            self.grad += out.grad\n            other.grad += out.grad\n\n        out._backward = _backward\n        return out\n\n    def __mul__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data * other.data, (self, other), \"*\")\n\n        def _backward():\n            # d(a * b)/da = b: each side gets the other side's value.\n            self.grad += other.data * out.grad\n            other.grad += self.data * out.grad\n\n        out._backward = _backward\n        return out\n\n    def __radd__(self, other):\n        return self + other\n\n    def __rmul__(self, other):\n        return self * other\n\n    def __neg__(self):\n        return self * -1\n\n    def __sub__(self, other):\n        return self + (-other)\n\n    def __rsub__(self, other):\n        return other + (-self)\n\n    def __pow__(self, k):\n        # Your code here\n        raise NotImplementedError\n\n    def tanh(self):\n        # Your code here\n        raise NotImplementedError\n\n    def relu(self):\n        # Your code here\n        raise NotImplementedError\n\n    def __truediv__(self, other):\n        return self * other ** -1\n\n    def backward(self):\n        # Order nodes so every node comes after everything it depends on.\n        topo, visited = [], set()\n\n        def build(v):\n            if v not in visited:\n                visited.add(v)\n                for child in v._prev:\n                    build(child)\n                topo.append(v)\n\n        build(self)\n        self.grad = 1.0\n        for v in reversed(topo):\n            v._backward()\n\n\ndef activation_grads(op, x):\n    \"\"\"Apply one operation to Value(x), backpropagate, return [output, d output / dx].\"\"\"\n    v = Value(x)\n    if op == \"tanh\":\n        out = v.tanh()\n    elif op == \"relu\":\n        out = v.relu()\n    elif op == \"cube\":\n        out = v ** 3\n    elif op == \"inverse\":\n        out = v ** -1\n    else:  # \"squash\": tanh(2x + 1) / 2\n        out = (v * 2 + 1).tanh() / 2\n    out.backward()\n    return [out.data, v.grad]\n",
+  "mission": "Add the non-linear operations a neural network needs, each with its derivative: x ** k, tanh and ReLU. Division comes for free from the power rule.",
+  "taskDescription": "Implement `__pow__(k)` for a constant exponent `k`, `tanh()` and `relu()`, each returning a new Value with a `_backward` closure. Derivatives: `k * x**(k-1)`, `1 - tanh(x)**2`, and 1 where the ReLU output is positive (else 0). The provided `activation_grads(op, x)` returns `[output, d output / dx]`.",
+  "constraints": [
+   "`k` is an int or float, not a Value.",
+   "Reuse the tanh output `t` in its derivative instead of recomputing tanh.",
+   "ReLU's gradient at exactly 0 is 0."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "tanh(0.5)",
+    "input": {
+     "op": "tanh",
+     "x": 0.5
+    },
+    "expectedOutput": [
+     0.46211715726000974,
+     0.7864477329659274
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "ReLU of a negative",
+    "input": {
+     "op": "relu",
+     "x": -2
+    },
+    "expectedOutput": [
+     0.0,
+     0.0
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "x cubed",
+    "input": {
+     "op": "cube",
+     "x": 2
+    },
+    "expectedOutput": [
+     8,
+     12.0
+    ]
+   },
+   {
+    "id": "tc4",
+    "label": "1 / x via x ** -1",
+    "input": {
+     "op": "inverse",
+     "x": 4
+    },
+    "expectedOutput": [
+     0.25,
+     -0.0625
+    ]
+   },
+   {
+    "id": "tc5",
+    "label": "tanh(2x + 1) / 2",
+    "input": {
+     "op": "squash",
+     "x": 0.25
+    },
+    "hidden": true,
+    "expectedOutput": [
+     0.4525741268224332,
+     0.18070663892364858
+    ]
+   },
+   {
+    "id": "tc6",
+    "label": "ReLU of a positive",
+    "input": {
+     "op": "relu",
+     "x": 1.5
+    },
+    "hidden": true,
+    "expectedOutput": [
+     1.5,
+     1.0
+    ]
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Same shape as __mul__: compute out, define _backward with +=, attach it, return out.",
+   "strong": "tanh: t = math.tanh(self.data); self.grad += (1 - t * t) * out.grad.",
+   "concept": "Division is x * y ** -1, so the power rule gives its gradient without a separate rule."
+  },
+  "conceptConnections": [
+   {
+    "title": "Neural network fundamentals",
+    "route": "/docs/deep-learning/neural-network-fundamentals",
+    "description": "Forward pass, backpropagation and the chain rule that this engine implements."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": "micrograd-topological-backward",
+  "stage": "Build Micrograd",
+  "stageNumber": 4,
+  "points": 50
+ },
+ {
+  "id": "micrograd-neuron",
+  "title": "Micrograd 5: A Neuron and Its Gradients",
+  "difficulty": "medium",
+  "topic": "Build Micrograd",
+  "estimatedTime": "15-20 min",
+  "functionName": "neuron_grads",
+  "functionSignature": "neuron_grads(x: list[float], w: list[float], b: float) -> dict",
+  "starterCode": "import math\n\nclass Value:\n    \"\"\"A scalar that remembers how it was computed, so it can backpropagate.\"\"\"\n\n    def __init__(self, data, _children=(), _op=\"\"):\n        self.data = data\n        self.grad = 0.0\n        self._backward = lambda: None\n        self._prev = set(_children)\n        self._op = _op\n\n    def __repr__(self):\n        return f\"Value(data={self.data}, grad={self.grad})\"\n\n    def __add__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data + other.data, (self, other), \"+\")\n\n        def _backward():\n            # d(a + b)/da = 1: the gradient passes through unchanged.\n            self.grad += out.grad\n            other.grad += out.grad\n\n        out._backward = _backward\n        return out\n\n    def __mul__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data * other.data, (self, other), \"*\")\n\n        def _backward():\n            # d(a * b)/da = b: each side gets the other side's value.\n            self.grad += other.data * out.grad\n            other.grad += self.data * out.grad\n\n        out._backward = _backward\n        return out\n\n    def __radd__(self, other):\n        return self + other\n\n    def __rmul__(self, other):\n        return self * other\n\n    def __neg__(self):\n        return self * -1\n\n    def __sub__(self, other):\n        return self + (-other)\n\n    def __rsub__(self, other):\n        return other + (-self)\n\n    def __pow__(self, k):\n        assert isinstance(k, (int, float)), \"only constant exponents\"\n        out = Value(self.data ** k, (self,), f\"**{k}\")\n\n        def _backward():\n            self.grad += k * self.data ** (k - 1) * out.grad\n\n        out._backward = _backward\n        return out\n\n    def __truediv__(self, other):\n        return self * other ** -1\n\n    def tanh(self):\n        t = math.tanh(self.data)\n        out = Value(t, (self,), \"tanh\")\n\n        def _backward():\n            self.grad += (1 - t * t) * out.grad\n\n        out._backward = _backward\n        return out\n\n    def relu(self):\n        out = Value(self.data if self.data > 0 else 0.0, (self,), \"relu\")\n\n        def _backward():\n            self.grad += (1.0 if out.data > 0 else 0.0) * out.grad\n\n        out._backward = _backward\n        return out\n\n    def backward(self):\n        # Order nodes so every node comes after everything it depends on.\n        topo, visited = [], set()\n\n        def build(v):\n            if v not in visited:\n                visited.add(v)\n                for child in v._prev:\n                    build(child)\n                topo.append(v)\n\n        build(self)\n        self.grad = 1.0\n        for v in reversed(topo):\n            v._backward()\n\n\ndef neuron_grads(x, w, b):\n    \"\"\"out = tanh(sum(w_i * x_i) + b). Return out and the gradients of out\n    with respect to every weight and the bias.\"\"\"\n    # Your code here\n    pass\n",
+  "mission": "Use the finished engine to build one tanh neuron and read off the gradient of its output with respect to every weight. This is the quantity a training step uses.",
+  "taskDescription": "Implement `neuron_grads(x, w, b)`. Wrap the weights and bias as Values, compute `out = tanh(sum(w_i * x_i) + b)`, call `out.backward()`, and return `{\"out\": out.data, \"dw\": [gradient of each weight], \"db\": gradient of b}`. Raise `ValueError` if `x` and `w` have different lengths.",
+  "constraints": [
+   "Use the Value engine above: no hand-derived formulas.",
+   "Start the sum from the bias Value so every term is part of the graph.",
+   "Raise ValueError when len(x) != len(w)."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Two inputs",
+    "input": {
+     "x": [
+      2,
+      -1
+     ],
+     "w": [
+      0.5,
+      1
+     ],
+     "b": 0
+    },
+    "expectedOutput": {
+     "out": 0.0,
+     "dw": [
+      2.0,
+      -1.0
+     ],
+     "db": 1.0
+    }
+   },
+   {
+    "id": "tc2",
+    "label": "Saturated neuron",
+    "input": {
+     "x": [
+      1,
+      1,
+      1
+     ],
+     "w": [
+      1,
+      1,
+      1
+     ],
+     "b": 1
+    },
+    "expectedOutput": {
+     "out": 0.999329299739067,
+     "dw": [
+      0.0013409506830258655,
+      0.0013409506830258655,
+      0.0013409506830258655
+     ],
+     "db": 0.0013409506830258655
+    }
+   },
+   {
+    "id": "tc3",
+    "label": "Length mismatch",
+    "input": {
+     "x": [
+      1,
+      2
+     ],
+     "w": [
+      1
+     ],
+     "b": 0
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc4",
+    "label": "Mixed signs",
+    "input": {
+     "x": [
+      0.5,
+      -1.5,
+      2
+     ],
+     "w": [
+      -0.3,
+      0.8,
+      0.1
+     ],
+     "b": 0.2
+    },
+    "hidden": true,
+    "expectedOutput": {
+     "out": -0.7397830512740045,
+     "dw": [
+      0.22636051852386185,
+      -0.6790815555715856,
+      0.9054420740954474
+     ],
+     "db": 0.4527210370477237
+    }
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "ws = [Value(wi) for wi in w]; bv = Value(b). Inputs x can stay plain numbers.",
+   "strong": "act = bv; for wi, xi in zip(ws, x): act = act + wi * xi; out = act.tanh(); out.backward().",
+   "concept": "dout/dw_i = (1 - out**2) * x_i: each weight's gradient is its input scaled by the tanh slope."
+  },
+  "conceptConnections": [
+   {
+    "title": "Neural network fundamentals",
+    "route": "/docs/deep-learning/neural-network-fundamentals",
+    "description": "Forward pass, backpropagation and the chain rule that this engine implements."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": "micrograd-activations",
+  "stage": "Build Micrograd",
+  "stageNumber": 5,
+  "points": 50
+ },
+ {
+  "id": "micrograd-train-step",
+  "title": "Micrograd 6: Train a Model With SGD",
+  "difficulty": "hard",
+  "topic": "Build Micrograd",
+  "estimatedTime": "25-35 min",
+  "functionName": "train_linear",
+  "functionSignature": "train_linear(xs: list[float], ys: list[float], w: float, b: float, lr: float, steps: int) -> list[float]",
+  "starterCode": "import math\n\nclass Value:\n    \"\"\"A scalar that remembers how it was computed, so it can backpropagate.\"\"\"\n\n    def __init__(self, data, _children=(), _op=\"\"):\n        self.data = data\n        self.grad = 0.0\n        self._backward = lambda: None\n        self._prev = set(_children)\n        self._op = _op\n\n    def __repr__(self):\n        return f\"Value(data={self.data}, grad={self.grad})\"\n\n    def __add__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data + other.data, (self, other), \"+\")\n\n        def _backward():\n            # d(a + b)/da = 1: the gradient passes through unchanged.\n            self.grad += out.grad\n            other.grad += out.grad\n\n        out._backward = _backward\n        return out\n\n    def __mul__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data * other.data, (self, other), \"*\")\n\n        def _backward():\n            # d(a * b)/da = b: each side gets the other side's value.\n            self.grad += other.data * out.grad\n            other.grad += self.data * out.grad\n\n        out._backward = _backward\n        return out\n\n    def __radd__(self, other):\n        return self + other\n\n    def __rmul__(self, other):\n        return self * other\n\n    def __neg__(self):\n        return self * -1\n\n    def __sub__(self, other):\n        return self + (-other)\n\n    def __rsub__(self, other):\n        return other + (-self)\n\n    def __pow__(self, k):\n        assert isinstance(k, (int, float)), \"only constant exponents\"\n        out = Value(self.data ** k, (self,), f\"**{k}\")\n\n        def _backward():\n            self.grad += k * self.data ** (k - 1) * out.grad\n\n        out._backward = _backward\n        return out\n\n    def __truediv__(self, other):\n        return self * other ** -1\n\n    def tanh(self):\n        t = math.tanh(self.data)\n        out = Value(t, (self,), \"tanh\")\n\n        def _backward():\n            self.grad += (1 - t * t) * out.grad\n\n        out._backward = _backward\n        return out\n\n    def relu(self):\n        out = Value(self.data if self.data > 0 else 0.0, (self,), \"relu\")\n\n        def _backward():\n            self.grad += (1.0 if out.data > 0 else 0.0) * out.grad\n\n        out._backward = _backward\n        return out\n\n    def backward(self):\n        # Order nodes so every node comes after everything it depends on.\n        topo, visited = [], set()\n\n        def build(v):\n            if v not in visited:\n                visited.add(v)\n                for child in v._prev:\n                    build(child)\n                topo.append(v)\n\n        build(self)\n        self.grad = 1.0\n        for v in reversed(topo):\n            v._backward()\n\n\ndef train_linear(xs, ys, w, b, lr, steps):\n    \"\"\"Fit y = w * x + b by gradient descent on mean squared error.\n    Return [w, b, loss] after `steps` updates, where loss is the MSE at\n    the final w and b.\"\"\"\n    # Your code here\n    pass\n",
+  "mission": "Close the loop: forward pass, loss, backward, update, repeat. Get the one easily missed step right, resetting gradients before every backward pass.",
+  "taskDescription": "Implement `train_linear(xs, ys, w, b, lr, steps)`. Keep `w` and `b` as Values. Each step: set both `.grad` to 0, compute the mean squared error `sum((w*x + b - y)**2) / n` as a Value, call `backward()`, then update `w.data -= lr * w.grad` and the same for `b`. After `steps` updates return `[w, b, final_loss]` as floats, where `final_loss` is the MSE at the final parameters. Raise `ValueError` if `xs` is empty or `xs` and `ys` differ in length.",
+  "constraints": [
+   "Zero both gradients at the start of every step: `+=` in the closures accumulates across calls.",
+   "Update `.data`, not the Value objects, so the same leaf nodes carry through every step.",
+   "`steps = 0` returns the starting parameters and their loss."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Already perfect",
+    "input": {
+     "xs": [
+      1,
+      2,
+      3
+     ],
+     "ys": [
+      2,
+      4,
+      6
+     ],
+     "w": 2,
+     "b": 0,
+     "lr": 0.1,
+     "steps": 5
+    },
+    "expectedOutput": [
+     2.0,
+     0.0,
+     0.0
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "One step from zero",
+    "input": {
+     "xs": [
+      1,
+      2
+     ],
+     "ys": [
+      3,
+      5
+     ],
+     "w": 0,
+     "b": 0,
+     "lr": 0.1,
+     "steps": 1
+    },
+    "expectedOutput": [
+     1.3,
+     0.8,
+     1.6849999999999992
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Several steps need zeroed grads",
+    "input": {
+     "xs": [
+      0,
+      1,
+      2,
+      3
+     ],
+     "ys": [
+      1,
+      3,
+      5,
+      7
+     ],
+     "w": 0,
+     "b": 0,
+     "lr": 0.05,
+     "steps": 20
+    },
+    "expectedOutput": [
+     2.0132442425386063,
+     0.9716260429966127,
+     0.00029164159250652955
+    ]
+   },
+   {
+    "id": "tc4",
+    "label": "No steps",
+    "input": {
+     "xs": [
+      1
+     ],
+     "ys": [
+      2
+     ],
+     "w": 0.5,
+     "b": 0.5,
+     "lr": 0.1,
+     "steps": 0
+    },
+    "expectedOutput": [
+     0.5,
+     0.5,
+     1.0
+    ]
+   },
+   {
+    "id": "tc5",
+    "label": "Empty data",
+    "input": {
+     "xs": [],
+     "ys": [],
+     "w": 0,
+     "b": 0,
+     "lr": 0.1,
+     "steps": 1
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc6",
+    "label": "Long run converges",
+    "input": {
+     "xs": [
+      -1,
+      0,
+      1,
+      2
+     ],
+     "ys": [
+      -2.5,
+      -0.5,
+      1.5,
+      3.5
+     ],
+     "w": 0.1,
+     "b": 0.1,
+     "lr": 0.1,
+     "steps": 200
+    },
+    "hidden": true,
+    "expectedOutput": [
+     1.999999999999904,
+     -0.499999999999845,
+     2.295604955715775e-26
+    ]
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Build a fresh loss graph every step from the same w and b Values.",
+   "strong": "Forgetting w.grad = 0 makes step 2 use the sum of step 1 and step 2 gradients, and the fit drifts or diverges.",
+   "concept": "This is the whole training loop of every framework: zero_grad, forward, loss, backward, step."
+  },
+  "conceptConnections": [
+   {
+    "title": "Neural network fundamentals",
+    "route": "/docs/deep-learning/neural-network-fundamentals",
+    "description": "Forward pass, backpropagation and the chain rule that this engine implements."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": "micrograd-neuron",
+  "stage": "Build Micrograd",
+  "stageNumber": 6,
+  "points": 100
  }
 ]

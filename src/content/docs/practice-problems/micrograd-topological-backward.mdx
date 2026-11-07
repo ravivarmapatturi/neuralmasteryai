@@ -1,0 +1,116 @@
+---
+title: "Micrograd 3: backward() in Topological Order"
+description: "Build Micrograd, problem 3 of 6: Write the one method that turns local rules into full backpropagation: order the graph so every node's gradient is complete before it passes gradient on, then run each closure once."
+difficulty: "medium"
+topic: "Build Micrograd"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## The order is the whole algorithm
+
+With `L = x * x + x` and `x = 3`, the answer is `dL/dx = 2x + 1 = 7`. Three gradient contributions reach `x`: 3 and 3 from the two sides of `x * x`, and 1 from `+ x`. A node may only pass its gradient on once all of those have arrived.
+
+A **topological order** lists every node after all of the nodes it was computed from. Depth-first search gives one: visit a node's inputs first, then append the node. Walking that list in reverse visits the output first and each input only after everything that uses it.
+
+## Visit once, not once per path
+
+In the diamond `a = x * y; L = (a + a) * a`, `a` is reachable along two paths. Without the visited set, DFS appends `a` twice, its closure runs twice, and its full gradient is pushed into `x` and `y` twice. The test result comes out wrong even though every local rule is right.
+
+> **Remember:** topological sort, seed the output with 1.0, call every `_backward` once in reverse. That is backpropagation.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import math
+
+class Value:
+    """A scalar that remembers how it was computed, so it can backpropagate."""
+
+    def __init__(self, data, _children=(), _op=""):
+        self.data = data
+        self.grad = 0.0
+        self._backward = lambda: None
+        self._prev = set(_children)
+        self._op = _op
+
+    def __repr__(self):
+        return f"Value(data={self.data}, grad={self.grad})"
+
+    def __add__(self, other):
+        other = other if isinstance(other, Value) else Value(other)
+        out = Value(self.data + other.data, (self, other), "+")
+
+        def _backward():
+            # d(a + b)/da = 1: the gradient passes through unchanged.
+            self.grad += out.grad
+            other.grad += out.grad
+
+        out._backward = _backward
+        return out
+
+    def __mul__(self, other):
+        other = other if isinstance(other, Value) else Value(other)
+        out = Value(self.data * other.data, (self, other), "*")
+
+        def _backward():
+            # d(a * b)/da = b: each side gets the other side's value.
+            self.grad += other.data * out.grad
+            other.grad += self.data * out.grad
+
+        out._backward = _backward
+        return out
+
+    def __radd__(self, other):
+        return self + other
+
+    def __rmul__(self, other):
+        return self * other
+
+    def __neg__(self):
+        return self * -1
+
+    def __sub__(self, other):
+        return self + (-other)
+
+    def __rsub__(self, other):
+        return other + (-self)
+
+    def backward(self):
+        # Order nodes so every node comes after everything it depends on.
+        topo, visited = [], set()
+
+        def build(v):
+            if v not in visited:
+                visited.add(v)
+                for child in v._prev:
+                    build(child)
+                topo.append(v)
+
+        build(self)
+        self.grad = 1.0
+        for v in reversed(topo):
+            v._backward()
+
+
+def grads_of(expr, x, y):
+    """Build one of a few expressions, call backward(), report value and grads."""
+    x, y = Value(x), Value(y)
+    if expr == "reuse":
+        L = x * x + x
+    elif expr == "chain":
+        L = (x * y + x) * y
+    elif expr == "diamond":
+        a = x * y
+        L = (a + a) * a
+    else:
+        L = x * y - y * 3
+    L.backward()
+    return [L.data, x.grad, y.grad]
+```
+
+</Solution>

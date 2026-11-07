@@ -81,6 +81,23 @@ export const CATALOG: CatalogTrack[] = [
     ],
   },
   {
+    slug: 'build-micrograd',
+    title: 'Build Micrograd',
+    summary: 'Write a scalar autograd engine in six steps, from a Value that records its parents to a training loop with SGD.',
+    kind: 'project',
+    level: 'Intermediate',
+    learnRoute: '/docs/deep-learning/neural-network-fundamentals',
+    note: 'One engine built in six stages. Each stage gives you the code from the stages before it, so you can start anywhere.',
+    problems: [
+      'micrograd-value-ops',
+      'micrograd-local-backward',
+      'micrograd-topological-backward',
+      'micrograd-activations',
+      'micrograd-neuron',
+      'micrograd-train-step',
+    ],
+  },
+  {
     slug: 'numpy-sheet',
     title: 'NumPy Sheet',
     summary: 'Broadcasting, fancy indexing, masks, per-row top-k, prefix sums, einsum and scatter-add: the NumPy moves behind real ML code.',

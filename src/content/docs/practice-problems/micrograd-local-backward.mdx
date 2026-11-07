@@ -1,0 +1,80 @@
+---
+title: "Micrograd 2: Local Gradients for + and *"
+description: "Build Micrograd, problem 2 of 6: Teach each operation its piece of the chain rule: a closure that takes the output's gradient and adds the right amount to each input's gradient."
+difficulty: "easy"
+topic: "Build Micrograd"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Each operation knows one rule
+
+Take `L = a * b + c` with `a = 2, b = 3, c = 4`, so `L = 10`. Nudge `c` by 0.001 and `L` moves by 0.001: `dL/dc = 1`. Nudge `a` and `L` moves by three times as much, because `a` is multiplied by `b = 3`: `dL/da = 3`.
+
+Those are the only two rules we need here. Addition passes the gradient through unchanged. Multiplication sends each input the *other* input's value times the output's gradient. Each rule lives in a small **closure**, a function defined inside `__add__` or `__mul__` that remembers `self`, `other` and `out`.
+
+## Why += and not =
+
+You might expect each node to receive its gradient once. A node used twice, like `x` in `x * x`, receives a contribution along each path, and the true gradient is the sum. With `=`, the second path overwrites the first. The tests in this stage pass either way; stage 3's do not.
+
+> **Remember:** a backward rule takes `out.grad` and adds `local derivative * out.grad` into each input.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import math
+
+class Value:
+    """A scalar that remembers how it was computed, so it can backpropagate."""
+
+    def __init__(self, data, _children=(), _op=""):
+        self.data = data
+        self.grad = 0.0
+        self._backward = lambda: None
+        self._prev = set(_children)
+        self._op = _op
+
+    def __repr__(self):
+        return f"Value(data={self.data}, grad={self.grad})"
+
+    def __add__(self, other):
+        other = other if isinstance(other, Value) else Value(other)
+        out = Value(self.data + other.data, (self, other), "+")
+
+        def _backward():
+            # d(a + b)/da = 1: the gradient passes through unchanged.
+            self.grad += out.grad
+            other.grad += out.grad
+
+        out._backward = _backward
+        return out
+
+    def __mul__(self, other):
+        other = other if isinstance(other, Value) else Value(other)
+        out = Value(self.data * other.data, (self, other), "*")
+
+        def _backward():
+            # d(a * b)/da = b: each side gets the other side's value.
+            self.grad += other.data * out.grad
+            other.grad += self.data * out.grad
+
+        out._backward = _backward
+        return out
+
+
+def grads(a, b, c):
+    """L = a * b + c. Run each node's _backward by hand, output first."""
+    a, b, c = Value(a), Value(b), Value(c)
+    ab = a * b
+    L = ab + c
+    L.grad = 1.0
+    L._backward()
+    ab._backward()
+    return [L.data, a.grad, b.grad, c.grad]
+```
+
+</Solution>
