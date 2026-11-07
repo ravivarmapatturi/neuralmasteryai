@@ -81,7 +81,9 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 58. done - Guides page: interview prep, which optimizer, etc.
 59. done - Deepened Multimodal and Generative Models (image tokens, CLIP loss, diffusion forward process).
 60. done - Deepened Calling the LLM API (sampling worked example, retry jitter simulation, prompt-caching cost, current SDK calls).
-61-70. planned - Close depth gaps found by the existing audits, one page each. Picked from docs/learning-page-inventory.md: the lowest-word core chapters.
+61. done - Deepened Audio Fundamentals (aliasing worked example, Whisper's 80 x 3000 front end, problems, sources).
+62. done - Deepened Vision Tasks and Models (IoU association worked example, stereo depth error, Hungarian vs greedy, sources).
+63-70. planned - Close depth gaps found by the existing audits, one page each. Picked from docs/learning-page-inventory.md: the lowest-word core chapters.
 
 ### Atlas and visuals (71-80)
 71. done - Atlas shows one label, for the selected entry, so labels no longer overlap.

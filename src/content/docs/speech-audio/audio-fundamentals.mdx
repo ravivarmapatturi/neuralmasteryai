@@ -1,7 +1,7 @@
 ---
 title: "Audio Fundamentals"
 sidebar_position: 3
-description: "How raw audio becomes something a model can learn from: sampling/Nyquist, bit depth, the Fourier transform, STFT window tradeoffs, mel scale, and MFCCs."
+description: "How raw audio becomes model input: sampling and aliasing, bit depth, the Fourier transform, STFT window trade-offs, mel spectrograms and MFCCs, with Whisper's front end worked through."
 ---
 
 import SamplingNyquistDiagram from '../../../viz/diagrams/SamplingNyquistDiagram';
@@ -11,51 +11,185 @@ import WaveformSpectrogramDiagram from '../../../viz/diagrams/WaveformSpectrogra
 import StftWindowTradeoffDiagram from '../../../viz/diagrams/StftWindowTradeoffDiagram';
 import MelScaleDiagram from '../../../viz/diagrams/MelScaleDiagram';
 import MfccPipelineDiagram from '../../../viz/diagrams/MfccPipelineDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
 # Audio Fundamentals
 
-Every audio ML task — recognizing speech, classifying a sound, synthesizing a voice — starts from the same representation problem: raw audio is a long, low-level, continuous signal, and almost nothing works well trained directly on it. This page is how audio gets turned into something a model can actually learn from.
+<ELI5>
+
+A microphone turns sound into a wiggly line. A computer can only store that line as a list of dots, taken thousands of times a second. A list of dots is hard to learn from, because the same word said twice gives very different dots. So we ask a different question of every few hundredths of a second: which notes are playing, and how loud? That chart of notes over time looks much the same each time the word is said, and it is what speech models actually read.
+
+</ELI5>
+
+## Why This Exists
+
+Every audio task (recognising speech, classifying a sound, synthesising a voice) starts with the same problem. Raw audio is a long one-dimensional signal: 16,000 numbers per second for speech, 44,100 for music. The information a model needs, such as which vowel is being spoken, is not in any single number. It is in how the signal oscillates over a few tens of milliseconds. This page follows the standard path from microphone to model input: sampling, then the Fourier transform, then the spectrogram, then the mel scale. At the end you will be able to say exactly what shape of array Whisper reads, and why.
 
 ## Digital Audio: Sampling Rate, Bit Depth, Nyquist
 
-- **Sampling rate**: how many times per second a continuous sound wave's amplitude is measured and stored as a number — 16kHz (16,000 samples/second) is common for speech, 44.1kHz for CD-quality music. A few seconds of audio is already tens of thousands of raw numbers.
-- **Bit depth**: how many bits represent each sample's amplitude — 16-bit is standard, giving 65,536 possible amplitude levels per sample.
-- **The Nyquist theorem**: a signal sampled at rate $f_s$ can only faithfully represent frequencies up to $f_s / 2$ (the **Nyquist frequency**) — sample too slowly relative to the frequencies actually present in the sound, and higher frequencies get misrepresented as false lower ones (**aliasing**), a real, audible artifact, not just a theoretical concern. This is the direct reason speech (mostly below 8kHz) can use a lower sampling rate than music (which needs to capture content up to ~20kHz, the top of human hearing) without losing anything perceptually relevant.
+- **Sampling rate** is how many times per second the amplitude is measured. 16 kHz is standard for speech, 44.1 kHz for CD-quality music.
+- **Bit depth** is how many bits store each measurement. 16-bit audio has 65,536 possible levels.
+- **The Nyquist limit**: a signal sampled at rate $f_s$ can only represent frequencies up to $f_s / 2$. Anything higher does not disappear. It folds back and appears as a false lower frequency, called **aliasing**.
+
+Speech carries almost all its intelligibility below 8 kHz, so 16 kHz sampling loses little. Human hearing reaches about 20 kHz, which is why music uses 44.1 kHz.
 
 <SamplingNyquistDiagram />
 
-Bit depth has an analogous, independent tradeoff: too few bits per sample and the stored waveform visibly steps away from the true continuous signal (**quantization error**) instead of smoothly following it.
+### A Full Worked Example: A 7 kHz Tone Sampled at 10 kHz
+
+At 10 kHz the Nyquist limit is 5 kHz, so a 7 kHz tone is out of range. The samples it produces are identical to those of a $|7000 - 10000| = 3000$ Hz tone. The Fourier transform of the sampled signal shows a clean peak at 3 kHz, and nothing in the data reveals that the real tone was higher. Sampled at 16 kHz, the same tone peaks at 7 kHz as it should. This is why recorders put an analogue low-pass filter before the sampler: once a frequency has aliased, no later processing can separate it from a real tone.
+
+<RunnableCode code={`import numpy as np
+
+# Aliasing: a 7 kHz tone sampled at 10 kHz (Nyquist = 5 kHz)
+fs, f_true, n = 10_000, 7_000, 1_000
+t = np.arange(n) / fs
+x = np.sin(2 * np.pi * f_true * t)
+
+spectrum = np.abs(np.fft.rfft(x))
+freqs = np.fft.rfftfreq(n, d=1 / fs)
+print(f"true tone {f_true} Hz, sampled at {fs} Hz, Nyquist {fs // 2} Hz")
+print(f"FFT peak appears at {freqs[spectrum.argmax()]:.0f} Hz")   # |7000 - 10000| = 3000
+
+# Same tone at a high enough sample rate
+fs2, n2 = 16_000, 1_600       # 0.1 s again, so bins are 10 Hz apart
+x2 = np.sin(2 * np.pi * f_true * np.arange(n2) / fs2)
+peak2 = np.fft.rfftfreq(n2, 1 / fs2)[np.abs(np.fft.rfft(x2)).argmax()]
+print(f"sampled at {fs2} Hz instead: peak at {peak2:.0f} Hz")
+
+# Try it: set f_true = 4_000. It is below 5 kHz, so the peak is reported correctly.`} />
+
+<PredictFirst
+  question="A speech model was trained on 16 kHz audio. At deployment, 8 kHz telephone audio is upsampled to 16 kHz and fed in. What does the model see in the 4 to 8 kHz band?"
+  options={[
+    'The missing high frequencies, restored by the upsampler',
+    'Almost nothing, because upsampling cannot create content above the original 4 kHz Nyquist limit',
+    'Aliased copies of the low frequencies',
+    'The same as in training, because the sample rate now matches',
+  ]}
+  correctIndex={1}
+  explanation="Upsampling interpolates between existing samples; it adds no information above the original Nyquist frequency of 4 kHz. The model sees an empty upper band it never saw in training, which is a classic train-serve mismatch. Fixes are to train with telephone-band augmentation or to fine-tune on 8 kHz data. A good resampler filters out aliasing, so the third option is what a bad one produces, not a correct one."
+/>
+
+Bit depth has its own, separate trade-off. Too few bits and the stored waveform moves in visible steps away from the true signal. Each extra bit roughly halves the quantisation error, adding about 6 dB of signal-to-noise ratio: 16-bit audio reaches about 98 dB, more than enough for speech models, which are commonly fed 32-bit floats in $[-1, 1]$ after loading.
 
 <BitDepthQuantizationDiagram />
 
 ## The Fourier Transform: Time Domain to Frequency Domain
 
-A raw waveform (amplitude vs. time) tells you *when* something happened, but not directly *what pitch/timbre* it was — that information is encoded in how the wave oscillates, not its raw value at any instant. The **Fourier transform** decomposes a signal into the sum of sine waves at different frequencies that reconstruct it — converting a time-domain signal into a **frequency-domain** representation: which frequencies are present, and how strongly. This single mathematical operation — reused directly from [Calculus & Optimization](/docs/mathematics-for-ai/calculus-optimization)'s broader "represent a function differently to make its structure visible" theme — underlies every representation below.
+A waveform tells you when the air pressure changed, not which pitches were present. The **Fourier transform** rewrites a signal as a sum of sine waves and reports how strongly each frequency contributes. On sampled audio we use the discrete version, computed with the fast Fourier transform (FFT) in $O(n \log n)$ time. An FFT of $n$ samples at rate $f_s$ gives $n/2 + 1$ frequency bins spaced $f_s / n$ Hz apart.
 
 <FourierSumOfSinesDiagram />
 
 ## Spectrograms: The Short-Time Fourier Transform
 
-A single Fourier transform over an entire audio clip tells you *what* frequencies are present overall, but throws away *when* — useless for speech, where which sounds happen in which order is the entire signal. The **Short-Time Fourier Transform (STFT)** fixes this: slide a short window across the waveform, compute a Fourier transform on each windowed frame independently, and stack the results into a 2D **spectrogram** — time on one axis, frequency on the other, and color/intensity showing how much energy is present at each time-frequency point.
+One Fourier transform over a whole clip says which frequencies occur, but not when. For speech, the order of sounds is the message. The **short-time Fourier transform (STFT)** slides a short window along the waveform, takes an FFT of each window, and stacks the results into a **spectrogram**: time on one axis, frequency on the other, energy as colour.
 
 <WaveformSpectrogramDiagram />
 
-The chart above makes the payoff immediate: two steady tones are invisible as *distinct* things in the raw waveform (just a busy oscillating line, top panel) but appear as two clean, constant horizontal lines in the spectrogram (bottom panel) — the frequency-domain view exposes the structure the time-domain view hides. The rising diagonal line is a **chirp** (linearly increasing frequency), visually obvious in the spectrogram and essentially unreadable in the raw waveform. This is exactly why audio models are almost never trained on raw waveforms directly — the spectrogram (or one of its refinements below) makes the structure a model needs to learn *visible* to the model in a way the raw signal doesn't.
+In the chart above, two steady tones look like one busy line in the waveform but appear as two flat lines in the spectrogram, and a chirp (a rising tone) becomes a diagonal. The spectrogram makes visible the structure a model needs.
 
-**The window-size tradeoff**: a longer STFT window gives better frequency resolution (can distinguish close frequencies) but worse time resolution (blurs together events happening close in time) — and shorter windows trade the opposite way. This is a real instance of the **time-frequency uncertainty principle** (a signal-processing cousin of the Heisenberg uncertainty principle) — you cannot have arbitrarily good resolution in both domains simultaneously, and choosing the window size is choosing where on that tradeoff a given task needs to sit.
+**Window length is a trade-off.** A longer window separates nearby frequencies better but blurs events close in time; a shorter window does the reverse. The product of time resolution and frequency resolution cannot be made arbitrarily small, so choosing a window means choosing where the task needs precision. Speech systems settle on about 25 ms: long enough to resolve the harmonics of a voice, short enough that a consonant does not smear into its neighbours.
 
 <StftWindowTradeoffDiagram />
 
 ## Mel Spectrograms and MFCCs
 
-A raw STFT spectrogram has frequency bins spaced *linearly*, but human hearing (and speech content) doesn't perceive pitch linearly — we're far more sensitive to differences at low frequencies than at high ones. Two refinements, both still standard in speech pipelines:
-
-- **Mel spectrogram**: reprojects the STFT's linear frequency bins onto the **Mel scale** — a frequency scale designed to match perceptual pitch spacing (equal steps on the Mel scale sound like equal pitch steps to a human ear, unlike equal steps in Hz) — concentrating more resolution where speech content actually lives and less where it doesn't. This is the standard input representation for most modern speech models (TTS acoustic models, many ASR encoders).
+STFT bins are spaced evenly in Hz, but hearing is not. The difference between 200 Hz and 300 Hz is obvious; between 7,200 Hz and 7,300 Hz it is barely audible. The **mel scale** maps frequency to perceived pitch, $m = 2595 \log_{10}(1 + f / 700)$, and a **mel spectrogram** sums the STFT bins into bands that are evenly spaced in mel. With 80 bands up to 8 kHz, the lowest band is about 22 Hz wide and the highest about 266 Hz wide. Taking the log of the band energies then matches the roughly logarithmic way we perceive loudness.
 
 <MelScaleDiagram />
 
-- **MFCCs (Mel-Frequency Cepstral Coefficients)**: takes the Mel spectrogram one step further — apply a log, then a **Discrete Cosine Transform** (which compacts and decorrelates the Mel-spectrogram's frequency bands into a small number of coefficients, analogous to how [PCA](/docs/machine-learning/pca-svd) compacts correlated features into fewer, less-correlated ones). MFCCs were the dominant feature representation for classical (pre-deep-learning) speech recognition — compact, and effective with the statistical models (Gaussian Mixture Models, Hidden Markov Models) speech recognition used before end-to-end neural approaches. Modern deep learning-based ASR increasingly works from Mel spectrograms directly (letting the network learn what MFCCs used to hand-engineer), but MFCCs remain a standard, well-understood baseline feature set, especially for lighter-weight classification tasks (e.g. simple audio event classification) where a full neural pipeline is unnecessary overhead.
+**MFCCs** (mel-frequency cepstral coefficients) go one step further: a discrete cosine transform over the log-mel bands, keeping the first 13 or so coefficients. The DCT decorrelates neighbouring bands, much as [PCA](/docs/machine-learning/pca-svd) compresses correlated features. MFCCs were the standard input for Gaussian-mixture and hidden-Markov-model recognisers. Neural models usually take log-mel spectrograms directly and learn their own compression, but MFCCs remain a good, cheap baseline for small classifiers.
 
 <MfccPipelineDiagram />
 
-Next: [Speech & Audio Tasks](/docs/speech-audio/speech-audio-tasks) — what actually gets built on top of these representations.
+### Run It Yourself: Whisper's Front End
+
+Whisper resamples all audio to 16 kHz, splits it into 30-second chunks, and computes an STFT with a 400-sample (25 ms) window and a 160-sample (10 ms) hop. That gives 3,000 frames per chunk. Each frame is reduced to 80 log-mel bands (128 in large-v3). So the encoder's input is an array of shape 80 x 3000, whatever was said. The STFT itself has 201 frequency bins, 40 Hz apart.
+
+<RunnableCode code={`import numpy as np
+
+# Whisper's front end: 16 kHz audio, 25 ms window, 10 ms hop, 80 mel bins
+sr, win_ms, hop_ms, n_mels, seconds = 16_000, 25, 10, 80, 30
+n_fft = sr * win_ms // 1000        # 400 samples per window
+hop = sr * hop_ms // 1000          # 160 samples between windows
+samples = sr * seconds
+frames = samples // hop            # Whisper pads so 30 s gives exactly 3000 frames
+print(f"{seconds} s of audio = {samples:,} samples")
+print(f"window {n_fft} samples, hop {hop} samples -> {frames} frames x {n_mels} mel bins")
+print(f"frequency bin spacing: {sr / n_fft:.0f} Hz across {n_fft // 2 + 1} STFT bins")
+
+def hz_to_mel(f):
+    return 2595 * np.log10(1 + f / 700)
+
+def mel_to_hz(m):
+    return 700 * (10 ** (m / 2595) - 1)
+
+# 80 mel bands evenly spaced in mel between 0 Hz and Nyquist
+edges = mel_to_hz(np.linspace(hz_to_mel(0), hz_to_mel(sr / 2), n_mels + 2))
+widths = np.diff(edges)
+print(f"lowest mel band is {widths[0]:.0f} Hz wide, highest is {widths[-1]:.0f} Hz wide")
+
+# Bit depth: each extra bit adds about 6 dB of signal-to-quantisation-noise
+for bits in (8, 16, 24):
+    print(f"{bits}-bit: {2**bits:,} levels, SQNR about {6.02 * bits + 1.76:.0f} dB")
+
+# Try it: set win_ms = 50. Bins get twice as fine in frequency (20 Hz),
+# but each frame now blurs 50 ms of speech together.`} />
+
+<GoDeeper title="Go deeper: why not train on the raw waveform?">
+
+It can be done: wav2vec 2.0 learns directly from waveforms with a stack of 1D convolutions whose first layers behave much like a learned filter bank. The cost is data and compute. A fixed log-mel front end builds in two things the network would otherwise have to learn, invariance to the phase of each frequency and a perceptual frequency spacing, so a model reaches good accuracy with less data. Self-supervised models such as wav2vec 2.0 pay that cost once on large unlabelled corpora. For a supervised model trained from scratch on a modest dataset, log-mel input is usually the better start.
+
+</GoDeeper>
+
+<NotebookCallout color="amber" title="Check the sample rate on load">
+Most audio-model bugs are not in the model. A 44.1 kHz file read as 16 kHz plays almost three times too slowly in the model's eyes, and every pitch is wrong. Resample explicitly when you load, and assert the rate before computing features.
+</NotebookCallout>
+
+## Common Problems & Fixes
+
+| Problem | Cause | Fix |
+| --- | --- | --- |
+| Accuracy collapses on new recordings | Sample rate differs from training | Resample on load; assert the rate |
+| Model fails on phone calls | 8 kHz band-limited audio | Train with band-limiting augmentation or fine-tune on telephone data |
+| Features dominated by silence | Long quiet stretches | Voice activity detection before feature extraction |
+| Training is unstable on log-mels | Log of near-zero energies | Add a small floor before the log; normalise per feature |
+| Clicks and harsh artefacts in synthesis | Phase is discarded by the magnitude spectrogram | A neural vocoder (HiFi-GAN) instead of Griffin-Lim reconstruction |
+
+## When *Not* to Use It
+
+| Situation | Better choice |
+| --- | --- |
+| Large unlabelled corpus available | Self-supervised waveform models (wav2vec 2.0, HuBERT) |
+| Phase matters, such as source separation | Complex STFT or waveform models, not magnitude-only mel |
+| Music transcription needing exact pitches | Constant-Q transform, whose bins follow musical notes |
+| Tiny on-device keyword spotting | MFCCs with a small CNN, cheaper than a full mel pipeline |
+
+## Remember
+
+| Idea | One line |
+| --- | --- |
+| Nyquist | Rate $f_s$ represents up to $f_s/2$; higher frequencies alias |
+| Aliasing | 7 kHz at 10 kHz sampling looks exactly like 3 kHz |
+| Bit depth | About 6 dB of signal-to-noise per bit |
+| FFT bins | $n/2+1$ bins, $f_s/n$ Hz apart |
+| STFT window | Longer gives finer frequency, coarser time |
+| Mel scale | $m = 2595 \log_{10}(1 + f/700)$; narrow bands low, wide bands high |
+| Whisper input | 16 kHz, 25 ms window, 10 ms hop, 80 x 3000 log-mel per 30 s |
+| MFCC | DCT of log-mel; compact baseline features |
+
+Next: [Speech & Audio Tasks](/docs/speech-audio/speech-audio-tasks), which covers what gets built on top of these representations.
+
+## Sources
+
+- Shannon, "Communication in the Presence of Noise", Proceedings of the IRE, 1949 (sampling theorem).
+- Stevens, Volkmann and Newman, "A Scale for the Measurement of the Psychological Magnitude Pitch", JASA, 1937 (mel scale).
+- Davis and Mermelstein, "Comparison of Parametric Representations for Monosyllabic Word Recognition", IEEE TASSP, 1980 (MFCCs).
+- Radford et al., "Robust Speech Recognition via Large-Scale Weak Supervision" (Whisper), 2022. https://arxiv.org/abs/2212.04356
+- Baevski et al., "wav2vec 2.0", 2020. https://arxiv.org/abs/2006.11477
+- Kong, Kim and Bae, "HiFi-GAN", 2020. https://arxiv.org/abs/2010.05646
+- librosa documentation, "melspectrogram". https://librosa.org/doc/latest/generated/librosa.feature.melspectrogram.html

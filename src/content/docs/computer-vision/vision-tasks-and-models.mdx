@@ -1,73 +1,208 @@
 ---
 title: "Vision Tasks & Models"
 sidebar_position: 4
-description: "The full computer-vision task taxonomy -- pose estimation, OCR, tracking, depth, optical flow -- beyond the classification/detection/segmentation core three."
+description: "The computer-vision tasks beyond classification, detection and segmentation: pose, OCR, tracking, depth and optical flow, with tracking association and stereo depth worked in code."
 ---
-
 
 import PoseEstimationApproachDiagram from '../../../viz/diagrams/PoseEstimationApproachDiagram';
 import OcrPipelineDiagram from '../../../viz/diagrams/OcrPipelineDiagram';
 import TrackingAssociationDiagram from '../../../viz/diagrams/TrackingAssociationDiagram';
 import StereoDepthDiagram from '../../../viz/diagrams/StereoDepthDiagram';
 import OpticalFlowFieldDiagram from '../../../viz/diagrams/OpticalFlowFieldDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
 # Vision Tasks & Models
 
-"Computer vision" is not one task — it's a family of structurally different problems that happen to share an image as input. This page is the full taxonomy, recapping the tasks with model architectures already covered in depth elsewhere, and covering the ones that aren't: pose estimation, OCR, tracking, depth estimation, and optical flow.
+<ELI5>
+
+Show a photo to five people and ask five different questions: what is it, where are the people, where are their elbows, what does the sign say, how far away is the wall. Each question needs a different kind of answer: a word, boxes, dots, text, a distance per pixel. Computer vision is that list of questions, and each one has its own kind of model.
+
+</ELI5>
+
+## Why This Exists
+
+"Computer vision" is not one task. It is a family of problems that share an image as input but differ in what they must output, and the output shape decides the model. A classifier returns one label; a pose model returns a fixed set of points per person; a tracker must return the *same* ID for the same object across hundreds of frames; a depth model returns a number for every pixel. This page covers the tasks beyond the core three, explains the mechanism each one depends on, and works two of them (tracking and stereo depth) through with real numbers, because those two are where most production bugs live.
 
 ## The Core Three (Recap)
 
-Covered in full architectural depth in [Vision Architectures](/docs/deep-learning/vision-architectures) — linked here for completeness of the taxonomy:
+These are covered in full in [Vision Architectures](/docs/deep-learning/vision-architectures):
 
-- **Classification**: assign one label to an entire image. The original CNN task ([CNNs](/docs/deep-learning/cnns)'s LeNet-through-ConvNeXt lineage).
-- **Detection**: locate *and* classify multiple objects as bounding boxes — R-CNN family, YOLO, SSD, DETR.
-- **Segmentation**: classify every pixel — semantic (class per pixel) vs. instance (also distinguishes individual objects) — U-Net, Mask R-CNN.
+- **Classification** assigns one label to a whole image. It is the original CNN task, from LeNet to ConvNeXt (see [CNNs](/docs/deep-learning/cnns)).
+- **Detection** finds and labels several objects as bounding boxes: the R-CNN family, YOLO, SSD, DETR.
+- **Segmentation** labels every pixel. Semantic segmentation gives a class per pixel; instance segmentation also separates individual objects (U-Net, Mask R-CNN).
 
 ## Pose Estimation
 
-Locate the positions of specific keypoints on a subject — most commonly human joints (wrists, elbows, knees), but the same idea applies to animal or object pose. Two architectural approaches:
+Pose estimation locates fixed keypoints on a subject, most often the 17 human joints of the COCO keypoint format (nose, eyes, shoulders, elbows, wrists, hips, knees, ankles). Models usually predict one heatmap per keypoint and take the peak. There are two ways to handle several people:
 
-- **Top-down**: first detect each person (a standard detection model), then run a pose-estimation model on each cropped detection independently — simpler per-person accuracy, but cost scales with the number of people in the frame.
-- **Bottom-up**: detect *all* keypoints across the whole image in one pass, then group them into individual people's skeletons afterward — cost stays roughly constant regardless of how many people are in frame, at the expense of a harder grouping step.
-- **Applications**: fitness/sports motion analysis, animation and motion capture, human-computer interaction (gesture recognition), and animal behavior research.
+- **Top-down** detects each person first, then runs a pose model on each crop. Accuracy per person is high, but cost grows with the number of people.
+- **Bottom-up** finds every keypoint in the image in one pass, then groups them into skeletons (OpenPose uses part affinity fields for the grouping). Cost stays roughly constant however crowded the frame is, at the price of a harder grouping step.
 
 <PoseEstimationApproachDiagram />
 
+Pose accuracy is measured with object keypoint similarity (OKS), which scores each keypoint's error relative to the person's size and to how precisely humans can annotate that joint. A 10-pixel error on a hip counts for less than on an eye.
+
 ## OCR (Optical Character Recognition)
 
-Reading text out of an image — structurally two sub-problems chained together:
+OCR is two problems in sequence:
 
-- **Text detection**: locate *where* text regions are in the image (a specialized object-detection problem, output as bounding boxes or polygons around text lines/words).
-- **Text recognition**: given a cropped text region, decode the actual character sequence — historically CNN + RNN/CTC-loss pipelines (predict a character sequence without needing pre-segmented individual characters), increasingly Transformer-based sequence-to-sequence models that treat this as image-to-text generation directly (see [Attention & Transformers](/docs/deep-learning/attention-transformers)).
-- **Modern approach**: end-to-end Transformer-based OCR models (and general-purpose VLMs, see [Modern Vision & Multimodal](/docs/computer-vision/modern-vision-and-multimodal)) increasingly fold detection and recognition into one model rather than a two-stage pipeline, especially for documents with complex layouts (tables, forms) where layout understanding matters as much as character recognition.
+- **Text detection** finds where text is, as boxes or polygons around words or lines.
+- **Text recognition** reads the characters in each crop. The classic recogniser is a CNN followed by a recurrent layer trained with CTC loss, which learns a character sequence without needing each character's position labelled. Newer recognisers (TrOCR) treat it as image-to-text generation with a transformer.
 
 <OcrPipelineDiagram />
 
+For documents with tables and forms, layout matters as much as characters, and end-to-end models increasingly read the page in one pass. General VLMs (see [Modern Vision & Multimodal](/docs/computer-vision/modern-vision-and-multimodal)) can do this too, but a dedicated OCR model is still cheaper and more exact on plain scanned text.
+
 ## Object Tracking
 
-Given detections in each frame of a video, maintain consistent identity for each object *across* frames — "this is the same car in frame 47 that was in frame 12," not just "there's a car in this frame":
-
-- **Detection-based tracking (tracking-by-detection)**: run a detector independently on each frame, then solve an *association* problem — matching detections across consecutive frames based on position, motion prediction (a **Kalman filter** predicting where an object should be next, based on its velocity), and appearance similarity (a learned embedding, similar in spirit to [Metric Learning](/docs/deep-learning/advanced-architectures#metric-learning-networks)'s similarity embeddings). **SORT** and **DeepSORT** are the classic, still widely used algorithms built on exactly this pattern.
-- **Why it's hard**: occlusion (an object temporarily hidden behind another), objects entering/leaving frame, and visually similar objects crossing paths all make the association step genuinely ambiguous, not just a bookkeeping exercise.
-- **Applications**: autonomous driving (tracking surrounding vehicles/pedestrians), sports analytics, video surveillance, robotics.
+A tracker keeps a consistent identity for each object across video frames: the car in frame 47 is the same car as in frame 12. The standard design is **tracking by detection**. Run a detector on every frame, then solve an **association** problem: match this frame's detections to the existing tracks.
 
 <TrackingAssociationDiagram />
 
+### A Full Worked Example: Matching by IoU
+
+SORT, the classic tracker, scores every (track, detection) pair by intersection over union (IoU) and picks the one-to-one assignment with the highest total, using the Hungarian algorithm. Take two tracks and three new detections. Track `car_7` overlaps detection 1 with IoU 0.746; `car_9` overlaps detection 0 with IoU 0.737; detection 2 overlaps nothing. Both matches clear SORT's threshold of 0.3, and detection 2 starts a new track.
+
+Now suppose `car_7` moved fast and its new box is 80 pixels to the right. Its IoU with the old box drops to 0.111, the match is rejected, and the tracker ends `car_7` and starts a new ID for the same car: an **ID switch**. SORT's answer is a Kalman filter that predicts where each box should be from its velocity, and compares detections against the prediction instead of the last position. DeepSORT adds an appearance embedding, so a car that disappears behind a truck can be recognised when it comes back.
+
+<RunnableCode code={`import numpy as np
+from itertools import permutations
+
+# Boxes are (x1, y1, x2, y2). Two tracks from frame t, three detections in frame t+1.
+tracks = {"car_7": (100, 100, 200, 180), "car_9": (300, 120, 380, 190)}
+detections = [(305, 125, 388, 196), (108, 104, 210, 186), (500, 50, 540, 90)]
+
+def iou(a, b):
+    ix = max(0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = ix * iy
+    area = lambda r: (r[2] - r[0]) * (r[3] - r[1])
+    return inter / (area(a) + area(b) - inter)
+
+names = list(tracks)
+M = np.array([[iou(tracks[n], d) for d in detections] for n in names])
+print("IoU matrix (rows = tracks, cols = detections):\\n", np.round(M, 3))
+
+# Best one-to-one assignment. SORT uses the Hungarian algorithm; with 2 tracks
+# we can simply try every assignment.
+best = max(permutations(range(len(detections)), len(names)),
+           key=lambda cols: sum(M[r, c] for r, c in enumerate(cols)))
+IOU_MIN = 0.3
+for r, c in enumerate(best):
+    ok = M[r, c] >= IOU_MIN
+    print(f"{names[r]} -> detection {c}  IoU {M[r, c]:.3f}  {'matched' if ok else 'rejected'}")
+unmatched = set(range(len(detections))) - set(best)
+print("unmatched detections start new tracks:", sorted(unmatched))
+
+# Try it: move detection 1 to (180, 100, 280, 180), as if car_7 moved fast.
+# Its IoU with car_7 drops below 0.3, so the match is rejected; this is why
+# SORT adds a Kalman filter to predict where each box should be.`} />
+
 ## Depth Estimation
 
-Predicting how far each pixel is from the camera — turning a 2D image into a 2.5D/3D understanding of the scene:
+Depth estimation predicts how far each pixel is from the camera.
 
-- **Stereo depth**: given two cameras at a known offset (like human eyes), the *disparity* — how much a point shifts between the two images — is inversely proportional to its distance, giving depth via geometry directly, no learning required for the core computation (though modern stereo systems use learned matching for the disparity computation itself).
+**Stereo depth** uses two cameras a known distance apart (the baseline $B$). A point appears shifted between the two images by a disparity $d$ pixels, and by similar triangles its depth is
+
+$$
+Z = \frac{f B}{d}
+$$
+
+where $f$ is the focal length in pixels. Learning is only needed to find which pixels correspond; the depth itself is geometry.
 
 <StereoDepthDiagram />
 
-- **Monocular depth estimation**: predicting depth from a *single* image, with no stereo geometry to exploit — a genuinely underdetermined problem in principle (the same 2D image is consistent with infinitely many 3D scenes), solved by deep networks learning strong priors from large datasets of images paired with real depth measurements (LiDAR, structured light) — how modern phone cameras produce depth-of-field ("portrait mode") effects without a second lens.
-- **Applications**: autonomous driving (obstacle distance), AR/VR (scene understanding for object placement), robotics navigation, computational photography.
+### Run It Yourself: How Stereo Error Grows With Distance
+
+With $f = 700$ pixels and $B = 0.12$ m (a typical small stereo camera), a disparity of 84 pixels means 1 m and 8.4 pixels means 10 m. Differentiating $Z = fB/d$ gives an error of about $Z^2 / (fB)$ per pixel of disparity error: 1 cm at 1 m, but 1.19 m at 10 m.
+
+<PredictFirst
+  question="With this camera, a one-pixel matching error causes 1.19 m of depth error at 10 m. What is the error at 20 m?"
+  options={[
+    '2.4 m, twice as much, because the distance doubled',
+    'About 4.8 m, four times as much, because the error grows with the square of the distance',
+    '1.19 m, the same, because the pixel error is the same',
+    '0.6 m, because disparity is smaller at long range',
+  ]}
+  correctIndex={1}
+  explanation="Depth error per pixel is Z^2 / (fB), so doubling Z multiplies it by four: 4.76 m. Doubling feels natural because depth is proportional to 1/d, but at long range each pixel of disparity covers a much larger slice of depth. That is why stereo is used for near range and LiDAR or radar for far range in driving stacks."
+/>
+
+<RunnableCode code={`# Stereo depth: Z = f * B / d
+f_px = 700.0      # focal length in pixels
+B_m = 0.12        # baseline between the two cameras, metres
+
+for d in (84.0, 42.0, 8.4, 4.2):
+    Z = f_px * B_m / d
+    # One pixel of disparity error changes the depth estimate by about Z^2 / (f * B)
+    dZ = Z ** 2 / (f_px * B_m)
+    print(f"disparity {d:5.1f} px -> depth {Z:5.2f} m, +/-1 px error -> +/-{dZ:.2f} m")
+
+# Try it: double the baseline B_m to 0.24. Depth error at 10 m halves,
+# which is why long-range stereo rigs put the cameras far apart.`} />
+
+**Monocular depth** predicts depth from a single image. In principle this is impossible, since one image fits infinitely many 3D scenes, so networks learn strong priors from images paired with measured depth. Models such as MiDaS and Depth Anything predict *relative* depth (which pixel is nearer), which is enough for portrait-mode blur; metric depth in metres needs either camera information or fine-tuning on metric data.
 
 ## Optical Flow
 
-Estimating the **per-pixel motion** between two consecutive video frames — a dense vector field where every pixel gets an estimated (dx, dy) displacement, not just a handful of tracked keypoints. Classical approaches (Lucas-Kanade, Horn-Schunck) assume local brightness constancy (a point's brightness doesn't change between frames, so intensity differences reveal motion) and solve for the flow that best explains observed pixel changes; modern deep learning approaches (RAFT and successors) train a network end-to-end to predict flow directly, substantially outperforming classical methods especially under large motion, occlusion, and lighting change. Optical flow underlies video compression, video frame interpolation (generating in-between frames), action recognition, and provides motion features that improve object tracking's association step above.
+Optical flow estimates per-pixel motion between two frames: a vector $(dx, dy)$ for every pixel. Classical methods (Lucas-Kanade, Horn-Schunck) assume a point keeps its brightness between frames and solve for the motion that best explains the pixel changes. That assumption breaks under large motion, occlusion and lighting change. RAFT instead builds a correlation volume between all pixel pairs and refines the flow with a recurrent update, and it is far more accurate on those hard cases. Flow is used in video compression, frame interpolation and action recognition, and as a motion cue for tracking.
 
 <OpticalFlowFieldDiagram />
 
-Next: [Modern Vision & Multimodal](/docs/computer-vision/modern-vision-and-multimodal) — where vision meets language, video, and 3D.
+<GoDeeper title="Go deeper: why the Hungarian algorithm, and not greedy matching?">
+
+Greedy matching takes the highest-IoU pair, removes both, and repeats. It is fast but can be wrong. Suppose track A overlaps detection 1 at 0.6 and detection 2 at 0.5, and track B overlaps only detection 1, at 0.55. Greedy matches A to 1 (0.6), and B is left with nothing. The optimal assignment matches A to 2 and B to 1, for a total of 1.05 instead of 0.6, and keeps both tracks alive. The Hungarian algorithm finds the optimal assignment in $O(n^3)$ time, which is negligible for the tens of objects in a typical frame. ByteTrack adds a second matching pass for low-confidence detections, which recovers objects that are partly occluded.
+
+</GoDeeper>
+
+<NotebookCallout color="amber" title="Trackers are scored on identity, not boxes">
+A tracker can find every car in every frame and still score badly if IDs switch. Report IDF1 or HOTA alongside MOTA, because MOTA is dominated by detection quality and hides ID switches.
+</NotebookCallout>
+
+## Common Problems & Fixes
+
+| Problem | Cause | Fix |
+| --- | --- | --- |
+| IDs switch when objects move fast | Low IoU between frames | Kalman prediction (SORT); higher frame rate |
+| IDs switch after occlusion | Track dropped while hidden | Appearance embeddings (DeepSORT); keep lost tracks for a few frames |
+| Pose fails in crowds | Top-down crops overlap | Bottom-up grouping, or better person detection |
+| Stereo depth is noisy far away | Error grows with $Z^2$ | Wider baseline, higher resolution, or LiDAR at long range |
+| Monocular depth has the wrong scale | Model predicts relative depth | A metric depth model, or scale from a known object |
+
+## When *Not* to Use It
+
+| Situation | Better choice |
+| --- | --- |
+| Static camera, slow objects | Simple IoU tracking without appearance models |
+| Accurate long-range depth | LiDAR or radar, not stereo |
+| Reading a few fields from one known form | Template matching plus OCR on fixed regions |
+| Open-ended questions about an image | A vision-language model |
+
+## Remember
+
+| Idea | One line |
+| --- | --- |
+| Pose | Heatmap per keypoint; top-down vs bottom-up for crowds |
+| OCR | Detect text regions, then recognise characters (CTC or seq2seq) |
+| Tracking by detection | Detect every frame, then associate |
+| Association | IoU matrix plus Hungarian assignment, threshold 0.3 in SORT |
+| ID switch | The failure that matters most; Kalman and appearance features fix it |
+| Stereo | $Z = fB/d$; error grows with $Z^2$ |
+| Monocular depth | Learned priors; relative unless trained for metric |
+| Optical flow | Dense per-pixel motion; RAFT for hard cases |
+
+Next: [Modern Vision & Multimodal](/docs/computer-vision/modern-vision-and-multimodal), where vision meets language, video and 3D.
+
+## Sources
+
+- Bewley et al., "Simple Online and Realtime Tracking" (SORT), 2016. https://arxiv.org/abs/1602.00763
+- Wojke, Bewley and Paulus, "Simple Online and Realtime Tracking with a Deep Association Metric" (DeepSORT), 2017. https://arxiv.org/abs/1703.07402
+- Zhang et al., "ByteTrack", 2021. https://arxiv.org/abs/2110.06864
+- Cao et al., "OpenPose: Realtime Multi-Person 2D Pose Estimation using Part Affinity Fields", 2018. https://arxiv.org/abs/1812.08008
+- Shi, Bai and Yao, "An End-to-End Trainable Neural Network for Image-based Sequence Recognition" (CRNN), 2015. https://arxiv.org/abs/1507.05717
+- Li et al., "TrOCR", 2021. https://arxiv.org/abs/2109.10282
+- Teed and Deng, "RAFT: Recurrent All-Pairs Field Transforms for Optical Flow", 2020. https://arxiv.org/abs/2003.12039
+- Yang et al., "Depth Anything", 2024. https://arxiv.org/abs/2401.10891
