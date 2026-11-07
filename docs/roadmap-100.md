@@ -76,7 +76,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 50-55. done - Projects: RAG app, agent with tools, eval harness, fine-tune with LoRA, serving with batching, voice assistant.
 
 ### Learn content (56-70)
-56. planned - ML math hub with modules (statistics, probability, linear algebra, calculus, optimisation).
+56. done - ML math hub with modules (statistics, probability, linear algebra, calculus, optimisation).
 57. planned - LLM internals hub linking our deepest pages.
 58. planned - Guides page: interview prep, which optimizer, etc.
 59-70. planned - Close depth gaps found by the existing audits, one page each.
