@@ -311,6 +311,30 @@ export default function SimpleInterviewPage() {
     setStep('topics');
   };
 
+  // Space answers (or finishes answering), N moves to the next question. Ignored while typing or on a focused control.
+  const keysRef = useRef<(e: KeyboardEvent) => void>(() => undefined);
+  keysRef.current = (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const el = e.target as HTMLElement | null;
+    if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(el.tagName))) return;
+    if (e.key === ' ' && step === 'asking') {
+      e.preventDefault();
+      stopAudio();
+      void startAnswering();
+    } else if (e.key === ' ' && step === 'answering') {
+      e.preventDefault();
+      void finishAnswer();
+    } else if ((e.key === 'n' || e.key === 'N') && step === 'answer') {
+      e.preventDefault();
+      nextQuestion();
+    }
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => keysRef.current(e);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   useEffect(
     () => () => {
       answeringRef.current = false;
@@ -414,6 +438,7 @@ export default function SimpleInterviewPage() {
 
         {step !== 'topics' && step !== 'done' && (
           <>
+            <p className="si-keys">Keyboard: Space to answer or finish, N for the next question.</p>
             <div className="si-progress">
               <button type="button" className="si-link" onClick={backToTopics}>
                 ← Topics

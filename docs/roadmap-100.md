@@ -36,7 +36,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 9. done - Daily interview question on the home page.
 10. done - Progress ring per topic node in the graph.
 11. done - Resume where you left off.
-12. planned - Keyboard shortcuts: space to answer, N for next.
+12. done - Keyboard shortcuts: space to answer, N for next.
 13. planned - Share a completed topic.
 14. planned - Interview leaderboard view.
 15. planned - Mobile pass on the answer screen.
