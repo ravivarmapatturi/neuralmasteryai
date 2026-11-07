@@ -98,8 +98,8 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 85. done - Leaderboard: weekly and all-time.
 86. skipped - Community solutions (needs sign-in and moderation; left for a later batch with a moderation queue).
 87. done - Product menu regrouped like Products and Resources.
-88. planned - Dark mode check on every new page.
-89. planned - 375px overflow audit after each release.
+88. done - Dark mode check on every new page.
+89. done - 375px overflow audit after each release (smoke test covers the main product pages).
 90. planned - Faster first load: split the largest data files.
 91. planned - Search covers interview questions.
 92. planned - SEO pages for each interview topic.

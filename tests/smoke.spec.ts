@@ -83,6 +83,20 @@ test.describe('Core application', () => {
     expect(errors.errors()).toEqual([]);
   });
 
+  test('no horizontal overflow at 375px on the main product pages', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize({ width: 375, height: 812 });
+    const wide: string[] = [];
+    for (const route of ['', 'labs', 'interview/questions', 'study-plans', 'leaderboard', 'changelog', 'atlas', 'glossary', 'blog', 'progress']) {
+      await page.goto(route);
+      await page.locator('main').first().waitFor();
+      await page.waitForTimeout(300);
+      const { scrollWidth, clientWidth } = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }));
+      if (scrollWidth > clientWidth + 4) wide.push(`/${route}: ${scrollWidth}px`);
+    }
+    expect(wide).toEqual([]);
+  });
+
   test('directly opening a deep link works (prerendered static page)', async ({ page }) => {
     // Simulates a user pasting/refreshing a deep URL rather than navigating
     // via the app. scripts/prerender-for-pagefind.mjs now writes a real
