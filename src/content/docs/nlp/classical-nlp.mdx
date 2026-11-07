@@ -1,93 +1,227 @@
 ---
 title: "Classical NLP: Tokenization, POS Tagging, NER & Parsing"
 sidebar_position: 3
-description: "Tokenization, POS tagging, NER, and parsing -- the pre-Transformer linguistic-structure layer that still coexists alongside modern embedding-based NLP."
+description: "Tokenization, stemming, POS tagging with a runnable Viterbi decoder, NER with BIO tags and span F1, and parsing: the linguistic-structure layer still used beside LLMs."
 ---
-
 
 import TokenizationAmbiguityDiagram from '../../../viz/diagrams/TokenizationAmbiguityDiagram';
 import StemmingVsLemmatizationDiagram from '../../../viz/diagrams/StemmingVsLemmatizationDiagram';
 import PosTaggingViterbiDiagram from '../../../viz/diagrams/PosTaggingViterbiDiagram';
 import NerBioTaggingDiagram from '../../../viz/diagrams/NerBioTaggingDiagram';
 import DependencyVsConstituencyDiagram from '../../../viz/diagrams/DependencyVsConstituencyDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
 # Classical NLP: Tokenization, POS Tagging, NER & Parsing
 
-Before "tokenization" meant BPE splitting text for a Transformer (see [Foundation Model Internals](/docs/llms-genai/foundation-model-internals#tokenization)), it meant something more basic: turning raw text into linguistically meaningful units at all. This page is that older, still-relevant layer.
+<ELI5>
 
-## Intuition: Structure Before Meaning
+Before you can understand a sentence you have to do some plain bookkeeping. Where does each word start and stop? Is "fish" a thing or an action here? Which words are names of people or places? Which word is the subject of which verb? None of this needs you to know what the sentence means. Classical NLP is that bookkeeping, done by programs.
 
-Every technique on this page answers a question that has to be settled *before* a model can reason about meaning at all: where does one unit end and the next begin (tokenization), what grammatical role does each unit play (POS tagging), which spans refer to real-world entities (NER), and how do the units relate to each other (parsing). None of these require understanding what a sentence *means* — only its structure — which is exactly why they predate (and still coexist alongside) modern semantic, embedding-based NLP.
+</ELI5>
+
+## Why This Exists
+
+Before "tokenization" meant BPE splitting text for a transformer (see [Foundation Model Internals](/docs/llms-genai/foundation-model-internals#tokenization)), it meant turning raw text into linguistically meaningful units at all. The techniques on this page answer questions about *structure*: where units begin and end (tokenization), what grammatical role each plays (part-of-speech tagging), which spans name real-world entities (named entity recognition), and how words relate (parsing).
+
+They predate neural NLP but did not disappear with it. Search engines still stem queries, production pipelines still run small NER models because they are cheaper and more predictable than an LLM call, and sequence labelling, the framing behind POS tagging and NER, is still how token-level tasks are set up today. The one algorithm worth knowing by heart is Viterbi decoding, because it is the first place most engineers meet dynamic programming over sequences, and the same idea appears in CTC decoding for speech and in beam search's limitations.
 
 ## Text Normalization
 
-**Tokenization** (classical sense): splitting text into words/sentences — genuinely harder than it sounds. Watch a real rule-based tokenizer handle exactly the cases that break naive whitespace splitting:
+**Tokenization** in the classical sense splits text into words and sentences. It is harder than splitting on spaces: "Dr." does not end a sentence, "don't" may be one token or two, and "New York-based" contains a place name inside a hyphenated word. A rule-based tokenizer handles these cases explicitly:
 
 <TokenizationAmbiguityDiagram />
 
-This is a different, coarser-grained operation than an LLM's subword tokenizer, which operates on the output of (or in place of) this step.
+This is a coarser operation than an LLM's subword tokenizer, which works on raw bytes or on the output of this step.
 
-**Stemming** (crude, rule-based suffix stripping) and **lemmatization** (dictionary-backed, linguistically correct base-form lookup) both aim at the same goal — reducing a word to a canonical form — through genuinely different mechanisms. Real rules applied to real words, side by side:
+**Stemming** strips suffixes by rule ("running" to "run", but also "university" to "univers"). **Lemmatization** looks up the dictionary base form ("better" to "good", "ran" to "run") and usually needs the part of speech. Both reduce words to a canonical form, by different means:
 
 <StemmingVsLemmatizationDiagram />
 
-**Why this still matters**: search and information retrieval systems (matching "running shoes" against a document containing "run shoe") still commonly use stemming/lemmatization for query expansion and indexing, even in systems that also use modern embeddings — see [RAG — Dense vs. Sparse Retrieval](/docs/llms-genai/rag#dense-vs-sparse-retrieval-and-bm25)'s BM25/sparse retrieval, which benefits directly from this normalization.
+Search systems still use them. Matching "running shoes" against a document that says "run shoe" is exactly what [BM25 sparse retrieval](/docs/llms-genai/rag#dense-vs-sparse-retrieval-and-bm25) needs, and a stemmed index makes it work.
 
 ## Part-of-Speech (POS) Tagging
 
-Assigning a grammatical category (noun, verb, adjective, ...) to every word in a sentence. Classical approaches — **Hidden Markov Models** and **Conditional Random Fields** — frame this as sequence labeling: predict the most likely tag sequence given the word sequence, modeling the dependency between adjacent tags as well as each word's own likely tags. Step through a real Viterbi decode over a tiny HMM — the exact dynamic-programming algorithm, not a diagram of it:
+POS tagging assigns a grammatical category (noun, verb, adjective, and so on) to every word. It is the standard example of **sequence labelling**: the right tag for a word depends on the tags around it. "Can" is a modal in "they can fish" and a noun in "a can of fish".
+
+A **hidden Markov model** (HMM) makes that dependence explicit with two tables. Transition probabilities say how likely each tag is to follow another; emission probabilities say how likely each word is under each tag. The best tag sequence is the one with the highest joint probability, and the **Viterbi algorithm** finds it in $O(nT^2)$ time for $n$ words and $T$ tags, instead of checking all $T^n$ sequences.
 
 <PosTaggingViterbiDiagram />
 
-Modern approaches use a small Transformer or BiLSTM (see [Sequence Models — Bidirectional RNN/LSTM](/docs/deep-learning/sequence-models#named-variants-worth-knowing)) trained end-to-end on labeled data, but the underlying task framing — sequence labeling — is unchanged and reused directly for NER below.
+### A Full Worked Example: "they can fish"
 
-**Why it still matters**: POS tags are a useful *feature* for downstream tasks (parsing below depends on them), and understanding sequence labeling here is the direct conceptual bridge to NER and to general sequence-labeling problems in [NLP Task Taxonomy](/docs/nlp/nlp-task-taxonomy#sequence-labeling).
+Take four tags (PRON, MODAL, VERB, NOUN). "They" starts as PRON with probability $0.6 \times 0.3 = 0.18$. For "can", the VERB reading scores $0.18 \times 0.49 \times 0.3 = 0.0265$ and the MODAL reading $0.18 \times 0.40 \times 0.2 = 0.0144$. A greedy tagger picks the best tag at each word, so it takes VERB, and then has to make "fish" a NOUN: $0.0265 \times 0.70 \times 0.10 = 0.00185$.
+
+Viterbi keeps the best path to *every* tag at each step instead of only the winner. The MODAL path continues to VERB "fish" with $0.0144 \times 0.90 \times 0.20 = 0.00259$, which beats the greedy sequence. The tagger that commits early is wrong; the one that waits is right.
+
+<PredictFirst
+  question="A greedy tagger chooses the best tag for each word in turn. Viterbi considers every tag at every step. On a long sentence, how does Viterbi's running time compare with checking every possible tag sequence?"
+  options={[
+    'About the same, because Viterbi also considers every sequence',
+    'Exponentially faster: O(n T^2) instead of T^n, because the best path to each tag only depends on the best paths to the previous tags',
+    'Slower, because it stores a table',
+    'Only faster for short sentences',
+  ]}
+  correctIndex={1}
+  explanation="Under the Markov assumption, the best path ending in tag t at word i extends one of the best paths ending at word i-1. So Viterbi keeps one best path per tag per word, n x T entries, each computed from T predecessors. Checking every sequence is T^n: 4^20 is about a trillion for a 20-word sentence, against 320 table cells for Viterbi."
+/>
+
+<RunnableCode code={`import numpy as np
+
+# A four-tag HMM for "they can fish"
+tags = ["PRON", "MODAL", "VERB", "NOUN"]
+start = {"PRON": 0.6, "MODAL": 0.05, "VERB": 0.15, "NOUN": 0.2}
+transition = {  # P(next tag | tag)
+    "PRON":  {"PRON": 0.01, "MODAL": 0.40, "VERB": 0.49, "NOUN": 0.10},
+    "MODAL": {"PRON": 0.05, "MODAL": 0.01, "VERB": 0.90, "NOUN": 0.04},
+    "VERB":  {"PRON": 0.20, "MODAL": 0.01, "VERB": 0.09, "NOUN": 0.70},
+    "NOUN":  {"PRON": 0.10, "MODAL": 0.20, "VERB": 0.40, "NOUN": 0.30},
+}
+emission = {  # P(word | tag)
+    "PRON":  {"they": 0.30},
+    "MODAL": {"can": 0.20},
+    "VERB":  {"can": 0.30, "fish": 0.20},
+    "NOUN":  {"can": 0.05, "fish": 0.10},
+}
+def e(tag, w):
+    return emission[tag].get(w, 1e-6)
+
+def viterbi(words):
+    n, T = len(words), len(tags)
+    logp = np.full((n, T), -np.inf)
+    back = np.zeros((n, T), dtype=int)
+    for t, tag in enumerate(tags):
+        logp[0, t] = np.log(start[tag]) + np.log(e(tag, words[0]))
+    for i in range(1, n):
+        for t, tag in enumerate(tags):
+            scores = [logp[i-1, p] + np.log(transition[tags[p]][tag]) for p in range(T)]
+            back[i, t] = int(np.argmax(scores))
+            logp[i, t] = max(scores) + np.log(e(tag, words[i]))
+    path = [int(np.argmax(logp[-1]))]
+    for i in range(n - 1, 0, -1):
+        path.insert(0, int(back[i, path[0]]))
+    return [tags[p] for p in path], float(np.exp(logp[-1].max()))
+
+def greedy(words):
+    out, prev = [], None
+    for w in words:
+        score = lambda t: (start[t] if prev is None else transition[prev][t]) * e(t, w)
+        prev = max(tags, key=score)
+        out.append(prev)
+    return out
+
+words = ["they", "can", "fish"]
+best, p = viterbi(words)
+print("greedy :", greedy(words))
+print("viterbi:", best, f"joint probability {p:.2e}")
+
+# Try it: set emission["VERB"]["fish"] to 0.05. "fish" is now rarely a verb,
+# the MODAL path loses, and Viterbi agrees with greedy.`} />
+
+<GoDeeper title="Go deeper: why the code adds log probabilities">
+
+Multiplying probabilities of around 0.1 over a 50-word sentence gives numbers near $10^{-50}$ and below, and long documents underflow to exactly 0 in 64-bit floating point, at which point every path ties. Taking logs turns products into sums, $\log(abc) = \log a + \log b + \log c$, and the argmax is unchanged because log is increasing. The same trick is used in every sequence model's loss, which is why training code computes `log_softmax` rather than `softmax` followed by `log`.
+
+Conditional random fields (CRFs) replace the HMM's generative tables with a discriminative score that can use any features of the whole sentence (capitalisation, suffixes, neighbouring words), and they decode with the same Viterbi recursion. A BiLSTM-CRF or a transformer with a CRF layer on top is still a strong NER architecture.
+
+</GoDeeper>
+
+Modern taggers use a small transformer or a BiLSTM (see [bidirectional RNNs](/docs/deep-learning/sequence-models#named-variants-worth-knowing)) trained end to end, and reach about 97% to 98% accuracy on English news text. The framing as sequence labelling is unchanged, and it carries straight over to NER and the other [sequence labelling tasks](/docs/nlp/nlp-task-taxonomy#sequence-labeling).
 
 ## Named Entity Recognition (NER)
 
-Identifying and classifying spans of text into predefined categories — person names, organizations, locations, dates, monetary amounts. Framed identically to POS tagging as a sequence-labeling problem, using the standard **BIO tagging scheme**. Real decoding from per-token tags into grouped entity spans:
+NER finds spans of text that name people, organisations, places, dates or amounts, and labels each span. It is sequence labelling with the **BIO scheme**: `B-` marks the first token of an entity, `I-` a continuation, and `O` everything else. Decoding the tags back into spans:
 
 <NerBioTaggingDiagram />
 
-**Why it still matters in an LLM-heavy stack**: NER remains a common production pipeline stage even alongside LLMs — extracting structured entities (customer names, order IDs, dates) from unstructured text for downstream systems is often cheaper, faster, and more reliably schema-conformant with a dedicated NER model than with an LLM prompted to "extract the entities," especially at high request volume where a small fine-tuned NER model's latency and cost advantage over an LLM call matters.
+### Run It Yourself: Why NER Is Scored by Span
+
+NER is scored on whole entities, not tokens. In the example below the model tags "Babbage" as `O` instead of `I-PER`. Token accuracy is still 8 out of 9, 0.889. But the predicted entity "Charles" does not match the gold entity "Charles Babbage", so it counts as one false positive and one false negative, and span F1 drops to 0.75.
+
+<RunnableCode code={`# BIO tags -> entity spans, then span-level precision, recall and F1
+tokens = ["Ada", "Lovelace", "met", "Charles", "Babbage", "in", "London", "in", "1833"]
+gold   = ["B-PER", "I-PER", "O", "B-PER", "I-PER", "O", "B-LOC", "O", "B-DATE"]
+pred   = ["B-PER", "I-PER", "O", "B-PER", "O",     "O", "B-LOC", "O", "B-DATE"]
+
+def spans(tags):
+    out, start, label = [], None, None
+    for i, tag in enumerate(tags + ["O"]):          # sentinel closes the last span
+        if tag.startswith("B-") or tag == "O" or (tag.startswith("I-") and tag[2:] != label):
+            if start is not None:
+                out.append((start, i, label))
+            start, label = (i, tag[2:]) if tag != "O" else (None, None)
+    return set(out)
+
+g, p = spans(gold), spans(pred)
+for s, e, lab in sorted(p):
+    print(f"predicted {lab:4} {' '.join(tokens[s:e])!r}  {'correct' if (s, e, lab) in g else 'WRONG'}")
+tp = len(g & p)
+precision, recall = tp / len(p), tp / len(g)
+f1 = 2 * precision * recall / (precision + recall)
+token_acc = sum(a == b for a, b in zip(gold, pred)) / len(gold)
+print(f"token accuracy {token_acc:.3f}, span precision {precision:.2f}, recall {recall:.2f}, F1 {f1:.2f}")
+
+# Try it: change pred[4] back to "I-PER". All four spans match and F1 becomes 1.0.
+# One wrong token cost 1/9 of token accuracy but a whole entity in span F1.`} />
+
+<NotebookCallout color="green" title="When to keep a dedicated NER model">
+Extracting customer names, order IDs and dates from millions of messages is usually cheaper, faster and more consistent with a small fine-tuned NER model than with an LLM prompted to extract entities. Use the LLM to label training data or for the rare cases the small model is unsure about.
+</NotebookCallout>
 
 ## Syntactic Parsing
 
-Recovering a sentence's grammatical structure — not just tagging individual words, but the relationships between them. Toggle between the two dominant representations of the same sentence:
+Parsing recovers how words relate, not just what each one is. Toggle between the two common representations of the same sentence:
 
 <DependencyVsConstituencyDiagram />
 
-- **Constituency parsing**: breaks a sentence into nested phrases (noun phrases, verb phrases) forming a tree, following a formal grammar — "the structure a sentence diagram in grade school represents," made rigorous.
-- **Dependency parsing**: instead of nested phrases, represents each word as depending on exactly one "head" word (a verb's subject and object both depend on the verb) — a directed graph (a tree, rooted at the sentence's main verb) rather than a nested-phrase tree. Dependency parsing has become the more commonly used representation in modern NLP pipelines because it more directly exposes "who did what to whom" relationships useful for downstream tasks like information extraction.
-- **Why this still matters**: even though end-to-end neural models (and LLMs) rarely require an explicit parse tree as an input feature anymore, parsing-derived relationships remain useful for structured information extraction, grammar/style checking tools, and as an interpretability lens — asking "does this model's attention pattern correspond to real syntactic dependencies" is a genuine, still-active [interpretability](/docs/deep-learning/attention-transformers) research question, directly reusing this classical structure as a ground truth to compare against.
+- **Constituency parsing** breaks a sentence into nested phrases (noun phrase, verb phrase) according to a grammar: the sentence diagram from school, made formal.
+- **Dependency parsing** links each word to one head word: a verb's subject and object both depend on the verb. The result is a tree rooted at the main verb. It is the more common representation today because it exposes "who did what to whom" directly, which is what information extraction needs.
 
-## Code: A Real Viterbi Decoder
+End-to-end neural models rarely take a parse tree as input any more, but parses are still used for structured extraction and grammar checking, and as ground truth in [interpretability](/docs/interpretability/deep-learning-and-llm-interpretability) work that asks whether attention heads track syntactic dependencies.
 
-The exact algorithm the POS-tagging diagram above steps through, in full:
+## Common Problems & Fixes
 
-```python
-import numpy as np
+| Problem | Cause | Fix |
+| --- | --- | --- |
+| Sentences split after "Dr." or "e.g." | Naive splitting on periods | A trained sentence splitter (spaCy, Punkt) |
+| Stemmer merges unrelated words | Over-aggressive suffix rules | Lemmatize instead, or a lighter stemmer |
+| Tagger fails on new words | Unknown words get near-zero emission probability | Suffix and capitalisation features, or subword models |
+| NER scores look high but output is unusable | Measured by token accuracy | Report span-level precision, recall and F1 |
+| NER breaks on a new domain | Entity types and contexts differ | Fine-tune on a few hundred labelled domain sentences |
 
-def viterbi(words, tags, transition, emission, start_probs):
-    n, T = len(words), len(tags)
-    prob = np.zeros((n, T))
-    backpointer = np.zeros((n, T), dtype=int)
+## When *Not* to Use It
 
-    for t, tag in enumerate(tags):
-        prob[0, t] = start_probs[tag] * emission[tag].get(words[0], emission[tag]["<UNK>"])
+| Situation | Better choice |
+| --- | --- |
+| Semantic search over meaning | Dense embeddings, see [Word Embeddings](/docs/nlp/word-embeddings) |
+| Open-ended extraction with changing schemas | An LLM with structured output |
+| Feeding text to a transformer | Its own subword tokenizer; do not pre-stem |
+| Low volume, many entity types | A prompted LLM is quicker to set up than training NER |
 
-    for i in range(1, n):
-        for t, tag in enumerate(tags):
-            scores = [prob[i-1, tp] * transition[tags[tp]][tag] for tp in range(T)]
-            backpointer[i, t] = np.argmax(scores)
-            prob[i, t] = max(scores) * emission[tag].get(words[i], emission[tag]["<UNK>"])
+## Remember
 
-    # Backtrace from the best final state -- exactly what the diagram's
-    # bold path traces, column by column, in reverse.
-    path = [int(np.argmax(prob[-1]))]
-    for i in range(n - 1, 0, -1):
-        path.insert(0, backpointer[i, path[0]])
-    return [tags[i] for i in path]
-```
+| Idea | One line |
+| --- | --- |
+| Tokenization | Splitting into words and sentences; harder than spaces |
+| Stemming vs lemmatization | Rule-based suffix strip vs dictionary base form |
+| Sequence labelling | One tag per token, depending on neighbouring tags |
+| HMM | Transition table plus emission table |
+| Viterbi | Best path per tag per step; $O(nT^2)$ instead of $T^n$ |
+| Log space | Sum log-probs to avoid underflow |
+| BIO | B- begins, I- continues, O is outside |
+| NER metric | Span-level F1, not token accuracy |
+| Dependency parse | Each word points to its head |
 
-Next: [Word Embeddings](/docs/nlp/word-embeddings) — moving from discrete linguistic categories to continuous, learned representations of meaning.
+Next: [Word Embeddings](/docs/nlp/word-embeddings), which moves from discrete categories to learned, continuous representations of meaning.
+
+## Sources
+
+- Viterbi, "Error Bounds for Convolutional Codes and an Asymptotically Optimum Decoding Algorithm", IEEE Transactions on Information Theory, 1967.
+- Rabiner, "A Tutorial on Hidden Markov Models and Selected Applications in Speech Recognition", Proceedings of the IEEE, 1989.
+- Lafferty, McCallum and Pereira, "Conditional Random Fields", ICML 2001.
+- Porter, "An Algorithm for Suffix Stripping", Program, 1980.
+- Tjong Kim Sang and De Meulder, "Introduction to the CoNLL-2003 Shared Task: Language-Independent Named Entity Recognition", 2003. https://aclanthology.org/W03-0419/
+- Lample et al., "Neural Architectures for Named Entity Recognition", 2016. https://arxiv.org/abs/1603.01360
+- Jurafsky and Martin, "Speech and Language Processing", 3rd edition draft, chapters on sequence labelling and parsing. https://web.stanford.edu/~jurafsky/slp3/
