@@ -81,7 +81,11 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 58. done - Guides page: interview prep, which optimizer, etc.
 59. done - Deepened Multimodal and Generative Models (image tokens, CLIP loss, diffusion forward process).
 60. done - Deepened Calling the LLM API (sampling worked example, retry jitter simulation, prompt-caching cost, current SDK calls).
-61-70. planned - Close depth gaps found by the existing audits, one page each. Picked from docs/learning-page-inventory.md: the lowest-word core chapters.
+61. done - Deepened Audio Fundamentals (aliasing worked example, Whisper's 80 x 3000 front end, problems, sources).
+62. done - Deepened Vision Tasks and Models (IoU association worked example, stereo depth error, Hungarian vs greedy, sources).
+63. done - Deepened Classical NLP (runnable Viterbi where greedy fails, BIO span F1, log-space, CRFs, sources).
+64. done - Deepened Alignment and RLHF (KL-regularised optimum on four answers, over-optimisation, rare-failure statistics, DPO derivation).
+65-70. planned - Close depth gaps found by the existing audits, one page each. Picked from docs/learning-page-inventory.md: the lowest-word core chapters.
 
 ### Atlas and visuals (71-80)
 71. done - Atlas shows one label, for the selected entry, so labels no longer overlap.
@@ -102,9 +106,9 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 84. done - Changelog page from git history.
 85. done - Leaderboard: weekly and all-time.
 86. skipped - Community solutions (needs sign-in and moderation; left for a later batch with a moderation queue).
-87. planned - Product menu regrouped like Products and Resources.
-88. planned - Dark mode check on every new page.
-89. planned - 375px overflow audit after each release.
+87. done - Product menu regrouped like Products and Resources.
+88. done - Dark mode check on every new page.
+89. done - 375px overflow audit after each release (smoke test covers the main product pages).
 90. planned - Faster first load: split the largest data files.
 91. planned - Search covers interview questions.
 92. planned - SEO pages for each interview topic.

@@ -9,6 +9,33 @@ import BrandMark from '../brand/BrandMark';
 import FocusMusicControl from '../focus-music/FocusMusicControl';
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform ?? navigator.userAgent);
+/** Every destination, grouped the way people look for them: things you use, then things you read or check. */
+export const NAV_GROUPS = [
+  {
+    title: 'Products',
+    items: [
+      { to: '/learn', label: 'Learn', note: 'Lessons with diagrams and live code' },
+      { to: '/labs', label: 'Labs', note: 'Practice problems in Python' },
+      { to: '/interview', label: 'Interview', note: 'Spoken mock interview and question bank' },
+      { to: '/study-plans', label: 'Study plans', note: 'Named sheets of problems' },
+      { to: '/research', label: 'Research', note: 'Papers built step by step' },
+      { to: '/projects', label: 'Projects', note: 'Larger builds' },
+      { to: '/atlas', label: 'Atlas', note: 'Maps of techniques by year' },
+    ],
+  },
+  {
+    title: 'Resources',
+    items: [
+      { to: '/blog', label: 'Blog', note: 'Explainers and analysis' },
+      { to: '/glossary', label: 'Glossary', note: 'Terms in plain English' },
+      { to: '/leaderboard', label: 'Leaderboard', note: 'Weekly and all-time' },
+      { to: '/progress', label: 'Progress', note: 'What you have finished' },
+      { to: '/changelog', label: 'Changelog', note: 'What changed, day by day' },
+      { to: '/about', label: 'About', note: 'Who runs the site' },
+    ],
+  },
+];
+
 const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 export default function Navbar({
@@ -158,7 +185,7 @@ export default function Navbar({
               fontSize: 15,
             }}
           >
-            ☰
+            <span aria-hidden="true">☰</span>
           </button>
           <Link to={learnDestination} className="nm-navbar-learn-link" style={{ color: 'var(--nm-text-primary)', textDecoration: 'none', fontSize: 14, fontFamily: "'Kalam', 'Comic Sans MS', cursive" }}>
             Learn
@@ -170,45 +197,14 @@ export default function Navbar({
           >
             Labs
           </Link>
-          <Link to="/study-plans" className="nm-nav-link">Study plans</Link>
-          <Link to="/atlas" className="nm-nav-link">Atlas</Link>
-          <Link to="/glossary" className="nm-nav-link nm-navbar-glossary-link">Glossary</Link>
           <Link to="/interview" className="nm-nav-link">Interview</Link>
+          <Link to="/study-plans" className="nm-nav-link">Study plans</Link>
           <Link
             to="/blog"
             className="nm-navbar-blog-link"
             style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--nm-text-primary)', textDecoration: 'none', fontSize: 14, fontFamily: "'Kalam', 'Comic Sans MS', cursive" }}
           >
             Blog
-            <span
-              className="nm-new-badge"
-              style={{
-                fontSize: 9.5,
-                fontWeight: 800,
-                letterSpacing: '0.03em',
-                color: 'var(--nm-bg)',
-                background: 'var(--nm-accent-primary)',
-                borderRadius: 5,
-                padding: '0.1rem 0.32rem',
-                lineHeight: 1.4,
-              }}
-            >
-              NEW
-            </span>
-          </Link>
-          <Link
-            to="/leaderboard"
-            className="nm-navbar-leaderboard-link"
-            style={{ color: 'var(--nm-text-primary)', textDecoration: 'none', fontSize: 14, fontFamily: "'Kalam', 'Comic Sans MS', cursive" }}
-          >
-            Leaderboard
-          </Link>
-          <Link
-            to="/progress"
-            className="nm-navbar-progress-link"
-            style={{ color: 'var(--nm-text-primary)', textDecoration: 'none', fontSize: 14, fontFamily: "'Kalam', 'Comic Sans MS', cursive" }}
-          >
-            Progress
           </Link>
           <FocusMusicControl />
           <button
@@ -274,7 +270,8 @@ export default function Navbar({
               top: 0,
               left: 0,
               bottom: 0,
-              width: 'min(280px, 80vw)',
+              width: 'min(300px, 85vw)',
+              overflowY: 'auto',
               zIndex: 201,
               background: 'var(--nm-surface)',
               borderRight: '1px solid var(--nm-border)',
@@ -296,32 +293,16 @@ export default function Navbar({
                 ✕
               </button>
             </div>
-            {[
-              { to: learnDestination, label: 'Learn' },
-              { to: '/labs', label: 'Labs' },
-              { to: '/study-plans', label: 'Study plans' },
-              { to: '/atlas', label: 'Atlas' },
-              { to: '/glossary', label: 'Glossary' },
-              { to: '/blog', label: 'Blog' },
-              { to: '/interview', label: 'Interview' },
-              { to: '/leaderboard', label: 'Leaderboard' },
-              { to: '/progress', label: 'Progress' },
-            ].map((item) => (
-              <Link
-                key={item.to}
-                to={item.to}
-                onClick={() => setPrimaryMenuOpen(false)}
-                style={{
-                  color: 'var(--nm-text-primary)',
-                  textDecoration: 'none',
-                  fontSize: 16,
-                  fontFamily: "'Kalam', 'Comic Sans MS', cursive",
-                  padding: '0.6rem 0.5rem',
-                  borderRadius: 8,
-                }}
-              >
-                {item.label}
-              </Link>
+            {NAV_GROUPS.map((group) => (
+              <section key={group.title} aria-label={group.title} className="nm-menu-group">
+                <h2>{group.title}</h2>
+                {group.items.map((item) => (
+                  <Link key={item.to} to={item.to} onClick={() => setPrimaryMenuOpen(false)}>
+                    <span>{item.label}</span>
+                    <small>{item.note}</small>
+                  </Link>
+                ))}
+              </section>
             ))}
             <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--nm-border)' }}>
               <FocusMusicControl />
