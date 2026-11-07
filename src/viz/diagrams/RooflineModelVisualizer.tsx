@@ -147,7 +147,7 @@ export default function RooflineModelVisualizer() {
           onClick={() => setWorkload('decode')}
           style={{
             background: intensity < 5 ? t.accentDanger : t.surfaceAlt,
-            color: intensity < 5 ? '#fff' : t.textPrimary,
+            color: intensity < 5 ? t.background : t.textPrimary,
             border: `1px solid ${t.border}`,
             padding: '5px 12px',
             borderRadius: 6,
@@ -162,7 +162,7 @@ export default function RooflineModelVisualizer() {
           onClick={() => setWorkload('prefill')}
           style={{
             background: intensity >= 100 && intensity <= 200 ? t.accentPrimary : t.surfaceAlt,
-            color: intensity >= 100 && intensity <= 200 ? '#000' : t.textPrimary,
+            color: intensity >= 100 && intensity <= 200 ? t.background : t.textPrimary,
             border: `1px solid ${t.border}`,
             padding: '5px 12px',
             borderRadius: 6,
@@ -177,7 +177,7 @@ export default function RooflineModelVisualizer() {
           onClick={() => setWorkload('gemm')}
           style={{
             background: intensity > 300 ? t.accentTeal : t.surfaceAlt,
-            color: intensity > 300 ? '#000' : t.textPrimary,
+            color: intensity > 300 ? t.background : t.textPrimary,
             border: `1px solid ${t.border}`,
             padding: '5px 12px',
             borderRadius: 6,
@@ -266,7 +266,7 @@ export default function RooflineModelVisualizer() {
 
           {/* Active Operating Point */}
           <line x1={currentX} y1={svgH - padB} x2={currentX} y2={currentY} stroke={isMemoryBound ? t.accentDanger : t.accentPrimary} strokeDasharray="3,3" strokeWidth={1.5} />
-          <circle cx={currentX} cy={currentY} r={7} fill={isMemoryBound ? t.accentDanger : t.accentPrimary} stroke="#fff" strokeWidth={2} />
+          <circle cx={currentX} cy={currentY} r={7} fill={isMemoryBound ? t.accentDanger : t.accentPrimary} stroke={t.background} strokeWidth={2} />
 
           {/* Axis Labels */}
           <text x={svgW / 2} y={svgH - 10} textAnchor="middle" fontSize={11} fill={t.textMuted}>

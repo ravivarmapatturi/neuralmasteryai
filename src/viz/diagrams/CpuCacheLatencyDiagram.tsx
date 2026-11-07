@@ -24,7 +24,7 @@ export default function CpuCacheLatencyDiagram() {
 
   return (
     <VisualizationContainer footer="RAM access costs ~50x an L1 hit -- roughly the difference between one heartbeat and almost a minute, scaled to human time. Vectorized array operations are fast largely because they access memory sequentially (matching how a cache line loads a contiguous block at once), keeping the CPU fed from L1/L2 instead of stalling on a RAM round-trip for every single element the way an element-by-element Python loop over scattered objects does.">
-      <svg width={WIDTH} height={HEIGHT} style={{ display: 'block' }}>
+      <svg width={WIDTH} height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="nm-fit-svg" style={{ display: 'block' }}>
         {LEVELS.map((l, i) => {
           const barH = (Math.log(l.cycles + 1) / Math.log(maxCycles + 1)) * plotW;
           const y = i * (plotH / LEVELS.length) + 6;

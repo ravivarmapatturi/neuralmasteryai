@@ -49,7 +49,7 @@ export default function TemporalConsistencyDiagram() {
         {Array.from({ length: N_FRAMES }, (_, i) => {
           const p = posFn(i);
           return (
-            <svg key={i} width={CELL_W} height={CELL_H} style={{ border: `1px solid ${t.border}`, borderRadius: 4, background: t.surfaceAlt }}>
+            <svg key={i} width={CELL_W} height={CELL_H} viewBox={`0 0 ${CELL_W} ${CELL_H}`} className="nm-fit-svg" style={{ border: `1px solid ${t.border}`, borderRadius: 4, background: t.surfaceAlt }}>
               <circle cx={CELL_W / 2} cy={CELL_H / 2} r={p.r} fill={mode === 'independent' ? `hsl(${p.hue}, 60%, 55%)` : accent} />
               <text x={CELL_W / 2} y={CELL_H - 4} textAnchor="middle" fontSize={8} fill={t.textMuted}>
                 t{i + 1}

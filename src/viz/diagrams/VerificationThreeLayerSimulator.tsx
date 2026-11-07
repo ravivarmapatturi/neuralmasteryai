@@ -155,7 +155,7 @@ export default function VerificationThreeLayerSimulator() {
             padding: '7px 16px',
             borderRadius: 6,
             background: running ? t.surfaceAlt : t.accentPrimary,
-            color: running ? t.textMuted : '#FFFFFF',
+            color: running ? t.textMuted : t.background,
             border: `1px solid ${running ? t.border : t.accentPrimary}`,
             fontWeight: 600,
             fontSize: 12,

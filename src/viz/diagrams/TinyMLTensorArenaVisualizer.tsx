@@ -72,7 +72,7 @@ export default function TinyMLTensorArenaVisualizer() {
             onClick={() => setActiveLayerIdx(idx)}
             style={{
               background: activeLayerIdx === idx ? t.accentPrimary : t.surfaceAlt,
-              color: activeLayerIdx === idx ? '#000' : t.textPrimary,
+              color: activeLayerIdx === idx ? t.background : t.textPrimary,
               border: `1px solid ${activeLayerIdx === idx ? t.accentPrimary : t.border}`,
               padding: '6px 12px',
               borderRadius: 6,
@@ -156,7 +156,7 @@ export default function TinyMLTensorArenaVisualizer() {
               justifyContent: 'center',
               fontSize: 11,
               fontWeight: 700,
-              color: activeLayer.arenaOffsetKb === 0 ? '#000' : t.textMuted,
+              color: activeLayer.arenaOffsetKb === 0 ? t.background : t.textMuted,
             }}
           >
             <span>Offset 0..24 KB</span>
@@ -174,7 +174,7 @@ export default function TinyMLTensorArenaVisualizer() {
               justifyContent: 'center',
               fontSize: 11,
               fontWeight: 700,
-              color: activeLayer.arenaOffsetKb === 24 ? '#000' : t.textMuted,
+              color: activeLayer.arenaOffsetKb === 24 ? t.background : t.textMuted,
             }}
           >
             <span>Offset 24..48 KB</span>

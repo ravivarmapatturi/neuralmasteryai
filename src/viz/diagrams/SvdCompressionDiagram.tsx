@@ -9,7 +9,7 @@ function Grid({ data }: { data: number[][] }) {
   const size = 46, gap = 3;
   const maxAbs = Math.max(...data.flat().map(Math.abs), 1e-6);
   return (
-    <svg width={data.length * (size + gap)} height={data.length * (size + gap)}>
+    <svg width={data.length * (size + gap)} height={data.length * (size + gap)} viewBox={`0 0 ${data.length * (size + gap)} ${data.length * (size + gap)}`} className="nm-fit-svg">
       {data.map((row, r) => row.map((v, c) => {
         const mag = Math.min(1, Math.abs(v) / maxAbs);
         const color = v >= 0 ? t.accentPrimary : t.accentDanger;

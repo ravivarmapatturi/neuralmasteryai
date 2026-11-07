@@ -60,7 +60,7 @@ export default function ThreadingVsMultiprocessingDiagram() {
           ]}
         />
       </div>
-      <svg width={WIDTH} height={HEIGHT} style={{ display: 'block' }}>
+      <svg width={WIDTH} height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="nm-fit-svg" style={{ display: 'block' }}>
         <rect x={10} y={20} width={barW} height={30} fill={`${color}30`} stroke="none" />
         <SketchRect x={10} y={20} width={barW} height={30} color={color} strokeWidth={2} id="tvm-bar" />
         <text x={10} y={70} fontSize={13} fontFamily="monospace" fontWeight={700} fill={color}>

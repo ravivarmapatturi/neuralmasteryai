@@ -45,7 +45,7 @@ export default function RgbChannelDecompositionDiagram() {
           { value: 'gray', label: 'Grayscale' },
         ]}
       />
-      <svg width={SIZE * CELL} height={SIZE * CELL} style={{ marginTop: 8, display: 'block' }}>
+      <svg width={SIZE * CELL} height={SIZE * CELL} viewBox={`0 0 ${SIZE * CELL} ${SIZE * CELL}`} className="nm-fit-svg" style={{ marginTop: 8, display: 'block' }}>
         {Array.from({ length: SIZE }, (_, r) =>
           Array.from({ length: SIZE }, (_, c) => (
             <rect key={`${r}-${c}`} x={c * CELL} y={r * CELL} width={CELL - 1} height={CELL - 1} fill={colorFor(r, c)} stroke={t.border} strokeWidth={0.5} />

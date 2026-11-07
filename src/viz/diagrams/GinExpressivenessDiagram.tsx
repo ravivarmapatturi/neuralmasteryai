@@ -14,7 +14,7 @@ function StarGraph({ leafCount, label }: { leafCount: number; label: string }) {
     return { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) };
   });
   return (
-    <svg width={180} height={150}>
+    <svg width={180} height={150} viewBox={`0 0 ${180} ${150}`} className="nm-fit-svg">
       {leaves.map((l, i) => <line key={i} x1={cx} y1={cy} x2={l.x} y2={l.y} stroke={t.border} strokeWidth={1.5} />)}
       {leaves.map((l, i) => (
         <g key={i}>

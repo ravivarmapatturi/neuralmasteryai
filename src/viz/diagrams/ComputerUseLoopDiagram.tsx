@@ -102,7 +102,7 @@ export default function ComputerUseLoopDiagram() {
           return (
             <SketchBox
               key={i}
-              color={isCurrent ? color : s.consequential ? '#d9534f' : t.border}
+              color={isCurrent ? color : s.consequential ? t.accentDanger : t.border}
               strokeWidth={1.5}
               style={{ flex: '1 1 90px', minWidth: 90, opacity: isPast || isCurrent ? 1 : 0.55 }}
             >
@@ -118,7 +118,7 @@ export default function ComputerUseLoopDiagram() {
                 <div style={{ fontSize: 16 }}>{ICON[s.kind]}</div>
                 <div style={{ marginTop: 2, fontWeight: isCurrent ? 700 : 500, fontFamily: HAND_FONT }}>{s.label}</div>
                 {s.consequential && (
-                  <div style={{ color: '#d9534f', fontWeight: 600, marginTop: 2, fontFamily: HAND_FONT }}>consequential</div>
+                  <div style={{ color: t.accentDanger, fontWeight: 600, marginTop: 2, fontFamily: HAND_FONT }}>consequential</div>
                 )}
               </div>
             </SketchBox>

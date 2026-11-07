@@ -19,7 +19,7 @@ export default function GridWorldBellmanDiagram() {
   return (
     <VisualizationContainer footer={`Iteration ${controller.step}: every cell runs V(s) ← max over 4 actions of [reward + γ·V(s')] using LAST iteration's V, all simultaneously -- the literal Bellman optimality equation, applied ${ITERATIONS} times until the values stop moving. Goal cell (top-right, marked +1) stays fixed at 0 -- it's terminal, nothing to back up.`}>
       <div style={{ display: 'flex', justifyContent: 'center' }}>
-        <svg width={VI_GRID.cols * cellSize} height={VI_GRID.rows * cellSize}>
+        <svg width={VI_GRID.cols * cellSize} height={VI_GRID.rows * cellSize} viewBox={`0 0 ${VI_GRID.cols * cellSize} ${VI_GRID.rows * cellSize}`} className="nm-fit-svg">
           {V.map((row, r) =>
             row.map((v, c) => {
               const isGoal = r === VI_GRID.goal[0] && c === VI_GRID.goal[1];

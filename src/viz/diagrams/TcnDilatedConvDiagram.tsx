@@ -26,7 +26,7 @@ export default function TcnDilatedConvDiagram() {
           </div>
         ))}
       </div>
-      <svg width={T * cell} height={40}>
+      <svg width={T * cell} height={40} viewBox={`0 0 ${T * cell} ${40}`} className="nm-fit-svg">
         {Array.from({ length: T }).map((_, i) => {
           const dist = target - i;
           const inField = dist >= 0 && dist <= rf && dist % dilation === 0;

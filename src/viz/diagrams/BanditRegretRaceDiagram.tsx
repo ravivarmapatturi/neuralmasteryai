@@ -21,7 +21,7 @@ export default function BanditRegretRaceDiagram() {
 
   const trace = useMemo(() => simulateBandits(5000, seed), [seed]);
   const colorEps = getConceptColor(t, 'attention');
-  const colorUcb = '#d9534f';
+  const colorUcb = t.accentDanger;
   const colorThompson = getConceptColor(t, 'key');
 
   const visibleLen = horizon;

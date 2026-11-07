@@ -8,7 +8,7 @@ function GramGrid({ gram, size = 34 }: { gram: number[][]; size?: number }) {
   const t = useVizTokens();
   const gap = 2;
   return (
-    <svg width={gram.length * (size + gap)} height={gram.length * (size + gap)}>
+    <svg width={gram.length * (size + gap)} height={gram.length * (size + gap)} viewBox={`0 0 ${gram.length * (size + gap)} ${gram.length * (size + gap)}`} className="nm-fit-svg">
       {gram.map((row, r) =>
         row.map((v, c) => {
           const mag = Math.min(1, Math.abs(v));

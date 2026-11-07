@@ -102,7 +102,7 @@ export default function ConvolutionSlideDiagram() {
       <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap', marginTop: 8 }}>
         <div>
           <div style={{ fontSize: DIAGRAM_TYPE.secondaryLabel.size, color: t.textMuted, marginBottom: 4 }}>Input (10×10)</div>
-          <svg width={SIZE * CELL} height={SIZE * CELL}>
+          <svg width={SIZE * CELL} height={SIZE * CELL} viewBox={`0 0 ${SIZE * CELL} ${SIZE * CELL}`} className="nm-fit-svg">
             {INPUT.map((row, r) =>
               row.map((v, c) => {
                 const inWindow = r >= HIGHLIGHT_R && r < HIGHLIGHT_R + 3 && c >= HIGHLIGHT_C && c < HIGHLIGHT_C + 3;
@@ -124,7 +124,7 @@ export default function ConvolutionSlideDiagram() {
         </div>
         <div>
           <div style={{ fontSize: DIAGRAM_TYPE.secondaryLabel.size, color: t.textMuted, marginBottom: 4 }}>Kernel (3×3)</div>
-          <svg width={3 * KCELL} height={3 * KCELL}>
+          <svg width={3 * KCELL} height={3 * KCELL} viewBox={`0 0 ${3 * KCELL} ${3 * KCELL}`} className="nm-fit-svg">
             {kernel.map((row, r) =>
               row.map((v, c) => (
                 <g key={`${r}-${c}`}>
@@ -139,7 +139,7 @@ export default function ConvolutionSlideDiagram() {
         </div>
         <div>
           <div style={{ fontSize: DIAGRAM_TYPE.secondaryLabel.size, color: t.textMuted, marginBottom: 4 }}>Output (8×8)</div>
-          <svg width={output.length * CELL} height={output.length * CELL}>
+          <svg width={output.length * CELL} height={output.length * CELL} viewBox={`0 0 ${output.length * CELL} ${output.length * CELL}`} className="nm-fit-svg">
             {output.map((row, r) =>
               row.map((v, c) => (
                 <rect

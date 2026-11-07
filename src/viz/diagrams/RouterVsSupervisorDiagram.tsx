@@ -91,7 +91,7 @@ export default function RouterVsSupervisorDiagram() {
       </div>
 
       {mode === 'router' && atEnd && (
-        <div style={{ marginTop: 10, fontSize: 12, color: '#d9534f' }}>
+        <div style={{ marginTop: 10, fontSize: 12, color: t.accentDanger }}>
           {steps.length} step(s), 1 agent called -- and the "should I pack a coat" half of the request was never actually handled.
         </div>
       )}

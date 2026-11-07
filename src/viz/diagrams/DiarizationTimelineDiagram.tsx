@@ -40,7 +40,7 @@ export default function DiarizationTimelineDiagram() {
           : 'Click a segment to see its timing. This combines voice-activity detection (finding when someone is speaking at all) with speaker-embedding clustering (grouping segments by who) into one "who spoke when" timeline -- a genuinely different output from ASR, which only produces the transcript text.'
       }
     >
-      <svg width={WIDTH} height={ROW_H + 20} style={{ display: 'block' }}>
+      <svg width={WIDTH} height={ROW_H + 20} viewBox={`0 0 ${WIDTH} ${ROW_H + 20}`} className="nm-fit-svg" style={{ display: 'block' }}>
         <line x1={0} y1={ROW_H / 2 + 10} x2={WIDTH} y2={ROW_H / 2 + 10} stroke={t.border} strokeWidth={1} />
         {SEGMENTS.map((s, i) => {
           const x = (s.start / TOTAL) * WIDTH;

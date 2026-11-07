@@ -90,7 +90,7 @@ export default function MorphologicalOpsDiagram() {
           { value: 'closing', label: 'Closing' },
         ]}
       />
-      <svg width={SIZE * CELL} height={SIZE * CELL} style={{ marginTop: 8, display: 'block' }}>
+      <svg width={SIZE * CELL} height={SIZE * CELL} viewBox={`0 0 ${SIZE * CELL} ${SIZE * CELL}`} className="nm-fit-svg" style={{ marginTop: 8, display: 'block' }}>
         {grid.map((row, r) =>
           row.map((v, c) => (
             <rect key={`${r}-${c}`} x={c * CELL} y={r * CELL} width={CELL - 1} height={CELL - 1} fill={v ? t.accentPrimary : t.surfaceAlt} stroke={t.border} strokeWidth={0.5} />

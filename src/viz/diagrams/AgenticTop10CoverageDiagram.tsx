@@ -34,7 +34,7 @@ export default function AgenticTop10CoverageDiagram() {
   const t = useVizTokens();
   const [selected, setSelected] = useState<string>(ROWS[0].id);
   const color = getConceptColor(t, 'attention');
-  const colorGap = '#d9534f';
+  const colorGap = t.accentDanger;
 
   const row = ROWS.find((r) => r.id === selected)!;
   const coveredCount = ROWS.filter((r) => r.covered).length;
