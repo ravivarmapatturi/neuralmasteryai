@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useDocumentMeta } from '../../lib/useDocumentMeta';
 import { correctInterviewTerms } from '../../lib/interviewRoom/dialogue';
@@ -49,8 +49,8 @@ const topics = practice.topics as {
   about: string;
   questions: PracticeQuestion[];
 }[];
-const graphTopics = topics.map((t) => ({ id: t.id, title: t.title, group: t.group, count: t.questions.length }));
-const totalQuestions = graphTopics.reduce((sum, t) => sum + t.count, 0);
+const baseGraphTopics = topics.map((t) => ({ id: t.id, title: t.title, group: t.group, count: t.questions.length }));
+const totalQuestions = baseGraphTopics.reduce((sum, t) => sum + t.count, 0);
 const firstTopic = Math.max(0, topics.findIndex((t) => t.id === 'rag'));
 
 function locate(id: string | null) {
@@ -100,6 +100,10 @@ export default function SimpleInterviewPage() {
   const enginePromiseRef = useRef<Promise<void> | null>(null);
 
   const topic = topics[topicIndex];
+  const graphTopics = useMemo(
+    () => baseGraphTopics.map((g, i) => ({ ...g, done: topics[i].questions.filter((q) => hasAward(events, `/interview#${q.id}`, 'interview')).length })),
+    [events]
+  );
   const linkedHere = linked && linked.topic === topicIndex ? linked : null;
   const shown = topic.questions.map((q, i) => ({ q, i })).filter(({ q }) => matches(q));
   const question = topic.questions[questionIndex];

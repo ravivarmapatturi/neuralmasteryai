@@ -6,6 +6,7 @@ export interface GraphTopic {
   title: string;
   group: string;
   count: number;
+  done?: number;
 }
 
 // What builds on what, using the topic ids in interviewPractice.json.
@@ -199,7 +200,7 @@ export function InterviewGraph({
               className={`si-node${t.id === activeId ? ' on' : ''}${near.has(t.id) ? '' : ' far'}`}
               style={{ color: GROUP_COLOURS[t.group] }}
               aria-pressed={t.id === activeId}
-              aria-label={`${t.title}, ${t.count} questions`}
+              aria-label={`${t.title}, ${t.count} questions${t.done ? `, ${t.done} completed` : ''}`}
               onMouseEnter={() => {
                 pausedRef.current = true;
                 onActivate(t.id);
@@ -211,6 +212,16 @@ export function InterviewGraph({
               onClick={() => onActivate(t.id)}
             >
               <span className="si-dot" style={{ width: 8 + Math.sqrt(t.count) * 1.5, height: 8 + Math.sqrt(t.count) * 1.5 }} />
+              {!!t.done && (
+                <span
+                  className="si-ring"
+                  style={{
+                    width: 16 + Math.sqrt(t.count) * 1.5,
+                    height: 16 + Math.sqrt(t.count) * 1.5,
+                    background: `conic-gradient(currentColor ${(t.done / t.count) * 360}deg, var(--line) 0)`,
+                  }}
+                />
+              )}
               <span
                 className={`si-label${flip ? ' flip' : ''}`}
                 style={{ transform: `rotate(${degrees}deg)` }}
