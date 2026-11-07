@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { searchDocs, toRoute, type PagefindResultData } from '../../lib/pagefind';
+import { searchInterviewQuestions, interviewQuestionRoute, type InterviewHit } from '../../lib/interviewSearch';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
 const DEBOUNCE_MS = 200;
@@ -17,6 +18,7 @@ type Status = 'idle' | 'loading' | 'ready' | 'unavailable' | 'empty';
 export default function SearchModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<PagefindResultData[]>([]);
+  const [questions, setQuestions] = useState<InterviewHit[]>([]);
   const [status, setStatus] = useState<Status>('idle');
   const [activeIndex, setActiveIndex] = useState(0);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -41,12 +43,16 @@ export default function SearchModal({ open, onClose }: { open: boolean; onClose:
     if (!open) return undefined;
     if (!query.trim()) {
       setResults([]);
+      setQuestions([]);
       setStatus('idle');
       return undefined;
     }
     setStatus('loading');
     const requestId = ++requestIdRef.current;
     const timer = window.setTimeout(async () => {
+      searchInterviewQuestions(query)
+        .then((hits) => { if (requestIdRef.current === requestId) setQuestions(hits); })
+        .catch(() => setQuestions([]));
       try {
         const data = await searchDocs(query);
         if (requestIdRef.current !== requestId) return; // a newer keystroke superseded this search
@@ -169,7 +175,7 @@ export default function SearchModal({ open, onClose }: { open: boolean; onClose:
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search the docs..."
+            placeholder="Search pages and interview questions…"
             aria-label="Search query"
             autoComplete="off"
             spellCheck={false}
@@ -210,12 +216,31 @@ export default function SearchModal({ open, onClose }: { open: boolean; onClose:
           {status === 'loading' && (
             <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--nm-text-muted)', fontSize: 13.5 }}>Searching…</div>
           )}
-          {status === 'empty' && (
+          {questions.length > 0 && status !== 'idle' && (
+            <section aria-label="Interview questions" style={{ padding: '0.4rem 0.4rem 0', borderBottom: '1px solid var(--nm-border)' }}>
+              <h2 style={{ margin: '0.3rem 0.7rem 0.3rem', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--nm-text-muted)' }}>Interview questions</h2>
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                {questions.map((q) => (
+                  <li key={q.id}>
+                    <Link
+                      to={interviewQuestionRoute(q.id)}
+                      onClick={onClose}
+                      style={{ display: 'block', borderRadius: 8, color: 'var(--nm-text-primary)', textDecoration: 'none', padding: '0.5rem 0.7rem', marginBottom: 2 }}
+                    >
+                      <div style={{ fontWeight: 600, fontSize: 13.5 }}>{q.title}</div>
+                      <div style={{ fontSize: 12, color: 'var(--nm-text-secondary)' }}>{q.area}</div>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+          {status === 'empty' && questions.length === 0 && (
             <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--nm-text-muted)', fontSize: 13.5 }}>
               No results for &ldquo;{query}&rdquo;.
             </div>
           )}
-          {status === 'unavailable' && (
+          {status === 'unavailable' && questions.length === 0 && (
             <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--nm-text-muted)', fontSize: 13.5 }}>
               Search isn&rsquo;t available in this environment (it needs a production build). Try the sidebar navigation instead.
             </div>
