@@ -1,7 +1,7 @@
 ---
 title: "Scalable Oversight & Frontier Safety"
 sidebar_position: 4
-description: "Debate, process-based oversight, and staged deployment -- what happens once a model gets too capable for a human evaluator to directly verify its answers."
+description: "Supervising models that may out-perform their evaluators: debate simulated in code, process supervision, weak-to-strong training, staged deployment statistics and frontier safety frameworks."
 ---
 
 
@@ -10,14 +10,24 @@ import DebateConvergenceDiagram from '../../../viz/diagrams/DebateConvergenceDia
 import ProcessVsOutcomeDiagram from '../../../viz/diagrams/ProcessVsOutcomeDiagram';
 import StagedDeploymentDiagram from '../../../viz/diagrams/StagedDeploymentDiagram';
 import CapabilityThresholdDiagram from '../../../viz/diagrams/CapabilityThresholdDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
 # Scalable Oversight & Frontier Safety
 
-The alignment techniques in [Alignment & RLHF](/docs/ai-safety/alignment-and-rlhf) all depend on a human (or human-derived signal) being able to judge whether a model's output is actually good. That assumption gets harder to sustain as models get more capable — this page is what happens at that edge.
+<ELI5>
+
+Imagine checking the homework of a student who is better at maths than you. You cannot redo every problem yourself. You can ask two students to argue opposite answers and see whose argument holds up, you can check that each step follows from the last instead of only looking at the final number, and you can let them try harder problems only after they have done well on easier ones while you watched. Those are the three ideas on this page.
+
+</ELI5>
+
+The alignment techniques in [Alignment & RLHF](/docs/ai-safety/alignment-and-rlhf) all assume someone can judge whether an output is good. That assumption gets harder to keep as models get more capable. This page covers the methods proposed for that edge, what each one actually relies on, and the deployment practices labs use to limit harm when the methods fall short.
 
 ## Intuition: What Do You Do When the Evaluator Isn't the Expert?
 
-Every idea on this page answers the same question from a different angle: if properly verifying an answer requires exactly the expertise the evaluator doesn't have, what's left to lean on? Debate leans on adversarial scrutiny instead of direct expertise. Process-based oversight leans on checking the reasoning method instead of just the answer. Staged deployment and capability thresholds lean on bounding the damage instead of preventing every mistake outright. None of them fully solve the problem — they're each a specific, partial answer to "supervise something you can't fully verify."
+Every idea here answers one question: if checking an answer properly needs exactly the expertise the evaluator lacks, what is left to rely on? Debate relies on adversarial scrutiny instead of expertise. Process-based oversight checks the method rather than only the answer. Weak-to-strong training asks whether a strong model can learn the intent behind a weak supervisor's imperfect labels. Staged deployment and capability thresholds limit the damage instead of preventing every mistake. None of them solves the problem alone.
 
 ## Scalable Oversight
 
@@ -33,7 +43,44 @@ Three approaches actively explored for this problem:
 
 <DebateConvergenceDiagram />
 
-The judge's rising confidence isn't asserted — it's a real accumulated log-odds update, round by round, purely from comparing relative argument strength. This is also debate's real limitation, visible in the same mechanism: if the two sides' evidence quality were closer (or reversed), the same honest updating procedure would converge on the wrong answer just as confidently.
+The judge's confidence in the diagram is an accumulated log-odds update, round by round, from comparing argument strength alone. That is also debate's limitation: the same honest updating converges on the wrong answer just as confidently if the dishonest side's arguments look stronger.
+
+### Run It Yourself: When Debate Helps the Judge
+
+Model each round as a noisy reading of which side's argument is stronger, with the honest side ahead by an average "edge". With an edge of +0.5 the judge is right 69% of the time after one round and 89% after six. With +0.2 the gain is slow: 58% to 69%. With -0.2, where the dishonest side argues better, more rounds make the judge *more* wrong: 42% down to 31%.
+
+<PredictFirst
+  question="Arguments become much easier for the judge to compare (less noise per round). The dishonest debater is slightly more persuasive (edge -0.2). After six rounds, how often is the judge right?"
+  options={[
+    'More often than before, because clearer arguments always help the judge',
+    'About 5% of the time, because clearer comparisons make the judge converge faster on whichever side argues better',
+    'About 50%, because the edge is small',
+    'Always right, because the honest side has the truth',
+  ]}
+  correctIndex={1}
+  explanation="Less noise makes each round more informative about which side argues better, not about which side is true. When the dishonest side argues better, the judge converges on it faster. Debate's safety case therefore rests on an empirical claim: that in practice, true claims are easier to defend than false ones. Research such as Khan et al. (2024) tests that claim with human and model judges."
+/>
+
+<RunnableCode code={`import numpy as np
+
+# A judge who cannot check facts compares argument strength each round.
+# The honest debater's evidence is slightly stronger on average.
+rng = np.random.default_rng(2)
+rounds, trials = 6, 10_000
+
+def judge_accuracy(honest_edge, noise=1.0):
+    # each round: observed strength difference = edge + noise; judge adds it to log-odds
+    diffs = honest_edge + noise * rng.standard_normal((trials, rounds))
+    log_odds = diffs.cumsum(axis=1)
+    return (log_odds > 0).mean(axis=0)     # P(judge currently favours the honest side)
+
+for edge in (0.5, 0.2, -0.2):
+    acc = judge_accuracy(edge)
+    print(f"honest edge {edge:+.1f}: P(judge right) after rounds 1..{rounds} = {np.round(acc, 3)}")
+
+# Try it: change judge_accuracy(edge) to judge_accuracy(edge, noise=0.3), as if
+# arguments were easy to compare. With edge +0.2 the judge reaches 0.944 by round 6,
+# and with edge -0.2 it is wrong 95% of the time: clearer arguments amplify either side.`} />
 
 ### Process-Based Oversight, Worked
 
@@ -41,9 +88,19 @@ Rather than only evaluating a final answer (outcome-based), evaluate the *reason
 
 <ProcessVsOutcomeDiagram />
 
-A wrong final answer reached through visibly sound reasoning is a different, more fixable failure than a right answer reached through reasoning that happened to work this time but wouldn't generalize — the reverse also matters, since a plausible-looking final answer built on flawed reasoning is exactly the case scalable oversight worries about most.
+A wrong answer reached through sound reasoning is a more fixable failure than a right answer reached through reasoning that happened to work this time. The reverse is the case scalable oversight worries about most: a plausible final answer built on flawed steps. Lightman et al. (2023) trained reward models on 800,000 step-level human labels for maths solutions (PRM800K) and found that a process-supervised reward model chose correct solutions more often than an outcome-supervised one: 78% against 72% on a subset of the MATH benchmark.
 
-**Recursive reward modeling** takes a third angle entirely: rather than changing *what* gets graded (process vs. outcome), it changes *who* does the grading — using AI assistance to help humans evaluate outputs that would otherwise be too complex or time-consuming to judge unaided, bootstrapping evaluation capability with AI help rather than requiring a human to do the full evaluation task alone from scratch.
+**Recursive reward modelling** changes *who* grades instead of *what* is graded: AI assistants help humans evaluate outputs too complex to judge unaided, for example by summarising a long document or pointing at a suspicious step. **Sandwiching** is the experimental test for such methods: non-experts with AI help try to match expert judgements on tasks where the model is better than the non-experts but worse than the experts, so success can be measured.
+
+### Weak-to-Strong Generalisation
+
+Burns et al. (2023) studied a stand-in for the future problem: fine-tune a strong model (GPT-4) using labels produced by a weaker one (GPT-2-level). The strong model did better than its weak supervisor, recovering a substantial part of the gap to a strong model trained on correct labels, but not all of it, and less on reward modelling for chat preferences than on NLP classification tasks. The open question is whether a strong model learns what the weak supervisor *meant*, or copies its mistakes.
+
+<GoDeeper title="Go deeper: why the judge in the debate simulation is a log-odds sum">
+
+If each round gives evidence $d_i$ about which side is right, and the rounds are independent, Bayes' rule in log-odds form says the posterior log-odds is the prior log-odds plus the sum of each round's log-likelihood ratio. Treating the observed strength difference as that log-likelihood ratio gives the cumulative sum in the code. Two assumptions carry all the weight. Independence: a debater who repeats a misleading point in every round gets counted many times. Calibration: the judge's reading of "stronger argument" must actually correlate with truth. The simulation shows that if calibration fails, more evidence only makes the judge more confidently wrong.
+
+</GoDeeper>
 
 ## Interpretability's Role in Safety
 
@@ -59,7 +116,7 @@ Practices specific to the most capable models being trained and deployed, where 
 
 ### Staged/Gradual Deployment
 
-Releasing a new, more capable model to progressively larger audiences (internal testing, then a limited external group, then general availability) rather than immediately to everyone — giving time to discover safety issues at a smaller blast radius before wide release, the same staged-rollout principle as [canary deployment](/docs/mlops/deployment-strategies#canary-deployment) applied to model capability/safety risk rather than infrastructure risk. This is the exact same detection-probability statistics as the deception diagram on the Alignment & RLHF page, just with audience size in place of eval-suite size:
+Releasing a new, more capable model to progressively larger audiences (internal testing, then a limited external group, then general availability) rather than immediately to everyone — giving time to discover safety issues at a smaller blast radius before wide release, the same staged-rollout principle as [canary deployment](/docs/mlops/deployment-strategies#canary-deployment) applied to model capability/safety risk rather than infrastructure risk. The statistics are the same as the deception example on the Alignment & RLHF page, with audience size in place of evaluation-suite size:
 
 <StagedDeploymentDiagram />
 
@@ -73,18 +130,75 @@ Specifically testing whether a new model has crossed a capability threshold that
 
 Independent, sometimes external evaluation of a frontier model before release, precisely to reduce the risk of a lab's own evaluation being insufficiently adversarial toward its own product — the same "don't grade your own homework" principle behind independent audits in other high-stakes industries.
 
-## Code: The Detection-Probability Math Behind Staged Deployment
+### Frontier Safety Frameworks
 
-The same formula drives both the deception-detection diagram on the Alignment & RLHF page and the staged-deployment diagram above:
+Several labs publish frameworks that tie capability evaluations to required safeguards: Anthropic's Responsible Scaling Policy (2023), OpenAI's Preparedness Framework (2023) and Google DeepMind's Frontier Safety Framework (2024). The shared structure is an if-then rule. Each defines capability thresholds in areas such as biological, chemical, cyber and autonomous-replication risk; runs evaluations on each new model before and during deployment; and commits that a model crossing a threshold is not deployed, or not trained further, until stronger security and deployment safeguards are in place.
 
-```python
-def detection_probability(p: float, n: int) -> float:
-    """Probability of surfacing at least one instance of a real, rare
-    issue with per-interaction rate p, across n real interactions."""
+## Run It Yourself: How Staged Deployment Finds Rare Issues
+
+An issue that appears once in 2,000 interactions has a 2.5% chance of showing up in 50 internal interactions, 63% in 2,000 trusted-tester interactions, and is all but certain to appear in a 50,000-interaction limited release. An issue at 1 in 200,000 has only a 22% chance of appearing even in that limited release. Staged deployment shrinks the audience exposed to common issues; it does not catch rare ones before wide release, which is why monitoring after release matters as much as testing before it.
+
+<RunnableCode code={`# Staged deployment: chance of surfacing a rare issue at each stage,
+# and how many users have been exposed by the time it is first seen.
+def detection_probability(p, n):
     return 1 - (1 - p) ** n
 
-for stage, n in [("internal", 50), ("limited external", 2_000), ("GA", 2_000_000)]:
-    print(f"{stage}: {detection_probability(p=0.0005, n=n):.1%} chance of catching it")
-```
+p = 0.0005   # the issue appears in 1 of 2,000 interactions
+stages = [("internal", 50), ("trusted testers", 2_000), ("limited release", 50_000), ("general availability", 2_000_000)]
+for name, n in stages:
+    print(f"{name:20} {n:>9,} interactions -> {detection_probability(p, n):6.1%} chance of seeing it")
+
+# Expected interactions until the first sighting is 1/p
+print(f"expected interactions before the first sighting: {1 / p:,.0f}")
+
+# Try it: set p = 0.000005 (1 in 200,000). Even the limited release now sees it
+# only about 22% of the time; such issues tend to surface first after general release.`} />
+
+<NotebookCallout color="cobalt" title="The common thread">
+Each method moves the trust somewhere: debate trusts that truth is easier to argue, process supervision trusts step-level checks, weak-to-strong trusts generalisation, staged deployment trusts monitoring. Knowing where the trust went tells you what to test.
+</NotebookCallout>
+
+## Common Problems & Fixes
+
+| Problem | Cause | Fix |
+| --- | --- | --- |
+| Evaluators approve confident but wrong answers | Non-experts cannot verify the content | AI-assisted critique; debate; check sources rather than tone |
+| Reasoning traces look sound but do not drive the answer | Stated reasoning is not faithful to the computation | Faithfulness tests; interpretability checks |
+| Model behaves differently when it detects a test | Evaluation-awareness | Evaluations that resemble real use; monitoring after deployment |
+| Rare harmful behaviour slips through every stage | Detection needs about $3/p$ interactions | Post-release monitoring, abuse reporting, fast rollback |
+| Capability evaluations underestimate the model | Weak prompting or no tool access during tests | Elicit with the best available scaffolding before concluding a capability is absent |
+
+## When *Not* to Use It
+
+| Situation | Better choice |
+| --- | --- |
+| Answers can be checked automatically | Verify directly (tests, proof checkers); no oversight protocol needed |
+| The evaluator is an expert in the domain | Direct expert review |
+| Low-stakes, easily reversible outputs | Ordinary evaluation and monitoring |
+
+## Remember
+
+| Idea | One line |
+| --- | --- |
+| Scalable oversight | Supervising a model that may out-perform its evaluator |
+| Debate | A judge compares adversarial arguments; works only if truth argues better |
+| Process supervision | Grade each step; beat outcome supervision on MATH in PRM800K |
+| Recursive reward modelling | AI helps humans evaluate |
+| Sandwiching | Non-experts plus AI versus experts, to measure oversight methods |
+| Weak-to-strong | Strong model trained on weak labels; recovers part of the gap |
+| Staged deployment | Grows the audience step by step; rare issues still reach release |
+| Safety frameworks | Capability thresholds trigger required safeguards |
 
 AI Safety & Alignment section complete. Next: [Interpretability](/docs/interpretability/roadmap) — the tools that make a model's internal behavior inspectable, which both this section's oversight approaches and AI Security both depend on.
+
+## Sources
+
+- Irving, Christiano and Amodei, "AI safety via debate", 2018. https://arxiv.org/abs/1805.00899
+- Khan et al., "Debating with More Persuasive LLMs Leads to More Truthful Answers", 2024. https://arxiv.org/abs/2402.06782
+- Lightman et al., "Let's Verify Step by Step", 2023. https://arxiv.org/abs/2305.20050
+- Leike et al., "Scalable agent alignment via reward modeling", 2018. https://arxiv.org/abs/1811.07871
+- Bowman et al., "Measuring Progress on Scalable Oversight for Large Language Models", 2022. https://arxiv.org/abs/2211.03540
+- Burns et al., "Weak-to-Strong Generalization", 2023. https://arxiv.org/abs/2312.09390
+- Anthropic, "Responsible Scaling Policy", 2023. https://www.anthropic.com/news/anthropics-responsible-scaling-policy
+- OpenAI, "Preparedness Framework", 2023. https://openai.com/preparedness/
+- Google DeepMind, "Frontier Safety Framework", 2024. https://deepmind.google/discover/blog/introducing-the-frontier-safety-framework/
