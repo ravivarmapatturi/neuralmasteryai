@@ -90,8 +90,8 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 
 ### Platform and growth (81-100)
 81. done - The site tour closes when you navigate away from it.
-82. planned - Home page: show the product working in the first screen.
-83. planned - Real numbers on the home page (questions, problems, pages).
+82. done - Home page: show the product working in the first screen.
+83. done - Real numbers on the home page (questions, problems, pages, study plans).
 84. planned - Changelog page from git history.
 85. planned - Leaderboard: weekly and all-time.
 86. planned - Community solutions (needs sign-in and moderation).
