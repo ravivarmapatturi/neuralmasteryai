@@ -45,6 +45,8 @@ else {
   writeFileSync(output, result);
   // Small companion file so the home page and search can show counts without loading the full catalogue.
   const byGuide = Object.fromEntries(guides.map(g => [g.slug, questions.filter(q => q.bank === g.slug).length]));
+  // Titles only, for site search; loaded on the first search query.
+  writeFileSync(resolve(root, 'src/data/interviewSearch.generated.json'), JSON.stringify(questions.map(q => ({ id: q.id, title: q.title, area: q.area }))) + '\n');
   writeFileSync(resolve(root, 'src/data/interviewCounts.generated.json'), JSON.stringify({ questions: questions.length, guides: guides.length, byGuide }, null, 2) + '\n');
 }
 console.log(`Interview catalogue: ${questions.length} questions, ${guides.length} preparation guides.`);

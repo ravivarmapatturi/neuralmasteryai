@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Navbar from './layout/Navbar';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import Markdown from './content/Markdown';
 import { withinTolerance } from './content/InterviewCheck';
 import { bankQuestions, interviewGuides, type InterviewQuestion } from '../data/interviewCatalog';
@@ -27,7 +27,10 @@ export default function InterviewPage() {
   const [modelReview, setModelReview] = useState<InterviewReview | null>(null);
   const [reviewing, setReviewing] = useState(false);
   const request = useRef<AbortController | null>(null);
-  const [index, setIndex] = useState(0);
+  // ?id=<question id> opens that question directly (site search links here).
+  const [params] = useSearchParams();
+  const linkedId = params.get('id');
+  const [index, setIndex] = useState(() => Math.max(0, questions.findIndex(item => item.id === linkedId)));
   const [topic, setTopic] = useState('all');
   const [query, setQuery] = useState('');
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
@@ -81,6 +84,8 @@ export default function InterviewPage() {
     })();
   };
   const answerBox = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => { const i = questions.findIndex(item => item.id === linkedId); if (i >= 0) select(i); // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedId]);
   const select = (i: number) => { if (session.current) { session.current.onresult = null; session.current.onerror = null; session.current.onend = null; } deviceRecording.current?.cancel(); deviceRecording.current = null; stop(); session.current = null; request.current?.abort(); request.current = null; setReviewing(false); setModelReview(null); setIndex(i); setAnswer(''); setSelectedOption(null); setNumericResponse(''); setReview(false); setChecked([]); setMessage(''); };
   const insertStarter = (text: string) => { setAnswer(prev => (prev.trim() ? prev.trimEnd() + '\n\n' : '') + text); setReview(false); requestAnimationFrame(() => { const el = answerBox.current; if (el) { el.focus(); el.selectionStart = el.selectionEnd = el.value.length; } }); };
   const record = () => {
