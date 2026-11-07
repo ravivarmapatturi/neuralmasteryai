@@ -49,7 +49,7 @@ export default function ChooserPage() {
                 </span>
               </h1>
               <p className="nb-body" style={{ maxWidth: 560, margin: '1.75rem 0 2rem', fontSize: '1.08rem' }}>
-                Every lesson computes in your browser. Pick a concept on the right and watch it run, then write the Python yourself in a lab. Free, no account needed.
+                Every lesson computes in your browser. Pick a concept in the demo and watch it run, then write the Python yourself in a lab. Free, no account needed.
               </p>
               <div className="nm-hero-actions">
                 <Link className="nm-button nm-button-primary" to={completed ? '/progress' : '/learn'} style={{ background: 'var(--nb-cobalt)' }}>
