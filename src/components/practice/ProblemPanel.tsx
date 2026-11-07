@@ -13,6 +13,8 @@ import type { MasteryTier } from '../../lib/gamification';
 import { trackForProblem } from '../../data/practiceCatalog';
 import TrackStageMap from './TrackStageMap';
 import PlainMarkdown from './PlainMarkdown';
+import { ProblemNotes, RelatedProblems } from './ProblemNotes';
+import { pointsForDifficulty } from '../../lib/gamification';
 import { formatPy, formatPyArgs } from '../../lib/pyFormat';
 
 const TwoPointersSlidingWindowExplorer = lazy(() => import('../../viz/TwoPointersSlidingWindowExplorer'));
@@ -308,6 +310,10 @@ export default function ProblemPanel({
                 >
                   {problem.difficulty}
                 </span>
+                {' '}
+                <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 4, color: 'var(--nm-text-secondary)', border: '1px solid var(--nm-border)' }}>
+                  {pointsForDifficulty(problem.difficulty)} points
+                </span>
                 {/* A real space text node between pills: the flex `gap`
                     above only adds visual spacing, not a text-content
                     space, so a raw-DOM-text consumer (Pagefind's search
@@ -601,6 +607,8 @@ export default function ProblemPanel({
             )}
           </div>
         )}
+        <ProblemNotes problemId={problem.id} />
+        <RelatedProblems problemId={problem.id} />
       </div>
 
       {/* Progressive AI Assistance Drawer */}

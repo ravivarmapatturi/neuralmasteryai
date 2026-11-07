@@ -57,7 +57,7 @@ describe('PracticeListPage', () => {
     const stageLink = screen.getAllByRole('link', { name: /The Agent Loop/ })[0]
     expect(stageLink).toHaveAttribute('href', '/practice/agent-loop')
     expect(stageLink).toHaveTextContent('✓')
-    expect(screen.getByText(/1 solved/i)).toBeInTheDocument()
+    expect(screen.getByLabelText('Your progress')).toHaveTextContent(/1 solved/)
     expect(screen.getByRole('link', { name: /Continue Build an Agent/ })).toBeInTheDocument()
   })
 
@@ -65,5 +65,30 @@ describe('PracticeListPage', () => {
     renderList()
     await userEvent.type(screen.getByLabelText(/Search problems/i), 'linked list')
     expect(screen.getAllByText(/Reverse a Singly Linked List/i).length).toBeGreaterThan(0)
+  })
+
+  it('filters the full list by difficulty, framework and solved status', async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify([{ permalink: '/practice/agent-loop', kind: 'complete', date: '2026-10-15', points: 20 }]),
+    )
+    renderList()
+    expect(screen.queryByRole('table')).toBeNull()
+    await userEvent.selectOptions(screen.getByLabelText('Status'), 'solved')
+    const rows = screen.getAllByRole('row').slice(1)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toHaveTextContent('The Agent Loop')
+    await userEvent.selectOptions(screen.getByLabelText('Status'), 'all')
+    await userEvent.selectOptions(screen.getByLabelText('Difficulty'), 'hard')
+    for (const row of screen.getAllByRole('row').slice(1)) expect(row).toHaveTextContent(/hard(Python|NumPy|PyTorch)100$/)
+    await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
+    expect(screen.queryByRole('table')).toBeNull()
+  })
+
+  it('shows a problem of the day', () => {
+    renderList()
+    const daily = screen.getByRole('region', { name: 'Problem of the day' })
+    expect(daily.querySelector('a[href^="/practice/"]')).not.toBeNull()
+    expect(daily).toHaveTextContent(/points/)
   })
 })
