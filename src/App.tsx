@@ -14,6 +14,7 @@ import Home from './components/Home';
 import PracticeListPage from './components/PracticeListPage';
 const InterviewPage = lazy(() => import('./components/InterviewPage')); // Load question banks only when opened.
 const SimpleInterviewPage = lazy(() => import('./components/interview/SimpleInterviewPage')); // Spoken room with on-device speech & evaluation.
+const ChangelogPage = lazy(() => import('./components/changelog/ChangelogPage'));
 const SpeechTestPage = lazy(() => import('./components/SpeechTestPage'));
 const VoiceTestPage = lazy(() => import('./components/VoiceTestPage'));
 import PracticeTrackPage from './components/PracticeTrackPage';
@@ -115,6 +116,7 @@ export default function App() {
                       <Route path="/glossary/:slug" element={<GlossaryTermPage />} />
                       <Route path="/docs/deep-learning/training-technique-atlas" element={<Navigate to="/docs/atlas/training" replace />} />
                       <Route path="/docs/inference-engineering/technique-atlas" element={<Navigate to="/docs/atlas/inference" replace />} />
+                      <Route path="/changelog" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading changelog…</p>}><ChangelogPage /></Suspense>} />
                       <Route path="/about" element={<AboutPage />} />
                       <Route path="/privacy" element={<PrivacyPolicyPage />} />
                       <Route path="/terms" element={<TermsOfServicePage />} />

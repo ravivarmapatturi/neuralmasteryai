@@ -20,13 +20,13 @@ export default function LeaderboardPage() {
   useDocumentTitle('Leaderboard');
   useDocumentMeta(
     'Leaderboard',
-    'Global Neural Mastery Leaderboard -- see how your AI engineering points, level, and problem-solving streak stack up against learners worldwide.',
+    'Weekly and all-time rankings of Neural Mastery learners by points earned from lessons, problems and interview questions.',
   );
 
   const { user, loading: authLoading, signInWithGoogle } = useAuth();
   const { points, weeklyPoints, events, displayName: userDisplayName } = useGamification();
   const [params] = useSearchParams();
-  const [tab, setTab] = useState<LeaderboardTab>(params.get('tab') === 'interview' ? 'interview' : 'allTime');
+  const [tab, setTab] = useState<LeaderboardTab>(params.get('tab') === 'interview' ? 'interview' : params.get('tab') === 'weekly' ? 'weekly' : 'allTime');
   const [tierFilter, setTierFilter] = useState<string>('all');
   const { entries: remoteEntries, loading } = useLeaderboard(tab, 50);
 
@@ -308,7 +308,7 @@ export default function LeaderboardPage() {
                 Standings ({filteredEntries.length})
               </h2>
               <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--nm-text-muted)' }}>
-                {tab === 'allTime' ? 'All-time cumulative score' : tab === 'weekly' ? 'Velocity during current week' : 'Points from interview questions marked complete'}
+                {tab === 'allTime' ? 'All points earned so far' : tab === 'weekly' ? 'Points earned since Monday; resets each week' : 'Points from interview questions marked complete'}
               </p>
             </div>
 
