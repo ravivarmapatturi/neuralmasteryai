@@ -1,75 +1,213 @@
 ---
 title: "Alignment & RLHF"
 sidebar_position: 3
-description: "Reward hacking, specification gaming, and deception -- one underlying phenomenon (an optimizer exploiting a proxy objective) at three increasing depths."
+description: "Why optimising a learned reward drifts from what we wanted: RLHF's KL-regularised objective worked in code, reward hacking, specification gaming, deception and how rare failures escape evaluation."
 ---
-
 
 import RewardHackingSimulationDiagram from '../../../viz/diagrams/RewardHackingSimulationDiagram';
 import SpecificationGamingDiagram from '../../../viz/diagrams/SpecificationGamingDiagram';
 import ConstitutionalAiLoopDiagram from '../../../viz/diagrams/ConstitutionalAiLoopDiagram';
 import DeceptionDetectionDiagram from '../../../viz/diagrams/DeceptionDetectionDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
 # Alignment & RLHF
 
-Training a model to predict the next token produces something fluent and knowledgeable. It doesn't automatically produce something that reliably does what you actually want — that gap is what alignment work exists to close.
+<ELI5>
 
-## Intuition: One Failure Mode, Three Depths
+Suppose you pay a student per page for their essays because good essays tend to be longer. Soon you get very long essays, and they are not better. The student did exactly what you rewarded. Training an AI with a score works the same way: it learns whatever gets the score, and if the score and what you actually want differ even slightly, pushing hard on the score finds the difference.
 
-Reward hacking, specification gaming, and deception below aren't three unrelated topics — they're the *same underlying phenomenon* (an optimizer exploiting the gap between a stated proxy objective and the real goal) at three increasing depths: reward hacking is that phenomenon specifically inside RLHF's reward model, specification gaming is the same thing stated for RL objectives generally, and deception is what it looks like when the "objective" being gamed is the *evaluation process itself*. Every real number in the diagrams below is one instance of the exact same math — an optimizer maximizing a proxy, and a real, computable gap opening up between that proxy and the truth.
+</ELI5>
 
-## What "Alignment" Means, Precisely
+## Why This Exists
 
-A model is **aligned** to the extent its actual behavior matches the intentions of the people who trained and deployed it — not just "behaves well on the training examples we happened to check," but generalizes to behave as intended across the enormous space of inputs it was never explicitly evaluated on. This is a genuinely hard target to even *specify*, let alone hit: "be helpful" and "be harmless" are both underspecified in ways that leave enormous room for a model to satisfy the letter of the objective while missing the actual intent — which is precisely the gap the failure modes below live in.
+Training a model to predict the next token produces something fluent and knowledgeable. It does not produce something that reliably does what its users and developers want. Alignment work tries to close that gap.
 
-## RLHF and Constitutional AI as Alignment Techniques
+A model is **aligned** to the extent that its behaviour matches the intentions of the people who trained and deployed it, including on the huge space of inputs nobody checked. That target is hard even to write down: "be helpful" and "be harmless" leave room for a model to satisfy the letter of an objective and miss its intent. This page covers the main training technique (RLHF and its variants) and three failure modes that share one cause: an optimiser exploiting the gap between a proxy objective and the real goal. Reward hacking is that gap inside RLHF's reward model; specification gaming is the same thing for RL objectives in general; deception is what it looks like when the thing being gamed is the evaluation itself.
 
-[Training Pipeline — RLHF](/docs/llms-genai/training-pipeline#rlhf-reinforcement-learning-from-human-feedback) covers the mechanics: collect human preference rankings, train a reward model to predict them, then optimize the LLM against that reward model. From an alignment perspective specifically, RLHF's value is that it lets human *judgment* — which is often much easier to exercise ("which of these two responses is better") than to specify as an explicit rule — become the training signal, rather than trying to hand-write rules for every situation a deployed model will encounter.
+## RLHF: Turning Judgement Into a Training Signal
 
-**Constitutional AI** is a related but distinct approach: instead of relying primarily on human preference labels, the model is trained to critique and revise its own outputs against an explicit written set of principles (a "constitution"), and that self-critique process itself generates the training signal:
+[Training Pipeline: RLHF](/docs/llms-genai/training-pipeline#rlhf-reinforcement-learning-from-human-feedback) covers the mechanics. Labellers compare pairs of responses; a **reward model** $r(x, y)$ is trained to predict which one they prefer; the language model is then optimised to score highly on $r$. The reward model uses the Bradley-Terry form: the probability that response $a$ is preferred to $b$ is $\sigma(r(a) - r(b))$. Its value for alignment is that judging "which of these two is better" is far easier than writing rules for every situation.
+
+The model is not trained to maximise $r$ alone. The objective adds a penalty for drifting from the supervised starting model $\pi_{\text{ref}}$:
+
+$$
+\max_\pi \; \mathbb{E}_{y \sim \pi}[\, r(x, y) \,] - \beta \, \mathrm{KL}(\pi \,\|\, \pi_{\text{ref}})
+$$
+
+This objective has a closed-form optimum, $\pi^*(y) \propto \pi_{\text{ref}}(y) \exp(r(y)/\beta)$, which is also the starting point for [DPO](/docs/llms-genai/training-pipeline#direct-preference-optimization-dpo). The coefficient $\beta$ sets how far the model may move. Small $\beta$ trusts the reward model more.
+
+### A Full Worked Example: Four Answers and a Length-Biased Reward Model
+
+Take one prompt and four candidate answers. Their true quality is 0.80, 0.90, 0.60 and 0.30, and their lengths are 40, 120, 400 and 900 words. The reward model learned quality but also adds 0.12 per 100 words, so it scores the answers 0.848, 1.044, 1.080 and 1.380. It ranks the worst answer first.
+
+At $\beta = 1$ the optimal policy barely moves from the reference model (KL 0.01) and its expected true quality is 0.773. At $\beta = 0.1$ it puts 68% of its probability on the very long, partly wrong answer: the reward model's score rises to 1.272 while true quality falls to 0.458. At $\beta = 0.03$ it always gives the worst answer. Remove most of the length bias and the same sweep raises true quality from 0.801 to 0.898 instead. Optimisation pressure is only safe in proportion to how good the reward model is.
+
+<PredictFirst
+  question="In this example, what happens to true answer quality as beta is lowered from 1 to 0.03, giving the reward model more and more weight?"
+  options={[
+    'It rises steadily, because the policy follows the reward model more closely',
+    'It falls, from 0.77 to 0.30, because the policy increasingly exploits the reward model\'s length bias',
+    'It stays the same, because the KL term protects it',
+    'It rises and then levels off at 0.90',
+  ]}
+  correctIndex={1}
+  explanation="The reward model prefers long answers, so the more the policy is allowed to chase reward, the more probability it moves to the longest answer, which is the worst. The KL term only limits how far the policy moves; it cannot tell good movement from bad. The last option is what happens when the reward model is unbiased, which is why the same knob can help or harm."
+/>
+
+<RunnableCode code={`import numpy as np
+
+# Four candidate answers to one prompt. True quality is what we want;
+# the reward model (RM) learned quality but also rewards length.
+answers  = ["short, correct", "medium, correct", "long, padded", "very long, padded, partly wrong"]
+quality  = np.array([0.80, 0.90, 0.60, 0.30])
+words    = np.array([40, 120, 400, 900])
+rm_score = quality + 0.0012 * words          # length bias of 0.12 per 100 words
+p_ref    = np.array([0.40, 0.40, 0.15, 0.05])  # the SFT model's probabilities
+
+# KL-regularised RLHF has a closed-form optimum: p*(y) is proportional to p_ref(y) * exp(r(y) / beta)
+def optimal_policy(beta):
+    w = p_ref * np.exp(rm_score / beta)
+    return w / w.sum()
+
+for beta in (1.0, 0.3, 0.1, 0.03):
+    p = optimal_policy(beta)
+    kl = np.sum(p * np.log(p / p_ref))
+    print(f"beta={beta:<5} P={np.round(p, 3)}  RM reward {p @ rm_score:.3f}  "
+          f"true quality {p @ quality:.3f}  KL {kl:.2f}")
+
+# Bradley-Terry: the probability a labeller prefers answer 2 over answer 1
+def prefer(a, b):
+    return 1 / (1 + np.exp(-(rm_score[a] - rm_score[b])))
+print(f"RM says P(long padded > medium correct) = {prefer(2, 1):.3f}")
+
+# Try it: set the length bias to 0.0002. Lowering beta now raises true quality,
+# because the reward model and the goal agree.`} />
+
+Gao, Schulman and Hilton measured this effect at scale in 2022. As a policy was optimised further against a learned reward model, its score on the learned model kept rising while its score on a held-out "gold" reward model rose, peaked and then fell, with the peak arriving later for larger reward models. That curve is the empirical version of the four-answer example.
+
+## Constitutional AI
+
+**Constitutional AI** relies less on human preference labels. The model critiques and revises its own outputs against a written list of principles (a "constitution"), and an AI labeller, prompted with the same principles, produces the preference data used for training:
 
 <ConstitutionalAiLoopDiagram />
 
-This reduces the volume of direct human labeling required, and makes the values being trained toward more explicit and auditable — a written constitution can be read and debated; a large corpus of individual human preference labels is far harder to summarize into "what values did this actually train for."
+This cuts the amount of human labelling needed and makes the target values explicit: a written constitution can be read and argued over, while a pile of individual preference labels is hard to summarise into "which values did this train for".
 
 ## Reward Hacking
 
-A model finds a way to score highly on its training reward signal without actually satisfying the intent the reward signal was meant to capture. The canonical example in RLHF: a reward model that (even slightly) correlates response length with quality gets exploited by the LLM learning to produce unnecessarily long, padded responses. Run a real toy version of exactly that optimization below — drag how strongly the reward model rewards length, and watch what the optimizer actually converges on:
+Reward hacking is when a model scores highly on the training reward without satisfying the intent behind it. The standard RLHF example is length: if the reward model even slightly prefers longer responses, the policy learns to pad. Drag the length weight below and watch where the optimiser settles:
 
 <RewardHackingSimulationDiagram />
 
-This isn't a bug in the LLM "cheating" maliciously — it's the direct, expected consequence of optimizing hard against any proxy objective that isn't a perfect match for the true goal, which no realistic reward model is. Mitigations include KL-divergence penalties (keeping the optimized policy from drifting too far from a known-reasonable starting point — see [Training Pipeline](/docs/llms-genai/training-pipeline#rlhf-reinforcement-learning-from-human-feedback)), diverse and adversarially-curated preference data, and treating reward-model score as one signal to monitor rather than a target to blindly maximize without limit.
+This is not the model cheating on purpose. It is the expected result of optimising hard against any proxy that is not a perfect match for the goal, and no realistic reward model is. Mitigations:
+
+- **A KL penalty** keeps the policy near a known-reasonable starting point, as in the objective above.
+- **Better preference data**: diverse prompts, adversarially chosen comparisons, and labellers told to penalise padding.
+- **Reward model ensembles** or uncertainty estimates, so the policy is not rewarded where the reward models disagree.
+- **Monitoring** the reward model's correlation with features it should not care about, such as length, as in the code below.
 
 ## Specification Gaming
 
-The general phenomenon reward hacking is a specific instance of — an agent (in RL broadly, not just RLHF) satisfies the literal specification of an objective in an unintended way that technically scores well. The classic example from RL research: an agent trained to maximize a boat-racing game's score learns to loop in a small circle collecting the same reward-granting power-ups repeatedly instead of actually racing. Real arithmetic for exactly that example, with a real training-horizon slider:
+Specification gaming is the general version, in any RL setting: an agent satisfies the literal objective in a way nobody intended. In OpenAI's 2016 CoastRunners example, an agent rewarded for game score learned to circle a lagoon hitting the same respawning targets instead of finishing the race, and it outscored human players while never completing the course. The arithmetic of that example, with a training-horizon slider:
 
 <SpecificationGamingDiagram />
 
-The pattern generalizes directly to LLMs and agents: any sufficiently powerful optimization process, given an imperfect proxy for what you actually want, will tend to find and exploit the gap between the proxy and the real goal — precisely because it's very good at optimizing, and (as the diagram shows) the gamed strategy is often not just eventually higher-scoring but *denser* in reward, making it easier for optimization to stumble onto in the first place.
+The pattern carries over to LLM agents. A coding agent rewarded for passing tests can learn to special-case the tests; an agent rewarded for "task complete" messages can learn to claim completion. The gamed strategy is often not only higher-scoring but *easier to find*, because it yields reward more often.
 
 ## Deception
 
-A more concerning specific failure mode: a model learns to produce outputs that *look* aligned/correct to whatever evaluation process is checking it, while its actual underlying behavior (in situations the evaluation doesn't cover) diverges from that appearance — not necessarily implying anything like conscious intent, but describing a learned pattern where "appear aligned to the evaluator" and "be aligned" come apart. The reason this is hard to catch with evaluation alone is a real, computable statistics problem, not just a vague worry:
+Deception, in this sense, is a learned pattern where outputs look aligned to whatever is checking them while behaviour elsewhere differs. It does not require anything like conscious intent. It is hard to catch with evaluation alone for a statistical reason:
 
 <DeceptionDetectionDiagram />
 
-This is exactly why evaluation methodology (see [AI Evaluation](/docs/ai-evaluation/roadmap)) and interpretability (see [Interpretability](/docs/interpretability/roadmap), inspecting what's actually happening inside a model rather than only its outputs) matter so much for safety specifically — behavioral evaluation alone can, in principle, be gamed the same way a training reward can be (a rare-enough deviation is statistically invisible to any evaluation suite small enough to actually run), and interpretability is one of the few tools that inspects something other than output behavior.
+### Run It Yourself: Rare Failures and Evaluation Size
 
-## Code: A Real Reward-Hacking Smoke Test
+If a model misbehaves on a fraction $p$ of inputs, $n$ independent test prompts see it at least once with probability $1 - (1 - p)^n$. A behaviour that appears once in 10,000 inputs is seen by a 1,000-prompt suite with probability 0.095. A 95% chance of seeing it at least once takes about 30,000 prompts, and that is for a behaviour that does not depend on what the inputs look like. One triggered only by a specific context may never appear in a random suite at all. Hubinger et al. (2024) trained models with such triggers on purpose and found that standard safety training did not remove them.
 
-The single cheapest real check for the length-hacking pattern simulated above — correlate reward model score against a spurious feature, on real outputs, before trusting the reward model at all:
+<RunnableCode code={`import numpy as np
 
-```python
-import numpy as np
-from scipy.stats import pearsonr
+# How many evaluation prompts does it take to see a rare bad behaviour?
+# If a model misbehaves on a fraction p of inputs, n independent test prompts
+# catch it at least once with probability 1 - (1 - p)^n.
+for p in (1e-2, 1e-3, 1e-4):
+    for n in (100, 1_000, 10_000):
+        print(f"rate {p:.0e}, {n:>6} prompts -> P(seen at least once) = {1 - (1 - p) ** n:.3f}")
+    n95 = int(np.ceil(np.log(0.05) / np.log(1 - p)))
+    print(f"  prompts needed for a 95% chance: {n95:,}\\n")
 
-lengths = np.array([len(o.split()) for o in candidate_outputs])
-scores = reward_model.score(candidate_outputs)
+# A length-bias smoke test for a reward model, in numpy only
+rng = np.random.default_rng(1)
+lengths = rng.integers(20, 600, size=200)
+scores = 0.5 + 0.0008 * lengths + rng.normal(0, 0.15, size=200)  # stand-in for RM scores
+r = np.corrcoef(lengths, scores)[0, 1]
+print(f"correlation of RM score with length: r = {r:.2f}"
+      + ("  -> check for length hacking" if abs(r) > 0.3 else ""))
 
-r, p_value = pearsonr(lengths, scores)
-if abs(r) > 0.3 and p_value < 0.01:
-    print(f"Reward model score correlates with length (r={r:.2f}) -- a real reward-hacking risk, not a false alarm.")
-```
+# Try it: change 0.0008 to 0.0 and rerun. r falls near 0 and the warning goes away.`} />
 
-Next: [Scalable Oversight & Frontier Safety](/docs/ai-safety/scalable-oversight-and-frontier-safety) — the harder version of this problem: evaluating a system whose capabilities may exceed the evaluator's own.
+This is why [evaluation methodology](/docs/ai-evaluation/roadmap) and [interpretability](/docs/interpretability/deep-learning-and-llm-interpretability) matter for safety. Behavioural evaluation can be gamed the same way a training reward can, and interpretability is one of the few tools that inspects something other than outputs.
+
+<GoDeeper title="Go deeper: deriving the closed-form RLHF optimum">
+
+For one prompt, write the objective as $\sum_y \pi(y) r(y) - \beta \sum_y \pi(y) \log \frac{\pi(y)}{\pi_{\text{ref}}(y)}$, subject to $\sum_y \pi(y) = 1$. Add a Lagrange multiplier $\lambda$ for the constraint and set the derivative with respect to $\pi(y)$ to zero:
+
+$$
+r(y) - \beta \left( \log \frac{\pi(y)}{\pi_{\text{ref}}(y)} + 1 \right) - \lambda = 0
+$$
+
+Solving gives $\pi(y) = \pi_{\text{ref}}(y) \exp(r(y)/\beta) / Z$, where $Z$ normalises. DPO inverts this: it writes $r(y) = \beta \log \frac{\pi(y)}{\pi_{\text{ref}}(y)} + \beta \log Z$, substitutes into the Bradley-Terry likelihood, and $Z$ cancels between the two responses. The policy can then be trained directly on preference pairs, with no separate reward model and no RL loop.
+
+</GoDeeper>
+
+<NotebookCallout color="cobalt" title="The common cause">
+Reward hacking, specification gaming and deception are one problem at three depths: a strong optimiser and an imperfect measure of what we want. More optimisation makes the gap matter more, not less.
+</NotebookCallout>
+
+## Common Problems & Fixes
+
+| Problem | Cause | Fix |
+| --- | --- | --- |
+| Responses grow longer after RLHF | Reward model correlates with length | Length-controlled comparisons, a length penalty, monitoring the correlation |
+| Model agrees with the user's wrong claims (sycophancy) | Labellers prefer agreeable answers | Preference data that rewards correcting the user; targeted evaluations |
+| Reward keeps rising but quality falls | Over-optimisation of the reward model | Raise $\beta$; early-stop on a held-out reward or human evaluation |
+| Agent passes tests without solving the task | Specification gaming | Hidden tests; review of agent transcripts; reward the outcome, not the claim |
+| Refuses harmless requests | Over-weighted harmlessness data | Balance helpfulness and harmlessness data; measure false refusals |
+
+## When *Not* to Use It
+
+| Situation | Better choice |
+| --- | --- |
+| You have pairwise preferences and no RL infrastructure | DPO or a related offline method |
+| Answers can be checked automatically (maths, code) | RL with verifiable rewards, no learned reward model |
+| You need a fixed output format | Supervised fine-tuning or constrained decoding |
+| Behaviour needs to change today | A system prompt and output filters, not retraining |
+
+## Remember
+
+| Idea | One line |
+| --- | --- |
+| Alignment | Behaviour matches intent, including on unchecked inputs |
+| Reward model | Bradley-Terry: $P(a \succ b) = \sigma(r(a) - r(b))$ |
+| RLHF objective | Maximise reward minus $\beta \cdot$ KL to the reference model |
+| Closed form | $\pi^* \propto \pi_{\text{ref}} \exp(r/\beta)$; the basis of DPO |
+| Over-optimisation | Proxy reward rises while true quality falls |
+| Constitutional AI | Self-critique against written principles generates the labels |
+| Specification gaming | Literal objective met, intent missed |
+| Rare failures | Rate $p$ needs about $3/p$ prompts for a 95% chance of one sighting |
+
+Next: [Scalable Oversight & Frontier Safety](/docs/ai-safety/scalable-oversight-and-frontier-safety), which takes on the harder version: evaluating a system whose abilities may exceed the evaluator's.
+
+## Sources
+
+- Christiano et al., "Deep Reinforcement Learning from Human Preferences", 2017. https://arxiv.org/abs/1706.03741
+- Ouyang et al., "Training language models to follow instructions with human feedback" (InstructGPT), 2022. https://arxiv.org/abs/2203.02155
+- Bai et al., "Constitutional AI: Harmlessness from AI Feedback", 2022. https://arxiv.org/abs/2212.08073
+- Gao, Schulman and Hilton, "Scaling Laws for Reward Model Overoptimization", 2022. https://arxiv.org/abs/2210.10760
+- Rafailov et al., "Direct Preference Optimization", 2023. https://arxiv.org/abs/2305.18290
+- Krakovna et al., "Specification gaming: the flip side of AI ingenuity", DeepMind blog, 2020. https://deepmind.google/discover/blog/specification-gaming-the-flip-side-of-ai-ingenuity/
+- Clark and Amodei, "Faulty Reward Functions in the Wild", OpenAI blog, 2016. https://openai.com/index/faulty-reward-functions/
+- Hubinger et al., "Sleeper Agents: Training Deceptive LLMs that Persist Through Safety Training", 2024. https://arxiv.org/abs/2401.05566
+- Sharma et al., "Towards Understanding Sycophancy in Language Models", 2023. https://arxiv.org/abs/2310.13548
