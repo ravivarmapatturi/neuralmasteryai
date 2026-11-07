@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useDocumentMeta } from '../../lib/useDocumentMeta';
 import { correctInterviewTerms } from '../../lib/interviewRoom/dialogue';
 import { createASREngineForQuality } from '../../lib/interviewRoom/qualitySettings';
@@ -53,6 +53,15 @@ const graphTopics = topics.map((t) => ({ id: t.id, title: t.title, group: t.grou
 const totalQuestions = graphTopics.reduce((sum, t) => sum + t.count, 0);
 const firstTopic = Math.max(0, topics.findIndex((t) => t.id === 'rag'));
 
+function locate(id: string | null) {
+  if (!id) return null;
+  for (let t = 0; t < topics.length; t++) {
+    const q = topics[t].questions.findIndex((x) => x.id === id);
+    if (q >= 0) return { topic: t, question: q };
+  }
+  return null;
+}
+
 function clipUrl(name: string) {
   return `/audio/interview-voice/${name.replaceAll(':', '__')}.opus`;
 }
@@ -65,9 +74,12 @@ function looksLikePhone() {
 export default function SimpleInterviewPage() {
   useDocumentMeta('AI Interview Practice', 'Pick a topic, hear an AI engineering interview question, answer out loud, then hear and read a model answer. Runs in your browser.');
 
+  const [params] = useSearchParams();
+  // A link like /interview?q=<id> (the home page's daily question) opens on that question.
+  const [linked, setLinked] = useState(() => locate(params.get('q')));
   const [step, setStep] = useState<Step>('topics');
-  const [topicIndex, setTopicIndex] = useState(firstTopic);
-  const [questionIndex, setQuestionIndex] = useState(0);
+  const [topicIndex, setTopicIndex] = useState(linked?.topic ?? firstTopic);
+  const [questionIndex, setQuestionIndex] = useState(linked?.question ?? 0);
   const [transcript, setTranscript] = useState('');
   const [typing, setTyping] = useState(false);
   const [micStatus, setMicStatus] = useState('');
@@ -88,6 +100,7 @@ export default function SimpleInterviewPage() {
   const enginePromiseRef = useRef<Promise<void> | null>(null);
 
   const topic = topics[topicIndex];
+  const linkedHere = linked && linked.topic === topicIndex ? linked : null;
   const shown = topic.questions.map((q, i) => ({ q, i })).filter(({ q }) => matches(q));
   const question = topic.questions[questionIndex];
   const questionId = question.id;
@@ -337,15 +350,23 @@ export default function SimpleInterviewPage() {
                 </p>
                 <h2>{topic.title}</h2>
                 <p className="si-lede">{topic.about}</p>
+                {linkedHere && (
+                  <p className="si-linked">
+                    <strong>{topic.questions[linkedHere.question].title}</strong>
+                  </p>
+                )}
                 <div className="si-actions">
                   <button
                     type="button"
                     className="si-primary"
                     id="start-topic"
-                    disabled={shown.length === 0}
-                    onClick={() => startQuestion((shown.find(({ q }) => !isDone(q.id)) ?? shown[0]).i)}
+                    disabled={shown.length === 0 && !linkedHere}
+                    onClick={() => {
+                      setLinked(null);
+                      startQuestion(linkedHere ? linkedHere.question : (shown.find(({ q }) => !isDone(q.id)) ?? shown[0]).i);
+                    }}
                   >
-                    {shown.some(({ q }) => isDone(q.id)) ? 'Next unsolved question' : 'Start this topic'}
+                    {linkedHere ? 'Start the linked question' : shown.some(({ q }) => isDone(q.id)) ? 'Next unsolved question' : 'Start this topic'}
                   </button>
                 </div>
                 <ol className="si-list">
