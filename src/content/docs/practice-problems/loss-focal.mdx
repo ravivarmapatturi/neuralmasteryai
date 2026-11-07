@@ -1,0 +1,41 @@
+---
+title: "Binary Focal Loss"
+description: "Loss Functions, problem 4 of 6: Down-weight the easy examples that dominate an imbalanced dataset, so training focuses on the hard ones."
+difficulty: "medium"
+topic: "Loss Functions"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## A million easy negatives
+
+A one-stage object detector scores around 100,000 candidate boxes per image, and almost all of them are background. Each easy background box has a small cross-entropy loss, but there are so many that together they swamp the few boxes containing objects. **Focal loss** (Lin et al., 2017) multiplies each example's loss by `(1 - p_t)^gamma`, where `p_t` is the probability the model gave the correct answer.
+
+An easy example with `p_t = 0.99` at `gamma = 2` is scaled by `0.01^2 = 0.0001`. A hard one at `p_t = 0.1` keeps `0.81` of its loss. In the third test, two easy negatives and one confidently wrong negative: nearly all of the loss comes from the wrong one.
+
+## alpha is a separate knob
+
+`alpha` re-weights positives against negatives. The paper's best setting was `gamma = 2, alpha = 0.25`; the low alpha on positives looks backwards, but the focusing term has already removed most of the easy negatives' weight.
+
+> **Remember:** focal loss = `alpha_t * (1 - p_t)^gamma * CE`. `gamma = 0` recovers weighted cross-entropy.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import math
+
+def focal_loss(probs, labels, gamma=2.0, alpha=0.25):
+    total = 0.0
+    for p, y in zip(probs, labels):
+        p_t = p if y == 1 else 1 - p
+        a_t = alpha if y == 1 else 1 - alpha
+        p_t = min(max(p_t, 1e-7), 1.0)
+        total += -a_t * (1 - p_t) ** gamma * math.log(p_t)
+    return total / len(probs)
+```
+
+</Solution>

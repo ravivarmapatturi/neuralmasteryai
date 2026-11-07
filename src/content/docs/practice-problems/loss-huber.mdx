@@ -1,0 +1,45 @@
+---
+title: "Huber Loss and Its Gradient"
+description: "Loss Functions, problem 1 of 6: Write a regression loss that is squared for small errors and linear for large ones, so a few outliers cannot dominate the gradient."
+difficulty: "easy"
+topic: "Loss Functions"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## One bad label, a hundred times the gradient
+
+Mean squared error has gradient `e`. A label that is off by 100 pushes 100 times harder than one that is off by 1, so a handful of mislabelled points can steer the whole fit. Mean absolute error caps the push, but its gradient never shrinks near zero, which makes the final convergence jittery.
+
+**Huber loss** (Huber, 1964) uses each where it is good: `0.5 e^2` while `|e| <= delta`, and a straight line beyond. The two pieces join with the same value and the same slope at `|e| = delta`, so there is no kink. An outlier at `e = 10` with `delta = 1` contributes a loss of 9.5 and a gradient of exactly 1, not 10.
+
+## Choosing delta
+
+`delta` is in the units of the target. Errors smaller than `delta` are treated as noise to fit precisely; larger ones are treated as suspicious. Smooth L1 loss in object detection is Huber loss with `delta = 1`.
+
+> **Remember:** Huber is MSE near zero and MAE in the tails. Its gradient is capped at `delta`.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def huber(preds, targets, delta=1.0):
+    if not preds or len(preds) != len(targets):
+        raise ValueError("need equal-length, non-empty inputs")
+    n = len(preds)
+    loss, grad = 0.0, []
+    for p, t in zip(preds, targets):
+        e = p - t
+        if abs(e) <= delta:
+            loss += 0.5 * e * e
+            grad.append(e / n)
+        else:
+            loss += delta * (abs(e) - 0.5 * delta)
+            grad.append(delta * (1 if e > 0 else -1) / n)
+    return {"loss": loss / n, "grad": grad}
+```
+
+</Solution>

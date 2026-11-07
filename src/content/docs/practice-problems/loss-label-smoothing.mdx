@@ -1,0 +1,44 @@
+---
+title: "Cross-Entropy With Label Smoothing"
+description: "Loss Functions, problem 3 of 6: Train against a softened target, 1 - smoothing on the true class and the rest spread evenly, so the model stops pushing its logits towards infinity."
+difficulty: "medium"
+topic: "Loss Functions"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## The model chases a target it can never reach
+
+With a one-hot target, cross-entropy keeps falling as the true-class logit grows, all the way to infinity. A classifier trained long enough learns to be 99.99% sure of everything, including its mistakes, and its probabilities stop meaning anything.
+
+**Label smoothing** (Szegedy et al., 2016) replaces the one-hot target with `1 - smoothing` on the true class plus `smoothing / K` spread over all K classes. Now the loss has a finite minimum. Take logits of `[20, 0, 0]` for the true class 0. Without smoothing they cost about `4e-9` nats, so nothing stops the model from pushing further. With `smoothing = 0.1` the same logits cost 1.33 nats (second test), because the target says the other classes deserve some mass.
+
+## What it trades
+
+Label smoothing usually improves calibration and slightly improves accuracy, and the original transformer used `0.1` (Vaswani et al., 2017). It also makes the logits less informative for knowledge distillation, because the teacher's relative probabilities for wrong classes get flattened (Müller et al., 2019).
+
+> **Remember:** smoothed loss = `(1 - s) * CE(true) + s * mean over classes of -log p`.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import math
+
+def smoothed_cross_entropy(logits, targets, smoothing):
+    if not 0 <= smoothing < 1:
+        raise ValueError("smoothing must be in [0, 1)")
+    total = 0.0
+    for row, t in zip(logits, targets):
+        k = len(row)
+        m = max(row)
+        log_z = m + math.log(sum(math.exp(x - m) for x in row))
+        logp = [x - log_z for x in row]
+        total += -(1 - smoothing) * logp[t] - (smoothing / k) * sum(logp)
+    return total / len(logits)
+```
+
+</Solution>

@@ -58,7 +58,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 29. done - Attention From Scratch: 6 problems (masking, multi-head, KV cache, GQA, ALiBi).
 30. done - Build a Tokenizer: 6 problems, characters to BPE with byte fallback.
 31. done - Optimizers: 6 problems (clipping, RMSProp, Nesterov, Lion, warmup-cosine, SGD vs momentum).
-32. planned - Losses set.
+32. done - Loss Functions: 6 problems (Huber, triplet, label smoothing, focal, distillation, InfoNCE).
 33. planned - Metrics set.
 34. planned - RAG pieces set.
 35. planned - Agent loop set.

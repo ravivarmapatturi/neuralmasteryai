@@ -164,6 +164,22 @@ export const CATALOG: CatalogTrack[] = [
     ],
   },
   {
+    slug: 'loss-functions',
+    title: 'Loss Functions',
+    summary: 'Huber, label smoothing, focal loss, InfoNCE, distillation and triplet loss: what each one rewards, and the detail each gets wrong.',
+    kind: 'set',
+    level: 'Intermediate',
+    learnRoute: '/docs/deep-learning/loss-functions',
+    problems: [
+      'loss-huber',
+      'loss-triplet',
+      'loss-label-smoothing',
+      'loss-focal',
+      'loss-distillation-kl',
+      'loss-infonce',
+    ],
+  },
+  {
     slug: 'python-for-ai',
     title: 'Python for AI',
     summary: 'The everyday Python behind data and model code: dicts, nesting, text, caches and small parsers.',

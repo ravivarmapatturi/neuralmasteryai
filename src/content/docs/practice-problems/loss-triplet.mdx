@@ -1,0 +1,40 @@
+---
+title: "Triplet Margin Loss"
+description: "Loss Functions, problem 2 of 6: Pull an anchor towards a matching example and push it away from a non-matching one until they are separated by a margin, the loss used for face and speaker verification."
+difficulty: "easy"
+topic: "Loss Functions"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Distances instead of classes
+
+A face-verification system cannot have one class per person: new people appear every day. Instead it learns an embedding where photos of the same person are close and photos of different people are far apart. **Triplet loss** (Schroff et al., 2015, FaceNet) trains this with three examples at a time: an anchor, a positive of the same identity, and a negative of a different one.
+
+The loss is `max(0, d_ap - d_an + margin)`. It is zero once the negative is at least `margin` further from the anchor than the positive. With the positive at distance 1 and the negative at 1.5, the gap is only 0.5, short of a margin of 1, so the loss is 0.5.
+
+## Most triplets teach nothing
+
+Random triplets are usually already separated, so their loss and gradient are exactly zero. That is why this function reports how many are **active**. If the active count falls towards zero, training stalls even though the model is far from good. FaceNet selects **semi-hard negatives**: negatives that are further than the positive but still inside the margin.
+
+> **Remember:** triplet loss only learns from triplets inside the margin. Watch the active count, and mine harder negatives when it drops.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import math
+
+def triplet_loss(anchors, positives, negatives, margin):
+    if not anchors or not (len(anchors) == len(positives) == len(negatives)):
+        raise ValueError("need three equal-length, non-empty lists")
+    losses = []
+    for a, p, n in zip(anchors, positives, negatives):
+        losses.append(max(0.0, math.dist(a, p) - math.dist(a, n) + margin))
+    return {"loss": sum(losses) / len(losses), "active": sum(1 for l in losses if l > 0)}
+```
+
+</Solution>

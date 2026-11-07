@@ -1,0 +1,46 @@
+---
+title: "Distillation Loss With Temperature"
+description: "Loss Functions, problem 5 of 6: Train a small model to match a large model's whole output distribution, softened by a temperature so the small probabilities carry signal."
+difficulty: "medium"
+topic: "Loss Functions"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## The teacher's wrong answers are informative
+
+A large classifier that sees a photo of a cat might give "cat" 0.95, "dog" 0.04 and "car" 0.0001. The hard label only says "cat". The teacher's full distribution also says a cat looks much more like a dog than like a car, which Hinton et al. (2015) called **dark knowledge**. A student trained to match the whole distribution learns that structure.
+
+At temperature 1 those small probabilities are almost invisible to the loss. Dividing logits by `T > 1` before the softmax flattens both distributions, so the 0.04 and the 0.0001 become meaningfully different targets. In the third test the student already agrees with the teacher's top class, but at `T = 4` the loss still sees that it ranks the other two classes the same while the teacher does not.
+
+## Why multiply by T squared
+
+Softening divides the logits by `T`, and the gradient of the softened KL with respect to the student's logits shrinks by roughly `1 / T^2`. Multiplying by `T^2` keeps the distillation term on a comparable scale when you change `T` or mix it with an ordinary cross-entropy term.
+
+> **Remember:** KL from teacher to student, both softened by `T`, scaled by `T^2`.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import math
+
+def distillation_loss(student_logits, teacher_logits, temperature):
+    if temperature <= 0 or len(student_logits) != len(teacher_logits):
+        raise ValueError("need temperature > 0 and equal lengths")
+
+    def log_softmax(xs):
+        xs = [x / temperature for x in xs]
+        m = max(xs)
+        log_z = m + math.log(sum(math.exp(x - m) for x in xs))
+        return [x - log_z for x in xs]
+
+    lt, ls = log_softmax(teacher_logits), log_softmax(student_logits)
+    kl = sum(math.exp(t) * (t - s) for t, s in zip(lt, ls))
+    return kl * temperature ** 2
+```
+
+</Solution>

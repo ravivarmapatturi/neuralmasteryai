@@ -5666,5 +5666,871 @@
   "stage": "Optimizers",
   "stageNumber": 6,
   "points": 100
+ },
+ {
+  "id": "loss-huber",
+  "title": "Huber Loss and Its Gradient",
+  "difficulty": "easy",
+  "topic": "Loss Functions",
+  "estimatedTime": "10 min",
+  "functionName": "huber",
+  "functionSignature": "huber(preds: list[float], targets: list[float], delta: float = 1.0) -> dict",
+  "starterCode": "def huber(preds, targets, delta=1.0):\n    # Your code here\n    pass\n",
+  "mission": "Write a regression loss that is squared for small errors and linear for large ones, so a few outliers cannot dominate the gradient.",
+  "taskDescription": "Implement `huber(preds, targets, delta=1.0)`. With error e = pred - target: the loss is `0.5 * e**2` if `|e| <= delta`, else `delta * (|e| - 0.5 * delta)`. Return `{\"loss\": mean loss, \"grad\": [d mean loss / d pred_i]}`. The per-element gradient is `e` inside the band and `delta * sign(e)` outside, divided by n. Raise `ValueError` on empty or mismatched inputs.",
+  "constraints": [
+   "Mean over elements, and the gradient of the mean (divide by n).",
+   "At |e| == delta use the quadratic branch.",
+   "Raise ValueError on empty or mismatched lists."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Small errors are half squared",
+    "input": {
+     "preds": [
+      1,
+      2
+     ],
+     "targets": [
+      1.5,
+      2
+     ]
+    },
+    "expectedOutput": {
+     "loss": 0.0625,
+     "grad": [
+      -0.25,
+      0.0
+     ]
+    }
+   },
+   {
+    "id": "tc2",
+    "label": "Outlier contributes linearly",
+    "input": {
+     "preds": [
+      10
+     ],
+     "targets": [
+      0
+     ],
+     "delta": 1
+    },
+    "expectedOutput": {
+     "loss": 9.5,
+     "grad": [
+      1.0
+     ]
+    }
+   },
+   {
+    "id": "tc3",
+    "label": "Empty",
+    "input": {
+     "preds": [],
+     "targets": []
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc4",
+    "label": "Mixed errors with delta 2",
+    "input": {
+     "preds": [
+      0,
+      3,
+      -5,
+      1
+     ],
+     "targets": [
+      1,
+      0,
+      0,
+      1
+     ],
+     "delta": 2
+    },
+    "hidden": true,
+    "expectedOutput": {
+     "loss": 3.125,
+     "grad": [
+      -0.25,
+      0.5,
+      -0.5,
+      0.0
+     ]
+    }
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Compute e = p - t per element and branch on abs(e) <= delta.",
+   "strong": "Outside the band the gradient is capped at +/- delta / n regardless of how large e is.",
+   "concept": "The two branches meet with the same value and slope at |e| = delta, so the loss is smooth."
+  },
+  "conceptConnections": [
+   {
+    "title": "Loss functions",
+    "route": "/docs/deep-learning/loss-functions",
+    "description": "What each loss rewards and punishes, and how its gradient shapes training."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Loss Functions",
+  "stageNumber": 1,
+  "points": 25
+ },
+ {
+  "id": "loss-triplet",
+  "title": "Triplet Margin Loss",
+  "difficulty": "easy",
+  "topic": "Loss Functions",
+  "estimatedTime": "10 min",
+  "functionName": "triplet_loss",
+  "functionSignature": "triplet_loss(anchors: list[list[float]], positives: list[list[float]], negatives: list[list[float]], margin: float) -> dict",
+  "starterCode": "def triplet_loss(anchors, positives, negatives, margin):\n    # Your code here\n    pass\n",
+  "mission": "Pull an anchor towards a matching example and push it away from a non-matching one until they are separated by a margin, the loss used for face and speaker verification.",
+  "taskDescription": "Implement `triplet_loss(anchors, positives, negatives, margin)`. For each triplet, with Euclidean distances `d_ap` and `d_an`, the loss is `max(0, d_ap - d_an + margin)`. Return `{\"loss\": mean loss, \"active\": number of triplets with loss > 0}`. Raise `ValueError` if the three lists differ in length or are empty.",
+  "constraints": [
+   "Euclidean (L2) distance, not squared.",
+   "A triplet that already satisfies the margin contributes 0.",
+   "Count active triplets: they are the only ones producing gradient."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Already separated",
+    "input": {
+     "anchors": [
+      [
+       0,
+       0
+      ]
+     ],
+     "positives": [
+      [
+       1,
+       0
+      ]
+     ],
+     "negatives": [
+      [
+       5,
+       0
+      ]
+     ],
+     "margin": 1
+    },
+    "expectedOutput": {
+     "loss": 0.0,
+     "active": 0
+    }
+   },
+   {
+    "id": "tc2",
+    "label": "Negative too close",
+    "input": {
+     "anchors": [
+      [
+       0,
+       0
+      ]
+     ],
+     "positives": [
+      [
+       1,
+       0
+      ]
+     ],
+     "negatives": [
+      [
+       1.5,
+       0
+      ]
+     ],
+     "margin": 1
+    },
+    "expectedOutput": {
+     "loss": 0.5,
+     "active": 1
+    }
+   },
+   {
+    "id": "tc3",
+    "label": "Empty",
+    "input": {
+     "anchors": [],
+     "positives": [],
+     "negatives": [],
+     "margin": 1
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc4",
+    "label": "Mixed batch",
+    "input": {
+     "anchors": [
+      [
+       0,
+       0
+      ],
+      [
+       1,
+       1
+      ],
+      [
+       2,
+       0
+      ]
+     ],
+     "positives": [
+      [
+       0,
+       1
+      ],
+      [
+       1,
+       2
+      ],
+      [
+       2,
+       3
+      ]
+     ],
+     "negatives": [
+      [
+       0,
+       3
+      ],
+      [
+       1,
+       1.5
+      ],
+      [
+       3,
+       0
+      ]
+     ],
+     "margin": 0.5
+    },
+    "hidden": true,
+    "expectedOutput": {
+     "loss": 1.1666666666666667,
+     "active": 2
+    }
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "math.dist(a, p) gives the Euclidean distance.",
+   "strong": "per = max(0.0, d_ap - d_an + margin); active counts per > 0.",
+   "concept": "Once most triplets are inactive, training stalls; that is why mining hard negatives matters."
+  },
+  "conceptConnections": [
+   {
+    "title": "Loss functions",
+    "route": "/docs/deep-learning/loss-functions",
+    "description": "What each loss rewards and punishes, and how its gradient shapes training."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Loss Functions",
+  "stageNumber": 2,
+  "points": 25
+ },
+ {
+  "id": "loss-label-smoothing",
+  "title": "Cross-Entropy With Label Smoothing",
+  "difficulty": "medium",
+  "topic": "Loss Functions",
+  "estimatedTime": "15-20 min",
+  "functionName": "smoothed_cross_entropy",
+  "functionSignature": "smoothed_cross_entropy(logits: list[list[float]], targets: list[int], smoothing: float) -> float",
+  "starterCode": "def smoothed_cross_entropy(logits, targets, smoothing):\n    # Your code here\n    pass\n",
+  "mission": "Train against a softened target, 1 - smoothing on the true class and the rest spread evenly, so the model stops pushing its logits towards infinity.",
+  "taskDescription": "Implement `smoothed_cross_entropy(logits, targets, smoothing)`. For each row with K classes, the target distribution puts `1 - smoothing + smoothing / K` on the true class and `smoothing / K` on every other class. The loss is the mean over rows of `-sum(q_k * log_softmax(logits)_k)`. Use a stable log-softmax. Raise `ValueError` if smoothing is outside [0, 1).",
+  "constraints": [
+   "smoothing = 0 must equal ordinary cross-entropy.",
+   "Compute log-softmax as x - max - log(sum(exp(x - max))).",
+   "Average over rows."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "No smoothing is plain cross-entropy",
+    "input": {
+     "logits": [
+      [
+       2,
+       0,
+       0
+      ]
+     ],
+     "targets": [
+      0
+     ],
+     "smoothing": 0
+    },
+    "expectedOutput": 0.2395447662218846
+   },
+   {
+    "id": "tc2",
+    "label": "Smoothing penalises confident logits",
+    "input": {
+     "logits": [
+      [
+       20,
+       0,
+       0
+      ]
+     ],
+     "targets": [
+      0
+     ],
+     "smoothing": 0.1
+    },
+    "expectedOutput": 1.3333333374556393
+   },
+   {
+    "id": "tc3",
+    "label": "Batch of two",
+    "input": {
+     "logits": [
+      [
+       1,
+       2,
+       3
+      ],
+      [
+       0,
+       0,
+       5
+      ]
+     ],
+     "targets": [
+      2,
+      0
+     ],
+     "smoothing": 0.2
+    },
+    "expectedOutput": 2.643829266416248
+   },
+   {
+    "id": "tc4",
+    "label": "Smoothing out of range",
+    "input": {
+     "logits": [
+      [
+       1,
+       2
+      ]
+     ],
+     "targets": [
+      0
+     ],
+     "smoothing": 1
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc5",
+    "label": "Four classes",
+    "input": {
+     "logits": [
+      [
+       0.5,
+       -1,
+       2,
+       0
+      ],
+      [
+       3,
+       3,
+       -2,
+       1
+      ],
+      [
+       0,
+       0,
+       0,
+       0
+      ]
+     ],
+     "targets": [
+      2,
+      1,
+      3
+     ],
+     "smoothing": 0.1
+    },
+    "hidden": true,
+    "expectedOutput": 0.9426393675786624
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Every class gets smoothing / K; the true class gets 1 - smoothing on top.",
+   "strong": "loss_row = -(1 - smoothing) * logp[target] - (smoothing / K) * sum(logp).",
+   "concept": "With smoothing, the loss is minimised by finite logits, so the model cannot become arbitrarily confident."
+  },
+  "conceptConnections": [
+   {
+    "title": "Loss functions",
+    "route": "/docs/deep-learning/loss-functions",
+    "description": "What each loss rewards and punishes, and how its gradient shapes training."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Loss Functions",
+  "stageNumber": 3,
+  "points": 50
+ },
+ {
+  "id": "loss-focal",
+  "title": "Binary Focal Loss",
+  "difficulty": "medium",
+  "topic": "Loss Functions",
+  "estimatedTime": "15-20 min",
+  "functionName": "focal_loss",
+  "functionSignature": "focal_loss(probs: list[float], labels: list[int], gamma: float = 2.0, alpha: float = 0.25) -> float",
+  "starterCode": "def focal_loss(probs, labels, gamma=2.0, alpha=0.25):\n    # Your code here\n    pass\n",
+  "mission": "Down-weight the easy examples that dominate an imbalanced dataset, so training focuses on the hard ones.",
+  "taskDescription": "Implement `focal_loss(probs, labels, gamma=2.0, alpha=0.25)`. `probs[i]` is the predicted probability of the positive class. Let `p_t = p` if the label is 1 else `1 - p`, and `alpha_t = alpha` for label 1 else `1 - alpha`. The per-example loss is `-alpha_t * (1 - p_t)**gamma * log(p_t)`. Clip p_t into [1e-7, 1] before the log. Return the mean.",
+  "constraints": [
+   "gamma = 0 and alpha = 0.5 give half the ordinary binary cross-entropy.",
+   "Clip p_t at 1e-7 so log never sees 0.",
+   "Return the mean over examples."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "gamma 0, alpha 0.5 is half BCE",
+    "input": {
+     "probs": [
+      0.8
+     ],
+     "labels": [
+      1
+     ],
+     "gamma": 0,
+     "alpha": 0.5
+    },
+    "expectedOutput": 0.11157177565710485
+   },
+   {
+    "id": "tc2",
+    "label": "Easy example almost vanishes",
+    "input": {
+     "probs": [
+      0.99
+     ],
+     "labels": [
+      1
+     ]
+    },
+    "expectedOutput": 2.512583963375367e-07
+   },
+   {
+    "id": "tc3",
+    "label": "Hard negative dominates",
+    "input": {
+     "probs": [
+      0.9,
+      0.01,
+      0.02
+     ],
+     "labels": [
+      0,
+      0,
+      0
+     ]
+    },
+    "expectedOutput": 0.4662757528604224
+   },
+   {
+    "id": "tc4",
+    "label": "Perfectly wrong is clipped, not infinite",
+    "input": {
+     "probs": [
+      0
+     ],
+     "labels": [
+      1
+     ]
+    },
+    "hidden": true,
+    "expectedOutput": 4.029523106834838
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Compute p_t and alpha_t per example first; the formula is then one line.",
+   "strong": "An easy example with p_t = 0.99 is scaled by (0.01)**2 = 0.0001.",
+   "concept": "The (1 - p_t)**gamma factor is what makes the loss focus on misclassified examples."
+  },
+  "conceptConnections": [
+   {
+    "title": "Loss functions",
+    "route": "/docs/deep-learning/loss-functions",
+    "description": "What each loss rewards and punishes, and how its gradient shapes training."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Loss Functions",
+  "stageNumber": 4,
+  "points": 50
+ },
+ {
+  "id": "loss-distillation-kl",
+  "title": "Distillation Loss With Temperature",
+  "difficulty": "medium",
+  "topic": "Loss Functions",
+  "estimatedTime": "15-20 min",
+  "functionName": "distillation_loss",
+  "functionSignature": "distillation_loss(student_logits: list[float], teacher_logits: list[float], temperature: float) -> float",
+  "starterCode": "def distillation_loss(student_logits, teacher_logits, temperature):\n    # Your code here\n    pass\n",
+  "mission": "Train a small model to match a large model's whole output distribution, softened by a temperature so the small probabilities carry signal.",
+  "taskDescription": "Implement `distillation_loss(student_logits, teacher_logits, temperature)`. Soften both with `softmax(logits / T)`, compute `KL(teacher || student) = sum(p_t * (log p_t - log p_s))`, and multiply by `T**2`. Raise `ValueError` if T <= 0 or the lengths differ.",
+  "constraints": [
+   "KL direction: the teacher's distribution is the target.",
+   "Multiply by T squared.",
+   "Use stable log-softmax for both."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Identical logits cost nothing",
+    "input": {
+     "student_logits": [
+      1,
+      2,
+      3
+     ],
+     "teacher_logits": [
+      1,
+      2,
+      3
+     ],
+     "temperature": 2
+    },
+    "expectedOutput": 0.0
+   },
+   {
+    "id": "tc2",
+    "label": "Temperature 1",
+    "input": {
+     "student_logits": [
+      0,
+      0,
+      0
+     ],
+     "teacher_logits": [
+      3,
+      1,
+      0
+     ],
+     "temperature": 1
+    },
+    "expectedOutput": 0.5743456719404371
+   },
+   {
+    "id": "tc3",
+    "label": "Temperature 4 reveals the dark knowledge",
+    "input": {
+     "student_logits": [
+      5,
+      0,
+      0
+     ],
+     "teacher_logits": [
+      5,
+      2,
+      -2
+     ],
+     "temperature": 4
+    },
+    "expectedOutput": 0.7240323306591083
+   },
+   {
+    "id": "tc4",
+    "label": "Bad temperature",
+    "input": {
+     "student_logits": [
+      1
+     ],
+     "teacher_logits": [
+      1
+     ],
+     "temperature": 0
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc5",
+    "label": "Five classes",
+    "input": {
+     "student_logits": [
+      0.2,
+      1.5,
+      -0.3,
+      2.2,
+      0
+     ],
+     "teacher_logits": [
+      0.1,
+      2.5,
+      -1,
+      1.8,
+      0.4
+     ],
+     "temperature": 3
+    },
+    "hidden": true,
+    "expectedOutput": 0.20006006214836608
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "log_softmax(x / T) for teacher and student, then exp the teacher's to get p_t.",
+   "strong": "Terms where p_t is 0 contribute 0; with finite logits p_t is never exactly 0.",
+   "concept": "Gradients of the softened loss scale as 1 / T^2, and multiplying by T^2 keeps them comparable across temperatures."
+  },
+  "conceptConnections": [
+   {
+    "title": "Loss functions",
+    "route": "/docs/deep-learning/loss-functions",
+    "description": "What each loss rewards and punishes, and how its gradient shapes training."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Loss Functions",
+  "stageNumber": 5,
+  "points": 50
+ },
+ {
+  "id": "loss-infonce",
+  "title": "InfoNCE Contrastive Loss",
+  "difficulty": "hard",
+  "topic": "Loss Functions",
+  "estimatedTime": "25-35 min",
+  "functionName": "info_nce",
+  "functionSignature": "info_nce(a: list[list[float]], b: list[list[float]], temperature: float) -> float",
+  "starterCode": "import numpy as np\n\ndef info_nce(a, b, temperature):\n    # Your code here\n    pass\n",
+  "mission": "Write the loss behind CLIP and most embedding models: each item must pick out its own partner from everything else in the batch.",
+  "taskDescription": "Implement `info_nce(a, b, temperature)`. `a[i]` and `b[i]` are a positive pair; every other row of `b` is a negative for `a[i]`. L2-normalise every row, compute the (n, n) similarity matrix `a @ b.T / temperature`, and return the symmetric loss: the mean of (cross-entropy of each row against target i) and (cross-entropy of each column against target i). Raise `ValueError` if temperature <= 0 or the batch shapes differ.",
+  "constraints": [
+   "Normalise rows first, so similarities are cosines.",
+   "Symmetric: average the a-to-b and b-to-a losses.",
+   "Use a stable log-softmax."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Perfectly aligned pairs",
+    "input": {
+     "a": [
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "b": [
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "temperature": 0.1
+    },
+    "expectedOutput": 4.5398899216870535e-05
+   },
+   {
+    "id": "tc2",
+    "label": "Swapped pairs are expensive",
+    "input": {
+     "a": [
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "b": [
+      [
+       0,
+       1
+      ],
+      [
+       1,
+       0
+      ]
+     ],
+     "temperature": 0.1
+    },
+    "expectedOutput": 10.000045398899218
+   },
+   {
+    "id": "tc3",
+    "label": "Higher temperature, softer loss",
+    "input": {
+     "a": [
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "b": [
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "temperature": 1
+    },
+    "expectedOutput": 0.31326168751822286
+   },
+   {
+    "id": "tc4",
+    "label": "Bad temperature",
+    "input": {
+     "a": [
+      [
+       1
+      ]
+     ],
+     "b": [
+      [
+       1
+      ]
+     ],
+     "temperature": 0
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc5",
+    "label": "Batch of three, unnormalised",
+    "input": {
+     "a": [
+      [
+       2,
+       0,
+       1
+      ],
+      [
+       0,
+       3,
+       0
+      ],
+      [
+       1,
+       1,
+       1
+      ]
+     ],
+     "b": [
+      [
+       1,
+       0,
+       1
+      ],
+      [
+       0,
+       1,
+       0.5
+      ],
+      [
+       2,
+       2,
+       1
+      ]
+     ],
+     "temperature": 0.07
+    },
+    "hidden": true,
+    "expectedOutput": 0.1054711829770881
+   }
+  ],
+  "libraryPolicyText": "NumPy available · runs in your browser",
+  "hints": {
+   "small": "The targets are the diagonal: row i's correct column is i.",
+   "strong": "loss_ab = mean(-diag(log_softmax(S, axis=1))); loss_ba uses axis=0. Return (loss_ab + loss_ba) / 2.",
+   "concept": "Every other item in the batch is a free negative, which is why contrastive training likes large batches."
+  },
+  "conceptConnections": [
+   {
+    "title": "Loss functions",
+    "route": "/docs/deep-learning/loss-functions",
+    "description": "What each loss rewards and punishes, and how its gradient shapes training."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python",
+    "numpy"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Loss Functions",
+  "stageNumber": 6,
+  "points": 100
  }
 ]
