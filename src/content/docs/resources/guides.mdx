@@ -1,0 +1,57 @@
+---
+title: "Guides"
+sidebar_position: 0
+description: "Short answers to the decisions that come up most: which optimizer, which loss, which activation, RAG or fine-tuning, which metric, and how to prepare for an ML interview. Each links the page that explains why."
+---
+
+# Guides
+
+Each guide below answers one recurring question in a few lines, then links the section that explains the reasoning. Use the short answer to get moving, and read the linked section before you defend the choice to anyone else.
+
+## Which optimizer should I use?
+
+Start with **AdamW**, a short linear warmup and cosine decay. It is the default for transformers and most deep networks. Switch to SGD with momentum 0.9 only for image classifiers where you can afford to tune the schedule, to 8-bit AdamW or Lion when optimizer memory is the limit, and to plain gradient descent or L-BFGS for convex problems such as logistic regression.
+
+Read: [Choosing an optimizer](/docs/deep-learning/optimizers#9-choosing-an-optimizer). Practice: [AdamW](/practice/adamw-optimizer), [Warmup plus cosine decay](/practice/opt-warmup-cosine).
+
+## Which loss should I use?
+
+Cross-entropy on logits for classification, MSE for regression, token-level cross-entropy for language models. Move off the default for a reason you can name: Huber when the targets have outliers, class weights or focal loss under heavy imbalance, a quantile loss when over- and under-prediction cost different amounts.
+
+Read: [Choosing a loss](/docs/deep-learning/loss-functions#7-choosing-a-loss).
+
+## Which activation function?
+
+ReLU for CNNs and plain MLPs, SwiGLU or GELU inside transformers, sigmoid on a binary output, softmax on a multi-class output, nothing (identity) on a regression output.
+
+Read: [Choosing an activation](/docs/deep-learning/activation-functions#7-choosing-one).
+
+## Which metric should I report?
+
+For classification, report one threshold-free metric (ROC AUC, or PR AUC when positives are rare) and the precision and recall at the threshold you would ship. Pick that threshold from what each error costs, not from 0.5. Before comparing two models, check the gap is bigger than the noise.
+
+Read: [Choosing the threshold from costs](/docs/machine-learning/model-evaluation-metrics#5-choosing-the-threshold-from-costs), [Is the difference real?](/docs/machine-learning/model-evaluation-metrics#6-is-the-difference-real).
+
+## Which classical model for tabular data?
+
+Gradient-boosted trees first (XGBoost, LightGBM or CatBoost), with a regularised linear model as the baseline you must beat. Neural networks on tabular data rarely win without a lot of tuning.
+
+Read: [XGBoost, LightGBM and CatBoost](/docs/machine-learning/xgboost-lightgbm-catboost). Try: [Algorithm selector](/docs/visual-lab/algorithm-selector).
+
+## RAG, fine-tuning, or a better prompt?
+
+Try the prompt first: it is free to change and the result is visible in minutes. Use retrieval when the model needs facts it was not trained on, or facts that change. Fine-tune when you need a consistent format, style or skill that examples in the prompt cannot hold, and you have a few hundred good examples.
+
+Read: [Changing behaviour without retraining](/docs/llms-genai/overview#4-changing-behaviour-without-retraining), [The RAG pipeline](/docs/llms-genai/rag#the-rag-pipeline-end-to-end), [Parameter-efficient fine-tuning](/docs/llms-genai/training-pipeline#parameter-efficient-fine-tuning-peft).
+
+## Should I quantize the model?
+
+For serving, INT8 weights are close to free in quality. 4-bit weight-only methods (AWQ, GPTQ) usually cost a little quality and halve memory again. Measure on your own evaluation set before shipping, because the loss is uneven across tasks.
+
+Read: [Quantization and compression](/docs/inference-engineering/quantization-and-compression).
+
+## How do I prepare for an ML interview?
+
+Split the time across the five rounds most loops contain: coding, ML coding, knowledge questions, system design and behavioural. Practise answering out loud, with a timer, because knowing the answer and explaining it in two minutes are different skills.
+
+Read: [Interview prep roadmap](/docs/interview-prep/roadmap), [Technology comparisons](/docs/interview-prep/technology-comparisons). Practise: [Interview questions](/interview/questions), [Labs](/labs), [Study plans](/study-plans).

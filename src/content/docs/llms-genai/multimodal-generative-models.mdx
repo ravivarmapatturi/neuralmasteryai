@@ -1,50 +1,238 @@
 ---
 title: "Multimodal & Generative Models"
 sidebar_position: 8
-description: "Vision-language models, vision-language-action models for robotics, and diffusion models -- how attention and generation extend beyond text."
+description: "How images become tokens an LLM can read, how CLIP-style contrastive training aligns them with text, how robots get actions out, and how diffusion generates."
 ---
-
 
 import VlmArchitectureDiagram from '../../../viz/diagrams/VlmArchitectureDiagram';
 import DiffusionForwardProcessDiagram from '../../../viz/diagrams/DiffusionForwardProcessDiagram';
 import AutoregressiveVsDiffusionGenerationDiagram from '../../../viz/diagrams/AutoregressiveVsDiffusionGenerationDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
 # Multimodal & Generative Models
 
-Attention doesn't care whether a "token" represents a word or an image patch — which is exactly why the same architecture generalizes across modalities.
+<ELI5>
 
-## Vision-Language Models (VLMs)
+A language model reads a row of word-pieces. To let it look at a photo, we cut the photo into small squares, describe each square as a list of numbers the same length as a word-piece's list, and put those squares in the row before the question. The model then reads squares and words the same way.
 
-Combine a vision encoder (often a Vision Transformer, see [CNNs](/docs/deep-learning/cnns) and [Attention & Transformers](/docs/deep-learning/attention-transformers)) with an LLM: image patches are encoded, projected into the same embedding space as text tokens, and fed into the language model alongside a text prompt — letting the model reason jointly over both. This is how models can answer questions about an image, describe it, or follow instructions that reference visual content.
+Generating a picture works differently. We take a real picture, add static until nothing is left, and teach a network to remove a little static at a time. To make a new picture, we start from pure static and keep removing.
+
+</ELI5>
+
+## Why This Exists
+
+A text-only model cannot answer "what is wrong with this circuit board?" from a photo, and it cannot draw one. The transformer itself was never the obstacle: attention works on any sequence of vectors, and it does not care whether a vector came from a word or from a 14 by 14 pixel patch. What was missing was a way to turn pixels into vectors that mean something to a language model, and a way to produce pixels that does not go one pixel at a time.
+
+This page covers both halves. The first half is reading: vision-language models (VLMs), the contrastive training that makes image vectors and text vectors comparable, and vision-language-action models (VLAs) that output robot commands. The second half is writing: diffusion, and how it differs from the autoregressive generation in the rest of this section.
+
+## The Shape of a Vision-Language Model
+
+Most open VLMs have three parts: a vision encoder (usually a Vision Transformer), a small projector, and an ordinary LLM. The encoder turns the image into one vector per patch; the projector maps each vector to the LLM's embedding width; the LLM reads those vectors as if they were the first tokens of the prompt.
 
 <VlmArchitectureDiagram />
 
+### A Full Worked Example: Counting Image Tokens
+
+LLaVA-1.5 uses a CLIP ViT-L/14 encoder at 336 by 336 pixels. With 14-pixel patches, each side holds 336 / 14 = 24 patches, so the image becomes 24 x 24 = **576 tokens**. The encoder's width is 1024; a two-layer MLP projector maps each patch to the LLM's width of 4096. A 20-token question therefore reaches the LLM as a 596-token prompt, and 97% of that prompt is the picture.
+
+That ratio explains a lot of VLM engineering. Image tokens cost the same attention and KV-cache memory as text tokens, so higher resolution is paid for quadratically in the side length, and much recent work is about dropping or merging image tokens the question does not need.
+
+### Run It Yourself
+
+<RunnableCode code={`import numpy as np
+
+# Image -> patch tokens, the arithmetic every VLM starts with
+image_side, patch_side = 336, 14
+patches_per_side = image_side // patch_side
+n_patches = patches_per_side ** 2
+print(f"{image_side}px image, {patch_side}px patches -> {patches_per_side}x{patches_per_side} = {n_patches} image tokens")
+
+# A projector maps vision-encoder width to LLM width
+d_vision, d_llm = 1024, 4096
+rng = np.random.default_rng(0)
+patch_features = rng.standard_normal((n_patches, d_vision))
+W_proj = rng.standard_normal((d_vision, d_llm)) / np.sqrt(d_vision)
+image_tokens = patch_features @ W_proj
+print("projected image tokens:", image_tokens.shape)
+
+text_tokens = 20
+print(f"prompt length seen by the LLM: {n_patches} + {text_tokens} = {n_patches + text_tokens} tokens")
+
+# Try it: set image_side = 672 (a higher-resolution tile). The token count
+# grows with the square of the side, so it becomes 4x larger.`} />
+
+<PredictFirst
+  question="A VLM switches from one 336px image to tiling a 672px image into four 336px tiles plus one downscaled overview tile. Roughly how many image tokens does it now feed the LLM?"
+  options={[
+    '1,152, because the side doubled',
+    '2,880, because there are five tiles of 576 tokens',
+    '576, because the encoder always outputs a fixed number of tokens',
+    '4,096, because tokens match the LLM width',
+  ]}
+  correctIndex={1}
+  explanation="Each 336px tile produces 576 tokens, and five tiles give 2,880. Doubling the side quadruples the area, so it is not 2x. The encoder output is fixed per tile, not per image, which is why tiling schemes (used by LLaVA-NeXT and others) raise the token count so sharply."
+/>
+
+## Contrastive Pretraining: Making Image and Text Vectors Comparable
+
+The projector only works if the encoder's patch vectors already carry meaning that lines up with language. CLIP is the standard way to get that. It trains an image encoder and a text encoder together on 400 million image-caption pairs from the web. In each batch, every image is pushed towards its own caption and away from every other caption in the batch, and the same for captions. The loss is cross-entropy over a similarity matrix: rows are images, columns are captions, and the right answer is the diagonal.
+
+Take three images and three captions with unit-length embeddings. Their cosine similarities are 0.989, 0.985 and 0.970 on the diagonal, and as high as 0.871 off it, because image 3 and caption 2 are close. CLIP divides the similarities by a temperature of 0.07 (its starting value, learned during training) before the softmax. Dividing by a small number stretches the gaps: the probability that image 2 matches caption 2 becomes 0.895, and the symmetric loss is 0.108. With a temperature of 1.0 the same embeddings give a loss of 0.864, because every row is close to uniform.
+
+<RunnableCode code={`import numpy as np
+
+# Contrastive image-text matching, CLIP style, with 3 images and 3 captions.
+# Rows: image embeddings. Columns: caption embeddings. All unit length.
+def unit(v):
+    v = np.asarray(v, dtype=float)
+    return v / np.linalg.norm(v, axis=1, keepdims=True)
+
+images   = unit([[0.9, 0.3, 0.1], [0.3, 0.8, 0.5], [0.1, 0.6, 0.8]])
+captions = unit([[1.0, 0.2, 0.2], [0.2, 0.9, 0.4], [0.2, 0.4, 0.9]])
+temperature = 0.07
+
+logits = images @ captions.T / temperature
+def softmax(x, axis):
+    x = x - x.max(axis=axis, keepdims=True)
+    e = np.exp(x)
+    return e / e.sum(axis=axis, keepdims=True)
+
+p_img_to_txt = softmax(logits, axis=1)
+labels = np.arange(3)
+loss_i = -np.log(p_img_to_txt[labels, labels]).mean()
+loss_t = -np.log(softmax(logits, axis=0)[labels, labels]).mean()
+print("cosine similarities:\n", np.round(images @ captions.T, 3))
+print("P(caption | image):\n", np.round(p_img_to_txt, 3))
+print(f"symmetric contrastive loss: {(loss_i + loss_t) / 2:.4f}")
+
+# Try it: set temperature = 1.0. The probabilities flatten towards 1/3 and
+# the loss rises, even though the embeddings did not change.`} />
+
+<NotebookCallout color="cobalt" title="Why batch size matters for CLIP">
+Every other caption in the batch is a negative. CLIP used a batch of 32,768, so each image was compared against 32,767 wrong captions per step. Small batches give easy negatives and weaker alignment, which is why contrastive training is expensive in memory even when the encoders are small.
+</NotebookCallout>
+
+<GoDeeper title="Go deeper: why not train the VLM end to end from scratch?">
+
+It is possible, and some models do it, but it wastes the two most expensive assets available. A pretrained LLM already knows language and the world; a contrastively pretrained encoder already maps images to meaningful vectors. LLaVA trains in two stages: first only the projector, on image-caption pairs, with both the encoder and the LLM frozen; then the projector and the LLM together on instruction data. The first stage is cheap because only a few million parameters move. Flamingo took a different route and inserted new cross-attention layers into a frozen LLM, so image features enter through attention instead of as prompt tokens. The prefix-token design won in open models mainly because it changes no LLM code.
+
+</GoDeeper>
+
 ## Vision-Language-Action Models (VLAs)
 
-Extend a VLM with the ability to output *actions* (e.g. robot motor commands) instead of just text — used in robotics, where a model needs to perceive a scene, understand an instruction, and output a concrete physical action, all from a shared multimodal understanding. The interesting engineering question isn't "can a VLM see and read" (VLMs already do that) — it's how you get a model that only ever learned to output *tokens* to output a *continuous motor command* instead.
+A VLA is a VLM whose output is a robot action instead of text. Seeing and reading are already solved by the VLM. The hard part is getting a model that only ever learned to emit tokens to emit a continuous motor command. Two answers dominate, and they trade off in the same discretise-or-regress way that shows up across ML.
 
-Two answers dominate in practice, and they trade off in the same discretize-vs-regress way that shows up all over ML:
+- **Discretise the action space into tokens.** [RT-2](https://arxiv.org/abs/2307.15818) (Google DeepMind) fine-tunes a large pretrained VLM, PaLI-X (55B) or PaLM-E (12B), and writes each robot action as a short string of digit tokens (for example `"1 128 91 241 5 101 127 217"`). Because actions are just tokens, RT-2 needs no new output head: next-token prediction is unchanged, which is what lets it carry the base VLM's web knowledge (recognising objects, following instructions phrased in new ways) into robot control. [OpenVLA](https://arxiv.org/abs/2406.09246) uses the same recipe on an open stack: a 7B Llama 2 backbone with DINOv2 and SigLIP vision encoders, trained on 970k real robot demonstrations. Its authors report 16.5 points higher absolute task success than RT-2-X (55B) across 29 tasks with 7x fewer parameters, evidence that data and recipe matter as much as scale here.
+- **Regress continuous actions directly.** Tokens suit a single, low-frequency pick-and-place decision. Dexterous work such as folding laundry needs smooth commands at up to 50 Hz, and snapping each one to a token bin makes motion jerky. [pi-0](https://www.pi.website/download/pi0.pdf) (Physical Intelligence) builds on a 3B PaliGemma VLM and adds **flow matching**, the continuous generation idea from the diffusion section below, applied to an action trajectory instead of an image. It was trained on over 10,000 hours of robot data. Its successor, pi-0.5, predicts coarse action tokens first and refines them into continuous commands with flow matching.
 
-- **Discretize the action space into tokens.** [RT-2](https://arxiv.org/abs/2307.15818) (Google DeepMind) fine-tunes a large VLM — PaLI-X (55B) or PaLM-E (12B) — that was already pretrained on web-scale image-text data, and represents each robot action as a short string of digit tokens (e.g. `"1 128 91 241 5 101 127 217"`) appended to its existing vocabulary. Because actions are just tokens, RT-2 needs no new output head or architecture at all — it reuses next-token prediction unchanged, which is exactly what lets it inherit the base VLM's web-scale semantic knowledge (recognizing objects, following instructions phrased in novel ways) directly into robot control. [OpenVLA](https://arxiv.org/abs/2406.09246) follows the same discretized-token recipe on a fully open stack: a 7B Llama 2 backbone with a dual DINOv2 + SigLIP vision encoder, trained on 970k real-world robot demonstrations, and LoRA-fine-tunable to a new robot. It reportedly outperforms the much larger RT-2-X (55B) by 16.5 points of absolute task success across 29 tasks — with 7x fewer parameters — evidence that the *training data and recipe* matter as much as raw scale for this task.
-- **Regress continuous actions directly.** Discretized tokens are a reasonable fit for a single low-frequency pick-or-place decision, but dexterous manipulation (folding laundry, assembling a box) needs smooth, high-frequency motor commands — up to 50 Hz — where snapping every action to a token bin gets jerky. [π₀](https://www.pi.website/download/pi0.pdf) (Physical Intelligence) instead builds on a 3B PaliGemma VLM and adds **flow matching** — the same continuous, diffusion-style generation idea covered below for images, but generating an action trajectory instead of an image — trained on 10,000+ hours of real robot data across tasks like folding laundry and bagging groceries. Its successor, π₀.₅, hedges between both worlds: a hierarchical setup where coarse action tokens are predicted first (discretized, via a "FAST" tokenizer), then refined into continuous motor commands via flow matching.
+In both designs the input side is the VLM from the diagram above. Only the output differs.
 
-Either way, the core VLA idea is the same as the VLM diagram above: encode vision and language into one shared representation — the only difference is what comes out the other end.
+## Diffusion: Generating by Removing Noise
 
-## Diffusion Models
+A text model picks one token, appends it and repeats. For an image of a million pixels that order is arbitrary and slow. Diffusion models instead learn to reverse a fixed noising process. The forward process mixes the clean image $x_0$ with Gaussian noise $\epsilon$:
 
-Instead of generating autoregressively (one token/pixel at a time), diffusion models learn to reverse a gradual noising process: starting from pure noise, the model iteratively denoises step by step until a coherent image (or audio, or video) emerges. Trained by teaching the model to predict the noise that was added at each step of a forward "noising" process — a form of the same gradient-descent-on-a-loss-function idea from [Calculus & Optimization](/docs/mathematics-for-ai/calculus-optimization), just with a different objective. This is the dominant approach behind modern image generation models. See [Generative Models](/docs/deep-learning/generative-models) for the named variants (DDPM, DDIM, Latent/Stable Diffusion, ControlNet) and how diffusion compares to its main alternative, GANs.
+$$
+x_t = \sqrt{\bar\alpha_t}\, x_0 + \sqrt{1 - \bar\alpha_t}\, \epsilon
+$$
 
-The real forward-process math behind that noising, applied here too:
+where $\bar\alpha_t$ falls from about 1 at $t = 0$ to about 0 at $t = T$. DDPM used $T = 1000$ steps with a noise schedule rising linearly from $10^{-4}$ to 0.02. A network is trained to look at $x_t$ and $t$ and predict $\epsilon$, with a plain mean-squared-error loss. To generate, start from pure noise and apply the learned denoiser step by step. See [Generative Models](/docs/deep-learning/generative-models) for DDIM, latent diffusion and ControlNet, and how diffusion compares with GANs.
 
 <DiffusionForwardProcessDiagram />
 
+### Run It Yourself: The Forward Process
+
+With the DDPM schedule, a 4-pixel image keeps a signal weight of 0.946 at step 100, 0.279 at step 500 and 0.006 at step 999. By the last step the sample is almost exactly the noise. If the network predicts the noise perfectly, one line of algebra recovers $x_0$ from a single noisy sample.
+
+<RunnableCode code={`import numpy as np
+
+# Forward diffusion: x_t = sqrt(abar_t) * x0 + sqrt(1 - abar_t) * eps
+T = 1000
+betas = np.linspace(1e-4, 0.02, T)          # DDPM linear schedule
+alpha_bar = np.cumprod(1.0 - betas)
+
+x0 = np.array([0.8, -0.5, 0.3, 1.0])        # a 4-pixel "image"
+eps = np.array([0.1, 1.2, -0.7, 0.4])        # fixed noise so the run is repeatable
+for t in [0, 100, 500, 999]:
+    a = alpha_bar[t]
+    xt = np.sqrt(a) * x0 + np.sqrt(1 - a) * eps
+    print(f"t={t:4d}  signal weight {np.sqrt(a):.3f}  noise weight {np.sqrt(1-a):.3f}  x_t={np.round(xt, 3)}")
+
+# The training target: given x_t and t, predict eps. If the network were perfect,
+# x0 is recovered exactly from one noisy sample.
+t = 500
+xt = np.sqrt(alpha_bar[t]) * x0 + np.sqrt(1 - alpha_bar[t]) * eps
+x0_hat = (xt - np.sqrt(1 - alpha_bar[t]) * eps) / np.sqrt(alpha_bar[t])
+print("recovered x0 at t=500:", np.round(x0_hat, 3))
+
+# Try it: replace eps in the x0_hat line with 0.9 * eps (a network that is 10%
+# wrong). The error in x0_hat is largest at large t, where the signal weight is small.`} />
+
+<PredictFirst
+  question="At step 500 the signal weight is 0.279 and the noise weight is 0.960. A denoiser's noise prediction is off by 10%. How large is the resulting error in the recovered image, relative to that 10%?"
+  options={[
+    'Smaller, about 3%, because the signal weight is small',
+    'About the same, 10%',
+    'Larger, about 3.4 times the noise error, because we divide by the signal weight',
+    'Zero, because the error cancels',
+  ]}
+  correctIndex={2}
+  explanation="Recovering x0 means dividing by the signal weight. The error in the prediction is scaled by 0.960 / 0.279, about 3.4. This is why one-shot denoising from very noisy steps produces blurry results, and why samplers take many small steps."
+/>
+
 ## Diffusion vs. Autoregressive Generation
 
-- **Autoregressive** (standard LLMs): generates sequentially, one token conditioned on all previous ones — naturally suited to text, where order and causality matter.
-- **Diffusion**: generates the whole output "at once," refined iteratively — naturally suited to images, where there's no inherent left-to-right ordering.
+- **Autoregressive** (standard LLMs): one token at a time, each conditioned on all previous ones. It fits text, where order matters, and the likelihood is exact.
+- **Diffusion**: the whole output at once, refined over many steps. It fits images and audio, where there is no natural left-to-right order.
 
-**Diffusion Language Models (DLMs)**: an active research direction applying diffusion-style generation to text instead of autoregression — potentially enabling faster parallel generation (denoising a whole sequence at once rather than token-by-token), though autoregressive models remain dominant in production as of today. The structural difference made concrete, step by step:
+Diffusion language models apply the same idea to text: start from a fully masked sequence and unmask tokens in parallel over several steps. LLaDA (2025) trained an 8B model this way and reported results comparable with autoregressive models of the same size, but autoregressive decoding remains the production default.
 
 <AutoregressiveVsDiffusionGenerationDiagram />
 
-LLMs & GenAI section complete. Next: [Agents](/docs/agents/roadmap) — where models stop just answering and start taking action.
+## Common Problems & Fixes
+
+| Problem | Cause | Fix |
+| --- | --- | --- |
+| VLM describes objects that are not in the image | The LLM's language prior outweighs weak visual evidence | Higher resolution or tiling, grounding data during instruction tuning, and evaluation on hallucination benchmarks such as POPE |
+| Small text in screenshots is unreadable | 336px input loses detail | Tile the image at higher resolution, or use an encoder trained at higher resolution |
+| Prompt cost explodes on multi-image input | 576+ tokens per image | Token merging or pooling in the projector, or fewer tiles for images the question does not need |
+| Generated images ignore part of the prompt | The text conditioning is weak relative to the image prior | Classifier-free guidance with a higher guidance scale |
+| Diffusion sampling is too slow | 1000 denoising steps | DDIM or other few-step samplers, or distillation into a few-step model |
+
+## When *Not* to Use It
+
+| Situation | Better choice |
+| --- | --- |
+| Classifying images into a fixed set of labels | A fine-tuned vision encoder, or zero-shot CLIP; no LLM needed |
+| Reading printed text from scans | A dedicated OCR model is cheaper and more exact |
+| Exact text generation (code, JSON) | Autoregressive LLMs; diffusion text models are less mature |
+| Generating one image in under 100 ms | A distilled few-step model or a GAN |
+
+## Remember
+
+| Idea | One line |
+| --- | --- |
+| Image tokens | (side / patch)^2; 336px with 14px patches is 576 tokens |
+| Projector | Maps vision width to LLM width so patches read like prompt tokens |
+| CLIP | Contrastive loss over a batch similarity matrix; the diagonal is the target |
+| Temperature | Small temperature sharpens the softmax over similarities |
+| VLA actions | Either discretised into tokens (RT-2, OpenVLA) or regressed with flow matching (pi-0) |
+| Forward diffusion | x_t = sqrt(abar) x0 + sqrt(1 - abar) eps |
+| Diffusion training | Predict the added noise with MSE |
+| Why many steps | Recovering x0 divides by a small signal weight, amplifying errors |
+
+The LLMs and GenAI section ends here. Next: [Agents](/docs/agents/roadmap), where models stop only answering and start taking action.
+
+## Sources
+
+- Radford et al., "Learning Transferable Visual Models From Natural Language Supervision" (CLIP), 2021. https://arxiv.org/abs/2103.00020
+- Dosovitskiy et al., "An Image is Worth 16x16 Words" (ViT), 2020. https://arxiv.org/abs/2010.11929
+- Liu et al., "Visual Instruction Tuning" (LLaVA), 2023. https://arxiv.org/abs/2304.08485
+- Liu et al., "Improved Baselines with Visual Instruction Tuning" (LLaVA-1.5), 2023. https://arxiv.org/abs/2310.03744
+- Alayrac et al., "Flamingo: a Visual Language Model for Few-Shot Learning", 2022. https://arxiv.org/abs/2204.14198
+- Brohan et al., "RT-2: Vision-Language-Action Models", 2023. https://arxiv.org/abs/2307.15818
+- Kim et al., "OpenVLA: An Open-Source Vision-Language-Action Model", 2024. https://arxiv.org/abs/2406.09246
+- Ho, Jain and Abbeel, "Denoising Diffusion Probabilistic Models", 2020. https://arxiv.org/abs/2006.11239
+- Nie et al., "Large Language Diffusion Models" (LLaDA), 2025. https://arxiv.org/abs/2502.09992
