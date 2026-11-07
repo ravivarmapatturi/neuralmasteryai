@@ -1,7 +1,7 @@
 ---
 title: "Modern Vision & Multimodal"
 sidebar_position: 5
-description: "Where computer vision is heading: ViT vs CNN backbones in production, vision-language alignment, image/video generation, video understanding, and 3D vision."
+description: "ViT vs CNN backbones, vision-language models, video generation and understanding, and 3D vision, with NeRF volume rendering and PointNet order-invariance worked in code."
 ---
 
 
@@ -9,10 +9,22 @@ import TemporalConsistencyDiagram from '../../../viz/diagrams/TemporalConsistenc
 import VideoUnderstandingArchitectureDiagram from '../../../viz/diagrams/VideoUnderstandingArchitectureDiagram';
 import PointCloudDiagram from '../../../viz/diagrams/PointCloudDiagram';
 import NerfRayMarchingDiagram from '../../../viz/diagrams/NerfRayMarchingDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
 # Modern Vision & Multimodal
 
-Where vision has been heading for the last several years: attention instead of (or alongside) convolution, images understood *jointly* with language, and vision extended into time (video) and space (3D) instead of a single flat frame.
+<ELI5>
+
+A photo is one flat moment. Modern vision systems go further in three directions: they read pictures together with words, so you can ask a question about an image; they watch time pass, so they can follow what happens in a video; and they work out depth, so a few photos of a room become a 3D model you can walk around in.
+
+</ELI5>
+
+## Why This Exists
+
+Classification, detection and segmentation on single images are largely solved engineering problems. The open work has moved in three directions, and each brings its own constraint. Joining vision with language makes images part of an LLM's context, which turns image resolution into a token budget. Adding time multiplies that budget by the number of frames and adds the need for consistency from frame to frame. Adding depth needs representations without a pixel grid at all: unordered point sets and functions that map a 3D position to a colour. This page surveys all three and works through the two mechanisms that most often confuse newcomers: how NeRF turns densities along a ray into one pixel, and why point-cloud networks must not care about the order of their input.
 
 ## Vision Transformers in Production
 
@@ -23,6 +35,10 @@ Where vision has been heading for the last several years: attention instead of (
 - **CLIP-style dual encoders**: covered in [Advanced Architectures — Multimodal](/docs/deep-learning/advanced-architectures#multimodal-architectures) — a vision encoder and a text encoder trained contrastively into a shared embedding space, the foundation of zero-shot image classification and text-to-image retrieval.
 - **Fusion-based VLMs** (LLaVA, Qwen-VL, GPT-4V-style models): covered in [Multimodal & Generative Models](/docs/llms-genai/multimodal-generative-models) — an image encoder's features get projected directly into an LLM's token space, letting the model reason jointly over image and text rather than just comparing embeddings.
 - **Serving VLMs in production**: see [LLM Hosting & Serving Patterns — Multimodal/VLM Inference](/docs/mlops/llm-hosting-and-serving-patterns#multimodal-vlm-inference) for the image→vision-encoder→projector→LLM serving path and which inference engines support it.
+
+### Video in a Token Budget
+
+Video multiplies the image-token problem. With 576 tokens per frame (a 336-pixel image with 14-pixel patches, as in [Multimodal & Generative Models](/docs/llms-genai/multimodal-generative-models)), a 60-second clip sampled at 1 frame per second is 34,560 tokens before any text. Sampling at 30 frames per second would be over a million. Video-language models therefore sample sparsely, pool or merge tokens across neighbouring frames, or compress each frame to far fewer tokens, and the frame-sampling rate decides which fast events the model can see at all.
 
 ## Image and Video Generation
 
@@ -47,12 +63,138 @@ Moving beyond a single 2D image to genuine 3D scene understanding:
 
 - **Point clouds**: a set of 3D points (x, y, z, often with additional attributes like color), the standard representation for LiDAR sensor output — processed by architectures specifically designed for unordered point sets (e.g. PointNet-style networks), since a point cloud has no natural grid structure for standard convolution to exploit.
 
+A LiDAR scan is a list of points, and the same scan can be listed in any order. A network for point clouds must give the same answer for every ordering. PointNet's solution is to apply one shared function to each point independently and then combine the results with a symmetric operation, max pooling, whose output does not depend on order.
+
+<PredictFirst
+  question="You flatten a 5-point cloud into a 15-number vector and feed it to an ordinary dense layer. You then shuffle the order of the points and run it again. What happens to the output?"
+  options={[
+    'It stays the same, because the same points went in',
+    'It changes, because a dense layer gives each input position its own weights, so moving a point changes which weights it meets',
+    'It stays the same if the layer has a ReLU',
+    'It becomes zero',
+  ]}
+  correctIndex={1}
+  explanation="A dense layer's weight for input position 4 is different from its weight for position 7, so reordering the points changes the output even though the scene is identical. PointNet avoids this by using the same weights for every point and then max-pooling, which is symmetric. A ReLU does not fix it, because the problem is in which weights each point is multiplied by."
+/>
+
+<RunnableCode code={`import numpy as np
+
+# PointNet's core idea: a shared per-point function, then a symmetric pool.
+rng = np.random.default_rng(0)
+points = rng.normal(size=(5, 3))            # 5 LiDAR points (x, y, z)
+W1 = rng.normal(size=(3, 8))                # the same weights are applied to every point
+
+def global_feature(pts):
+    per_point = np.maximum(pts @ W1, 0)     # shared MLP layer with ReLU
+    return per_point.max(axis=0)            # max over points: order does not matter
+
+shuffled = points[rng.permutation(5)]
+print("feature from original order:", np.round(global_feature(points), 3))
+print("feature from shuffled order:", np.round(global_feature(shuffled), 3))
+print("identical:", np.allclose(global_feature(points), global_feature(shuffled)))
+
+# Flattening the points into one vector and using a normal dense layer is not order-free
+W_flat = rng.normal(size=(15, 8))
+print("flattened dense layer identical:", np.allclose(points.reshape(-1) @ W_flat, shuffled.reshape(-1) @ W_flat))
+
+# Try it: replace .max(axis=0) with .sum(axis=0) or .mean(axis=0). Any symmetric
+# pooling keeps the output identical under shuffling; [0] (take the first point) does not.`} />
+
 <PointCloudDiagram />
 
 - **NeRF (Neural Radiance Fields)**: represents an entire 3D scene implicitly as a neural network — given a 3D coordinate and a viewing direction, the network outputs color and density at that point, and rendering a novel viewpoint means querying the network along camera rays through the scene. Trained from a set of 2D photos of a scene from different angles, producing remarkably photorealistic novel-view synthesis without ever building an explicit 3D mesh.
 
+### A Full Worked Example: Rendering One Pixel
+
+NeRF renders a pixel by sampling points along the camera ray. At each sample, the network gives a density $\sigma_i$ and a colour $c_i$. With sample spacing $\delta$, the chance the ray stops in slice $i$ is $\alpha_i = 1 - e^{-\sigma_i \delta}$, and the chance it reached slice $i$ at all is the transmittance $T_i = \prod_{j<i}(1 - \alpha_j)$. The pixel colour is $\sum_i T_i \alpha_i c_i$.
+
+Take six samples with densities 0, 0.1, 0.2, 5, 8 and 1, spacing 0.2, and a red surface at samples 3 and 4 with blue behind it. The weights come out as 0.000, 0.020, 0.038, 0.595, 0.277 and 0.013. The red surface takes 87% of the weight, the blue sample behind it gets 1.3% because only 7% of the light reaches it, and the pixel is red, (0.80, 0.19, 0.14). The same weights give an expected depth of sample 3.24. Every step is differentiable, which is how NeRF learns densities and colours from nothing but photos.
+
+<RunnableCode code={`import numpy as np
+
+# NeRF volume rendering along one camera ray, with 6 samples.
+# Each sample has a density sigma (how much stuff is there) and a colour.
+sigma = np.array([0.0, 0.1, 0.2, 5.0, 8.0, 1.0])       # a surface around samples 3-4
+rgb = np.array([[0.9, 0.9, 0.9],                        # empty air (ignored, sigma 0)
+                [0.8, 0.8, 0.8],
+                [0.7, 0.7, 0.7],
+                [0.9, 0.2, 0.1],                        # red surface
+                [0.8, 0.1, 0.1],
+                [0.1, 0.1, 0.9]])                       # blue, behind the surface
+delta = 0.2                                             # spacing between samples
+
+alpha = 1 - np.exp(-sigma * delta)                      # chance the ray stops in this slice
+T = np.concatenate([[1.0], np.cumprod(1 - alpha)[:-1]]) # chance it got this far
+weights = T * alpha
+pixel = (weights[:, None] * rgb).sum(axis=0)
+
+print("alpha        :", np.round(alpha, 3))
+print("transmittance:", np.round(T, 3))
+print("weights      :", np.round(weights, 3), " sum", round(weights.sum(), 3))
+print("pixel colour :", np.round(pixel, 3))
+print("expected depth (sample index):", round(float((weights * np.arange(6)).sum() / weights.sum()), 2))
+
+# Try it: set sigma to [0.0, 0.1, 0.2, 0.5, 0.5, 8.0]. The red surface becomes
+# thin, most light reaches the dense blue sample behind it, the pixel turns
+# blue and the expected depth moves back from 3.24 to 4.46.`} />
+
 <NerfRayMarchingDiagram />
+- **3D Gaussian splatting** replaces NeRF's network with millions of explicit 3D Gaussians, each with a position, shape, colour and opacity, and renders by projecting and blending them in order. It uses the same compositing rule as the worked example above, but renders in real time instead of needing hundreds of network evaluations per pixel, and it has largely replaced NeRF for interactive novel-view synthesis.
 - **3D reconstruction**: recovering 3D scene structure from 2D images — classical **Structure from Motion (SfM)** triangulates 3D points from matched features (see [Vision Fundamentals — SIFT/ORB](/docs/computer-vision/vision-fundamentals#classical-feature-extraction)) across multiple photos of the same scene from different viewpoints; modern learned approaches increasingly fold this into end-to-end differentiable pipelines, including NeRF-style implicit representations above.
 - **Applications**: autonomous driving (LiDAR point cloud processing), AR/VR (scene reconstruction), robotics (spatial mapping/SLAM), and content creation (turning photos into 3D assets).
 
+<GoDeeper title="Go deeper: where the NeRF compositing formula comes from">
+
+Treat the scene as a medium that absorbs light at rate $\sigma(t)$ along the ray. The fraction of light that survives from the camera to depth $t$ is $T(t) = \exp(-\int_0^t \sigma(s)\,ds)$, the Beer-Lambert law. The colour seen is $\int T(t)\,\sigma(t)\,c(t)\,dt$: light that survived to $t$, times the rate it stops there, times the colour there. Splitting the ray into slices of width $\delta$ where $\sigma$ and $c$ are constant turns the integral into the sum in the code, with $\alpha_i = 1 - e^{-\sigma_i \delta}$ being the exact absorption within one slice. NeRF also feeds positions through sinusoidal positional encodings before the network, the same idea as transformer position encodings; without them the network cannot represent fine detail.
+
+</GoDeeper>
+
+<NotebookCallout color="green" title="Choosing a 3D representation">
+Use point clouds for raw sensor data and detection (LiDAR), meshes for anything that has to go into a game engine or CAD tool, and Gaussian splats or NeRF for photorealistic capture of a real scene from photos.
+</NotebookCallout>
+
+## Common Problems & Fixes
+
+| Problem | Cause | Fix |
+| --- | --- | --- |
+| VLM misses fast events in video | Sparse frame sampling | Sample more densely around motion; use a model with temporal pooling |
+| Video prompt exceeds the context window | Tokens per frame times frames | Fewer frames, token merging, or a video encoder with compression |
+| Generated video flickers | Frames generated without temporal coupling | Temporal attention layers; generation in a spatiotemporal latent space |
+| NeRF looks blurry or floaty | Too few views, or wrong camera poses | More photos from more angles; refine poses with SfM |
+| Point-cloud model fails on a new sensor | Different density and range | Train with resampling and dropout of points |
+
+## When *Not* to Use It
+
+| Situation | Better choice |
+| --- | --- |
+| Small labelled image dataset, tight latency | A pretrained CNN, not a ViT trained from scratch |
+| One question about one frame of video | An image model on the right frame |
+| A 3D model for manufacturing | Photogrammetry to a mesh or CAD, not a radiance field |
+| Real-time novel views on a phone | Gaussian splatting rather than NeRF |
+
+## Remember
+
+| Idea | One line |
+| --- | --- |
+| ViT vs CNN | ViTs need more data; CNNs are cheaper at small scale |
+| VLM | Vision encoder, projector, LLM |
+| Video tokens | Tokens per frame times frames; 60 s at 1 fps is 34,560 |
+| Temporal consistency | The core difficulty of video generation |
+| Point clouds | Unordered sets; shared per-point MLP plus max pool |
+| NeRF | Density and colour along rays, alpha-composited |
+| Compositing | Pixel = sum of $T_i \alpha_i c_i$ |
+| Gaussian splatting | Explicit Gaussians, same compositing, real time |
+
 Computer Vision section complete. Next: [NLP](/docs/nlp/roadmap) for the equivalent classical-to-modern arc in text, or back to [Deep Learning](/docs/deep-learning/roadmap) for the underlying architectures this section builds on.
+
+## Sources
+
+- Dosovitskiy et al., "An Image is Worth 16x16 Words" (ViT), 2020. https://arxiv.org/abs/2010.11929
+- Radford et al., "Learning Transferable Visual Models From Natural Language Supervision" (CLIP), 2021. https://arxiv.org/abs/2103.00020
+- Carreira and Zisserman, "Quo Vadis, Action Recognition?" (I3D), 2017. https://arxiv.org/abs/1705.07750
+- Bertasius, Wang and Torresani, "Is Space-Time Attention All You Need for Video Understanding?" (TimeSformer), 2021. https://arxiv.org/abs/2102.05095
+- Ho et al., "Video Diffusion Models", 2022. https://arxiv.org/abs/2204.03458
+- Qi et al., "PointNet: Deep Learning on Point Sets for 3D Classification and Segmentation", 2016. https://arxiv.org/abs/1612.00593
+- Mildenhall et al., "NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis", 2020. https://arxiv.org/abs/2003.08934
+- Kerbl et al., "3D Gaussian Splatting for Real-Time Radiance Field Rendering", 2023. https://arxiv.org/abs/2308.04079
+- Schonberger and Frahm, "Structure-from-Motion Revisited" (COLMAP), CVPR 2016.

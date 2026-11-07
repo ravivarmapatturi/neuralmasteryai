@@ -90,7 +90,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 67. done - Deepened Prompt Engineering (self-consistency binomial, measuring a prompt change with a paired bootstrap, injection defences, sources).
 68. done - Deepened Bandits (runnable three-strategy race, off-policy evaluation with IPS, problems, sources).
 69. done - Deepened Scalable Oversight and Frontier Safety (debate judge simulation, PRM800K, weak-to-strong, staged deployment statistics, safety frameworks).
-70. planned - Close depth gaps found by the existing audits, one page each. Picked from docs/learning-page-inventory.md: the lowest-word core chapters.
+70. done - Deepened Modern Vision and Multimodal (video token budget, NeRF compositing worked in code, PointNet order-invariance, Gaussian splatting). Pages 59-70 were the lowest-word core chapters in docs/learning-page-inventory.md.
 
 ### Atlas and visuals (71-80)
 71. done - Atlas shows one label, for the selected entry, so labels no longer overlap.
