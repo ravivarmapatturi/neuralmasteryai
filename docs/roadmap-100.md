@@ -61,7 +61,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 32. done - Loss Functions: 6 problems (Huber, triplet, label smoothing, focal, distillation, InfoNCE).
 33. done - Evaluation Metrics: 6 problems (MRR, macro/micro F1, nDCG, ECE, average precision, BLEU).
 34. done - RAG Pieces: 6 problems (terms, BM25, near-duplicates, hybrid fusion, context assembly, citation checks).
-35. planned - Agent loop set.
+35. done - Agent loop set: covered by the existing 12-stage Build an Agent project (parse, dispatch, loop, recovery, guardrails, memory, planning, evals). No second set, to avoid duplicate problems.
 
 ### Study plans, research and projects (36-55)
 36. done - Study Plans page (/study-plans) with named plans and practice sheets, each with problem, reading and passed counts.
