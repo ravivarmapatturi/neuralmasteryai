@@ -4,3 +4,38 @@ description: "Maximize GPU compute utilization and eliminate idle bubble time us
 difficulty: "medium"
 topic: "LLM Inference & Decoding"
 ---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Reference solution
+
+Try the problem first. The solution stays hidden until you open it.
+
+<Solution title="Show the reference solution">
+
+```python
+def schedule_continuous_batch(active_requests, waiting_queue, max_batch_size, max_total_tokens):
+    if max_batch_size <= 0 or max_total_tokens <= 0:
+        raise ValueError("limits must be positive")
+    active, completed, used = [], [], 0
+    for req in active_requests:  # running requests decode one token first
+        tokens = req["current_tokens"] + 1
+        if tokens >= req["max_tokens"]:
+            completed.append(req["id"])
+        else:
+            active.append(req["id"])
+            used += tokens
+    waiting = list(waiting_queue)
+    while waiting and len(active) < max_batch_size and used + waiting[0]["prompt_tokens"] <= max_total_tokens:
+        req = waiting.pop(0)  # strict FIFO: stop at the first one that does not fit
+        active.append(req["id"])
+        used += req["prompt_tokens"]
+    return {
+        "scheduled_active_ids": active,
+        "completed_ids": completed,
+        "remaining_waiting_ids": [r["id"] for r in waiting],
+        "batch_token_budget_used": used,
+    }
+```
+
+</Solution>

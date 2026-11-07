@@ -1,0 +1,20 @@
+from collections import deque
+
+def shortest_path(graph, start, end):
+    if start == end:
+        return [start]
+    parent = {start: None}
+    queue = deque([start])
+    while queue:
+        node = queue.popleft()
+        for nxt in graph.get(node, []):
+            if nxt in parent:
+                continue
+            parent[nxt] = node
+            if nxt == end:
+                path = [end]
+                while parent[path[-1]] is not None:
+                    path.append(parent[path[-1]])
+                return path[::-1]
+            queue.append(nxt)
+    return []

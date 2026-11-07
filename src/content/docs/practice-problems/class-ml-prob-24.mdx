@@ -4,3 +4,34 @@ description: "Implement compute_auc(y_true, y_scores), ROC AUC via the exact ran
 difficulty: "hard"
 topic: "Classical Machine Learning"
 ---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Reference solution
+
+Try the problem first. The solution stays hidden until you open it.
+
+<Solution title="Show the reference solution">
+
+```python
+def compute_auc(y_true, y_scores):
+    n_pos = sum(1 for t in y_true if t == 1)
+    n_neg = len(y_true) - n_pos
+    if n_pos == 0 or n_neg == 0:
+        raise ValueError("y_true needs both classes")
+    order = sorted(range(len(y_scores)), key=lambda i: y_scores[i])
+    ranks = [0.0] * len(y_scores)
+    i = 0
+    while i < len(order):
+        j = i
+        while j + 1 < len(order) and y_scores[order[j + 1]] == y_scores[order[i]]:
+            j += 1
+        avg = (i + j) / 2 + 1  # 1-indexed average rank of the tied run
+        for t in range(i, j + 1):
+            ranks[order[t]] = avg
+        i = j + 1
+    sum_pos = sum(r for r, t in zip(ranks, y_true) if t == 1)
+    return (sum_pos - n_pos * (n_pos + 1) / 2) / (n_pos * n_neg)
+```
+
+</Solution>

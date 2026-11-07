@@ -4,3 +4,25 @@ description: "Implement pca_explained_variance_ratio(X, k), the real quantity be
 difficulty: "hard"
 topic: "Classical Machine Learning"
 ---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Reference solution
+
+Try the problem first. The solution stays hidden until you open it.
+
+<Solution title="Show the reference solution">
+
+```python
+import numpy as np
+
+def pca_explained_variance_ratio(X, k):
+    X = np.asarray(X, dtype=float)
+    Xc = X - X.mean(axis=0)
+    cov = Xc.T @ Xc / (X.shape[0] - 1)
+    eigvals = np.linalg.eigh(cov)[0][::-1]  # eigh returns ascending order
+    eigvals = np.clip(eigvals, 0, None)     # tiny negative round-off -> 0
+    return (eigvals[:k] / eigvals.sum()).tolist()
+```
+
+</Solution>

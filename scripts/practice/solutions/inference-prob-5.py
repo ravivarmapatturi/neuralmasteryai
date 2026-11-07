@@ -1,0 +1,17 @@
+import math
+
+def top_p_filter(logits, p, filter_value=-float('inf')):
+    if p <= 0.0 or p > 1.0:
+        raise ValueError("p must be in (0, 1]")
+    m = max(logits)
+    exps = [math.exp(x - m) for x in logits]
+    total = sum(exps)
+    probs = [e / total for e in exps]
+    order = sorted(range(len(logits)), key=lambda i: (-probs[i], i))
+    keep, cumulative = set(), 0.0
+    for i in order:
+        keep.add(i)
+        cumulative += probs[i]
+        if cumulative >= p:
+            break
+    return [x if i in keep else filter_value for i, x in enumerate(logits)]

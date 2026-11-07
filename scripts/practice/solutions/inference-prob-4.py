@@ -1,0 +1,8 @@
+def top_k_filter(logits, k, filter_value=-float('inf')):
+    if k <= 0:
+        raise ValueError("k must be positive")
+    if k >= len(logits):
+        return list(logits)
+    # Sort by logit descending, lower index first on ties.
+    keep = set(sorted(range(len(logits)), key=lambda i: (-logits[i], i))[:k])
+    return [x if i in keep else filter_value for i, x in enumerate(logits)]

@@ -5,6 +5,8 @@ difficulty: hard
 topic: llms-genai
 ---
 
+import { Solution } from '../../../components/content/ExpandableDepth';
+
 import RunnableCode from '../../../components/content/RunnableCode';
 
 **Difficulty: Hard** · Concept: [Foundation Model Internals — Positional Encoding](/docs/llms-genai/foundation-model-internals#positional-encoding)
@@ -34,3 +36,26 @@ assert abs(np.linalg.norm(rope(np.array([0.0, 1.0, 0.0, 1.0]), 1)) - np.linalg.n
 ---
 
 Next: [ALiBi (Attention with Linear Biases) From Scratch](/practice/alibi-positional-bias)
+
+## Reference solution
+
+Try the problem first. The solution stays hidden until you open it.
+
+<Solution title="Show the reference solution">
+
+```python
+import math
+
+def rope(x: list[float], position: int, base: float = 10000.0) -> list[float]:
+    d = len(x)
+    out = []
+    for i in range(d // 2):
+        theta = position * base ** (-2 * i / d)
+        a, b = x[2 * i], x[2 * i + 1]
+        c, s = math.cos(theta), math.sin(theta)
+        # 2D rotation of the pair (a, b) by theta.
+        out += [round(a * c - b * s, 6), round(a * s + b * c, 6)]
+    return out
+```
+
+</Solution>

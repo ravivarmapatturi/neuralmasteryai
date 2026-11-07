@@ -4,3 +4,26 @@ description: "Implement Consistent Hash Ring Lookup in the Distributed AI System
 difficulty: "easy"
 topic: "Distributed AI Systems"
 ---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Reference solution
+
+Try the problem first. The solution stays hidden until you open it.
+
+<Solution title="Show the reference solution">
+
+```python
+import bisect
+import hashlib
+
+def consistent_hash_lookup(key, ring):
+    if not ring:
+        raise ValueError("the ring has no nodes")
+    position = int(hashlib.md5(key.encode()).hexdigest(), 16) % 360
+    positions = [p for p, _ in ring]
+    i = bisect.bisect_left(positions, position)  # first node at or after the key
+    return ring[i % len(ring)][1]                # past the last node: wrap to the first
+```
+
+</Solution>

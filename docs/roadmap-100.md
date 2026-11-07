@@ -46,7 +46,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 17. done - Consistent problem page: description, theory, hints, examples, requirements.
 18. done - Two-pane layout with test cases and results.
 19. done - Per-problem notes saved locally.
-20. planned - Show solution after a solve or an explicit reveal.
+20. done - Show solution after a solve or an explicit reveal.
 21. done - Points by difficulty shown on every problem.
 22. done - Daily problem.
 23. done - Solved and unsolved filter.

@@ -20,7 +20,7 @@ def _safe_eq(actual, expected):
     if isinstance(actual, bool) or isinstance(expected, bool):
         return actual == expected
     if isinstance(actual, (int, float)) and isinstance(expected, (int, float)):
-        return abs(float(actual) - float(expected)) < 1e-5
+        return actual == expected or abs(float(actual) - float(expected)) < 1e-5
     if isinstance(actual, (list, tuple)) and isinstance(expected, (list, tuple)):
         return len(actual) == len(expected) and all(_safe_eq(a, e) for a, e in zip(actual, expected))
     if isinstance(actual, dict) and isinstance(expected, dict):
