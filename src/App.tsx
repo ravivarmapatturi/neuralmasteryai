@@ -31,6 +31,7 @@ import LeaderboardPage from './components/LeaderboardPage';
 import { StudyPlansPage, StudyPlanPage, ResearchListPage, ResearchTrackPage, ProjectsPage } from './components/StudyPlansPages';
 import SiteTour from './components/home/SiteTour';
 import AboutPage from './components/AboutPage';
+import CreditsPage from './components/CreditsPage';
 import AtlasHubPage from './components/AtlasHubPage';
 import GlossaryPage from './components/glossary/GlossaryPage';
 import GlossaryTermPage from './components/glossary/GlossaryTermPage';
@@ -123,6 +124,7 @@ export default function App() {
                       <Route path="/docs/inference-engineering/technique-atlas" element={<Navigate to="/docs/atlas/inference" replace />} />
                       <Route path="/changelog" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading changelog…</p>}><ChangelogPage /></Suspense>} />
                       <Route path="/about" element={<AboutPage />} />
+                      <Route path="/credits" element={<CreditsPage />} />
                       <Route path="/privacy" element={<PrivacyPolicyPage />} />
                       <Route path="/terms" element={<TermsOfServicePage />} />
                       <Route path="/docs/practice-problems/overview" element={<Navigate to="/practice" replace />} />

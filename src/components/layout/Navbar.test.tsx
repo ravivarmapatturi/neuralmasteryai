@@ -15,6 +15,6 @@ describe('Navbar menu', () => {
     const products = screen.getByRole('region', { name: 'Products' });
     const resources = screen.getByRole('region', { name: 'Resources' });
     for (const name of ['Learn', 'Labs', 'Interview', 'Study plans', 'Research', 'Projects', 'Atlas']) expect(within(products).getByRole('link', { name: new RegExp(`^${name}`) })).toBeInTheDocument();
-    for (const name of ['Blog', 'Glossary', 'Leaderboard', 'Progress', 'Changelog', 'About']) expect(within(resources).getByRole('link', { name: new RegExp(`^${name}`) })).toBeInTheDocument();
+    for (const name of ['Blog', 'Glossary', 'Leaderboard', 'Progress', 'Changelog', 'About', 'Credits']) expect(within(resources).getByRole('link', { name: new RegExp(`^${name}`) })).toBeInTheDocument();
   });
 });

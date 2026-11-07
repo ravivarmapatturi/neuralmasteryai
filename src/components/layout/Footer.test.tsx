@@ -14,6 +14,8 @@ describe('Footer', () => {
     )
     expect(screen.getByText('© 2026 Neural Mastery')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'About' })).toHaveAttribute('href', '/about')
+    expect(screen.getByRole('link', { name: 'Changelog' })).toHaveAttribute('href', '/changelog')
+    expect(screen.getByRole('link', { name: 'Credits' })).toHaveAttribute('href', '/credits')
     expect(screen.getByRole('link', { name: 'Privacy Policy' })).toHaveAttribute('href', '/privacy')
     expect(screen.getByRole('link', { name: 'Terms of Service' })).toHaveAttribute('href', '/terms')
     const xLink = screen.getByRole('link', { name: /Questions\? Reach out on X/i })
