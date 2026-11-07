@@ -1,84 +1,212 @@
 ---
 title: "Prompt Engineering"
 sidebar_position: 5
-description: "Zero-shot, few-shot, and Chain-of-Thought prompting -- the cheapest, fastest lever for improving an LLM's behavior, no training required."
+description: "Zero-shot, few-shot and chain-of-thought prompting, self-consistency, reasoning models and thinking budgets, structured output and injection, and how to measure whether a prompt change helped."
 ---
-
 
 import SelfConsistencyVotingDiagram from '../../../viz/diagrams/SelfConsistencyVotingDiagram';
 import LostInTheMiddleDiagram from '../../../viz/diagrams/LostInTheMiddleDiagram';
 import PromptInjectionFlowDiagram from '../../../viz/diagrams/PromptInjectionFlowDiagram';
 import TestTimeComputeScalingDiagram from '../../../viz/diagrams/TestTimeComputeScalingDiagram';
-import { Remember } from '../../../components/content/Remember';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
 # Prompt Engineering
 
-The cheapest, fastest lever for improving an LLM's behavior — no training required, just better instructions.
+<ELI5>
+
+A language model continues whatever text you give it. If you hand a new colleague a vague note, you get a vague result; if you give them the goal, two good examples and the format you want, you get what you asked for. Prompting is writing that note. The surprising part is how much it matters, and the hard part is telling whether a new note is really better or you just got lucky on the few tries you looked at.
+
+</ELI5>
+
+## Why This Exists
+
+A prompt is the cheapest lever on an LLM's behaviour: no training, no data pipeline, and a change is live in minutes. It is also the easiest to fool yourself with. Models are sensitive to wording, order and examples, and a prompt that looks better on five hand-picked inputs can be worse on the next five hundred. This page covers the techniques (examples, step-by-step reasoning, sampling several answers), when a reasoning model is worth its cost, how to get output code can parse, the security problem of untrusted text in the prompt, and how to measure a prompt change so the decision is based on evidence.
 
 ## Zero-Shot, One-Shot, Few-Shot
 
-- **Zero-shot**: ask the model to do a task with no examples, relying entirely on its pretrained knowledge and instruction-following ability.
-- **One-shot / few-shot**: include one or a handful of example (input, output) pairs directly in the prompt before the real query. This works because the model conditions on the whole context — the examples establish a pattern it continues, without any weight updates.
+- **Zero-shot** asks for the task with no examples and relies on the model's instruction following.
+- **Few-shot** puts a handful of input-output pairs before the real query. The model conditions on the whole context, so the examples set a pattern it continues, with no weight updates. GPT-3's paper named this **in-context learning**.
+
+Examples teach format and edge cases better than instructions do, but they also teach things you did not intend. If four of five examples are labelled "positive", the model leans positive; if the last example is unusual, its pattern leaks into the answer. Use examples that cover the label set evenly and include the hard cases.
 
 ## Chain-of-Thought (CoT) Prompting
 
-Instead of asking for a direct answer, prompt the model to "think step by step" before answering. For reasoning-heavy tasks (math, multi-step logic), this reliably improves accuracy — generating intermediate reasoning tokens gives the model more computation and more context to condition the final answer on, rather than forcing it to jump straight to a conclusion in one forward pass.
+Asking the model to reason step by step before answering improves accuracy on maths and multi-step logic. Each generated token is another forward pass, so intermediate reasoning gives the model more computation, and its final answer can condition on the steps it wrote instead of being produced in one pass. Wei et al. (2022) showed the gain was large for big models and small or negative for small ones.
 
-**Self-consistency**: sample multiple CoT reasoning paths for the same question and take a majority vote on the final answer — trades extra compute for higher accuracy. The real binomial math behind why this works whenever a single path beats a coin flip:
+**Self-consistency** samples several reasoning paths at a non-zero temperature and takes a majority vote on the final answer.
 
 <SelfConsistencyVotingDiagram />
 
-**Tree-of-Thought**: generalizes CoT by exploring multiple reasoning branches and backtracking, rather than committing to a single linear chain — more expensive, used for harder problems.
+### A Full Worked Example: When Voting Helps
+
+If each path is right with probability $p$, independently, and wrong answers do not agree with each other, the vote is right whenever more than half the paths are. With $p = 0.6$, accuracy rises from 0.600 with one sample to 0.683 with 5, 0.753 with 11 and 0.826 with 21. With $p = 0.45$ the same vote makes things worse: 0.407 with 5 and 0.321 with 21. Voting amplifies whichever side of one half you start on. And 21 samples of a 400-token chain of thought cost 8,400 output tokens per question.
+
+<RunnableCode code={`from math import comb
+
+# Self-consistency: sample n reasoning paths, majority-vote the final answer.
+# If each path is right with probability p, independently, and wrong answers
+# never agree with each other, the vote is right when more than half are right.
+def majority_correct(p, n):
+    return sum(comb(n, k) * p**k * (1 - p)**(n - k) for k in range(n // 2 + 1, n + 1))
+
+for p in (0.6, 0.45):
+    row = "  ".join(f"n={n}: {majority_correct(p, n):.3f}" for n in (1, 5, 11, 21))
+    print(f"single-path accuracy {p}:  {row}")
+
+# Cost: 21 samples of a 400-token chain of thought is 8,400 output tokens per question
+print("output tokens for n=21 at 400 tokens each:", 21 * 400)
+
+# Try it: set p = 0.5. The vote never improves on a coin flip, however many
+# samples you take: voting amplifies whichever side of 0.5 you start on.`} />
+
+In practice paths are correlated (the same model makes the same mistake) and wrong answers sometimes agree, so real gains are smaller than the binomial ones. Self-consistency only applies when answers can be compared exactly, such as a number or a multiple-choice letter.
+
+**Tree of Thoughts** goes further: it explores several reasoning branches, scores partial solutions and backtracks. It is more expensive and is used for search-like problems.
 
 ## Reasoning Models vs. Prompted Chain-of-Thought
 
-Everything above is a *prompting* technique — asking any model to write out its reasoning, which helps because it's more tokens of computation before the final answer, but the model was never specifically trained to do this well. A **reasoning model** (OpenAI's o-series, DeepSeek-R1, and similar) is a different thing entirely: a model additionally trained with RL (see [Training Pipeline — GRPO](/docs/llms-genai/training-pipeline#group-relative-policy-optimization-grpo)) specifically to discover its own effective thinking strategies on math and code problems — backtracking, revisiting an assumption, trying an approach and abandoning it — rather than having a human write out what "good reasoning" should look like. The result at inference time is a model that spends a variable, often substantial amount of extra time and tokens on an internal reasoning process before committing to a final answer, without needing to be prompted to do so.
+Prompted CoT asks any model to show its working. A **reasoning model** (OpenAI's o-series, DeepSeek-R1, Claude with extended thinking) was additionally trained with reinforcement learning, often on problems with checkable answers (see [GRPO](/docs/llms-genai/training-pipeline#group-relative-policy-optimization-grpo)), to find its own reasoning strategies: backtracking, re-checking an assumption, abandoning an approach. At inference it spends a variable and often large number of tokens thinking before it answers, without being asked.
 
-That extra inference-time compute is a real cost, not a free upgrade, which makes *when* to reach for one a genuine engineering decision:
+That extra compute has a price, so choosing when to use one is an engineering decision:
 
-- **Worth it**: problems with real, checkable structure where a first-pass answer is often wrong in a specific, findable way — a subtle bug, a multi-step proof, a logic puzzle. The gap between a non-reasoning and a reasoning model's accuracy is largest exactly here.
-- **Not worth it**: factual lookups, straightforward formatting, casual/subjective questions, or anything where a first response is already reliably good — the extra latency (sometimes minutes, not seconds) buys accuracy you didn't need.
+- **Worth it** for problems with checkable structure where a first answer is often wrong in a findable way: a subtle bug, a multi-step proof, a scheduling puzzle.
+- **Not worth it** for lookups, formatting, casual questions, or anything a fast model already gets right. The extra latency, sometimes minutes, buys accuracy you did not need.
 
-In production, this is usually a **routing** decision (see [Routing & Supervisor Pattern](/docs/agents/routing-and-supervisor)): classify or detect whether a request is the kind that benefits from extended reasoning, and only pay the latency/cost premium for the requests that actually need it, rather than defaulting every request to the most expensive mode available.
+In production this is usually a **routing** decision (see [Routing & Supervisor](/docs/agents/routing-and-supervisor)): send only the requests that benefit to the expensive mode.
 
 ### Test-Time Compute Scaling: a Second Scaling Axis
 
-**What is it?** Pretraining scale (more data, more parameters, more training compute — see [Training Pipeline — Scaling Laws](/docs/llms-genai/training-pipeline#scaling-laws-and-the-chinchilla-result)) was, for years, the only lever that reliably bought more capability. Reasoning models introduce a second, genuinely different one: **test-time (inference-time) compute** — spending more computation *per request*, after training is already finished, by letting the model think longer before answering.
-
-**How does it work?** In practice this is a **thinking budget**: a token limit on the model's internal reasoning, configurable per request (Anthropic's API calls this `budget_tokens` — a target the model reasons against, not a strict floor it has to fill, with a documented minimum around 1,024 tokens). Turn it up, and the model gets more room to backtrack, double-check an intermediate step, and try more than one approach before committing to a final answer.
+For years, pretraining scale (see [Scaling Laws](/docs/llms-genai/training-pipeline#scaling-laws-and-the-chinchilla-result)) was the one lever that reliably bought capability. Reasoning models add a second: **test-time compute**, spending more computation per request after training is finished. In APIs this is a **thinking budget**, a token limit on internal reasoning set per request. Anthropic's API calls it `budget_tokens`, a target rather than a floor, with a minimum of 1,024.
 
 <TestTimeComputeScalingDiagram />
 
-**Why is it useful?** It decouples "make the model smarter" from "retrain the model" — the same trained model gets measurably more accurate on hard reasoning problems just by giving it a bigger budget at inference time, no fine-tuning required. That's the entire reason it's treated as a distinct scaling axis, not just a knob.
+The gain is roughly **logarithmic**: Anthropic reports maths accuracy improving with the logarithm of thinking tokens, and OpenAI's o1 chart shows the same log-linear shape. Each doubling of the budget buys about the same small improvement, and every thinking token is billed as output. Past a point a bigger budget mostly buys latency.
 
-**What's the limitation?** The relationship is **logarithmic, not linear**: Anthropic's own writeup states accuracy on math problems "improves logarithmically with the number of thinking tokens," and independent analysis of OpenAI's original o1 scaling chart found the same log-linear shape — exponentially more thinking compute buys roughly linear accuracy gains. Every one of those thinking tokens is also billed as real output, so past a point, a bigger budget mostly buys latency and cost, not correctness — the same routing discipline above applies here too, tuned per task rather than maxed out by default.
-
-A related mechanism worth knowing: **interleaved thinking** lets a reasoning model think *between* tool calls in an agentic loop — reasoning about a tool's actual result before deciding what to call next — rather than only thinking once, up front, before the first action (see [Agent Fundamentals — Tool Use](/docs/agents/agent-fundamentals#tool-use-function-calling)). This is what lets a reasoning model course-correct mid-task instead of committing to a plan before it has any real feedback.
-
-<Remember>Reasoning models add a genuinely new lever — spend more compute per request, at inference time, instead of only at training time — but it obeys diminishing returns like everything else: a bigger thinking budget is a routing decision with a real cost, not a free accuracy upgrade to max out by default.</Remember>
+**Interleaved thinking** lets a reasoning model think between tool calls in an agent loop, reasoning about each result before choosing the next call (see [Tool Use](/docs/agents/agent-fundamentals#tool-use-function-calling)), so it can change course once it has real feedback.
 
 ## ReAct (Reasoning + Acting)
 
-Interleaves reasoning steps with actions (tool calls) and observations: *think → act → observe → think → ...*. This is the foundational pattern behind most tool-using agents (see [Agents](/docs/agents/roadmap)) — the model reasons about what it needs, calls a tool to get it, incorporates the result, and continues.
+ReAct alternates reasoning with actions and observations: think, call a tool, read the result, think again. It is the basic loop behind most tool-using [agents](/docs/agents/roadmap).
 
 ## System Prompts & Structured Output
 
-A **system prompt** sets persistent context/behavior for the whole conversation (role, tone, constraints) separate from the user's actual messages. For production applications, prompts often need to enforce structured output (JSON/XML) so downstream code can parse it reliably — done via explicit formatting instructions, few-shot examples of the format, or (increasingly) model features that constrain generation to match a schema directly.
+A **system prompt** sets persistent context for the whole conversation (role, tone, constraints), separate from the user's messages. Put stable instructions there; it is also the part that [prompt caching](/docs/llms-genai/calling-the-llm-api#paying-less-prompt-caching) can reuse.
+
+When code reads the output, ask for a structure and enforce it. Instructions and a format example get most of the way; **structured outputs** or **tool calling** with a JSON schema constrain decoding so the output always parses. Validate it anyway: a schema guarantees shape, not correct content.
 
 ## Prompt Injection and Jailbreaking
 
-**Prompt injection**: malicious text embedded in content the model processes (a webpage, a document, a tool's output) that tries to override the original instructions — a serious concern for any system where an LLM reads untrusted external content. **Jailbreaking**: techniques users apply directly to bypass a model's safety training. Defenses include strict separation of trusted instructions from untrusted data, input/output filtering, and models trained specifically to resist instruction override from non-privileged sources.
+**Prompt injection** is text inside content the model processes (a web page, an email, a tool result) that tries to override the original instructions. It matters for any system where an LLM reads untrusted content, and most of all when the LLM can also take actions. **Jailbreaking** is a user directly trying to get around a model's safety training.
 
 <PromptInjectionFlowDiagram />
 
+No prompt wording reliably stops injection, because instructions and data share one channel. Defences are architectural: keep trusted instructions separate from untrusted data and mark which is which, give the model only the tools and permissions the task needs, require confirmation before actions with side effects, and filter inputs and outputs. Models are also trained to give lower priority to instructions arriving from non-privileged sources.
+
+## Measuring a Prompt Change
+
+Treat a prompt like code: change it, run a test suite, compare. The suite is a fixed set of inputs with known-good outputs or a grading rule, and both versions run on the same cases so the comparison is paired.
+
+### Run It Yourself: Is a 4-Point Gain Real?
+
+An old prompt scores 0.845 on 200 cases and a new one 0.885, a gain of 4 points. Looking case by case, the new prompt fixed 14 cases and broke 6. A paired bootstrap, resampling the 200 cases 5,000 times, puts the gain's 95% interval at -0.005 to +0.080. It includes zero: on this suite, the improvement could be noise. Had the new prompt fixed 24 cases, the interval would be +0.040 to +0.145, a real improvement.
+
+<PredictFirst
+  question="A new prompt raises accuracy from 84.5% to 88.5% on a 200-case test set. What is the right conclusion?"
+  options={[
+    'Ship it: 4 points is a clear improvement',
+    'Not yet: with 200 cases the 95% interval on the gain includes zero, so look at the cases it broke and add test cases',
+    'Reject it: anything under 5 points is noise',
+    'The test set is too small to say anything at all',
+  ]}
+  correctIndex={1}
+  explanation="The gain comes from 14 fixed and 6 broken cases, a net of 8 out of 200, and resampling shows that could easily be chance. That does not mean the prompt is worse, so rejecting it is also wrong. Read the 6 broken cases (they often reveal a real regression) and grow the suite until the interval is narrow enough to decide."
+/>
+
+<RunnableCode code={`import numpy as np
+
+# Two prompt versions run on the same 200 test cases (1 = correct).
+rng = np.random.default_rng(3)
+n = 200
+old = (rng.random(n) < 0.82).astype(int)
+new = old.copy()
+flip_up = rng.choice(np.where(old == 0)[0], 14, replace=False)    # new prompt fixes 14
+flip_down = rng.choice(np.where(old == 1)[0], 6, replace=False)   # and breaks 6
+new[flip_up], new[flip_down] = 1, 0
+
+print(f"old prompt {old.mean():.3f}, new prompt {new.mean():.3f}, gain {new.mean() - old.mean():+.3f}")
+print(f"cases fixed {int(((old == 0) & (new == 1)).sum())}, cases broken {int(((old == 1) & (new == 0)).sum())}")
+
+# Paired bootstrap: resample test cases, recompute the gain each time
+gains = []
+for _ in range(5000):
+    idx = rng.integers(0, n, n)
+    gains.append(new[idx].mean() - old[idx].mean())
+lo, hi = np.percentile(gains, [2.5, 97.5])
+print(f"95% interval for the gain: [{lo:+.3f}, {hi:+.3f}]")
+print("verdict:", "real improvement" if lo > 0 else "could be noise; add test cases")
+
+# Try it: change 14 to 24, so the new prompt fixes 24 cases. The gain becomes
+# +0.090 and the interval [+0.040, +0.145] no longer includes zero.`} />
+
+See [Model evaluation metrics](/docs/machine-learning/model-evaluation-metrics#6-is-the-difference-real) for the statistics behind paired comparisons, and [LLM Evaluation and Serving](/docs/llms-genai/evaluation-and-serving) for grading with LLM judges.
+
+<GoDeeper title="Go deeper: why chain of thought adds computation">
+
+A transformer does a fixed amount of computation per token: one pass through every layer. A question answered in one token gets one pass. If the answer needs, say, several sequential steps of arithmetic, a fixed-depth network may not be able to carry them out within one pass, but it can if each intermediate result is written out as tokens and read back on the next pass. Theoretical work on transformers (Feng et al., 2023; Merrill and Sabharwal, 2023) makes this precise: problems that a constant-depth transformer cannot solve in one step become solvable with a chain of intermediate tokens whose length grows with the problem. That is the formal version of "more tokens is more computation", and it is why a reasoning budget helps most on problems with many dependent steps.
+
+</GoDeeper>
+
 ## Failure Modes and Debugging
 
-- **Prompt sensitivity**: small wording changes causing inconsistent outputs — mitigated with more explicit instructions, few-shot examples, and lower sampling temperature.
-- **The "lost in the middle" problem**: models attend less reliably to information buried in the middle of a long context, even when it's technically within the context window — relevant to both prompting and RAG (see [RAG](/docs/llms-genai/rag)). The documented shape of this effect:
+- **Prompt sensitivity.** Small wording changes give inconsistent output. Make the instructions explicit, add examples, lower the temperature, and measure with a suite rather than spot checks.
+- **Lost in the middle.** Models use information near the start and end of a long context more reliably than information in the middle, even inside the context window. It matters for prompting and for [RAG](/docs/llms-genai/rag).
 
 <LostInTheMiddleDiagram />
 
-This is one specific symptom of a broader phenomenon — see [Context Engineering](/docs/agents/context-engineering) for **context rot**, the more general version of "more tokens in context, less reliable recall" that isn't just about position.
-- **Cost/latency optimization**: shorter prompts, caching repeated prefixes, and choosing the smallest model that reliably handles the task all reduce production cost.
+This is one symptom of **context rot**, the broader drop in recall as context grows; see [Context Engineering](/docs/agents/context-engineering).
 
-Next: [Retrieval-Augmented Generation (RAG)](/docs/llms-genai/rag) — giving a model access to knowledge beyond what's in its weights.
+- **Cost and latency.** Shorter prompts, cached prefixes and the smallest model that passes the suite all cut cost.
+
+<NotebookCallout color="green" title="A prompt workflow that holds up">
+Write the test suite before the prompt. Start with the simplest instruction, run the suite, read the failures, change one thing, run again. Keep the suite in version control next to the prompt.
+</NotebookCallout>
+
+## When *Not* to Use It
+
+| Situation | Better choice |
+| --- | --- |
+| The model lacks the facts | [RAG](/docs/llms-genai/rag) or tools; prompting cannot add knowledge |
+| Thousands of examples of a fixed format or style | Fine-tuning |
+| Output must always parse | Structured outputs or tool calling, not format instructions alone |
+| Untrusted text can trigger actions | Permission boundaries and confirmation, not a stronger warning in the prompt |
+
+## Remember
+
+| Idea | One line |
+| --- | --- |
+| Few-shot | Examples set format and edge cases; balance the labels |
+| Chain of thought | More tokens is more computation before the answer |
+| Self-consistency | Majority vote over samples; helps only when one path beats 0.5 |
+| Reasoning models | RL-trained to think; route only hard requests to them |
+| Thinking budget | Accuracy grows roughly with the log of thinking tokens |
+| Structured output | Constrain decoding with a schema, then validate content |
+| Prompt injection | Architectural defence; wording alone does not stop it |
+| Measuring | Paired test suite plus an interval on the gain |
+
+Next: [Calling the LLM API in Practice](/docs/llms-genai/calling-the-llm-api), which covers the parameters, retries and logging around every prompt.
+
+## Sources
+
+- Brown et al., "Language Models are Few-Shot Learners" (GPT-3), 2020. https://arxiv.org/abs/2005.14165
+- Wei et al., "Chain-of-Thought Prompting Elicits Reasoning in Large Language Models", 2022. https://arxiv.org/abs/2201.11903
+- Wang et al., "Self-Consistency Improves Chain of Thought Reasoning in Language Models", 2022. https://arxiv.org/abs/2203.11171
+- Yao et al., "Tree of Thoughts", 2023. https://arxiv.org/abs/2305.10601
+- Yao et al., "ReAct: Synergizing Reasoning and Acting in Language Models", 2022. https://arxiv.org/abs/2210.03629
+- Liu et al., "Lost in the Middle: How Language Models Use Long Contexts", 2023. https://arxiv.org/abs/2307.03172
+- Greshake et al., "Not what you've signed up for: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection", 2023. https://arxiv.org/abs/2302.12173
+- Feng et al., "Towards Revealing the Mystery behind Chain of Thought: A Theoretical Perspective", 2023. https://arxiv.org/abs/2305.15408
+- Anthropic, "Extended thinking", documentation. https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking
+- OpenAI, "Learning to Reason with LLMs", 2024. https://openai.com/index/learning-to-reason-with-llms/
