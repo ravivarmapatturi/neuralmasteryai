@@ -25,7 +25,22 @@ interface PracticeQuestion {
   sourceUrl?: string;
   followUps?: string[];
   wrongAnswers?: string[];
+  rounds?: string[];
+  roles?: string[];
 }
+
+const ROUNDS: Record<string, string> = {
+  screen: 'Phone screen', 'ml-breadth': 'ML breadth', 'ml-depth': 'ML depth', coding: 'Coding',
+  'system-design': 'System design', 'design-review': 'Design review', debugging: 'Debugging',
+  'take-home': 'Take-home', behavioral: 'Behavioural', customer: 'Customer',
+};
+const ROLES: Record<string, string> = {
+  'applied-ai-engineer': 'Applied AI engineer', 'agentic-ai-engineer': 'Agentic AI engineer',
+  'inference-engineer': 'Inference engineer', 'ai-data-engineer': 'AI data engineer',
+  'ai-evaluation-reliability-engineer': 'Evaluation and reliability engineer',
+  'forward-deployed-ai-engineer': 'Forward-deployed AI engineer',
+  'ai-developer-relations-engineer': 'Developer relations engineer',
+};
 
 const topics = practice.topics as {
   id: string;
@@ -59,6 +74,10 @@ export default function SimpleInterviewPage() {
   const [reading, setReading] = useState(false);
   const [check, setCheck] = useState<AnswerJudgement | 'checking' | 'failed' | null>(null);
   const { events, awardInterviewCompleted } = useGamification();
+  const [round, setRound] = useState('');
+  const [role, setRole] = useState('');
+  const matches = (q: PracticeQuestion) =>
+    (!round || (q.rounds ?? []).includes(round)) && (!role || (q.roles ?? []).includes(role));
   const isDone = (id: string) => hasAward(events, `/interview#${id}`, 'interview');
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -69,6 +88,7 @@ export default function SimpleInterviewPage() {
   const enginePromiseRef = useRef<Promise<void> | null>(null);
 
   const topic = topics[topicIndex];
+  const shown = topic.questions.map((q, i) => ({ q, i })).filter(({ q }) => matches(q));
   const question = topic.questions[questionIndex];
   const questionId = question.id;
 
@@ -239,7 +259,8 @@ export default function SimpleInterviewPage() {
 
   const nextQuestion = () => {
     stopAudio();
-    const next = questionIndex + 1;
+    let next = questionIndex + 1;
+    while (next < topic.questions.length && !matches(topic.questions[next])) next++;
     if (next >= topic.questions.length) {
       setStep('done');
       return;
@@ -296,8 +317,23 @@ export default function SimpleInterviewPage() {
                     </option>
                   ))}
                 </select>
+                <div className="si-filters">
+                  <select aria-label="Interview round" value={round} onChange={(e) => setRound(e.target.value)}>
+                    <option value="">All rounds</option>
+                    {Object.entries(ROUNDS).map(([id, label]) => (
+                      <option key={id} value={id}>{label}</option>
+                    ))}
+                  </select>
+                  <select aria-label="Role" value={role} onChange={(e) => setRole(e.target.value)}>
+                    <option value="">All roles</option>
+                    {Object.entries(ROLES).map(([id, label]) => (
+                      <option key={id} value={id}>{label}</option>
+                    ))}
+                  </select>
+                </div>
                 <p className="si-count">
-                  {topic.questions.length} questions · {topic.questions.filter((q) => isDone(q.id)).length} completed
+                  {round || role ? `${shown.length} of ${topic.questions.length}` : topic.questions.length} questions ·{' '}
+                  {shown.filter(({ q }) => isDone(q.id)).length} completed
                 </p>
                 <h2>{topic.title}</h2>
                 <p className="si-lede">{topic.about}</p>
@@ -306,13 +342,15 @@ export default function SimpleInterviewPage() {
                     type="button"
                     className="si-primary"
                     id="start-topic"
-                    onClick={() => startQuestion(Math.max(0, topic.questions.findIndex((q) => !isDone(q.id))))}
+                    disabled={shown.length === 0}
+                    onClick={() => startQuestion((shown.find(({ q }) => !isDone(q.id)) ?? shown[0]).i)}
                   >
-                    {topic.questions.some((q) => isDone(q.id)) ? 'Next unsolved question' : 'Start this topic'}
+                    {shown.some(({ q }) => isDone(q.id)) ? 'Next unsolved question' : 'Start this topic'}
                   </button>
                 </div>
                 <ol className="si-list">
-                  {topic.questions.map((q, i) => (
+                  {shown.length === 0 && <li className="si-empty">No questions in this topic match these filters.</li>}
+                  {shown.map(({ q, i }) => (
                     <li key={q.id}>
                       <button type="button" className={isDone(q.id) ? 'done' : undefined} onClick={() => startQuestion(i)}>
                         {isDone(q.id) && <span className="si-tick">Completed</span>}

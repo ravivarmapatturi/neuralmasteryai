@@ -30,7 +30,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 3. done - On-device Kokoro voice for questions and answers without a recording (desktop only; first load downloads the model).
 4. done - Check the spoken answer against the model answer and show covered and missed points.
 5. done - Import the "frequent and must-know" repo questions first: rank by roles and rounds in the repo metadata.
-6. planned - Filter questions by round (screen, depth, system design) and by role.
+6. done - Filter questions by round (screen, depth, system design) and by role.
 7. done - "Next unsolved question" button.
 8. done - Show follow-up questions and wrong answers from the repo after the model answer.
 9. planned - Daily interview question on the home page.
