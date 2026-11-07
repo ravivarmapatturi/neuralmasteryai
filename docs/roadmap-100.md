@@ -121,7 +121,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 94. done - Email-free progress export (download and restore a JSON backup on /progress).
 95. done - Accessibility pass: focus, labels, contrast (focus ring on all form controls, labelled step sliders, light accents at 4.5:1 on every surface).
 96. done - Error tracking on the client (uncaught errors go to the visit-stats Worker; the Worker update in workers/visit-stats needs `wrangler deploy` by the owner before reports are stored).
-97. planned - Weekly CI smoke run on the live site.
+97. done - Weekly CI smoke run on the live site (.github/workflows/live-smoke.yml, Mondays and on demand).
 98. planned - Analytics on which topics people use.
 99. planned - Credit page for all open-source content we use.
 100. planned - Quarterly review against TensorTonic and others.

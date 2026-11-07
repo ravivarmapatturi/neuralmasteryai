@@ -1,0 +1,22 @@
+name: Live site smoke
+
+# Weekly check that the deployed site's main pages render, plus a manual button.
+on:
+  schedule:
+    - cron: '30 3 * * 1' # Mondays 03:30 UTC
+  workflow_dispatch:
+
+jobs:
+  live-smoke:
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Smoke test https://neuralmasteryai.com
+        run: npx playwright test -c playwright.live.config.ts
