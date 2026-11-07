@@ -84,7 +84,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 ### Atlas and visuals (71-80)
 71. done - Atlas shows one label, for the selected entry, so labels no longer overlap.
 72. done - Atlas year filter and zoom: All years, 2000 on, 2015 on, 2020 on; the chosen range fills the width.
-73. planned - Deep links to each atlas entry.
+73. done - Deep links to each atlas entry: /atlas#t-lora on the timeline, /docs/atlas/training#lora on each field atlas (opens and scrolls to the row).
 74. planned - Review every Atlas link against its source text.
 75-80. planned - Diagram quality audit items from feedback_visualization_zero_tolerance.md.
 
