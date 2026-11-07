@@ -55,7 +55,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 26. done - NumPy sheet (8 problems).
 27. blocked - PyTorch sheet. The in-browser judge runs Pyodide, which cannot load PyTorch, so these problems could not be checked by real tests. Needs a server-side judge first.
 28. done - Build Micrograd: a scalar autograd engine in 6 stages.
-29. planned - Attention from scratch set.
+29. done - Attention From Scratch: 6 problems (masking, multi-head, KV cache, GQA, ALiBi).
 30. planned - Tokenizer set.
 31. planned - Optimizers set.
 32. planned - Losses set.

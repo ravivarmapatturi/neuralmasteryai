@@ -2188,5 +2188,1860 @@
   "stage": "Build Micrograd",
   "stageNumber": 6,
   "points": 100
+ },
+ {
+  "id": "attn-scaled-dot-product",
+  "title": "Scaled Dot-Product Attention",
+  "difficulty": "easy",
+  "topic": "Attention From Scratch",
+  "estimatedTime": "10 min",
+  "functionName": "attention",
+  "functionSignature": "attention(Q: list[list[float]], K: list[list[float]], V: list[list[float]]) -> list[list[float]]",
+  "starterCode": "import numpy as np\n\ndef attention(Q, K, V):\n    # Your code here\n    pass\n",
+  "mission": "Write the formula at the centre of every transformer, softmax(Q K^T / sqrt(d)) V, for one head and no mask.",
+  "taskDescription": "Implement `attention(Q, K, V)`. Q is (n, d), K is (m, d), V is (m, d_v). Compute scores `Q @ K.T / sqrt(d)`, apply a numerically stable softmax over each row, and return `weights @ V` as an (n, d_v) list.",
+  "constraints": [
+   "Divide by sqrt(d), where d is the key dimension.",
+   "Softmax over the key axis (each row of scores sums to 1).",
+   "Subtract the row max before exp."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "One query matches one key",
+    "input": {
+     "Q": [
+      [
+       10,
+       0
+      ]
+     ],
+     "K": [
+      [
+       10,
+       0
+      ],
+      [
+       0,
+       10
+      ]
+     ],
+     "V": [
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       1
+      ]
+     ]
+    },
+    "expectedOutput": [
+     [
+      1.0,
+      1.953181856722173e-31
+     ]
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Equal scores average the values",
+    "input": {
+     "Q": [
+      [
+       0,
+       0
+      ]
+     ],
+     "K": [
+      [
+       1,
+       2
+      ],
+      [
+       3,
+       4
+      ]
+     ],
+     "V": [
+      [
+       2,
+       4
+      ],
+      [
+       6,
+       8
+      ]
+     ]
+    },
+    "expectedOutput": [
+     [
+      4.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Two queries, three keys",
+    "input": {
+     "Q": [
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "K": [
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       1
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "V": [
+      [
+       1
+      ],
+      [
+       2
+      ],
+      [
+       3
+      ]
+     ]
+    },
+    "expectedOutput": [
+     [
+      2.0
+     ],
+     [
+      2.203336278039358
+     ]
+    ]
+   },
+   {
+    "id": "tc4",
+    "label": "Large scores stay finite",
+    "input": {
+     "Q": [
+      [
+       100,
+       100
+      ]
+     ],
+     "K": [
+      [
+       100,
+       100
+      ],
+      [
+       -100,
+       100
+      ]
+     ],
+     "V": [
+      [
+       1,
+       1
+      ],
+      [
+       5,
+       5
+      ]
+     ]
+    },
+    "hidden": true,
+    "expectedOutput": [
+     [
+      1.0,
+      1.0
+     ]
+    ]
+   }
+  ],
+  "libraryPolicyText": "NumPy available · runs in your browser",
+  "hints": {
+   "small": "Scores have shape (n, m): one score per query-key pair.",
+   "strong": "w = softmax(Q @ K.T / np.sqrt(d)); return (w @ V).tolist().",
+   "concept": "Without the sqrt(d) scale, dot products grow with d and the softmax saturates to one-hot."
+  },
+  "conceptConnections": [
+   {
+    "title": "Attention and transformers",
+    "route": "/docs/deep-learning/attention-transformers",
+    "description": "Queries, keys, values, masking and multi-head attention, derived step by step."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python",
+    "numpy"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Attention From Scratch",
+  "stageNumber": 1,
+  "points": 25
+ },
+ {
+  "id": "attn-masked",
+  "title": "Masked Attention Without NaNs",
+  "difficulty": "medium",
+  "topic": "Attention From Scratch",
+  "estimatedTime": "15-20 min",
+  "functionName": "masked_attention",
+  "functionSignature": "masked_attention(Q: list[list[float]], K: list[list[float]], V: list[list[float]], mask: list[list[bool]]) -> list[list[float]]",
+  "starterCode": "import numpy as np\n\ndef masked_attention(Q, K, V, mask):\n    # Your code here\n    pass\n",
+  "mission": "Add a mask so queries can only attend to allowed keys, and handle the row where nothing is allowed without producing NaN.",
+  "taskDescription": "Implement `masked_attention(Q, K, V, mask)`. `mask` is (n, m) with `True` where query i may attend to key j. Disallowed scores must get zero weight. A query row whose mask is all `False` returns a row of zeros. Otherwise behave like scaled dot-product attention.",
+  "constraints": [
+   "Masked keys get exactly zero weight.",
+   "An all-False row returns zeros, never NaN.",
+   "Do not mutate the inputs."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Causal mask on two tokens",
+    "input": {
+     "Q": [
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "K": [
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "V": [
+      [
+       1,
+       1
+      ],
+      [
+       3,
+       5
+      ]
+     ],
+     "mask": [
+      [
+       true,
+       false
+      ],
+      [
+       true,
+       true
+      ]
+     ]
+    },
+    "expectedOutput": [
+     [
+      1.0,
+      1.0
+     ],
+     [
+      2.3395230986533138,
+      3.6790461973066275
+     ]
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Masked key gets no weight",
+    "input": {
+     "Q": [
+      [
+       0,
+       0
+      ]
+     ],
+     "K": [
+      [
+       1,
+       1
+      ],
+      [
+       2,
+       2
+      ],
+      [
+       3,
+       3
+      ]
+     ],
+     "V": [
+      [
+       1
+      ],
+      [
+       100
+      ],
+      [
+       3
+      ]
+     ],
+     "mask": [
+      [
+       true,
+       false,
+       true
+      ]
+     ]
+    },
+    "expectedOutput": [
+     [
+      2.0
+     ]
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Fully masked row is zeros",
+    "input": {
+     "Q": [
+      [
+       1,
+       1
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "K": [
+      [
+       1,
+       0
+      ]
+     ],
+     "V": [
+      [
+       7,
+       7
+      ]
+     ],
+     "mask": [
+      [
+       false
+      ],
+      [
+       true
+      ]
+     ]
+    },
+    "expectedOutput": [
+     [
+      0.0,
+      0.0
+     ],
+     [
+      7.0,
+      7.0
+     ]
+    ]
+   },
+   {
+    "id": "tc4",
+    "label": "Padding mask on a batch row",
+    "input": {
+     "Q": [
+      [
+       1,
+       2
+      ],
+      [
+       2,
+       1
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "K": [
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       1
+      ],
+      [
+       5,
+       5
+      ]
+     ],
+     "V": [
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       1
+      ],
+      [
+       9,
+       9
+      ]
+     ],
+     "mask": [
+      [
+       true,
+       true,
+       false
+      ],
+      [
+       true,
+       true,
+       false
+      ],
+      [
+       true,
+       true,
+       false
+      ]
+     ]
+    },
+    "hidden": true,
+    "expectedOutput": [
+     [
+      0.3302384506733431,
+      0.6697615493266569
+     ],
+     [
+      0.6697615493266569,
+      0.3302384506733431
+     ],
+     [
+      0.3302384506733431,
+      0.6697615493266569
+     ]
+    ]
+   }
+  ],
+  "libraryPolicyText": "NumPy available · runs in your browser",
+  "hints": {
+   "small": "Set masked scores to -inf with np.where(mask, scores, -np.inf) before softmax.",
+   "strong": "A row of all -inf gives max = -inf and exp(nan). Find those rows first and handle them separately.",
+   "concept": "Padding masks and causal masks are both just boolean matrices applied here."
+  },
+  "conceptConnections": [
+   {
+    "title": "Attention and transformers",
+    "route": "/docs/deep-learning/attention-transformers",
+    "description": "Queries, keys, values, masking and multi-head attention, derived step by step."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python",
+    "numpy"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Attention From Scratch",
+  "stageNumber": 2,
+  "points": 50
+ },
+ {
+  "id": "attn-multi-head",
+  "title": "Multi-Head Attention Forward Pass",
+  "difficulty": "medium",
+  "topic": "Attention From Scratch",
+  "estimatedTime": "15-20 min",
+  "functionName": "multi_head_attention",
+  "functionSignature": "multi_head_attention(X: list[list[float]], Wq: list[list[float]], Wk: list[list[float]], Wv: list[list[float]], Wo: list[list[float]], num_heads: int) -> list[list[float]]",
+  "starterCode": "import numpy as np\n\ndef multi_head_attention(X, Wq, Wk, Wv, Wo, num_heads):\n    # Your code here\n    pass\n",
+  "mission": "Project the input into queries, keys and values, split them into heads that attend independently, then concatenate and project back.",
+  "taskDescription": "Implement `multi_head_attention(X, Wq, Wk, Wv, Wo, num_heads)`. X is (n, d) and every W is (d, d). Compute Q = X Wq, K = X Wk, V = X Wv; split the last axis into `num_heads` heads of size d / num_heads; run scaled dot-product attention per head (scale by sqrt of the head size); concatenate the heads in order and return `concat @ Wo`. Raise `ValueError` if d is not divisible by `num_heads`.",
+  "constraints": [
+   "Scale by sqrt(d / num_heads), the head dimension, not sqrt(d).",
+   "Head h uses columns h*dh to (h+1)*dh.",
+   "No mask (self-attention over all tokens)."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "One head equals plain attention",
+    "input": {
+     "X": [
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "Wq": [
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "Wk": [
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "Wv": [
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "Wo": [
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "num_heads": 1
+    },
+    "expectedOutput": [
+     [
+      0.6697615493266569,
+      0.3302384506733431
+     ],
+     [
+      0.3302384506733431,
+      0.6697615493266569
+     ]
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Two heads",
+    "input": {
+     "X": [
+      [
+       1,
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       2,
+       0,
+       1
+      ],
+      [
+       1,
+       1,
+       0,
+       0
+      ]
+     ],
+     "Wq": [
+      [
+       1,
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       0,
+       1
+      ]
+     ],
+     "Wk": [
+      [
+       0,
+       1,
+       0,
+       0
+      ],
+      [
+       1,
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0,
+       1
+      ],
+      [
+       0,
+       0,
+       1,
+       0
+      ]
+     ],
+     "Wv": [
+      [
+       1,
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       0,
+       1
+      ]
+     ],
+     "Wo": [
+      [
+       0.5,
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0.5,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       2,
+       0
+      ],
+      [
+       0,
+       0,
+       0,
+       2
+      ]
+     ],
+     "num_heads": 2
+    },
+    "expectedOutput": [
+     [
+      0.212012327392319,
+      0.717973050085992,
+      0.4965101565154462,
+      1.0069796869691077
+     ],
+     [
+      0.44580827410760315,
+      0.3312875888385951,
+      1.0069796869691077,
+      0.4965101565154462
+     ],
+     [
+      0.29944395366010707,
+      0.6016681390196789,
+      0.6666666666666666,
+      0.6666666666666666
+     ]
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Heads must divide d",
+    "input": {
+     "X": [
+      [
+       1,
+       2,
+       3
+      ]
+     ],
+     "Wq": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ]
+     ],
+     "Wk": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ]
+     ],
+     "Wv": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ]
+     ],
+     "Wo": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ]
+     ],
+     "num_heads": 2
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc4",
+    "label": "Four heads of size 1",
+    "input": {
+     "X": [
+      [
+       0.5,
+       -1,
+       2,
+       0
+      ],
+      [
+       1,
+       1,
+       -1,
+       0.5
+      ]
+     ],
+     "Wq": [
+      [
+       1,
+       0,
+       0,
+       1
+      ],
+      [
+       0,
+       1,
+       1,
+       0
+      ],
+      [
+       1,
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       1,
+       1
+      ]
+     ],
+     "Wk": [
+      [
+       1,
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       0,
+       1
+      ]
+     ],
+     "Wv": [
+      [
+       0,
+       1,
+       0,
+       0
+      ],
+      [
+       1,
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0,
+       1
+      ],
+      [
+       0,
+       0,
+       1,
+       0
+      ]
+     ],
+     "Wo": [
+      [
+       1,
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       0,
+       1
+      ]
+     ],
+     "num_heads": 4
+    },
+    "hidden": true,
+    "expectedOutput": [
+     [
+      0.5545997223493823,
+      0.9403985389889411,
+      0.4762870634112167,
+      0.3134704973426057
+     ],
+     [
+      0.0,
+      0.75,
+      0.00549347131529659,
+      -0.037536097526179035
+     ]
+    ]
+   }
+  ],
+  "libraryPolicyText": "NumPy available · runs in your browser",
+  "hints": {
+   "small": "Reshape Q from (n, d) to (n, H, dh), then transpose to (H, n, dh).",
+   "strong": "scores = Qh @ Kh.transpose(0, 2, 1) gives (H, n, n) in one batched matmul.",
+   "concept": "Each head can attend to a different pattern because it sees a different slice of the projection."
+  },
+  "conceptConnections": [
+   {
+    "title": "Attention and transformers",
+    "route": "/docs/deep-learning/attention-transformers",
+    "description": "Queries, keys, values, masking and multi-head attention, derived step by step."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python",
+    "numpy"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Attention From Scratch",
+  "stageNumber": 3,
+  "points": 50
+ },
+ {
+  "id": "attn-kv-cache-decode",
+  "title": "Decode One Token With a KV Cache",
+  "difficulty": "medium",
+  "topic": "Attention From Scratch",
+  "estimatedTime": "15-20 min",
+  "functionName": "decode_step",
+  "functionSignature": "decode_step(k_cache: list[list[float]], v_cache: list[list[float]], q: list[float], k: list[float], v: list[float]) -> dict",
+  "starterCode": "import numpy as np\n\ndef decode_step(k_cache, v_cache, q, k, v):\n    # Your code here\n    pass\n",
+  "mission": "Generate the next token's attention output by appending its key and value to a cache and attending over the cache, instead of recomputing attention for the whole sequence.",
+  "taskDescription": "Implement `decode_step(k_cache, v_cache, q, k, v)`. The caches hold one key and one value per earlier token (they may be empty). Append `k` and `v`, then compute single-query attention of `q` over the whole updated cache. Return `{\"output\": [...], \"k_cache\": [...], \"v_cache\": [...]}` with the updated caches. Raise `ValueError` if `k` does not match the cached key size.",
+  "constraints": [
+   "The new token attends to itself and every cached token (causal by construction).",
+   "Return the caches with the new entries appended.",
+   "Work with an empty cache on the first step."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "First token attends only to itself",
+    "input": {
+     "k_cache": [],
+     "v_cache": [],
+     "q": [
+      1,
+      0
+     ],
+     "k": [
+      1,
+      0
+     ],
+     "v": [
+      3,
+      4
+     ]
+    },
+    "expectedOutput": {
+     "output": [
+      3.0,
+      4.0
+     ],
+     "k_cache": [
+      [
+       1,
+       0
+      ]
+     ],
+     "v_cache": [
+      [
+       3,
+       4
+      ]
+     ]
+    }
+   },
+   {
+    "id": "tc2",
+    "label": "Third token",
+    "input": {
+     "k_cache": [
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "v_cache": [
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "q": [
+      0,
+      2
+     ],
+     "k": [
+      1,
+      1
+     ],
+     "v": [
+      5,
+      5
+     ]
+    },
+    "expectedOutput": {
+     "output": [
+      2.3374248223228093,
+      2.674849644645619
+     ],
+     "k_cache": [
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       1
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "v_cache": [
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       1
+      ],
+      [
+       5,
+       5
+      ]
+     ]
+    }
+   },
+   {
+    "id": "tc3",
+    "label": "Key size mismatch",
+    "input": {
+     "k_cache": [
+      [
+       1,
+       0
+      ]
+     ],
+     "v_cache": [
+      [
+       1,
+       1
+      ]
+     ],
+     "q": [
+      1,
+      0
+     ],
+     "k": [
+      1,
+      0,
+      0
+     ],
+     "v": [
+      1,
+      1
+     ]
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc4",
+    "label": "Long cache",
+    "input": {
+     "k_cache": [
+      [
+       0.1,
+       0.2,
+       0.3
+      ],
+      [
+       1,
+       0,
+       -1
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       2,
+       1,
+       0
+      ]
+     ],
+     "v_cache": [
+      [
+       1
+      ],
+      [
+       2
+      ],
+      [
+       3
+      ],
+      [
+       4
+      ]
+     ],
+     "q": [
+      1,
+      -1,
+      0.5
+     ],
+     "k": [
+      0,
+      1,
+      0
+     ],
+     "v": [
+      10
+     ]
+    },
+    "hidden": true,
+    "expectedOutput": {
+     "output": [
+      3.3836533337804724
+     ],
+     "k_cache": [
+      [
+       0.1,
+       0.2,
+       0.3
+      ],
+      [
+       1,
+       0,
+       -1
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       2,
+       1,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ]
+     ],
+     "v_cache": [
+      [
+       1
+      ],
+      [
+       2
+      ],
+      [
+       3
+      ],
+      [
+       4
+      ],
+      [
+       10
+      ]
+     ]
+    }
+   }
+  ],
+  "libraryPolicyText": "NumPy available · runs in your browser",
+  "hints": {
+   "small": "Stack the cache and the new key into a (t, d) matrix; the query is a single (d,) vector.",
+   "strong": "scores = K @ q / sqrt(d) has shape (t,). Softmax it and return weights @ V.",
+   "concept": "With a cache, each step costs O(t) instead of O(t^2): the earlier keys and values are never recomputed."
+  },
+  "conceptConnections": [
+   {
+    "title": "Attention and transformers",
+    "route": "/docs/deep-learning/attention-transformers",
+    "description": "Queries, keys, values, masking and multi-head attention, derived step by step."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python",
+    "numpy"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Attention From Scratch",
+  "stageNumber": 4,
+  "points": 50
+ },
+ {
+  "id": "attn-grouped-query",
+  "title": "Grouped-Query Attention",
+  "difficulty": "hard",
+  "topic": "Attention From Scratch",
+  "estimatedTime": "25-35 min",
+  "functionName": "grouped_query_attention",
+  "functionSignature": "grouped_query_attention(Q: list[list[list[float]]], K: list[list[list[float]]], V: list[list[list[float]]]) -> list[list[list[float]]]",
+  "starterCode": "import numpy as np\n\ndef grouped_query_attention(Q, K, V):\n    # Your code here\n    pass\n",
+  "mission": "Let several query heads share one key/value head, the change that cuts the KV cache of models such as Llama 2 70B by 8x.",
+  "taskDescription": "Implement `grouped_query_attention(Q, K, V)`. Q is (Hq, n, d), K and V are (Hkv, n, d). Hq must be a multiple of Hkv; query head h uses KV head `h // (Hq // Hkv)`. Apply causal scaled dot-product attention per query head (token i attends to tokens 0..i) and return the (Hq, n, d) output. Raise `ValueError` if Hq is not a multiple of Hkv.",
+  "constraints": [
+   "Consecutive query heads share a KV head: heads 0 and 1 use KV head 0 when Hq = 4 and Hkv = 2.",
+   "Causal mask on every head.",
+   "Hkv = Hq is ordinary multi-head attention; Hkv = 1 is multi-query attention."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Two query heads share one KV head",
+    "input": {
+     "Q": [
+      [
+       [
+        1,
+        0
+       ],
+       [
+        0,
+        1
+       ]
+      ],
+      [
+       [
+        0,
+        1
+       ],
+       [
+        1,
+        0
+       ]
+      ]
+     ],
+     "K": [
+      [
+       [
+        1,
+        0
+       ],
+       [
+        0,
+        1
+       ]
+      ]
+     ],
+     "V": [
+      [
+       [
+        1,
+        2
+       ],
+       [
+        3,
+        4
+       ]
+      ]
+     ]
+    },
+    "expectedOutput": [
+     [
+      [
+       1.0,
+       2.0
+      ],
+      [
+       2.3395230986533138,
+       3.3395230986533138
+      ]
+     ],
+     [
+      [
+       1.0,
+       2.0
+      ],
+      [
+       1.6604769013466862,
+       2.6604769013466862
+      ]
+     ]
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Hq = Hkv is plain multi-head",
+    "input": {
+     "Q": [
+      [
+       [
+        1,
+        1
+       ]
+      ],
+      [
+       [
+        2,
+        0
+       ]
+      ]
+     ],
+     "K": [
+      [
+       [
+        1,
+        0
+       ]
+      ],
+      [
+       [
+        0,
+        1
+       ]
+      ]
+     ],
+     "V": [
+      [
+       [
+        5,
+        6
+       ]
+      ],
+      [
+       [
+        7,
+        8
+       ]
+      ]
+     ]
+    },
+    "expectedOutput": [
+     [
+      [
+       5.0,
+       6.0
+      ]
+     ],
+     [
+      [
+       7.0,
+       8.0
+      ]
+     ]
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Hq not a multiple of Hkv",
+    "input": {
+     "Q": [
+      [
+       [
+        1
+       ]
+      ],
+      [
+       [
+        1
+       ]
+      ],
+      [
+       [
+        1
+       ]
+      ]
+     ],
+     "K": [
+      [
+       [
+        1
+       ]
+      ],
+      [
+       [
+        1
+       ]
+      ]
+     ],
+     "V": [
+      [
+       [
+        1
+       ]
+      ],
+      [
+       [
+        1
+       ]
+      ]
+     ]
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc4",
+    "label": "Four query heads, two KV heads",
+    "input": {
+     "Q": [
+      [
+       [
+        1,
+        0
+       ],
+       [
+        0,
+        1
+       ],
+       [
+        1,
+        1
+       ]
+      ],
+      [
+       [
+        0,
+        1
+       ],
+       [
+        1,
+        0
+       ],
+       [
+        1,
+        -1
+       ]
+      ],
+      [
+       [
+        2,
+        0
+       ],
+       [
+        0,
+        2
+       ],
+       [
+        1,
+        1
+       ]
+      ],
+      [
+       [
+        1,
+        2
+       ],
+       [
+        2,
+        1
+       ],
+       [
+        0,
+        0
+       ]
+      ]
+     ],
+     "K": [
+      [
+       [
+        1,
+        0
+       ],
+       [
+        0,
+        1
+       ],
+       [
+        1,
+        1
+       ]
+      ],
+      [
+       [
+        0,
+        1
+       ],
+       [
+        1,
+        1
+       ],
+       [
+        1,
+        0
+       ]
+      ]
+     ],
+     "V": [
+      [
+       [
+        1,
+        0
+       ],
+       [
+        0,
+        1
+       ],
+       [
+        2,
+        2
+       ]
+      ],
+      [
+       [
+        3,
+        0
+       ],
+       [
+        0,
+        3
+       ],
+       [
+        1,
+        1
+       ]
+      ]
+     ]
+    },
+    "hidden": true,
+    "expectedOutput": [
+     [
+      [
+       1.0,
+       0.0
+      ],
+      [
+       0.3302384506733431,
+       0.6697615493266569
+      ],
+      [
+       1.2552347652268308,
+       1.2552347652268308
+      ]
+     ],
+     [
+      [
+       1.0,
+       0.0
+      ],
+      [
+       0.6697615493266569,
+       0.3302384506733431
+      ],
+      [
+       1.143966164697882,
+       0.708020064525898
+      ]
+     ],
+     [
+      [
+       3.0,
+       0.0
+      ],
+      [
+       1.5,
+       1.5
+      ],
+      [
+       0.9930203130308924,
+       1.7587246087113846
+      ]
+     ],
+     [
+      [
+       3.0,
+       0.0
+      ],
+      [
+       0.5867109524791294,
+       2.4132890475208706
+      ],
+      [
+       1.3333333333333333,
+       1.3333333333333333
+      ]
+     ]
+    ]
+   }
+  ],
+  "libraryPolicyText": "NumPy available · runs in your browser",
+  "hints": {
+   "small": "group = Hq // Hkv. np.repeat(K, group, axis=0) expands K to Hq heads in the right order.",
+   "strong": "np.repeat repeats each head in place (0, 0, 1, 1); np.tile would interleave (0, 1, 0, 1), which is wrong.",
+   "concept": "Only the cache shrinks: the attention compute per query head is unchanged."
+  },
+  "conceptConnections": [
+   {
+    "title": "Attention and transformers",
+    "route": "/docs/deep-learning/attention-transformers",
+    "description": "Queries, keys, values, masking and multi-head attention, derived step by step."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python",
+    "numpy"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Attention From Scratch",
+  "stageNumber": 5,
+  "points": 100
+ },
+ {
+  "id": "attn-alibi",
+  "title": "ALiBi Position Bias",
+  "difficulty": "medium",
+  "topic": "Attention From Scratch",
+  "estimatedTime": "15-20 min",
+  "functionName": "alibi_attention_weights",
+  "functionSignature": "alibi_attention_weights(scores: list[list[float]], slope: float) -> list[list[float]]",
+  "starterCode": "import numpy as np\n\ndef alibi_attention_weights(scores, slope):\n    # Your code here\n    pass\n",
+  "mission": "Encode position by penalising attention to distant tokens, with no position embeddings at all, and return the causal attention weights.",
+  "taskDescription": "Implement `alibi_attention_weights(scores, slope)`. `scores` is an (n, n) matrix of raw query-key scores. For query i and key j with j <= i, subtract `slope * (i - j)`; keys with j > i are masked out. Return the row-wise softmax weights as an (n, n) list. Raise `ValueError` if scores is not square or slope is negative.",
+  "constraints": [
+   "The bias is linear in distance: slope * (i - j).",
+   "Causal: future keys get weight 0.",
+   "Each row of the result sums to 1."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Zero slope is plain causal attention",
+    "input": {
+     "scores": [
+      [
+       0,
+       0
+      ],
+      [
+       0,
+       0
+      ]
+     ],
+     "slope": 0
+    },
+    "expectedOutput": [
+     [
+      1.0,
+      0.0
+     ],
+     [
+      0.5,
+      0.5
+     ]
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Slope favours nearby tokens",
+    "input": {
+     "scores": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ],
+     "slope": 1
+    },
+    "expectedOutput": [
+     [
+      1.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.2689414213699951,
+      0.7310585786300049,
+      0.0
+     ],
+     [
+      0.09003057317038046,
+      0.24472847105479764,
+      0.6652409557748218
+     ]
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Negative slope",
+    "input": {
+     "scores": [
+      [
+       1
+      ]
+     ],
+     "slope": -0.5
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc4",
+    "label": "Bias against real scores",
+    "input": {
+     "scores": [
+      [
+       2,
+       0,
+       0,
+       0
+      ],
+      [
+       3,
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       4,
+       0.5,
+       0
+      ],
+      [
+       1,
+       1,
+       1,
+       1
+      ]
+     ],
+     "slope": 0.5
+    },
+    "hidden": true,
+    "expectedOutput": [
+     [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.8175744761936437,
+      0.18242552380635632,
+      0.0,
+      0.0
+     ],
+     [
+      0.010471333531834243,
+      0.9425994054266799,
+      0.046929261041486016,
+      0.0
+     ],
+     [
+      0.1015363240915518,
+      0.16740509727844333,
+      0.27600434470659363,
+      0.45505423392341127
+     ]
+    ]
+   }
+  ],
+  "libraryPolicyText": "NumPy available · runs in your browser",
+  "hints": {
+   "small": "Build a distance matrix with np.arange(n)[:, None] - np.arange(n)[None, :].",
+   "strong": "biased = scores - slope * dist, then set entries with dist < 0 to -inf before softmax.",
+   "concept": "Because the penalty depends only on distance, the model sees the same pattern at length 2,000 as at 200."
+  },
+  "conceptConnections": [
+   {
+    "title": "Attention and transformers",
+    "route": "/docs/deep-learning/attention-transformers",
+    "description": "Queries, keys, values, masking and multi-head attention, derived step by step."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python",
+    "numpy"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Attention From Scratch",
+  "stageNumber": 6,
+  "points": 50
  }
 ]

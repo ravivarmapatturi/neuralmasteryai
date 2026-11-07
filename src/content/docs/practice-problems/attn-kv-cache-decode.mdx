@@ -1,0 +1,43 @@
+---
+title: "Decode One Token With a KV Cache"
+description: "Attention From Scratch, problem 4 of 6: Generate the next token's attention output by appending its key and value to a cache and attending over the cache, instead of recomputing attention for the whole sequence."
+difficulty: "medium"
+topic: "Attention From Scratch"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Generation repeats almost all of its work
+
+A language model generates one token at a time. At step `t` the new token must attend to all `t` tokens so far. Recomputing every key and value from scratch makes step `t` cost `O(t^2)` attention work and repeats all the projections. But token 5's key never changes once computed.
+
+A **KV cache** stores each token's key and value the first time they are computed. Each decode step only projects the new token, appends its `k` and `v`, and runs one query against the cache: `t` dot products instead of `t^2`.
+
+## The cost moves to memory
+
+The cache is why long-context serving is memory-bound. For a 32-layer model with 8 KV heads of size 128 in 16-bit floats, every token costs `2 * 32 * 8 * 128 * 2 = 131,072` bytes, so a 32,000-token context holds about 4 GB of cache per sequence (computed here). That number drives batch size limits, paged attention and grouped-query attention.
+
+> **Remember:** the cache trades memory for compute. Each step appends one key and one value and attends once.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import numpy as np
+
+def decode_step(k_cache, v_cache, q, k, v):
+    if k_cache and len(k) != len(k_cache[0]):
+        raise ValueError("new key size does not match the cache")
+    k_cache = [list(row) for row in k_cache] + [list(k)]
+    v_cache = [list(row) for row in v_cache] + [list(v)]
+    K, V, q = np.asarray(k_cache, float), np.asarray(v_cache, float), np.asarray(q, float)
+    scores = K @ q / np.sqrt(K.shape[1])          # (t,)
+    w = np.exp(scores - scores.max())
+    w /= w.sum()
+    return {"output": (w @ V).tolist(), "k_cache": k_cache, "v_cache": v_cache}
+```
+
+</Solution>

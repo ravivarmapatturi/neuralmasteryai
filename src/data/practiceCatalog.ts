@@ -116,6 +116,22 @@ export const CATALOG: CatalogTrack[] = [
     ],
   },
   {
+    slug: 'attention-from-scratch',
+    title: 'Attention From Scratch',
+    summary: 'Scaled dot-product attention, masks, multi-head, a KV-cache decode step, grouped-query attention and ALiBi, in NumPy.',
+    kind: 'set',
+    level: 'Intermediate',
+    learnRoute: '/docs/deep-learning/attention-transformers',
+    problems: [
+      'attn-scaled-dot-product',
+      'attn-masked',
+      'attn-multi-head',
+      'attn-kv-cache-decode',
+      'attn-grouped-query',
+      'attn-alibi',
+    ],
+  },
+  {
     slug: 'python-for-ai',
     title: 'Python for AI',
     summary: 'The everyday Python behind data and model code: dicts, nesting, text, caches and small parsers.',
