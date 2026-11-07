@@ -59,7 +59,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 30. done - Build a Tokenizer: 6 problems, characters to BPE with byte fallback.
 31. done - Optimizers: 6 problems (clipping, RMSProp, Nesterov, Lion, warmup-cosine, SGD vs momentum).
 32. done - Loss Functions: 6 problems (Huber, triplet, label smoothing, focal, distillation, InfoNCE).
-33. planned - Metrics set.
+33. done - Evaluation Metrics: 6 problems (MRR, macro/micro F1, nDCG, ECE, average precision, BLEU).
 34. planned - RAG pieces set.
 35. planned - Agent loop set.
 

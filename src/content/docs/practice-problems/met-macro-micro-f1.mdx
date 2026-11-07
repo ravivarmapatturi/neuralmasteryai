@@ -1,0 +1,50 @@
+---
+title: "Macro and Micro F1 for Many Classes"
+description: "Evaluation Metrics, problem 2 of 6: Compute F1 for a multi-class classifier two ways and see how a rare class that is always wrong disappears from one of them."
+difficulty: "medium"
+topic: "Evaluation Metrics"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Two averages, two different questions
+
+A support-ticket classifier sees 80% "billing" and 20% "outage". If it predicts "billing" for everything, accuracy is 80%. **Micro F1** pools every prediction before computing F1, so for single-label data it equals accuracy: 0.8 here. **Macro F1** computes F1 per class and averages them with equal weight: billing gets 0.89, outage gets 0, and the macro score is 0.44.
+
+The first test is exactly this case. The rare class that the business cares most about is invisible in the micro score and halves the macro score.
+
+## Which one to report
+
+Use macro F1 when every class matters, regardless of frequency: rare intents, rare diseases, rare failure types. Use micro F1 when every example matters equally. Report per-class F1 alongside either, because both averages hide which class is failing.
+
+> **Remember:** micro pools counts, macro averages per-class scores. A model that ignores a minority class can still have a good micro F1.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def macro_micro_f1(y_true, y_pred):
+    classes = sorted(set(y_true) | set(y_pred))
+    tp = {c: 0 for c in classes}
+    fp = {c: 0 for c in classes}
+    fn = {c: 0 for c in classes}
+    for t, p in zip(y_true, y_pred):
+        if t == p:
+            tp[t] += 1
+        else:
+            fn[t] += 1
+            fp[p] += 1
+
+    def f1(tp_, fp_, fn_):
+        denom = 2 * tp_ + fp_ + fn_
+        return 2 * tp_ / denom if denom else 0.0
+
+    per_class = {c: f1(tp[c], fp[c], fn[c]) for c in classes}
+    micro = f1(sum(tp.values()), sum(fp.values()), sum(fn.values()))
+    return {"macro": sum(per_class.values()) / len(classes), "micro": micro, "per_class": per_class}
+```
+
+</Solution>

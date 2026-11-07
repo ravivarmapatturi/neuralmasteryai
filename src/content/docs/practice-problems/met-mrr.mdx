@@ -1,0 +1,40 @@
+---
+title: "Mean Reciprocal Rank"
+description: "Evaluation Metrics, problem 1 of 6: Score a search or retrieval system by how high the first correct result appears, averaged over queries."
+difficulty: "easy"
+topic: "Evaluation Metrics"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## How far does the user have to look?
+
+For a question-answering retriever, what matters is where the first useful document lands. **Reciprocal rank** is `1 / position` of that first hit: 1.0 at the top, 0.5 in second place, 0.33 in third, and 0 if it never appears. **MRR** averages it over queries. Hits at positions 1, 2 and 3 give `(1 + 0.5 + 0.333) / 3 = 0.611`.
+
+## What MRR ignores
+
+Everything after the first hit is invisible to it. A ranking with one relevant document at the top and nine irrelevant ones scores the same as a ranking whose whole top ten is relevant. For a RAG system that stuffs the top five chunks into the prompt, recall@5 or nDCG says more. MRR is the right choice when one answer is enough.
+
+> **Remember:** MRR measures the first relevant position. A missing answer scores 0 and still counts.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def mean_reciprocal_rank(rankings, relevant):
+    if not rankings or len(rankings) != len(relevant):
+        raise ValueError("need one relevant set per ranking")
+    total = 0.0
+    for ranking, rel in zip(rankings, relevant):
+        rel = set(rel)
+        for pos, item in enumerate(ranking, start=1):
+            if item in rel:
+                total += 1 / pos
+                break
+    return total / len(rankings)
+```
+
+</Solution>

@@ -1,0 +1,42 @@
+---
+title: "Average Precision From Scores"
+description: "Evaluation Metrics, problem 5 of 6: Summarise a precision-recall curve in one number by averaging the precision at each positive, the metric to use when positives are rare."
+difficulty: "medium"
+topic: "Evaluation Metrics"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## When ROC AUC looks too good
+
+A fraud model sees one fraudulent transaction per thousand. ROC AUC compares the false-positive rate against the true-positive rate, and with 999 negatives per positive, ranking a few hundred legitimate transactions above the fraud barely moves the false-positive rate. AUC stays high while an analyst reviewing the top of the list sees mostly false alarms.
+
+**Average precision** looks at the list the way that analyst does. Walk down the ranking; every time you reach a positive, write down the precision so far. Average those numbers. With both positives at the bottom of four, the precisions are 1/3 and 2/4, giving 0.417. Ranked first, they give 1.0.
+
+## Divide by positives
+
+Dividing by the number of examples instead of the number of positives is a common slip. It makes the metric depend on how many negatives you happened to include, which defeats the reason for using it.
+
+> **Remember:** precision at each positive, averaged over positives. Use it instead of ROC AUC when positives are rare.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def average_precision(scores, labels):
+    total_pos = sum(1 for y in labels if y == 1)
+    if total_pos == 0:
+        raise ValueError("average precision needs at least one positive")
+    order = sorted(range(len(scores)), key=lambda i: -scores[i])
+    hits, ap = 0, 0.0
+    for position, i in enumerate(order, start=1):
+        if labels[i] == 1:
+            hits += 1
+            ap += hits / position
+    return ap / total_pos
+```
+
+</Solution>

@@ -1,0 +1,42 @@
+---
+title: "nDCG@k With Graded Relevance"
+description: "Evaluation Metrics, problem 3 of 6: Score a ranking where some results are more relevant than others, with a discount for appearing further down."
+difficulty: "medium"
+topic: "Evaluation Metrics"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Not all hits are equal
+
+A product search returns ten items. A perfect match is worth more than a loosely related one, and either is worth more on the first row than on the fifth. **Discounted cumulative gain** captures both. Each result earns a **gain** of `2^rel - 1` (relevance 3 earns 7, relevance 1 earns 1) and is divided by `log2(position + 1)`, so position 1 keeps its full gain, position 3 keeps half and position 7 keeps a third.
+
+**nDCG** divides by the DCG of the ideal ordering, so a score of 1.0 means "the best possible order of these results". Putting the only relevant result last among three, as the second test does, scores 0.5.
+
+## The cut-off trap
+
+The ideal ranking is built from *all* the results, then cut to `k`. In the fourth test the best result sits at position 3, outside `k = 2`, so the actual top two earn little while the ideal top two contain the relevance-3 and relevance-2 items. Building the ideal from only the first `k` results would wrongly report a near-perfect score.
+
+> **Remember:** gain `2^rel - 1`, discount `log2(position + 1)`, normalise by the ideal order of all results.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import math
+
+def ndcg_at_k(ranked_relevance, k):
+    if k < 1:
+        raise ValueError("k must be at least 1")
+
+    def dcg(rels):
+        return sum((2 ** r - 1) / math.log2(i + 2) for i, r in enumerate(rels[:k]))
+
+    ideal = dcg(sorted(ranked_relevance, reverse=True))
+    return dcg(ranked_relevance) / ideal if ideal else 0.0
+```
+
+</Solution>

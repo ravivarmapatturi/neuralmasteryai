@@ -180,6 +180,22 @@ export const CATALOG: CatalogTrack[] = [
     ],
   },
   {
+    slug: 'evaluation-metrics',
+    title: 'Evaluation Metrics',
+    summary: 'MRR, macro versus micro F1, nDCG, calibration error, average precision and BLEU, each with the case where it misleads.',
+    kind: 'set',
+    level: 'Intermediate',
+    learnRoute: '/docs/machine-learning/model-evaluation-metrics',
+    problems: [
+      'met-mrr',
+      'met-macro-micro-f1',
+      'met-ndcg',
+      'met-expected-calibration-error',
+      'met-average-precision',
+      'met-bleu',
+    ],
+  },
+  {
     slug: 'python-for-ai',
     title: 'Python for AI',
     summary: 'The everyday Python behind data and model code: dicts, nesting, text, caches and small parsers.',

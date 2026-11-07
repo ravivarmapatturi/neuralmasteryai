@@ -6532,5 +6532,855 @@
   "stage": "Loss Functions",
   "stageNumber": 6,
   "points": 100
+ },
+ {
+  "id": "met-mrr",
+  "title": "Mean Reciprocal Rank",
+  "difficulty": "easy",
+  "topic": "Evaluation Metrics",
+  "estimatedTime": "10 min",
+  "functionName": "mean_reciprocal_rank",
+  "functionSignature": "mean_reciprocal_rank(rankings: list[list[str]], relevant: list[list[str]]) -> float",
+  "starterCode": "def mean_reciprocal_rank(rankings, relevant):\n    # Your code here\n    pass\n",
+  "mission": "Score a search or retrieval system by how high the first correct result appears, averaged over queries.",
+  "taskDescription": "Implement `mean_reciprocal_rank(rankings, relevant)`. For query i, find the 1-based position of the first item in `rankings[i]` that is in `relevant[i]`; its reciprocal rank is 1 / position, or 0 if no relevant item appears. Return the mean over queries. Raise `ValueError` if there are no queries or the lists differ in length.",
+  "constraints": [
+   "Only the first relevant hit counts.",
+   "A query with no relevant hit scores 0, and still counts in the mean.",
+   "Positions are 1-based."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Hits at 1, 2 and 3",
+    "input": {
+     "rankings": [
+      [
+       "a",
+       "b"
+      ],
+      [
+       "x",
+       "c"
+      ],
+      [
+       "p",
+       "q",
+       "r"
+      ]
+     ],
+     "relevant": [
+      [
+       "a"
+      ],
+      [
+       "c"
+      ],
+      [
+       "r"
+      ]
+     ]
+    },
+    "expectedOutput": 0.611111111111111
+   },
+   {
+    "id": "tc2",
+    "label": "A miss counts as 0",
+    "input": {
+     "rankings": [
+      [
+       "a"
+      ],
+      [
+       "b"
+      ]
+     ],
+     "relevant": [
+      [
+       "a"
+      ],
+      [
+       "z"
+      ]
+     ]
+    },
+    "expectedOutput": 0.5
+   },
+   {
+    "id": "tc3",
+    "label": "Only the first hit counts",
+    "input": {
+     "rankings": [
+      [
+       "x",
+       "a",
+       "b"
+      ]
+     ],
+     "relevant": [
+      [
+       "a",
+       "b"
+      ]
+     ]
+    },
+    "expectedOutput": 0.5
+   },
+   {
+    "id": "tc4",
+    "label": "No queries",
+    "input": {
+     "rankings": [],
+     "relevant": []
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc5",
+    "label": "Four queries",
+    "input": {
+     "rankings": [
+      [
+       "d1",
+       "d2",
+       "d3",
+       "d4"
+      ],
+      [
+       "d9",
+       "d8"
+      ],
+      [
+       "d5",
+       "d1"
+      ],
+      [
+       "d7",
+       "d6",
+       "d5",
+       "d4",
+       "d3"
+      ]
+     ],
+     "relevant": [
+      [
+       "d3"
+      ],
+      [
+       "d8",
+       "d9"
+      ],
+      [
+       "d2"
+      ],
+      [
+       "d3"
+      ]
+     ]
+    },
+    "hidden": true,
+    "expectedOutput": 0.3833333333333333
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "enumerate(ranking, start=1) gives 1-based positions.",
+   "strong": "Break out of the loop at the first hit.",
+   "concept": "MRR suits tasks with one right answer, such as a question answered by one document."
+  },
+  "conceptConnections": [
+   {
+    "title": "Model evaluation metrics",
+    "route": "/docs/machine-learning/model-evaluation-metrics",
+    "description": "Which metric answers which question, and how each one can mislead."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Evaluation Metrics",
+  "stageNumber": 1,
+  "points": 25
+ },
+ {
+  "id": "met-macro-micro-f1",
+  "title": "Macro and Micro F1 for Many Classes",
+  "difficulty": "medium",
+  "topic": "Evaluation Metrics",
+  "estimatedTime": "15-20 min",
+  "functionName": "macro_micro_f1",
+  "functionSignature": "macro_micro_f1(y_true: list[str], y_pred: list[str]) -> dict",
+  "starterCode": "def macro_micro_f1(y_true, y_pred):\n    # Your code here\n    pass\n",
+  "mission": "Compute F1 for a multi-class classifier two ways and see how a rare class that is always wrong disappears from one of them.",
+  "taskDescription": "Implement `macro_micro_f1(y_true, y_pred)`. Classes are every label in either list. Per class, count TP, FP and FN, and compute F1 = 2TP / (2TP + FP + FN), or 0 when the denominator is 0. Macro F1 is the unweighted mean of per-class F1. Micro F1 uses the summed TP, FP and FN over all classes. Return `{\"macro\": ..., \"micro\": ..., \"per_class\": {label: f1}}`.",
+  "constraints": [
+   "Classes come from both y_true and y_pred.",
+   "F1 = 2TP / (2TP + FP + FN), with 0 for an empty denominator.",
+   "For single-label data, micro F1 equals accuracy."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Rare class always missed",
+    "input": {
+     "y_true": [
+      "a",
+      "a",
+      "a",
+      "a",
+      "a",
+      "a",
+      "a",
+      "a",
+      "b",
+      "b"
+     ],
+     "y_pred": [
+      "a",
+      "a",
+      "a",
+      "a",
+      "a",
+      "a",
+      "a",
+      "a",
+      "a",
+      "a"
+     ]
+    },
+    "expectedOutput": {
+     "macro": 0.4444444444444444,
+     "micro": 0.8,
+     "per_class": {
+      "a": 0.8888888888888888,
+      "b": 0.0
+     }
+    }
+   },
+   {
+    "id": "tc2",
+    "label": "Perfect predictions",
+    "input": {
+     "y_true": [
+      "x",
+      "y",
+      "z"
+     ],
+     "y_pred": [
+      "x",
+      "y",
+      "z"
+     ]
+    },
+    "expectedOutput": {
+     "macro": 1.0,
+     "micro": 1.0,
+     "per_class": {
+      "x": 1.0,
+      "y": 1.0,
+      "z": 1.0
+     }
+    }
+   },
+   {
+    "id": "tc3",
+    "label": "A predicted class that never occurs",
+    "input": {
+     "y_true": [
+      "a",
+      "b"
+     ],
+     "y_pred": [
+      "a",
+      "c"
+     ]
+    },
+    "expectedOutput": {
+     "macro": 0.3333333333333333,
+     "micro": 0.5,
+     "per_class": {
+      "a": 1.0,
+      "b": 0.0,
+      "c": 0.0
+     }
+    }
+   },
+   {
+    "id": "tc4",
+    "label": "Three-way confusion",
+    "input": {
+     "y_true": [
+      "cat",
+      "dog",
+      "cat",
+      "bird",
+      "dog",
+      "cat",
+      "bird"
+     ],
+     "y_pred": [
+      "cat",
+      "cat",
+      "cat",
+      "bird",
+      "dog",
+      "dog",
+      "cat"
+     ]
+    },
+    "hidden": true,
+    "expectedOutput": {
+     "macro": 0.5793650793650794,
+     "micro": 0.5714285714285714,
+     "per_class": {
+      "bird": 0.6666666666666666,
+      "cat": 0.5714285714285714,
+      "dog": 0.5
+     }
+    }
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "One pass over the pairs: if t == p it is a TP for t; otherwise an FN for t and an FP for p.",
+   "strong": "Micro sums TP, FP and FN across classes before computing one F1.",
+   "concept": "Macro treats every class equally; micro treats every example equally."
+  },
+  "conceptConnections": [
+   {
+    "title": "Model evaluation metrics",
+    "route": "/docs/machine-learning/model-evaluation-metrics",
+    "description": "Which metric answers which question, and how each one can mislead."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Evaluation Metrics",
+  "stageNumber": 2,
+  "points": 50
+ },
+ {
+  "id": "met-ndcg",
+  "title": "nDCG@k With Graded Relevance",
+  "difficulty": "medium",
+  "topic": "Evaluation Metrics",
+  "estimatedTime": "15-20 min",
+  "functionName": "ndcg_at_k",
+  "functionSignature": "ndcg_at_k(ranked_relevance: list[float], k: int) -> float",
+  "starterCode": "def ndcg_at_k(ranked_relevance, k):\n    # Your code here\n    pass\n",
+  "mission": "Score a ranking where some results are more relevant than others, with a discount for appearing further down.",
+  "taskDescription": "Implement `ndcg_at_k(ranked_relevance, k)`. `ranked_relevance[i]` is the graded relevance of the result shown at position i + 1. DCG@k = sum over the first k positions of `(2**rel - 1) / log2(position + 1)`. IDCG@k is the DCG@k of the same relevances sorted in descending order. Return DCG / IDCG, or 0.0 when IDCG is 0. Raise `ValueError` if k < 1.",
+  "constraints": [
+   "Use the exponential gain 2**rel - 1.",
+   "Positions are 1-based, so position 1 is divided by log2(2) = 1.",
+   "The ideal ranking uses the same relevance values, sorted descending."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Already ideal",
+    "input": {
+     "ranked_relevance": [
+      3,
+      2,
+      1,
+      0
+     ],
+     "k": 4
+    },
+    "expectedOutput": 1.0
+   },
+   {
+    "id": "tc2",
+    "label": "Best result in last place",
+    "input": {
+     "ranked_relevance": [
+      0,
+      0,
+      3
+     ],
+     "k": 3
+    },
+    "expectedOutput": 0.5
+   },
+   {
+    "id": "tc3",
+    "label": "Nothing relevant",
+    "input": {
+     "ranked_relevance": [
+      0,
+      0
+     ],
+     "k": 2
+    },
+    "expectedOutput": 0.0
+   },
+   {
+    "id": "tc4",
+    "label": "Cut-off excludes the best result",
+    "input": {
+     "ranked_relevance": [
+      1,
+      0,
+      3,
+      2
+     ],
+     "k": 2
+    },
+    "expectedOutput": 0.11245065757013882
+   },
+   {
+    "id": "tc5",
+    "label": "Bad k",
+    "input": {
+     "ranked_relevance": [
+      1
+     ],
+     "k": 0
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc6",
+    "label": "Search results page",
+    "input": {
+     "ranked_relevance": [
+      2,
+      3,
+      0,
+      1,
+      2,
+      0,
+      0,
+      3
+     ],
+     "k": 5
+    },
+    "hidden": true,
+    "expectedOutput": 0.6171635556104229
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Write dcg(rels) once and call it on the list and on sorted(rels, reverse=True).",
+   "strong": "Truncate both to k after sorting, not before: the ideal top k comes from all results.",
+   "concept": "Normalising by the ideal makes scores comparable across queries with different numbers of relevant results."
+  },
+  "conceptConnections": [
+   {
+    "title": "Model evaluation metrics",
+    "route": "/docs/machine-learning/model-evaluation-metrics",
+    "description": "Which metric answers which question, and how each one can mislead."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Evaluation Metrics",
+  "stageNumber": 3,
+  "points": 50
+ },
+ {
+  "id": "met-expected-calibration-error",
+  "title": "Expected Calibration Error",
+  "difficulty": "medium",
+  "topic": "Evaluation Metrics",
+  "estimatedTime": "15-20 min",
+  "functionName": "expected_calibration_error",
+  "functionSignature": "expected_calibration_error(confidences: list[float], correct: list[bool], n_bins: int) -> float",
+  "starterCode": "def expected_calibration_error(confidences, correct, n_bins):\n    # Your code here\n    pass\n",
+  "mission": "Check whether a model's confidence means what it says: of the answers given with 80% confidence, are about 80% right?",
+  "taskDescription": "Implement `expected_calibration_error(confidences, correct, n_bins)`. Split [0, 1] into `n_bins` equal-width bins; a confidence c goes in bin `min(int(c * n_bins), n_bins - 1)`. For each non-empty bin compute the mean confidence and the accuracy (fraction correct). ECE is the sum over bins of `(bin size / n) * |accuracy - mean confidence|`. Raise `ValueError` for empty input or n_bins < 1.",
+  "constraints": [
+   "Equal-width bins; a confidence of exactly 1.0 goes in the last bin.",
+   "Empty bins contribute nothing.",
+   "Weight each bin by its share of the samples."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Perfectly calibrated bin",
+    "input": {
+     "confidences": [
+      0.8,
+      0.8,
+      0.8,
+      0.8,
+      0.8
+     ],
+     "correct": [
+      true,
+      true,
+      true,
+      true,
+      false
+     ],
+     "n_bins": 10
+    },
+    "expectedOutput": 0.0
+   },
+   {
+    "id": "tc2",
+    "label": "Overconfident",
+    "input": {
+     "confidences": [
+      0.95,
+      0.95,
+      0.95,
+      0.95
+     ],
+     "correct": [
+      true,
+      false,
+      true,
+      false
+     ],
+     "n_bins": 10
+    },
+    "expectedOutput": 0.44999999999999996
+   },
+   {
+    "id": "tc3",
+    "label": "Two bins",
+    "input": {
+     "confidences": [
+      0.1,
+      0.2,
+      0.9,
+      1.0
+     ],
+     "correct": [
+      false,
+      true,
+      true,
+      true
+     ],
+     "n_bins": 2
+    },
+    "expectedOutput": 0.2
+   },
+   {
+    "id": "tc4",
+    "label": "Empty",
+    "input": {
+     "confidences": [],
+     "correct": [],
+     "n_bins": 5
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc5",
+    "label": "Spread of confidences",
+    "input": {
+     "confidences": [
+      0.55,
+      0.62,
+      0.71,
+      0.78,
+      0.83,
+      0.88,
+      0.91,
+      0.97,
+      0.99,
+      0.35
+     ],
+     "correct": [
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false
+     ],
+     "n_bins": 5
+    },
+    "hidden": true,
+    "expectedOutput": 0.24900000000000003
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Collect (confidence, correct) pairs per bin index first.",
+   "strong": "ece += len(bin) / n * abs(sum(correct) / len(bin) - sum(conf) / len(bin)).",
+   "concept": "A model can be accurate and badly calibrated at the same time, and the reverse."
+  },
+  "conceptConnections": [
+   {
+    "title": "Model evaluation metrics",
+    "route": "/docs/machine-learning/model-evaluation-metrics",
+    "description": "Which metric answers which question, and how each one can mislead."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Evaluation Metrics",
+  "stageNumber": 4,
+  "points": 50
+ },
+ {
+  "id": "met-average-precision",
+  "title": "Average Precision From Scores",
+  "difficulty": "medium",
+  "topic": "Evaluation Metrics",
+  "estimatedTime": "15-20 min",
+  "functionName": "average_precision",
+  "functionSignature": "average_precision(scores: list[float], labels: list[int]) -> float",
+  "starterCode": "def average_precision(scores, labels):\n    # Your code here\n    pass\n",
+  "mission": "Summarise a precision-recall curve in one number by averaging the precision at each positive, the metric to use when positives are rare.",
+  "taskDescription": "Implement `average_precision(scores, labels)`. Sort examples by score descending (ties broken by original index). Walking down the list, every time you reach a positive, record precision = positives so far / examples so far. Return the mean of the recorded precisions, i.e. the sum divided by the total number of positives. Raise `ValueError` if there are no positives.",
+  "constraints": [
+   "Sort by score descending, stable on ties.",
+   "Divide by the number of positives, not the number of examples.",
+   "Raise ValueError when no label is 1."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Positives ranked first",
+    "input": {
+     "scores": [
+      0.9,
+      0.8,
+      0.2,
+      0.1
+     ],
+     "labels": [
+      1,
+      1,
+      0,
+      0
+     ]
+    },
+    "expectedOutput": 1.0
+   },
+   {
+    "id": "tc2",
+    "label": "Positives ranked last",
+    "input": {
+     "scores": [
+      0.9,
+      0.8,
+      0.2,
+      0.1
+     ],
+     "labels": [
+      0,
+      0,
+      1,
+      1
+     ]
+    },
+    "expectedOutput": 0.41666666666666663
+   },
+   {
+    "id": "tc3",
+    "label": "Interleaved",
+    "input": {
+     "scores": [
+      0.9,
+      0.7,
+      0.6,
+      0.3,
+      0.2
+     ],
+     "labels": [
+      1,
+      0,
+      1,
+      0,
+      1
+     ]
+    },
+    "expectedOutput": 0.7555555555555555
+   },
+   {
+    "id": "tc4",
+    "label": "No positives",
+    "input": {
+     "scores": [
+      0.5
+     ],
+     "labels": [
+      0
+     ]
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc5",
+    "label": "Rare positives",
+    "input": {
+     "scores": [
+      0.95,
+      0.9,
+      0.85,
+      0.8,
+      0.6,
+      0.55,
+      0.4,
+      0.3,
+      0.2,
+      0.1
+     ],
+     "labels": [
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "hidden": true,
+    "expectedOutput": 0.41666666666666663
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "order = sorted(range(n), key=lambda i: -scores[i]) is stable on ties.",
+   "strong": "Keep a running count of positives; at each positive add hits / position.",
+   "concept": "This is the non-interpolated area under the precision-recall curve, the same definition scikit-learn uses."
+  },
+  "conceptConnections": [
+   {
+    "title": "Model evaluation metrics",
+    "route": "/docs/machine-learning/model-evaluation-metrics",
+    "description": "Which metric answers which question, and how each one can mislead."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Evaluation Metrics",
+  "stageNumber": 5,
+  "points": 50
+ },
+ {
+  "id": "met-bleu",
+  "title": "Sentence BLEU With Brevity Penalty",
+  "difficulty": "hard",
+  "topic": "Evaluation Metrics",
+  "estimatedTime": "25-35 min",
+  "functionName": "sentence_bleu",
+  "functionSignature": "sentence_bleu(candidate: str, reference: str, max_n: int = 4) -> float",
+  "starterCode": "def sentence_bleu(candidate, reference, max_n=4):\n    # Your code here\n    pass\n",
+  "mission": "Implement BLEU's two ideas, clipped n-gram precision and the brevity penalty, and see why a candidate that repeats one correct word cannot game it.",
+  "taskDescription": "Implement `sentence_bleu(candidate, reference, max_n=4)`. Split both on whitespace. For n = 1..max_n, the clipped precision p_n is the sum over candidate n-grams of min(count in candidate, count in reference), divided by the number of candidate n-grams. If any p_n is 0 (or the candidate has fewer than n tokens), return 0.0. Otherwise BLEU = BP * exp(mean of log p_n), with BP = 1 if len(candidate) > len(reference) else exp(1 - len(reference) / len(candidate)).",
+  "constraints": [
+   "Clip each n-gram's count at its count in the reference.",
+   "Uniform weights 1/max_n over n = 1..max_n.",
+   "No smoothing: any zero precision gives 0.0."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Identical sentences",
+    "input": {
+     "candidate": "the cat sat on the mat",
+     "reference": "the cat sat on the mat"
+    },
+    "expectedOutput": 1.0
+   },
+   {
+    "id": "tc2",
+    "label": "Repeating one word is clipped",
+    "input": {
+     "candidate": "the the the the",
+     "reference": "the cat is here",
+     "max_n": 1
+    },
+    "expectedOutput": 0.25
+   },
+   {
+    "id": "tc3",
+    "label": "Short candidate pays the brevity penalty",
+    "input": {
+     "candidate": "the cat",
+     "reference": "the cat sat on the mat",
+     "max_n": 2
+    },
+    "expectedOutput": 0.1353352832366127
+   },
+   {
+    "id": "tc4",
+    "label": "No shared 4-gram",
+    "input": {
+     "candidate": "a cat sat on a mat",
+     "reference": "the cat sat on the mat"
+    },
+    "expectedOutput": 0.0
+   },
+   {
+    "id": "tc5",
+    "label": "Close paraphrase, bigrams",
+    "input": {
+     "candidate": "the quick brown fox jumped over the dog",
+     "reference": "the quick brown fox jumps over the lazy dog",
+     "max_n": 2
+    },
+    "hidden": true,
+    "expectedOutput": 0.6240195441936914
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "collections.Counter(zip(*[toks[i:] for i in range(n)])) counts n-grams.",
+   "strong": "clipped = sum(min(c, ref_counts[g]) for g, c in cand_counts.items()).",
+   "concept": "Precision rewards saying correct things; the brevity penalty stops a very short candidate from scoring well by saying almost nothing."
+  },
+  "conceptConnections": [
+   {
+    "title": "Model evaluation metrics",
+    "route": "/docs/machine-learning/model-evaluation-metrics",
+    "description": "Which metric answers which question, and how each one can mislead."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "Evaluation Metrics",
+  "stageNumber": 6,
+  "points": 100
  }
 ]

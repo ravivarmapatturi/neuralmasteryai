@@ -1,0 +1,52 @@
+---
+title: "Sentence BLEU With Brevity Penalty"
+description: "Evaluation Metrics, problem 6 of 6: Implement BLEU's two ideas, clipped n-gram precision and the brevity penalty, and see why a candidate that repeats one correct word cannot game it."
+difficulty: "hard"
+topic: "Evaluation Metrics"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Two ways to cheat a precision score
+
+**BLEU** (Papineni et al., 2002) scores a machine translation by how many of its n-grams appear in a reference. Plain precision has two easy exploits. Repeat a common word: `the the the the` has unigram precision 4/4 against any reference containing "the". Or say almost nothing: `the cat` has perfect precision against a six-word reference.
+
+BLEU closes both. **Clipping** caps each n-gram's credit at the number of times it appears in the reference, so the four "the"s earn credit for one, and precision is 1/4. The **brevity penalty** multiplies the score by `exp(1 - ref_len / cand_len)` when the candidate is shorter, so `the cat` against six words is scaled by `exp(-2) = 0.135`.
+
+## Why sentence BLEU is harsh
+
+BLEU combines precisions for n = 1 to 4 with a geometric mean, so one zero makes the score zero. Change two words in a six-word sentence and no 4-gram may survive, as the fourth test shows. BLEU was designed for whole test sets, where counts are pooled before dividing; per-sentence scores use smoothing for this reason.
+
+> **Remember:** clipped n-gram precision, geometric mean over n, times a brevity penalty. Report corpus BLEU, not an average of sentence scores.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import math
+from collections import Counter
+
+def sentence_bleu(candidate, reference, max_n=4):
+    cand, ref = candidate.split(), reference.split()
+    if not cand:
+        return 0.0
+
+    def ngrams(toks, n):
+        return Counter(tuple(toks[i:i + n]) for i in range(len(toks) - n + 1))
+
+    log_sum = 0.0
+    for n in range(1, max_n + 1):
+        c, r = ngrams(cand, n), ngrams(ref, n)
+        total = sum(c.values())
+        clipped = sum(min(count, r[g]) for g, count in c.items())
+        if total == 0 or clipped == 0:
+            return 0.0
+        log_sum += math.log(clipped / total)
+    bp = 1.0 if len(cand) > len(ref) else math.exp(1 - len(ref) / len(cand))
+    return bp * math.exp(log_sum / max_n)
+```
+
+</Solution>

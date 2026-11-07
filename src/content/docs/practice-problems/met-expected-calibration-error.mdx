@@ -1,0 +1,45 @@
+---
+title: "Expected Calibration Error"
+description: "Evaluation Metrics, problem 4 of 6: Check whether a model's confidence means what it says: of the answers given with 80% confidence, are about 80% right?."
+difficulty: "medium"
+topic: "Evaluation Metrics"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Confidence is a claim you can check
+
+A model that says "95% sure" should be right about 95% of the time it says so. Guo et al. (2017) showed that modern deep networks are often **overconfident**: a ResNet saying 95% might be right far less often. That matters whenever confidence drives a decision, such as routing low-confidence answers to a human.
+
+**Expected calibration error** groups predictions by confidence into bins, compares each bin's average confidence with its actual accuracy, and averages the gaps weighted by bin size. Four answers at 95% confidence, two of them right, have accuracy 50% and a gap of 0.45.
+
+## Calibration is not accuracy
+
+The first test has an 80%-accurate model that says 80%, and its ECE is exactly 0. A 99%-accurate model that always says 100% has an ECE of 0.01. Fixes such as **temperature scaling** change confidence without changing which class is predicted, so they improve ECE and leave accuracy alone.
+
+> **Remember:** bin by confidence, compare mean confidence with accuracy, weight by bin size. Report it next to accuracy, not instead of it.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def expected_calibration_error(confidences, correct, n_bins):
+    if not confidences or n_bins < 1 or len(confidences) != len(correct):
+        raise ValueError("need matching, non-empty inputs and n_bins >= 1")
+    bins = {}
+    for c, ok in zip(confidences, correct):
+        b = min(int(c * n_bins), n_bins - 1)
+        bins.setdefault(b, []).append((c, ok))
+    n = len(confidences)
+    ece = 0.0
+    for items in bins.values():
+        acc = sum(1 for _, ok in items if ok) / len(items)
+        conf = sum(c for c, _ in items) / len(items)
+        ece += len(items) / n * abs(acc - conf)
+    return ece
+```
+
+</Solution>
