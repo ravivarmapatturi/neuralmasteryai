@@ -524,7 +524,7 @@ export default function SimpleInterviewPage() {
                 {transcript || 'Your words will appear here as you speak.'}
               </div>
             )}
-            <div className="si-actions">
+            <div className="si-actions si-sticky">
               <button type="button" className="si-primary" id="done" onClick={finishAnswer}>
                 I'm done, show the answer
               </button>
@@ -605,7 +605,7 @@ export default function SimpleInterviewPage() {
                 <a href={question.sourceUrl}>Full answer and follow-ups in AI Engineering from Scratch</a>
               </p>
             )}
-            <div className="si-actions">
+            <div className="si-actions si-sticky">
               <button type="button" className="si-primary" id="next" onClick={nextQuestion}>
                 {questionIndex + 1 < topic.questions.length ? 'Next question' : 'Finish topic'}
               </button>
@@ -613,7 +613,7 @@ export default function SimpleInterviewPage() {
                 <span className="si-done" role="status">Completed · +{INTERVIEW_COMPLETED_POINTS} points</span>
               ) : (
                 <button type="button" id="mark-complete" onClick={() => awardInterviewCompleted(questionId)}>
-                  Mark complete (+{INTERVIEW_COMPLETED_POINTS} points)
+                  Mark complete<span className="si-wide-only"> (+{INTERVIEW_COMPLETED_POINTS} points)</span>
                 </button>
               )}
               {reading ? (

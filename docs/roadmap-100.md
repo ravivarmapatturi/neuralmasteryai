@@ -39,7 +39,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 12. done - Keyboard shortcuts: space to answer, N for next.
 13. done - Share a completed topic.
 14. done - Interview leaderboard view.
-15. planned - Mobile pass on the answer screen.
+15. done - Mobile pass on the answer screen.
 
 ### Problems and labs (16-35)
 16. done - One Problems hub with filters: topic, difficulty, framework, solved.
