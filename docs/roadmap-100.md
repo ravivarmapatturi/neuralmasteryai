@@ -83,16 +83,16 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 
 ### Atlas and visuals (71-80)
 71. done - Atlas shows one label, for the selected entry, so labels no longer overlap.
-72. planned - Atlas year filter and zoom.
+72. done - Atlas year filter and zoom: All years, 2000 on, 2015 on, 2020 on; the chosen range fills the width.
 73. planned - Deep links to each atlas entry.
 74. planned - Review every Atlas link against its source text.
 75-80. planned - Diagram quality audit items from feedback_visualization_zero_tolerance.md.
 
 ### Platform and growth (81-100)
 81. done - The site tour closes when you navigate away from it.
-82. planned - Home page: show the product working in the first screen.
-83. planned - Real numbers on the home page (questions, problems, pages).
-84. planned - Changelog page from git history.
+82. done - Home page: show the product working in the first screen.
+83. done - Real numbers on the home page (questions, problems, pages, study plans).
+84. done - Changelog page from git history.
 85. planned - Leaderboard: weekly and all-time.
 86. planned - Community solutions (needs sign-in and moderation).
 87. planned - Product menu regrouped like Products and Resources.
