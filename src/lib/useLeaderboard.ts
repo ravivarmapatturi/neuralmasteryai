@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { weekStartDateString } from './gamification';
 
 export interface LeaderboardEntry {
   uid: string;
@@ -54,7 +55,12 @@ export function useLeaderboard(sortBy: LeaderboardTab, limitN = 25): { entries: 
       .then(([{ db }, { collection, query, orderBy, limit, onSnapshot }]) => {
         if (cancelled) return;
         const field = SORT_FIELD[sortBy];
-        const q = query(collection(db, 'leaderboard'), orderBy(field, 'desc'), limit(limitN));
+        // A weekly entry is only rewritten when its owner earns points, so
+        // last week's totals linger in the collection. Over-fetch, then drop
+        // entries whose weekStart is not the current week.
+        const weekly = sortBy === 'weekly';
+        const thisWeek = weekStartDateString(new Date(Date.now()));
+        const q = query(collection(db, 'leaderboard'), orderBy(field, 'desc'), limit(weekly ? limitN * 4 : limitN));
         unsubscribe = onSnapshot(
           q,
           (snap) => {
@@ -69,7 +75,9 @@ export function useLeaderboard(sortBy: LeaderboardTab, limitN = 25): { entries: 
                   allTimePoints: typeof data.allTimePoints === 'number' ? data.allTimePoints : undefined,
                 };
               })
-              .filter((row) => !EXCLUDED_TEST_DISPLAY_NAMES.has(row.displayName));
+              .filter((_row, i) => !weekly || snap.docs[i].data().weekStart === thisWeek)
+              .filter((row) => !EXCLUDED_TEST_DISPLAY_NAMES.has(row.displayName))
+              .slice(0, limitN);
             setEntries(rows);
             setLoading(false);
           },
