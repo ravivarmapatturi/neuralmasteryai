@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import Navbar from './layout/Navbar';
 import LiveComputation from './home/LiveComputation';
+import DailyInterviewQuestion from './home/DailyInterviewQuestion';
 import { LiveStatsTicker } from './home/LiveStats';
 import AgentGraphSketch from './notebook/AgentGraphSketch';
 import { SketchUnderline } from './notebook/RoughShape';
@@ -78,6 +79,8 @@ export default function ChooserPage() {
             </div>
           </div>
         </section>
+
+        <DailyInterviewQuestion />
 
         {/* Section 2: The Loop */}
         <section style={{ padding: 'clamp(3rem, 6vw, 5rem) 0', borderBottom: '1px solid var(--nb-rule)' }}>

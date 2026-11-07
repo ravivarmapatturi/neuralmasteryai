@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useDocumentMeta } from '../../lib/useDocumentMeta';
 import { correctInterviewTerms } from '../../lib/interviewRoom/dialogue';
 import { createASREngineForQuality } from '../../lib/interviewRoom/qualitySettings';
@@ -49,9 +49,28 @@ const topics = practice.topics as {
   about: string;
   questions: PracticeQuestion[];
 }[];
-const graphTopics = topics.map((t) => ({ id: t.id, title: t.title, group: t.group, count: t.questions.length }));
-const totalQuestions = graphTopics.reduce((sum, t) => sum + t.count, 0);
+const baseGraphTopics = topics.map((t) => ({ id: t.id, title: t.title, group: t.group, count: t.questions.length }));
+const totalQuestions = baseGraphTopics.reduce((sum, t) => sum + t.count, 0);
 const firstTopic = Math.max(0, topics.findIndex((t) => t.id === 'rag'));
+
+function locate(id: string | null) {
+  if (!id) return null;
+  for (let t = 0; t < topics.length; t++) {
+    const q = topics[t].questions.findIndex((x) => x.id === id);
+    if (q >= 0) return { topic: t, question: q };
+  }
+  return null;
+}
+
+const LAST_KEY = 'nm-interview-last';
+
+function readLast() {
+  try {
+    return localStorage.getItem(LAST_KEY);
+  } catch {
+    return null;
+  }
+}
 
 function clipUrl(name: string) {
   return `/audio/interview-voice/${name.replaceAll(':', '__')}.opus`;
@@ -65,9 +84,14 @@ function looksLikePhone() {
 export default function SimpleInterviewPage() {
   useDocumentMeta('AI Interview Practice', 'Pick a topic, hear an AI engineering interview question, answer out loud, then hear and read a model answer. Runs in your browser.');
 
+  const [params] = useSearchParams();
+  // A link like /interview?q=<id> (the home page's daily question) opens on that question.
+  // Otherwise it offers to resume the last question you opened.
+  const [resuming] = useState(() => !locate(params.get('q')) && !!locate(readLast()));
+  const [linked, setLinked] = useState(() => locate(params.get('q')) ?? locate(readLast()));
   const [step, setStep] = useState<Step>('topics');
-  const [topicIndex, setTopicIndex] = useState(firstTopic);
-  const [questionIndex, setQuestionIndex] = useState(0);
+  const [topicIndex, setTopicIndex] = useState(linked?.topic ?? firstTopic);
+  const [questionIndex, setQuestionIndex] = useState(linked?.question ?? 0);
   const [transcript, setTranscript] = useState('');
   const [typing, setTyping] = useState(false);
   const [micStatus, setMicStatus] = useState('');
@@ -88,6 +112,11 @@ export default function SimpleInterviewPage() {
   const enginePromiseRef = useRef<Promise<void> | null>(null);
 
   const topic = topics[topicIndex];
+  const graphTopics = useMemo(
+    () => baseGraphTopics.map((g, i) => ({ ...g, done: topics[i].questions.filter((q) => hasAward(events, `/interview#${q.id}`, 'interview')).length })),
+    [events]
+  );
+  const linkedHere = linked && linked.topic === topicIndex ? linked : null;
   const shown = topic.questions.map((q, i) => ({ q, i })).filter(({ q }) => matches(q));
   const question = topic.questions[questionIndex];
   const questionId = question.id;
@@ -208,6 +237,11 @@ export default function SimpleInterviewPage() {
   const ask = useCallback(
     (id: string) => {
       setStep('asking');
+      try {
+        localStorage.setItem(LAST_KEY, id);
+      } catch {
+        // Private mode: resume is simply unavailable.
+      }
       const q = topics.flatMap((t) => t.questions).find((x) => x.id === id);
       const spoken = q ? q.title + (q.options ? ` The options are: ${q.options.join('. ')}` : '') : undefined;
       play(
@@ -277,6 +311,30 @@ export default function SimpleInterviewPage() {
     setStep('topics');
   };
 
+  // Space answers (or finishes answering), N moves to the next question. Ignored while typing or on a focused control.
+  const keysRef = useRef<(e: KeyboardEvent) => void>(() => undefined);
+  keysRef.current = (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const el = e.target as HTMLElement | null;
+    if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(el.tagName))) return;
+    if (e.key === ' ' && step === 'asking') {
+      e.preventDefault();
+      stopAudio();
+      void startAnswering();
+    } else if (e.key === ' ' && step === 'answering') {
+      e.preventDefault();
+      void finishAnswer();
+    } else if ((e.key === 'n' || e.key === 'N') && step === 'answer') {
+      e.preventDefault();
+      nextQuestion();
+    }
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => keysRef.current(e);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   useEffect(
     () => () => {
       answeringRef.current = false;
@@ -337,15 +395,23 @@ export default function SimpleInterviewPage() {
                 </p>
                 <h2>{topic.title}</h2>
                 <p className="si-lede">{topic.about}</p>
+                {linkedHere && (
+                  <p className="si-linked">
+                    <strong>{topic.questions[linkedHere.question].title}</strong>
+                  </p>
+                )}
                 <div className="si-actions">
                   <button
                     type="button"
                     className="si-primary"
                     id="start-topic"
-                    disabled={shown.length === 0}
-                    onClick={() => startQuestion((shown.find(({ q }) => !isDone(q.id)) ?? shown[0]).i)}
+                    disabled={shown.length === 0 && !linkedHere}
+                    onClick={() => {
+                      setLinked(null);
+                      startQuestion(linkedHere ? linkedHere.question : (shown.find(({ q }) => !isDone(q.id)) ?? shown[0]).i);
+                    }}
                   >
-                    {shown.some(({ q }) => isDone(q.id)) ? 'Next unsolved question' : 'Start this topic'}
+                    {linkedHere ? (resuming ? 'Resume where you left off' : 'Start the linked question') : shown.some(({ q }) => isDone(q.id)) ? 'Next unsolved question' : 'Start this topic'}
                   </button>
                 </div>
                 <ol className="si-list">
@@ -372,6 +438,7 @@ export default function SimpleInterviewPage() {
 
         {step !== 'topics' && step !== 'done' && (
           <>
+            <p className="si-keys">Keyboard: Space to answer or finish, N for the next question.</p>
             <div className="si-progress">
               <button type="button" className="si-link" onClick={backToTopics}>
                 ← Topics

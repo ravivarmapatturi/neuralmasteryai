@@ -24,6 +24,7 @@ import BlogSeriesPage from './components/BlogSeriesPage';
 import BlogEditorPage from './components/BlogEditorPage';
 import ProfilePage from './components/ProfilePage';
 import LeaderboardPage from './components/LeaderboardPage';
+import { StudyPlansPage, StudyPlanPage, ResearchListPage, ResearchTrackPage, ProjectsPage } from './components/StudyPlansPages';
 import SiteTour from './components/home/SiteTour';
 import AboutPage from './components/AboutPage';
 import AtlasHubPage from './components/AtlasHubPage';
@@ -104,6 +105,11 @@ export default function App() {
                       <Route path="/progress" element={<ProgressPage />} />
                       <Route path="/profile" element={<ProfilePage />} />
                       <Route path="/leaderboard" element={<LeaderboardPage />} />
+                      <Route path="/study-plans" element={<StudyPlansPage />} />
+                      <Route path="/study-plans/:slug" element={<StudyPlanPage />} />
+                      <Route path="/research" element={<ResearchListPage />} />
+                      <Route path="/research/:slug" element={<ResearchTrackPage />} />
+                      <Route path="/projects" element={<ProjectsPage />} />
                       <Route path="/atlas" element={<AtlasHubPage />} />
                       <Route path="/glossary" element={<GlossaryPage />} />
                       <Route path="/glossary/:slug" element={<GlossaryTermPage />} />
