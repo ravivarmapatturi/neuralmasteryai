@@ -1,7 +1,7 @@
 ---
 title: "Vision Fundamentals"
 sidebar_position: 3
-description: "Pixels, channels, and color spaces -- the decades-old classical image-representation machinery still running underneath every modern vision pipeline."
+description: "Pixels, channels, colour spaces and normalisation, convolution as classical filtering, morphology, edges, hand-made features and augmentation, with Sobel and opening worked in code."
 ---
 
 import ConvolutionSlideDiagram from '../../../viz/diagrams/ConvolutionSlideDiagram';
@@ -9,64 +9,206 @@ import RgbChannelDecompositionDiagram from '../../../viz/diagrams/RgbChannelDeco
 import MorphologicalOpsDiagram from '../../../viz/diagrams/MorphologicalOpsDiagram';
 import HogFeatureDiagram from '../../../viz/diagrams/HogFeatureDiagram';
 import DataAugmentationDiagram from '../../../viz/diagrams/DataAugmentationDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
 # Vision Fundamentals
 
-Before a CNN or a ViT ever sees an image, computer vision already had decades of classical techniques for representing and processing images — and a surprising amount of that machinery is still exactly what's running underneath a modern deep learning pipeline (augmentation, some preprocessing) or directly relevant to understanding why convolution works as a neural network layer at all.
+<ELI5>
+
+To a computer, a photo is a big table of numbers: how much red, green and blue there is at each dot. Finding an edge means looking for places where the numbers jump from small to large. A neural network learns to look for those jumps by itself, but the very first thing it learns is almost exactly the edge-finder people designed by hand decades ago.
+
+</ELI5>
+
+## Why This Exists
+
+Before a CNN or a ViT sees an image, the image has already been decoded, converted, resized and normalised, and during training it has been randomly cropped, flipped and colour-shifted. Most of that machinery is classical image processing, and most silent bugs in vision pipelines live there: the wrong channel order, the wrong normalisation, an augmentation that changes the label. Classical filtering also explains what the first layer of a CNN does. This page covers the representation, then the fixed-kernel operations that came before learned features, then augmentation.
 
 ## Image Representation
 
-- **Pixels and channels**: a digital image is a grid of pixels, each holding one or more numeric intensity values — grayscale images have 1 channel, standard color images have 3 (red, green, blue), and some formats add a 4th (alpha, for transparency). A color image is really a 3D array: height × width × channels.
-- **Color spaces**: **RGB** is the default for display and most deep learning pipelines, but not the only useful representation — **HSV** (Hue, Saturation, Value) separates color identity from brightness, making it easier to threshold "find all the red pixels" robustly against lighting changes than RGB does; **grayscale** collapses to one channel when color itself doesn't carry task-relevant information (e.g. some OCR and edge-detection pipelines), reducing compute for no accuracy cost.
-- **Bit depth and normalization**: images are typically stored as 8-bit integers per channel (0-255) but neural networks train far better on **normalized floats** (0-1, or mean/std-normalized per channel to roughly match the distribution the network's weights were initialized for) — the exact same normalization principle as [Initialization, Regularization & LR Scheduling](/docs/deep-learning/initialization-regularization-scheduling), applied to pixel values instead of weights.
+- **Pixels and channels.** An image is a grid of pixels, each with one or more intensity values. Grayscale has one channel, colour has three (red, green, blue), and some formats add an alpha channel for transparency. A colour image is a 3D array of height x width x channels.
+- **Channel order and layout.** OpenCV loads images as BGR, most other libraries as RGB. PyTorch models expect channels first (C x H x W); NumPy and PIL give channels last (H x W x C). Both mismatches run without errors and quietly lower accuracy.
+- **Colour spaces.** RGB is the default for display and deep learning. **HSV** (hue, saturation, value) separates colour from brightness, so "find the red pixels" is a threshold on hue that survives lighting changes. **Grayscale** drops colour when it carries no information, as in many OCR and edge-detection pipelines.
+- **Bit depth and normalisation.** Images are stored as 8-bit integers (0 to 255) per channel. Networks train better on floats near zero mean and unit variance, so pixels are divided by 255 and then standardised per channel. For ImageNet-pretrained models the standard per-channel means are (0.485, 0.456, 0.406) and standard deviations (0.229, 0.224, 0.225). It is the same reasoning as in [Initialization and Regularization](/docs/deep-learning/initialization-regularization-scheduling), applied to inputs.
 
 <RgbChannelDecompositionDiagram />
 
 ## Convolution as Classical Filtering
 
-[CNNs](/docs/deep-learning/cnns) introduced convolution as a *learned* layer — but convolution itself long predates deep learning as a classical image-processing tool: slide a small, fixed (not learned) kernel across an image, computing a weighted sum at each position.
+[CNNs](/docs/deep-learning/cnns) use convolution as a learned layer, but the operation is much older: slide a small fixed kernel across the image and take a weighted sum at each position.
 
 <ConvolutionSlideDiagram />
 
-This is the entire mechanical operation a CNN's first convolutional layer performs; the *only* difference is that a CNN **learns** the kernel values from data via backpropagation instead of a human hand-designing them (Sobel, and the filters above) in advance. Understanding this fixed-kernel version first is what makes "the network learned an edge detector in its first layer" (a commonly observed, real phenomenon when visualizing trained CNN filters) make intuitive sense rather than sounding like magic.
+A CNN's first layer does exactly this. The only difference is that it learns the kernel values by backpropagation instead of using ones a person designed. That is why visualising the first layer of a trained CNN shows edge and colour-blob detectors: they are what gradient descent finds useful first.
 
-## Morphological Operations
+### A Full Worked Example: Sobel on a Vertical Edge
 
-A family of operations on **binary** (black/white) images, built from two primitives applied with a small structuring element (a shape, like a 3×3 square):
+Take a 6 x 6 image whose left half is 10 and right half is 200. The Sobel x kernel has columns $(-1, -2, -1)$, $(0, 0, 0)$ and $(1, 2, 1)$: it subtracts the left column from the right, weighting the centre row twice. On a 3 x 3 window that straddles the edge, the result is $(200 - 10) \times (1 + 2 + 1) = 760$. Away from the edge both sides are equal and the result is 0. The Sobel y kernel, which compares the top and bottom rows, gives 0 everywhere, because the image does not change vertically. Combining the two gives the gradient magnitude $\sqrt{G_x^2 + G_y^2}$ and its direction at every pixel.
 
-- **Erosion**: shrinks bright regions — a pixel stays "on" only if the *entire* structuring element around it is also on. Removes small noise specks and thin protrusions.
-- **Dilation**: grows bright regions — a pixel turns "on" if *any* part of the structuring element around it is on. Fills small holes and gaps.
-- **Opening** (erosion then dilation): removes small noise while roughly preserving the size of larger regions — the standard "clean up small speckle noise" operation.
-- **Closing** (dilation then erosion): fills small holes/gaps while roughly preserving overall shape — the standard "fill small gaps in a detected region" operation.
+<RunnableCode code={`import numpy as np
 
-<MorphologicalOpsDiagram />
+# A 6x6 grayscale image: dark on the left, bright on the right (a vertical edge)
+img = np.array([[10, 10, 10, 200, 200, 200]] * 6, dtype=float)
 
-Still genuinely used today as a fast, non-learned preprocessing/postprocessing step — cleaning up a segmentation mask's small holes and speckles before computing metrics on it, for instance, rather than asking a neural network to be perfectly clean at the pixel level.
+sobel_x = np.array([[-1, 0, 1],
+                    [-2, 0, 2],
+                    [-1, 0, 1]], dtype=float)
+sobel_y = sobel_x.T
+
+def conv2d_valid(image, k):
+    kh, kw = k.shape
+    H, W = image.shape[0] - kh + 1, image.shape[1] - kw + 1
+    out = np.zeros((H, W))
+    for i in range(H):
+        for j in range(W):
+            out[i, j] = np.sum(image[i:i+kh, j:j+kw] * k)   # cross-correlation, as in CNNs
+    return out
+
+gx, gy = conv2d_valid(img, sobel_x), conv2d_valid(img, sobel_y)
+magnitude = np.hypot(gx, gy)
+print("Gx (one row of the 4x4 output):", gx[0])
+print("Gy is zero everywhere:", np.allclose(gy, 0))
+print("edge magnitude row:", magnitude[0])
+
+# Normalising for an ImageNet-pretrained network
+mean, std = np.array([0.485, 0.456, 0.406]), np.array([0.229, 0.224, 0.225])
+pixel = np.array([200, 120, 30]) / 255.0
+print("RGB (200,120,30) normalised:", np.round((pixel - mean) / std, 3))
+
+# Try it: transpose the image (img = img.T). The edge becomes horizontal,
+# Gx goes to zero and Gy carries the response instead.`} />
 
 ## Edge Detection
 
-- **Sobel**: the kernel shown above — approximates the image gradient (rate of intensity change) in the x or y direction via a small, fixed convolution; combining both directions gives gradient magnitude and orientation at every pixel.
-- **Canny**: a more complete, multi-stage edge detector built on top of the same gradient idea — Gaussian smoothing (reduce noise before differentiating), gradient computation (Sobel-like), non-maximum suppression (thin the resulting edges down to single-pixel width), and hysteresis thresholding (a two-threshold scheme that keeps weak edges only if they connect to a strong one, suppressing noisy fragments) — the standard "give me clean, thin edges" classical algorithm, still a common preprocessing step in non-deep-learning vision pipelines.
+- **Sobel** approximates the image gradient with the fixed kernels above.
+- **Canny** builds a complete edge detector on the same gradient in four stages: Gaussian smoothing to reduce noise before differentiating, Sobel-style gradients, non-maximum suppression to thin edges to one pixel, and hysteresis thresholding, which keeps a weak edge only if it connects to a strong one. It is still the standard way to get clean, thin edges without a neural network.
+
+## Morphological Operations
+
+Morphology works on binary masks with a small structuring element, such as a 3 x 3 square:
+
+- **Erosion** keeps a pixel on only if every pixel under the element is on. Objects shrink and isolated specks vanish.
+- **Dilation** turns a pixel on if any pixel under the element is on. Objects grow and small holes fill.
+- **Opening** (erosion, then dilation) removes small noise and restores larger objects to roughly their original size.
+- **Closing** (dilation, then erosion) fills small holes and gaps and keeps the overall shape.
+
+<MorphologicalOpsDiagram />
+
+### Run It Yourself: Cleaning a Segmentation Mask
+
+A mask holds one 4 x 4 object and two single-pixel specks, 18 pixels in all. Erosion with a 3 x 3 element shrinks the object to 2 x 2 and deletes both specks. Dilation then grows the object back to 4 x 4, but the specks are gone and cannot come back. The result is 16 pixels. This is how segmentation masks are commonly cleaned before computing areas or metrics, rather than expecting a network to be clean at the pixel level.
+
+<RunnableCode code={`import numpy as np
+
+# Binary mask: one 4x4 object plus two single-pixel noise specks
+mask = np.zeros((8, 8), dtype=int)
+mask[2:6, 2:6] = 1
+mask[0, 7] = 1
+mask[7, 0] = 1
+
+def erode(m):
+    p = np.pad(m, 1)
+    return np.array([[p[i:i+3, j:j+3].min() for j in range(m.shape[1])] for i in range(m.shape[0])])
+
+def dilate(m):
+    p = np.pad(m, 1)
+    return np.array([[p[i:i+3, j:j+3].max() for j in range(m.shape[1])] for i in range(m.shape[0])])
+
+opened = dilate(erode(mask))
+print("before:", mask.sum(), "pixels on")
+print("after erosion:", erode(mask).sum(), "pixels on (object shrinks to 2x2, specks vanish)")
+print("after opening:", opened.sum(), "pixels on (object back to 4x4, specks gone)")
+print(opened)
+
+# Try it: change mask[2:6, 2:6] to mask[2:4, 2:4], a 2x2 object. Erosion with a 3x3
+# element deletes it completely, so opening removes real objects smaller than the element.`} />
 
 ## Classical Feature Extraction
 
-Before learned CNN features, computer vision relied on hand-engineered, mathematically-designed feature descriptors:
+Before learned features, vision relied on descriptors designed by hand:
 
-- **SIFT (Scale-Invariant Feature Transform)** / **ORB (Oriented FAST and Rotated BRIEF)**: detect distinctive keypoints in an image (corners, blobs) and compute a descriptor vector for each, designed to be robust to scale, rotation, and (to a degree) illumination changes — the classical answer to "find and match the same physical point across two different photos of it," used for panorama stitching, classical object recognition, and visual SLAM (robot localization). ORB is a much faster, patent-unencumbered alternative to SIFT with similar practical use.
-- **HOG (Histogram of Oriented Gradients)**: divides an image into small cells, computes a histogram of gradient directions within each cell, and concatenates them into a feature vector — famously the feature representation behind the original real-time pedestrian/face detectors (paired with an SVM classifier, see [Support Vector Machines](/docs/machine-learning/support-vector-machines)) that predate deep learning-based detection entirely.
+- **SIFT** and **ORB** detect distinctive keypoints (corners, blobs) and compute a descriptor for each that is robust to scale, rotation and some lighting change. They answer "find the same physical point in two photos", which is what panorama stitching and visual SLAM need. ORB is much faster and was designed as a free alternative to SIFT, which was patented until 2020.
+- **HOG** (histogram of oriented gradients) splits the image into small cells, builds a histogram of gradient directions in each, and concatenates them. Paired with a linear [SVM](/docs/machine-learning/support-vector-machines), it was the standard pedestrian detector before deep learning.
 
 <HogFeatureDiagram />
 
-Learned CNN features have superseded hand-engineered descriptors for most modern vision tasks (a trained network's features generalize better and require no manual design), but these remain relevant where a model needs to run with no training data at all, extremely low compute (classical descriptors are far cheaper than a CNN forward pass), or full mathematical interpretability of what's being matched.
+Learned CNN features have replaced these for most tasks, because they generalise better and need no design. Hand-made features are still the right choice with no training data, on very small hardware, or when every step of the matching must be explainable.
+
+<GoDeeper title="Go deeper: why Sobel weights the centre row by 2">
+
+The Sobel kernel is the outer product of two 1D filters: a smoothing filter $(1, 2, 1)$ down the columns and a difference filter $(-1, 0, 1)$ across the rows. The difference filter approximates the derivative; the smoothing filter is a small binomial approximation of a Gaussian, which suppresses pixel noise before it gets differentiated. Differentiation amplifies high-frequency noise, so smoothing first is essential, and Canny makes that step explicit with a larger Gaussian. Because the kernel is separable, it can be applied as two 1D passes, which costs $2k$ multiplications per pixel instead of $k^2$ for a $k \times k$ kernel.
+
+</GoDeeper>
 
 ## Data Augmentation for Vision
 
-Artificially expanding a training set by applying label-preserving transformations — directly combating overfitting the same way [Regularization](/docs/machine-learning/model-evaluation-metrics#regularization) does, but at the data level instead of the model level:
+Augmentation expands the training set with transformations that should not change the label. It fights overfitting at the data level, as [regularization](/docs/machine-learning/model-evaluation-metrics#regularization) does at the model level.
 
-- **Geometric**: random crop, flip, rotation, scaling — teaches the model that an object's identity doesn't depend on its exact position/orientation in the frame.
-- **Photometric**: brightness/contrast/color jitter, adding noise — teaches robustness to lighting and sensor conditions that vary in the real world but shouldn't change the label.
-- **Modern/aggressive augmentation**: **Cutout** (mask out random square regions, forcing the model to not over-rely on any single part of the image), **MixUp** (blend two images and their labels proportionally), **CutMix** (paste a patch from one image onto another, mixing labels proportionally to the patch area) — all push regularization further than simple geometric/photometric jitter, and are standard in training recipes for modern vision backbones (see [EfficientNet and ConvNeXt](/docs/deep-learning/cnns#the-architecture-lineage)).
+- **Geometric**: random crops, flips, rotations and scaling teach the model that identity does not depend on position or orientation.
+- **Photometric**: brightness, contrast and colour jitter, and added noise, teach robustness to lighting and sensors.
+- **Mixing**: Cutout masks random squares; MixUp blends two images and their labels; CutMix pastes a patch from one image onto another and mixes the labels by patch area. These are standard in recipes for modern backbones such as [EfficientNet and ConvNeXt](/docs/deep-learning/cnns#the-architecture-lineage).
 
 <DataAugmentationDiagram />
 
-Next: [Vision Tasks & Models](/docs/computer-vision/vision-tasks-and-models) — the full taxonomy of what vision systems are actually asked to do, beyond plain classification.
+<PredictFirst
+  question="You add random horizontal flips to the training data for a model that reads handwritten digits. What happens?"
+  options={[
+    'Accuracy improves, because flips are a safe default augmentation',
+    'Accuracy can fall, because a flipped digit can look like a different digit or no digit, so the augmentation changes the label',
+    'Nothing changes, because CNNs are already flip-invariant',
+    'Training fails, because flipped images have a different shape',
+  ]}
+  correctIndex={1}
+  explanation="Augmentation is only valid if the transformation preserves the label. A mirrored 2 or 7 is not a valid digit, and similar problems arise for text, road signs with arrows and left-versus-right medical images. Flips are safe for most natural photos, which is why they are a default there. CNNs are translation-equivariant, not flip-invariant."
+/>
+
+<NotebookCallout color="amber" title="Match preprocessing to the pretrained model">
+A pretrained model only works with the preprocessing it was trained with: the same resize, channel order and per-channel normalisation. Copy them from the model card or the library's transform, and check one image end to end before training.
+</NotebookCallout>
+
+## Common Problems & Fixes
+
+| Problem | Cause | Fix |
+| --- | --- | --- |
+| Pretrained model is far worse than reported | BGR vs RGB, or missing normalisation | Use the model's own transforms; assert channel order |
+| Model predicts well in training, poorly on phone photos | No photometric augmentation; different camera | Colour jitter, noise and blur augmentation |
+| Mask metrics are noisy | Speckle and small holes in predicted masks | Morphological opening and closing as post-processing |
+| Augmentation lowers accuracy | A transform changes the label (flips on text) | Only use label-preserving transforms for the task |
+| Small objects disappear | Aggressive random crops or resizing | Larger crop scale range; higher input resolution |
+
+## When *Not* to Use It
+
+| Situation | Better choice |
+| --- | --- |
+| Large labelled dataset and a GPU | Learned features from a pretrained CNN or ViT, not HOG or SIFT |
+| Matching points between photos with no training data | SIFT or ORB, not a classifier |
+| Strict real-time on a microcontroller | Classical filters and thresholds |
+| Very heavy augmentation with a tiny model | Lighter augmentation; small models underfit with MixUp and CutMix |
+
+## Remember
+
+| Idea | One line |
+| --- | --- |
+| Image array | H x W x C, 8-bit, RGB or BGR depending on the loader |
+| Normalisation | /255, then per-channel mean and std of the pretraining data |
+| HSV | Separates colour from brightness for robust thresholds |
+| Convolution | A weighted sum under a sliding kernel; CNNs learn the weights |
+| Sobel | Smooth one way, difference the other; 760 on a 10-to-200 edge |
+| Opening | Erode then dilate; removes specks smaller than the element |
+| HOG, SIFT | Hand-made gradient features; still useful without data |
+| Augmentation | Only transformations that keep the label |
+
+Next: [Vision Tasks & Models](/docs/computer-vision/vision-tasks-and-models), the full list of what vision systems are asked to do beyond classification.
+
+## Sources
+
+- Sobel and Feldman, "A 3x3 Isotropic Gradient Operator for Image Processing", 1968 (presented at the Stanford AI Project).
+- Canny, "A Computational Approach to Edge Detection", IEEE TPAMI, 1986.
+- Lowe, "Distinctive Image Features from Scale-Invariant Keypoints" (SIFT), IJCV, 2004.
+- Rublee et al., "ORB: An efficient alternative to SIFT or SURF", ICCV 2011.
+- Dalal and Triggs, "Histograms of Oriented Gradients for Human Detection", CVPR 2005.
+- Zhang et al., "mixup: Beyond Empirical Risk Minimization", 2017. https://arxiv.org/abs/1710.09412
+- Yun et al., "CutMix", 2019. https://arxiv.org/abs/1905.04899
+- Zeiler and Fergus, "Visualizing and Understanding Convolutional Networks", 2013. https://arxiv.org/abs/1311.2901

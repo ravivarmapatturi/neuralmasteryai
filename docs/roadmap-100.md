@@ -85,7 +85,8 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 62. done - Deepened Vision Tasks and Models (IoU association worked example, stereo depth error, Hungarian vs greedy, sources).
 63. done - Deepened Classical NLP (runnable Viterbi where greedy fails, BIO span F1, log-space, CRFs, sources).
 64. done - Deepened Alignment and RLHF (KL-regularised optimum on four answers, over-optimisation, rare-failure statistics, DPO derivation).
-65-70. planned - Close depth gaps found by the existing audits, one page each. Picked from docs/learning-page-inventory.md: the lowest-word core chapters.
+65. done - Deepened Vision Fundamentals (Sobel worked example, mask opening, channel order and normalisation pitfalls, augmentation validity).
+66-70. planned - Close depth gaps found by the existing audits, one page each. Picked from docs/learning-page-inventory.md: the lowest-word core chapters.
 
 ### Atlas and visuals (71-80)
 71. done - Atlas shows one label, for the selected entry, so labels no longer overlap.
