@@ -90,7 +90,7 @@ export default function ClusterNodeAssemblyDiagram() {
                 }}
               >
                 <div style={{ fontWeight: 600, fontSize: DIAGRAM_TYPE.secondaryLabel.size }}>
-                  {s.label} {s.required && <span style={{ color: '#d9534f' }}>*</span>}
+                  {s.label} {s.required && <span style={{ color: t.accentDanger }}>*</span>}
                 </div>
                 <div style={{ fontSize: 11, color: t.textSecondary, marginTop: 2 }}>{on ? 'attached' : 'click to attach'}</div>
               </button>

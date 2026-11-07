@@ -196,7 +196,7 @@ export default function PagedAttentionVisualizer() {
                   justifyContent: 'center',
                   fontSize: 10,
                   fontFamily: 'monospace',
-                  color: isWastedContiguous ? t.accentDanger : isAllocated ? '#000' : t.textMuted,
+                  color: isWastedContiguous ? t.accentDanger : isAllocated ? t.background : t.textMuted,
                   fontWeight: 600,
                   transition: 'all 0.2s ease',
                 }}

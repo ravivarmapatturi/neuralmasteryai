@@ -10,7 +10,7 @@ export default function RetrievalFunnelMissDiagram() {
   const t = useVizTokens();
   const biColor = getConceptColor(t, 'query');
   const crossColor = getConceptColor(t, 'attention');
-  const missColor = '#d9534f';
+  const missColor = t.accentDanger;
 
   const width = 640;
   const height = 220;
