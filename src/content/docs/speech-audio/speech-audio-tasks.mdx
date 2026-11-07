@@ -1,67 +1,217 @@
 ---
 title: "Speech & Audio Tasks"
 sidebar_position: 4
-description: "ASR, TTS, and the full speech task taxonomy -- reusing the same sequence-modeling and attention machinery from text, applied to spectrogram-like audio."
+description: "ASR with CTC and encoder-decoders, WER, TTS, speaker verification and EER, diarization, enhancement and audio-language models, with CTC decoding, WER and EER computed in code."
 ---
-
 
 import CtcAlignmentDiagram from '../../../viz/diagrams/CtcAlignmentDiagram';
 import TtsPipelineDiagram from '../../../viz/diagrams/TtsPipelineDiagram';
 import SpeakerVerificationDiagram from '../../../viz/diagrams/SpeakerVerificationDiagram';
 import DiarizationTimelineDiagram from '../../../viz/diagrams/DiarizationTimelineDiagram';
 import SpeechEnhancementDiagram from '../../../viz/diagrams/SpeechEnhancementDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
 # Speech & Audio Tasks
 
-The task taxonomy built on top of the representations in [Audio Fundamentals](/docs/speech-audio/audio-fundamentals) — every one of these reuses the sequence-modeling and attention machinery from [Deep Learning](/docs/deep-learning/roadmap) directly, just applied to spectrogram-like input instead of text tokens or image patches.
+<ELI5>
+
+There are a handful of jobs we give a computer that listens. Write down what was said. Say this text out loud. Tell me who is speaking. Tell me who spoke when in this meeting. Remove the traffic noise from this call. Each job starts from the same chart of sound over time, and each one needs its own way of turning that chart into an answer.
+
+</ELI5>
+
+## Why This Exists
+
+[Audio Fundamentals](/docs/speech-audio/audio-fundamentals) turned a waveform into a log-mel spectrogram: about 100 frames per second, each a vector of 80 numbers. Every task on this page starts there and reuses the sequence-modelling and attention machinery from [Deep Learning](/docs/deep-learning/roadmap). What differs is the shape of the output. Speech recognition must turn 100 frames per second into a few words per second without knowing which frames belong to which word. Synthesis runs the other way and must invent detail the text does not contain. Verification must turn a whole clip into one point in an embedding space. Most of the engineering is about those mismatches, and about measuring the result correctly.
 
 ## ASR: Automatic Speech Recognition
 
-Converting spoken audio into text — architecturally, a sequence-to-sequence problem (audio frames in, text tokens out), solved by a few structurally different approaches:
+ASR converts speech to text. The core problem is **alignment**: a 2-second clip is 200 frames but "turn the lights off" is 4 words, and training data rarely says which frames belong to which letter. There are three main designs:
 
-- **CTC (Connectionist Temporal Classification)**: lets a model output a text sequence *shorter* than the input audio sequence without needing pre-aligned training data (exact "this audio frame corresponds to this character" labels, which are expensive to produce). CTC introduces a special "blank" token and a many-to-one collapsing rule (repeated characters and blanks get collapsed down), letting the model be trained with only the target *text*, no frame-level alignment — the model itself learns where each character should go via the CTC loss.
-- **Encoder-decoder with attention**: an audio encoder (often a CNN or Transformer over spectrogram frames) processes the full audio, and a decoder generates text tokens autoregressively, attending back over the encoded audio — the same encoder-decoder pattern as [machine translation](/docs/nlp/nlp-task-taxonomy#machine-translation), with audio frames in place of source-language tokens.
-- **Whisper-style approaches**: a large Transformer encoder-decoder trained on a massive, diverse, weakly-labeled dataset (audio paired with whatever transcripts/captions were available at scale, not painstakingly curated) — the same "scale beats careful curation, given enough data" lesson that drove LLM pretraining (see [LLM Pretraining](/docs/llms-genai/roadmap)) applied to speech, and the reason Whisper-family models generalize robustly across accents, background noise, and languages without task-specific fine-tuning.
-- **Evaluation**: **Word Error Rate (WER)** — edit distance (insertions + deletions + substitutions) between the predicted and reference transcript, divided by the reference's word count — the standard ASR metric, directly analogous to how [BLEU](/docs/nlp/nlp-task-taxonomy#machine-translation) scores translation, but based on edit distance rather than n-gram overlap.
+- **CTC** (connectionist temporal classification) lets the model emit one symbol per frame, including a special **blank**, and defines the output as what remains after merging repeated symbols and removing blanks. The CTC loss sums the probability of every frame-level path that collapses to the target text, so training needs only the transcript, not an alignment.
+- **Encoder-decoder with attention** encodes the whole clip, then generates text tokens one at a time while attending back over the encoded frames, the same pattern as [machine translation](/docs/nlp/nlp-task-taxonomy#machine-translation).
+- **Transducers** (RNN-T) combine the two: they emit tokens frame by frame like CTC, but each prediction also conditions on the tokens already emitted. They are the usual choice for on-device streaming recognition.
+
+**Whisper** is an encoder-decoder transformer trained on 680,000 hours of audio paired with transcripts gathered from the web: weakly labelled, but vast. As with LLM pretraining, scale and diversity bought robustness. Whisper works across accents, noise and nearly 100 languages without task-specific fine-tuning.
 
 <CtcAlignmentDiagram />
 
+### A Full Worked Example: CTC Collapse and Word Error Rate
+
+Suppose the per-frame best symbols are `hh_ell_loo_`. Merging repeats gives `h_el_lo_`, and dropping blanks gives `hello`. The blank between the two l's matters: without it, `ll` merges into one `l` and the output is `helo`. The blank is the only way CTC can produce a doubled letter.
+
+ASR is scored by **word error rate** (WER): the word-level edit distance (substitutions, deletions and insertions) between hypothesis and reference, divided by the number of reference words. Against "turn the kitchen lights off" (5 words), "turn the kitchen light off" has one substitution, WER 0.20. "turn kitchen lights of" has a deletion and a substitution, WER 0.40.
+
+<PredictFirst
+  question="The reference is 'turn the kitchen lights off'. The ASR output is 'um so turn the uh kitchen lights off please now', which contains every reference word in order. What is the WER?"
+  options={[
+    '0, because every reference word is there',
+    '1.0, because five inserted words are each an error, divided by five reference words',
+    '0.5, because half the output words are extra',
+    'It cannot be computed, because the lengths differ',
+  ]}
+  correctIndex={1}
+  explanation="WER counts insertions as errors and divides by the reference length, not the hypothesis length. Five insertions over five reference words gives 1.0, and with more insertions WER exceeds 100%. Treating extra words as harmless is the tempting mistake; for a voice assistant, spurious words can change the command."
+/>
+
+<RunnableCode code={`# Greedy CTC output: best symbol per frame, then merge repeats and drop blanks
+BLANK = "_"
+frames = ["h", "h", "_", "e", "l", "l", "_", "l", "o", "o", "_"]
+
+def ctc_collapse(seq):
+    out, prev = [], None
+    for s in seq:
+        if s != prev and s != BLANK:
+            out.append(s)
+        prev = s
+    return "".join(out)
+
+print("frames :", "".join(frames))
+print("decoded:", ctc_collapse(frames))      # the blank between the l's keeps "ll"
+
+# Word error rate: word-level edit distance / reference length
+def wer(ref, hyp):
+    r, h = ref.split(), hyp.split()
+    d = [[0] * (len(h) + 1) for _ in range(len(r) + 1)]
+    for i in range(len(r) + 1):
+        d[i][0] = i
+    for j in range(len(h) + 1):
+        d[0][j] = j
+    for i in range(1, len(r) + 1):
+        for j in range(1, len(h) + 1):
+            sub = d[i-1][j-1] + (r[i-1] != h[j-1])
+            d[i][j] = min(sub, d[i-1][j] + 1, d[i][j-1] + 1)
+    return d[-1][-1] / len(r)
+
+ref = "turn the kitchen lights off"
+for hyp in ["turn the kitchen lights off",
+            "turn the kitchen light off",
+            "turn kitchen lights of",
+            "um so turn the uh kitchen lights off please now"]:
+    print(f"WER {wer(ref, hyp):.2f}  {hyp!r}")
+
+# Try it: remove the "_" between the two l's in frames. CTC merges them and
+# decodes "helo": a blank is the only way to emit a doubled letter.`} />
+
+<NotebookCallout color="amber" title="Normalise text before computing WER">
+"Turn off the lights." and "turn off the lights" differ by case and punctuation, and "10" versus "ten" is a substitution. Published Whisper numbers use a text normaliser for this reason. Apply the same normaliser to both sides, or WER measures formatting instead of recognition.
+</NotebookCallout>
+
+<GoDeeper title="Go deeper: how the CTC loss sums over every alignment">
+
+The number of frame-level paths that collapse to a given text grows combinatorially with the number of frames, so CTC cannot list them. It uses dynamic programming instead. Insert blanks between and around the target letters (so "cat" becomes `_c_a_t_`), and build a table whose entry $\alpha_t(s)$ is the total probability of all paths that have emitted the first $s$ symbols of that extended sequence after $t$ frames. Each entry comes from at most three predecessors: stay on the same symbol, move on by one, or skip a blank between two different letters. The loss is the negative log of the total at the last frame, computed in $O(T \cdot S)$ time, the same forward-algorithm idea as the HMM in [Classical NLP](/docs/nlp/classical-nlp). CTC assumes frames are conditionally independent given the audio, which is why CTC models benefit from an external language model at decoding time.
+
+</GoDeeper>
+
 ## TTS: Text-to-Speech
 
-Converting text into natural-sounding spoken audio — historically a two-stage pipeline, increasingly collapsed into one model:
+TTS turns text into audio. The classic pipeline has two stages:
 
-- **Acoustic model**: converts text (or phonemes — the distinct units of sound in a language) into an intermediate acoustic representation, typically a Mel spectrogram (see [Audio Fundamentals](/docs/speech-audio/audio-fundamentals#mel-spectrograms-and-mfccs)) — essentially predicting "what should this text sound like," in spectrogram form, without yet producing actual playable audio.
-- **Vocoder**: converts that intermediate spectrogram into an actual raw waveform — a genuinely hard problem on its own (a spectrogram discards the exact phase information needed to reconstruct a waveform sample-by-sample), solved by dedicated neural vocoders (e.g. WaveNet and its many faster successors) trained specifically for high-fidelity spectrogram-to-waveform synthesis.
-- **End-to-end neural TTS**: modern systems increasingly train a single model directly from text to waveform (or use a diffusion-based approach — see [Generative Models](/docs/deep-learning/generative-models) — over the audio representation), collapsing the two-stage pipeline and letting the acoustic and vocoding modeling be learned jointly rather than optimized separately.
-- **Voice cloning / speaker-conditioned TTS**: conditioning a TTS model on a short reference audio sample of a target speaker's voice, generating new speech in that voice for arbitrary text — reuses the same embedding-conditioning pattern as [Recommender Systems](/docs/machine-learning/recommender-systems)'s user/item embeddings or a VLM's image conditioning: a learned speaker embedding steers the generation process, rather than needing to retrain the whole model per speaker.
+- **An acoustic model** maps text, usually converted to phonemes first, to a mel spectrogram: what the text should sound like, but not yet playable audio. Tacotron 2 and FastSpeech 2 are standard examples.
+- **A vocoder** turns the mel spectrogram into a waveform. This is hard on its own, because the spectrogram discards phase. WaveNet solved it with high quality but slowly; GAN vocoders such as HiFi-GAN are fast enough for real time.
+
+End-to-end models (VITS) learn both stages jointly, and newer systems treat speech as discrete tokens from a neural audio codec and generate them with a language model or with diffusion (see [Generative Models](/docs/deep-learning/generative-models)). **Voice cloning** conditions the model on a speaker embedding computed from a short reference clip, so a new voice needs seconds of audio rather than a new model.
 
 <TtsPipelineDiagram />
 
+TTS quality is usually reported as a mean opinion score (MOS): listeners rate naturalness from 1 to 5. Intelligibility can be checked automatically by running ASR on the output and computing WER.
+
 ## Speaker Recognition and Verification
 
-- **Speaker identification**: which of a known set of speakers is this audio from — a closed-set classification problem.
-- **Speaker verification**: does this audio match a specific claimed speaker's identity (a yes/no decision, often for authentication) — typically framed as a metric-learning problem, the same [Siamese network / contrastive embedding](/docs/deep-learning/advanced-architectures#metric-learning-networks) approach used for face verification, just with a learned speaker-embedding space instead of a face-embedding space: enroll a speaker via a reference embedding, then check whether new audio's embedding is close enough to match.
+- **Identification** picks which of a known set of speakers is talking: closed-set classification.
+- **Verification** decides whether a clip matches one claimed speaker. It is set up as [metric learning](/docs/deep-learning/advanced-architectures#metric-learning-networks): a network (x-vectors, ECAPA-TDNN) maps each clip to an embedding, a speaker enrols by recording a reference, and a new clip is accepted if its cosine similarity to the reference passes a threshold.
 
 <SpeakerVerificationDiagram />
 
+### Run It Yourself: Equal Error Rate
+
+Every threshold trades false accepts (an impostor gets in) against false rejects (the real speaker is refused). The **equal error rate** (EER) is the error at the threshold where the two rates are equal, and it is the standard single number for comparing verification systems. With simulated genuine scores centred at 0.72 and impostor scores at 0.30, the EER is about 2.7%. A bank would not run at the EER: at a threshold of 0.65, false accepts fall to almost zero but a quarter of genuine attempts are rejected.
+
+<RunnableCode code={`import numpy as np
+
+# Speaker verification: cosine score between an enrolment embedding and a test clip.
+# Simulated scores for 1,000 genuine trials and 1,000 impostor trials.
+rng = np.random.default_rng(0)
+genuine  = np.clip(rng.normal(0.72, 0.10, 1000), -1, 1)
+impostor = np.clip(rng.normal(0.30, 0.12, 1000), -1, 1)
+
+thresholds = np.linspace(0, 1, 1001)
+far = np.array([(impostor >= t).mean() for t in thresholds])   # false accepts
+frr = np.array([(genuine < t).mean() for t in thresholds])     # false rejects
+i = np.argmin(np.abs(far - frr))
+print(f"equal error rate about {(far[i] + frr[i]) / 2:.3%} at threshold {thresholds[i]:.3f}")
+
+for t in (0.45, 0.55, 0.65):
+    k = int(round(t * 1000))
+    print(f"threshold {t}: false accept {far[k]:.2%}, false reject {frr[k]:.2%}")
+
+# Try it: change the impostor mean to 0.45 (a harder population, such as
+# family members). The EER rises sharply, though the model did not change.`} />
+
 ## Speaker Diarization
 
-Answering "who spoke when" in multi-speaker audio (a meeting recording, a phone call) — segmenting the audio by time *and* clustering segments by speaker identity, without necessarily knowing in advance who's present or how many speakers there are. Combines voice-activity detection (finding when *someone* is speaking at all), speaker-embedding extraction per segment (the same embeddings from speaker recognition above), and clustering ([K-Means or hierarchical clustering](/docs/machine-learning/kmeans-hierarchical-clustering)) to group segments by speaker — a genuinely different problem from ASR (which just transcribes *what* was said) and often run alongside it to produce a full "Speaker A: ..., Speaker B: ..." transcript.
+Diarization answers "who spoke when" in a recording with several speakers, usually without knowing in advance who they are or how many. The classic pipeline runs voice activity detection (where is anyone speaking), extracts a speaker embedding for each short segment, and [clusters](/docs/machine-learning/kmeans-hierarchical-clustering) the embeddings, so each cluster is one speaker. It is a separate problem from ASR, and the two are combined to produce "Speaker A: ..., Speaker B: ..." transcripts. Overlapping speech is the hardest part, because one segment then belongs to two clusters. End-to-end neural diarization models handle overlap directly. Diarization error rate (DER) adds up missed speech, false alarms and speaker confusion as a fraction of total speech time.
 
 <DiarizationTimelineDiagram />
 
 ## Audio Classification
 
-Assigning a label to an audio clip — environmental sound classification (glass breaking, a dog barking, a car alarm — used in smart-home/security applications), music genre classification, or general acoustic scene classification. Architecturally the most direct fit for standard CNN-style classification: treat a Mel spectrogram as an "image" and apply a CNN classifier (see [CNNs](/docs/deep-learning/cnns)) directly, or use a Transformer over spectrogram patches, essentially the same architectural playbook as [Computer Vision — Vision Tasks & Models](/docs/computer-vision/vision-tasks-and-models)'s classification task, applied to a time-frequency image instead of a photograph.
+Audio classification gives a clip a label: glass breaking, a dog barking, a music genre, an acoustic scene. It fits standard image methods well: treat the log-mel spectrogram as an image and apply a [CNN](/docs/deep-learning/cnns), or split it into patches for a transformer (the Audio Spectrogram Transformer). Pretraining on AudioSet, about 2 million 10-second clips labelled with 527 classes, plays the role ImageNet plays for vision.
 
 ## Speech Enhancement and Noise Suppression
 
-Removing background noise or isolating a target speaker's voice from a noisy recording — framed as predicting a *clean* spectrogram (or waveform) from a *noisy* one, trained on pairs of clean and artificially-noised audio, the same denoising-autoencoder idea as [Autoencoders](/docs/deep-learning/autoencoders)'s denoising variant, applied to audio instead of images. Real-time noise suppression (video call background noise removal) adds a hard latency constraint on top of the modeling problem — the model has to run faster than real-time, consistently, which shapes architecture choices (favoring smaller, more efficient models) as much as raw accuracy does.
+Enhancement removes noise or isolates one voice. Models are trained on pairs made by adding noise to clean speech, and learn to predict either the clean spectrogram or a mask that multiplies the noisy one, the same idea as a [denoising autoencoder](/docs/deep-learning/autoencoders). For calls the model must also run in real time with only a few tens of milliseconds of look-ahead, so the latency budget shapes the architecture as much as accuracy does.
 
 <SpeechEnhancementDiagram />
 
-## Audio-Language Models and Multimodal Audio
+## Audio-Language Models
 
-Extending the VLM pattern (see [Computer Vision — Modern Vision & Multimodal](/docs/computer-vision/modern-vision-and-multimodal#vision-language-models-and-image-text-alignment)) to audio: an audio encoder (processing spectrogram-like input) feeds learned audio features into an LLM alongside text, letting the model answer questions about audio content, follow spoken instructions directly, or reason jointly over audio and text — the same image→vision-encoder→projector→LLM architecture from [Multimodal & Generative Models](/docs/llms-genai/multimodal-generative-models), with an audio encoder standing in for the vision encoder. This is the direction voice-native assistants are headed: rather than a pipeline of separate ASR → LLM → TTS stages (each adding latency and losing paralinguistic information — tone, emphasis, pauses — that pure text transcription discards), a single audio-native model processes and responds to speech more directly.
+Audio-language models extend the [VLM design](/docs/computer-vision/modern-vision-and-multimodal#vision-language-models-and-image-text-alignment) to sound: an audio encoder feeds projected features into an LLM, the same encoder, projector and LLM layout as in [Multimodal & Generative Models](/docs/llms-genai/multimodal-generative-models). Voice assistants are moving from a cascade (ASR, then an LLM, then TTS) to such models. A cascade adds the latency of three stages and throws away tone, emphasis and pauses when it reduces speech to text; a speech-native model keeps them and can start answering sooner.
 
-Speech & Audio AI section complete. Next: [LLMs & GenAI](/docs/llms-genai/roadmap) — where audio-language models connect back to the general multimodal Transformer story.
+## Common Problems & Fixes
+
+| Problem | Cause | Fix |
+| --- | --- | --- |
+| Whisper writes text during silence or music | The decoder's language prior, with no speech to constrain it | Voice activity detection first; suppress low-confidence segments |
+| WER differs between two runs of the same model | Different text normalisation | One normaliser for every evaluation |
+| ASR fails on names and jargon | Rare words absent from training text | Contextual biasing or a custom vocabulary prompt; fine-tune |
+| Verification works in the lab, fails on phones | Channel mismatch between enrolment and test | Enrol on the same channel; augment with codecs and noise |
+| Diarization merges two similar voices | Embeddings too close; overlap | Tune the clustering threshold; an overlap-aware model |
+
+## When *Not* to Use It
+
+| Situation | Better choice |
+| --- | --- |
+| A handful of fixed voice commands on a microcontroller | Keyword spotting with a small CNN, not full ASR |
+| Live captions with under 300 ms of delay | Streaming CTC or transducer models, not a 30-second-window encoder-decoder |
+| High-security authentication | Voice as one factor with others; cloned voices defeat voice alone |
+| Transcribing one clear speaker offline | Plain ASR; skip diarization |
+
+## Remember
+
+| Idea | One line |
+| --- | --- |
+| CTC | One symbol per frame plus blank; merge repeats, drop blanks |
+| Blank | The only way to emit a doubled letter |
+| Encoder-decoder ASR | Attend over all frames, generate text; Whisper |
+| WER | (S + D + I) / reference words; can exceed 1 |
+| TTS | Text to mel (acoustic model), mel to waveform (vocoder) |
+| Verification | Embedding plus cosine threshold; report EER |
+| Diarization | VAD, segment embeddings, clustering; scored by DER |
+| Speech-native assistants | Skip the cascade; keep tone and cut latency |
+
+The Speech and Audio section ends here. Next: [LLMs & GenAI](/docs/llms-genai/roadmap), where audio-language models join the general multimodal story.
+
+## Sources
+
+- Graves et al., "Connectionist Temporal Classification", ICML 2006. https://www.cs.toronto.edu/~graves/icml_2006.pdf
+- Graves, "Sequence Transduction with Recurrent Neural Networks" (RNN-T), 2012. https://arxiv.org/abs/1211.3711
+- Radford et al., "Robust Speech Recognition via Large-Scale Weak Supervision" (Whisper), 2022. https://arxiv.org/abs/2212.04356
+- Shen et al., "Natural TTS Synthesis by Conditioning WaveNet on Mel Spectrogram Predictions" (Tacotron 2), 2017. https://arxiv.org/abs/1712.05884
+- Kong, Kim and Bae, "HiFi-GAN", 2020. https://arxiv.org/abs/2010.05646
+- Kim, Kong and Son, "Conditional Variational Autoencoder with Adversarial Learning for End-to-End Text-to-Speech" (VITS), 2021. https://arxiv.org/abs/2106.06103
+- Desplanques, Thienpondt and Demuynck, "ECAPA-TDNN", 2020. https://arxiv.org/abs/2005.07143
+- Gemmeke et al., "Audio Set: An ontology and human-labeled dataset for audio events", ICASSP 2017.
+- Gong, Chung and Glass, "AST: Audio Spectrogram Transformer", 2021. https://arxiv.org/abs/2104.01778
