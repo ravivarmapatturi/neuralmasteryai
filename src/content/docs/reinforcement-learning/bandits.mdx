@@ -1,12 +1,15 @@
 ---
 title: "Multi-Armed & Contextual Bandits"
 sidebar_position: 5
-description: "Multi-armed and contextual bandits -- the real regret tradeoffs between epsilon-greedy, UCB1, and Thompson Sampling for the explore/exploit problem."
+description: "Multi-armed and contextual bandits: regret, epsilon-greedy, UCB1 and Thompson sampling simulated in code, LinUCB, and off-policy evaluation of a new policy from logged data."
 ---
 
 
 import BanditRegretRaceDiagram from '../../../viz/diagrams/BanditRegretRaceDiagram';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import RunnableCode from '../../../components/content/RunnableCode';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
 # Multi-Armed & Contextual Bandits
 
@@ -38,6 +41,55 @@ The bonus comes directly from **Hoeffding's inequality**, a real concentration b
 
 Worth sitting with what the diagram actually shows, because it's a real, slightly counter-intuitive result, not a foregone conclusion: **UCB1 looks worse than plain ε-greedy for a long stretch.** Its $\sqrt{2\ln t}$ confidence bound front-loads exploration hard. Only once the horizon gets long enough for "regret grows like $\log t$" to actually beat "regret grows like $t$" does UCB1 pull ahead — watch it happen by dragging the horizon slider past a few thousand pulls. Thompson Sampling, in this run and in the empirical literature generally, wins throughout — a big part of why it's the default choice in most real deployed bandit systems today, despite UCB1's cleaner textbook regret proof.
 
+### Run It Yourself: The Three Strategies on One Bandit
+
+Three arms with click rates 0.30, 0.50 and 0.55, 3,000 pulls, averaged over 10 seeds. Epsilon-greedy (with $\varepsilon = 0.1$) ends with a regret of about 47 and puts 85% of its pulls on the best arm. UCB1 is worse at this horizon, about 79, because its confidence bonus still pays for exploring arm 1, whose rate is only 0.05 below the best. Thompson sampling ends near 21 and spends 91% of pulls on the best arm.
+
+<PredictFirst
+  question="Make the two best arms nearly tied (0.54 and 0.55). The strategies now find it much harder to tell them apart. What happens to total regret?"
+  options={[
+    'It rises sharply, because the strategies pull the wrong arm far more often',
+    'It falls, because although the wrong arm is pulled more often, each wrong pull costs only 0.01',
+    'It stays the same, because regret only depends on the number of arms',
+    'It becomes zero, because the arms are equivalent',
+  ]}
+  correctIndex={1}
+  explanation="Regret is the sum, over pulls, of the gap between the best arm and the chosen arm. Near-ties make the chosen arm wrong more often, but each mistake is cheap. The share of pulls on the best arm drops to about 0.6 while regret falls. This is why hard-to-distinguish arms are a smaller business problem than they look: the arms are nearly as good as each other."
+/>
+
+<RunnableCode code={`import numpy as np
+
+true_p = np.array([0.30, 0.50, 0.55])     # click rates of three arms; arm 2 is best
+T, runs = 3_000, 10
+
+def run(strategy, seed):
+    rng = np.random.default_rng(seed)
+    k = len(true_p)
+    n, wins = np.zeros(k), np.zeros(k)
+    regret = 0.0
+    for t in range(1, T + 1):
+        if strategy == "eps-greedy":
+            a = rng.integers(k) if rng.random() < 0.1 else int(np.argmax(wins / np.maximum(n, 1)))
+        elif strategy == "ucb1":
+            if t <= k:
+                a = t - 1
+            else:
+                a = int(np.argmax(wins / n + np.sqrt(2 * np.log(t) / n)))
+        else:  # thompson
+            a = int(np.argmax(rng.beta(wins + 1, n - wins + 1)))
+        r = rng.random() < true_p[a]
+        n[a] += 1; wins[a] += r
+        regret += true_p.max() - true_p[a]
+    return regret, n[2] / T
+
+for s in ("eps-greedy", "ucb1", "thompson"):
+    res = np.array([run(s, seed) for seed in range(runs)])
+    print(f"{s:10}  mean regret after {T} pulls: {res[:, 0].mean():6.1f}   share of pulls on best arm: {res[:, 1].mean():.2f}")
+
+# Try it: change true_p to [0.30, 0.54, 0.55]. The top two arms are nearly
+# tied, so the share of pulls on the best arm drops to about 0.6, yet regret
+# falls for every strategy, because each wrong pull now costs only 0.01.`} />
+
 ## Contextual Bandits: When "Which Arm" Depends on Who's Asking
 
 Plain multi-armed bandits assume every round is the same decision — but a real recommendation isn't "which of these 5 articles is best, in general," it's "which of these 5 articles is best *for this specific user, right now*." **Contextual bandits** add a feature vector $x_t$ (user features, time of day, device, whatever context is available) at each round, and the reward model becomes a function of that context, not a fixed per-arm constant.
@@ -50,24 +102,83 @@ This isn't a hypothetical: [Li, Chu, Langford & Schapire's original LinUCB paper
 
 Nothing stops you from modeling a recommendation problem as a full MDP with states — but if the "state" you'd define doesn't actually carry forward any consequence from action to action (showing user A article 3 today doesn't change what article is best for user B tomorrow, or even for user A tomorrow, if there's no real session-to-session memory being modeled), you're paying for machinery — Bellman backups, discounting, credit assignment across time steps — that isn't solving anything a bandit doesn't already solve, at real algorithmic and engineering cost. The dividing line is concrete: if the current round's outcome depends on the current round's context and nothing else's action history, it's a bandit problem, however sophisticated the context; the moment an action today provably changes what's optimal in a *future* round beyond just refining the context, that's genuinely sequential, and you're back to [RL Fundamentals](/docs/reinforcement-learning/rl-fundamentals)' full MDP.
 
-## Code: UCB1's Actual Selection Rule
+## Evaluating a New Policy From Logged Data
 
-The exact update the diagram above runs, at the core of it:
+A bandit in production logs every decision: the context, the arm shown, the reward, and the probability with which the logging policy chose that arm. That last number makes it possible to estimate how a *different* policy would have done, without deploying it. **Inverse propensity scoring** (IPS) reweights each logged round by $\pi_{\text{new}}(a \mid x) / \pi_{\text{log}}(a \mid x)$: rounds where the old policy chose what the new one would choose count more, the rarer the old policy made that choice.
 
-```python
-import math
+In the example below the old policy showed article 0 90% of the time and each other article 5% of the time, for a logged click rate of 0.040. Evaluating "always show article 1" uses only the 2,482 rounds that showed it, each with weight 20, and estimates 0.055 against a true 0.060. The variance comes from those large weights, and it is why logging policies keep some exploration: an arm the old policy never shows can never be evaluated.
 
-def select_arm_ucb1(counts: list[int], sums: list[float], t: int) -> int:
-    """counts[a] = times arm a pulled, sums[a] = total reward from arm a,
-    t = total pulls so far. Plays every arm once before trusting the bound."""
-    for a, c in enumerate(counts):
-        if c == 0:
-            return a
-    ucb_values = [
-        sums[a] / counts[a] + math.sqrt(2 * math.log(t) / counts[a])
-        for a in range(len(counts))
-    ]
-    return max(range(len(counts)), key=lambda a: ucb_values[a])
-```
+<RunnableCode code={`import numpy as np
+
+# Off-policy evaluation with inverse propensity scoring (IPS).
+# Logged data came from an epsilon-greedy policy that showed article 0 most of the time.
+rng = np.random.default_rng(5)
+true_ctr = np.array([0.04, 0.06, 0.05])
+k, n, eps = 3, 50_000, 0.15
+
+logging_probs = np.full(k, eps / k)
+logging_probs[0] += 1 - eps                # P(show 0) = 0.90, others 0.05 each
+actions = rng.choice(k, size=n, p=logging_probs)
+clicks = rng.random(n) < true_ctr[actions]
+
+# New policy to evaluate offline: always show article 1
+def target_prob(a):
+    return (a == 1).astype(float)
+
+w = target_prob(actions) / logging_probs[actions]   # importance weights
+ips = np.mean(w * clicks)
+naive = clicks.mean()
+print(f"logged click rate (old policy):   {naive:.4f}")
+print(f"IPS estimate for 'always show 1': {ips:.4f}   true value {true_ctr[1]:.4f}")
+print(f"logged rounds that showed 1: {int((actions == 1).sum())} of {n}; each carries weight {1 / logging_probs[1]:.0f}")
+
+# Try it: set eps = 0.0. Article 1 is never logged, every weight is zero,
+# and IPS estimates 0: you cannot evaluate an action the old policy never took.`} />
+
+<NotebookCallout color="amber" title="Log the propensity">
+Store the probability of the chosen action with every logged decision. Without it, off-policy evaluation is impossible and every new policy has to be tested live with an A/B test.
+</NotebookCallout>
+
+## Common Problems & Fixes
+
+| Problem | Cause | Fix |
+| --- | --- | --- |
+| A once-best arm keeps winning after it got worse | Rewards change over time | Discount old observations or use a sliding window |
+| Estimates are biased towards fast feedback | Rewards arrive hours later | Delayed-feedback corrections; update on a schedule |
+| New items never get shown | Exploitation dominates; no prior | Optimistic priors for new arms; a minimum exploration rate |
+| Offline estimates swing wildly | Large importance weights | Clip weights, use self-normalised IPS or doubly robust estimators |
+| Clicks go up, long-term satisfaction goes down | Click is a proxy reward | Reward a later signal, such as dwell time or retention |
+
+## When *Not* to Use It
+
+| Situation | Better choice |
+| --- | --- |
+| Today's action changes tomorrow's options | Full RL with states; see [RL Fundamentals](/docs/reinforcement-learning/rl-fundamentals) |
+| Two variants, a fixed decision date, and a need for clean statistics | A classic A/B test |
+| Hundreds of thousands of arms | A learned ranking model with exploration on top |
+| No way to observe the reward | Bandits need feedback on every round |
+
+## Remember
+
+| Idea | One line |
+| --- | --- |
+| Bandit | An MDP with a single state: act, get reward, repeat |
+| Regret | Best-arm reward minus what you earned, summed over rounds |
+| Epsilon-greedy | Constant exploration gives linear regret |
+| UCB1 | Estimate plus $\sqrt{2 \ln t / N}$; logarithmic regret |
+| Thompson sampling | Sample from each arm's posterior, play the best sample |
+| LinUCB | Linear reward in the context, plus a confidence bound in feature space |
+| IPS | Reweight logged rewards by new over old action probability |
+| Propensity | Log it on every decision, or offline evaluation is impossible |
 
 Reinforcement Learning section complete. Next: [Graph ML](/docs/graph-ml/roadmap) — another specialized track, for data with explicit relational structure rather than sequential or spatial structure.
+
+## Sources
+
+- Auer, Cesa-Bianchi and Fischer, "Finite-time Analysis of the Multiarmed Bandit Problem" (UCB1), Machine Learning, 2002.
+- Thompson, "On the Likelihood that One Unknown Probability Exceeds Another in View of the Evidence of Two Samples", Biometrika, 1933.
+- Chapelle and Li, "An Empirical Evaluation of Thompson Sampling", NeurIPS 2011.
+- Li, Chu, Langford and Schapire, "A Contextual-Bandit Approach to Personalized News Article Recommendation" (LinUCB), WWW 2010. https://arxiv.org/abs/1003.0146
+- Li, Chu, Langford and Wang, "Unbiased Offline Evaluation of Contextual-bandit-based News Article Recommendation Algorithms", WSDM 2011. https://arxiv.org/abs/1003.5956
+- Dudik, Langford and Li, "Doubly Robust Policy Evaluation and Learning", ICML 2011. https://arxiv.org/abs/1103.4601
+- Lattimore and Szepesvari, "Bandit Algorithms", Cambridge University Press, 2020. https://tor-lattimore.com/downloads/book/book.pdf
