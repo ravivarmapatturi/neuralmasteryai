@@ -27,7 +27,7 @@ function renderChooser() {
 describe('ChooserPage', () => {
   it('introduces the product, says how a page works, and routes to both real destinations', () => {
     renderChooser()
-    expect(screen.getByRole('heading', { name: /Understand AI/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Learn AI by running it/i })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /Understand it\. See it work\. Make the decision\./i })).toBeInTheDocument()
     const learnLink = screen.getByRole('link', { name: /Explore the curriculum/i })
     const practiceLink = screen.getByRole('link', { name: /Explore Labs/i })
@@ -37,7 +37,11 @@ describe('ChooserPage', () => {
 
   it('states exact page and problem counts, with no inflating "+"', () => {
     renderChooser()
-    expect(screen.getByText(/^\d+ pages and \d+ build exercises\.$/)).toBeInTheDocument()
+    const counts = screen.getByRole('list', { name: 'What is on the site' })
+    for (const label of ['Learn pages', 'practice problems', 'interview questions', 'study plans']) {
+      expect(counts.textContent).toMatch(new RegExp(`\\d+ ?${label}`))
+    }
+    expect(screen.getByRole('link', { name: /interview questions/ })).toHaveAttribute('href', '/interview/questions')
     expect(screen.queryByText(/\d+\+/)).not.toBeInTheDocument()
   })
 

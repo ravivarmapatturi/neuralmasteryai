@@ -10,6 +10,8 @@ import { SECTION_META, SECTION_ORDER, groupLandingRoute, groupPageRoutes } from 
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useDocumentMeta } from '../lib/useDocumentMeta';
 import { useProgress } from '../contexts/ProgressContext';
+import { STUDY_PLANS } from '../data/studyPlans';
+import interviewCounts from '../data/interviewCounts.generated.json';
 
 function Arrow() {
   return <span aria-hidden="true">→</span>;
@@ -37,17 +39,17 @@ export default function ChooserPage() {
         <section className="nb-ruled" style={{ borderBottom: '1px solid var(--nb-rule)', padding: 'clamp(3rem, 7vw, 6rem) 0' }}>
           <div className="nm-landing-shell nm-hero-grid">
             <div>
-              <h1 className="nb-heading" style={{ fontSize: 'clamp(2.4rem, 5vw, 4.1rem)', lineHeight: 1.05, margin: 0, position: 'relative' }}>
-                Understand AI.<br />Design systems.<br />
+              <h1 className="nb-heading" style={{ fontSize: 'clamp(2.3rem, 4.6vw, 3.8rem)', lineHeight: 1.05, margin: 0, position: 'relative' }}>
+                Learn AI by<br />
                 <span style={{ color: 'var(--nb-teal)', position: 'relative', display: 'inline-block' }}>
-                  Make better decisions.
+                  running it.
                   <svg viewBox="0 0 320 16" width="100%" style={{ position: 'absolute', left: 0, bottom: -8, height: 16 }} aria-hidden="true">
                     <SketchUnderline x={4} y={8} width={300} color="var(--nb-teal)" id="hero-underline" />
                   </svg>
                 </span>
               </h1>
               <p className="nb-body" style={{ maxWidth: 560, margin: '1.75rem 0 2rem', fontSize: '1.08rem' }}>
-                Learn AI from first principles through explanations, interactive visualizations, engineering decisions, experiments and real system challenges.
+                Every lesson computes in your browser. Pick a concept on the right and watch it run, then write the Python yourself in a lab. Free, no account needed.
               </p>
               <div className="nm-hero-actions">
                 <Link className="nm-button nm-button-primary" to={completed ? '/progress' : '/learn'} style={{ background: 'var(--nb-cobalt)' }}>
@@ -61,9 +63,12 @@ export default function ChooserPage() {
                   Explore Labs <Arrow />
                 </Link>
               </div>
-              <p className="nb-hand" style={{ marginTop: '2rem', color: 'var(--nb-ink-soft)', fontSize: '1rem' }}>
-                {pages.length} pages and {problems.length} build exercises.
-              </p>
+              <ul className="nm-home-counts" aria-label="What is on the site">
+                <li><Link to="/learn"><strong>{pages.length}</strong> Learn pages</Link></li>
+                <li><Link to="/labs"><strong>{problems.length}</strong> practice problems</Link></li>
+                <li><Link to="/interview/questions"><strong>{interviewCounts.questions}</strong> interview questions</Link></li>
+                <li><Link to="/study-plans"><strong>{STUDY_PLANS.length}</strong> study plans</Link></li>
+              </ul>
             </div>
             <div>
               <div

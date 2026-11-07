@@ -41,5 +41,10 @@ if (new Set(questions.map(q => q.id)).size !== questions.length) throw new Error
 const result = JSON.stringify({ questions, guides: guides.sort((a,b) => a.position-b.position) }, null, 2) + '\n';
 const output = resolve(root, 'src/data/interviewCatalog.generated.json');
 if (process.argv.includes('--check')) { if (readFileSync(output, 'utf8') !== result) throw new Error('Interview catalogue is stale. Run npm run generate:interviews.'); }
-else writeFileSync(output, result);
+else {
+  writeFileSync(output, result);
+  // Small companion file so the home page and search can show counts without loading the full catalogue.
+  const byGuide = Object.fromEntries(guides.map(g => [g.slug, questions.filter(q => q.bank === g.slug).length]));
+  writeFileSync(resolve(root, 'src/data/interviewCounts.generated.json'), JSON.stringify({ questions: questions.length, guides: guides.length, byGuide }, null, 2) + '\n');
+}
 console.log(`Interview catalogue: ${questions.length} questions, ${guides.length} preparation guides.`);
