@@ -119,7 +119,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 92. done - SEO pages for each interview topic.
 93. done - Certificates for completed study plans.
 94. done - Email-free progress export (download and restore a JSON backup on /progress).
-95. planned - Accessibility pass: focus, labels, contrast.
+95. done - Accessibility pass: focus, labels, contrast (focus ring on all form controls, labelled step sliders, light accents at 4.5:1 on every surface).
 96. planned - Error tracking on the client.
 97. planned - Weekly CI smoke run on the live site.
 98. planned - Analytics on which topics people use.

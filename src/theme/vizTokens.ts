@@ -69,16 +69,17 @@ export const LIGHT: VizTokens = {
   // mode the ORIGINAL palette below already hit once. HSL-lightness-only
   // adjustment again, hue/saturation preserved so relative distinctness
   // between concept colors (getConceptColor) is unchanged. All now clear
-  // 4.5:1 against every light-theme background, verified computationally.
+  // 4.5:1 against every light-theme background, including surface-alt
+  // (#ECE0C5), verified computationally 2026-11-07.
   textMuted: '#5C6270',
-  accentPrimary: '#1F793C',
+  accentPrimary: '#1A6E36',
   accentSecondary: '#1D4FC4',
-  accentWarn: '#935E06',
-  accentDanger: '#BE3B2D',
+  accentWarn: '#865505',
+  accentDanger: '#AD3427',
   accentPurple: '#6D3FB8',
-  accentTeal: '#0F766E',
+  accentTeal: '#0D6B63',
   nodeFill: '#ECE0C5',
-  nodeBorder: '#1F793C',
+  nodeBorder: '#1A6E36',
   edge: '#1D4FC4',
 };
 

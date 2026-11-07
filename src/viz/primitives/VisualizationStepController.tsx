@@ -81,6 +81,8 @@ export default function VisualizationStepController({
         max={totalSteps - 1}
         step={1}
         value={controller.step}
+        aria-label="Step"
+        aria-valuetext={stepLabel ? stepLabel(controller.step) : `Step ${controller.step + 1} of ${totalSteps}`}
         onChange={(e) => controller.setStep(Number(e.target.value))}
         style={{ flex: 1, minWidth: 120, accentColor: t.accentPrimary, cursor: 'pointer' }}
       />

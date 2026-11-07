@@ -104,8 +104,9 @@ export default function AttentionStepThrough() {
     <VisualizationContainer footer="Real Q·Kᵀ/√d_k → softmax → weighted-sum-of-V math, computed on deterministic demo embeddings (see the component note for exactly what's simplified and why).">
       <VisualizationHeader eyebrow="Interactive" title="Attention Step-Through" />
       <div style={{ marginBottom: SPACING.sm }}>
-        <label style={{ display: 'block', fontSize: 14, color: t.textSecondary, marginBottom: 6 }}>Sentence (up to 12 tokens)</label>
+        <label htmlFor="attention-step-sentence" style={{ display: 'block', fontSize: 14, color: t.textSecondary, marginBottom: 6 }}>Sentence (up to 12 tokens)</label>
         <input
+          id="attention-step-sentence"
           type="text"
           value={text}
           onChange={(e) => {
