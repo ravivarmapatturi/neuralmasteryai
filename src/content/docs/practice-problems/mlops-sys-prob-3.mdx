@@ -4,3 +4,23 @@ description: "Implement deterministic canary-rollout traffic routing -- the real
 difficulty: "medium"
 topic: "MLOps & Data Systems"
 ---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Reference solution
+
+Try the problem first. The solution stays hidden until you open it.
+
+<Solution title="Show the reference solution">
+
+```python
+import hashlib
+
+def canary_route(request_id, canary_pct):
+    # A stable hash, so the same request id always lands on the same side.
+    digest = hashlib.md5(request_id.encode()).digest()
+    bucket = (int.from_bytes(digest[:4], "big") % 10000) / 100.0
+    return "canary" if bucket < canary_pct else "stable"
+```
+
+</Solution>

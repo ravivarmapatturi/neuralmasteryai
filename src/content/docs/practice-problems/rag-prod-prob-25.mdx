@@ -4,3 +4,28 @@ description: "Implement one selection step of Maximal Marginal Relevance, the re
 difficulty: "hard"
 topic: "RAG Production Engineering"
 ---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Reference solution
+
+Try the problem first. The solution stays hidden until you open it.
+
+<Solution title="Show the reference solution">
+
+```python
+def mmr_select_next(query_sims, selected, doc_sims, lambda_param):
+    def pair(a, b):
+        return doc_sims.get(f"{a},{b}", doc_sims.get(f"{b},{a}", 0.0))
+    best, best_score = None, None
+    for d in sorted(query_sims):
+        if d in selected:
+            continue
+        redundancy = max((pair(d, s) for s in selected), default=0.0)
+        score = lambda_param * query_sims[d] - (1 - lambda_param) * redundancy
+        if best_score is None or score > best_score:  # sorted ids keep the smallest on ties
+            best, best_score = d, score
+    return best
+```
+
+</Solution>

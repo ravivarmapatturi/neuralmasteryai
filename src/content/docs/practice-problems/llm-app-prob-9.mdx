@@ -4,3 +4,27 @@ description: "Enforce generation termination boundaries by cutting completed or 
 difficulty: "easy"
 topic: "LLM Application Engineering"
 ---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Reference solution
+
+Try the problem first. The solution stays hidden until you open it.
+
+<Solution title="Show the reference solution">
+
+```python
+def apply_stop_sequences(text, stop_sequences):
+    best_index, best_seq = None, None
+    for seq in stop_sequences:
+        if not seq:
+            continue
+        i = text.find(seq)
+        if i != -1 and (best_index is None or i < best_index):
+            best_index, best_seq = i, seq
+    if best_index is None:
+        return {"truncated_text": text, "stopped": False, "matched_sequence": None}
+    return {"truncated_text": text[:best_index], "stopped": True, "matched_sequence": best_seq}
+```
+
+</Solution>

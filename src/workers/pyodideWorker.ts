@@ -120,6 +120,11 @@ export function toPythonLiteral(value: unknown): string {
       .map(([k, v]) => `${JSON.stringify(k)}: ${toPythonLiteral(v)}`)
       .join(', ')}}`;
   }
+  // JSON.stringify turns +/-Infinity and NaN into null, which would reach
+  // Python as None (top-k / top-p masks use -inf).
+  if (typeof value === 'number' && !Number.isFinite(value)) {
+    return Number.isNaN(value) ? "float('nan')" : value > 0 ? "float('inf')" : "float('-inf')";
+  }
   return JSON.stringify(value); // numbers and strings both serialize to valid Python literals this way
 }
 
@@ -255,7 +260,8 @@ def _safe_eq(actual, expected):
     if hasattr(expected, 'tolist'):
         expected = expected.tolist()
     if isinstance(actual, (int, float)) and isinstance(expected, (int, float)):
-        return abs(float(actual) - float(expected)) < 1e-5
+        # inf - inf is nan, so equal infinities need their own check.
+        return actual == expected or abs(float(actual) - float(expected)) < 1e-5
     if isinstance(actual, (list, tuple)) and isinstance(expected, (list, tuple)):
         if len(actual) != len(expected):
             return False

@@ -5,6 +5,8 @@ difficulty: medium
 topic: mlops
 ---
 
+import { Solution } from '../../../components/content/ExpandableDepth';
+
 import RunnableWebGPU from '../../../components/content/RunnableWebGPU';
 
 **Difficulty: Medium** · Concept: [GPU/AI Infrastructure — The CUDA Programming Model](/docs/mlops/gpu-and-distributed-training#the-cuda-programming-model-sms-warps-blocks-kernels)
@@ -58,3 +60,26 @@ fn main(@builtin(local_invocation_id) local_id: vec3<u32>) {
 ---
 
 Next: [GPU/AI Infrastructure & Distributed Training](/docs/mlops/gpu-and-distributed-training) for the full CUDA programming model this shader is a hands-on instance of.
+
+## Reference solution
+
+Try the problem first. The solution stays hidden until you open it.
+
+<Solution title="Show the reference solution">
+
+```python
+def parallel_sum_reduction(arr):
+    if not arr:
+        return 0.0
+    values = list(arr)
+    stride = 1
+    while stride < len(values):
+        # Each "thread" i adds its partner i + stride; strides double each stage.
+        for i in range(0, len(values), 2 * stride):
+            if i + stride < len(values):
+                values[i] += values[i + stride]
+        stride *= 2
+    return round(float(values[0]), 6)
+```
+
+</Solution>

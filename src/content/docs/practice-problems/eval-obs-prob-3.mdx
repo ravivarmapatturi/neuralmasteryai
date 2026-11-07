@@ -4,3 +4,26 @@ description: "Implement Cohen's Kappa, the real, standard statistic for measurin
 difficulty: "hard"
 topic: "Agent Evaluation & Observability"
 ---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Reference solution
+
+Try the problem first. The solution stays hidden until you open it.
+
+<Solution title="Show the reference solution">
+
+```python
+from collections import Counter
+
+def cohens_kappa(rater_a, rater_b):
+    n = len(rater_a)
+    p_o = sum(a == b for a, b in zip(rater_a, rater_b)) / n
+    freq_a, freq_b = Counter(rater_a), Counter(rater_b)
+    p_e = sum(freq_a[c] / n * freq_b[c] / n for c in set(rater_a) | set(rater_b))
+    if p_e == 1:
+        return 1.0
+    return (p_o - p_e) / (1 - p_e)
+```
+
+</Solution>

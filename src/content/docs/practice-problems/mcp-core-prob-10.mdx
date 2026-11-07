@@ -4,3 +4,26 @@ description: "Implement Content-Length-prefixed message framing parsing, the rea
 difficulty: "medium"
 topic: "MCP Core Engineering"
 ---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Reference solution
+
+Try the problem first. The solution stays hidden until you open it.
+
+<Solution title="Show the reference solution">
+
+```python
+def parse_stdio_frame(raw_bytes):
+    header, _, rest = raw_bytes.partition("\r\n\r\n")
+    length = None
+    for line in header.split("\r\n"):
+        name, _, value = line.partition(":")
+        if name.strip().lower() == "content-length":
+            length = int(value.strip())
+    if length is None:
+        raise ValueError("missing Content-Length header")
+    return rest[:length], rest[length:]
+```
+
+</Solution>

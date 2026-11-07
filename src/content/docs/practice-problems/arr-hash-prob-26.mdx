@@ -4,3 +4,30 @@ description: "Implement max_sliding_window(nums, k) to track the maximum element
 difficulty: "hard"
 topic: "Arrays / Hashing / Two Pointers"
 ---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Reference solution
+
+Try the problem first. The solution stays hidden until you open it.
+
+<Solution title="Show the reference solution">
+
+```python
+from collections import deque
+
+def max_sliding_window(nums, k):
+    window = deque()  # indices; their values decrease from front to back
+    out = []
+    for i, x in enumerate(nums):
+        while window and nums[window[-1]] <= x:
+            window.pop()
+        window.append(i)
+        if window[0] <= i - k:
+            window.popleft()
+        if i >= k - 1:
+            out.append(nums[window[0]])
+    return out
+```
+
+</Solution>

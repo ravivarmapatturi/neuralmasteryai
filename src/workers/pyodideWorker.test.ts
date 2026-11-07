@@ -7,6 +7,10 @@ import { toPythonLiteral } from './pyodideWorker'
 // structured test-case data (real numbers/strings/lists/objects) becomes
 // real Python source, not free text to be parsed back out.
 describe('toPythonLiteral', () => {
+  it('keeps infinities and NaN instead of turning them into None', () => {
+    expect(toPythonLiteral([4, -Infinity, Infinity, NaN])).toBe("[4, float('-inf'), float('inf'), float('nan')]")
+  })
+
   it('converts numbers and strings the same way JSON does -- both are already valid Python literals', () => {
     expect(toPythonLiteral(32)).toBe('32')
     expect(toPythonLiteral(-11)).toBe('-11')

@@ -4,3 +4,30 @@ description: "Implement cycle detection in a wait-for graph, the real, standard 
 difficulty: "hard"
 topic: "Multi-Agent Systems"
 ---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Reference solution
+
+Try the problem first. The solution stays hidden until you open it.
+
+<Solution title="Show the reference solution">
+
+```python
+def has_deadlock(wait_for):
+    WHITE, GREY, BLACK = 0, 1, 2
+    color = {}
+    def visit(node):
+        color[node] = GREY  # on the current DFS path
+        for nxt in wait_for.get(node, []):
+            state = color.get(nxt, WHITE)
+            if state == GREY:
+                return True  # back edge: a cycle
+            if state == WHITE and visit(nxt):
+                return True
+        color[node] = BLACK
+        return False
+    return any(color.get(n, WHITE) == WHITE and visit(n) for n in list(wait_for))
+```
+
+</Solution>

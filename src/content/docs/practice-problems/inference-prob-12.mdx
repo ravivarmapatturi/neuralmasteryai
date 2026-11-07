@@ -4,3 +4,32 @@ description: "Manage non-contiguous physical memory allocation for LLM key-value
 difficulty: "medium"
 topic: "LLM Inference & Decoding"
 ---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Reference solution
+
+Try the problem first. The solution stays hidden until you open it.
+
+<Solution title="Show the reference solution">
+
+```python
+import math
+
+def allocate_paged_blocks(seq_len, new_tokens, block_table, free_blocks, block_size):
+    if seq_len < 0 or new_tokens < 0 or block_size <= 0:
+        raise ValueError("invalid sizes")
+    total = seq_len + new_tokens
+    needed = math.ceil(total / block_size)
+    table, free = list(block_table), list(free_blocks)
+    missing = needed - len(table)
+    if missing > len(free):
+        raise MemoryError("not enough free blocks")
+    if missing > 0:
+        table += free[:missing]
+        free = free[missing:]
+    fragmentation = len(table) * block_size - total
+    return {"block_table": table, "remaining_free_blocks": free, "internal_fragmentation_tokens": fragmentation}
+```
+
+</Solution>
