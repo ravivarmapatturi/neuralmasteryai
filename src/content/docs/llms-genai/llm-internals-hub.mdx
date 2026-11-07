@@ -1,0 +1,69 @@
+---
+title: "LLM Internals Hub"
+sidebar_position: 1.5
+description: "One path through how a large language model works inside, from tokens to attention to training to serving, linking the deepest page on each stage and the problems that make you build it."
+---
+
+# LLM Internals Hub
+
+How a language model works is spread over several sections of this site: the transformer is in Deep Learning, training and sampling are in LLMs and GenAI, and the KV cache and batching are in Inference Engineering. This page puts them in the order a token meets them. Each stage links the page that covers it in the most depth, then the problems that ask you to build it.
+
+If you read only one page, read [Attention and Transformers](/docs/deep-learning/attention-transformers). Everything below either feeds it or runs it.
+
+## 1. Text becomes tokens
+
+A model never sees characters. It sees integer IDs from a fixed vocabulary, built by merging frequent byte pairs. This step decides how many tokens a prompt costs and why models miscount letters.
+
+- Read: [Tokenization](/docs/llms-genai/foundation-model-internals#tokenization), [Classical NLP](/docs/nlp/classical-nlp)
+- Build: [Build a tokenizer](/practice/track/build-a-tokenizer)
+
+## 2. Tokens become vectors
+
+Each ID looks up a row of the embedding matrix. Position is added on top, because attention by itself has no sense of order.
+
+- Read: [Input embeddings](/docs/deep-learning/attention-transformers#input-embeddings), [Positional encoding](/docs/deep-learning/attention-transformers#positional-encoding), [Word embeddings](/docs/nlp/word-embeddings)
+
+## 3. Attention mixes the sequence
+
+Every position asks a query, every position offers a key and a value, and each output is a weighted average of values. The causal mask stops a token from reading the future.
+
+- Read: [Self-attention: query, key, value](/docs/deep-learning/attention-transformers#self-attention-query-key-value), [Multi-head attention](/docs/deep-learning/attention-transformers#multi-head-attention), [Masking](/docs/deep-learning/attention-transformers#masking)
+- Read: [Attention variants: MHA, GQA, MQA, MLA](/docs/llms-genai/foundation-model-internals#attention-variants-mha-gqa-mqa-mla), [Linear attention and state-space models](/docs/deep-learning/linear-attention-and-state-space-models)
+- Build: [Attention from scratch](/practice/track/attention-from-scratch)
+
+## 4. The block repeats
+
+Attention, then a feed-forward layer, each wrapped in a residual connection and a normalisation. A model is this block stacked dozens of times; mixture-of-experts layers replace the single feed-forward with several and a router.
+
+- Read: [The full transformer block](/docs/deep-learning/attention-transformers#the-full-transformer-block), [The MLP block: SwiGLU](/docs/llms-genai/foundation-model-internals#the-mlp-block-swiglu), [Mixture of experts](/docs/llms-genai/foundation-model-internals#mixture-of-experts-moe)
+- Build: [LLM internals problems](/practice/track/llm-internals)
+
+## 5. Logits become a token
+
+The last hidden state is projected onto the vocabulary, giving one score per token. Temperature, top-k and top-p decide which one is picked.
+
+- Read: [Sampling: from logits to a token](/docs/llms-genai/foundation-model-internals#sampling-from-logits-to-a-token)
+
+## 6. Training sets the weights
+
+Pretraining minimises next-token cross-entropy over trillions of tokens. Fine-tuning and preference optimisation then shape behaviour with far less data.
+
+- Read: [Training pipeline](/docs/llms-genai/training-pipeline), [Training deep networks](/docs/deep-learning/training-deep-networks), [Optimizers](/docs/deep-learning/optimizers)
+- Read: [Alignment and RLHF](/docs/ai-safety/alignment-and-rlhf)
+
+## 7. Serving makes it affordable
+
+Generation is one token at a time, so the cost is dominated by reading weights and the KV cache from memory, not by arithmetic. Batching, caching and quantisation all attack that.
+
+- Read: [The roofline model and KV cache mechanics](/docs/inference-engineering/roofline-and-kv-cache), [Continuous batching and speculative decoding](/docs/inference-engineering/continuous-batching-and-speculative-decoding)
+- Read: [Quantization and compression](/docs/inference-engineering/quantization-and-compression), [LLM inference optimization](/docs/mlops/llm-inference-optimization)
+
+## 8. Looking inside
+
+Once the model works, interpretability asks which parts of it do what: attention heads that copy, features stored in directions of the residual stream.
+
+- Read: [Deep learning and LLM interpretability](/docs/interpretability/deep-learning-and-llm-interpretability)
+
+## Build the whole thing
+
+The [GPT-2 research track](/research/gpt-2) walks the same path as a sequence of problems, one paper component per step.
