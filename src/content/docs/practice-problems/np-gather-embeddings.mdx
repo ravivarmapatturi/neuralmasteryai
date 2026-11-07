@@ -1,0 +1,37 @@
+---
+title: "Gather Embeddings With Padding"
+description: "NumPy Sheet, problem 2 of 8: Look up an embedding vector for every token id in a padded batch with one fancy-indexing step, and zero out the padding positions."
+difficulty: "easy"
+topic: "NumPy Sheet"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## An embedding layer is an index
+
+An **embedding table** is a matrix with one row per token id. Turning token ids into vectors is not a matrix multiply: it is a lookup. `table[ids]` with a `(batch, seq)` integer array returns a `(batch, seq, d)` array in one call, because NumPy's integer-array indexing replaces each id with the row it names.
+
+## Why padding needs a mask
+
+Batches are rectangular, so shorter sequences are filled with a **padding id**. The table still has a row for that id, and it is usually not zero. If those vectors leak into a mean-pool or an attention sum, sentence length silently changes the result. Multiplying by `(ids != pad_id)[..., None]` zeroes them; the trailing `None` adds the size-1 axis that broadcasts across `d`.
+
+> **Remember:** gather with `table[ids]`, then mask with a broadcast boolean. Both are single NumPy operations.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import numpy as np
+
+def gather_embeddings(table, ids, pad_id):
+    table = np.asarray(table, dtype=float)
+    ids = np.asarray(ids)
+    out = table[ids]                       # (batch, seq, d)
+    mask = (ids != pad_id)[..., None]      # (batch, seq, 1)
+    return (out * mask).tolist()
+```
+
+</Solution>

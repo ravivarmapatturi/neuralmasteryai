@@ -1,0 +1,38 @@
+---
+title: "Row-Normalise a Count Matrix"
+description: "NumPy Sheet, problem 1 of 8: Turn each row of counts into a probability distribution with one broadcast division."
+difficulty: "easy"
+topic: "NumPy Sheet"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## From counts to probabilities
+
+A bigram language model starts as a table of counts: row `i` says how often each token followed token `i`. To sample from it you need each row to be a probability distribution, so every row is divided by its own total.
+
+The loop version divides row by row. NumPy does it in one expression: `c.sum(axis=1, keepdims=True)` has shape `(n, 1)`, and dividing an `(n, d)` array by an `(n, 1)` array **broadcasts**: NumPy repeats the single column across all `d` columns without copying it.
+
+## The zero row
+
+A token that never appears has a row sum of 0, and `0 / 0` is NaN. One NaN in a probability table spreads into every computation that touches it. Setting those sums to 1 first keeps the row at zeros, which is the honest answer: no evidence, no probability mass.
+
+> **Remember:** `keepdims=True` keeps the reduced axis as size 1, which is exactly what broadcasting needs.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import numpy as np
+
+def row_normalize(counts):
+    c = np.asarray(counts, dtype=float)
+    sums = c.sum(axis=1, keepdims=True)   # shape (n, 1)
+    sums[sums == 0] = 1.0                 # zero rows divide by 1 and stay zero
+    return (c / sums).tolist()
+```
+
+</Solution>

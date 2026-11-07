@@ -1,6 +1,7 @@
 import { getPageByRoute, practiceIdForSlug } from './contentTree';
 import buildAnAgentTrack from '../data/practice/buildAnAgent.generated.json';
 import specifyVerifyDebugTrack from '../data/practice/specifyVerifyDebug.generated.json';
+import problemSets from '../data/practice/problemSets.generated.json';
 
 /**
  * The structured execution and learning metadata behind practice problems --
@@ -148923,10 +148924,10 @@ function createFallbackProblem(
 
 /** The project tracks ("Build an Agent", "Specify, Verify, Debug") --
  * generated, test-verified data from scripts/practice/agent_track/build.py
- * and scripts/practice/svd_track/build.py (every expected output is checked
+ * scripts/practice/svd_track/build.py and scripts/practice/sets/build.py (every expected output is checked
  * against a reference solution, and every starter is checked to fail). */
 const PROJECT_TRACKS: Record<string, PracticeProblem> = Object.fromEntries(
-  [...(buildAnAgentTrack as unknown as PracticeProblem[]), ...(specifyVerifyDebugTrack as unknown as PracticeProblem[])]
+  [...(buildAnAgentTrack as unknown as PracticeProblem[]), ...(specifyVerifyDebugTrack as unknown as PracticeProblem[]), ...(problemSets as unknown as PracticeProblem[])]
     .map((p) => [p.id, p]),
 );
 

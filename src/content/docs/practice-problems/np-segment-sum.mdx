@@ -1,0 +1,43 @@
+---
+title: "Segment Sum With Scatter-Add"
+description: "NumPy Sheet, problem 8 of 8: Average rows that share a segment id, such as all chunk embeddings of one document, with np.add.at instead of a Python dict of lists."
+difficulty: "hard"
+topic: "NumPy Sheet"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Many rows into fewer buckets
+
+A RAG index often stores one embedding per chunk, but you want one vector per document. Each chunk carries a **segment id** (its document), and the document vector is the mean of its chunks.
+
+The obvious NumPy line is `sums[ids] += values`. It runs without error and gives the wrong answer. With `ids = [1, 1, 1]`, NumPy computes `sums[ids] + values` into a temporary and writes it back three times to the same row, so only the last addition survives. This is called a **buffered** update.
+
+## np.add.at does it unbuffered
+
+`np.add.at(sums, ids, values)` applies every addition, repeated ids included. `np.bincount(ids, minlength=num_segments)` counts rows per segment, and dividing by the counts gives the means. Setting zero counts to 1 keeps empty segments at zero rather than NaN.
+
+> **Remember:** fancy-index assignment with repeated indices keeps only one write. Use `np.add.at` for scatter-add.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import numpy as np
+
+def segment_mean(values, segment_ids, num_segments):
+    v = np.asarray(values, dtype=float)
+    ids = np.asarray(segment_ids)
+    if ((ids < 0) | (ids >= num_segments)).any():
+        raise ValueError("segment id out of range")
+    sums = np.zeros((num_segments, v.shape[1]))
+    np.add.at(sums, ids, v)                       # unbuffered: repeated ids all add
+    counts = np.bincount(ids, minlength=num_segments).astype(float)
+    counts[counts == 0] = 1.0                     # empty segments stay zero
+    return (sums / counts[:, None]).tolist()
+```
+
+</Solution>

@@ -1,0 +1,41 @@
+---
+title: "Pairwise Cosine Similarity Matrix"
+description: "NumPy Sheet, problem 5 of 8: Compute the cosine similarity between every row of A and every row of B with one matrix multiply, the same step a vector search runs per query batch."
+difficulty: "medium"
+topic: "NumPy Sheet"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## One multiply instead of m times n loops
+
+Cosine similarity is the dot product of two vectors divided by both lengths. Computed pair by pair, 1,000 queries against 100,000 documents is 100 million small loops in Python.
+
+Divide every row by its own length first. Each row becomes a **unit vector**, and the dot product of two unit vectors is exactly their cosine. Then `A_unit @ B_unit.T` computes every pair in one call, which NumPy hands to an optimised BLAS routine.
+
+## Zero vectors have no direction
+
+An all-zero embedding (an empty document, a failed encode) has length 0, and dividing by it gives NaN. A NaN score then sorts unpredictably and can silently top a ranking. Raising early is better than ranking garbage.
+
+> **Remember:** normalise rows, then multiply. That is what every vector database does for cosine search.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import numpy as np
+
+def cosine_matrix(A, B):
+    A = np.asarray(A, dtype=float)
+    B = np.asarray(B, dtype=float)
+    na = np.linalg.norm(A, axis=1, keepdims=True)
+    nb = np.linalg.norm(B, axis=1, keepdims=True)
+    if (na == 0).any() or (nb == 0).any():
+        raise ValueError("zero-length row")
+    return ((A / na) @ (B / nb).T).tolist()
+```
+
+</Solution>

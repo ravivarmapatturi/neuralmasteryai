@@ -1,0 +1,39 @@
+---
+title: "Moving Average With cumsum"
+description: "NumPy Sheet, problem 6 of 8: Smooth a training-loss curve with a moving average in O(n) using a cumulative sum, instead of re-summing every window."
+difficulty: "medium"
+topic: "NumPy Sheet"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Every window is one subtraction
+
+A loss curve logged every step is noisy, so training dashboards plot a moving average. The direct version sums each window again: `n` windows of `w` values is `n * w` additions.
+
+A **prefix sum** stores the running total: `c[i]` is the sum of the first `i` values. The sum of any window `x[i:i+w]` is then `c[i+w] - c[i]`. With a leading 0 in `c`, all windows at once are `c[w:] - c[:-w]`, two slices and one subtraction, `O(n)` regardless of the window size.
+
+## Watch the off-by-one
+
+Without the leading 0, the first window has nothing to subtract and you lose an entry. Prepending 0 makes `c[i]` mean exactly "sum of the first i values", and the slices line up.
+
+> **Remember:** prefix sums turn range sums into differences. The same trick computes integral images in vision.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import numpy as np
+
+def moving_average(x, window):
+    x = np.asarray(x, dtype=float)
+    if window < 1 or window > len(x):
+        raise ValueError("window must be between 1 and len(x)")
+    c = np.concatenate([[0.0], np.cumsum(x)])   # c[i] = sum of x[:i]
+    return ((c[window:] - c[:-window]) / window).tolist()
+```
+
+</Solution>

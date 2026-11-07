@@ -52,7 +52,8 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 23. done - Solved and unsolved filter.
 24. done - Related problems at the end of each problem.
 25. done - Problem count and solved count on the hub.
-26-35. planned - Add problem sets: NumPy sheet, PyTorch sheet, autograd (micrograd) series, attention from scratch, tokenizer, optimizers, losses, metrics, RAG pieces, agent loop.
+26. done - NumPy sheet (8 problems).
+27-35. planned - Add problem sets: PyTorch sheet, autograd (micrograd) series, attention from scratch, tokenizer, optimizers, losses, metrics, RAG pieces, agent loop.
 
 ### Study plans, research and projects (36-55)
 36. done - Study Plans page (/study-plans) with named plans and practice sheets, each with problem, reading and passed counts.

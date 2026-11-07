@@ -1,0 +1,37 @@
+---
+title: "Top-k Indices per Row"
+description: "NumPy Sheet, problem 4 of 8: Return the indices of the k largest scores in each row, highest first, the core of retrieval and of top-k sampling."
+difficulty: "medium"
+topic: "NumPy Sheet"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Ranking a whole batch at once
+
+A retriever scores every query against every document and needs the best few per query. With a `(queries, docs)` score matrix, `np.argsort(-scores, axis=1)` sorts each row independently and returns column indices, largest score first. Slicing `[:, :k]` keeps the top `k`.
+
+## Ties are a correctness issue
+
+You might expect the order of tied scores not to matter. It does, as soon as a test, a cache key or an A/B comparison depends on the result being the same twice. NumPy's default quicksort is not stable, so equal scores can come back in either order. `kind="stable"` guarantees that equal values keep their original order, which here means the lower index wins.
+
+> **Remember:** argsort the negated scores with `kind="stable"` for a deterministic descending top-k.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import numpy as np
+
+def topk_per_row(scores, k):
+    s = np.asarray(scores, dtype=float)
+    if k < 1 or k > s.shape[1]:
+        raise ValueError("k must be between 1 and the number of columns")
+    order = np.argsort(-s, axis=1, kind="stable")  # stable: ties keep index order
+    return order[:, :k].tolist()
+```
+
+</Solution>

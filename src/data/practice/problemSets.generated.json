@@ -1,0 +1,1462 @@
+[
+ {
+  "id": "np-row-normalize",
+  "title": "Row-Normalise a Count Matrix",
+  "difficulty": "easy",
+  "topic": "NumPy Sheet",
+  "estimatedTime": "10 min",
+  "functionName": "row_normalize",
+  "functionSignature": "row_normalize(counts: list[list[float]]) -> list[list[float]]",
+  "starterCode": "import numpy as np\n\ndef row_normalize(counts):\n    # Your code here\n    pass\n",
+  "mission": "Turn each row of counts into a probability distribution with one broadcast division. A row of all zeros stays all zeros instead of becoming NaN.",
+  "taskDescription": "Implement `row_normalize(counts)`. Divide every row by its own sum so each row sums to 1. A row whose sum is 0 must come back as all zeros. Return a list of lists.",
+  "constraints": [
+   "No Python loop over rows: use `sum(axis=1, keepdims=True)` and broadcasting.",
+   "A zero row returns zeros, never NaN.",
+   "Return `.tolist()`, not an array."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Two rows",
+    "input": {
+     "counts": [
+      [
+       1,
+       3
+      ],
+      [
+       2,
+       2
+      ]
+     ]
+    },
+    "expectedOutput": [
+     [
+      0.25,
+      0.75
+     ],
+     [
+      0.5,
+      0.5
+     ]
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "A zero row stays zero",
+    "input": {
+     "counts": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       1,
+       1,
+       2
+      ]
+     ]
+    },
+    "expectedOutput": [
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.25,
+      0.25,
+      0.5
+     ]
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Single row",
+    "input": {
+     "counts": [
+      [
+       5
+      ]
+     ]
+    },
+    "expectedOutput": [
+     [
+      1.0
+     ]
+    ]
+   },
+   {
+    "id": "tc4",
+    "label": "Bigram counts",
+    "input": {
+     "counts": [
+      [
+       10,
+       0,
+       30
+      ],
+      [
+       0,
+       4,
+       4
+      ],
+      [
+       7,
+       7,
+       0
+      ]
+     ]
+    },
+    "hidden": true,
+    "expectedOutput": [
+     [
+      0.25,
+      0.0,
+      0.75
+     ],
+     [
+      0.0,
+      0.5,
+      0.5
+     ],
+     [
+      0.5,
+      0.5,
+      0.0
+     ]
+    ]
+   }
+  ],
+  "libraryPolicyText": "NumPy available · runs in your browser",
+  "hints": {
+   "small": "Row sums have shape (n, 1) when you pass keepdims=True, and (n, 1) broadcasts against (n, d).",
+   "strong": "Replace zero sums with 1 before dividing: the zero row divided by 1 is still zeros.",
+   "concept": "Broadcasting stretches a size-1 axis to match the other array without copying data."
+  },
+  "conceptConnections": [
+   {
+    "title": "Linear algebra for AI",
+    "route": "/docs/mathematics-for-ai/linear-algebra",
+    "description": "Vectors, matrices and the shapes every NumPy operation works on."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python",
+    "numpy"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "NumPy Sheet",
+  "stageNumber": 1,
+  "points": 25
+ },
+ {
+  "id": "np-gather-embeddings",
+  "title": "Gather Embeddings With Padding",
+  "difficulty": "easy",
+  "topic": "NumPy Sheet",
+  "estimatedTime": "10 min",
+  "functionName": "gather_embeddings",
+  "functionSignature": "gather_embeddings(table: list[list[float]], ids: list[list[int]], pad_id: int) -> list[list[list[float]]]",
+  "starterCode": "import numpy as np\n\ndef gather_embeddings(table, ids, pad_id):\n    # Your code here\n    pass\n",
+  "mission": "Look up an embedding vector for every token id in a padded batch with one fancy-indexing step, and zero out the padding positions.",
+  "taskDescription": "Implement `gather_embeddings(table, ids, pad_id)`. `table` has shape (vocab, d) and `ids` has shape (batch, seq). Return the (batch, seq, d) array of rows `table[ids]`, except positions where the id equals `pad_id`, which must be all zeros.",
+  "constraints": [
+   "Use integer-array indexing (`table[ids]`), not a loop.",
+   "Padding positions are zero vectors even though `table[pad_id]` may be non-zero.",
+   "Return `.tolist()`."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "No padding",
+    "input": {
+     "table": [
+      [
+       1,
+       1
+      ],
+      [
+       2,
+       2
+      ],
+      [
+       3,
+       3
+      ]
+     ],
+     "ids": [
+      [
+       2,
+       0
+      ]
+     ],
+     "pad_id": -1
+    },
+    "expectedOutput": [
+     [
+      [
+       3.0,
+       3.0
+      ],
+      [
+       1.0,
+       1.0
+      ]
+     ]
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Padding becomes zeros",
+    "input": {
+     "table": [
+      [
+       9,
+       9
+      ],
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "ids": [
+      [
+       1,
+       2,
+       0
+      ],
+      [
+       2,
+       0,
+       0
+      ]
+     ],
+     "pad_id": 0
+    },
+    "expectedOutput": [
+     [
+      [
+       1.0,
+       0.0
+      ],
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.0,
+       0.0
+      ]
+     ],
+     [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.0,
+       0.0
+      ],
+      [
+       0.0,
+       0.0
+      ]
+     ]
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Repeated ids",
+    "input": {
+     "table": [
+      [
+       0.5,
+       -0.5,
+       1
+      ],
+      [
+       2,
+       0,
+       0
+      ]
+     ],
+     "ids": [
+      [
+       1,
+       1,
+       1
+      ]
+     ],
+     "pad_id": 0
+    },
+    "hidden": true,
+    "expectedOutput": [
+     [
+      [
+       2.0,
+       0.0,
+       0.0
+      ],
+      [
+       2.0,
+       0.0,
+       0.0
+      ],
+      [
+       2.0,
+       0.0,
+       0.0
+      ]
+     ]
+    ]
+   }
+  ],
+  "libraryPolicyText": "NumPy available · runs in your browser",
+  "hints": {
+   "small": "Indexing a (vocab, d) array with a (batch, seq) integer array returns shape (batch, seq, d).",
+   "strong": "Build a mask `ids != pad_id` of shape (batch, seq), then multiply by `mask[..., None]` to broadcast over d.",
+   "concept": "This is exactly what nn.Embedding does on the forward pass, plus the padding_idx behaviour."
+  },
+  "conceptConnections": [
+   {
+    "title": "Linear algebra for AI",
+    "route": "/docs/mathematics-for-ai/linear-algebra",
+    "description": "Vectors, matrices and the shapes every NumPy operation works on."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python",
+    "numpy"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "NumPy Sheet",
+  "stageNumber": 2,
+  "points": 25
+ },
+ {
+  "id": "np-clip-outliers",
+  "title": "Replace Outliers With the Column Mean",
+  "difficulty": "medium",
+  "topic": "NumPy Sheet",
+  "estimatedTime": "15-20 min",
+  "functionName": "replace_outliers",
+  "functionSignature": "replace_outliers(X: list[list[float]], k: float) -> list[list[float]]",
+  "starterCode": "import numpy as np\n\ndef replace_outliers(X, k):\n    # Your code here\n    pass\n",
+  "mission": "Use a boolean mask and np.where to replace values more than k standard deviations from their column mean, the kind of cleaning step that runs before training on sensor data.",
+  "taskDescription": "Implement `replace_outliers(X, k)`. For each column compute its mean and population standard deviation (ddof=0). Any value with `abs(x - mean) > k * std` is replaced by that column's mean. Means and stds come from the original data. Return a list of lists.",
+  "constraints": [
+   "Use column statistics computed once, before any replacement.",
+   "A column with std 0 has no outliers.",
+   "Strictly greater than k * std counts as an outlier; equal does not."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "One spike",
+    "input": {
+     "X": [
+      [
+       1
+      ],
+      [
+       1
+      ],
+      [
+       1
+      ],
+      [
+       1
+      ],
+      [
+       100
+      ]
+     ],
+     "k": 1.5
+    },
+    "expectedOutput": [
+     [
+      1.0
+     ],
+     [
+      1.0
+     ],
+     [
+      1.0
+     ],
+     [
+      1.0
+     ],
+     [
+      20.8
+     ]
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Nothing to replace",
+    "input": {
+     "X": [
+      [
+       1,
+       10
+      ],
+      [
+       2,
+       20
+      ],
+      [
+       3,
+       30
+      ]
+     ],
+     "k": 2
+    },
+    "expectedOutput": [
+     [
+      1.0,
+      10.0
+     ],
+     [
+      2.0,
+      20.0
+     ],
+     [
+      3.0,
+      30.0
+     ]
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Constant column has no outliers",
+    "input": {
+     "X": [
+      [
+       5,
+       0
+      ],
+      [
+       5,
+       0
+      ],
+      [
+       5,
+       0
+      ],
+      [
+       5,
+       9
+      ]
+     ],
+     "k": 1
+    },
+    "hidden": true,
+    "expectedOutput": [
+     [
+      5.0,
+      0.0
+     ],
+     [
+      5.0,
+      0.0
+     ],
+     [
+      5.0,
+      0.0
+     ],
+     [
+      5.0,
+      2.25
+     ]
+    ]
+   },
+   {
+    "id": "tc4",
+    "label": "Two columns, different spikes",
+    "input": {
+     "X": [
+      [
+       0,
+       1
+      ],
+      [
+       0,
+       1
+      ],
+      [
+       0,
+       1
+      ],
+      [
+       0,
+       1
+      ],
+      [
+       8,
+       1
+      ],
+      [
+       0,
+       -7
+      ]
+     ],
+     "k": 2
+    },
+    "hidden": true,
+    "expectedOutput": [
+     [
+      0.0,
+      1.0
+     ],
+     [
+      0.0,
+      1.0
+     ],
+     [
+      0.0,
+      1.0
+     ],
+     [
+      0.0,
+      1.0
+     ],
+     [
+      1.3333333333333333,
+      1.0
+     ],
+     [
+      0.0,
+      -0.3333333333333333
+     ]
+    ]
+   }
+  ],
+  "libraryPolicyText": "NumPy available · runs in your browser",
+  "hints": {
+   "small": "mean and std with axis=0 give one value per column, shape (d,).",
+   "strong": "mask = np.abs(X - mean) > k * std; then np.where(mask, mean, X). Broadcasting lines the (d,) vectors up with each row.",
+   "concept": "A z-score threshold is the simplest outlier rule; it assumes roughly normal columns."
+  },
+  "conceptConnections": [
+   {
+    "title": "Linear algebra for AI",
+    "route": "/docs/mathematics-for-ai/linear-algebra",
+    "description": "Vectors, matrices and the shapes every NumPy operation works on."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python",
+    "numpy"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "NumPy Sheet",
+  "stageNumber": 3,
+  "points": 50
+ },
+ {
+  "id": "np-topk-per-row",
+  "title": "Top-k Indices per Row",
+  "difficulty": "medium",
+  "topic": "NumPy Sheet",
+  "estimatedTime": "15-20 min",
+  "functionName": "topk_per_row",
+  "functionSignature": "topk_per_row(scores: list[list[float]], k: int) -> list[list[int]]",
+  "starterCode": "import numpy as np\n\ndef topk_per_row(scores, k):\n    # Your code here\n    pass\n",
+  "mission": "Return the indices of the k largest scores in each row, highest first, the core of retrieval and of top-k sampling.",
+  "taskDescription": "Implement `topk_per_row(scores, k)`. For every row return the column indices of its `k` largest values, ordered from largest to smallest. Break ties by the smaller index. Raise `ValueError` if `k` is less than 1 or larger than the number of columns.",
+  "constraints": [
+   "Work on the whole matrix with argsort along axis=1.",
+   "Ties go to the lower index.",
+   "Raise ValueError for k < 1 or k > number of columns."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Simple rows",
+    "input": {
+     "scores": [
+      [
+       0.1,
+       0.9,
+       0.5
+      ],
+      [
+       3,
+       1,
+       2
+      ]
+     ],
+     "k": 2
+    },
+    "expectedOutput": [
+     [
+      1,
+      2
+     ],
+     [
+      0,
+      2
+     ]
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Ties go to the lower index",
+    "input": {
+     "scores": [
+      [
+       1,
+       5,
+       5,
+       0
+      ]
+     ],
+     "k": 2
+    },
+    "expectedOutput": [
+     [
+      1,
+      2
+     ]
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "k equals the width",
+    "input": {
+     "scores": [
+      [
+       2,
+       1
+      ]
+     ],
+     "k": 2
+    },
+    "expectedOutput": [
+     [
+      0,
+      1
+     ]
+    ]
+   },
+   {
+    "id": "tc4",
+    "label": "k too large",
+    "input": {
+     "scores": [
+      [
+       1,
+       2
+      ]
+     ],
+     "k": 3
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc5",
+    "label": "Negative scores",
+    "input": {
+     "scores": [
+      [
+       -3,
+       -1,
+       -2,
+       -1
+      ],
+      [
+       0,
+       0,
+       0,
+       1
+      ]
+     ],
+     "k": 3
+    },
+    "hidden": true,
+    "expectedOutput": [
+     [
+      1,
+      3,
+      2
+     ],
+     [
+      3,
+      0,
+      1
+     ]
+    ]
+   }
+  ],
+  "libraryPolicyText": "NumPy available · runs in your browser",
+  "hints": {
+   "small": "np.argsort sorts ascending. Sorting the negated scores gives descending order.",
+   "strong": "Use kind='stable' so equal scores keep their original (index) order, then take [:, :k].",
+   "concept": "argpartition is O(n) per row when you do not need the k results in order."
+  },
+  "conceptConnections": [
+   {
+    "title": "Linear algebra for AI",
+    "route": "/docs/mathematics-for-ai/linear-algebra",
+    "description": "Vectors, matrices and the shapes every NumPy operation works on."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python",
+    "numpy"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "NumPy Sheet",
+  "stageNumber": 4,
+  "points": 50
+ },
+ {
+  "id": "np-cosine-matrix",
+  "title": "Pairwise Cosine Similarity Matrix",
+  "difficulty": "medium",
+  "topic": "NumPy Sheet",
+  "estimatedTime": "15-20 min",
+  "functionName": "cosine_matrix",
+  "functionSignature": "cosine_matrix(A: list[list[float]], B: list[list[float]]) -> list[list[float]]",
+  "starterCode": "import numpy as np\n\ndef cosine_matrix(A, B):\n    # Your code here\n    pass\n",
+  "mission": "Compute the cosine similarity between every row of A and every row of B with one matrix multiply, the same step a vector search runs per query batch.",
+  "taskDescription": "Implement `cosine_matrix(A, B)`. A is (m, d), B is (n, d). Return the (m, n) matrix where entry (i, j) is the cosine similarity of `A[i]` and `B[j]`. Raise `ValueError` if any row of A or B has zero length.",
+  "constraints": [
+   "One matrix multiply, no Python loops over pairs.",
+   "Normalise rows first: unit vectors make the dot product equal the cosine.",
+   "Raise ValueError for a zero row."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Orthogonal and parallel",
+    "input": {
+     "A": [
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       2
+      ]
+     ],
+     "B": [
+      [
+       3,
+       0
+      ],
+      [
+       0,
+       1
+      ],
+      [
+       1,
+       1
+      ]
+     ]
+    },
+    "expectedOutput": [
+     [
+      1.0,
+      0.0,
+      0.7071067811865475
+     ],
+     [
+      0.0,
+      1.0,
+      0.7071067811865475
+     ]
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Opposite directions",
+    "input": {
+     "A": [
+      [
+       1,
+       2,
+       3
+      ]
+     ],
+     "B": [
+      [
+       -1,
+       -2,
+       -3
+      ]
+     ]
+    },
+    "expectedOutput": [
+     [
+      -1.0
+     ]
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Zero row",
+    "input": {
+     "A": [
+      [
+       0,
+       0
+      ]
+     ],
+     "B": [
+      [
+       1,
+       0
+      ]
+     ]
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc4",
+    "label": "Three by two",
+    "input": {
+     "A": [
+      [
+       1,
+       2
+      ],
+      [
+       2,
+       1
+      ],
+      [
+       -1,
+       1
+      ]
+     ],
+     "B": [
+      [
+       1,
+       1
+      ],
+      [
+       0,
+       -3
+      ]
+     ]
+    },
+    "hidden": true,
+    "expectedOutput": [
+     [
+      0.9486832980505137,
+      -0.8944271909999159
+     ],
+     [
+      0.9486832980505137,
+      -0.4472135954999579
+     ],
+     [
+      2.2371143170757382e-17,
+      -0.7071067811865475
+     ]
+    ]
+   }
+  ],
+  "libraryPolicyText": "NumPy available · runs in your browser",
+  "hints": {
+   "small": "np.linalg.norm(A, axis=1, keepdims=True) gives each row's length as an (m, 1) column.",
+   "strong": "A_unit @ B_unit.T is (m, d) @ (d, n) = (m, n).",
+   "concept": "Normalising once and multiplying is m + n normalisations instead of m * n."
+  },
+  "conceptConnections": [
+   {
+    "title": "Linear algebra for AI",
+    "route": "/docs/mathematics-for-ai/linear-algebra",
+    "description": "Vectors, matrices and the shapes every NumPy operation works on."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python",
+    "numpy"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "NumPy Sheet",
+  "stageNumber": 5,
+  "points": 50
+ },
+ {
+  "id": "np-moving-average",
+  "title": "Moving Average With cumsum",
+  "difficulty": "medium",
+  "topic": "NumPy Sheet",
+  "estimatedTime": "15-20 min",
+  "functionName": "moving_average",
+  "functionSignature": "moving_average(x: list[float], window: int) -> list[float]",
+  "starterCode": "import numpy as np\n\ndef moving_average(x, window):\n    # Your code here\n    pass\n",
+  "mission": "Smooth a training-loss curve with a moving average in O(n) using a cumulative sum, instead of re-summing every window.",
+  "taskDescription": "Implement `moving_average(x, window)`. Return the mean of every full window of `window` consecutive values, so the output has `len(x) - window + 1` entries. Raise `ValueError` if `window` is less than 1 or longer than `x`.",
+  "constraints": [
+   "O(n): use np.cumsum, not a sum per window.",
+   "Only full windows: no padding at the edges.",
+   "Raise ValueError for an invalid window."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Window of 2",
+    "input": {
+     "x": [
+      1,
+      3,
+      5,
+      7
+     ],
+     "window": 2
+    },
+    "expectedOutput": [
+     2.0,
+     4.0,
+     6.0
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Window equals length",
+    "input": {
+     "x": [
+      2,
+      4,
+      9
+     ],
+     "window": 3
+    },
+    "expectedOutput": [
+     5.0
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Window of 1 is the input",
+    "input": {
+     "x": [
+      0.5,
+      -1,
+      2
+     ],
+     "window": 1
+    },
+    "expectedOutput": [
+     0.5,
+     -1.0,
+     2.0
+    ]
+   },
+   {
+    "id": "tc4",
+    "label": "Window too long",
+    "input": {
+     "x": [
+      1,
+      2
+     ],
+     "window": 3
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc5",
+    "label": "Noisy loss curve",
+    "input": {
+     "x": [
+      2.3,
+      2.1,
+      2.4,
+      1.9,
+      1.7,
+      1.8,
+      1.4,
+      1.5
+     ],
+     "window": 4
+    },
+    "hidden": true,
+    "expectedOutput": [
+     2.1750000000000003,
+     2.0250000000000004,
+     1.9500000000000002,
+     1.7000000000000002,
+     1.6
+    ]
+   }
+  ],
+  "libraryPolicyText": "NumPy available · runs in your browser",
+  "hints": {
+   "small": "The sum of x[i:i+w] is cumsum[i+w] - cumsum[i] if cumsum starts with a 0.",
+   "strong": "c = np.concatenate([[0.0], np.cumsum(x)]); then (c[w:] - c[:-w]) / w.",
+   "concept": "Prefix sums turn any range-sum query into one subtraction."
+  },
+  "conceptConnections": [
+   {
+    "title": "Linear algebra for AI",
+    "route": "/docs/mathematics-for-ai/linear-algebra",
+    "description": "Vectors, matrices and the shapes every NumPy operation works on."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python",
+    "numpy"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "NumPy Sheet",
+  "stageNumber": 6,
+  "points": 50
+ },
+ {
+  "id": "np-einsum-bilinear",
+  "title": "Batched Bilinear Scores With einsum",
+  "difficulty": "medium",
+  "topic": "NumPy Sheet",
+  "estimatedTime": "15-20 min",
+  "functionName": "bilinear_scores",
+  "functionSignature": "bilinear_scores(X: list[list[float]], W: list[list[float]], Y: list[list[float]]) -> list[float]",
+  "starterCode": "import numpy as np\n\ndef bilinear_scores(X, W, Y):\n    # Your code here\n    pass\n",
+  "mission": "Score n pairs (x_i, y_i) with x_i^T W y_i in one einsum call, the scoring function behind bilinear attention and many recommenders.",
+  "taskDescription": "Implement `bilinear_scores(X, W, Y)`. X is (n, a), W is (a, b), Y is (n, b). Return a list of n scores where score i is `X[i] @ W @ Y[i]`. Raise `ValueError` if the shapes do not line up.",
+  "constraints": [
+   "Do not build the full (n, n) matrix `X @ W @ Y.T` and take its diagonal: that is n times more work.",
+   "Use np.einsum or an equivalent row-wise product.",
+   "Raise ValueError on mismatched shapes."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Identity W is a row-wise dot product",
+    "input": {
+     "X": [
+      [
+       1,
+       2
+      ],
+      [
+       3,
+       4
+      ]
+     ],
+     "W": [
+      [
+       1,
+       0
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "Y": [
+      [
+       5,
+       6
+      ],
+      [
+       7,
+       8
+      ]
+     ]
+    },
+    "expectedOutput": [
+     17.0,
+     53.0
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Rectangular W",
+    "input": {
+     "X": [
+      [
+       1,
+       0,
+       2
+      ]
+     ],
+     "W": [
+      [
+       1,
+       2
+      ],
+      [
+       0,
+       1
+      ],
+      [
+       3,
+       0
+      ]
+     ],
+     "Y": [
+      [
+       1,
+       1
+      ]
+     ]
+    },
+    "expectedOutput": [
+     9.0
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Shape mismatch",
+    "input": {
+     "X": [
+      [
+       1,
+       2
+      ]
+     ],
+     "W": [
+      [
+       1,
+       0,
+       0
+      ]
+     ],
+     "Y": [
+      [
+       1
+      ]
+     ]
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc4",
+    "label": "Three pairs",
+    "input": {
+     "X": [
+      [
+       1,
+       -1
+      ],
+      [
+       0,
+       2
+      ],
+      [
+       0.5,
+       0.5
+      ]
+     ],
+     "W": [
+      [
+       2,
+       1
+      ],
+      [
+       1,
+       3
+      ]
+     ],
+     "Y": [
+      [
+       1,
+       0
+      ],
+      [
+       1,
+       1
+      ],
+      [
+       -2,
+       4
+      ]
+     ]
+    },
+    "hidden": true,
+    "expectedOutput": [
+     1.0,
+     8.0,
+     5.0
+    ]
+   }
+  ],
+  "libraryPolicyText": "NumPy available · runs in your browser",
+  "hints": {
+   "small": "Write the index form first: score[i] = sum over j, k of X[i, j] * W[j, k] * Y[i, k].",
+   "strong": "np.einsum('ij,jk,ik->i', X, W, Y). Indices that appear in the inputs but not after -> are summed.",
+   "concept": "einsum names every axis, so the shapes are documented in the call itself."
+  },
+  "conceptConnections": [
+   {
+    "title": "Linear algebra for AI",
+    "route": "/docs/mathematics-for-ai/linear-algebra",
+    "description": "Vectors, matrices and the shapes every NumPy operation works on."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python",
+    "numpy"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "NumPy Sheet",
+  "stageNumber": 7,
+  "points": 50
+ },
+ {
+  "id": "np-segment-sum",
+  "title": "Segment Sum With Scatter-Add",
+  "difficulty": "hard",
+  "topic": "NumPy Sheet",
+  "estimatedTime": "25-35 min",
+  "functionName": "segment_mean",
+  "functionSignature": "segment_mean(values: list[list[float]], segment_ids: list[int], num_segments: int) -> list[list[float]]",
+  "starterCode": "import numpy as np\n\ndef segment_mean(values, segment_ids, num_segments):\n    # Your code here\n    pass\n",
+  "mission": "Average rows that share a segment id, such as all chunk embeddings of one document, with np.add.at instead of a Python dict of lists.",
+  "taskDescription": "Implement `segment_mean(values, segment_ids, num_segments)`. `values` is (n, d) and `segment_ids[i]` says which segment row i belongs to (0 to num_segments - 1). Return a (num_segments, d) list where row s is the mean of the rows in segment s, or all zeros if segment s is empty. Raise `ValueError` if any id is outside the range.",
+  "constraints": [
+   "Use np.add.at (unbuffered scatter-add); `out[ids] += values` drops repeated ids.",
+   "Empty segments return zeros, not NaN.",
+   "Raise ValueError for ids outside 0..num_segments-1."
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Two documents",
+    "input": {
+     "values": [
+      [
+       1,
+       1
+      ],
+      [
+       3,
+       3
+      ],
+      [
+       10,
+       0
+      ]
+     ],
+     "segment_ids": [
+      0,
+      0,
+      1
+     ],
+     "num_segments": 2
+    },
+    "expectedOutput": [
+     [
+      2.0,
+      2.0
+     ],
+     [
+      10.0,
+      0.0
+     ]
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Empty segment is zeros",
+    "input": {
+     "values": [
+      [
+       4,
+       2
+      ]
+     ],
+     "segment_ids": [
+      2
+     ],
+     "num_segments": 3
+    },
+    "expectedOutput": [
+     [
+      0.0,
+      0.0
+     ],
+     [
+      0.0,
+      0.0
+     ],
+     [
+      4.0,
+      2.0
+     ]
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Repeated ids all count",
+    "input": {
+     "values": [
+      [
+       1
+      ],
+      [
+       2
+      ],
+      [
+       3
+      ],
+      [
+       4
+      ]
+     ],
+     "segment_ids": [
+      1,
+      1,
+      1,
+      0
+     ],
+     "num_segments": 2
+    },
+    "expectedOutput": [
+     [
+      4.0
+     ],
+     [
+      2.0
+     ]
+    ]
+   },
+   {
+    "id": "tc4",
+    "label": "Id out of range",
+    "input": {
+     "values": [
+      [
+       1
+      ]
+     ],
+     "segment_ids": [
+      5
+     ],
+     "num_segments": 2
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc5",
+    "label": "Interleaved segments",
+    "input": {
+     "values": [
+      [
+       1,
+       0,
+       2
+      ],
+      [
+       0,
+       4,
+       0
+      ],
+      [
+       3,
+       0,
+       -2
+      ],
+      [
+       2,
+       2,
+       2
+      ],
+      [
+       0,
+       0,
+       6
+      ]
+     ],
+     "segment_ids": [
+      0,
+      1,
+      0,
+      1,
+      2
+     ],
+     "num_segments": 4
+    },
+    "hidden": true,
+    "expectedOutput": [
+     [
+      2.0,
+      0.0,
+      0.0
+     ],
+     [
+      1.0,
+      3.0,
+      1.0
+     ],
+     [
+      0.0,
+      0.0,
+      6.0
+     ],
+     [
+      0.0,
+      0.0,
+      0.0
+     ]
+    ]
+   }
+  ],
+  "libraryPolicyText": "NumPy available · runs in your browser",
+  "hints": {
+   "small": "Sum first, then divide by the count per segment. np.bincount gives the counts.",
+   "strong": "np.add.at(sums, ids, values) adds every row, even when ids repeat. counts = np.bincount(ids, minlength=num_segments).",
+   "concept": "Scatter-add is how graph neural networks aggregate messages from neighbours."
+  },
+  "conceptConnections": [
+   {
+    "title": "Linear algebra for AI",
+    "route": "/docs/mathematics-for-ai/linear-algebra",
+    "description": "Vectors, matrices and the shapes every NumPy operation works on."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python",
+    "numpy"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "NumPy Sheet",
+  "stageNumber": 8,
+  "points": 100
+ }
+]
