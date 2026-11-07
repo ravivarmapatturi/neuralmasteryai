@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { atlasHashEntry, setAtlasHash } from './useAtlasHash';
 import { trainingAtlas } from '../../data/trainingAtlas';
 import { inferenceAtlasEntries } from '../../data/inferenceAtlas';
 import { architectureEntries } from '../../data/agentArchitectureAtlas';
@@ -68,6 +69,7 @@ export function scale(year: number, from = 1950) {
   return 0.42 + ((year - 2015) / (END - 2015)) * 0.58;
 }
 
+export const hashOf = (key: string) => key.replace(':', '-');
 const byKey = new Map(atlasEntries.map((e) => [e.key, e]));
 
 function layout(width: number, from: number) {
@@ -99,7 +101,12 @@ export function AtlasTimeline() {
   const lineRefs = useRef<(SVGLineElement | null)[]>([]);
   const pausedRef = useRef(false);
   const [width, setWidth] = useState(1100);
-  const [active, setActive] = useState('t:lora');
+  // Deep links use the hash form "t-lora" for the key "t:lora".
+  const [active, setActiveState] = useState(() => atlasHashEntry(atlasEntries.map((e) => hashOf(e.key)))?.replace('-', ':') ?? 't:lora');
+  const setActive = (key: string) => {
+    setActiveState(key);
+    if (key !== active) setAtlasHash(hashOf(key));
+  };
   const [from, setFrom] = useState(1950);
   const range = ATLAS_RANGES.find((r) => r.from === from)!;
   const shown = useMemo(() => atlasEntries.filter((e) => e.year >= from), [from]);
@@ -107,7 +114,7 @@ export function AtlasTimeline() {
 
   const zoom = (next: number) => {
     setFrom(next);
-    if (byKey.get(active)!.year < next) setActive(atlasEntries.find((e) => e.year >= next)!.key);
+    if (byKey.get(active)!.year < next) setActiveState(atlasEntries.find((e) => e.year >= next)!.key);
   };
 
   useEffect(() => {
@@ -248,8 +255,8 @@ export function AtlasTimeline() {
             {entry.year} · {field.name}
           </p>
           <h2>{entry.name}</h2>
-          <Link to={field.to} className="atlas-tl__open">
-            Open the {field.name} atlas
+          <Link to={`${field.to}#${active.slice(2)}`} className="atlas-tl__open">
+            Open it in the {field.name} atlas
           </Link>
         </div>
         <p className="atlas-tl__about">{entry.about}</p>
