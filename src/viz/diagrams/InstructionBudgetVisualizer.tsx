@@ -123,8 +123,7 @@ export default function InstructionBudgetVisualizer() {
                 justifyContent: 'center',
                 fontSize: 11,
                 fontWeight: 700,
-                color: '#fff',
-                textShadow: '0 1px 2px rgba(0,0,0,0.8)',
+                color: t.background,
               }}
             >
               CRITICAL OVERFLOW: +{(currentTokens - contextCeiling).toLocaleString()} TOKENS BEYOND BUDGET

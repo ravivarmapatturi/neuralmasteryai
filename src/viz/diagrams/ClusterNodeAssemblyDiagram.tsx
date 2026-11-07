@@ -84,7 +84,7 @@ export default function ClusterNodeAssemblyDiagram() {
                   minWidth: 110,
                   textAlign: 'left',
                   background: on ? `${color}18` : t.surface,
-                  border: `1.5px solid ${on ? color : s.required ? '#d9534f88' : t.border}`,
+                  border: `1.5px solid ${on ? color : s.required ? `${t.accentDanger}88` : t.border}`,
                   color: t.textPrimary,
                   fontFamily: 'inherit',
                 }}
