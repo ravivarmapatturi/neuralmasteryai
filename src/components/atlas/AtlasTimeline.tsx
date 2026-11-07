@@ -41,15 +41,17 @@ export const atlasLinks: [string, string][] = [
   ['i:kv-cache', 'i:gqa'], ['i:kv-cache', 'i:paged-kv-cache'], ['i:kv-cache', 'i:prefix-caching'],
   ['i:static-batching', 'i:continuous-batching'], ['i:continuous-batching', 'i:paged-kv-cache'],
   ['i:roofline', 'i:flash-attention'], ['a:ai-chains', 'a:langgraph'], ['a:mrkl', 'a:react'],
-  ['a:reflexion', 'a:lats'], ['a:tree-of-thoughts', 'a:lats'], ['a:react', 'a:reflexion'],
-  ['a:react', 'a:plan-and-solve'], ['a:metagpt', 'a:orchestrator-workers'], ['a:autogen', 'a:orchestrator-workers'],
-  ['a:langgraph', 'a:long-running-harness'], ['a:context-engineering', 'a:long-running-harness'],
+  ['a:reflexion', 'a:lats'], ['a:tree-of-thoughts', 'a:lats'], ['a:metagpt', 'a:orchestrator-workers'], ['a:autogen', 'a:orchestrator-workers'],
+  ['a:context-engineering', 'a:long-running-harness'],
   ['p:rpc', 'p:soap'], ['p:http10', 'p:soap'], ['p:http10', 'p:rest'], ['p:rest', 'p:openapi'], ['p:rest', 'p:graphql'],
   ['p:rpc', 'p:grpc'], ['p:openapi', 'p:plugins'], ['p:plugins', 'p:function-calling'], ['p:react', 'p:function-calling'],
   ['p:function-calling', 'p:tool-use'], ['p:function-calling', 'p:structured-outputs'], ['p:tool-use', 'p:mcp'],
   ['p:lsp', 'p:mcp'], ['p:oauth2', 'p:mcp-remote'], ['p:mcp', 'p:mcp-remote'], ['p:a2a', 'p:ag-ui'],
   ['p:mcp', 'p:aaif'], ['p:agents-md', 'p:aaif'], ['p:structured-outputs', 'i:structured-output'],
   ['a:react', 'p:react'], ['a:toolformer', 'p:toolformer'],
+  ['t:regularization', 't:dropout'], ['t:sft', 't:lora'], ['i:greedy-decoding', 'i:temperature'],
+  ['i:kv-cache', 'i:disaggregated-prefill-decode'], ['a:react', 'a:lats'], ['a:plan-and-solve', 'a:langgraph'],
+  ['p:mcp', 'p:a2a'], ['p:soap', 'p:rest'],
 ];
 
 // Each range is a zoom level: the chosen years fill the full width.

@@ -84,14 +84,21 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 61. done - Deepened Audio Fundamentals (aliasing worked example, Whisper's 80 x 3000 front end, problems, sources).
 62. done - Deepened Vision Tasks and Models (IoU association worked example, stereo depth error, Hungarian vs greedy, sources).
 63. done - Deepened Classical NLP (runnable Viterbi where greedy fails, BIO span F1, log-space, CRFs, sources).
-64-70. planned - Close depth gaps found by the existing audits, one page each. Picked from docs/learning-page-inventory.md: the lowest-word core chapters.
+64. done - Deepened Alignment and RLHF (KL-regularised optimum on four answers, over-optimisation, rare-failure statistics, DPO derivation).
+65. done - Deepened Vision Fundamentals (Sobel worked example, mask opening, channel order and normalisation pitfalls, augmentation validity).
+66-70. planned - Close depth gaps found by the existing audits, one page each. Picked from docs/learning-page-inventory.md: the lowest-word core chapters.
 
 ### Atlas and visuals (71-80)
 71. done - Atlas shows one label, for the selected entry, so labels no longer overlap.
 72. done - Atlas year filter and zoom: All years, 2000 on, 2015 on, 2020 on; the chosen range fills the width.
 73. done - Deep links to each atlas entry: /atlas#t-lora on the timeline, /docs/atlas/training#lora on each field atlas (opens and scrolls to the row).
-74. planned - Review every Atlas link against its source text.
-75-80. planned - Diagram quality audit items from feedback_visualization_zero_tolerance.md.
+74. done - Reviewed all 63 timeline links (68 now) against each entry's came-before and led-to text: removed 3 the text does not state (ReAct to Reflexion, ReAct to Plan-and-Solve, LangGraph to long-running harnesses) and added 8 it does.
+75. done - Reduced motion: the producer-queue diagram, the one diagram that animated on load, now waits for play when reduced motion is set.
+76. done - Theme colours: 14 diagrams used a fixed red or black/white text on accent fills, which failed contrast in one theme; they now use theme tokens.
+77. done - 42 fixed-width diagram SVGs get a viewBox and scale to fit at 375px instead of scrolling inside their card.
+78. done - src/viz/diagramAudit.test.ts fails the build if 76 or 77 regress.
+79. done - Accessible names checked: VisualizationContainer already labels every diagram (title and footer), so no per-SVG change was needed.
+80. planned - Arrow crossings and arrows through labels need a by-eye review of each diagram with connecting lines; not done in this pass.
 
 ### Platform and growth (81-100)
 81. done - The site tour closes when you navigate away from it.

@@ -28,7 +28,7 @@ export default function ReceptiveFieldGrowthDiagram() {
           </div>
         ))}
       </div>
-      <svg width={GRID * cell} height={GRID * cell}>
+      <svg width={GRID * cell} height={GRID * cell} viewBox={`0 0 ${GRID * cell} ${GRID * cell}`} className="nm-fit-svg">
         {Array.from({ length: GRID }).map((_, r) =>
           Array.from({ length: GRID }).map((_, c) => {
             const inField = Math.abs(r - center) <= half && Math.abs(c - center) <= half;

@@ -38,13 +38,13 @@ export default function SpeechEnhancementDiagram() {
       <Slider label="Noise level" value={noiseLevel} onChange={setNoiseLevel} min={0} max={1} step={0.05} format={(v) => v.toFixed(2)} />
 
       <div style={{ fontSize: DIAGRAM_TYPE.secondaryLabel.size, color: t.textMuted, margin: '8px 0 2px' }}>Noisy input</div>
-      <svg width={WIDTH} height={ROW_H} style={{ display: 'block', border: `1px solid ${t.border}`, borderRadius: 6 }}>
+      <svg width={WIDTH} height={ROW_H} viewBox={`0 0 ${WIDTH} ${ROW_H}`} className="nm-fit-svg" style={{ display: 'block', border: `1px solid ${t.border}`, borderRadius: 6 }}>
         <line x1={0} y1={ROW_H / 2} x2={WIDTH} y2={ROW_H / 2} stroke={t.border} strokeWidth={1} />
         <path d={pathFor(noisy)} fill="none" stroke={noisyColor} strokeWidth={1} />
       </svg>
 
       <div style={{ fontSize: DIAGRAM_TYPE.secondaryLabel.size, color: t.textMuted, margin: '8px 0 2px' }}>Enhanced output (recovered clean signal)</div>
-      <svg width={WIDTH} height={ROW_H} style={{ display: 'block', border: `1px solid ${t.border}`, borderRadius: 6 }}>
+      <svg width={WIDTH} height={ROW_H} viewBox={`0 0 ${WIDTH} ${ROW_H}`} className="nm-fit-svg" style={{ display: 'block', border: `1px solid ${t.border}`, borderRadius: 6 }}>
         <line x1={0} y1={ROW_H / 2} x2={WIDTH} y2={ROW_H / 2} stroke={t.border} strokeWidth={1} />
         <path d={pathFor(cleanSignal)} fill="none" stroke={cleanColor} strokeWidth={1.5} />
       </svg>

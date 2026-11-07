@@ -106,7 +106,7 @@ export default function ExperimentTrackingComparisonDiagram() {
                 <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: RUN_COLORS[i % RUN_COLORS.length], marginRight: 6 }} />
                 {r.id} -- lr={r.lr}, batch={r.batchSize}
               </span>
-              <span style={{ color: r.diverged ? '#d9534f' : t.textSecondary, fontWeight: r.id === bestRun.id ? 700 : 400 }}>
+              <span style={{ color: r.diverged ? t.accentDanger : t.textSecondary, fontWeight: r.id === bestRun.id ? 700 : 400 }}>
                 {r.diverged ? 'diverged' : `loss=${r.finalLoss.toFixed(4)}`}
               </span>
             </button>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider, VizButton } from '../primitives';
+import { VisualizationContainer, Slider, VizButton, usePrefersReducedMotion } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import { SketchArrow, SketchRect } from '../../components/notebook/RoughShape';
 
@@ -20,7 +20,12 @@ export default function ProducerQueueConsumerDiagram() {
   const [producerRate, setProducerRate] = useState(8);
   const [consumerRate, setConsumerRate] = useState(5);
   const [depth, setDepth] = useState(0);
+  // Reduced motion: wait for the reader to press play instead of animating on load.
+  const reducedMotion = usePrefersReducedMotion();
   const [running, setRunning] = useState(true);
+  useEffect(() => {
+    if (reducedMotion) setRunning(false);
+  }, [reducedMotion]);
   const depthRef = useRef(0);
 
   useEffect(() => {

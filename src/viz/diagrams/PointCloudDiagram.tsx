@@ -56,7 +56,7 @@ export default function PointCloudDiagram() {
   return (
     <VisualizationContainer footer="A LiDAR scan is exactly this: thousands of (x, y, z) points with no grid structure connecting them -- point A has no inherent 'neighbor' the way a pixel does. That's precisely why standard convolution doesn't apply directly, and why point-cloud architectures (PointNet and successors) are built around operations that don't assume any particular point ordering.">
       <Slider label="Rotation" value={angle} onChange={setAngle} min={0} max={360} format={(v) => `${v}°`} />
-      <svg width={WIDTH} height={HEIGHT} style={{ display: 'block', marginTop: 8 }}>
+      <svg width={WIDTH} height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="nm-fit-svg" style={{ display: 'block', marginTop: 8 }}>
         {projected.map((p, i) => {
           const depthT = (p.depth - minDepth) / (maxDepth - minDepth || 1);
           const size = 1.5 + depthT * 2;

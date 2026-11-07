@@ -159,7 +159,7 @@ export default function AnthropicSupervisorTriadVisualizer() {
               1. Planner Agent
             </span>
             {step.activeAgent === 'planner' && (
-              <span style={{ fontSize: 10, background: t.accentPurple, color: '#fff', padding: '1px 6px', borderRadius: 4 }}>
+              <span style={{ fontSize: 10, background: t.accentPurple, color: t.background, padding: '1px 6px', borderRadius: 4 }}>
                 ACTIVE
               </span>
             )}
@@ -185,7 +185,7 @@ export default function AnthropicSupervisorTriadVisualizer() {
               2. Generator Agent
             </span>
             {step.activeAgent === 'generator' && (
-              <span style={{ fontSize: 10, background: t.accentTeal, color: '#000', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
+              <span style={{ fontSize: 10, background: t.accentTeal, color: t.background, padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
                 ACTIVE
               </span>
             )}
@@ -211,7 +211,7 @@ export default function AnthropicSupervisorTriadVisualizer() {
               3. Evaluator Agent
             </span>
             {step.activeAgent === 'evaluator' && (
-              <span style={{ fontSize: 10, background: t.accentPrimary, color: '#000', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
+              <span style={{ fontSize: 10, background: t.accentPrimary, color: t.background, padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
                 ACTIVE
               </span>
             )}

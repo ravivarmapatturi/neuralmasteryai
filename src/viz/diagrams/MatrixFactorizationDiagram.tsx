@@ -8,7 +8,7 @@ function Grid({ data, observedMask }: { data: number[][]; observedMask: (number 
   const t = useVizTokens();
   const size = 42, gap = 3;
   return (
-    <svg width={data[0].length * (size + gap)} height={data.length * (size + gap)}>
+    <svg width={data[0].length * (size + gap)} height={data.length * (size + gap)} viewBox={`0 0 ${data[0].length * (size + gap)} ${data.length * (size + gap)}`} className="nm-fit-svg">
       {data.map((row, r) => row.map((v, c) => {
         const isObserved = observedMask[r][c] !== null;
         const mag = Math.min(1, Math.max(0, v / 5));

@@ -28,7 +28,7 @@ export default function SpeakerVerificationDiagram() {
   return (
     <VisualizationContainer footer={`Threshold = ${threshold}: a candidate is verified as the enrolled speaker only if its embedding distance is below this cutoff. ${results.filter((r) => r.dist < threshold).map((r) => r.id).join(', ') || 'none'} accepted; ${results.filter((r) => r.dist >= threshold).map((r) => r.id).join(', ') || 'none'} rejected. Set the threshold too low and real matches get rejected (false rejects); too high and impostors get accepted (false accepts) -- the same precision/recall tradeoff any threshold-based binary decision faces.`}>
       <Slider label="Acceptance threshold" value={threshold} onChange={setThreshold} min={10} max={150} format={(v) => `${v}`} />
-      <svg width={WIDTH} height={HEIGHT} style={{ display: 'block', marginTop: 8 }}>
+      <svg width={WIDTH} height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="nm-fit-svg" style={{ display: 'block', marginTop: 8 }}>
         <circle cx={ENROLLED.x} cy={ENROLLED.y} r={threshold} fill={`${enrolledColor}12`} stroke={enrolledColor} strokeWidth={1} strokeDasharray="4 3" />
         <circle cx={ENROLLED.x} cy={ENROLLED.y} r={8} fill={enrolledColor} />
         <text x={ENROLLED.x} y={ENROLLED.y - 14} textAnchor="middle" fontSize={10} fontWeight={700} fill={enrolledColor}>enrolled speaker</text>

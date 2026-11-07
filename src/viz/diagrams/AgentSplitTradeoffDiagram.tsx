@@ -17,7 +17,7 @@ export default function AgentSplitTradeoffDiagram() {
   const t = useVizTokens();
   const [agentCount, setAgentCount] = useState(1);
   const color = getConceptColor(t, 'attention');
-  const colorWarn = '#d9534f';
+  const colorWarn = t.accentDanger;
 
   const isSingle = agentCount === 1;
   const parallelWork = TOTAL_WORK_UNITS / agentCount;

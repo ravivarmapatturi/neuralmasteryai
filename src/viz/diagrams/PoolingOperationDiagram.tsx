@@ -29,7 +29,7 @@ export default function PoolingOperationDiagram() {
 
   return (
     <VisualizationContainer footer={`Max of this 2×2 region = ${maxVal} -- the strongest activation survives, the other three are discarded. Output shrinks from 4×4 to 2×2, and small shifts within a region don't change which value wins (a bit of positional robustness).`}>
-      <svg width={4 * cell} height={4 * cell}>
+      <svg width={4 * cell} height={4 * cell} viewBox={`0 0 ${4 * cell} ${4 * cell}`} className="nm-fit-svg">
         {IMG.map((row, r) =>
           row.map((v, c) => {
             const qi = Math.floor(r / 2) * 2 + Math.floor(c / 2);

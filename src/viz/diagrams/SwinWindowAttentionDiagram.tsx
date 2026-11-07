@@ -26,7 +26,7 @@ export default function SwinWindowAttentionDiagram() {
           Layer L+1 (shifted)
         </button>
       </div>
-      <svg width={GRID * cell} height={GRID * cell}>
+      <svg width={GRID * cell} height={GRID * cell} viewBox={`0 0 ${GRID * cell} ${GRID * cell}`} className="nm-fit-svg">
         {Array.from({ length: GRID }).map((_, r) =>
           Array.from({ length: GRID }).map((_, c) => {
             const winR = Math.floor((r + offset) / WIN);

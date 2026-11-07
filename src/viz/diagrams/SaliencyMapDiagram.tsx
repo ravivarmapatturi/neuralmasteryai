@@ -25,7 +25,7 @@ function Grid({ data, maxAbs, size = 68 }: { data: number[][]; maxAbs: number; s
   const t = useVizTokens();
   const gap = 3;
   return (
-    <svg width={data[0].length * (size + gap)} height={data.length * (size + gap)}>
+    <svg width={data[0].length * (size + gap)} height={data.length * (size + gap)} viewBox={`0 0 ${data[0].length * (size + gap)} ${data.length * (size + gap)}`} className="nm-fit-svg">
       {data.map((row, r) =>
         row.map((v, c) => {
           const mag = Math.min(1, Math.abs(v) / maxAbs);

@@ -53,7 +53,7 @@ export default function ConcurrencyVsParallelismDiagram() {
           Parallel (3 cores)
         </VizButton>
       </div>
-      <svg width={WIDTH} height={nCores * ROW_H + 16}>
+      <svg width={WIDTH} height={nCores * ROW_H + 16} viewBox={`0 0 ${WIDTH} ${nCores * ROW_H + 16}`} className="nm-fit-svg">
         {Array.from({ length: nCores }, (_, c) => (
           <text key={c} x={0} y={c * ROW_H + ROW_H / 2 + 4} fontSize={10} fill={t.textMuted}>
             core {c}

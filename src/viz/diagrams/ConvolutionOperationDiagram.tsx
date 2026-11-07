@@ -40,7 +40,7 @@ export default function ConvolutionOperationDiagram() {
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
         <div>
           <div style={{ fontSize: 8.5, color: t.textMuted, marginBottom: 3 }}>5×5 input</div>
-          <svg width={5 * cell} height={5 * cell}>
+          <svg width={5 * cell} height={5 * cell} viewBox={`0 0 ${5 * cell} ${5 * cell}`} className="nm-fit-svg">
             {IMG.map((row, r) =>
               row.map((v, c) => {
                 const inWindow = c >= pos.c && c < pos.c + 3 && r >= pos.r && r < pos.r + 3;
@@ -56,7 +56,7 @@ export default function ConvolutionOperationDiagram() {
         </div>
         <div>
           <div style={{ fontSize: 8.5, color: t.textMuted, marginBottom: 3 }}>filter positions (click)</div>
-          <svg width={3 * cell} height={3 * cell}>
+          <svg width={3 * cell} height={3 * cell} viewBox={`0 0 ${3 * cell} ${3 * cell}`} className="nm-fit-svg">
             {positions.map((p) => {
               const isActive = p.r === pos.r && p.c === pos.c;
               return (

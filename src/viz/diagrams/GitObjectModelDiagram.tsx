@@ -44,7 +44,7 @@ export default function GitObjectModelDiagram() {
             : "A blob is just compressed file content, identified by the SHA-1 hash of that content. Identical content anywhere in the repo's history -- even across unrelated commits -- is stored exactly once."
       }
     >
-      <svg width={WIDTH} height={HEIGHT}>
+      <svg width={WIDTH} height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="nm-fit-svg">
         {NODES.map((n) =>
           (n.children ?? []).map((childId) => {
             const child = NODES.find((c) => c.id === childId)!;
