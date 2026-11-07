@@ -15,3 +15,17 @@ describe('Atlas timeline data', () => {
     }
   });
 });
+
+describe('Atlas timeline zoom', () => {
+  it('maps every range onto the full width', async () => {
+    const { ATLAS_RANGES, scale } = await import('./AtlasTimeline');
+    for (const r of ATLAS_RANGES) {
+      expect(scale(r.from, r.from)).toBe(0);
+      for (const e of atlasEntries.filter((x) => x.year >= r.from)) {
+        const s = scale(e.year, r.from);
+        expect(s).toBeGreaterThanOrEqual(0);
+        expect(s).toBeLessThan(1);
+      }
+    }
+  });
+});

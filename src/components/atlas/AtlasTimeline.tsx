@@ -51,28 +51,38 @@ export const atlasLinks: [string, string][] = [
   ['a:react', 'p:react'], ['a:toolformer', 'p:toolformer'],
 ];
 
-// Recent years hold most entries, so they get most of the width.
-function scale(year: number) {
+// Each range is a zoom level: the chosen years fill the full width.
+export const ATLAS_RANGES = [
+  { from: 1950, label: 'All years', ticks: [1950, 1980, 2000, 2010, 2015, 2018, 2020, 2022, 2024] },
+  { from: 2000, label: '2000 on', ticks: [2000, 2005, 2010, 2015, 2020, 2024] },
+  { from: 2015, label: '2015 on', ticks: [2015, 2017, 2019, 2021, 2023, 2025] },
+  { from: 2020, label: '2020 on', ticks: [2020, 2021, 2022, 2023, 2024, 2025] },
+];
+const END = 2025.6;
+
+// At full range, recent years hold most entries, so they get most of the width.
+export function scale(year: number, from = 1950) {
+  if (from > 1950) return (year - from) / (END - from);
   if (year < 1990) return ((year - 1950) / 40) * 0.12;
   if (year < 2015) return 0.12 + ((year - 1990) / 25) * 0.3;
-  return 0.42 + ((year - 2015) / 10.6) * 0.58;
+  return 0.42 + ((year - 2015) / (END - 2015)) * 0.58;
 }
 
-const TICKS = [1950, 1980, 2000, 2010, 2015, 2018, 2020, 2022, 2024];
 const byKey = new Map(atlasEntries.map((e) => [e.key, e]));
 
-function layout(width: number) {
+function layout(width: number, from: number) {
   const vertical = width < 640;
-  const height = vertical ? 1240 : 600;
+  const height = vertical ? (from > 1950 ? 900 : 1240) : 600;
   const positions = new Map<string, { x: number; y: number }>();
   const counts = new Map<string, number>();
   const laneSize = vertical ? (width - 44) / 4 : height / 4;
   atlasEntries.forEach((e) => {
+    if (e.year < from) return;
     const bucket = `${e.lane}:${e.year}`;
     const seen = (counts.get(bucket) ?? 0) + 1;
     counts.set(bucket, seen);
     const offset = (seen % 2 ? 1 : -1) * Math.ceil((seen - 1) / 2);
-    const along = scale(e.year);
+    const along = scale(e.year, from);
     positions.set(
       e.key,
       vertical
@@ -90,6 +100,15 @@ export function AtlasTimeline() {
   const pausedRef = useRef(false);
   const [width, setWidth] = useState(1100);
   const [active, setActive] = useState('t:lora');
+  const [from, setFrom] = useState(1950);
+  const range = ATLAS_RANGES.find((r) => r.from === from)!;
+  const shown = useMemo(() => atlasEntries.filter((e) => e.year >= from), [from]);
+  const shownLinks = useMemo(() => atlasLinks.filter(([a, b]) => byKey.get(a)!.year >= from && byKey.get(b)!.year >= from), [from]);
+
+  const zoom = (next: number) => {
+    setFrom(next);
+    if (byKey.get(active)!.year < next) setActive(atlasEntries.find((e) => e.year >= next)!.key);
+  };
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -100,19 +119,19 @@ export function AtlasTimeline() {
     return () => observer.disconnect();
   }, []);
 
-  const { vertical, height, positions, laneSize } = useMemo(() => layout(width), [width]);
+  const { vertical, height, positions, laneSize } = useMemo(() => layout(width, from), [width, from]);
 
   useEffect(() => {
     const place = (clock: number) => {
       const moved = new Map<string, { x: number; y: number }>();
-      atlasEntries.forEach((e, i) => {
+      shown.forEach((e, i) => {
         const p = positions.get(e.key)!;
         const at = { x: p.x + Math.sin(clock * 0.00045 + i * 1.7) * 2.5, y: p.y + Math.cos(clock * 0.00038 + i * 2.3) * 2.5 };
         moved.set(e.key, at);
         const node = nodeRefs.current.get(e.key);
         if (node) node.style.transform = `translate(${at.x}px, ${at.y}px)`;
       });
-      atlasLinks.forEach(([a, b], i) => {
+      shownLinks.forEach(([a, b], i) => {
         const line = lineRefs.current[i];
         if (!line) return;
         line.setAttribute('x1', String(moved.get(a)!.x));
@@ -134,7 +153,7 @@ export function AtlasTimeline() {
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [positions]);
+  }, [positions, shown, shownLinks]);
 
   const near = new Set([active]);
   atlasLinks.forEach(([a, b]) => {
@@ -147,6 +166,14 @@ export function AtlasTimeline() {
 
   return (
     <section className="atlas-tl" aria-label="Timeline of all atlas entries">
+      <div className="atlas-tl__zoom" role="group" aria-label="Years shown">
+        {ATLAS_RANGES.map((r) => (
+          <button key={r.from} type="button" aria-pressed={r.from === from} onClick={() => zoom(r.from)}>
+            {r.label}
+          </button>
+        ))}
+        <span>{shown.length} of {atlasEntries.length} entries</span>
+      </div>
       <div className="atlas-tl__stage" ref={stageRef} style={{ height }}>
         {ATLAS_FIELDS.map((f, i) => (
           <div
@@ -161,8 +188,8 @@ export function AtlasTimeline() {
             <span style={{ color: f.colour }}>{f.name}</span>
           </div>
         ))}
-        {TICKS.map((year) => {
-          const along = scale(year);
+        {range.ticks.map((year) => {
+          const along = scale(year, from);
           return (
             <span
               key={year}
@@ -178,7 +205,7 @@ export function AtlasTimeline() {
           );
         })}
         <svg className="atlas-tl__edges" width={width} height={height} aria-hidden="true">
-          {atlasLinks.map(([a, b], i) => (
+          {shownLinks.map(([a, b], i) => (
             <line
               key={`${a}-${b}`}
               ref={(el) => {
@@ -189,7 +216,7 @@ export function AtlasTimeline() {
             />
           ))}
         </svg>
-        {atlasEntries.map((e) => (
+        {shown.map((e) => (
           <button
             key={e.key}
             type="button"
@@ -211,7 +238,7 @@ export function AtlasTimeline() {
             onClick={() => setActive(e.key)}
           >
             <span className="atlas-tl__dot" />
-            {e.key === active && <span className={`atlas-tl__label${scale(e.year) > 0.7 && !vertical ? ' left' : ''}`}>{e.name}</span>}
+            {e.key === active && <span className={`atlas-tl__label${scale(e.year, from) > 0.7 && !vertical ? ' left' : ''}`}>{e.name}</span>}
           </button>
         ))}
       </div>
