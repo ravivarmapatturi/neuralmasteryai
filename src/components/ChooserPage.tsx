@@ -18,10 +18,10 @@ function Arrow() {
 }
 
 export default function ChooserPage() {
-  useDocumentTitle('Neural Mastery — Understand AI. Design Systems. Make Better Decisions.');
+  useDocumentTitle('Neural Mastery — Learn AI by running it');
   useDocumentMeta(
-    'Neural Mastery — Understand AI. Design Systems. Make Better Decisions.',
-    'Learn AI from first principles through explanations, interactive visualizations, engineering decisions, experiments and real system challenges.',
+    'Neural Mastery — Learn AI by running it',
+    'Free AI engineering lessons that compute in your browser, with practice problems, interview questions and study plans.',
   );
 
   const pages = getFlatPages();
