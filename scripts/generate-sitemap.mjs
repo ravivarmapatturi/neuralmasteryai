@@ -5,6 +5,7 @@
 // on Vite's import.meta.glob and isn't runnable under plain Node.
 import { writeFileSync, statSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve, relative, join } from 'node:path';
+import { studyRoutes } from './study-routes.mjs';
 
 const SITE_URL = 'https://neuralmasteryai.com';
 const docsDir = resolve(import.meta.dirname, '..', 'src', 'content', 'docs');
@@ -37,6 +38,7 @@ const urls = [
   { loc: `${SITE_URL}/learn`, lastmod: null },
   { loc: `${SITE_URL}/labs`, lastmod: null },
   { loc: `${SITE_URL}/atlas`, lastmod: null },
+  ...studyRoutes().map((route) => ({ loc: `${SITE_URL}${route}`, lastmod: null })),
   { loc: `${SITE_URL}/glossary`, lastmod: null },
   ...glossarySlugs.map((slug) => ({ loc: `${SITE_URL}/glossary/${slug}`, lastmod: null })),
   { loc: `${SITE_URL}/interview`, lastmod: null },

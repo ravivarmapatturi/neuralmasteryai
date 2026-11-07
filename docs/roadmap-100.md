@@ -42,29 +42,29 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 15. planned - Mobile pass on the answer screen.
 
 ### Problems and labs (16-35)
-16. planned - One Problems hub with filters: topic, difficulty, framework, solved.
-17. planned - Consistent problem page: description, theory, hints, examples, requirements.
-18. planned - Two-pane layout with test cases and results.
-19. planned - Per-problem notes saved locally.
+16. done - One Problems hub with filters: topic, difficulty, framework, solved.
+17. done - Consistent problem page: description, theory, hints, examples, requirements.
+18. done - Two-pane layout with test cases and results.
+19. done - Per-problem notes saved locally.
 20. planned - Show solution after a solve or an explicit reveal.
-21. planned - Points by difficulty shown on every problem.
-22. planned - Daily problem.
-23. planned - Solved and unsolved filter.
-24. planned - Related problems at the end of each problem.
-25. planned - Problem count and solved count on the hub.
+21. done - Points by difficulty shown on every problem.
+22. done - Daily problem.
+23. done - Solved and unsolved filter.
+24. done - Related problems at the end of each problem.
+25. done - Problem count and solved count on the hub.
 26-35. planned - Add problem sets: NumPy sheet, PyTorch sheet, autograd (micrograd) series, attention from scratch, tokenizer, optimizers, losses, metrics, RAG pieces, agent loop.
 
 ### Study plans, research and projects (36-55)
-36. planned - Study Plans page with named sheets and counts.
-37. planned - "Build Micrograd from Scratch" plan.
-38. planned - "Build a Transformer from Scratch" plan.
-39. planned - "RAG from Scratch" plan.
-40. planned - "Agents from Scratch" plan.
-41. planned - Research tracks: Attention Is All You Need in 8 steps.
-42. planned - Research track diagram that highlights the current step.
-43-48. planned - Tracks for ResNet, GPT-2, LoRA, DPO, ViT, Word2Vec.
-49. planned - Project sheets page by field.
-50-55. planned - Projects: RAG app, agent with tools, eval harness, fine-tune with LoRA, serving with batching, voice assistant.
+36. done - Study Plans page (/study-plans) with named plans and practice sheets, each with problem, reading and passed counts.
+37. done - "Build Micrograd from Scratch" plan (needs new problems: a Value class and backward(), from task 28).
+38. done - "Build a Transformer from Scratch" plan (needs new problems: BPE training, full multi-head attention, one transformer block, from tasks 29-30).
+39. done - "RAG from Scratch" plan (needs new problems: cross-encoder re-rank and an end-to-end capstone, from task 34).
+40. done - "Agents from Scratch" plan (complete: the 12 Build an Agent problems plus readings).
+41. done - Research tracks (/research): Attention Is All You Need in 8 steps.
+42. done - Research track diagram that highlights the part the current step builds and ticks finished parts.
+43-48. done - Tracks for ResNet, GPT-2, LoRA, DPO, ViT, Word2Vec (LoRA, DPO, ViT and Word2Vec list steps whose problems are not written yet).
+49. done - Project sheets page (/projects) by field.
+50-55. done - Projects: RAG app, agent with tools, eval harness, fine-tune with LoRA, serving with batching, voice assistant.
 
 ### Learn content (56-70)
 56. planned - ML math hub with modules (statistics, probability, linear algebra, calculus, optimisation).
