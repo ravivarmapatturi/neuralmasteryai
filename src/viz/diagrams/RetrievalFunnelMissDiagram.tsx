@@ -69,8 +69,8 @@ export default function RetrievalFunnelMissDiagram() {
         })}
 
         {/* Final arrow to "generation" */}
-        <line x1={500} y1={70} x2={555} y2={70} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#funnel-arrow)" />
-        <text x={560} y={74} fontSize={9} fill={t.textMuted}>to LLM</text>
+        <line x1={500} y1={70} x2={545} y2={70} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#funnel-arrow)" />
+        <text x={552} y={73} fontSize={9} fill={t.textMuted}>to LLM</text>
       </svg>
     </VisualizationContainer>
   );

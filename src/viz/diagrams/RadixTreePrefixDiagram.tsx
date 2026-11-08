@@ -36,11 +36,23 @@ export default function RadixTreePrefixDiagram() {
       </div>
 
       <svg viewBox="0 0 680 250" width="100%" role="img" aria-label="Radix Tree Prefix Cache Diagram">
+        <defs>
+          <marker id="rt-arrow-primary" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+            <path d="M0,0 L7,3.5 L0,7 Z" fill={t.accentPrimary} />
+          </marker>
+          <marker id="rt-arrow-teal" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+            <path d="M0,0 L7,3.5 L0,7 Z" fill={t.accentTeal} />
+          </marker>
+          <marker id="rt-arrow-secondary" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+            <path d="M0,0 L7,3.5 L0,7 Z" fill={t.accentSecondary} />
+          </marker>
+        </defs>
+
         {/* Root Node */}
         <circle cx={340} cy={25} r={14} fill={t.surface} stroke={t.border} strokeWidth={2} />
         <text x={340} y={29} textAnchor="middle" fontSize={10} fontWeight={700} fill={t.textPrimary}>Root</text>
 
-        <line x1={340} y1={40} x2={340} y2={65} stroke={t.accentPrimary} strokeWidth={2} />
+        <line x1={340} y1={40} x2={340} y2={63} stroke={t.accentPrimary} strokeWidth={2} markerEnd="url(#rt-arrow-primary)" />
 
         {/* Level 1: System Prompt Node */}
         <rect x={215} y={65} width={250} height={50} rx={8} fill={t.surfaceAlt} stroke={t.accentPrimary} strokeWidth={2} />
@@ -52,8 +64,8 @@ export default function RadixTreePrefixDiagram() {
         </text>
 
         {/* Branches */}
-        <path d="M 280 115 L 200 150" fill="none" stroke={t.accentTeal} strokeWidth={2} />
-        <path d="M 400 115 L 480 150" fill="none" stroke={t.accentSecondary} strokeWidth={2} />
+        <path d="M 280 115 L 200 148" fill="none" stroke={t.accentTeal} strokeWidth={2} markerEnd="url(#rt-arrow-teal)" />
+        <path d="M 400 115 L 480 148" fill="none" stroke={t.accentSecondary} strokeWidth={2} markerEnd="url(#rt-arrow-secondary)" />
 
         {/* Branch 1 */}
         <rect x={90} y={150} width={220} height={60} rx={8} fill={t.surface} stroke={t.accentTeal} strokeWidth={1.5} />

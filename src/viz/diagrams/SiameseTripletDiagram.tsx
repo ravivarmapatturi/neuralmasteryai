@@ -13,8 +13,8 @@ export default function SiameseTripletDiagram() {
   const okColor = t.accentPrimary;
   const badColor = t.accentDanger;
 
-  const before = { anchor: { x: 150, y: 80 }, pos: { x: 210, y: 40 }, neg: { x: 190, y: 110 } };
-  const after = { anchor: { x: 150, y: 80 }, pos: { x: 165, y: 70 }, neg: { x: 250, y: 30 } };
+  const before = { anchor: { x: 130, y: 80 }, pos: { x: 210, y: 40 }, neg: { x: 190, y: 115 } };
+  const after = { anchor: { x: 130, y: 80 }, pos: { x: 175, y: 75 }, neg: { x: 255, y: 45 } };
   const p = trained ? after : before;
 
   return (

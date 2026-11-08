@@ -102,7 +102,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 77. done - 42 fixed-width diagram SVGs get a viewBox and scale to fit at 375px instead of scrolling inside their card.
 78. done - src/viz/diagramAudit.test.ts fails the build if 76 or 77 regress.
 79. done - Accessible names checked: VisualizationContainer already labels every diagram (title and footer), so no per-SVG change was needed.
-80. in_progress - Arrow crossings and arrows through labels: screened 110 of 240 candidate diagrams via viewed screenshots (recorded in docs/evidence/diagram-audit/screening.csv: 51 fixed, 59 clean, 130 pending); resolved 51 confirmed defects across batches 1-4 (41 diagrams) and batch 5 (10 diagrams: EncoderLayer, FlashAttentionMemory, LoopGraphAnatomy, MlLifecyclePipeline, PerceiveReasonActLoop, PolyglotArchitecture, PreDispatchInterceptor, ProducerQueueConsumer, RbacNetworkPolicy, ReflexionLoop) with before & after screenshots in docs/evidence/diagram-audit/.
+80. in_progress - Arrow crossings and arrows through labels: screened 153 of 240 candidate diagrams via viewed screenshots (recorded in docs/evidence/diagram-audit/screening.csv: 62 fixed, 91 clean, 87 pending); resolved 62 confirmed defects across batches 1-5 (51 diagrams) and batch 6 (11 diagrams: HnswSearch, KernelMemoryHierarchyVisualizer, McpArchitecture, MonitoringRetrainLoop, MultiHeadAttention, PropertyGraph, RadixTreePrefix, ResNetSkipConnection, RetrievalFunnelMiss, SiameseTriplet, WassersteinDistance) with before & after screenshots in docs/evidence/diagram-audit/.
 
 ### Platform and growth (81-100)
 81. done - The site tour closes when you navigate away from it.

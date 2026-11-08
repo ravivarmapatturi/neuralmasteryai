@@ -23,24 +23,44 @@ export default function ResNetSkipConnectionDiagram() {
           Residual block
         </button>
       </div>
-      <svg width="100%" viewBox="0 0 280 110" style={{ display: 'block' }}>
-        <rect x={20} y={10} width={60} height={20} rx={5} fill={t.surfaceAlt} stroke={t.border} />
-        <text x={50} y={24} textAnchor="middle" fontSize={9} fill={t.textPrimary}>x (input)</text>
-        <line x1={50} y1={30} x2={50} y2={50} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#rnarrow)" />
-        <rect x={20} y={50} width={60} height={20} rx={5} fill={`${color}18`} stroke={color} />
-        <text x={50} y={64} textAnchor="middle" fontSize={9} fill={color}>F(x)</text>
-        {residual && (
-          <path d="M 15,20 C -15,20 -15,80 15,80" fill="none" stroke={okColor} strokeWidth={1.5} />
-        )}
-        <line x1={50} y1={70} x2={50} y2={90} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#rnarrow)" />
-        <rect x={140} y={40} width={80} height={30} rx={6} fill={residual ? `${okColor}18` : `${badColor}12`} stroke={residual ? okColor : badColor} strokeWidth={1.5} />
-        <text x={180} y={59} textAnchor="middle" fontSize={9} fontWeight={700} fill={residual ? okColor : badColor}>{residual ? 'y = F(x) + x' : 'y = F(x)'}</text>
-        <line x1={80} y1={55} x2={140} y2={55} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#rnarrow)" />
+      <svg width="100%" viewBox="0 0 300 100" style={{ display: 'block' }}>
         <defs>
           <marker id="rnarrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
             <path d="M0,0 L6,3 L0,6 Z" fill={t.textMuted} />
           </marker>
+          <marker id="rnarrow-green" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill={okColor} />
+          </marker>
         </defs>
+
+        {/* Input x */}
+        <rect x={15} y={46} width={65} height={28} rx={6} fill={t.surfaceAlt} stroke={t.border} strokeWidth={1.5} />
+        <text x={47.5} y={63} textAnchor="middle" fontSize={9} fontWeight={600} fill={t.textPrimary}>x (input)</text>
+
+        {/* Arrow x -> F(x) */}
+        <line x1={80} y1={60} x2={113} y2={60} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#rnarrow)" />
+
+        {/* F(x) transformation block */}
+        <rect x={115} y={46} width={65} height={28} rx={6} fill={`${color}18`} stroke={color} strokeWidth={1.5} />
+        <text x={147.5} y={63} textAnchor="middle" fontSize={9} fontWeight={700} fill={color}>F(x)</text>
+
+        {/* Arrow F(x) -> output */}
+        <line x1={180} y1={60} x2={213} y2={60} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#rnarrow)" />
+
+        {/* Residual skip connection */}
+        {residual && (
+          <g>
+            <path d="M 47.5,46 C 47.5,18 253,18 253,38" fill="none" stroke={okColor} strokeWidth={1.5} markerEnd="url(#rnarrow-green)" />
+            <rect x={110} y={9} width={80} height={14} rx={3} fill={t.surface} />
+            <text x={150} y={19} textAnchor="middle" fontSize={8} fontWeight={600} fill={okColor}>shortcut (+ x)</text>
+          </g>
+        )}
+
+        {/* Output block */}
+        <rect x={215} y={42} width={75} height={36} rx={6} fill={residual ? `${okColor}18` : `${badColor}12`} stroke={residual ? okColor : badColor} strokeWidth={1.5} />
+        <text x={252.5} y={64} textAnchor="middle" fontSize={9} fontWeight={700} fill={residual ? okColor : badColor}>
+          {residual ? 'y = F(x) + x' : 'y = F(x)'}
+        </text>
       </svg>
     </VisualizationContainer>
   );

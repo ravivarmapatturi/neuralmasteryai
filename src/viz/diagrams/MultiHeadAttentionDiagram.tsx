@@ -47,11 +47,16 @@ export default function MultiHeadAttentionDiagram() {
           const y = headY(i);
           return (
             <g key={i} onMouseEnter={() => setActiveHead(i)} onMouseLeave={() => setActiveHead(null)} style={{ cursor: 'pointer' }} opacity={dim}>
-              {/* split connector */}
-              <SketchPath d={`M 100,${height / 2} C ${splitX},${height / 2} ${splitX},${y + headH / 2} ${headX - 4},${y + headH / 2}`} color={qkvColor} strokeWidth={isActive ? 2 : 1} roughness={1.3} id={`mha-connector-${i}`} />
-              {/* head chunk */}
+              {/* split connector into chunk */}
+              <SketchPath d={`M 100,${height / 2} C ${splitX},${height / 2} ${splitX},${y + headH / 2} ${splitX + 30},${y + headH / 2}`} color={qkvColor} strokeWidth={isActive ? 2 : 1} roughness={1.3} id={`mha-connector-${i}`} />
+              {/* head chunk (64d slice) */}
               <rect x={splitX + 30} y={y} width={40} height={headH} rx={3} fill={`${qkvColor}22`} stroke="none" />
               <SketchRect x={splitX + 30} y={y} width={40} height={headH} color={qkvColor} strokeWidth={isActive ? 2 : 1} roughness={1.2} id={`mha-chunk-${i}`} />
+              <text x={splitX + 50} y={y + headH / 2 + 3} textAnchor="middle" fontSize={8} fontWeight={600} fontFamily="monospace" fill={qkvColor}>
+                64d
+              </text>
+              {/* chunk to attention head */}
+              <SketchArrow points={[[splitX + 70, y + headH / 2], [headX - 4, y + headH / 2]]} color={qkvColor} strokeWidth={isActive ? 2 : 1} arrowhead={false} roughness={1.2} id={`mha-tohead-${i}`} />
               {/* attention box */}
               {isActive && <rect x={headX} y={y} width={90} height={headH} rx={4} fill={`${attnColor}30`} stroke="none" />}
               <SketchRect x={headX} y={y} width={90} height={headH} color={attnColor} strokeWidth={isActive ? 2 : 1} roughness={1.2} id={`mha-head-${i}`} />

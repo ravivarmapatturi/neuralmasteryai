@@ -27,11 +27,28 @@ export default function MonitoringRetrainLoopDiagram() {
     <VisualizationContainer footer={info.desc}>
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', maxWidth: 320, margin: '0 auto' }}>
         <defs>
-          <marker id="mrl-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
-            <path d="M0,0 L7,3.5 L0,7 Z" fill={t.textMuted} />
+          <marker id="mrl-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill={color} />
           </marker>
         </defs>
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke={t.border} strokeWidth={1.5} strokeDasharray="4 3" />
+        {STAGES.map((_, i) => {
+          const a1 = (i / STAGES.length) * 2 * Math.PI - Math.PI / 2 + 0.46;
+          const a2 = ((i + 1) / STAGES.length) * 2 * Math.PI - Math.PI / 2 - 0.46;
+          const x1 = cx + r * Math.cos(a1);
+          const y1 = cy + r * Math.sin(a1);
+          const x2 = cx + r * Math.cos(a2);
+          const y2 = cy + r * Math.sin(a2);
+          return (
+            <path
+              key={i}
+              d={`M ${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 0 1 ${x2.toFixed(1)} ${y2.toFixed(1)}`}
+              fill="none"
+              stroke={color}
+              strokeWidth={1.75}
+              markerEnd="url(#mrl-arrow)"
+            />
+          );
+        })}
         {STAGES.map((s, i) => {
           const angle = (i / STAGES.length) * 2 * Math.PI - Math.PI / 2;
           const x = cx + r * Math.cos(angle);
