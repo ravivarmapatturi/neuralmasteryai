@@ -7,7 +7,7 @@ const STEPS = [
   { stage: 'Model decides', detail: 'Given the input + history so far, decide: call a tool, or answer now?' },
   { stage: 'Call tool', detail: 'Emit a structured request — function name + arguments — instead of a plain text answer.' },
   { stage: 'Observe result', detail: 'The calling application executes the function and feeds the result back into context.' },
-  { stage: 'Model decides', detail: 'With the new result in context: call another tool, or is this enough to answer?' },
+  { stage: 'Decide again', detail: 'With the new result in context: call another tool, or is this enough to answer?' },
   { stage: 'Final answer', detail: 'Enough information has accumulated in context — produce the final answer and stop.' },
 ];
 
