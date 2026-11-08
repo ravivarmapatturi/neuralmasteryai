@@ -36,25 +36,39 @@ export default function TreeAttentionDraftDiagram() {
       </div>
 
       <svg viewBox="0 0 680 240" width="100%" role="img" aria-label="Linear vs Tree Attention Draft Diagram">
+        <defs>
+          <marker id="tad-arrow-pri" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 Z" fill={t.accentPrimary} />
+          </marker>
+          <marker id="tad-arrow-teal" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 Z" fill={t.accentTeal} />
+          </marker>
+          <marker id="tad-arrow-sec" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 Z" fill={t.accentSecondary} />
+          </marker>
+          <marker id="tad-arrow-muted" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+            <path d="M0,0 L7,3.5 L0,7 Z" fill={t.textMuted} />
+          </marker>
+        </defs>
         {mode === 'linear' ? (
           <g transform="translate(40, 60)">
             {/* Token 1 */}
             <rect x={0} y={30} width={100} height={50} rx={8} fill={t.surfaceAlt} stroke={t.accentPrimary} strokeWidth={2} />
             <text x={50} y={60} textAnchor="middle" fontSize={12} fontWeight={700} fill={t.accentPrimary}>Token 1</text>
 
-            <line x1={100} y1={55} x2={150} y2={55} stroke={t.accentPrimary} strokeWidth={2} />
+            <line x1={100} y1={55} x2={144} y2={55} stroke={t.accentPrimary} strokeWidth={2} markerEnd="url(#tad-arrow-pri)" />
 
             {/* Token 2 */}
             <rect x={150} y={30} width={100} height={50} rx={8} fill={t.surfaceAlt} stroke={t.accentPrimary} strokeWidth={2} />
             <text x={200} y={60} textAnchor="middle" fontSize={12} fontWeight={700} fill={t.accentPrimary}>Token 2</text>
 
-            <line x1={250} y1={55} x2={300} y2={55} stroke={t.accentPrimary} strokeWidth={2} />
+            <line x1={250} y1={55} x2={294} y2={55} stroke={t.accentPrimary} strokeWidth={2} markerEnd="url(#tad-arrow-pri)" />
 
             {/* Token 3 */}
             <rect x={300} y={30} width={100} height={50} rx={8} fill={t.surfaceAlt} stroke={t.accentPrimary} strokeWidth={2} />
             <text x={350} y={60} textAnchor="middle" fontSize={12} fontWeight={700} fill={t.accentPrimary}>Token 3</text>
 
-            <line x1={400} y1={55} x2={450} y2={55} stroke={t.accentPrimary} strokeWidth={2} />
+            <line x1={400} y1={55} x2={444} y2={55} stroke={t.accentPrimary} strokeWidth={2} markerEnd="url(#tad-arrow-pri)" />
 
             {/* Token 4 */}
             <rect x={450} y={30} width={100} height={50} rx={8} fill={t.surfaceAlt} stroke={t.accentPrimary} strokeWidth={2} />
@@ -71,15 +85,15 @@ export default function TreeAttentionDraftDiagram() {
             <text x={55} y={95} textAnchor="middle" fontSize={12} fontWeight={700} fill={t.accentPrimary}>Token 1 (Root)</text>
 
             {/* Branch Lines */}
-            <path d="M 110 90 L 170 40 L 200 40" fill="none" stroke={t.accentTeal} strokeWidth={2} />
-            <path d="M 110 90 L 170 140 L 200 140" fill="none" stroke={t.accentSecondary} strokeWidth={2} />
+            <path d="M 110 90 L 160 40 L 194 40" fill="none" stroke={t.accentTeal} strokeWidth={2} markerEnd="url(#tad-arrow-teal)" />
+            <path d="M 110 90 L 160 140 L 194 140" fill="none" stroke={t.accentSecondary} strokeWidth={2} markerEnd="url(#tad-arrow-sec)" />
 
             {/* Branch A: Token 2a */}
             <rect x={200} y={15} width={120} height={50} rx={8} fill={t.surfaceAlt} stroke={t.accentTeal} strokeWidth={2} />
             <text x={260} y={40} textAnchor="middle" fontSize={12} fontWeight={700} fill={t.accentTeal}>Branch A: Tok 2a</text>
             <text x={260} y={55} textAnchor="middle" fontSize={10} fill={t.textSecondary}>High Confidence</text>
 
-            <line x1={320} y1={40} x2={370} y2={40} stroke={t.accentTeal} strokeWidth={2} />
+            <line x1={320} y1={40} x2={364} y2={40} stroke={t.accentTeal} strokeWidth={2} markerEnd="url(#tad-arrow-teal)" />
 
             {/* Branch A: Token 3a */}
             <rect x={370} y={15} width={120} height={50} rx={8} fill={t.surfaceAlt} stroke={t.accentTeal} strokeWidth={2} />
@@ -91,19 +105,23 @@ export default function TreeAttentionDraftDiagram() {
             <text x={260} y={140} textAnchor="middle" fontSize={12} fontWeight={700} fill={t.accentSecondary}>Branch B: Tok 2b</text>
             <text x={260} y={155} textAnchor="middle" fontSize={10} fill={t.textSecondary}>Alternative Option</text>
 
-            <line x1={320} y1={140} x2={370} y2={140} stroke={t.accentSecondary} strokeWidth={2} />
+            <line x1={320} y1={140} x2={364} y2={140} stroke={t.accentSecondary} strokeWidth={2} markerEnd="url(#tad-arrow-sec)" />
 
             {/* Branch B: Token 3b */}
             <rect x={370} y={115} width={120} height={50} rx={8} fill={t.surfaceAlt} stroke={t.accentSecondary} strokeWidth={2} />
             <text x={430} y={140} textAnchor="middle" fontSize={12} fontWeight={700} fill={t.accentSecondary}>Token 3b</text>
             <text x={430} y={155} textAnchor="middle" fontSize={10} fill={t.textSecondary}>Path B Continuation</text>
 
+            {/* Connectors into Tree Mask evaluation */}
+            <path d="M 490 40 L 504 40 L 514 62" fill="none" stroke={t.accentTeal} strokeWidth={1.5} strokeDasharray="3 2" markerEnd="url(#tad-arrow-muted)" />
+            <path d="M 490 140 L 504 140 L 514 118" fill="none" stroke={t.accentSecondary} strokeWidth={1.5} strokeDasharray="3 2" markerEnd="url(#tad-arrow-muted)" />
+
             {/* Tree Mask Evaluation Note */}
-            <rect x={510} y={40} width={120} height={100} rx={8} fill={t.surface} stroke={t.border} strokeWidth={1} />
-            <text x={570} y={65} textAnchor="middle" fontSize={11} fontWeight={700} fill={t.textPrimary}>Tree Mask</text>
-            <text x={570} y={85} textAnchor="middle" fontSize={10} fill={t.textSecondary}>Single GEMM Pass</text>
-            <text x={570} y={105} textAnchor="middle" fontSize={10} fill={t.accentTeal}>Verifies All Paths</text>
-            <text x={570} y={125} textAnchor="middle" fontSize={10} fill={t.textPrimary}>Avg Acc: ~3.6 tok</text>
+            <rect x={520} y={40} width={110} height={100} rx={8} fill={t.surface} stroke={t.border} strokeWidth={1} />
+            <text x={575} y={65} textAnchor="middle" fontSize={11} fontWeight={700} fill={t.textPrimary}>Tree Mask</text>
+            <text x={575} y={85} textAnchor="middle" fontSize={10} fill={t.textSecondary}>Single GEMM Pass</text>
+            <text x={575} y={105} textAnchor="middle" fontSize={10} fill={t.accentTeal}>Verifies All Paths</text>
+            <text x={575} y={125} textAnchor="middle" fontSize={10} fill={t.textPrimary}>Avg Acc: ~3.6 tok</text>
           </g>
         )}
       </svg>

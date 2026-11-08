@@ -7,12 +7,12 @@ import { SketchArrow, SketchRect } from '../../components/notebook/RoughShape';
 const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 type State = 'submitted' | 'working' | 'input-required' | 'completed' | 'failed';
-const STATES: { key: State; desc: string }[] = [
-  { key: 'submitted', desc: 'The task has been handed off but the receiving agent hasn\'t started yet.' },
-  { key: 'working', desc: 'The receiving agent is actively processing -- may take far longer than a single function call.' },
-  { key: 'input-required', desc: 'The receiving agent needs clarification before it can continue -- something a stateless tool call has no way to express.' },
-  { key: 'completed', desc: 'The task finished successfully; the result is available to the delegating agent.' },
-  { key: 'failed', desc: 'The task could not be completed -- the delegating agent needs to decide whether to retry, reassign, or escalate.' },
+const STATES: { key: State; desc: string; label: string; x: number; y: number }[] = [
+  { key: 'submitted', label: 'submitted', desc: 'The task has been handed off but the receiving agent hasn\'t started yet.', x: 75, y: 75 },
+  { key: 'working', label: 'working', desc: 'The receiving agent is actively processing -- may take far longer than a single function call.', x: 235, y: 75 },
+  { key: 'input-required', label: 'input-required', desc: 'The receiving agent needs clarification before it can continue -- something a stateless tool call has no way to express.', x: 235, y: 150 },
+  { key: 'completed', label: 'completed', desc: 'The task finished successfully; the result is available to the delegating agent.', x: 425, y: 45 },
+  { key: 'failed', label: 'failed', desc: 'The task could not be completed -- the delegating agent needs to decide whether to retry, reassign, or escalate.', x: 425, y: 105 },
 ];
 
 /** Delegation isn't call-and-return -- it's a task with real states,
@@ -24,33 +24,47 @@ export default function TaskLifecycleDiagram() {
   const color = getConceptColor(t, 'key');
   const terminalColor = (s: State) => (s === 'completed' ? getConceptColor(t, 'attention') : s === 'failed' ? t.accentDanger : color);
 
-  const width = 600;
-  const y = 55;
-  const xFor = (i: number) => 50 + i * ((width - 100) / (STATES.length - 1));
+  const width = 520;
+  const height = 190;
+  const stateW = 96;
+  const stateH = 34;
 
   return (
     <VisualizationContainer footer={STATES.find((s) => s.key === active)!.desc}>
-      <svg width="100%" viewBox={`0 0 ${width} 100`} style={{ display: 'block' }}>
-        {STATES.map((_, i) => i > 0 && (
-          <SketchArrow key={`l${i}`} points={[[xFor(i - 1) + 45, y], [xFor(i) - 45, y]]} color={t.textMuted} strokeWidth={1.5} id={`tl-arrow-${i}`} />
-        ))}
-        {active === 'input-required' && (
-          <SketchArrow points={[[xFor(2), y - 18], [xFor(2), y - 45], [xFor(1), y - 45], [xFor(1), y - 18]]} color={color} strokeWidth={1.5} id="tl-loop" />
-        )}
-        {STATES.map((stateInfo, i) => {
+      <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
+        {/* submitted -> working */}
+        <SketchArrow points={[[75 + stateW / 2, 75], [235 - stateW / 2 - 2, 75]]} color={t.textMuted} strokeWidth={1.5} arrowhead id="tl-arr-sub" />
+
+        {/* working -> input-required */}
+        <SketchArrow points={[[255, 75 + stateH / 2], [255, 150 - stateH / 2 - 2]]} color={active === 'input-required' ? color : t.textMuted} strokeWidth={1.5} arrowhead id="tl-arr-need" />
+
+        {/* input-required -> working (loopback upon clarification) */}
+        <SketchArrow points={[[215, 150 - stateH / 2], [215, 75 + stateH / 2 + 2]]} color={active === 'input-required' ? color : t.textMuted} strokeWidth={1.5} arrowhead id="tl-arr-back" />
+
+        {/* working -> completed */}
+        <SketchArrow points={[[235 + stateW / 2, 68], [425 - stateW / 2 - 2, 45]]} color={active === 'completed' ? getConceptColor(t, 'attention') : t.textMuted} strokeWidth={1.5} arrowhead id="tl-arr-comp" />
+
+        {/* working -> failed */}
+        <SketchArrow points={[[235 + stateW / 2, 82], [425 - stateW / 2 - 2, 105]]} color={active === 'failed' ? t.accentDanger : t.textMuted} strokeWidth={1.5} arrowhead id="tl-arr-fail" />
+
+        {/* loop label */}
+        <text x={270} y={116} fontSize={8} fontFamily={HAND_FONT} fill={t.textMuted}>needs info</text>
+        <text x={170} y={116} textAnchor="end" fontSize={8} fontFamily={HAND_FONT} fill={t.textMuted}>clarification</text>
+
+        {STATES.map((stateInfo) => {
           const isActive = active === stateInfo.key;
           const c = terminalColor(stateInfo.key);
           return (
             <g key={stateInfo.key} onClick={() => setActive(stateInfo.key)} onMouseEnter={() => setActive(stateInfo.key)} style={{ cursor: 'pointer' }}>
-              <rect x={xFor(i) - 44} y={y - 18} width={88} height={36} rx={7} fill={isActive ? `${c}30` : t.surfaceAlt} stroke="none" />
-              <SketchRect x={xFor(i) - 44} y={y - 18} width={88} height={36} color={c} strokeWidth={isActive ? 2.5 : 1.5} id={`tl-state-${stateInfo.key}`} />
-              <text x={xFor(i)} y={y + 4} textAnchor="middle" fontSize={9} fontWeight={isActive ? 700 : 500} fontFamily={HAND_FONT} fill={c}>{stateInfo.key}</text>
+              <rect x={stateInfo.x - stateW / 2} y={stateInfo.y - stateH / 2} width={stateW} height={stateH} rx={7} fill={isActive ? `${c}30` : t.surfaceAlt} stroke="none" />
+              <SketchRect x={stateInfo.x - stateW / 2} y={stateInfo.y - stateH / 2} width={stateW} height={stateH} color={c} strokeWidth={isActive ? 2.5 : 1.5} id={`tl-state-${stateInfo.key}`} />
+              <text x={stateInfo.x} y={stateInfo.y + 4} textAnchor="middle" fontSize={10} fontWeight={isActive ? 700 : 600} fontFamily={HAND_FONT} fill={c}>{stateInfo.label}</text>
             </g>
           );
         })}
       </svg>
       <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color: t.textMuted, marginTop: 4 }}>
-        The curved arrow: input-required can loop back to working once clarification arrives.
+        A delegated task branches from working into terminal completed / failed states, or pauses in input-required for clarification.
       </div>
     </VisualizationContainer>
   );
