@@ -15,3 +15,14 @@ Problems to fix first:
 Follow AGENTS.md and the ui-design and writing-voice skills. 8 GB laptop: do not run npm run build, pagefind or full Playwright; use npm run dev on port 5201, typecheck and targeted vitest. Check `free -g`; another agent is running too.
 
 Commit in small steps on this branch. Do NOT push; I review and ship. Take real screenshots at 1440px and 375px of every screen, save to docs/evidence/interview-ui/, and report what you verified and what you did not.
+
+## Review fixes (from the lead, after looking at your screenshots)
+
+1. Square boxes are back around every graph node on the topics screen in light mode. They were removed once on purpose. Remove them in light and dark, including hover and focus.
+2. The completed state shows the same thing three times: "Completed +10 points", a "+10 points earned" chip, and the toast. Keep one in the page. Also stop the confetti burst on this action, or reduce it to almost nothing: the brief said quiet.
+3. There is an empty rounded bar above the model answer while it is reading. Show real reading progress or remove it.
+4. On 375px the selected node's rotated label pill runs off the right edge ("RAG"). Keep the name in the centre of the graph and drop the rotated pill on phones.
+5. Do not offer Mark complete when no answer was given ("No answer was captured").
+6. On a 900px tall window the bottom of the graph is cut off, so topics near the bottom are hard to reach and their labels are clipped. Fit the whole graph and its labels on screen at 1440x900.
+
+Re-take the affected screenshots, using full-page where needed. Commit. Do NOT push.
