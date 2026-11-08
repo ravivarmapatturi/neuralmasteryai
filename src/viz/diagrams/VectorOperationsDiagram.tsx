@@ -19,6 +19,15 @@ export default function VectorOperationsDiagram() {
   const scale = 40, ox = width / 2, oy = height / 2;
   const px = (x: number) => ox + x * scale;
   const py = (y: number) => oy - y * scale;
+  const labelPos = (v: [number, number]) => {
+    const len = Math.hypot(v[0], v[1]) || 1;
+    const ux = v[0] / len;
+    const uy = -v[1] / len;
+    return { x: px(v[0]) + ux * 14, y: py(v[1]) + uy * 14 + 4 };
+  };
+
+  const aPos = labelPos(a);
+  const bPos = labelPos(b);
 
   return (
     <VisualizationContainer footer={`a·b = (${a[0]})(${b[0]}) + (${a[1]})(${b[1]}) = ${dotProduct.toFixed(2)}. ‖a‖ = ${normA.toFixed(2)}, ‖b‖ = ${normB.toFixed(2)}. cos(θ) = a·b / (‖a‖‖b‖) = ${cos.toFixed(3)} → θ ≈ ${angleDeg.toFixed(1)}°. Every number here is recomputed live from the two vectors you're dragging via the sliders.`}>
@@ -42,10 +51,10 @@ export default function VectorOperationsDiagram() {
         <line x1={ox} y1={0} x2={ox} y2={height} stroke={t.border} strokeWidth={1} />
 
         <line x1={ox} y1={oy} x2={px(a[0])} y2={py(a[1])} stroke={t.accentPrimary} strokeWidth={2.5} markerEnd="url(#vec-arrow-a)" />
-        <text x={px(a[0]) + 6} y={py(a[1])} fontSize={12} fontWeight={700} fill={t.accentPrimary}>a</text>
+        <text x={aPos.x} y={aPos.y} textAnchor="middle" fontSize={12} fontWeight={700} fill={t.accentPrimary}>a</text>
 
         <line x1={ox} y1={oy} x2={px(b[0])} y2={py(b[1])} stroke={t.accentWarn} strokeWidth={2.5} markerEnd="url(#vec-arrow-b)" />
-        <text x={px(b[0]) + 6} y={py(b[1])} fontSize={12} fontWeight={700} fill={t.accentWarn}>b</text>
+        <text x={bPos.x} y={bPos.y} textAnchor="middle" fontSize={12} fontWeight={700} fill={t.accentWarn}>b</text>
       </svg>
 
       <div style={{ textAlign: 'center', marginTop: 8 }}>

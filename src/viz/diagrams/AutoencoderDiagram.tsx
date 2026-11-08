@@ -15,7 +15,7 @@ export default function AutoencoderDiagram() {
   const zColor = t.accentWarn;
 
   const width = 560;
-  const height = 190;
+  const height = 205;
   const midY = 70;
   const layerXs = [40, 130, 220, 340, 430, 520];
   const layerH = [70, 46, 16, 16, 46, 70];
@@ -28,17 +28,34 @@ export default function AutoencoderDiagram() {
       </div>
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
         <defs>
-          <marker id="ae-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
-            <path d="M0,0 L7,3.5 L0,7 Z" fill={t.textMuted} />
+          <marker id="ae-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill={t.textMuted} />
+          </marker>
+          <marker id="ae-recon" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill={t.textMuted} />
           </marker>
         </defs>
 
+        {/* Layer-to-layer forward arrows strictly outside node boxes */}
         {layerXs.slice(0, -1).map((x, i) => {
           const isEnc = i < 2;
           const color = isEnc ? encColor : decColor;
-          return <line key={`l${i}`} x1={x + 16} y1={midY} x2={layerXs[i + 1] - 16} y2={midY} stroke={color} strokeWidth={1.5} markerEnd="url(#ae-arrow)" opacity={0.7} />;
+          return (
+            <line
+              key={`l${i}`}
+              x1={x + 12}
+              y1={midY}
+              x2={layerXs[i + 1] - 14}
+              y2={midY}
+              stroke={color}
+              strokeWidth={1.5}
+              markerEnd="url(#ae-arrow)"
+              opacity={0.7}
+            />
+          );
         })}
 
+        {/* Layer representations */}
         {layerXs.map((x, i) => {
           const h = layerH[i];
           const isBottleneck = i === 2 || i === 3;
@@ -78,8 +95,16 @@ export default function AutoencoderDiagram() {
         <text x={(layerXs[0] + layerXs[2]) / 2} y={20} textAnchor="middle" fontSize={11} fontWeight={700} fill={encColor}>ENCODER</text>
         <text x={(layerXs[3] + layerXs[5]) / 2} y={20} textAnchor="middle" fontSize={11} fontWeight={700} fill={decColor}>DECODER</text>
 
-        <path d={`M ${layerXs[5]},${midY - layerH[5] / 2 - 20} C ${layerXs[5]},${height - 20} ${layerXs[0]},${height - 20} ${layerXs[0]},${midY - layerH[0] / 2 - 20}`} fill="none" stroke={t.textMuted} strokeWidth={1.25} strokeDasharray="4 3" markerEnd="url(#ae-arrow)" />
-        <text x={width / 2} y={height - 6} textAnchor="middle" fontSize={10} fill={t.textMuted}>reconstruction error ‖x − x̂‖²</text>
+        {/* Reconstruction error curve from bottom of input to bottom of output, clear of all nodes */}
+        <path
+          d={`M ${layerXs[0]},${midY + layerH[0] / 2 + 8} C ${layerXs[0] + 60},${height - 35} ${layerXs[5] - 60},${height - 35} ${layerXs[5]},${midY + layerH[5] / 2 + 10}`}
+          fill="none"
+          stroke={t.textMuted}
+          strokeWidth={1.25}
+          strokeDasharray="4 3"
+          markerEnd="url(#ae-recon)"
+        />
+        <text x={width / 2} y={height - 10} textAnchor="middle" fontSize={10} fill={t.textMuted}>reconstruction error ‖x − x̂‖²</text>
       </svg>
       <div style={{ marginTop: 8, textAlign: 'center' }}>
         <VisualizationMath latex={mode === 'ae' ? '\\hat{\\mathbf{x}} = \\text{decoder}(\\text{encoder}(\\mathbf{x}))' : '\\mathcal{L} = \\|\\mathbf{x}-\\hat{\\mathbf{x}}\\|^2 + D_{KL}\\big(\\mathcal{N}(\\mu,\\sigma^2)\\,\\|\\,\\mathcal{N}(0,1)\\big)'} />

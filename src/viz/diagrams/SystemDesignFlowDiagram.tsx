@@ -30,7 +30,7 @@ export default function SystemDesignFlowDiagram({ flow }: { flow: SystemDesignFl
           const color = getConceptColor(t, stage.concept);
           const selected = active === i;
           return <g key={stage.label} onClick={() => setActive(i)} onMouseEnter={() => setActive(i)} style={{ cursor: 'pointer' }}>
-            {i > 0 && <line x1={x - gap + 5} y1={48} x2={x - 5} y2={48} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#system-flow-arrow)" />}
+            {i > 0 && <line x1={x - gap} y1={48} x2={x - 6} y2={48} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#system-flow-arrow)" />}
             <rect x={x} y={23} width={stageW} height={50} rx={8} fill={selected ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={selected ? 2.5 : 1.5} />
             <text x={x + stageW / 2} y={45} textAnchor="middle" fontSize={10} fontWeight={700} fill={color}>{stage.label}</text>
             <text x={x + stageW / 2} y={62} textAnchor="middle" fontSize={8} fill={t.textSecondary}>{selected ? 'selected' : 'inspect'}</text>

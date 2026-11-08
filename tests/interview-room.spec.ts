@@ -33,7 +33,7 @@ test.describe('Interview Room (/interview/room)', () => {
     await page.click('.si-node:has-text("Evaluation")');
     await expect(page.locator('.si-panel h2')).toHaveText('Evaluation');
     await page.click('#start-topic');
-    await expect(page.locator('.si-progress')).toContainText('Question 1 of');
+    await expect(page.locator('.si-counter')).toContainText('Question 1 of');
 
     await page.click('button:has-text("Skip to answering")');
     await page.waitForSelector('textarea.si-answer-box', { timeout: 10000 });
@@ -45,7 +45,7 @@ test.describe('Interview Room (/interview/room)', () => {
     await page.click('#mark-complete');
     await expect(page.locator('.si-done')).toContainText('+10 points');
     await page.click('#next');
-    await expect(page.locator('.si-progress')).toContainText('Question 2 of');
+    await expect(page.locator('.si-counter')).toContainText('Question 2 of');
     expect(answersSent).toHaveLength(0);
   });
 

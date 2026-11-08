@@ -36,7 +36,7 @@ export default function ThreeDisciplinesDiagram() {
           const isActive = active === d;
           return (
             <g key={d}>
-              {i > 0 && <line x1={x - 15} y1={50} x2={x + 5} y2={50} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#td-arrow)" />}
+              {i > 0 && <line x1={x - 24} y1={50} x2={x - 1} y2={50} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#td-arrow)" />}
               <g onClick={() => setActive(d)} onMouseEnter={() => setActive(d)} style={{ cursor: 'pointer' }}>
                 <rect x={x} y={20} width={150} height={60} rx={8} fill={isActive ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isActive ? 2.5 : 1.5} />
                 <text x={x + 75} y={54} textAnchor="middle" fontSize={11} fontWeight={700} fill={color}>{INFO[d].label}</text>

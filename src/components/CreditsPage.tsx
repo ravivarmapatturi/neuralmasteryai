@@ -11,6 +11,7 @@ const MODELS: Credit[] = [
 ];
 
 const RUNTIME: Credit[] = [
+  ['AI Engineering from Scratch, by Rohit Ghumare', 'MIT', 'https://github.com/rohitg00/ai-engineering-from-scratch', 'Many of the interview questions and short answers'],
   ['Pyodide', 'MPL-2.0', 'https://pyodide.org', 'Runs Python and NumPy in your browser'],
   ['Transformers.js', 'Apache-2.0', 'https://github.com/huggingface/transformers.js', 'Runs the models above in the browser'],
   ['kokoro-js', 'Apache-2.0', 'https://github.com/hexgrad/kokoro', 'Kokoro text-to-speech in JavaScript'],

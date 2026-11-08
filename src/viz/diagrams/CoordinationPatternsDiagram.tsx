@@ -11,6 +11,29 @@ const DESC: Record<Pattern, string> = {
   blackboard: 'Agents don\'t talk to each other directly -- they read/write shared state and react to changes in it. Useful when the set of contributing agents isn\'t fixed in advance.',
 };
 
+/** Trim line coordinates so lines stop cleanly at node perimeters */
+function getPerimeterPoints(
+  x1: number,
+  y1: number,
+  r1: number,
+  x2: number,
+  y2: number,
+  r2: number
+) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const dist = Math.hypot(dx, dy);
+  if (dist === 0) return { startX: x1, startY: y1, endX: x2, endY: y2 };
+  const ux = dx / dist;
+  const uy = dy / dist;
+  return {
+    startX: x1 + ux * r1,
+    startY: y1 + uy * r1,
+    endX: x2 - ux * r2,
+    endY: y2 - uy * r2,
+  };
+}
+
 /** The three topologies from Multi-Agent Systems, drawn as actual graphs
  * instead of described in prose -- the shape difference (star vs. mesh vs.
  * shared-node) is the entire tradeoff between debuggability and
@@ -19,14 +42,17 @@ export default function CoordinationPatternsDiagram() {
   const t = useVizTokens();
   const [pattern, setPattern] = useState<Pattern>('hierarchical');
   const color = getConceptColor(t, 'attention');
-  const width = 300;
-  const height = 180;
+  const width = 340;
+  const height = 220;
   const cx = width / 2;
   const cy = height / 2;
+  const orbitR = 68;
+  const agentR = 18;
+  const centerR = 20;
 
   const agents = [0, 1, 2, 3].map((i) => {
     const angle = (i / 4) * 2 * Math.PI - Math.PI / 2;
-    return { x: cx + 55 * Math.cos(angle), y: cy + 55 * Math.sin(angle) };
+    return { x: cx + orbitR * Math.cos(angle), y: cy + orbitR * Math.sin(angle) };
   });
 
   return (
@@ -35,30 +61,123 @@ export default function CoordinationPatternsDiagram() {
         label="Coordination pattern"
         value={pattern}
         onChange={setPattern}
-        options={[{ value: 'hierarchical', label: 'Hierarchical' }, { value: 'peer', label: 'Peer-to-peer' }, { value: 'blackboard', label: 'Blackboard' }]}
+        options={[
+          { value: 'hierarchical', label: 'Hierarchical' },
+          { value: 'peer', label: 'Peer-to-peer' },
+          { value: 'blackboard', label: 'Blackboard' },
+        ]}
       />
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8 }}>
-        {pattern === 'hierarchical' && agents.map((a, i) => <line key={i} x1={cx} y1={cy} x2={a.x} y2={a.y} stroke={color} strokeWidth={1.5} />)}
-        {pattern === 'peer' && agents.map((a, i) => agents.slice(i + 1).map((b, j) => <line key={`${i}-${j}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={color} strokeWidth={1} opacity={0.6} />))}
-        {pattern === 'blackboard' && agents.map((a, i) => <line key={i} x1={a.x} y1={a.y} x2={cx} y2={cy} stroke={color} strokeWidth={1} strokeDasharray="3 2" opacity={0.6} />)}
+        <defs>
+          <marker id="coord-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill={color} />
+          </marker>
+        </defs>
 
+        {/* Lines strictly between perimeters, never intersecting labels */}
+        {pattern === 'hierarchical' &&
+          agents.map((a, i) => {
+            const { startX, startY, endX, endY } = getPerimeterPoints(cx, cy, centerR, a.x, a.y, agentR + 4);
+            return (
+              <line
+                key={i}
+                x1={startX}
+                y1={startY}
+                x2={endX}
+                y2={endY}
+                stroke={color}
+                strokeWidth={1.5}
+                markerEnd="url(#coord-arrow)"
+              />
+            );
+          })}
+
+        {pattern === 'peer' &&
+          agents.map((a, i) =>
+            agents.slice(i + 1).map((b, j) => {
+              const actualJ = i + 1 + j;
+              const isOpposite = Math.abs(i - actualJ) === 2;
+              // If opposite, curve slightly so diagonal lines do not collide dead center
+              if (isOpposite) {
+                const midAngle = (i === 0 ? 0 : Math.PI);
+                const offset = 18;
+                const midX = cx + offset * Math.cos(midAngle);
+                const midY = cy + offset * Math.sin(midAngle);
+                return (
+                  <path
+                    key={`${i}-${actualJ}`}
+                    d={`M ${a.x},${a.y} Q ${midX},${midY} ${b.x},${b.y}`}
+                    fill="none"
+                    stroke={color}
+                    strokeWidth={1.2}
+                    opacity={0.65}
+                  />
+                );
+              }
+              const { startX, startY, endX, endY } = getPerimeterPoints(a.x, a.y, agentR, b.x, b.y, agentR);
+              return (
+                <line
+                  key={`${i}-${actualJ}`}
+                  x1={startX}
+                  y1={startY}
+                  x2={endX}
+                  y2={endY}
+                  stroke={color}
+                  strokeWidth={1.2}
+                  opacity={0.65}
+                />
+              );
+            })
+          )}
+
+        {pattern === 'blackboard' &&
+          agents.map((a, i) => {
+            const { startX, startY, endX, endY } = getPerimeterPoints(a.x, a.y, agentR, cx, cy, 26);
+            return (
+              <line
+                key={i}
+                x1={startX}
+                y1={startY}
+                x2={endX}
+                y2={endY}
+                stroke={color}
+                strokeWidth={1.3}
+                strokeDasharray="3 2"
+                opacity={0.7}
+              />
+            );
+          })}
+
+        {/* Center node for hierarchical */}
         {pattern === 'hierarchical' && (
-          <>
-            <circle cx={cx} cy={cy} r={16} fill={`${color}30`} stroke={color} strokeWidth={2} />
-            <text x={cx} y={cy + 3} textAnchor="middle" fontSize={7} fill={color}>orch.</text>
-          </>
-        )}
-        {pattern === 'blackboard' && (
-          <>
-            <rect x={cx - 24} y={cy - 12} width={48} height={24} rx={4} fill={t.surfaceAlt} stroke={t.textMuted} strokeWidth={1.5} />
-            <text x={cx} y={cy + 3} textAnchor="middle" fontSize={6.5} fill={t.textMuted}>shared state</text>
-          </>
+          <g>
+            <circle cx={cx} cy={cy} r={centerR} fill={t.surface} stroke="none" />
+            <circle cx={cx} cy={cy} r={centerR} fill={`${color}30`} stroke={color} strokeWidth={2} />
+            <text x={cx} y={cy + 3.5} textAnchor="middle" fontSize={8.5} fontWeight={700} fill={color}>
+              Orch.
+            </text>
+          </g>
         )}
 
+        {/* Center node for blackboard */}
+        {pattern === 'blackboard' && (
+          <g>
+            <rect x={cx - 30} y={cy - 14} width={60} height={28} rx={6} fill={t.surface} stroke="none" />
+            <rect x={cx - 30} y={cy - 14} width={60} height={28} rx={6} fill={t.surfaceAlt} stroke={t.textMuted} strokeWidth={1.5} />
+            <text x={cx} y={cy + 3.5} textAnchor="middle" fontSize={8} fontWeight={600} fill={t.textPrimary}>
+              shared state
+            </text>
+          </g>
+        )}
+
+        {/* Outer Agent nodes */}
         {agents.map((a, i) => (
           <g key={i}>
-            <circle cx={a.x} cy={a.y} r={16} fill={`${color}18`} stroke={color} strokeWidth={1.5} />
-            <text x={a.x} y={a.y + 3} textAnchor="middle" fontSize={7} fill={color}>A{i + 1}</text>
+            <circle cx={a.x} cy={a.y} r={agentR} fill={t.surface} stroke="none" />
+            <circle cx={a.x} cy={a.y} r={agentR} fill={`${color}20`} stroke={color} strokeWidth={1.5} />
+            <text x={a.x} y={a.y + 3.5} textAnchor="middle" fontSize={9} fontWeight={600} fill={color}>
+              A{i + 1}
+            </text>
           </g>
         ))}
       </svg>

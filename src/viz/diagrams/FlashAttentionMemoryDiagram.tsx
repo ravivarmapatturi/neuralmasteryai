@@ -23,6 +23,11 @@ export default function FlashAttentionMemoryDiagram() {
     >
       <PillSelect<'standard' | 'flash'> label="Attention implementation" value={mode} onChange={setMode} options={[{ value: 'standard', label: 'Standard' }, { value: 'flash', label: 'FlashAttention' }]} />
       <svg width="100%" viewBox={`0 0 ${width} 150`} style={{ display: 'block', marginTop: 8 }}>
+        <defs>
+          <marker id="fam-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+            <path d="M0,0 L7,3.5 L0,7 Z" fill={color} />
+          </marker>
+        </defs>
         <rect x={20} y={100} width={520} height={35} rx={6} fill="none" stroke={t.textMuted} strokeWidth={1.5} strokeDasharray="4 3" />
         <text x={30} y={92} fontSize={9} fill={t.textMuted}>slow HBM (off-chip)</text>
         <rect x={220} y={20} width={120} height={35} rx={6} fill="none" stroke={color} strokeWidth={1.5} />
@@ -32,8 +37,8 @@ export default function FlashAttentionMemoryDiagram() {
           <>
             <rect x={40} y={106} width={480} height={22} rx={4} fill={`${color}30`} stroke={color} strokeWidth={1.5} />
             <text x={280} y={121} textAnchor="middle" fontSize={9} fill={color}>full n × n attention matrix, materialized here</text>
-            <line x1={280} y1={100} x2={280} y2={57} stroke={color} strokeWidth={1.5} strokeDasharray="2 2" />
-            <text x={290} y={80} fontSize={8} fill={t.textMuted}>read back for softmax + weighted sum</text>
+            <line x1={280} y1={100} x2={280} y2={58} stroke={color} strokeWidth={1.5} strokeDasharray="2 2" markerEnd="url(#fam-arrow)" />
+            <text x={292} y={80} fontSize={8} fill={t.textMuted}>read back for softmax + weighted sum</text>
           </>
         ) : (
           <>

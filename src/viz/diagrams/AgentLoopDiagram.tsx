@@ -7,7 +7,7 @@ const STEPS = [
   { stage: 'Model decides', detail: 'Given the input + history so far, decide: call a tool, or answer now?' },
   { stage: 'Call tool', detail: 'Emit a structured request — function name + arguments — instead of a plain text answer.' },
   { stage: 'Observe result', detail: 'The calling application executes the function and feeds the result back into context.' },
-  { stage: 'Model decides', detail: 'With the new result in context: call another tool, or is this enough to answer?' },
+  { stage: 'Decide again', detail: 'With the new result in context: call another tool, or is this enough to answer?' },
   { stage: 'Final answer', detail: 'Enough information has accumulated in context — produce the final answer and stop.' },
 ];
 
@@ -19,38 +19,123 @@ export default function AgentLoopDiagram() {
   const t = useVizTokens();
   const [step, setStep] = useState(0);
   const color = getConceptColor(t, 'attention');
-  const width = 480;
-  const height = 170;
-  const cx = width / 2;
-  const cy = 75;
-  const r = 60;
-  const nodeAngles = [-90, -18, 54, 126, 198].map((d) => (d * Math.PI) / 180);
+  const width = 520;
+  const height = 210;
+  const cx = 180;
+  const cy = 105;
+  const r = 65;
+  const nodeRadius = 30;
+
+  // 4 positions around the loop
+  const loopPositions = [
+    { x: cx, y: cy - r },        // Top: Model decides
+    { x: cx + r, y: cy },        // Right: Call tool
+    { x: cx, y: cy + r },        // Bottom: Observe result
+    { x: cx - r, y: cy },        // Left: Model decides (iteration 2)
+  ];
+  const finalPos = { x: cx + r + 130, y: cy };
 
   return (
     <VisualizationContainer footer={STEPS[step].detail}>
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
-        {STEPS.slice(0, 4).map((_, i) => {
-          const a1 = nodeAngles[i];
-          const a2 = nodeAngles[(i + 1) % 4];
-          const x1 = cx + r * Math.cos(a1);
-          const y1 = cy + r * Math.sin(a1);
-          const x2 = cx + r * Math.cos(a2);
-          const y2 = cy + r * Math.sin(a2);
-          const isActive = step === i || (step === 3 && i === 3);
-          return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={isActive ? color : t.border} strokeWidth={isActive ? 2.5 : 1.5} opacity={isActive ? 1 : 0.5} />;
-        })}
-        {STEPS.map((s, i) => {
-          const isLast = i === 4;
-          const pos = isLast ? { x: cx + r + 90, y: cy } : { x: cx + r * Math.cos(nodeAngles[i]), y: cy + r * Math.sin(nodeAngles[i]) };
+        <defs>
+          <marker id="loop-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L6,3 z" fill={color} />
+          </marker>
+          <marker id="loop-arrow-muted" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L6,3 z" fill={t.border} />
+          </marker>
+        </defs>
+
+        {/* Connecting lines between loop nodes - trimmed to circle boundaries so they never cross text */}
+        {loopPositions.map((pos1, i) => {
+          const pos2 = loopPositions[(i + 1) % 4];
+          const dx = pos2.x - pos1.x;
+          const dy = pos2.y - pos1.y;
+          const dist = Math.hypot(dx, dy);
+          const ux = dx / dist;
+          const uy = dy / dist;
+          const x1 = pos1.x + ux * nodeRadius;
+          const y1 = pos1.y + uy * nodeRadius;
+          const x2 = pos2.x - ux * (nodeRadius + 6);
+          const y2 = pos2.y - uy * (nodeRadius + 6);
           const isActive = step === i;
+
+          return (
+            <line
+              key={i}
+              x1={x1}
+              y1={y1}
+              x2={x2}
+              y2={y2}
+              stroke={isActive ? color : t.border}
+              strokeWidth={isActive ? 2 : 1.5}
+              markerEnd={isActive ? 'url(#loop-arrow)' : 'url(#loop-arrow-muted)'}
+              opacity={isActive ? 1 : 0.6}
+            />
+          );
+        })}
+
+        {/* Branch arrow to Final Answer from loop (from step 3 / left or right) */}
+        {(() => {
+          const fromPos = loopPositions[1]; // from right or top
+          const x1 = fromPos.x + nodeRadius;
+          const y1 = fromPos.y;
+          const x2 = finalPos.x - nodeRadius - 6;
+          const y2 = finalPos.y;
+          const isBranchActive = step === 3 || step === 4;
+          return (
+            <line
+              x1={x1}
+              y1={y1}
+              x2={x2}
+              y2={y2}
+              stroke={isBranchActive ? color : t.border}
+              strokeWidth={isBranchActive ? 2 : 1.5}
+              strokeDasharray={step < 4 ? '4 3' : undefined}
+              markerEnd={isBranchActive ? 'url(#loop-arrow)' : 'url(#loop-arrow-muted)'}
+              opacity={isBranchActive ? 1 : 0.4}
+            />
+          );
+        })()}
+
+        {/* Render nodes */}
+        {STEPS.map((s, i) => {
+          const isFinal = i === 4;
+          const pos = isFinal ? finalPos : loopPositions[i];
+          const isActive = step === i;
+
           return (
             <g key={i} onClick={() => setStep(i)} style={{ cursor: 'pointer' }}>
-              <circle cx={pos.x} cy={pos.y} r={30} fill={isActive ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isActive ? 2.5 : 1.5} opacity={isActive || isLast ? 1 : 0.6} />
-              <text x={pos.x} y={pos.y + 3} textAnchor="middle" fontSize={8} fontWeight={isActive ? 700 : 400} fill={isActive ? color : t.textSecondary}>{s.stage}</text>
+              <circle
+                cx={pos.x}
+                cy={pos.y}
+                r={nodeRadius}
+                fill={t.surface}
+                stroke="none"
+              />
+              <circle
+                cx={pos.x}
+                cy={pos.y}
+                r={nodeRadius}
+                fill={isActive ? `${color}25` : t.surfaceAlt}
+                stroke={color}
+                strokeWidth={isActive ? 2.5 : 1.5}
+                opacity={isActive || isFinal ? 1 : 0.7}
+              />
+              <text
+                x={pos.x}
+                y={pos.y + 3}
+                textAnchor="middle"
+                fontSize={8.5}
+                fontWeight={isActive ? 700 : 500}
+                fill={isActive ? color : t.textSecondary}
+              >
+                {s.stage}
+              </text>
             </g>
           );
         })}
-        {step === 3 && <line x1={cx} y1={cy - r} x2={cx + r + 60} y2={cy} stroke={color} strokeWidth={2} strokeDasharray="3 2" />}
       </svg>
       <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 8 }}>
         <VizButton onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0}>← prev</VizButton>

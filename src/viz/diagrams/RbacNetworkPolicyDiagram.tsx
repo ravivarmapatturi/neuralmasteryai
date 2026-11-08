@@ -23,12 +23,15 @@ export default function RbacNetworkPolicyDiagram() {
           <marker id="rbac-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
             <path d="M0,0 L7,3.5 L0,7 Z" fill={rbacColor} />
           </marker>
+          <marker id="netpol-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+            <path d="M0,0 L7,3.5 L0,7 Z" fill={netpolColor} />
+          </marker>
         </defs>
         {facet === 'rbac' ? (
           <>
             <circle cx={80} cy={55} r={26} fill={`${rbacColor}18`} stroke={rbacColor} strokeWidth={1.5} />
             <text x={80} y={59} textAnchor="middle" fontSize={9} fill={rbacColor}>user / SA</text>
-            <line x1={106} y1={55} x2={190} y2={55} stroke={rbacColor} strokeWidth={1.5} markerEnd="url(#rbac-arrow)" />
+            <line x1={106} y1={55} x2={188} y2={55} stroke={rbacColor} strokeWidth={1.5} markerEnd="url(#rbac-arrow)" />
             <text x={148} y={45} textAnchor="middle" fontSize={8} fill={rbacColor}>allowed?</text>
             <rect x={190} y={30} width={110} height={50} rx={8} fill="none" stroke={rbacColor} strokeWidth={1.5} />
             <text x={245} y={50} textAnchor="middle" fontSize={9} fill={rbacColor}>Kubernetes API</text>
@@ -38,7 +41,7 @@ export default function RbacNetworkPolicyDiagram() {
           <>
             <circle cx={80} cy={55} r={26} fill={`${netpolColor}18`} stroke={netpolColor} strokeWidth={1.5} />
             <text x={80} y={59} textAnchor="middle" fontSize={9} fill={netpolColor}>Pod A</text>
-            <line x1={106} y1={55} x2={190} y2={55} stroke={netpolColor} strokeWidth={1.5} strokeDasharray="3 2" />
+            <line x1={106} y1={55} x2={192} y2={55} stroke={netpolColor} strokeWidth={1.5} strokeDasharray="3 2" markerEnd="url(#netpol-arrow)" />
             <text x={148} y={45} textAnchor="middle" fontSize={8} fill={netpolColor}>allowed?</text>
             <circle cx={220} cy={55} r={26} fill={`${netpolColor}18`} stroke={netpolColor} strokeWidth={1.5} />
             <text x={220} y={59} textAnchor="middle" fontSize={9} fill={netpolColor}>Pod B</text>

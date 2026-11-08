@@ -79,13 +79,25 @@ export default function PreDispatchInterceptorDiagram() {
       </div>
 
       <svg viewBox="0 0 680 280" width="100%" role="img" aria-label="Pre-Dispatch Interceptor Flow Diagram">
+        <defs>
+          <marker id="pdi-arrow-primary" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+            <path d="M0,0 L7,3.5 L0,7 Z" fill={t.accentPrimary} />
+          </marker>
+          <marker id="pdi-arrow-danger" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+            <path d="M0,0 L7,3.5 L0,7 Z" fill={t.accentDanger} />
+          </marker>
+          <marker id="pdi-arrow-border" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+            <path d="M0,0 L7,3.5 L0,7 Z" fill={t.border} />
+          </marker>
+        </defs>
+
         {/* Step 1: Model Emits Tool Call */}
         <rect x={20} y={20} width={180} height={64} rx={8} fill={t.surface} stroke={t.border} strokeWidth={1.5} />
         <text x={110} y={44} textAnchor="middle" fontSize={12} fontWeight={700} fill={t.textPrimary}>Model Emits Tool Call</text>
         <text x={110} y={64} textAnchor="middle" fontSize={11} fill={t.textSecondary} fontFamily="monospace">run_command(cmd)</text>
 
         {/* Arrow to Interceptor */}
-        <line x1={200} y1={52} x2={250} y2={52} stroke={t.accentPrimary} strokeWidth={2} />
+        <line x1={200} y1={52} x2={248} y2={52} stroke={t.accentPrimary} strokeWidth={2} markerEnd="url(#pdi-arrow-primary)" />
 
         {/* Step 2: Supervisor Pre-Dispatch Interceptor */}
         <rect x={250} y={15} width={200} height={74} rx={8} fill={t.surfaceAlt} stroke={t.accentPrimary} strokeWidth={2} />
@@ -96,8 +108,24 @@ export default function PreDispatchInterceptorDiagram() {
         {/* Branch Lines */}
         <line x1={350} y1={89} x2={350} y2={125} stroke={t.border} strokeWidth={2} />
         <line x1={180} y1={125} x2={520} y2={125} stroke={t.border} strokeWidth={2} />
-        <line x1={180} y1={125} x2={180} y2={150} stroke={t.border} strokeWidth={2} />
-        <line x1={520} y1={125} x2={520} y2={150} stroke={t.border} strokeWidth={2} />
+        <line
+          x1={180}
+          y1={125}
+          x2={180}
+          y2={148}
+          stroke={isBlocked ? t.accentDanger : t.border}
+          strokeWidth={2}
+          markerEnd={isBlocked ? 'url(#pdi-arrow-danger)' : 'url(#pdi-arrow-border)'}
+        />
+        <line
+          x1={520}
+          y1={125}
+          x2={520}
+          y2={148}
+          stroke={!isBlocked ? t.accentPrimary : t.border}
+          strokeWidth={2}
+          markerEnd={!isBlocked ? 'url(#pdi-arrow-primary)' : 'url(#pdi-arrow-border)'}
+        />
 
         {/* Left Branch: Blocked */}
         <rect

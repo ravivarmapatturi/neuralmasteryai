@@ -45,21 +45,29 @@ export default function GitObjectModelDiagram() {
       }
     >
       <svg width={WIDTH} height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="nm-fit-svg">
-        {NODES.map((n) =>
-          (n.children ?? []).map((childId) => {
-            const child = NODES.find((c) => c.id === childId)!;
-            return <line key={`${n.id}-${childId}`} x1={n.x} y1={n.y + 14} x2={child.x} y2={child.y - 4} stroke={t.border} strokeWidth={1.5} />;
-          }),
-        )}
-        {NODES.filter((n) => n.parent).map((n) => {
-          const parent = NODES.find((p) => p.id === n.parent)!;
-          return <line key={`${n.id}-parent`} x1={n.x} y1={n.y} x2={parent.x} y2={parent.y} stroke={t.textMuted} strokeWidth={1.5} strokeDasharray="4 3" markerEnd="url(#git-arrow)" />;
-        })}
         <defs>
           <marker id="git-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
             <path d="M0,0 L8,4 L0,8 Z" fill={t.textMuted} />
           </marker>
+          <marker id="git-tree-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+            <path d="M0,0 L7,3.5 L0,7 Z" fill={t.border} />
+          </marker>
         </defs>
+        {NODES.map((n) =>
+          (n.children ?? []).map((childId) => {
+            const child = NODES.find((c) => c.id === childId)!;
+            return <line key={`${n.id}-${childId}`} x1={n.x} y1={n.y + 14} x2={child.x} y2={child.y - 14} stroke={t.border} strokeWidth={1.5} markerEnd="url(#git-tree-arrow)" />;
+          }),
+        )}
+        {NODES.filter((n) => n.parent).map((n) => {
+          const parent = NODES.find((p) => p.id === n.parent)!;
+          return (
+            <g key={`${n.id}-parent`}>
+              <line x1={n.x - 55} y1={n.y} x2={parent.x + 55 + 2} y2={parent.y} stroke={t.textMuted} strokeWidth={1.5} strokeDasharray="4 3" markerEnd="url(#git-arrow)" />
+              <text x={(n.x - 55 + parent.x + 55) / 2} y={n.y - 5} textAnchor="middle" fontSize={8} fill={t.textMuted}>parent</text>
+            </g>
+          );
+        })}
         {NODES.map((n) => {
           const color = getConceptColor(t, COLOR_KEY[n.type]);
           const isSelected = n.id === selected;

@@ -110,7 +110,7 @@ export default function ProducerQueueConsumerDiagram() {
         <text x={WIDTH - 75} y={80} textAnchor="middle" fontSize={12} fontWeight={700} fontFamily={HAND_FONT} fill={consumerColor}>Consumer</text>
 
         <SketchArrow points={[[120, 75], [queueX - 6, 75]]} color={producerColor} strokeWidth={2} id="pqc-arrow-p" />
-        <SketchArrow points={[[queueX + queueW + 6, 75], [WIDTH - 130, 75]]} color={consumerColor} strokeWidth={2} id="pqc-arrow-c" />
+        <SketchArrow points={[[queueX + queueW + 6, 75], [WIDTH - 136, 75]]} color={consumerColor} strokeWidth={2} id="pqc-arrow-c" />
       </svg>
       <div style={{ fontSize: DIAGRAM_TYPE.secondaryLabel.size, color: t.textMuted, textAlign: 'center' }}>
         Live simulation -- queue depth updates in real time from the two rates above.

@@ -60,20 +60,23 @@ function edgePoints(a: NodeId, b: NodeId): [number, number][] {
   const p1 = POS[a];
   const p2 = POS[b];
   if (a === 'CHECK' && b === 'ACT') {
-    // The cycle: a visible dip below the main row so it reads as a loop,
-    // not just a second line overlapping the forward edge. Sampled points
-    // tracing the same dip the original bezier curve drew, since
-    // SketchArrow (unlike SketchPath) draws a hand-drawn arrowhead, which
-    // every edge here needs.
+    // Loopback cycle dipping cleanly below the nodes, staying well within viewBox (height 210)
     return [
-      [p1.x, p1.y + 18],
-      [p1.x, p1.y + 70],
-      [(p1.x + p2.x) / 2, p1.y + 76],
-      [p2.x, p2.y + 70],
-      [p2.x, p2.y + 18],
+      [p1.x, p1.y + 16],
+      [p1.x, p1.y + 42],
+      [(p1.x + p2.x) / 2, p1.y + 46],
+      [p2.x, p2.y + 42],
+      [p2.x, p2.y + 16],
     ];
   }
-  return [[p1.x, p1.y], [p2.x, p2.y]];
+  if (a === 'CHECK' && b === 'HUMAN') {
+    return [[p1.x, p1.y - 16], [p2.x, p2.y + 16]];
+  }
+  if (a === 'HUMAN' && b === 'END') {
+    return [[p1.x + 55, p1.y + 10], [p2.x - 55, p2.y - 10]];
+  }
+  // Standard horizontal edges between adjacent cards (width 110 => ±55)
+  return [[p1.x + 55, p1.y], [p2.x - 55, p2.y]];
 }
 
 export default function AgentControlFlowGraphDiagram() {

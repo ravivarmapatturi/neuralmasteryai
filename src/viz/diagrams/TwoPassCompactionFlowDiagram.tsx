@@ -89,6 +89,11 @@ export default function TwoPassCompactionFlowDiagram() {
       </div>
 
       <svg viewBox="0 0 680 240" width="100%" role="img" aria-label="Two-Pass Compaction Pipeline Diagram">
+        <defs>
+          <marker id="compaction-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 Z" fill={t.accentPrimary} />
+          </marker>
+        </defs>
         {/* Token Budget Bar Container */}
         <rect x={30} y={30} width={620} height={44} rx={6} fill={t.surfaceAlt} stroke={t.border} strokeWidth={1} />
         
@@ -142,7 +147,7 @@ export default function TwoPassCompactionFlowDiagram() {
           <text x={90} y={60} textAnchor="middle" fontSize={10} fill={t.accentWarn}>Tool Logs: 78%</text>
 
           {/* Arrow 1 */}
-          <line x1={190} y1={35} x2={220} y2={35} stroke={t.accentPrimary} strokeWidth={2} />
+          <line x1={188} y1={35} x2={224} y2={35} stroke={t.accentPrimary} strokeWidth={2} markerEnd="url(#compaction-arrow)" />
 
           {/* Step 2 Box */}
           <rect
@@ -160,7 +165,7 @@ export default function TwoPassCompactionFlowDiagram() {
           <text x={320} y={60} textAnchor="middle" fontSize={10} fill={t.accentPrimary}>Prunes &gt; 2 turns ago</text>
 
           {/* Arrow 2 */}
-          <line x1={420} y1={35} x2={450} y2={35} stroke={t.accentPrimary} strokeWidth={2} />
+          <line x1={418} y1={35} x2={454} y2={35} stroke={t.accentPrimary} strokeWidth={2} markerEnd="url(#compaction-arrow)" />
 
           {/* Step 3 Box */}
           <rect

@@ -41,14 +41,14 @@ export default function Seq2SeqDiagram() {
           const x = encStep(i);
           return (
             <g key={`enc-${i}`}>
-              {i > 0 && <line x1={encStep(i - 1) + cellR} y1={cellY} x2={x - cellR} y2={cellY} stroke={encColor} strokeWidth={1.5} markerEnd="url(#s2s-arrow)" />}
+              {i > 0 && <line x1={encStep(i - 1) + cellR} y1={cellY} x2={x - cellR - 6} y2={cellY} stroke={encColor} strokeWidth={1.5} markerEnd="url(#s2s-arrow)" />}
               <circle cx={x} cy={cellY} r={cellR} fill={`${encColor}18`} stroke={encColor} strokeWidth={1.5} />
-              <line x1={x} y1={inputY - 12} x2={x} y2={cellY + cellR + 2} stroke={t.textMuted} strokeWidth={1.25} markerEnd="url(#s2s-arrow)" />
+              <line x1={x} y1={inputY - 12} x2={x} y2={cellY + cellR + 7} stroke={t.textMuted} strokeWidth={1.25} markerEnd="url(#s2s-arrow)" />
               <text x={x} y={inputY + 4} textAnchor="middle" fontSize={10} fill={t.textSecondary}>{w}</text>
             </g>
           );
         })}
-        <line x1={encStep(INPUT.length - 1) + cellR} y1={cellY} x2={ctxX - 26} y2={cellY} stroke={encColor} strokeWidth={2} markerEnd="url(#s2s-arrow)" />
+        <line x1={encStep(INPUT.length - 1) + cellR} y1={cellY} x2={ctxX - 32} y2={cellY} stroke={encColor} strokeWidth={2} markerEnd="url(#s2s-arrow)" />
 
         <g onMouseEnter={() => setHoveredContext(true)} onMouseLeave={() => setHoveredContext(false)} style={{ cursor: 'pointer' }}>
           <rect x={ctxX - 26} y={cellY - 22} width={52} height={44} rx={8} fill={hoveredContext ? `${ctxColor}30` : `${ctxColor}18`} stroke={ctxColor} strokeWidth={hoveredContext ? 2.5 : 2} />
@@ -56,14 +56,14 @@ export default function Seq2SeqDiagram() {
           <text x={ctxX} y={cellY + 12} textAnchor="middle" fontSize={9} fontFamily="monospace" fill={ctxColor}>vector</text>
         </g>
 
-        <line x1={ctxX + 26} y1={cellY} x2={decStep(0) - cellR} y2={cellY} stroke={decColor} strokeWidth={2} markerEnd="url(#s2s-arrow)" />
+        <line x1={ctxX + 26} y1={cellY} x2={decStep(0) - cellR - 6} y2={cellY} stroke={decColor} strokeWidth={2} markerEnd="url(#s2s-arrow)" />
         {OUTPUT.map((w, i) => {
           const x = decStep(i);
           return (
             <g key={`dec-${i}`}>
-              {i > 0 && <line x1={decStep(i - 1) + cellR} y1={cellY} x2={x - cellR} y2={cellY} stroke={decColor} strokeWidth={1.5} markerEnd="url(#s2s-arrow)" />}
+              {i > 0 && <line x1={decStep(i - 1) + cellR} y1={cellY} x2={x - cellR - 6} y2={cellY} stroke={decColor} strokeWidth={1.5} markerEnd="url(#s2s-arrow)" />}
               <circle cx={x} cy={cellY} r={cellR} fill={`${decColor}18`} stroke={decColor} strokeWidth={1.5} />
-              <line x1={x} y1={cellY + cellR + 2} x2={x} y2={inputY - 12} stroke={t.textMuted} strokeWidth={1.25} markerEnd="url(#s2s-arrow)" />
+              <line x1={x} y1={cellY + cellR} x2={x} y2={inputY - 14} stroke={t.textMuted} strokeWidth={1.25} markerEnd="url(#s2s-arrow)" />
               <text x={x} y={inputY + 4} textAnchor="middle" fontSize={10} fill={t.textSecondary}>{w}</text>
             </g>
           );

@@ -118,7 +118,8 @@ export default function HnswSearchDiagram() {
         Step {stepIdx + 1} of {SEARCH_PATH.length}
       </div>
       <svg width="100%" viewBox={`-10 -20 ${WIDTH + 20} ${LAYER_H * LAYER_IDS.length + 20}`} style={{ display: 'block' }}>
-        <SketchArrow points={[[QUERY_X, -15], [QUERY_X, LAYER_H * LAYER_IDS.length]]} color={queryColor} strokeWidth={1.5} arrowhead={false} id="hnsw-query-line" />
+        <SketchArrow points={[[QUERY_X, 2], [QUERY_X, LAYER_H * LAYER_IDS.length]]} color={queryColor} strokeWidth={1.5} arrowhead={false} id="hnsw-query-line" />
+        <rect x={QUERY_X - 20} y={-17} width={40} height={15} rx={3} fill={t.surface} />
         <text x={QUERY_X} y={-6} textAnchor="middle" fontSize={10} fontWeight={700} fontFamily={HAND_FONT} fill={queryColor}>query</text>
 
         {LAYER_IDS.map((ids, li) => {

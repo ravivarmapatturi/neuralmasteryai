@@ -44,26 +44,37 @@ export default function PropertyGraphDiagram() {
   return (
     <VisualizationContainer footer="Click a node to see its properties. Edges carry their own properties too (WROTE has a date) -- both nodes and relationships are first-class, queryable data, not just foreign keys implied by a schema.">
       <svg width="100%" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} style={{ display: 'block' }}>
+        <defs>
+          <marker id="property-graph-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+            <path d="M0,0 L7,3.5 L0,7 Z" fill={t.textMuted} />
+          </marker>
+        </defs>
         {EDGES.map((e, i) => {
           const from = NODES.find((n) => n.id === e.from)!;
           const to = NODES.find((n) => n.id === e.to)!;
+          const dx = to.x - from.x;
+          const dy = to.y - from.y;
+          const dist = Math.hypot(dx, dy);
+          const ux = dx / dist;
+          const uy = dy / dist;
+          const rFrom = 28;
+          const rTo = 30;
+          const x1 = from.x + ux * rFrom;
+          const y1 = from.y + uy * rFrom;
+          const x2 = to.x - ux * rTo;
+          const y2 = to.y - uy * rTo;
           const midX = (from.x + to.x) / 2;
           const midY = (from.y + to.y) / 2;
           return (
             <g key={i}>
-              <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#pg-arrow)" />
-              <rect x={midX - 24} y={midY - 10} width={48} height={16} fill={t.surface} />
+              <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#property-graph-arrow)" />
+              <rect x={midX - 24} y={midY - 10} width={48} height={16} rx={3} fill={t.surface} />
               <text x={midX} y={midY + 2} textAnchor="middle" fontSize={9} fontWeight={700} fill={t.textSecondary}>
                 {e.label}
               </text>
             </g>
           );
         })}
-        <defs>
-          <marker id="pg-arrow" markerWidth="8" markerHeight="8" refX="20" refY="4" orient="auto">
-            <path d="M0,0 L8,4 L0,8 Z" fill={t.textMuted} />
-          </marker>
-        </defs>
         {NODES.map((n) => {
           const color = n.type === 'Person' ? personColor : docColor;
           const isSelected = n.id === selected;

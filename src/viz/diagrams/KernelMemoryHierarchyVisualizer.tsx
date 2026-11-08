@@ -59,6 +59,12 @@ export default function KernelMemoryHierarchyVisualizer() {
         </svg>
       ) : (
         <svg viewBox="0 0 680 260" width="100%" role="img" aria-label="FlashAttention Online Tiling Mechanism">
+          <defs>
+            <marker id="kmh-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+              <path d="M0,0 L7,3.5 L0,7 Z" fill={t.accentPrimary} />
+            </marker>
+          </defs>
+
           {/* HBM Block */}
           <rect x={30} y={40} width={180} height={180} rx={8} fill={t.surface} stroke={t.border} strokeWidth={1.5} />
           <text x={120} y={70} textAnchor="middle" fontSize={13} fontWeight={700} fill={t.textPrimary}>HBM (Slow Off-Chip)</text>
@@ -68,7 +74,7 @@ export default function KernelMemoryHierarchyVisualizer() {
           <text x={120} y={185} textAnchor="middle" fontSize={10} fill={t.accentTeal}>No N×N Matrix Written!</text>
 
           {/* Arrow */}
-          <line x1={210} y1={130} x2={270} y2={130} stroke={t.accentPrimary} strokeWidth={2} />
+          <line x1={210} y1={130} x2={268} y2={130} stroke={t.accentPrimary} strokeWidth={2} markerEnd="url(#kmh-arrow)" />
           <text x={240} y={120} textAnchor="middle" fontSize={10} fill={t.textSecondary}>Tile Read</text>
 
           {/* SRAM Tile Processor */}
@@ -83,7 +89,7 @@ export default function KernelMemoryHierarchyVisualizer() {
           <text x={380} y={190} textAnchor="middle" fontSize={10} fill={t.accentTeal}>Fused Accumulation into O</text>
 
           {/* Arrow */}
-          <line x1={490} y1={130} x2={530} y2={130} stroke={t.accentPrimary} strokeWidth={2} />
+          <line x1={490} y1={130} x2={528} y2={130} stroke={t.accentPrimary} strokeWidth={2} markerEnd="url(#kmh-arrow)" />
 
           {/* Output Block */}
           <rect x={530} y={70} width={120} height={120} rx={8} fill={t.surface} stroke={t.border} strokeWidth={1.5} />

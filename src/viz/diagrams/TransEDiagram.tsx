@@ -53,7 +53,7 @@ export default function TransEDiagram() {
 
         {/* predicted point */}
         <circle cx={px(predicted)} cy={py(predicted)} r={5} fill="none" stroke={t.textPrimary} strokeWidth={1.5} strokeDasharray="2 2" />
-        <text x={px(predicted) + 8} y={py(predicted) + 4} fontSize={10} fill={t.textMuted}>Curie + born_in</text>
+        <text x={px(predicted) - 6} y={py(predicted) + 18} textAnchor="end" fontSize={10} fontWeight={600} fill={t.textMuted}>Curie + born_in</text>
 
         {/* candidates */}
         {CANDIDATES.map((c) => {

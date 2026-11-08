@@ -45,15 +45,23 @@ const LINKS: [string, string][] = [
 ];
 
 const GROUP_ORDER = ['foundations', 'models', 'applications', 'agents', 'production', 'rounds'];
-const GROUP_COLOURS: Record<string, string> = {
+const GROUP_COLOURS_LIGHT: Record<string, string> = {
   foundations: '#1d4fc4',
   models: '#0f7f8c',
-  applications: '#b4540a',
-  agents: '#7a3fc0',
+  applications: '#935e06',
+  agents: '#6d3fb8',
   production: '#1b7856',
-  rounds: '#b0296b',
+  rounds: '#ad3427',
 };
-const MAX_STAGE = 760;
+const GROUP_COLOURS_DARK: Record<string, string> = {
+  foundations: '#8fb0ff',
+  models: '#4dd4c6',
+  applications: '#e7b65c',
+  agents: '#bda2ff',
+  production: '#6fd3a8',
+  rounds: '#f39a8e',
+};
+const MAX_STAGE = 560;
 const SHORT_TITLES: Record<string, string> = {
   'math-classical-ml': 'Classical ML',
   'tokenization-decoding': 'Tokenization',
@@ -61,7 +69,7 @@ const SHORT_TITLES: Record<string, string> = {
   'inference-serving': 'Serving',
   'gpu-memory-quantization': 'GPU memory',
   'prompting-structured-output': 'Prompting',
-  protocols: 'MCP and A2A',
+  protocols: 'MCP & A2A',
   'multi-agent': 'Multi-agent',
   'evidence-reverse-engineering': 'Evidence',
   'production-mlops': 'MLOps',
@@ -77,8 +85,8 @@ interface NodeSpot {
 // Topics sit around a circle, grouped, with a small gap between groups.
 function layout(topics: GraphTopic[], width: number) {
   const size = Math.min(width, MAX_STAGE);
-  const margin = size < 480 ? 26 : 150;
-  const radius = size / 2 - margin;
+  const margin = size < 480 ? 36 : size < 600 ? 92 : 102;
+  const radius = Math.max(90, size / 2 - margin);
   const groups = GROUP_ORDER.map((g) => topics.filter((t) => t.group === g));
   const gap = 0.14;
   const step = (Math.PI * 2 - gap * groups.length) / topics.length;
@@ -111,6 +119,29 @@ export function InterviewGraph({
   const lineRefs = useRef<(SVGPathElement | null)[]>([]);
   const pausedRef = useRef(false);
   const [width, setWidth] = useState(760);
+  const [isDark, setIsDark] = useState(() => {
+    if (typeof document === 'undefined') return false;
+    const theme = document.documentElement.getAttribute('data-theme');
+    return theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  });
+
+  useEffect(() => {
+    const checkTheme = () => {
+      const theme = document.documentElement.getAttribute('data-theme');
+      setIsDark(theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches));
+    };
+    const observer = new MutationObserver(checkTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    media.addEventListener('change', checkTheme);
+    return () => {
+      observer.disconnect();
+      media.removeEventListener('change', checkTheme);
+    };
+  }, []);
+
+  const groupColours = isDark ? GROUP_COLOURS_DARK : GROUP_COLOURS_LIGHT;
+  const activeTopic = topics.find((t) => t.id === activeId) ?? topics[0];
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -181,11 +212,63 @@ export function InterviewGraph({
                 lineRefs.current[i] = el;
               }}
               fill="none"
-              stroke={GROUP_COLOURS[spots[a]?.group]}
+              stroke={groupColours[spots[a]?.group]}
               className={isLit(a, b) ? 'on' : undefined}
             />
           ))}
         </svg>
+        {width < 640 && activeTopic && (
+          <div
+            className="si-graph-hud"
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
+              textAlign: 'center',
+              pointerEvents: 'none',
+              maxWidth: Math.max(120, radius * 1.3),
+              zIndex: 1,
+            }}
+          >
+            <span
+              className="si-hud-group"
+              style={{
+                color: groupColours[activeTopic.group],
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                display: 'block',
+              }}
+            >
+              {activeTopic.group}
+            </span>
+            <span
+              className="si-hud-title"
+              style={{
+                display: 'block',
+                fontWeight: 700,
+                fontSize: width < 400 ? '0.86rem' : '0.96rem',
+                lineHeight: 1.2,
+                color: 'var(--fg)',
+                margin: '2px 0 3px',
+              }}
+            >
+              {activeTopic.title}
+            </span>
+            <span
+              className="si-hud-count"
+              style={{
+                fontSize: '0.72rem',
+                color: 'var(--soft)',
+                display: 'block',
+              }}
+            >
+              {activeTopic.count} Qs{activeTopic.done ? ` · ${activeTopic.done} done` : ''}
+            </span>
+          </div>
+        )}
         {topics.map((t) => {
           const angle = spots[t.id]?.angle ?? 0;
           const flip = Math.cos(angle) < 0;
@@ -198,7 +281,7 @@ export function InterviewGraph({
                 nodeRefs.current[t.id] = el;
               }}
               className={`si-node${t.id === activeId ? ' on' : ''}${near.has(t.id) ? '' : ' far'}`}
-              style={{ color: GROUP_COLOURS[t.group] }}
+              style={{ color: groupColours[t.group] }}
               aria-pressed={t.id === activeId}
               aria-label={`${t.title}, ${t.count} questions${t.done ? `, ${t.done} completed` : ''}`}
               onMouseEnter={() => {

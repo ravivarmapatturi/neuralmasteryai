@@ -42,7 +42,7 @@ export default function RnnUnrolledDiagram() {
           const isActive = activeStep === i;
           return (
             <g key={i} onMouseEnter={() => setActiveStep(i)} onMouseLeave={() => setActiveStep(null)} style={{ cursor: 'pointer' }}>
-              <line x1={prevX} y1={cellY} x2={x - cellW / 2} y2={cellY} stroke={cellColor} strokeWidth={isActive ? 2.5 : 1.5} markerEnd="url(#rnnu-arrow)" />
+              <line x1={prevX} y1={cellY} x2={x - cellW / 2 - 7} y2={cellY} stroke={cellColor} strokeWidth={isActive ? 2.5 : 1.5} markerEnd="url(#rnnu-arrow)" />
               <rect x={x - cellW / 2} y={cellY - cellH / 2} width={cellW} height={cellH} rx={7} fill={isActive ? `${cellColor}30` : t.surfaceAlt} stroke={cellColor} strokeWidth={isActive ? 2.5 : 1.5} />
               <text x={x} y={cellY + 4} textAnchor="middle" fontSize={11} fontWeight={700} fontFamily="monospace" fill={cellColor}>h{i + 1}</text>
               {i < STEPS - 1 && (
@@ -50,7 +50,7 @@ export default function RnnUnrolledDiagram() {
                   same Wₕ
                 </text>
               )}
-              <line x1={x} y1={inputY - 16} x2={x} y2={cellY + cellH / 2 + 2} stroke={tokenColor} strokeWidth={isActive ? 2.5 : 1.5} markerEnd="url(#rnnu-arrow)" />
+              <line x1={x} y1={inputY - 16} x2={x} y2={cellY + cellH / 2 + 7} stroke={tokenColor} strokeWidth={isActive ? 2.5 : 1.5} markerEnd="url(#rnnu-arrow)" />
               <circle cx={x} cy={inputY} r={16} fill={`${tokenColor}18`} stroke={tokenColor} strokeWidth={1.5} />
               <text x={x} y={inputY + 4} textAnchor="middle" fontSize={10} fontFamily="monospace" fill={tokenColor}>x{i + 1}</text>
             </g>
