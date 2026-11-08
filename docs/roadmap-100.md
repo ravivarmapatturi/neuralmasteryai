@@ -102,7 +102,7 @@ Benchmark: TensorTonic (studied 2026-11-07: home, problems, a problem page, rese
 77. done - 42 fixed-width diagram SVGs get a viewBox and scale to fit at 375px instead of scrolling inside their card.
 78. done - src/viz/diagramAudit.test.ts fails the build if 76 or 77 regress.
 79. done - Accessible names checked: VisualizationContainer already labels every diagram (title and footer), so no per-SVG change was needed.
-80. planned - Arrow crossings and arrows through labels need a by-eye review of each diagram with connecting lines; not done in this pass.
+80. in progress - Arrow crossings and arrows through labels: screened 60 candidate diagrams with connecting lines, resolved batch 1 (10 confirmed arrow crossing / label collision problems) with before & after screenshots in docs/evidence/diagram-audit/.
 
 ### Platform and growth (81-100)
 81. done - The site tour closes when you navigate away from it.

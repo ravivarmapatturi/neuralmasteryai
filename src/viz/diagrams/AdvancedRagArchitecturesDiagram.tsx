@@ -57,7 +57,7 @@ export default function AdvancedRagArchitecturesDiagram() {
             <g key={s.key} opacity={skipped ? 0.35 : 1}>
               {i > 0 && (
                 <SketchArrow
-                  points={[[STAGES[i - 1].x + 45, y], [s.x - 5, y]]}
+                  points={[[STAGES[i - 1].x + 77, y], [s.x - 7, y]]}
                   color={baseColor}
                   strokeWidth={1.5}
                   roughness={1.3}
@@ -74,8 +74,8 @@ export default function AdvancedRagArchitecturesDiagram() {
 
         {arch === 'agentic' && (
           <>
-            <SketchArrow points={[[335, 66], [250, 120], [165, 66]]} color={loopColor} strokeWidth={2} roughness={1.4} id="ara-agentic-loop" />
-            <text x={250} y={132} textAnchor="middle" fontSize={9} fill={loopColor}>agent reformulates &amp; re-retrieves</text>
+            <SketchArrow points={[[335, 68], [270, 112], [205, 68]]} color={loopColor} strokeWidth={2} roughness={1.4} id="ara-agentic-loop" />
+            <text x={270} y={128} textAnchor="middle" fontSize={9} fill={loopColor}>agent reformulates &amp; re-retrieves</text>
           </>
         )}
         {arch === 'corrective' && (
@@ -111,8 +111,8 @@ export default function AdvancedRagArchitecturesDiagram() {
         )}
         {arch === 'flare' && (
           <>
-            <SketchArrow points={[[300, 34], [300, 24], [250, 24], [165, 66]]} color={loopColor} strokeWidth={1.8} roughness={1.4} id="ara-flare-loop" />
-            <text x={225} y={16} textAnchor="middle" fontSize={8} fill={loopColor}>confidence drops mid-answer → re-retrieve</text>
+            <SketchArrow points={[[335, 32], [335, 20], [205, 20], [205, 32]]} color={loopColor} strokeWidth={1.8} roughness={1.4} id="ara-flare-loop" />
+            <text x={270} y={14} textAnchor="middle" fontSize={8} fill={loopColor}>confidence drops mid-answer → re-retrieve</text>
           </>
         )}
       </svg>

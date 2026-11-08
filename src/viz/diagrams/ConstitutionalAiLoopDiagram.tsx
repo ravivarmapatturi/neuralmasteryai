@@ -4,10 +4,10 @@ import { VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 const STAGES = [
-  { id: 'generate', label: 'Generate response', detail: 'The model produces an initial response to a prompt, same as any other generation step.' },
-  { id: 'critique', label: 'Self-critique', detail: 'The SAME model is prompted to critique its own response against an explicit written principle from the constitution (e.g. "does this response avoid being harmful?").' },
-  { id: 'revise', label: 'Self-revise', detail: 'The model rewrites its response to address the critique -- still no human in this loop at all.' },
-  { id: 'train', label: 'Train on revised pairs', detail: 'The (original, revised) pair becomes training signal -- preferring the revised version -- replacing what a human preference label would have done in plain RLHF.' },
+  { id: 'generate', label: 'Generate', sublabel: 'initial response', detail: 'The model produces an initial response to a prompt, same as any other generation step.' },
+  { id: 'critique', label: 'Self-critique', sublabel: 'against constitution', detail: 'The SAME model is prompted to critique its own response against an explicit written principle from the constitution (e.g. "does this response avoid being harmful?").' },
+  { id: 'revise', label: 'Self-revise', sublabel: 'rewrite response', detail: 'The model rewrites its response to address the critique -- still no human in this loop at all.' },
+  { id: 'train', label: 'Train', sublabel: 'on revised pairs', detail: 'The (original, revised) pair becomes training signal -- preferring the revised version -- replacing what a human preference label would have done in plain RLHF.' },
 ];
 
 export default function ConstitutionalAiLoopDiagram() {
@@ -15,43 +15,101 @@ export default function ConstitutionalAiLoopDiagram() {
   const [selected, setSelected] = useState('critique');
   const active = STAGES.find((s) => s.id === selected)!;
 
-  const cx = 210, cy = 90, r = 70;
-  const positions = STAGES.map((_, i) => {
-    const angle = (i / STAGES.length) * Math.PI * 2 - Math.PI / 2;
-    return { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) };
-  });
+  const width = 460;
+  const height = 220;
+  const cx = width / 2;
+  const cy = 108;
+  const rx = 120;
+  const ry = 65;
+  const cardW = 96;
+  const cardH = 38;
+
+  const positions = [
+    { x: cx, y: cy - ry },        // Top: Generate
+    { x: cx + rx, y: cy },        // Right: Self-critique
+    { x: cx, y: cy + ry },        // Bottom: Self-revise
+    { x: cx - rx, y: cy },        // Left: Train
+  ];
+
+  // Arrow connections between cards
+  const arrows = [
+    { x1: positions[0].x + 36, y1: positions[0].y + cardH / 2 + 2, x2: positions[1].x - cardW / 2 - 4, y2: positions[1].y - 12 }, // Gen -> Critique
+    { x1: positions[1].x - cardW / 2 + 4, y1: positions[1].y + cardH / 2 - 2, x2: positions[2].x + 36, y2: positions[2].y - cardH / 2 - 4 }, // Critique -> Revise
+    { x1: positions[2].x - 36, y1: positions[2].y - cardH / 2 - 2, x2: positions[3].x + cardW / 2 + 4, y2: positions[3].y + 12 }, // Revise -> Train
+    { x1: positions[3].x + cardW / 2 - 4, y1: positions[3].y - cardH / 2 + 2, x2: positions[0].x - 36, y2: positions[0].y + cardH / 2 + 4 }, // Train -> Gen
+  ];
 
   return (
     <VisualizationContainer footer={active.detail}>
-      <svg width="100%" viewBox="0 0 420 180" style={{ display: 'block' }}>
+      <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
         <defs>
-          <marker id="cai-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
-            <path d="M0,0 L7,3.5 L0,7 Z" fill={t.textMuted} />
+          <marker id="cai-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill={t.textMuted} />
           </marker>
         </defs>
-        {STAGES.map((_, i) => {
-          const a = positions[i];
-          const b = positions[(i + 1) % STAGES.length];
-          const dx = b.x - a.x, dy = b.y - a.y;
-          const len = Math.hypot(dx, dy);
-          const x2 = a.x + (dx / len) * (len - 26);
-          const y2 = a.y + (dy / len) * (len - 26);
-          const x1 = a.x + (dx / len) * 26;
-          const y1 = a.y + (dy / len) * 26;
-          return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#cai-arrow)" />;
-        })}
+
+        {/* Clean directional arrows between card boundaries */}
+        {arrows.map((a, i) => (
+          <line
+            key={i}
+            x1={a.x1}
+            y1={a.y1}
+            x2={a.x2}
+            y2={a.y2}
+            stroke={t.textMuted}
+            strokeWidth={1.5}
+            markerEnd="url(#cai-arrow)"
+          />
+        ))}
+
+        {/* Stage cards */}
         {STAGES.map((s, i) => {
           const pos = positions[i];
           const isSelected = selected === s.id;
+          const x = pos.x - cardW / 2;
+          const y = pos.y - cardH / 2;
+
           return (
             <g key={s.id} onClick={() => setSelected(s.id)} style={{ cursor: 'pointer' }}>
-              <circle cx={pos.x} cy={pos.y} r={24} fill={isSelected ? `${t.accentPrimary}25` : t.surfaceAlt} stroke={isSelected ? t.accentPrimary : t.border} strokeWidth={isSelected ? 2.5 : 1.5} />
-              <text x={pos.x} y={pos.y + 4} textAnchor="middle" fontSize={9.5} fontWeight={700} fill={isSelected ? t.accentPrimary : t.textPrimary}>{s.label.split(' ')[0]}</text>
+              <rect
+                x={x}
+                y={y}
+                width={cardW}
+                height={cardH}
+                rx={8}
+                fill={isSelected ? `${t.accentPrimary}25` : t.surfaceAlt}
+                stroke={isSelected ? t.accentPrimary : t.border}
+                strokeWidth={isSelected ? 2 : 1}
+              />
+              <text
+                x={pos.x}
+                y={pos.y - 2}
+                textAnchor="middle"
+                fontSize={9.5}
+                fontWeight={700}
+                fill={isSelected ? t.accentPrimary : t.textPrimary}
+              >
+                {s.label}
+              </text>
+              <text
+                x={pos.x}
+                y={pos.y + 11}
+                textAnchor="middle"
+                fontSize={7.5}
+                fill={t.textMuted}
+              >
+                {s.sublabel}
+              </text>
             </g>
           );
         })}
-        <text x={cx} y={cy} textAnchor="middle" fontSize={10} fill={t.textMuted}>no human</text>
-        <text x={cx} y={cy + 12} textAnchor="middle" fontSize={10} fill={t.textMuted}>in the loop</text>
+
+        <text x={cx} y={cy - 5} textAnchor="middle" fontSize={10.5} fontWeight={600} fill={t.textMuted}>
+          no human
+        </text>
+        <text x={cx} y={cy + 9} textAnchor="middle" fontSize={10.5} fontWeight={600} fill={t.textMuted}>
+          in the loop
+        </text>
       </svg>
       <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color: t.textMuted, marginTop: 4 }}>
         Compare to RLHF's pipeline (Training Pipeline page): same end goal (a preferred-vs-rejected training signal), but every step of the loop above is the model itself, not a human labeler -- reducing labeling volume and making the values being trained toward an explicit, readable document instead of an implicit pattern across thousands of individual labels.

@@ -17,49 +17,52 @@ export default function CrossAttentionDiagram() {
   const attnColor = getConceptColor(t, 'attention');
 
   const panelW = 280;
-  const panelH = 170;
+  const panelH = 175;
 
   function Panel({ title, qFrom, kvFrom, crossWire }: { title: string; qFrom: string; kvFrom: string; crossWire: boolean }) {
     const srcX = 40;
     const srcY = panelH / 2;
-    const attnX = panelW - 60;
+    const attnX = panelW - 55;
     return (
       <div style={{ flex: '1 1 260px', minWidth: 240 }}>
         <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.label.size, fontWeight: DIAGRAM_TYPE.label.weight, color: t.textPrimary, marginBottom: 6 }}>{title}</div>
         <svg width="100%" viewBox={`0 0 ${panelW} ${panelH}`} style={{ display: 'block' }}>
           {crossWire ? (
             <>
-              <SketchRect x={srcX - 32} y={20} width={64} height={30} color={t.textSecondary} strokeWidth={1.5} id={`ca-decoder-${title}`} />
-              <text x={srcX} y={40} textAnchor="middle" fontSize={10.5} fontWeight={700} fontFamily={HAND_FONT} fill={t.textSecondary}>decoder</text>
-              <SketchRect x={srcX - 32} y={panelH - 50} width={64} height={30} color={t.accentSecondary} strokeWidth={1.5} id={`ca-encoder-${title}`} />
+              <SketchRect x={srcX - 32} y={18} width={64} height={32} color={t.textSecondary} strokeWidth={1.5} id={`ca-decoder-${title}`} />
+              <text x={srcX} y={38} textAnchor="middle" fontSize={10.5} fontWeight={700} fontFamily={HAND_FONT} fill={t.textSecondary}>decoder</text>
+              <SketchRect x={srcX - 32} y={panelH - 50} width={64} height={32} color={t.accentSecondary} strokeWidth={1.5} id={`ca-encoder-${title}`} />
               <text x={srcX} y={panelH - 30} textAnchor="middle" fontSize={10.5} fontWeight={700} fontFamily={HAND_FONT} fill={t.accentSecondary}>encoder</text>
 
-              <SketchArrow points={[[srcX + 32, 35], [attnX - 45, srcY - 24]]} color={qColor} strokeWidth={2} id={`ca-q-${title}`} />
-              <text x={(srcX + attnX) / 2 - 20} y={srcY - 40} textAnchor="middle" fontSize={11} fontWeight={700} fill={qColor}>Q</text>
+              {/* Q arrow and label sitting strictly above line */}
+              <SketchArrow points={[[srcX + 34, 34], [attnX - 35, srcY - 20]]} color={qColor} strokeWidth={2} id={`ca-q-${title}`} />
+              <text x={115} y={32} textAnchor="middle" fontSize={11} fontWeight={700} fill={qColor}>Q</text>
 
-              <SketchArrow points={[[srcX + 32, panelH - 35], [attnX - 45, srcY + 12]]} color={kColor} strokeWidth={2} id={`ca-k-${title}`} />
-              <text x={(srcX + attnX) / 2 - 20} y={panelH - 42} textAnchor="middle" fontSize={11} fontWeight={700} fill={kColor}>K</text>
+              {/* K arrow and label sitting above line */}
+              <SketchArrow points={[[srcX + 34, panelH - 42], [attnX - 35, srcY + 6]]} color={kColor} strokeWidth={2} id={`ca-k-${title}`} />
+              <text x={108} y={104} textAnchor="middle" fontSize={11} fontWeight={700} fill={kColor}>K</text>
 
-              <SketchArrow points={[[srcX + 32, panelH - 25], [attnX - 45, srcY + 20]]} color={vColor} strokeWidth={2} id={`ca-v-${title}`} />
-              <text x={(srcX + attnX) / 2 + 30} y={panelH - 18} textAnchor="middle" fontSize={11} fontWeight={700} fill={vColor}>V</text>
+              {/* V arrow and label sitting below line */}
+              <SketchArrow points={[[srcX + 34, panelH - 28], [attnX - 35, srcY + 18]]} color={vColor} strokeWidth={2} id={`ca-v-${title}`} />
+              <text x={142} y={152} textAnchor="middle" fontSize={11} fontWeight={700} fill={vColor}>V</text>
             </>
           ) : (
             <>
               <SketchEllipse cx={srcX} cy={srcY} width={56} height={56} color={t.textSecondary} strokeWidth={1.5} id={`ca-x-${title}`} />
               <text x={srcX} y={srcY + 4} textAnchor="middle" fontSize={11} fontWeight={700} fontFamily="monospace" fill={t.textSecondary}>X</text>
 
-              <SketchArrow points={[[srcX + 28, srcY - 14], [attnX - 45, srcY - 24]]} color={qColor} strokeWidth={2} id={`ca-sq-${title}`} />
-              <text x={(srcX + attnX) / 2} y={srcY - 34} textAnchor="middle" fontSize={11} fontWeight={700} fill={qColor}>Q</text>
-              <SketchArrow points={[[srcX + 28, srcY], [attnX - 45, srcY]]} color={kColor} strokeWidth={2} id={`ca-sk-${title}`} />
-              <text x={(srcX + attnX) / 2} y={srcY - 8} textAnchor="middle" fontSize={11} fontWeight={700} fill={kColor}>K</text>
-              <SketchArrow points={[[srcX + 28, srcY + 14], [attnX - 45, srcY + 24]]} color={vColor} strokeWidth={2} id={`ca-sv-${title}`} />
-              <text x={(srcX + attnX) / 2} y={srcY + 38} textAnchor="middle" fontSize={11} fontWeight={700} fill={vColor}>V</text>
+              <SketchArrow points={[[srcX + 30, srcY - 15], [attnX - 35, srcY - 20]]} color={qColor} strokeWidth={2} id={`ca-sq-${title}`} />
+              <text x={(srcX + attnX) / 2} y={srcY - 24} textAnchor="middle" fontSize={11} fontWeight={700} fill={qColor}>Q</text>
+
+              <SketchArrow points={[[srcX + 30, srcY], [attnX - 35, srcY]]} color={kColor} strokeWidth={2} id={`ca-sk-${title}`} />
+              <text x={(srcX + attnX) / 2} y={srcY - 6} textAnchor="middle" fontSize={11} fontWeight={700} fill={kColor}>K</text>
+
+              <SketchArrow points={[[srcX + 30, srcY + 15], [attnX - 35, srcY + 20]]} color={vColor} strokeWidth={2} id={`ca-sv-${title}`} />
+              <text x={(srcX + attnX) / 2} y={srcY + 34} textAnchor="middle" fontSize={11} fontWeight={700} fill={vColor}>V</text>
             </>
           )}
 
-          {/* Plain backing ellipse for the Attn node's wash, SketchEllipse
-              on top for the border only -- same text-legibility fix as
-              every other diagram converted this session. */}
+          {/* Plain backing ellipse for the Attn node's wash, SketchEllipse on top */}
           <ellipse cx={attnX} cy={srcY} rx={30} ry={30} fill={`${attnColor}22`} stroke="none" />
           <SketchEllipse cx={attnX} cy={srcY} width={60} height={60} color={attnColor} strokeWidth={2} id={`ca-attn-${title}`} />
           <text x={attnX} y={srcY - 2} textAnchor="middle" fontSize={10.5} fontWeight={700} fontFamily={HAND_FONT} fill={attnColor}>Attn</text>

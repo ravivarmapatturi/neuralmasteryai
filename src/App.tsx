@@ -20,6 +20,7 @@ const InterviewTopicPage = lazy(() => import('./components/interview/InterviewTo
 const ChangelogPage = lazy(() => import('./components/changelog/ChangelogPage'));
 const SpeechTestPage = lazy(() => import('./components/SpeechTestPage'));
 const VoiceTestPage = lazy(() => import('./components/VoiceTestPage'));
+const VizAuditPage = lazy(() => import('./components/VizAuditPage'));
 import PracticeTrackPage from './components/PracticeTrackPage';
 import ProgressPage from './components/ProgressPage';
 import BlogListPage from './components/BlogListPage';
@@ -95,6 +96,7 @@ export default function App() {
                           <Route path="/lab/voice-test" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading voice test lab…</p>}><VoiceTestPage /></Suspense>} />
                         </>
                       )}
+                      <Route path="/viz-audit" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading diagram…</p>}><VizAuditPage /></Suspense>} />
                       <Route path="/interview" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading interview practice…</p>}><SimpleInterviewPage /></Suspense>} />
                       <Route path="/interview/questions" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading interview questions…</p>}><InterviewPage /></Suspense>} />
                       <Route path="/interview/topics" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading interview topics…</p>}><InterviewTopicsPage /></Suspense>} />
