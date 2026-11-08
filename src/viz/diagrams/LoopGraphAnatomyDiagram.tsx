@@ -85,16 +85,24 @@ export default function LoopGraphAnatomyDiagram() {
         ) : (
           <SketchArrow
             points={[
-              [NODES.gate.x + 20, NODES.gate.y - 4],
-              [NODES.gate.x + 160, NODES.gate.y - 120],
-              [NODES.splitter.x + 120, NODES.splitter.y + 40],
-              [NODES.splitter.x + 18, NODES.splitter.y + 10],
+              [NODES.gate.x + 30, NODES.gate.y + 4],
+              [NODES['worker-b'].x + 80, NODES['worker-b'].y + 50],
+              [NODES['worker-b'].x + 80, NODES['worker-b'].y - 40],
+              [NODES.splitter.x + 60, NODES.splitter.y - 4],
+              [NODES.splitter.x + 20, NODES.splitter.y - 12],
             ]}
             color={nb.coral}
             id="lga-return-learning"
           />
         )}
-        <text x={returnPath === 'correction' ? NODES['worker-a'].x - 90 : NODES.splitter.x + 60} y={returnPath === 'correction' ? NODES.gate.y - 55 : NODES.gate.y - 100} fontSize={9.5} fontFamily={HAND_FONT} fill={nb.coral} fontWeight={700}>
+        <text
+          x={returnPath === 'correction' ? NODES['worker-a'].x - 90 : NODES['worker-b'].x + 10}
+          y={returnPath === 'correction' ? NODES.gate.y - 55 : NODES.splitter.y + 14}
+          fontSize={9.5}
+          fontFamily={HAND_FONT}
+          fill={nb.coral}
+          fontWeight={700}
+        >
           {returnPath === 'correction' ? 'reject: this unit only' : 'accepted → constraint'}
         </text>
 

@@ -19,7 +19,7 @@ export default function MlLifecyclePipelineDiagram() {
 
   return (
     <VisualizationContainer footer={`"${STAGES[active]}" takes "${STAGES[active - 1] ?? STAGES[STAGES.length - 1]}"'s output as input.`}>
-      <svg width="100%" viewBox={`0 0 ${width} 80`} style={{ display: 'block' }}>
+      <svg width="100%" viewBox={`0 0 ${width} 105`} style={{ display: 'block' }}>
         <defs>
           <marker id="mlp-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
             <path d="M0,0 L7,3.5 L0,7 Z" fill={t.textMuted} />
@@ -38,8 +38,9 @@ export default function MlLifecyclePipelineDiagram() {
             </g>
           );
         })}
-        <path d={`M ${45 + 8 * ((width - 90) / 8)},${y + 22} C ${width - 20},${y + 55} 20,${y + 55} 45,${y + 22}`} fill="none" stroke={color} strokeWidth={1.25} strokeDasharray="3 2" markerEnd="url(#mlp-arrow)" />
-        <text x={width / 2} y={78} textAnchor="middle" fontSize={7.5} fill={color}>retraining loops back to validation</text>
+        <path d={`M ${45 + 8 * ((width - 90) / 8)},${y + 22} C ${width - 20},${y + 48} 20,${y + 48} 45,${y + 22}`} fill="none" stroke={color} strokeWidth={1.25} strokeDasharray="3 2" markerEnd="url(#mlp-arrow)" />
+        <rect x={width / 2 - 80} y={y + 36} width={160} height={14} rx={3} fill={t.surface} />
+        <text x={width / 2} y={y + 46} textAnchor="middle" fontSize={8} fontWeight={600} fill={color}>retraining loops back to validation</text>
       </svg>
     </VisualizationContainer>
   );

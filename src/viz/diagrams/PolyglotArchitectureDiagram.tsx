@@ -23,12 +23,15 @@ export default function PolyglotArchitectureDiagram() {
 
   const colorFor = (k: Step) => (k === 'relational' ? getConceptColor(t, 'query') : k === 'vector' ? getConceptColor(t, 'attention') : k === 'graph' ? t.accentWarn : t.textMuted);
   const pos: Record<Step, { x: number; y: number }> = {
-    user: { x: 50, y: 30 },
-    app: { x: 300, y: 170 },
-    relational: { x: 500, y: 30 },
-    vector: { x: 500, y: 100 },
-    graph: { x: 500, y: 170 },
+    user: { x: 80, y: 40 },
+    app: { x: 260, y: 100 },
+    relational: { x: 490, y: 40 },
+    vector: { x: 490, y: 100 },
+    graph: { x: 490, y: 160 },
   };
+
+  const userAppW = 120;
+  const storeW = 170;
 
   return (
     <VisualizationContainer footer={STEPS.find((s) => s.key === active)!.desc}>
@@ -37,16 +40,31 @@ export default function PolyglotArchitectureDiagram() {
           <marker id="pg-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
             <path d="M0,0 L7,3.5 L0,7 Z" fill={t.textMuted} />
           </marker>
+          {(['relational', 'vector', 'graph'] as Step[]).map((k) => (
+            <marker key={k} id={`pg-arrow-${k}`} markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+              <path d="M0,0 L7,3.5 L0,7 Z" fill={colorFor(k)} />
+            </marker>
+          ))}
         </defs>
-        <line x1={pos.user.x + 60} y1={pos.user.y} x2={pos.app.x - 20} y2={pos.app.y - 10} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#pg-arrow)" />
+        <line x1={pos.user.x + userAppW / 2} y1={pos.user.y} x2={pos.app.x - userAppW / 2} y2={pos.app.y - 12} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#pg-arrow)" />
         {(['relational', 'vector', 'graph'] as Step[]).map((k) => (
-          <line key={k} x1={pos.app.x + 40} y1={pos.app.y - 10} x2={pos[k].x - 55} y2={pos[k].y} stroke={colorFor(k)} strokeWidth={active === k ? 2.5 : 1.25} opacity={active === null || active === k || active === 'app' ? 1 : 0.35} markerEnd="url(#pg-arrow)" />
+          <line
+            key={k}
+            x1={pos.app.x + userAppW / 2}
+            y1={pos.app.y + (k === 'relational' ? -10 : k === 'graph' ? 10 : 0)}
+            x2={pos[k].x - storeW / 2}
+            y2={pos[k].y}
+            stroke={colorFor(k)}
+            strokeWidth={active === k ? 2.5 : 1.25}
+            opacity={active === null || active === k || active === 'app' ? 1 : 0.35}
+            markerEnd={`url(#pg-arrow-${k})`}
+          />
         ))}
         {STEPS.map((s) => {
           const p = pos[s.key];
           const isActive = active === s.key;
           const color = colorFor(s.key);
-          const w = s.key === 'user' || s.key === 'app' ? 110 : 150;
+          const w = s.key === 'user' || s.key === 'app' ? userAppW : storeW;
           return (
             <g key={s.key} onClick={() => setActive(s.key)} onMouseEnter={() => setActive(s.key)} style={{ cursor: 'pointer' }}>
               <rect x={p.x - w / 2} y={p.y - 16} width={w} height={32} rx={7} fill={isActive ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isActive ? 2.5 : 1.5} />

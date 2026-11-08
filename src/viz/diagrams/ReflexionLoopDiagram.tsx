@@ -54,6 +54,12 @@ export default function ReflexionLoopDiagram() {
   ];
   const activeEdgeIndex = i === 0 ? -1 : i - 1;
 
+  const EDGE_POINTS: Record<string, [[number, number], [number, number]]> = {
+    'actor-evaluator': [[160, 118], [230, 78]],
+    'evaluator-reflection': [[280, 78], [280, 180]],
+    'reflection-actor': [[230, 182], [160, 142]],
+  };
+
   return (
     <VisualizationContainer footer={frame.text}>
       <ControlRow>
@@ -70,11 +76,10 @@ export default function ReflexionLoopDiagram() {
       <svg width="100%" viewBox="0 0 380 260" style={{ marginTop: 10 }}>
         {edges.map(([a, b], idx) => {
           const active = idx <= activeEdgeIndex;
-          const p1 = POS[a];
-          const p2 = POS[b];
+          const points = EDGE_POINTS[`${a}-${b}`];
           return (
             <g key={`${a}-${b}`} opacity={active ? 1 : 0.5}>
-              <SketchArrow points={[[p1.x, p1.y], [p2.x, p2.y]]} color={active ? color : t.border} strokeWidth={active ? 2.5 : 1.5} id={`rfx-edge-${idx}`} />
+              <SketchArrow points={points} color={active ? color : t.border} strokeWidth={active ? 2.5 : 1.5} id={`rfx-edge-${idx}`} />
             </g>
           );
         })}

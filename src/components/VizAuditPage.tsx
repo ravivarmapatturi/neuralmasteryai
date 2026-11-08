@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-const diagramModules = import.meta.glob<{ default: React.ComponentType }>('../viz/diagrams/*.tsx');
-const topVizModules = import.meta.glob<{ default: React.ComponentType }>('../viz/*.tsx');
+const diagramModules = import.meta.glob<{ default: React.ComponentType<any> }>('../viz/diagrams/*.tsx');
+const topVizModules = import.meta.glob<{ default: React.ComponentType<any> }>('../viz/*.tsx');
 
 export default function VizAuditPage() {
   const [params, setParams] = useSearchParams();
   const name = params.get('name') || '';
-  const [Comp, setComp] = useState<React.ComponentType | null>(null);
+  const [Comp, setComp] = useState<React.ComponentType<any> | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -80,7 +80,48 @@ export default function VizAuditPage() {
             boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
           }}
         >
-          <Comp />
+          {name === 'DiscoverySequenceDiagram' ? (
+            <Comp
+              steps={[
+                { name: 'Chunking', constraint: 'Context limit' },
+                { name: 'Embeddings', constraint: 'Semantic search' },
+                { name: 'Vector DB', constraint: 'Scale index' },
+                { name: 'Reranking', constraint: 'Precision cut' },
+              ]}
+            />
+          ) : name === 'EcosystemMapDiagram' ? (
+            <Comp
+              layers={[
+                { label: 'Client', desc: 'User interface', covered: true },
+                { label: 'Network', desc: 'HTTP transport', covered: true },
+                { label: 'API Layer', desc: 'Gateway and contracts', covered: true },
+              ]}
+            />
+          ) : name === 'MultiCurveChart' ? (
+            <Comp
+              curves={[{ name: 'Curve 1', fn: (x: number) => Math.sin(x), stroke: '#4f46e5' }]}
+              xMin={0}
+              xMax={6.28}
+              yMin={-1}
+              yMax={1}
+              xLabel="x"
+              yLabel="y"
+            />
+          ) : name === 'SystemDesignFlowDiagram' ? (
+            <Comp
+              flow={{
+                title: 'Sample Flow',
+                footer: 'Footer note',
+                stages: [
+                  { label: 'Input', detail: 'Incoming stream', concept: 'token' },
+                  { label: 'Process', detail: 'Transform stage', concept: 'attention' },
+                  { label: 'Output', detail: 'Delivered result', concept: 'output' },
+                ],
+              }}
+            />
+          ) : (
+            <Comp />
+          )}
         </main>
       )}
     </div>

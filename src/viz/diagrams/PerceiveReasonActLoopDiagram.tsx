@@ -37,11 +37,23 @@ export default function PerceiveReasonActLoopDiagram() {
         </defs>
         {STAGES.map((s, i) => {
           const next = STAGES[(i + 1) % STAGES.length];
-          const p1 = pos(s.angle);
-          const p2 = pos(next.angle);
-          const midAngle = (s.angle + next.angle) / 2 + (i === 2 ? 180 : 0);
+          const startAngle = s.angle + 30;
+          const endAngle = (i === 2 ? s.angle + 120 - 30 : next.angle - 30);
+          const p1 = pos(startAngle);
+          const p2 = pos(endAngle);
+          const midAngle = (startAngle + endAngle) / 2;
           const arcMid = pos(midAngle);
-          return <path key={s.key} d={`M ${p1.x},${p1.y} Q ${arcMid.x},${arcMid.y} ${p2.x},${p2.y}`} fill="none" stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#pra-arrow)" opacity={0.6} />;
+          return (
+            <path
+              key={s.key}
+              d={`M ${p1.x},${p1.y} Q ${arcMid.x},${arcMid.y} ${p2.x},${p2.y}`}
+              fill="none"
+              stroke={t.textMuted}
+              strokeWidth={1.5}
+              markerEnd="url(#pra-arrow)"
+              opacity={0.8}
+            />
+          );
         })}
         {STAGES.map((s) => {
           const p = pos(s.angle);

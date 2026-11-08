@@ -25,7 +25,7 @@ export default function EncoderLayerDiagram() {
   const gap = 14;
   const width = 340;
   const topPad = 20;
-  const height = topPad + BLOCKS.length * (boxH + gap) - gap + 30;
+  const height = topPad + BLOCKS.length * (boxH + gap) - gap + 40;
   const cx = 100;
 
   return (
@@ -50,8 +50,8 @@ export default function EncoderLayerDiagram() {
               </g>
             );
           })}
-          <SketchArrow points={[[cx, topPad + (BLOCKS.length - 1) * (boxH + gap) + boxH], [cx, height - 8]]} color={t.textMuted} strokeWidth={1.5} id="enc-arrow-out" />
-          <text x={cx} y={height - 2} textAnchor="middle" fontSize={11} fontFamily="monospace" fill={t.textMuted}>output</text>
+          <SketchArrow points={[[cx, topPad + (BLOCKS.length - 1) * (boxH + gap) + boxH], [cx, height - 20]]} color={t.textMuted} strokeWidth={1.5} id="enc-arrow-out" />
+          <text x={cx} y={height - 4} textAnchor="middle" fontSize={11} fontFamily="monospace" fill={t.textMuted}>output</text>
 
           <SketchPath
             d={`M ${cx + boxW / 2 + 20},${topPad} q 10,0 10,${(height - topPad - 30) / 2} q 0,${(height - topPad - 30) / 2} -10,${(height - topPad - 30)}`}
