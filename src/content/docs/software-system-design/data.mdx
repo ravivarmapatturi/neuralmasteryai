@@ -1,174 +1,66 @@
 ---
 title: "Data Ownership and Consistency"
 sidebar_position: 3
-description: "Choose data models and access paths, reason about replication and sharding, and preserve business invariants across transactions, partitions, and caches."
+description: "Choose storage from access and update boundaries, then reason about indexes, replicas, shards, transaction histories, and cache freshness one mechanism at a time."
 ---
-import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
-import RunnableCode from '../../../components/content/RunnableCode';
-import PredictFirst from '../../../viz/primitives/PredictFirst';
-import SoftwareReplicationExplorer from '../../../viz/diagrams/SoftwareReplicationExplorer';
-import CacheAsideFlowDiagram from '../../../viz/diagrams/CacheAsideFlowDiagram';
-import CapTheoremDiagram from '../../../viz/diagrams/CapTheoremDiagram';
+import { ELI5 } from '../../../components/content/ExpandableDepth';
 
 # Data Ownership and Consistency
 
 <ELI5>
-Two shop assistants can each keep a copy of the stock list. Copies make lookups faster and let one assistant keep working when the other is away. But if only one item remains, both cannot independently promise it to different customers. We need rules for who may change the list, when copies become trustworthy, and what to do when assistants cannot communicate.
+A service needs to know where its records live, who may change them, and which copy a reader can trust. Extra copies help with different problems from splitting records among owners. These chapters separate those decisions and show how they interact under concurrent updates and failure.
 </ELI5>
 
-A database decision starts with a query and an invariant. In our illustrative inventory system, an item has ten units, two buyers each request six, and confirmed inventory must never become negative. A second example follows record version seven becoming version eight on a primary and later reaching a replica. These examples expose the misconception that a database category or replication count automatically determines correctness.
+Follow the nine topics in order. Each develops a concrete storage decision with a worked example, an interactive explanation, runnable experiments, and failure cases.
 
-The existing [database roadmap](/docs/databases/roadmap), [relational introduction](/docs/databases/relational/overview), and [PostgreSQL chapter](/docs/databases/relational/postgresql) own product mechanics. We use them as implementation references and concentrate here on architecture decisions across access paths, replicas, partitions, and caches.
+| Chapter | Decision it teaches |
+| --- | --- |
+| [SQL vs NoSQL: Choose the Update Boundary](/docs/software-system-design/sql-vs-nosql) | Place authoritative facts and define the state that changes together |
+| [Indexing and Query Access Paths](/docs/software-system-design/indexing) | Match filter and ordering requirements to maintained access structures |
+| [Replication, Acknowledgement, and Failover](/docs/software-system-design/replication) | Separate remote receipt, durability, replay, and mutation authority |
+| [Sharding and Data Ownership](/docs/software-system-design/sharding) | Choose ownership keys and diagnose skew and cross-shard work |
+| [Consistent Hashing and Membership Changes](/docs/software-system-design/consistent-hashing) | Calculate remapping without confusing it with safe migration |
+| [CAP and PACELC](/docs/software-system-design/cap-and-pacelc) | Explain partition-time promises and ordinary coordination costs |
+| [Consistency Models and Allowed Histories](/docs/software-system-design/consistency-models) | Distinguish session guarantees, causal visibility, and real-time order |
+| [Transactions, Isolation, and Write Skew](/docs/software-system-design/transactions-and-isolation) | Protect a shared invariant against concurrent decisions |
+| [Caching Strategies and Invalidation Races](/docs/software-system-design/caching-and-invalidation) | Prevent stale refills and budget cold-cache demand |
 
 ## SQL and NoSQL Begin With Access Patterns
 
-A **relational model** represents records with explicit relations, constraints, and queryable combinations. SQL is a query language, not a synonym for a single-machine architecture. A **NoSQL** system may use documents, key-value pairs, wide columns, or graphs; these models have different query and transaction capabilities. Saying “NoSQL scales” does not tell us whether a proposed lookup can avoid scanning the entire dataset.
-
-For a link service, `code -> destination` is a point lookup. A key-value store can fit well. For payments, joins between customers, invoices, and balanced ledger entries plus uniqueness constraints make relational transactions attractive. A document model can hold a bounded aggregate that is normally read and changed together, but embedding an unbounded comment history makes a single record grow indefinitely.
-
-Write the top queries before the schema. “List a user's newest links” suggests an ordered access path on owner and creation time. “Find a code” suggests a unique code index. “Count every redirect by country in real time” is another workload and should not silently run expensive aggregations on the transactional primary.
-
-An **index** is an auxiliary access structure that trades storage and write work for faster reads. A B-tree supports ordered comparisons and ranges; a hash-based access structure suits equality in systems that provide it. A composite B-tree on `(owner_id, created_at)` helps a query that constrains owner and orders by time, but it does not generally make arbitrary filtering by destination efficient.
-
-```sql
-CREATE TABLE links (
-    code text PRIMARY KEY,
-    owner_id bigint NOT NULL,
-    destination text NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now()
-);
-CREATE INDEX links_owner_recent ON links (owner_id, created_at DESC);
-EXPLAIN SELECT code, destination FROM links
-WHERE owner_id = 42 ORDER BY created_at DESC LIMIT 20;
-```
-
-Run `EXPLAIN` against representative data before assuming an index is used. Small tables can rationally use sequential scans. Selectivity, ordering, row width, and table statistics matter. Every extra index must also be updated on writes, so indexing every column can damage the workload it was meant to help.
+[Storage-model choice](/docs/software-system-design/sql-vs-nosql) follows a current profile name across two orders, separating referenced authority from duplicated fields and intentional historical snapshots. [Indexing](/docs/software-system-design/indexing) then traces the same query through two composite-key orders. Use the existing [database track](/docs/databases/overview) for engine and query-language material.
 
 ## Replication Copies State; It Does Not Define Freshness
 
-**Replication** maintains copies for availability, locality, or read capacity. With asynchronous primary-to-replica replication, the primary can acknowledge a write before a replica applies it. If a user writes version eight and their next read goes to a replica still at version seven, the page appears to undo their change.
-
-<SoftwareReplicationExplorer />
-
-**Read-your-writes** means a session observes its own acknowledged changes. It can be implemented by routing that session's reads to the primary or by requiring replicas to reach a returned version barrier. **Monotonic reads** prevent a session from moving backward to an older version. **Eventual consistency** promises convergence under suitable conditions after updates stop; it does not specify a freshness deadline by itself.
-
-**Linearizability** makes each operation appear to take effect at one instant between invocation and response, respecting real-time order. It is stronger than merely returning the newest value known to the contacted node. A system can provide transactional isolation locally while exposing stale replica reads through another interface; state the guarantee for the operation, not just the database brand.
-
-<RunnableCode code={`primary, replica = 7, 7
-primary = 8
-session_version = primary
-print("Acknowledged version:", session_version)
-print("Immediate replica read:", replica)
-print("Replica satisfies session barrier:", replica >= session_version)
-replica = primary
-print("After replication:", replica)
-print("Replica satisfies session barrier:", replica >= session_version)
-# Try it: leave replica at 7; a barrier must wait, use the primary, or fail.
-`} />
-
-Synchronous replication can wait for another copy before acknowledging. That improves the durability of acknowledged state under the failure it covers, while adding latency and making some replica failures affect writes. Specify whether acknowledgment waits for receipt, durable log flush, or application. Those are different promises during crash recovery.
+[Replication](/docs/software-system-design/replication) follows record version 8 from primary acknowledgement to replica replay. [Consistency models](/docs/software-system-design/consistency-models) specifies what different clients may observe along that path. A durable remote log and a current read are distinct progress boundaries.
 
 ## Sharding Changes Ownership
 
-**Sharding** partitions records among independently owned storage groups. A hash of user ID can spread many users evenly, while time ranges can simplify retention and sequential scans. Hashing does not split one exceptionally hot user unless the key includes another dimension. Range partitioning can create a hot newest partition if every write targets current time.
-
-Simple modulo placement changes many owners when the shard count changes. **Consistent hashing** places keys and shard positions on a ring and assigns a key to the next position. Adding one position moves only the neighboring range in that model. Multiple virtual positions per physical shard improve balance, but equal key counts still do not guarantee equal request load or byte volume.
-
-<RunnableCode code={`import bisect
-import hashlib
-
-def point(text):
-    return int.from_bytes(hashlib.sha256(text.encode()).digest()[:4], "big")
-
-def owner(key, nodes):
-    ring = sorted((point(node + ":" + str(v)), node) for node in nodes for v in range(32))
-    positions = [p for p, node in ring]
-    return ring[bisect.bisect_left(positions, point(key)) % len(ring)][1]
-
-keys = ["user:" + str(i) for i in range(1000)]
-before, after = ["A", "B", "C"], ["A", "B", "C", "D"]
-moved = sum(owner(k, before) != owner(k, after) for k in keys)
-print("Keys moved out of 1000:", moved)
-print("All changed owners are D:", all(owner(k, after) == "D" for k in keys if owner(k, before) != owner(k, after)))
-# Try it: reduce virtual positions to 1 and inspect ownership counts per node.
-`} />
-
-A ring is a placement algorithm, not a migration protocol. Copy existing records, stream concurrent changes, verify a catch-up point, switch ownership through a versioned routing map, and retain a rollback plan. Concurrent writes during migration need one authoritative owner or a reconciliation mechanism. Otherwise, two valid-looking copies diverge while clients are routed inconsistently.
-
-Cross-shard transactions and secondary indexes create coordination work. If every purchase needs records spread over every shard, the key choice has not localized the important transaction. Choose shard boundaries around aggregates that change together, and name the rare operations that still cross boundaries.
+[Sharding](/docs/software-system-design/sharding) shows why equal record counts can hide an indivisible hot key. [Consistent hashing](/docs/software-system-design/consistent-hashing) calculates which keys move when one token joins; transferring data and write authority still requires a migration protocol.
 
 ## CAP and PACELC Describe Different Trade-offs
 
-Under a network partition, an operation cannot guarantee both linearizable behavior and a successful response from every non-failing participant. That is the useful CAP decision. “Pick two out of three” is misleading because a network partition is a condition the design must handle, rather than a feature we can turn off. A timeout or refusal preserves a different promise from a successful stale response.
-
-<CapTheoremDiagram />
-
-Treat the diagram as an introductory mnemonic and use the operation-specific statement above for a design review. A service can choose to reject inventory reservations on the isolated side while continuing to serve stale public catalog descriptions. One product need not apply the same policy to every endpoint.
-
-**PACELC** extends the discussion: if there is a partition, choose availability versus consistency; else, consider latency versus consistency. Waiting for distant replicas can increase normal-operation latency even when every network link works. Geographic reads may therefore use weaker freshness while a financial mutation waits for authoritative coordination.
-
-<PredictFirst question="A replica has version 7 after the primary acknowledged version 8. Which statement is justified?" options={["Three replicas guarantee this read sees version 8", "The replica can return 7 unless the read enforces a stronger session or consistency contract", "Replication is broken because replicas must always be identical"]} correctIndex={1} explanation="Asynchronous replication explicitly permits lag. More copies do not impose a read barrier, and temporary divergence is expected under that contract." />
+[CAP/PACELC](/docs/software-system-design/cap-and-pacelc) traces one acknowledged write across a partition and distinguishes formal progress from an availability SLO. It then budgets the normal network path required by a selected remote acknowledgement policy.
 
 ## Transactions Protect Named Invariants
 
-A **transaction** groups changes under atomic commit: either the committed effects appear together or they do not. **Isolation** governs interference between concurrent transactions. The word ACID does not prove that arbitrary application logic preserves a business rule at the chosen isolation level.
-
-With ten inventory units, two buyers each read ten and decide six are available. If they later write a computed value of four independently, the system may accept twelve units while recording four remaining. A conditional update makes the check and decrement one database operation. Affected-row count tells the caller whether the reservation succeeded.
-
-```sql
-UPDATE inventory SET available = available - 6
-WHERE sku = 'book' AND available >= 6
-RETURNING available;
-```
-
-Read committed typically gives each statement a fresh committed snapshot. Repeatable read preserves a transaction's snapshot but can still allow serialization anomalies depending on implementation. Serializable execution ensures committed transactions correspond to some serial order, but the application must handle serialization failures by retrying the whole transaction safely. PostgreSQL's exact guarantees are documented in the linked primary source.
-
-<GoDeeper title="Go deeper: serializability and linearizability are separate">
-Serializability constrains the result of a group of transactions to match a serial execution. Linearizability also respects operation timing in real time. A transaction system can have serializable transactions without every read API, including asynchronous replica reads, being linearizable. Specify both the transaction boundary and where the read is served.
-</GoDeeper>
+[Transactions and isolation](/docs/software-system-design/transactions-and-isolation) uses two clinicians who each see the other on call. Atomic disjoint updates can leave nobody present; the page reproduces that write-skew schedule and explains an invariant-preserving serial order.
 
 ## Caches Need a Staleness Contract
 
-A cache-aside reader checks cache, falls through to storage on a miss, and fills the cache. It avoids work but creates another copy whose lifetime must be bounded. **Write-through** updates a cache through the write path; **write-behind** buffers changes for later persistence and therefore requires durable buffering and a clear acknowledgment contract.
-
-<CacheAsideFlowDiagram />
-
-Time-to-live limits residence time, not necessarily version age. A slow reader can fetch an old value, race with a writer's invalidation, and then refill the cache with that old value. Versioned values, compare-and-set fills, invalidation streams, or routing correctness-sensitive reads to the authority can close different versions of this race. Choose a mechanism based on the required staleness bound.
-
-A popular missing key can trigger thousands of simultaneous storage reads. Coalesce in-flight fills, add randomized expiration, use bounded stale-while-revalidate where allowed, and isolate hot keys. Negative caching can reduce repeated misses, but it must not conceal newly created records longer than the product permits.
+[Caching and invalidation](/docs/software-system-design/caching-and-invalidation) demonstrates a delayed old read filling a cache after a correct database commit and deletion. Its fenced model states the additional lifetime and atomicity assumptions needed to reject that refill.
 
 ## Common Problems and Fixes
 
-Replica lag causes apparent lost edits; use a session barrier or primary routing. Hot shards cause uneven latency; inspect per-key traffic before adding evenly loaded empty shards. Broad transactions cause lock waits; shorten their scope while preserving the invariant. Cache stampedes overload storage; coalesce misses and test synchronized expiry.
-
-Deletion is a data-flow operation. Remove or tombstone authoritative state, invalidate serving copies, account for search indexes, and define backup retention. A database delete alone does not establish a user-visible deletion deadline across every downstream copy.
+Name the authoritative fact, the concurrent transition, and the observer before choosing a storage mechanism. The topic pages make their assumptions executable and distinguish calculated models from actual engine guarantees.
 
 ## When Not to Shard or Cache
 
-| Situation | Better choice |
-| --- | --- |
-| One primary meets measured capacity | Keep local transactions and add appropriate redundancy |
-| Result must reflect a just-committed sensitive mutation | Authoritative read or explicit version barrier |
-| A query lacks a useful access path | Fix schema and indexes before adding a cache |
-| Hot traffic belongs to one key | Split that workload or cache it deliberately |
+A missing access path, an oversized result, or an unmeasured workload can justify a smaller change. Inspect [index costs](/docs/software-system-design/indexing) and [cache reuse requirements](/docs/software-system-design/caching-and-invalidation) before adding another owner or derived copy.
 
 ## Remember
 
-| Mechanism | What must be explicit |
-| --- | --- |
-| Index | Supported predicate and write cost |
-| Replica | Acknowledgment durability and read freshness |
-| Shard | Ownership key and migration protocol |
-| Transaction | Invariant, isolation, and retry handling |
-| Cache | Key, version, staleness, and invalidation |
-
-You can now identify the authoritative owner and the freshness of each copy. Next, [Communication and Delivery](/docs/software-system-design/communication) follows changes as they cross process boundaries.
+Placement, replication, visibility, isolation, and freshness are different properties of the same operation. Apply them together in the [payment case study](/docs/software-system-design/payment-system), then continue to [Communication](/docs/software-system-design/communication).
 
 ## Sources
 
-- [PostgreSQL, Transaction Isolation](https://www.postgresql.org/docs/current/transaction-iso.html).
-- [PostgreSQL, Multicolumn Indexes](https://www.postgresql.org/docs/current/indexes-multicolumn.html).
-- [Gilbert and Lynch, Brewer's Conjecture (2002)](https://groups.csail.mit.edu/tds/papers/Gilbert/Brewer6.pdf).
-- [Abadi, Consistency Tradeoffs in Modern Distributed Database System Design (2012)](https://www.cs.umd.edu/~abadi/papers/abadi-pacelc.pdf).
-- [Karger et al., Consistent Hashing and Random Trees (1997)](https://people.csail.mit.edu/karger/Papers/web.pdf).
-- [Amazon, Dynamo (2007)](https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf).
+Primary specifications, papers, engine documentation, and the full calculations are listed in each topic chapter.
