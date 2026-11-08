@@ -1,0 +1,139 @@
+---
+title: "Vertical vs Horizontal Scaling"
+sidebar_position: 2.1
+description: "Choose a larger machine or more machines by locating the actual bottleneck, modeling shared limits, and accounting for failure reserve and migration cost."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import ScalingBottleneckExplorer from '../../../viz/diagrams/ScalingBottleneckExplorer';
+
+# Vertical vs Horizontal Scaling
+
+<ELI5>
+A supermarket can buy a faster checkout or open more checkouts. Both help only while stock and payment processing keep up. Eight cashiers waiting for one broken card terminal cannot serve eight times as many shoppers. We find the constrained stage before deciding whether to enlarge it or make more independent copies.
+</ELI5>
+
+**Vertical scaling** increases resources assigned to one machine or process, such as memory or processor capacity. **Horizontal scaling** adds independently placed machines or processes. These are changes to a particular stage of a system; neither automatically multiplies the capacity of the complete user action.
+
+The misconception is that doubling application instances doubles useful throughput. Our illustrative application can serve 1,000 requests/s per instance, but every request also uses a shared store limited to 3,000 requests/s. Three instances reach the store's ceiling. Six instances provide 6,000 requests/s of application capacity while end-to-end completions remain bounded by 3,000. We will use this same model in the diagram and code, then examine the assumptions that make its simple minimum rule incomplete.
+
+## Locate the Resource That Limits Completion
+
+A **bottleneck** is the constrained resource that limits useful completions for a particular workload. Processor time, memory, disk operations, network transfer, locks, and external quotas can each impose a ceiling. A service with idle processors may still be saturated if all requests wait for a finite connection pool.
+
+Measure arrivals, completed operations, error rate, and latency together. If offered requests rise while completions flatten and waiting increases, adding queue space is not adding completion capacity. Identify which resource has insufficient service capacity. The constraint can move after each improvement, so a scaling decision needs a workload and a current bottleneck rather than a permanent label attached to the application.
+
+For the example, every request performs one store operation. Independent application replicas contribute linearly by assumption, and the store capacity remains fixed. The end-to-end ceiling is the smaller of total application capacity and store capacity. This is a calculated upper bound, not a claim that a real service can operate at its exact ceiling while meeting a tail-latency target.
+
+<ScalingBottleneckExplorer />
+
+Start at six small replicas: the chart shows twice as much application capacity as the store can use. Reduce replicas to two and the application becomes the limiting stage. Now double per-replica capacity; the store becomes limiting again. The controls show why “scale up or scale out?” is incomplete without “which stage, under which workload?”
+
+A cache changes the number of store operations per user request. At a 90% hit rate with one store read per miss, 3,000 store reads/s could support up to 30,000 user reads/s under that simplified relationship. But writes, refreshes, hot keys, and a cold-cache transition need their own budgets. Do not silently reuse the warm-cache ceiling as the failure-state capacity.
+
+## Vertical Scaling Preserves Some Local Boundaries
+
+More memory can keep a working set resident and reduce storage reads. More processor cores can run independent tasks if the program and runtime expose parallelism. Faster local storage can reduce a write bottleneck when durability settings and queue depth permit it. The gain depends on which resource is constrained, not on the ratio between machine prices.
+
+Vertical growth can preserve local transactions, shared memory, and a single owner for state. That simplicity is valuable when the workload fits comfortably and the team needs predictable operations. It avoids introducing a network hop merely to spread work that one machine can already handle. A modular application on a larger machine can remain easier to diagnose than many services with the same business logic.
+
+The ceiling is finite. Larger machines may be unavailable in the required zone, take time to allocate, require restart, or increase the amount of work lost when one fails. Resizing a stateful system can require copying data or warming caches before traffic returns. Include that transition in the plan rather than evaluating only the steady state after a successful resize.
+
+More cores do not make a serial critical section run proportionally faster. If a workload spends 25% of its time in work that cannot be parallelized and 75% in perfectly parallel work, even unlimited parallelism approaches at most a fourfold speedup. This is Amdahl's law applied to a specific assumed decomposition, not a universal limit of vertical scaling; memory and storage changes can alter the decomposition itself.
+
+## Horizontal Scaling Requires Independent Work
+
+A replica adds useful capacity when it can complete operations without constantly coordinating with every other replica. Stateless read handlers often fit that pattern when shared dependencies have room. A single global lock, hot tenant, or serialized writer can prevent the new replicas from contributing independently.
+
+Placement also determines failure behavior. Six replicas in one zone are six process copies but share a zone failure domain. Spreading them across zones protects against a different event, while introducing cross-zone network and replication considerations. Count surviving capacity after the largest promised loss, not just the healthy number of replicas.
+
+A horizontally scaled application still needs state ownership. Authentication sessions, file uploads, idempotency records, and workflow progress must survive the instance changes the platform permits. Sticky routing can preserve locality for a time, but a process restart or rebalance exposes whether essential state was only in local memory. The [scaling overview](/docs/software-system-design/scaling) connects this decision to stateless serving.
+
+<RunnableCode code={`store_capacity = 3000
+for replicas in (1, 2, 3, 6):
+    for per_replica in (1000, 2000):
+        application = replicas * per_replica
+        ceiling = min(application, store_capacity)
+        print("Replicas:", replicas, "per replica:", per_replica,
+              "application:", application, "end-to-end ceiling:", ceiling)
+# Try it: raise store_capacity to 10000; see where application scaling becomes useful again.
+`} />
+
+The code deliberately keeps the store demand at one operation per request. A batch operation can require several reads; another operation may hit no store at all. Real capacity needs a weighted workload mix. If a deployment changes the mix toward expensive operations, the same replica count can support fewer user actions without any machine becoming slower in isolation.
+
+<PredictFirst question="Six application replicas each handle 1,000 requests/s. Every request needs the same store, which handles 3,000 operations/s. What does adding two more replicas guarantee?" options={["8,000 completed requests/s", "No increase beyond the store ceiling in this model", "A 25% reduction in store latency"]} correctIndex={1} explanation="The new application capacity cannot remove the shared store's 3,000-operation ceiling. Extra concurrency can increase waiting rather than reduce store latency." />
+
+## Compare Cost at the Required Failure State
+
+A useful cost comparison includes the serving target, reserve, and operational burden. Suppose a larger instance has twice the measured safe capacity but costs more than twice as much. It can still be reasonable if it avoids a state-distribution problem, but the justification is simplicity or a required resource shape, not superior unit throughput. Conversely, many small instances can cost less per completion while increasing deployment and connection-management work.
+
+Failure reserve changes the comparison. A single large instance handling the full peak cannot maintain service if that instance disappears. Two large instances may each need enough capacity for the peak after one fails. A larger fleet can lose a smaller fraction to a single machine failure, but zone placement can dominate that advantage. Model the actual failure domains rather than assuming every instance fails independently.
+
+Scaling down is part of cost control and part of correctness. Drain active requests, preserve durable progress, and avoid terminating owners of unfinished work without a recovery protocol. A system that adds replicas safely but removes them by abandoning jobs is not elastically correct. Test both directions with the same user contract.
+
+<GoDeeper title="Go deeper: a serial fraction limits a parallel speedup">
+Let the fraction of original elapsed time that remains serial be s, and let the parallel part run on n equally capable workers without overhead. Normalized time becomes s + (1-s)/n, so speedup is its reciprocal. With s = 0.25 and n = 8, time is 0.34375 of the original and speedup is about 2.91. Coordination, imbalance, and communication can reduce that gain; changing the algorithm can change s and therefore the bound.
+</GoDeeper>
+
+## Plan the Transition Before the Ceiling
+
+A scale-up plan needs capacity availability, a data movement or restart path, and a way to restore the old configuration if the new one performs poorly. A scale-out plan needs membership, routing, configuration distribution, and downstream connection budgets. Both need measurements showing that the intended bottleneck moved without violating correctness.
+
+For a stateful store, adding replicas may increase read capacity but leave write serialization unchanged. Adding shards distributes ownership rather than merely copying data, which changes query routing and transaction boundaries. Those are separate mechanisms treated in the data section; calling them all “horizontal scaling” can hide their different consistency costs.
+
+Choose an early warning threshold tied to lead time. If provisioning and migration require hours, do not wait until the disk is full. Estimate growth and recovery reserve, then rehearse the transition on representative data. A diagram showing the final fleet omits the period where old and new placement coexist, which is often where the hardest correctness work occurs.
+
+<RunnableCode code={`serial = .25
+for workers in (1, 2, 4, 8, 1000000):
+    time_fraction = serial + (1-serial) / workers
+    print("Workers:", workers, "ideal speedup:", round(1/time_fraction, 3))
+
+peak, safe_capacity = 6000, 1000
+for replicas in (10, 14):
+    largest_zone = (replicas + 2) // 3
+    survivors = replicas - largest_zone
+    print("Replicas:", replicas, "survivors:", survivors,
+          "failure utilization percent:", round(100*peak/(survivors*safe_capacity), 2))
+# Try it: change serial to .10; compare algorithmic independence with merely adding workers.
+`} />
+
+The first calculation describes an idealized parallel computation, while the second describes fleet placement. They are related constraints, not interchangeable formulas. A fleet may provide enough surviving processors yet fail to increase throughput because the application still serializes on one record. Keep algorithmic independence and infrastructure redundancy as separate review questions.
+
+## Common Problems and Fixes
+
+Processor saturation suggests adding compute only after confirming that the work is useful and parallelizable. A slow query scan may need an index rather than another application replica. A memory shortage may need a larger working-set budget or less retained state rather than more request concurrency. Match the remedy to the measured resource.
+
+More application replicas can multiply database connections until the store spends more time scheduling them than completing queries. Bound pools across the fleet and test growth under peak load. A replica that is technically ready but still warming a large cache can redirect load to storage; use readiness and gradual admission that reflect its actual serving state.
+
+One large tenant can prevent even distribution. Measure per-key and per-tenant demand before assuming a balanced hash or round-robin router balances work. A hot owner may require a different data model, request coalescing, or explicit admission policy. More total machines do not divide an indivisible hot operation automatically.
+
+## When Not to Scale the Application Fleet
+
+| Situation | Better change |
+| --- | --- |
+| Shared storage has reached its ceiling | Reduce store demand or change its access and ownership model |
+| Work is serialized by one lock | Reduce the critical section or partition ownership safely |
+| Current load is comfortably served with redundancy | Keep the simpler measured deployment |
+| The workload has no immediate deadline | Schedule bounded asynchronous work instead of peak-sized serving |
+
+## Remember
+
+| Choice | What must be established |
+| --- | --- |
+| Scale up | The constrained resource improves on the larger machine |
+| Scale out | New replicas can complete independent useful work |
+| Shared limit | Downstream capacity supports the increased demand |
+| Failure reserve | Surviving placement meets the promised envelope |
+| Transition | State and traffic remain correct during resizing |
+| Cost | Compare the complete deployment at the same objective |
+
+You can now justify a scaling direction from a measured limit and explain why new replicas may add waiting instead of throughput. Continue through [Scaling](/docs/software-system-design/scaling) and use [capacity estimation](/docs/software-system-design/capacity-estimation) to calculate the failure reserve before choosing the fleet size.
+
+## Sources
+
+- [Amdahl, Validity of the Single Processor Approach to Achieving Large Scale Computing Capabilities (1967)](https://doi.org/10.1145/1465482.1465560): serial work and ideal parallel speedup.
+- [Google SRE, Handling Overload (2016)](https://sre.google/sre-book/handling-overload/): capacity and resource-aware load control.
+- [Google SRE, Addressing Cascading Failures (2016)](https://sre.google/sre-book/addressing-cascading-failures/): surviving capacity under failure.
+- [Kubernetes, Horizontal Pod Autoscaling](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/): replica scaling behavior and signals.
+- [PostgreSQL, Connections and Authentication](https://www.postgresql.org/docs/current/runtime-config-connection.html): connection limits and resource implications.
