@@ -1,0 +1,617 @@
+WEBVTT
+
+00:00.000 --> 00:01.000
+Thank you.
+
+00:01.000 --> 00:02.000
+All right.
+
+00:02.000 --> 00:03.000
+Good afternoon, everybody.
+
+00:03.000 --> 00:04.000
+Thank you for joining.
+
+00:04.000 --> 00:05.000
+Yeah.
+
+00:05.000 --> 00:09.000
+So today, we are going to talk a bit about how to do query processing for learns
+
+00:09.000 --> 00:27.000
+parts models in a more efficient way than what you've seen so far.
+
+00:27.000 --> 00:31.000
+We, my name is Antonio Ferdinand.
+
+00:31.000 --> 00:34.000
+We work together at SELTS.
+
+00:34.000 --> 00:37.000
+Those are our contacts, you know, for free to reach out.
+
+00:37.000 --> 00:41.000
+Maybe like a few words about SELTS.
+
+00:41.000 --> 00:47.000
+SELTS is a startup that is working on enabling essentially AI workflows and LLMs and chat
+
+00:47.000 --> 00:53.000
+bots and foundational models in general to access the web as a tool.
+
+00:53.000 --> 01:01.000
+So pretty much web knowledge through an API for any application that needs to run independently
+
+01:01.000 --> 01:05.000
+autonomously and reliably, most importantly.
+
+01:05.000 --> 01:10.000
+So I'm going to pass the mic to Ferdinand.
+
+01:10.000 --> 01:11.000
+Yeah.
+
+01:11.000 --> 01:12.000
+Hey, everyone.
+
+01:12.000 --> 01:13.000
+Hi, for me as well.
+
+01:13.000 --> 01:15.000
+I'm going to give a quick context.
+
+01:15.000 --> 01:16.000
+Just a quick introduction.
+
+01:16.000 --> 01:18.000
+I guess about what searches.
+
+01:18.000 --> 01:22.000
+I'm sure most of you are all familiar and vaccine gave a nice quick introduction
+
+01:22.000 --> 01:27.000
+but this might be relevant just to understand a bit of the intricacies of what Antonio will be talking
+
+01:27.000 --> 01:28.000
+about later.
+
+01:28.000 --> 01:31.000
+So in which context are we, we're talking about ad hoc search.
+
+01:31.000 --> 01:34.000
+So we have some kind of big document collection.
+
+01:34.000 --> 01:39.000
+For example, in this case, a bunch of documents talking about different open search frameworks
+
+01:39.000 --> 01:42.000
+and maybe one random document about get codes and whatever.
+
+01:42.000 --> 01:45.000
+A bunch of different other documents in this collection.
+
+01:45.000 --> 01:50.000
+We pass this to some processor that will give us some impact scores or whatever
+
+01:50.000 --> 01:56.000
+that we can then pass on to an index and then have some query that comes in.
+
+01:56.000 --> 02:01.000
+And hopefully this index then gives us in this case maybe the top three documents.
+
+02:01.000 --> 02:05.000
+And it should hopefully filter out for our query open source search framework.
+
+02:05.000 --> 02:09.000
+It should detect that these three documents up here are the ones that are somewhat relevant.
+
+02:09.000 --> 02:12.000
+And the one about get codes probably is not.
+
+02:12.000 --> 02:17.000
+And so initially or what what we're going to look at in this case is quickly.
+
+02:17.000 --> 02:20.000
+This what I call here a processor.
+
+02:20.000 --> 02:27.000
+Originally and that's what Maxi Marty had a quick example for is usually we'd use some kind of
+
+02:27.000 --> 02:30.000
+lexical term-based frequencies, whatever.
+
+02:30.000 --> 02:35.000
+So for example, we have here just one processor that takes in the documents.
+
+02:35.000 --> 02:42.000
+And in this example, perhaps the first document contains Lucine, the term Lucine or the word Lucine 10 times.
+
+02:42.000 --> 02:43.000
+And that's just what we count.
+
+02:43.000 --> 02:45.000
+We have some term frequencies.
+
+02:45.000 --> 02:48.000
+Maybe is is in this document 15 times A a bunch of times as well.
+
+02:48.000 --> 02:50.000
+And this is what we do per document.
+
+02:50.000 --> 02:53.000
+We could do some more complex stuff, normalize them things like that.
+
+02:53.000 --> 02:55.000
+But just for the sake of this example.
+
+02:55.000 --> 03:02.000
+We're using term statistics to evaluate how important what the impact of one of these terms
+
+03:02.000 --> 03:04.000
+and our documents is.
+
+03:04.000 --> 03:09.000
+And what we then do in our index is we convert this into an inverted index.
+
+03:09.000 --> 03:17.000
+And just use the terms as the posting and then have a postings list where every single term
+
+03:17.000 --> 03:22.000
+we count which document contained this term and then have our impact score inside there.
+
+03:22.000 --> 03:26.000
+So in this case maybe the term frequency we had Lucine 10 times.
+
+03:26.000 --> 03:30.000
+Some other document in our collection document 17 has two times.
+
+03:30.000 --> 03:32.000
+But now in this case the list is sorted.
+
+03:32.000 --> 03:35.000
+So any document in between doesn't actually contain this term.
+
+03:35.000 --> 03:41.000
+And we can use this to quickly search through our corpus by we get a new query.
+
+03:41.000 --> 03:44.000
+Maybe we only need to look at the posting list that contain these queries.
+
+03:44.000 --> 03:48.000
+That's how search per say works very quickly.
+
+03:48.000 --> 03:52.000
+Nice thing about this terms terms statistics at least it's very very fast.
+
+03:52.000 --> 03:57.000
+We can use tokenizer for example to tokenize documents very very fast.
+
+03:57.000 --> 04:00.000
+We can index stuff very fast and it's very fast and retrieval.
+
+04:00.000 --> 04:04.000
+There's been years of optimizations and research to make this really very quick.
+
+04:05.000 --> 04:07.000
+And it's actually fairly effective.
+
+04:07.000 --> 04:12.000
+I mean BM25 is still being used today and it's fairly hard to beat still.
+
+04:12.000 --> 04:17.000
+Like we even the big neuromodals are somewhat better on some few tasks.
+
+04:17.000 --> 04:21.000
+But in the end these terms statistics are very effective.
+
+04:21.000 --> 04:28.000
+Some of the downsides which we'll talk about in a second what neuromodals maybe do give us is.
+
+04:28.000 --> 04:30.000
+In this case we only have lexical matches.
+
+04:30.000 --> 04:36.000
+We don't have any semantic matching we only have or can only find the documents that actually contain the terms that we're searching for.
+
+04:36.000 --> 04:39.000
+We could do some complex document expansion and this and that.
+
+04:39.000 --> 04:45.000
+But in the sense in this case right here we only have lexical matches we can actually work with.
+
+04:45.000 --> 04:49.000
+And the final negative maybe is these are a heuristic.
+
+04:49.000 --> 04:55.000
+We have a few parameters in BM25 we have two parameters where we might be able to change the scores a bit.
+
+04:55.000 --> 05:07.000
+But in general we have some heuristic that we're using to assess the impact of a score it's not learned and what we've seen in the past few years using models to learn scores maybe a bit better.
+
+05:07.000 --> 05:14.000
+So what happens yeah BM25 back yeah almost or more than 20 20 years ago now.
+
+05:14.000 --> 05:23.000
+Pretty much yeah a couple of things were developed in between but since Bert was created a bunch of different learned sparse models were created.
+
+05:23.000 --> 05:34.000
+Which yeah it's it's a it's a whole zoo and different types of variations and things like that but in the end they all kind of do a very similar thing or try to achieve similar things.
+
+05:34.000 --> 05:45.000
+And I'll try to summarize that in this quick slide where for the sake of this example let's just look at the first document here and we'll do our processors now doing some magic in some neural magic in the background.
+
+05:45.000 --> 05:58.000
+And instead of having yeah terms to this six what we're doing is we're trading the model to compute impact scores for the terms in our document so this 13.5 for example is just some.
+
+05:58.000 --> 06:01.000
+Score that the model learned this is.
+
+06:01.000 --> 06:14.000
+The relevance or the impact of this term in our document and it's able to learn for example that is an A and stop words or words that don't encode semantics they might not have high impact scores because they don't encode.
+
+06:14.000 --> 06:32.000
+A lot of information that might be relevant and the last part is they may actually be able to add semantically similar terms that yeah get aren't actually in the document they can add terms to be able to find documents that don't actually contain terms.
+
+06:32.000 --> 06:39.000
+Yeah avoiding this lexical mismatch problem so these are two advantages that these neural models give us on the one hand.
+
+06:39.000 --> 06:50.000
+Learnable impact scores on the other hand semantic term expansion the downside is it's very very slow and expensive building a web scale index or something with these types of models they're very expensive.
+
+06:50.000 --> 07:03.000
+And the other question is how fast is this can we reuse the index structures the optimizations that people have built over the last 25 30 years can we actually reuse these index structures using.
+
+07:04.000 --> 07:09.000
+These impact scores that kind of looks similar to terms statistics does that work.
+
+07:09.000 --> 07:25.000
+Yeah, let's look at this there's was a paper from 2021 from Joel McKenzie and a bunch of colleagues and they looked at this question and they looked at this from the perspective okay what are the distributions like the distributions of the different vectors for different types of models.
+
+07:25.000 --> 07:32.000
+So if we look at the m25 the unique terms and this is for the msmarkle passage corpus.
+
+07:32.000 --> 07:48.000
+There's 2.6 to 0.7 million unique terms that were created in the index if you use bm25 around 30 terms per document five terms per query and you have very very fast search through using this for example the piece engine.
+
+07:48.000 --> 07:55.000
+And they try different types of models encoding this corpus to see how this statistics change and how the latency changes.
+
+07:55.000 --> 08:10.000
+And for example deep impact one type of model it has a lot larger vocabulary it adds or has a lot more unique terms it has a lot more terms per document and a lot fewer or a bit fewer terms per query.
+
+08:11.000 --> 08:17.000
+Unicoil on the contrast has a very very small vocabulary compared to bm25.
+
+08:17.000 --> 08:26.000
+It's constrained to the vocabulary of the subword token vocabulary of the baseline model and it again has a lot more terms per document and a few more terms per query.
+
+08:26.000 --> 08:35.000
+And another model displayed same as unicoil constrained to the vocabulary of the base model and it adds a lot of terms to the document and to the query.
+
+08:35.000 --> 08:48.000
+And this reflects itself in the latency of using just a plain inverted index the piece engine it is a lot slower using these impact weights actually makes things way way slower.
+
+08:48.000 --> 09:00.000
+Even though we are a bit more effective, but how can we maybe get to a stage where we're still as fast as using the term impact scores and get the efficiency in retrieval using these learned impact scores.
+
+09:01.000 --> 09:18.000
+And okay the conclusion no we can't reuse these these index or in yeah these engines that were developed because the optimizations that were developed for these term frequency distributions just don't work very well for these neural sparse models.
+
+09:18.000 --> 09:27.000
+So what maybe two strategies we can work on and this is the last part for me before Antonio takes it away I want to give a bit of context what kind of stuff we can do.
+
+09:27.000 --> 09:40.000
+Two different strategies we could follow on the one hand the one is early exiting where we just don't score everything we try to see okay try to only compute the scores for the documents that maybe.
+
+09:40.000 --> 09:52.000
+We actually need to compute the scores for and one way to do that is for example here on the left side for every single document we have a very quick way to estimate an upper bound score this is the score that the document.
+
+09:52.000 --> 09:56.000
+Could achieve for a certain query and we do this very very quickly.
+
+09:56.000 --> 10:11.000
+And then if we want to for example in this case get the top three documents we can score the documents one by one the first one we have an actual score of 9.5 for example the second one a bit lower than the actual score as well and stuff like that.
+
+10:11.000 --> 10:30.000
+Now we have the top three scores and then we know the fourth and fifth document their maximum potential score is lower than the current minimum score of our top three documents are so we don't actually need to score these we can just skip scoring them and save a lot of computation in that way so we don't actually score these and be done with that.
+
+10:30.000 --> 10:41.000
+Or the other strategy is we score everything but approximately we use some faster scoring mechanism yeah to score everything but not as accurately.
+
+10:41.000 --> 10:56.000
+And this is yeah has a couple of advantages for example you're very very fast so in this case these are the actual scores and we might approximate these scores and compute them way way quicker the problem here is we don't have exact scoring anymore.
+
+10:56.000 --> 11:13.000
+For example in this case we have one document that has a score the exact score should be 4.8 this one should be 6.2 but our approximate score is actually switched the order of the documents so you're not actually sure you're getting the exact top k so we have the trade off here but we'll probably get a lot quicker.
+
+11:13.000 --> 11:25.000
+So these two strategies we can follow or in general that's how I would frame it or the potential we can save and that's where Antonio jumps in and talks about BMP.
+
+11:25.000 --> 11:41.000
+Yeah so following the two approaches that 30 just described we thought we thought about sort of like coming up with a completely different approach that is not actually based on inverted indexes or at least not the way we are used to.
+
+11:42.000 --> 12:08.000
+Well first of all we laughed the mental model of having every document going to be indexed in inverted index into passing lists and we started thinking about vectors which is a very common pattern in dense retrieval to have dense vectors vectors such as yeah a concatenation of like floating point values.
+
+12:08.000 --> 12:25.000
+But those are different those are different because those are like sparse vectors what does that mean it means that for not all the positions in these vectors are actually positive values or actually non zero values.
+
+12:25.000 --> 12:44.000
+For as for a sparse model for a lexical model as part factor indicate is basically indicating which tokens out of the original lexicon or the original vocabulary so all the unique terms that you see in the corpus which tokens which.
+
+12:44.000 --> 12:58.000
+terms are actually present so as you can see for example I love New York contains only three terms and only three positions in the sparse vector that corresponds are actually set with a value and those values are actually.
+
+12:58.000 --> 13:20.000
+and generated using a sparse model in this get learned sparse model in this specific case so now instead of having posting list we have vectors and without a bit about how can we make this more similar to the standard vector retrieval process that we see in vector databases and and the idea is to basically have.
+
+13:20.000 --> 13:36.000
+the collection of documents as as as vectors represented as a concatenation of these vectors but like also split into basically blocks as you can see here we have like three blocks each block contains three vectors.
+
+13:36.000 --> 14:00.000
+So now when you receive a query you also produce a sparse vector you convert it into a sparse vector by setting the position of the query terms for which that is contained in the original query text and you could potentially like compute the score for every document in the collection by you know doing a dot product a simple dot product between the query vector and the document vector.
+
+14:00.000 --> 14:07.000
+Now if you do that you're not saving any time because you're essentially scanning the entire collection the entire representation.
+
+14:07.000 --> 14:20.000
+So the idea was okay let's actually create some upper bounds so some scores that will tell us if we actually need to enter the block and score exhaustively the entire block or not.
+
+14:20.000 --> 14:33.000
+So we did what we added essentially an additional interaction an additional data structure of vector of maxis which are essentially the max for every position in the block contained.
+
+14:33.000 --> 14:44.000
+So for every position we look at the max score for all the in this case three vectors for that block and we represented as a single vector of max course.
+
+14:44.000 --> 14:59.000
+Now if your block is big enough let's say contains eight vectors 16 32 64 and so on you're basically reducing the number of vectors for which you have to compute the dot product by factor of the block size.
+
+14:59.000 --> 15:07.000
+Literally making a query processing x times faster with respect to what the block size is.
+
+15:08.000 --> 15:13.000
+And so now running dot product against the vector of maxis.
+
+15:13.000 --> 15:25.000
+Well first it's a very fast operation because it's on fewer vectors and at the same time it gives you like an upper bound so a good estimation of what's going to be inside the each block.
+
+15:25.000 --> 15:32.000
+You end up having this essentially priority list and you can use this priority list to basically jump around.
+
+15:32.000 --> 15:42.000
+Between blocks and say yeah I'm going to score this but I'm not going to score the other one which goes back to the early termination approach that fairly was mentioning.
+
+15:42.000 --> 15:49.000
+In order to do that and decide what you're not going to score you maintain like a top k e which is you know a data structure that.
+
+15:49.000 --> 16:01.000
+It keeps essentially the top k elements most valuable for your retrieval I estimate score and you always compare with the lowest.
+
+16:01.000 --> 16:10.000
+At least important element so usually the one that has the lowest score.
+
+16:10.000 --> 16:24.000
+Simple and faster we also introduce point quantization so instead of having a sparse vector of floating point values we decided to use 8 bits for every element.
+
+16:24.000 --> 16:31.000
+So the standard linear quantization which makes things much faster because you can then.
+
+16:31.000 --> 16:38.000
+And this was also useful for another reason that I'm going to introduce very soon.
+
+16:38.000 --> 16:48.000
+Which is sorting now we mentioned we have a list of like a priority list so a list of upper bounds scores.
+
+16:48.000 --> 16:53.000
+Upper bound scores that will tell you like which is the most promising block to access first.
+
+16:53.000 --> 16:59.000
+You want access in decreasing order so you literally want to sort this this this course.
+
+16:59.000 --> 17:08.000
+The problem is that you know if you're operating at the millions scale even sorting millions of values can be very expensive and slow.
+
+17:08.000 --> 17:16.000
+So the standard traditional sorting even done in place and so on it's like still to slow.
+
+17:16.000 --> 17:24.000
+We thought about like using a bucket for for and and this was possible for one reason you have a predefined set of buckets.
+
+17:24.000 --> 17:34.000
+I mean in this example it's 256 predefined set of buckets if you quantize to 8 bits and you know that you're going to summing up up to a max of number of terms.
+
+17:34.000 --> 17:45.000
+You know that you know these array of buckets can basically increase to a power of 2 to the 16 or something manageable essentially.
+
+17:46.000 --> 17:58.000
+What the way it works it's actually very simple so you iterate the upper bounds and you place them in the position corresponding to a score to the score those are are essentially.
+
+17:58.000 --> 18:08.000
+You know quantized score so you know exactly which is the array index that you have to access and each array is literally like a list of elements so you can append at the end.
+
+18:08.000 --> 18:17.000
+Now the returning these bucket IDs in order it basically means iterating on the bucket sort.
+
+18:17.000 --> 18:20.000
+Oh sorry on the on the on the bucket array.
+
+18:20.000 --> 18:25.000
+And and you know materializing the final the final sort.
+
+18:25.000 --> 18:37.000
+This is much faster for this specific use case than then traditional sorting and yeah it's basically it has some real world advantages like you know no cash misses.
+
+18:37.000 --> 18:53.000
+No no the branch miss prediction and and allocation free and practically you know you can keep the bucket array fixed and you only have to clear it out so you know not really allocating it every every time.
+
+18:53.000 --> 19:01.000
+There is another important concept which is we are dividing our vectors into blocks.
+
+19:01.000 --> 19:22.000
+The the way you assign a vector as part of vectoring to a block will make a difference in in the speed of your algorithm and the reason is if the if you try to maximize all the similar documents in a way into one block you know the decimilar documents are probably going to answer like.
+
+19:23.000 --> 19:32.000
+And so clustering these documents will make a difference in terms of like what how many live areas how many live blocks you have in in your collection.
+
+19:32.000 --> 19:42.000
+So that basically means clustering in this case trying to maximize sparsity of the max of the vector of maxes.
+
+19:42.000 --> 19:50.000
+Which in in the end and simple world basically means cluster together documents that have common terms.
+
+19:50.000 --> 20:00.000
+So that table sorry that plot shows essentially like what's the difference between random assignment of of sparsity vectors and curated assignment which is.
+
+20:00.000 --> 20:07.000
+Document reordering technique so in approach where you try to reorder documents that are similar.
+
+20:07.000 --> 20:16.000
+That can be replaced for example with camines or other similar similar approaches so by doing that you're trying to to squeeze together.
+
+20:16.000 --> 20:23.000
+The similar sparsity vectors that will probably end up in the in the same search result.
+
+20:23.000 --> 20:34.000
+So comparing to the by the baseline we we saw like the early techniques the early termination techniques that are definitely like popular these days and.
+
+20:35.000 --> 20:48.000
+And you know present many search engines like max core and B and W don't work extremely well with the learned spars models and what we noticed was reduction in in latency.
+
+20:48.000 --> 20:50.000
+It was quite sensible.
+
+20:50.000 --> 20:54.000
+So I'll pass it to 30 for.
+
+20:54.000 --> 20:57.000
+The rest of the talk.
+
+20:58.000 --> 20:59.000
+Yeah, thank you.
+
+20:59.000 --> 21:10.000
+So I'm going to quickly just show a bit like how can you maybe use this yourself and also come a bit to the why rust is in this title of the talk as well.
+
+21:10.000 --> 21:12.000
+So yeah, how do you how do you want to use this.
+
+21:13.000 --> 21:22.000
+BMP it's on on GitHub I think do we have a QR code for that for BMP I think at the very end it's it's late for sure you can find it.
+
+21:22.000 --> 21:35.000
+So there's a rust and a python interface here in this example is how you can use it in python either you can use batch inference and you just give it index and some queries.
+
+21:35.000 --> 21:42.000
+And get the top k and whatever or you can create your search or give it an index and then search through a query by query.
+
+21:42.000 --> 21:52.000
+Yeah, batch and single query interface and how do you or the question is now in this case how do you get this index how do you create the the BMP index.
+
+21:52.000 --> 21:57.000
+And the answer to that is a sift if you haven't heard of sift before.
+
+21:57.000 --> 22:15.000
+If is the common index file format here just like a quick example kind of it just defines it's trying to be an interface between different types of indexes and it's trying to define a unified format where okay we have some postings and some postings list and we just save everything.
+
+22:16.000 --> 22:26.000
+Unified format for everything and then yeah was defined in this initiative and there's a couple of different tools that you can convert between the different formats so for example.
+
+22:26.000 --> 22:51.000
+Between the the piece of research engine and sift you can convert back and forth and there's also converter from Jason L files of just yeah dictionary is pretty much and convert that to sift and then there's also one tool that you can go from sift to BMP and that's if you want to try it out yourself probably the easiest ways to have a Jason L convert that to sift convert that to to a BMP index.
+
+22:52.000 --> 23:07.000
+Yeah, this was from from a paper a cigar our 2020 from from Jimmy Lynn feel free to give it a read and yeah how does that work there's a tool sift to BMP you just give it the sift index file and then it outputs a BMP index.
+
+23:08.000 --> 23:19.000
+How might you without having to create your own sift index use this there's actually the sift hub that hosts a couple of different indexes already if you're doing research and for something.
+
+23:19.000 --> 23:29.000
+There's for example the msmark of passage index already there you can just download it yeah repository of different sift indexes and queries for several popular.
+
+23:29.000 --> 23:37.000
+Sparse models and things like that you can quickly download it and and run it and yeah if you have some further reading.
+
+23:37.000 --> 23:46.000
+If you if you're interested I'll leave this up here for a quick second of anyone wants to take a picture otherwise we have two minutes I guess maybe.
+
+23:47.000 --> 23:59.000
+Perfect the maybe I'll just show us a bit of a short like code demo that this actually works and yeah quick quick demo I guess so.
+
+24:00.000 --> 24:05.000
+Where I need to find the correct via code window obviously there it is.
+
+24:07.000 --> 24:09.000
+Let me zoom in a bit and.
+
+24:10.000 --> 24:15.000
+Close all these and go like this okay so this is just a quick example script.
+
+24:15.000 --> 24:40.000
+Some curl commands to download the sift index from the sift hub it's posted on on hugging face and open and yeah next command just converts the index to calls the sift to BMP converts the index to BMP index and the last one is just an example script which uses the BMP cargo.
+
+24:40.000 --> 25:00.000
+Interface or BMP rust interface to run the query and then the end we use track evel to this runs the 2019 track deep learning queries and yeah I ran this a couple of minutes ago and we can show this pretty much run through grabs the whole collection converts it to BMP and in the end we have.
+
+25:00.000 --> 25:19.000
+Yeah 24 seconds on my small laptop running on its battery to turn through these 44 43 queries and we actually get some results in the end so yeah works you can use it at home if you're doing research or something it's it's always a good bet at baseline feel free to use it thank you.
+
+25:19.000 --> 25:41.000
+And if there's the now it's gone there was a Indian the talk will be in pre talks and you can read it yourself the video is going to be recorded and should be a little by the end of next week.
+
+25:41.000 --> 25:47.000
+I'm going to take questions and here you go and repeat the question please for the video.
+
+26:11.000 --> 26:29.000
+Okay so the repeat or to repeat the question the question is and talk back to me if I misinterpret it but why here deep impact has such a different distribution of terms compared to the other sparse ones.
+
+26:29.000 --> 26:58.000
+I think probably Antonio can hop in later as well but the optimizations that are built most of them.
+
+26:58.000 --> 27:21.000
+You use early exiting and in this case because or it's built especially on having a very big vocabulary we have very very sparse vectors and then you can estimate the max scores really well because pretty much everything is sparse and then you have very good estimations for a particular document because a lot of it is sparse.
+
+27:21.000 --> 27:41.000
+In this case for especially for unicole and splaid you're losing a lot of the sparsity or the yeah because you have compared to about 3 million now you have only 30,000 different dimensions and but still you have in this case 230 of these are non zero so.
+
+27:41.000 --> 28:00.000
+So especially you have higher max scores per document that you're estimating and then it's very difficult to find good early exits is how I would intuitively put it so that makes sense.
+
+28:00.000 --> 28:15.000
+You're almost going to and you're not you're not probably not doing a linear scan but you need to score a lot more yeah.
+
+28:15.000 --> 28:19.000
+I question by you when you know that there's a.
+
+28:49.000 --> 29:18.000
+Yeah repeat the question let me tell me if I understood this correctly you're basically asking what happens when you have terms that.
+
+29:18.000 --> 29:21.000
+Similar spelling or.
+
+29:21.000 --> 29:34.000
+Yeah people choose words to choose that word they don't want to choose the synonyms or words that are in contact typically used.
+
+29:34.000 --> 29:44.000
+Yeah that's right and if you remove that and you use this sort of sparse vectorization you reduce you have.
+
+29:44.000 --> 29:52.000
+Oh no the lexicon is still present right so you still have the original term.
+
+29:52.000 --> 30:02.000
+The only thing is that you're not repeating it in the representation you know you just create one array once.
+
+30:02.000 --> 30:15.000
+You don't need the lexicon or you're basically converting like term into an idea right.
+
+30:15.000 --> 30:21.000
+I think we can I have to take it offline if you want to chat more about like how it works the internal some.
+
+30:21.000 --> 30:28.000
+Yeah but we keep the terms we don't lose I mean they're part of the.
+
+30:29.000 --> 30:34.000
+Okay.
+
+30:34.000 --> 30:37.000
+Thank you very much.
+
