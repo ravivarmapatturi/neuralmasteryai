@@ -1,6 +1,53 @@
 # Browser speech accuracy: measured limits and changes
 
-The selected browser profile uses Moonshine Tiny for live text and a Whisper Base.en pass after capture. On the 18-clip held-out VCTK set, final word error rate (WER) changed from 16.7% to 6.7%. Human technical-term recognition remained 3/5. The renderer-starvation test regressed to 73.3% WER, so these results do not justify a general accuracy or slow-device readiness claim. The owner's physical microphone remains untested.
+The browser recognizer now uses measured decoding speed to skip or abort slow Whisper refinement and can condition Whisper on the current question’s vocabulary. The follow-up below reports normal and 25% CPU results, technical-term gains, and negative controls. Earlier frozen results remain for comparison. The owner’s physical microphone remains untested.
+
+## Follow-up after merging main
+
+Implementation commit: `1471c65b`. Requested follow-up: prior work was committed in `00f62fcc`, then `origin/main` was merged in `af424b18`. Main’s design and immediate model-answer view remain. The transcript finishes in the background; answer audio waits for the 300 ms capture drain and microphone release. The fine-print source paragraph and keyboard-instruction line were removed; button shortcut hints remain. No explanatory footnote was added to the page.
+
+These are measurements on the **previously evaluated held-out recordings**, as requested after reviewing their earlier results. They are not an untouched validation set. The follow-up policy, source hashes and five planned runs were [registered before these runs](../scripts/speech-accuracy/followup-protocol.json); recognition settings were not adjusted between them. All inputs are human recordings.
+
+### Measured slow-device cutoff
+
+The engine measures inference milliseconds divided by audio milliseconds (real-time factor). It skips Whisper when the upper median of up to five most recent usable live decodes exceeds 0.75 (each contains at least 0.5 seconds of audio). Independently, Whisper inference has a budget of 2.5 times the audio duration, bounded to 6–12 seconds, starting at `model_ready` so model download does not consume that budget. Exceeding it terminates the worker and retains the entire committed/interim live transcript. Either slow decision disables refinement for that engine’s lifetime; the next capture can reload the smaller live model. RAM and `navigator.gpu` presence do not decide this cutoff. These thresholds are explicit product budgets, not measured universal device boundaries. The 12-second ceiling can also retain Tiny on a long answer on a normal CPU; this follow-up does not revalidate long spontaneous answers.
+
+| Condition | Final WER | Mean first live output; coverage | Mean finish | Refinement decisions |
+| :--- | :--- | :--- | :--- | :--- |
+| Normal CPU | 6.7% (8/120) | 1.51 s; 18/18 | 6.11 s | accepted: 18 |
+| 25% renderer CPU budget | 29.2% (35/120) | 1.48 s; 16/18 | 1.03 s | skipped-slow: 18 |
+
+The earlier unguarded 25% run measured **73.3% WER**; this follow-up measured **29.2%**, with 0 transcript/completeness warnings. The renderer limiter still duty-cycles capture as well as inference, so this is a capture-starvation stress test, not a phone benchmark. Worker calibration loops measured 1.03 s normally and 3.57 s at the 25% budget. The guarded 29.2% result still trails the earlier Base-only 21.7% result under that stress condition. Keeping live text is a fallback, not an accuracy guarantee.
+
+### Question vocabulary prompt
+
+Only whitelist terms present as complete words in the current question title enter the prompt. The reference/model answer and recognized transcript are never prompt sources. Transformers.js 4.3.2 does not implement `prompt_ids`; the worker supplies a previous-context decoder prefix and strips those conditioning tokens before pipeline text decoding and scoring. The implementation follows [Whisper’s previous-context token construction](https://github.com/openai/whisper/blob/main/whisper/decoding.py) and the installed Transformers.js generation code. Prompt text is never prepended to the returned transcript.
+
+| Five human FOSDEM cases | Raw terms recognized | After spelling correction | Mean finish |
+| :--- | :--- | :--- | :--- |
+| Prompt off | 3/5 | 3/5 | 8.18 s |
+| Current-question vocabulary | 4/5 | 4/5 | 7.93 s |
+
+The prompted run recognized XGBoost, RAG, embeddings and BM25; LoRA remained unrecognized. This is one positive excerpt per term, not general technical-term accuracy. Published captions are imperfect, so no gold WER is claimed for the conference excerpts.
+
+As a negative control, the 18 held-out VCTK clips were decoded with all five vocabulary terms in a deliberately unrelated question prompt. None of those terms occurs in their references. Raw prompted output contained target terms on **0/18 clips** (0 term/clip matches across 90 opportunities); raw output with no question vocabulary contained them on 0/18. Negative-control WER was 6.7%, versus 6.7% without those unrelated hints. This measures a small false-insertion control; it does not establish prompt safety across spontaneous answers, silence, or room noise.
+
+All five follow-up browser runs completed with exit code 0, no COOP/COEP isolation, and no non-read HTTP requests observed. Download/first-use costs remain included in finish times. These are injected-WAV tests, not physical-microphone tests; WebGPU inference remains unmeasured because Chromium returned no adapter. The [follow-up numeric summary](../scripts/speech-accuracy/followup-summary.json) retains hashes, decisions and warnings.
+
+```bash
+# Linux; install/extract cpulimit as described below first. One model at a time.
+node scripts/speech-accuracy/evaluate-followup.mjs
+node scripts/speech-accuracy/report-followup.mjs
+npm run typecheck
+npm run check:links
+npm run check:mdx
+npx vitest run --maxWorkers=1
+node scripts/speech-accuracy/verify-ui.mjs
+node scripts/speech-accuracy/verify-assets.mjs
+npm run check:tracker
+```
+
+Implementation verification on 2026-11-09: typecheck, internal links, MDX compilation, 717 unit tests across 121 files, asset hashes, and the focused browser checks passed. The browser checks covered light/dark at 375px/1440px, immediate model answer during deferred transcription, microphone release before answer playback, cancellation and typed fallback. Screenshots were inspected; there was no horizontal overflow or page/console error. Build, pagefind and the full Playwright suite were not run under the explicit memory restriction. No push or deployment was performed.
 
 ## What limits this implementation
 
@@ -32,7 +79,7 @@ Both headless and headed Chromium reported no WebGPU adapter, despite a secure c
 
 A calibration discovered that CDP `Emulation.setCPUThrottlingRate` affects the page but not this worker. Sending that command to a worker target returns `Operation is only supported for pages, not workers`. The same 50-million-iteration square-root loop measured 126.7 ms with the page at 1× and 131.3 ms with the page at 4×; the [calibration artifact](../scripts/speech-accuracy/throttle-calibration.json) records both observations. Those values are calibration observations, not ASR timings. A user systemd scope also lacked the CPU controller, so a requested CPU quota could not be verified. The fork-monitoring `cpulimit` wrapper crashed during cleanup (exit 139), so that attempt is excluded. The locked ASR slowdown experiment attaches `cpulimit` directly to the single Chromium renderer PID and gives it a 25% CPU budget. The renderer contains the ASR worker. This duty-cycles processes and is an approximation of a slow CPU, not a phone benchmark. The run records a worker calibration and identifies the CPU limiting method.
 
-## Selected implementation and tuning evidence
+## Original frozen implementation and tuning evidence
 
 The Better profile runs Moonshine Tiny live and Whisper Base.en over the complete answer after capture. Fast retains Tiny without the Whisper pass. Low-memory and Data Saver recommendations use Fast; these heuristics are not measured throughput detection. The ASR pipelines are disposed and loaded sequentially. After a final check, the live model is restored before the next microphone acquisition. The benchmark measures ASR; grading and text-to-speech models are outside this measurement.
 
@@ -42,7 +89,7 @@ Quiet audio receives bounded gain, capped at 8×, without modifying the original
 
 Whisper uses 30-second chunks with five-second strides for long recordings and timestamp-based merging. A final result shorter than 65% of a live transcript of at least 20 words is rejected in favor of the live text. This is a completeness heuristic, not a confidence estimate. Initialization and inference failures retry through single-thread WASM; final-pass failure preserves live text and shows a warning. Cancellation closes capture and invalidates pending work.
 
-The tuning partition justified the choice before the configuration freeze. With the same Moonshine Base batch model, bounded gain changed tuning WER from 18.6% to 11.0%. With the same trimmed input, Whisper Base.en measured 6.9%, versus Base's 18.6%. Whisper plus gain measured 5.5%; the live-Tiny/final-Whisper pipeline also measured 5.5%. On the reused tuning long-answer composite, disabling timestamp merging lost passages (47.1% WER); enabling it measured 7.8%. These are selection diagnostics, not held-out estimates. Their JSON artifacts and hashes are retained, including unsuccessful attempts.
+The original choice was selected on the tuning partition before the configuration freeze. The isolated gain, model-choice and timestamp-merging experiments remain in the committed JSON artifacts and freeze hashes; the accuracy tables in this report use held-out audio only.
 
 Question and stalled-fallback playback stop before capture. Focus music pauses during capture and resumes afterward only if it was previously playing. The focused UI protocol test verified that behavior, microphone denial, cancellation during model loading, and no horizontal overflow or console errors in light/dark themes at 375px and 1440px. It uses a stubbed recognizer and Chrome's fake microphone; it does not prove acoustic echo cancellation or recognition accuracy. Its fake track reported 48 kHz while the production AudioContext reported 16 kHz. See [UI observations](../scripts/speech-accuracy/ui-verification.json).
 
@@ -113,7 +160,7 @@ The exact numeric summary and hashes are in [the evaluation summary](../scripts/
 
 ## Reproduction commands
 
-Run from the repository root. The committed WAVs and manifests are canonical. Preparation scripts refuse to overwrite a frozen evaluation. To build another corpus version, preserve this directory and its held-out results, then create a new version before tuning.
+The original frozen commands below require commit `00f62fcc` in a separate checkout; current runtime files intentionally differ. Use the follow-up commands above for the merged implementation. The committed WAVs and manifests are canonical. Preparation scripts refuse to overwrite a frozen evaluation. To build another corpus version, preserve this directory and its held-out results, then create a new version before tuning.
 
 ```bash
 # Inspect the frozen inputs and model/version/source hashes.

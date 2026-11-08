@@ -76,9 +76,10 @@ try {
  output.initialEngineMetrics=await page.evaluate(()=>window.engine.getMetrics());
  output.engineConfig=await page.evaluate(()=>({id:window.engine.id,modelId:window.engine.modelId,finalModelId:window.engine.finalModelId ?? null,device:window.engine.device,dtype:window.engine.dtype,expectedDownloadBytes:window.engine.expectedDownloadBytes}));
  output.profile=arg.profile ?? null;
+ output.promptMode=arg.prompt ?? 'off';
  for (const row of rows) {
    if(crypto.createHash('sha256').update(fs.readFileSync(path.join(root,row.path))).digest('hex')!==row.sha256) throw Error('Corrupt audio '+row.id);
-   const result=await page.evaluate(async({row,mode,prepare})=>{
+   const result=await page.evaluate(async({row,mode,prepare,promptMode})=>{
      const ctx=new AudioContext({sampleRate:16000});await ctx.resume();
      const bytes=await(await fetch('/scripts/speech-accuracy/'+row.path)).arrayBuffer();
      const audio=await ctx.decodeAudioData(bytes);const pcm=audio.getChannelData(0);
@@ -86,6 +87,8 @@ try {
        const engine=window.engine;engine.reset();
        const dest=ctx.createMediaStreamDestination();const source=ctx.createBufferSource();source.buffer=audio;source.connect(dest);
        await engine.start(dest.stream);
+       const {questionSpeechPrompt}=await import('/src/lib/interviewRoom/speechPrompt.ts');
+       engine.setQuestionPrompt?.(promptMode === 'question' ? questionSpeechPrompt(row.questionTitle ?? '') : promptMode === 'negative' ? questionSpeechPrompt('Explain XGBoost, RAG, LoRA, embeddings and BM25') : '');
        const start=performance.now();let first=null;let firstOutput=null;let acceptingLive=true;let live='';const updates=[];
        const off=engine.subscribe(m=>{if(m.partialText){if(firstOutput===null)firstOutput=performance.now()-start;if(acceptingLive){if(first===null)first=performance.now()-start;live=m.partialText;updates.push({atMs:performance.now()-start,text:live,inferenceMs:m.lagBehindSpeechMs});}}});
        await new Promise(resolve=>{source.onended=resolve;source.start();});
@@ -95,7 +98,7 @@ try {
      const {normalizeQuietAudio}=await import('/src/lib/speechTest/audioPreparation.ts');
      const prepared=prepare==='none'?pcm:window.engineModule.trimAudioSilence(prepare==='normalize'?normalizeQuietAudio(pcm):pcm);
      const start=performance.now();const res=await window.rpc('batch',{audio:prepared});await ctx.close();return {text:res.text,inferMs:res.inferMs,wallMs:performance.now()-start,sampleCount:res.sampleCount};
-   },{row,mode,prepare:arg.prepare ?? 'trim'});
+   },{row,mode,prepare:arg.prepare ?? 'trim',promptMode:arg.prompt ?? 'off'});
    const correctedText=await page.evaluate(async({text,id,title})=>{const {correctInterviewTerms}=await import('/src/lib/interviewRoom/dialogue.ts');return correctInterviewTerms(text,id,title);},{text:result.text ?? '',id:row.id,title:row.questionTitle});
    output.results.push({id:row.id,...result,correctedText});
    fs.writeFileSync(out,JSON.stringify(output,null,2)+'\n');

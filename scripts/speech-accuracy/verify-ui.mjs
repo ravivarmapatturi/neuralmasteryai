@@ -16,7 +16,9 @@ try {
   await page.addInitScript(theme=>{
     localStorage.setItem('neural-mastery-theme',theme);
     window.micCalls=0;
-    window.speechAudio=[];window.audioContextRates=[];
+    window.speechAudio=[];window.audioContextRates=[];window.audioPlays=[];
+    const nativePlay=HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play=function(){window.audioPlays.push({loop:this.loop,micActive:window.micTracks?.some(track=>track.readyState==='live')??false});return nativePlay.call(this)};
     const NativeAudio=window.Audio;
     window.Audio=function(...args){const audio=new NativeAudio(...args);window.speechAudio.push(audio);return audio};
     const NativeContext=window.AudioContext;
@@ -25,7 +27,7 @@ try {
     const NativeWorker=window.Worker;
     window.Worker=class extends NativeWorker { constructor(url,options){super(url,options);this.addEventListener('message',event=>{if(event.data.type==='init_done'){window.readyEvents.push({url:String(url),at:Date.now()});if(String(url).includes('moonshineSingleThreadWorker')&&!window.workerReadyAt)window.workerReadyAt=Date.now()}});} };
     const get=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
-    navigator.mediaDevices.getUserMedia=(...args)=>{window.micCalls++;window.micRequestedAt=Date.now();window.requestedConstraints=args[0];return get(...args).then(stream=>{window.actualTrackSettings=stream.getAudioTracks()[0].getSettings();return stream})};
+    navigator.mediaDevices.getUserMedia=(...args)=>{window.micCalls++;window.micRequestedAt=Date.now();window.requestedConstraints=args[0];return get(...args).then(stream=>{window.micTracks=stream.getTracks();window.actualTrackSettings=stream.getAudioTracks()[0].getSettings();return stream})};
   },theme);
   await page.route('**/audio/**',route=>route.fulfill({contentType:'audio/wav',body:fs.readFileSync('scripts/speech-accuracy/audio/p248_030.wav')}));
   await page.route('**/src/workers/moonshineSingleThreadWorker.ts?*',route=>route.fulfill({contentType:'text/javascript',body:`
@@ -33,7 +35,7 @@ try {
       if(op==='init'){
         setTimeout(()=>postMessage({type:'progress',file:'model.onnx',loaded:14000000,total:28000000}),500);
         setTimeout(()=>postMessage({id,type:'init_done',device:'wasm'}),4000);
-      } else if(op==='transcribe'||op==='commit'||op==='batch')setTimeout(()=>postMessage({id,type:op==='transcribe'?'result':op+'_result',text:'Test words',inferMs:10}),20);
+      } else if(op==='batch'){postMessage({id,type:'model_ready',device:'wasm'});setTimeout(()=>postMessage({id,type:'batch_result',text:'Final test words',inferMs:10}),3000);} else if(op==='transcribe'||op==='commit')setTimeout(()=>postMessage({id,type:op==='transcribe'?'result':op+'_result',text:'Test words',inferMs:10}),20);
     };
   `}));
   await page.goto('http://localhost:5194/interview');
@@ -49,7 +51,12 @@ try {
   await page.waitForTimeout(700);
   await page.locator('#done').click();
   await page.getByRole('heading',{name:'Your answer',exact:true}).waitFor({timeout:20000});
-  if(await page.locator('.si-yours').innerText()!=='Test words')throw Error('Final transcript missing');
+  await page.getByRole('heading',{name:'Model answer',exact:true}).waitFor({timeout:1000});
+  await page.getByRole('status').filter({hasText:'Finalizing your transcript'}).waitFor({timeout:1000});
+  await page.waitForFunction(()=>window.micTracks.every(track=>track.readyState==='ended'),{timeout:1500});
+  await page.waitForFunction(()=>document.querySelector('.si-yours')?.textContent==='Final test words',{timeout:10000});
+  if(await page.evaluate(()=>window.audioPlays.some(event=>!event.loop&&event.micActive)))throw Error('Answer audio started before microphone release');
+  if(await page.locator('.si-note, .si-keys').count())throw Error('Fine print remains');
   await page.waitForFunction(()=>window.speechAudio.some(audio=>audio.loop&&!audio.paused));
   const view=await page.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,constraints:window.requestedConstraints,actualTrackSettings:window.actualTrackSettings,audioContextRates:window.audioContextRates,workerReadyAt:window.workerReadyAt,readyEvents:window.readyEvents,micRequestedAt:window.micRequestedAt,theme:document.documentElement.dataset.theme}));
   if(!view.workerReadyAt || view.micRequestedAt<view.workerReadyAt)throw Error('Microphone preceded ready event: '+JSON.stringify(view));
@@ -86,7 +93,7 @@ try {
  if(await page.locator('.si-yours').innerText()!=='Typed answer')throw Error('Typed fallback lost answer');
  evidence.checks.push('cancelled load never acquired microphone; denied microphone retained typed answer');
  await context.close();
- evidence.checks.push('4 theme/viewport combinations: loading before microphone, listening, finishing, final transcript, question and focus audio stopped during capture, focus audio restored afterwards, 48 kHz fake device to 16 kHz context, requested audio constraints, no horizontal overflow, no uncaught page errors');
+ evidence.checks.push('4 theme/viewport combinations: loading before microphone, listening, immediate model answer with deferred final transcript, capture stopped before answer playback, no fine print, final transcript, question and focus audio stopped during capture, focus audio restored afterwards, 48 kHz fake device to 16 kHz context, requested audio constraints, no horizontal overflow, no uncaught page errors');
  fs.writeFileSync('scripts/speech-accuracy/ui-verification.json',JSON.stringify(evidence,null,2)+'\n');
  console.log(JSON.stringify(evidence));
 }finally{await browser?.close();await server.close()}
