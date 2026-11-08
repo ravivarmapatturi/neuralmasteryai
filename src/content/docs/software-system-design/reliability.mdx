@@ -1,0 +1,149 @@
+---
+title: "Reliability, Security, and Operations"
+sidebar_position: 6
+description: "Observe user outcomes, release compatible changes, test backup recovery, enforce identity boundaries, and choose explicit multi-region failure behavior."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import SoftwareRecoveryExplorer from '../../../viz/diagrams/SoftwareRecoveryExplorer';
+import SoftwareReplicationExplorer from '../../../viz/diagrams/SoftwareReplicationExplorer';
+
+# Reliability, Security, and Operations
+
+<ELI5>
+A fire alarm, a fire escape, and insurance solve different problems. The alarm helps notice trouble, the escape helps people recover, and insurance records an agreement after harm. A reliable service similarly needs measurements, tested recovery actions, and clear promises. A dashboard alone does not restore data, and an untested backup does not establish that restoration will work.
+</ELI5>
+
+Our illustrative service targets a 99.9% successful-request SLO. Its recovery exercise uses a backup taken fifteen minutes before an incident, five minutes for detection, forty minutes for restoration, and five minutes for validation. These inputs produce a potential fifteen-minute data gap and fifty-minute recovery time. They are distinct from the normal request latency and must be negotiated separately.
+
+The misconception is that redundancy is equivalent to recoverability. Replication can promptly copy an accidental deletion to every replica. A second region can faithfully run the same bad deployment. Reliability comes from independent protections and practiced actions that address named failures, rather than from counting copies or locations.
+
+## Observability Begins With a User Outcome
+
+**Observability** is the ability to infer internal behavior from emitted evidence. Metrics summarize populations, logs record contextual events, and traces connect work across a request path. Start with the user's operation and its service-level indicator, then use internal signals to explain deviations. A healthy CPU graph cannot establish that redirects are correct.
+
+Measure request rate, error outcomes, and latency by operation and region. For workers, add queue age, retries, and completion rate. For storage, observe saturation, replication lag, connection pressure, and lock wait. Define units and denominators so a 1% error chart cannot accidentally omit timeouts or requests rejected before reaching the application.
+
+A **trace** records related spans through services. Propagate correlation identifiers without placing credentials or personal data in them. Sampling can reduce cost, but rare failures may need targeted retention. Do not use unbounded user IDs as metric labels: each distinct label combination creates a time series and can make monitoring expensive or unusable during an incident.
+
+The existing [OpenTelemetry and distributed tracing chapter](/docs/agent-observability/opentelemetry-and-distributed-tracing) owns instrumentation mechanics. In this track the decision is which evidence proves that a user's promised operation worked, and whether operators can follow a failed operation across asynchronous boundaries.
+
+Alerts should demand an action. A high error-budget burn rate can justify paging; a slowly growing storage forecast can create a planned ticket. Page the person who can mitigate the symptom, include a runbook, and define how to verify recovery. A message saying “CPU high” without an affected operation or action is a poor substitute for a service alert.
+
+<RunnableCode code={`requests = 1_000_000
+failures = 5000
+slo = .999
+observed_bad_fraction = failures / requests
+allowed_bad_fraction = 1 - slo
+print("Observed success fraction:", 1-observed_bad_fraction)
+print("Error-budget burn multiple:", round(observed_bad_fraction / allowed_bad_fraction, 2))
+print("Allowed bad requests:", round(requests * allowed_bad_fraction))
+# Try it: set failures to 500; burn drops below one at the same traffic volume.
+`} />
+
+This model computes a burn multiple from one aggregate window. Production alerting commonly combines short and long windows so a brief sample fluctuation does not cause the same response as sustained budget consumption. Keep availability, latency, correctness, and security signals distinguishable; one successful status code cannot summarize all four.
+
+## Deployments Need Compatibility and an Exit
+
+A **rolling deployment** replaces instances gradually. Old and new code coexist, so APIs, database changes, and event schemas must remain compatible during the transition. A **blue-green deployment** prepares a second environment and switches traffic, which can simplify application rollback but does not undo writes already made to a shared database. A **canary** routes a controlled population to new code and compares its outcomes with a baseline.
+
+Choose canary populations carefully. Randomly splitting individual requests can create inconsistent sessions if state transitions are version-sensitive. Route stable cohorts where needed, and compare similar workloads. A canary receiving only healthy low-volume traffic does not test a new release's behavior on hot tenants or expensive requests.
+
+Use **expand-and-contract** schema changes: add a compatible field or table, deploy readers and writers that tolerate both forms, backfill with verification, switch authoritative reads, and only later remove the old form. A rollback plan must state whether old code can interpret records created by the new code. Reverting a binary does not reverse an incompatible data migration.
+
+Set rollout stop conditions before starting. If a canary consumes error budget or increases authorization failures, stop routing new work to it and preserve evidence. Keep deployment and incident timestamps in the same observability system so operators do not spend the first ten minutes guessing what changed.
+
+A concrete container health interface can be checked independently of a dashboard. These commands assume a local service already listening on port 8080; readiness should return non-success while draining and success only when the process can accept new work.
+
+```bash
+curl --fail --max-time 2 http://localhost:8080/health/live
+curl --fail --max-time 2 http://localhost:8080/health/ready
+```
+
+## Disaster Recovery Requires a Restore Test
+
+A **recovery point objective**, or RPO, bounds how much acknowledged data loss the business is prepared to tolerate in a specified disaster. A **recovery time objective**, or RTO, bounds the time to restore the required service. They describe objectives, not results obtained simply by configuring a backup schedule.
+
+<SoftwareRecoveryExplorer />
+
+With a fifteen-minute-old backup and no recoverable later log, the potential loss interval is fifteen minutes. Five minutes to detect, forty to restore, and five to validate make fifty minutes of recovery. Changing backup frequency changes the potential data gap; changing restore throughput changes downtime. One slider does not solve the other problem.
+
+<RunnableCode code={`backup_age_minutes = 15
+detect, restore, validate = 5, 40, 5
+print("Potential data gap, minutes:", backup_age_minutes)
+print("Recovery duration, minutes:", detect + restore + validate)
+dataset_gb, restore_mb_s = 600, 250
+transfer_minutes = dataset_gb * 1000 / restore_mb_s / 60
+print("Transfer-only lower bound, minutes:", transfer_minutes)
+# Try it: double dataset_gb; transfer time doubles before replay and validation.
+`} />
+
+For an illustrative 600 GB dataset at 250 MB/s, transfer alone takes forty minutes in decimal units. Provisioning, decrypting, log replay, index rebuilds, DNS or routing changes, and validation add time. Measure the complete procedure against the RTO using the volume and access controls actually available during a disaster.
+
+Keep backups isolated from the permissions that can corrupt production. Test key availability, retention, immutable copies where appropriate, and restoration to an isolated environment. Validate application invariants, not only file checksums. A database that starts successfully can still contain an incomplete business workflow requiring reconciliation.
+
+<PredictFirst question="An accidental delete reaches all three synchronous replicas. Which protection restores the old records?" options={["The replica count alone", "A retained backup or recoverable history plus a tested restore procedure", "Restarting all replicas"]} correctIndex={1} explanation="Replication preserves current changes, including mistakes. Recovery requires an independent historical copy or log history that can reconstruct the desired point; restarting cannot recreate deleted state." />
+
+## Authentication and Authorization Are Separate Boundaries
+
+**Authentication** establishes who is calling; **authorization** decides whether that caller may perform this action on this resource. Validate token issuer, intended audience, expiry, and signature using maintained libraries and supported algorithms. A valid token for another service is not automatically valid here.
+
+For interactive login, use an established identity flow such as authorization code with PKCE where appropriate rather than inventing a password exchange. Session cookies need secure transport and suitable `HttpOnly` and `SameSite` settings; state-changing browser endpoints need a deliberate CSRF defense. Bearer tokens exposed to scripts have a different theft surface from server-managed sessions.
+
+Enforce tenant boundaries in every object lookup. `GET /documents/17` must check that the authenticated principal can access document 17, even if the gateway already checked the token. Use least-privilege database and service credentials, rotate secrets, and keep them out of logs, frontend bundles, and tracing payloads.
+
+Encryption in transit protects network paths; encryption at rest protects stored media under its key-management assumptions. Neither prevents an authorized but overprivileged service from leaking data. Audit sensitive operations with actor, target, action, result, and correlation identity while limiting personal data and protecting log integrity.
+
+Threat modeling follows the same request flow as capacity planning. Mark trust boundaries, untrusted input, privileged actions, and potential amplification. Limit upload sizes and decompression work, validate destinations to prevent server-side request forgery, and distinguish user-visible rate limits from internal resource admission. Security controls need failure behavior: an unavailable authorization service should not silently grant access.
+
+## Multi-Region Design Moves the Consistency Decision
+
+**Active-passive** operation sends normal writes to one region and maintains a recovery region. It needs tested failover, fencing of the old writer, acceptable replication lag, and enough standby capacity. **Active-active** accepts work in multiple regions and can improve geographic locality, but concurrent changes require ownership, coordination, or conflict rules.
+
+<SoftwareReplicationExplorer />
+
+The version-seven/version-eight replica example becomes a regional question when the lagging copy is across an ocean. Serving a public description from the nearby replica may be acceptable. Confirming a payment from stale state may violate the business invariant. Keep one authoritative region per entity, synchronously coordinate the required writes, or define conflict resolution only for operations where it makes business sense.
+
+Traffic failover and data failover must agree. DNS changes can take time to reach cached clients, persistent connections can remain open, and an old region can recover while clients still reach it. Use versioned ownership and resource-level fencing where needed. Do not promote a stale writer merely because an external health check cannot reach the current primary.
+
+<GoDeeper title="Go deeper: region independence is a dependency property">
+Two regions are not independent if both require one regional identity endpoint, one global configuration writer, or one quota-limited control-plane API during startup. Inventory the dependencies needed to serve existing traffic and the additional dependencies needed to scale or recover. A data plane may keep running during a control-plane outage while new capacity cannot start.
+</GoDeeper>
+
+## Common Problems and Fixes
+
+A quiet alert system can mean missing telemetry; monitor observation gaps. A reversible code deployment can still have irreversible data effects; test rollback against new writes. A successful backup job can conceal unusable credentials; restore under disaster permissions. Two healthy regions can still have split-brain writers; test ownership and fencing during partial partitions.
+
+Run exercises with a written expected outcome, observe the actual result, and record corrective work. Start with one instance and one dependency before larger failure domains. Stop an exercise when it exceeds the agreed blast radius, but retain its evidence instead of relabeling an unexpected outage as a successful test.
+
+## When Not to Use Multi-Region Writes
+
+| Situation | Better choice |
+| --- | --- |
+| Strong cross-entity invariants dominate and latency permits | One write authority with tested regional recovery |
+| Team cannot rehearse regional failover | Establish backup recovery and multi-zone operation first |
+| Data residency forbids cross-border copies | Region-scoped storage and routing policy |
+| Public immutable objects dominate traffic | CDN delivery with a simpler authoritative origin |
+
+## Remember
+
+| Promise | Proof to gather |
+| --- | --- |
+| Availability | User-outcome SLI and budget behavior |
+| Safe release | Compatibility, stop conditions, and rollback exercise |
+| Recoverability | Restored data and measured recovery duration |
+| Security | Per-resource authorization and audited trust boundaries |
+| Regional continuity | Capacity, data freshness, ownership, and dependency tests |
+
+You can now separate a reliability objective from a measured recovery result. Apply the full design process to [the URL shortener](/docs/software-system-design/url-shortener), beginning the worked case studies.
+
+## Sources
+
+- [Google SRE, Monitoring Distributed Systems (2016)](https://sre.google/sre-book/monitoring-distributed-systems/).
+- [Google SRE Workbook, Alerting on SLOs (2018)](https://sre.google/workbook/alerting-on-slos/).
+- [OpenTelemetry, Signals](https://opentelemetry.io/docs/concepts/signals/).
+- [Kubernetes, Deployments](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/).
+- [AWS, Disaster Recovery of Workloads](https://docs.aws.amazon.com/whitepapers/latest/disaster-recovery-workloads-on-aws/disaster-recovery-workloads-on-aws.html).
+- [RFC 9700, OAuth 2.0 Security Best Current Practice (2025)](https://www.rfc-editor.org/rfc/rfc9700).
+- [OWASP, Authorization Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html).
