@@ -1,0 +1,144 @@
+---
+title: "Requirements and System Boundaries"
+sidebar_position: 1.2
+description: "Write functional requirements, invariants, exclusions, and measurable quality constraints that determine architecture and expose conflicting promises."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import RequirementBoundaryExplorer from '../../../viz/diagrams/RequirementBoundaryExplorer';
+
+# Requirements and System Boundaries
+
+<ELI5>
+Ordering a taxi requires more than saying that a car should arrive. The pickup address, passenger count, latest acceptable arrival, and payment rules all change which ride is suitable. A driver arriving at the wrong address has not succeeded by arriving quickly. Software requirements make the same distinction between doing an action and doing the right action under the agreed conditions.
+</ELI5>
+
+A requirement makes a product promise precise enough to influence an implementation or a test. “The service should be fast” cannot distinguish two architectures. “Eligible redirects must complete within a chosen deadline, measured at our edge” identifies an operation, a population, an observation point, and a threshold we can measure.
+
+The misconception is that requirements are a preliminary list we can discard once the architecture diagram exists. In fact, every important design choice should trace back to a promise or constraint. We will use an illustrative link service and a population of 10,000 attempts: 9,490 valid successes, 10 valid failures, and 500 correctly rejected invalid inputs. The numbers show how two apparently reasonable interpretations of “success” produce different decisions against the same 99.9% objective.
+
+## Separate Actions From Constraints
+
+A **functional requirement** states what behavior the service provides. An owner can create a link, revoke it, and inspect its status. A visitor can resolve an active code. An abuse operator can suspend a destination under a separate permission. Each statement identifies an actor and an action, making it possible to discuss authorization and visible outcomes.
+
+A **quality requirement** constrains how an action behaves. A redirect may need a response within an illustrative 200 ms budget, while a revoke operation must stop public resolution within 60 seconds. These numbers are our exercise's design inputs rather than industry defaults. A product owner should choose the target from user needs and cost, then engineers should test whether the proposed design meets it.
+
+An **invariant** excludes a forbidden state. A short code never has two owners, a successful revocation cannot later disappear because an older backup was restored without reconciliation, and an unauthorized actor cannot revoke a link. Unlike an average latency goal, these properties cannot be satisfied by allowing a small fraction of arbitrary violations. A correctness bug affecting only one tenant is still a correctness bug.
+
+An environmental constraint can eliminate an otherwise viable design. The team may need to operate in one region, retain audit records for a specified interval, or support clients that retry after mobile network loss. Treat these as explicit inputs with owners. A legal retention rule requires qualified interpretation; the architecture should record the resulting requirement rather than invent a retention period.
+
+## Draw the Measurement Boundary
+
+A visitor experiences the browser, network, edge, application, and destination website. Our redirect service controls only part of that path. If the objective is measured at the application handler, it excludes failures before a request reaches that handler. If measured at an external probe, it includes a different set of dependencies. Neither metric automatically represents every visitor.
+
+Define **eligible requests**, the operations included in an objective's denominator. For a valid-action success indicator, requests with malformed codes can be excluded while valid codes that fail at an unavailable origin remain included. We cannot exclude requests just because they failed: that would make the denominator depend on the outcome it is meant to measure.
+
+In our 10,000-attempt example, counting correct invalid-input rejections as successfully handled requests gives 9,990/10,000, or 99.9%. Measuring only valid actions gives 9,490/9,500, approximately 99.895%. The difference is small but sufficient to cross the chosen objective. The chart separates the populations; selecting a denominator changes the conclusion without changing any request.
+
+<RequirementBoundaryExplorer />
+
+The point is not to declare that one denominator is universally right. A request-handling objective can legitimately include correct rejections, while a valid-action objective can focus on completed user actions. Give them different names, document classification rules, and avoid substituting the easier metric when the harder one degrades. Google SRE's SLO guidance similarly distinguishes a measured indicator from its target.
+
+<RunnableCode code={`valid_success, valid_failure, correct_rejection = 9490, 10, 500
+valid = valid_success + valid_failure
+all_attempts = valid + correct_rejection
+for label, good, total in (
+    ("All requests handled", valid_success + correct_rejection, all_attempts),
+    ("Valid actions succeeded", valid_success, valid),
+):
+    ratio = good / total
+    print(label, "good:", good, "total:", total,
+          "percent:", round(100 * ratio, 3), "meets 99.9%:", ratio >= .999)
+# Try it: double correct_rejection; the valid-action metric stays unchanged.
+`} />
+
+Specify how unknown outcomes enter the measurement. A timeout after a durable commit is not clearly a successful user action merely because a database counter increased. If the client did not receive a usable result, the product promise may be unmet. You may need separate server-completion and client-observed indicators to diagnose the distinction.
+
+## Resolve Conflicting Promises Before Implementation
+
+Suppose a requirement says “redirects must always remain available during a storage outage,” while another says “revoked links must stop resolving within 60 seconds.” With a disconnected edge that cannot receive revocation updates, unlimited stale serving cannot guarantee both. The conflict exists in the contract before any database is chosen.
+
+One resolution is a bounded freshness lease: serve only while cached authorization remains fresh, then stop if it cannot be renewed. Another resolution is to relax the revocation bound for a specifically defined outage. A third is a control path whose reachability assumptions support a stronger bound. Each choice changes user behavior, operating cost, or both; it needs a product decision rather than an undocumented fallback.
+
+A useful requirements review asks for the priority between correctness, timeliness, and continued response under each named failure. Public static content and payment authorization need different answers. Reusing one “fail open” policy across both because they share a gateway hides an important distinction in user harm.
+
+<PredictFirst question="A malformed request is correctly rejected. Must it count as a failure in every availability objective?" options={["Yes, any non-success HTTP status is necessarily a service outage", "No, classification depends on the documented user outcome and eligibility rules", "No, all rejected requests can be removed, including valid requests rejected by overload"]} correctIndex={1} explanation="A correct rejection can be a successful handling outcome. But excluding valid work rejected during overload would hide a service failure; eligibility must be defined independently of whether the service happened to succeed." />
+
+Record conflicts as a small set of acceptance scenarios. “At second 61 after an acknowledged revocation, an edge unable to refresh must not redirect” is much more useful than “caching should be consistent.” It also exposes whether the deadline starts at request receipt, durable commit, or acknowledgement. Changing that start point changes how much time the implementation has.
+
+<GoDeeper title="Go deeper: universal promises and sampled objectives">
+An invariant quantifies over all relevant executions: no permitted execution produces a forbidden owner change. A statistical objective evaluates a population over a window: at least a target fraction of eligible requests succeeds. Passing the statistical objective cannot prove the invariant. Conversely, proving the ownership transition preserves its invariant does not prove the service responds within its latency objective. They require different evidence and should remain separate in the requirements document.
+</GoDeeper>
+
+## Turn a Requirement Into a Small Acceptance Model
+
+We can test the ownership rule without selecting a production database. Model a link with an owner and an active flag. A revoke operation checks the actor before changing the flag. A duplicate revoke from the same owner returns the same final state, while another actor must not change it. This is a specification example: it makes the behavior visible before storage and networking introduce more failure cases.
+
+The code below represents one code owned by `alice`. It deliberately includes the unauthorized request first, so an implementation that changes state before checking permission would fail immediately. The later duplicate action demonstrates why the operation can be made safe to repeat after a lost response. The production operation still needs authorization and the state transition within an appropriate concurrency boundary.
+
+<RunnableCode code={`link = {"owner": "alice", "active": True}
+
+def revoke(actor):
+    if actor != link["owner"]:
+        return "forbidden"
+    link["active"] = False
+    return "revoked"
+
+print("Other actor:", revoke("bob"), "active:", link["active"])
+assert link["active"]
+print("Owner:", revoke("alice"), "active:", link["active"])
+print("Repeated owner request:", revoke("alice"))
+assert not link["active"]
+# Try it: move the state change above the permission check; the first assertion catches it.
+`} />
+
+An executable model should not silently narrow the promise. This dictionary example says nothing about concurrent requests, durable storage, or cache propagation. Those remain separate acceptance scenarios. State clearly which property the model checks, then add evidence at the layer where each remaining property can actually fail.
+
+For an HTTP implementation, turn the same contract into observable checks: create as one owner, attempt revocation with another credential, confirm the link remains active, revoke as the owner, and verify the public serving path after the freshness deadline. Use isolated test data and controlled clocks where possible. These are operation-specific acceptance criteria rather than a generic “all endpoints return 200” smoke check.
+
+## Keep Scope and Assumptions Reviewable
+
+A scope exclusion should have a reason and a consequence. Excluding real-time analytics removes an event-processing promise, but not the audit trail required to investigate unauthorized revocation. Excluding multi-region writes can simplify ownership, while retaining multi-zone availability. The distinction prevents a seemingly small feature request from changing the failure and consistency contract without review.
+
+An assumption is a condition we have not yet established. “Traffic peaks at 6,000 requests/s” is an estimate until measured. “All consumers support idempotency keys” is a compatibility assumption until tested. Assign an owner and a validation step to assumptions that could reverse the design, and carry them into rollout criteria rather than burying them in introductory prose.
+
+Requirements also need versioning. A new promise that revocation must take effect within 5 seconds invalidates a design justified by a 60-second freshness window. Review dependent cache, replication, and recovery decisions together. Changing only the number in a product document does not change deployed behavior.
+
+## Common Problems and Fixes
+
+“Always available” omits a failure envelope. Name the failures the service must survive and the operations that can degrade. A multi-zone promise does not imply region-loss recovery, and a backup does not imply uninterrupted serving. Test each promise against its own observation point.
+
+“Exactly once” omits the effect being counted. Specify whether the requirement concerns an API response, a durable record, a notification, or a monetary movement. One request can be transmitted twice while producing one durable business effect, or transmitted once while failing before any effect. Communication requirements should identify the business invariant first.
+
+“Secure” omits an actor and an action. Name who may perform each transition and what evidence is retained. Include negative tests such as one tenant guessing another tenant's code. Do not treat possession of a public identifier as proof of authority to modify its target.
+
+## When Not to Add Another Requirement
+
+| Situation | Better action |
+| --- | --- |
+| The statement names a vendor without a constraint | Describe the capability or operating limit needed |
+| Two promises conflict during the same failure | Choose and document a priority |
+| A metric excludes every failed attempt | Define eligibility independently of the outcome |
+| A target has no user or business consequence | Establish why meeting it is worth the cost |
+
+## Remember
+
+| Requirement element | What to write |
+| --- | --- |
+| Actor and action | Who performs which transition |
+| Invariant | The state or result that must remain impossible |
+| Objective | Population, threshold, window, observation point |
+| Failure envelope | Conditions under which the promise still applies |
+| Exclusion | Deferred behavior and the consequence of deferral |
+| Assumption | Owner, validation step, and affected decisions |
+
+You can now distinguish a product promise from an implementation preference and turn that promise into a test. Use the [Foundations roadmap](/docs/software-system-design/foundations) to continue, or see the contract applied to [payments](/docs/software-system-design/payment-system), where ambiguous outcomes matter immediately.
+
+## Sources
+
+- [Google SRE, Service Level Objectives (2016)](https://sre.google/sre-book/service-level-objectives/): indicators, objectives, and agreements.
+- [Google SRE Workbook, Implementing SLOs (2018)](https://sre.google/workbook/implementing-slos/): defining user-focused objectives.
+- [Google SRE, Embracing Risk (2016)](https://sre.google/sre-book/embracing-risk/): reliability as a product and cost decision.
+- [AWS Builders' Library, Making Retries Safe With Idempotent APIs (2021)](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/): expressing caller intent across retries.
+- [RFC 9110, HTTP Semantics (2022)](https://www.rfc-editor.org/rfc/rfc9110): request methods, responses, and repeatability semantics.
