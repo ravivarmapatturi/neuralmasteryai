@@ -61,7 +61,7 @@ const GROUP_COLOURS_DARK: Record<string, string> = {
   production: '#6fd3a8',
   rounds: '#f39a8e',
 };
-const MAX_STAGE = 760;
+const MAX_STAGE = 560;
 const SHORT_TITLES: Record<string, string> = {
   'math-classical-ml': 'Classical ML',
   'tokenization-decoding': 'Tokenization',
@@ -85,7 +85,7 @@ interface NodeSpot {
 // Topics sit around a circle, grouped, with a small gap between groups.
 function layout(topics: GraphTopic[], width: number) {
   const size = Math.min(width, MAX_STAGE);
-  const margin = size < 480 ? 38 : size < 680 ? 82 : 124;
+  const margin = size < 480 ? 36 : size < 600 ? 92 : 102;
   const radius = Math.max(90, size / 2 - margin);
   const groups = GROUP_ORDER.map((g) => topics.filter((t) => t.group === g));
   const gap = 0.14;

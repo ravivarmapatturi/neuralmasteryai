@@ -100,7 +100,6 @@ export default function SimpleInterviewPage() {
   const [micStatus, setMicStatus] = useState('');
   const [reading, setReading] = useState(false);
   const [micStream, setMicStream] = useState<MediaStream | null>(null);
-  const [recentAward, setRecentAward] = useState(false);
   const [check, setCheck] = useState<AnswerJudgement | 'checking' | 'failed' | null>(null);
   const { events, awardInterviewCompleted } = useGamification();
   const [round, setRound] = useState('');
@@ -122,8 +121,6 @@ export default function SimpleInterviewPage() {
 
   const handleComplete = () => {
     awardInterviewCompleted(questionId);
-    setRecentAward(true);
-    window.setTimeout(() => setRecentAward(false), 2400);
   };
   const graphTopics = useMemo(
     () => baseGraphTopics.map((g, i) => ({ ...g, done: topics[i].questions.filter((q) => hasAward(events, `/interview#${q.id}`, 'interview')).length })),
@@ -713,11 +710,6 @@ export default function SimpleInterviewPage() {
                     </button>
                   )}
                 </div>
-                {reading && (
-                  <div className="si-reading-wave" aria-hidden="true">
-                    <LiveWaveform active={true} stream={null} height={28} barColor="var(--accent)" />
-                  </div>
-                )}
                 <div className="si-model" id="model-answer">
                   {question.answer}
                 </div>
@@ -766,16 +758,11 @@ export default function SimpleInterviewPage() {
                   </svg>
                   Completed · +{INTERVIEW_COMPLETED_POINTS} points
                 </span>
-              ) : (
+              ) : transcript.trim().length > 0 ? (
                 <button type="button" id="mark-complete" onClick={handleComplete}>
                   Mark complete <span className="si-wide-only">(+{INTERVIEW_COMPLETED_POINTS} points)</span>
                 </button>
-              )}
-              {recentAward && (
-                <span className="si-points-float" role="status" aria-live="polite">
-                  +{INTERVIEW_COMPLETED_POINTS} points earned
-                </span>
-              )}
+              ) : null}
             </div>
           </div>
         )}

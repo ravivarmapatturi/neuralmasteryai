@@ -469,26 +469,28 @@ export function GamificationProvider({ children }: { children: React.ReactNode }
         isSignedIn: Boolean(user),
       };
 
-      // Celebratory Tada Confetti & Toast Notification
-      const TOAST_BY_KIND: Record<AwardEvent['kind'], { title: string; icon: string }> = {
-        complete: { title: 'Problem Solved!', icon: '' },
-        design: { title: 'Design Completed!', icon: '' },
-        mark: { title: 'Page Understood!', icon: '' },
-        signin: { title: 'Welcome Back!', icon: '' },
-        review: { title: 'Review Complete!', icon: '' },
-        depth: { title: 'Went Deeper!', icon: '' },
-        flashcard: { title: 'Flashcard Revealed!', icon: '' },
-        architecture: { title: 'Architecture Verified!', icon: '' },
-        blog: { title: 'Post Read', icon: '' },
-        interview: { title: 'Question Completed!', icon: '' },
-      };
-      const toastMeta = TOAST_BY_KIND[kind];
-      showRewardToast({
-        title: toastMeta.title,
-        subtitle: `Great work! Earned +${points} XP`,
-        xp: points,
-        icon: toastMeta.icon,
-      });
+      // Celebratory Tada Confetti & Toast Notification (interview questions remain quiet with inline page feedback)
+      if (kind !== 'interview') {
+        const TOAST_BY_KIND: Record<AwardEvent['kind'], { title: string; icon: string }> = {
+          complete: { title: 'Problem Solved!', icon: '' },
+          design: { title: 'Design Completed!', icon: '' },
+          mark: { title: 'Page Understood!', icon: '' },
+          signin: { title: 'Welcome Back!', icon: '' },
+          review: { title: 'Review Complete!', icon: '' },
+          depth: { title: 'Went Deeper!', icon: '' },
+          flashcard: { title: 'Flashcard Revealed!', icon: '' },
+          architecture: { title: 'Architecture Verified!', icon: '' },
+          blog: { title: 'Post Read', icon: '' },
+          interview: { title: 'Question Completed!', icon: '' },
+        };
+        const toastMeta = TOAST_BY_KIND[kind];
+        showRewardToast({
+          title: toastMeta.title,
+          subtitle: `Great work! Earned +${points} XP`,
+          xp: points,
+          icon: toastMeta.icon,
+        });
+      }
 
       // Check newly unlocked checkpoint badges
       const newlyUnlocked = BADGES.filter((b) => !b.checkUnlocked(oldStats) && b.checkUnlocked(newStats));
