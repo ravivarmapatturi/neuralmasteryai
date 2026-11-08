@@ -274,6 +274,15 @@ export default function SimpleInterviewPage() {
     [play, startAnswering]
   );
 
+  const readQuestion = () => {
+    if (step === 'asking') {
+      ask(questionId);
+      return;
+    }
+    const spoken = question.title + (question.options ? ` The options are: ${question.options.join('. ')}` : '');
+    play(`${questionId}_q`, () => undefined, spoken);
+  };
+
   const startQuestion = (index: number) => {
     void prepareEngine().catch(() => undefined);
     setQuestionIndex(index);
@@ -511,7 +520,16 @@ export default function SimpleInterviewPage() {
               <div className="si-progress-bar" style={{ width: `${topicProgressPct}%` }} />
             </div>
             <p className="si-keys">Keyboard: Space to answer or finish, N for next question.</p>
-            <h2 className="si-question-title">{question.title}</h2>
+            <div className="si-question-row">
+              <h2 className="si-question-title">{question.title}</h2>
+              <button type="button" className="si-speak" id="read-question" aria-label="Read the question aloud" onClick={readQuestion}>
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M11 5 6 9H2v6h4l5 4z" />
+                  <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+                  <path d="M18.5 5.5a9 9 0 0 1 0 13" />
+                </svg>
+              </button>
+            </div>
             {question.options && (
               <ol className="si-options" type="A">
                 {question.options.map((o) => (
