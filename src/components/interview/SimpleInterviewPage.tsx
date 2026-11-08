@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { useDocumentMeta } from '../../lib/useDocumentMeta';
 import { correctInterviewTerms } from '../../lib/interviewRoom/dialogue';
 import { createASREngineForQuality } from '../../lib/interviewRoom/qualitySettings';
@@ -393,6 +393,16 @@ export default function SimpleInterviewPage() {
     if (window.location.pathname !== '/interview/') window.history.pushState(null, '', '/interview/');
     setStep('topics');
   };
+
+  // Clicking today's question on the home page goes straight into that question.
+  const location = useLocation();
+  const autostarted = useRef(false);
+  useEffect(() => {
+    const wantsStart = (location.state as { autostart?: boolean } | null)?.autostart;
+    if (!wantsStart || autostarted.current || !pathQuestion || !linked) return;
+    autostarted.current = true;
+    startQuestion(linked.question);
+  });
 
   // The browser's back button returns to the topic graph.
   useEffect(() => {

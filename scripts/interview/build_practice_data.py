@@ -109,3 +109,7 @@ print(stats, sum(len(t["questions"]) for t in out["topics"]))
 for t in out["topics"]:
     print(t["group"], t["id"], len(t["questions"]))
 print(out["groups"])
+counts_path = ROOT / "src/data/interviewCounts.generated.json"
+counts = json.loads(counts_path.read_text())
+counts["questions"] = sum(len(t["questions"]) for t in out["topics"])
+counts_path.write_text(json.dumps(counts))

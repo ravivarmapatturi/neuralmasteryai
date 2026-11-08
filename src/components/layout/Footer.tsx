@@ -48,9 +48,6 @@ export default function Footer() {
           <Link to="/changelog" style={{ color: 'inherit' }}>
             Changelog
           </Link>
-          <Link to="/credits" style={{ color: 'inherit' }}>
-            Credits
-          </Link>
           <Link to="/privacy" style={{ color: 'inherit' }}>
             Privacy Policy
           </Link>

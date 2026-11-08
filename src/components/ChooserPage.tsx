@@ -21,7 +21,7 @@ export default function ChooserPage() {
   useDocumentTitle('Neural Mastery — Learn AI through visualization');
   useDocumentMeta(
     'Neural Mastery — Learn AI through visualization',
-    'Free AI engineering lessons that compute in your browser, with practice problems, interview questions and study plans.',
+    'AI engineering lessons with visual explanations, practice problems, interview questions and study plans.',
   );
 
   const pages = getFlatPages();
