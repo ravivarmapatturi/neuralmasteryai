@@ -27,13 +27,32 @@ export default function DagDependencyDiagram() {
       <svg width="100%" viewBox="0 0 440 140" style={{ display: 'block' }}>
         <defs>
           <marker id="dag-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
-            <path d="M0,0 L7,3.5 L0,7 Z" fill={t.textMuted} />
+            <path d="M0,0 L7,3.5 L0,7 Z" fill={t.border} />
+          </marker>
+          <marker id="dag-arrow-active" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+            <path d="M0,0 L7,3.5 L0,7 Z" fill={color} />
           </marker>
         </defs>
         {NODES.flatMap((n) => n.deps.map((d) => {
           const from = NODES.find((x) => x.key === d)!;
           const isHighlighted = highlighted.has(n.key) && highlighted.has(d);
-          return <line key={`${d}-${n.key}`} x1={from.x + 30} y1={from.y} x2={n.x - 30} y2={n.y} stroke={isHighlighted ? color : t.border} strokeWidth={isHighlighted ? 2.5 : 1.25} markerEnd="url(#dag-arrow)" />;
+          // Connect cleanly between node perimeters without penetrating card backgrounds
+          const x1 = from.x + 45;
+          const y1 = from.y;
+          const x2 = n.x - 47;
+          const y2 = n.y;
+          return (
+            <line
+              key={`${d}-${n.key}`}
+              x1={x1}
+              y1={y1}
+              x2={x2}
+              y2={y2}
+              stroke={isHighlighted ? color : t.border}
+              strokeWidth={isHighlighted ? 2.5 : 1.5}
+              markerEnd={isHighlighted ? 'url(#dag-arrow-active)' : 'url(#dag-arrow)'}
+            />
+          );
         }))}
         {NODES.map((n) => {
           const isSelected = selected === n.key;

@@ -37,7 +37,16 @@ export default function DirectVsIndirectInjectionDiagram() {
           </marker>
         </defs>
         {nodes.slice(0, -1).map((_, i) => (
-          <line key={i} x1={i * 110 + 90} y1={45} x2={(i + 1) * 110 + 10} y2={45} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#inj-arrow)" />
+          <line
+            key={i}
+            x1={i * 110 + 90}
+            y1={45}
+            x2={(i + 1) * 110 - 2}
+            y2={45}
+            stroke={t.textMuted}
+            strokeWidth={1.5}
+            markerEnd="url(#inj-arrow)"
+          />
         ))}
         {nodes.map((n, i) => {
           const isAttacker = n.id === 'attacker';

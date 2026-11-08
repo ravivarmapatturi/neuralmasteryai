@@ -44,31 +44,40 @@ export default function GruCellDiagram() {
           <marker id="gru-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
             <path d="M0,0 L7,3.5 L0,7 Z" fill={t.textMuted} />
           </marker>
+          <marker id="gru-arrow-up" markerWidth="7" markerHeight="7" refX="3.5" refY="1" orient="auto">
+            <path d="M0,7 L3.5,0 L7,7 Z" fill={t.accentPrimary} />
+          </marker>
         </defs>
 
         {/* h_{t-1} straight-through path to interpolation */}
         <text x={16} y={lineY - 12} fontSize={10} fontFamily="monospace" fill={t.textMuted}>h_(t-1)</text>
-        <line x1={16} y1={lineY} x2={interpX - 40} y2={lineY} stroke={t.textPrimary} strokeWidth={2} />
-        <text x={interpX - 70} y={lineY - 8} fontSize={9} fontFamily="monospace" fill={updateColor} opacity={active === null || active === 'update' ? 1 : 0.3}>× (1 − z_t)</text>
+        <line x1={16} y1={lineY} x2={interpX - 11} y2={lineY} stroke={t.textPrimary} strokeWidth={2} />
+        <text x={interpX - 60} y={lineY - 8} textAnchor="middle" fontSize={9} fontFamily="monospace" fill={updateColor} opacity={active === null || active === 'update' ? 1 : 0.3}>× (1 − z_t)</text>
 
         {/* h_{t-1} branch down into reset multiply */}
-        <line x1={40} y1={lineY + 6} x2={resetMulX} y2={gateY - 40} stroke={resetColor} strokeWidth={active === 'reset' ? 2.5 : 1.5} opacity={active === null || active === 'reset' ? 1 : 0.3} />
+        <path d={`M 40,${lineY} L 40,${gateY - 40} L ${resetMulX - 11},${gateY - 40}`} fill="none" stroke={resetColor} strokeWidth={active === 'reset' ? 2.5 : 1.5} opacity={active === null || active === 'reset' ? 1 : 0.3} />
         <OpNode x={resetMulX} y={gateY - 40} symbol="×" color={resetColor} />
-        <line x1={resetMulX + 11} y1={gateY - 40} x2={candX - 30} y2={gateY - 22} stroke={resetColor} strokeWidth={1.5} markerEnd="url(#gru-arrow)" opacity={active === null || active === 'reset' ? 1 : 0.3} />
+        {/* r_t gate output up into reset multiply */}
+        <line x1={resetMulX} y1={gateY - 18} x2={resetMulX} y2={gateY - 29} stroke={resetColor} strokeWidth={1.5} markerEnd="url(#gru-arrow)" opacity={active === null || active === 'reset' ? 1 : 0.3} />
+        {/* reset-multiplied state into candidate tanh */}
+        <line x1={resetMulX + 11} y1={gateY - 40} x2={candX - 30} y2={gateY - 40} stroke={resetColor} strokeWidth={1.5} markerEnd="url(#gru-arrow)" opacity={active === null || active === 'reset' ? 1 : 0.3} />
 
         {/* candidate box */}
-        <rect x={candX - 30} y={gateY - 24} width={60} height={34} rx={6} fill={t.surfaceAlt} stroke={t.accentPrimary} strokeWidth={1.5} />
-        <text x={candX} y={gateY - 3} textAnchor="middle" fontSize={11} fontWeight={700} fill={t.accentPrimary}>tanh</text>
-        <text x={candX} y={gateY + 24} textAnchor="middle" fontSize={9} fontFamily="monospace" fill={t.accentPrimary}>h̃_t</text>
+        <rect x={candX - 30} y={gateY - 56} width={60} height={34} rx={6} fill={t.surfaceAlt} stroke={t.accentPrimary} strokeWidth={1.5} />
+        <text x={candX} y={gateY - 35} textAnchor="middle" fontSize={11} fontWeight={700} fill={t.accentPrimary}>tanh</text>
+        <text x={candX} y={gateY - 10} textAnchor="middle" fontSize={9} fontFamily="monospace" fill={t.accentPrimary}>h̃_t</text>
 
-        {/* candidate -> interpolation (weighted by z_t) */}
-        <path d={`M ${candX + 30},${gateY - 8} C ${(candX + interpX) / 2},${gateY - 8} ${(candX + interpX) / 2},${lineY} ${interpX - 20},${lineY}`} fill="none" stroke={t.accentPrimary} strokeWidth={1.5} markerEnd="url(#gru-arrow)" opacity={active === null || active === 'update' ? 1 : 0.3} />
-        <text x={(candX + interpX) / 2 + 10} y={gateY - 14} fontSize={9} fontFamily="monospace" fill={updateColor} opacity={active === null || active === 'update' ? 1 : 0.3}>× z_t</text>
+        {/* candidate -> interpolation (weighted by z_t) into sum node from below */}
+        <path d={`M ${candX + 30},${gateY - 40} C ${(candX + interpX) / 2 + 30},${gateY - 40} ${interpX},${gateY - 10} ${interpX},${lineY + 12}`} fill="none" stroke={t.accentPrimary} strokeWidth={1.5} markerEnd="url(#gru-arrow)" opacity={active === null || active === 'update' ? 1 : 0.3} />
+        <text x={(candX + interpX) / 2 + 15} y={gateY - 46} fontSize={9} fontFamily="monospace" fill={updateColor} opacity={active === null || active === 'update' ? 1 : 0.3}>× z_t</text>
 
         {/* interpolation sum node -> h_t */}
         <OpNode x={interpX} y={lineY} symbol="+" color={updateColor} />
         <line x1={interpX + 11} y1={lineY} x2={width - 40} y2={lineY} stroke={updateColor} strokeWidth={2} markerEnd="url(#gru-arrow)" />
         <text x={width - 34} y={lineY - 8} fontSize={10} fontFamily="monospace" fontWeight={700} fill={updateColor}>h_t</text>
+
+        {/* update gate output upward feed */}
+        <line x1={330} y1={gateY - 18} x2={330} y2={gateY - 38} stroke={updateColor} strokeWidth={1.5} strokeDasharray="3 2" opacity={active === null || active === 'update' ? 1 : 0.3} />
 
         {/* gate boxes */}
         {GATES.map((g) => {
@@ -79,12 +88,12 @@ export default function GruCellDiagram() {
               <rect x={g.x - 26} y={gateY - 18} width={52} height={36} rx={6} fill={isActive ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isActive ? 2.5 : 1.5} />
               <text x={g.x} y={gateY - 2} textAnchor="middle" fontSize={11} fontWeight={700} fill={color}>σ</text>
               <text x={g.x} y={gateY + 12} textAnchor="middle" fontSize={9} fontFamily="monospace" fill={color}>{g.label}</text>
-              <line x1={g.x} y1={inputY - 14} x2={g.x} y2={gateY + 20} stroke={t.textMuted} strokeWidth={1} opacity={0.6} />
+              <line x1={g.x} y1={inputY - 14} x2={g.x} y2={gateY + 18} stroke={t.textMuted} strokeWidth={1} opacity={0.6} />
             </g>
           );
         })}
 
-        <rect x={190} y={inputY - 14} width={120} height={26} rx={5} fill={t.surfaceAlt} stroke={t.border} strokeWidth={1.25} />
+        <rect x={140} y={inputY - 14} width={220} height={26} rx={5} fill={t.surfaceAlt} stroke={t.border} strokeWidth={1.25} />
         <text x={250} y={inputY + 4} textAnchor="middle" fontSize={10} fontFamily="monospace" fill={t.textSecondary}>[h_(t-1), x_t]</text>
       </svg>
 
