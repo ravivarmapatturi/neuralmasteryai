@@ -23,6 +23,7 @@ import React, { useEffect, useRef, type HTMLAttributes } from 'react';
 export type LiveWaveformProps = HTMLAttributes<HTMLDivElement> & {
   active?: boolean;
   processing?: boolean;
+  allowMicPrompt?: boolean;
   stream?: MediaStream | null;
   barWidth?: number;
   barHeight?: number;
@@ -41,6 +42,7 @@ export type LiveWaveformProps = HTMLAttributes<HTMLDivElement> & {
 export const LiveWaveform: React.FC<LiveWaveformProps> = ({
   active = false,
   processing = false,
+  allowMicPrompt = false,
   stream = null,
   barWidth = 3,
   barGap = 2,
@@ -126,7 +128,7 @@ export const LiveWaveform: React.FC<LiveWaveformProps> = ({
     const setupAudio = async () => {
       try {
         let activeStream = stream;
-        if (!activeStream && typeof navigator !== 'undefined' && navigator.mediaDevices) {
+        if (!activeStream && allowMicPrompt && typeof navigator !== 'undefined' && navigator.mediaDevices) {
           activeStream = await navigator.mediaDevices.getUserMedia({
             audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
           });
@@ -228,14 +230,32 @@ export const LiveWaveform: React.FC<LiveWaveformProps> = ({
           staticBarsRef.current = newBars;
         }
         needsRedrawRef.current = true;
+      } else if (active || processing) {
+        const step = barWidth + barGap;
+        const barCount = Math.floor(rect.width / step);
+        const halfCount = Math.floor(barCount / 2);
+        const now = performance.now() * 0.0035;
+        const newBars: number[] = [];
+        for (let i = halfCount - 1; i >= 0; i--) {
+          const norm = (halfCount - i) / (halfCount || 1);
+          const wave = Math.sin(now + i * 0.3) * 0.3 + Math.sin(now * 1.7 + i * 0.45) * 0.2 + 0.35;
+          newBars.push(Math.max(0.08, Math.min(0.95, wave * norm * sensitivity)));
+        }
+        for (let i = 0; i < halfCount; i++) {
+          const norm = (halfCount - i) / (halfCount || 1);
+          const wave = Math.sin(now + i * 0.3) * 0.3 + Math.sin(now * 1.7 + i * 0.45) * 0.2 + 0.35;
+          newBars.push(Math.max(0.08, Math.min(0.95, wave * norm * sensitivity)));
+        }
+        staticBarsRef.current = newBars;
+        needsRedrawRef.current = true;
       }
 
-      if (!needsRedrawRef.current && !active) {
+      if (!needsRedrawRef.current && !active && !processing) {
         rafId = requestAnimationFrame(render);
         return;
       }
 
-      needsRedrawRef.current = active;
+      needsRedrawRef.current = active || processing;
       ctx.clearRect(0, 0, rect.width, rect.height);
 
       const computedBarColor =
@@ -300,7 +320,7 @@ export const LiveWaveform: React.FC<LiveWaveformProps> = ({
     return () => {
       cancelAnimationFrame(rafId);
     };
-  }, [active, barWidth, barGap, barRadius, barColor, baseBarHeight, fadeEdges, fadeWidth, mode, sensitivity]);
+  }, [active, processing, barWidth, barGap, barRadius, barColor, baseBarHeight, fadeEdges, fadeWidth, mode, sensitivity]);
 
   return (
     <div
