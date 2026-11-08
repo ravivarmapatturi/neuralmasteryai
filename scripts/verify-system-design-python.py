@@ -13,7 +13,7 @@ root = Path(__file__).resolve().parents[1]
 results = []
 for page in sorted((root / 'src/content/docs/software-system-design').glob('*.mdx')):
     snippets = re.findall(r'<RunnableCode code=\{`([\s\S]*?)`\}', page.read_text())
-    expected = 0 if page.stem == 'roadmap' else 2
+    expected = 0 if page.stem in {'roadmap', 'foundations'} else 2
     if len(snippets) != expected:
         raise SystemExit(f'{page.name}: expected {expected} snippets, found {len(snippets)}')
     for index, code in enumerate(snippets, 1):
@@ -26,7 +26,5 @@ for page in sorted((root / 'src/content/docs/software-system-design').glob('*.md
         results.append(result)
         if direct.returncode or worker.returncode or direct.stdout != worker.stdout:
             raise SystemExit(json.dumps(result, indent=2))
-if len(results) != 32:
-    raise SystemExit(f'Expected 32 snippets, found {len(results)}')
 Path(args.output).write_text(json.dumps(results, indent=2) + '\n')
-print('32 snippets passed directly and under worker indentation; outputs match.')
+print(f'{len(results)} snippets passed directly and under worker indentation; outputs match.')

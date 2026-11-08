@@ -47,15 +47,19 @@ try {
         await control.focus(); await page.keyboard.press('Enter');
       }
       for(const control of await page.getByRole('slider').all()) {
-        await control.focus(); await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowLeft');
+        await control.focus();
+        const atMax = Number(await control.inputValue()) === Number(await control.getAttribute('max'));
+        await page.keyboard.press(atMax ? 'ArrowLeft' : 'ArrowRight');
+        await page.keyboard.press(atMax ? 'ArrowRight' : 'ArrowLeft');
       }
       for(const width of [375,1440]) {
         await page.setViewportSize({width,height:1000});
         await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         if(await page.evaluate(()=>document.documentElement.scrollWidth)>width) throw Error(`${slug}: overflow at ${width}: ${JSON.stringify(await page.evaluate(()=>({width:document.documentElement.scrollWidth, elements:[...document.querySelectorAll('body *')].filter(e=>e.getBoundingClientRect().right>376 && !e.closest('.cm-editor')).slice(0,8).map(e=>({tag:e.tagName,text:e.textContent?.slice(0,120),right:e.getBoundingClientRect().right}))})))}`);
+        let diagram = 0;
         for(const svg of await page.locator('svg[role="img"]').all()) {
           await svg.scrollIntoViewIfNeeded();
-          await svg.screenshot({path:`${evidence}/${slug}-${theme}-${width}-diagram.png`});
+          await svg.screenshot({path:`${evidence}/${slug}-${theme}-${width}-diagram-${++diagram}.png`});
         }
       }
       if(errors.length) throw Error(errors.join('\n'));
