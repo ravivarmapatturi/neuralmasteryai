@@ -1,0 +1,104 @@
+---
+title: "Design a Distributed Rate Limiter"
+sidebar_position: 8
+description: "Build a tenant-aware token bucket with atomic admission, explicit burst limits, distributed quota ownership, and a deliberate policy for limiter failures."
+---
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import SoftwareCaseTrace from '../../../viz/diagrams/SoftwareCaseTrace';
+
+# Design a Distributed Rate Limiter
+
+<ELI5>A venue can admit people at a steady rate while allowing a small group through an empty entrance at once. Tokens represent permission to enter, and the bucket limits saved permission. Multiple doors must not spend the same token. If their shared counter disappears, the venue must decide whether to close admission or allow a bounded exception.</ELI5>
+
+## Requirements and Estimates
+
+Assume an illustrative gateway fleet sees 100,000 requests/s across 100,000 active tenants. Each tenant gets a refill rate of two requests/s and a burst capacity of five. These per-tenant numbers do not imply every tenant uses its allowance simultaneously; aggregate admission must also protect the downstream system. Login attempts use a fail-closed policy when the authoritative limiter is unavailable.
+
+At an assumed 64 bytes of logical bucket state per active key, 100,000 keys occupy 6.4 MB before key encoding, datastore overhead, indexes, replicas, and expiration metadata. State size is modest; update rate and hot-key contention can dominate. A single abusive tenant can concentrate operations on one key even when hash partitioning spreads tenant IDs evenly.
+
+The misconception is that giving every gateway a two-request-per-second bucket implements one global two-request-per-second quota. Ten independent gateways can allow twenty/s plus ten independent burst allowances. Either one authority must own the key, or the global allowance must be partitioned into deliberately bounded leases.
+
+## Algorithm and Atomicity
+
+For each key, persist token balance and last-refill time. On an attempt, compute elapsed time, refill up to capacity five, and spend one token if available. The refill and spend are one atomic operation at the owner. Use a datastore-side transaction or script with supported atomic semantics; a read-modify-write sequence in gateway memory allows concurrent overspending.
+
+Use a reliable monotonic-time interpretation at one owner, or a controlled server-side clock policy, rather than trusting arbitrary client timestamps. Clamp negative elapsed values, and specify behavior when ownership migrates. Floating-point arithmetic may be adequate for a teaching model; production implementations can use integer units and bounded overflow handling.
+
+A fixed window counter is simpler, but five requests just before a boundary and five just after can form a ten-request burst. Sliding logs track precise recent events at greater memory and update cost. Sliding counters approximate windows. A token bucket directly expresses the allowed burst and sustained refill, so it matches this requirement.
+
+## Gateway and Ownership Path
+
+The gateway authenticates the tenant before constructing a key from tenant, route class, and policy version. It asks the limiter to admit the request and forwards only accepted work. Return HTTP 429 for a known quota denial, with retry information appropriate to the contract. A store timeout under fail-closed policy is an availability failure, such as 503, rather than proof that the tenant exceeded quota.
+
+Partition keys across limiter shards. A hot key remains on one shard unless the design distributes quota. Local leased tokens can reduce store calls, but unused tokens on one gateway cannot automatically be spent elsewhere, and failover can temporarily strand allowance. Strict global enforcement and low-latency independent admission are competing requirements; quantify the tolerated overshoot before choosing leases.
+
+Policy updates need a version and propagation rule. If capacity drops from five to two, old gateways must not keep admitting under the earlier policy forever. Bucket expiry should reclaim inactive keys only after enough idle time that a recreated full bucket does not violate the intended semantics. Tenant configuration and counters have different durability needs and should not disappear together accidentally.
+
+## Failure Policy and Abuse Resistance
+
+A limiter can fail open, fail closed, or use a bounded local fallback. The right answer follows the protected operation: password attempts and costly irreversible actions often need stronger denial behavior than cached public reads. A fallback allowance must be included in the global overshoot bound; otherwise the policy is merely an undocumented fail-open path.
+
+A rate limiter is not a complete overload controller. A request that takes two seconds occupies one hundred times the concurrency of a 20 ms request at the same arrival rate. Pair rate admission with concurrency limits, payload limits, and bounded queues. Protect the limiter itself with authenticated callers and key-cardinality controls so an attacker cannot create unlimited state using arbitrary identities.
+
+Observe decisions by policy and reason, hot-key latency, store errors, and fallback use. Avoid tenant ID as an unbounded metric label. Test simultaneous spends, expiry, policy changes, shard failover, and store latency. A single-threaded demonstration proves the arithmetic, while a concurrent datastore test is required to prove atomicity in deployment.
+
+## Follow the Failure Boundary
+
+<SoftwareCaseTrace scenario="rate-limiter" />
+
+<PredictFirst question='Ten gateways each enforce a local burst of five for the same tenant. What is the possible aggregate initial burst?' options={['Five', 'Ten', 'Fifty']} correctIndex={2} explanation='Independent buckets multiply allowance: ten times five is fifty. A global limit needs shared atomic ownership or allocations whose total is bounded.' />
+
+## Run the Design Calculation
+
+<RunnableCode code={`capacity, rate = 5.0, 2.0
+tokens, last = capacity, 0.0
+for now in [0.0]*7 + [0.5, 1.0]:
+    tokens = min(capacity, tokens + max(0, now-last)*rate)
+    last = now
+    allowed = tokens >= 1
+    if allowed:
+        tokens -= 1
+    wait = 0 if allowed else (1-tokens)/rate
+    print(now, "allow:", allowed, "wait seconds:", round(wait, 2))
+# Try it: use capacity two; the initial burst shrinks without changing refill rate.
+`} />
+
+## Change the Invariant Deliberately
+
+<RunnableCode code={`gateways = 10
+local_capacity, local_rate = 5, 2
+print("Independent gateway initial allowance:", gateways*local_capacity)
+print("Independent gateway sustained requests/s:", gateways*local_rate)
+global_capacity = 5
+allocations = [1, 1, 1, 1, 1, 0, 0, 0, 0, 0]
+assert sum(allocations) <= global_capacity
+print("Partitioned initial allowance:", sum(allocations))
+# Try it: allocate one token to all ten gateways; the global burst invariant fails.
+`} />
+
+## When Not to Use This Design
+
+| Situation | Better choice |
+| --- | --- |
+| One process owns all traffic | A local atomic bucket |
+| Work cost varies drastically | Weighted admission plus concurrency control |
+
+## Remember
+
+| Decision | Reason |
+| --- | --- |
+| Bucket | Burst and refill are separate inputs |
+| Atomic owner | Concurrent requests cannot double-spend |
+| Failure | Store outage and quota denial are different outcomes |
+
+Next: [Design a News Feed](/docs/software-system-design/news-feed).
+
+## Sources
+
+- [RFC 6585, HTTP 429 (2012)](https://www.rfc-editor.org/rfc/rfc6585).
+- [Redis, Rate Limiting Pattern](https://redis.io/docs/latest/commands/incr/).
+- [Envoy, Global Rate Limiting](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/other_features/global_rate_limiting).
+- [Google SRE, Handling Overload](https://sre.google/sre-book/handling-overload/).
+- [AWS Builders Library, Fairness in Multi-Tenant Systems](https://aws.amazon.com/builders-library/fairness-in-multi-tenant-systems/).
