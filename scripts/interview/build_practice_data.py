@@ -56,7 +56,12 @@ for q in json.loads((ROOT / "src/data/interviewCatalog.generated.json").read_tex
 for topic, rows in json.loads((ROOT / "src/data/interviewSeniorQuestions.json").read_text()).items():
     for qid, title, answer in rows:
         ours.append((topic, {"id": f"senior:{qid}", "title": title, "answer": answer}))
+titles_seen = set()
 for topic, item in ours:
+    key = item["title"].strip().lower()
+    if key in titles_seen:
+        continue
+    titles_seen.add(key)
     topics[topic]["questions"].append(item)
 
 seen = [words(i["title"]) for _, i in ours]

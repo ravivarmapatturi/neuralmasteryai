@@ -61,7 +61,7 @@ const GROUP_COLOURS_DARK: Record<string, string> = {
   production: '#6fd3a8',
   rounds: '#f39a8e',
 };
-const MAX_STAGE = 560;
+const MAX_STAGE = 780;
 const SHORT_TITLES: Record<string, string> = {
   'math-classical-ml': 'Classical ML',
   'tokenization-decoding': 'Tokenization',

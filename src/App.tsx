@@ -98,6 +98,7 @@ export default function App() {
                         </>
                       )}
                       <Route path="/interview" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading interview practice…</p>}><SimpleInterviewPage /></Suspense>} />
+                      <Route path="/interview/q/:questionId" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading interview practice…</p>}><SimpleInterviewPage /></Suspense>} />
                       <Route path="/interview/questions" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading interview questions…</p>}><InterviewPage /></Suspense>} />
                       <Route path="/interview/topics" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading interview topics…</p>}><InterviewTopicsPage /></Suspense>} />
                       <Route path="/interview/topics/:slug" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading interview topics…</p>}><InterviewTopicPage /></Suspense>} />

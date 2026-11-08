@@ -85,14 +85,25 @@ function looksLikePhone() {
   return /Android|iPhone|iPad/i.test(navigator.userAgent) || (memory !== undefined && memory < 4);
 }
 
+// Each question has its own address, such as /interview/q/repo__rag__rerank-pool-size.
+function questionPath(id: string) {
+  return `/interview/q/${encodeURIComponent(id.replaceAll(':', '__'))}`;
+}
+
+function questionFromPath(pathname: string) {
+  const match = pathname.match(/^\/interview\/q\/([^/]+)/);
+  return match ? decodeURIComponent(match[1]).replaceAll('__', ':') : null;
+}
+
 export default function SimpleInterviewPage() {
   useDocumentMeta('AI Interview Practice', 'Pick a topic, hear an AI engineering interview question, answer out loud, then hear and read a model answer. Runs in your browser.');
 
   const [params] = useSearchParams();
   // A link like /interview?q=<id> (the home page's daily question) opens on that question.
   // Otherwise it offers to resume the last question you opened.
-  const [resuming] = useState(() => !locate(params.get('q')) && !!locate(readLast()));
-  const [linked, setLinked] = useState(() => locate(params.get('q')) ?? locate(readLast()));
+  const [pathQuestion] = useState(() => questionFromPath(window.location.pathname));
+  const [resuming] = useState(() => !pathQuestion && !locate(params.get('q')) && !!locate(readLast()));
+  const [linked, setLinked] = useState(() => locate(pathQuestion) ?? locate(params.get('q')) ?? locate(readLast()));
   const sharedTopic = topics.findIndex((t) => t.id === params.get('topic'));
   const [step, setStep] = useState<Step>('topics');
   const [topicIndex, setTopicIndex] = useState(sharedTopic >= 0 ? sharedTopic : (linked?.topic ?? firstTopic));
@@ -132,6 +143,7 @@ export default function SimpleInterviewPage() {
   const handleComplete = () => {
     awardInterviewCompleted(questionId);
   };
+  const completedTotal = topics.reduce((sum, t) => sum + t.questions.filter((q) => isDone(q.id)).length, 0);
   const graphTopics = useMemo(
     () => baseGraphTopics.map((g, i) => ({ ...g, done: topics[i].questions.filter((q) => hasAward(events, `/interview#${q.id}`, 'interview')).length })),
     [events]
@@ -313,6 +325,7 @@ export default function SimpleInterviewPage() {
   const startQuestion = (index: number) => {
     void prepareEngine().catch(() => undefined);
     setQuestionIndex(index);
+    window.history.pushState(null, '', questionPath(topic.questions[index].id));
     ask(topic.questions[index].id);
   };
 
@@ -367,6 +380,7 @@ export default function SimpleInterviewPage() {
       return;
     }
     setQuestionIndex(next);
+    window.history.pushState(null, '', questionPath(topic.questions[next].id));
     ask(topic.questions[next].id);
   };
 
@@ -376,8 +390,18 @@ export default function SimpleInterviewPage() {
     stopAudio();
     stopMic();
     void engineRef.current?.stop().catch(() => undefined);
+    if (window.location.pathname !== '/interview/') window.history.pushState(null, '', '/interview/');
     setStep('topics');
   };
+
+  // The browser's back button returns to the topic graph.
+  useEffect(() => {
+    const onPop = () => {
+      if (!questionFromPath(window.location.pathname)) backToTopics();
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  });
 
   useEffect(() => setShareStatus(''), [topicIndex]);
 
@@ -440,7 +464,7 @@ export default function SimpleInterviewPage() {
           <>
             <h1>Interview practice</h1>
             <p className="si-lede">
-              {graphTopics.length} topics, {totalQuestions} questions. Lines show which topics build on each other.
+              <strong>{completedTotal}</strong> of <strong>{totalQuestions}</strong> questions completed across {graphTopics.length} topics.
             </p>
             <div className="si-map">
               <InterviewGraph
