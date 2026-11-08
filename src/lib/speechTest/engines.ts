@@ -1,3 +1,4 @@
+import { decodeRealTimeFactor, shouldSkipRefinement, refinementBudgetMs } from './refinementPolicy';
 import { normalizeQuietAudio, appendPhrase, chooseFinalTranscript } from './audioPreparation';
 
 /**
@@ -25,6 +26,10 @@ export interface EngineMetrics {
   batchTranscript?: string;
   rawBatchTranscript?: string;
   finalPassWarning?: string;
+  liveDecodeRTF?: number;
+  finalDecodeRTF?: number;
+  refinementDecision?: 'accepted' | 'skipped-slow' | 'aborted-slow' | 'failed';
+  initialPrompt?: string;
   isIdenticalToBatch?: boolean;
 }
 
@@ -396,6 +401,10 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
   readonly finalModelId: string | undefined;
   private readonly finalDevice: 'wasm' | 'webgpu';
   private readonly finalDownloadBytes: number;
+  private liveDecodeRatios: number[] = [];
+  private refinementDisabled = false;
+  private initialPrompt = '';
+  public setQuestionPrompt(prompt: string): void { this.initialPrompt = prompt.slice(0, 256); }
   private sessionId = 0;
   private requestNumber = 0;
   private segmentHasOverlap = false;
@@ -608,6 +617,8 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       batchTranscript: undefined,
       rawBatchTranscript: undefined,
       finalPassWarning: undefined,
+      refinementDecision: undefined,
+      finalDecodeRTF: undefined,
       isIdenticalToBatch: undefined,
     });
 
@@ -695,6 +706,10 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
         if (type === 'model_ready') { this.updateMetrics({ downloadProgressPct: 100, device: `${e.data.device === 'webgpu' ? 'WebGPU' : 'WASM'} (Single-Threaded Worker, No COOP/COEP needed)` }); return; }
         if (typeof id !== 'string' || !id.startsWith(`${this.sessionId}:`)) return;
 
+        if (type === 'commit_result' || type === 'result') {
+          const ratio = decodeRealTimeFactor(inferMs, e.data.sampleCount);
+          if (ratio !== null) { this.liveDecodeRatios.push(ratio); this.liveDecodeRatios = this.liveDecodeRatios.slice(-5); this.updateMetrics({ liveDecodeRTF: ratio }); }
+        }
         if (type === 'commit_result') {
           this.isCommitting = false;
           this.isWorkerBusy = false;
@@ -918,7 +933,9 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
     let rawBatchTranscript = '';
     let finalPassWarning: string | undefined;
 
-    if (this.totalSessionSamples >= 8000 && worker && this.worker === worker) {
+    const skipFinal = Boolean(this.finalModelId && shouldSkipRefinement(this.liveDecodeRatios, this.refinementDisabled));
+    if (skipFinal) { this.refinementDisabled = true; this.updateMetrics({ refinementDecision: 'skipped-slow' }); }
+    if (!skipFinal && this.totalSessionSamples >= 8000 && worker && this.worker === worker) {
       const fullAudio = new Float32Array(this.totalSessionSamples);
       let offset = 0;
       for (const chunk of this.sessionChunks) {
@@ -930,13 +947,15 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       const audioToBatch = cleanAudio.length >= 4000 ? cleanAudio : fullAudio;
 
       const id = this.nextId();
+      const decodeBudget = refinementBudgetMs(audioToBatch.length);
       if (this.finalModelId) {
         this.downloadFiles.clear();
         this.updateMetrics({ downloadProgressPct: 0 });
         this.modelAfterStop = this.finalModelId;
       }
       await new Promise<void>((resolve) => {
-        const cancel = () => { clearTimeout(timeout); worker?.removeEventListener('message', handler); this.stopWaiters.delete(cancel); resolve(); };
+        let decodeTimer: ReturnType<typeof setTimeout> | undefined;
+        const cancel = () => { clearTimeout(decodeTimer); clearTimeout(timeout); worker?.removeEventListener('message', handler); this.stopWaiters.delete(cancel); resolve(); };
         this.stopWaiters.add(cancel);
         const timeout = setTimeout(() => {
           worker?.removeEventListener('message', handler);
@@ -947,7 +966,21 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
 
         const handler = (e: MessageEvent) => {
           if (e.data.id !== id) return;
+          if (e.data.type === 'model_ready' && this.finalModelId && !decodeTimer) {
+            decodeTimer = setTimeout(() => {
+              if (session === this.sessionId && this.worker === worker) {
+                this.refinementDisabled = true; worker.terminate(); this.worker = null;
+                this.updateMetrics({ refinementDecision: 'aborted-slow' });
+              }
+              cancel();
+            }, decodeBudget);
+          }
           if (e.data.type === 'batch_result') {
+            if (this.finalModelId) {
+              const ratio = decodeRealTimeFactor(e.data.inferMs, e.data.sampleCount);
+              if (ratio !== null) this.updateMetrics({ finalDecodeRTF: ratio });
+              this.updateMetrics({ refinementDecision: 'accepted', initialPrompt: this.initialPrompt });
+            }
             clearTimeout(timeout);
             batchTranscript = (e.data.text || '').trim();
             cancel();
@@ -959,7 +992,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
         };
         worker?.addEventListener('message', handler);
         worker?.postMessage(
-          { id, op: 'batch', payload: { audio: audioToBatch.buffer, ...(this.finalModelId ? { modelId: this.finalModelId, device: this.finalDevice } : {}) } },
+          { id, op: 'batch', payload: { audio: audioToBatch.buffer, ...(this.finalModelId ? { modelId: this.finalModelId, device: this.finalDevice, initialPrompt: this.initialPrompt } : {}) } },
           [audioToBatch.buffer]
         );
       });
@@ -977,7 +1010,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
     }
 
     if (session !== this.sessionId) return;
-    if (!this.committedText) this.committedText = liveBeforeBatch;
+    if (!batchTranscript) this.committedText = liveBeforeBatch;
     const words = this.committedText.split(/\s+/).filter(Boolean);
     const revPerWord = words.length > 0 ? this.earlierWordRevisions / words.length : 0;
 
@@ -1031,6 +1064,8 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       batchTranscript: undefined,
       rawBatchTranscript: undefined,
       finalPassWarning: undefined,
+      refinementDecision: undefined,
+      finalDecodeRTF: undefined,
       isIdenticalToBatch: undefined,
     });
   }

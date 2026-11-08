@@ -49,7 +49,8 @@ describe('single-thread speech worker', () => {
     await vi.waitFor(() => expect(pipe).toHaveBeenCalledTimes(1));
     expect([...pipe.mock.calls[0][0] as Float32Array]).toEqual([1, 2]);
     release();
-    await vi.waitFor(() => expect(messages.filter(m => m.id >= 2).map(m => m.id)).toEqual([2, 3, 4]));
+    await vi.waitFor(() => expect(messages.filter(m => m.id >= 2 && m.type !== 'model_ready').map(m => m.id)).toEqual([2, 3, 4]));
+    expect(messages.filter(m => m.type === 'model_ready').map(m => m.id)).toEqual([2, 3, 4]);
     expect(maxActive).toBe(1);
   });
   it('recovers from a failed load without an unhandled rejected promise', async () => {

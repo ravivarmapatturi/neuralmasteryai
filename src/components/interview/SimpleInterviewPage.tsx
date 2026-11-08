@@ -3,6 +3,9 @@ import { useSearchParams } from 'react-router-dom';
 import { useDocumentMeta } from '../../lib/useDocumentMeta';
 import { correctInterviewTerms } from '../../lib/interviewRoom/dialogue';
 import { createASREngineForQuality } from '../../lib/interviewRoom/qualitySettings';
+import { INTERVIEW_AUDIO_CONSTRAINTS } from '../../lib/speechTest/audioPreparation';
+import { questionSpeechPrompt } from '../../lib/interviewRoom/speechPrompt';
+import { useFocusMusic } from '../../contexts/FocusMusicContext';
 import type { SingleThreadASREngine } from '../../lib/speechTest/engines';
 import practice from '../../data/interviewPractice.json';
 import { InterviewGraph } from './InterviewGraph';
@@ -112,6 +115,10 @@ export default function SimpleInterviewPage() {
   const isDone = (id: string) => hasAward(events, `/interview#${id}`, 'interview');
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const { playing: focusPlaying, pause: pauseFocusMusic, play: playFocusMusic } = useFocusMusic();
+  const focusPlayingRef = useRef(focusPlaying);
+  focusPlayingRef.current = focusPlaying;
+  const resumeFocusRef = useRef(false);
   const engineRef = useRef<SingleThreadASREngine | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
@@ -164,6 +171,9 @@ export default function SimpleInterviewPage() {
       };
       const finish = (missing: boolean) => {
         if (audioRef.current !== audio) return;
+        audio.pause();
+        audio.onended = null;
+        audio.onerror = null;
         audioRef.current = null;
         // No recorded clip: generate the voice on this device instead (skipped on phones to spare memory).
         if (missing && text && !looksLikePhone()) {
@@ -194,18 +204,25 @@ export default function SimpleInterviewPage() {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     setMicStream(null);
-  }, []);
+    if (resumeFocusRef.current) { resumeFocusRef.current = false; void playFocusMusic().catch(() => undefined); }
+  }, [playFocusMusic]);
 
   // Download starts when the topic is chosen, so the first answer is not spoken into a loading model
   const prepareEngine = useCallback(() => {
     if (!enginePromiseRef.current) {
       enginePromiseRef.current = (async () => {
+        const load = async (candidate: SingleThreadASREngine) => {
+          const off = candidate.subscribe(m => {
+            if (answeringRef.current && m.status === 'loading') setMicStatus(`Preparing speech recognition… ${m.downloadProgressPct}%`);
+          });
+          try { await candidate.load(); } finally { off(); }
+        };
         let engine = createASREngineForQuality(looksLikePhone() ? 'fast' : 'better');
         try {
-          await engine.load();
+          await load(engine);
         } catch {
           engine = createASREngineForQuality('fast');
-          await engine.load();
+          await load(engine);
         }
         engineRef.current = engine;
       })().catch((err) => {
@@ -216,18 +233,26 @@ export default function SimpleInterviewPage() {
     return enginePromiseRef.current;
   }, []);
 
-  const startAnswering = useCallback(async () => {
+  const startAnswering = useCallback(async (promptQuestion?: string) => {
     setStep('answering');
     setTranscript('');
     setCheck(null);
     setTranscribing(false);
-    reviewRef.current += 1;
+    const generation = ++reviewRef.current;
     await finishingRef.current;
+    if (reviewRef.current !== generation) return;
     if (typing) return;
     answeringRef.current = true;
+    stopAudio();
+    if (focusPlayingRef.current) resumeFocusRef.current = true;
+    pauseFocusMusic();
     try {
+      setMicStatus('Preparing speech recognition…');
+      await prepareEngine();
+      await engineRef.current?.prepareForListening();
+      if (!answeringRef.current) return;
       setMicStatus('Allow your microphone to answer out loud.');
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: INTERVIEW_AUDIO_CONSTRAINTS });
       if (!answeringRef.current) {
         stream.getTracks().forEach((t) => t.stop());
         return;
@@ -240,21 +265,23 @@ export default function SimpleInterviewPage() {
       const engine = engineRef.current;
       if (!engine) throw new Error('Speech engine unavailable');
       engine.reset();
+      engine.setQuestionPrompt(questionSpeechPrompt(promptQuestion ?? question.title));
       unsubscribeRef.current = engine.subscribe((m) => {
         const text = (m.partialText || m.finalText || '').trim();
         if (answeringRef.current && text) setTranscript(text);
       });
       await engine.start(stream);
-      setMicStatus('Listening. Your voice stays on your device.');
+      setMicStatus('Listening.');
     } catch {
       stopMic();
       setTyping(true);
       setMicStatus('The microphone is not available, so please type your answer.');
     }
-  }, [typing, stopMic, prepareEngine]);
+  }, [typing, stopMic, prepareEngine, stopAudio, pauseFocusMusic, question.title]);
 
   const ask = useCallback(
     (id: string) => {
+      reviewRef.current++;
       setStep('asking');
       try {
         localStorage.setItem(LAST_KEY, id);
@@ -266,7 +293,7 @@ export default function SimpleInterviewPage() {
       play(
         `${id}_q`,
         () => {
-          void startAnswering();
+          void startAnswering(q?.title);
         },
         spoken
       );
@@ -299,20 +326,21 @@ export default function SimpleInterviewPage() {
     setStep('answer');
     setCheck(null);
     setTranscribing(Boolean(engine));
-    setTranscript(correctInterviewTerms(liveText, current.id));
-    play(`${current.id}_a`, () => undefined, current.answer);
+    setTranscript(correctInterviewTerms(liveText, current.id, current.title));
+    const readAnswer = () => { if (reviewRef.current === id) play(`${current.id}_a`, () => undefined, current.answer); };
+    if (!engine) readAnswer();
 
     const finalize = engine
-      ? engine.stop().then(() => {
+      ? engine.stop(() => { stopMic(); readAnswer(); }).then(() => {
           const m = engine.getMetrics();
           return (m.batchTranscript || m.finalText || m.partialText || liveText).trim();
         }).catch(() => liveText)
       : Promise.resolve(liveText);
     finishingRef.current = finalize.then(() => undefined);
     void finalize.then((finalText) => {
-      stopMic();
       if (reviewRef.current !== id) return;
-      const spoken = correctInterviewTerms(finalText, current.id);
+      stopMic();
+      const spoken = correctInterviewTerms(finalText, current.id, current.title);
       setTranscript(spoken);
       setTranscribing(false);
       if (spoken.trim().split(/\s+/).length < 5) return;
@@ -343,6 +371,7 @@ export default function SimpleInterviewPage() {
   };
 
   const backToTopics = () => {
+    reviewRef.current++;
     answeringRef.current = false;
     stopAudio();
     stopMic();
@@ -519,7 +548,6 @@ export default function SimpleInterviewPage() {
             >
               <div className="si-progress-bar" style={{ width: `${topicProgressPct}%` }} />
             </div>
-            <p className="si-keys">Keyboard: Space to answer or finish, N for next question.</p>
             <div className="si-question-row">
               <h2 className="si-question-title">{question.title}</h2>
               <button type="button" className="si-speak" id="read-question" aria-label="Read the question aloud" onClick={readQuestion}>
@@ -749,13 +777,7 @@ export default function SimpleInterviewPage() {
                   </div>
                 )}
 
-                {question.sourceUrl && (
-                  <p className="si-note">
-                    <a href={question.sourceUrl} target="_blank" rel="noopener noreferrer">
-                      Full answer and follow-ups in AI Engineering from Scratch
-                    </a>
-                  </p>
-                )}
+
               </section>
             </div>
 

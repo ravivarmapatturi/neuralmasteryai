@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 import { pipeline, env } from '@huggingface/transformers';
+import { transcribeWithPrompt } from '../lib/speechTest/whisperPrompt';
 import { ASR_MODEL_REVISIONS } from '../lib/speechTest/modelVersions';
 
 env.backends.onnx.wasm.numThreads = 1;
@@ -55,19 +56,21 @@ async function handle({ id, op, payload }: any) {
     if (!['transcribe', 'commit', 'batch'].includes(op)) throw new Error(`Unknown speech operation: ${op}`);
     const start = performance.now();
     const pipe = await initialize(payload?.modelId, payload?.device, payload?.dtype);
-    self.postMessage({ type: 'model_ready', device: actualDevice });
+    self.postMessage({ id, type: 'model_ready', device: actualDevice });
     const audio = payload.audio instanceof Float32Array ? payload.audio : new Float32Array(payload.audio, payload.byteOffset ?? 0, payload.length);
     const options = modelId.includes('whisper') && audio.length > 28 * 16000
       ? { chunk_length_s: 30, stride_length_s: 5, return_timestamps: true } : {};
+    const decodeStart = performance.now();
+    const prompt = modelId.includes('whisper') ? (payload.initialPrompt ?? '') : '';
     let result;
-    try { result = await pipe(audio, options); } catch (error) {
+    try { result = await transcribeWithPrompt(pipe, audio, options, prompt); } catch (error) {
       if (actualDevice !== 'webgpu') throw error;
       // Some GPU kernels fail only on the first generation, after a successful load.
       const wasm = await initialize(modelId, 'wasm', dtype);
-      self.postMessage({ type: 'model_ready', device: actualDevice });
-      result = await wasm(audio, options);
+      self.postMessage({ id, type: 'model_ready', device: actualDevice });
+      result = await transcribeWithPrompt(wasm, audio, options, prompt);
     }
-    self.postMessage({ id, type: op === 'transcribe' ? 'result' : `${op}_result`, text: (result?.text ?? '').trim(), inferMs: Math.round(performance.now() - start), sampleCount: audio.length, device: actualDevice });
+    self.postMessage({ id, type: op === 'transcribe' ? 'result' : `${op}_result`, text: (result?.text ?? '').trim(), inferMs: Math.round(performance.now() - decodeStart), totalMs: Math.round(performance.now() - start), prompted: Boolean(prompt), sampleCount: audio.length, device: actualDevice });
   } catch (error) {
     self.postMessage({ id, type: 'error', error: error instanceof Error ? error.message : String(error) });
   }

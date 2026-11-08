@@ -123,4 +123,47 @@ describe('speech finalization and cancellation', () => {
     expect(worker.sent).toHaveLength(before);
     expect(worker.terminate).toHaveBeenCalledOnce();
   });
+  it('skips Whisper from measured slow live decoding and retains the committed transcript', async () => {
+    const engine = new SingleThreadASREngine({ finalModelId: 'whisper-base.en' });
+    await engine.load(); await engine.start({} as MediaStream);
+    FakeAudio.latest.feed(0.1, 4);
+    const worker = FakeWorker.latest;
+    const stopping = engine.stop();
+    await vi.waitFor(() => expect(worker.sent.some(m => m.op === 'commit')).toBe(true));
+    const commit = worker.sent.find(m => m.op === 'commit');
+    worker.reply({ id: commit.id, type: 'commit_result', text: 'retain this live answer', inferMs: 2000, sampleCount: 16384 });
+    await stopping;
+    expect(worker.sent.some(m => m.op === 'batch')).toBe(false);
+    expect(engine.getMetrics()).toMatchObject({ finalText: 'retain this live answer', refinementDecision: 'skipped-slow' });
+    engine.destroy();
+  });
+  it('aborts slow Whisper after model readiness, retains live text and can reload the live model', async () => {
+    vi.useFakeTimers();
+    const engine = new SingleThreadASREngine({ finalModelId: 'whisper-base.en' });
+    await engine.load(); await engine.start({} as MediaStream);
+    engine.setQuestionPrompt('LoRA.');
+    FakeAudio.latest.feed(0.1, 4);
+    const worker = FakeWorker.latest;
+    const stopping = engine.stop();
+    await vi.advanceTimersByTimeAsync(0);
+    const commit = worker.sent.find(m => m.op === 'commit');
+    worker.reply({ id: commit.id, type: 'commit_result', text: 'the actual live answer', inferMs: 100, sampleCount: 16384 });
+    await vi.advanceTimersByTimeAsync(0);
+    const batch = worker.sent.find(m => m.op === 'batch');
+    expect(batch.payload.initialPrompt).toBe('LoRA.');
+    // Download time must not consume the decode budget.
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(worker.terminate).not.toHaveBeenCalled();
+    worker.reply({ id: batch.id, type: 'model_ready', device: 'wasm' });
+    await vi.advanceTimersByTimeAsync(6001);
+    await stopping;
+    expect(worker.terminate).toHaveBeenCalledOnce();
+    expect(engine.getMetrics()).toMatchObject({ finalText: 'the actual live answer', refinementDecision: 'aborted-slow' });
+    worker.reply({ id: batch.id, type: 'batch_result', text: 'late vocabulary injection' });
+    expect(engine.getMetrics().finalText).toBe('the actual live answer');
+    await engine.prepareForListening();
+    expect(FakeWorker.latest).not.toBe(worker);
+    engine.destroy();
+  });
+
 });
