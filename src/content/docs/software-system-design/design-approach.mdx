@@ -1,0 +1,144 @@
+---
+title: "How to Approach a System Design"
+sidebar_position: 1.1
+description: "Turn one user action into a reviewable system design by tracing state ownership, capacity assumptions, failure behavior, and evidence for each decision."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import DesignDecisionExplorer from '../../../viz/diagrams/DesignDecisionExplorer';
+
+# How to Approach a System Design
+
+<ELI5>
+Planning a restaurant starts with the meals and the customers, before choosing ovens. A large oven cannot fix a missing ingredient or an order that never reaches the kitchen. We follow one order through the whole restaurant, then ask what happens when a person or a machine is unavailable. Designing software follows the same pattern: make a promise, trace the work, and test where the promise can break.
+</ELI5>
+
+A system design is a reasoned explanation of how user actions become correct outcomes under stated limits. The useful output is a set of decisions another engineer can inspect, implement, and challenge. A drawing of databases and queues helps only after we explain what each component owns and why that ownership preserves the promise.
+
+The common misconception is that choosing familiar components is the main design task. Consider an illustrative link service receiving 100 million redirects and one million new links per day. A cache can make redirects fast while continuing to redirect a revoked malicious link. Adding capacity improves throughput without repairing that correctness failure. We will use a 60-second revocation promise and a 300-second cache to show how tracing an action exposes the actual design decision.
+
+## Begin With One User Action
+
+Choose a concrete action: an owner revokes a public short link. Identify the actor, the input, the successful outcome, and the observation point. The owner submits a link identifier, the service verifies ownership, and public redirects stop resolving within 60 seconds after a successful revocation response. That last sentence constrains every copy of the redirect record, including caches outside the application process.
+
+Write the companion read action as well. A visitor requests the short code and receives a redirect only if the link is active and policy permits it. This reveals two paths sharing one invariant: administration changes durable state, while the serving path decides whether a destination remains eligible. A design that discusses only the write response leaves the user-visible consequence unspecified.
+
+Name the boundary around the system. We can control our origin and configured edge caches; we cannot recall a destination already opened in another tab. Browser caching policy therefore belongs in the contract. If a browser may permanently reuse a redirect without contacting us, the promised revocation behavior cannot be guaranteed by clearing only our servers.
+
+Keep exclusions next to the action. We will not build an analytics warehouse, custom-domain management, or an abuse-classification model in this exercise. We still need an authorization check because revoking someone else's link would violate the action itself. Scope is a decision about which promises we make, not permission to omit dependencies required by those promises.
+
+## Trace State Before Drawing Infrastructure
+
+A **source of truth** is the state whose committed value governs the answer. For revocation, the durable link record is authoritative. A cache holds a derived copy that may be temporarily out of date. We must specify how long that copy may influence public responses after the source changes.
+
+Trace the write in order: authenticate the owner, check permission, commit revocation, arrange cache invalidation, and return a response with a defined meaning. Trace the read separately: receive a code, consult an eligible cached record, fetch durable state on a miss, validate status, and respond. Each step has inputs, outputs, and possible failure. An arrow labelled “database” is insufficient; an arrow labelled “read active destination by code” identifies a testable operation.
+
+The 300-second cache violates our 60-second bound if it is populated immediately before revocation and no invalidation arrives. At second 61 the origin is correct, but the edge still serves the destination. The diagram starts at that forbidden response. Change the time to distinguish the allowed propagation window from a breach that eventual expiry cannot undo.
+
+<DesignDecisionExplorer />
+
+Do not repair the mismatch by merely saying “invalidate the cache.” Explain who emits invalidation, how a failed delivery is retried, whether acknowledgement waits for propagation, and what bounds stale serving if the purge is lost. A shorter lifetime can impose a freshness bound, but requires accounting for clock behavior, refreshes racing with writes, and any stale-on-error policy. The model below deliberately isolates expiry before those additional mechanisms are introduced.
+
+<RunnableCode code={`revoked_at = 0
+promise_seconds = 60
+cache_expires_at = 300
+for now in (0, 61, 300):
+    cached_redirect = now < cache_expires_at
+    deadline_passed = now >= revoked_at + promise_seconds
+    violation = cached_redirect and deadline_passed
+    print("Second:", now, "cached redirect:", cached_redirect,
+          "promise violated:", violation)
+# Try it: change cache_expires_at to 60; the expiry-only model no longer breaches the bound.
+`} />
+
+The model uses an exact expiry boundary and one cache entry inserted at time zero. Real systems need to prevent an older in-flight read from repopulating the cache after revocation. That race suggests a version number, a revocation marker, or a read-and-fill protocol whose ordering is explicit. The design conversation has now found a concrete state transition rather than another component to add.
+
+## Use Estimates to Eliminate Designs
+
+An estimate should answer a decision. Dividing 100 million daily redirects by 86,400 gives about 1,157 redirects/s on average. One million creates/day gives about 11.57 writes/s. This asymmetry suggests separating read capacity from write correctness; it does not prove that a distributed database is required.
+
+Assume an illustrative peak of 6,000 redirects/s and a measured-capacity placeholder of 1,000 requests/s per instance. The average alone suggests two instances, but that says nothing about peak latency or failure reserve. If we require continued operation after losing the largest of three zones and target at most 70% utilization, fourteen evenly placed instances leave nine survivors at 66.7%. The estimation chapter derives the count; here the estimate earns its place by changing the deployment decision.
+
+Keep unknowns visible. The assumed per-instance capacity must be replaced by a load test containing the expected cache-miss mix, payload sizes, and dependency latency. If an instance serves 1,000 cached reads/s but only 100 database-backed reads/s, a cold cache changes the capacity calculation. One convenient throughput value cannot describe every serving state.
+
+<PredictFirst question="The origin commits revocation immediately. The edge caches redirects for 300 seconds without a purge. Does a 60-second revocation promise hold?" options={["Yes, because the source of truth is already correct", "No, a visitor can still receive a stale redirect at second 61", "Yes, because eventual expiry guarantees the deadline"]} correctIndex={1} explanation="The promise concerns what visitors observe. Correct origin state does not remove an edge copy, and eventual expiry at 300 seconds does not satisfy the earlier deadline." />
+
+## Remove a Dependency and Follow the Consequence
+
+A failure review starts with the same action trace. Suppose the database is unavailable after an administrator sends a revocation request. If the write never commits, we cannot acknowledge success. If it commits but the response is lost, the client has an ambiguous outcome: retrying must identify the same logical operation or safely repeat an already achieved state transition.
+
+Next suppose the cache invalidation service fails. Does revocation wait, return a pending result, or rely on a bounded cache lifetime? Each answer changes availability or latency for the administrator. Continuing to serve known public links during a storage outage might be acceptable, but continuing beyond a promised revocation freshness bound is a different product decision. Failure policy must preserve the agreed contract, even when that means rejecting some work.
+
+Finally remove a serving zone during peak traffic. The load balancer can redirect arrivals, but cannot manufacture surviving database connections or processor capacity. Check the downstream pools, rate limits, and cache state together. Failure testing should use the load and data distribution named in the design rather than an empty service that restarts successfully.
+
+The Google SRE discussion of cascading failures explains why taking unhealthy instances out of service can overload survivors. We apply that principle to our own failure envelope rather than treating redundancy as a binary property. AWS's discussion of fallback makes a related point: an alternate code path can introduce additional failure conditions. A fallback earns inclusion only when its semantics and resource demand are understood.
+
+<GoDeeper title="Go deeper: safety and progress ask different questions">
+A safety property excludes a forbidden outcome: a revoked link must not redirect after the deadline. A progress property requires work eventually to finish under stated assumptions: a valid create request eventually commits while enough dependencies are available. Rejecting every request can preserve the first property while failing the second. A useful design states both, then identifies the failures under which it cannot preserve both promises simultaneously.
+</GoDeeper>
+
+## Make the Decision Reversible Where It Can Be
+
+A **decision record** captures a requirement, the chosen mechanism, an alternative, and evidence that would justify changing course. For our service, an initial record might choose one relational primary because writes average 11.57/s and ownership checks need an atomic boundary. It might defer sharding until measured storage or write limits require it. The decision remains conditional on evidence rather than on the perceived prestige of the database.
+
+Keep irreversible consequences visible. A public identifier format can outlive several database migrations because clients bookmark it. A cache lifetime can often change without changing the identifier. Isolate public contracts from internal placement so that adding replicas does not require every client to understand a new shard map.
+
+Treat a migration as another user-visible transition. Before adding a new source of truth, explain which copy owns writes, how historical data moves, how concurrent updates are reconciled, and how rollback works after new writes arrive. “Dual write during migration” is not a complete plan if one destination can commit while the other fails. The operational path belongs in the design because the service must remain correct while changing.
+
+We can turn the cache discussion into a tiny acceptance check. The function below searches the modeled timeline for the first response that violates the bound. It compares an unchanged cache with a shorter lifetime. This is a model of one policy, not a substitute for a distributed integration test; its value is making the requirement executable before implementation obscures it.
+
+<RunnableCode code={`def first_violation(cache_lifetime, deadline=60):
+    for second in range(0, 301):
+        cached_redirect = second < cache_lifetime
+        if second >= deadline and cached_redirect:
+            return second
+    return None
+
+for lifetime in (300, 60):
+    breach = first_violation(lifetime)
+    print("Cache lifetime:", lifetime, "first forbidden response:", breach)
+assert first_violation(300) == 60
+assert first_violation(60) is None
+# Try it: change deadline to 30 and compare which cache policies still satisfy it.
+`} />
+
+A test without a stated boundary can hide disagreement. We define the deadline as inclusive: at second 60 the revoked link must already stop redirecting. The diagram uses second 61 to make the breach visually unmistakable. Both tests reject a 300-second cache, but the exact boundary matters when an implementation and a client interpret “within a minute” differently.
+
+## Common Problems and Fixes
+
+A component catalogue omits causal reasoning. Repair it by attaching every component to one operation, state owner, or measured limit. If removing a component does not break a requirement or an operational need, start without it. Complexity has an ongoing cost in deployments, permissions, telemetry, and incident response.
+
+A happy-path diagram omits ambiguous outcomes. Add one lost response after a durable commit, one unavailable dependency, and one stale derived copy. These scenarios expose retry semantics, failure policy, and freshness guarantees without requiring an exhaustive catalogue of every possible outage.
+
+An estimate with no decision attached becomes decorative arithmetic. State which choice changes if the estimate doubles, then test the sensitive assumption. A design that looks identical under a hundredfold traffic increase has probably omitted a resource limit; a design that needs twenty components for a hundred daily requests has probably omitted operational cost.
+
+## When Not to Start a New Architecture
+
+| Situation | Better next step |
+| --- | --- |
+| A slow path has no measurements | Trace and profile the existing request |
+| Product behavior is disputed | Resolve the user-visible contract first |
+| A known defect violates an existing invariant | Fix and test that boundary before expanding topology |
+| The proposal only replaces vendor names | Identify a measurable constraint the change removes |
+
+## Remember
+
+| Design artifact | Question it answers |
+| --- | --- |
+| User action | What outcome is owed to whom? |
+| Invariant | Which result is forbidden? |
+| State ownership | Which committed value governs the answer? |
+| Estimate | Which resource or topology decision changes? |
+| Failure trace | What survives, blocks, or becomes ambiguous? |
+| Decision record | What evidence would reverse this choice? |
+
+You can now review a system by tracing a promise through state, load, and failure. Return to [Foundations](/docs/software-system-design/foundations) for the section roadmap, or apply the method to the existing [URL shortener case study](/docs/software-system-design/url-shortener). For model-backed products, extend it with the [ML system design framework](/docs/ml-system-design/the-9-step-framework).
+
+## Sources
+
+- [Google SRE, Service Level Objectives (2016)](https://sre.google/sre-book/service-level-objectives/): definitions of observable service promises.
+- [Google SRE Workbook, Implementing SLOs (2018)](https://sre.google/workbook/implementing-slos/): connecting user outcomes to objectives.
+- [Google SRE, Handling Overload (2016)](https://sre.google/sre-book/handling-overload/): protecting capacity when work exceeds resources.
+- [Google SRE, Addressing Cascading Failures (2016)](https://sre.google/sre-book/addressing-cascading-failures/): failures that increase load on survivors.
+- [AWS Builders' Library, Avoiding Fallback in Distributed Systems (2019)](https://aws.amazon.com/builders-library/avoiding-fallback-in-distributed-systems/): failure risks introduced by alternate serving paths.
