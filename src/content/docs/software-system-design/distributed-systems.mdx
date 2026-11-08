@@ -1,0 +1,149 @@
+---
+title: "Coordination and Distributed Workflows"
+sidebar_position: 5
+description: "Use consensus, fencing, sagas, and outboxes to preserve ownership across failures, and bound retries and circuit breakers around service dependencies."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import SoftwareQuorumExplorer from '../../../viz/diagrams/SoftwareQuorumExplorer';
+import SoftwareDeliveryTrace from '../../../viz/diagrams/SoftwareDeliveryTrace';
+import CircuitBreakerStateDiagram from '../../../viz/diagrams/CircuitBreakerStateDiagram';
+
+# Coordination and Distributed Workflows
+
+<ELI5>
+A team needs one current coordinator, but a silent coordinator may be delayed rather than gone. Choosing a replacement does not stop the old coordinator from waking up and issuing instructions. We need both a rule for choosing authority and a way for the shared resource to reject instructions from an outdated authority. Across teams, we also need a plan for partially finished work.
+</ELI5>
+
+Consider an illustrative five-voter coordination group and a reservation workflow that spans inventory and payment services. Three reachable voters form a majority. A coordinator with fencing token 41 can later be replaced by one with token 42. These numbers let us distinguish agreement, exclusive authority, and business compensation, which are often incorrectly treated as the same problem.
+
+The misconception is that a timeout proves another process is dead. In an asynchronous network, silence may mean delay, partition, or a paused process. A safe design lets a replacement make progress while preventing the older process from corrupting state when it returns.
+
+## Start With a Modular Monolith
+
+A **modular monolith** deploys one application while keeping domain boundaries explicit in code. It can use local function calls and local transactions, making it a strong starting point when one team owns the product. Modules should own their tables and expose deliberate interfaces so later extraction does not require untangling arbitrary shared writes.
+
+**Microservices** deploy independently owned services with network contracts and separate operational responsibilities. They can support different scaling needs, release cadences, and failure isolation. They also add partial failures, schema evolution, tracing, deployment coordination, and cross-service data ownership. Splitting a transaction across services changes its semantics even if the code diff looks like replacing a function call with HTTP.
+
+Extract a service when there is a concrete boundary: independent ownership, a distinct load profile, or a required isolation boundary. Keep strongly coupled invariants together unless there is a compelling reason to distribute them. A hundred small processes sharing one writable schema can combine deployment complexity with no meaningful data independence.
+
+**Service discovery** maps a logical service identity to current endpoints. DNS, a registry, or a platform routing layer can provide it. Account for TTLs, stale endpoint caches, connection reuse, health propagation, and draining. Discovery helps find a process; it does not prove the process is authorized, healthy for every operation, or the current owner of a shard.
+
+## Consensus Establishes One Committed History
+
+**Consensus** lets participants agree on values despite some failures, under stated assumptions. Raft organizes this around terms, leader election, and replicated logs. A candidate seeks votes in a new term, and voting rules constrain which logs can lead. A leader replicates entries and applies the protocol's commit rules before acknowledging committed state.
+
+<SoftwareQuorumExplorer />
+
+Five voters require a majority of three. A partition into groups of three and two permits the larger side to elect and commit if the protocol's other conditions hold; the smaller side cannot safely acknowledge independent new commits. Intersecting majorities ensure that any two majorities share a voter, but intersection alone is not an implementation of Raft. Term, log freshness, persistence, and membership-change rules provide the rest of the safety argument.
+
+<RunnableCode code={`from itertools import combinations
+voters = set(range(5))
+majorities = [set(group) for group in combinations(voters, 3)]
+print("Possible majorities:", len(majorities))
+print("Minimum intersection:", min(len(a & b) for a in majorities for b in majorities))
+for reachable in (5, 3, 2):
+    print("Reachable:", reachable, "majority:", reachable >= 3)
+# Try it: use six voters with majority four; compare tolerated failures with five voters.
+`} />
+
+Adding voters increases replication work and may increase the number of failures tolerated only at certain counts. Five voters tolerate two unavailable voters; six still require four and tolerate two. Keep consensus groups small enough for their actual coordination workload, and avoid putting every high-volume user operation through a global coordinator when ownership can localize it.
+
+Leader election also has a liveness side. Aggressive failure detection causes unnecessary elections during pauses; very slow detection increases outage duration. Use a mature implementation, observe election frequency, and test network delay and process pauses. Writing a new consensus algorithm is not a prerequisite for designing a service that correctly uses one.
+
+## Distributed Locks Need Fencing
+
+A **lease** grants authority for a limited interval. It helps a replacement proceed if a holder stops renewing, but the expired holder may still execute code. If that holder writes directly to storage after its pause, a lock service cannot physically stop the write.
+
+A **fencing token** is a monotonically increasing authority number checked by the protected resource. The new holder presents 42; after the resource accepts it, a delayed write presenting 41 is rejected. The resource's compare-and-update must itself be atomic. A token checked only by the client does not protect against a stale client.
+
+<RunnableCode code={`last_fence = 40
+value = "initial"
+def write(token, new_value):
+    global last_fence, value
+    if token < last_fence:
+        return False
+    last_fence, value = token, new_value
+    return True
+print("Old owner first write:", write(41, "old work"))
+print("Replacement write:", write(42, "new work"))
+print("Paused owner returns:", write(41, "stale overwrite"))
+print("Final value:", value)
+assert value == "new work"
+# Try it: remove the token check; the stale owner overwrites the replacement.
+`} />
+
+This single-process model isolates the rule; a production resource must persist and enforce it with concurrent atomic operations. Equal-token writes may require a per-owner operation sequence or idempotency identity to prevent retries from reordering updates. Fencing rejects an older owner; it does not automatically serialize all work within the current owner's lease.
+
+<PredictFirst question="A lock holder pauses until its lease expires, then resumes after a replacement starts. What prevents stale writes?" options={["The old process knows that it paused", "A shorter lease alone", "The protected resource rejects the older fencing token"]} correctIndex={2} explanation="A paused process can resume without knowing the current authority. Lease expiry permits replacement, while resource-enforced fencing prevents the old holder from changing protected state." />
+
+## Outbox Connects a Local Commit to Event Publication
+
+Suppose an order row commits, but the process crashes before publishing `OrderCreated`. Publishing first reverses the risk: consumers can see an event for an order that later rolls back. A **transactional outbox** writes the business change and an event record in the same local database transaction. A separate relay publishes committed outbox rows and records progress.
+
+The relay can crash after publication and before marking the row published, so duplicates remain possible. Consumers still need the atomic deduplication described in [Communication](/docs/software-system-design/communication). An outbox closes the database-versus-publication gap; it does not create one transaction across every future subscriber.
+
+<SoftwareDeliveryTrace />
+
+The duplicate-delivery trace applies to the outbox relay as well as a worker. The durable identity follows the same business event through publication, retries, quarantine, and replay. Generating a fresh event ID for every publication attempt destroys the consumer's ability to recognize the repeated event.
+
+An outbox needs operational ownership: monitor unpublished age, bound retention, preserve order where required, and ensure a poison row does not block unrelated entities forever. Change-data capture can provide the relay mechanism, but the business event schema remains an application contract rather than an accidental mirror of every table mutation.
+
+## Sagas Manage Partial Business Completion
+
+A **saga** coordinates local transactions with explicit continuation and compensation steps. In a reservation workflow, inventory is held, payment is authorized, and the reservation is confirmed. If authorization fails, release the hold. If confirmation fails after authorization, a recovery worker must determine whether to retry confirmation or void authorization according to the stored workflow state.
+
+Compensation is a new business action, not time travel. An email cannot be unsent; a shipped item may need a return; a captured payment may need a refund that has its own delay and failure modes. Design compensations with stable identities and observable status, and give irrecoverable cases a human reconciliation path.
+
+**Orchestration** puts the workflow state machine in a coordinator. **Choreography** lets services react to events without one central workflow engine. Choreography can reduce direct coupling for simple independent reactions, but a long business sequence can become difficult to inspect when its state is implicit across many subscriptions. Prefer an explicit state machine when operators need to answer “which step owns this stuck order?”
+
+<GoDeeper title="Go deeper: why not use two-phase commit everywhere?">
+Two-phase commit coordinates an atomic outcome among participating resources, but participants can retain prepared state while the coordinator is unavailable. It also requires every participant to support the protocol. A saga trades global atomicity for explicit intermediate states and business recovery. The correct choice follows the invariant and supported resource boundary, not a blanket rule that distributed transactions are always wrong.
+</GoDeeper>
+
+## Retries and Circuit Breakers Bound Failure Propagation
+
+A timeout means the caller stopped waiting; it does not mean the callee rolled back. Retry a mutation only with an operation identity that makes ambiguous outcomes safe. Use capped exponential backoff with jitter so many clients do not retry together, and put a retry budget around the entire call graph. Three layers each making three attempts can create 27 bottom-layer attempts for one user action.
+
+A **circuit breaker** stops repeatedly calling a dependency after enough qualifying failures. Closed permits calls; open rejects or uses a deliberate fallback; half-open admits a bounded probe to test recovery. It complements timeouts and concurrency limits. It does not create extra dependency capacity or justify returning stale sensitive data as success.
+
+<CircuitBreakerStateDiagram />
+
+Classify failures carefully. A validation error should not open a breaker for a healthy dependency. Recovery probes should be limited so every service instance does not simultaneously flood the recovering service. Observe breaker transitions and rejected calls separately from remote errors, or an open breaker can make dependency latency charts look deceptively healthy because no calls are being sent.
+
+## Common Problems and Fixes
+
+Split-brain ownership requires resource-enforced fencing and a correct election system. Lost events require a local atomic outbox rather than two independent writes. Stuck workflows require durable saga state and explicit compensations. Retry storms require propagated deadlines, jitter, budgets, and admission limits.
+
+A service boundary is incomplete if it specifies only the happy-path endpoint. Include ownership, idempotency, discovery behavior, dependency failure policy, and operational recovery. Those details determine whether independently deployed processes can actually operate independently.
+
+## When Not to Add Coordination
+
+| Situation | Better choice |
+| --- | --- |
+| One local transaction can protect the invariant | Keep the transaction local |
+| Work can be deterministically partitioned by owner | Use partition ownership rather than one global lock |
+| Events trigger independent noncritical reactions | Simple subscriptions may beat a workflow engine |
+| No team can operate a new service reliably | Keep the module in the existing deployment |
+
+## Remember
+
+| Mechanism | Guarantee boundary |
+| --- | --- |
+| Consensus | One committed history under protocol assumptions |
+| Fencing | Resource rejects stale owners |
+| Outbox | Business write and publication intent commit together |
+| Saga | Partial completion has explicit recovery actions |
+| Circuit breaker | Repeated dependency attempts are bounded |
+
+You can now identify which coordinator owns progress and which resource enforces authority. Continue with [Reliability and Operations](/docs/software-system-design/reliability), where we test those guarantees during deployment and regional failure.
+
+## Sources
+
+- [Ongaro and Ousterhout, Raft (2014)](https://raft.github.io/raft.pdf).
+- [etcd, API Guarantees](https://etcd.io/docs/v3.5/learning/api_guarantees/).
+- [Kleppmann, How to Do Distributed Locking (2016)](https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html).
+- [AWS, Transactional Outbox Pattern](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html).
+- [AWS, Saga Orchestration Pattern](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/saga-orchestration.html).
+- [AWS Builders' Library, Timeouts, Retries, and Backoff With Jitter](https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/).
