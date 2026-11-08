@@ -1,0 +1,144 @@
+---
+title: "Availability, SLOs, and Error Budgets"
+sidebar_position: 1.5
+description: "Define user-visible availability, calculate request and time error budgets, and turn burn rates into release and incident decisions with explicit boundaries."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import ErrorBudgetExplorer from '../../../viz/diagrams/ErrorBudgetExplorer';
+
+# Availability, SLOs, and Error Budgets
+
+<ELI5>
+A railway timetable is a promise about passengers reaching their destinations, not about trains existing in a depot. A train can be running while the station entrance is closed. We measure the part of the promise passengers can experience, decide how much disruption is tolerable, and use that allowance to guide repairs and changes. Software reliability needs the same link between the user's outcome and the operator's decisions.
+</ELI5>
+
+**Availability** describes whether a service can provide its promised operation within a defined boundary. A healthy process is evidence about one component, not proof that a visitor can follow a link. The serving edge, authorization path, database, and network can fail while the application health endpoint remains green.
+
+The misconception is that a 99.9% objective simply grants 43.2 minutes of arbitrary failure every month. That time allowance applies to a particular time-based definition over a 30-day interval. A request-based objective instead permits a fraction of bad eligible requests, so a busy incident can consume more budget than a quiet one of equal duration. We will calculate both, then use a constant-traffic example where a 2% failure rate spends a 99.9% objective's budget at 20 times its sustainable rate.
+
+## Define the Indicator Before the Target
+
+A **service-level indicator**, or SLI, measures an outcome. A **service-level objective**, or SLO, sets a target for that indicator over a window. A **service-level agreement**, or SLA, is a contractual commitment with specified consequences. An internal SLO can guide engineering without creating an external SLA, and an SLA's exclusions may differ from the objective used to protect users.
+
+For an illustrative redirect service, define the availability SLI as successful eligible redirects divided by all eligible redirect attempts observed at the serving edge. Define eligibility before looking at outcomes. A malformed code correctly rejected can belong to a separate request-handling indicator, while a valid code rejected because storage is unavailable must remain a failed eligible redirect.
+
+Define success semantically. A fast redirect to the wrong destination is not a successful redirect. A response arriving after the user's deadline can be unavailable for the intended action even if its status is otherwise correct. Keep correctness and security incidents visible independently of a statistical availability allowance; a budget cannot authorize serving someone else's private record.
+
+Now choose the window and objective. We use a rolling 30-day request objective of at least 99.9% success as an illustrative policy. A rolling window continually replaces old observations, while a calendar-month window resets on a date. Either can work, but budget dashboards and release policy must use the same definition to avoid conflicting decisions.
+
+## Compute Time and Request Allowances Separately
+
+An **error budget** is the allowed fraction or quantity of bad outcomes implied by the objective. At 99.9%, the allowed bad fraction is 0.001. Across 30 days, a time-based indicator permits 30 × 24 × 60 × 0.001 = 43.2 bad minutes. That calculation assumes the indicator classifies time into good and bad intervals under a documented rule.
+
+For a request-based indicator with 100 million eligible requests/day, a 30-day population contains three billion requests. The allowed bad count is three million. Those requests may be concentrated in one incident or dispersed across the interval. The count says nothing by itself about which users were harmed, so also inspect operation, region, and tenant populations that matter to the product.
+
+A 10-minute outage at 1,000 requests/s affects 600,000 requests. The same duration at 10,000/s affects six million. The first consumes 20% of our three-million-request budget; the second consumes 200%. A duration-only incident report would describe them identically despite the tenfold difference in attempted user actions.
+
+<RunnableCode code={`objective = .999
+bad_fraction = 1 - objective
+window_days = 30
+eligible_per_day = 100_000_000
+request_budget = eligible_per_day * window_days * bad_fraction
+print("Time budget minutes:", round(window_days * 24 * 60 * bad_fraction, 2))
+print("Request budget:", round(request_budget))
+for rps in (1000, 10000):
+    bad = rps * 10 * 60
+    print("Ten-minute outage at requests/s:", rps,
+          "bad requests:", bad,
+          "budget consumed percent:", round(100 * bad/request_budget, 2))
+# Try it: set objective to .9999; both allowances shrink by a factor of ten.
+`} />
+
+The request budget here uses a fixed illustrative population. A rolling-window denominator changes as traffic changes, and future traffic is not yet known. Treat projected remaining budget as an estimate rather than a guaranteed number of future errors. Retain the observed good and total counts so anyone can reproduce the current ratio.
+
+## Burn Rate Connects an Incident to Urgency
+
+A **burn rate** compares the observed bad fraction with the allowed bad fraction. With a 99.9% objective, an observed 2% failure rate gives 0.02/0.001 = 20. If that rate and traffic remain constant, a 30-day allowance lasts 30/20 = 1.5 days, or 36 hours.
+
+One hour at that rate consumes 20/720, approximately 2.78%, of the monthly allowance under constant traffic. The diagram holds the objective and interval fixed while changing the failure percentage. It shows why a modest-looking percentage can require immediate attention when the objective permits a much smaller fraction.
+
+<ErrorBudgetExplorer />
+
+Burn rate is not a prediction that current conditions will continue. A burst may end, a mitigation may work, or traffic may change. Its value is converting the current failure fraction into the scale of the agreed allowance, so an operator can compare incidents with different objectives. Inspect absolute affected request counts as well, especially for low-volume services.
+
+<PredictFirst question="A 99.9% request objective sees a 2% failure rate for one hour at constant traffic. What is its burn rate?" options={["2×, because the displayed failure rate is 2%", "20×, because 2% is twenty times the allowed 0.1%", "0.02×, because percentages must be divided by 100 twice"]} correctIndex={1} explanation="Compare fractions with matching units: 0.02 / 0.001 = 20. The burn rate is relative to the allowed bad fraction, not to the 100% request population." />
+
+For a practical alert, use a recent window to detect an active problem and a longer window to establish meaningful budget impact. A short spike alone can page too often; a long window alone can keep paging after recovery or detect a fast incident late. The SRE Workbook develops multi-window burn-rate alerting; tune a policy from the service's response needs instead of copying thresholds without their intended budget consumption.
+
+## Make the Budget a Decision Policy
+
+An error budget becomes useful when it changes behavior. Define what happens when a release causes a rapid burn, when the remaining allowance is nearly exhausted, and when repeated incidents reveal the same defect. A team might stop expansion of a rollout, roll back a suspected regression, or prioritize capacity work. These actions need owners and a path for urgent security fixes.
+
+Do not treat a budget as a quota that should be spent deliberately on known harmful behavior. It is a coordination mechanism for uncertainty and trade-offs. A correctness regression or compromised credential can demand intervention even when availability remains above target. Different classes of harm need different controls.
+
+A release comparison should separate the canary population from the baseline. If only a small share of traffic runs a broken version, the global objective may remain green while the canary has a severe failure rate. Inspect comparable operation mixes, regions, and traffic conditions before attributing a difference to the release. A global SLO is not a substitute for rollout-specific evidence.
+
+<GoDeeper title="Go deeper: component availability does not identify independence">
+If two required components fail independently, multiplying their availability fractions estimates the fraction both are available. Independence is a strong assumption. A shared zone, identity service, configuration rollout, or network can make failures correlated. Adding a replica sharing the same failure cause does not produce the improvement predicted by an independent-failure model. Use a failure-domain map and recovery tests to establish what redundancy actually protects.
+</GoDeeper>
+
+## Model an Alert Without Hiding Its Assumptions
+
+The following calculation prints burn rates for explicit observed error fractions. It estimates the share of a 30-day budget spent in an hour at constant traffic, then compares two observation windows against an illustrative 10× threshold. The threshold is chosen for this exercise, not offered as a production recommendation.
+
+Both windows must exceed the threshold for the toy page condition. That prevents a recovered long-window incident from continuing to page solely because old failures remain in its history. It also prevents an extremely brief recent spike from being treated as sustained impact. Real alert expressions must handle missing data, low sample counts, and whether an incident is already open.
+
+<RunnableCode code={`allowed_bad = .001
+window_hours = 30 * 24
+for observed_bad in (.001, .02, .10):
+    burn = observed_bad / allowed_bad
+    spent_percent = burn / window_hours * 100
+    print("Observed failure percent:", observed_bad * 100,
+          "burn rate:", burn,
+          "one-hour budget percent:", round(spent_percent, 2))
+
+def page_now(short_bad, long_bad, threshold=10):
+    return short_bad / allowed_bad >= threshold and long_bad / allowed_bad >= threshold
+
+print("Active sustained failure:", page_now(.02, .015))
+print("Recovered recent window:", page_now(.0001, .015))
+print("Brief spike only:", page_now(.02, .0005))
+# Try it: lower threshold to 0.4; observe which brief spike becomes a page.
+`} />
+
+The simple function has no minimum event count. One failure out of one request yields an alarming ratio without establishing a high-volume emergency. Add a policy appropriate to the service: synthetic checks for very low traffic, count thresholds where user impact justifies them, and separate missing-telemetry alerts. “No observations” cannot silently mean “all requests succeeded.”
+
+## Common Problems and Fixes
+
+A health endpoint measures process reachability while users need an operation. Add end-to-end probes and edge indicators, then retain component checks for diagnosis. A global success ratio hides an operation or region; split meaningful populations and inspect distribution before declaring health. A target with no agreed policy becomes a dashboard ornament; connect it to release and incident decisions.
+
+A dashboard can accidentally improve when telemetry disappears. Count expected reporting paths, detect missing series, and distinguish zero traffic from an unavailable instrument. Counter resets and sampling also require explicit handling. Test the indicator pipeline with known bad outcomes rather than trusting the query because it produces a percentage.
+
+A backup does not directly improve serving availability. Recovery requires detection, restoration, validation, and safe traffic routing. Keep recovery point and recovery time objectives separate from availability, then test them against the incidents the service promises to survive. A service can be available while losing historical data, or preserve data while remaining unavailable during restoration.
+
+## When Not to Add Another Nine
+
+| Situation | Better investment |
+| --- | --- |
+| Users cannot distinguish the proposed improvement | Validate the target against user outcomes and cost |
+| Most failures share one deployment or identity dependency | Remove the common failure cause |
+| Recovery has never been exercised | Run and measure a restoration drill |
+| The current metric excludes valid failed requests | Repair the indicator before raising its target |
+
+## Remember
+
+| Term | Meaning |
+| --- | --- |
+| SLI | A precisely measured user outcome |
+| SLO | A target for that indicator over a window |
+| SLA | A contractual commitment with consequences |
+| Error budget | Allowed bad outcomes implied by the target |
+| Burn rate | Observed bad fraction divided by allowed bad fraction |
+| Release policy | Actions the team takes when reliability degrades |
+
+You can now calculate what an availability objective permits and explain when current failures require action. Return to [Foundations](/docs/software-system-design/foundations), then study [Scaling](/docs/software-system-design/scaling) to connect these promises to surviving serving capacity.
+
+## Sources
+
+- [Google SRE, Service Level Objectives (2016)](https://sre.google/sre-book/service-level-objectives/): indicator and objective definitions.
+- [Google SRE Workbook, Implementing SLOs (2018)](https://sre.google/workbook/implementing-slos/): selecting indicators and objectives.
+- [Google SRE Workbook, Alerting on SLOs (2018)](https://sre.google/workbook/alerting-on-slos/): burn-rate alerting and observation windows.
+- [Google SRE Workbook, Example Error Budget Policy (2018)](https://sre.google/workbook/error-budget-policy/): connecting the budget to engineering policy.
+- [Google SRE, Embracing Risk (2016)](https://sre.google/sre-book/embracing-risk/): balancing reliability investment against product needs.
