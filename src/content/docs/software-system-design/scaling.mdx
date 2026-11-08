@@ -1,169 +1,60 @@
 ---
 title: "Scaling and Traffic Management"
 sidebar_position: 2
-description: "Choose vertical or horizontal growth, route requests through load balancers and gateways, and control overload with caches, autoscaling, and admission limits."
+description: "Choose how capacity grows, route requests to ready replicas, cache reusable work at the edge, and bound overload while new capacity becomes useful."
 ---
-import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
-import RunnableCode from '../../../components/content/RunnableCode';
-import PredictFirst from '../../../viz/primitives/PredictFirst';
-import SoftwareCapacityExplorer from '../../../viz/diagrams/SoftwareCapacityExplorer';
-import LoadBalancingDiagram from '../../../viz/diagrams/LoadBalancingDiagram';
-import CacheAsideFlowDiagram from '../../../viz/diagrams/CacheAsideFlowDiagram';
+import { ELI5 } from '../../../components/content/ExpandableDepth';
 
 # Scaling and Traffic Management
 
 <ELI5>
-A busy shop can buy a faster checkout or open more checkouts. More checkouts help only if customers can use any of them and the stockroom can keep up. Someone must direct arrivals, notice broken checkouts, and stop admitting more work than the shop can finish. Scaling a service has the same constraints.
+A busy shop needs enough working checkouts, a way to direct customers, and a limit on work it cannot finish. More checkouts help only if the stockroom keeps up and a replacement cashier can find each customer's order. These chapters explain each decision separately, including what changes during failure.
 </ELI5>
 
-Our illustrative service receives 6,000 requests/s at peak. Each instance has a measured-capacity placeholder of 1,000 requests/s, and the design targets no more than 70% utilization after losing one of three zones. The previous chapter calculated fourteen instances. This chapter asks how those instances cooperate, and why adding them can still make the system fail.
+Read these seven chapters in order. Each carries one mechanism through its own numerical example, interactive experiment, runnable Python, and failure analysis.
 
-The misconception is that horizontal scaling multiplies the capacity of the whole system. It multiplies capacity only at the replicated stage. A shared database, global lock, upstream quota, or connection pool can remain the bottleneck. We therefore follow traffic from the edge to durable state and name the limit at every hop.
+| Chapter | Decision it teaches |
+| --- | --- |
+| [Vertical vs Horizontal Scaling](/docs/software-system-design/vertical-vs-horizontal-scaling) | Enlarge the constrained resource or add independent capacity |
+| [Stateless Services and State Ownership](/docs/software-system-design/stateless-services) | Preserve sessions and accepted work when replicas change |
+| [Load Balancing, Algorithms, and Health Checks](/docs/software-system-design/load-balancing) | Choose the assignment unit, signal, and destination eligibility |
+| [Reverse Proxies and API Gateways](/docs/software-system-design/reverse-proxies-and-api-gateways) | Define routing, identity, and deadline boundaries across hops |
+| [CDNs, Cache Keys, and Edge Freshness](/docs/software-system-design/cdns) | Reuse the correct representation and prepare for origin misses |
+| [Autoscaling and Delayed Capacity](/docs/software-system-design/autoscaling) | Calculate backlog before startup and spare capacity for recovery |
+| [Rate Limiting and Admission Control](/docs/software-system-design/rate-limiting) | Bound bursts and distributed allowances before accepting work |
 
 ## Vertical Growth and Horizontal Growth Solve Different Limits
 
-**Vertical scaling** gives one machine more CPU, memory, or storage capacity. It preserves local transactions and avoids distributed request routing. It can be the right choice when a database's working set barely exceeds RAM, when operational simplicity matters, or when the workload has not reached a single machine's safe limit. It has a finite ceiling, may require a disruptive resize, and does not independently solve machine failure.
-
-**Horizontal scaling** adds independently scheduled instances. It improves aggregate capacity for work that can run independently, and it can distribute failures. It also introduces placement, routing, membership, and shared-state problems. A service that stores login sessions only in local process memory may appear to work under sticky routing, then log users out when that process restarts.
-
-A **stateless service** keeps no irreplaceable client state between requests in the serving process. It may still use local caches and connection pools. Durable sessions, workflow progress, and business records live in explicit state stores. A retry can land on another instance because the new instance can recover the required state from a token or store, rather than relying on a previous process's memory.
-
-For our fourteen-instance fleet, opening a pool of 100 database connections per instance creates a potential 1,400 connections. If the database safely supports 300 active connections under this workload, adding instances has multiplied pressure beyond the safe limit. Bound pools, use an appropriate pooler, keep transactions short, and test queuing behavior before raising connection limits.
-
-<SoftwareCapacityExplorer />
-
-The explorer carries the same capacity inputs as [Foundations](/docs/software-system-design/foundations). Healthy placement alone does not prove fault tolerance: the routing layer and state layer must also remain available after that zone is gone. Check whether each surviving instance can establish connections without waiting on a resolver or credential service in the lost zone.
+[Vertical vs horizontal scaling](/docs/software-system-design/vertical-vs-horizontal-scaling) locates the bottleneck before choosing a machine or replica count. Its shared-store example shows why extra application capacity can add waiting without increasing completions. [Stateless services](/docs/software-system-design/stateless-services) then makes replacement and rerouting safe for essential state.
 
 ## L4 and L7 Load Balancing
 
-A **layer-four load balancer**, or L4 balancer, chooses a destination using transport information such as source and destination addresses and ports. It generally routes connections without interpreting application paths. A **layer-seven load balancer**, or L7 balancer, interprets an application protocol and can route by host, path, headers, or another request attribute. L7 inspection typically requires terminating or otherwise gaining access to the application traffic.
-
-Connection routing and request routing are different. One long-lived connection can carry many HTTP/2 streams. If an L4 balancer pins that connection to one backend, it does not distribute each stream independently. An L7 proxy can make finer decisions, at the cost of application parsing, configuration complexity, and another resource budget for proxy CPU and memory.
-
-**Round-robin** rotates through destinations, which is useful for similar requests on similar machines. Weighted routing accounts for unequal capacity. Least-connections uses active connection counts as a rough load signal, but a quiet persistent connection and an expensive active stream are not equal work. Least-outstanding-requests or latency-aware approaches can be more relevant when connection count poorly predicts current cost.
-
-<LoadBalancingDiagram />
-
-Do not interpret a routing algorithm as an overload guarantee. Even distribution of equally overloaded destinations remains overload. Put a per-instance concurrency limit near the work, return a controlled rejection when the queue is full, and retain enough upstream budget to send that rejection before the caller times out.
-
-**Health checks** distinguish destinations that should receive work from those that should not. Liveness answers whether a process should be restarted; readiness answers whether it can accept traffic. A process can be alive while warming a cache or draining existing requests. Use thresholds and recovery hysteresis so a momentary delay does not remove half the fleet, overload the rest, and trigger more removals.
-
-A health endpoint should be cheap and should match the failure being detected. If every readiness check requires an already-overloaded database, all instances may be removed simultaneously. Separate local readiness from dependency degradation policy and test the resulting user behavior. During shutdown, mark unready, wait for routing propagation, drain bounded in-flight work, and terminate after a documented grace period.
+[Load balancing](/docs/software-system-design/load-balancing) compares connection assignment with request assignment. Four connections carrying 100, 1, 1, and 1 requests/s can overload one backend even when each backend owns two connections. Algorithms, health checks, and draining must use signals appropriate to the operation.
 
 ## Reverse Proxies, Gateways, and the Edge
 
-A **reverse proxy** accepts client requests on behalf of backend services. It can terminate TLS, reuse upstream connections, enforce size limits, and route traffic. An **API gateway** adds a product-facing policy boundary: authentication, tenant quotas, API version routing, and sometimes aggregation. These roles can coexist in one component; naming both does not require buying two systems.
-
-Keep business authorization in the service that owns the resource. A gateway may validate a token, but the document service must still verify that the caller can read this document. Trusting a public `X-User-Id` header creates an impersonation path unless the edge removes caller-supplied values and authenticates the internal identity channel.
-
-Here is a minimal reverse-proxy configuration shape for an NGINX deployment with two already-running backends. Port numbers and hostnames are local examples. The upstream services must separately implement graceful shutdown and request limits.
-
-```nginx
-upstream redirect_service {
-    least_conn;
-    server app_a:8080;
-    server app_b:8080;
-    keepalive 32;
-}
-server {
-    listen 8080;
-    location / {
-        proxy_pass http://redirect_service;
-        proxy_http_version 1.1;
-        proxy_set_header Connection "";
-        proxy_connect_timeout 1s;
-        proxy_read_timeout 2s;
-    }
-}
-```
-
-A **content delivery network**, or CDN, serves cacheable objects from edge locations closer to users. It reduces origin traffic and geographic latency. Cache keys must include every request property that changes the representation, and private responses must not leak into a shared cache. Immutable versioned assets are easier to cache safely than mutable authorization-sensitive documents.
-
-For an illustrative 6,000 requests/s and 95% edge-hit rate, only 300 requests/s reach origin. At 50% hits, origin sees 3,000 requests/s: ten times as much. A cache purge, new release, or new region can therefore create an origin load spike without any increase in user arrivals. Size origin capacity for the miss scenario the product promises to survive.
-
-<CacheAsideFlowDiagram />
-
-This diagram shows an application cache rather than a CDN, but the hit/miss branching is the same reasoning step. The [existing caching chapter](/docs/mlops/caching-strategies) owns cache-aside implementation details. Here the decision is whether the origin survives a change in that branch probability.
+[Proxies and gateways](/docs/software-system-design/reverse-proxies-and-api-gateways) follows a forged forwarding header through a trust boundary. [CDNs](/docs/software-system-design/cdns) follows reusable responses through a separate cache boundary, including key identity, freshness, and invalidation.
 
 ## Autoscaling Cannot Remove Startup Time
 
-**Autoscaling** adjusts capacity using observed signals. CPU can work for compute-bound requests; queue age or outstanding work can better represent a worker fleet. Use a signal that rises before the user-facing deadline is lost. A full CPU graph is a late signal if requests are already waiting behind a saturated database.
-
-Suppose an illustrative burst brings arrivals to 6,000 jobs/s, current completion capacity is 4,000 jobs/s, and new capacity needs 90 seconds to become ready. The queue accumulates 180,000 jobs. Returning to exactly 6,000 completions/s stops growth but does not drain that backlog. At 8,000 completions/s, the spare 2,000/s needs another 90 seconds to drain it, assuming no further changes.
-
-<RunnableCode code={`arrival, initial_capacity, startup_seconds = 6000, 4000, 90
-backlog = (arrival - initial_capacity) * startup_seconds
-print("Jobs queued during startup:", backlog)
-for new_capacity in (6000, 8000):
-    spare = new_capacity - arrival
-    drain = backlog / spare if spare > 0 else None
-    print("New capacity:", new_capacity, "drain seconds:", drain)
-for hit_rate in (.95, .50):
-    print("Hit rate:", hit_rate, "origin requests/s:", round(6000 * (1-hit_rate)))
-# Try it: halve startup_seconds; the backlog and drain time both halve.
-`} />
-
-Scale-down needs its own policy: stabilize noisy signals, drain work, and preserve minimum failure capacity. Queue workers should stop receiving new jobs before termination. Long-running jobs may need checkpoints or renewable leases. Otherwise, scaling down can create retries that raise apparent demand and trigger another scale-up.
+[Autoscaling](/docs/software-system-design/autoscaling) calculates 180,000 queued jobs during a 90-second capacity delay. Matching ongoing arrivals stops queue growth; draining requires spare completions. The controller also needs limits and safe scale-down behavior.
 
 ## Admission Control Protects Useful Work
 
-A **rate limit** caps accepted work over time. A **concurrency limit** caps simultaneous work. They solve different problems: a rate that was safe at 20 ms per request may overload the same service when a dependency makes each request take 2 seconds. Combine rate, concurrency, payload, and queue bounds where each protects a real resource.
-
-A token bucket stores up to a burst allowance and refills at a fixed rate. With capacity five and refill two tokens/s, five immediate requests pass, later requests wait for refill, and long-run throughput remains bounded by the refill rate. Perform refill and decrement atomically for a shared key; otherwise concurrent requests can spend the same token.
-
-<PredictFirst question="Autoscaling raises completion capacity from 4,000 to exactly 6,000 jobs/s after a 90-second burst at 6,000 arrivals/s. Does the old queue drain?" options={["Yes, because arrivals now match capacity", "No, existing backlog remains while arrivals match completions", "Yes, the load balancer removes the backlog"]} correctIndex={1} explanation="Matching arrivals only stops additional accumulation. Draining requires spare completion capacity or rejecting some new work. Routing cannot erase work already accepted." />
-
-<RunnableCode code={`capacity, refill = 5.0, 2.0
-tokens, previous = capacity, 0.0
-arrivals = [0.0] * 7 + [0.5, 1.0, 1.0]
-for now in arrivals:
-    tokens = min(capacity, tokens + (now - previous) * refill)
-    previous = now
-    accepted = tokens >= 1
-    if accepted:
-        tokens -= 1
-    print("At", now, "seconds:", "accept" if accepted else "reject", "tokens:", tokens)
-# Try it: change refill to 1.0; later requests regain permission more slowly.
-`} />
-
-A distributed limiter must choose a failure policy. A login-attempt guard might reject when its store is unavailable; a low-risk public read might use a bounded local fallback to preserve availability. Per-instance buckets multiply global allowances unless quotas are partitioned. State the scope: per IP, user, tenant, route, or system; one global number rarely protects every resource fairly.
-
-<GoDeeper title="Go deeper: retry load is part of admitted load">
-If each user action makes one initial attempt and up to two retries, a failure can turn 6,000 user actions/s into 18,000 attempts/s. Apply a retry budget and jitter, preserve an end-to-end deadline, and retry only operations with safe semantics. Increasing capacity based on attempt rate without understanding retries can mask the root failure.
-</GoDeeper>
+[Rate limiting](/docs/software-system-design/rate-limiting) separates burst permission from waiting queues and active concurrency. A five-token bucket refilling two/s behaves differently from fixed windows or independently duplicated per-instance quotas.
 
 ## Common Problems and Fixes
 
-Sticky sessions hide local state; move durable state behind explicit ownership and test a request on another instance. Readiness flapping removes capacity; use bounded checks, thresholds, and deliberate degraded behavior. Cache purges overload origin; stagger refresh, coalesce misses, and test cold-cache load. Reactive scaling arrives late; keep a measured baseline and pre-scale predictable events.
-
-If every added instance increases database time, inspect connection counts, lock wait, buffer hit rate, and query plans before adding another instance. More clients can increase contention and reduce total completions. Horizontal growth is useful only while the shared stage can serve the resulting demand.
+Measure the constrained resource, verify recoverable state ownership, and test the cold or failed state before counting healthy replicas. The chapters include concrete counterexamples for connection imbalance, forged metadata, origin overload, delayed scaling, and quota multiplication.
 
 ## When Not to Add More Instances
 
-| Situation | Better choice |
-| --- | --- |
-| One query scans most of a table | Fix access path and indexing |
-| Requests wait on a shared lock | Reduce contention or change ownership |
-| Low predictable load fits one redundant deployment | Keep the smaller topology |
-| Burst work has no immediate deadline | Bound and schedule it through a queue |
+A shared lock, inefficient query, or exhausted downstream quota needs a change at that constraint. Use the [bottleneck experiment](/docs/software-system-design/vertical-vs-horizontal-scaling#locate-the-resource-that-limits-completion) before expanding the application fleet.
 
 ## Remember
 
-| Mechanism | Constraint it addresses |
-| --- | --- |
-| Vertical scaling | Per-machine resource limit |
-| Horizontal scaling | Independent serving capacity |
-| Load balancing | Assignment and destination health |
-| CDN | Cacheable geographic delivery and origin load |
-| Autoscaling | Changing demand after detection and startup |
-| Admission control | Resource protection before accepting work |
-
-You can now distinguish routing, capacity, and admission decisions. Continue with [Data Ownership and Consistency](/docs/software-system-design/data), where shared state determines how far independent scaling can go.
+Capacity, routing, freshness, and admission are different controls over one request path. Apply them together in the existing [rate limiter case study](/docs/software-system-design/rate-limiter), then continue to [Data Ownership and Consistency](/docs/software-system-design/data).
 
 ## Sources
 
-- [Google SRE, Load Balancing in the Datacenter (2016)](https://sre.google/sre-book/load-balancing-datacenter/).
-- [Google SRE, Handling Overload (2016)](https://sre.google/sre-book/handling-overload/).
-- [NGINX, HTTP Load Balancing](https://nginx.org/en/docs/http/load_balancing.html).
-- [Kubernetes, Horizontal Pod Autoscaling](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/).
-- [RFC 9111, HTTP Caching (2022)](https://www.rfc-editor.org/rfc/rfc9111).
+Primary specifications, configuration references, and calculations appear in each linked topic chapter.
