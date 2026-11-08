@@ -1,0 +1,148 @@
+---
+title: "Stateless Services and State Ownership"
+sidebar_position: 2.2
+description: "Make application replicas replaceable by locating session, workflow, file, and deduplication state explicitly, then test requests across restarts and rerouting."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import StatelessSessionExplorer from '../../../viz/diagrams/StatelessSessionExplorer';
+
+# Stateless Services and State Ownership
+
+<ELI5>
+Any clerk can help you if your order is recorded in a shared order book. If the only record is in one clerk's memory, changing clerks loses the order. The shop still has state; it has simply placed the important state where a replacement clerk can find it. Replaceable software workers follow the same rule.
+</ELI5>
+
+A **stateless service instance** does not require information retained only in that instance from an earlier request to handle the next request correctly. The system still stores users, orders, permissions, and progress. Stateless serving makes those records explicitly owned and accessible independently of the instance that happens to receive traffic.
+
+The misconception is that sticky routing makes a stateful process safely scalable. In our illustrative example, replica A holds session `s7` for Alice while replica B has no record. A request routed back to A succeeds, but rerouting to B after A disappears fails. Moving the authoritative session to shared storage allows either replica to resolve it, subject to that store's availability and consistency contract. The diagram and both runnable experiments follow the same session through routing, restart, and a safe state transition.
+
+## Find State by Asking What Survives Replacement
+
+A request can carry a session identifier, an operation identifier, and the input needed for its action. It should not need a particular process's private memory to interpret those values. After an instance restart, a valid request must either recover its required state from an explicit owner or return a documented failure. Losing a temporary performance cache is different from losing the only copy of a customer's accepted order.
+
+Classify state by consequence. A compiled template cache can usually be rebuilt. A login session determines authorization and may require revocation. An upload checkpoint determines which bytes are durably accepted. A deduplication record determines whether a retried payment creates another effect. Putting all four in one local dictionary does not make them operationally equivalent.
+
+An instance's local disk is also local state unless the platform guarantees a separate durable volume lifecycle and ownership protocol. A container restart, reschedule, or machine failure can expose different persistence behavior. Name the storage guarantee you rely on and test that exact event. “The file survived yesterday's restart” does not establish that it survives replacement on another node.
+
+A **derived cache** can be discarded without losing authoritative information, provided the service handles the miss safely. It can still affect correctness through staleness. A locally cached permission cannot remain valid forever after the authoritative session is revoked. Define freshness and invalidation separately from whether the cache is required for recovery.
+
+## Sticky Sessions Preserve Locality, Not Durability
+
+**Session affinity**, often called sticky routing, sends a client's requests toward the same backend. It can improve locality for an expensive in-memory cache. It does not replicate that memory or prevent the backend from failing. A deployment, an autoscaling event, or a health-check change can move traffic even when the routing policy normally prefers one instance.
+
+In the starting state, only A knows that session `s7` belongs to Alice. Routing to A returns the user; routing to B returns no session. A load balancer has followed its destination policy in both cases. The application contract fails because ownership was implicit in an instance identity that the infrastructure does not preserve.
+
+<StatelessSessionExplorer />
+
+Select shared storage, then choose B or restart A. The same session remains resolvable because the authoritative record outlives either serving instance. This does not make the shared store infallible; it moves the failure boundary into a component with a deliberate durability and recovery policy. The design must now specify what happens when that store is unavailable.
+
+Use affinity only as a performance preference when a different replica can recover correctness. If rebalancing logs a user out, loses a cart, or repeats an accepted action, the implementation relies on affinity as ownership. A useful acceptance test deliberately routes successive requests to different replicas instead of waiting for a production failure to do it accidentally.
+
+<RunnableCode code={`local = {"A": {"s7": "alice"}, "B": {}}
+shared = {"s7": "alice"}
+for replica in ("A", "B"):
+    print("Local session on", replica, ":", local[replica].get("s7"))
+    print("Shared session via", replica, ":", shared.get("s7"))
+local["A"].clear()
+print("After A restart, local:", local["A"].get("s7"))
+print("After A restart, shared:", shared.get("s7"))
+# Try it: delete s7 from shared; observe that external ownership also enables global revocation.
+`} />
+
+The dictionary stands in for an external session store only to demonstrate placement. It does not simulate network failures, replication, or authorization checks. A real session record needs an unpredictable identifier, appropriate cookie policy, expiry, and a permission model. Externalizing state is an architectural boundary, not a complete authentication implementation.
+
+## Choose Between Server Sessions and Self-Contained Claims
+
+A server-managed session stores current state behind a session identifier. It supports centrally controlled revocation and changing permissions, but requires a lookup or a bounded freshness cache. Capacity and failure policy for that lookup become part of the request path. A missing session and an unavailable session store should not accidentally become the same authorization decision.
+
+A signed token can carry claims the serving instance verifies without looking up a session on every request. Signature validity proves that a trusted signer issued those claims under the verification policy; it does not prove that the user's permissions have not changed since issuance. Expiry limits the stale period, while immediate revocation may require another state lookup or a separate revocation mechanism.
+
+A stateless request handler can use either approach. The key distinction is whether correct handling requires private history on one instance. Treating all signed tokens as automatically preferable because they avoid a database call misses rotation, revocation, payload exposure, and replay requirements. Select the mechanism from the authentication contract rather than from the word “stateless.”
+
+<PredictFirst question="A load balancer sends Alice to the same process using a sticky cookie. That process holds the only copy of her accepted upload progress. What happens if it is replaced?" options={["The sticky cookie recreates the progress on the new process", "Progress is lost unless another durable owner can recover it", "Adding more replicas copies the old process memory automatically"]} correctIndex={1} explanation="Routing information is not the upload state. Replacement needs durable accepted bytes and a recoverable checkpoint; additional replicas do not automatically replicate local memory." />
+
+## Keep Accepted Work Outside the Worker Lifetime
+
+An HTTP request can finish while a background workflow continues. If the service acknowledges “accepted,” it needs a durable record of the work or a queue with semantics that support recovery. Starting an in-memory timer and returning success makes completion depend on the current process remaining alive. A graceful shutdown cannot cover sudden machine loss.
+
+For an upload, distinguish temporary bytes from accepted parts. A worker can receive bytes into temporary local storage, validate them, and commit a durable object before acknowledging acceptance. A manifest records the accepted parts and version. Another worker can then resume from the manifest rather than inferring progress from a vanished process's open file descriptor.
+
+A worker recovering a job must also know whether a side effect already happened. That requires idempotency, deduplication, or a state transition that can be checked safely. Stateless workers make replacement easier; they do not make an external effect occur exactly once. The operation identifier should survive the process that first handled it.
+
+<GoDeeper title="Go deeper: shared storage does not make read-modify-write atomic">
+Two replicas can read the same current value, compute separate updates, and overwrite each other in a shared store. The location of the record solves discovery and recovery, while concurrency control solves conflicting transitions. Use a transaction, conditional update, or version check appropriate to the invariant. A distributed lock is not automatically required when the authoritative store already provides an atomic operation covering the change.
+</GoDeeper>
+
+## Make Cross-Replica Updates Conditional
+
+Suppose Alice's session record has version 7. Replica A and replica B both read that version before either updates it. A changes a setting and commits version 8. If B blindly writes its old snapshot, it can overwrite A's accepted change. External placement has preserved the session across rerouting while leaving a concurrency bug intact.
+
+An optimistic version check accepts an update only if the stored version still matches the reader's expected version. B's stale update is rejected, so it must reread and decide whether its intended operation still applies. Do not automatically replay an arbitrary stale snapshot: preserve the user's intent and apply only the allowed transition.
+
+<RunnableCode code={`session = {"id": "s7", "user": "alice", "version": 7, "theme": "light"}
+
+def update(expected_version, theme):
+    if session["version"] != expected_version:
+        return "conflict"
+    session["theme"] = theme
+    session["version"] += 1
+    return "committed"
+
+version_a = session["version"]
+version_b = session["version"]
+print("A:", update(version_a, "dark"), "version:", session["version"])
+print("B with stale version:", update(version_b, "light"))
+print("Final session:", session)
+assert session["theme"] == "dark" and session["version"] == 8
+# Try it: remove the version check; B silently overwrites A's accepted setting.
+`} />
+
+The function is sequential so its boundary is visible. In a real store, the check and update must be one atomic operation; a separate `SELECT` followed by an unconditional `UPDATE` recreates the race. A relational example is `UPDATE sessions SET theme = ..., version = version + 1 WHERE id = ... AND version = ...`, followed by checking whether one row changed. Use parameter binding and the surrounding authorization checks in actual application code.
+
+## Design Startup and Shutdown Around Replacement
+
+A new instance needs configuration, credentials, and connectivity before it can serve safely. Readiness should indicate the ability to handle its required operation, not merely that the process started. If every replacement immediately opens a large connection pool or warms every cache key, a rollout can overload the shared services that make stateless serving possible.
+
+For a planned stop, stop admitting new work, drain bounded in-flight requests, and release renewable ownership deliberately. Kubernetes distinguishes readiness and pod termination behavior; account for endpoint propagation and the configured grace interval. Do not assume every existing connection disappears when an instance is removed from discovery.
+
+Also test an unplanned stop without graceful cleanup. A machine can disappear before its shutdown hook executes. Durable work ownership needs a lease, queue redelivery, or another recoverable protocol so that replacement does not depend on courtesy from the failed worker. The system should distinguish an abandoned operation from a completed effect with a lost acknowledgement.
+
+## Common Problems and Fixes
+
+A local cache becomes an accidental source of truth when a miss cannot recover accepted state. Restore explicit ownership and test with every cache empty. A shared session store becomes an accidental global bottleneck when every static asset repeats a lookup; cache only within the agreed freshness bound and measure actual request demand.
+
+A deployment changes a record schema while old instances still run. Use compatible reader and writer transitions, retain versioned interpretation where necessary, and test old and new replicas handling the same operation. Replaceability includes version overlap, not just multiple copies of identical code.
+
+A worker responds successfully before durable acceptance. Move the acknowledgement boundary after the required commit, or return a response that honestly represents pending acceptance. Otherwise, an instance restart can erase work that the client reasonably believes the system has promised to complete.
+
+## When Not to Force Stateless Placement
+
+| Situation | Better design question |
+| --- | --- |
+| A database owns durable local state | Define replication, recovery, and fencing for that stateful owner |
+| An actor owns a partition for locality | Make ownership transfer and recovery explicit |
+| A live socket needs connection-local buffers | Keep ephemeral connection state and externalize recoverable business progress |
+| A one-off local computation has no later request | Keep temporary state local within the operation |
+
+## Remember
+
+| State | Required decision |
+| --- | --- |
+| Session | Lookup, expiry, revocation, and outage behavior |
+| Cache | Rebuild path and permitted freshness |
+| Accepted work | Durable record and recovery owner |
+| Update | Atomic boundary for concurrent replicas |
+| Instance | Startup, readiness, drain, and sudden-loss behavior |
+| Affinity | A locality preference that correctness can survive losing |
+
+You can now test whether a service is replaceable by rerouting a request and deleting an instance's local history. Return to [Scaling](/docs/software-system-design/scaling) and compare [vertical and horizontal growth](/docs/software-system-design/vertical-vs-horizontal-scaling) before deciding how many such instances to run.
+
+## Sources
+
+- [The Twelve-Factor App, Processes](https://12factor.net/processes): persistent state outside disposable serving processes.
+- [The Twelve-Factor App, Disposability](https://12factor.net/disposability): startup, shutdown, and unexpected termination.
+- [Kubernetes, Pod Lifecycle](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/): readiness and termination behavior.
+- [PostgreSQL, Constraints](https://www.postgresql.org/docs/current/ddl-constraints.html): enforcing state invariants at the storage boundary.
+- [AWS Builders' Library, Making Retries Safe With Idempotent APIs (2021)](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/): caller intent and repeated operations.
