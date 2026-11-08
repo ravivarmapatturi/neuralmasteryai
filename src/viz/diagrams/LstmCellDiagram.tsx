@@ -60,8 +60,8 @@ export default function LstmCellDiagram() {
         <OpNode x={mulX} y={lineY} symbol="×" color={forgetColor} />
         <line x1={mulX + 12} y1={lineY} x2={addX - 12} y2={lineY} stroke={t.textPrimary} strokeWidth={2} />
         <OpNode x={addX} y={lineY} symbol="+" color={inputColor} />
-        <line x1={addX + 12} y1={lineY} x2={width - 60} y2={lineY} stroke={t.textPrimary} strokeWidth={2} markerEnd="url(#lstm-arrow)" />
-        <text x={width - 30} y={lineY - 12} fontSize={10} fontFamily="monospace" fill={t.textMuted}>c_t</text>
+        <line x1={addX + 12} y1={lineY} x2={width - 50} y2={lineY} stroke={t.textPrimary} strokeWidth={2} markerEnd="url(#lstm-arrow)" />
+        <text x={width - 40} y={lineY + 4} fontSize={10} fontFamily="monospace" fontWeight={700} fill={t.textPrimary}>c_t</text>
 
         {/* forget gate -> mul node */}
         <line x1={130} y1={gateY - 20} x2={mulX} y2={lineY + 12} stroke={forgetColor} strokeWidth={active === 'forget' ? 2.5 : 1.5} markerEnd="url(#lstm-arrow)" opacity={active === null || active === 'forget' ? 1 : 0.3} />
@@ -74,12 +74,12 @@ export default function LstmCellDiagram() {
 
         {/* c_t -> tanh -> out mul, with output gate */}
         <path d={`M ${addX + 40},${lineY} C ${outMulX},${lineY} ${outMulX},${lineY + 20} ${outMulX},${outMulY - 11}`} fill="none" stroke={t.textMuted} strokeWidth={1.5} strokeDasharray="3 2" markerEnd="url(#lstm-arrow)" />
-        <text x={outMulX + 18} y={outMulY - 18} fontSize={9} fontFamily="monospace" fill={t.textMuted}>tanh(c_t)</text>
+        <text x={outMulX - 16} y={outMulY - 18} textAnchor="end" fontSize={9} fontFamily="monospace" fill={t.textMuted}>tanh(c_t)</text>
         <line x1={470} y1={gateY - 20} x2={outMulX} y2={outMulY + 11} stroke={outputColor} strokeWidth={active === 'output' ? 2.5 : 1.5} markerEnd="url(#lstm-arrow)" opacity={active === null || active === 'output' ? 1 : 0.3} />
         <OpNode x={outMulX} y={outMulY} symbol="×" color={outputColor} />
-        <line x1={outMulX} y1={outMulY - 11} x2={outMulX} y2={30} stroke={outputColor} strokeWidth={1.5} />
-        <line x1={outMulX} y1={30} x2={outMulX + 50} y2={30} stroke={outputColor} strokeWidth={1.5} markerEnd="url(#lstm-arrow)" />
-        <text x={outMulX + 60} y={34} fontSize={10} fontFamily="monospace" fontWeight={700} fill={outputColor}>h_t</text>
+        {/* h_t exits cleanly to the right without crossing cell state line */}
+        <line x1={outMulX + 11} y1={outMulY} x2={width - 50} y2={outMulY} stroke={outputColor} strokeWidth={2} markerEnd="url(#lstm-arrow)" />
+        <text x={width - 40} y={outMulY + 4} fontSize={10} fontFamily="monospace" fontWeight={700} fill={outputColor}>h_t</text>
 
         {/* gate boxes */}
         {GATES.map((g) => {
@@ -90,14 +90,14 @@ export default function LstmCellDiagram() {
               <rect x={g.x - 26} y={gateY - 18} width={52} height={36} rx={6} fill={isActive ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isActive ? 2.5 : 1.5} />
               <text x={g.x} y={gateY - 2} textAnchor="middle" fontSize={11} fontWeight={700} fill={color}>{g.fn}</text>
               <text x={g.x} y={gateY + 12} textAnchor="middle" fontSize={9} fontFamily="monospace" fill={color}>{g.label}</text>
-              <line x1={g.x} y1={inputY - 14} x2={g.x} y2={gateY + 20} stroke={t.textMuted} strokeWidth={1} opacity={0.6} />
+              <line x1={g.x} y1={inputY - 14} x2={g.x} y2={gateY + 18} stroke={t.textMuted} strokeWidth={1} opacity={0.6} />
             </g>
           );
         })}
 
-        {/* concatenated input */}
-        <rect x={230} y={inputY - 14} width={120} height={26} rx={5} fill={t.surfaceAlt} stroke={t.border} strokeWidth={1.25} />
-        <text x={290} y={inputY + 4} textAnchor="middle" fontSize={10} fontFamily="monospace" fill={t.textSecondary}>[h_(t-1), x_t]</text>
+        {/* concatenated input bus spanning all 4 gates */}
+        <rect x={100} y={inputY - 14} width={400} height={26} rx={5} fill={t.surfaceAlt} stroke={t.border} strokeWidth={1.25} />
+        <text x={300} y={inputY + 4} textAnchor="middle" fontSize={10} fontFamily="monospace" fill={t.textSecondary}>[h_(t-1), x_t]</text>
       </svg>
 
       <div style={{ display: 'flex', gap: 20, justifyContent: 'center', marginTop: 4, flexWrap: 'wrap' }}>

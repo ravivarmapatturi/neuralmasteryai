@@ -27,15 +27,16 @@ export default function DatabasesSectionMapDiagram() {
           </marker>
         </defs>
         {PAGES.map((p, i) => {
-          const x = 20 + i * (width - 60) / (PAGES.length - 1) + 60;
+          // Perfectly fit 4 cards within width=600 without clipping
+          const x = 80 + i * 146;
           const isSelected = selected === i;
           return (
             <g key={p.route}>
               {i > 0 && (
                 <line
-                  x1={20 + (i - 1) * (width - 60) / (PAGES.length - 1) + 60 + 55}
+                  x1={80 + (i - 1) * 146 + 55}
                   y1={45}
-                  x2={x - 55}
+                  x2={x - 57}
                   y2={45}
                   stroke={t.textMuted}
                   strokeWidth={1.5}
@@ -44,7 +45,14 @@ export default function DatabasesSectionMapDiagram() {
               )}
               <g onClick={() => setSelected(i)} onMouseEnter={() => setSelected(i)} style={{ cursor: 'pointer' }}>
                 <rect x={x - 55} y={25} width={110} height={40} rx={8} fill={isSelected ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isSelected ? 2.5 : 1.5} />
-                <text x={x} y={49} textAnchor="middle" fontSize={9.5} fontWeight={isSelected ? 700 : 500} fill={color}>{p.label}</text>
+                {p.label.includes('(') ? (
+                  <>
+                    <text x={x} y={43} textAnchor="middle" fontSize={9.5} fontWeight={isSelected ? 700 : 500} fill={color}>{p.label.split(' (')[0]}</text>
+                    <text x={x} y={55} textAnchor="middle" fontSize={8} fill={t.textMuted}>({p.label.split('(')[1]}</text>
+                  </>
+                ) : (
+                  <text x={x} y={49} textAnchor="middle" fontSize={9.5} fontWeight={isSelected ? 700 : 500} fill={color}>{p.label}</text>
+                )}
               </g>
             </g>
           );
