@@ -40,7 +40,7 @@ export default function RlhfPipelineDiagram() {
           const c = isKl ? klColor : color;
           return (
             <g key={s.key}>
-              {i > 0 && <line x1={stepX(i - 1) + 35} y1={40} x2={x - 35} y2={40} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#rlhf-arrow)" />}
+              {i > 0 && <line x1={stepX(i - 1) + 35} y1={40} x2={x - 41} y2={40} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#rlhf-arrow)" />}
               <g onClick={() => setSelected(s.key)} style={{ cursor: 'pointer' }}>
                 <rect x={x - 35} y={24} width={70} height={32} rx={6} fill={isSelected ? `${c}30` : t.surfaceAlt} stroke={c} strokeWidth={isSelected ? 2.5 : 1.5} />
                 <text x={x} y={44} textAnchor="middle" fontSize={8.5} fill={c}>{s.label}</text>

@@ -42,14 +42,16 @@ export default function NineStepPipelineDiagram() {
         </defs>
         {STEPS.map((s, i) => {
           const x = 10 + i * stepW;
+          const cx = x + (stepW - 12) / 2;
+          const prevCx = cx - stepW;
           const color = colorFor(s.n);
           const isActive = active === i;
           return (
             <g key={s.n} onClick={() => setActive(i)} onMouseEnter={() => setActive(i)} style={{ cursor: 'pointer' }}>
-              {i > 0 && <line x1={x - stepW + (stepW - 12)} y1={40} x2={x + 2} y2={40} stroke={t.textMuted} strokeWidth={1} markerEnd="url(#nsp-arrow)" />}
-              <circle cx={x + (stepW - 12) / 2} cy={40} r={16} fill={isActive ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isActive ? 2.5 : 1.5} />
-              <text x={x + (stepW - 12) / 2} y={44} textAnchor="middle" fontSize={11} fontWeight={700} fill={color}>{s.n}</text>
-              <text x={x + (stepW - 12) / 2} y={70} textAnchor="middle" fontSize={8} fill={isActive ? color : t.textSecondary} fontWeight={isActive ? 700 : 400}>{s.label}</text>
+              {i > 0 && <line x1={prevCx + 16} y1={40} x2={cx - 21} y2={40} stroke={t.textMuted} strokeWidth={1} markerEnd="url(#nsp-arrow)" />}
+              <circle cx={cx} cy={40} r={16} fill={isActive ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isActive ? 2.5 : 1.5} />
+              <text x={cx} y={44} textAnchor="middle" fontSize={11} fontWeight={700} fill={color}>{s.n}</text>
+              <text x={cx} y={70} textAnchor="middle" fontSize={8} fill={isActive ? color : t.textSecondary} fontWeight={isActive ? 700 : 400}>{s.label}</text>
             </g>
           );
         })}

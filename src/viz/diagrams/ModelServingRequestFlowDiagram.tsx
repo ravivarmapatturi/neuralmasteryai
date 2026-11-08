@@ -30,11 +30,12 @@ export default function ModelServingRequestFlowDiagram() {
           </marker>
         </defs>
         {STAGES.map((s, i) => {
-          const x = 55 + i * ((width - 100) / (STAGES.length - 1));
+          const stepDelta = (width - 100) / (STAGES.length - 1);
+          const x = 55 + i * stepDelta;
           const isActive = active === s.key;
           return (
             <g key={s.key}>
-              {i > 0 && <line x1={55 + (i - 1) * ((width - 100) / (STAGES.length - 1)) + 48} y1={y} x2={x - 48} y2={y} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#msrf-arrow)" />}
+              {i > 0 && <line x1={55 + (i - 1) * stepDelta + 47} y1={y} x2={x - 53} y2={y} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#msrf-arrow)" />}
               <g onClick={() => setActive(s.key)} onMouseEnter={() => setActive(s.key)} style={{ cursor: 'pointer' }}>
                 <rect x={x - 47} y={y - 18} width={94} height={36} rx={7} fill={isActive ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isActive ? 2.5 : 1.5} />
                 <text x={x} y={y + 4} textAnchor="middle" fontSize={9.5} fontWeight={isActive ? 700 : 500} fill={color}>{s.label}</text>

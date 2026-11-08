@@ -33,7 +33,7 @@ export default function PrometheusGrafanaFlowDiagram() {
           const isActive = active === s.key;
           return (
             <g key={s.key}>
-              {i > 0 && <line x1={65 + (i - 1) * 145 + 60} y1={y} x2={x - 60} y2={y} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#pg-arrow)" />}
+              {i > 0 && <line x1={65 + (i - 1) * 145 + 60} y1={y} x2={x - 66} y2={y} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#pg-arrow)" />}
               <g onClick={() => setActive(s.key)} onMouseEnter={() => setActive(s.key)} style={{ cursor: 'pointer' }}>
                 <rect x={x - 60} y={y - 18} width={120} height={36} rx={7} fill={isActive ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isActive ? 2.5 : 1.5} />
                 <text x={x} y={y + 4} textAnchor="middle" fontSize={8} fontWeight={isActive ? 700 : 500} fill={color}>{s.label}</text>

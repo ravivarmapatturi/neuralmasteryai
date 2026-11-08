@@ -56,13 +56,19 @@ export default function TwoPathsDiagram() {
         <text x={cx + 152} y={cy + 4} fontSize={9} fill={t.textMuted}>J(w,b) contours</text>
 
         {(show === 'both' || show === 'normal') && (
-          <line x1={startX} y1={startY} x2={cx - 6} y2={cy - 4} stroke={normalColor} strokeWidth={2.5} markerEnd="url(#tp-arrow-normal)" />
+          <line x1={startX} y1={startY} x2={cx - 11} y2={cy - 7} stroke={normalColor} strokeWidth={2.5} markerEnd="url(#tp-arrow-normal)" />
         )}
 
         {(show === 'both' || show === 'gd') &&
           gdPoints.slice(0, -1).map((p, i) => {
             const next = gdPoints[i + 1];
-            return <line key={i} x1={p.x} y1={p.y} x2={next.x} y2={next.y} stroke={gdColor} strokeWidth={2} markerEnd="url(#tp-arrow-gd)" />;
+            const dx = next.x - p.x;
+            const dy = next.y - p.y;
+            const dist = Math.hypot(dx, dy);
+            const trim = i === gdPoints.length - 2 ? 12 : 6;
+            const x2 = dist > trim ? next.x - (dx / dist) * trim : next.x;
+            const y2 = dist > trim ? next.y - (dy / dist) * trim : next.y;
+            return <line key={i} x1={p.x} y1={p.y} x2={x2} y2={y2} stroke={gdColor} strokeWidth={2} markerEnd="url(#tp-arrow-gd)" />;
           })}
         {(show === 'both' || show === 'gd') &&
           gdPoints.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={3.5} fill={gdColor} />)}

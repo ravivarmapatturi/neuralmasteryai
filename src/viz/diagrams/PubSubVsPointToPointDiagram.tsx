@@ -62,9 +62,9 @@ export default function PubSubVsPointToPointDiagram() {
           <rect key={m} x={450 + i * 24} y={138} width={20} height={20} rx={3} fill={bColor} />
         ))}
 
-        <line x1={110} y1={100} x2={148} y2={100} stroke={producerColor} strokeWidth={2} markerEnd="url(#p2p-arrow)" />
-        <line x1={242} y1={80} x2={328} y2={55} stroke={aColor} strokeWidth={2} markerEnd="url(#p2p-arrow-a)" />
-        <line x1={242} y1={120} x2={328} y2={150} stroke={bColor} strokeWidth={2} markerEnd="url(#p2p-arrow-b)" />
+        <line x1={110} y1={100} x2={143} y2={100} stroke={producerColor} strokeWidth={2} markerEnd="url(#p2p-arrow)" />
+        <line x1={240} y1={80} x2={323} y2={56} stroke={aColor} strokeWidth={2} markerEnd="url(#p2p-arrow-a)" />
+        <line x1={240} y1={120} x2={323} y2={149} stroke={bColor} strokeWidth={2} markerEnd="url(#p2p-arrow-b)" />
         <defs>
           <marker id="p2p-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill={producerColor} /></marker>
           <marker id="p2p-arrow-a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill={aColor} /></marker>
