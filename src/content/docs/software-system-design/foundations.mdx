@@ -1,0 +1,148 @@
+---
+title: "Requirements, Capacity, and Service Objectives"
+sidebar_position: 1
+description: "Turn a product request into measurable requirements, estimate traffic and storage, and budget latency and availability before choosing an architecture."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import SoftwareCapacityExplorer from '../../../viz/diagrams/SoftwareCapacityExplorer';
+import LatencyBudgetBreakdownDiagram from '../../../viz/diagrams/LatencyBudgetBreakdownDiagram';
+
+# Requirements, Capacity, and Service Objectives
+
+<ELI5>
+Designing a service resembles planning a train station. We need to know how many people arrive, when they arrive, which platforms they need, and what happens when one platform closes. Buying more platforms before answering those questions can leave the entrance blocked. We first describe the promise to passengers, then calculate which parts must keep that promise.
+</ELI5>
+
+A design begins with a user action and ends with evidence that the action remains possible under load and failure. Our running example is an illustrative link service with 100 million redirects and one million new links each day. The important misconception is that daily traffic determines the server count. Daily traffic determines an average; bursts, slow dependencies, utilization targets, and failure domains determine provisioned capacity.
+
+We will estimate a 6,000-request-per-second peak, give each service instance an assumed tested capacity of 1,000 requests/s, and distribute instances across three zones. These are planning inputs, not claims about a particular machine. Every estimate should be replaceable with a measurement without changing the reasoning.
+
+## Requirements Set the Boundary
+
+Start by asking what a user must be able to do: create a link, follow it, expire it, and report abuse. Then name exclusions. An initial design might exclude analytics dashboards and custom domains while keeping deletion and abuse revocation mandatory. Exclusions prevent an architecture discussion from silently solving five products at once.
+
+**Functional requirements** describe behavior; **quality requirements** constrain that behavior. “Redirect a public link” is functional. “Serve 99.9% of eligible redirect attempts successfully over a rolling 30-day window” is a quality objective. Define an eligible attempt, the observation point, and what counts as success. A cached redirect that sends someone to a deleted malicious destination is not a successful outcome merely because the edge returned HTTP 302.
+
+Ask about geography, tenants, authentication, retention, and legal deletion before choosing storage. Anonymous redirects and authenticated link administration have different authorization paths. A short code must identify one destination, but repeated create requests might reasonably return either the same link or separate links; the API contract must decide. Neither behavior can be inferred from the phrase “URL shortener.”
+
+State an invariant, a rule that must always hold. Here, a code never resolves to two owners, and a revoked link must stop resolving within an explicitly bounded interval. Invariants determine which operations need atomic writes and which caches need invalidation. They are more useful than an early shopping list of databases.
+
+The existing [ML design framework](/docs/ml-system-design/the-9-step-framework) adds training data, offline metrics, and model evaluation when predictions enter the design. We reuse its requirement discipline while keeping this track focused on general software requests and durable state.
+
+## Traffic and Storage Need Units
+
+Divide 100 million redirects by 86,400 seconds to get about 1,157 average redirects/s. A chosen peak envelope of 6,000 requests/s is about 5.18 times that average. This factor is a scenario assumption; measure actual arrival distributions, promotions, time zones, and client retries before treating it as a forecast.
+
+One million creates/day averages 11.57 writes/s. At an assumed 500 bytes of logical metadata per link, a year adds 182.5 GB in decimal units. Three stored copies would hold 547.5 GB before indexes, transaction logs, free-space reserve, backups, and operational overhead. Multiplying the row count by a convenient bytes-per-row number is a lower-bound model, not a disk purchase specification.
+
+Bandwidth needs a separate calculation. At an illustrative 800 bytes per redirect response, 6,000 responses/s carry 4.8 MB/s of response payload. TLS framing, HTTP headers beyond that assumption, requests, retransmissions, and inter-service traffic add overhead. A video service can have a smaller request rate and vastly higher network cost because payload size dominates.
+
+<RunnableCode code={`daily_reads = 100_000_000
+peak_rps = 6_000
+bytes_per_link = 500
+links_per_day = 1_000_000
+print("Average redirects/s:", round(daily_reads / 86_400, 2))
+print("Peak / average:", round(peak_rps / (daily_reads / 86_400), 2))
+logical_gb = links_per_day * 365 * bytes_per_link / 1e9
+print("Annual logical GB:", logical_gb)
+print("Three-copy GB before overhead:", logical_gb * 3)
+print("Peak response payload MB/s:", peak_rps * 800 / 1e6)
+# Try it: double bytes_per_link; storage doubles while request rate stays fixed.
+`} />
+
+The calculation is deliberately short enough to inspect. During a design review, write the units beside every intermediate result. Confusing bits and bytes creates an eightfold bandwidth error; confusing daily users with simultaneous users can create a much larger capacity error. Keep decimal GB and binary GiB distinct when comparing estimates to dashboards.
+
+## Capacity Must Survive the Failure You Promise
+
+With ten instances, healthy utilization is 6,000 divided by 10,000, or 60%. Distributing ten instances across three zones produces groups of four, three, and three. Losing the largest zone leaves six instances, which exactly meet the assumed peak capacity at 100% utilization. The service has no spare capacity for request variance, garbage collection, or slower dependency calls.
+
+<SoftwareCapacityExplorer />
+
+To stay at or below 70% utilization after losing the largest zone, find the smallest instance count whose survivors provide at least 6,000/0.7 requests/s. Fourteen instances split five, five, and four; nine survivors provide 9,000 requests/s and run at 66.7%. Thirteen split five, four, and four; eight survivors run at 75%. The discrete placement matters: dividing a fractional server count by a fractional zone loss can hide the shortage.
+
+<PredictFirst question="Ten instances run at 60% utilization. The largest of three zones holds four instances. What happens when that zone fails?" options={["Utilization stays at 60% because a load balancer reroutes requests", "The six survivors reach 100% utilization", "Utilization rises to 70%"]} correctIndex={1} explanation="Routing changes the destination, not the work. Six survivors must each serve 1,000 requests/s. A 70% target requires extra provisioned capacity; it does not arise automatically." />
+
+A load test must establish the assumed 1,000 requests/s capacity at the required latency and error rate. The maximum rate before a process crashes is not its safe capacity. Include a realistic cache-miss mix, connection reuse, payload distribution, and a slow dependency. Otherwise, we estimate capacity for a different workload from the one users generate.
+
+<GoDeeper title="Go deeper: arrival rate, concurrency, and queue growth">
+For a stable system, Little's law relates average in-flight work to arrival rate and average time: concurrency equals arrival rate times time in the system. At 6,000 requests/s and 80 ms average time, approximately 480 requests are in flight. This is an average identity under stable conditions, not a p99 bound. If requests arrive faster than the service can finish them, the queue grows and the stable-system assumption fails.
+</GoDeeper>
+
+## Latency Is a Distribution Along a Path
+
+**Latency** is elapsed time for one operation. A **percentile** describes the fraction of observed operations at or below a duration. A p99 of 200 ms means 99% of the chosen observations finished within 200 ms; it says nothing about the slowest 1% beyond that threshold. Report the population and time window because mixing fast cache hits with slow writes can hide a broken operation.
+
+For an illustrative 200 ms redirect budget, reserve 60 ms for client-to-edge transport, 20 ms for gateway processing, 80 ms for application and storage, and 40 ms of margin. The split is an initial budget, not measured latency. Instrument actual spans and move budget where the critical path needs it. The existing diagram shows how a request budget gets divided across dependencies:
+
+<LatencyBudgetBreakdownDiagram />
+
+Do not add service p99 values and call the sum an end-to-end p99. Requests may hit correlated slow periods, and parallel fan-out waits for a maximum rather than a sum. If a request needs 100 independent downstream calls and each has a 99% chance of meeting its threshold, all calls meet it only about 36.6% of the time. Independence is an explicit simplification here; shared infrastructure often makes the real correlation more complicated.
+
+Commonly quoted “latency numbers” are useful only as orders of magnitude. In-process memory access, local durable writes, same-region calls, and cross-continent round trips occupy different regimes, but hardware, payloads, storage durability settings, connection establishment, and geography change actual values. Measure representative paths instead of presenting a memorized nanosecond table as a benchmark for your service.
+
+## SLOs Turn Reliability Into a Budget
+
+A **service-level indicator**, or SLI, measures an outcome. A **service-level objective**, or SLO, sets a target for that outcome over a window. A service-level agreement adds contractual consequences. For our example, define availability as successful eligible redirects divided by eligible redirects, measured at the serving edge; define latency separately as the fraction of eligible requests completed within 200 ms.
+
+At 99.9% time-based availability over 30 days, the allowed bad time is 43.2 minutes. A request-based objective instead permits 0.1% bad eligible requests, so busy minutes consume more budget. Choose the definition that matches user harm and make outages in telemetry count explicitly. Missing data must not silently count as healthy traffic.
+
+<RunnableCode code={`import math
+peak_rps, instance_rps, target = 6000, 1000, 0.70
+for n in range(3, 100):
+    survivors = n - math.ceil(n / 3)
+    if peak_rps / (survivors * instance_rps) <= target:
+        print("Minimum instances:", n)
+        print("After largest-zone loss:", survivors)
+        print("Failure utilization:", round(peak_rps / (survivors * instance_rps), 3))
+        break
+print("30-day 99.9% time budget, minutes:", round(30 * 24 * 60 * .001, 2))
+print("100 independent calls all below threshold:", round(.99 ** 100, 3))
+# Try it: change target to 0.60; the required failure capacity increases.
+`} />
+
+An error budget supports a concrete release decision. If a release consumes a large fraction of the monthly budget in an hour, stop rollout and investigate. It does not mean every unsuccessful request is acceptable until a counter reaches zero. Separate correctness failures, security incidents, and data loss from an availability allowance; a healthy availability chart cannot authorize them.
+
+## Design Reviews Follow the User Action
+
+Walk a create request from client authentication through validation, code allocation, durable commit, and response. Then walk a redirect through edge lookup, cache miss, storage read, and response. Identify which stage owns each invariant. Add timeouts to every network edge and specify what a client should do after an ambiguous response.
+
+Next remove one instance, one zone, and one dependency in turn. Ask which requests still work, which become slower, and which must fail closed. A redirect cache might continue serving previously validated public links while administration is unavailable. A deletion API must avoid acknowledging revocation before it can guarantee the promised propagation behavior.
+
+Record decisions as a requirement, chosen design, rejected alternative, and evidence that would reverse the choice. “Start with one relational primary because write traffic is modest; reconsider partitioning when measured write or storage limits require it” is reviewable. “Use distributed storage for scale” is missing both a limit and a test.
+
+## Common Problems and Fixes
+
+Averages hide bursts; use per-operation arrival distributions and a stated peak envelope. Server counts hide dependencies; test storage and connection-pool saturation under the same envelope. Healthy capacity hides failure behavior; remove the largest promised failure domain during a load test. Percentile charts hide missing populations; separate reads, writes, regions, and cache outcomes.
+
+Scope growth often appears as an “easy extra” such as exact real-time analytics. That extra can require durable event ingestion, deduplication, and another user-visible consistency contract. Put it back through requirements and estimation rather than attaching it to the diagram without accounting for its cost.
+
+## When Not to Use a Distributed Architecture
+
+| Situation | Better starting choice |
+| --- | --- |
+| Modest traffic, one small team, relational invariants | A modular application and one durable database |
+| Offline result with no interactive latency promise | A scheduled batch job |
+| Required workload has not been measured | Instrument and load-test the simplest viable path |
+| Region loss is outside the agreed recovery promise | Multi-zone operation with tested backup recovery |
+
+## Remember
+
+| Decision | Evidence to retain |
+| --- | --- |
+| Scope | User actions, exclusions, and invariants |
+| Capacity | Units, peak assumptions, and load-test distribution |
+| Reliability | SLI population, SLO window, and failure envelope |
+| Latency | End-to-end observations and critical-path spans |
+| Complexity | A measured limit that justifies the next component |
+
+You can now turn a traffic assumption into capacity that survives a named failure. Next, [Scaling and Traffic Management](/docs/software-system-design/scaling) explains how requests reach that capacity without creating new bottlenecks.
+
+## Sources
+
+- [Google SRE, Service Level Objectives (2016)](https://sre.google/sre-book/service-level-objectives/): SLI and SLO definitions.
+- [Google SRE, Handling Overload (2016)](https://sre.google/sre-book/handling-overload/): capacity and overload behavior.
+- [Google SRE, Addressing Cascading Failures (2016)](https://sre.google/sre-book/addressing-cascading-failures/): failure propagation.
+- [Little, A Proof for the Queuing Formula (1961)](https://fisherp.scripts.mit.edu/wordpress/wp-content/uploads/2015/11/ContentServer.pdf): the stable-system concurrency relation.
+- [Dean and Barroso, The Tail at Scale (2013)](https://research.google/pubs/the-tail-at-scale/): tail latency in large services.
