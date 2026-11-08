@@ -1,0 +1,105 @@
+---
+title: "Design a Chat System"
+sidebar_position: 10
+description: "Build durable chat with conversation ordering, sender deduplication, reconnect cursors, ephemeral presence, and separate acceptance and delivery receipts."
+---
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import SoftwareCaseTrace from '../../../viz/diagrams/SoftwareCaseTrace';
+
+# Design a Chat System
+
+<ELI5>A live conversation needs both a telephone line and a notebook. The line carries messages quickly, while the notebook remembers what was said when someone disconnects. Reconnecting the line is not enough to recover the missing pages. Numbering entries and recognizing repeated submissions lets clients rebuild the conversation.</ELI5>
+
+## Requirements and Estimates
+
+Assume one million concurrently connected users, each sending an average of one message per minute during the modeled busy period. That is about 16,667 incoming messages/s. At an assumed 500 bytes of logical message data, maintaining that rate for a full day would add 720 GB before replicas, indexes, attachments, and receipts. The sustained-day projection is a sizing scenario, not a forecast of real user activity.
+
+Support direct messages and bounded-size groups, durable acceptance, history pagination, reconnect, and distinct delivery and read receipts. Attachments live in object storage behind authorized access. Presence and typing indicators are ephemeral and may be lost. Set illustrative objectives of p99 durable acceptance under 200 ms and normal online delivery under one second, measured separately.
+
+The misconception is that an open WebSocket guarantees message delivery. The connection can fail after server commit but before the sender sees acknowledgment, or before a receiver reads its buffered data. Transport liveness, durable acceptance, device delivery, and human reading are four different states.
+
+## Connection and Conversation Ownership
+
+A gateway owns the live socket and authenticates the session. A routing directory maps user devices to current gateways with short-lived entries. The gateway forwards a send command to the authoritative conversation owner; it does not become the permanent owner of history merely because the socket happened to land there.
+
+The send request includes conversation ID, sender identity, client message ID, and content. The owner verifies membership and atomically deduplicates the client message ID while assigning the next conversation sequence. Acknowledgment includes that durable sequence. If the response is lost, retrying the same client ID returns the existing sequence rather than creating another message.
+
+Order is per conversation, not globally across all users. One owner or an ordered partition can serialize appends. Owner failover requires a versioned ownership epoch or equivalent storage protection so two owners cannot assign conflicting next values. A process-local counter without durable coordination fails during restart or split-brain routing.
+
+## Delivery, Reconnect, and History
+
+After commit, publish a delivery event through an outbox or equivalent durable log. A delivery worker routes to online devices; offline devices later fetch messages after their last durable cursor. The receiver deduplicates by message identity because live delivery and catch-up can overlap. Acknowledging receipt at a device updates a separate receipt state.
+
+Use sequence-based history pagination and retain a clear cursor-gap behavior when old history has expired. A client resuming after 417 asks for later records; the server can return 418 onward. If membership changed, filter according to the product's history-access policy rather than assuming every current member may read every old message.
+
+Presence is soft state with heartbeats and expiry. A stale “online” indicator must not cause the system to discard a durable message. Typing indicators can use lossy best-effort delivery and short expiry because replaying old typing events is actively misleading. Keep those streams separate from durable message storage and SLOs.
+
+## Failure and Security Boundaries
+
+Bound per-connection output buffers. A slow device should disconnect and resume from history rather than hold unlimited gateway memory. Rebalancing gateways must drain or reconnect clients without losing their cursors. At an illustrative 20 KB of connection-associated memory, one million connections require 20 GB across gateways before process and networking overhead, even if message throughput is low.
+
+Group fan-out multiplies outgoing work. A hundred recipients for each incoming group message can dominate gateway traffic; use bounded group sizes or a different large-channel delivery design. Rate-limit sends by user and conversation, enforce membership at append and read time, and protect attachment URLs from cross-tenant reuse.
+
+End-to-end encryption changes the design: servers may retain ciphertext and route metadata but cannot perform ordinary plaintext search or moderation. Define key distribution, multi-device history, and membership-key rotation explicitly rather than adding encryption as a final checkbox. This worked design assumes transport encryption and server-side authorization; it does not claim an end-to-end encrypted protocol.
+
+Measure commit latency, sequence gaps, duplicate suppression, offline catch-up age, gateway buffer limits, and receipt delay. Disaster recovery must preserve accepted messages within the agreed RPO. A regional replica that lacks the latest acknowledged sequence cannot safely pretend that history never existed.
+
+## Follow the Failure Boundary
+
+<SoftwareCaseTrace scenario="chat-system" />
+
+<PredictFirst question='The sender loses the acknowledgment after sequence 418 commits. What should retrying the same client message ID return?' options={['A new sequence 419', 'The existing sequence 418', 'An empty history because the socket closed']} correctIndex={1} explanation='The stable client ID identifies one logical send. Returning its committed sequence preserves the message despite an ambiguous response and prevents duplication.' />
+
+## Run the Design Calculation
+
+<RunnableCode code={`connected, per_minute, bytes_per_message = 1_000_000, 1, 500
+rps = connected * per_minute / 60
+print("Incoming messages/s:", round(rps, 2))
+print("Sustained-day logical GB:", rps*86400*bytes_per_message/1e9)
+print("Connection memory GB at 20 KB:", connected*20_000/1e9)
+# Try it: model ten recipients per message; compute outgoing delivery rate separately.
+`} />
+
+## Change the Invariant Deliberately
+
+<RunnableCode code={`messages, by_client_id = [], {}
+def append(client_id, text):
+    if client_id in by_client_id:
+        return by_client_id[client_id]
+    sequence = len(messages) + 418
+    messages.append((sequence, text))
+    by_client_id[client_id] = sequence
+    return sequence
+print("Initial send:", append("m17", "hello"))
+print("Retry after ACK loss:", append("m17", "hello"))
+print("Resume after 417:", [m for m in messages if m[0] > 417])
+assert len(messages) == 1
+# Try it: append m18; a genuinely new message receives sequence 419.
+`} />
+
+## When Not to Use This Design
+
+| Situation | Better choice |
+| --- | --- |
+| Occasional one-way status updates | SSE or polling with a replay cursor |
+| Massive public broadcast channels | Shared log and channel-oriented fan-out |
+
+## Remember
+
+| Decision | Reason |
+| --- | --- |
+| Socket | Live transport, not durable history |
+| Client message ID | Deduplicate ambiguous retries |
+| Conversation sequence | Ordered append and reconnect cursor |
+
+Next: [Design a Notification System](/docs/software-system-design/notification-system).
+
+## Sources
+
+- [RFC 6455, WebSocket Protocol (2011)](https://www.rfc-editor.org/rfc/rfc6455).
+- [Matrix, Client-Server Specification](https://spec.matrix.org/latest/client-server-api/).
+- [Signal, Double Ratchet Specification](https://signal.org/docs/specifications/doubleratchet/).
+- [Apache Kafka, Design](https://kafka.apache.org/41/design/design/).
+- [OWASP, WebSocket Security](https://cheatsheetseries.owasp.org/cheatsheets/WebSocket_Security_Cheat_Sheet.html).
