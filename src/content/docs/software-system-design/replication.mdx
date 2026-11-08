@@ -1,0 +1,142 @@
+---
+title: "Replication, Acknowledgement, and Failover"
+sidebar_position: 3.3
+description: "Trace a write from primary commit through replica receipt and replay, choose an acknowledgement policy, and preserve read and recovery guarantees during failover."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import SoftwareReplicationExplorer from '../../../viz/diagrams/SoftwareReplicationExplorer';
+
+# Replication, Acknowledgement, and Failover
+
+<ELI5>
+A shop can copy its order book to a second branch so work can continue if the first branch closes. A message saying “your order is recorded” might mean the first book was updated, the second branch received a note, or the second book is already ready to use. Those are different promises. A copy helps only when we know how far it has caught up and which branch is allowed to accept new orders.
+</ELI5>
+
+**Replication** maintains additional copies of data by transferring changes from an authoritative writer or through a defined multi-writer protocol. It can support recovery and additional read capacity, but introduces questions about acknowledgement, visibility, conflicts, and ownership after failure. A replica is a process participating in a protocol, not a guarantee that every acknowledged write exists everywhere.
+
+The misconception is that a successful write response makes every replica immediately safe for the next read. Our example starts with record version 7 on both primary and replica. The primary commits version 8 and acknowledges it while the replica still serves 7. We will follow that same write through receipt, durable storage, replay, and promotion, distinguishing stale reads from actual loss of an acknowledged effect.
+
+## Follow the Log Rather Than the Topology Drawing
+
+In a common single-writer design, the primary serializes accepted changes into a durable log and replicas consume that ordered stream. PostgreSQL's physical replication ships write-ahead log records, which describe storage-level changes for recovery. Logical replication transfers a different representation of changes under its documented identity and schema rules. The two mechanisms have different capabilities and operational constraints.
+
+A replica can be connected without being current. It may have received bytes that are not durably flushed, flushed bytes that are not yet replayed, or replayed changes that a particular read snapshot does not observe. Monitoring one “replication lag” number can collapse those boundaries. Name the stage relevant to the promise: failover durability and current reads depend on different progress points.
+
+Our record versions 7 and 8 are teaching identifiers for successive values of one record. They are not PostgreSQL transaction identifiers or WAL positions. Production replication progress usually uses an engine-specific log position or sequence, and safe comparisons need the matching stream or history. A numeric value from a different timeline cannot automatically prove that the intended write is present.
+
+## Acknowledgement Defines Which Failures Can Lose a Write
+
+With **asynchronous replication**, the primary can acknowledge without waiting for a remote copy to reach the required progress point. That can reduce write latency and allow writes while a replica is disconnected. It also means losing the primary before replication catches up can lose a write that the client already believes succeeded.
+
+With **synchronous replication**, acknowledgement waits for specified remote progress according to configuration. Waiting for remote durable flush protects a different property from waiting for remote replay. PostgreSQL's `synchronous_commit` modes and synchronous-standby configuration define those boundaries; selecting a mode without selecting eligible synchronous standbys does not imply every desired remote guarantee.
+
+A replica receiving a log record into volatile memory is not equivalent to the replica persisting it. A replica persisting the record is not equivalent to applying it to a queryable state. These distinctions affect both latency and recovery. Choose the minimum boundary that satisfies the actual promise rather than describing all remote acknowledgement as one undifferentiated safety level.
+
+## Replica Reads Need a Visibility Contract
+
+<SoftwareReplicationExplorer />
+
+The diagram starts after the primary acknowledges version 8 while the replica still returns 7. Select “Before write” to see the shared starting state, then “Replica catches up” to see convergence. The arrow represents asynchronous change transfer; it does not prove any maximum delay. A disconnected replica can remain old for longer than a nominal lag target.
+
+**Read-your-writes** means a caller's later read observes at least the effects of its own successful earlier writes under the session contract. Routing that read to the primary is one approach when the primary provides the required visibility. Another is carrying a progress token and using a replica only after it reaches the needed position. A fixed sleep is merely a guess unless the system actually guarantees the delay bound.
+
+Routing every read to replicas can make a just-created item appear missing or make a just-revoked permission appear valid. Whether stale reads are acceptable depends on the operation. Product listings and authorization transitions need different policies. Keep the consistency decision visible in route selection rather than assuming the database connection pool chooses a harmless destination.
+
+<RunnableCode code={`primary = {"version": 7, "destination": "old"}
+replica = primary.copy()
+primary.update(version=8, destination="new")
+print("Write acknowledged at primary version:", primary["version"])
+print("Immediate replica read:", replica)
+required_version = primary["version"]
+print("Replica satisfies session barrier:", replica["version"] >= required_version)
+replica = primary.copy()
+print("After replay:", replica)
+print("Replica satisfies session barrier:", replica["version"] >= required_version)
+# Try it: move the replica read before replay; observe that acknowledgement alone does not change it.
+`} />
+
+The assignment `replica = primary.copy()` stands for successful replay of the change, not a production replication implementation. It gives the example an explicit moment when visibility changes. A real progress barrier needs a bounded wait, a timeout policy, and a way to route or reject if no suitable replica is available within the caller's deadline.
+
+<PredictFirst question="A replica has durably stored the log for version 8 but has only replayed version 7. Must a normal query already return version 8?" options={["Yes, durable storage and query visibility are the same stage", "No, replay or application must reach the write before it becomes visible under the read contract", "No, replicas can never serve the new value"]} correctIndex={1} explanation="Durable log receipt protects recoverable information, while replay constructs queryable state. The replica can catch up, but the stored log alone does not mean an immediate read sees the new value." />
+
+## Promotion Requires One Authorized Writer
+
+**Failover** transfers serving responsibility after a writer is unavailable or suspected unavailable. **Promotion** makes a replica act as the new primary. The hard part is not changing a role flag; it is establishing that only the authorized writer can accept effects and that the chosen history satisfies the recovery promise.
+
+A network partition can make an old primary unreachable from the controller while it remains reachable from some clients. Promoting another node without fencing the old writer can create conflicting histories. **Fencing** prevents a former owner from continuing to modify authoritative state after ownership moves. It can use a storage or infrastructure mechanism with guarantees appropriate to the deployment, rather than relying on the old process receiving a polite shutdown request.
+
+Choose a candidate based on the required durable history and the protocol's rules, not only its health endpoint or lowest latency. If only version 7 survives and version 8 was acknowledged asynchronously, promotion cannot recreate the missing content by knowing that a version number is absent. Recovery may require logs or backups from elsewhere, or an explicit admission that the recovery-point promise was exceeded.
+
+An application also needs to reconnect to the new writer and handle ambiguous requests. A connection failure after commit does not tell the client whether the effect happened. Preserve idempotency identifiers and reconcile outcomes before repeating unsafe side effects. Replication and failover protect state placement; they do not automatically solve business-operation deduplication.
+
+<GoDeeper title="Go deeper: waiting for every replica can reduce availability">
+If acknowledgement requires every configured replica, one unavailable or slow replica can stop writes even when the primary and other copies are healthy. Quorum or selected-standby policies can trade which failure sets block progress, but their exact durability guarantee depends on membership, acknowledgement stage, and safe promotion. Count the copies required to acknowledge and the copies the failure model can remove together. A list of replica count alone is insufficient to establish the guarantee.
+</GoDeeper>
+
+## Replication Lag Is Also a Capacity Signal
+
+If changes arrive faster than a replica can receive, flush, or replay them, the corresponding backlog grows. Adding read traffic to the replica can compete with replay for processor, storage, or memory resources. A read-scaling plan can therefore increase staleness precisely when demand rises. Measure both read latency and replication progress during a representative workload.
+
+A stalled replica can also cause retained-log growth under mechanisms such as replication slots. The primary must preserve needed history according to the engine's retention configuration, potentially consuming substantial storage. Monitor the retained byte gap and define a rebuild or retention policy before a long outage fills the writer's disk. “The replica is only a backup” does not make its resource relationship harmless.
+
+A time-based lag metric can be misleading during idle periods. An old replay timestamp might reflect no new writes rather than falling behind, while a small time gap during a high-volume burst can represent many bytes. Retain log positions, byte gaps, time context, and stage-specific progress. Tie alerts to user freshness and recovery risk rather than only a convenient dashboard label.
+
+## Inspect the Actual Replication Boundary
+
+On a PostgreSQL primary, `SELECT application_name, state, sync_state, sent_lsn, write_lsn, flush_lsn, replay_lsn FROM pg_stat_replication;` exposes distinct positions reported by connected standbys. Appropriate monitoring privileges are required. On a standby, `SELECT pg_is_in_recovery(), pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn();` helps distinguish recovery state from receive and replay progress. Compare positions only within the relevant history and interpret nulls under the documented connection state.
+
+These commands observe a configured system; they do not create a replica or guarantee a safe failover. A real setup also needs authentication, network access, log retention, compatible binaries and data, and a tested promotion and fencing process. Use the existing [PostgreSQL material](/docs/databases/relational/postgresql) for engine operations, and keep recovery drills separate from production traffic until their consequences are understood.
+
+The next experiment isolates durability from visibility. A standby that durably holds only version 7 cannot recover acknowledged version 8 after the primary is lost. A standby that has durably stored 8 but applied only 7 can replay 8 before promotion and preserve the acknowledged effect. We model replay as copying the durable position because the content and ordered log are assumed available in this toy example.
+
+<RunnableCode code={`acknowledged_version = 8
+candidates = [
+    {"name": "behind", "durable": 7, "applied": 7},
+    {"name": "stored_not_applied", "durable": 8, "applied": 7},
+]
+for standby in candidates:
+    print("Candidate:", standby["name"], "read version before recovery:", standby["applied"])
+    recovered = standby["durable"]
+    preserves_ack = recovered >= acknowledged_version
+    print("After replaying available durable log:", recovered,
+          "preserves acknowledged write:", preserves_ack)
+# Try it: raise acknowledged_version to 9; neither surviving candidate can invent the missing log.
+`} />
+
+## Common Problems and Fixes
+
+Users cannot find a just-created record after a successful response. Trace read routing and add the required primary or progress-barrier policy. Write latency rises when a standby slows. Inspect the synchronous acknowledgement boundary and remote storage progress before reducing guarantees. A failover creates conflicting writes. Audit fencing and membership decisions, not just the promotion command.
+
+A replica is promoted quickly but loses acknowledged work. Check what acknowledgement meant and which durable history survived. A replica is current during idle tests but falls behind under reads. Test replay and read contention together. A deletion propagates to every copy and destroys needed history. Replication faithfully copying an erroneous change is why backups and point-in-time recovery remain separate responsibilities.
+
+## When Not to Add Another Read Replica
+
+| Situation | Better first action |
+| --- | --- |
+| Writes saturate one authoritative partition | Reduce write demand or reconsider ownership partitioning |
+| Reads require immediate latest-state visibility everywhere | Define and provision the required consistency protocol |
+| Most read cost comes from one inefficient query | Repair its access path and result size |
+| Failover and fencing are untested | Establish recovery correctness before counting another copy |
+
+## Remember
+
+| Boundary | What it proves |
+| --- | --- |
+| Primary commit | Acknowledgement under the local and configured remote policy |
+| Replica receipt | Changes have reached a remote process |
+| Remote durable flush | Received log can survive the modeled local crash |
+| Replay | The replica has applied changes toward readable state |
+| Read barrier | A selected reader reaches the caller's required progress |
+| Promotion | One authorized writer owns a chosen surviving history |
+
+You can now distinguish a stale replica read from an acknowledged write lost during failover. Return to [Data Ownership and Consistency](/docs/software-system-design/data), and apply those boundaries to the [payment case study](/docs/software-system-design/payment-system), where ambiguous effects require reconciliation.
+
+## Sources
+
+- [PostgreSQL, Log-Shipping Standby Servers](https://www.postgresql.org/docs/current/warm-standby.html): streaming, synchronous replication, and standby behavior.
+- [PostgreSQL, Write-Ahead Log Configuration](https://www.postgresql.org/docs/current/runtime-config-wal.html): acknowledgement and `synchronous_commit` boundaries.
+- [PostgreSQL, Monitoring Statistics](https://www.postgresql.org/docs/current/monitoring-stats.html): replication progress fields.
+- [PostgreSQL, Recovery Control Functions](https://www.postgresql.org/docs/current/functions-admin.html): receive/replay positions and recovery state.
+- [PostgreSQL, Continuous Archiving and Point-in-Time Recovery](https://www.postgresql.org/docs/current/continuous-archiving.html): recovery history beyond live replicas.
