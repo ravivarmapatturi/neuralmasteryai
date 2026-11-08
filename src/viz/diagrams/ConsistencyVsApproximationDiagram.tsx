@@ -22,7 +22,7 @@ export default function ConsistencyVsApproximationDiagram() {
 
   const width = 560;
   const height = 160;
-  const chartTop = 15;
+  const chartTop = 22;
   const chartBottom = 130;
   const xFor = (v: number) => 50 + (v / 100) * (width - 90);
 
@@ -33,8 +33,8 @@ export default function ConsistencyVsApproximationDiagram() {
         <line x1={50} y1={chartBottom} x2={width - 20} y2={chartBottom} stroke={t.border} strokeWidth={1} />
         <line x1={50} y1={chartTop} x2={50} y2={chartBottom} stroke={t.border} strokeWidth={1} />
         {/* relational: flat line at 100% recall */}
-        <line x1={50} y1={chartTop + 4} x2={width - 20} y2={chartTop + 4} stroke={relColor} strokeWidth={2} strokeDasharray="4 3" />
-        <text x={width - 20} y={chartTop - 2} textAnchor="end" fontSize={9} fill={relColor}>Relational: always exact</text>
+        <line x1={50} y1={chartTop} x2={width - 20} y2={chartTop} stroke={relColor} strokeWidth={2} strokeDasharray="4 3" />
+        <text x={width - 20} y={chartTop - 6} textAnchor="end" fontSize={9.5} fontWeight={600} fill={relColor}>Relational: always exact</text>
         {/* vector recall curve */}
         <path
           d={Array.from({ length: 21 }, (_, i) => {
@@ -46,7 +46,7 @@ export default function ConsistencyVsApproximationDiagram() {
           fill="none" stroke={vecColor} strokeWidth={2.5}
         />
         <circle cx={xFor(searchScope)} cy={chartBottom - ((recall - 55) / 45) * (chartBottom - chartTop)} r={4.5} fill={vecColor} />
-        <text x={50} y={chartTop - 2} fontSize={9} fill={t.textMuted}>recall (accuracy)</text>
+        <text x={50} y={chartTop - 6} fontSize={9.5} fill={t.textMuted}>recall (accuracy)</text>
         <text x={width - 20} y={chartBottom + 16} textAnchor="end" fontSize={9} fill={t.textMuted}>search scope →</text>
       </svg>
       <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color: vecColor, fontWeight: 700, marginTop: 4 }}>

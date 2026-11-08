@@ -28,8 +28,8 @@ export default function AuthNvsAuthZDiagram() {
       }
     >
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
-        <text x={30} y={30} fontSize={11} fontFamily={HAND_FONT} fill={t.textMuted}>Request arrives</text>
-        <SketchArrow points={[[140, 26], [190, 26]]} color={t.textMuted} strokeWidth={1.5} id="aa-arrow-1" />
+        <text x={30} y={32} fontSize={11} fontFamily={HAND_FONT} fill={t.textMuted}>Request arrives</text>
+        <SketchArrow points={[[125, 28], [185, 28]]} color={t.textMuted} strokeWidth={1.5} id="aa-arrow-1" />
 
         <g onClick={() => setActive('authn')} onMouseEnter={() => setActive('authn')} style={{ cursor: 'pointer' }} opacity={active === 'authn' ? 1 : 0.4}>
           <rect x={190} y={10} width={130} height={36} rx={8} fill={active === 'authn' ? `${authnColor}30` : t.surfaceAlt} stroke="none" />
@@ -37,7 +37,7 @@ export default function AuthNvsAuthZDiagram() {
           <text x={255} y={32} textAnchor="middle" fontSize={10} fontWeight={700} fontFamily={HAND_FONT} fill={authnColor}>Authentication</text>
         </g>
 
-        <SketchArrow points={[[320, 26], [370, 26]]} color={t.textMuted} strokeWidth={1.5} id="aa-arrow-2" />
+        <SketchArrow points={[[325, 28], [365, 28]]} color={t.textMuted} strokeWidth={1.5} id="aa-arrow-2" />
 
         <g onClick={() => setActive('authz')} onMouseEnter={() => setActive('authz')} style={{ cursor: 'pointer' }} opacity={active === 'authz' ? 1 : 0.4}>
           <rect x={370} y={10} width={130} height={36} rx={8} fill={active === 'authz' ? `${authzColor}30` : t.surfaceAlt} stroke="none" />
@@ -45,8 +45,8 @@ export default function AuthNvsAuthZDiagram() {
           <text x={435} y={32} textAnchor="middle" fontSize={10} fontWeight={700} fontFamily={HAND_FONT} fill={authzColor}>Authorization</text>
         </g>
 
-        <SketchArrow points={[[500, 26], [540, 26]]} color={t.accentPrimary} strokeWidth={1.5} id="aa-arrow-3" />
-        <text x={545} y={30} fontSize={10} fontFamily={HAND_FONT} fill={t.accentPrimary}>OK</text>
+        <SketchArrow points={[[505, 28], [538, 28]]} color={t.accentPrimary} strokeWidth={1.5} id="aa-arrow-3" />
+        <text x={544} y={32} fontSize={10} fontFamily={HAND_FONT} fill={t.accentPrimary}>OK</text>
 
         <text x={255} y={65} textAnchor="middle" fontSize={9} fontFamily={HAND_FONT} fill={authnColor}>"who are you?"</text>
         <text x={435} y={65} textAnchor="middle" fontSize={9} fontFamily={HAND_FONT} fill={authzColor}>"what can you do?"</text>

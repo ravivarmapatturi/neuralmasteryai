@@ -21,9 +21,13 @@ export default function BackdoorTriggerDiagram() {
 
   return (
     <VisualizationContainer footer={`With ${triggerSpaceSize.toLocaleString()} possible trigger patterns and ${tests.toLocaleString()} random black-box test inputs, real probability of randomly stumbling onto the exact trigger = ${(detectProb * 100).toFixed(3)}% -- computed from 1−(1−1/N)^tests, the same math as the deception-detection diagram on Alignment & RLHF, just with "possible triggers" standing in for "possible bad behaviors." The model performs correctly on every input except the trigger, which normal evaluation has essentially no reason to ever generate.`}>
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        <Slider label="possible trigger patterns (10^x)" value={triggerSpaceLog} onChange={setTriggerSpaceLog} min={2} max={8} step={0.5} />
-        <Slider label="random black-box tests run" value={tests} onChange={setTests} min={10} max={20000} step={10} />
+      <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <Slider label="possible trigger patterns (10^x)" value={triggerSpaceLog} onChange={setTriggerSpaceLog} min={2} max={8} step={0.5} />
+        </div>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <Slider label="random black-box tests run" value={tests} onChange={setTests} min={10} max={20000} step={10} />
+        </div>
       </div>
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8 }}>

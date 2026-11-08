@@ -86,12 +86,13 @@ export default function CommunicationPatternSequenceDiagram() {
           const toX = m.from === 'C' ? sx : cx;
           const color = m.from === 'C' ? cColor : sColor;
           const isNote = m.label.startsWith('(');
+          const textW = Math.min(320, m.label.length * 6.5 + 16);
           return (
             <g key={i}>
               {!isNote && <SketchArrow points={[[fromX, y], [toX, y]]} color={color} strokeWidth={1.5} arrowhead={true} id={`cps-msg-${i}`} />}
               {isNote && <SketchArrow points={[[fromX, y], [toX, y]]} color={t.textMuted} strokeWidth={1} arrowhead={false} id={`cps-note-${i}`} />}
-              <rect x={Math.min(fromX, toX) + 8} y={y - 11} width={Math.abs(toX - fromX) - 16} height={15} fill={t.surface} />
-              <text x={(fromX + toX) / 2} y={y - 1} textAnchor="middle" fontSize={7.8} fontFamily={HAND_FONT} fill={isNote ? t.textMuted : color} fontStyle={isNote ? 'italic' : 'normal'}>{m.label}</text>
+              <rect x={(fromX + toX) / 2 - textW / 2} y={y - 8} width={textW} height={14} rx={3} fill={t.surface} />
+              <text x={(fromX + toX) / 2} y={y + 1} textAnchor="middle" fontSize={7.8} fontFamily={HAND_FONT} fill={isNote ? t.textMuted : color} fontStyle={isNote ? 'italic' : 'normal'}>{m.label}</text>
             </g>
           );
         })}

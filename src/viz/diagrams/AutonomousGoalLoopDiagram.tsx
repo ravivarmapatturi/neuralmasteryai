@@ -82,13 +82,25 @@ export default function AutonomousGoalLoopDiagram() {
       </div>
 
       <svg viewBox="0 0 680 300" width="100%" role="img" aria-label="Autonomous Goal Loop State Machine Diagram">
+        <defs>
+          <marker id="agl-arrow-primary" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill={t.accentPrimary} />
+          </marker>
+          <marker id="agl-arrow-teal" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill={t.accentTeal} />
+          </marker>
+          <marker id="agl-arrow-danger" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill={t.accentDanger} />
+          </marker>
+        </defs>
+
         {/* Node 1: User Goal */}
         <rect x={20} y={20} width={170} height={50} rx={8} fill={t.surface} stroke={t.border} strokeWidth={1.5} />
         <text x={105} y={42} textAnchor="middle" fontSize={12} fontWeight={700} fill={t.textPrimary}>User Dispatches Goal</text>
         <text x={105} y={58} textAnchor="middle" fontSize={10} fill={t.textSecondary}>"Implement feature X"</text>
 
         {/* Arrow to Harness Evaluator */}
-        <line x1={190} y1={45} x2={240} y2={45} stroke={t.accentPrimary} strokeWidth={2} />
+        <line x1={190} y1={45} x2={235} y2={45} stroke={t.accentPrimary} strokeWidth={2} markerEnd="url(#agl-arrow-primary)" />
 
         {/* Node 2: Harness Evaluator */}
         <rect
@@ -105,7 +117,7 @@ export default function AutonomousGoalLoopDiagram() {
         <text x={340} y={56} textAnchor="middle" fontSize={10} fill={t.textSecondary}>Iteration cap · Token velocity cap</text>
 
         {/* Arrow to Worker */}
-        <line x1={340} y1={75} x2={340} y2={105} stroke={t.accentPrimary} strokeWidth={2} />
+        <line x1={340} y1={75} x2={340} y2={100} stroke={t.accentPrimary} strokeWidth={2} markerEnd="url(#agl-arrow-primary)" />
 
         {/* Node 3: Worker Agent */}
         <rect
@@ -122,7 +134,7 @@ export default function AutonomousGoalLoopDiagram() {
         <text x={340} y={146} textAnchor="middle" fontSize={10} fill={t.textSecondary}>Subtask edits inside sandbox</text>
 
         {/* Arrow to Verifier */}
-        <line x1={340} y1={160} x2={340} y2={190} stroke={t.accentPrimary} strokeWidth={2} />
+        <line x1={340} y1={160} x2={340} y2={185} stroke={t.accentPrimary} strokeWidth={2} markerEnd="url(#agl-arrow-primary)" />
 
         {/* Node 4: Verifier */}
         <rect
@@ -139,8 +151,8 @@ export default function AutonomousGoalLoopDiagram() {
         <text x={340} y={230} textAnchor="middle" fontSize={10} fill={t.textSecondary}>Audits diffs &amp; runs 3-layer gate</text>
 
         {/* Branch: Pass (Right) vs Fail (Left) */}
-        <line x1={440} y1={217} x2={490} y2={217} stroke={t.accentTeal} strokeWidth={2} />
-        <line x1={240} y1={217} x2={190} y2={217} stroke={t.accentDanger} strokeWidth={2} />
+        <line x1={440} y1={217} x2={485} y2={217} stroke={t.accentTeal} strokeWidth={2} markerEnd="url(#agl-arrow-teal)" />
+        <line x1={240} y1={217} x2={195} y2={217} stroke={t.accentDanger} strokeWidth={2} markerEnd="url(#agl-arrow-danger)" />
 
         {/* Node 5: Success / Checkoff (Right) */}
         <rect
@@ -157,7 +169,7 @@ export default function AutonomousGoalLoopDiagram() {
         <text x={575} y={230} textAnchor="middle" fontSize={10} fill={t.textSecondary}>Update feature_list.json</text>
 
         {/* Loop back from Success if more tasks */}
-        <path d="M 575 190 L 575 45 L 440 45" fill="none" stroke={t.accentTeal} strokeWidth={1.5} strokeDasharray="4 4" />
+        <path d="M 575 190 L 575 45 L 445 45" fill="none" stroke={t.accentTeal} strokeWidth={1.5} strokeDasharray="4 4" markerEnd="url(#agl-arrow-teal)" />
 
         {/* Node 6: Fail / Cycle Check (Left) */}
         <rect
@@ -173,8 +185,8 @@ export default function AutonomousGoalLoopDiagram() {
         <text x={105} y={212} textAnchor="middle" fontSize={12} fontWeight={700} fill={t.accentDanger}>Cycle Check &amp; Feedback</text>
         <text x={105} y={230} textAnchor="middle" fontSize={10} fill={t.textSecondary}>Inject error diagnostics</text>
 
-        {/* Loop back from Fail to Harness */}
-        <path d="M 105 190 L 105 75 L 240 75" fill="none" stroke={t.accentDanger} strokeWidth={1.5} strokeDasharray="4 4" />
+        {/* Loop back from Fail to Harness routed cleanly through clear space */}
+        <path d="M 105 190 L 105 175 L 215 175 L 215 60 L 235 60" fill="none" stroke={t.accentDanger} strokeWidth={1.5} strokeDasharray="4 4" markerEnd="url(#agl-arrow-danger)" />
 
         {/* Bottom Status text */}
         <text x={340} y={280} textAnchor="middle" fontSize={11} fill={t.textSecondary}>

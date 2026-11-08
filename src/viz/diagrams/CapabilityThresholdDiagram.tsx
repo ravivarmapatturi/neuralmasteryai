@@ -28,7 +28,8 @@ export default function CapabilityThresholdDiagram() {
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8 }}>
         <line x1={0} y1={py(THRESHOLD)} x2={width} y2={py(THRESHOLD)} stroke={t.accentDanger} strokeWidth={1.5} strokeDasharray="4 3" />
-        <text x={4} y={py(THRESHOLD) - 4} fontSize={10} fill={t.accentDanger}>dangerous-capability threshold</text>
+        <rect x={4} y={py(THRESHOLD) - 16} width={162} height={13} rx={3} fill={t.surface} fillOpacity={0.9} />
+        <text x={7} y={py(THRESHOLD) - 6} fontSize={10} fontWeight={600} fill={t.accentDanger}>dangerous-capability threshold</text>
 
         <polyline points={curve.map(([x, y]) => `${x},${y}`).join(' ')} fill="none" stroke={t.accentSecondary} strokeWidth={2.5} />
         <line x1={px(logCompute)} y1={0} x2={px(logCompute)} y2={height} stroke={t.accentWarn} strokeWidth={1.5} strokeDasharray="3 3" />

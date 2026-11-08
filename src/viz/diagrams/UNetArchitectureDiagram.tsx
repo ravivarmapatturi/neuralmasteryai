@@ -30,9 +30,9 @@ export default function UNetArchitectureDiagram() {
           </marker>
         </defs>
 
-        <text x={85} y={12} textAnchor="middle" fontSize={9} fontWeight={700} fill={t.textMuted}>ENCODER</text>
-        <text x={177} y={12} textAnchor="middle" fontSize={9} fontWeight={700} fill={okColor}>BOTTLENECK</text>
-        <text x={275} y={12} textAnchor="middle" fontSize={9} fontWeight={700} fill={t.textMuted}>DECODER</text>
+        <text x={85} y={10} textAnchor="middle" fontSize={9} fontWeight={700} fill={t.textMuted}>ENCODER</text>
+        <text x={177.5} y={10} textAnchor="middle" fontSize={9} fontWeight={700} fill={okColor}>BOTTLENECK</text>
+        <text x={275} y={10} textAnchor="middle" fontSize={9} fontWeight={700} fill={t.textMuted}>DECODER</text>
 
         {stages.map((w, i) => {
           const x = 10 + i * 50;
@@ -60,15 +60,15 @@ export default function UNetArchitectureDiagram() {
           );
         })}
 
-        {/* Skip connections at respective vertical heights */}
+        {/* Skip connections routed as cleanly nested arcs that never cross */}
         {skips && (
           <>
-            {/* Level 0: top bridge */}
-            <path d="M 45 32 H 306" fill="none" stroke={color} strokeWidth={1.5} strokeDasharray="3,2" markerEnd="url(#unet-arrow)" opacity={0.85} />
-            {/* Level 1: mid bridge */}
-            <path d="M 95 44 H 256" fill="none" stroke={color} strokeWidth={1.5} strokeDasharray="3,2" markerEnd="url(#unet-arrow)" opacity={0.85} />
-            {/* Level 2: arch bridge over bottleneck */}
-            <path d="M 145 52 Q 177.5 34 206 52" fill="none" stroke={color} strokeWidth={1.5} strokeDasharray="3,2" markerEnd="url(#unet-arrow)" opacity={0.85} />
+            {/* Level 0: outer arc (64-to-64) */}
+            <path d="M 45 34 Q 177.5 4 306 34" fill="none" stroke={color} strokeWidth={1.5} strokeDasharray="3,2" markerEnd="url(#unet-arrow)" opacity={0.85} />
+            {/* Level 1: middle arc (40-to-40) */}
+            <path d="M 95 44 Q 177.5 18 256 44" fill="none" stroke={color} strokeWidth={1.5} strokeDasharray="3,2" markerEnd="url(#unet-arrow)" opacity={0.85} />
+            {/* Level 2: inner arc (24-to-24) arching cleanly over bottleneck */}
+            <path d="M 145 50 Q 177.5 32 206 50" fill="none" stroke={color} strokeWidth={1.5} strokeDasharray="3,2" markerEnd="url(#unet-arrow)" opacity={0.85} />
           </>
         )}
       </svg>
