@@ -1,0 +1,105 @@
+---
+title: "Design a URL Shortener"
+sidebar_position: 7
+description: "Design short-link creation and redirects with explicit capacity estimates, collision handling, cache freshness, abuse controls, and deletion guarantees."
+---
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import SoftwareCaseTrace from '../../../viz/diagrams/SoftwareCaseTrace';
+
+# Design a URL Shortener
+
+<ELI5>A short code is an entry in a directory. Looking up the directory can be fast and widely copied, but somebody must own the authoritative entry. If a destination becomes unsafe, every serving copy must stop directing people there within an agreed time. Making the code short is easier than keeping that promise.</ELI5>
+
+## Requirements and Estimates
+
+We design an illustrative service with one million creates and 100 million redirects per day. Redirects peak at 6,000/s, and a logical link record occupies an assumed 500 bytes. This is the same workload as [Foundations](/docs/software-system-design/foundations): 1,157 average redirects/s, 182.5 GB of new logical metadata per year, and fourteen application instances if each safely serves 1,000 requests/s and utilization must remain below 70% after losing the largest of three zones.
+
+The required actions are create, redirect, expire, and revoke. Custom aliases are optional and require an atomic uniqueness check. Analytics may lag and must not block redirects. For this design, assume public redirects target p99 below 200 ms and 99.9% successful eligible requests over 30 days; these are product objectives for the exercise, not measured results. Revocations must reach every serving layer within an illustrative sixty seconds.
+
+The misconception is that a random short code guarantees uniqueness. Randomness reduces coordination and distributes keys, but collisions remain possible. A database unique constraint or conditional insert must be the authority. Generating a code, checking that it is absent, and then inserting in separate operations allows concurrent creators to claim the same code.
+
+## Allocation, Schema, and Write Path
+
+Expose `POST /links` with destination, optional expiry, and an idempotency key scoped to the owner. Validate the URL scheme and length, apply abuse policy, and avoid fetching arbitrary destinations from privileged networks. Persist code, owner, destination, creation time, expiry, status, and version. The create response is returned only after the authoritative write satisfies the durability contract.
+
+Eight base-62 characters provide 62 to the eighth power, or 218,340,105,584,896 possible codes. With 365 million uniformly random assignments, the expected number of colliding pairs is about 305, not zero. Rejection and retry at an atomic unique insert keep mappings correct. A sequential identifier encoded in base 62 removes random collisions but makes enumeration easy and may expose business volume; unpredictability is an abuse-control decision, not a substitute for authorization.
+
+A relational primary with a unique code index is a reasonable initial owner at 11.57 average creates/s. The existing [PostgreSQL page](/docs/databases/relational/postgresql) covers implementation. Add a separate owner/time index only if the administration UI needs it. Partition by a stable hash of code when measured capacity or dataset operations justify it, keeping code allocation and its uniqueness authority aligned.
+
+## Redirect Path and Cache Policy
+
+Expose `GET /{code}`. Check a nearby cache for an active mapping or tombstone, then query the authority on a miss. Return a temporary redirect when destinations can change; permanent redirect behavior can be retained by clients outside our immediate control. Cache lifetime must fit the revocation promise, and every intermediary's policy must agree.
+
+A 95% hit rate reduces 6,000 origin lookups/s to 300/s. A purge that drops hits to 50% produces 3,000/s at origin. Bound cache fills and coalesce concurrent requests for one popular code. Do not infer that a cache protects storage during a cold start unless a load test proves the miss path survives.
+
+Revocation increments a version and writes a tombstone before publishing invalidation. A delayed reader must not overwrite that tombstone with an older destination. Version-aware fills or bounded cache lifetimes plus a rigorously accounted propagation budget are needed. If browsers are allowed to retain a destination indefinitely, a sixty-second revocation promise is impossible; change the caching contract rather than claiming the service can invalidate someone else's memory.
+
+## Reliability, Security, and Alternatives
+
+Serving public cached mappings during a primary outage may preserve availability, but it must honor expiry and the maximum allowed revocation lag. Administration can fail closed while reads degrade under an explicit policy. Never acknowledge a revocation that cannot meet the propagation deadline. Keep backup recovery separate from replica availability, and audit owner changes and abuse actions.
+
+Analytics events contain a redirect identity and can be processed asynchronously. Deduplicate if billing depends on counts; approximate metrics may tolerate different semantics. Do not log sensitive destination query parameters by default. Enumeration, malicious destinations, and open-redirect reputation are product risks even when the storage system is correct.
+
+A single-region multi-zone authority plus CDN is the starting choice here. Multi-region writes add allocation and revocation coordination without being required by the modest write rate. Reconsider when the geographic write-latency or recovery objective demands it, and specify one owner for each code during failover. Monitor redirect success, cache hit rate, origin saturation, invalidation age, and unique-insert retries.
+
+## Follow the Failure Boundary
+
+<SoftwareCaseTrace scenario="url-shortener" />
+
+<PredictFirst question='A revoked link is still in a slow cache-fill response. What must the fill respect?' options={['The old response can replace any newer cache entry', 'The tombstone version must prevent an older value from replacing it', 'A random code prevents stale reads']} correctIndex={1} explanation='A newer tombstone represents authoritative revocation. Code randomness affects allocation, while version-aware cache writes prevent this stale refill race.' />
+
+## Run the Design Calculation
+
+<RunnableCode code={`alphabet = 62
+space = alphabet ** 8
+created = 1_000_000 * 365
+expected_pairs = created * (created-1) / (2*space)
+print("Eight-character code space:", space)
+print("Expected colliding pairs in a year:", round(expected_pairs, 1))
+print("Annual logical GB:", created * 500 / 1e9)
+print("Origin requests/s at 95% hits:", round(6000 * .05))
+# Try it: use seven characters; expected collision pairs increase by 62 times.
+`} />
+
+## Change the Invariant Deliberately
+
+<RunnableCode code={`store = {}
+candidates = iter(["abc", "abc", "def"])
+def create(destination):
+    while True:
+        code = next(candidates)
+        if code not in store:  # Model of one atomic unique insert, not separate production operations.
+            store[code] = destination
+            return code
+print("First:", create("https://example.com/a"))
+print("Collision retried:", create("https://example.com/b"))
+assert len(store) == 2
+# Try it: remove the uniqueness check; the second create overwrites the first mapping.
+`} />
+
+## When Not to Use This Design
+
+| Situation | Better choice |
+| --- | --- |
+| A small internal alias directory | One application and relational table |
+| Destinations are genuinely immutable forever | Longer-lived caching with a different revocation contract |
+
+## Remember
+
+| Decision | Reason |
+| --- | --- |
+| Allocation | Atomic uniqueness resolves collisions |
+| Redirect | Cache policy must preserve revocation |
+| Analytics | Asynchronous processing avoids blocking users |
+
+Next: [Design a Distributed Rate Limiter](/docs/software-system-design/rate-limiter).
+
+## Sources
+
+- [RFC 9110, Redirect Semantics (2022)](https://www.rfc-editor.org/rfc/rfc9110).
+- [RFC 9111, HTTP Caching (2022)](https://www.rfc-editor.org/rfc/rfc9111).
+- [PostgreSQL, Constraints](https://www.postgresql.org/docs/current/ddl-constraints.html).
+- [OWASP, SSRF Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html).
+- [Google SRE, Handling Overload](https://sre.google/sre-book/handling-overload/).
