@@ -1,0 +1,58 @@
+---
+title: "Software System Design Roadmap"
+sidebar_position: 0
+description: "Follow a practical route from requirements and capacity to data ownership, delivery, coordination, recovery, and ten worked software architecture designs."
+---
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import SoftwareCapacityExplorer from '../../../viz/diagrams/SoftwareCapacityExplorer';
+
+# Software System Design Roadmap
+
+<ELI5>
+A system design is an explanation of how a user's request reaches a trustworthy result, even when some machines fail. We begin with the promise, estimate the work, and choose who owns each piece of state. We then follow failures through the same path. This roadmap gives you a sequence for practicing that reasoning and ten designs that put it to work.
+</ELI5>
+
+The recurring question is **which component owns this promise, and what evidence shows it still holds?** Adding servers does not fix a missing transaction, and adding replicas does not specify read freshness. Each chapter carries concrete assumptions into calculations and failure cases so you can test the architecture rather than memorize component names.
+
+## Build the Design From Its Constraints
+
+Start with [Requirements, Capacity, and Service Objectives](/docs/software-system-design/foundations). Turn a vague product into user actions, exclusions, invariants, and a measured outcome. Estimate average and peak traffic separately, then calculate capacity after a named failure. The example below shows why ten instances at 60% healthy utilization can still be insufficient.
+
+<SoftwareCapacityExplorer />
+
+Continue with [Scaling and Traffic Management](/docs/software-system-design/scaling). Compare vertical and horizontal scaling, move session state out of replaceable processes, and distinguish L4/L7 routing, gateways, CDNs, autoscaling, and admission control. The key decision is which resource saturates next, including the origin after a cache miss spike.
+
+[Data Ownership and Consistency](/docs/software-system-design/data) follows the authoritative record through indexes, replicas, shards, and caches. It connects SQL and NoSQL access patterns to transaction invariants, explains consistent hashing without confusing placement with migration, and makes CAP, PACELC, and session guarantees operational decisions.
+
+[Communication and Delivery Guarantees](/docs/software-system-design/communication) chooses request and streaming contracts, then traces queue acknowledgments and replay. You will see how one event can be delivered twice yet change business state once, and why an external side effect remains outside a broker's transaction boundary.
+
+[Coordination and Distributed Workflows](/docs/software-system-design/distributed-systems) connects service boundaries to consensus, fencing, outboxes, and sagas. It also bounds retries and dependency failure with deadlines and circuit breakers. Use the simplest ownership boundary that preserves the invariant before adding global coordination.
+
+[Reliability, Security, and Operations](/docs/software-system-design/reliability) closes the loop with outcome-based monitoring, compatible deployment, tested recovery, resource authorization, and regional ownership. A recovery objective becomes credible only after a restore exercise measures the complete path.
+
+## Work the Cases in Order
+
+| Design | Decision to practice |
+| --- | --- |
+| [URL shortener](/docs/software-system-design/url-shortener) | Atomic code allocation and bounded revocation through caches |
+| [Rate limiter](/docs/software-system-design/rate-limiter) | Atomic token ownership and a defined failure policy |
+| [News feed](/docs/software-system-design/news-feed) | Write amplification versus read-time fan-in |
+| [Chat](/docs/software-system-design/chat-system) | Durable acceptance, deduplication, order, and reconnect |
+| [Notifications](/docs/software-system-design/notification-system) | Intent, provider acceptance, delivery, and unknown outcomes |
+| [Video streaming](/docs/software-system-design/video-streaming) | Byte throughput and complete-version publication |
+| [Autocomplete](/docs/software-system-design/search-autocomplete) | Index freshness, suppression, and response ordering |
+| [Ride sharing](/docs/software-system-design/ride-sharing) | Approximate discovery versus exclusive assignment |
+| [Payments](/docs/software-system-design/payment-system) | Stable operation identity, balanced accounting, and reconciliation |
+| [File storage](/docs/software-system-design/distributed-file-storage) | Atomic manifests, failure-domain placement, and repair |
+
+For each case, write your requirements and estimates before opening the architecture. Change one assumption, run the calculation, and say which design choice must change. Then switch the failure-path control and explain where the invariant is enforced. A useful design record names the chosen owner, rejected alternative, failure behavior, and measurement that would reverse the choice.
+
+## Reuse the Existing Foundations
+
+The [networking chapter](/docs/cs-fundamentals/networking-and-distributed-systems) introduces DNS and transport. [APIs and protocols](/docs/cs-fundamentals/apis-http-and-protocols) owns HTTP mechanics and client communication patterns. The [database roadmap](/docs/databases/roadmap), [PostgreSQL chapter](/docs/databases/relational/postgresql), and [caching chapter](/docs/mlops/caching-strategies) supply implementation depth behind this track's decisions.
+
+When a design includes learned predictions, continue with the [ML system design framework](/docs/ml-system-design/the-9-step-framework) and [ML case studies](/docs/ml-system-design/case-studies). They add training data, model evaluation, and prediction-quality trade-offs. This software track supplies the request, state, and failure reasoning those systems also depend on.
+
+Practice the [software design interview questions](/docs/interview-prep/software-system-design-questions) after working the mechanisms. Answer aloud with a concrete invariant and one failure trace, then compare your answer against the question-specific criteria in Interview.
+
+You can now choose a starting point based on the decision you need to make. Begin with [Foundations](/docs/software-system-design/foundations) and keep a written assumptions table as you progress.
