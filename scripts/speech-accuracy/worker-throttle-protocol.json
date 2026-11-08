@@ -1,0 +1,32 @@
+{
+  "registeredAt": "2026-11-08T16:09:44.261049+00:00",
+  "purpose": "Supplement renderer-starvation test with ASR-worker-only CPU contention; preserve all original results; do not tune recognition code or settings",
+  "method": "One Linux logical CPU shared by the ASR worker and three equal-nice burners; capture and other renderer threads exclude that CPU. Approximately 4x, verified by independent worker calibration. No CDP or whole-renderer limiter.",
+  "sourceHashes": {
+    "scripts/speech-accuracy/thread-throttle.mjs": "6dbf76f211bd223c3d448f3ffbb8ea4e06f63d013243f28576e5c85600925a70",
+    "scripts/speech-accuracy/run-worker-throttled.mjs": "d1194aa802515e3e36302e41a90348a1e5b653c8019752baf4f816fb2386e5e6",
+    "scripts/speech-accuracy/evaluate-worker-throttled.mjs": "b560d69691f320192d3e17e708e61fda7e94ff9ced231e427f3336e668441706",
+    "scripts/speech-accuracy/cpu-burn.c": "a95fb6859bd340d945518a5822eda7ce2a79dc5ac4ff3d4febe5063ed33c4d30"
+  },
+  "jobs": [
+    {
+      "name": "before",
+      "args": [
+        "--split=heldout",
+        "--profile=better",
+        "--revision=3f1ec1b581cdc02992fb08297457b90a81be9133"
+      ],
+      "out": "scripts/speech-accuracy/evaluation-human-before-worker4.json"
+    },
+    {
+      "name": "after",
+      "args": [
+        "--split=heldout",
+        "--profile=better",
+        "--prepare=normalize",
+        "--drain=300"
+      ],
+      "out": "scripts/speech-accuracy/evaluation-human-after-worker4.json"
+    }
+  ]
+}
