@@ -1,0 +1,114 @@
+---
+title: "Design Distributed File Storage"
+sidebar_position: 16
+description: "Design chunk placement, checksums, immutable manifests, metadata ownership, repair, garbage collection, and capacity estimates for durable file storage."
+---
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import SoftwareCaseTrace from '../../../viz/diagrams/SoftwareCaseTrace';
+
+# Design Distributed File Storage
+
+<ELI5>A large file can be divided into numbered parcels stored in different warehouses. A manifest lists the parcels needed to reconstruct one exact file version. We publish that manifest only after the parcels are safely stored. Losing a warehouse then requires repair, while a failed upload leaves parcels to clean up rather than half a public file.</ELI5>
+
+## Requirements and Estimates
+
+Assume one petabyte of logical file content, represented as 1,000,000 GB in decimal units. With illustrative 64 MB chunks, there are 15,625,000 chunks before partial-chunk effects. Three full replicas require 3 PB of content capacity before metadata, spare capacity, repair reserve, checksums, and retained versions.
+
+Support upload, download, immutable versions, atomic file replacement, deletion, and namespace authorization. This design does not implement a general POSIX filesystem: cross-file rename semantics, byte-range mutation, and locking would require additional contracts. Set an illustrative p99 metadata lookup objective below 100 ms, and define content throughput separately by file size and client network envelope.
+
+The misconception is that three copies imply permanent durability. Copies can share a failure domain, contain undetected corruption, or disappear before repair completes. Durability depends on placement, checksums, detection, repair bandwidth, retained history, and operational behavior, not only replication factor.
+
+## Metadata and Content Have Different Owners
+
+The metadata service owns file paths, permissions, current version pointers, and immutable manifests. A manifest records ordered chunk identities, lengths, and integrity hashes. Chunk servers store immutable content and report durable receipt under the chosen replication policy. Keep metadata transactions small enough to protect file replacement and namespace invariants.
+
+An upload session allocates or discovers content-addressed chunks, transfers them with resumable progress, and waits for the required durability acknowledgments. Only then does a conditional metadata commit publish the new manifest. If another writer already advanced the file version, the stale commit conflicts instead of overwriting the newer file silently.
+
+A content hash detects corruption and can support deduplication, but deduplication has security implications. Exposing whether another tenant already possesses a chunk can leak information. Use appropriate tenant isolation, keyed identities, or other policy rather than assuming global deduplication is free. Authorization is checked at file access and at any signed content URL boundary.
+
+## Placement and Repair
+
+Place replicas across the promised independent failure domains. Three disks in one rack do not protect against losing that rack. A placement map needs membership versions and a migration procedure so readers can locate chunks while nodes join, leave, or fail. Hash placement chooses candidates; capacity and failure-domain constraints may require additional rules.
+
+Background scrubbing reads stored data and verifies checksums. On missing or corrupt replicas, repair from a verified copy to a new location. Prioritize chunks with the fewest healthy independent copies. Rate-limit repair enough to preserve useful traffic while ensuring the repair window does not remain dangerously long.
+
+If a failed node held 20 TB and effective repair bandwidth is 500 MB/s, copying its content alone takes about 11.1 hours. Metadata lookup, competing reads, source bottlenecks, and write amplification can extend that time. Provision spare capacity and repair throughput before failure, and rehearse a node or zone loss at representative utilization.
+
+Erasure coding stores data plus parity fragments and can reduce storage overhead. An illustrative 6+3 code stores nine fragments for six fragments of content, or 1.5 times raw content before other overhead. It changes read and repair fan-in, CPU cost, placement rules, and small-object behavior. Replica and erasure-code durability cannot be compared from capacity ratios alone.
+
+## Read Path, Deletion, and Garbage Collection
+
+A reader fetches an authorized manifest version, then downloads chunks from healthy locations or a cache. Verify content hashes and retry another replica on corruption. Immutable manifests let a reader finish one coherent version even if the file's current pointer changes during download. Range reads locate only the required chunk spans.
+
+Deletion removes or tombstones the namespace reference and revokes access under the promised policy. Physical reclamation follows retained-version and backup policy. A garbage collector must distinguish unreachable chunks from in-flight uploads, delayed metadata visibility, and old readers. Use an upload lease or a conservative grace period and a proven reachability scheme; scanning only today's current pointers can delete valid retained versions.
+
+A failed metadata commit leaves orphan chunks, which are safe to reclaim later once no upload or retained manifest can reference them. A successful manifest pointing to missing chunks is a correctness failure, so the publication barrier belongs before metadata visibility. This asymmetry makes extra temporary storage preferable to exposing partial files.
+
+## Recovery and Operational Evidence
+
+Replicate and back up metadata independently from content because losing the namespace can make intact chunks unusable. Test recovery of the placement map, encryption keys, manifests, and authorization state. Restore validation should reconstruct files and verify hashes, not merely restart the metadata process.
+
+Observe under-replicated bytes, oldest repair age, checksum failures, free capacity by failure domain, orphan age, metadata latency, and restore duration. Test simultaneous writer conflicts, crashed uploads, node loss, corrupt replicas, and garbage collection during slow uploads. The central design decision is to make publication atomic while treating placement, repair, and cleanup as explicit ongoing workflows.
+
+## Follow the Failure Boundary
+
+<SoftwareCaseTrace scenario="distributed-file-storage" />
+
+<PredictFirst question='A writer uploads every chunk but loses a metadata version race. What should be visible?' options={['A mixture of old and new chunks', 'The previous complete version; unreferenced chunks await safe cleanup', 'An empty file']} correctIndex={1} explanation='The manifest commit is the visibility boundary. A failed commit should not expose partial state; temporary orphan chunks are reclaimed only after upload and retention safety checks.' />
+
+## Run the Design Calculation
+
+<RunnableCode code={`logical_gb, chunk_mb, replicas = 1_000_000, 64, 3
+chunks = logical_gb*1000/chunk_mb
+print("Approximate full-size chunks:", int(chunks))
+print("Replicated content PB:", logical_gb*replicas/1e6)
+print("6+3 coded content PB:", logical_gb*(9/6)/1e6)
+print("20 TB repair hours at 500 MB/s:", round(20_000_000/500/3600, 2))
+# Try it: halve repair bandwidth; exposure before repair doubles.
+`} />
+
+## Change the Invariant Deliberately
+
+<RunnableCode code={`import hashlib
+chunks = [b"hello ", b"world"]
+manifest = [(hashlib.sha256(c).hexdigest(), len(c)) for c in chunks]
+store = {hashlib.sha256(c).hexdigest(): c for c in chunks}
+def read():
+    output = b""
+    for digest, size in manifest:
+        value = store[digest]
+        assert len(value) == size
+        assert hashlib.sha256(value).hexdigest() == digest
+        output += value
+    return output
+print("Reconstructed:", read().decode())
+# Try it: corrupt one stored chunk, then call read; integrity validation must reject it.
+`} />
+
+## When Not to Use This Design
+
+| Situation | Better choice |
+| --- | --- |
+| A normal application needs object storage | Use a managed object store with a documented contract |
+| Small files fit one reliable database | Keep simpler transactional storage until measured limits justify separation |
+
+## Remember
+
+| Decision | Reason |
+| --- | --- |
+| Manifest | Atomic visibility of one complete version |
+| Placement | Failure-domain independence, not copy count alone |
+| Repair | Detection and bandwidth determine exposure |
+| Garbage collection | Respect uploads, readers, and retained versions |
+
+Next: [Software System Design Roadmap](/docs/software-system-design/roadmap).
+
+## Sources
+
+- [Ghemawat et al., The Google File System (2003)](https://research.google/pubs/the-google-file-system/).
+- [Weil et al., Ceph (2006)](https://www.usenix.org/conference/osdi-06/ceph-scalable-high-performance-distributed-file-system).
+- [Ceph, Erasure Coding](https://docs.ceph.com/en/latest/rados/operations/erasure-code/).
+- [Amazon S3, Data Consistency](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html#ConsistencyModel).
+- [Amazon S3, Checking Object Integrity](https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html).
