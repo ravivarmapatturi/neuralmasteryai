@@ -52,6 +52,10 @@ for q in json.loads((ROOT / "src/data/interviewCatalog.generated.json").read_tex
     if q.get("options"):
         item["options"] = [o["text"] for o in q["options"]]
     ours.append((SECTION_TOPIC.get(q.get("section"), "rag"), item))
+# Fundamentals and senior-round questions written for this site.
+for topic, rows in json.loads((ROOT / "src/data/interviewSeniorQuestions.json").read_text()).items():
+    for qid, title, answer in rows:
+        ours.append((topic, {"id": f"senior:{qid}", "title": title, "answer": answer}))
 for topic, item in ours:
     topics[topic]["questions"].append(item)
 
