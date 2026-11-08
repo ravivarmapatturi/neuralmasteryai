@@ -1,0 +1,155 @@
+---
+title: "Reverse Proxies and API Gateways"
+sidebar_position: 2.4
+description: "Place routing, authentication, limits, and protocol policy at an explicit boundary, then preserve client identity and deadlines across proxy hops."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import ProxyTrustExplorer from '../../../viz/diagrams/ProxyTrustExplorer';
+
+# Reverse Proxies and API Gateways
+
+<ELI5>
+A building reception desk can check visitors, direct them to departments, and record who entered. It must not trust a visitor's handwritten badge claiming to be an employee. Departments also need to know which information reception actually verified. A proxy has the same problem when it forwards requests and identity claims between networks.
+</ELI5>
+
+A **reverse proxy** accepts requests on behalf of backend services and forwards them according to configured policy. An **API gateway** adds centrally managed API concerns such as authentication, quotas, route versions, or request transformation. A single product can perform both roles; the architectural question is which decisions belong at that boundary and which remain with the service owning the business action.
+
+The misconception is that a header becomes trustworthy because it arrived through a proxy. In our illustrative request, the actual client is `203.0.113.9` but supplies `X-Forwarded-For: 198.51.100.7`. A proxy that forwards the claim unchanged lets a naive backend mistake an arbitrary asserted address for the observed sender. A boundary that deliberately replaces untrusted incoming metadata with verified information changes that outcome. Both addresses are documentation examples, not real user data.
+
+## Separate Traffic Mediation From Business Ownership
+
+A reverse proxy can terminate TLS, select an upstream, normalize an allowed host, compress suitable responses, or buffer a bounded request body. These are traffic policies shared across many operations. Centralizing them can reduce duplicate configuration, but also makes the proxy a dependency of every routed operation. Its capacity, rollout, and failure domain belong in the service design.
+
+A gateway can validate a token, attach a verified principal, enforce a tenant quota, or expose a stable public route while internal services change. Those capabilities need explicit configuration and testing; the name “gateway” does not imply that they are enabled or correctly implemented. A pass-through route can otherwise bypass the policy everyone assumes exists.
+
+The business service still owns action-specific authorization. A gateway may establish that the caller is Alice, while the link service decides whether Alice owns the requested link. Putting all permissions in route patterns can fail when one endpoint operates on records owned by different tenants. Keep authentication, coarse admission, and record-level authorization distinguishable in traces and tests.
+
+Do not add one proxy for every concern unless the boundaries require separate ownership or isolation. Each hop can introduce a connection pool, timeout, retry policy, buffer, and configuration rollout. A chain that improves administrative separation can still harm latency or make errors harder to locate. Document what each hop verifies and what the next hop is entitled to trust.
+
+## Rebuild Trust at the Ingress Boundary
+
+The transport peer address is an observation about the immediate connection, not necessarily the original end user. After one proxy hop, the application sees the proxy's address. Forwarding metadata can preserve the prior peer, but only under a trust policy identifying which intermediary supplied it and whether earlier client-supplied values were sanitized.
+
+For our one-proxy example, the public ingress observes peer `203.0.113.9`. It should overwrite the chosen client-address header with that observation before forwarding to the backend. The backend should accept the header only on a path restricted to that ingress. If clients can reach the backend directly, they can supply the same header without passing through verification.
+
+<ProxyTrustExplorer />
+
+Select the sanitized policy and watch the backend's interpreted client change from the forged address to the observed one. The diagram deliberately shows one ingress so the rule is unambiguous. A real chain containing a CDN, regional proxy, and service gateway needs a documented trusted-hop policy, not an instruction to take the first comma-separated value everywhere.
+
+Client IP is not a user identity. Shared networks, mobile address changes, and proxies can place many users behind one address or change an address between requests. It can support abuse controls and diagnostics under a documented policy, but record authorization should use authenticated principals. Do not turn an address reconstruction exercise into an authentication scheme.
+
+<RunnableCode code={`observed_peer = "203.0.113.9"
+client_supplied = "198.51.100.7"
+trusted_proxy = "10.0.0.5"
+
+def forward(sanitize):
+    header = observed_peer if sanitize else client_supplied
+    return {"peer": trusted_proxy, "forwarded_for": header}
+
+def backend_client(request):
+    if request["peer"] != trusted_proxy:
+        return request["peer"]
+    return request["forwarded_for"]
+
+for sanitize in (False, True):
+    print("Sanitize:", sanitize, "backend client:", backend_client(forward(sanitize)))
+print("Direct attacker:", backend_client({"peer": observed_peer, "forwarded_for": client_supplied}))
+# Try it: trust every peer in backend_client; a direct client can now forge the address too.
+`} />
+
+The model assumes a network policy genuinely restricts the trusted proxy address and that the header is syntactically valid. Production deployments need connection authentication or network isolation appropriate to the environment, plus parsing rules for multiple values and malformed inputs. Never use a broad “trust all internal addresses” setting without knowing who can originate traffic from those addresses.
+
+## Make Protocol Policy Explicit
+
+A proxy can change request semantics accidentally through path rewriting, header normalization, buffering, or retries. Decide whether `/api/links/7` reaches the backend unchanged or with a prefix removed, and test encoded path segments and trailing slashes. Public routes and backend routes are contracts; a configuration edit can break clients even when both services remain healthy.
+
+HTTP messages must have an unambiguous framing interpretation across hops. If the frontend and backend disagree about request boundaries, one message can be interpreted as multiple requests. Use maintained protocol implementations, reject ambiguous framing, and test the deployed hop combination. Forwarding raw unvalidated bytes while assuming another layer will normalize them is not a trust boundary.
+
+Streaming also changes buffering policy. A proxy that buffers a whole response before forwarding it defeats server-sent event delivery and adds latency. WebSocket upgrades require the appropriate protocol forwarding behavior. A sensible default for small JSON responses may be wrong for long-lived streams, large uploads, or incremental downloads.
+
+<PredictFirst question="A backend trusts X-Forwarded-For only because the request contains that header. Can the header establish the original client address?" options={["Yes, the header name implies it was added by infrastructure", "No, its value needs a verified ingress path and an explicit sanitization policy", "Yes, provided the claimed address is public"]} correctIndex={1} explanation="A client can send a forwarding header. Trust comes from who supplied or sanitized it and whether the backend can be reached without that verified path, not from the header's spelling or address range." />
+
+## Allocate One End-to-End Budget Across Hops
+
+Each proxy can wait on a connection pool, establish a new connection, write a request, and wait for response bytes. A connect timeout bounds only connection establishment. An inactivity timeout can reset between bytes and therefore differ from a total request deadline. Align these local controls with the user's remaining useful interval.
+
+Suppose an illustrative request has a 200 ms total budget. Edge processing uses 20 ms and the gateway spends 30 ms before contacting the application. Only 150 ms remain, including application work and response travel. Giving the application a fresh 200 ms timeout makes the total exceed the original promise. Propagate remaining budget under a defined clock convention.
+
+Retries at the gateway combine with client and service retries. If each of three layers permits three total attempts, the deepest dependency can receive up to 27 attempts for one logical action. Use a shared retry budget and safe semantics; otherwise the infrastructure multiplies work precisely when a dependency is failing. Retrying a write after a reset can repeat a committed effect.
+
+<GoDeeper title="Go deeper: gateway identity is a delegated claim">
+When a service accepts a principal established by a gateway, it delegates part of authentication to that gateway. The service needs an authenticated channel or a verifiable assertion, a defined audience, expiry or freshness rules, and a policy for which claims it accepts. A plaintext internal header alone does not create that assurance. The service must still authorize the requested resource transition under its own invariants.
+</GoDeeper>
+
+## Inspect a Minimal Forwarding Configuration
+
+The NGINX fragment below assumes it is the first and only public ingress for the route. It replaces `X-Forwarded-For` with its immediate observed peer instead of extending an arbitrary incoming claim. It fixes the upstream host to the intended internal name and disables automatic next-upstream retries for the experiment. It is a routing and metadata example, not a complete TLS or authentication deployment.
+
+```nginx
+location /api/ {
+    proxy_pass http://application;
+    proxy_set_header Host application.internal;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 1s;
+    proxy_read_timeout 5s;
+    proxy_next_upstream off;
+}
+```
+
+Place it inside the server block of the [load-balancing experiment](/docs/software-system-design/load-balancing#run-a-small-real-proxy-configuration), replacing that experiment's location. Validate the complete configuration with `nginx -t` before starting it. Send `curl -H 'X-Forwarded-For: 198.51.100.7' http://127.0.0.1:8080/api/` to a backend that records received headers, and confirm it receives the proxy's observed peer instead of the supplied address. On a loopback experiment that observation is the local address, not the documentation address used in our model.
+
+If another trusted proxy sits in front of this NGINX instance, `$remote_addr` is that proxy unless an explicitly configured trusted-address module reconstructs the prior peer. Do not copy this single-ingress rule into a multi-hop deployment without updating the model. NGINX's real-IP module documents how trusted sources and recursive reconstruction are configured; those sources must correspond to the actual network boundary.
+
+We can calculate deadline and retry composition separately from protocol forwarding. The code below carries the same 200, 20, and 30 ms values through the budget. It also enumerates the maximum nested attempt count. These are limits of the simplified policy, not measured proxy overhead or a recommendation to enable every retry.
+
+<RunnableCode code={`total_budget_ms = 200
+edge_ms, gateway_ms = 20, 30
+remaining = total_budget_ms - edge_ms - gateway_ms
+print("Application and return budget ms:", remaining)
+client_attempts = gateway_attempts = service_attempts = 3
+print("Worst nested attempts:", client_attempts * gateway_attempts * service_attempts)
+print("With one retry owner:", client_attempts * 1 * 1)
+assert remaining == 150
+# Try it: increase gateway_ms to 100; the backend must receive a smaller remaining budget.
+`} />
+
+## Common Problems and Fixes
+
+A gateway authenticates a caller while a backend trusts a client-supplied owner field. Preserve authenticated principal separately and perform record-level authorization. A backend is reachable around the gateway; restrict the path and test bypass attempts rather than relying on a deployment diagram. A trust list uses stale proxy ranges; give configuration ownership and updates the same review discipline as application changes.
+
+All services fail after a gateway policy update. Canary the policy, retain rollback, and inspect operation-specific outcomes instead of only gateway process health. A proxy returns a generic error that hides the upstream cause; record structured hop timing and a bounded request identifier without logging credentials or private bodies.
+
+A streaming response appears frozen despite a healthy backend. Inspect buffering and idle timeouts on every hop. A large upload exhausts memory or disk at the ingress; set request size, buffering, and concurrency limits matched to the operation. Central policy should protect scarce resources without silently changing the promised payload contract.
+
+## When Not to Put Logic in the Gateway
+
+| Situation | Better owner |
+| --- | --- |
+| Authorization depends on one record's current owner | The service that owns the record transition |
+| Transformation requires a multi-step business transaction | An application workflow with durable state |
+| A shared rule varies secretly by client | An explicit versioned API contract |
+| Another hop contributes no required isolation or policy | The existing ingress layer |
+
+## Remember
+
+| Boundary | Required decision |
+| --- | --- |
+| Routing | Exact host, path, and upstream interpretation |
+| Identity | Which hop verified which claim |
+| Forwarding metadata | Sanitization and trusted-source policy |
+| Deadline | Remaining time, including all proxy waits |
+| Retry | One bounded policy with safe effect semantics |
+| Operations | Capacity, canary, telemetry, and rollback |
+
+You can now review a proxy chain as a series of explicit trust and timing boundaries. Return to [Scaling](/docs/software-system-design/scaling), then compare its routing role with [load balancing](/docs/software-system-design/load-balancing).
+
+## Sources
+
+- [RFC 7239, Forwarded HTTP Extension (2014)](https://www.rfc-editor.org/rfc/rfc7239): forwarding metadata and trust considerations.
+- [RFC 9110, HTTP Semantics (2022)](https://www.rfc-editor.org/rfc/rfc9110): intermediary and request semantics.
+- [NGINX, HTTP Proxy Module](https://nginx.org/en/docs/http/ngx_http_proxy_module.html): forwarding headers, buffering, and timeout directives.
+- [NGINX, Real IP Module](https://nginx.org/en/docs/http/ngx_http_realip_module.html): explicitly trusted address reconstruction.
+- [AWS Builders' Library, Timeouts, Retries, and Backoff With Jitter (2019)](https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/): composing bounded attempts.
