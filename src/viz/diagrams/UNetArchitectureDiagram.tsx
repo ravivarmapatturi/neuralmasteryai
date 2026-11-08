@@ -23,23 +23,54 @@ export default function UNetArchitectureDiagram() {
           With skip connections (U-Net)
         </button>
       </div>
-      <svg width="100%" viewBox="0 0 320 100" style={{ display: 'block' }}>
+      <svg width="100%" viewBox="0 0 360 115" style={{ display: 'block' }}>
+        <defs>
+          <marker id="unet-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill={color} />
+          </marker>
+        </defs>
+
+        <text x={85} y={12} textAnchor="middle" fontSize={9} fontWeight={700} fill={t.textMuted}>ENCODER</text>
+        <text x={177} y={12} textAnchor="middle" fontSize={9} fontWeight={700} fill={okColor}>BOTTLENECK</text>
+        <text x={275} y={12} textAnchor="middle" fontSize={9} fontWeight={700} fill={t.textMuted}>DECODER</text>
+
         {stages.map((w, i) => {
           const x = 10 + i * 50;
-          const y = 50 - w / 2;
-          return <rect key={`enc${i}`} x={x} y={y} width={35} height={w} rx={4} fill={t.surfaceAlt} stroke={t.border} />;
+          const y = 60 - w / 2;
+          return (
+            <g key={`enc${i}`}>
+              <rect x={x} y={y} width={35} height={w} rx={4} fill={t.surfaceAlt} stroke={t.border} />
+              <text x={x + 17.5} y={60 + 3} textAnchor="middle" fontSize={8} fontFamily="monospace" fill={t.textMuted}>{w}</text>
+            </g>
+          );
         })}
-        <rect x={160} y={38} width={35} height={24} rx={4} fill={`${okColor}25`} stroke={okColor} />
+
+        {/* Bottleneck */}
+        <rect x={160} y={48} width={35} height={24} rx={4} fill={`${okColor}25`} stroke={okColor} strokeWidth={1.5} />
+        <text x={177.5} y={63} textAnchor="middle" fontSize={8} fontFamily="monospace" fill={okColor}>16</text>
+
         {stages.slice().reverse().map((w, i) => {
           const x = 210 + i * 50;
-          const y = 50 - w / 2;
-          return <rect key={`dec${i}`} x={x} y={y} width={35} height={w} rx={4} fill={t.surfaceAlt} stroke={t.border} />;
+          const y = 60 - w / 2;
+          return (
+            <g key={`dec${i}`}>
+              <rect x={x} y={y} width={35} height={w} rx={4} fill={t.surfaceAlt} stroke={t.border} />
+              <text x={x + 17.5} y={60 + 3} textAnchor="middle" fontSize={8} fontFamily="monospace" fill={t.textMuted}>{w}</text>
+            </g>
+          );
         })}
-        {skips && stages.map((_, i) => {
-          const encX = 10 + i * 50 + 35;
-          const decX = 210 + (stages.length - 1 - i) * 50;
-          return <line key={`skip${i}`} x1={encX} y1={50} x2={decX} y2={50} stroke={color} strokeWidth={1.5} strokeDasharray="3,2" opacity={0.7} />;
-        })}
+
+        {/* Skip connections at respective vertical heights */}
+        {skips && (
+          <>
+            {/* Level 0: top bridge */}
+            <path d="M 45 32 H 306" fill="none" stroke={color} strokeWidth={1.5} strokeDasharray="3,2" markerEnd="url(#unet-arrow)" opacity={0.85} />
+            {/* Level 1: mid bridge */}
+            <path d="M 95 44 H 256" fill="none" stroke={color} strokeWidth={1.5} strokeDasharray="3,2" markerEnd="url(#unet-arrow)" opacity={0.85} />
+            {/* Level 2: arch bridge over bottleneck */}
+            <path d="M 145 52 Q 177.5 34 206 52" fill="none" stroke={color} strokeWidth={1.5} strokeDasharray="3,2" markerEnd="url(#unet-arrow)" opacity={0.85} />
+          </>
+        )}
       </svg>
     </VisualizationContainer>
   );

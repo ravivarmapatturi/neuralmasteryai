@@ -104,10 +104,7 @@ export default function TransformerArchitectureDiagram() {
           <Stack x={encX} blocks={ENCODER_BLOCKS} name="ENCODER" bracketSide="left" />
           <Stack x={decX} blocks={DECODER_BLOCKS} name="DECODER" bracketSide="right" />
 
-          {/* cross-attention wire: encoder output -> decoder's cross-attention
-              block. Dasharray dropped -- a sketchy hand-drawn stroke already
-              reads as organic/non-solid, same simplification used for every
-              other previously-dashed connector converted this session. */}
+          {/* cross-attention wire: encoder output -> decoder's cross-attention block */}
           <g opacity={hovered === null || hovered.key === 'd-cross' ? 0.9 : 0.25}>
             <SketchPath
               d={`M ${encX + boxW / 2},${encOutY - 4} C ${(encX + decX) / 2},${encOutY - 4} ${(encX + decX) / 2},${crossY} ${decX - boxW / 2 - 4},${crossY}`}
@@ -115,10 +112,34 @@ export default function TransformerArchitectureDiagram() {
               strokeWidth={hovered?.key === 'd-cross' ? 2.5 : 1.5}
               id="arch-cross-wire"
             />
+            {/* Arrowhead into decoder cross-attention block perimeter */}
+            <polygon
+              points={`${decX - boxW / 2 - 1},${crossY} ${decX - boxW / 2 - 8},${crossY - 4} ${decX - boxW / 2 - 8},${crossY + 4}`}
+              fill={getConceptColor(t, 'query')}
+            />
+            {/* Opaque badge shielding K, V label from the wire stroke */}
+            <rect
+              x={(encX + decX) / 2 - 18}
+              y={(encOutY + crossY) / 2 - 10}
+              width={36}
+              height={20}
+              rx={6}
+              fill={t.surface}
+              stroke={getConceptColor(t, 'query')}
+              strokeWidth={1}
+            />
+            <text
+              x={(encX + decX) / 2}
+              y={(encOutY + crossY) / 2 + 4}
+              textAnchor="middle"
+              fontSize={10}
+              fontWeight={700}
+              fontFamily={HAND_FONT}
+              fill={getConceptColor(t, 'query')}
+            >
+              K, V
+            </text>
           </g>
-          <text x={(encX + decX) / 2} y={(encOutY + crossY) / 2 - 6} textAnchor="middle" fontSize={9.5} fontFamily={HAND_FONT} fill={getConceptColor(t, 'query')} opacity={hovered === null || hovered.key === 'd-cross' ? 1 : 0.3}>
-            K, V
-          </text>
         </svg>
 
         <div style={{ maxWidth: 200, paddingTop: 34 }}>
