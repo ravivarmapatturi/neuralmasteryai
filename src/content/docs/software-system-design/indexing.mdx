@@ -1,0 +1,147 @@
+---
+title: "Indexing and Query Access Paths"
+sidebar_position: 3.2
+description: "Build indexes from filter and ordering requirements, trace composite-key scans, and weigh selectivity, coverage, write cost, and query-plan evidence."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import CompositeIndexExplorer from '../../../viz/diagrams/CompositeIndexExplorer';
+
+# Indexing and Query Access Paths
+
+<ELI5>
+A library catalogue sorted by author can quickly find one author's books, but it is less convenient for finding every book published yesterday. Both catalogues contain the same books. Their ordering determines which questions require a short lookup and which still require searching many entries. A database index makes that ordering decision explicit and maintains it whenever records change.
+</ELI5>
+
+An **index** is a maintained access structure that helps locate or order records without always reading the entire underlying collection. Its value depends on the query and data distribution. Indexing every field does not make every operation fast; it creates additional structures that writes must keep current, and the optimizer may correctly prefer another path.
+
+The misconception is that an index containing the right column names is sufficient regardless of their order. Our worked dataset has twelve orders: four customers, each with orders at times 1, 2, and 3. We ask for customer 2's latest two orders. An ordering by customer then descending time places the two answers together after a seek; ordering by descending time then customer examines six entries in our simple ordered scan before finding both. The diagram and code use that exact dataset.
+
+## Derive the Index From One Query
+
+Write the operation before the index. Our query filters `customer_id = 2`, orders by `created_at DESC`, and limits the result to two. The filter identifies a contiguous customer range in an index whose leading key is customer. Time ordering within that range can then provide the latest results without a separate full sort.
+
+A representative SQL access path is `CREATE INDEX orders_customer_created ON orders (customer_id, created_at DESC)`. This names a candidate, not a command to apply blindly to a production table. Verify the engine's index semantics, table size, write workload, and existing indexes before choosing creation and rollout procedures. The existing [relational chapter](/docs/databases/relational/overview) introduces index scans; here we trace the ownership of the work the scan avoids.
+
+The SQL query also needs deterministic ordering when timestamps tie. Adding a unique order identifier as a final sort key and corresponding index key can support stable pagination. Without a tie-breaker, two equally timed rows may appear in different orders between requests. An index is part of a query contract when clients depend on that ordering.
+
+## Composite Keys Form an Ordered Space
+
+A **composite index** orders more than one key component. In a lexicographic ordering, the first component determines broad groups, and later components order entries inside each group. Equalities on leading components can narrow the scan before a range or ordering condition on the next component. Engine features can use other paths too, so “leftmost prefix” is a useful model rather than a claim that every non-leading query must always ignore the index.
+
+<CompositeIndexExplorer />
+
+Switch between the two orderings. With customer first, positions 4 and 5 in one-based reading order are customer 2 at times 3 and 2. With time first, customer 2 appears second within each four-customer time group, so the second match is the sixth entry. The shaded entries show the simple scan work after the chosen starting point, excluding tree navigation and row-fetch cost.
+
+An index on `(customer, time)` and an index on `(time, customer)` therefore offer different localities. The first suits latest orders for one customer. The second can suit latest orders across all customers. Choose from actual operations and their frequencies, not a belief that one ordering is intrinsically superior.
+
+<RunnableCode code={`from bisect import bisect_left
+orders = [(customer, created) for customer in range(1, 5) for created in (1, 2, 3)]
+by_customer = sorted(orders, key=lambda row: (row[0], -row[1]))
+keys = [(customer, -created) for customer, created in by_customer]
+start = bisect_left(keys, (2, float("-inf")))
+customer_result = by_customer[start:start+2]
+print("Customer-first result:", customer_result, "entries after seek:", len(customer_result))
+by_time = sorted(orders, key=lambda row: (-row[1], row[0]))
+result, inspected = [], 0
+for row in by_time:
+    inspected += 1
+    if row[0] == 2:
+        result.append(row)
+    if len(result) == 2:
+        break
+print("Time-first result:", result, "entries inspected:", inspected)
+assert result == customer_result == [(2, 3), (2, 2)]
+# Try it: query customer 4; compare the time-first scan count with the customer-local access path.
+`} />
+
+This list model is not a database benchmark. It isolates ordering and counts visited entries under a specified scan strategy. A real optimizer can combine indexes, perform skip scans, choose bitmap access, or decide that a table scan is cheaper. Inspect its actual plan rather than using the toy visit count as a prediction of milliseconds.
+
+## Selectivity and Fetch Cost Determine Whether the Path Helps
+
+**Selectivity** describes how much a predicate narrows the population. A lookup selecting one customer out of millions can avoid much work. A boolean field matching most rows may leave nearly the whole table to fetch. The same index can be useful for a rare value and unhelpful for a common value when the distribution is skewed.
+
+A tree lookup has navigation cost, and returning many matching rows still costs work. The familiar logarithmic search intuition does not mean a query returning a million records takes only logarithmic total time. Include the number of qualifying entries, table visits, visibility checks, and output bytes in the access-path model.
+
+A **covering index** contains the fields needed by the query under the engine's index-only access rules. It can avoid some table lookups, but increases index size and maintenance. PostgreSQL's index-only scans also depend on visibility information; containing the requested columns does not by itself guarantee zero heap fetches. Read the plan's actual row and fetch evidence before declaring the query covered in practice.
+
+A partial index includes only rows satisfying a predicate, such as active orders, when supported. It can reduce maintained entries for a narrow recurring operation. The query must be compatible with that predicate, and changing which rows qualify changes maintenance work. Do not use it to hide a missing access path for other valid operations.
+
+<PredictFirst question="A query returns most rows of a table. Is an index lookup necessarily faster than a sequential scan?" options={["Yes, an index always makes reads logarithmic", "No, navigating and fetching most rows can cost more than reading them sequentially", "Yes, because index maintenance happens only on reads"]} correctIndex={1} explanation="Finding a starting point is not the entire query cost. Large result populations can make random table visits and index traversal less attractive than a sequential scan; writes also maintain indexes." />
+
+## Writes Pay for Every Maintained Access Path
+
+An inserted record may need an entry in several indexes. Updates to indexed keys can remove or replace entries, and deletes require corresponding cleanup under the engine's storage and visibility design. A uniqueness constraint may need an index precisely because concurrent writes must detect a conflicting key. That correctness cost is valuable, but it is still resource demand.
+
+A wider key reduces how many entries fit into a page and can increase storage, cache pressure, and navigation work. Including a large response body merely to avoid a lookup may produce a larger working set than the table access it replaces. Measure the complete read/write mix, not just the best-case latency of one isolated query.
+
+Index creation also has operational cost. Building over a large existing table reads data, consumes CPU and I/O, and can interact with writes or locking according to the engine and creation method. PostgreSQL offers concurrent index creation with specific caveats; it is not a no-cost switch. Plan capacity, failure cleanup, and rollout rather than running a migration because an empty test database finished instantly.
+
+<GoDeeper title="Go deeper: why key order changes a contiguous range">
+For lexicographic keys (customer, negative time), all records with customer 2 lie between the start of customer 2 and the start of customer 3. Within that range, lower negative time corresponds to a newer order. A seek can enter that range and read the first two entries. With (negative time, customer), customer 2 is distributed across separate time groups, so a scan ordered by time must test each group's customer component until enough matches appear. Additional engine access methods can change the execution strategy, but not the meaning of the ordering itself.
+</GoDeeper>
+
+## Use Query Plans as Evidence
+
+`EXPLAIN SELECT ...` reports the optimizer's chosen strategy. In PostgreSQL, `EXPLAIN (ANALYZE, BUFFERS) SELECT ...` actually runs the statement and reports observed execution and buffer information. Use representative read-only queries in a safe environment; `ANALYZE` on an effectful statement can execute the effect. An estimated plan and an executed plan answer different questions.
+
+Compare estimated rows with actual rows at each relevant node. Large mismatches can indicate stale statistics, correlated predicates, or skew the planner has not captured adequately. An index can exist and remain unused for sound cost reasons or because the predicate does not match its access semantics. Adding another index without understanding that decision can increase write cost without improving the query.
+
+Inspect whether the plan sorts, how many rows it examines before a limit, and whether it must fetch table rows. A “uses index” checkbox is insufficient: scanning most of a huge index to return two records can still be expensive. Preserve query parameters, data distribution, and cache conditions when comparing before and after.
+
+For keyset pagination, the last returned ordered key becomes the next range boundary. A deep offset can require walking past many entries merely to discard them. Keyset pagination can avoid that discard work when the product accepts its ordering and navigation contract. It still needs a stable tie-breaker and a policy for inserts and deletes between pages.
+
+The next experiment makes output size visible. In a 1,000-record population, one predicate selects ten rows and another selects 900. The counts are illustrative; they show why navigating to a match does not remove the cost of processing every qualifying result. We separately estimate the number of index entries maintained for inserts when several full indexes exist.
+
+<RunnableCode code={`rows = list(range(1000))
+for label, predicate in (
+    ("Rare subset", lambda value: value < 10),
+    ("Common subset", lambda value: value < 900),
+):
+    matches = [value for value in rows if predicate(value)]
+    print(label, "matches:", len(matches), "fraction:", len(matches)/len(rows))
+inserts = 100
+for full_indexes in (1, 4):
+    print("Full indexes:", full_indexes,
+          "logical new index entries for 100 inserts:", inserts * full_indexes)
+# Try it: add another full index; discuss which measured read saves enough work to justify it.
+`} />
+
+The logical entry count excludes page splits, logging, compaction, and engine-specific optimizations. It does not predict write latency linearly. Its purpose is to force a maintenance budget into the design conversation: every new access path needs a workload reason and an owner who can remove it when that reason disappears.
+
+## Common Problems and Fixes
+
+The index contains the right fields but an unhelpful leading order. Trace the filter and sort together, then inspect the chosen range. A query transforms the indexed field with a function; consider an appropriate expression index or change the predicate under the engine's rules. A plan estimates a tiny result but returns many rows; investigate statistics and skew before forcing an access method.
+
+A newly indexed read improves while writes and replicas lag. Measure index maintenance, storage pressure, and replication demand as part of rollout. A development dataset always fits in memory while production does not. Test representative cardinality and key width instead of treating a warm small-table plan as capacity evidence.
+
+## When Not to Add an Index
+
+| Situation | Better next step |
+| --- | --- |
+| Query intentionally returns nearly the whole table | Efficient sequential or analytical processing |
+| The operation transfers an excessive result body | Change pagination or the requested representation |
+| An equivalent access path already exists | Inspect why the optimizer is choosing another path |
+| The write-heavy system has no demonstrated read benefit | Measure the target operation before adding maintenance |
+
+## Remember
+
+| Property | What to inspect |
+| --- | --- |
+| Key order | Equality, range, and sorting requirements together |
+| Selectivity | Actual qualifying population, including skew |
+| Coverage | Needed fields and engine visibility rules |
+| Maintenance | Writes, storage, build, and cleanup costs |
+| Plan | Estimated versus observed rows and fetches |
+| Pagination | Stable ordering and work discarded before output |
+
+You can now trace an index as an access path and justify its cost against a specific operation. Return to [Data Ownership and Consistency](/docs/software-system-design/data) or inspect engine-specific commands in [PostgreSQL](/docs/databases/relational/postgresql).
+
+## Sources
+
+- [PostgreSQL, Indexes: Introduction](https://www.postgresql.org/docs/current/indexes-intro.html): maintained access paths and trade-offs.
+- [PostgreSQL, Multicolumn Indexes](https://www.postgresql.org/docs/current/indexes-multicolumn.html): composite key ordering and scan behavior.
+- [PostgreSQL, Index-Only Scans and Covering Indexes](https://www.postgresql.org/docs/current/indexes-index-only-scans.html): coverage and visibility requirements.
+- [PostgreSQL, Using EXPLAIN](https://www.postgresql.org/docs/current/using-explain.html): estimated and executed query-plan evidence.
+- [PostgreSQL, CREATE INDEX](https://www.postgresql.org/docs/current/sql-createindex.html): index construction and concurrent-build caveats.
