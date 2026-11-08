@@ -1,0 +1,101 @@
+---
+title: "Design a Video Streaming Service"
+sidebar_position: 12
+description: "Separate video upload, encoding, catalog publication, and CDN playback while estimating bandwidth, storage amplification, startup delay, and recovery behavior."
+---
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import SoftwareCaseTrace from '../../../viz/diagrams/SoftwareCaseTrace';
+
+# Design a Video Streaming Service
+
+<ELI5>A video service prepares several sizes of the same film and cuts each into small numbered pieces. A player chooses pieces that fit its current connection. The catalog must not advertise a film before the required pieces exist. Most delivery work belongs near viewers, while the original recording remains safely stored.</ELI5>
+
+## Requirements and Estimates
+
+Assume one million concurrent viewers at an illustrative average of 4 Mb/s each. Aggregate media delivery is 4 Tb/s, or 500 GB/s in decimal units. At a 95% byte-hit rate, origin media traffic is still 25 GB/s. A request-hit ratio is not interchangeable with a byte-hit ratio because segment sizes vary.
+
+Assume 10,000 hours uploaded per day at a 20 Mb/s source bitrate. Source payload adds 90 TB/day. Encoded renditions and replicas increase this footprint; retention policy and egress cost dominate many design decisions. These inputs describe a hypothetical service, not a measured encoding ladder or provider bill.
+
+Support resumable uploads, asynchronous processing, authorized playback, adaptive bitrate selection, and deletion. Set illustrative objectives of startup under two seconds for 95% of eligible play attempts and a rebuffer ratio below 1% under the stated supported network envelope. Those outcomes require player telemetry, not only origin response metrics.
+
+## Upload and Processing Pipeline
+
+The API creates an upload session with owner, maximum size, allowed type, and expiry. The client uploads chunks directly to controlled object storage using scoped credentials. A completion request verifies received parts and persists a durable source reference. Validate actual media structure in a sandboxed processing environment; a filename extension is not trustworthy input validation.
+
+A durable job identifies source version and encoding profile. Workers generate aligned renditions, audio, thumbnails, and segment manifests. Stable job identity prevents retries from creating competing published versions. Failed partial outputs remain unpublished and are reclaimed later. Compute queues need admission and fairness so a few very long uploads cannot starve short videos indefinitely.
+
+A catalog record moves to playable only after validation confirms all required segments and the manifest are durably accessible. Publish through an atomic version pointer. Overwriting a manifest in place while segments are still uploading lets players observe a broken intermediate state. Versioned immutable objects simplify cache coherence and rollback.
+
+## Playback and Adaptive Delivery
+
+The playback API authorizes the viewer and returns a short-lived manifest or access token. The CDN serves media segments, while the player chooses an appropriate bitrate based on measured throughput and buffer health. Adaptive bitrate reduces quality when the connection cannot sustain the previous representation; it does not create bandwidth.
+
+With six-second segments at 4 Mb/s, one segment carries about 3 MB of media. A two-second segment is about 1 MB at the same rate. Shorter segments can reduce startup and adaptation delay, but increase request rate and packaging overhead. Low-latency live streaming adds partial segments and tighter production timing; it is a different requirement from ordinary on-demand playback.
+
+Separate hot content from the long tail. Popular segments benefit from edge caching; rarely watched videos may remain in colder storage with a deliberate startup trade-off. Prewarming everything wastes egress and storage work. Cache keys must account for representation and version without accidentally fragmenting shared media by every unique authorization token.
+
+## Failure, Rights, and Recovery
+
+Origin shielding can coalesce misses from many edges. Bound retry behavior during origin degradation so a segment miss does not become a synchronized retry wave. Players need a policy for rendition fallback and transient fetch failure, while the API should avoid returning an apparently playable version whose required objects are missing.
+
+Deletion and rights revocation require removing catalog access, invalidating or expiring delivery authorization, and handling cached objects under the promised deadline. Signed URLs with long expiry weaken immediate revocation. DRM, where required, introduces a separate license and key boundary; CDN authentication alone is not a complete rights-management system.
+
+Preserve originals according to retention and recovery policy so failed encodes can be reproduced. Monitor upload completion, processing queue age, encoding failure by profile, manifest publication checks, startup latency, rebuffering, and byte-hit rate. Regional delivery failover needs enough origin and CDN capacity; changing DNS does not make a 500 GB/s workload disappear.
+
+## Follow the Failure Boundary
+
+<SoftwareCaseTrace scenario="video-streaming" />
+
+<PredictFirst question='A high-bitrate rendition is missing one segment. Should its new manifest become public?' options={['Yes, players can guess the missing URL', 'No, publish only after required objects validate', 'Yes, because the upload API succeeded']} correctIndex={1} explanation='Upload completion proves source receipt, not rendition completeness. An atomic publication gate prevents advertising missing media.' />
+
+## Run the Design Calculation
+
+<RunnableCode code={`viewers, mbps, byte_hit = 1_000_000, 4, .95
+gb_s = viewers*mbps/8/1000
+print("Media delivery GB/s:", gb_s)
+print("Origin GB/s:", round(gb_s*(1-byte_hit), 2))
+print("Source TB/day:", 10_000*3600*20/8/1e6)
+for seconds in (6, 2):
+    print("Segment seconds:", seconds, "MB:", seconds*mbps/8)
+# Try it: lower byte_hit to .80; origin bandwidth quadruples.
+`} />
+
+## Change the Invariant Deliberately
+
+<RunnableCode code={`required = {"low/0", "low/1", "high/0", "high/1"}
+objects = {"low/0", "low/1", "high/0"}
+def publishable():
+    return required <= objects
+print("Before final segment:", publishable())
+objects.add("high/1")
+print("After final segment:", publishable())
+assert publishable()
+# Try it: remove low/0; the manifest must remain unpublished even if high quality is complete.
+`} />
+
+## When Not to Use This Design
+
+| Situation | Better choice |
+| --- | --- |
+| Small private video library | Managed processing and CDN delivery |
+| Subsecond live interaction | A real-time media design with different protocols |
+
+## Remember
+
+| Decision | Reason |
+| --- | --- |
+| Bandwidth | Size by bytes and concurrency, not API requests alone |
+| Publication | Immutable segments precede an atomic catalog pointer |
+| Playback | Measure startup and rebuffering at the player |
+
+Next: [Design Search Autocomplete](/docs/software-system-design/search-autocomplete).
+
+## Sources
+
+- [RFC 8216, HTTP Live Streaming (2017)](https://www.rfc-editor.org/rfc/rfc8216).
+- [Apple, HLS Authoring Specification](https://developer.apple.com/documentation/http-live-streaming/hls-authoring-specification-for-apple-devices).
+- [Amazon S3, Multipart Upload](https://docs.aws.amazon.com/AmazonS3/latest/userguide/mpuoverview.html).
+- [Netflix, Per-Title Encode Optimization (2015)](https://netflixtechblog.com/per-title-encode-optimization-7e99442b62a2).
+- [RFC 9111, HTTP Caching](https://www.rfc-editor.org/rfc/rfc9111).
