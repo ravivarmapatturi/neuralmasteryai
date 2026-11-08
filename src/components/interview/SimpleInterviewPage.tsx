@@ -16,7 +16,7 @@ import { INTERVIEW_COMPLETED_POINTS, hasAward } from '../../lib/gamification';
 import './interviewRoom.css';
 import './simpleInterview.css';
 
-type Step = 'topics' | 'asking' | 'answering' | 'finishing' | 'answer' | 'done';
+type Step = 'topics' | 'asking' | 'answering' | 'answer' | 'done';
 
 interface PracticeQuestion {
   id: string;
@@ -100,6 +100,9 @@ export default function SimpleInterviewPage() {
   const [micStatus, setMicStatus] = useState('');
   const [reading, setReading] = useState(false);
   const [micStream, setMicStream] = useState<MediaStream | null>(null);
+  const [transcribing, setTranscribing] = useState(false);
+  const reviewRef = useRef(0);
+  const finishingRef = useRef<Promise<void>>(Promise.resolve());
   const [check, setCheck] = useState<AnswerJudgement | 'checking' | 'failed' | null>(null);
   const { events, awardInterviewCompleted } = useGamification();
   const [round, setRound] = useState('');
@@ -216,6 +219,10 @@ export default function SimpleInterviewPage() {
   const startAnswering = useCallback(async () => {
     setStep('answering');
     setTranscript('');
+    setCheck(null);
+    setTranscribing(false);
+    reviewRef.current += 1;
+    await finishingRef.current;
     if (typing) return;
     answeringRef.current = true;
     try {
@@ -273,34 +280,45 @@ export default function SimpleInterviewPage() {
     ask(topic.questions[index].id);
   };
 
-  const finishAnswer = async () => {
+  // The model answer appears and starts reading at once; transcript and checking finish behind it.
+  const finishAnswer = () => {
     answeringRef.current = false;
-    let finalText = transcript;
-    if (!typing && engineRef.current && streamRef.current) {
-      setStep('finishing');
-      try {
-        await engineRef.current.stop();
-        const m = engineRef.current.getMetrics();
-        finalText = (m.batchTranscript || m.finalText || m.partialText || transcript).trim();
-      } catch {
-        finalText = transcript;
-      }
-    }
-    stopMic();
-    const spoken = correctInterviewTerms(finalText, questionId);
-    setTranscript(spoken);
+    const id = ++reviewRef.current;
+    const liveText = transcript;
+    const engine = !typing && streamRef.current ? engineRef.current : null;
+    const current = question;
     setStep('answer');
     setCheck(null);
-    if (spoken.trim().split(/\s+/).length >= 5) {
+    setTranscribing(Boolean(engine));
+    setTranscript(correctInterviewTerms(liveText, current.id));
+    play(`${current.id}_a`, () => undefined, current.answer);
+
+    const finalize = engine
+      ? engine.stop().then(() => {
+          const m = engine.getMetrics();
+          return (m.batchTranscript || m.finalText || m.partialText || liveText).trim();
+        }).catch(() => liveText)
+      : Promise.resolve(liveText);
+    finishingRef.current = finalize.then(() => undefined);
+    void finalize.then((finalText) => {
+      stopMic();
+      if (reviewRef.current !== id) return;
+      const spoken = correctInterviewTerms(finalText, current.id);
+      setTranscript(spoken);
+      setTranscribing(false);
+      if (spoken.trim().split(/\s+/).length < 5) return;
       // Each sentence of the model answer is one point to cover. Models run in a worker on this device.
       setCheck('checking');
-      const points = splitAnswer(question.answer).slice(0, 6);
+      const points = splitAnswer(current.answer).slice(0, 6);
       loadJudge()
-        .then(() => judgeAnswer(spoken, points, question.answer, { embed, nli }))
-        .then(setCheck)
-        .catch(() => setCheck('failed'));
-    }
-    play(`${questionId}_a`, () => undefined, question.answer);
+        .then(() => judgeAnswer(spoken, points, current.answer, { embed, nli }))
+        .then((result) => {
+          if (reviewRef.current === id) setCheck(result);
+        })
+        .catch(() => {
+          if (reviewRef.current === id) setCheck('failed');
+        });
+    });
   };
 
   const nextQuestion = () => {
@@ -617,24 +635,6 @@ export default function SimpleInterviewPage() {
           </div>
         )}
 
-        {step === 'finishing' && (
-          <div className="si-speaker-card si-speaker-checking">
-            <div className="si-speaker-identity">
-              <div className="si-speaker-avatar si-avatar-checking" aria-hidden="true">
-                <span className="si-checking-spinner" />
-              </div>
-              <div className="si-speaker-info">
-                <span className="si-speaker-label">Checking your answer</span>
-                <p className="si-status" role="status">
-                  Finishing your transcript and evaluating key points on your device…
-                </p>
-              </div>
-            </div>
-            <div className="si-speaker-wave" aria-hidden="true">
-              <LiveWaveform active={false} processing={true} height={38} barColor="var(--good)" />
-            </div>
-          </div>
-        )}
 
         {step === 'answer' && (
           <div className="si-answer-stage">
@@ -644,7 +644,12 @@ export default function SimpleInterviewPage() {
                   <h3>Your answer</h3>
                   <span className="si-type-tag">{typing ? 'Typed' : 'Spoken'}</span>
                 </div>
-                <p className="si-yours">{transcript || 'No answer was captured.'}</p>
+                <p className="si-yours">{transcript || (transcribing ? '' : 'No answer was captured.')}</p>
+                {transcribing && (
+                  <p className="si-status" role="status">
+                    Finalizing your transcript…
+                  </p>
+                )}
 
                 {check === 'checking' && (
                   <div className="si-check-loading">
