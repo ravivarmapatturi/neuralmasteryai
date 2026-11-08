@@ -1,0 +1,160 @@
+---
+title: "Autoscaling and Delayed Capacity"
+sidebar_position: 2.6
+description: "Model autoscaling as delayed feedback, calculate backlog and drain capacity, and choose signals, bounds, and stabilization that preserve the service promise."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import AutoscalingBacklogExplorer from '../../../viz/diagrams/AutoscalingBacklogExplorer';
+
+# Autoscaling and Delayed Capacity
+
+<ELI5>
+Calling extra checkout staff does not make them appear immediately. Customers keep joining the queue while staff travel to the shop, and the new staff must serve faster than arrivals to clear the waiting line. Sending everyone home as soon as the line shortens can restart the same problem. Autoscaling controls a system with those delays and consequences.
+</ELI5>
+
+**Autoscaling** changes allocated capacity in response to observed or anticipated demand. It is a feedback controller: measure the system, compare it with a target, choose a new capacity, and wait for that capacity to become useful. The delay includes measurement, scheduling, provisioning, initialization, and readiness, not just starting a process.
+
+The misconception is that scaling to match current arrivals clears an existing backlog. Our calculated example receives 6,000 jobs/s while workers initially complete 4,000/s. New capacity becomes useful after 90 seconds, leaving 180,000 waiting jobs. Capacity of 6,000/s stops growth but never drains that queue; capacity of 8,000/s provides 2,000/s of spare throughput and drains it in another 90 seconds. The diagram and code use those exact values.
+
+## Count Time Until Useful Capacity
+
+A scale-up decision starts from an observation that may already describe the past. A metric is collected, aggregated, transferred, and read by a controller. The controller updates desired replicas, a scheduler finds resources, and an instance initializes. Only after the instance can perform the real operation should it receive its intended share of work.
+
+A process that is running but loading a large model or warming a cache is not yet equivalent to a warm replica. If readiness opens too early, the new instance may fail requests or flood shared storage. If readiness stays closed until it performs an expensive global warmup, every scaling event can delay useful capacity and compete with existing serving work.
+
+Keep a measured **time to useful capacity**, the elapsed interval from demand change or decision to the first sustained safe completions from new resources. Record its distribution, not just the fastest startup. Capacity shortages in the provider, image pulls, credential issuance, and cold data can extend that interval during exactly the incident when spare resources matter most.
+
+Baseline capacity bridges that delay for interactive work that cannot queue long enough. Scheduled pre-scaling can handle predictable events, while bounded queues can absorb work whose deadlines permit waiting. Autoscaling is not a replacement for failure reserve: if a zone vanishes at peak, waiting for replacements may violate the availability promise before they arrive.
+
+## Integrate Arrivals Minus Completions
+
+A **backlog** is accepted work not yet completed. During a simple interval with constant arrivals above capacity, it grows by the difference multiplied by duration. With 6,000 arrivals/s and 4,000 completions/s, the queue gains 2,000 jobs each second. After 90 seconds it contains 180,000 additional jobs.
+
+<AutoscalingBacklogExplorer />
+
+The plotted queue first rises during startup, then falls after capacity reaches 8,000 completions/s. The downward slope is the spare 2,000/s after serving current arrivals. Change startup delay from 90 to 30 seconds: the peak queue falls from 180,000 to 60,000 and the drain interval also falls to 30 seconds. Reducing control delay can matter as much as increasing the eventual replica count.
+
+This model assumes constant arrivals, fixed job cost, no dropped work, and immediate full usefulness at the transition. It calculates backlog counts, not a production p99 waiting time. Jobs with different service times or priority classes need a richer model. A queue that preserves counts can still violate deadlines or fairness.
+
+<RunnableCode code={`arrival, initial_capacity, delay = 6000, 4000, 90
+backlog = (arrival - initial_capacity) * delay
+print("Queued jobs when capacity arrives:", backlog)
+for new_capacity in (6000, 8000):
+    spare = new_capacity - arrival
+    drain = backlog / spare if spare > 0 else None
+    print("New completions/s:", new_capacity, "spare:", spare,
+          "drain seconds:", drain)
+# Try it: change delay to 30; backlog and drain time with 8000/s both fall by two thirds.
+`} />
+
+Admission control can reduce the work accepted during a delay, but that changes the user outcome. For an asynchronous bulk import, deferring acceptance can be reasonable. For a promised immediate redirect, a 90-second queue is not useful. State whether the response represents completed work, durably accepted work, or rejected demand before claiming the scaling policy protects the service.
+
+## Select a Signal That Tracks the Constraint
+
+Processor utilization can be a useful signal for compute-bound homogeneous requests. It can miss a service blocked on network I/O, storage, or a finite connection pool. A low-CPU worker with an old queue may need more capacity, or may be waiting on a shared dependency that additional workers would overload. The signal needs a causal connection to useful throughput.
+
+For queue workers, backlog per useful worker and age of the oldest eligible job can reveal deadline risk. Queue length alone treats a one-millisecond job and a ten-minute job as interchangeable. Track completions and service-time mix so the controller does not respond to cheap work with excessive capacity or overlook a small number of expensive jobs.
+
+A request-rate target can work when cost per request is stable and measured. A latency target is closer to the user's experience but can be delayed and noisy, and high latency may come from a bottleneck outside the scaled component. Multiple signals require a defined combination rule so one falling metric does not hide a rising resource shortage.
+
+Kubernetes HPA documents a proportional recommendation using current replicas multiplied by current metric divided by desired metric, with implementation-specific handling for missing metrics, readiness, tolerance, and stabilization. For four replicas at 90% observed CPU against a 60% target, the basic recommendation is six. That is a controller calculation, not proof that six replicas satisfy an end-to-end objective.
+
+<PredictFirst question="After 90 seconds of overload, capacity rises to exactly the 6,000 jobs/s arrival rate. What happens to the 180,000 queued jobs?" options={["They drain because the system is no longer overloaded", "The backlog stops growing but does not drain in the constant-rate model", "The controller deletes the old work when desired replicas changes"]} correctIndex={1} explanation="All capacity is consumed by ongoing arrivals. Draining requires extra completions, reduced arrivals, or an explicit cancellation policy; a replica target alone does not remove accepted work." />
+
+## Bound the Controller's Decisions
+
+A minimum replica count can preserve startup coverage and a failure envelope. A maximum can protect cost, a dependency quota, or scarce resources, but reaching it means demand may exceed what scaling can solve. Alert on sustained saturation at the limit and define admission behavior. A maximum with an unbounded queue merely relocates the failure into waiting and memory.
+
+Limit scale-up steps when new instances create expensive initialization or connection bursts. Faster is not always safer if the shared store cannot tolerate hundreds of simultaneous warmups. Conversely, an overly conservative step limit can make recovery miss the deadline. Test step size against time to useful capacity and dependency headroom.
+
+Scale-down needs a separate policy. Keep a stabilization window or other damping mechanism so a short dip does not remove capacity that will soon be needed again. Drain in-flight work, stop fetching new jobs, and preserve recovery for interrupted effects. A worker marked for removal can still hold leased work after the controller reduces desired replicas.
+
+<GoDeeper title="Go deeper: feedback can oscillate when observations lag">
+Suppose a controller adds workers because its delayed metric reports an old queue, then later removes them because the metric reports the resulting low utilization. If each action takes effect after another delay, the controller can repeatedly overshoot. Stabilization, bounded changes, and a demand signal with a measured delay reduce that behavior. They must be tuned together with startup time; smoothing a signal also adds observation delay and therefore cannot be treated as free noise removal.
+</GoDeeper>
+
+## Inspect a Real HPA Policy
+
+The following Kubernetes `autoscaling/v2` configuration targets an existing `workers` Deployment. It requires a functioning resource-metrics pipeline and CPU requests on the targeted containers for utilization to be interpretable. The minimum, maximum, 60% target, and 300-second scale-down window are illustrative policy choices. They are not service-capacity benchmarks or universal defaults.
+
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: workers
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: workers
+  minReplicas: 3
+  maxReplicas: 12
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+```
+
+Save it as `workers-hpa.yaml` in a test cluster, inspect with `kubectl apply --dry-run=server -f workers-hpa.yaml`, and apply only to the intended test Deployment. Observe `kubectl describe hpa workers` and `kubectl get hpa workers -w` alongside actual ready replicas and completion rate. A desired replica change without ready, useful capacity is not a successful scaling event. Validate the container CPU requests and metrics availability before interpreting a missing or unstable recommendation.
+
+This policy does not enforce queue deadlines, ensure node capacity exists, or increase the shared database quota. Those require their own controls and evidence. If workers block on a saturated downstream service, raising the HPA maximum may increase contention without increasing completions. Use the [scaling bottleneck model](/docs/software-system-design/vertical-vs-horizontal-scaling) to ask which stage the controller is actually enlarging.
+
+The next experiment separates proportional recommendation from queue recovery. It prints the basic six-replica recommendation, then tracks backlog for the same 6,000/4,000/8,000 jobs/s example at specific times. The final zero confirms that the added capacity has completed the accumulated work rather than merely caught up with arrivals.
+
+<RunnableCode code={`import math
+current_replicas, observed_cpu, target_cpu = 4, 90, 60
+print("Basic replica recommendation:", math.ceil(current_replicas * observed_cpu / target_cpu))
+arrival, initial, expanded, delay = 6000, 4000, 8000, 90
+peak_backlog = (arrival-initial)*delay
+for second in (0, 45, 90, 135, 180):
+    if second <= delay:
+        backlog = (arrival-initial)*second
+    else:
+        backlog = max(0, peak_backlog - (expanded-arrival)*(second-delay))
+    print("Elapsed seconds:", second, "queued jobs:", backlog)
+# Try it: set expanded to 6000; the queue remains at 180000 after the expansion.
+`} />
+
+## Common Problems and Fixes
+
+CPU is low while queue age rises. Inspect downstream waits and useful completion rate before adding workers. Desired replicas rise but no pods become ready. Check node resources, scheduling constraints, credentials, image pulls, and readiness rather than tuning the metric target. The controller can request capacity that the environment cannot supply.
+
+Scale-up floods the database with connections. Bound aggregate pools, stagger warmup, and measure dependency demand per new instance. Scale-down loses jobs. Move acceptance and progress to durable ownership, then test abrupt termination separately from graceful draining. Repeated scale-up and scale-down alternation calls for a delay and signal review, not an arbitrary larger maximum.
+
+## When Not to Rely on Reactive Scaling
+
+| Situation | Better protection |
+| --- | --- |
+| Burst deadline is shorter than useful startup time | Baseline headroom, pre-scaling, or immediate admission control |
+| A shared downstream quota is exhausted | Reduce demand or change the constrained stage |
+| Work varies greatly in cost | Cost-aware signals and bounded scheduling |
+| Required failure capacity cannot wait for replacement | Provision surviving reserve in advance |
+
+## Remember
+
+| Variable | Why it matters |
+| --- | --- |
+| Useful startup delay | Work accumulates before new capacity helps |
+| Spare throughput | Only capacity above arrivals drains backlog |
+| Signal | It must track the resource the controller can change |
+| Bounds | Cost and dependency protection need explicit limits |
+| Stabilization | Prevent delayed observations from causing oscillation |
+| Drain | Removing a worker must preserve accepted work |
+
+You can now calculate what happens while an autoscaler is catching up and distinguish desired replicas from useful capacity. Return to [Scaling](/docs/software-system-design/scaling) and keep [stateless replacement](/docs/software-system-design/stateless-services) safe in both scaling directions.
+
+## Sources
+
+- [Kubernetes, Horizontal Pod Autoscaling](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/): control calculation, metrics, and stabilization.
+- [Kubernetes, Resource Management for Pods and Containers](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/): resource requests and scheduling.
+- [Kubernetes, Pod Lifecycle](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/): readiness and termination.
+- [Google SRE, Handling Overload (2016)](https://sre.google/sre-book/handling-overload/): capacity and admission under excess demand.
+- [Google SRE, Addressing Cascading Failures (2016)](https://sre.google/sre-book/addressing-cascading-failures/): surviving load and overload feedback.
