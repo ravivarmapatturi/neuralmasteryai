@@ -1,0 +1,151 @@
+---
+title: "Latency Budgets and Tail Behavior"
+sidebar_position: 1.4
+description: "Build a latency budget from the request critical path, interpret percentiles correctly, and calculate how fan-out, queues, and deadlines change user latency."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import LatencyFanoutExplorer from '../../../viz/diagrams/LatencyFanoutExplorer';
+import RequestLatencyBudget from '../../../viz/diagrams/RequestLatencyBudget';
+
+# Latency Budgets and Tail Behavior
+
+<ELI5>
+A meal arrives only after every dish that must be served together is ready. Making most dishes quickly does not help a table waiting for one slow dish. A queue outside the kitchen adds time before cooking even begins. Software latency includes the same waiting, work, and coordination, so we follow the whole order rather than timing only the fastest cook.
+</ELI5>
+
+**Latency** is the elapsed time between a defined start and completion of an operation. A user needs an answer within a useful interval, not a report that most internal functions ran quickly. We build a budget along the path that determines completion, then measure the actual distribution at that boundary.
+
+The misconception is that adding the p99 values of services yields the p99 of the user's request. Percentiles describe separate populations, and the slow requests in those populations need not coincide. Our calculated example instead asks a precise question: if each of 100 independent required calls finishes within a threshold with probability 99%, how often do all finish within it? The answer is about 36.6%, even though each individual service looks healthy at that threshold.
+
+## Define the Clock and the Population
+
+An operation needs a start event and an end event. Browser navigation time, edge response time, application-handler time, and database execution time describe different boundaries. A server histogram cannot include time spent waiting for DNS before the request reached the server. Give each metric a name that preserves its boundary.
+
+A **percentile** is a value at or below which a chosen fraction of observations falls. A p99 of 200 ms means at least 99% of the measured observations are at or below that value under the chosen calculation convention. It does not say that all remaining requests finish at 201 ms. It also does not tell us whether failed and abandoned requests were included.
+
+Separate operations with different costs. Cached redirects, uncached redirects, and authenticated link creation may have different distributions. Aggregating them can make a degraded create path invisible behind many fast reads. Preserve dimensions needed for decisions while controlling metric cardinality; a histogram per arbitrary link identifier would create an unbounded monitoring problem.
+
+Time windows matter too. A daily p99 can hide a short severe outage if enough healthy traffic surrounds it. Pair percentile trends with threshold success counts and short-window alerts. A latency objective is often easier to express as the fraction of eligible operations completed under a fixed deadline, because that directly counts the user outcome.
+
+## Follow the Critical Path
+
+A **critical path** is the dependency chain that determines when the operation can finish. Sequential stages add elapsed time. Parallel branches contribute the time until the required branches finish, generally their maximum rather than their sum. Work started after the response can consume resources, but does not directly extend the response unless contention feeds back into the serving path.
+
+For an illustrative 200 ms budget, assign 60 ms to client-to-edge transport, 20 ms to gateway work, 80 ms to application and storage, and 40 ms to margin. These are design allocations, not measured constants for a network or database. Their purpose is to expose an impossible proposal: an unavoidable 150 ms storage stage cannot fit inside an 80 ms allocation without changing either the stage or the promise.
+
+The budget diagram uses those same allocations. Increase application and storage time from 80 ms to 160 ms: the path exceeds the 200 ms total by 40 ms before allowing any margin. Use a trace from the actual serving path to replace these illustrative allocations before treating the split as evidence.
+
+<RequestLatencyBudget />
+
+A trace needs queue time as well as execution time. A database span measured only after a connection is acquired excludes the time waiting for its pool. A request can spend most of its lifetime waiting for resources while each recorded execution span looks fast. Instrument the gaps so the sum of explained intervals accounts for the observed duration.
+
+For a toy path, suppose gateway work takes 20 ms, profile and inventory calls start together and take 30 and 80 ms, and rendering takes 10 ms after both. The path takes 20 + max(30, 80) + 10 = 110 ms. Adding all four durations yields 140 ms and overstates latency because it counts overlapping time twice. CPU cost can still include both calls; latency and total work answer different questions.
+
+## Fan-Out Amplifies the Slow Tail
+
+A parent request that requires all downstream results fails its threshold if any required call misses. Under an explicit independence assumption, multiply the per-call success probabilities. With 100 calls each succeeding in time with probability 0.99, the result is 0.99 raised to 100, approximately 0.366. At least one is late about 63.4% of the time.
+
+<LatencyFanoutExplorer />
+
+Start at 100 calls and move the slider to one. The per-call distribution stays unchanged; only the number of required chances for delay changes. This explains why optimizing a service's median can leave a large fan-out product unsatisfactory. The user's path is sensitive to the slowest necessary result.
+
+Independence is a teaching assumption, not a fact about colocated services. Shared networks, overloaded storage, and coordinated deployments correlate delays. Identical all-or-nothing delays can produce a different joint probability from independent delays with the same marginals. Measure parent latency and the dependency correlation rather than presenting the formula as a production prediction.
+
+<RunnableCode code={`per_call = .99
+for calls in (1, 10, 100):
+    all_on_time = per_call ** calls
+    print("Required calls:", calls,
+          "all on time percent:", round(100 * all_on_time, 2),
+          "any late percent:", round(100 * (1-all_on_time), 2))
+print("Parallel example ms:", 20 + max(30, 80) + 10)
+print("Incorrect serial sum ms:", 20 + 30 + 80 + 10)
+# Try it: change per_call to .999; compare the improvement for 100 required calls.
+`} />
+
+If a branch is optional, the completion rule changes. A feed can return without a recommendation widget while still satisfying its main contract, provided the product explicitly permits that degradation. A payment flow cannot omit the durable authorization result merely to improve its latency chart. Reduce required fan-out by separating optional work, not by silently discarding correctness dependencies.
+
+<PredictFirst question="Two sequential services each have p99 = 100 ms. Must their combined p99 equal 200 ms?" options={["Yes, percentiles add just like durations", "No, the result depends on which requests are slow together and on their distributions", "No, sequential work always uses the maximum rather than the sum"]} correctIndex={1} explanation="Durations add for each sequential request, but quantiles of separate distributions do not generally add. Taking the maximum describes parallel completion, not sequential work." />
+
+## Queueing Consumes the Budget Before Work Starts
+
+A **queue** holds work waiting for a resource. As demand approaches available completion capacity, small bursts and service-time variation can cause waiting to grow. Processor utilization alone cannot distinguish useful execution from requests waiting for a scarce connection or lock. Measure queue length and queue age alongside arrivals and completions.
+
+Use a simple transient example: arrivals exceed completions by 2,000 requests/s for 90 seconds. That accumulates 180,000 requests. If newly added capacity only matches the arrival rate, old requests remain queued. Increasing queue capacity can prevent immediate rejection while making eventual responses too late to be useful.
+
+An admission rule can reject work before spending its entire deadline in a queue. If only 20 ms remain and the estimated queue wait alone is 50 ms, accepting it may waste capacity on an operation that cannot finish in time. Estimate carefully and preserve fairness; a queue-age signal is often more interpretable than an unbounded queue-length threshold across jobs with different costs.
+
+<GoDeeper title="Go deeper: coordinated omission hides queueing pain">
+A closed-loop load generator waits for each response before issuing the next request. When the service slows, the generator may reduce offered arrivals, hiding the queue that a fixed external arrival process would have created. This is a measurement mismatch, often called coordinated omission. Choose a workload model that matches real client behavior, record offered load and achieved load separately, and include requests that time out rather than dropping them from the latency population.
+</GoDeeper>
+
+## Propagate Deadlines Across Retries
+
+A **deadline** is the latest time an operation remains useful. A timeout is a local wait limit. Independent 200 ms timeouts at every stage can allow a request with a 200 ms user deadline to consume several times that duration. Pass the remaining budget so downstream work does not continue indefinitely after the caller has given up.
+
+Use a monotonic clock for local elapsed intervals. A wall clock can jump due to synchronization or administrative changes. Across machines, a deadline protocol must account for clock uncertainty or propagate remaining duration under a defined convention. A timestamp alone does not eliminate the need to budget transport and cancellation delay.
+
+Retries consume the same end-to-end budget. If the first attempt spends 130 ms of a 200 ms budget, only 70 ms remain for backoff, transport, another attempt, and response handling. Retrying a call known to require at least 80 ms cannot meet that budget. Even when a retry is useful, it must be semantically safe and bounded so overload does not multiply work.
+
+<RunnableCode code={`budget_ms = 200
+spent_ms = 130
+backoff_ms = 20
+minimum_attempt_ms = 80
+remaining = budget_ms - spent_ms
+can_retry = remaining >= backoff_ms + minimum_attempt_ms
+print("Remaining ms:", remaining)
+print("Retry needs at least ms:", backoff_ms + minimum_attempt_ms)
+print("Retry can fit:", can_retry)
+
+# Explicit paired observations show why marginal percentiles do not add.
+a = [1] * 99 + [100]
+b_same = [1] * 99 + [100]
+b_different = [100] + [1] * 99
+def nearest_p99(values):
+    return sorted(values)[98]
+print("Each service p99:", nearest_p99(a), nearest_p99(b_same))
+print("Combined p99, same slow request:", nearest_p99([x+y for x,y in zip(a,b_same)]))
+print("Combined p99, different slow requests:", nearest_p99([x+y for x,y in zip(a,b_different)]))
+# Try it: reduce spent_ms to 80; the retry fits this simplified budget.
+`} />
+
+The paired observations use the nearest-rank convention for 100 samples. Each service has p99 = 1 ms in this separate toy distribution. When their one slow observation is aligned, combined p99 is 2 ms; when those slow observations occur on different requests, combined p99 is 101 ms. The example demonstrates dependence with explicit values; it is not intended to model a real service's histogram.
+
+Cancellation should release resources when safe, but cannot uncommit an external effect. A timed-out write can have succeeded durably. Preserve an operation identifier and query or retry safely according to its contract. A shorter timeout improves neither correctness nor latency if clients respond by issuing unlimited duplicate work.
+
+## Common Problems and Fixes
+
+A median hides a damaged tail. Preserve threshold success ratios and tail distributions for the operations users need. Summed span durations double-count parallel work; reconstruct the critical path. A fast server metric hides network and queue time; align observation boundaries and account for unexplained intervals.
+
+A timeout storm can create load after the user has already left. Propagate deadlines, cap retries, and cancel expendable downstream work. Hedged requests, which issue another attempt before the first finishes, may reduce some tails but increase resource demand; test them only with a clear budget and safe duplicate semantics. Do not add them as an automatic remedy for an already saturated dependency.
+
+## When Not to Optimize Another Millisecond
+
+| Situation | Better action |
+| --- | --- |
+| Incorrect results arrive quickly | Fix the correctness contract first |
+| Latency is measured only after pool acquisition | Instrument waiting before tuning execution |
+| A batch result has hours of slack | Optimize throughput and cost against its actual deadline |
+| A downstream path is optional | Separate it from the required completion rule |
+
+## Remember
+
+| Idea | Operational consequence |
+| --- | --- |
+| Boundary | Name which elapsed interval is measured |
+| Percentile | Preserve the population and calculation convention |
+| Critical path | Add sequential time; account for parallel overlap |
+| Fan-out | Every required branch adds a chance of delay |
+| Queue | Waiting spends the same user budget as execution |
+| Deadline | All attempts and backoff share one useful interval |
+
+You can now budget a request path and explain why healthy service percentiles can coexist with slow user operations. Return to [Foundations](/docs/software-system-design/foundations) or inspect the latency and freshness choices in the [news feed case study](/docs/software-system-design/news-feed).
+
+## Sources
+
+- [Dean and Barroso, The Tail at Scale (2013)](https://research.google/pubs/the-tail-at-scale/): latency tails and large fan-out services.
+- [Google SRE, Monitoring Distributed Systems (2016)](https://sre.google/sre-book/monitoring-distributed-systems/): latency distributions and measurement.
+- [Google SRE, Handling Overload (2016)](https://sre.google/sre-book/handling-overload/): admission and queueing under load.
+- [gRPC, Deadlines](https://grpc.io/docs/guides/deadlines/): propagation and cancellation behavior.
+- [AWS Builders' Library, Timeouts, Retries, and Backoff With Jitter (2019)](https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/): bounded waiting and retries.
