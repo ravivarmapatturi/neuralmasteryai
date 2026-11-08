@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useDocumentMeta } from '../../lib/useDocumentMeta';
 import { correctInterviewTerms } from '../../lib/interviewRoom/dialogue';
-import { createASREngineForQuality } from '../../lib/interviewRoom/qualitySettings';
+import { INTERVIEW_AUDIO_CONSTRAINTS } from '../../lib/speechTest/audioPreparation';
+import { createASREngineForQuality, detectDeviceCapability } from '../../lib/interviewRoom/qualitySettings';
 import type { SingleThreadASREngine } from '../../lib/speechTest/engines';
 import practice from '../../data/interviewPractice.json';
 import { InterviewGraph } from './InterviewGraph';
@@ -10,6 +11,7 @@ import Navbar from '../layout/Navbar';
 import { judgeAnswer, splitAnswer, type AnswerJudgement } from '../../lib/answerJudge';
 import { embed, loadJudge, nli } from '../../lib/mockInterview/engine';
 import { speakInBrowser } from '../../lib/interviewRoom/browserVoice';
+import { useFocusMusic } from '../../contexts/FocusMusicContext';
 import { useGamification } from '../../contexts/GamificationContext';
 import { INTERVIEW_COMPLETED_POINTS, hasAward } from '../../lib/gamification';
 import './interviewRoom.css';
@@ -97,9 +99,24 @@ export default function SimpleInterviewPage() {
   const [transcript, setTranscript] = useState('');
   const [typing, setTyping] = useState(false);
   const [micStatus, setMicStatus] = useState('');
+  const [speechWarning, setSpeechWarning] = useState('');
   const [reading, setReading] = useState(false);
   const [check, setCheck] = useState<AnswerJudgement | 'checking' | 'failed' | null>(null);
   const { events, awardInterviewCompleted } = useGamification();
+  const { playing: focusPlaying, pause: pauseFocus, play: playFocus } = useFocusMusic();
+  const focusPlayingRef = useRef(focusPlaying);
+  focusPlayingRef.current = focusPlaying;
+  const resumeFocusRef = useRef(false);
+  const resumeFocus = useCallback(() => {
+    if (resumeFocusRef.current) { resumeFocusRef.current = false; void playFocus().catch(() => undefined); }
+  }, [playFocus]);
+  const pauseFocusForMic = useCallback(() => {
+    if (focusPlayingRef.current) resumeFocusRef.current = true;
+    pauseFocus();
+  }, [pauseFocus]);
+  useEffect(() => {
+    if (step === 'answering' && !typing && focusPlaying) pauseFocusForMic();
+  }, [step, typing, focusPlaying, pauseFocusForMic]);
   const [round, setRound] = useState('');
   const [role, setRole] = useState('');
   const matches = (q: PracticeQuestion) =>
@@ -111,6 +128,9 @@ export default function SimpleInterviewPage() {
   const streamRef = useRef<MediaStream | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const answeringRef = useRef(false);
+  const speechGenerationRef = useRef(0);
+  const mountedRef = useRef(true);
+  const finishingRef = useRef(false);
   const enginePromiseRef = useRef<Promise<void> | null>(null);
 
   const topic = topics[topicIndex];
@@ -153,6 +173,11 @@ export default function SimpleInterviewPage() {
       };
       const finish = (missing: boolean) => {
         if (audioRef.current !== audio) return;
+        // A stalled recording must not start playing behind the microphone later.
+        audio.onended = null;
+        audio.onerror = null;
+        audio.onplaying = null;
+        audio.pause();
         audioRef.current = null;
         // No recorded clip: generate the voice on this device instead (skipped on phones to spare memory).
         if (missing && text && !looksLikePhone()) {
@@ -182,59 +207,90 @@ export default function SimpleInterviewPage() {
     unsubscribeRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
-  }, []);
+    resumeFocus();
+  }, [resumeFocus]);
 
   // Download starts when the topic is chosen, so the first answer is not spoken into a loading model
   const prepareEngine = useCallback(() => {
     if (!enginePromiseRef.current) {
       enginePromiseRef.current = (async () => {
-        let engine = createASREngineForQuality(looksLikePhone() ? 'fast' : 'better');
+        let engine = createASREngineForQuality(looksLikePhone() || detectDeviceCapability().isSaveData ? 'fast' : 'better');
+        const load = async () => {
+          engineRef.current = engine;
+          const unsubscribe = engine.subscribe((m) => {
+            if (mountedRef.current && m.status === 'loading') {
+              setMicStatus(`Preparing speech recognition (~${Math.round(engine.expectedDownloadBytes / 1000000)} MB model data, plus speech runtime): ${m.downloadProgressPct}%. Please wait before speaking.`);
+            }
+          });
+          try { await engine.load(); } finally { unsubscribe(); }
+        };
         try {
-          await engine.load();
+          await load();
         } catch {
+          engine.destroy();
+          if (!mountedRef.current) return;
           engine = createASREngineForQuality('fast');
-          await engine.load();
+          await load();
         }
+        if (!mountedRef.current) { engine.destroy(); return; }
         engineRef.current = engine;
       })().catch((err) => {
         enginePromiseRef.current = null;
         throw err;
       });
     }
-    return enginePromiseRef.current;
+    return enginePromiseRef.current.then(async () => {
+      if (mountedRef.current) await engineRef.current?.prepareForListening();
+    });
   }, []);
 
   const startAnswering = useCallback(async () => {
+    stopAudio();
+    const generation = ++speechGenerationRef.current;
+    finishingRef.current = false;
     setStep('answering');
     setTranscript('');
+    setSpeechWarning('');
     if (typing) return;
+    pauseFocusForMic();
     answeringRef.current = true;
     try {
+      setMicStatus('Preparing speech recognition. Please wait before speaking.');
+      await prepareEngine();
+      if (!answeringRef.current || generation !== speechGenerationRef.current) return;
       setMicStatus('Allow your microphone to answer out loud.');
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (!answeringRef.current) {
-        stream.getTracks().forEach((t) => t.stop());
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: INTERVIEW_AUDIO_CONSTRAINTS });
+      if (!answeringRef.current || generation !== speechGenerationRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
         return;
       }
       streamRef.current = stream;
-      setMicStatus('Please wait, speech recognition is still getting ready on your device…');
-      await prepareEngine();
-      if (!answeringRef.current) return;
       const engine = engineRef.current;
       if (!engine) throw new Error('Speech engine unavailable');
       engine.reset();
       unsubscribeRef.current = engine.subscribe((m) => {
+        if (generation !== speechGenerationRef.current) return;
         const text = (m.partialText || m.finalText || '').trim();
         if (answeringRef.current && text) setTranscript(text);
+        if (!answeringRef.current && m.downloadProgressPct >= 100) setMicStatus('Checking the complete recording on your device…');
+        if (m.downloadProgressPct < 100 && !answeringRef.current) {
+          setMicStatus(`Downloading the final speech model (~80 MB): ${m.downloadProgressPct}% (first use only). Your recording stays on this device.`);
+        }
       });
       await engine.start(stream);
+      if (generation !== speechGenerationRef.current || !answeringRef.current) {
+        return;
+      }
       setMicStatus('Listening. Your voice stays on your device.');
     } catch {
+      if (generation !== speechGenerationRef.current) return;
+      answeringRef.current = false;
+      engineRef.current?.cancel();
       stopMic();
       setTyping(true);
-      setMicStatus('The microphone is not available, so please type your answer.');
+      setMicStatus('Speech recognition is not available, so please type your answer.');
     }
-  }, [typing, stopMic, prepareEngine]);
+  }, [typing, stopMic, stopAudio, prepareEngine, pauseFocusForMic]);
 
   const ask = useCallback(
     (id: string) => {
@@ -264,20 +320,31 @@ export default function SimpleInterviewPage() {
   };
 
   const finishAnswer = async () => {
+    if (finishingRef.current) return;
+    finishingRef.current = true;
+    const generation = speechGenerationRef.current;
     answeringRef.current = false;
+    setMicStatus('Finishing your transcript…');
     let finalText = transcript;
     if (!typing && engineRef.current && streamRef.current) {
       setStep('finishing');
       try {
-        await engineRef.current.stop();
+        await engineRef.current.stop(() => {
+          // Keep the final download subscription, but release the microphone after capture drains.
+          streamRef.current?.getTracks().forEach((track) => track.stop());
+          streamRef.current = null;
+          resumeFocus();
+        });
         const m = engineRef.current.getMetrics();
+        if (generation === speechGenerationRef.current) setSpeechWarning(m.finalPassWarning || m.errorMessage || '');
         finalText = (m.batchTranscript || m.finalText || m.partialText || transcript).trim();
       } catch {
         finalText = transcript;
       }
     }
+    if (generation !== speechGenerationRef.current) return;
     stopMic();
-    const spoken = correctInterviewTerms(finalText, questionId);
+    const spoken = correctInterviewTerms(finalText, questionId, question.title);
     setTranscript(spoken);
     setStep('answer');
     setCheck(null);
@@ -287,8 +354,8 @@ export default function SimpleInterviewPage() {
       const points = splitAnswer(question.answer).slice(0, 6);
       loadJudge()
         .then(() => judgeAnswer(spoken, points, question.answer, { embed, nli }))
-        .then(setCheck)
-        .catch(() => setCheck('failed'));
+        .then((result) => { if (generation === speechGenerationRef.current) setCheck(result); })
+        .catch(() => { if (generation === speechGenerationRef.current) setCheck('failed'); });
     }
     play(`${questionId}_a`, () => undefined, question.answer);
   };
@@ -306,10 +373,11 @@ export default function SimpleInterviewPage() {
   };
 
   const backToTopics = () => {
+    speechGenerationRef.current++;
     answeringRef.current = false;
     stopAudio();
     stopMic();
-    void engineRef.current?.stop().catch(() => undefined);
+    engineRef.current?.cancel();
     setStep('topics');
   };
 
@@ -356,11 +424,17 @@ export default function SimpleInterviewPage() {
   }, []);
 
   useEffect(
-    () => () => {
-      answeringRef.current = false;
-      stopAudio();
-      stopMic();
-      engineRef.current?.destroy();
+    () => {
+      mountedRef.current = true;
+      return () => {
+        mountedRef.current = false;
+        speechGenerationRef.current++;
+        answeringRef.current = false;
+        stopAudio();
+        stopMic();
+        engineRef.current?.destroy();
+        enginePromiseRef.current = null;
+      };
     },
     [stopAudio, stopMic]
   );
@@ -532,8 +606,9 @@ export default function SimpleInterviewPage() {
                 <button
                   type="button"
                   onClick={() => {
+                    speechGenerationRef.current++;
                     answeringRef.current = false;
-                    void engineRef.current?.stop().catch(() => undefined);
+                    engineRef.current?.cancel();
                     stopMic();
                     setTyping(true);
                   }}
@@ -547,13 +622,14 @@ export default function SimpleInterviewPage() {
 
         {step === 'finishing' && (
           <p className="si-status" role="status">
-            Finishing your transcript…
+            {micStatus || 'Finishing your transcript…'}
           </p>
         )}
 
         {step === 'answer' && (
           <>
             <h3>Your answer</h3>
+            {speechWarning && <p className="si-status" role="status">{speechWarning}</p>}
             <p className="si-yours">{transcript || 'No answer was captured.'}</p>
             {check === 'checking' && (
               <p className="si-status" role="status">

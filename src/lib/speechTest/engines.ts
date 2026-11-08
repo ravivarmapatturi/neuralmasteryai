@@ -1,3 +1,5 @@
+import { normalizeQuietAudio, appendPhrase, chooseFinalTranscript } from './audioPreparation';
+
 /**
  * Speech Recognition Engines:
  * 1. Browser Speech Recognition (Web Speech API)
@@ -21,6 +23,8 @@ export interface EngineMetrics {
   earlierWordRevisions?: number;
   revisionsPerWord?: number;
   batchTranscript?: string;
+  rawBatchTranscript?: string;
+  finalPassWarning?: string;
   isIdenticalToBatch?: boolean;
 }
 
@@ -375,6 +379,11 @@ export interface SingleThreadASROptions {
   device?: 'wasm' | 'webgpu';
   dtype?: string;
   downloadBytes?: number;
+  normalizeAudio?: boolean;
+  captureDrainMs?: number;
+  finalModelId?: string;
+  finalDevice?: 'wasm' | 'webgpu';
+  finalDownloadBytes?: number;
 }
 
 export class SingleThreadASREngine extends BaseSpeechEngine {
@@ -384,8 +393,24 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
   readonly device: 'wasm' | 'webgpu';
   readonly dtype: string;
   readonly expectedDownloadBytes: number;
+  readonly finalModelId: string | undefined;
+  private readonly finalDevice: 'wasm' | 'webgpu';
+  private readonly finalDownloadBytes: number;
+  private sessionId = 0;
+  private requestNumber = 0;
+  private segmentHasOverlap = false;
+  private readonly requestOverlap = new Map<string, boolean>();
+  private readonly downloadFiles = new Map<string, { loaded: number; total: number }>();
+  private modelAfterStop: string | undefined;
+  private latestInterimId: string | null = null;
+  private readonly stopWaiters = new Set<() => void>();
 
+  private readonly normalizeAudio: boolean;
+  private readonly captureDrainMs: number;
   private worker: Worker | null = null;
+  private loadingPromise: Promise<void> | null = null;
+  private preparationPromise: Promise<void> | null = null;
+  private rejectLoad: ((error: Error) => void) | null = null;
   private audioContext: AudioContext | null = null;
   private processorNode: ScriptProcessorNode | null = null;
   private isRunning = false;
@@ -416,6 +441,11 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
 
   constructor(options: SingleThreadASROptions = {}) {
     super();
+    this.normalizeAudio = options.normalizeAudio ?? false;
+    this.captureDrainMs = options.captureDrainMs ?? 0;
+    this.finalModelId = options.finalModelId;
+    this.finalDevice = options.finalDevice ?? 'wasm';
+    this.finalDownloadBytes = options.finalDownloadBytes ?? 77000000;
     this.id = options.id || 'moonshine-single';
     this.name = options.name || 'Moonshine Tiny, single-threaded (ORT Web / transformers.js)';
     this.modelId = options.modelId || 'onnx-community/moonshine-tiny-ONNX';
@@ -432,17 +462,40 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
     this.metrics.revisionsPerWord = 0;
   }
 
+  private nextId(): string { return `${this.sessionId}:${++this.requestNumber}`; }
+
+  private appendSegment(previous: string, next: string, overlap: boolean): string {
+    return overlap ? alignAndAppendPhrases(previous, next) : appendPhrase(previous, next);
+  }
+
+  private reportProgress(data: any, expected = this.expectedDownloadBytes): void {
+    const loaded = Number(data.loaded) || 0;
+    const total = Number(data.total) || 0;
+    this.downloadFiles.set(data.file ?? 'model', { loaded, total });
+    let bytes = 0, knownTotal = 0;
+    for (const file of this.downloadFiles.values()) { bytes += file.loaded; knownTotal += file.total; }
+    this.updateMetrics({ downloadBytes: bytes, downloadProgressPct: Math.max(this.metrics.downloadProgressPct, Math.min(99, Math.round(bytes / Math.max(expected, knownTotal, 1) * 100))) });
+  }
+
+  private prepareAudio(samples: Float32Array): Float32Array {
+    return trimAudioSilence(this.normalizeAudio ? normalizeQuietAudio(samples) : samples);
+  }
+
   public override onSpeechActivity(isSpeaking: boolean, timestamp?: number): void {
     super.onSpeechActivity(isSpeaking, timestamp);
   }
 
   public async load(): Promise<void> {
+    if (this.loadingPromise) return this.loadingPromise;
     if (this.worker) return;
+    this.downloadFiles.clear();
 
     this.updateMetrics({ status: 'loading', errorMessage: null, downloadProgressPct: 5 });
     const startTime = performance.now();
 
-    return new Promise<void>((resolve, reject) => {
+    this.loadingPromise = new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Speech model download timed out')), 180000);
+      this.rejectLoad = (error) => { clearTimeout(timeout); reject(error); };
       try {
         this.worker = new Worker(
           new URL('../../workers/moonshineSingleThreadWorker.ts', import.meta.url),
@@ -450,27 +503,26 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
         );
 
         this.worker.onmessage = (e: MessageEvent) => {
-          const { type, loaded, total, loadTimeMs, error } = e.data;
+          const { type, loadTimeMs, error, device } = e.data;
 
           if (type === 'progress') {
-            const pct = total ? Math.min(100, Math.round((loaded / total) * 100)) : 50;
-            this.updateMetrics({
-              downloadProgressPct: pct,
-              downloadBytes: total ? loaded : Math.round(this.expectedDownloadBytes * (pct / 100)),
-            });
+            this.reportProgress(e.data);
           } else if (type === 'init_done') {
             const finalLoadTime = loadTimeMs || Math.round(performance.now() - startTime);
             this.updateMetrics({
               status: 'ready',
+              device: `${device === 'webgpu' ? 'WebGPU' : 'WASM'} (Single-Threaded Worker, No COOP/COEP needed)`,
               downloadProgressPct: 100,
               downloadBytes: this.expectedDownloadBytes,
               loadTimeMs: finalLoadTime,
               errorMessage: null,
             });
+            clearTimeout(timeout);
             resolve();
           } else if (type === 'error') {
             const msg = error || 'Worker initialization failed';
             this.updateMetrics({ status: 'error', errorMessage: msg });
+            clearTimeout(timeout);
             reject(new Error(msg));
           }
         };
@@ -478,6 +530,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
         this.worker.onerror = (err) => {
           const msg = err.message || 'Worker syntax or import error';
           this.updateMetrics({ status: 'error', errorMessage: msg });
+          clearTimeout(timeout);
           reject(new Error(msg));
         };
 
@@ -493,12 +546,35 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       } catch (err) {
         const msg = (err as Error).message;
         this.updateMetrics({ status: 'error', errorMessage: msg });
+        clearTimeout(timeout);
         reject(err);
       }
     });
+    try { await this.loadingPromise; } catch (error) {
+      this.worker?.terminate(); this.worker = null;
+      throw error;
+    } finally { this.loadingPromise = null; this.rejectLoad = null; }
+  }
+
+  public async prepareForListening(): Promise<void> {
+    if (this.preparationPromise) return this.preparationPromise;
+    this.preparationPromise = (async () => {
+      if (this.modelAfterStop && this.modelAfterStop !== this.modelId) {
+        // Restore the cached live model before the page requests a microphone.
+        this.worker?.terminate(); this.worker = null;
+      }
+      this.modelAfterStop = undefined;
+      await this.load();
+    })();
+    try { await this.preparationPromise; } finally { this.preparationPromise = null; }
   }
 
   public async start(stream: MediaStream): Promise<void> {
+    const session = ++this.sessionId;
+    await this.prepareForListening();
+    if (session !== this.sessionId) return;
+    this.segmentHasOverlap = false;
+    this.requestOverlap.clear();
     this.isRunning = true;
     this.isWorkerBusy = false;
     this.isCommitting = false;
@@ -530,12 +606,15 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       earlierWordRevisions: 0,
       revisionsPerWord: 0,
       batchTranscript: undefined,
+      rawBatchTranscript: undefined,
+      finalPassWarning: undefined,
       isIdenticalToBatch: undefined,
     });
 
     // 1. Immediately create and connect the Web Audio graph to buffer audio from mic start
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
     this.audioContext = new AudioCtx({ sampleRate: 16000 });
+    if (this.audioContext.sampleRate !== 16000) throw new Error('Speech capture requires a 16 kHz AudioContext');
     if (this.audioContext.state === 'suspended') {
       await this.audioContext.resume();
     }
@@ -598,7 +677,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
 
     source.connect(this.processorNode);
     const silentGain = this.audioContext.createGain();
-    silentGain.gain.value = 0.00001;
+    silentGain.gain.value = 0;
     this.processorNode.connect(silentGain);
     silentGain.connect(this.audioContext.destination);
 
@@ -607,18 +686,22 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       await this.load();
     }
 
+    if (session !== this.sessionId) return;
     // Setup worker listener for transcription results
     if (this.worker) {
       this.worker.onmessage = (e: MessageEvent) => {
-        const { type, text, inferMs, error } = e.data;
+        const { id, type, text, inferMs, error } = e.data;
+        if (type === 'progress') { this.reportProgress(e.data, this.finalDownloadBytes); return; }
+        if (type === 'model_ready') { this.updateMetrics({ downloadProgressPct: 100, device: `${e.data.device === 'webgpu' ? 'WebGPU' : 'WASM'} (Single-Threaded Worker, No COOP/COEP needed)` }); return; }
+        if (typeof id !== 'string' || !id.startsWith(`${this.sessionId}:`)) return;
 
         if (type === 'commit_result') {
           this.isCommitting = false;
           this.isWorkerBusy = false;
           const rawText = (text || '').trim();
-          console.log('[MoonshineEngine] commit_result text:', JSON.stringify(rawText));
           if (rawText.length > 0) {
-            this.committedText = alignAndAppendPhrases(this.committedText, rawText);
+            this.committedText = this.appendSegment(this.committedText, rawText, this.requestOverlap.get(id) ?? false);
+            this.requestOverlap.delete(id);
             this.committedPhrases.push(rawText);
             this.currentInterimText = '';
 
@@ -630,6 +713,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
           }
         } else if (type === 'result') {
           this.isWorkerBusy = false;
+          if (id !== this.latestInterimId) return;
           const now = performance.now();
 
           if (this.lastUpdateTime) {
@@ -647,7 +731,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
             }
 
             this.currentInterimText = rawText;
-            const liveCombined = alignAndAppendPhrases(this.committedText, this.currentInterimText);
+            const liveCombined = this.appendSegment(this.committedText, this.currentInterimText, this.segmentHasOverlap);
 
             const avgInterval =
               this.updateIntervals.length > 0
@@ -687,13 +771,14 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
         offset += chunk.length;
       }
 
-      const clean = trimAudioSilence(merged);
+      const clean = this.prepareAudio(merged);
       if (clean.length < 3200) return;
 
       this.isWorkerBusy = true;
+      this.latestInterimId = this.nextId();
       this.worker.postMessage(
         {
-          id: Date.now(),
+          id: this.latestInterimId,
           op: 'transcribe',
           payload: { audio: clean.buffer },
         },
@@ -706,8 +791,11 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
     if (this.currentSegmentSamples < 4000 || !this.worker) return;
 
     this.isCommitting = true;
+    this.latestInterimId = null;
     const samplesToCommit = this.currentSegmentSamples;
-    console.log('[MoonshineEngine] commitCurrentSegment, hasOverlap:', hasOverlap, 'samples:', samplesToCommit);
+    const id = this.nextId();
+    this.requestOverlap.set(id, this.segmentHasOverlap);
+    this.segmentHasOverlap = hasOverlap;
 
     // Flatten current segment chunks
     const merged = new Float32Array(samplesToCommit);
@@ -735,14 +823,14 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       this.silenceFramesCount = 0;
     }
 
-    const clean = trimAudioSilence(merged);
+    const clean = this.prepareAudio(merged);
     if (clean.length < 3200) {
       this.isCommitting = false;
       return;
     }
     this.worker.postMessage(
       {
-        id: Date.now(),
+        id,
         op: 'commit',
         payload: { audio: clean.buffer, hasOverlap },
       },
@@ -750,7 +838,12 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
     );
   }
 
-  public async stop(): Promise<void> {
+  public async stop(onCaptureStopped?: () => void): Promise<void> {
+    const session = this.sessionId;
+    const worker = this.worker;
+    // ScriptProcessor callbacks arrive in 256 ms blocks. Drain the last block
+    // before disconnecting, so a click on the final word does not discard it.
+    if (this.isRunning && this.captureDrainMs > 0) await new Promise(resolve => setTimeout(resolve, this.captureDrainMs));
     this.isRunning = false;
     if (this.pollIntervalId) {
       clearInterval(this.pollIntervalId);
@@ -769,8 +862,11 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       this.audioContext = null;
     }
 
+    onCaptureStopped?.();
+    if (session !== this.sessionId) return;
+
     // If there is uncommitted speech in the segment, commit it now
-    if (this.currentSegmentSamples >= 4000 && this.worker) {
+    if (this.currentSegmentSamples >= 4000 && worker) {
       const remainingSamples = this.currentSegmentSamples;
       const merged = new Float32Array(remainingSamples);
       let offset = 0;
@@ -781,43 +877,48 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       this.currentSegmentChunks = [];
       this.currentSegmentSamples = 0;
 
-      const clean = trimAudioSilence(merged);
+      const clean = this.prepareAudio(merged);
       if (clean.length >= 3200) {
+        const id = this.nextId();
+        this.requestOverlap.set(id, this.segmentHasOverlap);
         await new Promise<void>((resolve) => {
+          const cancel = () => { clearTimeout(timeout); worker?.removeEventListener('message', handler); this.stopWaiters.delete(cancel); resolve(); };
+          this.stopWaiters.add(cancel);
           const timeout = setTimeout(() => {
-            this.worker?.removeEventListener('message', handler);
-            resolve();
-          }, 6000);
+            worker?.removeEventListener('message', handler);
+            if (session === this.sessionId && this.worker === worker) { worker?.terminate(); this.worker = null; }
+            if (session === this.sessionId) this.updateMetrics({ errorMessage: 'Speech finalization timed out; retained live text.' });
+            cancel();
+          }, 60000);
 
           const handler = (e: MessageEvent) => {
+            if (e.data.id !== id) return;
             if (e.data.type === 'commit_result') {
               clearTimeout(timeout);
-              const raw = (e.data.text || '').trim();
-              if (raw.length > 0) {
-                this.committedText = alignAndAppendPhrases(this.committedText, raw);
-              }
-              this.worker?.removeEventListener('message', handler);
-              resolve();
+              cancel();
             } else if (e.data.type === 'error') {
               clearTimeout(timeout);
-              this.worker?.removeEventListener('message', handler);
-              resolve();
+              cancel();
             }
           };
-          this.worker?.addEventListener('message', handler);
-          this.worker?.postMessage(
-            { id: Date.now(), op: 'commit', payload: { audio: clean.buffer, hasOverlap: false } },
+          worker?.addEventListener('message', handler);
+          worker?.postMessage(
+            { id, op: 'commit', payload: { audio: clean.buffer, hasOverlap: false } },
             [clean.buffer]
           );
         });
       }
     }
 
+    if (session !== this.sessionId) return;
+    const liveBeforeBatch = this.appendSegment(this.committedText, this.currentInterimText, this.segmentHasOverlap);
     // Run final pass over ALL session audio in order!
     let batchTranscript = '';
     let isIdenticalToBatch = false;
+    let rawBatchTranscript = '';
+    let finalPassWarning: string | undefined;
 
-    if (this.totalSessionSamples >= 8000 && this.worker) {
+    if (this.totalSessionSamples >= 8000 && worker && this.worker === worker) {
       const fullAudio = new Float32Array(this.totalSessionSamples);
       let offset = 0;
       for (const chunk of this.sessionChunks) {
@@ -825,51 +926,69 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
         offset += chunk.length;
       }
 
-      const cleanAudio = trimAudioSilence(fullAudio);
+      const cleanAudio = this.prepareAudio(fullAudio);
       const audioToBatch = cleanAudio.length >= 4000 ? cleanAudio : fullAudio;
 
+      const id = this.nextId();
+      if (this.finalModelId) {
+        this.downloadFiles.clear();
+        this.updateMetrics({ downloadProgressPct: 0 });
+        this.modelAfterStop = this.finalModelId;
+      }
       await new Promise<void>((resolve) => {
+        const cancel = () => { clearTimeout(timeout); worker?.removeEventListener('message', handler); this.stopWaiters.delete(cancel); resolve(); };
+        this.stopWaiters.add(cancel);
         const timeout = setTimeout(() => {
-          this.worker?.removeEventListener('message', handler);
-          resolve();
-        }, 20000);
+          worker?.removeEventListener('message', handler);
+          if (session === this.sessionId && this.worker === worker) { worker?.terminate(); this.worker = null; }
+          if (session === this.sessionId) this.updateMetrics({ errorMessage: 'Final speech check timed out; retained live text.' });
+          cancel();
+        }, 90000);
 
         const handler = (e: MessageEvent) => {
+          if (e.data.id !== id) return;
           if (e.data.type === 'batch_result') {
             clearTimeout(timeout);
             batchTranscript = (e.data.text || '').trim();
-            this.worker?.removeEventListener('message', handler);
-            resolve();
+            cancel();
           } else if (e.data.type === 'error') {
+            if (session === this.sessionId) this.updateMetrics({ errorMessage: 'Final speech check unavailable; retained live text.' });
             clearTimeout(timeout);
-            this.worker?.removeEventListener('message', handler);
-            resolve();
+            cancel();
           }
         };
-        this.worker?.addEventListener('message', handler);
-        this.worker?.postMessage(
-          { id: Date.now(), op: 'batch', payload: { audio: audioToBatch.buffer } },
+        worker?.addEventListener('message', handler);
+        worker?.postMessage(
+          { id, op: 'batch', payload: { audio: audioToBatch.buffer, ...(this.finalModelId ? { modelId: this.finalModelId, device: this.finalDevice } : {}) } },
           [audioToBatch.buffer]
         );
       });
 
-      if (batchTranscript && batchTranscript.trim().length > 0) {
-        this.committedText = batchTranscript.trim();
-      }
+      if (session !== this.sessionId) return;
+      rawBatchTranscript = batchTranscript;
+      const choice = chooseFinalTranscript(liveBeforeBatch, batchTranscript);
+      this.committedText = choice.text;
+      finalPassWarning = choice.warning;
+      if (!choice.accepted) batchTranscript = '';
 
-      const cleanLive = normalizeASRText(this.committedText);
+      const cleanLive = normalizeASRText(liveBeforeBatch);
       const cleanBatch = normalizeASRText(batchTranscript);
       isIdenticalToBatch = cleanLive.length > 0 && cleanLive === cleanBatch;
     }
 
+    if (session !== this.sessionId) return;
+    if (!this.committedText) this.committedText = liveBeforeBatch;
     const words = this.committedText.split(/\s+/).filter(Boolean);
     const revPerWord = words.length > 0 ? this.earlierWordRevisions / words.length : 0;
 
     this.updateMetrics({
       status: 'ready',
+      downloadProgressPct: 100,
       finalText: this.committedText,
       partialText: this.committedText,
       batchTranscript: batchTranscript || undefined,
+      rawBatchTranscript: rawBatchTranscript || undefined,
+      finalPassWarning,
       isIdenticalToBatch,
       revisionsPerWord: Math.round(revPerWord * 1000) / 1000,
       earlierWordRevisions: this.earlierWordRevisions,
@@ -877,6 +996,10 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
   }
 
   public reset(): void {
+    this.cancel();
+    this.sessionId++;
+    this.requestOverlap.clear();
+    this.segmentHasOverlap = false;
     if (this.pollIntervalId) {
       clearInterval(this.pollIntervalId);
       this.pollIntervalId = null;
@@ -906,16 +1029,34 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       earlierWordRevisions: 0,
       revisionsPerWord: 0,
       batchTranscript: undefined,
+      rawBatchTranscript: undefined,
+      finalPassWarning: undefined,
       isIdenticalToBatch: undefined,
     });
   }
 
+  public cancel(): void {
+    for (const cancel of this.stopWaiters) cancel();
+    this.stopWaiters.clear();
+    this.isRunning = false;
+    this.sessionId++;
+    if (this.pollIntervalId) clearInterval(this.pollIntervalId);
+    this.pollIntervalId = null;
+    if (this.processorNode) { this.processorNode.onaudioprocess = null; this.processorNode.disconnect(); }
+    this.processorNode = null;
+    void this.audioContext?.close().catch(() => undefined);
+    this.audioContext = null;
+    this.sessionChunks = [];
+    this.currentSegmentChunks = [];
+    this.totalSessionSamples = 0;
+    this.currentSegmentSamples = 0;
+  }
+
   public destroy(): void {
-    this.stop();
-    if (this.worker) {
-      this.worker.terminate();
-      this.worker = null;
-    }
+    this.rejectLoad?.(new Error('Speech engine disposed'));
+    this.cancel();
+    this.worker?.terminate();
+    this.worker = null;
     this.listeners.clear();
   }
 }

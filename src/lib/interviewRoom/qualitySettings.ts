@@ -1,16 +1,5 @@
-/**
- * Quality settings & hardware capability detection for Interview Room.
- *
- * Fast (default): Moonshine Tiny (~28 MB download, 4.6% WER, 0.057x RTF)
- * Better accuracy: Moonshine Base (~62 MB download, 2.9% WER, 0.097x RTF)
- * Best feedback: Qwen 1.5B LLM (hidden until Item 9 offline verification passes)
- */
-
-import {
-  MoonshineSingleThreadEngine,
-  MoonshineBaseEngine,
-  SingleThreadASREngine,
-} from '../speechTest/engines';
+/** On-device speech profiles. Accuracy is corpus-specific; see docs/speech-accuracy-results.md. */
+import { SingleThreadASREngine } from '../speechTest/engines';
 
 export type QualityOption = 'fast' | 'better' | 'best';
 
@@ -19,7 +8,7 @@ export interface QualityProfile {
   label: string;
   downloadSizeMB: string;
   downloadBytes: number;
-  werPct: number;
+  werPct: number | null;
   modelName: string;
   hidden?: boolean;
 }
@@ -28,25 +17,25 @@ export const QUALITY_PROFILES: Record<QualityOption, QualityProfile> = {
   fast: {
     id: 'fast',
     label: 'Fast (default)',
-    downloadSizeMB: '~28 MB',
-    downloadBytes: 28180947,
-    werPct: 4.6,
+    downloadSizeMB: '~32 MB + runtime',
+    downloadBytes: 32079632,
+    werPct: null,
     modelName: 'Moonshine Tiny',
   },
   better: {
     id: 'better',
     label: 'Better accuracy',
-    downloadSizeMB: '~62 MB',
-    downloadBytes: 62000000,
-    werPct: 2.9,
-    modelName: 'Moonshine Base',
+    downloadSizeMB: '~112 MB total + runtime',
+    downloadBytes: 111666188,
+    werPct: null,
+    modelName: 'Moonshine Tiny + Whisper Base.en final check',
   },
   best: {
     id: 'best',
     label: 'Best feedback',
     downloadSizeMB: 'TBD',
     downloadBytes: 0,
-    werPct: 0,
+    werPct: null,
     modelName: 'Qwen 1.5B (LLM)',
     hidden: true, // Hidden until item 9 passes
   },
@@ -96,7 +85,7 @@ export function detectDeviceCapability(
       isSaveData,
       isLowMemory,
       recommended: 'fast',
-      reason: 'Data Saver enabled; Fast (28 MB) minimizes bandwidth.',
+      reason: 'Data Saver enabled; Fast (32 MB) minimizes bandwidth.',
     };
   }
 
@@ -107,7 +96,7 @@ export function detectDeviceCapability(
       isSaveData,
       isLowMemory: true,
       recommended: 'fast',
-      reason: `Constrained RAM (${deviceMemoryGB} GB); Fast (28 MB) avoids memory pressure.`,
+      reason: `Constrained RAM (${deviceMemoryGB} GB); Fast (32 MB) avoids memory pressure.`,
     };
   }
 
@@ -128,7 +117,7 @@ export function detectDeviceCapability(
     isSaveData,
     isLowMemory: false,
     recommended: 'fast',
-    reason: 'Fast (28 MB) recommended for zero audio lag and immediate start.',
+    reason: 'Fast (32 MB) recommended for the smaller first download.',
   };
 }
 
@@ -138,18 +127,26 @@ export function shouldWarnBeforeDownload(
 ): string | null {
   if (selected === 'better') {
     if (capability.isSaveData) {
-      return 'Data Saver is on: downloading Better accuracy requires ~62 MB of data.';
+      return 'Data Saver is on: downloading Better accuracy requires ~112 MB of model data in total.';
     }
     if (capability.isLowMemory) {
-      return `Device memory is low (${capability.deviceMemoryGB} GB). 62 MB download may cause memory pressure.`;
+      return `Device memory is low (${capability.deviceMemoryGB} GB). The final speech check may cause memory pressure.`;
     }
   }
   return null;
 }
 
 export function createASREngineForQuality(quality: QualityOption): SingleThreadASREngine {
-  if (quality === 'better') {
-    return new MoonshineBaseEngine();
-  }
-  return new MoonshineSingleThreadEngine();
+  return new SingleThreadASREngine({
+    id: quality === 'better' ? 'moonshine-whisper' : 'moonshine-single',
+    name: quality === 'better' ? 'Moonshine live + Whisper final check' : 'Moonshine Tiny',
+    downloadBytes: 32079632,
+    normalizeAudio: true,
+    captureDrainMs: 300,
+    ...(quality === 'better' ? {
+      finalModelId: 'onnx-community/whisper-base.en',
+      finalDevice: 'webgpu' as const,
+      finalDownloadBytes: 79586556,
+    } : {}),
+  });
 }

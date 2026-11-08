@@ -3,17 +3,25 @@ import {
   detectDeviceCapability,
   shouldWarnBeforeDownload,
   QUALITY_PROFILES,
+  createASREngineForQuality,
 } from './qualitySettings';
 
 describe('qualitySettings', () => {
+  it('uses a small live model and sequential final check only for Better accuracy', () => {
+    expect(createASREngineForQuality('fast').finalModelId).toBeUndefined();
+    const engine = createASREngineForQuality('better');
+    expect(engine.modelId).toBe('onnx-community/moonshine-tiny-ONNX');
+    expect(engine.finalModelId).toBe('onnx-community/whisper-base.en');
+    expect(engine.expectedDownloadBytes).toBe(32079632);
+  });
   it('has profiles for fast, better, and hidden best', () => {
     expect(QUALITY_PROFILES.fast.label).toBe('Fast (default)');
-    expect(QUALITY_PROFILES.fast.downloadSizeMB).toBe('~28 MB');
-    expect(QUALITY_PROFILES.fast.werPct).toBeLessThan(5.0);
+    expect(QUALITY_PROFILES.fast.downloadSizeMB).toBe('~32 MB + runtime');
+    expect(QUALITY_PROFILES.fast.werPct).toBeNull();
 
     expect(QUALITY_PROFILES.better.label).toBe('Better accuracy');
-    expect(QUALITY_PROFILES.better.downloadSizeMB).toBe('~62 MB');
-    expect(QUALITY_PROFILES.better.werPct).toBe(2.9);
+    expect(QUALITY_PROFILES.better.downloadSizeMB).toBe('~112 MB total + runtime');
+    expect(QUALITY_PROFILES.better.werPct).toBeNull();
 
     // Best feedback MUST remain hidden until item 9 verification passes
     expect(QUALITY_PROFILES.best.hidden).toBe(true);
