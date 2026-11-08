@@ -1,0 +1,166 @@
+---
+title: "Load Balancing, Algorithms, and Health Checks"
+sidebar_position: 2.3
+description: "Choose L4 or L7 routing, compare assignment algorithms, and design health checks and connection draining without confusing destination count with useful capacity."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import LoadAssignmentExplorer from '../../../viz/diagrams/LoadAssignmentExplorer';
+
+# Load Balancing, Algorithms, and Health Checks
+
+<ELI5>
+A receptionist can send the same number of people to each desk while one desk still does most of the work. One visitor may bring a hundred forms and another only one. The receptionist also needs to know which desks can actually help and when a desk is closing. Load balancing has the same three jobs: choose the unit being assigned, choose a destination, and remove destinations that cannot safely serve it.
+</ELI5>
+
+A **load balancer** assigns incoming connections or requests to eligible service instances. It does not create serving capacity, replicate application state, or guarantee equal work. The routing decision operates on a unit—such as a connection or an HTTP request—and that unit determines which kinds of imbalance the algorithm can see.
+
+The misconception is that equal connection counts imply equal request load. In our illustrative example, four persistent connections produce 100, 1, 1, and 1 requests/s. Assigning alternating connections to two backends gives A 101 requests/s and B 2 requests/s, despite two connections each. Request-aware assignment can instead distribute 103 requests as 52 and 51 in a one-second teaching window. The example assumes requests are interchangeable and costs equal; later we relax those assumptions.
+
+## L4 and L7 See Different Units
+
+**Layer 4**, or L4, routing makes decisions from transport-level information such as source and destination addresses and ports. A TCP connection typically remains assigned to a backend for its lifetime. The balancer need not understand HTTP paths or application identities. TLS passthrough can preserve encrypted payloads to the backend, but limits routing based on content inside that encryption.
+
+**Layer 7**, or L7, routing interprets an application protocol such as HTTP. It can route by host, path, headers, or other configured request metadata after the necessary protocol handling. A proxy that terminates the client connection can create separate upstream requests, enabling request-level policy and multiplexing choices. That adds parsing, connection management, and a trust boundary around forwarded identity.
+
+HTTP/2 allows multiple streams on one connection. A transport-level assignment sees one connection even if it carries much more work than another. An HTTP-aware intermediary may distribute requests or streams according to its implementation and configuration. Do not infer request-level balancing from the presence of multiple backend instances alone; inspect how connections and streams are actually handled.
+
+<LoadAssignmentExplorer />
+
+The diagram keeps the client workload fixed and changes the assignment unit. Under alternating connection assignment, A receives connections 1 and 3, giving 100 + 1 = 101 requests/s; B receives 2 and 4, giving 2. Under request assignment, one-second counts differ by only one. This proves something narrow and useful: balancing the wrong unit can preserve a large imbalance even with a correct algorithm.
+
+An L7 router cannot divide one indivisible application operation into smaller independent work. A single expensive query remains expensive wherever assigned. Long-lived WebSockets also retain a connection owner after upgrade; message fan-out and state placement need their own design. Choose the level of routing from the protocol and ownership model rather than assuming higher-layer routing solves every distribution problem.
+
+<RunnableCode code={`connection_rps = [100, 1, 1, 1]
+l4 = [0, 0]
+for index, rate in enumerate(connection_rps):
+    l4[index % 2] += rate
+l7 = [0, 0]
+for request in range(sum(connection_rps)):
+    l7[request % 2] += 1
+print("L4 connections per backend: 2, 2")
+print("L4 requests/s:", l4)
+print("L7 one-second request counts:", l7)
+print("L4 busiest / quietest:", l4[0] / l4[1])
+# Try it: make every connection rate 1; connection and request balancing now agree.
+`} />
+
+The calculation is deterministic assignment, not a network benchmark. Real load includes partial seconds, different request costs, persistent upstream pools, and variable arrival timing. Retain the simple example as a diagnostic: if one backend is overloaded, compare work per connection before changing a connection-count algorithm.
+
+## Match the Algorithm to the Signal
+
+**Round robin** cycles through eligible destinations. It is simple and can work well for homogeneous backends and similarly sized requests. A **weighted round robin** gives destinations different shares, useful when measured safe capacities differ. A weight is a configured expectation, not a measurement that automatically tracks a backend that has become slow.
+
+**Least connections** prefers the destination with fewer active connections. It can help when connection count correlates with occupied capacity, but our four-connection example shows why that correlation can fail. With HTTP multiplexing, one connection may contain many active streams. Confirm which active unit your proxy actually counts.
+
+A least-outstanding-request policy counts unfinished operations rather than transport connections. It reacts to a backend accumulating work, but can still misjudge expensive requests, queued work hidden downstream, or a fast-failing unhealthy backend. A latency-aware policy uses observations to influence choice, with care for stale measurements and feedback. The assignment signal should reflect useful work, not reward a destination merely for rejecting requests quickly.
+
+Random selection avoids maintaining a global cycle across many independent balancers. Sampling two destinations and choosing the less loaded can reduce the chance of assigning to a busy one without full fleet coordination. Each balancer still sees only part of the workload unless load signals are shared. Multiple clients choosing the same apparently idle destination at once can cause oscillation.
+
+<PredictFirst question="Two backends each have two persistent connections. One connection carries 100 requests/s and every other connection carries 1. Is work necessarily balanced?" options={["Yes, connection counts are equal", "No, the busy connection can make one backend serve 101 requests/s while the other serves 2", "Yes, TCP divides application requests equally across all backends"]} correctIndex={1} explanation="A connection remains assigned at L4 and can carry many application requests. Equal connection counts do not imply equal stream counts, request counts, or processing cost." />
+
+## Health Is Eligibility for a Particular Operation
+
+A **health check** decides whether a backend remains eligible for traffic. An active check probes a configured endpoint or protocol action. A passive check observes failures in real traffic. Active checks can discover failure before the next user request; passive checks observe the real path but need traffic and careful classification of client versus server errors.
+
+**Liveness** asks whether a process should continue running; **readiness** asks whether it can accept traffic. Restarting every process because a shared database is temporarily unavailable can add startup load without repairing the database. Removing every backend from routing can also turn a partial degradation into a total outage. Define which operations remain safe during the dependency failure before choosing the probe result.
+
+Use thresholds and hysteresis to avoid flapping: require enough evidence before removing a backend and enough recovery before restoring it. Probe interval, timeout, failure count, and membership propagation all contribute to detection delay. A “five-second check” is not a five-second guarantee of traffic removal. Include existing connections and stale client discovery when evaluating that bound.
+
+A backend should not report ready before credentials, configuration, and required serving resources are available. Warming a large cache can be separate from becoming fully loaded. Admit traffic gradually if a sudden cold-cache arrival would overload storage. The readiness endpoint is a small part of an operational protocol, not just a boolean variable.
+
+## Drain Connections During Replacement
+
+A draining backend stops accepting new assignments while allowing bounded existing work to finish. Removing it from a destination list does not necessarily terminate existing TCP connections. Long-lived connections may require a protocol-level signal, a maximum lifetime, or client reconnect behavior. The correct mechanism depends on whether the protocol can move outstanding work safely.
+
+A retry after a connection breaks can reach another backend. That is safe only under the operation's semantics. A read may be repeatable while a write with a lost acknowledgement has an unknown durable outcome. A balancer should not automatically replay arbitrary writes merely because a destination reset the socket.
+
+Failure also changes the load on survivors. Removing one of four equal backends raises each survivor's assigned share from one quarter to one third if demand remains fixed, a one-third increase in work per survivor. A health policy that removes overloaded instances one at a time can cascade unless admission control or spare capacity protects what remains. Health and capacity need to be reviewed together.
+
+<GoDeeper title="Go deeper: retries can multiply behind the balancer">
+If three layers each permit up to three total attempts for one logical action, the deepest service can receive up to 27 attempts in the worst case. A proxy's retry count adds to application and client policies rather than replacing them. Keep an end-to-end deadline and retry budget, record logical request identifiers, and ensure that the effect can safely be repeated. Destination selection cannot determine whether an ambiguous business operation already committed.
+</GoDeeper>
+
+## Run a Small Real Proxy Configuration
+
+NGINX provides a compact way to inspect request routing locally. The configuration below listens on port 8080, forwards to two application processes on ports 9001 and 9002, and selects the backend with fewer active connections. A short connect timeout bounds one part of a failed upstream attempt. The read timeout limits inactivity between upstream reads rather than the entire user request deadline, so do not confuse it with a complete latency budget.
+
+```nginx
+worker_processes 1;
+error_log stderr;
+pid /tmp/nm-load-balancer.pid;
+events { worker_connections 128; }
+http {
+    access_log off;
+    upstream application {
+        least_conn;
+        server 127.0.0.1:9001 max_fails=2 fail_timeout=10s;
+        server 127.0.0.1:9002 max_fails=2 fail_timeout=10s;
+    }
+    server {
+        listen 8080;
+        location / {
+            proxy_pass http://application;
+            proxy_connect_timeout 1s;
+            proxy_read_timeout 5s;
+            proxy_next_upstream off;
+        }
+    }
+}
+```
+
+Save this as `/tmp/nm-load-balancer.conf` on a machine with NGINX installed. Start two test backends in separate terminals with `python3 -m http.server 9001 --bind 127.0.0.1` and `python3 -m http.server 9002 --bind 127.0.0.1`. Validate syntax with `nginx -t -c /tmp/nm-load-balancer.conf -p /tmp/`, then start the proxy using that same configuration. Send requests with `curl -i http://127.0.0.1:8080/` and observe the backend logs; these simple directory servers are local test fixtures, not a production application.
+
+The `max_fails` and `fail_timeout` settings configure passive failure handling; they do not add a periodic active HTTP probe. Turning off next-upstream retries keeps this experiment's failure visible instead of hiding it behind another attempt. Stop the proxy with the matching `nginx -s quit -c /tmp/nm-load-balancer.conf -p /tmp/` command and stop both test servers when finished.
+
+We can also compute a weighted assignment without running a proxy. The schedule below gives backend B twice A's share across six illustrative requests. The failure calculation separately shows how much more work each remaining equal backend receives after losing one of four. Neither calculation includes queueing or network latency; it checks the assignment arithmetic.
+
+<RunnableCode code={`schedule = ["A", "B", "B"]
+counts = {"A": 0, "B": 0}
+for request in range(6):
+    chosen = schedule[request % len(schedule)]
+    counts[chosen] += 1
+    print("Request:", request + 1, "destination:", chosen)
+print("Weighted counts:", counts)
+healthy, survivors = 4, 3
+print("Per-survivor load multiplier:", round(healthy/survivors, 3))
+print("Extra load percent:", round((healthy/survivors - 1)*100, 2))
+# Try it: change schedule to ["A", "B"]; compare equal assignment with unequal capacity.
+`} />
+
+## Common Problems and Fixes
+
+A backend looks idle by connection count while multiplexed streams saturate it. Measure outstanding requests and actual resource demand. A least-latency policy sends traffic to a fast-failing endpoint; separate success latency from rejection and enforce health eligibility. A deployment closes active connections immediately; drain new assignments and define bounded reconnect behavior.
+
+Health checks report green while real requests fail because they exercise different credentials or paths. Use a readiness action that represents essential serving capability without making an expensive full workload probe. A shared dependency failure removes every instance; revisit degraded-operation policy and resource protection rather than merely increasing the health-check timeout.
+
+## When Not to Add Another Balancing Layer
+
+| Situation | Better action |
+| --- | --- |
+| The shared store is saturated | Reduce downstream demand or enlarge the constrained stage |
+| The application relies on one replica's private state | Fix recoverable state ownership |
+| Requests are uneven because one operation dominates | Measure cost and isolate or limit that operation |
+| Another proxy adds no required routing or trust boundary | Keep fewer independently configured traffic policies |
+
+## Remember
+
+| Mechanism | Question to answer |
+| --- | --- |
+| L4 | Is connection-level assignment the right unit? |
+| L7 | Which protocol information must influence routing? |
+| Algorithm | Does its signal track useful occupied capacity? |
+| Health | Can the destination perform the promised operation? |
+| Drain | What happens to existing connections and effects? |
+| Retry | Is another attempt safe within the shared deadline? |
+
+You can now select a routing level and diagnose why apparently equal assignments still overload one backend. Return to [Scaling](/docs/software-system-design/scaling), and review [stateless services](/docs/software-system-design/stateless-services) before relying on rerouting as a recovery mechanism.
+
+## Sources
+
+- [Google SRE, Load Balancing in the Datacenter (2016)](https://sre.google/sre-book/load-balancing-datacenter/): assignment policies and load signals.
+- [NGINX, HTTP Load Balancing](https://nginx.org/en/docs/http/load_balancing.html): round robin, least connections, weights, and passive health behavior.
+- [NGINX, HTTP Proxy Module](https://nginx.org/en/docs/http/ngx_http_proxy_module.html): upstream timeouts and retry configuration.
+- [Kubernetes, Liveness, Readiness, and Startup Probes](https://kubernetes.io/docs/concepts/configuration/liveness-readiness-startup-probes/): distinct probe purposes.
+- [RFC 9113, HTTP/2 (2022)](https://www.rfc-editor.org/rfc/rfc9113): streams and connection multiplexing.
