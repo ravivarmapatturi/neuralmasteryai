@@ -658,9 +658,6 @@ export default function SimpleInterviewPage() {
                     <p className="si-status" role="status">
                       Checking your answer against the model answer on your device…
                     </p>
-                    <div className="si-speaker-wave" aria-hidden="true">
-                      <LiveWaveform active={false} processing={true} height={32} barColor="var(--good)" />
-                    </div>
                   </div>
                 )}
                 {check === 'failed' && (
