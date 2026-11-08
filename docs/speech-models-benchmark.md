@@ -1,5 +1,7 @@
 # Live Speech Models Benchmark Report
 
+> Archived exploratory results. The script used Node inference, estimated its 4× timings by multiplication, and did not establish WebGPU throughput. Its prose recommendations conflict with its table and must not be used as current accuracy guarantees. See [the browser accuracy evaluation](speech-accuracy-results.md) for measured results and corpus limitations.
+
 Date: 2026-11-04  
 Evaluator: Antigravity  
 Test Corpus: 5 Technical AI Interview WAVs (Total: 117.5s spoken technical audio)  

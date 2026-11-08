@@ -1,0 +1,86 @@
+{
+  "registeredAt": "2026-11-08T19:24:03.846139+00:00",
+  "baseCommit": "af424b1802e8880005c0f4c5480ec26107a3cb15",
+  "purpose": "User-requested follow-up on previously evaluated held-out audio, not an untouched test set. No configuration changes after these runs.",
+  "policy": {
+    "liveRTFMedianLast5Threshold": 0.75,
+    "WhisperInferenceBudget": "max(6000, min(12000, durationMs * 2.5)); starts at model_ready, excludes model download",
+    "slowDecision": "retain entire live transcript; disable Whisper for engine lifetime after measured slow live decoding or budget abort",
+    "prompt": "Vocabulary matched to current question only; no answer/reference/hypothesis used; max64 conditioning tokens; prefix stripped before decoding"
+  },
+  "sourceHashes": {
+    "src/lib/speechTest/engines.ts": "e24f31ee9007e8bfa7d9ce98d29bfa891aec8fed367f8183e971988d23fb87a9",
+    "src/lib/speechTest/refinementPolicy.ts": "28deb64839ea555b6f4e1d2a8f4120e1a13e740f5e21750c86a0cb69bf1aa6ae",
+    "src/lib/speechTest/whisperPrompt.ts": "d353137293d252ef1bf03e4f5344c0cd8bb9f4b27d5b663032aaa5daf7d0be57",
+    "src/lib/speechTest/audioPreparation.ts": "4f5160a9d783628f477699b36640ade7485ad2ba47904660fe7a23fc7a48f909",
+    "src/lib/interviewRoom/speechPrompt.ts": "209a9bdbb10a16a205815d4129bec323bf63948a6d6ffc725247fb08d429551c",
+    "src/lib/interviewRoom/qualitySettings.ts": "7a291d075e8de7915b092737c98e86a552383464c5b25ebc51c77cdbb0bd8f5b",
+    "src/workers/moonshineSingleThreadWorker.ts": "6926116efba1066bf59198ab91bb6c95d449f43a9fc202ff009d3ba208034715",
+    "scripts/speech-accuracy/run.mjs": "d8a3fadeebd25692e74e9c3cbd35f9e12d689a0078576d64d66fd928aab2833d",
+    "scripts/speech-accuracy/evaluate-followup.mjs": "43124039edc83080e3b141c992a149ea03cb6522fd1b51d2e7e92716c26d2807",
+    "package-lock.json": "cea72d3887948e92668d4c217d3ad976fe3c0746d4b93786df9f4c55bc8d5771",
+    "scripts/speech-accuracy/corpus.json": "26631ce4e99a535a2ff486d5ee7bd07e7e47e517604d18a8ce7ca95041f91725",
+    "scripts/speech-accuracy/human-terms.json": "c6b2589e89418912856053f7a4cee4ceb868db64a3bfe979f9736c93be7368a5"
+  },
+  "jobs": [
+    {
+      "name": "terms-off",
+      "out": "scripts/speech-accuracy/followup-terms-off.json",
+      "args": [
+        "--split=heldout",
+        "--profile=better",
+        "--prepare=normalize",
+        "--drain=300",
+        "--corpus=human-terms",
+        "--prompt=off"
+      ]
+    },
+    {
+      "name": "terms-question",
+      "out": "scripts/speech-accuracy/followup-terms-question.json",
+      "args": [
+        "--split=heldout",
+        "--profile=better",
+        "--prepare=normalize",
+        "--drain=300",
+        "--corpus=human-terms",
+        "--prompt=question"
+      ]
+    },
+    {
+      "name": "human-normal",
+      "out": "scripts/speech-accuracy/followup-human-normal.json",
+      "args": [
+        "--split=heldout",
+        "--profile=better",
+        "--prepare=normalize",
+        "--drain=300",
+        "--prompt=question"
+      ]
+    },
+    {
+      "name": "human-cpu25",
+      "out": "scripts/speech-accuracy/followup-human-cpu25.json",
+      "args": [
+        "--split=heldout",
+        "--profile=better",
+        "--prepare=normalize",
+        "--drain=300",
+        "--prompt=question",
+        "--cpuLimit=25",
+        "--cpulimit=/tmp/stt-cpulimit/extracted/usr/bin/cpulimit"
+      ]
+    },
+    {
+      "name": "human-negative",
+      "out": "scripts/speech-accuracy/followup-human-negative.json",
+      "args": [
+        "--split=heldout",
+        "--profile=better",
+        "--prepare=normalize",
+        "--drain=300",
+        "--prompt=negative"
+      ]
+    }
+  ]
+}

@@ -56,7 +56,12 @@ for q in json.loads((ROOT / "src/data/interviewCatalog.generated.json").read_tex
 for topic, rows in json.loads((ROOT / "src/data/interviewSeniorQuestions.json").read_text()).items():
     for qid, title, answer in rows:
         ours.append((topic, {"id": f"senior:{qid}", "title": title, "answer": answer}))
+titles_seen = set()
 for topic, item in ours:
+    key = item["title"].strip().lower()
+    if key in titles_seen:
+        continue
+    titles_seen.add(key)
     topics[topic]["questions"].append(item)
 
 seen = [words(i["title"]) for _, i in ours]
@@ -104,3 +109,7 @@ print(stats, sum(len(t["questions"]) for t in out["topics"]))
 for t in out["topics"]:
     print(t["group"], t["id"], len(t["questions"]))
 print(out["groups"])
+counts_path = ROOT / "src/data/interviewCounts.generated.json"
+counts = json.loads(counts_path.read_text())
+counts["questions"] = sum(len(t["questions"]) for t in out["topics"])
+counts_path.write_text(json.dumps(counts))

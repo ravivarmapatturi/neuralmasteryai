@@ -35,6 +35,16 @@ describe('Interview Room Dialogue & Logic', () => {
       expect(output).toContain('XGBoost');
     });
 
+    it('preserves plurals, names and unrelated ordinary words', () => {
+      expect(correctInterviewTerms('Laura used rags and GPUs with two LLMs.')).toBe('Laura used rags and GPUs with two LLMs.');
+      expect(correctInterviewTerms('The xg book describes exploration.')).toBe('The xg book describes exploration.');
+    });
+
+    it('uses the actual practice question title for LoRA and exact spoken acronyms', () => {
+      expect(correctInterviewTerms('Laura freezes weights.', 'peft:2', 'How does LoRA work?')).toBe('LoRA freezes weights.');
+      expect(correctInterviewTerms('Use ex gee boost or B M twenty five.')).toBe('Use XGBoost or BM25.');
+    });
+
     it('corrects low rank adaptation casing', () => {
       const input = 'we apply low rank adaptation to the attention matrices.';
       const output = correctInterviewTerms(input, 'genai-lora-production-serving');

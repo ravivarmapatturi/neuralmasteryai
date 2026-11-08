@@ -23,24 +23,25 @@ export const END_OF_ANSWER_PAUSE_SECONDS = 6.0;
  * Common technical terms and question-specific corrections for speech-to-text output.
  * For example, Whisper or Moonshine often transcribes "LoRA" as "Laura" or "lora".
  */
-export function correctInterviewTerms(text: string, questionId?: string): string {
+export function correctInterviewTerms(text: string, questionId?: string, questionTitle?: string): string {
   if (!text) return '';
   let res = text;
 
   // General AI Engineering abbreviations and casing
   const generalTerms: [RegExp, string][] = [
-    [/\b(rag|rags)\b/gi, 'RAG'],
+    [/\brag\b/gi, 'RAG'],
     [/\bretrieval augmented generation\b/gi, 'Retrieval-Augmented Generation'],
-    [/\b(llm|llms)\b/gi, 'LLM'],
-    [/\b(gpu|gpus)\b/gi, 'GPU'],
-    [/\b(cpu|cpus)\b/gi, 'CPU'],
+    [/\bllm(s?)\b/gi, 'LLM$1'],
+    [/\bgpu(s?)\b/gi, 'GPU$1'],
+    [/\bcpu(s?)\b/gi, 'CPU$1'],
     [/\bvram\b/gi, 'VRAM'],
-    [/\b(xg\s*boost|xg\s*b[o0]+[a-z]*)\b/gi, 'XGBoost'],
+    [/\b(?:x\s*g\s*boost|ex\s+gee\s+boost)\b/gi, 'XGBoost'],
     [/\bpy\s*torch\b/gi, 'PyTorch'],
     [/\bonnx\b/gi, 'ONNX'],
     [/\badam\s*w\b/gi, 'AdamW'],
     [/\bq\s*lora\b/gi, 'QLoRA'],
     [/\bgbdt\b/gi, 'GBDT'],
+    [/\b(?:b\s*m[-\s]*25|bee\s+em\s+twenty[- ]five|b\s*m\s+twenty[- ]five)\b/gi, 'BM25'],
   ];
 
   for (const [re, rep] of generalTerms) {
@@ -48,8 +49,8 @@ export function correctInterviewTerms(text: string, questionId?: string): string
   }
 
   // Question-specific replacements
-  if (questionId === 'genai-lora-production-serving' || /lora/i.test(questionId || '')) {
-    res = res.replace(/\b(laura|lora|laura's|lora's)\b/gi, 'LoRA');
+  if (questionId === 'genai-lora-production-serving' || /\blora\b|low[- ]rank adaptation/i.test(`${questionId ?? ''} ${questionTitle ?? ''}`)) {
+    res = res.replace(/\b(laura|lora|low[- ]ra)\b/gi, 'LoRA');
     res = res.replace(/\blow[- ]rank adaptation\b/gi, 'Low-Rank Adaptation');
   }
 

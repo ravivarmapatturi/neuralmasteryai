@@ -18,10 +18,10 @@ function Arrow() {
 }
 
 export default function ChooserPage() {
-  useDocumentTitle('Neural Mastery — Learn AI by running it');
+  useDocumentTitle('Neural Mastery — Learn AI through visualization');
   useDocumentMeta(
-    'Neural Mastery — Learn AI by running it',
-    'Free AI engineering lessons that compute in your browser, with practice problems, interview questions and study plans.',
+    'Neural Mastery — Learn AI through visualization',
+    'AI engineering lessons with visual explanations, practice problems, interview questions and study plans.',
   );
 
   const pages = getFlatPages();
@@ -40,17 +40,16 @@ export default function ChooserPage() {
           <div className="nm-landing-shell nm-hero-grid">
             <div>
               <h1 className="nb-heading" style={{ fontSize: 'clamp(2.3rem, 4.6vw, 3.8rem)', lineHeight: 1.05, margin: 0, position: 'relative' }}>
-                Learn AI by<br />
+                Learn AI through<br />
                 <span style={{ color: 'var(--nb-teal)', position: 'relative', display: 'inline-block' }}>
-                  running it.
+                  visualization.
                   <svg viewBox="0 0 320 16" width="100%" style={{ position: 'absolute', left: 0, bottom: -8, height: 16 }} aria-hidden="true">
                     <SketchUnderline x={4} y={8} width={300} color="var(--nb-teal)" id="hero-underline" />
                   </svg>
                 </span>
               </h1>
               <p className="nb-body" style={{ maxWidth: 560, margin: '1.75rem 0 2rem', fontSize: '1.08rem' }}>
-                Every lesson computes in your browser. Pick a concept in the demo and watch it run, then write the Python yourself in a lab. Free, no account needed.
-              </p>
+                See how each concept works, then build it yourself.</p>
               <div className="nm-hero-actions">
                 <Link className="nm-button nm-button-primary" to={completed ? '/progress' : '/learn'} style={{ background: 'var(--nb-cobalt)' }}>
                   {completed ? 'Continue learning' : 'Explore the curriculum'} <Arrow />

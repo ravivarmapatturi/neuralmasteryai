@@ -34,9 +34,12 @@
   --nm-surface: #f3ead4;
   --nm-surface-alt: #ece0c5;
   --nm-border: #d8c9a3;
-  --nm-text-primary: #1c2230;
-  --nm-text-secondary: #4a4f5c;
-  --nm-text-muted: #5c6270;
+  --nm-text-primary: #17305f;
+  --nm-text-secondary: #3d5570;
+  --nm-text-muted: #55677c;
+  --nm-heading-1: #17305f;
+  --nm-heading-2: #0f5f55;
+  --nm-heading-3: #5b2f9a;
   --nm-accent-primary: #1a6e36;
   --nm-accent-secondary: #1d4fc4;
   --nm-accent-warn: #865505;
@@ -98,9 +101,12 @@
   --nm-surface: #1d202a;
   --nm-surface-alt: #232734;
   --nm-border: #363b4a;
-  --nm-text-primary: #f1ede1;
-  --nm-text-secondary: #c2c6d4;
-  --nm-text-muted: #9a9fb0;
+  --nm-text-primary: #e8eefc;
+  --nm-text-secondary: #bccadf;
+  --nm-text-muted: #9fb0c8;
+  --nm-heading-1: #b7ccff;
+  --nm-heading-2: #7fdcc4;
+  --nm-heading-3: #d4b8ff;
   --nm-accent-primary: #7fd99a;
   --nm-accent-secondary: #7ea2ff;
   --nm-accent-warn: #ffc857;
@@ -1235,3 +1241,21 @@ pre.shiki,
 .nm-home-counts strong { color: var(--nb-ink); font-size: 1.15rem; font-variant-numeric: tabular-nums; }
 /* Fixed-size diagram SVGs scale down on narrow screens instead of overflowing. */
 .nm-fit-svg { max-width: 100%; height: auto; }
+
+/* Heading colours follow the theme. :where keeps specificity at zero, so components that set their own colour still win. */
+:where(h1) { color: var(--nm-heading-1); }
+:where(h2) { color: var(--nm-heading-2); }
+:where(h3) { color: var(--nm-heading-3); }
+
+.nm-daily-strip { padding: .55rem 0; border-bottom: 1px solid var(--nb-rule); }
+.nm-daily-link { display: flex; align-items: center; gap: .9rem; min-height: 44px; color: var(--nm-text-primary); text-decoration: none; }
+.nm-daily-label { flex: none; color: var(--nm-heading-2); font-size: 1rem; font-weight: 700; }
+.nm-daily-window { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; }
+.nm-daily-text { display: inline-block; padding-left: 100%; font-size: 1.05rem; animation: nm-daily-scroll 38s linear infinite; }
+.nm-daily-link:hover .nm-daily-text, .nm-daily-link:focus-visible .nm-daily-text { animation-play-state: paused; }
+.nm-daily-go { flex: none; color: var(--nm-heading-3); font-weight: 700; }
+@keyframes nm-daily-scroll { to { transform: translateX(-100%); } }
+@media (prefers-reduced-motion: reduce) {
+  .nm-daily-text { padding-left: 0; animation: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+}
+@media (max-width: 560px) { .nm-daily-link { flex-wrap: wrap; gap: 0 .6rem; } .nm-daily-window { flex-basis: 100%; order: 3; } .nm-daily-go { margin-left: auto; } }

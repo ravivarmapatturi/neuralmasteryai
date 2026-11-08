@@ -18,17 +18,16 @@ export default function DailyInterviewQuestion() {
   }, []);
 
   if (!daily) return null;
+  const to = `/interview/q/${encodeURIComponent(daily.id.replaceAll(':', '__'))}`;
   return (
-    <section style={{ padding: 'clamp(2rem, 4vw, 3rem) 0', borderBottom: '1px solid var(--nb-rule)' }}>
+    <section className="nm-daily-strip">
       <div className="nm-landing-shell">
-        <p className="nb-hand" style={{ margin: 0, color: 'var(--nb-ink-soft)', fontSize: '0.9rem' }}>
-          Today's interview question · {daily.topic}
-        </p>
-        <h2 className="nb-heading" style={{ fontSize: 'clamp(1.2rem, 2.4vw, 1.6rem)', margin: '0.4rem 0 1rem', maxWidth: '60ch' }}>
-          {daily.title}
-        </h2>
-        <Link className="nm-text-link" to={`/interview?q=${encodeURIComponent(daily.id)}`} style={{ color: 'var(--nb-cobalt)' }}>
-          Answer it out loud →
+        <Link className="nm-daily-link" to={to} state={{ autostart: true }}>
+          <span className="nb-hand nm-daily-label">Today's interview question</span>
+          <span className="nm-daily-window">
+            <span className="nb-hand nm-daily-text">{daily.title}</span>
+          </span>
+          <span className="nm-daily-go" aria-hidden="true">→</span>
         </Link>
       </div>
     </section>

@@ -1,0 +1,686 @@
+WEBVTT
+
+00:00.000 --> 00:11.600
+Hello, everyone. I have a really great pleasure to invite Matt Tophol to talk about
+
+00:11.600 --> 00:18.080
+Arrow. Matt is my friend. We meet quite often at Apache Software Foundation, a conference
+
+00:18.080 --> 00:22.960
+as a meet-up event. We have the opportunity now for Matt to talk about Arrow in the context
+
+00:23.040 --> 00:37.360
+of AI. So, it's all yours. Hey, everybody. So, as you all said, I'm Matt Tophol,
+
+00:37.360 --> 00:46.560
+a PMC member on the Apache Arrow and author of book in memory analytics with Apache Arrow. So,
+
+00:47.040 --> 00:55.520
+so small confession here. AI and ML is not my expertise and I hope that doesn't bring out
+
+00:55.520 --> 01:02.080
+the pitchforks and torches on them. But my expertise is more in the data analytics pipeline
+
+01:02.080 --> 01:11.520
+area. So, I've talked with a lot of people and a lot of AI and ML engineers and people focused on
+
+01:11.520 --> 01:18.240
+it. And I've been told that my little diagram here is surprisingly accurate from a lot of people.
+
+01:18.240 --> 01:26.080
+So, the point here is that when you think about it, a lot of AI and ML can be thought of as data
+
+01:26.080 --> 01:32.320
+pipelines. And you have all of these libraries and tools and utilities that exist in the ecosystem.
+
+01:32.320 --> 01:40.320
+You've got on X-JAR, you know, Jax, PKI's, GDUF's for formats. You've got TensorFlow,
+
+01:40.320 --> 01:45.920
+PyTorch, Lama, Rapids, Jax. You have all of these things and then you have all of the
+
+01:45.920 --> 01:50.800
+sources you're pulling the data from. You have the your varies the frame, libraries,
+
+01:50.800 --> 01:57.920
+your future stores, parquet files. It's an enormous ecosystem that keeps growing. And of course,
+
+01:58.640 --> 02:06.000
+there's all these different pros and cons to the various libraries. So, when you're looking
+
+02:06.000 --> 02:12.480
+in building out all these machine learning models and inference pipelines and just building out
+
+02:12.480 --> 02:21.040
+everything out, potentially controversial, it's a specialized version of a data pipeline.
+
+02:22.000 --> 02:28.000
+And that's where I came at this and I thought about it a lot. And when you think about it
+
+02:28.000 --> 02:35.600
+in those terms, in terms of AI and machine learning models as a specialized version of data
+
+02:35.600 --> 02:43.760
+pipelines, you come up with interesting ideas. Because now I'm aware that this doesn't represent
+
+02:43.840 --> 02:50.240
+every, you know, the entire area of miles. But a lot of miles are basically, you know, a
+
+02:50.240 --> 02:56.800
+pre-processing step of your inputs. And then you send it through various layers that do
+
+02:56.800 --> 03:03.040
+transformations, that do interesting computations. Eventually you get your output of a prediction,
+
+03:03.040 --> 03:08.880
+maybe with your probabilities and so on. And then you do a little bit of post-processing and
+
+03:08.880 --> 03:17.200
+send it out somewhere else. And in many cases, you're passing tensors between those layers and
+
+03:17.200 --> 03:22.960
+across, you know, you're pre-processing into the layers from layer to layer all the way through
+
+03:22.960 --> 03:29.840
+to your prediction, possibly even all the way to the post-processing output. And then at that point,
+
+03:29.840 --> 03:36.240
+you convert your tensors into whatever you want to actually output to your user, to your inference,
+
+03:36.320 --> 03:44.560
+to convert it back to reasonable texts, so on and so forth. And of course, with this entire giant
+
+03:44.560 --> 03:54.000
+ecosystem of tools and libraries, everyone wonders, which one should I use? Because it's expensive
+
+03:54.000 --> 03:58.240
+to tie them together. But there's all pros and cons, all them have different benefits,
+
+03:58.240 --> 04:02.560
+they have different drawbacks, they have different functionality, different algorithms that the
+
+04:02.640 --> 04:10.160
+library supports, that the framework has different performance characteristics, and the cost of
+
+04:10.160 --> 04:16.400
+linking these things together to kind of mix and match what you need can often be very high.
+
+04:18.160 --> 04:25.440
+They may not have the same layout in memory, so you have to copy and convert from one format to another,
+
+04:25.520 --> 04:32.400
+the passive between the libraries, or you have to, or one library may only work on CPUs
+
+04:32.400 --> 04:38.480
+and the other may support GPUs, or even just, you know, the library doesn't expose
+
+04:38.480 --> 04:43.520
+a way of getting the data out while keeping it on a device model, possibly, because of streams and
+
+04:43.520 --> 04:49.280
+events and other very low-level manipulations. And then you have a lot of other
+
+04:50.240 --> 04:56.320
+new tools and utilities coming up. You know, you've got the building of LansDB for a vectorization
+
+04:56.320 --> 05:02.560
+database, and a new format. You've got nimble as another option for improving upon like the
+
+05:02.560 --> 05:09.200
+parquet formats and optimizing towards ML workflows and point lookups and random lookups. And a lot
+
+05:09.200 --> 05:18.640
+of these systems are consolidating around utilizing the Apache Arrow format internally for how they
+
+05:18.640 --> 05:24.560
+represent their data in memory and on the devices. Now, this is the first point where I'm mentioning
+
+05:24.560 --> 05:33.040
+Apache Arrow. So the point I'm mentioning here is interoperability is being able to get data between
+
+05:33.040 --> 05:40.080
+all these tools, the all these libraries, without a high cost. You know, you want to be able to mix
+
+05:40.160 --> 05:51.200
+and match everything without having this like expensive slowdown. Currently, when you're passing
+
+05:51.200 --> 05:58.400
+your data between TensorFlow and PyTorch or from hugging phase to TensorFlow or everywhere else,
+
+05:58.400 --> 06:03.680
+you're typically going to use NumPy. You can use pandas, do some data frame manipulation,
+
+06:03.680 --> 06:11.360
+pre-apac, for your pre-processing, maybe Coupai, Dail Pack is an often big one. XG Boost is another one
+
+06:11.360 --> 06:18.800
+like where you're finding ways of passing your data in reasonable formats between systems between
+
+06:18.800 --> 06:23.920
+libraries. You know, and then you have these intermediate scenarios where you have your data source
+
+06:23.920 --> 06:31.920
+of CSV files and parquet or just raw JSON data because you hate yourself. You know, so
+
+06:32.240 --> 06:39.040
+the result is that there's a ton of unnecessary copying that happens because the underlying
+
+06:39.040 --> 06:45.680
+tools and libraries can't operate on the data as it is where you're starting from and you need
+
+06:45.680 --> 06:53.520
+to copy it and transform it to useless use it. So before I continue going forward, which obviously
+
+06:53.520 --> 06:58.320
+you can see where my answer is going to be going, let me actually explain what Apache Arrow is in case
+
+06:58.560 --> 07:06.320
+you're not aware of it, you may not be familiar with it. So Arrow is an in memory
+
+07:07.040 --> 07:16.320
+column-oriented data format. As core, it's a spec. It's a spec that's been implemented in
+
+07:16.320 --> 07:23.040
+the whole mess of languages. You know, you've got C++, Go, Rust, Python, or Python,
+
+07:23.360 --> 07:29.760
+C++ libraries. You've got Julia Matlab. You've got Java. It's implemented in a ton of languages.
+
+07:29.760 --> 07:35.360
+And the point here is that by consolidating around a column-oriented in memory format,
+
+07:36.400 --> 07:42.160
+you eliminate a lot of the cost of serialization and decirilization passing it between libraries,
+
+07:42.160 --> 07:48.320
+passing it between nodes, between systems, transport over the wire, and so on. You know, transporting
+
+07:48.400 --> 07:54.320
+the data over the wire is identical to the bytes in memory, which means there's no serialized
+
+07:54.320 --> 08:00.960
+or decirilized step whenever you cross systems, or even crossing process boundaries, or even just
+
+08:00.960 --> 08:04.960
+one time library boundaries within the same process. Let's not get to in a moment.
+
+08:06.480 --> 08:11.680
+And because this column-oriented, it's highly efficient and friendly for vectorization and
+
+08:11.680 --> 08:18.400
+Cindy. And the chances are, you're probably interacting with arrow or utilizing it under the
+
+08:18.400 --> 08:25.520
+hood somewhere and don't even realize it because it's already everywhere. If you ever use lib
+
+08:25.520 --> 08:31.520
+kudyeth in video rapids and that whole ecosystem, you know, kuml, kuspe, all that entire ecosystem.
+
+08:32.240 --> 08:40.240
+And video rapids and all of the related system kudyeth is using Apache arrow data format just on the
+
+08:40.560 --> 08:47.600
+GPU. It's the same Apache arrow data format. It's laid out the raw bytes in GPU memory.
+
+08:48.320 --> 08:53.840
+All right, identical to the way it would be laid out in CPU memory, but because of the efficiency
+
+08:53.840 --> 09:01.520
+of a calm-oriented data format and the benefits of passing it around without the cost of serialized
+
+09:01.520 --> 09:06.960
+and decirilized, it becomes super efficient and Nvidia adopted that for that entire ecosystem.
+
+09:07.920 --> 09:14.480
+If you're using Polars, the Polars data frame libraries and pandas or rust. The entire underlying
+
+09:14.480 --> 09:22.160
+backing memory representation for Polars is Apache arrow. It's just arrow. Which means that you can go
+
+09:22.160 --> 09:31.600
+from libraries, for example, to pandas, to Polars and so on, zero copy because they both have that
+
+09:31.680 --> 09:39.760
+format. Pandas has a pie arrow back end. You know, earlier on, we had to talk from from a developer
+
+09:39.760 --> 09:48.320
+hugging face. If you go under the hood, hugging faces data sets library. You load the data set
+
+09:48.320 --> 09:55.120
+downloads a bunch of parquet files and then hugging face has a caching system locally so that you
+
+09:55.120 --> 10:03.520
+can operate on larger than memory data without blowing out your RAM. How to do that? It stores it
+
+10:03.520 --> 10:11.600
+as a series of Apache arrow files in your cache and then memory maps them so that it can load only
+
+10:11.600 --> 10:17.840
+the bits it needs into memory as it reads it, but you can interact with your large data set
+
+10:17.840 --> 10:24.640
+that's larger than memory without requiring a large amount of RAM. And because of the properties
+
+10:24.640 --> 10:32.320
+of Apache arrow that allow you to write out arrow IPC file and just memory map it to improve your
+
+10:32.320 --> 10:39.280
+data and only actually have to allocate memory for the bits that you use. And then we go to the
+
+10:39.280 --> 10:46.400
+compute side of things, the actual computational things. You know, dot db's internal memory representations
+
+10:46.400 --> 10:52.320
+about 95% identical to arrow. Which means that in dot db implements the interfaces so you can
+
+10:52.320 --> 11:01.200
+get zero copy, cost, results from dot db in the arrow format. Snowflake has an arrow interface for
+
+11:01.200 --> 11:07.680
+getting API data. BigQuery has an arrow output implementation. If you're using Apache data fusion,
+
+11:08.720 --> 11:14.480
+data fusion started as a sub project of the Apache arrow project, a top level project of its own,
+
+11:14.480 --> 11:19.920
+is entirely built under the hood as Apache arrow for its memory representation.
+
+11:20.480 --> 11:28.000
+And as a result, all of these system support arrow in an arrow out for interoperability. Any tool
+
+11:28.000 --> 11:34.960
+that can output arrow can be used to then send it to one of these systems as ingestion. And any tool
+
+11:34.960 --> 11:41.680
+that can receive arrow data can zero copy superficially get data from those systems into it.
+
+11:41.760 --> 11:48.480
+Now, the point when I'm talking about all the zero copy and interoperability and
+
+11:48.480 --> 11:55.920
+manipulations is that it's often very hidden where these copies are. When you're dealing with,
+
+11:55.920 --> 12:02.640
+like I'm going to bring up the hugging face data sets library again, you can see here that
+
+12:02.720 --> 12:12.560
+when you load the data set, the underlying dot data for the data set is a pi arrow schema
+
+12:13.840 --> 12:19.120
+and the underlying actual data columns are pi arrow chunked arrays.
+
+12:20.960 --> 12:28.560
+But when you actually index into the data set top part to retrieve your column,
+
+12:28.880 --> 12:39.920
+it converts it to a Python list. That's a copy. Because it has to convert, it has to be in the
+
+12:39.920 --> 12:47.120
+Python memory, not the raw underlying series, it's a plus memory, there's a copy there.
+
+12:47.920 --> 12:53.440
+You may not realize it and it's just very simple hidden situations where you don't realize that
+
+12:53.440 --> 12:58.640
+copies are happening simply because the libraries you're interacting with are not necessarily
+
+12:58.640 --> 13:05.600
+already utilizing arrow. So with everything I'm talking about, everything I brought out,
+
+13:06.720 --> 13:13.280
+the meat of one, the meat of this is called about what exactly am I proposing? Why should all of
+
+13:13.280 --> 13:20.320
+you care what I have to say here? Well, you have the multiverse of arrow systems and
+
+13:20.400 --> 13:27.840
+universes and libraries, you've got the IPC format for interrupt interrupt data, for interoperability
+
+13:27.840 --> 13:35.200
+between libraries and systems. You've got a C interface which is a stable ABI to pass the data across
+
+13:35.200 --> 13:41.360
+run times in the process without having to copy anything. It just passes pointers to the buffers.
+
+13:42.720 --> 13:48.960
+And you've got this implemented in every language under the Sun has, well, not every, but most
+
+13:49.040 --> 13:54.720
+languages have a implementation of the arrow spec. Not only that, but arrow also specifies
+
+13:55.440 --> 14:02.640
+interfaces and protocols for data transport and database connections with ADVC instead of ODBC
+
+14:02.640 --> 14:11.600
+to get a column-oriented communication of data. So with all of this connectivity and all of this
+
+14:11.680 --> 14:18.480
+interoperability, how can we benefit from this? How can the AI and ML pipelines and data
+
+14:18.480 --> 14:28.720
+tools and libraries really utilize this to their fullest? And by doing so, the result of doing that
+
+14:28.720 --> 14:35.920
+is going to be an increase in the ability to mix in match libraries for getting exactly the right
+
+14:36.000 --> 14:42.400
+tool for whatever operations, computations, calculations, you need in your model.
+
+14:45.280 --> 14:51.520
+Now, when you actually think about leveraging that zero copy, you can see the performance benefits.
+
+14:51.520 --> 14:59.200
+There was a white paper published last year by members of one of the straws I mentioned earlier
+
+14:59.200 --> 15:09.200
+about plan, which develops a Python sidecar runtime, highly utilized for AI and ML workflows.
+
+15:10.640 --> 15:16.160
+And they were testing in the, as one of the pieces of the white paper they published, they were testing,
+
+15:16.160 --> 15:27.200
+reading data frames on a, you know, C5 9x large AWS machine. And depending on with a source of
+
+15:27.280 --> 15:34.400
+the raw data was coming from. Now, the interesting part of this was because you're, if you're building
+
+15:34.400 --> 15:42.000
+a distributed system, how do you get data from, from node to node, from piece to piece? And if
+
+15:42.000 --> 15:48.240
+you're just, and so a common way of doing that is you write the resulting intermediate data to
+
+15:48.240 --> 15:56.160
+a parquet file in S3. Another way of doing it commonly is writing a parquet file onto a shared
+
+15:56.240 --> 16:01.440
+SSD because you don't want to, because you want to bypass the network cost of going to S3.
+
+16:02.800 --> 16:06.800
+And you can see those comparisons here of doing it with, you know, 10 million or 50 million
+
+16:06.800 --> 16:15.280
+rows of, you know, six gig or 30 gigs of data. If you utilize one of the frameworks that the
+
+16:15.280 --> 16:23.280
+arrow project specifies, arrow flight, which is a GRPC based protocol for building a framework
+
+16:23.360 --> 16:30.960
+on top of system communication built around streams of arrow record badges. And you can see right
+
+16:30.960 --> 16:36.560
+here, you know, there's, you still have that network overhead and also arrow isn't as comprise
+
+16:36.560 --> 16:44.800
+and compressed like parquet. So that may not be the best, but that arrow IPC, if you write the arrow
+
+16:44.800 --> 16:52.400
+for arrow data to share memory and then just memory map it into your system, which is like I said,
+
+16:52.480 --> 16:57.840
+exactly how hugging faces caching works, look at the difference in the performance.
+
+16:59.360 --> 17:07.040
+You know, right there you can see what, where this removing of unnecessary copies results in
+
+17:07.040 --> 17:13.920
+enormous potential for performance gains, which therefore leads to enormous potential for expanding
+
+17:13.920 --> 17:21.840
+model computation and inputting more operations without increasing the massive amount of cost.
+
+17:22.480 --> 17:29.600
+Now, one thing you might wonder about, if I keep talking about arrow, I'll keep talking about
+
+17:29.600 --> 17:34.720
+how we can use like, one thing you might talk, you might wonder about is, okay, can it support
+
+17:34.720 --> 17:41.840
+everything I need to represent? And the answer is most likely yes, you know, you have all of your
+
+17:41.840 --> 17:47.520
+standard primitive types, you know, you know, floats, float 32, float 64 integers of all
+
+17:47.520 --> 17:53.840
+signed and bit width and so on, decimals, strings and so on, but you also have complex types,
+
+17:53.840 --> 18:00.400
+maps, trucks, lists, all efficiently represented in column oriented organized memory.
+
+18:01.920 --> 18:09.680
+Now, the arrow spec also includes a piece for extension types and an extension type is just
+
+18:10.640 --> 18:18.880
+an already existing arrow primitive type and then layering some metadata on top of it so that
+
+18:18.880 --> 18:26.880
+an individual library or individual runtime or instance can register a custom class to add
+
+18:26.880 --> 18:37.360
+semantic utilities to that data. So that, for example, you could register a JSON type that's just
+
+18:37.520 --> 18:44.560
+a string column, but when you read in the data, it will wrap it in this custom class that will
+
+18:44.560 --> 18:51.760
+give you extra semantics and extra semantic functions on that string column because it's supposed
+
+18:51.760 --> 18:58.640
+to be JSON. Doesn't change the underlying storage and also it means that the data can flow through
+
+18:58.640 --> 19:05.520
+other systems that support arrow that don't have to care about the extension type because it's
+
+19:05.600 --> 19:12.800
+just an arrow data with some metadata keys. And so the community got together, especially with
+
+19:12.800 --> 19:19.680
+this AI and ML work and put together some canonical extension types, specifically to help out
+
+19:19.680 --> 19:25.840
+this interoperability with ML workflows and thus create a fixed shape and variable shape
+
+19:25.840 --> 19:33.840
+tensor types of extension types for arrow so that you can represent, you know, tensors of any
+
+19:33.840 --> 19:41.840
+amount of dimensions, permutations and so on with the arrow format in a standardized way to make it
+
+19:41.840 --> 19:48.960
+very easy to work around. How does it work? Well, I can give credit to a couple of my colleagues
+
+19:48.960 --> 19:54.160
+who recently came in and said that sat down after their pie arrow talk, rock and a link up that
+
+19:54.800 --> 20:00.080
+gave a big talk and also pushed through a lot of the stuff on how the arrow tensor system works.
+
+20:00.480 --> 20:08.080
+So you can see here, like, utilizing the way that you have, like, say a NumPy and DRA and the
+
+20:08.080 --> 20:16.000
+way it would be represented in the raw memory is just that continuous values buffer of all the
+
+20:16.000 --> 20:24.640
+data in one chunk and then you have a logical, you have a logical handling of it that will then
+
+20:25.600 --> 20:32.560
+allow you to interact with it as an actual list of multi-dimensional tensors.
+
+20:33.840 --> 20:40.800
+But the raw underlying bytes in memory are a continuous chunk of bytes, the way you would expect it
+
+20:40.800 --> 20:47.360
+in say NumPy or DRA, or any other way, or any other library, or the way that you represented.
+
+20:48.320 --> 20:55.440
+And so you can get this highly efficient constant time at random access to your individual
+
+20:55.440 --> 21:01.120
+tensor you want, but you also have this list of tensors that you can pass around very efficiently.
+
+21:03.680 --> 21:09.520
+And as I mentioned, there's also a variable shape tensor. Now, while most, most AI
+
+21:09.520 --> 21:14.400
+in the ML probably is utilizing fixed shape tensors, there's also a lot of usage of variables,
+
+21:15.040 --> 21:20.400
+variable shape tensors, especially when you start talking about LLMs, where your input data of
+
+21:20.400 --> 21:26.400
+tokens of your strings and your variables and your values and your text is not going to be a fixed shape.
+
+21:27.440 --> 21:32.480
+Each individual input may be a different length so you need to handle this variable shape
+
+21:32.480 --> 21:38.800
+of the tensor and still, and still handled using the underlying arrow format, raw bytes,
+
+21:38.880 --> 21:46.080
+continuous, easy to utilize, and interoperable. And just so you know I'm not blowing smoke,
+
+21:47.360 --> 21:55.280
+and so I'm not lying to you, some proof. So if you look at the actual code here,
+
+21:57.600 --> 22:08.400
+I generate a random NumPy array of data and I flatten it out so that I can have my nice list
+
+22:09.200 --> 22:17.600
+of 32 by 32 tensors. So, and then I create an arrow tensor array from that.
+
+22:19.280 --> 22:26.480
+And then for the app for the NumPy array, the arrow tensor array, and the
+
+22:26.480 --> 22:33.520
+and the NumPy underlying result, when I go from the tensor back to NumPy, you can see that
+
+22:34.480 --> 22:43.760
+one, the shape is retained, you know, a thousand 32 by 32 tensors, and two on the left-hand side,
+
+22:43.760 --> 22:49.200
+you can see that all three versions, whether I'm accessing it through arrow,
+
+22:49.760 --> 22:55.760
+whether I'm looking at the original NumPy array, or if you're looking at going from arrow to NumPy,
+
+22:56.960 --> 23:01.520
+the actual memory address of the raw data is the same address.
+
+23:02.400 --> 23:09.040
+That through these conversions of how you can interact with it, with arrow, with NumPy, with the
+
+23:09.040 --> 23:14.560
+extended tensor type, there was never a copy of the data. All three of them are still pointing
+
+23:14.560 --> 23:20.080
+at the same exact location in memory, not, not no point actually copied it.
+
+23:21.920 --> 23:26.640
+Another example that I got from, from another colleague from my colleague is
+
+23:26.640 --> 23:34.000
+storing tensors in parquet, which can happen sometimes when you want to store the weights,
+
+23:34.000 --> 23:38.640
+when you want to store the result of tokenization, when you start to want to store input data,
+
+23:38.640 --> 23:44.720
+you want to store it in parquet, and it is extremely easy to do so. You know, you have your,
+
+23:44.720 --> 23:48.960
+you know, create my little shapes, do it, my extra transformations here, in this case,
+
+23:48.960 --> 23:54.720
+I'm loading up geotyph data for geospatial handling, do some manipulations for the inputs,
+
+23:54.800 --> 24:00.400
+and then I store it in the parquet file as a whole bunch of tensors representing the geotyph
+
+24:00.400 --> 24:09.680
+data. And by converting it to a fixed shape tensor pyro, I can then use the parquet library that's
+
+24:09.680 --> 24:19.280
+part of pyro, and just write my table to parquet, and it maintains the tensors, just going to rot
+
+24:19.440 --> 24:26.560
+it right table, and then I can read that back out as a pyro table, and now I have my tensor,
+
+24:26.560 --> 24:32.640
+my, my list of tensors again, extremely efficiently, and then I can go through it,
+
+24:34.480 --> 24:41.280
+read the table, two numpy and d array, guess what, there's no copy, there's zero copy,
+
+24:42.160 --> 24:48.160
+pass the resulting tensor list of tensors, p-process them, put them into my model for prediction,
+
+24:48.160 --> 25:00.160
+get the result, pull up from a numpy and d array, make my, make my pyro table, and then write the results to a parquet file,
+
+25:00.160 --> 25:10.000
+the same way that I can then read the tensors back easily. Okay, so many of you might be familiar with this lovely
+
+25:10.880 --> 25:15.680
+slide, and the big question is, okay, so, but we have the alpac, we have numpy,
+
+25:16.880 --> 25:24.720
+why we need another interoperable standard here, and the big thing that came to me as I investigated,
+
+25:24.720 --> 25:32.160
+and as I researched, was the complex types of board. For example, the alpac numpy,
+
+25:33.040 --> 25:38.800
+only support numeric data. You, the alpac has a little thing, you can put opaque stuff in, but you
+
+25:38.880 --> 25:46.160
+lose your semantics stuff. You can't represent say strings using it, or null data.
+
+25:48.000 --> 25:53.200
+This becomes this habit of using N-A-N to represent nulls, instead of actually having nulls,
+
+25:53.200 --> 25:59.760
+via arrows believe it map. You can see that, you know, a while back there was a big
+
+26:00.800 --> 26:05.760
+talk with a gauge showing a huge performance benefit of building a feature store with ducted
+
+26:05.760 --> 26:11.840
+DB and arrow flight. The other thing is that, like I mentioned before, QDF and when I already
+
+26:11.840 --> 26:18.880
+are arrow on the device, which means that if more libraries implement support for the arrow device
+
+26:18.880 --> 26:30.320
+API, you can do pre-processing on a GPU, and pass your results to your model without having to
+
+26:30.320 --> 26:37.200
+copy it back to the CPU and back to the GPU. You can keep the data on the device for whole workflow,
+
+26:37.760 --> 26:44.400
+whether it's for training or inference. The pre-processing and the post-processing can be on the device
+
+26:44.400 --> 26:50.000
+and not force those copies. And that's all that's it. You were removing the unnecessary copies.
+
+26:51.360 --> 26:56.160
+Now, I had a contrived quick demo, but I'm being told I have no time. So I'm going to skip that for
+
+26:56.320 --> 27:01.200
+now, but if you want to see it, come find me. And the ultimate of the goal here is really just
+
+27:01.200 --> 27:06.960
+mix and match picking the best tools for the job as you need them. So if you want to learn more,
+
+27:09.200 --> 27:14.880
+you can go to the arrow documentation, you can go to the arrow websites, you can leverage the
+
+27:15.680 --> 27:21.280
+second edition of my book, which actually contains a whole bunch of stuff including the example I was
+
+27:21.360 --> 27:26.960
+going to show of using arrow with GPUs and so like that, among other things outside this top context
+
+27:26.960 --> 27:32.640
+also. So thank you very much, and I hope to see you guys around.
+

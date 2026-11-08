@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { useDocumentMeta } from '../../lib/useDocumentMeta';
 import { correctInterviewTerms } from '../../lib/interviewRoom/dialogue';
 import { createASREngineForQuality } from '../../lib/interviewRoom/qualitySettings';
+import { INTERVIEW_AUDIO_CONSTRAINTS } from '../../lib/speechTest/audioPreparation';
+import { questionSpeechPrompt } from '../../lib/interviewRoom/speechPrompt';
+import { useFocusMusic } from '../../contexts/FocusMusicContext';
 import type { SingleThreadASREngine } from '../../lib/speechTest/engines';
 import practice from '../../data/interviewPractice.json';
 import { InterviewGraph } from './InterviewGraph';
@@ -16,7 +19,7 @@ import { INTERVIEW_COMPLETED_POINTS, hasAward } from '../../lib/gamification';
 import './interviewRoom.css';
 import './simpleInterview.css';
 
-type Step = 'topics' | 'asking' | 'answering' | 'finishing' | 'answer' | 'done';
+type Step = 'topics' | 'asking' | 'answering' | 'answer' | 'done';
 
 interface PracticeQuestion {
   id: string;
@@ -82,14 +85,25 @@ function looksLikePhone() {
   return /Android|iPhone|iPad/i.test(navigator.userAgent) || (memory !== undefined && memory < 4);
 }
 
+// Each question has its own address, such as /interview/q/repo__rag__rerank-pool-size.
+function questionPath(id: string) {
+  return `/interview/q/${encodeURIComponent(id.replaceAll(':', '__'))}`;
+}
+
+function questionFromPath(pathname: string) {
+  const match = pathname.match(/^\/interview\/q\/([^/]+)/);
+  return match ? decodeURIComponent(match[1]).replaceAll('__', ':') : null;
+}
+
 export default function SimpleInterviewPage() {
   useDocumentMeta('AI Interview Practice', 'Pick a topic, hear an AI engineering interview question, answer out loud, then hear and read a model answer. Runs in your browser.');
 
   const [params] = useSearchParams();
   // A link like /interview?q=<id> (the home page's daily question) opens on that question.
   // Otherwise it offers to resume the last question you opened.
-  const [resuming] = useState(() => !locate(params.get('q')) && !!locate(readLast()));
-  const [linked, setLinked] = useState(() => locate(params.get('q')) ?? locate(readLast()));
+  const [pathQuestion] = useState(() => questionFromPath(window.location.pathname));
+  const [resuming] = useState(() => !pathQuestion && !locate(params.get('q')) && !!locate(readLast()));
+  const [linked, setLinked] = useState(() => locate(pathQuestion) ?? locate(params.get('q')) ?? locate(readLast()));
   const sharedTopic = topics.findIndex((t) => t.id === params.get('topic'));
   const [step, setStep] = useState<Step>('topics');
   const [topicIndex, setTopicIndex] = useState(sharedTopic >= 0 ? sharedTopic : (linked?.topic ?? firstTopic));
@@ -100,6 +114,9 @@ export default function SimpleInterviewPage() {
   const [micStatus, setMicStatus] = useState('');
   const [reading, setReading] = useState(false);
   const [micStream, setMicStream] = useState<MediaStream | null>(null);
+  const [transcribing, setTranscribing] = useState(false);
+  const reviewRef = useRef(0);
+  const finishingRef = useRef<Promise<void>>(Promise.resolve());
   const [check, setCheck] = useState<AnswerJudgement | 'checking' | 'failed' | null>(null);
   const { events, awardInterviewCompleted } = useGamification();
   const [round, setRound] = useState('');
@@ -109,6 +126,10 @@ export default function SimpleInterviewPage() {
   const isDone = (id: string) => hasAward(events, `/interview#${id}`, 'interview');
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const { playing: focusPlaying, pause: pauseFocusMusic, play: playFocusMusic } = useFocusMusic();
+  const focusPlayingRef = useRef(focusPlaying);
+  focusPlayingRef.current = focusPlaying;
+  const resumeFocusRef = useRef(false);
   const engineRef = useRef<SingleThreadASREngine | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
@@ -122,6 +143,7 @@ export default function SimpleInterviewPage() {
   const handleComplete = () => {
     awardInterviewCompleted(questionId);
   };
+  const completedTotal = topics.reduce((sum, t) => sum + t.questions.filter((q) => isDone(q.id)).length, 0);
   const graphTopics = useMemo(
     () => baseGraphTopics.map((g, i) => ({ ...g, done: topics[i].questions.filter((q) => hasAward(events, `/interview#${q.id}`, 'interview')).length })),
     [events]
@@ -161,6 +183,9 @@ export default function SimpleInterviewPage() {
       };
       const finish = (missing: boolean) => {
         if (audioRef.current !== audio) return;
+        audio.pause();
+        audio.onended = null;
+        audio.onerror = null;
         audioRef.current = null;
         // No recorded clip: generate the voice on this device instead (skipped on phones to spare memory).
         if (missing && text && !looksLikePhone()) {
@@ -191,18 +216,25 @@ export default function SimpleInterviewPage() {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     setMicStream(null);
-  }, []);
+    if (resumeFocusRef.current) { resumeFocusRef.current = false; void playFocusMusic().catch(() => undefined); }
+  }, [playFocusMusic]);
 
   // Download starts when the topic is chosen, so the first answer is not spoken into a loading model
   const prepareEngine = useCallback(() => {
     if (!enginePromiseRef.current) {
       enginePromiseRef.current = (async () => {
+        const load = async (candidate: SingleThreadASREngine) => {
+          const off = candidate.subscribe(m => {
+            if (answeringRef.current && m.status === 'loading') setMicStatus(`Preparing speech recognition… ${m.downloadProgressPct}%`);
+          });
+          try { await candidate.load(); } finally { off(); }
+        };
         let engine = createASREngineForQuality(looksLikePhone() ? 'fast' : 'better');
         try {
-          await engine.load();
+          await load(engine);
         } catch {
           engine = createASREngineForQuality('fast');
-          await engine.load();
+          await load(engine);
         }
         engineRef.current = engine;
       })().catch((err) => {
@@ -213,14 +245,26 @@ export default function SimpleInterviewPage() {
     return enginePromiseRef.current;
   }, []);
 
-  const startAnswering = useCallback(async () => {
+  const startAnswering = useCallback(async (promptQuestion?: string) => {
     setStep('answering');
     setTranscript('');
+    setCheck(null);
+    setTranscribing(false);
+    const generation = ++reviewRef.current;
+    await finishingRef.current;
+    if (reviewRef.current !== generation) return;
     if (typing) return;
     answeringRef.current = true;
+    stopAudio();
+    if (focusPlayingRef.current) resumeFocusRef.current = true;
+    pauseFocusMusic();
     try {
+      setMicStatus('Preparing speech recognition…');
+      await prepareEngine();
+      await engineRef.current?.prepareForListening();
+      if (!answeringRef.current) return;
       setMicStatus('Allow your microphone to answer out loud.');
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: INTERVIEW_AUDIO_CONSTRAINTS });
       if (!answeringRef.current) {
         stream.getTracks().forEach((t) => t.stop());
         return;
@@ -233,21 +277,23 @@ export default function SimpleInterviewPage() {
       const engine = engineRef.current;
       if (!engine) throw new Error('Speech engine unavailable');
       engine.reset();
+      engine.setQuestionPrompt(questionSpeechPrompt(promptQuestion ?? question.title));
       unsubscribeRef.current = engine.subscribe((m) => {
         const text = (m.partialText || m.finalText || '').trim();
         if (answeringRef.current && text) setTranscript(text);
       });
       await engine.start(stream);
-      setMicStatus('Listening. Your voice stays on your device.');
+      setMicStatus('Listening.');
     } catch {
       stopMic();
       setTyping(true);
       setMicStatus('The microphone is not available, so please type your answer.');
     }
-  }, [typing, stopMic, prepareEngine]);
+  }, [typing, stopMic, prepareEngine, stopAudio, pauseFocusMusic, question.title]);
 
   const ask = useCallback(
     (id: string) => {
+      reviewRef.current++;
       setStep('asking');
       try {
         localStorage.setItem(LAST_KEY, id);
@@ -259,7 +305,7 @@ export default function SimpleInterviewPage() {
       play(
         `${id}_q`,
         () => {
-          void startAnswering();
+          void startAnswering(q?.title);
         },
         spoken
       );
@@ -267,40 +313,62 @@ export default function SimpleInterviewPage() {
     [play, startAnswering]
   );
 
+  const readQuestion = () => {
+    if (step === 'asking') {
+      ask(questionId);
+      return;
+    }
+    const spoken = question.title + (question.options ? ` The options are: ${question.options.join('. ')}` : '');
+    play(`${questionId}_q`, () => undefined, spoken);
+  };
+
   const startQuestion = (index: number) => {
     void prepareEngine().catch(() => undefined);
     setQuestionIndex(index);
+    window.history.pushState(null, '', questionPath(topic.questions[index].id));
     ask(topic.questions[index].id);
   };
 
-  const finishAnswer = async () => {
+  // The model answer appears and starts reading at once; transcript and checking finish behind it.
+  const finishAnswer = () => {
     answeringRef.current = false;
-    let finalText = transcript;
-    if (!typing && engineRef.current && streamRef.current) {
-      setStep('finishing');
-      try {
-        await engineRef.current.stop();
-        const m = engineRef.current.getMetrics();
-        finalText = (m.batchTranscript || m.finalText || m.partialText || transcript).trim();
-      } catch {
-        finalText = transcript;
-      }
-    }
-    stopMic();
-    const spoken = correctInterviewTerms(finalText, questionId);
-    setTranscript(spoken);
+    const id = ++reviewRef.current;
+    const liveText = transcript;
+    const engine = !typing && streamRef.current ? engineRef.current : null;
+    const current = question;
     setStep('answer');
     setCheck(null);
-    if (spoken.trim().split(/\s+/).length >= 5) {
+    setTranscribing(Boolean(engine));
+    setTranscript(correctInterviewTerms(liveText, current.id, current.title));
+    const readAnswer = () => { if (reviewRef.current === id) play(`${current.id}_a`, () => undefined, current.answer); };
+    if (!engine) readAnswer();
+
+    const finalize = engine
+      ? engine.stop(() => { stopMic(); readAnswer(); }).then(() => {
+          const m = engine.getMetrics();
+          return (m.batchTranscript || m.finalText || m.partialText || liveText).trim();
+        }).catch(() => liveText)
+      : Promise.resolve(liveText);
+    finishingRef.current = finalize.then(() => undefined);
+    void finalize.then((finalText) => {
+      if (reviewRef.current !== id) return;
+      stopMic();
+      const spoken = correctInterviewTerms(finalText, current.id, current.title);
+      setTranscript(spoken);
+      setTranscribing(false);
+      if (spoken.trim().split(/\s+/).length < 5) return;
       // Each sentence of the model answer is one point to cover. Models run in a worker on this device.
       setCheck('checking');
-      const points = splitAnswer(question.answer).slice(0, 6);
+      const points = splitAnswer(current.answer).slice(0, 6);
       loadJudge()
-        .then(() => judgeAnswer(spoken, points, question.answer, { embed, nli }))
-        .then(setCheck)
-        .catch(() => setCheck('failed'));
-    }
-    play(`${questionId}_a`, () => undefined, question.answer);
+        .then(() => judgeAnswer(spoken, points, current.answer, { embed, nli }))
+        .then((result) => {
+          if (reviewRef.current === id) setCheck(result);
+        })
+        .catch(() => {
+          if (reviewRef.current === id) setCheck('failed');
+        });
+    });
   };
 
   const nextQuestion = () => {
@@ -312,16 +380,38 @@ export default function SimpleInterviewPage() {
       return;
     }
     setQuestionIndex(next);
+    window.history.pushState(null, '', questionPath(topic.questions[next].id));
     ask(topic.questions[next].id);
   };
 
   const backToTopics = () => {
+    reviewRef.current++;
     answeringRef.current = false;
     stopAudio();
     stopMic();
     void engineRef.current?.stop().catch(() => undefined);
+    if (window.location.pathname !== '/interview/') window.history.pushState(null, '', '/interview/');
     setStep('topics');
   };
+
+  // Clicking today's question on the home page goes straight into that question.
+  const location = useLocation();
+  const autostarted = useRef(false);
+  useEffect(() => {
+    const wantsStart = (location.state as { autostart?: boolean } | null)?.autostart;
+    if (!wantsStart || autostarted.current || !pathQuestion || !linked) return;
+    autostarted.current = true;
+    startQuestion(linked.question);
+  });
+
+  // The browser's back button returns to the topic graph.
+  useEffect(() => {
+    const onPop = () => {
+      if (!questionFromPath(window.location.pathname)) backToTopics();
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  });
 
   useEffect(() => setShareStatus(''), [topicIndex]);
 
@@ -384,7 +474,7 @@ export default function SimpleInterviewPage() {
           <>
             <h1>Interview practice</h1>
             <p className="si-lede">
-              {graphTopics.length} topics, {totalQuestions} questions. Lines show which topics build on each other.
+              <strong>{completedTotal}</strong> of <strong>{totalQuestions}</strong> questions completed across {graphTopics.length} topics.
             </p>
             <div className="si-map">
               <InterviewGraph
@@ -492,8 +582,16 @@ export default function SimpleInterviewPage() {
             >
               <div className="si-progress-bar" style={{ width: `${topicProgressPct}%` }} />
             </div>
-            <p className="si-keys">Keyboard: Space to answer or finish, N for next question.</p>
-            <h2 className="si-question-title">{question.title}</h2>
+            <div className="si-question-row">
+              <h2 className="si-question-title">{question.title}</h2>
+              <button type="button" className="si-speak" id="read-question" aria-label="Read the question aloud" onClick={readQuestion}>
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M11 5 6 9H2v6h4l5 4z" />
+                  <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+                  <path d="M18.5 5.5a9 9 0 0 1 0 13" />
+                </svg>
+              </button>
+            </div>
             {question.options && (
               <ol className="si-options" type="A">
                 {question.options.map((o) => (
@@ -617,24 +715,6 @@ export default function SimpleInterviewPage() {
           </div>
         )}
 
-        {step === 'finishing' && (
-          <div className="si-speaker-card si-speaker-checking">
-            <div className="si-speaker-identity">
-              <div className="si-speaker-avatar si-avatar-checking" aria-hidden="true">
-                <span className="si-checking-spinner" />
-              </div>
-              <div className="si-speaker-info">
-                <span className="si-speaker-label">Checking your answer</span>
-                <p className="si-status" role="status">
-                  Finishing your transcript and evaluating key points on your device…
-                </p>
-              </div>
-            </div>
-            <div className="si-speaker-wave" aria-hidden="true">
-              <LiveWaveform active={false} processing={true} height={38} barColor="var(--good)" />
-            </div>
-          </div>
-        )}
 
         {step === 'answer' && (
           <div className="si-answer-stage">
@@ -644,7 +724,12 @@ export default function SimpleInterviewPage() {
                   <h3>Your answer</h3>
                   <span className="si-type-tag">{typing ? 'Typed' : 'Spoken'}</span>
                 </div>
-                <p className="si-yours">{transcript || 'No answer was captured.'}</p>
+                <p className="si-yours">{transcript || (transcribing ? '' : 'No answer was captured.')}</p>
+                {transcribing && (
+                  <p className="si-status" role="status">
+                    Finalizing your transcript…
+                  </p>
+                )}
 
                 {check === 'checking' && (
                   <div className="si-check-loading">
@@ -726,13 +811,7 @@ export default function SimpleInterviewPage() {
                   </div>
                 )}
 
-                {question.sourceUrl && (
-                  <p className="si-note">
-                    <a href={question.sourceUrl} target="_blank" rel="noopener noreferrer">
-                      Full answer and follow-ups in AI Engineering from Scratch
-                    </a>
-                  </p>
-                )}
+
               </section>
             </div>
 

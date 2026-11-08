@@ -32,7 +32,6 @@ export const NAV_GROUPS = [
       { to: '/progress', label: 'Progress', note: 'What you have finished' },
       { to: '/changelog', label: 'Changelog', note: 'What changed, day by day' },
       { to: '/about', label: 'About', note: 'Who runs the site' },
-      { to: '/credits', label: 'Credits', note: 'Open-source work we build on' },
     ],
   },
 ];
