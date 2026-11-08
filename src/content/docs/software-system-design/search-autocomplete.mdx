@@ -1,0 +1,105 @@
+---
+title: "Design Search Autocomplete"
+sidebar_position: 13
+description: "Build prefix suggestions with versioned indexes, top-k candidates, freshness controls, privacy filtering, and protection against out-of-order responses."
+---
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import SoftwareCaseTrace from '../../../viz/diagrams/SoftwareCaseTrace';
+
+# Design Search Autocomplete
+
+<ELI5>A dictionary can keep a short list of useful completions beside each beginning of a word. Building those lists in advance makes typing feel immediate. But popularity changes, unsafe suggestions must disappear, and an older reply can arrive after a newer one. The serving system must manage all three kinds of freshness.</ELI5>
+
+## Requirements and Estimates
+
+Assume ten million daily users, five searches per user, and eight prefix requests per search before client-side coalescing. This produces 400 million requests/day, about 4,630/s on average. At an illustrative tenfold peak, plan for roughly 46,296/s. If debounce and cancellation reduce actual sent requests to three per search, daily traffic falls to 150 million; cancellation after transmission does not erase server work already done.
+
+Return up to ten suggestions for a normalized prefix with an illustrative p99 server objective below fifty milliseconds. Support locale, typo policy, popularity updates, and immediate suppression of blocked terms through a separate policy layer. We initially exclude personalized ranking so the prefix index has a clear shared cache key.
+
+The misconception is that a trie alone solves autocomplete. A trie, a tree whose paths represent character prefixes, gives an access structure. It does not define ranking freshness, Unicode normalization, privacy rules, hot-prefix load, or the behavior of responses arriving out of order.
+
+## Build a Versioned Candidate Index
+
+Normalize input consistently at ingestion and serving. Case folding, accents, token boundaries, and locale-specific rules affect both matching and user expectations. Retain display text separately from normalized keys. Aggressive normalization can merge distinct words, so choose and test policy for supported languages rather than assuming ASCII behavior.
+
+Aggregate permitted query or catalog signals into term scores. Apply minimum support and privacy rules before publishing candidates; rare raw user queries can contain personal data and must not automatically become public suggestions. Keep raw logs access-controlled and retention-bounded, and exclude secrets and sensitive query classes from candidate generation.
+
+Build immutable index versions with top-k candidates attached to selected prefix states, or use a compact finite-state structure and a scoring strategy. Materializing ten candidates for every prefix makes reads cheap but increases build size. Storing a compact term structure and computing candidates at read time saves some space at the cost of CPU and tail latency.
+
+For an illustrative five million materialized prefix states, ten candidate references per state, and eight bytes per reference, references alone need 400 MB. Strings, transitions, scores, object overhead, and replicas add more. Measure the serialized index rather than estimating memory from the final list of words alone.
+
+## Serve Hot Prefixes and New Versions
+
+Route by locale and index version, then look up candidates and apply current suppression policy. Cache popular prefixes close to users. Prefixes such as a single common letter can be extremely hot, so key hashing alone may not balance load. Replicate immutable index shards or use local copies when memory permits; update them through versioned publication and rollback.
+
+Load a new version in parallel, validate candidate counts and prohibited-term checks, then atomically switch the serving pointer. Keep the old version for in-flight requests and rollback. If a shard fails to load, do not publish a mixed version without a defined compatibility policy. An index version is a data deployment and deserves canary checks.
+
+Popularity may refresh hourly in this exercise, while a denylist must propagate within an illustrative minute. Keep suppression outside the slow full rebuild so safety changes do not wait for the next batch. The UI can tolerate a slightly old popularity rank but should not display a suggestion currently forbidden by policy.
+
+## Client Ordering and Failure Behavior
+
+Attach a monotonically increasing client generation to each prefix request. If generation eight for `ca` arrives after generation nine for `cat`, discard eight. Canceling the old fetch helps resource use but does not guarantee its callback cannot race with the latest result. The display condition should explicitly compare generations.
+
+Bound prefix length, query cost, and response size. A timeout can show no suggestions while preserving manual search; autocomplete should not prevent submitting a query. Avoid falling back to raw unfiltered log strings when the index is unavailable. Cache stale candidate versions only if the current suppression layer is still enforced.
+
+Measure prefix latency, cache hit rate, version adoption, candidate quality, suppression propagation, and stale-response discards. Ranking quality requires offline and online evaluation, covered by [ML system design](/docs/ml-system-design/case-studies). This design's correctness boundary is the current prefix, permitted candidates, and a coherent index version.
+
+## Follow the Failure Boundary
+
+<SoftwareCaseTrace scenario="search-autocomplete" />
+
+<PredictFirst question='A reply for ca arrives after the newer reply for cat. What should the client display?' options={['The last network reply regardless of input', 'Only the reply matching the current request generation', 'Both lists concatenated']} correctIndex={1} explanation='Network completion order need not match typing order. A generation check preserves the latest input even when cancellation races.' />
+
+## Run the Design Calculation
+
+<RunnableCode code={`users, searches, prefixes = 10_000_000, 5, 8
+requests = users*searches*prefixes
+print("Daily prefix requests:", requests)
+print("Average requests/s:", round(requests/86400, 2))
+print("Tenfold peak/s:", round(requests/86400*10, 2))
+print("Candidate-reference MB:", 5_000_000*10*8/1e6)
+# Try it: reduce prefixes to three; quantify the effect of sending fewer requests.
+`} />
+
+## Change the Invariant Deliberately
+
+<RunnableCode code={`terms = {"cat": 100, "car": 90, "camera": 80, "dog": 70}
+blocked = {"car"}
+prefix = "ca"
+candidates = sorted((term for term in terms if term.startswith(prefix) and term not in blocked), key=lambda term: (-terms[term], term))[:10]
+latest_generation = 9
+responses = [(9, candidates), (8, ["old-result"])]
+for generation, values in responses:
+    if generation == latest_generation:
+        print("Display:", values)
+    else:
+        print("Discard stale generation:", generation)
+# Try it: unblock car; it returns between cat and camera without changing prefix matching.
+`} />
+
+## When Not to Use This Design
+
+| Situation | Better choice |
+| --- | --- |
+| Tiny fixed command vocabulary | Local prefix matching |
+| Full document relevance and typo search | A search engine with a separate suggestion index |
+
+## Remember
+
+| Decision | Reason |
+| --- | --- |
+| Index version | Coherent publication and rollback |
+| Suppression | Faster policy updates than popularity rebuilds |
+| Client generation | Old replies cannot replace new input |
+
+Next: [Design a Ride-Sharing Service](/docs/software-system-design/ride-sharing).
+
+## Sources
+
+- [Lucene, Analyzing Suggester](https://lucene.apache.org/core/9_12_0/suggest/org/apache/lucene/search/suggest/analyzing/AnalyzingSuggester.html).
+- [Unicode, Normalization Forms](https://unicode.org/reports/tr15/).
+- [Elasticsearch, Completion Suggester](https://www.elastic.co/docs/reference/elasticsearch/rest-apis/search-suggesters).
+- [MDN, AbortController](https://developer.mozilla.org/en-US/docs/Web/API/AbortController).
+- [Google SRE, Data Processing Pipelines](https://sre.google/sre-book/data-processing-pipelines/).
