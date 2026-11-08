@@ -1,0 +1,168 @@
+---
+title: "Rate Limiting and Admission Control"
+sidebar_position: 2.7
+description: "Choose a limiter from burst, fairness, and resource requirements; implement token refill arithmetic and reason about atomic global quotas and safe rejection."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import TokenBucketAdmissionExplorer from '../../../viz/diagrams/TokenBucketAdmissionExplorer';
+
+# Rate Limiting and Admission Control
+
+<ELI5>
+A museum can hand out a limited number of entry tickets each minute while keeping a few spare tickets for a small group arriving together. Once those tickets are gone, people must wait or return later. Adding more ticket desks should not secretly multiply the museum's agreed allowance. Software admission control decides which work to accept before that work occupies scarce resources.
+</ELI5>
+
+A **rate limit** bounds accepted work over time for a defined key and scope. **Admission control** is the broader decision to accept, defer, or reject work according to available resources and the service promise. Rate is one useful input, but memory, concurrency, payload size, and dependency capacity can impose other limits.
+
+The misconception is that a limit such as “five requests per second” completely specifies behavior. It omits burst allowance, window boundaries, identity, distributed scope, and failure policy. Our worked example is a token bucket with capacity five and refill rate two tokens/s. Seven simultaneous arrivals accept five and reject two; after half a second, one token has returned. The diagram and code expose the exact state transition instead of relying on an ambiguous rate label.
+
+## Name the Resource and the Fairness Key
+
+Begin with the resource being protected. A login endpoint may need to limit guessing attempts, a search endpoint may protect expensive compute, and a tenant API may enforce a purchased allowance. The same request-count limit is unlikely to fit all three because their costs, identities, and failure consequences differ. A global cap can protect a shared dependency while per-tenant limits prevent one caller consuming the entire cap.
+
+The **limit key** determines which requests share an allowance. An IP address can be useful for coarse abuse protection, but many legitimate users may share it, while one attacker can use many addresses. An authenticated user or tenant identifier is often a better fairness boundary after identity has been verified. Avoid trusting a client-supplied tenant header that has not passed authorization.
+
+Count weighted work when cost varies materially. A small lookup and a large export should not consume identical units if the protected resource differs by orders of magnitude. We can charge an operation several tokens or place expensive work in a separate queue. The weight is a policy based on measured demand, not an excuse to hide arbitrary rejection behind a quota name.
+
+Specify whether rejected attempts themselves affect an abuse counter. A serving-capacity bucket often deducts only accepted work, while a login-attempt policy may count unsuccessful attempts deliberately. Those are different products. Observability should distinguish policy rejection from an internal error, and should identify which limit rejected the operation without exposing private quota state unnecessarily.
+
+## A Token Bucket Makes Bursts Explicit
+
+A **token bucket** stores up to a maximum number of permissions. Tokens refill at a fixed rate, and each accepted unit of work spends the required amount. An empty bucket rejects or delays work according to policy. An idle period restores the burst allowance but cannot store unlimited future permission beyond capacity.
+
+For capacity five and refill two/s, seven requests at time zero consume the five initial tokens and leave two rejected. At 0.5 seconds the refill adds one token. The next unit-cost request can pass, leaving zero again. A second request at exactly the same instant cannot pass unless the policy has another source of allowance.
+
+<TokenBucketAdmissionExplorer />
+
+Step backward to the initial full bucket, then forward through the burst and refill. The five visible positions represent capacity, not a queue of accepted requests. Rejected work is not waiting inside the bucket. A separate queue needs its own bound and deadline policy; otherwise “rate limiting” can become unlimited deferred work.
+
+Refill arithmetic is `min(capacity, old_tokens + elapsed × rate)`. Check whether enough tokens remain, then subtract the operation's cost as one atomic state transition. Use a trusted elapsed-time model; a caller cannot be allowed to claim that a year has passed and refill its own quota. On one process, a monotonic clock avoids local wall-clock jumps affecting refill.
+
+<RunnableCode code={`capacity, rate = 5.0, 2.0
+tokens, previous = capacity, 0.0
+accepted = rejected = 0
+for now in [0.0] * 7 + [0.5]:
+    elapsed = max(0, now - previous)
+    tokens = min(capacity, tokens + elapsed * rate)
+    previous = now
+    if tokens >= 1:
+        tokens -= 1
+        accepted += 1
+        decision = "accept"
+    else:
+        rejected += 1
+        decision = "reject"
+    print("Seconds:", now, "decision:", decision, "remaining tokens:", tokens)
+print("Accepted:", accepted, "rejected:", rejected)
+# Try it: change rate to 1; half a second no longer refills a whole request token.
+`} />
+
+For any interval in this idealized model, admitted unit-cost work is bounded by the available initial burst plus tokens generated during the interval. That still permits a short burst above the long-run rate. If a dependency cannot tolerate even the permitted burst, lower capacity, add a concurrency bound, or schedule work through a bounded shaper.
+
+## Windows and Shaping Give Different Guarantees
+
+A **fixed window** resets a counter at a boundary. It uses little state and supports an understandable calendar-period quota, but a caller can place one allowance immediately before the boundary and another immediately after. Five requests at 0.999 seconds followed by five at 1.001 seconds pass two one-second windows while producing ten requests over two milliseconds.
+
+An exact **sliding window** counts events in a moving interval. It avoids that reset burst, but retains or summarizes more timing information and requires a precise endpoint convention. A sliding counter approximation can use less state while introducing approximation near boundaries. State the approximation rather than calling every implementation a precise rolling quota.
+
+A **leaky-bucket shaper** spaces work according to an output schedule, potentially delaying excess arrivals up to a bound. Implementations also use leaky-bucket terminology for policing with burst tolerance. Read the actual module semantics: NGINX's request limiter documents its own burst and delay behavior. A token bucket that rejects immediately and a shaper that queues are not interchangeable simply because both control an average rate.
+
+<PredictFirst question="A fixed one-second window permits five requests. Can ten requests be accepted within two milliseconds around a reset?" options={["No, five per second forbids every possible interval containing more than five", "Yes, five can arrive just before one window ends and five just after the next starts", "Only if the clocks on two servers disagree"]} correctIndex={1} explanation="The fixed-window rule applies to its aligned windows, not every moving one-second interval. The boundary burst exists on a single perfectly synchronized server." />
+
+Choose the algorithm from the required behavior. A billing allowance might need a fixed calendar window, while protecting a small connection pool needs a concurrency guard. A smooth arrival stream can still exhaust memory if each request begins retaining much more state. Identify which guarantee the resource requires before selecting a data structure.
+
+## Global Allowances Need Atomic Ownership
+
+A per-instance limiter is not automatically a global limiter. Three replicas each refilling two tokens/s admit up to six/s in aggregate, with fifteen initial tokens if each has capacity five. A load balancer changing the replica count changes the effective allowance. This can be acceptable for a local safety valve but violates a promise advertised as a tenant-wide quota of two/s.
+
+A shared limiter can perform refill, check, and decrement atomically for the key. Separate reads and writes let concurrent requests spend the same permission. Two requests reading one remaining token can both decide to accept before either writes the new value. Use a transaction, atomic script, or conditional update appropriate to the chosen store, with bounded operation time and explicit key expiry.
+
+Another design allocates small leases of permission to instances. It reduces per-request coordination but may strand unused allowance or admit excess during overlapping leases if the protocol is loose. Quantify the maximum deviation and define what happens on instance replacement. A central global counter and local safety buckets can coexist when their roles and failure policies are clear.
+
+<GoDeeper title="Go deeper: a limiter outage forces a policy choice">
+When the authoritative quota store is unreachable, a disconnected replica cannot both know the current exact global allowance and independently continue accepting arbitrary work. A fail-closed policy rejects or defers; a fail-open policy preserves some availability while risking excess. A bounded local emergency allowance can limit that excess but must account for how many replicas can spend it. Choose per operation: protecting a high-risk action and serving a low-risk public read need not share one failure policy.
+</GoDeeper>
+
+## Combine Rate With Concurrency and Deadlines
+
+A concurrency guard bounds operations currently in flight. If arrival rate stays at two/s while average processing time rises from 20 ms to 2 seconds, average in-flight work rises from 0.04 to four under a stable-system model. A rate that was safe during fast responses can become unsafe during dependency slowdown. Rate and concurrency controls protect different dimensions.
+
+A waiting policy needs a maximum queue length and a useful deadline. Delaying work can smooth arrivals, but a client whose deadline expires may retry while the original remains queued. Propagate cancellation where safe and preserve idempotency for effects that can commit after the client leaves. Accepted work must have an explicit recovery owner if processing outlives the request.
+
+HTTP 429 represents too many requests under a documented policy and can include `Retry-After`. That header is guidance about when retry may be useful, not a reservation guaranteeing success at that instant. Clients should avoid synchronized retries, respect an overall deadline, and avoid multiplying unsafe effects. A serving overload response and a per-user quota response should remain diagnosable separately.
+
+## Inspect an Ingress Limiter
+
+The following NGINX configuration uses a shared-memory zone across workers in one NGINX instance. It is not a global quota across independent machines. It limits a per-IP key at two requests/s, permits a configured excess burst of five without delaying those permitted excess requests, and returns 429 when the policy rejects. Its leaky-bucket accounting is distinct from the five-token teaching bucket above.
+
+```nginx
+# In the http block:
+limit_req_zone $binary_remote_addr zone=per_ip:10m rate=2r/s;
+
+# In the existing server block:
+location / {
+    limit_req zone=per_ip burst=5 nodelay;
+    limit_req_status 429;
+    proxy_pass http://application;
+}
+```
+
+Use the [local load-balancer experiment](/docs/software-system-design/load-balancing#run-a-small-real-proxy-configuration), add the zone in its HTTP block, and replace its location with this one. Validate the complete configuration with `nginx -t` before running it. Send a bounded sequence such as `for i in 1 2 3 4 5 6 7 8; do curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/; done` and compare accepted responses with 429s. Loop timing affects exact counts, so inspect the actual decisions instead of assuming a command executes simultaneously.
+
+If this proxy sits behind another ingress, `$binary_remote_addr` identifies the immediate peer unless trusted-address reconstruction is deliberately configured. Limiting every client under the CDN's shared address can reject unrelated users together. The [gateway trust-boundary chapter](/docs/software-system-design/reverse-proxies-and-api-gateways) explains why reconstructing the key cannot rely on arbitrary client-supplied headers.
+
+<RunnableCode code={`limit = 5
+arrivals = [.999] * 5 + [1.001] * 5
+windows = {}
+fixed_accepted = 0
+for now in arrivals:
+    window = int(now)
+    count = windows.get(window, 0)
+    if count < limit:
+        windows[window] = count + 1
+        fixed_accepted += 1
+print("Fixed-window accepts around reset:", fixed_accepted)
+print("Elapsed milliseconds:", round((max(arrivals)-min(arrivals))*1000, 3))
+replicas, local_rate, local_burst = 3, 2, 5
+print("Independent fleet refill per second:", replicas*local_rate)
+print("Independent fleet initial allowance:", replicas*local_burst)
+# Try it: double replicas; a naive per-instance limit doubles the aggregate allowance.
+`} />
+
+## Common Problems and Fixes
+
+A limiter penalizes unrelated users sharing an address. Revisit the fairness key after verified identity and keep a separate coarse abuse guard. Scaling adds replicas and silently increases a global quota. Give the quota an authoritative owner or quantify a bounded allocation protocol. Atomic increments without atomic expiry can leak keys; test the crash and timeout boundaries of the actual store operation.
+
+Retries after 429 synchronize a new burst. Add client jitter and retry budgets while respecting server guidance. A low request rate still exhausts resources. Add concurrency, payload, or cost-aware limits tied to the scarce resource. A limiter store outage changes behavior unpredictably. Write and exercise the operation-specific failure policy before relying on it during overload.
+
+## When Not to Use a Request-Count Limit Alone
+
+| Situation | Better companion control |
+| --- | --- |
+| Cost varies greatly by operation | Weighted tokens or separate operation classes |
+| Slow dependencies increase in-flight work | Concurrency and bounded queue limits |
+| Exact global contractual allowance | Atomic global ownership or a documented bounded-allocation protocol |
+| A long batch can wait safely | Durable scheduling with deadlines and fairness |
+
+## Remember
+
+| Decision | What must be explicit |
+| --- | --- |
+| Key | Which verified callers share the allowance |
+| Scope | Process, proxy, region, or global |
+| Burst | Permitted short-interval excess |
+| Atomicity | Refill and spend cannot race |
+| Failure | Reject, defer, or bounded local fallback |
+| Feedback | Status, retry guidance, and observable affected work |
+
+You can now choose a rate algorithm from its actual guarantee and calculate how distributed placement changes the allowance. Continue with the [rate limiter case study](/docs/software-system-design/rate-limiter) for the end-to-end architecture, or return to [Scaling](/docs/software-system-design/scaling).
+
+## Sources
+
+- [RFC 2697, A Single Rate Three Color Marker (1999)](https://www.rfc-editor.org/rfc/rfc2697): token replenishment and bounded burst concepts in traffic metering.
+- [RFC 6585, Additional HTTP Status Codes (2012)](https://www.rfc-editor.org/rfc/rfc6585): HTTP 429 semantics.
+- [NGINX, HTTP Request Limit Module](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html): leaky-bucket behavior, bursts, delays, and shared-memory zones.
+- [Google SRE, Handling Overload (2016)](https://sre.google/sre-book/handling-overload/): admission and resource protection.
+- [Redis, INCR](https://redis.io/docs/latest/commands/incr/): counters and atomic rate-limiter patterns.
