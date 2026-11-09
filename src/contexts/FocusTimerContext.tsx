@@ -33,7 +33,7 @@ import { useFocusMusic } from './FocusMusicContext';
 const TIMER_STORAGE_KEY = 'nm_focus_timer_state';
 const SESSIONS_STORAGE_KEY = 'nm_focus_sessions';
 const PENDING_SESSIONS_STORAGE_KEY = 'nm_focus_pending_sync';
-const MAX_STORED_SESSIONS = 500;
+import { MAX_STORED_SESSIONS, syncFocusSessions } from '../lib/focusSync';
 
 function readStorage<T>(key: string): T | null {
   if (typeof window === 'undefined') return null;
@@ -122,61 +122,13 @@ async function loadFirestoreFor(uid: string) {
   return {
     db,
     progressRef: firestore.doc(db, 'progress', uid),
-    getDoc: firestore.getDoc,
-    setDoc: firestore.setDoc,
-    runTransaction: firestore.runTransaction,
     onSnapshot: firestore.onSnapshot,
   };
 }
 
-async function withRetry<T>(fn: () => Promise<T>, attempts = 5, attemptTimeoutMs = 5000): Promise<T> {
-  let lastErr: unknown;
-  for (let i = 0; i < attempts; i++) {
-    try {
-      return await Promise.race([
-        fn(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('withRetry: attempt timed out')), attemptTimeoutMs),
-        ),
-      ]);
-    } catch (err) {
-      lastErr = err;
-      if (i < attempts - 1) await new Promise((resolve) => setTimeout(resolve, 300 * 2 ** i));
-    }
-  }
-  throw lastErr;
-}
-
-async function syncFocusSessionsToRemote(
-  uid: string,
-  localSessions: FocusSession[],
-  pendingSessions: FocusSession[],
-): Promise<FocusSession[]> {
-  const { db, progressRef, getDoc, setDoc, runTransaction } = await loadFirestoreFor(uid);
-
-  if (typeof runTransaction === 'function') {
-    return await withRetry(async () => {
-      return await runTransaction(db, async (tx) => {
-        const snap = await tx.get(progressRef);
-        const remoteSessions: FocusSession[] = snap.exists() && Array.isArray(snap.data()?.focusSessions)
-          ? snap.data().focusSessions
-          : [];
-        const merged = mergeFocusSessions(remoteSessions, [...localSessions, ...pendingSessions]);
-        tx.set(progressRef, { focusSessions: merged.slice(-MAX_STORED_SESSIONS) }, { merge: true });
-        return merged;
-      });
-    });
-  } else {
-    return await withRetry(async () => {
-      const snap = await getDoc(progressRef);
-      const remoteSessions: FocusSession[] = snap.exists() && Array.isArray(snap.data()?.focusSessions)
-        ? snap.data()!.focusSessions
-        : [];
-      const merged = mergeFocusSessions(remoteSessions, [...localSessions, ...pendingSessions]);
-      await setDoc(progressRef, { focusSessions: merged.slice(-MAX_STORED_SESSIONS) }, { merge: true });
-      return merged;
-    });
-  }
+async function syncFocusSessionsToRemote(uid: string, local: FocusSession[], pending: FocusSession[]) {
+  const { db } = await loadFirestoreFor(uid);
+  return syncFocusSessions(db, uid, local, pending);
 }
 
 export interface FocusTimerContextType {
@@ -293,45 +245,53 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     let unsubscribe: (() => void) | undefined;
 
-    user.getIdToken(true).then(() => {
-      if (cancelled) return;
-      const localSessions = readStorage<FocusSession[]>(SESSIONS_STORAGE_KEY) || [];
-      const pendingSessions = readStorage<FocusSession[]>(PENDING_SESSIONS_STORAGE_KEY) || [];
+    const syncOnConnect = () => {
+      void user.getIdToken(true).then(() => {
+        if (cancelled) return;
+        const localSessions = readStorage<FocusSession[]>(SESSIONS_STORAGE_KEY) || [];
+        const pendingSessions = readStorage<FocusSession[]>(PENDING_SESSIONS_STORAGE_KEY) || [];
 
-      syncFocusSessionsToRemote(user.uid, localSessions, pendingSessions)
-        .then((merged) => {
-          if (cancelled) return;
-          writeStorage(PENDING_SESSIONS_STORAGE_KEY, []);
-          updateSessions(merged);
-        })
-        .catch((err) => {
-          console.warn('Focus timer: failed to sync with Firestore on sign-in, will retry next save', err);
-        });
+        syncFocusSessionsToRemote(user.uid, localSessions, pendingSessions)
+          .then((merged) => {
+            if (cancelled) return;
+            const acknowledged = new Set([...localSessions, ...pendingSessions].map((session) => session.id));
+            const pending = readStorage<FocusSession[]>(PENDING_SESSIONS_STORAGE_KEY) || [];
+            writeStorage(PENDING_SESSIONS_STORAGE_KEY, pending.filter((session) => !acknowledged.has(session.id)));
+            updateSessions(mergeFocusSessions(merged, pending.filter((session) => !acknowledged.has(session.id))));
+          })
+          .catch((err) => {
+            console.warn('Focus timer: failed to sync with Firestore on sign-in, will retry next save', err);
+          });
 
-      loadFirestoreFor(user.uid)
-        .then(({ progressRef, onSnapshot }) => {
-          if (cancelled) return;
-          unsubscribe = onSnapshot(
-            progressRef,
-            (snap) => {
-              if (cancelled) return;
-              const remoteSessions: FocusSession[] = snap.exists() && Array.isArray(snap.data()?.focusSessions)
-                ? snap.data()!.focusSessions
-                : [];
-              const local = readStorage<FocusSession[]>(SESSIONS_STORAGE_KEY) || [];
-              const pending = readStorage<FocusSession[]>(PENDING_SESSIONS_STORAGE_KEY) || [];
-              const merged = mergeFocusSessions(remoteSessions, [...local, ...pending]);
-              updateSessions(merged);
-            },
-            (err) => {
-              console.error('Focus timer live sync error:', err);
-            },
-          );
-        })
-        .catch(() => {});
-    });
+      }).catch(() => {});
+    };
+    syncOnConnect();
+    loadFirestoreFor(user.uid)
+      .then(({ progressRef, onSnapshot }) => {
+        if (cancelled) return;
+        unsubscribe = onSnapshot(
+          progressRef,
+          (snap) => {
+            if (cancelled) return;
+            const remoteSessions: FocusSession[] = snap.exists() && Array.isArray(snap.data()?.focusSessions)
+              ? snap.data()!.focusSessions
+              : [];
+            const local = readStorage<FocusSession[]>(SESSIONS_STORAGE_KEY) || [];
+            const pending = readStorage<FocusSession[]>(PENDING_SESSIONS_STORAGE_KEY) || [];
+            const merged = mergeFocusSessions(remoteSessions, [...local, ...pending]);
+            updateSessions(merged);
+          },
+          (err) => {
+            console.error('Focus timer live sync error:', err);
+          },
+        );
+      })
+      .catch(() => {});
+
+    window.addEventListener('online', syncOnConnect);
 
     return () => {
+      window.removeEventListener('online', syncOnConnect);
       cancelled = true;
       if (unsubscribe) unsubscribe();
     };
@@ -350,8 +310,10 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
         user.getIdToken(true).then(() => {
           syncFocusSessionsToRemote(user.uid, merged, nextPending)
             .then((syncedMerged) => {
-              writeStorage(PENDING_SESSIONS_STORAGE_KEY, []);
-              updateSessions(syncedMerged);
+              const acknowledged = new Set([...merged, ...nextPending].map((session) => session.id));
+              const pending = readStorage<FocusSession[]>(PENDING_SESSIONS_STORAGE_KEY) || [];
+              writeStorage(PENDING_SESSIONS_STORAGE_KEY, pending.filter((session) => !acknowledged.has(session.id)));
+              updateSessions(mergeFocusSessions(syncedMerged, pending.filter((session) => !acknowledged.has(session.id))));
             })
             .catch((err) => {
               console.warn('Focus timer: save failed, queued in pending sync for next retry', err);
