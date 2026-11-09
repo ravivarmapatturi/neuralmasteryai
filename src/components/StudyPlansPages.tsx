@@ -296,18 +296,21 @@ export function ResearchListPage() {
       <p className="nb-body" style={{ fontSize: '1.05rem', maxWidth: 640, margin: 0 }}>
         Each track breaks one paper into small steps, one part of its architecture at a time. A diagram shows which part the current step builds.
       </p>
-      <ul style={{ ...listStyle, marginTop: '2rem' }}>
+      <ul className="nm-category-widget-grid" style={{ marginTop: '2rem' }}>
         {RESEARCH_TRACKS.map((track) => {
           const c = planCounts(track.steps.map((s) => resolve(s.step)));
           return (
-            <li key={track.slug} style={{ borderBottom: '1px solid var(--nb-rule)' }}>
-              <Link to={`/research/${track.slug}`} style={{ display: 'block', padding: '1rem 0.25rem', textDecoration: 'none' }}>
-                <span style={{ color: 'var(--nb-ink)', fontWeight: 700, fontSize: '1.05rem' }}>{track.paper}</span>
-                <span style={{ ...metaStyle, display: 'block', marginTop: 2 }}>{track.authors}, {track.year}</span>
-                <span className="nb-body" style={{ display: 'block', marginTop: 6, color: 'var(--nb-ink)' }}>{track.summary}</span>
-                <span style={{ ...metaStyle, display: 'block' }}>{track.level} · {track.steps.length} steps · {countsLine(c)}</span>
-              </Link>
-            </li>
+            <CategoryWidgetCard
+              key={track.slug}
+              title={track.paper}
+              to={`/research/${track.slug}`}
+              summary={track.summary}
+              level={track.level}
+              countText={`${track.steps.length} steps · ${track.authors}, ${track.year}`}
+              totalCount={c.problems}
+              passedCount={c.passed}
+              topic={track.slug}
+            />
           );
         })}
       </ul>

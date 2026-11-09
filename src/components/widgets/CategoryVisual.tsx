@@ -337,7 +337,7 @@ export function CategoryVisual({ topic = 'generic', className }: CategoryVisualP
   }
 
   // 15. LLM Internals & Inference (KV Cache & Autoregressive Next-Token Step)
-  if (key.includes('llm') || key.includes('inference')) {
+  if (key.includes('llm') || key.includes('inference') || key.includes('gpt')) {
     return (
       <svg viewBox="0 0 56 40" className={className} aria-hidden="true" focusable="false" style={{ width: '100%', height: '100%' }}>
         <text x="6" y="9" fontSize="5" fontWeight="bold" fill={t.textMuted}>KV CACHE</text>
