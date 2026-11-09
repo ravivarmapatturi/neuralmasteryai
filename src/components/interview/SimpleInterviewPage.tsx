@@ -12,9 +12,11 @@ import practice from '../../data/interviewPractice.json';
 import { InterviewGraph } from './InterviewGraph';
 import { LiveWaveform } from './LiveWaveform';
 import Navbar from '../layout/Navbar';
-import { judgeAnswer, splitAnswer, type AnswerJudgement } from '../../lib/answerJudge';
+import { judgePracticeAnswer, SHOW_RUBRIC_SCORE, type AnswerJudgement } from '../../lib/answerJudge';
 import { embed, loadJudge, nli } from '../../lib/mockInterview/engine';
 import { speakInBrowser } from '../../lib/interviewRoom/browserVoice';
+import { useInterviewAttempts } from '../../contexts/InterviewAttemptsContext';
+import { compareAttempts, type InterviewAttempt } from '../../lib/interviewAttempts';
 import { useGamification } from '../../contexts/GamificationContext';
 import { INTERVIEW_COMPLETED_POINTS, hasAward } from '../../lib/gamification';
 import { CategoryVisual } from '../widgets/CategoryVisual';
@@ -27,6 +29,7 @@ interface PracticeQuestion {
   id: string;
   title: string;
   answer: string;
+  keyPoints?: string[];
   options?: string[];
   sourceUrl?: string;
   followUps?: string[];
@@ -138,6 +141,8 @@ export default function SimpleInterviewPage() {
   const reviewRef = useRef(0);
   const finishingRef = useRef<Promise<void>>(Promise.resolve());
   const [check, setCheck] = useState<AnswerJudgement | 'checking' | 'failed' | null>(null);
+  const { attempts, save: saveAttempt, syncState } = useInterviewAttempts();
+  const [attemptId, setAttemptId] = useState<string | null>(null);
   const { events, awardInterviewCompleted } = useGamification();
   const [round, setRound] = useState('');
   const [role, setRole] = useState('');
@@ -172,6 +177,9 @@ export default function SimpleInterviewPage() {
   const shown = topic.questions.map((q, i) => ({ q, i })).filter(({ q }) => matches(q));
   const question = topic.questions[questionIndex];
   const questionId = question.id;
+  const earlier = attempts.filter(a => a.questionId === questionId && a.id !== attemptId).slice().reverse();
+  const latest = attempts.find(a => a.id === attemptId && a.questionId === questionId);
+  const comparison = latest && earlier[0] ? compareAttempts(earlier[0], latest) : null;
 
   const voiceCancelRef = useRef<(() => void) | null>(null);
   const [voiceLoading, setVoiceLoading] = useState<number | null>(null);
@@ -338,6 +346,7 @@ export default function SimpleInterviewPage() {
   const ask = useCallback(
     (id: string) => {
       reviewRef.current++;
+      setAttemptId(null);
       setStep('asking');
       try {
         localStorage.setItem(LAST_KEY, id);
@@ -380,6 +389,10 @@ export default function SimpleInterviewPage() {
     const liveText = transcript;
     const engine = !typing && streamRef.current ? engineRef.current : null;
     const current = question;
+    const draft: InterviewAttempt = { id: crypto.randomUUID(), questionId: current.id, time: Date.now(), transcript: '', points: [],
+      source: current.keyPoints?.length ? 'rubric' : 'reference', status: 'unchecked', revision: 0 };
+    saveAttempt({ ...draft, transcript: correctInterviewTerms(liveText, current.id, current.title) });
+    setAttemptId(draft.id);
     setStep('answer');
     setCheck(null);
     setTranscribing(Boolean(engine));
@@ -400,21 +413,25 @@ export default function SimpleInterviewPage() {
       : Promise.resolve(liveText);
     finishingRef.current = finalize.then(() => undefined);
     void finalize.then((finalText) => {
-      if (reviewRef.current !== id) return;
-      stopMic();
       const spoken = correctInterviewTerms(finalText, current.id, current.title);
-      setTranscript(spoken);
-      setTranscribing(false);
-      if (spoken.trim().split(/\s+/).length < 5) return;
-      // Each sentence of the model answer is one point to cover. Models run in a worker on this device.
-      setCheck('checking');
-      const points = splitAnswer(current.answer).slice(0, 6);
-      loadJudge()
-        .then(() => judgeAnswer(spoken, points, current.answer, { embed, nli }))
+      const attempt = { ...draft, transcript: spoken, revision: 1 };
+      saveAttempt(attempt);
+      if (reviewRef.current === id) {
+        stopMic();
+        setTranscript(spoken);
+        setTranscribing(false);
+      }
+      if (!current.keyPoints?.length && spoken.trim().split(/\s+/).length < 5) return;
+      if (reviewRef.current === id) setCheck('checking');
+      (spoken.trim() ? loadJudge() : Promise.resolve())
+        .then(() => judgePracticeAnswer(spoken, current, { embed, nli }))
         .then((result) => {
+          saveAttempt({ ...attempt, revision: 2, status: 'checked', points: result.points,
+            ...(attempt.source === 'reference' ? { score: result.score } : {}) });
           if (reviewRef.current === id) setCheck(result);
         })
         .catch(() => {
+          saveAttempt({ ...attempt, revision: 2, status: 'failed' });
           if (reviewRef.current === id) setCheck('failed');
         });
     });
@@ -832,7 +849,7 @@ export default function SimpleInterviewPage() {
                 {check === 'checking' && (
                   <div className="si-check-loading">
                     <p className="si-status" role="status">
-                      Checking your answer against the model answer on your device…
+                      Checking your answer on your device…
                     </p>
                   </div>
                 )}
@@ -842,19 +859,19 @@ export default function SimpleInterviewPage() {
                 {check && typeof check === 'object' && (
                   <div className="si-check">
                     <div className="si-check-header">
-                      <h3>How your answer compares</h3>
-                      <span className="si-score-pill">{check.score}% coverage</span>
+                      <h3>{question.keyPoints?.length ? 'Automated key-point check' : 'How your answer compares'}</h3>
+                      {(!question.keyPoints?.length || SHOW_RUBRIC_SCORE) && <span className="si-score-pill">{check.score}% coverage</span>}
                     </div>
                     <ul className="si-points">
                       {check.points.map((p) => (
                         <li key={p.point} className={p.verdict}>
                           <span className="si-verdict">
                             {p.verdict === 'covered'
-                              ? 'Covered'
+                              ? 'Hit'
                               : p.verdict === 'partial'
                                 ? 'Partly covered'
                                 : p.verdict === 'conflict'
-                                  ? 'Check this'
+                                  ? 'Missed · conflicting claim'
                                   : 'Missed'}
                           </span>
                           {p.point}
@@ -863,6 +880,25 @@ export default function SimpleInterviewPage() {
                     </ul>
                   </div>
                 )}
+                {comparison && (
+                  <section className="si-sub-section" aria-label="Change since your previous attempt" aria-live="polite">
+                    <h3>Since your previous attempt</h3>
+                    {comparison.comparable ? <>
+                      <p>{comparison.gained.length ? 'You now hit these points:' : 'No new points hit.'}</p>
+                      {comparison.gained.length > 0 && <ul className="si-bullets">{comparison.gained.map(point => <li key={point}>{point}</li>)}</ul>}
+                      {comparison.lost.length > 0 && <><p>Previously hit, missed this time:</p><ul className="si-bullets">{comparison.lost.map(point => <li key={point}>{point}</li>)}</ul></>}
+                    </> : <p>{latest?.status !== 'checked' ? 'The comparison will appear after this answer is checked.' : 'These attempts used different checks, or the previous answer was not checked.'}</p>}
+                  </section>
+                )}
+                {earlier.length > 0 && <section className="si-sub-section" aria-label="Earlier attempts">
+                  <h3>Earlier attempts</h3>
+                  {earlier.map(attempt => <details key={attempt.id} className="si-attempt">
+                    <summary><time dateTime={new Date(attempt.time).toISOString()}>{new Date(attempt.time).toLocaleString()}</time>{attempt.status === 'checked' ? (attempt.source === 'rubric' ? ' · Key points checked' : attempt.score === undefined ? ' · Checked against model answer' : ` · ${attempt.score}% coverage`) : ' · Not checked'}</summary>
+                    <p className="si-yours">{attempt.transcript || 'No answer was captured.'}</p>
+                    <ul className="si-points">{attempt.points.map(point => <li key={point.point}><span className="si-verdict">{point.verdict === 'covered' ? 'Hit' : 'Missed'}</span>{point.point}</li>)}</ul>
+                  </details>)}
+                </section>}
+                <p className="si-status" role="status">{syncState === 'storage-error' ? 'Attempt history could not be saved on this device.' : syncState === 'offline' ? 'Saved on this device. Sync will retry when connected.' : syncState === 'syncing' ? 'Syncing attempt history…' : syncState === 'synced' ? 'Attempt history synced.' : 'Attempt history saved on this device.'}</p>
               </section>
 
               <section className="si-col-model" aria-label="Model answer and follow-ups">

@@ -36,6 +36,7 @@ async function controlledRoom(page: Page, settings: {memory:number;gpu:boolean;f
           this.dispatchEvent(event);
         });
         if (op === 'loadJudge') {
+          if (state.failJudge) { reply({ok:false,error:'Inference unavailable'}); return; }
           state.releaseReview = () => {
             state.reviewReleased = true;
             reply({ ok: true, result: true });
@@ -44,7 +45,7 @@ async function controlledRoom(page: Page, settings: {memory:number;gpu:boolean;f
           reply({ ok: true, result: payload.texts.map(() => [1]) });
         } else if (op === 'nli') {
           state.reviewCalls = (state.reviewCalls || 0) + 1;
-          reply({ ok: true, result: payload.pairs.map(() => ({ entails: 1, conflicts: 0 })) });
+          reply({ ok: true, result: payload.pairs.map(([,claim]:string[]) => ({ entails: state.rubricClaims ? (state.rubricClaims.indexOf(claim) >= 0 && state.rubricClaims.indexOf(claim) < state.rubricHitLimit ? 1 : 0) : 1, conflicts: 0 })) });
         } else if (op === 'init') {
           state.speechLoads.push(payload);
           if(settings.deferTurbo && payload?.preloadModelId?.includes('large-v3-turbo')) {state.releaseTurbo=()=>reply({type:'init_done',device:'wasm',loadTimeMs:1});return;}
@@ -338,4 +339,77 @@ test('switching back cancels a pending High accuracy load and ignores its late r
   expect(await page.evaluate(()=>(window as any).terminatedSpeechWorkers)).toBeGreaterThan(0);
   await page.evaluate(()=>(window as any).releaseTurbo());
   await expect(control).toHaveValue('default');
+});
+
+test('rubric hits, history and improvement survive reload', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await controlledRoom(page);
+  await page.goto(`http://localhost:${PORT}/interview?q=senior:dropout`);
+  const q = practice.topics.flatMap(t=>t.questions).find(q=>q.id==='senior:dropout') as {keyPoints:string[]};
+  await page.evaluate(points=>{(window as any).rubricClaims=points;(window as any).rubricHitLimit=1;},q.keyPoints);
+  await page.locator('#start-topic').click();
+  await answerByTyping(page);
+  await page.locator('#done').click();
+  await page.waitForFunction(()=>typeof (window as any).releaseReview==='function');
+  await page.evaluate(()=>(window as any).releaseReview());
+  await expect(page.getByRole('heading',{name:'Automated key-point check'})).toBeVisible();
+  await expect(page.locator('.si-check .si-points .covered')).toHaveCount(1);
+  await expect(page.locator('.si-check .si-points .missed')).toHaveCount(3);
+  await expect(page.locator('.si-score-pill')).toHaveCount(0);
+  await page.evaluate(()=>{(window as any).rubricHitLimit=3;(window as any).releaseReview=undefined;});
+  await page.locator('#practice-again').click();
+  await page.getByRole('button',{name:'Skip to answering'}).click();
+  await page.getByLabel('Your answer',{exact:true}).fill('A stronger answer with different wording about dropout.');
+  await page.locator('#done').click();
+  await page.waitForFunction(()=>typeof (window as any).releaseReview==='function');
+  await page.evaluate(()=>(window as any).releaseReview());
+  const comparison=page.getByRole('region',{name:'Change since your previous attempt'});
+  await expect(comparison).toContainText('You now hit these points:');
+  await expect(comparison).toContainText(q.keyPoints[1]);
+  await expect(comparison).toContainText(q.keyPoints[2]);
+  await expect(page.getByRole('region',{name:'Earlier attempts'}).locator('details')).toHaveCount(1);
+  await page.getByRole('region',{name:'Earlier attempts'}).locator('summary').press('Enter');
+  await expect(page.getByRole('region',{name:'Earlier attempts'})).toContainText('A distinct old typed answer');
+  const stored=await page.evaluate(()=>JSON.parse(localStorage.getItem('nm-interview-attempts-v1:guest')!));
+  expect(stored).toHaveLength(2);
+  expect(stored.map((a:any)=>a.points.filter((p:any)=>p.verdict==='covered').length)).toEqual([1,3]);
+  for (const width of [320,375,1440]) for (const theme of ['light','dark']) {
+    await page.setViewportSize({width,height:900});
+    await page.evaluate(theme=>document.documentElement.setAttribute('data-theme',theme),theme);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBe(width);
+    await page.screenshot({path:`test-results/rubric-${theme}-${width}.png`,fullPage:true});
+  }
+  await page.reload();
+  await page.locator('#start-topic').click();
+  await page.getByRole('button',{name:'Skip to answering'}).click();
+  await page.getByRole('button',{name:'Type instead',exact:true}).click();
+  await page.getByLabel('Your answer',{exact:true}).fill('A third answer that is stored while checking loads.');
+  await page.locator('#done').click();
+  await expect(page.getByRole('region',{name:'Earlier attempts'}).locator('details')).toHaveCount(2);
+  expect(errors).toEqual([]);
+});
+
+
+test('keeps a failed review transcript in history and stores an empty rubric attempt', async ({page}) => {
+  await controlledRoom(page);
+  await page.goto(`http://localhost:${PORT}/interview?q=senior:dropout`);
+  await page.evaluate(()=>(window as any).failJudge=true);
+  await page.locator('#start-topic').click();
+  await answerByTyping(page);
+  await page.locator('#done').click();
+  await expect(page.locator('.si-failed-status')).toBeVisible();
+  await page.locator('#practice-again').click();
+  await page.getByRole('button',{name:'Skip to answering'}).click();
+  await page.locator('#done').click();
+  await expect(page.getByRole('heading',{name:'Automated key-point check'})).toBeVisible();
+  await expect(page.locator('.si-check .missed')).toHaveCount(4);
+  await expect(page.locator('.si-score-pill')).toHaveCount(0);
+  const history=page.getByRole('region',{name:'Earlier attempts'});
+  await expect(history).toContainText('Not checked');
+  await history.locator('summary').click();
+  await expect(history).toContainText('distinct old typed answer');
+  const stored=await page.evaluate(()=>JSON.parse(localStorage.getItem('nm-interview-attempts-v1:guest')!));
+  expect(stored.map((a:any)=>a.status)).toEqual(['failed','checked']);
+  expect(stored[1].transcript).toBe('');
 });
