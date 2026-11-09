@@ -1,0 +1,62 @@
+---
+title: "System Design Foundations"
+sidebar_position: 1
+description: "Start with user promises, estimate the resources they require, and connect request latency and availability objectives to concrete architecture decisions."
+---
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+
+# System Design Foundations
+
+<ELI5>
+Before choosing machines, decide what people must be able to do and what happens when something breaks. Then calculate how much work arrives and how quickly it must finish. These chapters turn those promises into an architecture you can explain and test.
+</ELI5>
+
+Read the foundations in order. Each chapter follows one decision through a worked example, interactive explanation, runnable experiment, and failure review.
+
+| Chapter | Decision you will be able to make |
+| --- | --- |
+| [How to Approach a System Design](/docs/software-system-design/design-approach) | Trace one user promise through state ownership, load, and failure |
+| [Requirements and System Boundaries](/docs/software-system-design/requirements) | Define actors, invariants, exclusions, and measurement populations |
+| [Back-of-Envelope Capacity Estimation](/docs/software-system-design/capacity-estimation) | Calculate rate, bandwidth, storage, concurrency, and failure reserve |
+| [Latency Budgets and Tail Behavior](/docs/software-system-design/latency) | Budget the critical path and reason about queues and fan-out |
+| [Availability, SLOs, and Error Budgets](/docs/software-system-design/availability-and-slos) | Translate a reliability promise into a measurable operating policy |
+
+## Requirements Set the Boundary
+
+[Requirements](/docs/software-system-design/requirements) starts with the actor and action, then distinguishes correctness invariants from statistical objectives. Its denominator experiment shows why “99.9% successful” is incomplete without a defined population.
+
+## Traffic and Storage Need Units
+
+[Capacity estimation](/docs/software-system-design/capacity-estimation) converts 100 million daily redirects into an average rate, then separately budgets peak arrivals, retained records, and transferred bytes. Every quantity carries units and explicit assumptions.
+
+## Capacity Must Survive the Failure You Promise
+
+The [failure-reserve calculation](/docs/software-system-design/capacity-estimation#provision-for-a-named-failure) explains why ten instances at 60% healthy utilization do not satisfy a 70% target after a zone loss. Integer placement changes the answer to fourteen.
+
+## Latency Is a Distribution Along a Path
+
+[Latency](/docs/software-system-design/latency) distinguishes sequential time from parallel completion, then calculates how 100 required calls amplify the slow tail. A deadline includes waiting, retries, and useful work.
+
+## SLOs Turn Reliability Into a Budget
+
+[Availability and SLOs](/docs/software-system-design/availability-and-slos) separates request-based allowances from time-based allowances. Its burn-rate experiment connects a 2% observed failure rate to a 20× budget burn for a 99.9% objective.
+
+## Design Reviews Follow the User Action
+
+[The design approach](/docs/software-system-design/design-approach) follows revocation from an owner's request to the public redirect path. A correct durable write does not by itself clear an old cache entry.
+
+## Common Problems and Fixes
+
+Follow the operation before choosing components, test the assumption that changes capacity, and measure outcomes at the boundary users depend on. Each chapter names the failures its example does and does not cover.
+
+## When Not to Use a Distributed Architecture
+
+Start with the smallest topology that satisfies measured demand and the agreed failure envelope. The [design decision record](/docs/software-system-design/design-approach#make-the-decision-reversible-where-it-can-be) identifies evidence that would justify adding distributed ownership.
+
+## Remember
+
+Requirements determine promises; estimates constrain resources; latency and availability define observable outcomes. Apply them together in the [URL shortener case study](/docs/software-system-design/url-shortener), then continue to [Scaling](/docs/software-system-design/scaling).
+
+## Sources
+
+Primary references and calculations appear beside each topic in the linked chapters.

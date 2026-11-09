@@ -1,0 +1,147 @@
+---
+title: "Sharding and Data Ownership"
+sidebar_position: 3.4
+description: "Partition data by an explicit ownership key, calculate skew and cross-shard work, and design routing and resharding without losing accepted writes."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import ShardHotKeyExplorer from '../../../viz/diagrams/ShardHotKeyExplorer';
+
+# Sharding and Data Ownership
+
+<ELI5>
+A library can split its catalogue across several rooms, with each room responsible for different books. That creates more total shelf and staff capacity, but the sign at the entrance must tell readers where each book lives. A queue for one extremely popular book still waits at the room holding that book. Dividing ownership creates capacity only when the work can actually be divided.
+</ELI5>
+
+**Sharding** partitions a dataset so that different owners serve different subsets of keys or records. It differs from replication, which maintains additional copies of the same state. A sharded system often replicates each shard, combining two mechanisms with different purposes: partitioning distributes work, while replication protects and serves copies of each partition.
+
+The misconception is that evenly distributing records evenly distributes traffic. Our illustrative dataset has keys 0 through 11. Key 0 receives 6,000 operations/s, while each other key receives 100. With three modulo-assigned shards, each holds four keys, but shard 0 handles 6,300 operations/s while the others handle 400 each. Doubling to six shards reduces the hot shard only to 6,100/s because the indivisible hot key remains with one owner.
+
+## Choose the Unit That Owns an Invariant
+
+A **shard key** determines which records belong together for routing and ownership. Customer ID may colocate one customer's orders, while order ID may spread them independently. The first can make customer-local queries and transactions convenient; the second may distribute a large customer's activity better while turning customer history into a cross-shard operation or a maintained alternate view.
+
+Start with transitions that must be atomic. Reserving stock and recording an order can cross owners if the chosen keys place inventory and orders separately. A distributed transaction may preserve an invariant at additional coordination cost, while a workflow can use a different product contract with reservations and compensation. Sharding does not decide that contract for us.
+
+Keep independently growing state bounded. A shard key with only a few possible values provides only a few natural groups, even if the table has many records. A large tenant can outgrow the group the key gives it. Add a subpartition only after determining which tenant-local operations can tolerate the split and how those operations discover the new owners.
+
+The storage model also needs a routing key at request time. A public short code lookup knows its code but may not know the creating customer. Sharding by customer ID then requires encoding a routing hint, maintaining a directory, or performing another lookup. A theoretically balanced key is not sufficient if the primary serving operation cannot locate it efficiently.
+
+## Range, Hash, and Directory Routing Move Different Work
+
+**Range partitioning** assigns ordered key intervals to owners. It supports local range scans and can preserve locality for adjacent values. A monotonically increasing timestamp or identifier can concentrate new writes in the newest range. Splitting old ranges does not automatically relieve the current append hotspot.
+
+**Hash partitioning** maps a key through a hash before assigning ownership. It can spread many distinct keys independently of their natural order, but range queries may need several owners. It also cannot split all operations for one indivisible key merely by hashing that key again. The same input must still locate the same state under the current map.
+
+**Directory routing** stores an explicit mapping from logical groups to owners. It allows deliberate placement and movement, while introducing a metadata service, caching, versioning, and recovery requirements. The directory need not be consulted remotely on every operation if safe cached metadata and redirects are part of the protocol. Define how a stale route discovers the new owner.
+
+<ShardHotKeyExplorer />
+
+The diagram uses `key % shard_count` as a simple calculated assignment, not a production hash. Increase the count from three to six and notice that record count per shard halves, while the hot owner's load barely falls. The problem is the cost concentrated in key 0, not a poor average number of records per machine.
+
+<RunnableCode code={`rates = {key: (6000 if key == 0 else 100) for key in range(12)}
+for shard_count in (3, 6):
+    owners = {shard: [] for shard in range(shard_count)}
+    for key in rates:
+        owners[key % shard_count].append(key)
+    print("Shards:", shard_count)
+    for shard, keys in owners.items():
+        print("Owner:", shard, "keys:", keys,
+              "operations/s:", sum(rates[key] for key in keys))
+# Try it: make every key rate 100; balanced key counts now produce balanced modeled work.
+`} />
+
+Our demand is 7,100 operations/s in total, but provisioned aggregate capacity alone cannot establish success. If each owner safely completes an illustrative 2,000 operations/s, six owners offer 12,000 total while the hot owner still exceeds its local limit. Admission control, caching suitable reads, request coalescing, or a changed state representation may be needed for that key.
+
+## Treat Hot Keys Separately From Hot Partitions
+
+A **hot partition** can contain many moderately active keys that can be split or moved. A **hot key** concentrates work on one logical item. Splitting a range can help the former while leaving the latter intact. Measure key frequency and cost rather than assuming every overload event is a balancer problem.
+
+Read-hot immutable content can often be cached or replicated. Write-hot state may need a different representation. A counter can sometimes be decomposed into partial counters and aggregated, provided the product tolerates its read and consistency semantics. A single balance with a strict nonnegative invariant cannot be split by blindly adding random suffixes to writes.
+
+A write-sharding scheme adds a suffix or subkey to distribute otherwise concentrated updates. Reads may then need to aggregate across suffixes, and operations that require an exact current total need coordination. This is a trade between write distribution and read or invariant complexity. Record the new meaning explicitly instead of calling suffixing a free fix.
+
+<PredictFirst question="Each shard owns the same number of records, but one record receives most writes. Does adding more shards necessarily remove the bottleneck?" options={["Yes, equal records imply equal work", "No, the hot record can remain assigned to one owner", "Yes, because hashing divides each individual write among every shard"]} correctIndex={1} explanation="An ordinary key-to-owner map places a logical key at one owner. More partitions divide other keys, but changing a hot record's write semantics requires another mechanism." />
+
+## Cross-Shard Queries Pay Fan-Out and Coordination Costs
+
+A query that knows its shard key can route directly. A query without that key may contact several owners and combine results. Each owner does local work, and the coordinator must merge, sort, or aggregate under a defined snapshot and failure policy. The slowest required owner can dominate completion, as the [latency chapter](/docs/software-system-design/latency) explains.
+
+For a global top twenty query, each shard can return candidate rows for merging, but a filter or ranking rule must be applied consistently. Pagination needs a cursor that preserves enough per-shard progress or another stable global ordering. A simple offset can cause substantial repeated scanning across owners. Concurrent writes also raise questions about duplicates, omissions, and snapshot consistency between pages.
+
+A global uniqueness rule needs global ownership or a coordination protocol. Enforcing uniqueness separately on each shard prevents duplicates only within that shard unless the key placement ensures all conflicting candidates meet at the same owner. Put that reasoning into the identifier design. Generating random codes reduces collision probability but does not by itself define what happens when a collision occurs.
+
+<GoDeeper title="Go deeper: local transactions follow placement">
+If every record needed for an invariant is colocated under one shard's transactional boundary, that owner can often enforce it locally. If the records lie on separate owners, a protocol must coordinate outcomes or the product must accept a workflow with intermediate states. Placement can therefore turn the same business operation from local work into distributed coordination. Choose the shard key with the transaction set in view, not only the read distribution.
+</GoDeeper>
+
+## Resharding Is a Live Ownership Transfer
+
+Changing the map while requests continue requires more than copying a snapshot. The old owner can accept writes after the snapshot begins. A migration must capture those changes, establish a cutover boundary, update routing, and prevent old and new owners from independently accepting conflicting effects. Reads need a policy during the overlap as well.
+
+A common shape is snapshot, catch up from an ordered change stream, fence or coordinate the old writer, switch authoritative ownership, and retire the old copy after verification. The exact protocol depends on the engine. A naive dual-write loop can commit to one destination and fail at the other, leaving no single accepted outcome. Treat migration as a state machine with durable progress and rollback rules.
+
+Version the routing map. A request carrying an older map can be redirected or rejected with current metadata under the protocol. The old owner must not simply accept the request because it still has a copy of the data. Knowing the bytes and owning the right to mutate them are different properties.
+
+A modulo map illustrates another migration cost. Moving from three to four owners changes the destination for nine of our twelve keys. That is not a claim that every sharding scheme moves three quarters of the dataset; it is a result of this specific map and key population. Consistent hashing and explicit virtual partitions address different parts of remapping and placement, which deserve their own topic.
+
+<RunnableCode code={`keys = list(range(12))
+old = {key: key % 3 for key in keys}
+new = {key: key % 4 for key in keys}
+moved = [key for key in keys if old[key] != new[key]]
+print("Keys whose owner changes:", moved)
+print("Moved:", len(moved), "of", len(keys))
+assert len(moved) == 9
+
+# A routing version is checked before accepting an authoritative write.
+current_map_version = 2
+for request_map_version in (1, 2):
+    print("Request map:", request_map_version,
+          "accept here:", request_map_version == current_map_version)
+# Try it: compare three to six owners; compute movement before promising an inexpensive resize.
+`} />
+
+The version equality is only a toy admission check. A real service needs the full ownership decision and a trusted source for the map, not just matching integers. It also needs handling for duplicate requests around cutover. An idempotency record or business identifier must remain discoverable by the new owner so retrying a migrated operation does not repeat an effect.
+
+## Inspect a Candidate Key Before Committing to It
+
+For a relational source, a diagnostic query such as `SELECT customer_id, count(*) FROM orders GROUP BY customer_id ORDER BY count(*) DESC LIMIT 20;` identifies large record groups. It does not measure traffic. Combine group size with request logs or aggregate counters for operation rate and cost, using privacy-conscious identifiers and bounded cardinality.
+
+MongoDB's shard-key documentation discusses cardinality, frequency, monotonic growth, and query patterns. DynamoDB's partition-key guidance similarly emphasizes distributing activity, not just data size. Use the chosen engine's analysis tools and supported resharding protocol in a test environment before applying ownership changes. A key that looks balanced on a uniform synthetic generator can behave differently under a real large tenant or trending object.
+
+## Common Problems and Fixes
+
+The shard map is balanced while one owner is overloaded. Inspect per-key demand and operation cost before moving random ranges. A time-based key concentrates all new writes. Revisit range boundaries, a compound key, or hash distribution while accounting for time-range query costs. A global query times out when one owner is slow. Define partial-result semantics or provide an appropriate materialized view instead of silently dropping a shard.
+
+Resharding loses a concurrent update. Identify the snapshot and change-stream boundary, fence ownership, and test writes during cutover. Old clients keep writing to the previous owner. Version and refresh routing, and make the former owner enforce the transfer. A unique identifier collides across shards. Route conflicting identifiers to a shared authoritative boundary or use a generation and collision-handling protocol that preserves the invariant.
+
+## When Not to Shard Yet
+
+| Situation | Better first step |
+| --- | --- |
+| A missing index causes large scans | Fix the access path |
+| One machine has safe capacity and recovery reserve | Keep a simpler replicated ownership boundary |
+| One indivisible write-hot key dominates | Change that key's operation model or admission policy |
+| No tested live migration protocol exists | Establish cutover correctness before adding ownership groups |
+
+## Remember
+
+| Decision | Consequence |
+| --- | --- |
+| Key | Defines locality and the natural ownership group |
+| Distribution | Balance bytes, request rate, and operation cost |
+| Routing | Locate owners and handle stale maps |
+| Transaction | Colocation determines local versus cross-owner work |
+| Migration | Transfer both data and mutation authority |
+| Hot key | May require a different state representation |
+
+You can now distinguish aggregate fleet capacity from the capacity of the owner serving one key. Return to [Data Ownership and Consistency](/docs/software-system-design/data), and pair partitioning with [replication](/docs/software-system-design/replication) for each shard's recovery design.
+
+## Sources
+
+- [MongoDB, Sharding Introduction and Architecture](https://www.mongodb.com/docs/manual/sharding/): partitioned storage and routing roles.
+- [MongoDB, Choose a Shard Key](https://www.mongodb.com/docs/manual/core/sharding-choose-a-shard-key/): cardinality, frequency, monotonicity, and query patterns.
+- [MongoDB, Reshard a Collection](https://www.mongodb.com/docs/manual/core/sharding-reshard-a-collection/): supported ownership redistribution.
+- [Amazon DynamoDB, Partition-Key Design](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/bp-partition-key-design.html): activity distribution and access patterns.
+- [Amazon DynamoDB, Write Sharding](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/bp-partition-key-sharding.html): suffixing keys and read aggregation trade-offs.

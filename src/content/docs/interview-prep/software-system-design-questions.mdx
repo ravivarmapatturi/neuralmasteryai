@@ -1,0 +1,157 @@
+---
+title: "Software System Design Interview Questions"
+sidebar_position: 7
+description: "Practice architecture scenarios involving capacity, consistency, delivery, coordination, recovery, and ten worked production software designs."
+---
+import { QA, ELI5 } from '../../../components/content/ExpandableDepth';
+
+# Software System Design Interview Questions
+
+<ELI5>Explain the promise first, then follow one request through the failure. Numbers show whether there is enough capacity; an invariant shows whether the result is trustworthy. Compare your reasoning with each answer after making your own decision.</ELI5>
+
+These scenarios refer to the [software system design track](/docs/software-system-design/roadmap). State the authoritative owner, the ambiguous outcome, and the measurement you would use before adding another component.
+
+## Ten instances run at 60% peak utilization across zones of four, three, and three. Is losing one zone safe?
+
+<QA id="capacity" q="Ten instances run at 60% peak utilization across zones of four, three, and three. Is losing one zone safe?" context="Peak traffic is 6,000 requests/s; each instance safely serves 1,000 requests/s. Failure utilization must remain at or below 70%." sourceRoute="/docs/software-system-design/foundations">
+
+Ten instances are insufficient for the stated failure target. Losing the largest zone leaves six instances at 100% utilization. Fourteen instances placed five, five, and four leave nine survivors at 66.7%. This assumes even routing and the tested per-instance capacity remains valid under failure; the database and routing layer must survive too.
+
+</QA>
+
+## A worker autoscaler finally matches arrival rate, but queue age keeps rising. What do you inspect?
+
+<QA id="scaling" q="A worker autoscaler finally matches arrival rate, but queue age keeps rising. What do you inspect?" context="Arrivals are 6,000 jobs/s. Capacity was 4,000/s for ninety seconds and is now 6,000/s." sourceRoute="/docs/software-system-design/scaling">
+
+The fleet accumulated 180,000 jobs during startup. Matching arrivals stops queue growth but does not drain existing backlog, so old jobs remain delayed. At 8,000 completions/s, spare capacity is 2,000/s and takes ninety seconds to drain that backlog under steady arrivals. Inspect actual completions, oldest-job age, dependency saturation, and retry traffic before adding workers.
+
+</QA>
+
+## A user saves a change and immediately sees the old value. How do you restore a session guarantee?
+
+<QA id="replica" q="A user saves a change and immediately sees the old value. How do you restore a session guarantee?" context="The primary acknowledged version eight; an asynchronous replica still serves version seven." sourceRoute="/docs/software-system-design/data">
+
+Route the session read to the primary or carry a minimum version barrier and wait for a replica that has applied version eight. More replicas alone do not guarantee read-your-writes. Bound waiting by the request deadline and define primary fallback or an explicit failure. Continue using weaker replica reads for operations where that staleness is acceptable.
+
+</QA>
+
+## Two buyers each reserve six of ten remaining items. How do you prevent overselling?
+
+<QA id="inventory" q="Two buyers each reserve six of ten remaining items. How do you prevent overselling?" context="Both requests may read the same initial stock. The invariant is that confirmed remaining inventory cannot be negative." sourceRoute="/docs/software-system-design/data">
+
+Use an atomic conditional decrement that updates only when available stock is at least six, and check whether a row was updated. Alternatively use a correctly scoped transaction with locking or serializable isolation and whole-transaction retry. A separate read followed by an unconditional computed write can accept twelve units. Keep the inventory authority within the transaction boundary.
+
+</QA>
+
+## A worker commits an effect and crashes before acknowledging the event. What should redelivery do?
+
+<QA id="delivery" q="A worker commits an effect and crashes before acknowledging the event. What should redelivery do?" context="The broker provides at-least-once delivery. The effect is a database update owned by the consumer." sourceRoute="/docs/software-system-design/communication">
+
+Redelivery should look up a stable event identity recorded atomically with the business update. If it exists, skip the effect and acknowledge; if not, apply the update and insert the identity in one transaction. A process-local set disappears on restart. This protects the database effect, not an unrelated external provider call outside that transaction.
+
+</QA>
+
+## A paused lock holder resumes after its lease expired and a new holder started. What prevents corruption?
+
+<QA id="fencing" q="A paused lock holder resumes after its lease expired and a new holder started. What prevents corruption?" context="The old holder has token 41; the replacement has token 42. Both can still reach the protected store." sourceRoute="/docs/software-system-design/distributed-systems">
+
+The protected store must atomically reject writes with an older fencing token after accepting token 42. Lease expiry lets a replacement acquire authority but cannot stop old code from running. Persist the accepted authority at the resource and consider per-owner sequencing for repeated writes. Shortening lease time alone does not solve the stale writer problem.
+
+</QA>
+
+## An order commits but its publication event disappears after a crash. How do you close the gap?
+
+<QA id="outbox" q="An order commits but its publication event disappears after a crash. How do you close the gap?" context="The order database and broker do not share a transaction. Consumers tolerate at-least-once delivery." sourceRoute="/docs/software-system-design/distributed-systems">
+
+Write the order and an outbox row in one local transaction, then let a relay publish committed rows. A relay crash after publication can duplicate the event, so preserve the event identity and deduplicate consumers. Monitor oldest unpublished age and support replay. Publishing before the database commit only changes the failure into an event for an uncommitted order.
+
+</QA>
+
+## Three synchronous replicas all received an accidental delete. What recovery evidence do you need?
+
+<QA id="recovery" q="Three synchronous replicas all received an accidental delete. What recovery evidence do you need?" context="The latest recoverable backup is fifteen minutes old. Detection takes five minutes, restore forty, and validation five." sourceRoute="/docs/software-system-design/reliability">
+
+Replicas alone cannot undo the delete; restore a retained backup or recoverable historical point. The modeled potential data gap is fifteen minutes and recovery time is fifty minutes. Test restoration with disaster-time permissions, keys, log replay, and application validation. A successful backup job does not prove those objectives are met.
+
+</QA>
+
+## A short-link revocation races with a slow cache fill. How do you preserve the deletion deadline?
+
+<QA id="links" q="A short-link revocation races with a slow cache fill. How do you preserve the deletion deadline?" context="A reader fetched destination version seven; revocation wrote tombstone version eight before the reader fills the cache." sourceRoute="/docs/software-system-design/url-shortener">
+
+Prevent version seven from replacing the newer tombstone through a version-aware cache write or an equivalent proven invalidation protocol. Bound every cache lifetime within the revocation contract, including edge and client policies. A simple delete can race with an old refill. If clients retain permanent redirects indefinitely, the service cannot promise immediate revocation through those copies.
+
+</QA>
+
+## Ten gateways each give one tenant a local burst of five. Is the global burst five?
+
+<QA id="limiter" q="Ten gateways each give one tenant a local burst of five. Is the global burst five?" context="Each local bucket refills at two requests/s. The intended global policy is burst five and sustained two/s." sourceRoute="/docs/software-system-design/rate-limiter">
+
+No. Independent buckets permit a combined burst of fifty and sustained rate twenty/s. Use one atomic owner per key, or partition leased allowance so the total and failover overshoot are explicitly bounded. Specify fail-open, fail-closed, or bounded fallback by operation risk. A store timeout is different from a known quota rejection.
+
+</QA>
+
+## A celebrity post cannot finish fan-out before the freshness target. How do you redesign the feed?
+
+<QA id="feed" q="A celebrity post cannot finish fan-out before the freshness target. How do you redesign the feed?" context="The author has ten million followers; dedicated fan-out capacity is 50,000 inbox inserts/s, and freshness target is five seconds." sourceRoute="/docs/software-system-design/news-feed">
+
+Fan-out alone takes two hundred seconds, so use a hybrid feed: precompute ordinary-author inboxes and merge high-fan-out author posts at read time. Deduplicate references and use stable cursor ordering. Recheck current visibility rather than trusting copied inbox data. The trade-off is lower write amplification against greater read-time fan-in.
+
+</QA>
+
+## A sender retries after its chat acknowledgment disappears. How do you avoid a second message?
+
+<QA id="chat" q="A sender retries after its chat acknowledgment disappears. How do you avoid a second message?" context="The first attempt committed conversation sequence 418. The socket closed before the sender saw acceptance." sourceRoute="/docs/software-system-design/chat-system">
+
+Retry with the same client message ID. The conversation owner atomically maps that identity to the already committed sequence 418 and returns it. A reconnecting receiver resumes after its durable conversation cursor and deduplicates live overlap. Durable acceptance, device delivery, and read receipts are separate states.
+
+</QA>
+
+## A notification provider times out after accepting a send. Should another provider send immediately?
+
+<QA id="notify" q="A notification provider times out after accepting a send. Should another provider send immediately?" context="The first provider may have accepted the message; the notification has a stable intent identity and an expiry." sourceRoute="/docs/software-system-design/notification-system">
+
+Preserve an unknown outcome and reconcile through the original provider identity or status API before another irreversible send. Immediate failover can duplicate delivery. Keep provider acceptance separate from device delivery, enforce expiry and current preferences, and document the duplicate-versus-loss policy when the provider cannot deduplicate or report status.
+
+</QA>
+
+## One million viewers average 4 Mb/s each. What does a 95% CDN byte-hit rate leave at origin?
+
+<QA id="video" q="One million viewers average 4 Mb/s each. What does a 95% CDN byte-hit rate leave at origin?" context="Use decimal units and separate media bandwidth from playback API request rate." sourceRoute="/docs/software-system-design/video-streaming">
+
+Delivery is 4 Tb/s, or 500 GB/s. At a 95% byte-hit rate, origin still serves 25 GB/s. Size origin and shielding for cold-cache and purge scenarios, and distinguish request-hit rate from byte-hit rate. Publish a playable manifest only after required segments validate; CDN capacity cannot repair missing source objects.
+
+</QA>
+
+## An older autocomplete request completes last. How do you keep results correct?
+
+<QA id="autocomplete" q="An older autocomplete request completes last. How do you keep results correct?" context="The request for ca has generation eight; cat has generation nine. Popularity refreshes hourly but blocked terms must disappear sooner." sourceRoute="/docs/software-system-design/search-autocomplete">
+
+Render only the response whose generation matches the current input. Cancellation helps resource use but does not replace this check. Serve a coherent versioned candidate index and apply current suppression separately so blocking does not wait for a full popularity rebuild. Avoid exposing rare private query strings as public suggestions.
+
+</QA>
+
+## Two matchers choose the same driver from a stale location index. Who decides the winner?
+
+<QA id="ride" q="Two matchers choose the same driver from a stale location index. Who decides the winner?" context="Location reports arrive every five seconds; exclusive assignment is mandatory even when discovery is stale." sourceRoute="/docs/software-system-design/ride-sharing">
+
+The authoritative driver or trip store decides through an atomic conditional reservation. Both matchers can discover the driver, but only one can transition the expected available version to offered. The loser chooses another candidate. Offer acceptance and expiry must also check identity and version so delayed work cannot replace newer state.
+
+</QA>
+
+## A charge may have succeeded but the provider response was lost. What does the payment API return?
+
+<QA id="payment" q="A charge may have succeeded but the provider response was lost. What does the payment API return?" context="The request has customer-scoped key k17 and amount 1,000 cents. Ledger and provider are separate authorities." sourceRoute="/docs/software-system-design/payment-system">
+
+Return the durable operation identity with pending or unknown status until provider evidence resolves it. Reuse the supported provider idempotency identity and reject a different amount under k17. Post balanced ledger entries once under a unique operation constraint when the accounting event is established. Reconcile provider reports and verified callbacks; a timeout does not authorize another charge.
+
+</QA>
+
+## A file upload finishes its chunks but loses the metadata version race. What should readers see?
+
+<QA id="files" q="A file upload finishes its chunks but loses the metadata version race. What should readers see?" context="File manifests are immutable; the current pointer is changed conditionally after chunk durability acknowledgments." sourceRoute="/docs/software-system-design/distributed-file-storage">
+
+Readers keep seeing the previous complete version because the conditional manifest commit failed. Uploaded chunks remain unpublished orphans until safe garbage collection accounts for active uploads and retained versions. Verify hashes on reads and repair lost copies across failure domains. Replica count alone does not prove recovery or corruption detection.
+
+</QA>
+

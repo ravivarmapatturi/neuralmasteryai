@@ -1,0 +1,66 @@
+---
+title: "Data Ownership and Consistency"
+sidebar_position: 3
+description: "Choose storage from access and update boundaries, then reason about indexes, replicas, shards, transaction histories, and cache freshness one mechanism at a time."
+---
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+
+# Data Ownership and Consistency
+
+<ELI5>
+A service needs to know where its records live, who may change them, and which copy a reader can trust. Extra copies help with different problems from splitting records among owners. These chapters separate those decisions and show how they interact under concurrent updates and failure.
+</ELI5>
+
+Follow the nine topics in order. Each develops a concrete storage decision with a worked example, an interactive explanation, runnable experiments, and failure cases.
+
+| Chapter | Decision it teaches |
+| --- | --- |
+| [SQL vs NoSQL: Choose the Update Boundary](/docs/software-system-design/sql-vs-nosql) | Place authoritative facts and define the state that changes together |
+| [Indexing and Query Access Paths](/docs/software-system-design/indexing) | Match filter and ordering requirements to maintained access structures |
+| [Replication, Acknowledgement, and Failover](/docs/software-system-design/replication) | Separate remote receipt, durability, replay, and mutation authority |
+| [Sharding and Data Ownership](/docs/software-system-design/sharding) | Choose ownership keys and diagnose skew and cross-shard work |
+| [Consistent Hashing and Membership Changes](/docs/software-system-design/consistent-hashing) | Calculate remapping without confusing it with safe migration |
+| [CAP and PACELC](/docs/software-system-design/cap-and-pacelc) | Explain partition-time promises and ordinary coordination costs |
+| [Consistency Models and Allowed Histories](/docs/software-system-design/consistency-models) | Distinguish session guarantees, causal visibility, and real-time order |
+| [Transactions, Isolation, and Write Skew](/docs/software-system-design/transactions-and-isolation) | Protect a shared invariant against concurrent decisions |
+| [Caching Strategies and Invalidation Races](/docs/software-system-design/caching-and-invalidation) | Prevent stale refills and budget cold-cache demand |
+
+## SQL and NoSQL Begin With Access Patterns
+
+[Storage-model choice](/docs/software-system-design/sql-vs-nosql) follows a current profile name across two orders, separating referenced authority from duplicated fields and intentional historical snapshots. [Indexing](/docs/software-system-design/indexing) then traces the same query through two composite-key orders. Use the existing [database track](/docs/databases/overview) for engine and query-language material.
+
+## Replication Copies State; It Does Not Define Freshness
+
+[Replication](/docs/software-system-design/replication) follows record version 8 from primary acknowledgement to replica replay. [Consistency models](/docs/software-system-design/consistency-models) specifies what different clients may observe along that path. A durable remote log and a current read are distinct progress boundaries.
+
+## Sharding Changes Ownership
+
+[Sharding](/docs/software-system-design/sharding) shows why equal record counts can hide an indivisible hot key. [Consistent hashing](/docs/software-system-design/consistent-hashing) calculates which keys move when one token joins; transferring data and write authority still requires a migration protocol.
+
+## CAP and PACELC Describe Different Trade-offs
+
+[CAP/PACELC](/docs/software-system-design/cap-and-pacelc) traces one acknowledged write across a partition and distinguishes formal progress from an availability SLO. It then budgets the normal network path required by a selected remote acknowledgement policy.
+
+## Transactions Protect Named Invariants
+
+[Transactions and isolation](/docs/software-system-design/transactions-and-isolation) uses two clinicians who each see the other on call. Atomic disjoint updates can leave nobody present; the page reproduces that write-skew schedule and explains an invariant-preserving serial order.
+
+## Caches Need a Staleness Contract
+
+[Caching and invalidation](/docs/software-system-design/caching-and-invalidation) demonstrates a delayed old read filling a cache after a correct database commit and deletion. Its fenced model states the additional lifetime and atomicity assumptions needed to reject that refill.
+
+## Common Problems and Fixes
+
+Name the authoritative fact, the concurrent transition, and the observer before choosing a storage mechanism. The topic pages make their assumptions executable and distinguish calculated models from actual engine guarantees.
+
+## When Not to Shard or Cache
+
+A missing access path, an oversized result, or an unmeasured workload can justify a smaller change. Inspect [index costs](/docs/software-system-design/indexing) and [cache reuse requirements](/docs/software-system-design/caching-and-invalidation) before adding another owner or derived copy.
+
+## Remember
+
+Placement, replication, visibility, isolation, and freshness are different properties of the same operation. Apply them together in the [payment case study](/docs/software-system-design/payment-system), then continue to [Communication](/docs/software-system-design/communication).
+
+## Sources
+
+Primary specifications, papers, engine documentation, and the full calculations are listed in each topic chapter.

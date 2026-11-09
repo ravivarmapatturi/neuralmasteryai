@@ -1,0 +1,157 @@
+---
+title: "Consistency Models and Allowed Histories"
+sidebar_position: 3.7
+description: "Compare linearizability, session guarantees, causal visibility, and eventual convergence by testing explicit read/write histories and their required ordering."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import ConsistencyHistoryExplorer from '../../../viz/diagrams/ConsistencyHistoryExplorer';
+
+# Consistency Models and Allowed Histories
+
+<ELI5>
+Two people can look at different copies of a shared notebook. One promise says your own edits remain visible when you look again. Another says you never see an older page after a newer one. A stronger promise says everyone sees changes in an order that respects completed actions. These promises sound similar until a person changes desks and gets a different copy.
+</ELI5>
+
+A **consistency model** describes which observations a system permits across operations. We evaluate a history of requests and responses, including who performed them and which operations happened before others. The latest values eventually matching is only one possible property; it does not establish what users were allowed to observe on the way there.
+
+The misconception is that “strong” and “eventual” are the only useful choices. Our example uses one record changing from version 7 to version 8 with no later writes. A client reading 8 and then 7 violates monotonic reads even if it never wrote anything. A client writing 8 and then reading 7 violates read-your-writes even if it has no previous read. These histories separate session guarantees before we introduce a stronger global real-time requirement.
+
+## Describe an Execution Before Naming Its Model
+
+A **history** records operation invocations and completions. For a read, keep the returned value; for a write, keep the requested value and whether it definitely completed, failed before effect, or has an unknown outcome. A timeout after transmission is not proof that a write did not commit. A consistency analysis that discards unknown operations can reach the wrong conclusion about the allowed order.
+
+A **session** identifies an ordered sequence of operations for one logical client under the promised contract. It might span requests routed to different replicas. Define whether signing in on another device creates a new session and whether an application server preserves client context. A cookie, connection, or process identity alone does not automatically establish the intended scope.
+
+In our examples, 7 and 8 are ordered versions of the same record, not arbitrary numeric values whose magnitude establishes causality. A later legitimate write could set a balance from 8 to 7 without going backward in history. We explicitly assume no such later write so a returned older version is unambiguous. Production tests need operation identities or versions rather than guessing order from business values.
+
+## Session Guarantees Protect Different Observations
+
+**Read-your-writes** requires a later read in the session to include the effects of its own earlier successful writes, subject to the object semantics. It prevents a newly saved setting from appearing undone on the caller's next request. It does not alone require another unrelated client to see the update immediately.
+
+**Monotonic reads** prevent a session from moving backward relative to state it has already observed. If it reads version 8, a later read cannot return version 7 under our no-later-write example. The client need not have written version 8 itself. A read-your-writes policy alone does not establish this guarantee for an entirely read-only client.
+
+<ConsistencyHistoryExplorer />
+
+Select the backward-read history and compare the guarantees. Monotonic reads reject the transition from 8 to 7. Read-your-writes alone does not rule it out because the shown session contains no write. Select the own-write history and the situation reverses: returning 7 after writing 8 violates read-your-writes, while one isolated read does not contradict monotonic reads by itself.
+
+A system can offer both guarantees, but it must implement both when clients move between replicas. A session progress token can carry required visibility, routing can retain a suitable owner, or a read can wait until another replica catches up. If the required state is unreachable within the deadline, the service needs a documented wait, refusal, or weaker-response policy. Calling a replica “nearby” does not prove it is suitable.
+
+<RunnableCode code={`histories = {
+    "own_write_then_old_read": [("write", 8), ("read", 7)],
+    "new_read_then_old_read": [("read", 8), ("read", 7)],
+    "own_write_then_current_read": [("write", 8), ("read", 8)],
+}
+for name, operations in histories.items():
+    written, observed = 0, 0
+    ryw_ok = monotonic_ok = True
+    for kind, version in operations:
+        if kind == "write":
+            written = max(written, version)
+        else:
+            ryw_ok &= version >= written
+            monotonic_ok &= version >= observed
+            observed = max(observed, version)
+    print(name, "read-your-writes:", ryw_ok, "monotonic reads:", monotonic_ok)
+# Try it: add a read of version 8 before the old read in the first history; both checks now fail.
+`} />
+
+The checker is intentionally limited to one ordered-version register and one session. It is not a general verifier for arbitrary data types or concurrent distributed histories. Its conditions directly mirror the shown examples so the reader can distinguish the guarantees. A full checker needs the object's operations, dependencies, concurrency, and unknown outcomes.
+
+## Linearizability Includes Real-Time Precedence
+
+**Linearizability** requires each operation to appear to take effect at one point between its invocation and completion, with the resulting order respecting completed-before-started relationships. If a write of version 8 completes before another client's read begins, that later read cannot return version 7 in our history. The requirement applies across clients, not just within the writer's session.
+
+Concurrent operations can have more than one valid order. A read overlapping a write may return the old or new value depending on the valid linearization point. The model does not require an outside observer to know a physical instant when every memory cell changed. It requires an allowed atomic explanation compatible with the observed intervals.
+
+**Sequential consistency** also permits a common operation order preserving each process's program order, but does not impose all cross-process real-time precedence constraints. That distinction matters when one client's completed action is expected to constrain another client's later request. Do not substitute “all nodes agree on some order” for a real-time contract without checking the requirement.
+
+<PredictFirst question="Alice successfully writes version 8. A separate Bob session, with no prior reads or writes, then reads version 7. Does read-your-writes alone rule out Bob's result?" options={["Yes, the guarantee is global across every user", "No, Bob has no own write in this session; a stronger cross-client contract is needed", "No, because read-your-writes never constrains any read"]} correctIndex={1} explanation="Read-your-writes relates a session's own writes to its later reads. Linearizability adds cross-client real-time requirements for the object, so it rejects this no-later-write history." />
+
+Linearizable reads often need coordination or proof of current authority. A replica locally returning its latest applied value may still be behind. A lease-based read path needs assumptions about lease validity, time, and ownership; a quorum-based path needs the full protocol. The [CAP/PACELC discussion](/docs/software-system-design/cap-and-pacelc) explains why communication loss can prevent the strong operation from completing.
+
+## Causal Visibility Preserves Dependencies
+
+**Causal consistency** preserves the order of operations that depend on one another while potentially allowing different orders for independent concurrent operations. A reply depends on the message it answers. Showing the reply while the original message is absent can violate the intended dependency visibility even if both eventually arrive.
+
+Causality is a relation between events, not a promise that nearby wall-clock timestamps reveal their order. An application must propagate relevant dependencies through its operations. If an event handler reads a new setting and emits a derived result, discarding the read context can erase the link the storage system needs to preserve visibility.
+
+A causal model need not place unrelated concurrent updates into one universal order visible identically at every moment. If two people independently add different comments, their temporary ordering can differ while each reply still follows its own parent. Conflict resolution and convergence are additional requirements to specify; the word “causal” alone does not choose a merge rule for all business state.
+
+<GoDeeper title="Go deeper: a version barrier needs the scope of the dependency">
+A scalar progress token can work naturally for one ordered replication stream. Independent partitions may have different progress positions, so a cross-partition session or causal dependency can require a vector, dependency set, or another protocol. Comparing unrelated scalar positions as if they described one global history can falsely declare a reader current. The implementation should document what a token covers and how that scope changes during failover or repartitioning.
+</GoDeeper>
+
+## Eventual Convergence Does Not Set a Freshness Deadline
+
+**Eventual consistency** requires an appropriate convergence property under its stated assumptions, commonly after updates cease and communication and recovery can make progress. It does not by itself specify a fixed maximum staleness interval. A system can converge later while violating a user's expectation that a saved setting is visible immediately.
+
+A **bounded-staleness** contract adds an explicit bound, which might be expressed in time or versions under a defined model. A time bound needs an observation reference and assumptions about clock or progress measurement. A version bound needs a meaningful comparable history. Neither should be inferred from an average replication lag chart.
+
+A cache with a 60-second freshness lease can provide a specific serving bound under its implementation assumptions. A cache that serves stale-on-error indefinitely does not preserve that same bound. The consistency model must cover the cache path, not merely the database connection used on a miss. A strongly configured store behind an uncontrolled stale cache does not make the complete API strongly consistent.
+
+## Match the Guarantee to the Action
+
+A settings page often needs read-your-writes and monotonic reads for the editing session. A public feed can tolerate some delayed posts while preserving important reply dependencies. A unique reservation may need an atomic conditional transition at its authoritative owner, not just a consistent display read. Select the minimum guarantee that preserves the action's invariant and useful user experience.
+
+Multi-object transaction guarantees require another question. Two individually linearizable keys do not automatically give a reader one atomic snapshot across both when it performs separate reads around a concurrent update. Serializability and strict serializability describe transactional histories with their own scope and ordering. Read guarantees and transaction isolation are connected, but should not be collapsed into a single strength label.
+
+For each API operation, record the requested guarantee, the state it covers, the session or dependency token carried, and behavior when the required observation cannot be established. Test route changes and failover rather than only repeated reads on one warm primary. A session guarantee that disappears when the mobile app reconnects needs a narrower documented scope or a better implementation.
+
+The second experiment demonstrates a visibility barrier for a message and its reply. Delivery arrives in the wrong order, so the reply is buffered until its parent is visible. This is one dependency example, not a complete causal database. It makes the distinction between receipt and permitted visibility concrete.
+
+<RunnableCode code={`visible = set()
+pending = []
+arrivals = [(2, 1), (1, None)]  # (event id, required parent)
+for event, parent in arrivals:
+    pending.append((event, parent))
+    changed = True
+    while changed:
+        changed = False
+        for item in pending[:]:
+            event_id, dependency = item
+            if dependency is None or dependency in visible:
+                visible.add(event_id)
+                pending.remove(item)
+                changed = True
+    print("Arrived:", event, "visible:", sorted(visible), "buffered:", pending)
+assert visible == {1, 2} and not pending
+# Try it: omit event 1; event 2 remains buffered because its required parent never becomes visible.
+`} />
+
+## Common Problems and Fixes
+
+An API promises current reads but routes blindly to replicas. Carry an appropriate barrier or use a reader that can establish the required state. A client moves backward after reconnecting. Preserve session context and inspect replica selection. A reply appears before its parent. Trace dependency propagation through the application, queue, and storage rather than sorting solely by timestamps.
+
+A system passes a convergence test but exposes forbidden intermediate histories. Record and check request histories during failure. A test treats numeric value order as version order. Use actual operation versions and object semantics so legitimate decrements are not mistaken for stale reads. A multi-object invariant fails despite correct single-key reads. Review the transaction boundary and concurrency protocol.
+
+## When Not to Demand One Global Strong Mode
+
+| Situation | Better requirement |
+| --- | --- |
+| A user only needs their saved setting to remain visible | Explicit session guarantees with failure behavior |
+| Independent events can arrive in either order | Preserve relevant dependencies rather than arbitrary wall-clock order |
+| An analytical view may lag by an agreed interval | A measured freshness contract and recovery owner |
+| A reservation must never oversell | An atomic invariant-preserving transition, not only a read preference |
+
+## Remember
+
+| Model or property | History it constrains |
+| --- | --- |
+| Read-your-writes | Your later reads include your earlier writes |
+| Monotonic reads | Your observed state does not go backward |
+| Linearizability | Object operations respect a global real-time-compatible atomic order |
+| Causal consistency | Dependent effects become visible in dependency order |
+| Eventual convergence | Replicas converge under the stated progress assumptions |
+| Bounded staleness | A precisely defined maximum observation lag |
+
+You can now identify the guarantee violated by a short read/write history instead of relying on a generic consistency label. Return to [Data Ownership and Consistency](/docs/software-system-design/data), and connect these observations to [replication](/docs/software-system-design/replication).
+
+## Sources
+
+- [Jepsen, Read Your Writes](https://jepsen.io/consistency/models/read-your-writes): session write visibility.
+- [Jepsen, Monotonic Reads](https://jepsen.io/consistency/models/monotonic-reads): nondecreasing session observations.
+- [Jepsen, Linearizability](https://jepsen.io/consistency/models/linearizable): real-time order and object scope.
+- [Jepsen, Causal Consistency](https://jepsen.io/consistency/models/causal): dependency visibility and concurrent operations.
+- [Vogels, Eventually Consistent—Revisited (2008)](https://www.allthingsdistributed.com/2008/12/eventually_consistent.html): client-visible replication guarantees.

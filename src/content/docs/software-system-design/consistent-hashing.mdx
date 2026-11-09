@@ -1,0 +1,159 @@
+---
+title: "Consistent Hashing and Membership Changes"
+sidebar_position: 3.5
+description: "Trace clockwise key ownership, calculate the keys moved by a joining node, and distinguish virtual-node balance from safe data migration and hot-key handling."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import ConsistentHashMembershipExplorer from '../../../viz/diagrams/ConsistentHashMembershipExplorer';
+
+# Consistent Hashing and Membership Changes
+
+<ELI5>
+Imagine numbered delivery lockers arranged around a circular street. Each parcel goes to the next locker clockwise from its number. Adding a locker changes the destination of nearby parcels rather than renumbering every locker on the street. The routing rule makes fewer destinations change, but workers still need to move the affected parcels and agree when the new locker becomes responsible.
+</ELI5>
+
+**Consistent hashing** maps keys and ownership tokens into a shared hash space so membership changes affect a limited portion of the mapping under the scheme's assumptions. It is useful for distributed caches and partition placement where ordinary modulo assignment would remap many keys when the owner count changes. It is an assignment technique, not a transaction, replication, or migration protocol.
+
+The misconception is that a stable hash ring guarantees balanced traffic and safe resizing. Our worked ring has owners A at 20, B at 50, and C at 80, with key positions 10, 30, 45, 60, and 90. Adding D at 35 moves only key 30 from B to D. That is one of five keys in this chosen example, not a universal 20% movement guarantee. We will trace the mapping, then explain why moving bytes and write authority still requires a protocol.
+
+## Clockwise Successor Defines the Owner
+
+Treat positions as points in a circular ordered space. A key belongs to the first owner token at or after its position when moving clockwise, wrapping to the first token after the end. We define equality to belong to the token itself so boundary behavior is deterministic. A production scheme must specify the same convention on every participant.
+
+Before D joins, key 10 goes to A at 20, keys 30 and 45 go to B at 50, key 60 goes to C at 80, and key 90 wraps to A. The interval owned by A crosses the end of the numbered space. A ring diagram cut at zero can make that wrap easy to miss, so the visual below explicitly draws the return path.
+
+<ConsistentHashMembershipExplorer />
+
+D at 35 takes the interval after A at 20 through D at 35, which was previously part of B's interval. Among the five example keys, only 30 lies there. Key 45 remains with B, and every key assigned to A or C keeps its owner. Switch membership to compare the same key population without changing any key hash.
+
+An actual implementation hashes stable serialized identifiers into a much larger space. The small positions here are chosen teaching inputs so every successor can be checked by eye. Hash collisions, token collisions, and key serialization must have defined behavior; a hundred-position classroom ring is not an adequate production namespace.
+
+<RunnableCode code={`from bisect import bisect_left
+keys = [10, 30, 45, 60, 90]
+before = [(20, "A"), (50, "B"), (80, "C")]
+after = sorted(before + [(35, "D")])
+
+def owner(position, ring):
+    tokens = [token for token, name in ring]
+    index = bisect_left(tokens, position) % len(ring)
+    return ring[index][1]
+
+moved = []
+for key in keys:
+    old, new = owner(key, before), owner(key, after)
+    print("Key:", key, "before:", old, "after:", new)
+    if old != new:
+        moved.append(key)
+print("Moved keys:", moved)
+assert moved == [30]
+# Try it: place D at 70 instead of 35; identify which predecessor interval it takes.
+`} />
+
+The code performs a binary search over sorted tokens, then wraps the result. Its lookup complexity depends on token count and the chosen structure, not on the number of stored values. Keeping the ring metadata available locally can avoid a remote directory lookup, but metadata freshness and membership agreement remain separate concerns.
+
+## Compare Movement With Modulo Assignment
+
+A modulo rule assigns `hash(key) % owner_count`. When the count changes, the divisor changes for the entire key population. In the [sharding example](/docs/software-system-design/sharding), changing from three to four owners remapped nine of twelve selected integer keys. Consistent hashing instead changes successor relationships around the affected token intervals.
+
+Under suitable uniform placement assumptions, a newly added owner takes a share related to its token intervals. A specific finite key population can move more or less than an ideal average predicts. Count actual moved bytes and work before a resize, because equal numbers of keys can have different sizes or traffic. One moved key can dominate migration cost if it contains a very large object.
+
+A routing map can be stable while the workload is uneven. If key 30 carries most traffic, moving it to D transfers a hotspot rather than divides it. A healthy ring minimizes unnecessary movement; it does not make an indivisible operation parallel. Keep hot-key mitigation and assignment stability as different design questions.
+
+## Virtual Nodes Improve Placement Granularity
+
+A **virtual node** is a logical token or partition assigned to a physical machine. Giving each machine several separated tokens can reduce the variance caused by assigning only one random interval per machine. It also provides smaller units for rebalancing and can represent different capacity weights through deliberate placement or token counts.
+
+Virtual nodes are not additional physical failure domains. If A owns ten tokens, losing machine A loses all ten together. A replica-selection algorithm must avoid counting several tokens on A as several independent copies. Account for zones, racks, and physical hosts when choosing redundant owners, rather than stopping after a fixed number of clockwise token positions.
+
+More tokens increase metadata and potentially the number of peer relationships and streaming tasks involved in a change. They do not remove migration load. Choose enough granularity for the balancing and operational goals, then measure the consequences. A copied token-count setting from another cluster is not evidence about this cluster's workload or topology.
+
+<PredictFirst question="A machine owns ten virtual nodes. Does storing three replicas on three of its tokens protect against that machine failing?" options={["Yes, three distinct token positions are three independent copies", "No, the tokens share the same physical failure domain", "Yes, provided the token positions are far apart on the ring"]} correctIndex={1} explanation="Virtual placement changes logical ownership granularity. All copies on the same machine can disappear together, regardless of how far apart their token positions lie." />
+
+A capacity weight also needs a measured meaning. Doubling token count does not necessarily double useful throughput if a shared storage or network stage is already constrained. Weight can describe desired ownership share, while admission and observed latency describe safe work. Preserve both so the ring does not become an unreviewed capacity controller.
+
+## Replication Needs Distinct Owners and a Consistency Protocol
+
+A replicated placement policy can select a primary successor and additional eligible physical owners. It must define how those owners are discovered and how failure domains constrain selection. Walking clockwise until three tokens have been seen is not equivalent to selecting three distinct machines, much less three zones.
+
+After placement, another protocol determines write acknowledgement and conflict handling. A ring does not say whether writes wait for one copy, several copies, or replay at every reader. It does not establish linearizability, causal ordering, or read-your-writes. The [replication chapter](/docs/software-system-design/replication) separates those guarantees from the assignment map.
+
+A cache can tolerate a different membership transition from a durable store. A cache miss can often refill from an authoritative origin, provided cold demand is bounded. A durable value cannot be silently absent from both the old and new owner during transition. Reusing the same hash formula in both systems does not imply that their migration procedures are interchangeable.
+
+<GoDeeper title="Go deeper: minimal remapping is not agreement">
+Two clients with different membership views can compute different successors for the same key even when they use an identical hash function. Consistent hashing can limit the spread caused by view differences under particular models, but it does not decide which view authorizes a durable write. Membership epochs, consensus, redirects, or another ownership protocol must resolve that question. Safe mutation authority is a stronger requirement than deterministic lookup given one map.
+</GoDeeper>
+
+## Transfer Data and Authority in Separate Steps
+
+When D joins at 35, copying key 30's current bytes is only the first step. B may accept another update while the copy is in flight. A migration needs a change-capture boundary, catch-up process, and cutover rule that prevents the new owner from starting with stale state. Requests using old maps need a safe redirect or compatibility path.
+
+A durable transition can proceed through preparation, snapshot, catch-up, authority transfer, verification, and retirement of the old copy under the engine's protocol. A failure at any stage needs a recoverable state. Rolling back the map after D has accepted new writes may require moving those writes back; it is not simply restoring an old configuration file.
+
+Throttle data streaming against serving headroom. The newly added machine can relieve future ownership while the migration temporarily consumes network, disk, CPU, and cache capacity on existing machines. A resize intended to fix overload can worsen it if all transfers start together. Measure foreground latency and replication lag during the move, not only completion percentage.
+
+The next experiment checks distinct physical owners and a deterministic hash. The virtual-token list contains A twice; the selector deliberately skips repeated physical owners before choosing replicas. The hash helper uses SHA-256 over UTF-8 so its result is stable across processes, unlike relying on Python's process-randomized string hash for a persisted routing scheme.
+
+<RunnableCode code={`import hashlib
+virtual_owners = ["A", "A", "B", "C", "B"]
+replicas = []
+for machine in virtual_owners:
+    if machine not in replicas:
+        replicas.append(machine)
+    if len(replicas) == 3:
+        break
+print("Distinct physical replica owners:", replicas)
+assert replicas == ["A", "B", "C"]
+
+def stable_position(key):
+    return int.from_bytes(hashlib.sha256(key.encode("utf-8")).digest(), "big")
+
+print("Stable prefix for order-30:", hex(stable_position("order-30"))[2:18])
+assert stable_position("order-30") == stable_position("order-30")
+# Try it: remove C from virtual_owners; the selector cannot manufacture a third physical owner.
+`} />
+
+The example selector assumes the given sequence is already the clockwise candidate list for one key. It does not model zone constraints or failed nodes. A production selector needs those rules and must fail explicitly when it cannot satisfy the requested replica placement, rather than returning duplicate copies under different token names.
+
+## Inspect Placement Before Changing Membership
+
+Export or inspect the engine's token ownership and physical topology using its supported tooling. For a Cassandra test cluster, `nodetool status` reports node and ownership information; interpret its ownership metric under the keyspace and replication settings rather than as a direct traffic percentage. Join that view with per-node request rate, storage size, and latency to identify actual skew.
+
+Before adding an owner, compute affected ranges and estimated bytes, decide transfer concurrency, and verify failure reserve while streaming. Exercise a stale client map and a failed joining node in a test environment. A successful steady-state lookup test after migration does not demonstrate that concurrent writes survived the transition.
+
+## Common Problems and Fixes
+
+One-token placement produces an uneven interval distribution. Use appropriate virtual partitions or deliberate placement and evaluate actual bytes and work. Virtual replicas share a physical host. Select distinct failure domains before counting redundancy. Clients hash the same identifier differently. Standardize encoding, normalization, hash algorithm, boundary convention, and map version.
+
+A new node causes origin or storage overload as caches become cold. Bound fill traffic and streaming, and include cold demand in the capacity plan. A removed owner still accepts writes from old clients. Enforce authority epochs or the engine's supported routing protocol. A hot key moves but remains hot. Change the read or write model rather than adding more unrelated ring positions.
+
+## When Not to Use a Hash Ring
+
+| Situation | Better fit |
+| --- | --- |
+| Queries primarily scan adjacent natural-key ranges | Range placement with a deliberate hotspot policy |
+| Explicit tenant placement is mandatory | A versioned directory or supported placement policy |
+| Owner count and workload are tiny and stable | A simpler measured assignment map |
+| One key dominates indivisible writes | Redesign that key's ownership or admission semantics |
+
+## Remember
+
+| Mechanism | What it does and does not provide |
+| --- | --- |
+| Clockwise successor | Defines one map's key assignment |
+| Membership change | Alters specific ownership intervals |
+| Virtual nodes | Improve logical granularity, not physical independence |
+| Replication policy | Selects eligible distinct copies |
+| Migration protocol | Preserves concurrent effects during transfer |
+| Stable hashing | Requires identical serialization and algorithm across participants |
+
+You can now calculate which keys move when a token joins and identify the additional protocol required before that move is safe. Return to [Data Ownership and Consistency](/docs/software-system-design/data), and compare assignment with [sharding](/docs/software-system-design/sharding) and [replication](/docs/software-system-design/replication).
+
+## Sources
+
+- [Karger et al., Consistent Hashing and Random Trees (1997)](https://people.csail.mit.edu/karger/Papers/web.pdf): consistent assignment under changing cache membership.
+- [DeCandia et al., Dynamo (2007)](https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf): partitioning, virtual nodes, and replica placement in a full storage design.
+- [Apache Cassandra, Dynamo Architecture](https://cassandra.apache.org/doc/latest/cassandra/architecture/dynamo.html): token ownership and replication architecture.
+- [Apache Cassandra, Virtual Nodes](https://cassandra.apache.org/doc/latest/cassandra/managing/operating/topo_changes.html): topology operations and virtual-node trade-offs.
+- [Envoy, Ring Hash Load Balancing](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/load_balancing/load_balancers.html): ring-based request assignment in a proxy context.

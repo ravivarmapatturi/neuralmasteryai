@@ -1,0 +1,136 @@
+---
+title: "CDNs, Cache Keys, and Edge Freshness"
+sidebar_position: 2.5
+description: "Design CDN caching from representation identity and freshness requirements, calculate cold-origin demand, and compare versioned assets with invalidation."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import CdnOriginLoadExplorer from '../../../viz/diagrams/CdnOriginLoadExplorer';
+
+# CDNs, Cache Keys, and Edge Freshness
+
+<ELI5>
+A library can place popular books in neighborhood branches so every reader does not travel to the central warehouse. Each branch needs to know which edition it holds and whether that edition is still suitable. A private letter cannot be shelved as a public book merely because another reader asks for the same title. Edge caching needs the same decisions about reuse, identity, and freshness.
+</ELI5>
+
+A **content delivery network**, or CDN, serves content through geographically distributed edge infrastructure, often caching reusable responses closer to clients. It can reduce origin traffic and some network distance, while adding another place where response identity, freshness, and access policy must remain correct. Routing through a CDN and actually obtaining an edge cache hit are different events.
+
+The misconception is that a high normal hit rate makes origin capacity unimportant. Our illustrative edge receives 6,000 requests/s. At 95% hits, 300 requests/s reach the origin; at 50%, origin demand rises to 3,000 without any client traffic increase. A purge or cold deployment can expose the full 6,000. We will calculate those values, then show why changing a cache key or its freshness policy changes both correctness and capacity.
+
+## Trace a Hit and a Miss Separately
+
+An **origin** is the upstream source from which the CDN obtains a representation. On a cache hit, a reusable response can be served without a full origin fetch. On a miss, the CDN forwards an appropriate request, receives the origin's result, and may retain it under its cache policy. Some deployments have intermediate regional or shield caches, so an edge miss does not always imply an origin miss.
+
+A hit can avoid application execution and a long origin round trip, but it still includes client-to-edge transport and response transfer. A miss can add an intermediary hop before reaching the origin. Measure hit and miss latency separately, especially when tail latency matters. A good overall median can coexist with slow first requests for every newly published asset.
+
+The simple origin-demand formula is client rate multiplied by one minus hit rate. It assumes each miss produces one origin request, with no coalescing, revalidation-only transfer, or additional hierarchy. The diagram makes those assumptions explicit so that a measurement can replace the model rather than be confused with it.
+
+<CdnOriginLoadExplorer />
+
+Lower hit rate from 95% to 50%. The origin bars grow from 300 to 3,000 requests/s, a tenfold change. Lower it to zero to model a fully cold working set. The origin need not always provision for serving every cold request successfully if the product permits bounded rejection or stale responses, but that policy must be designed rather than discovered during a purge.
+
+<RunnableCode code={`client_rps = 6000
+warm_origin = client_rps * (1-.95)
+for hit_rate in (.95, .50, 0):
+    origin = round(client_rps * (1-hit_rate))
+    print("Hit percent:", hit_rate*100, "origin requests/s:", origin,
+          "relative to warm:", round(origin/warm_origin, 1))
+# Try it: double client_rps; all origin rates double, while their ratios stay unchanged.
+`} />
+
+Request hit rate and byte hit rate are different indicators. Serving many tiny cached responses can produce a high request hit rate while a few large video misses dominate origin bandwidth. Track both when payload size varies, and preserve the operation mix. A single percentage cannot describe every resource the CDN protects.
+
+## A Cache Key Defines Who May Share a Response
+
+A **cache key** identifies the representation a request is allowed to reuse. Its ingredients can include host, path, selected query parameters, and request headers under the CDN's policy. If language changes the body but the key ignores language, one client can receive the wrong translation. If identity changes the body but the key ignores identity, a shared cache can expose another user's response.
+
+More key dimensions improve separation only when they correspond to real representation differences. Including a unique tracking query parameter in every key can make otherwise public content effectively uncacheable. Normalize only parameters that are proven irrelevant; removing a signature, tenant identifier, or version parameter without understanding it can change authorization or content semantics.
+
+HTTP's `Vary` response field identifies request-header dimensions relevant to selecting a stored response under standard caching behavior. CDN-specific cache policies may require additional configuration. Verify actual behavior instead of assuming a header overrides every distribution setting. Compression variants, such as gzip and Brotli, also require compatible representation selection and content-encoding handling.
+
+For a public catalogue, our second experiment uses the same path in English and French. A path-only key stores the first response and returns it for the second language. A `(path, language)` key separates them. This is a small correctness model, not an instruction to cache authenticated responses by arbitrary client-supplied language alone.
+
+## Freshness Is a Permission to Reuse
+
+A cached response is **fresh** while its policy permits reuse without successful revalidation. `max-age` describes a freshness lifetime, while `s-maxage` targets shared caches under HTTP rules. `private` prevents shared-cache storage under the standard policy; `no-store` directs caches not to store. `no-cache` permits storage but requires validation before reuse, a distinction easy to miss when reading the names.
+
+A conditional request can ask whether a stored representation remains current using a validator such as an ETag. A 304 response allows reuse of the stored body under the resulting metadata. Revalidation can reduce bytes transferred while still consuming origin request-processing capacity. Do not treat “no full body transfer” as “no origin work.”
+
+The `Age` field estimates time since the response was generated or successfully validated within the caching system under the specified rules. It is not simply a stopwatch since the nearest edge received the object. Use it with cache-control metadata and the provider's cache-status diagnostics to investigate why a response was reused.
+
+<PredictFirst question="A response says Cache-Control: no-cache. Must every intermediary refuse to store its body?" options={["Yes, no-cache and no-store mean the same thing", "No, it may be stored but reuse requires successful validation under the directive", "No, it can always be served indefinitely without contacting the origin"]} correctIndex={1} explanation="No-cache governs reuse without validation; no-store governs storage. Treating them as synonyms can produce either unnecessary transfer or incorrect stale serving." />
+
+Freshness is not the same as authorization. A cached body may remain byte-for-byte unchanged while permission to access it has been revoked. Use an access model that remains valid at the edge for the required interval, or avoid shared caching of the protected response. A long asset lifetime cannot replace a deliberate revocation contract.
+
+## Versioned Assets and Invalidation Solve Different Updates
+
+A content-addressed or versioned filename identifies a new representation with a new URL, such as `app.v2.js` replacing `app.v1.js`. Clients requesting the new URL cannot confuse it with the old key. This supports long caching for immutable assets, provided the document referencing them changes safely and old assets remain available while older documents still reference them.
+
+An **invalidation** removes or marks stale existing cached entries before their ordinary expiry. It is useful when an existing URL must change, but propagation is not automatically instantaneous and a provider purge does not necessarily clear a browser's private cache. AWS's CloudFront documentation explicitly distinguishes invalidating edge copies from versioned names that change which resource clients request.
+
+For urgent link revocation, choosing a new URL for a JavaScript asset does not stop the old short code from redirecting. The public identifier still addresses the same action. Use a bounded freshness or invalidation protocol appropriate to that requirement. The [design-approach example](/docs/software-system-design/design-approach) demonstrates why a 300-second cached redirect cannot satisfy a 60-second revocation promise by expiry alone.
+
+<GoDeeper title="Go deeper: stale serving trades freshness for continuity">
+The stale-while-revalidate extension permits reuse of a stale response during a specified interval while revalidation proceeds. Stale-if-error permits a bounded stale response in specified error conditions. These policies can protect availability and reduce synchronized refresh pressure, but only for operations whose contract permits that staleness. They do not erase the need to budget the maximum age observed by a user or to exclude sensitive transitions requiring current authorization.
+</GoDeeper>
+
+## Prepare the Origin for Cold and Synchronized Demand
+
+A popular object expiring at many edges can trigger concurrent refreshes. **Request coalescing** lets one fetch serve multiple waiting requests for the same key within an appropriate scope. A shield cache can aggregate edge demand before the origin. Both need bounded waiting and failure behavior; an unavailable shared fill must not hold every caller indefinitely.
+
+A release that changes all asset URLs intentionally creates misses. Publish new objects before the document points to them, retain old versions for clients still using older documents, and observe origin transfer demand during rollout. Purging all paths as a routine deployment step can remove unrelated warm content and create a larger origin event than the release requires.
+
+Inspect a real public response with `curl -sS -D - -o /dev/null https://www.rfc-editor.org/rfc/rfc9111`. Look for cache-control, age, validators, redirects, and any cache-status fields actually returned. Repeat the request and compare; do not infer a cache hit solely from a shorter elapsed time. Headers and provider policy together explain reuse, while network conditions can change timing independently.
+
+For a local origin policy, public immutable assets might return `Cache-Control: public, max-age=31536000, immutable` only when their URLs truly change with content. A mutable HTML entry point needs a different policy so it can discover new versions. The one-year value is an illustrative configuration choice; freshness should match the release and revocation contract, not a copied duration.
+
+<RunnableCode code={`requests = [("/catalogue", "en", "Hello"), ("/catalogue", "fr", "Bonjour")]
+for include_language in (False, True):
+    cache = {}
+    print("Language in key:", include_language)
+    for path, language, origin_body in requests:
+        key = (path, language) if include_language else path
+        if key not in cache:
+            cache[key] = origin_body
+        body = cache[key]
+        print("Language:", language, "served:", body,
+              "correct:", body == origin_body)
+# Try it: add a third English request; the correct key reuses English without mixing languages.
+`} />
+
+## Common Problems and Fixes
+
+A high warm hit rate hides origin fragility. Test a cold key set, planned invalidation, and a shield failure under the agreed load envelope. An irrelevant key dimension fragments the cache; identify actual representation inputs before normalizing. A missing key dimension mixes responses; test two requests that differ only in that input and inspect both bodies.
+
+A purge appears ineffective because the browser still holds an old resource. Distinguish browser and shared-cache lifetimes, use versioned immutable asset URLs, and test an older document loading its referenced assets. An error page is cached longer than intended; define cache policy for failures as deliberately as for successful responses and verify how recovery becomes visible.
+
+## When Not to Share-Cache a Response
+
+| Situation | Better approach |
+| --- | --- |
+| Response contains user-specific private state | Private caching or an explicitly authorized edge design |
+| Immediate revocation requires current state | A bounded control path that verifies freshness |
+| Every request has a genuinely unique representation | Optimize origin work and transport instead |
+| A cache policy has no defined key or expiry owner | Establish the contract before enabling storage |
+
+## Remember
+
+| Decision | What to verify |
+| --- | --- |
+| Cache key | Requests sharing a key may safely share a response |
+| Freshness | Maximum permitted reuse and validation behavior |
+| Invalidation | Propagation scope and fallback freshness bound |
+| Capacity | Origin demand during cold or fragmented caching |
+| Versioning | New and old documents can load their assets |
+| Measurement | Request hits, byte hits, and miss latency separately |
+
+You can now calculate origin load and test whether a CDN reuses exactly the response a client is allowed to receive. Return to [Scaling](/docs/software-system-design/scaling), then compare those demand changes with [capacity estimation](/docs/software-system-design/capacity-estimation).
+
+## Sources
+
+- [RFC 9111, HTTP Caching (2022)](https://www.rfc-editor.org/rfc/rfc9111): keys, freshness, validation, and cache-control directives.
+- [RFC 5861, HTTP Cache-Control Extensions for Stale Content (2010)](https://www.rfc-editor.org/rfc/rfc5861): bounded stale-response policies.
+- [Amazon CloudFront, Invalidate Files](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/Invalidation.html): invalidation versus versioned filenames.
+- [Amazon CloudFront, Understand Cache Policies](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/controlling-the-cache-key.html): configured cache-key inputs.
+- [Amazon CloudFront, Serve Compressed Files](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/ServingCompressedFiles.html): compression variants and cache behavior.

@@ -1,0 +1,147 @@
+---
+title: "Kafka Logs, Offsets, and Processing Boundaries"
+sidebar_position: 4.6
+description: "Trace partition logs and committed offsets, size replay and retention, and distinguish Kafka transaction guarantees from effects committed in an external store."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { KafkaOffsetBoundary } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
+
+# Kafka Logs, Offsets, and Processing Boundaries
+
+<ELI5>A numbered ledger keeps old entries so several readers can work at their own pace. Each reader bookmarks where to continue. Moving the bookmark before finishing can skip work; moving it afterward can repeat work after a crash. The ledger preserves the sequence, while the reader must make its result and bookmark agree.</ELI5>
+
+Trace partition logs and committed offsets, size replay and retention, and distinguish Kafka transaction guarantees from effects committed in an external store.
+An event log retains ordered records so consumers can replay them independently. Kafka organizes a topic into partitions, each with its own ordered offset space and replication protocol. Consuming a record does not remove it for every other consumer. Retention and compaction determine what remains available, while consumer-group progress determines where a group resumes.
+
+The misconception is that committing an offset commits the business effect. Our partition contains offsets 10, 11, and 12. The group has committed next offset 11 after finishing 10. It applies an external effect for record 11 and crashes before committing next offset 12. Recovery begins at 11, so an unguarded effect repeats. Committing 12 before performing the effect changes duplication into possible loss.
+
+## Partitioning Defines the Ordering Scope
+
+A **partition** is one ordered log. Offsets identify positions within it, not timestamps or a topic-wide sequence. Two records in different partitions cannot be ordered merely by comparing offset numbers. A key can route related events to the same partition under a defined partitioner, supporting local ordering while introducing the possibility of a hot key.
+
+Changing partition count or partitioning rules can move future records for a key while older records remain elsewhere. If the application needs one uninterrupted per-key history, plan the transition explicitly. A stable business aggregate identifier, a version, and a supported migration protocol are more useful than assuming every hash mapping remains constant forever.
+
+A topic can scale processing across partitions, but a consumer group's assignment and protocol constrain parallel ownership. Additional consumers beyond available assigned partitions do not automatically divide one partition's ordered processing. An application can process records concurrently inside a partition only if it preserves the ordering and progress semantics its effects require.
+
+## Position and Committed Progress Are Different
+
+A consumer can fetch records and advance an in-memory position before effects finish. A **committed offset** records where the group should resume under its configured mechanism. Kafka commits the next offset to consume: after safely handling 11, the relevant next value is 12. Confusing last processed with next to process creates off-by-one replay or omission.
+
+<KafkaOffsetBoundary />
+
+The visual holds record 11 and a crash fixed, then switches the boundary. Effect-first resumes at 11 and may duplicate. Offset-first resumes at 12 while record 11's effect can be absent. A transaction coordinating supported Kafka outputs and source offsets can align those broker-side obligations, but does not silently include an unrelated database or HTTP service.
+
+<RunnableCode code={`records = [10, 11, 12]
+committed_next = 11
+external_effects = [11]
+print("Before crash: effect exists for 11, committed next:", committed_next)
+replay = [offset for offset in records if offset >= committed_next]
+for offset in replay:
+    external_effects.append(offset)
+print("Restart reads:", replay)
+print("Effect executions for 11:", external_effects.count(11))
+assert external_effects.count(11) == 2
+# Try it: deduplicate effects by a durable event identity; replay need not repeat the business change.
+`} />
+
+A durable event identity should include enough source scope to distinguish streams and histories, or use a business operation ID with stable intent semantics. Offset 11 alone is not globally unique across all topics and partitions. Recreating or replacing a topic can also change what a previously stored cursor means. Treat progress metadata as a versioned contract, not an arbitrary integer column.
+
+## Producer Durability and Consumer Effects Have Separate Controls
+
+Producer acknowledgements determine which broker-side progress a send waits for under the replication settings. The in-sync replica requirements and `acks` policy interact with failure behavior. An idempotent producer can prevent some duplicate log entries caused by retries within its protocol, but it does not make every application request or downstream effect idempotent.
+
+A timeout can leave a producer uncertain whether its record committed. Preserve the supported producer identity and retry behavior rather than replacing them with random new sends. Application-level duplicates can still arise when the same business action is submitted under a new identity or when another producer independently publishes it. Define business deduplication separately from transport retry suppression.
+
+A consumer writing another Kafka topic can use a supported transactional processing pattern that includes outputs and consumed offsets, with readers configured to observe the intended committed data. A consumer charging an external service needs that service's idempotency or a reconciliation protocol. The phrase “exactly once” must identify participants and failure assumptions.
+
+<PredictFirst question="After processing offset 11, which offset should a successful progress commit name as the next record?" options={["11, because it is the last record seen", "12, because committed progress identifies where to resume", "The record timestamp, because offsets are global times"]} correctIndex={1} explanation="Kafka progress uses the next offset. The commit must follow the correct processing boundary; the arithmetic alone does not establish that an external effect is safe." />
+
+## Rebalances Are Ownership Changes
+
+A group rebalance can transfer partitions when membership changes. The previous consumer may still have in-flight work when a new one starts. Stop or coordinate old processing, preserve the progress boundary, and obey the client protocol's ownership rules. A detached background task should not keep writing effects indefinitely after its partition ownership was revoked.
+
+Long processing intervals can interact with polling and liveness settings. Increasing a timeout can reduce unnecessary movement but also delay recovery from a dead consumer. Bound work per poll or move long operations into a deliberately checkpointed processing design. Do not make a timeout adjustment substitute for understanding why a handler stalls.
+
+Commit only a contiguous completed prefix when processing concurrently. If records 10 and 12 finish while 11 is still incomplete, committing 13 would skip 11 after a crash. Track outstanding work and advance the committed frontier only when all prior required records are safely handled. Higher throughput is valid only if progress still means what recovery assumes.
+
+<GoDeeper title="Go deeper: the committed frontier is not the largest completed offset">
+A set of completions can contain gaps. The safe next offset is one past the largest contiguous completed prefix from the prior frontier, not one past the maximum member of the set. A transaction or durable deduplication protocol may allow different recovery behavior, but that behavior must be explicit. Otherwise one fast later job can cause an older unfinished job to vanish from restart processing.
+</GoDeeper>
+
+## Retention and Compaction Are Recovery Choices
+
+Time or size retention bounds how much historical log remains. A consumer lagging behind the retained start cannot recover missing records simply by resetting to the earliest available offset. It needs a snapshot, rebuild, or a documented loss decision. The [streaming chapter](/docs/software-system-design/communication) connects the same issue to client reconnect cursors.
+
+Compaction retains a representation of key history according to the engine's rules; it is not the same as retaining every event forever. A log suitable for rebuilding current state may not satisfy an audit requirement to inspect every intermediate change. Tombstone handling, deletion retention, and consumer lag must match the rebuild contract. A deleted entity should not resurrect because an offline consumer missed its deletion record.
+
+For capacity, estimate bytes per record, replication, ingress, retention, index overhead, and headroom separately. At an illustrative 1,000 records/s and 500 payload bytes, a day carries 43.2 GB of payload before replication and overhead. Three stored copies imply 129.6 GB of copied payload in that simplified model. Compression and actual record framing change measurements, so retain the assumptions.
+
+## Inspect Progress With Real Tooling
+
+On a configured local Kafka environment, `kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group orders` exposes group assignment and progress information. Interpret lag per partition and inspect age and service deadlines alongside record counts. A thousand tiny events and a thousand expensive events do not require the same recovery time.
+
+Use `kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic orders --from-beginning --max-messages 3` on a disposable test topic to inspect retained input. It does not validate business processing, and attaching diagnostic consumers to a production group can change ownership. Keep experiments isolated and record topic, partition, offset, and event identity when investigating a processing gap.
+
+<RunnableCode code={`completed = {10, 12}
+next_offset = 10
+while next_offset in completed:
+    next_offset += 1
+print("Completed offsets:", sorted(completed))
+print("Safe contiguous next offset:", next_offset)
+assert next_offset == 11
+payload_bytes_per_day = 1000 * 500 * 86400
+print("Daily payload GB:", payload_bytes_per_day / 1e9)
+print("Three-copy payload GB:", payload_bytes_per_day * 3 / 1e9)
+# Try it: add 11 to completed; the frontier can advance through 12 to 13.
+`} />
+
+A practical lag investigation should distinguish records not fetched, fetched but waiting locally, executing, committed at the destination, and recorded in group progress. These stages can disagree without a broker defect. A consumer that fetches far ahead can report a current local position while still holding a large amount of unfinished business work. Conversely, a deliberately conservative committed frontier can show lag even when some later effects already exist.
+
+During a partition transfer, capture the old consumer's outstanding identities and the new consumer's restart point. Pause one effect after its external commit, revoke ownership, and start the replacement. The expected result should be stated before the test: one durable business effect, a safe replay or reconciliation, and no skipped earlier work. Repeat with the effect blocked before commit. That second history must eventually complete rather than being suppressed by a premature receipt record. Together the tests examine both safety and progress across the actual consumer lifecycle, rather than validating only a steady stream with no crashes.
+
+During recovery, compare the committed frontier with destination receipts using the full topic, partition, and history identity. A numerical offset that matches by coincidence is not evidence that the intended record committed.
+
+## Recover the Consumer's State at the Same Boundary as Its Position
+
+The committed offset is a restart bookmark for one consumer group and partition. It does not describe every external effect that happened before the crash. In the example, committing next offset 12 says that the group will resume after record 11. If the sink never committed record 11's effect, advancing that bookmark has hidden unfinished work. If the sink committed first but the bookmark remains 11, replay is expected. A recoverable consumer must make one of those windows harmless through sink idempotency, a transactional integration, or another explicit reconciliation protocol.
+
+Partition assignment changes do not remove this problem. A worker can lose an assignment while an external request it started is still in flight. The new owner may read the same record and issue another request. Consumer-group ownership coordinates reading; it does not necessarily fence an arbitrary external sink. Bound processing time, react to assignment changes, and keep the sink's operation identity tied to the source event. A unique source position can be useful when it identifies exactly the effect being guarded, but business deduplication may need a broader identity if the same intent can appear in several records.
+
+Stateful processing has another recovery surface: local state and its changelog. Restoring a bookmark without the corresponding aggregate state can skip contributions; restoring state from a later point while replaying earlier records can count them twice. Use the framework's supported state restoration and transaction boundaries instead of copying directories and offsets independently. Also verify the retention horizon against the maximum supported recovery delay. A consumer that falls behind data already deleted from the log cannot reconstruct that history merely by selecting an older number. Define whether it rebuilds from another durable source, restores an aligned snapshot, or explicitly starts a new incomplete history. Those alternatives have different business meanings even when all of them result in a running consumer process.
+
+## Failure Modes and Better Choices
+
+A group commits offsets before its external writes finish. Move progress after a safe effect or establish an atomic supported boundary. A consumer holds one slow record while committing later completions. Track the contiguous frontier. A producer's idempotence setting is advertised as end-to-end deduplication. Test application resubmission and the actual downstream effect separately.
+
+A consumer resets after retention loss and silently skips a gap. Require repair or an explicit product decision. A hot partition limits throughput despite many idle workers. Review the key and invariant boundary before adding consumers. A schema deployment cannot read retained older events. Use versioned compatible event interpretation, including the history needed for recovery, not only newly produced messages.
+
+## When Not to Use Kafka
+
+| Situation | Better fit |
+| --- | --- |
+| Small disposable tasks need simple worker competition | A suitable work queue |
+| No consumer needs retention or replay | A simpler notification transport |
+| A single synchronous invariant needs one local commit | A database transaction |
+| The team cannot operate log retention and partition recovery | A managed or simpler mechanism with explicit guarantees |
+
+## Remember
+
+| Concept | Scope |
+| --- | --- |
+| Partition offset | Position in one ordered stream |
+| Committed next offset | Restart point, not proof of an arbitrary effect |
+| Producer idempotence | Supported producer retry boundary |
+| Kafka transaction | Coordinated supported broker-side work |
+| Retention | How far recovery may replay before repair is required |
+
+You can now follow a crash from effect commit to offset recovery and identify whether it creates replay or loss. Return to [Communication](/docs/software-system-design/communication) to distinguish retained logs from independent subscription delivery.
+
+## Sources
+
+- [Apache Kafka, Design](https://kafka.apache.org/41/design/design/)
+- [Apache Kafka, Consumer Configuration](https://kafka.apache.org/41/configuration/consumer-configs/)
+- [Apache Kafka, Producer Configuration](https://kafka.apache.org/41/configuration/producer-configs/)
+- [Apache Kafka, Streams Core Concepts](https://kafka.apache.org/41/streams/core-concepts/)
+- [AWS Builders Library, Making Retries Safe with Idempotent APIs (2021)](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/)

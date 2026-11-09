@@ -1,0 +1,102 @@
+---
+title: "Design a Ride-Sharing Service"
+sidebar_position: 14
+description: "Design nearby-driver discovery and exclusive trip assignment with location freshness estimates, authoritative reservations, expiring offers, and recovery."
+---
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import SoftwareCaseTrace from '../../../viz/diagrams/SoftwareCaseTrace';
+
+# Design a Ride-Sharing Service
+
+<ELI5>A dispatch board can suggest nearby drivers, but a suggestion is not a booking. Two dispatchers may see the same driver at once. One authoritative reservation must decide who gets the driver, while old location reports are allowed to age out. Discovery can be approximate; assignment cannot promise the same driver twice.</ELI5>
+
+## Requirements and Estimates
+
+Assume 200,000 online drivers sending location every five seconds. Ingestion is 40,000 location updates/s. At an illustrative 100 bytes per logical report, that is 4 MB/s and 345.6 GB/day if every update is retained for a full day. The live index only needs recent state, while historical retention has a separate privacy and analytics purpose.
+
+Support nearby-driver discovery, fare estimate, ride request, offer acceptance, trip state, cancellation, and payment handoff. For the exercise, a match attempt targets a candidate decision within two seconds under normal regional load. Actual arrival time remains an estimate. We do not require exact globally optimal matching or continuously available cross-region assignment.
+
+The misconception is that a geospatial index can be the authority for driver availability. Its location and status updates can be delayed. It finds plausible candidates; a separate conditional transition must ensure a driver and rider belong to at most one active assignment under the product's rules.
+
+## Location Ingestion and Candidate Discovery
+
+Authenticate driver sessions and accept monotonically sequenced reports with server receipt time. Reject or ignore older sequence numbers so a delayed packet cannot move a driver backward in the live index. Validate plausible coordinates and velocity, but treat GPS as uncertain input rather than exact ground truth.
+
+Partition the map into cells using a spatial index. Query the rider's cell and neighboring cells, then compute actual distances or travel-time estimates for candidates. Cell boundaries can place a very close driver in the adjacent cell, so querying only one cell is incorrect. Expand the radius deliberately when supply is sparse, keeping latency and candidate count bounded.
+
+Expire location reports after a defined freshness window. At fifteen meters/s, a five-second-old report can be seventy-five meters behind even with perfect GPS and no ingestion delay. Location freshness affects ETA and discovery quality; it must not be confused with the stronger exclusivity guarantee of assignment.
+
+## Atomic Assignment and Trip State
+
+The matcher proposes a driver and attempts a conditional reservation in the authoritative trip/driver store. For example, change `available` to `offered` only if the current driver version matches the version read. Two matchers can propose the same driver, but only one conditional transition succeeds. The losing matcher chooses another candidate.
+
+Store offer identity, expiry, rider, and version. Acceptance must check the offer is still current and unexpired. A client accepting an old offer after a new reservation exists must not replace it. Expiry workers use the same conditional state/version rules, preventing a delayed timeout from canceling a newly accepted trip.
+
+A trip state machine can move through requested, offered, accepted, arrived, in-progress, completed, and canceled with explicit permitted transitions. Idempotency keys make repeated acceptance and cancellation safe. Publish durable transitions through an outbox for notifications, ETA updates, and payment, keeping those consumers from becoming hidden prerequisites for assignment commit.
+
+## Regional Ownership and Recovery
+
+Partition assignment ownership geographically or by a stable trip/driver identity. A driver crossing a regional boundary requires a handoff rule; do not let two regions independently reserve the driver during migration. The location index can temporarily contain duplicate candidate references if the authoritative reservation still enforces one owner.
+
+During a regional partition, prefer refusing new conflicting assignments to inventing two successful bookings. Existing trip state should remain available to the extent the agreed topology supports it, and clients need an explicit reconnect and resynchronization path. Payment completion is asynchronous and reconciled using the [payment design](/docs/software-system-design/payment-system), rather than inferred from a lost client response.
+
+Track location age, candidate search latency, reservation conflicts, offer expiry, acceptance delay, and unmatched demand by area. Protect precise location data with narrow permissions and retention; public APIs should not expose arbitrary drivers' histories. Test duplicate reports, GPS jumps, simultaneous matchers, delayed acceptance, and a paused expiry worker. The design deliberately spends strong coordination on assignment while using approximate, replaceable views for discovery.
+
+## Follow the Failure Boundary
+
+<SoftwareCaseTrace scenario="ride-sharing" />
+
+<PredictFirst question='Two matchers discover the same available driver from a stale index. What prevents double assignment?' options={['A more precise GPS position', 'An atomic conditional reservation at the authoritative owner', 'Sorting candidates by distance']} correctIndex={1} explanation='Discovery can be stale and still useful. The reservation owner must enforce exclusivity atomically; distance precision does not serialize competing offers.' />
+
+## Run the Design Calculation
+
+<RunnableCode code={`drivers, interval, report_bytes = 200_000, 5, 100
+updates = drivers/interval
+print("Location updates/s:", updates)
+print("Payload MB/s:", updates*report_bytes/1e6)
+print("Full-day retained GB:", updates*report_bytes*86400/1e9)
+print("Travel in five seconds at 15 m/s:", 15*5, "meters")
+# Try it: use one-second updates; quantify ingestion growth and freshness improvement.
+`} />
+
+## Change the Invariant Deliberately
+
+<RunnableCode code={`driver = {"version": 7, "state": "available", "trip": None}
+def reserve(expected_version, trip):
+    if driver["version"] != expected_version or driver["state"] != "available":
+        return False
+    driver.update(version=expected_version+1, state="offered", trip=trip)
+    return True
+print("Matcher A:", reserve(7, "trip-A"))
+print("Matcher B:", reserve(7, "trip-B"))
+print("Assigned trip:", driver["trip"])
+assert driver["trip"] == "trip-A"
+# Try it: remove the version/state guard; both matchers report success.
+`} />
+
+## When Not to Use This Design
+
+| Situation | Better choice |
+| --- | --- |
+| Small dispatch fleet in one office | One transactional service and simple spatial lookup |
+| Offline route planning | Batch optimization without live assignment leases |
+
+## Remember
+
+| Decision | Reason |
+| --- | --- |
+| Location | Approximate and freshness-bounded |
+| Reservation | Atomic, versioned, and exclusive |
+| Offer expiry | Conditional transition cannot cancel newer state |
+
+Next: [Design a Payment System](/docs/software-system-design/payment-system).
+
+## Sources
+
+- [Google, S2 Geometry](https://s2geometry.io/).
+- [H3, Geospatial Indexing](https://h3geo.org/docs/).
+- [PostgreSQL, Explicit Locking](https://www.postgresql.org/docs/current/explicit-locking.html).
+- [AWS, Saga Orchestration](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/saga-orchestration.html).
+- [OWASP, Authorization](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html).

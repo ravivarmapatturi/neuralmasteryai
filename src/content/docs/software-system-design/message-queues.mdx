@@ -1,0 +1,145 @@
+---
+title: "Message Queues and Worker Acknowledgements"
+sidebar_position: 4.5
+description: "Choose durable acceptance and acknowledgement boundaries, bound worker prefetch, and recover redelivered jobs without confusing transport delivery with committed effects."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { QueueAcknowledgementEffects } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
+
+# Message Queues and Worker Acknowledgements
+
+<ELI5>A work tray lets people leave tasks for whichever worker is free. Removing a card when someone picks it up risks losing the task if they leave before finishing. Removing it after completion risks a second worker repeating it if the completion note gets lost. A queue needs an explicit agreement about pickup, completion, and repeated work.</ELI5>
+
+Choose durable acceptance and acknowledgement boundaries, bound worker prefetch, and recover redelivered jobs without confusing transport delivery with committed effects.
+A **message queue** separates a producer accepting work from workers performing it. This can absorb bounded bursts, isolate slow processing, and let workers recover independently. It also creates a second lifecycle: submitted, accepted, ready, in flight, completed, retried, expired, or diverted. The producer's response must say which transition has actually occurred.
+
+The misconception is that acknowledging receipt is equivalent to completing the job. Our example is job 7. A worker receives it, commits its effect, and loses the acknowledgement before the broker observes it. Redelivery is necessary to avoid silently losing unacknowledged work, but another unguarded execution produces a second effect. A queue's delivery protocol and the application's effect protocol must work together.
+
+## Producer Acceptance and Consumer Completion Are Different
+
+A producer should understand whether its send reached a local client buffer, a broker, a durable record, or replicated broker state. A **publisher confirm** acknowledges a configured broker-side boundary. A **consumer acknowledgement** tells the broker about processing progress. RabbitMQ documents these as separate mechanisms; a consumer acknowledgement does not tell a producer which durable copies existed at publication.
+
+Queue durability, message persistence, replication, and confirms are related settings with different responsibilities. Naming a queue durable does not make every application send durable under every failure. Select the broker's supported configuration for the promised loss model and test a crash at the acceptance boundary. A successful socket write is insufficient evidence of durable acceptance.
+
+The application can return 202 with an operation identifier after the required durable acceptance. That response should not imply completion of the downstream business action. Expose status independently so the client can inspect a long-running task after disconnecting. If the API commits a database row and then publishes separately, the dual-write failure deserves an outbox protocol rather than optimistic timing.
+
+## Acknowledgement Order Determines the Failure Window
+
+With manual acknowledgement, a worker can commit its durable effect before acknowledging delivery. A crash before the effect then leaves work eligible for retry. A crash after the effect but before acknowledged progress can replay the job. That ordering favors recovery over silent loss, while requiring idempotent or deduplicated effects.
+
+Acknowledging before performing the effect closes the duplicate window by opening a loss window. If the worker dies after acknowledgement and before commit, the broker may legitimately consider the delivery finished. There is no remaining message to drive the missing work. This is a trade in observable semantics, not a mere throughput configuration.
+
+<QueueAcknowledgementEffects />
+
+The experiment holds job 7 and its lost acknowledgement fixed. Without a durable effect guard, two attempts produce two committed effects. With an atomic operation identity and effect boundary, the second attempt discovers prior completion and acknowledges without repeating it. The broker may still deliver twice; the application effect happens once under the model's assumptions.
+
+<RunnableCode code={`for deduplicate in (False, True):
+    completed, effects = set(), []
+    for delivery in (1, 2):
+        job = 7
+        if not deduplicate or job not in completed:
+            effects.append(job)
+            completed.add(job)
+        print("Guard:", deduplicate, "delivery:", delivery, "effect count:", len(effects))
+    print("Final effects:", effects)
+# Try it: use a different job ID for the second attempt; a new intent should not be suppressed.
+`} />
+
+The set is a sequential model of a durable boundary, not a production queue consumer. In a real database, the identity check and effect commit must be atomic or follow another protocol with equivalent guarantees. A process-local set disappears on restart and cannot coordinate multiple workers. The later idempotency topic develops that application boundary in detail.
+
+## Prefetch Bounds In-Flight Work, Not Completion Rate
+
+**Prefetch** limits deliveries outstanding at a consumer under the broker's rules. It prevents a worker from accumulating arbitrary unacknowledged work and can improve fairness between workers. A larger value may improve utilization when network round trips matter, but can retain too much memory or let one slow consumer hold a large share of the queue.
+
+For three workers each allowed two unacknowledged deliveries, the simple bound is six in-flight jobs. This does not mean six jobs complete simultaneously or that service capacity doubled. Completion depends on actual worker concurrency and job cost. A worker processing one job at a time can hold a second prefetched job waiting locally while another worker becomes idle.
+
+Bound bytes as well as counts when payload size varies. Prefer references to durable large objects where appropriate, with authorization and lifetime defined for those objects. A job body referring to a file that expires before a retry is not recoverable merely because the message itself remains in the queue. Retention contracts must cover the message's dependencies.
+
+<PredictFirst question="A worker acknowledges job 7 before committing its effect, then crashes. Must the broker redeliver that job?" options={["Yes, acknowledgements prove only pickup", "No, the broker may correctly treat it as completed even though the application effect is missing", "Yes, if another worker has spare CPU"]} correctIndex={1} explanation="An acknowledgement has the configured broker meaning. Once completed progress is accepted, worker capacity cannot reconstruct an unrecorded application obligation." />
+
+## Visibility, Leases, and Long Jobs Need Recovery Policy
+
+Some queues use a visibility interval or lease instead of an indefinitely outstanding delivery. If a job takes longer than that interval, another worker can receive it while the first is still running. Extending the interval reduces accidental overlap but must handle crashes and maximum duration. A lease expiring does not stop the old worker's code or undo its external effects.
+
+Use heartbeats or lease extension only with explicit ownership semantics. A late owner may need a fencing token at the destination, or the effect may need an operation-level idempotency key. For a long computation, checkpoint durable progress where it can be safely resumed. Restarting the entire expensive job after every temporary network interruption may cause an overload cycle.
+
+A queue-order promise also has scope. Multiple consumers, redelivery, priorities, and retries can change effective processing order even when a broker enqueues messages sequentially. If one account's operations must be ordered, partition or serialize that account's effects under a defined owner. Do not infer global business ordering from the fact that messages have increasing delivery tags.
+
+<GoDeeper title="Go deeper: broker completion and an external commit are separate records">
+If a database effect commits and a broker acknowledgement is a separate operation, a crash can occur between them. Reversing the order changes duplication into loss rather than removing the gap. A distributed transaction can coordinate supported participants at a cost; more often, durable idempotency makes replay harmless. Specify which effect and stores the guarantee covers instead of advertising exactly once without a boundary.
+</GoDeeper>
+
+## Poison Jobs Need Bounded Redrive
+
+A **poison job** repeatedly fails because its payload or environment cannot satisfy processing requirements. Immediate requeue can make consumers spend all capacity on the same failing job. Bound attempts and total age, classify permanent versus transient errors, and delay retries according to the dependency's recovery behavior. A malformed message should not hold a worker indefinitely.
+
+A dead-letter destination preserves failed work for inspection or controlled recovery under its configuration. It is not a magic completion mechanism. Give it retention, access control, alerts, and an owner who can decide whether redrive remains semantically safe. Replaying a year-old notification or a cancelled order can be harmful even after its technical parsing bug is fixed.
+
+Keep original operation identity during redrive. Changing the identifier can turn a duplicate of an already committed effect into a new business action. Preserve a bounded diagnostic record without copying credentials or unnecessary personal data into every retry message. The operator needs the cause and attempt history, not unrestricted access to all original inputs.
+
+## Measure Age and Completions Alongside Queue Length
+
+Queue length counts work but does not state its cost or urgency. A hundred tiny jobs and a hundred large jobs need different recovery capacity. Track oldest eligible age, arrival rate, completion rate, in-flight count, retries, and failed work. Alert against user deadlines or recovery objectives rather than one arbitrary queue-length number.
+
+If arrivals are 100 jobs/s and completion is 60/s, ready work grows by forty per second until admission or capacity changes. Scaling to 100/s stops growth but does not drain prior accepted work. The [autoscaling chapter](/docs/software-system-design/autoscaling) derives that backlog relationship. Queueing is useful only while its delay remains compatible with the promise.
+
+<RunnableCode code={`workers, prefetch = 3, 2
+print("Maximum modeled unacknowledged jobs:", workers * prefetch)
+arrival, completion, seconds = 100, 60, 10
+backlog = (arrival - completion) * seconds
+print("Added backlog:", backlog)
+for expanded in (100, 140):
+    spare = expanded - arrival
+    print("New completion rate:", expanded,
+          "drain seconds:", backlog / spare if spare > 0 else None)
+# Try it: halve the prefetch value; the in-flight bound changes, but the completion rates do not.
+`} />
+
+For a local RabbitMQ deployment, `rabbitmqctl list_queues name messages_ready messages_unacknowledged consumers` exposes useful queue boundaries when the node and user permit it. Inspect ready versus unacknowledged counts during a paused worker, then terminate that worker and verify redelivery. Broker metrics alone cannot confirm the database effect; check authoritative state using job identity too.
+
+Include a worker that remains alive but cannot reach the broker in the recovery test. A process-kill test can make ownership transfer look clean because the old code is definitely gone. A communication failure can instead overlap old work and redelivery. The effect identity or fencing boundary must remain correct in that overlap, not only after a tidy restart.
+
+## Keep Broker Delivery State Separate From Business State
+
+A consumer acknowledgement tells the broker that a delivery can leave the pending population. The business database does not participate in that acknowledgement automatically. For job 7, a database commit followed by a lost acknowledgement leaves the broker correct to redeliver and the database correct to retain the first effect. The duplicate appears at the boundary between the two systems. If a unique job record and the intended state transition commit in one database transaction, redelivery can inspect that durable record and avoid repeating the transition. Recording completion in a different transaction reopens a failure window.
+
+Prefetch changes the number of deliveries held by a consumer before acknowledgement. Increasing it can improve utilization when work has variable latency, but it also increases the amount of unacknowledged work associated with a failed worker. A consumer that fetches far ahead and then processes serially may hold deliveries that another healthy worker could have finished. Compare the prefetch window with useful concurrency and the size of each delivery. Track pending age and processing latency alongside queue depth; a stable queue length can hide a few permanently stuck jobs.
+
+A poison delivery needs a disposition policy as well. Immediate requeue after a deterministic validation failure can create a tight failure loop, consuming capacity without changing the input. Decide which errors are transient, how attempts are counted durably, and when a message moves to a dead-letter workflow. That workflow needs an owner and a replay procedure because moving data aside does not repair it. When replaying, preserve the original business identity if the intent is the same operation. Inspect whether a partial effect already occurred before permitting another attempt. The operator should be able to explain whether job 7 is waiting, executing, completed, rejected, or awaiting intervention without deriving its business status solely from a broker's transient delivery counters.
+
+## Failure Modes and Better Choices
+
+A queue looks empty because workers prefetched every job, but users still wait. Monitor in-flight age and reduce unfair prefetch. A consumer commits then crashes and redelivery repeats a charge. Protect effect identity at its durable owner. A retry message references an expired file. Align dependency retention with job lifetime. A broker restart loses sends despite durable queue configuration. Inspect persistence, replication, confirms, and the exact acceptance response.
+
+A poison message is retried forever at the head of a workflow. Bound redrive and separate permanent failure handling. A dead-letter queue silently grows. Give it an operational owner and a recovery policy. A schema change makes older queued payloads unreadable. Preserve compatible consumers or migrate retained messages under a versioned contract; queues preserve yesterday's inputs, not only today's code.
+
+## When Not to Introduce a Queue
+
+| Situation | Better starting design |
+| --- | --- |
+| The caller needs a small immediate result | A bounded synchronous operation |
+| Accepted work has no recovery owner | Establish durable lifecycle state first |
+| Every consumer needs its own replay history | A suitable durable subscription or log |
+| The bottleneck is an invariant on one hot key | Fix ownership or admission instead of accumulating more work |
+
+## Remember
+
+| Boundary | Meaning to define |
+| --- | --- |
+| Confirm | Which producer-side acceptance is durable |
+| Delivery | Which worker currently holds an attempt |
+| Acknowledgement | When the broker may stop recovering it |
+| Prefetch | How much uncompleted work a consumer may hold |
+| Redrive | Which identity and business validity survive another attempt |
+
+You can now locate the loss and duplication windows in a worker lifecycle and measure useful progress beyond queue length. Return to [Communication](/docs/software-system-design/communication) to compare work queues with replayable logs.
+
+## Sources
+
+- [RabbitMQ, Consumer Acknowledgements and Publisher Confirms](https://www.rabbitmq.com/docs/confirms)
+- [RabbitMQ, Queues](https://www.rabbitmq.com/docs/queues)
+- [RabbitMQ, Consumers](https://www.rabbitmq.com/docs/consumers)
+- [RabbitMQ, Dead Letter Exchanges](https://www.rabbitmq.com/docs/dlx)
+- [AWS Builders Library, Making Retries Safe with Idempotent APIs (2021)](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/)

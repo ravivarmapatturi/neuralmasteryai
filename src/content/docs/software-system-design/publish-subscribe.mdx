@@ -1,0 +1,145 @@
+---
+title: "Publish/Subscribe and Independent Consumer Progress"
+sidebar_position: 4.7
+description: "Separate fan-out subscriptions from competing workers, calculate delivery amplification, and define retention, routing, and recovery independently for each subscriber."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { SubscriptionFanout } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
+
+# Publish/Subscribe and Independent Consumer Progress
+
+<ELI5>A notice can go to both the accounts team and the delivery team. Adding another person to accounts should share the accounts workload, not remove delivery's copy. Subscriptions decide which teams receive the notice; workers decide who within each team handles it. Keeping those two levels separate prevents quiet omissions.</ELI5>
+
+Separate fan-out subscriptions from competing workers, calculate delivery amplification, and define retention, routing, and recovery independently for each subscriber.
+**Publish/subscribe** decouples a publisher from independently interested subscribers. The publisher emits an event, and routing delivers it to the subscriptions that match. A subscription may contain several competing workers, but it still represents one logical consumer responsibility. Worker count and subscription count therefore change different parts of the system.
+
+The misconception is that attaching two consumers to one work queue guarantees both receive every event. For events 1 through 4, two workers sharing one queue can split them into [1,3] and [2,4]. Two independent subscriptions each need [1,2,3,4], eight logical deliveries in total. That additional work is the cost of independent interest, not accidental duplicate processing.
+
+## Route to Responsibilities Before Selecting Workers
+
+An event such as `order.accepted` describes a committed fact under the publisher's contract. Accounting and fulfilment may each need it, with different handlers, failure policies, and retention. Giving each responsibility a durable subscription lets one recover without advancing the other's progress. Sharing a single destructive work queue would make them compete for events they both require.
+
+Within fulfilment, several equivalent workers can share deliveries. Their acknowledgements advance fulfilment's subscription, not accounting's. A worker should know which subscription it represents so deduplication and metrics are scoped correctly. Suppressing an event globally because accounting already handled it would prevent fulfilment from doing its distinct required effect.
+
+<SubscriptionFanout />
+
+The bars show per-responsibility receipt counts. Under worker competition, each worker sees two events and no single independent responsibility has received the entire history through that worker alone. Under two subscriptions, each group sees all four. The example assumes successful routing and no failures; retries can add attempts beyond those logical delivery counts.
+
+<RunnableCode code={`events = [1, 2, 3, 4]
+workers = {"A": events[::2], "B": events[1::2]}
+subscriptions = {"accounting": events.copy(), "fulfilment": events.copy()}
+print("Competing workers:", workers)
+print("Independent subscriptions:", subscriptions)
+print("Worker-mode total deliveries:", sum(map(len, workers.values())))
+print("Subscription-mode total deliveries:", sum(map(len, subscriptions.values())))
+# Try it: add a third independent subscription; four more logical deliveries are required.
+`} />
+
+A Kafka consumer group and a RabbitMQ queue bound to an exchange express this separation differently. Evaluate the actual broker semantics rather than mapping every product's word “consumer” to the same unit. A replicated broker copy is also not another application subscription. Replication protects the transport's state; fan-out creates distinct application obligations.
+
+## Durability Is Not Implied by the Pattern Name
+
+Some pub/sub systems deliver only to currently connected listeners. Redis Pub/Sub documents an at-most-once delivery model for its ephemeral channel messages; a disconnected subscriber can miss a publication. That can be appropriate for hints to refresh current state, but not sufficient when every event must drive a durable independent business action.
+
+A durable subscription or retained log can preserve progress for disconnected consumers under its configured storage and retention policies. The obligation must exist at the relevant publication boundary. Creating a brand-new queue after a message was routed does not generally reconstruct the historical message unless a separate retained source supports replay.
+
+Ask what happens when no matching subscription exists, when routing fails, and when a subscriber remains offline beyond retention. A publisher confirm may acknowledge a broker boundary without proving every desired business subscriber exists. Use supported mandatory routing, topology validation, or another appropriate acceptance policy where losing an unrouted event would violate the contract.
+
+## Filters and Schemas Become Shared Contracts
+
+Routing can use an exact key, a topic pattern, headers, or a service-specific filter. RabbitMQ topic exchanges use dot-separated words with documented wildcard semantics. A broad wildcard can increase fan-out unexpectedly, while a changed event key can strand an existing subscriber without producing an application exception. Treat bindings as reviewed configuration with tests.
+
+An event schema should identify its meaning, version, aggregate identity, and occurrence or ordering context where needed. A field named `status` without a semantic transition can be difficult to interpret during replay. Consumers may need the fact as it existed at publication rather than querying the latest mutable record and accidentally observing a later state.
+
+Prefer facts that preserve the producer's authority boundary. If a producer publishes `order.accepted` before its local transaction commits, subscribers can act on an event that the producer later rolls back. The [transaction chapter](/docs/software-system-design/transactions-and-isolation) explains the local boundary; outbox publication connects it to messaging. An event name alone cannot guarantee the fact is durable.
+
+<PredictFirst question="Accounting and fulfilment must each process all four order events. Can two competing workers on one destructive queue provide those two independent histories?" options={["Yes, because there are two consumers", "No, they can split the four deliveries instead of each receiving all four", "Yes, if the broker has two replicas"]} correctIndex={1} explanation="Worker competition distributes one subscription's work. Independent responsibilities need independent progress and delivery obligations; broker replicas do not create them." />
+
+## Slow Subscribers Need Independent Limits
+
+One stalled subscriber can accumulate backlog without stopping other groups, provided the broker and storage have sufficient isolation. Total retained data, fan-out bandwidth, and recovery reads remain shared resources. A supposedly isolated subscription can exhaust a common disk or message-retention allowance and harm others. Bound quotas and monitor per-subscription age as well as fleet totals.
+
+A useful subscriber policy includes retry delays, attempt limits, dead-letter handling, retention, and a repair source. Notifications may expire because a late message is no longer useful; audit processing may need durable failure retention. Do not impose one global expiry simply because the messages originated from one event stream.
+
+For an illustrative publication rate of 1,000 events/s and five independent subscriptions, routing creates 5,000 logical deliveries/s before retries. If each serialized event is 500 bytes, that is 2.5 MB/s of delivered payload under this simple model. Subscriber-specific envelopes and transport framing add overhead. Fan-out can dominate publisher ingress even when producing events is cheap.
+
+<GoDeeper title="Go deeper: independent progress does not mean globally atomic fan-out">
+Different subscriptions can observe and commit an event at different times. One consumer may finish while another is unavailable. If the product requires a joint all-or-nothing outcome across them, the application needs a coordinating workflow or transaction protocol; pub/sub alone does not provide that invariant. Independence is valuable precisely because each responsibility can advance under its own policy.
+</GoDeeper>
+
+## Ordering and Replay Must Preserve Subscriber Meaning
+
+A subscription can provide ordering within a key or partition while allowing different keys to progress independently. Retries, concurrent workers, and handler scheduling can still change effect order. A subscriber processing account updates should reject or buffer a missing predecessor if its state transition requires one. A general event bus does not automatically serialize every downstream database write.
+
+Replay is a new attempt to apply old facts. Consumers must preserve event identity and decide whether their current code interprets historical versions correctly. An email subscriber should not resend every historical message during an analytics rebuild. Separate rebuild-oriented projections from irreversible external actions, with explicit redrive authorization and effect guards.
+
+A newly introduced subscriber needs a starting policy: future-only, replay retained history, or initialize from a snapshot at a defined boundary. Snapshot plus live events can have the same gap as a reconnecting stream. Record the cut position and reconcile overlap; “start from now after importing” can omit events produced during the import.
+
+## Exercise Delivery Scope and Routing
+
+For a disposable RabbitMQ node, inspect topology with `rabbitmqctl list_bindings source_name destination_name routing_key` and queue progress with `rabbitmqctl list_queues name messages_ready messages_unacknowledged`. Create separate test queues for accounting and fulfilment, bind both to the intended exchange, then publish a bounded set of uniquely identified events. Verify each queue receives the expected logical set before adding competing workers.
+
+For an ephemeral Redis test, run `redis-cli SUBSCRIBE nm:orders` in a subscriber terminal and `redis-cli PUBLISH nm:orders event-1` in another. Disconnect the subscriber, publish another event, and reconnect. The absence of replay is a feature of that channel contract, not a random failure. Choose a durable mechanism when the product needs the missing event retained.
+
+<RunnableCode code={`rate, groups, payload_bytes = 1000, 5, 500
+print("Logical deliveries/s:", rate * groups)
+print("Delivered payload MB/s:", rate * groups * payload_bytes / 1e6)
+progress = {"accounting": 4, "fulfilment": 2}
+latest = 4
+for group, cursor in progress.items():
+    print(group, "next required events:", list(range(cursor + 1, latest + 1)))
+# Try it: advance accounting only; fulfilment's recovery obligation must remain unchanged.
+`} />
+
+The progress dictionary assumes one contiguous source stream and no gaps. A real group can have many partitions with separate cursors. A global maximum can conceal unfinished work on a slower partition. Preserve the source scope in every progress record and alert on the oldest required work, not merely the newest event observed somewhere.
+
+Subscription ownership should be visible in the operational contract. Accounting may promise that every accepted order eventually reaches its ledger, while a live dashboard may promise only a recent view. Publishing the same event to both does not make their retention, retries, or repair requirements equal. Record the subscriber's owner, expected lag, source for rebuilding, and consequence of permanent failure before calling the event integration complete.
+
+Test a binding change as a deployment. Publish a small labelled set before, during, and after the change, then inspect each subscription's required identities. A configuration transition can temporarily route to neither old nor new queue, or to both. The application must know whether overlap is safely deduplicated and whether any gap can be replayed. A broker confirming the publication does not alone establish that the intended new responsibility received its historical starting set. Keep the old topology until the new subscriber's initialization boundary and recovery evidence are established, and remove it only under the agreed transition plan.
+
+Measure acceptance and application separately for every required subscription. An event seen by a monitoring subscriber does not prove that a slower business subscriber completed its obligation.
+
+## Give Each Subscription Its Own Recovery Contract
+
+An accounting subscription and a fulfilment subscription represent different obligations. If accounting is current while fulfilment is stopped, the publisher's success cannot mean both business actions finished. Define whether publish success means accepted by an ingress service, durably stored by the messaging system, or acknowledged by some application workflow. In the four-event example, independent durable groups allow accounting to consume its four events without consuming fulfilment's entitlement to its own four. Workers inside one group share a responsibility; separate groups preserve separate responsibilities.
+
+The groups may also need different retention and replay policies. Accounting may require a long audit history, while fulfilment may care about completing current orders without reissuing an old shipment. Replaying a historical event through a current handler can have consequences that a live-only test never exercises. Preserve event identity and define whether replay rebuilds a projection, repairs a failed effect, or intentionally creates a new action. A field that was optional in the old schema may be required by today's code. Versioned interpretation and compatibility checks therefore belong in subscription operations, not only producer deployment.
+
+Filtering can reduce unnecessary deliveries, but it changes where subscription intent is expressed. If a broker-side filter excludes an event, the consumer cannot recover it from its own received-message history. Record filter changes and decide how a new subscription backfills earlier eligible data. A newly added fraud service, for example, may need historical purchase events rather than only events published after deployment. Test that onboarding path independently from ordinary reconnection. Finally, monitor each group's lag and failure population separately. A healthy combined delivery rate can hide a permanently failed fulfilment group behind a fast accounting group. Name the affected responsibility in alerts so the recovery procedure follows the business obligation that remains unfinished.
+
+## Failure Modes and Better Choices
+
+A subscriber's acknowledgement removes work needed by another team. Separate their logical subscriptions. A new binding unexpectedly matches every event and overloads a service. Test exact routing patterns and enforce quotas. The publisher reports success while the required queue was absent. Validate routing topology and the chosen confirmation boundary.
+
+One group replays old events and repeats irreversible actions. Preserve operation identity and separate projection rebuilds from action delivery. A handler assumes the latest database state equals the published fact. Carry sufficient historical meaning or use a version-aware lookup. A schema change silently makes a filter false. Test old retained messages and binding rules as part of interface evolution.
+
+## When Not to Use Independent Fan-Out
+
+| Situation | Better fit |
+| --- | --- |
+| Exactly one interchangeable worker should perform a task | One work queue with competing consumers |
+| Every action must commit in one local invariant boundary | A local transaction |
+| A transient refresh hint is sufficient | An explicitly ephemeral notification channel |
+| Subscribers require globally atomic joint completion | A coordinated workflow with durable state |
+
+## Remember
+
+| Unit | Responsibility |
+| --- | --- |
+| Publication | A fact accepted under the producer contract |
+| Subscription | One independent delivery and recovery obligation |
+| Worker | One executor within a subscription |
+| Filter | A versioned routing predicate |
+| Replay | Historical work under the subscriber's current effect policy |
+
+You can now distinguish intentional fan-out from accidental duplicate work and calculate what independent subscribers cost. Return to [Communication](/docs/software-system-design/communication) before defining idempotency and delivery guarantees.
+
+## Sources
+
+- [RabbitMQ, Exchanges](https://www.rabbitmq.com/docs/exchanges)
+- [RabbitMQ, Queues](https://www.rabbitmq.com/docs/queues)
+- [RabbitMQ, Consumer Acknowledgements and Publisher Confirms](https://www.rabbitmq.com/docs/confirms)
+- [Redis, Pub/Sub](https://redis.io/docs/latest/develop/pubsub/)
+- [Apache Kafka, Design](https://kafka.apache.org/41/design/design/)

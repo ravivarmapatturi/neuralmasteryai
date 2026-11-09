@@ -43,7 +43,7 @@ it('retains original choice grading and exposes all preparation guides', () => {
   fireEvent.click(screen.getByLabelText(/Limit the tree/));
   fireEvent.click(screen.getByRole('button',{name:'Review my answer →'}));
   expect(screen.getByText('Correct choice.')).toBeInTheDocument();
-  expect(screen.getByText('Preparation library · 13 guides')).toBeInTheDocument();
+  expect(screen.getByText('Preparation library · 14 guides')).toBeInTheDocument();
 });
 it('answer-shape starters insert each move and light it up', () => {
   render(<MemoryRouter><InterviewPage /></MemoryRouter>);
@@ -98,4 +98,16 @@ describe('microphone', () => {
     expect(screen.getByRole('status')).toHaveTextContent('microphone is blocked');
     expect(engine.startRecording).not.toHaveBeenCalled();
   });
+});
+
+it('exposes the software architecture bank with specific criteria and its teaching route', () => {
+  render(<MemoryRouter><InterviewPage /></MemoryRouter>);
+  fireEvent.change(screen.getByLabelText('Topic'), {target:{value:'software-system-design-questions'}});
+  fireEvent.change(screen.getByLabelText('Search interview questions'), {target:{value:'Ten instances run at 60%'}});
+  fireEvent.click(screen.getByRole('button', {name:/Ten instances run at 60%/}));
+  expect(screen.getByText(/Peak traffic is 6,000 requests/)).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Your answer'), {target:{value:'Six survivors run at 100%; fourteen instances retain nine survivors at 66.7%.'}});
+  fireEvent.click(screen.getByRole('button', {name:'Review my answer →'}));
+  expect(screen.getByText('Computes six surviving instances after the largest-zone failure.')).toBeInTheDocument();
+  expect(screen.getByRole('link',{name:/original study guide/})).toHaveAttribute('href','/docs/software-system-design/foundations');
 });

@@ -1,0 +1,147 @@
+---
+title: "Back-of-Envelope Capacity Estimation"
+sidebar_position: 1.3
+description: "Estimate request rate, concurrency, bandwidth, storage, and failure reserve with explicit units, then identify which assumptions need a load test."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import SoftwareCapacityExplorer from '../../../viz/diagrams/SoftwareCapacityExplorer';
+
+# Back-of-Envelope Capacity Estimation
+
+<ELI5>
+A water tank needs enough volume for the day and a pipe wide enough for the busiest minute. A daily total tells us how much water moves, but not whether the shower works when everyone opens a tap. We also need a plan for a broken pump. Capacity estimation separates those questions before we buy equipment.
+</ELI5>
+
+A useful estimate rules out a design or identifies the next measurement. It does not predict a server count to several decimal places from uncertain product assumptions. We keep units attached to every quantity, distinguish average work from peak arrivals, and calculate resource needs for the failures the service promises to survive.
+
+The misconception is that dividing daily traffic by a server benchmark produces a production deployment. Our illustrative link service handles 100 million redirects/day and one million creates/day, with an assumed peak of 6,000 redirects/s. An instance has an assumed tested capacity of 1,000 requests/s. Ten instances appear comfortable at 60% utilization, but losing the largest of three zones leaves six at 100%. The worked example derives why fourteen are needed to remain below a chosen 70% utilization target after that failure.
+
+## Convert User Activity Into Operations
+
+A **request rate** counts operations per unit time. Daily active users are people, not requests. If an illustrative million daily users each follow 100 links, their activity generates 100 million redirects/day. Retries, background refreshes, previews, and bots can add requests beyond the human action count, so treat the conversion as an assumption requiring observation.
+
+There are 86,400 seconds in a 24-hour day. Dividing 100 million by that number gives about 1,157.41 redirects/s on average. One million creates/day averages 11.57 writes/s. The read-to-create ratio is 100:1, but that ratio may change across tenants or during campaigns. An overall read-heavy service can still contain one write-heavy partition.
+
+Our chosen peak of 6,000 redirects/s is approximately 5.18 times the average. It is not a universal peak multiplier. A traffic forecast should name its interval: a per-minute peak can conceal a much higher one-second burst. A queue can smooth work that has enough deadline slack, but cannot make an interactive latency promise indifferent to burst duration.
+
+Use a range when the input is uncertain. At a peak multiplier between four and eight, the same daily total corresponds to roughly 4,630–9,259 requests/s. The right question becomes whether the topology can scale through that range and how quickly, rather than which endpoint of the interval looks most reassuring in a spreadsheet.
+
+## Keep Storage and Network Budgets Separate
+
+Assume 500 logical bytes per new link. One million new links/day for 365 days produces 182.5 GB of logical records in decimal units. Three stored copies produce 547.5 GB before indexes, logs, backups, free-space reserve, and database overhead. This is a lower-bound model for a specified retention interval, not a claim about disk consumption in any particular storage engine.
+
+Retention changes the slope. If records expire after 30 days and deletion keeps pace, the steady logical record population is closer to 30 million than 365 million. A tombstone retained for replication or audit can keep part of the footprint after product-visible deletion. Separate the active dataset, retained history, and recovery copies because they have different lifecycles.
+
+For network payload, assume 800 bytes returned per redirect. At 6,000 responses/s that is 4.8 MB/s, or 38.4 megabits/s of response payload. Headers outside the assumption, transport framing, client requests, retransmissions, and internal traffic add cost. Do not multiply storage bytes by a request count unless those are the bytes actually transferred by each request.
+
+A replicated write can generate network traffic even when the user receives a tiny acknowledgement. A cache miss can cause both a storage read and a cache fill. Name the links being budgeted: client-to-edge, edge-to-origin, application-to-database, and cross-zone replication are distinct demand paths. A CDN saving origin bandwidth does not erase delivery bandwidth to clients.
+
+<RunnableCode code={`daily_reads, daily_creates = 100_000_000, 1_000_000
+peak_rps, logical_bytes, response_bytes = 6000, 500, 800
+average = daily_reads / 86400
+logical_gb = daily_creates * 365 * logical_bytes / 1e9
+print("Average redirects/s:", round(average, 2))
+print("Average creates/s:", round(daily_creates / 86400, 2))
+print("Peak multiplier:", round(peak_rps / average, 2))
+print("Annual logical GB:", logical_gb)
+print("Three-copy GB before overhead:", logical_gb * 3)
+print("Peak response MB/s:", peak_rps * response_bytes / 1e6)
+print("Peak response megabits/s:", peak_rps * response_bytes * 8 / 1e6)
+# Try it: double response_bytes; bandwidth doubles but logical storage does not change.
+`} />
+
+Decimal GB uses a billion bytes; GiB uses 1,073,741,824 bytes. Neither convention is more correct in every setting, but mixing them silently makes comparisons misleading. Retain bytes in calculations and convert at presentation boundaries. The same discipline prevents confusing megabits/s, often used for network capacity, with MB/s, often used for application payloads.
+
+## Provision for a Named Failure
+
+A **failure domain** is a set of resources that can disappear together, such as a zone with shared infrastructure. Redundant instances inside one domain do not necessarily survive that domain's loss. We spread instances as evenly as possible across three zones and provision for losing the largest group.
+
+With ten instances, the placement is four, three, three. Healthy utilization is 6,000/(10 × 1,000) = 60%. Removing the four-instance zone leaves capacity of 6,000 requests/s, so utilization rises to 100%. That leaves no modeled allowance for random arrivals, processing variance, or a slowdown elsewhere.
+
+<SoftwareCapacityExplorer />
+
+The chosen target is 70% utilization after failure. Required surviving instances are at least 6,000/(1,000 × 0.7), approximately 8.57, which rounds up to nine. Fourteen instances split five, five, four; losing either largest zone leaves nine. Thirteen split five, four, four; losing five leaves eight, which run at 75%. Integer placement determines the answer.
+
+The control starts with ten instances and a lost zone. Increase the count to fourteen and compare the status with the arithmetic. Then return to healthy mode: the spare capacity is the cost of the failure promise, not evidence that the model should immediately scale down to match healthy traffic.
+
+<PredictFirst question="Thirteen instances are evenly spread across three zones. Peak traffic is 6,000 requests/s and each instance handles 1,000. Is the surviving utilization below 70% after the largest zone fails?" options={["Yes, because 13,000 total capacity is more than twice the peak", "No, eight survivors run at 75%", "Yes, exactly two thirds always survive"]} correctIndex={1} explanation="The placement is five, four, four, so losing the largest group leaves eight. Total healthy capacity and a fractional two-thirds approximation both hide the discrete failure case." />
+
+The per-instance capacity is conditional on a workload and a latency threshold. A benchmark that saturates processors at an unacceptable p99 is not the capacity we can safely promise. Repeat the test with cold caches, realistic request sizes, and dependency limits. The instance count is only as useful as that capacity measurement.
+
+## Translate Time Into Concurrency and Backlog
+
+**Concurrency** counts operations in flight. For a stable population, Little's law relates average in-flight work to average arrival rate times average time in the system. At 6,000 requests/s and an assumed average time of 80 ms, the mean is 480 in-flight requests. If a dependency raises average time to 800 ms while arrivals remain unchanged, mean concurrency rises to 4,800 if the system can remain stable.
+
+Concurrency consumes resources even when processors are idle: sockets, memory, request contexts, and database pool slots. This is why a CPU-only capacity model can miss a service waiting on a remote dependency. Identify whether the load generator allows concurrent demand to rise or artificially slows its own arrivals as responses become slower.
+
+A queue needs a separate transient calculation. If arrivals are 6,000 jobs/s and completion capacity is 4,000/s for 90 seconds, backlog grows by 180,000 jobs. Raising completion capacity to exactly 6,000/s stops additional growth but does not drain the existing queue. At 8,000/s, the spare 2,000/s drains it in 90 seconds if the assumptions remain unchanged.
+
+<GoDeeper title="Go deeper: why an average identity does not predict a tail">
+Little's law relates averages over a stable system with a consistent observation boundary. It does not say that p99 concurrency equals arrival rate times p99 latency, and it does not imply a stationary queue when arrivals exceed completions. For a transient overload, integrate net arrivals over time instead. For tail objectives, retain the distribution of service time, burstiness, and correlation rather than substituting a mean into every question.
+</GoDeeper>
+
+<RunnableCode code={`import math
+arrival, per_instance, target = 6000, 1000, .70
+for instances in range(3, 100):
+    lost = math.ceil(instances / 3)
+    survivors = instances - lost
+    utilization = arrival / (survivors * per_instance)
+    if utilization <= target:
+        print("Minimum instances:", instances)
+        print("Largest lost group:", lost, "survivors:", survivors)
+        print("Failure utilization percent:", round(utilization * 100, 2))
+        break
+print("Mean in-flight at 80 ms:", arrival * .080)
+backlog = (6000 - 4000) * 90
+print("Backlog after startup:", backlog)
+print("Drain seconds with 8000/s capacity:", backlog / (8000 - arrival))
+# Try it: set per_instance to 800; find how a slower workload changes the deployment.
+`} />
+
+A memory estimate can now use the calculated concurrency. If each in-flight operation retains an illustrative 20 KB, 480 operations retain 9.6 MB before shared caches, runtime overhead, and buffers. At 4,800 they retain 96 MB. These are computed teaching values; a heap profile must establish actual retention and whether buffers are shared or copied.
+
+## Validate the Assumption That Changes the Design
+
+Start a measurement plan with the uncertain input that could reverse a decision. If cache hit rate determines whether the database needs 300 or 3,000 reads/s, test a cold-cache transition before optimizing the number of application replicas. If payload size dominates network cost, sample the size distribution rather than assuming every response equals the median.
+
+Measure safe capacity at the required latency, error rate, and failure state. Increase offered load in controlled steps, record completions separately from attempts, and stop before the test harms shared infrastructure. A useful result includes the workload distribution, software configuration, observation window, and bottleneck evidence. A bare requests/s number cannot be reproduced or interpreted.
+
+Sensitivity analysis can remain simple. Double one uncertain quantity while keeping the rest fixed and identify what changes. Doubling payload size affects network and buffer demand; doubling retention affects stored data; doubling peak arrivals affects serving and downstream concurrency. If every change leads to “add instances,” the model has probably omitted state or a shared limit.
+
+## Common Problems and Fixes
+
+Daily totals conceal bursts. Preserve interval-specific peaks and an explicit burst duration. Applying one average to writes and reads conceals different costs; split operations by resource demand. Multiplying every logical byte by a replication factor conceals logs and backups; budget them as separate lifecycle components.
+
+A healthy-load estimate conceals failure reserve. Remove the largest promised failure domain and recalculate actual survivors. A cold-start estimate conceals backlog; calculate net accumulation during detection and startup. A nominal benchmark conceals workload drift; compare current request mixes and dependency latency with the test that justified the original number.
+
+## When Not to Trust the Envelope
+
+| Situation | Better evidence |
+| --- | --- |
+| Capacity depends on lock contention | A concurrency sweep with lock-wait telemetry |
+| Cache locality dominates storage access | A representative key distribution and cold-cache run |
+| Strict tail-latency promise | End-to-end latency observations under realistic arrivals |
+| Migration changes record layout | Measured storage and write amplification on sample data |
+
+## Remember
+
+| Quantity | Units and decision |
+| --- | --- |
+| Arrival rate | Requests/s, split by operation and interval |
+| Storage | Bytes retained, including lifecycle overhead |
+| Bandwidth | Bytes/s on a named network link |
+| Concurrency | In-flight operations at one boundary |
+| Failure reserve | Surviving integer capacity after a named loss |
+| Backlog | Accumulated arrivals minus completions |
+
+You can now compute a capacity envelope without confusing healthy throughput with a failure promise. Return to [Foundations](/docs/software-system-design/foundations), then compare the estimate with the [rate limiter case study](/docs/software-system-design/rate-limiter), where admission scope changes total accepted work.
+
+## Sources
+
+- [Google SRE Workbook, Non-Abstract Large System Design (2018)](https://sre.google/workbook/non-abstract-design/): converting requirements into concrete resource designs.
+- [Google SRE, Handling Overload (2016)](https://sre.google/sre-book/handling-overload/): resource limits and load control.
+- [Google SRE, Addressing Cascading Failures (2016)](https://sre.google/sre-book/addressing-cascading-failures/): capacity loss and overload propagation.
+- [Little, A Proof for the Queuing Formula (1961)](https://fisherp.scripts.mit.edu/wordpress/wp-content/uploads/2015/11/ContentServer.pdf): the average concurrency relation.
+- [Dean and Barroso, The Tail at Scale (2013)](https://research.google/pubs/the-tail-at-scale/): why large-service latency needs distribution-aware reasoning.

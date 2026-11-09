@@ -1,0 +1,168 @@
+---
+title: "Transactions, Isolation, and Write Skew"
+sidebar_position: 3.8
+description: "Trace concurrent transactions against a shared invariant, reproduce write skew, and choose conditional updates, locks, or serializable execution with safe retries."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import WriteSkewExplorer from '../../../viz/diagrams/WriteSkewExplorer';
+
+# Transactions, Isolation, and Write Skew
+
+<ELI5>
+Two people staff a help desk, and at least one must stay on duty. Each checks that the other is present before leaving. If both check at the same moment and leave independently, each followed the local rule while the desk became empty. A transaction must protect the shared decision, not merely ensure each person's own departure is recorded cleanly.
+</ELI5>
+
+A **transaction** groups operations under a commit or rollback boundary. **Isolation** constrains what concurrent transactions can observe and which combined outcomes may commit. A transaction can be all-or-nothing for its own writes while still participating in an invalid business outcome if the isolation and conflict handling do not protect the required invariant.
+
+The misconception is that a stable snapshot makes concurrent decisions equivalent to running one at a time. Our example starts with Alice and Bob both on call, with the invariant that at least one remains. Alice reads Bob as present; Bob reads Alice as present. Each updates only their own row to off duty. Under a snapshot-isolation execution allowing both disjoint writes to commit, the final count is zero. A serializable execution must prevent that combined history from committing as shown.
+
+## Define the Invariant and the Transaction Set
+
+An **invariant** is a property every accepted state transition must preserve. Here `on_call_count >= 1` applies across two records. A row-level constraint that each `enabled` field is a valid boolean cannot enforce that aggregate rule by itself. The database and application need a concurrency protocol covering the records read to make the decision.
+
+Write down the operation as “turn this clinician off duty only if another remains.” Its read set includes someone else's row or the result of an aggregate predicate, while its write set includes its own row. Looking only for overlapping writes misses the conflict: Alice's update invalidates the condition Bob read, and Bob's update invalidates Alice's condition.
+
+The invariant also defines the scope. If departments have independent rosters, a department key can localize the rule. A global invariant across all departments would couple unrelated operations unnecessarily. Match the transaction boundary to the real business rule before selecting a lock or expanding to distributed coordination.
+
+## A Stable Snapshot Can Still Permit Write Skew
+
+**Snapshot isolation** gives a transaction a consistent view of committed state under its implementation's rules and prevents certain conflicting writes. It does not in general make every set of concurrent read-dependent updates serializable. **Write skew** occurs when transactions read overlapping conditions but update different records, combining into a result no valid serial execution would produce.
+
+<WriteSkewExplorer />
+
+Both transactions initially see Alice and Bob present. In the snapshot path, each sees permission to leave and writes a different row, so the model ends with zero clinicians. In the serial path, Alice leaves first; Bob's later check sees Alice absent and keeps Bob on duty. The final count is one, and the invariant holds.
+
+No serial order of these correctly implemented conditional actions yields zero. If Alice runs first, Bob must stay. If Bob runs first, Alice must stay. That argument identifies an isolation anomaly without relying on a vendor label or a particular lock implementation. The diagram presents possible histories; a production engine may prevent an unsafe history by blocking, aborting, or another documented protocol.
+
+<RunnableCode code={`initial = {"alice": True, "bob": True}
+alice_snapshot = initial.copy()
+bob_snapshot = initial.copy()
+result = initial.copy()
+if alice_snapshot["bob"]:
+    result["alice"] = False
+if bob_snapshot["alice"]:
+    result["bob"] = False
+print("Both decisions used initial snapshots:", result)
+print("Clinicians still on call:", sum(result.values()))
+print("Invariant preserved:", sum(result.values()) >= 1)
+# Try it: make Bob read result after Alice changes it; his departure is no longer permitted.
+`} />
+
+This model separates reading from applying writes explicitly. It demonstrates one allowed unsafe history under the assumed protocol; it does not claim every transaction at every isolation level follows that schedule. The relevant engine documentation and a concurrent integration test establish which histories the deployed configuration actually permits.
+
+## Isolation Names Need Engine-Specific Interpretation
+
+Under PostgreSQL **Read Committed**, a statement sees a snapshot appropriate to that statement, and another statement in the same transaction can observe additional committed changes under the documented rules. That can be suitable for atomic conditional updates, but a separate application read followed by an unconditional write can race. Keeping both statements between `BEGIN` and `COMMIT` does not automatically close that gap.
+
+PostgreSQL **Repeatable Read** uses a stable transaction snapshot and prevents some anomalies beyond the minimum SQL-standard naming requirements, yet can still allow serialization anomalies such as the write-skew pattern. Do not import another engine's behavior merely because it uses the same isolation-level name. Read the documented phenomena and conflict handling for the actual version and topology.
+
+**Serializable** execution requires committed transactional behavior to admit an equivalent serial ordering under its model. It does not mean every transaction literally runs alone on one processor. An engine can run transactions concurrently and reject combinations that cannot be serialized. The application must handle those rejections correctly.
+
+**Strict serializability** adds real-time ordering constraints to serializable transactions. It is useful when one completed transaction must constrain another client's later transaction across the specified scope. The [consistency-model chapter](/docs/software-system-design/consistency-models) distinguishes real-time and session guarantees; isolation and read routing must be compatible with the API promise.
+
+<PredictFirst question="Alice and Bob each update only their own row after reading a shared roster snapshot. Does the lack of a write/write conflict prove the invariant is safe?" options={["Yes, distinct rows cannot participate in the same anomaly", "No, each write can invalidate the condition the other transaction read", "Yes, because stable snapshots imply serial execution"]} correctIndex={1} explanation="The conflict includes read dependencies. Disjoint writes can jointly invalidate an aggregate rule even when each transaction's individual writes are atomic and each snapshot is internally consistent." />
+
+## Choose a Concurrency Boundary That Covers the Decision
+
+An atomic conditional update can protect a single-record invariant, such as decrementing stock only when enough remains. The predicate and update must be evaluated under a concurrency guarantee that prevents both callers spending the same units. A separate read in application code followed by an unconditional decrement recreates the race.
+
+For a multi-record invariant, serializable transactions can detect unsafe dependency patterns, while explicit locking can serialize the relevant decision. A shared guard record is another design when it has a clear ownership scope and every modifying path participates. Locking only the row each clinician writes does not protect the other row used in the decision.
+
+A lock-based solution must define acquisition order, timeout, and what is reread after waiting. Inconsistent ordering can create deadlocks even when each individual operation is correct alone. Holding a database transaction open while waiting on a slow external API can retain locks and old versions for much longer than the actual state change needs. Keep the protected section focused on the invariant.
+
+<GoDeeper title="Go deeper: dependency cycles explain the impossible serial order">
+Alice's read of Bob being present requires Alice's decision to occur before Bob's departure in any equivalent serial order. Bob's read of Alice being present requires Bob's decision to occur before Alice's departure. Together those dependencies form a cycle: Alice before Bob before Alice. A serial ordering cannot contain that cycle. Serializable execution prevents the combined committed history, although the engine's detection and retry behavior depends on its implementation.
+</GoDeeper>
+
+## Reproduce the Schedule in PostgreSQL
+
+Create a disposable test table with the following schema and starting rows. A primary key identifies each clinician, while the business invariant remains an explicit concurrency concern. Do not run the reset statements against an application table containing real rosters.
+
+```sql
+CREATE TABLE on_call (
+    name text PRIMARY KEY,
+    enabled boolean NOT NULL
+);
+INSERT INTO on_call VALUES ('alice', true), ('bob', true);
+```
+
+Open two `psql` sessions on that test database. In both, begin `BEGIN ISOLATION LEVEL REPEATABLE READ;` and run `SELECT count(*) FROM on_call WHERE enabled;` before either performs its update. Both see two. In the first, update Alice only if Bob is still present in that transaction's snapshot. In the second, perform the corresponding operation for Bob, then commit both.
+
+```sql
+-- Session A, after both sessions performed the read:
+UPDATE on_call SET enabled = false
+WHERE name = 'alice'
+  AND EXISTS (SELECT 1 FROM on_call WHERE name = 'bob' AND enabled);
+COMMIT;
+
+-- Session B, using its already-established snapshot:
+UPDATE on_call SET enabled = false
+WHERE name = 'bob'
+  AND EXISTS (SELECT 1 FROM on_call WHERE name = 'alice' AND enabled);
+COMMIT;
+```
+
+The final `SELECT count(*) FROM on_call WHERE enabled;` can return zero under this PostgreSQL Repeatable Read schedule. Reset both rows to true in the test database, then repeat with `BEGIN ISOLATION LEVEL SERIALIZABLE;`. The database must prevent both unsafe actions committing in that history, commonly by returning a serialization failure to one participant. Which transaction fails and at which point is not a business guarantee to depend on.
+
+## Retry the Decision, Not Just the Last Statement
+
+A serialization failure means the transaction's reads and decisions need another attempt. Retrying only the final `UPDATE` can preserve a decision made from an invalidated snapshot. PostgreSQL documents SQLSTATE `40001` for serialization failure and advises retrying the complete transaction logic. Bound retries by an overall deadline and avoid synchronized retry storms under contention.
+
+An ambiguous commit outcome is different from an explicit serialization abort. If a network failure occurs after commit, the client may not know whether the change succeeded. Preserve an operation identifier or inspect authoritative state before repeating a non-idempotent effect. An isolation level cannot make the client infer an unobserved commit response.
+
+External effects need another boundary. Sending an email or charging a remote payment service inside a transaction retry loop can repeat the effect even when a local attempt later aborts. Use a durable intent and a suitable outbox or idempotency protocol where the operation requires it. The local database transaction does not atomically roll back an already-sent network message.
+
+<RunnableCode code={`roster = {"alice": True, "bob": True}
+
+def leave_if_other_present(name, other):
+    if roster[other]:
+        roster[name] = False
+        return "left"
+    return "stayed"
+
+print("Alice decision:", leave_if_other_present("alice", "bob"))
+print("Bob recomputes after Alice:", leave_if_other_present("bob", "alice"))
+print("Final roster:", roster)
+assert sum(roster.values()) == 1
+# Try it: reverse the two calls; a different clinician stays, but the invariant still holds.
+`} />
+
+The sequential model shows the result a safe retry or serialized decision can produce. It does not require Alice always to win. A concurrency contract should preserve the invariant while allowing legitimate scheduling variation. Tests that insist on one winner can fail valid implementations or conceal the actual property being protected.
+
+## Common Problems and Fixes
+
+The code uses a transaction but still performs a stale read-dependent update. Identify the complete read/write dependency set and select a protecting protocol. A unique constraint prevents duplicate rows but not overselling an aggregate resource. Put each invariant at a boundary that can actually enforce it. A serializable deployment reports errors under load. Implement bounded full-transaction retries before treating the errors as unexpected outages.
+
+Locks solve the race but produce long waits or deadlocks. Reduce transaction duration, use a consistent acquisition order, and monitor lock wait separately from query execution. A retry repeats an external effect. Separate durable intent from delivery and use effect-level idempotency. A failover loses an acknowledged transaction. Review the [replication acknowledgement policy](/docs/software-system-design/replication), which is separate from isolation.
+
+## When Not to Expand the Transaction
+
+| Situation | Better boundary |
+| --- | --- |
+| A remote email or webhook can be delivered later | Durable intent plus an outbox/delivery protocol |
+| One row can enforce the invariant atomically | A narrow conditional update |
+| Unrelated tenants do not share a business rule | Independent tenant-local ownership |
+| A read-only analytical job tolerates a stated snapshot | An explicit read snapshot without unnecessary write coordination |
+
+## Remember
+
+| Property | What it protects |
+| --- | --- |
+| Atomicity | One transaction's effects commit or roll back together |
+| Isolation | Allowed interactions between concurrent transactions |
+| Invariant | The business condition the whole operation must preserve |
+| Write skew | Disjoint writes invalidating overlapping read conditions |
+| Serializable retry | Recompute the entire decision after an unsafe attempt aborts |
+| External effect | Requires its own durable and idempotent delivery boundary |
+
+You can now identify why an atomic snapshot transaction can still violate a shared rule and choose evidence that tests the actual concurrency boundary. Return to [Data Ownership and Consistency](/docs/software-system-design/data), or apply the same reasoning to [payments](/docs/software-system-design/payment-system).
+
+## Sources
+
+- [PostgreSQL, Transactions](https://www.postgresql.org/docs/current/tutorial-transactions.html): commit and rollback boundaries.
+- [PostgreSQL, Transaction Isolation](https://www.postgresql.org/docs/current/transaction-iso.html): snapshots, serializability, and engine-specific behavior.
+- [PostgreSQL, Explicit Locking](https://www.postgresql.org/docs/current/explicit-locking.html): lock modes, row locks, and deadlocks.
+- [PostgreSQL, Serialization Failure Handling](https://www.postgresql.org/docs/current/mvcc-serialization-failure-handling.html): full-transaction retry requirements.
+- [Jepsen, Serializability](https://jepsen.io/consistency/models/serializable): transactional order and distinction from real-time guarantees.

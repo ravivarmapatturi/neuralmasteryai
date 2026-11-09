@@ -1,0 +1,103 @@
+---
+title: "Design a Notification System"
+sidebar_position: 11
+description: "Design multi-channel notifications with durable intent, preferences, priority queues, provider limits, deduplication, and reconciliation of unknown outcomes."
+---
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import SoftwareCaseTrace from '../../../viz/diagrams/SoftwareCaseTrace';
+
+# Design a Notification System
+
+<ELI5>A notification service resembles a dispatch office. It decides who should receive a message, checks their preferences, and chooses a delivery company. Handing over a parcel is not the same as delivery. If the company does not return a receipt, the office needs an investigation state rather than assuming success or sending endless duplicates.</ELI5>
+
+## Requirements and Estimates
+
+Assume fifty million notification intents/day, about 579/s on average, with an illustrative tenfold peak of 5,787/s. An intent can expand into email, push, or SMS deliveries depending on preferences. At an assumed 400 bytes of logical intent metadata, the initial intents add 20 GB/day before rendered payloads, attempts, receipts, and replicas.
+
+Transactional notifications, such as password resets, have higher priority than marketing campaigns. Define separate queue-age objectives: for this exercise, 99% of eligible transactional intents should reach provider acceptance within thirty seconds under normal load. Delivery to a device and reading by a person remain separate measurements. Respect consent, quiet hours, locale, unsubscribe state, and jurisdiction-specific policy through configured product rules.
+
+The misconception is that a successful provider API call means the recipient received the message. Providers can accept a request and later report a bounce or expiry. The service needs states such as planned, suppressed, queued, accepted, delivered, failed, and unknown, with channel-specific definitions.
+
+## Planning and Durable Identity
+
+Consume a domain event with a stable identity. The planner loads recipient eligibility and creates one intent per recipient and channel under a unique identity such as `(event_id, recipient_id, channel, template_version)`. Store the publication intent transactionally so a planner crash cannot lose already-decided work. Replaying an event must find the existing intent.
+
+Keep templates versioned. A retry of an invoice notification should not silently render a newly edited template with a different invoice interpretation. Avoid storing secrets such as password-reset credentials in broad-access queue payloads or logs. Use short-lived references or carefully protected payload storage with explicit retention.
+
+Preferences are checked at planning and again close to dispatch when policy requires immediate revocation. A scheduled campaign queued yesterday must not ignore an unsubscribe made today. Conversely, do not accidentally suppress a required account-security notice because marketing preferences were modeled as one undifferentiated boolean.
+
+## Dispatch and Provider Quotas
+
+Use separate priority and channel queues so an email campaign cannot block password-reset SMS. Workers enforce provider quotas and per-recipient limits, bound concurrency, and schedule retries. A provider accepting 1,000 messages/s cannot clear a 100,000-message backlog while new arrivals also consume the full 1,000/s. Capacity must include spare throughput for recovery.
+
+If a campaign adds 100,000 queued messages and the provider allows 1,000/s while ongoing work uses 600/s, spare capacity is 400/s and drain time is 250 seconds. Adding workers beyond the provider quota cannot reduce that bound. Multiple providers can add capacity and redundancy, but failover must preserve identity and consent semantics.
+
+Use stable provider idempotency keys where supported. A timeout after sending is ambiguous: the provider may have accepted the message. Query provider status or reconcile receipts before another irreversible send. When a provider lacks deduplication or query support, document whether the product prefers occasional duplicates or possible loss; the transport cannot supply a guarantee the destination does not support.
+
+## Receipts, Recovery, and Abuse
+
+Provider webhooks need signature verification, replay protection, durable event identity, and tolerance of duplicate or out-of-order callbacks. An older accepted receipt must not overwrite a newer delivered state. Some channel outcomes form a partial order rather than a simple timestamp sort, so implement an explicit state transition table.
+
+Expired notifications should stop retrying. A promotional offer that expired yesterday and a reset code whose validity has elapsed should not be delivered merely because the queue finally recovered. Keep a dead-letter or quarantine workflow with operators able to inspect failure reasons without exposing sensitive content.
+
+Measure age to dispatch, provider acceptance latency, delivery outcomes, suppression reasons, duplicate attempts, and unknown-state age. Test provider outage, lost response, replayed callback, preference revocation, and exhausted quota. The central trade-off is between timeliness, delivery certainty, cost, and the harm caused by duplicates; different notification classes can choose different policies.
+
+## Follow the Failure Boundary
+
+<SoftwareCaseTrace scenario="notification-system" />
+
+<PredictFirst question='A provider request times out after transmission. What state is justified?' options={['Delivered', 'Definitely not sent', 'Unknown until reconciled']} correctIndex={2} explanation='A timeout is lack of a response, not proof of the provider outcome. Preserve unknown state and reconcile by stable identity before repeating an irreversible send.' />
+
+## Run the Design Calculation
+
+<RunnableCode code={`daily, bytes_per_intent = 50_000_000, 400
+print("Average intents/s:", round(daily/86400, 2))
+print("Tenfold peak/s:", round(daily/86400*10, 2))
+print("Logical intent GB/day:", daily*bytes_per_intent/1e9)
+backlog, quota, ongoing = 100_000, 1000, 600
+print("Drain seconds:", backlog/(quota-ongoing))
+# Try it: increase ongoing to 900; the same backlog now drains four times slower.
+`} />
+
+## Change the Invariant Deliberately
+
+<RunnableCode code={`intents = set()
+def plan(event, recipient, channel, version):
+    key = (event, recipient, channel, version)
+    if key in intents:
+        return "existing intent"
+    intents.add(key)
+    return "new intent"
+print(plan("e17", "u3", "email", 2))
+print(plan("e17", "u3", "email", 2))
+print(plan("e17", "u3", "push", 2))
+assert len(intents) == 2
+# Try it: change the recipient; one event can legitimately create another intent.
+`} />
+
+## When Not to Use This Design
+
+| Situation | Better choice |
+| --- | --- |
+| A few account emails per day | A simple durable job queue and one provider |
+| No user-facing urgency | Batch digests with explicit expiry |
+
+## Remember
+
+| Decision | Reason |
+| --- | --- |
+| Intent identity | Replayed domain events do not duplicate plans |
+| Dispatch | Quotas and expiry constrain retries |
+| Receipts | Acceptance, delivery, and reading differ |
+
+Next: [Design a Video Streaming Service](/docs/software-system-design/video-streaming).
+
+## Sources
+
+- [AWS, Transactional Outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html).
+- [Amazon SES, Event Publishing](https://docs.aws.amazon.com/ses/latest/dg/monitor-sending-activity-using-notifications.html).
+- [Firebase, Message Lifespan](https://firebase.google.com/docs/cloud-messaging/customize-messages/setting-message-lifespan).
+- [Stripe, Webhook Signatures](https://docs.stripe.com/webhooks/signature).
+- [AWS, Timeouts and Retries](https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/).

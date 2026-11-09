@@ -1,0 +1,111 @@
+---
+title: "Design a Payment System"
+sidebar_position: 15
+description: "Design payment state, stable idempotency keys, balanced ledger entries, provider reconciliation, and explicit recovery from ambiguous external outcomes."
+---
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import SoftwareCaseTrace from '../../../viz/diagrams/SoftwareCaseTrace';
+
+# Design a Payment System
+
+<ELI5>A payment has a receipt book and an outside bank. Writing a note in the receipt book does not prove the bank moved money. A lost bank response does not prove it did not. We keep the requested operation, the bank outcome, and the internal accounting separate until evidence connects them.</ELI5>
+
+## Requirements and Estimates
+
+Assume ten million payment attempts/day, averaging about 115.74/s, with an illustrative peak of 2,000 attempts/s. Each successful payment creates at least two ledger entries. At an assumed 200 bytes per logical entry, ten million successful payments add at least 4 GB/day of ledger rows before indexes, replicas, operation records, provider events, and audit history.
+
+Support authorization, capture, void, refund, status lookup, and reconciliation. Store monetary amounts as integer minor units with an explicit currency and supported currency exponent. A request for 1,000 cents is not interchangeable with 1,000 units of an arbitrary currency. The example uses one currency and simplified accounting to isolate retry correctness.
+
+Set an illustrative internal acceptance objective below 200 ms at p99, while external completion has a separate provider-dependent objective. The API may return a durable pending operation rather than pretend that all payments complete inside one network deadline. The misconception is that a timeout means no charge occurred.
+
+## Operation Identity and Provider Boundary
+
+Expose `POST /payments` with customer-scoped idempotency key, amount, currency, and payment-method token. Persist a request fingerprint and pending operation under a unique key before dispatch. Reusing the key with a different amount must conflict; reusing it for the same request returns the current operation and known result.
+
+The provider worker uses a stable provider idempotency key derived from the durable operation, following the provider's scope and retention rules. A timeout after transmission moves the operation to an unknown or reconciliation-needed state. Query authoritative provider status, process verified webhooks, or retry under the same supported identity. Generating a new key because the old call timed out can charge twice.
+
+Do not store raw card credentials in ordinary application tables, logs, or queue messages. Use a qualified payment provider's tokenization boundary and apply the relevant security obligations to the actual integration. Keep payment credentials out of the general application data path.
+
+## Ledger and Atomic Local Commit
+
+A **double-entry ledger** records balanced movements between accounts rather than mutating one unexplained balance. For a simplified 1,000-cent transfer, debit the source account and credit the destination under one atomic transaction, with entries tied to operation identity. Balance is derived from entries or maintained as a transactionally checked projection.
+
+A unique operation constraint prevents webhook replay from creating another pair of entries. Persist the provider event identity, state transition, ledger entries, and outgoing business event within a coherent local transaction where possible. An outbox then notifies order fulfillment without risking a committed payment whose fulfillment event was lost.
+
+The ledger must reflect the accounting meaning of authorization, capture, settlement, fees, and refunds; not every provider status is a completed transfer. A production chart of accounts is a domain design reviewed by the business. The toy code uses a zero-sum two-account movement only to demonstrate balancing and deduplication.
+
+## Reconciliation and Distributed Workflows
+
+Order fulfillment and payment are separate owners. A saga can reserve stock, authorize payment, confirm the order, and later capture or void according to business policy. Compensation is explicit: a refund is a new financial operation with its own identity and failure states, not deletion of the original ledger rows.
+
+Reconciliation compares internal operations and ledger state with provider reports and settlement data. It finds missing callbacks, unknown requests, amount mismatches, and duplicate external operations. Keep an operator queue with audit trails for unresolved discrepancies. A webhook stream alone is not a complete reconciliation process because callbacks can be delayed or misconfigured.
+
+Regional failover must preserve idempotency and ledger authority. Promoting a stale replica that lacks a prior successful key can accept the same payment again. Prefer one authoritative write owner for the payment identity unless the multi-region system can enforce the required uniqueness and accounting invariants. Availability does not justify inventing a second successful charge.
+
+## Failure Tests and Observability
+
+Test the provider response being lost after success, duplicate and out-of-order callbacks, retry after idempotency retention expiry, concurrent capture attempts, and a crash between ledger commit and event publication. Record provider references and operation IDs without leaking credential material. Alert on unknown-state age and reconciliation discrepancies, not only HTTP failure rate.
+
+A successful local response must have an exact meaning: accepted durably, authorized externally, captured, or settled. Clients poll or subscribe to the durable operation's status instead of interpreting a disconnected socket as cancellation. This separation gives operators a place to recover work and gives users a stable receipt identity even when the external network is ambiguous.
+
+## Follow the Failure Boundary
+
+<SoftwareCaseTrace scenario="payment-system" />
+
+<PredictFirst question='A provider may have charged successfully but its response was lost. Should a retry use a new payment identity?' options={['Yes, every network attempt is a new payment', 'No, preserve the durable identity and reconcile the unknown result', 'Yes, if the local timeout was short']} correctIndex={1} explanation='One business payment needs one stable identity. A new key can create another charge; timeout duration cannot prove the original outcome.' />
+
+## Run the Design Calculation
+
+<RunnableCode code={`attempts, peak, entry_bytes = 10_000_000, 2000, 200
+print("Average attempts/s:", round(attempts/86400, 2))
+print("Peak / average:", round(peak/(attempts/86400), 2))
+print("Minimum ledger GB/day at all-success:", attempts*2*entry_bytes/1e9)
+# Try it: include two extra fee entries per payment; logical ledger storage doubles.
+`} />
+
+## Change the Invariant Deliberately
+
+<RunnableCode code={`ledger, applied = [], {}
+def post(operation, cents):
+    if operation in applied:
+        if applied[operation] != cents:
+            raise ValueError("idempotency key reused with another amount")
+        return "existing"
+    pair = [("customer", -cents), ("merchant", cents)]
+    assert sum(value for account, value in pair) == 0
+    ledger.extend(pair)
+    applied[operation] = cents
+    return "posted"
+print(post("k17", 1000))
+print(post("k17", 1000))
+print("Entries:", ledger)
+assert len(ledger) == 2
+# Try it: call post("k17", 2000) inside try/except; the changed request must conflict.
+`} />
+
+## When Not to Use This Design
+
+| Situation | Better choice |
+| --- | --- |
+| A product can use hosted checkout | Delegate credential collection and payment UI |
+| Internal nonfinancial counters | A simpler transactional counter may suffice |
+
+## Remember
+
+| Decision | Reason |
+| --- | --- |
+| Operation | Stable identity and request fingerprint |
+| Ledger | Balanced immutable entries with atomic deduplication |
+| Unknown outcome | Reconcile before another irreversible effect |
+
+Next: [Design Distributed File Storage](/docs/software-system-design/distributed-file-storage).
+
+## Sources
+
+- [Stripe, Idempotent Requests](https://docs.stripe.com/api/idempotent_requests).
+- [Stripe, Payment Intent Lifecycle](https://docs.stripe.com/payments/paymentintents/lifecycle).
+- [Stripe, Webhooks](https://docs.stripe.com/webhooks).
+- [PostgreSQL, Transaction Isolation](https://www.postgresql.org/docs/current/transaction-iso.html).
+- [AWS, Transactional Outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html).

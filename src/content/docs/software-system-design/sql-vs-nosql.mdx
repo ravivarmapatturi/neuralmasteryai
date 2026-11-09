@@ -1,0 +1,138 @@
+---
+title: "SQL vs NoSQL: Choose the Update Boundary"
+sidebar_position: 3.1
+description: "Choose relational, document, or key-value storage from access patterns, invariant boundaries, and update costs rather than treating a database family as a scale guarantee."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import StorageOwnershipExplorer from '../../../viz/diagrams/StorageOwnershipExplorer';
+
+# SQL vs NoSQL: Choose the Update Boundary
+
+<ELI5>
+An address book records a person's current address once. Printing that address on every delivery slip makes each slip convenient to read, but changing the address now requires deciding which slips should change. A historical receipt may need the old address forever. Choosing a data model begins with that meaning, before choosing how the records are stored.
+</ELI5>
+
+A storage decision should identify the operations we must support, the state that changes together, and the failures under which those changes must remain correct. SQL and NoSQL describe broad families of interfaces and models, not complete consistency or scaling contracts. Two products in the same family can have materially different transaction, indexing, replication, and operational behavior.
+
+The misconception is that relational storage guarantees every required business rule automatically while a document store necessarily lacks transactions. Neither statement identifies the actual boundary the rule needs. Our worked example has one customer and two orders that must display the customer's current name. Renaming Alice to Alicia requires one authoritative profile update in a referenced model, but two updates when that current name is duplicated into both orders. We will contrast that requirement with a historical billing snapshot, where retaining the old value is intentional.
+
+## Start From Reads and State Transitions
+
+An **access pattern** describes the data an operation reads or changes, including the key, filter, ordering, result size, and required freshness. “Store orders” is not an access pattern. “Fetch the latest twenty orders for one customer in descending creation order” is specific enough to discuss an index or partition key. “Count every open order across all customers” introduces a different access path and possibly a separate analytical projection.
+
+Write operations need the same precision. Creating an order may reserve stock, record prices, and associate an authenticated customer. Decide which changes must commit together and which can happen later. If inventory must never become negative, a convenient document shape does not remove the need for an atomic or conditional transition protecting the stock record.
+
+Query diversity affects the model. A product with changing analytical questions may benefit from a general query engine and well-defined relationships. A very stable keyed lookup can benefit from a narrower ownership and partition model. Neither choice eliminates schema work: a flexible document structure still needs readers that interpret fields consistently and migrations that preserve older data.
+
+Use the existing [relational database chapter](/docs/databases/relational/overview) for SQL joins and the [NoSQL chapter](/docs/databases/nosql/overview) for the family map. Here we focus on deciding which copies exist and how one accepted change reaches every read that must observe it. Evaluate a specific engine's documented guarantees rather than inferring them from the family label.
+
+## Referencing and Embedding Move Different Costs
+
+A **normalized model** stores facts under explicit ownership and refers to related records by identifiers. A customer profile owns the current name, while each order stores a customer identifier. Reading an order with the current name requires resolving that relationship. Updating the name changes one authoritative record, and appropriately consistent later reads resolve the new value.
+
+An **embedded model** stores related data inside the record commonly read as one unit. An order document can contain its line items and a name field, returning them together without another lookup. That improves locality for the chosen read, while requiring an explicit meaning for duplicated fields. A current-profile copy and a historical-at-purchase snapshot can contain the same text but follow different update rules.
+
+<StorageOwnershipExplorer />
+
+The diagram starts with a partial duplicated update: order 1 displays Alicia while order 2 displays Alice. Switch to referenced ownership; one profile update governs both resolved reads. Then return to duplicated names and select all copies updated. The second write repairs the teaching example, but a real system must also handle new orders arriving during propagation, retries, and failed updates.
+
+Do not interpret the comparison as a rule that relational databases must normalize everything or document databases must embed everything. A relational table can deliberately denormalize a field. A document can store references to another document. The cost follows the chosen data model and guarantees, not the branding of the engine.
+
+<RunnableCode code={`profile = {"id": 7, "name": "Alice"}
+orders = [{"id": 1, "customer_id": 7}, {"id": 2, "customer_id": 7}]
+profile["name"] = "Alicia"
+for order in orders:
+    assert order["customer_id"] == profile["id"]
+    print("Order:", order["id"], "current name:", profile["name"])
+print("Authoritative name writes:", 1)
+# Try it: add a third order referencing customer 7; the rename still changes one profile record.
+`} />
+
+The dictionary lookup models a relationship, not a database isolation level. A read replica or cached profile can still return an older name. Referencing reduces authoritative copies but does not magically force every reader to observe the latest commit. Pair the model with the consistency contract required by the operation.
+
+## Choose an Aggregate From the Invariant
+
+An **aggregate** is a group of state treated as one unit for a particular operation or invariant. An order and its line items often change together, so embedding them or transacting over their rows can be sensible. A customer's entire lifetime of orders is usually an unbounded aggregate: it grows without a fixed size and unrelated orders can contend on the same owner.
+
+A single-document atomic update can protect fields inside that document under the engine's documented semantics. A relational transaction can protect a set of rows under its constraints and isolation rules. Cross-document transactions also exist in specific document databases. The question is whether the required guarantee covers the actual read and write set, at the intended deployment topology and cost.
+
+A foreign key can ensure that an order references an existing customer. It does not by itself reserve inventory or prevent a business duplicate. A unique constraint can prevent two records with the same operation identifier, while application logic still decides whether a retried request represents the same intent. Separate what the store enforces from what the application must establish.
+
+For the rename example, “every order must immediately display the latest profile name” suggests one source for that current value or a transactionally coordinated multi-copy update. “Order history displays the name used at purchase” suggests an immutable snapshot field. The latter is not stale data in need of repair; it is a different fact. Resolve that meaning before designing a synchronization pipeline.
+
+<PredictFirst question="An old invoice retains Alice after the profile changes to Alicia. Is the database necessarily inconsistent?" options={["Yes, every repeated text field must always match the profile", "No, the invoice may intentionally record the historical name at purchase", "No, document databases do not have correctness requirements"]} correctIndex={1} explanation="Correctness depends on which fact the field represents. A historical snapshot should remain unchanged; a field promised to display the current name needs the specified propagation behavior." />
+
+## Partitioning and Queries Must Fit Together
+
+A key-value model often provides efficient direct access when the full key is known. A document engine can index selected fields and support richer document queries. A relational engine can optimize joins and multiple access paths. These are starting capabilities; inspect the chosen product, index types, transaction limits, and query plan rather than asserting universal speed rankings.
+
+A partition key groups ownership and determines where work goes. Choosing customer ID can make one customer's orders local, but a very large customer can become a hot partition. A query for all open orders then crosses customer partitions or uses a maintained alternate projection. Efficiently answering one access pattern can make another more expensive.
+
+SQL databases can also partition and distribute data. NoSQL systems can also encounter a single hot key or require costly secondary indexes. Horizontal scalability depends on how the workload divides, how coordination is performed, and which operations remain global. The [scaling bottleneck chapter](/docs/software-system-design/vertical-vs-horizontal-scaling) applies to the storage layer as well as the application fleet.
+
+<GoDeeper title="Go deeper: denormalization creates a maintenance protocol">
+If one current fact appears in k independently stored records, a change may require up to k updates plus a way to identify those records. A transactional multi-record change can hide intermediate states at an appropriate isolation boundary, while asynchronous propagation exposes a freshness interval and needs recovery from partial progress. New records created during the update introduce another race. The model choice therefore includes an update protocol, not merely a faster read representation.
+</GoDeeper>
+
+## Model the Partial Update Before Selecting the Engine
+
+The second experiment starts with two embedded current-name copies. Updating only order 1 exposes mixed values. A subsequent loop repairs every modeled copy, and a separate billing snapshot remains unchanged by design. The distinction makes it possible to test the intended semantics without starting a database cluster.
+
+In production, a loop over two records is not automatically an atomic operation. It can fail halfway, time out after committing some updates, or miss a record inserted concurrently. Use a transaction if the contract and engine support it, or a durable projection protocol with versioned events, idempotent updates, and a stated freshness bound. A client should not receive a stronger promise than the protocol can maintain.
+
+<RunnableCode code={`orders = [
+    {"id": 1, "current_name": "Alice", "billing_name": "Alice"},
+    {"id": 2, "current_name": "Alice", "billing_name": "Alice"},
+]
+orders[0]["current_name"] = "Alicia"
+print("After one copy update:", [o["current_name"] for o in orders])
+for order in orders:
+    order["current_name"] = "Alicia"
+print("After both current copies update:", [o["current_name"] for o in orders])
+print("Historical billing names:", [o["billing_name"] for o in orders])
+assert all(o["current_name"] == "Alicia" for o in orders)
+assert all(o["billing_name"] == "Alice" for o in orders)
+# Try it: add a new stale order after the loop; discuss how a concurrent insert should be handled.
+`} />
+
+For a relational implementation, inspect actual constraints and query plans instead of assuming the schema diagram enforces the rule. PostgreSQL's `\d orders` in `psql` shows table structure and constraints; `EXPLAIN SELECT ...` shows a chosen access plan. For a document implementation, inspect schema validation and an operation's explain output under the actual indexes. These commands complement application acceptance tests rather than replacing them.
+
+A decision record should include the access patterns, authoritative facts, transaction boundary, partitioning hypothesis, and evidence that would reverse the choice. “Use a relational primary because ownership and inventory updates require a local transactional boundary; revisit distribution after measured write limits” is reviewable. “Use NoSQL for scale” leaves every important guarantee unspecified.
+
+## Common Problems and Fixes
+
+A flexible schema accumulates incompatible field meanings. Version the interpretation, validate required fields, and migrate readers and writers compatibly. A normalized read becomes slow due to a missing index; inspect the plan before duplicating data everywhere. A denormalized projection becomes stale; give it an owner, version, recovery protocol, and measurable freshness indicator.
+
+An unbounded embedded array grows with the lifetime of a customer. Separate independently growing records and query them through an appropriate key and index. A transaction spans unrelated tenants and creates contention. Revisit the invariant and ownership boundary before adding replicas. A database family comparison lists features without the workload; write the operations and failure promises first.
+
+## When Not to Add a Second Database Model
+
+| Situation | Better starting action |
+| --- | --- |
+| One query is slow on an otherwise suitable store | Inspect indexes, cardinality, and its execution plan |
+| The proposed document only mirrors existing rows | Identify the read or invariant the copy improves |
+| No one owns synchronization or recovery | Keep one authority until the projection protocol exists |
+| Data meaning is disputed | Resolve current value versus historical snapshot first |
+
+## Remember
+
+| Decision | Evidence needed |
+| --- | --- |
+| Access pattern | Key, filter, ordering, size, and freshness |
+| Authoritative fact | One owner or an explicit replication protocol |
+| Aggregate | State that must change together |
+| Denormalization | Read benefit plus update and recovery costs |
+| Partitioning | Local work and unavoidable cross-partition operations |
+| Engine | Specific documented guarantees under the deployed topology |
+
+You can now choose storage from an update boundary and explain what a duplicated field means. Return to [Data Ownership and Consistency](/docs/software-system-design/data), and use the existing [PostgreSQL chapter](/docs/databases/relational/postgresql) for engine-specific operations.
+
+## Sources
+
+- [PostgreSQL, Foreign Keys](https://www.postgresql.org/docs/current/tutorial-fk.html): referential integrity at the storage boundary.
+- [PostgreSQL, Constraints](https://www.postgresql.org/docs/current/ddl-constraints.html): unique, check, and relational constraints.
+- [MongoDB, Data Modeling](https://www.mongodb.com/docs/manual/data-modeling/): access-driven embedding and referencing.
+- [MongoDB, Atomicity and Transactions](https://www.mongodb.com/docs/manual/core/write-operations-atomicity/): operation boundaries and multi-document transactions.
+- [Amazon DynamoDB, First Steps for Modeling Relational Data](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/bp-modeling-nosql.html): explicit access patterns before key design.

@@ -1,0 +1,151 @@
+---
+title: "Caching Strategies and Invalidation Races"
+sidebar_position: 3.9
+description: "Choose cache-aside or write paths from ownership and freshness requirements, reproduce a stale refill race, and protect origin capacity during expiry and failure."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import CacheInvalidationRaceExplorer from '../../../viz/diagrams/CacheInvalidationRaceExplorer';
+
+# Caching Strategies and Invalidation Races
+
+<ELI5>
+A shop assistant keeps a price note beside the till to avoid calling the stockroom for every sale. When the price changes, removing the old note seems sufficient. But another assistant may already be carrying an earlier price from the stockroom and put it back after the removal. Keeping the note correct requires a rule about which version may be written, not just a rule about deleting it.
+</ELI5>
+
+A **cache** retains derived information to avoid repeated expensive work. The authoritative source still determines correctness, while cache identity, freshness, and refill behavior determine which stored result may be reused. A cache can reduce normal load yet become a correctness boundary and a failure amplifier if its stale or missing states are not designed.
+
+The misconception is that updating the database and then deleting the cache guarantees the next reader gets fresh data. Our example starts with version 7. A reader begins fetching 7 on a miss; a writer commits 8 and invalidates; the delayed reader then fills the empty cache with 7. The next hit is stale even though the invalidation occurred after the database commit. We will reproduce that schedule and compare a version-fenced fill under explicit assumptions.
+
+## Separate Authority From Derived Work
+
+A cache should normally be replaceable without losing accepted authoritative data. Losing a compiled template, query result, or public object copy can increase work and latency while preserving the ability to reconstruct the value. Losing the only accepted update is a different event: that component was participating in durable ownership, regardless of whether the team called it a cache.
+
+The **cache key** must identify the complete reusable result. Include every input that changes meaning, such as tenant, relevant query parameters, representation version, and authorization context where reuse is permitted. A cache keyed only by SQL text while ignoring bound parameters can return another query's result. A key that includes irrelevant random request identifiers can eliminate useful reuse.
+
+The [CDN chapter](/docs/software-system-design/cdns) handles shared HTTP response keys, freshness directives, and versioned public assets. Here we focus on application data caches and database update races. The underlying principle is shared: clients that hit the same key must be allowed to reuse the same value under the stated freshness and access contract.
+
+## Cache-Aside Moves Miss Work Into the Application
+
+With **cache-aside**, an application checks the cache, reads the authoritative store on a miss, and may fill the cache with the result. It naturally caches requested data rather than the entire dataset. The miss path pays cache lookup, source access, and fill work, while the hit path avoids some source work.
+
+A **write-through** design updates cache-related state as part of the write path under a defined protocol. It can avoid some stale values and warm popular writes, but two independent store writes are not automatically atomic. Specify order, failure handling, and whether success is returned before both obligations complete. A label alone does not solve the stale reader that races with a write.
+
+A **write-behind** design accepts a change before later persisting it to another store. That can absorb or combine writes, but introduces a durability and recovery responsibility for pending changes. If the accepted state exists only in evictable memory, a process failure can lose acknowledged work. Treat the pending log as authoritative until the destination commit is established.
+
+The choice should follow read reuse, acceptable staleness, write rate, and recovery cost. An expensive derived report with a stated refresh interval can use a different protocol from a permission check. Do not make a system-wide “cache everything for a minute” rule stand in for operation-specific requirements.
+
+## Delete-After-Write Still Has a Refill Race
+
+Consider four ordered events. A reader misses and obtains version 7 from a database snapshot, but pauses before filling. A writer commits version 8. The writer deletes the cached entry, which may already be absent. Finally the reader stores its delayed version 7 result. Future hits reuse the old value until another update, expiration, or repair occurs.
+
+<CacheInvalidationRaceExplorer />
+
+The diagram starts with ordinary invalidation and the stale refill. Switch to the fenced model: invalidation retains a minimum acceptable version of 8, so the delayed fill of 7 is rejected. That comparison assumes the version floor survives, every fill obeys it, and the floor check and fill are atomic. Without those conditions, drawing a version number beside the cache does not repair the protocol.
+
+Deleting before the database commit has a different race: a miss can read the old committed value while the write remains in flight and refill it before the commit. A delayed second deletion can reduce exposure under some timing assumptions, but cannot become a universal guarantee when delays and failures are unbounded. State the contract rather than relying on a sleep chosen from a normal-latency histogram.
+
+<RunnableCode code={`database = {"version": 7, "price": 10}
+cache = None
+reader_snapshot = database.copy()  # reader pauses before fill
+print("Reader fetched:", reader_snapshot)
+database = {"version": 8, "price": 12}
+cache = None  # writer invalidates after commit
+print("Writer committed:", database, "cache:", cache)
+cache = reader_snapshot.copy()  # delayed old read fills after invalidation
+print("Next cache hit:", cache)
+print("Hit is current:", cache["version"] == database["version"])
+# Try it: move the final fill before the invalidation; compare why the order changes the outcome.
+`} />
+
+A change-data stream can reliably carry invalidation intent, but it does not automatically prevent this fill ordering. A consumer can process a correct invalidation before the old reader stores its result. The refill protocol and the invalidation-delivery protocol must agree on versions or another ordering mechanism if the product requires a stronger guarantee.
+
+## Version Fences Need Their Own Lifetime
+
+A **version fence** rejects cache fills older than a retained minimum version. It can be implemented with a tombstone or a metadata record under a suitable atomic boundary. The version must identify the authoritative history for that key; comparing unrelated clocks or per-process counters does not establish freshness.
+
+An invalidation that deletes both payload and fence loses the information needed to reject an old fill. Eviction, expiry, restart, or a replacement cache node can have the same effect. Retain the floor beyond all permitted in-flight old reads, recover it from authority, or use another protocol that does not depend on a vanished marker. The required retention follows an explicit lifetime bound, not a guess about typical requests.
+
+A client-side cache adds another scope. A server can invalidate its shared entry while local application processes still hold copies. Tracking and invalidation channels need disconnect behavior so missed notifications do not leave local data reusable indefinitely. Redis's client-side caching documentation discusses invalidation tracking and the races clients must handle; use the actual protocol rather than assuming a shared `DEL` reaches every process's memory.
+
+<PredictFirst question="A writer commits version 8 and deletes the cache. Can an earlier reader still refill version 7 afterward?" options={["No, the cache deletion orders all in-flight database reads", "Yes, unless the fill protocol rejects the delayed old value or another guarantee prevents that schedule", "No, a cache miss always reads the latest future commit"]} correctIndex={1} explanation="Deletion removes current cache state, not results already fetched by another operation. A delayed fill can occur after the delete; correctness needs a protocol covering that ordering." />
+
+## Expiry Bounds Storage Time, Not Every Kind of Age
+
+A **time to live**, or TTL, limits how long an entry may remain reusable after the cache's chosen start point. It does not necessarily bound age since the authoritative snapshot was taken. If a read takes 30 seconds before filling a cache with a fresh 60-second TTL, its data may be 90 seconds old at expiry. Derive remaining freshness from the actual observation boundary when a strict age bound matters.
+
+Expiry can also synchronize origin demand. Many hot entries created together can expire together. Add appropriate expiry jitter, coalesce concurrent fills for one key, or refresh ahead when the contract permits it. Each technique needs limits: refreshing every rarely used item can waste work, and an unbounded group waiting for one stuck fill can consume memory.
+
+**Negative caching** stores an absent or rejected lookup for a bounded interval. It can protect the source from repeated nonexistent keys, but can hide a newly created item until expiry and create unbounded key cardinality under adversarial input. Include tenant and authorization semantics where relevant, and bound memory and lifetime separately from positive entries.
+
+<GoDeeper title="Go deeper: a fill lease needs protection from old owners">
+A lease can let one worker fetch a missing value while others wait or use an allowed stale copy. If that worker pauses beyond its lease and another worker takes over, the old worker must not later overwrite newer state. A fencing token or equivalent version rule can reject the stale owner. Mutual exclusion during the normal lease interval does not by itself solve delayed effects after ownership changes.
+</GoDeeper>
+
+## Eviction and Failure Are Workload Changes
+
+An eviction policy chooses which entries to discard when capacity is constrained. Recency, frequency, cost, and object size can produce different reuse behavior. A tiny frequently accessed item and a large expensive item may deserve different treatment. Measure actual hit rate and avoided source work rather than optimizing entry count alone.
+
+A cache outage can turn the normal miss rate into the entire client arrival rate. At 6,000 requests/s and 95% hits, the source normally sees 300 modeled fetches/s. With no usable cache it can see 6,000, twenty times as much. The [CDN origin experiment](/docs/software-system-design/cdns) shows the same capacity relationship at another layer.
+
+A fallback to source must therefore be bounded. Admission control, request coalescing, stale serving where allowed, and baseline source capacity can protect the recovery path. A cache dependency that merely fails open to unlimited source work can convert a cache incident into a database incident. Test the cold and unavailable states before counting warm hit rate as capacity.
+
+## Test the Cache's Observable Contract
+
+A local Redis experiment can inspect entry lifetime without involving application authority. For a disposable key, run `redis-cli SET nm:cache-example '{"version":7}' EX 60`, inspect it with `redis-cli GET nm:cache-example`, then check `redis-cli TTL nm:cache-example` and remove it with `redis-cli DEL nm:cache-example`. These commands exercise storage and expiry only; they do not implement an application-wide version fence or invalidation protocol.
+
+An application acceptance test should control the ordering of source read, source commit, invalidation, and fill. Use barriers or hooks rather than timing-dependent sleeps so the stale-refill history is reproducible. Then test cache eviction, notification disconnection, source failure, and a new cache owner. Verify returned versions and accepted effects, not only whether a cache command succeeded.
+
+The fenced model below starts with the same delayed version 7 and retained floor 8. It rejects the fill, leaving the payload absent so a subsequent path can fetch current state. The final calculation compares average latency with illustrative 2 ms hits and 52 ms misses; it intentionally says nothing about p99 or correlated cold misses.
+
+<RunnableCode code={`reader_snapshot = {"version": 7, "price": 10}
+minimum_version = 8
+cache = None
+# This check and fill must be atomic in a real concurrent implementation.
+if reader_snapshot["version"] >= minimum_version:
+    cache = reader_snapshot.copy()
+print("Retained minimum version:", minimum_version)
+print("Delayed old fill accepted:", cache is not None)
+assert cache is None
+for hit_rate in (.95, .50):
+    expected_ms = hit_rate * 2 + (1-hit_rate) * 52
+    print("Hit rate:", hit_rate, "illustrative average ms:", round(expected_ms, 2))
+# Try it: reset minimum_version to 0; the stale fill becomes admissible after metadata loss.
+`} />
+
+## Common Problems and Fixes
+
+Delete-after-write tests pass sequentially but stale values reappear under concurrency. Reproduce the delayed fill and protect its version boundary. TTL is advertised as an absolute freshness bound. Account for snapshot age, read time, stale-on-error, and refill behavior. A lease expires while its old holder keeps running. Fence the late fill rather than assuming the old worker stopped.
+
+A cache restart overloads the source. Bound misses and warmup, measure cold capacity, and preserve operation-specific failure behavior. Memory growth comes from negative lookups or unbounded keys. Set cardinality and eviction controls matched to the access pattern. A faster cache returns another tenant's data. Repair key identity and authorization before tuning latency.
+
+## When Not to Cache the Result
+
+| Situation | Better first step |
+| --- | --- |
+| Every request has unique expensive inputs | Reduce computation or define reusable subresults |
+| Current authorization is required and no freshness protocol exists | Read from an authoritative path |
+| The source query is inefficient but data reuse is low | Fix its access path and result size |
+| A derived copy has no invalidation or recovery owner | Keep one authority until the protocol is defined |
+
+## Remember
+
+| Boundary | What to specify |
+| --- | --- |
+| Key | Exactly which requests may reuse the value |
+| Authority | Which durable state determines correctness |
+| Fill | Which versions may enter after concurrent updates |
+| Invalidation | Delivery, ordering, and missed-notification behavior |
+| Lifetime | Payload and fence retention under expiry and eviction |
+| Capacity | Cold, failed, and synchronized-refresh demand |
+
+You can now explain why a correct cache deletion can still be followed by a stale hit and test a protocol against the actual interleaving. Return to [Data Ownership and Consistency](/docs/software-system-design/data), then follow the request across [Communication](/docs/software-system-design/communication).
+
+## Sources
+
+- [Amazon ElastiCache, Caching Strategies](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/Strategies.html): cache-aside, write-through, and TTL patterns.
+- [Redis, Client-Side Caching](https://redis.io/docs/latest/develop/reference/client-side-caching/): invalidation tracking and local cache handling.
+- [Nishtala et al., Scaling Memcache at Facebook (2013)](https://www.usenix.org/system/files/conference/nsdi13/nsdi13-final170_update.pdf): cache leases, consistency races, and source protection at scale.
+- [Redis, SET](https://redis.io/docs/latest/commands/set/): entry and expiry command semantics.
+- [Redis, Key Eviction](https://redis.io/docs/latest/develop/reference/eviction/): memory pressure and eviction policies.

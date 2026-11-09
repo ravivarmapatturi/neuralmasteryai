@@ -1,0 +1,153 @@
+---
+title: "REST and Conditional Resource Updates"
+sidebar_position: 4.1
+description: "Design HTTP resources, method semantics, validators, and error responses so clients can retry safely without silently overwriting concurrent changes."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { RestConditionalWrite } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
+
+# REST and Conditional Resource Updates
+
+<ELI5>A shared noticeboard has one current notice, but two editors can hold old copies. Posting a replacement should say which copy it was based on. Otherwise the second editor can erase the first editor's work without seeing it. HTTP gives clients a shared vocabulary for retrieving, replacing, and conditionally changing those representations.</ELI5>
+
+Design HTTP resources, method semantics, validators, and error responses so clients can retry safely without silently overwriting concurrent changes.
+A public API needs behavior that clients, caches, proxies, and operators can interpret consistently. REST, representational state transfer, is an architectural style built around a uniform interface to resources. It includes constraints on stateless interaction, cacheability, layering, and representations that carry the information needed to drive application transitions. Naming JSON endpoints with plural nouns is only a small part of that design.
+
+The misconception we will test is that an idempotent PUT cannot lose another client's update. Two editors both retrieve product version 7, with price 10 and currency USD. Editor A changes the price to 12 and commits version 8. Editor B changes currency to EUR using the old full representation, still containing price 10. A blind replacement loses A's accepted price. An atomic version precondition rejects B's stale replacement, preserving price 12.
+
+## Resources, Representations, and the Uniform Interface
+
+A **resource** is an identified concept such as a product, collection, or running import. A **representation** is one transferable description of its state. `/products/7` identifies a product while its JSON response represents selected fields at a particular version. Content negotiation can choose a different representation without implying that the resource itself has changed identity.
+
+The uniform interface gives intermediaries useful semantics. GET retrieves a representation; it must not be an instruction to perform a destructive business action. A cache or client may repeat or prefetch a safe request. Putting `delete=true` in a GET query string does not make its side effect safe, and can cause infrastructure to trigger behavior the caller did not intend.
+
+**Stateless interaction** means each request supplies the context needed to interpret it rather than depending on a private conversational history retained by one server. It does not forbid databases, authentication sessions, or durable workflows. A job resource can record progress across requests while every request remains independently interpretable. The [stateless services chapter](/docs/software-system-design/stateless-services) covers the placement of that state.
+
+Representations can include links and supported transitions, such as the URI for an import's status or cancellation action. This reduces a client's dependence on constructing undocumented internal paths. It still requires a versioned contract: links do not eliminate authentication, field semantics, or compatibility testing. Design the interface so clients understand outcomes without knowing the server's storage layout.
+
+## Idempotence Describes Intended Effects
+
+An **idempotent** method has the same intended effect when repeated as when applied once. It does not require the same response status, timestamp, access log, or monitoring count. Deleting an already absent resource can return a different status while leaving the resource absent. A retried conditional replacement can fail its precondition after the first attempt succeeded.
+
+PUT commonly supplies the desired representation at the target URI. Repeating the same replacement does not mean append the same order twice. POST allows resource-specific processing and can create a new operation each time unless its application contract adds a stable request identity. PATCH applies a patch document; whether a particular patch is safe to repeat depends on its semantics, not the method name alone.
+
+A response lost after commit leaves the caller uncertain. Method semantics can justify some retries, but a caller still needs to distinguish stale preconditions from a definitely uncommitted request. For a non-idempotent business action, preserve an operation identity and inspect or replay its recorded result. Do not turn a transport reset into evidence that the server did nothing.
+
+## Conditional Updates Prevent the Lost Replacement
+
+An **ETag** is a representation validator. A client can send a strong validator in `If-Match` to require that its mutation applies to the version it observed. The server must compare and change state atomically at the authoritative boundary. Reading a version in application code and issuing an unconditional write later recreates the race.
+
+<RestConditionalWrite />
+
+The bars show the same product price before and after the two attempts. In the guarded path, A's write advances version 7 to 8. B's `If-Match: "v7"` no longer matches, so the server returns 412 Precondition Failed. B can retrieve the new representation and decide whether to merge or ask the user. Automatically replacing it with the old snapshot would defeat the protection.
+
+<RunnableCode code={`initial = {"version": 7, "price": 10, "currency": "USD"}
+for guarded in (False, True):
+    product = initial.copy()
+    b_snapshot = product.copy()
+    product.update(version=8, price=12)
+    if guarded and b_snapshot["version"] != product["version"]:
+        status = 412
+    else:
+        product = dict(b_snapshot, version=9, currency="EUR")
+        status = 200
+    print("If-Match enabled:", guarded, "B status:", status, "stored price:", product["price"])
+# Try it: let B fetch version 8 before editing; its conditional replacement can now preserve price 12.
+`} />
+
+Our integer versions are a teaching implementation of validators, not a claim that every ETag is a database row number. Validators must correspond to the representation and comparison semantics the server advertises. A weak validator is unsuitable for If-Match's strong comparison. Variant selection, compression, and a proxy's transformations can also affect which validator describes the representation a client actually received.
+
+<PredictFirst question="Repeating a PUT has an idempotent intended effect. Does that alone prevent a stale editor overwriting another edit?" options={["Yes, idempotence provides concurrency control", "No, a conditional mutation or another concurrency protocol is still needed", "Yes, provided both clients send JSON"]} correctIndex={1} explanation="Idempotence addresses repeated intent; it does not establish which prior state an edit was based on. An atomic precondition protects against the stale replacement." />
+
+## Status Codes and Operation Resources Preserve Meaning
+
+Use status and response bodies to distinguish accepted work, completed work, invalid inputs, authorization failures, conflicts, and unavailable dependencies. Returning 200 for every failure forces clients and intermediaries to infer hidden semantics from text. Conversely, assigning one status to every business case can hide whether a client should correct its input, retrieve current state, or wait.
+
+For an asynchronous import, 202 Accepted should not be presented as proof that all records are processed. Return an operation identifier and a status resource describing pending, running, failed, and completed states under a documented transition model. A client can reconnect and inspect that resource instead of relying on the original connection staying open. Acceptance itself should follow the promised durable boundary.
+
+Problem Details provides a standard structured error format for HTTP APIs. The body should give a stable type and relevant context without revealing credentials or internal stack traces. A request identifier can help correlate operator evidence, but it must not become an authorization capability accidentally. Keep application diagnostics separate from claims about whether an ambiguous external effect happened.
+
+## Cacheability and Pagination Are Interface Decisions
+
+A GET response is not automatically safe for a shared cache merely because the method is safe. Authentication, response directives, representation identity, and provider configuration determine permitted reuse. A product list may be public while an order response is private. The [CDN chapter](/docs/software-system-design/cdns) explains keys and freshness; a REST interface must preserve those distinctions through its headers and validators.
+
+Collection pagination needs stable ordering, an explicit limit, and a continuation contract. A cursor can identify the last ordered key and filter context. It should not let a caller change tenant scope or arbitrarily query internal storage. Concurrent inserts and deletes require an agreed policy for snapshots, duplicates, and omissions; HTTP does not choose that policy.
+
+A cache validation request and a mutation precondition solve related but different problems. `If-None-Match` can avoid retransferring an unchanged representation or conditionally create under supported semantics, while If-Match protects an update based on observed state. Do not conflate a 304 response validating a GET with a successful new write. Document which validators each operation accepts.
+
+<GoDeeper title="Go deeper: a conditional write needs one serialization point">
+The crucial operation is compare the current validator and replace state as one indivisible decision. A database update with an expected version predicate can supply that boundary: update the row only where its version equals the expected value, then check the affected-row count. If the version changes between a separate read and unconditional update, both clients can pass the application check. HTTP exposes the contract; storage concurrency control makes it true.
+</GoDeeper>
+
+## Run a Conditional Client Exchange
+
+Against a local test API implementing this resource contract, first retrieve `/products/7` and preserve its ETag. Send a replacement with `Content-Type: application/json` and `If-Match: "v7"`; then repeat the old-validator attempt after a successful update. The second request should receive the documented precondition failure, not silently reset the newer representation.
+
+```sh
+curl -i http://127.0.0.1:8080/products/7
+curl -i -X PUT http://127.0.0.1:8080/products/7 \
+  -H 'Content-Type: application/json' -H 'If-Match: "v7"' \
+  --data '{"price":12,"currency":"USD"}'
+```
+
+These requests require the test resource; they are a contract exercise, not a promise that a generic web server implements conditional product writes. In integration tests, establish the starting representation and issue both editors' mutations with controlled barriers. Verify final state and response meaning, including a lost response after the first commit. The server must enforce ownership independently of whether the validator matches.
+
+The second experiment implements the compare-and-replace boundary directly. A successful mutation returns the new validator. The stale attempt leaves both version and representation unchanged. A production implementation uses the store's atomic operation rather than relying on this sequential function to protect concurrent processes.
+
+<RunnableCode code={`product = {"version": 7, "price": 10}
+def replace(expected, price):
+    if expected != product["version"]:
+        return 412, product["version"]
+    product.update(version=product["version"] + 1, price=price)
+    return 200, product["version"]
+print("A:", replace(7, 12))
+print("B stale:", replace(7, 10))
+print("Final representation:", product)
+assert product == {"version": 8, "price": 12}
+# Try it: retry A with expected version 7; the effect remains once even though the response changes.
+`} />
+
+## Design the Conditional Update as One Database Decision
+
+An HTTP precondition needs an atomic implementation behind it. Suppose the stored row contains identifier 7, price 10, and version 7. After editor A succeeds, the row contains price 12 and version 8. Editor B's request still carries the validator for version 7. A conditional SQL update can match both the resource identifier and expected version, change the fields, and increment the version in the same database operation. An affected-row count of zero means the expected state did not match; the application must distinguish a missing resource from a failed precondition according to its response contract. Reading version 7, checking it in application memory, and later issuing an unconditional write leaves a race between the check and write.
+
+The version also needs a defined relationship to the representation. If a resource response combines a product row, inventory state, and localized text, changing any of those inputs might change the selected representation. A validator derived only from the product row may therefore be unsuitable as a strong validator for that entire response. Decide whether the edit endpoint owns one versioned resource, whether related state belongs in another resource, and which representation the validator identifies. Document content negotiation because different selected representations need validators consistent with HTTP's rules.
+
+Now trace an ambiguous result. A sends its conditional update, the database commits version 8, and the response disappears. Repeating the same request with the old validator can return a precondition failure even though A's first attempt succeeded. That response protects the current state but does not explain the original operation's outcome. A client can fetch and reconcile the resource, or the service can provide an operation identity when the workflow requires durable result lookup. Avoid responding to this ambiguity by removing the precondition. That would restore the lost-update race the version check was meant to prevent. Conditional mutation, operation identity, and retrieval each answer a different question in the recovery workflow.
+
+## Failure Modes and Better Choices
+
+A proxy retries a POST after a reset and creates a second business effect. Use an application idempotency contract or make another attempt conditional on authoritative outcome evidence. A client treats 202 as completion and deletes its only copy of pending work. Expose durable operation status and define failure recovery. A browser serves a deleted private representation from a cache. Review access, freshness, and revocation rather than only origin database state.
+
+A resource URL encodes a shard or host permanently. Keep stable public identifiers separate from internal placement so migration does not rewrite every client bookmark. An API change removes a field while older clients still depend on it. Evolve representations compatibly, instrument usage, and make semantic changes explicit. Adding a path version does not by itself supply a migration policy.
+
+## When Not to Use Resource-Oriented HTTP Alone
+
+| Situation | Better companion or alternative |
+| --- | --- |
+| Continuous bidirectional messages | A stream with explicit reconnect and flow semantics |
+| Typed internal calls need generated contracts | A suitable RPC interface |
+| A long operation outlives the request | Durable operation state and asynchronous processing |
+| Arbitrary client-selected nested data dominates | Evaluate a bounded graph query interface |
+
+## Remember
+
+| Contract | What the client may infer |
+| --- | --- |
+| Safe method | The requested semantics do not mutate business state |
+| Idempotent method | Repetition has the same intended effect |
+| Validator | Which representation a conditional request refers to |
+| Atomic precondition | A stale edit cannot silently replace newer state |
+| Operation resource | Acceptance and completion remain distinguishable |
+
+You can now separate retry semantics from concurrency control and test a stale replacement against an observable HTTP contract. Return to [Communication](/docs/software-system-design/communication) to compare this interface with RPC and streaming.
+
+## Sources
+
+- [Fielding, Architectural Styles and the Design of Network-based Software Architectures (2000)](https://ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm)
+- [RFC 9110, HTTP Semantics (2022)](https://httpwg.org/specs/rfc9110.html)
+- [RFC 9111, HTTP Caching (2022)](https://httpwg.org/specs/rfc9111.html)
+- [RFC 5789, PATCH Method (2010)](https://www.rfc-editor.org/rfc/rfc5789)
+- [RFC 9457, Problem Details for HTTP APIs (2023)](https://www.rfc-editor.org/rfc/rfc9457)

@@ -1,0 +1,165 @@
+---
+title: "Sagas, Compensation, and the Transactional Outbox"
+sidebar_position: 5.3
+description: "Persist multi-service workflow state, connect local commits to publication with an outbox, and make compensations recoverable instead of treating them as distributed rollback."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { SagaReservationRecovery } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
+
+# Sagas, Compensation, and the Transactional Outbox
+
+<ELI5>A trip booking can reserve a room before the flight is confirmed. If the flight fails, releasing the room is a new action, not a way to make the reservation never have happened. Someone must remember both the unfinished booking and the release obligation. A durable workflow keeps that memory across failures.</ELI5>
+
+Persist multi-service workflow state, connect local commits to publication with an outbox, and make compensations recoverable instead of treating them as distributed rollback.
+A **saga** coordinates a sequence of local business transitions with defined recovery or compensating actions. A **transactional outbox** records an event-publication obligation in the same local transaction as the state change that creates it. Together they can support recoverable workflows, but they solve different boundaries: saga state tracks the business process, while the outbox closes a local database-to-publication gap.
+
+The misconception is that compensation restores an execution as if it never occurred. Our example reserves thirty units from an available hundred, leaving seventy. A later capture step fails. Until a release commits, available inventory remains seventy. A successful compensating release returns it to a hundred, but the reservation and release still exist in history and can have observable consequences.
+
+## Represent Intermediate States as Product States
+
+A distributed workflow can be pending, reserved, awaiting capture, completed, compensating, compensated, or requiring review. These states are not implementation noise if users or other services can observe their consequences. Define what each state permits: a reserved order may prevent another buyer using inventory while still not being a completed purchase.
+
+An orchestrator can persist the next intended step and dispatch commands, while choreography lets services react to events under a defined workflow contract. Both need durable identity, causation, timeouts, and recovery ownership. Removing a central coordinator does not remove the process; it distributes its state and makes the dependencies harder to inspect unless they are documented.
+
+Choose a clear authority for the overall operation status. Several services independently declaring “complete” can leave a client without one answer after a partial failure. A status resource should distinguish temporary progress from a terminal business outcome and an unresolved external effect. Do not convert every timeout into a confirmed failure of the remote action.
+
+## Local Commit Plus Publish Has Two Failure Orders
+
+Write the database and then publish: a crash after commit can leave the business row without an event. Publish then write the database: a rollback can leave consumers acting on a fact that never committed. An application loop with two successful calls in ordinary testing does not close either window.
+
+The outbox records state and publication intent atomically in one store. A relay later reads committed obligations and publishes them, then records progress according to its supported protocol. If publishing succeeds but relay acknowledgement is lost, another send can occur. The outbox makes delivery recoverable; it does not make all downstream effects exactly once.
+
+<RunnableCode code={`def local_commit(fail):
+    working = {"orders": {}, "outbox": {}}
+    working["orders"]["o7"] = "reserved"
+    working["outbox"]["e7"] = {"order": "o7", "type": "reserved"}
+    if fail:
+        return {"orders": {}, "outbox": {}}
+    return working
+for fail in (True, False):
+    committed = local_commit(fail)
+    print("Rollback:", fail, "order:", committed["orders"], "event intent:", committed["outbox"])
+# Try it: remove the outbox write; the committed order no longer carries a recoverable publication obligation.
+`} />
+
+This is a model of a local atomic commit, not a database implementation. In production, the outbox row must be in the same real transaction as the state transition. A row written after that transaction is another dual write. A change-data-capture relay can read committed changes, but it still needs supported positions, retention, and replay behavior.
+
+## Compensation Is a New Invariant-Preserving Action
+
+<SagaReservationRecovery />
+
+The stock bars distinguish the reserved state from successful release. A failed capture does not automatically increase availability. The compensator must commit the release exactly under its own business identity and check whether a concurrent transition has changed what is permitted. If shipment already began, a simple “unreserve” may no longer be the right corrective action.
+
+Some actions have no exact inverse. A notification may have been read; a physical item may have moved; an exchange rate may have changed. Design a business remedy rather than promise a physical rollback. The operation history should retain both the forward step and its correction so support and reconciliation can explain the outcome.
+
+Compensation can itself fail or return an unknown outcome. Keep the obligation durable and retry or escalate under a policy appropriate to that action. Marking the workflow fully compensated before the release commits hides a real retained reservation. A compensated state is an evidence claim, not a convenient escape from an error handler.
+
+<PredictFirst question="Reservation commits and a later capture fails. Does the inventory automatically return from seventy to a hundred?" options={["Yes, a saga rolls back every service's database invisibly", "No, a permitted compensating release must commit as another action", "Yes, provided the orchestrator process restarts"]} correctIndex={1} explanation="Local commits remain real. Recovery must perform and record a valid correction; restarting a coordinator cannot undo already committed remote state." />
+
+## Every Step Needs Stable Intent and Outcome Evidence
+
+Use a workflow identity and distinct step identities, such as reserve-o7, capture-o7, and release-o7. Retrying reserve must not create a second reservation, while release must not be confused with another reserve merely because the workflow ID matches. Preserve fingerprints or semantic parameters so a reused key cannot silently change its action.
+
+A step can be not started, in progress, completed, definitely failed, or unknown. Unknown is necessary when a response is lost after possible effect. Query the destination or use its idempotency contract before selecting compensation or another attempt. A timeout is not sufficient proof that capture failed; compensating a successful but unobserved capture requires a different business action.
+
+Concurrency also matters. Another client may cancel, modify, or complete an order while a delayed step returns. The workflow authority must compare expected state and version before accepting that result. Otherwise an obsolete success response can resurrect a cancelled operation. The [conditional update chapter](/docs/software-system-design/rest) provides the same principle at an HTTP boundary.
+
+## Isolation Must Be Supplied Where the Business Rule Needs It
+
+Sagas do not automatically isolate intermediate states from other workflows. Two workflows can reserve resources and make decisions based on partially completed operations. Use reservations, semantic locks, version checks, or an authoritative conditional operation where needed. A choreography diagram does not establish that inventory never becomes negative.
+
+Define the transition where cancellation stops being a simple release and requires another remedy. This can be a business pivot such as dispatch or irreversible external confirmation. Once past it, retrying forward or issuing a distinct compensating action may be preferable to pretending every prior step has an inverse. Keep those decisions in the workflow model rather than scattered exception handlers.
+
+<GoDeeper title="Go deeper: outbox delivery and consumer application remain separate">
+An outbox relay can publish the same event after a crash between publication and marking progress. A consumer should use stable event identity and an atomic effect boundary where the invariant requires one application. Deleting the outbox row early opens a loss window; retaining it forever without progress opens an unbounded retry problem. The publisher and consumer each need a recoverable state machine with compatible retention.
+</GoDeeper>
+
+## Build the Local Boundary With Actual SQL
+
+A disposable PostgreSQL example can create `orders(id text PRIMARY KEY, status text NOT NULL)` and `outbox(event_id text PRIMARY KEY, order_id text NOT NULL, payload jsonb NOT NULL)`. In one transaction, insert order o7 and an event e7 describing the accepted transition. Deliberately raise an error before commit and verify neither row survives; then commit successfully and verify both survive.
+
+```sql
+BEGIN;
+INSERT INTO orders VALUES ('o7', 'reserved');
+INSERT INTO outbox VALUES ('e7', 'o7', '{"type":"order-reserved"}');
+COMMIT;
+```
+
+The relay needs bounded batches, concurrent ownership or locking, publication retry, and progress retention. If several relays operate, they must not each assume an unclaimed row belongs exclusively to them. Duplicates may still be permitted under the delivery contract, but uncontrolled concurrent redrive can overload subscribers. Measure oldest unpublished age, failures, and workflow age rather than only relay process health.
+
+<RunnableCode code={`available, completed = 100, set()
+def reserve(key, units):
+    global available
+    if key not in completed:
+        if available < units:
+            return False
+        available -= units
+        completed.add(key)
+    return True
+def release(key, units):
+    global available
+    if key not in completed:
+        available += units
+        completed.add(key)
+reserve("reserve-o7", 30)
+print("After reserve:", available)
+print("Capture failed; before compensation:", available)
+release("release-o7", 30)
+release("release-o7", 30)
+print("After repeated release attempts:", available)
+assert available == 100
+# Try it: remove the release identity check; repeating compensation can incorrectly create inventory.
+`} />
+
+This deliberately small model assumes the release is authorized and refers to an existing thirty-unit reservation. Production code must verify that relationship and atomically update reservation state and inventory. An arbitrary release request cannot be permitted to add stock simply because it has a new key. Idempotency protects repetition, not validity of a new action.
+
+A compensation command needs more than the number of units to add back. It should reference the original reservation, verify that the reservation is still releasable, and transition that reservation's durable state atomically with inventory. Otherwise a newly invented release identity can create stock even if duplicate release attempts are suppressed. Test a cancellation arriving after a successful downstream step and a delayed success arriving after cancellation. The workflow must choose a valid next action from its authoritative state rather than accepting whichever response arrived last.
+
+For the relay, pause immediately after broker acceptance and before the outbox progress update. Restart it with the same event identity and verify that a consumer's safe replay path preserves the intended effect. This test demonstrates why an outbox's durable obligation and a consumer's deduplication boundary complement each other rather than making either one redundant.
+
+A manual repair should also have a stable identity and an audited transition. Operator intervention must not become an unguarded path that can repeat the very compensation the automated workflow protects.
+
+## Make Compensation a Durable Forward Action
+
+Releasing a reservation is a new business operation with its own possible failures. In the 30-unit example, payment failure should eventually return availability from 70 to 100, but a network error during release leaves the system at 70 until recovery succeeds. Persist the need for compensation rather than keeping it only in a handler's stack. A worker can retry the release using the reservation identity, and the reservation state can make repeated release attempts harmless. The saga is complete only when its durable terminal state matches the chosen business outcome.
+
+Compensation is not always the algebraic inverse of the original step. A shipped package cannot be made unshipped by subtracting a row, and a notification already read by a customer cannot be erased from memory. Define an acceptable business remedy, such as cancellation before dispatch or a return workflow afterward. That distinction determines how far automation may proceed and when human resolution is required. The ordering of irreversible steps therefore belongs in the workflow design, alongside timeout and retry policies.
+
+For an outbox, the local transaction records both the domain change and the event intent. The relay can crash after publication but before marking the row published, so downstream consumers still need duplicate tolerance. Multiple relay workers also need a supported way to claim work without losing rows or violating required order. If order matters per aggregate, preserve an aggregate sequence and ensure a later event cannot conceal a missing earlier transition. Monitor the oldest unpublished intent rather than only relay process health. A healthy relay that repeatedly fails one row can leave the associated business state invisible elsewhere. During repair, distinguish republishing the same event from creating a replacement event with a new identity. The first asks consumers to recognize a retry; the second may legitimately cause a new effect. Keeping that distinction explicit makes operational replay safer.
+
+## Failure Modes and Better Choices
+
+A service commits a business row but crashes before publishing. Put the obligation in a transactional outbox. A relay replays and a subscriber performs the effect twice. Preserve event identity at the consumer. A coordinator declares capture failed after a timeout, but capture actually succeeded. Record uncertainty and reconcile before choosing a remedy.
+
+Compensation adds inventory twice. Make the corrective transition independently idempotent and tie it to its original reservation. A cancelled workflow is revived by a delayed success. Check expected state and workflow version. A poison event remains pending forever. Give unresolved workflows an owner, visibility, and an explicit escalation path rather than silently dropping them.
+
+## When Not to Use a Saga
+
+| Situation | Better starting design |
+| --- | --- |
+| One store can atomically own the whole invariant | A local transaction |
+| Intermediate states are unacceptable and participants support coordination | Evaluate a suitable distributed transaction |
+| No valid compensation or reconciliation exists | Redesign the business operation before distributing it |
+| A simple background action has one durable owner | A queue and operation record |
+
+## Remember
+
+| Mechanism | Responsibility |
+| --- | --- |
+| Saga state | Durable business progress and recovery decisions |
+| Outbox | Local state plus publication intent in one commit |
+| Compensation | A new authorized corrective transition |
+| Step identity | Safe repetition of one intended action |
+| Reconciliation | Evidence for unknown external outcomes |
+
+You can now explain which gap the outbox closes and why a saga needs durable recovery beyond a chain of calls. Return to [Distributed Systems](/docs/software-system-design/distributed-systems) before deciding where service boundaries belong.
+
+## Sources
+
+- [AWS Prescriptive Guidance, Saga Orchestration](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/saga-orchestration.html)
+- [AWS Prescriptive Guidance, Transactional Outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html)
+- [PostgreSQL, Transaction Isolation](https://www.postgresql.org/docs/current/transaction-iso.html)
+- [RabbitMQ, Consumer Acknowledgements and Publisher Confirms](https://www.rabbitmq.com/docs/confirms)
+- [AWS Builders Library, Making Retries Safe with Idempotent APIs (2021)](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/)

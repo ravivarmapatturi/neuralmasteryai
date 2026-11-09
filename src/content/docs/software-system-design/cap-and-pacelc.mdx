@@ -1,0 +1,149 @@
+---
+title: "CAP and PACELC: Decisions Under Partition"
+sidebar_position: 3.6
+description: "Trace a partitioned read/write history, distinguish CAP availability from an SLO, and compare failure-time consistency choices with normal network-latency costs."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import PartitionDecisionExplorer from '../../../viz/diagrams/PartitionDecisionExplorer';
+
+# CAP and PACELC: Decisions Under Partition
+
+<ELI5>
+Two ticket offices share the same seat inventory over a telephone line. When the line breaks, one office cannot know which seats the other has just sold. It can stop promising uncertain seats, or keep selling under a rule that accepts possible conflicts. A faster telephone normally helps coordination, but it cannot carry information while the offices are disconnected.
+</ELI5>
+
+CAP explains an impossibility under a defined network-failure model, not a shopping rule that assigns every database two permanent letters. During a partition, a replicated read/write object cannot guarantee both linearizable behavior and successful completion of every request at every non-failing node. The engineering task is to name which operations wait, fail, or accept weaker observations when the necessary communication is unavailable.
+
+The misconception is that a service can preserve both guarantees merely by returning an error quickly. A fast error can satisfy an operational response-time metric while failing to complete the requested object operation under CAP's availability definition. Our example starts at value 7, acknowledges a write of 8 on side A, then reads side B after that acknowledgement while the sides cannot communicate. Returning 7 breaks the required real-time ordering; refusing or delaying that read gives up the all-requests progress guarantee.
+
+## State the Model Before Applying the Result
+
+A **network partition** prevents some nodes from exchanging required messages even though those nodes may continue running and receiving clients. A process crash is a different event, though failure detection can have difficulty distinguishing an unreachable live process from a stopped one. A timeout reports missing timely communication, not proof of what the remote process did.
+
+In the formal CAP setting, **consistency** refers to an atomic or linearizable read/write object: operations behave as if they took effect in a single order compatible with real-time precedence. This differs from the C in ACID, which concerns preserving database validity constraints. Naming both concepts “consistency” does not make them the same guarantee.
+
+**Availability** in that setting requires requests at non-failing nodes to complete under the model's conditions. It is not a monthly percentage, and it does not impose the same bounded-latency objective as a product SLO. **Partition tolerance** means the guarantees are considered despite communication loss between groups. In a real distributed deployment, one cannot prevent every partition merely by declining to select its letter in a diagram.
+
+A practical architecture should record the failure envelope and operation semantics rather than just “CP” or “AP.” A service can preserve one invariant by rejecting writes while allowing explicitly stale reads. Another endpoint can require current authorization and refuse those stale reads. The meaningful choice occurs at the operation and state boundary.
+
+## Follow One Completed Write Across the Cut
+
+Initially A and B both store 7. The network separates them. A accepts a write to 8 and tells its client that the write completed. A later read begins at B after that successful response. Because B has received no information about the write, its local state still contains 7.
+
+<PartitionDecisionExplorer />
+
+Choose the progress-first policy to see B return its local value. The response can be useful under a stale-read contract, but cannot satisfy the stated linearizable history. Choose the linearizable policy and B refuses to claim a value it cannot establish. A timeout can bound the client's waiting, but the requested read still did not complete successfully.
+
+A different policy can refuse the write at A in the first place unless it can coordinate with the required participants. That preserves a different execution history: the later read is no longer required to follow a successfully completed write of 8. It still gives up successful completion for some partition-time request. The impossibility is not resolved by moving the refusal from read to write.
+
+<RunnableCode code={`a, b = 7, 7
+partitioned = True
+a = 8
+write_completed = True
+print("A acknowledged value:", a)
+for policy in ("local_read", "require_coordination"):
+    if policy == "local_read":
+        read = b
+        print("Policy:", policy, "result:", read,
+              "respects completed write:", read == a)
+    else:
+        read = None if partitioned else a
+        print("Policy:", policy, "result:", read,
+              "requested read completed:", read is not None)
+# Try it: heal the partition and copy a into b; both policies can then return the new value.
+`} />
+
+The code models one chosen history and one register, not a complete consensus algorithm. Its value is fixing the order of events. If the read overlaps the write rather than starting after its completion, linearizability permits more orderings. Keep invocation and completion times in a test history so a stale-looking response is evaluated against the actual contract.
+
+## Local Information Cannot Reveal an Unreceived Write
+
+From B's perspective, an execution where A changed 7 to 8 can look identical to one where A received no write at all. Both leave B with the same local state and no cross-partition messages. If B must return using only that information, it cannot choose a value that is correct for both possible linearizable histories.
+
+Waiting for coordination can resolve the uncertainty once communication returns, but a partition may persist beyond any chosen client deadline. A fallback value is a weaker semantic decision, not new information. This is why a “strong consistency with automatic stale fallback” endpoint must expose a contract describing the fallback rather than continuing to advertise the stronger guarantee unconditionally.
+
+A quorum can let one side continue when it contains enough members to follow the protocol safely. It does not make both disconnected sides independently able to acknowledge conflicting authoritative histories. Membership changes must also preserve the required overlap and writer authority. A configuration edit that declares each side a new majority can destroy the safety argument.
+
+<PredictFirst question="A partitioned node returns HTTP 503 immediately instead of completing a required read. Does that preserve CAP availability for the read?" options={["Yes, any HTTP response counts as completion of the object operation", "No, the requested successful read has been refused even if the error is fast", "Yes, provided the monthly SLO remains above 99.9%"]} correctIndex={1} explanation="The formal progress guarantee concerns completing the requested operation, not merely delivering an error packet. An operational SLO is a separate measurement with its own population and target." />
+
+## Recovery Must Reconcile the Chosen Failure Behavior
+
+If both sides accepted independent updates under a weaker contract, healing the network exposes competing histories. The application needs a conflict rule. Last-write-wins, application merge, or versioned alternatives provide different semantics; none can be assumed to reconstruct an intention that was never recorded. A shopping-cart merge and a seat-inventory decision need different treatment.
+
+If one side stopped writes, recovery still needs to identify current authority, catch up replicas, and prevent an old writer from resuming with obsolete ownership. Data convergence and writer fencing are separate duties. A node returning after a long outage is not safe merely because its health check answers again.
+
+An idempotency key helps identify repeated attempts for one logical operation, but does not replace conflict handling between distinct operations. Two customers attempting to reserve the same final seat are not duplicates. Define the invariant, operation identity, and conflict policy independently so a retry mechanism does not conceal a business concurrency problem.
+
+<GoDeeper title="Go deeper: strong behavior can be scoped to a subset of operations">
+A system can use a strongly coordinated path for inventory reservation and a weaker path for catalogue descriptions. That does not contradict CAP; it applies different contracts to different objects and actions. The architecture must prevent a weak observation from authorizing a transition whose invariant assumes a current strong observation. A stale read used only for display and the same stale read used to approve a purchase have different consequences.
+</GoDeeper>
+
+## PACELC Adds the Normal-Operation Question
+
+Abadi's PACELC framing asks two questions: under a partition, how does the design trade availability and consistency; otherwise, how does it trade latency and consistency? The second question matters because replication and coordination consume network time even when the network is healthy. A failure-only diagram omits the cost paid on ordinary requests.
+
+Consider illustrative local storage time of 2 ms, one-way inter-region transport of 20 ms, and remote durable storage time of 2 ms. Waiting for a remote durable acknowledgement along that path takes about 20 + 2 + 20 = 42 ms, while a local-only durable boundary takes 2 ms in this simplified model. These are chosen inputs, not measured cloud latencies or universal lower bounds for every protocol.
+
+The model assumes local and remote work can overlap and ignores queueing, serialization, and client transport outside the measured boundary. Another topology, quorum placement, batching policy, or leader location changes the path. PACELC is a way to ask where those costs arise, not an excuse to label every product permanently without naming its configuration.
+
+A read may pay coordination instead of a write, or a system may offer selectable guarantees per operation. Stronger guarantees can be affordable when relevant replicas are close and the workload tolerates the path. Weaker observation is appropriate only where the product accepts it. “Low latency” alone does not authorize showing a revoked permission as current.
+
+<RunnableCode code={`local_flush_ms = 2
+one_way_ms, remote_flush_ms = 20, 2
+remote_ack_path = 2 * one_way_ms + remote_flush_ms
+coordinated_boundary = max(local_flush_ms, remote_ack_path)
+print("Local durable boundary ms:", local_flush_ms)
+print("Remote durable acknowledgement path ms:", remote_ack_path)
+print("Overlapped coordinated boundary ms:", coordinated_boundary)
+for local, remote in ((7, 7), (8, 7), (8, 8)):
+    print("Local value:", local, "remote value:", remote,
+          "copies agree:", local == remote)
+# Try it: reduce one_way_ms to 1; network placement changes the normal coordination cost.
+`} />
+
+Agreement of two values in that final loop is a state observation, not a proof of linearizability. A system can converge eventually after exposing a forbidden earlier history. Conversely, two copies may temporarily differ while a strongly coordinated read path still returns a valid result. The contract describes allowed executions, not just whether a dashboard's latest values match.
+
+## Turn the Trade-Off Into an Operational Decision
+
+Write a policy for each important action. For revocation, a disconnected edge might stop serving after its freshness lease expires. For a public catalogue description, it might serve a bounded older representation. For a payment, it might return an unknown-outcome state and reconcile rather than claim the operation failed and invite a duplicate charge.
+
+Test the policy by cutting communication in a controlled environment while preserving clients on both sides. Record operation invocation, response, identity, and observed state. Test healing as well as the cut: conflicting values, retained logs, and returning writers can create incidents after connectivity returns. A fast recovery dashboard is not evidence that every accepted effect survived.
+
+When reviewing a database setting, inspect actual guarantees rather than turning “quorum” or “synchronous” into a synonym for every strong property. Quorum intersection is part of some protocols' arguments, while version handling, read repair, concurrent writes, and membership determine the rest. The [replication chapter](/docs/software-system-design/replication) explains why acknowledgement stage also matters.
+
+## Common Problems and Fixes
+
+A design treats CAP availability as a percentage. Separate formal progress from the service's [SLO](/docs/software-system-design/availability-and-slos). A “CP” service silently falls back to stale reads. Make the weaker contract explicit or preserve the required refusal behavior. A supposedly “AP” application rejects some operations that need global invariants. Document the operation-specific boundaries instead of forcing a single service-wide label.
+
+A partition test only kills a process. Exercise communication loss with both sides still running when that failure is in scope. A system heals but old writers continue accepting work. Review fencing and membership transitions. A normal-operation latency target ignores inter-region acknowledgement. Budget the actual critical path with measured topology and the chosen durability policy.
+
+## When Not to Use CAP as the Diagnosis
+
+| Situation | Better question |
+| --- | --- |
+| One query has a poor access path | Which index or query plan reduces work? |
+| A single-process transaction violates a rule | Which isolation and application invariant were required? |
+| Healthy-network latency is excessive | Which coordination path and queue consume the budget? |
+| A product needs several distinct guarantees | Which contract applies to each operation and object? |
+
+## Remember
+
+| Term | Meaning to preserve |
+| --- | --- |
+| CAP consistency | Real-time-compatible atomic read/write behavior |
+| CAP availability | Successful operation progress under the model |
+| Partition | Required messages cannot cross between groups |
+| Failure policy | Which operations wait, refuse, or weaken observations |
+| PACELC | Ask about healthy-network coordination costs too |
+| Recovery | Reconcile accepted histories and restore one authorized ownership protocol |
+
+You can now trace a partition-time history and state the guarantee a particular response gives up. Return to [Data Ownership and Consistency](/docs/software-system-design/data), and compare the model with [replication acknowledgement](/docs/software-system-design/replication).
+
+## Sources
+
+- [Gilbert and Lynch, Brewer's Conjecture and the Feasibility of Consistent, Available, Partition-Tolerant Web Services (2002)](https://users.ece.cmu.edu/~adrian/731-sp04/readings/GL-cap.pdf): formal definitions and impossibility.
+- [Abadi, Consistency Tradeoffs in Modern Distributed Database System Design (2012)](https://www.cs.umd.edu/~abadi/papers/abadi-pacelc.pdf): PACELC and ordinary-operation latency trade-offs.
+- [Jepsen, Linearizability](https://jepsen.io/consistency/models/linearizable): real-time order and object scope.
+- [DeCandia et al., Dynamo (2007)](https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf): versioned state and application-assisted conflict handling.
+- [PostgreSQL, Synchronous Replication](https://www.postgresql.org/docs/current/warm-standby.html): concrete acknowledgement and availability choices.

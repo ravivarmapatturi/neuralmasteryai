@@ -1,0 +1,60 @@
+---
+title: "Scaling and Traffic Management"
+sidebar_position: 2
+description: "Choose how capacity grows, route requests to ready replicas, cache reusable work at the edge, and bound overload while new capacity becomes useful."
+---
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+
+# Scaling and Traffic Management
+
+<ELI5>
+A busy shop needs enough working checkouts, a way to direct customers, and a limit on work it cannot finish. More checkouts help only if the stockroom keeps up and a replacement cashier can find each customer's order. These chapters explain each decision separately, including what changes during failure.
+</ELI5>
+
+Read these seven chapters in order. Each carries one mechanism through its own numerical example, interactive experiment, runnable Python, and failure analysis.
+
+| Chapter | Decision it teaches |
+| --- | --- |
+| [Vertical vs Horizontal Scaling](/docs/software-system-design/vertical-vs-horizontal-scaling) | Enlarge the constrained resource or add independent capacity |
+| [Stateless Services and State Ownership](/docs/software-system-design/stateless-services) | Preserve sessions and accepted work when replicas change |
+| [Load Balancing, Algorithms, and Health Checks](/docs/software-system-design/load-balancing) | Choose the assignment unit, signal, and destination eligibility |
+| [Reverse Proxies and API Gateways](/docs/software-system-design/reverse-proxies-and-api-gateways) | Define routing, identity, and deadline boundaries across hops |
+| [CDNs, Cache Keys, and Edge Freshness](/docs/software-system-design/cdns) | Reuse the correct representation and prepare for origin misses |
+| [Autoscaling and Delayed Capacity](/docs/software-system-design/autoscaling) | Calculate backlog before startup and spare capacity for recovery |
+| [Rate Limiting and Admission Control](/docs/software-system-design/rate-limiting) | Bound bursts and distributed allowances before accepting work |
+
+## Vertical Growth and Horizontal Growth Solve Different Limits
+
+[Vertical vs horizontal scaling](/docs/software-system-design/vertical-vs-horizontal-scaling) locates the bottleneck before choosing a machine or replica count. Its shared-store example shows why extra application capacity can add waiting without increasing completions. [Stateless services](/docs/software-system-design/stateless-services) then makes replacement and rerouting safe for essential state.
+
+## L4 and L7 Load Balancing
+
+[Load balancing](/docs/software-system-design/load-balancing) compares connection assignment with request assignment. Four connections carrying 100, 1, 1, and 1 requests/s can overload one backend even when each backend owns two connections. Algorithms, health checks, and draining must use signals appropriate to the operation.
+
+## Reverse Proxies, Gateways, and the Edge
+
+[Proxies and gateways](/docs/software-system-design/reverse-proxies-and-api-gateways) follows a forged forwarding header through a trust boundary. [CDNs](/docs/software-system-design/cdns) follows reusable responses through a separate cache boundary, including key identity, freshness, and invalidation.
+
+## Autoscaling Cannot Remove Startup Time
+
+[Autoscaling](/docs/software-system-design/autoscaling) calculates 180,000 queued jobs during a 90-second capacity delay. Matching ongoing arrivals stops queue growth; draining requires spare completions. The controller also needs limits and safe scale-down behavior.
+
+## Admission Control Protects Useful Work
+
+[Rate limiting](/docs/software-system-design/rate-limiting) separates burst permission from waiting queues and active concurrency. A five-token bucket refilling two/s behaves differently from fixed windows or independently duplicated per-instance quotas.
+
+## Common Problems and Fixes
+
+Measure the constrained resource, verify recoverable state ownership, and test the cold or failed state before counting healthy replicas. The chapters include concrete counterexamples for connection imbalance, forged metadata, origin overload, delayed scaling, and quota multiplication.
+
+## When Not to Add More Instances
+
+A shared lock, inefficient query, or exhausted downstream quota needs a change at that constraint. Use the [bottleneck experiment](/docs/software-system-design/vertical-vs-horizontal-scaling#locate-the-resource-that-limits-completion) before expanding the application fleet.
+
+## Remember
+
+Capacity, routing, freshness, and admission are different controls over one request path. Apply them together in the existing [rate limiter case study](/docs/software-system-design/rate-limiter), then continue to [Data Ownership and Consistency](/docs/software-system-design/data).
+
+## Sources
+
+Primary specifications, configuration references, and calculations appear in each linked topic chapter.

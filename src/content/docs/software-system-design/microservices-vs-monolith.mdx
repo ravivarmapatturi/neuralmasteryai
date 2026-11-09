@@ -1,0 +1,145 @@
+---
+title: "Microservices and Modular Monolith Boundaries"
+sidebar_position: 5.4
+description: "Choose deployment boundaries from ownership, change patterns, and failure isolation; calculate network costs and plan extraction without creating a distributed monolith."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ServiceBoundaryCost } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
+
+# Microservices and Modular Monolith Boundaries
+
+<ELI5>A workshop can have separate benches for cutting, painting, and packing without putting each bench in a different building. Separate buildings can let teams work independently, but every transfer needs transport and a handover agreement. Choose that separation when its independence is useful enough to pay for the new boundaries.</ELI5>
+
+Choose deployment boundaries from ownership, change patterns, and failure isolation; calculate network costs and plan extraction without creating a distributed monolith.
+A **modular monolith** keeps one deployable application while enforcing internal boundaries between responsibilities. **Microservices** place independently operated capabilities behind network interfaces, commonly with explicit data ownership and deployment autonomy. Neither topology establishes good domain boundaries automatically. A module can be deeply coupled, and a separate process can still require every other service to change in lockstep.
+
+The misconception is that splitting processes necessarily creates independent scale and releases. Our illustrative action performs three serial stages, each requiring 20 ms of business work. Keeping them local totals 60 ms in the simplified model. Separating them with two 5 ms network handovers raises it to 70 ms before retries or queueing. That cost may be worthwhile for real independent ownership, but process count alone does not supply the benefit.
+
+## Begin With the Capability and Its Invariants
+
+A useful boundary owns a coherent set of decisions and data transitions. Inventory reservation, catalogue browsing, and notification delivery can have different change rates and reliability needs. The boundary should explain who may change state and how callers observe outcomes, not merely group functions by technical type such as controllers versus database access.
+
+Keep an invariant local when the product requires a small atomic transition and no stronger reason demands distribution. Splitting a tightly coupled transaction across services introduces coordination or intermediate states. The [saga/outbox topic](/docs/software-system-design/distributed-systems) explains recoverable workflows, but a saga is not automatically a better replacement for a transaction that fits one owner.
+
+A modular codebase can enforce API boundaries, private state, dependency direction, and tests before introducing network failure. That provides evidence about which modules change independently. If every feature crosses all modules, extracting each as a service may preserve the same coupling while adding serialization, credentials, deployment configuration, and on-call obligations.
+
+## Account for the New Critical Path
+
+<ServiceBoundaryCost />
+
+The bars hold business work constant and add only the chosen two 5 ms handovers. They do not claim that a monolith is always faster or that every network call takes 5 ms. Independent services can also change algorithms, cache locally, or run work concurrently. Compare equivalent user operations and state guarantees rather than attributing every performance difference to the architecture name.
+
+<RunnableCode code={`stages_ms = [20, 20, 20]
+for handover_ms in (0, 5):
+    links = len(stages_ms) - 1
+    total = sum(stages_ms) + links * handover_ms
+    print("Per-link handover ms:", handover_ms, "business work ms:", sum(stages_ms), "total ms:", total)
+# Try it: make two stages parallel only if the business dependencies permit it; recompute the critical path.
+`} />
+
+A serial chain also couples availability. Under an explicitly simplified independent model, three required components each available with probability 0.999 are jointly available with probability about 0.997003. Real failures can be correlated through infrastructure, identity, deployment, or shared data. The model is useful to reveal another required dependency, not to predict a production SLO from isolated uptime numbers.
+
+## Independent Deployment Requires Compatible Interfaces
+
+A service earns deployment autonomy when its clients can tolerate the supported old/new versions during rollout. If a field change requires all services to deploy simultaneously, the network boundary has not produced release independence. Evolve contracts compatibly, observe usage, and retire old semantics only under a deliberate migration plan.
+
+Data ownership is equally important. Several services writing arbitrary tables in one shared schema can couple releases through hidden constraints and migrations. A shared physical database is not inherently forbidden, but ownership and access rules must remain explicit. Private implementation tables should not become undocumented public APIs merely because every service has credentials.
+
+Avoid synchronous call chains that mirror internal function calls across the network. A chatty interface can make one page require many remote round trips and propagate every dependency's tail latency. Design cohesive operations and bounded payloads under the [RPC deadline contract](/docs/software-system-design/grpc), while keeping domain logic with the state owner.
+
+<PredictFirst question="Three services must always change their schemas and deploy together for every feature. Has process separation established independent releases?" options={["Yes, each service has its own executable", "No, the release and data contracts remain coupled", "Yes, provided a container orchestrator starts them"]} correctIndex={1} explanation="Autonomy is observable in compatible changes and ownership, not executable count. Orchestration manages processes but does not redesign their contracts." />
+
+## Scaling and Failure Isolation Need Resource Boundaries
+
+Separate deployments can allocate resources independently when demand differs materially. A compute-heavy report worker can scale without replicating every web handler. A modular application can also use separate process types for background work without making every domain module a microservice. Choose the smallest separation that delivers the required resource or failure boundary.
+
+Isolation is incomplete if services share an unbounded connection pool, one database lock, or a common queue that every client can saturate. A runaway consumer can still harm unrelated capabilities through the shared store. Define budgets, quotas, timeouts, and admission controls where the scarce resource actually exists. Network separation alone does not make a bulkhead.
+
+Operating several services adds service discovery, credentials, observability, rollout, backups, and recovery obligations. Assign ownership for the whole lifecycle, including quiet low-traffic services that rarely receive attention. A service without a maintained owner becomes a hidden dependency that is hardest to recover when its original author is unavailable.
+
+<GoDeeper title="Go deeper: the distributed monolith keeps coupling and adds failure modes">
+Suppose each request must call every service serially, every release updates all schemas together, and all services write the same tables. The deployment is distributed but the change and invariant boundaries remain global. Partial failure and version skew are now possible even though little autonomy was gained. The remedy is to change ownership and contracts, or simplify deployment, rather than merely add another gateway.
+</GoDeeper>
+
+## Extract a Boundary With a Reversible Migration
+
+A staged extraction can place a stable interface in front of existing code, route one capability through it, and establish data ownership before moving the implementation. Keep one authoritative writer during the transition unless a supported coordination protocol intentionally allows more. Naive dual writes can diverge after a partial failure and make rollback ambiguous.
+
+A strangler-style migration redirects selected operations incrementally rather than replacing the whole system at once. It still needs consistent identifiers, compatible authorization, and a plan for historical data. Compare outputs and invariants on representative traffic, while ensuring any shadow path cannot repeat irreversible effects. Shadowing a read and shadowing a payment are different operations.
+
+Rollback must account for state produced by the new owner. Switching traffic back to old code can fail if its schema cannot interpret new records. Use compatible expansion and contraction phases, retain recovery evidence, and verify both directions. The [deployment material](/docs/software-system-design/reliability) treats compatibility as part of rollback rather than a separate database concern.
+
+## Measure Whether the Boundary Earns Its Cost
+
+Useful evidence includes changes that touch several capabilities, frequency of coordinated deployments, time waiting for another team's review, independent resource demand, incident blast radius, and on-call recovery effort. Do not turn one metric into an automatic rule: a heavily shared change may reflect a genuine global business rule rather than poor module design.
+
+Track end-to-end user latency and correctness before and after extraction. Internal service dashboards can look healthy while total serial overhead or partial failures harm the user action. Preserve tracing context across the new boundary and compare the same request population. A lower per-service median is not proof that the product became faster.
+
+<RunnableCode code={`component_availability = .999
+required_components = 3
+joint = component_availability ** required_components
+print("Illustrative independent joint availability:", round(joint, 6))
+changes = [{"catalogue"}, {"catalogue", "orders"}, {"orders"}, {"catalogue", "orders", "billing"}]
+coordinated = sum(len(change) > 1 for change in changes)
+print("Changes touching multiple capabilities:", coordinated, "of", len(changes))
+# Try it: add several independent catalogue changes; assess evidence rather than applying a fixed service-count rule.
+`} />
+
+The change sets are a small decision-record exercise, not an organizational benchmark. Investigate why a change crosses boundaries and whether a stable interface would remove that dependency. A design can legitimately retain one deployable unit while using precise modules, tests, and separate background workers. It can also legitimately accept network costs to isolate a capability with different ownership and demand.
+
+## Exercise the Interface Before Moving the Process
+
+For an HTTP extraction, route a disposable capability through a local reverse proxy and compare old/new contract responses with controlled data. For a typed RPC extraction, compile and test old/new schema versions. Include missing dependencies, delayed responses, authorization failures, and cancellation. The [REST](/docs/software-system-design/rest) and [gRPC](/docs/software-system-design/grpc) chapters provide concrete interface boundaries.
+
+Also rehearse operations: deploy a compatible new version, drain the old instance, restore its data, and revoke its credentials. If the team cannot perform those tasks safely for one extracted service, multiplying the pattern is premature. A migration is reviewable when its ownership, routing, failure, and rollback behavior are concrete.
+
+Before extraction, write a dependency map for one real change: which module owns the rule, which stored fields change, which callers need new behavior, and which deployments must overlap. Then propose the service interface and repeat the same exercise. If the proposed boundary still requires every caller and schema to change together, process separation has not removed the underlying dependency. That is evidence to improve the contract or keep the operation local.
+
+Exercise the failure path introduced by the new boundary too. A local function cannot lose its response across a network; a remote call can commit and then time out. Decide how the caller discovers that outcome and whether a repeated request is safe. Including these new states in the decision record makes the operational cost concrete, rather than attributing all migration work to temporary implementation inconvenience.
+
+Preserve the decision record after extraction. If the expected independent changes or resource savings do not appear, use that evidence to simplify or revise the boundary rather than maintaining it solely because migration already occurred.
+
+## Choose the Transaction Boundary Before the Deployment Boundary
+
+A module boundary can enforce ownership inside one deployable application. For example, an order module can expose a command that reserves inventory through a clear interface while both changes remain in one database transaction when that is the intended invariant. Extracting inventory into a separate service removes the ordinary local transaction across those states. The resulting workflow needs an explicit distributed protocol, such as a reservation and saga, or a revised business promise. Moving code across a network is therefore a change to failure semantics as well as deployment topology.
+
+The 60 ms business path plus 10 ms of network handover illustrates one serial cost. Real extraction may also introduce serialization, authentication, connection pools, queueing, and independent capacity limits. Measure those costs at the actual load and payload size instead of treating the example's 5 ms handover as a universal constant. Parallel calls can reduce a serial path when dependencies permit it, but they can also multiply backend work. A boundary that saves deployment coordination while increasing every request's dependency count should be evaluated against both operational benefits and runtime cost.
+
+Independent deployment requires compatibility work. If service A cannot be released until B is released in the same window, the architecture has retained coordinated deployment while adding distributed failure modes. Version interfaces, expand schemas compatibly, and let older and newer callers coexist during the migration. Teams also need ownership of alerts, data repair, capacity, and incident response for the extracted service. Without that ownership, an apparent organizational boundary becomes another ambiguous dependency during failure. A practical extraction begins with a module whose data and responsibility are already clear, establishes observability and rollback, and measures whether the new independence is used. If the system still changes as one unit, retaining a modular monolith can preserve simpler transactions and debugging while leaving an extraction path open for a concrete future need.
+
+## Failure Modes and Better Choices
+
+A service extraction replaces local calls with dozens of tiny RPCs. Redesign operation granularity before scaling the network. Teams still write each other's tables and coordinate every release. Establish ownership or retain the simpler deployable boundary. A shared dependency defeats the promised isolation. Apply budgets at that shared resource.
+
+A rollback points old code at incompatible new state. Preserve version compatibility and test both transition directions. A shadow deployment repeats real external effects. Disable those effects or use a safe comparison harness. A service is chosen because the module is small. Evaluate independent change, ownership, and operational value rather than lines of code.
+
+## When Not to Split a Service
+
+| Situation | Better first step |
+| --- | --- |
+| The invariant needs one small atomic owner | Keep that transition local |
+| Boundaries change with every feature | Improve modules and learn the domain |
+| Releases still require all participants together | Repair compatibility and ownership |
+| No operational owner can support another deployment | Keep a simpler topology |
+
+## Remember
+
+| Boundary | Evidence |
+| --- | --- |
+| Module | Enforced internal ownership and dependencies |
+| Service | Useful independent deployment or resource control |
+| Data | One deliberate mutation authority |
+| Interface | Compatible old/new behavior |
+| Migration | Recoverable routing, state, and rollback |
+
+You can now justify a deployment boundary from observable independence and its costs. Return to [Distributed Systems](/docs/software-system-design/distributed-systems) before introducing discovery and failure controls between services.
+
+## Sources
+
+- [Fowler, Monolith First (2015)](https://martinfowler.com/bliki/MonolithFirst.html)
+- [Lewis and Fowler, Microservices (2014)](https://martinfowler.com/articles/microservices.html)
+- [PostgreSQL, Transaction Isolation](https://www.postgresql.org/docs/current/transaction-iso.html)
+- [gRPC, Core Concepts](https://grpc.io/docs/what-is-grpc/core-concepts/)
+- [Google SRE Workbook, Canarying Releases (2018)](https://sre.google/workbook/canarying-releases/)

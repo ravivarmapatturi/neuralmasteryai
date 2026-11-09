@@ -1,0 +1,101 @@
+---
+title: "Design a News Feed"
+sidebar_position: 9
+description: "Design a hybrid social feed with durable posts, fan-out estimates, celebrity handling, stable pagination, and explicit freshness and privacy behavior."
+---
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import SoftwareCaseTrace from '../../../viz/diagrams/SoftwareCaseTrace';
+
+# Design a News Feed
+
+<ELI5>A feed is a reading list assembled from people you follow. We can place a reference in your inbox whenever someone posts, or build the list when you open it. Copying references makes reading cheap, but a celebrity can create millions of copies at once. A hybrid design uses each method where its cost is tolerable.</ELI5>
+
+## Requirements and Estimates
+
+Assume ten million daily readers, each opening twenty pages of twenty posts. That is 200 million page reads/day, about 2,315 page reads/s on average. Assume one million posts/day and 200 followers per ordinary author. Eagerly copying a post reference to each follower creates 200 million inbox inserts/day, before retries and replica writes. These are illustrative workload inputs.
+
+The service must publish posts durably, show a chronological feed initially, support follow and unfollow, enforce visibility changes, and paginate without repeatedly showing the same item. Ranking is a separate evolution; the [ML recommendation case studies](/docs/ml-system-design/case-studies) own candidate scoring and evaluation. We focus on post storage, candidate assembly, and view maintenance rather than duplicating that material.
+
+Set an illustrative p99 page objective of 300 ms and a five-second ordinary-post freshness target under normal operation. Acknowledging a post means its authoritative content is durable, not that all follower inboxes are updated. State that distinction in the API contract so the application can show a sender their own post while background fan-out catches up.
+
+## Ownership and Hybrid Fan-Out
+
+Persist posts by author and post ID with creation sequence, visibility, and content reference. Write a publication event through an outbox. Fan-out workers append references to derived per-reader inboxes with unique `(reader, post)` identity so replay cannot create duplicate entries. Content itself stays in the post store or object storage instead of being copied into every inbox.
+
+An ordinary post with 200 followers requires 200 inbox inserts. An author with ten million followers creates ten million inserts from one post. At an illustrative 50,000 inserts/s of dedicated capacity, that one post takes 200 seconds even with no competing work. Fan-out-on-write alone cannot meet the five-second freshness target for that author under these assumptions.
+
+Keep high-fan-out authors in a read-time merge path. Readers fetch their prepared ordinary-author inbox and recent posts from followed high-fan-out authors, then merge by the feed ordering key. The threshold should follow measured follower activity, write budget, and read cost, not a universal “celebrity” number. A reader following thousands of such authors can make the read path expensive, so cache bounded candidate sets and measure that distribution.
+
+## Pagination and Privacy
+
+Use keyset pagination with an ordered pair such as `(creation_sequence, post_id)` and a stable cursor. Offset pagination shifts when new items arrive and becomes expensive at deep offsets. A ranked feed may need a short-lived snapshot or candidate-session identity because rank changes can move items between pages. Include the snapshot version in the cursor rather than pretending a mutable order is stable.
+
+Derived inboxes are not authorization authorities. Recheck visibility, blocks, deletion, and follow rules when assembling a response, or keep a proven invalidation mechanism within a stated privacy deadline. A deleted private post must not remain visible merely because its reference was eagerly copied to a million inboxes.
+
+A follow operation may backfill a bounded recent history. Make backfill identity-compatible with live fan-out so a post arriving during backfill is not duplicated. Unfollow can remove references asynchronously if read-time authorization immediately prevents exposure. This separates expensive cleanup from the immediate user promise.
+
+## Failure, Recovery, and Trade-offs
+
+Fan-out queues need oldest-event age and per-author lag metrics. A hot author's work should not block unrelated ordinary posts, so partition and schedule fairly. A cold cache or worker outage can leave inboxes incomplete; an authoritative recent-post fallback may preserve bounded freshness at greater read cost, or the product may explicitly show a stale page. Choose and load-test one policy.
+
+Inbox stores can be rebuilt from durable posts and relationship history only if that history is retained with the required semantics. Keep the source of truth and derived-view version distinct, and test replay after schema changes. Rebuilding today's relationships against old posts may produce a different feed from replaying historical visibility; decide which behavior is required.
+
+Start with one region owning each author's writes and asynchronously replicated read views. Monitor publish durability, fan-out delay, page latency, filtered unauthorized candidates, and cursor duplicates. Active-active writes need an ordering and conflict contract; sorting unsynchronized client timestamps is insufficient. The central trade-off is write amplification versus read-time fan-in, constrained by freshness and privacy.
+
+## Follow the Failure Boundary
+
+<SoftwareCaseTrace scenario="news-feed" />
+
+<PredictFirst question='A post with ten million followers is queued at 50,000 inbox inserts/s. Can this path alone meet five-second freshness?' options={['Yes, because the post itself is one row', 'No, fan-out alone takes 200 seconds', 'Yes, adding a cache removes the writes']} correctIndex={1} explanation='Ten million divided by fifty thousand is two hundred seconds before competing work. A hybrid read path or much larger measured fan-out capacity is required.' />
+
+## Run the Design Calculation
+
+<RunnableCode code={`daily_pages = 10_000_000 * 20
+ordinary_writes = 1_000_000 * 200
+celebrity_followers, insert_rate = 10_000_000, 50_000
+print("Average page reads/s:", round(daily_pages/86400, 1))
+print("Daily ordinary inbox inserts:", ordinary_writes)
+print("Celebrity fan-out seconds:", celebrity_followers/insert_rate)
+# Try it: double insert_rate; compare the result with a five-second freshness target.
+`} />
+
+## Change the Invariant Deliberately
+
+<RunnableCode code={`ordinary = [(105, "p5"), (103, "p3"), (101, "p1")]
+celebrity = [(104, "p4"), (102, "p2")]
+merged = sorted(set(ordinary + celebrity), reverse=True)
+page = merged[:3]
+cursor = page[-1]
+next_page = [p for p in merged if p < cursor][:3]
+print("Page one:", page)
+print("Page two:", next_page)
+assert not set(page) & set(next_page)
+# Try it: add a newer post before fetching page two; the older cursor remains stable.
+`} />
+
+## When Not to Use This Design
+
+| Situation | Better choice |
+| --- | --- |
+| Small community with low read volume | Assemble feeds directly from indexed posts |
+| Highly dynamic personalized ranking | Candidate snapshots plus a dedicated ranking stage |
+
+## Remember
+
+| Decision | Reason |
+| --- | --- |
+| Hybrid fan-out | Avoid unbounded celebrity write amplification |
+| Cursor | Preserve stable traversal |
+| Visibility | Authoritative checks override derived inboxes |
+
+Next: [Design a Chat System](/docs/software-system-design/chat-system).
+
+## Sources
+
+- [Twitter Engineering, Timelines at Scale (2013)](https://www.infoq.com/presentations/Twitter-Timeline-Scalability/).
+- [PostgreSQL, LIMIT and OFFSET](https://www.postgresql.org/docs/current/queries-limit.html).
+- [Apache Kafka, Design](https://kafka.apache.org/41/design/design/).
+- [AWS, Transactional Outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html).
+- [OWASP, Authorization](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html).

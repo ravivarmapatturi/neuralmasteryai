@@ -1,0 +1,149 @@
+---
+title: "Retries, Backoff, Jitter, and Attempt Budgets"
+sidebar_position: 5.7
+description: "Choose retryable outcomes from effect semantics, propagate one deadline, and calculate how nested retries and synchronized backoff amplify dependency load."
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { RetryAmplification } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
+
+# Retries, Backoff, Jitter, and Attempt Budgets
+
+<ELI5>If a door is temporarily stuck, trying again later can help. If everyone pushes it harder at the same instant, they may make it worse. A useful retry preserves the original task, waits for a plausible recovery opportunity, and stops when there is no time or permission left to try.</ELI5>
+
+Choose retryable outcomes from effect semantics, propagate one deadline, and calculate how nested retries and synchronized backoff amplify dependency load.
+A **retry** repeats an attempt to complete the same intended operation. It can recover from transient failure, but consumes capacity and may repeat a committed effect after an ambiguous response. Retry policy belongs with operation semantics and the caller's useful deadline, not merely with a generic catch block around every network call.
+
+The misconception is that small retry counts at several layers remain small overall. Three layers each permitting three total attempts can generate up to 27 calls at the deepest dependency for one logical action. Choosing one retry owner with three attempts caps that simplified path at three. These are worst-case counts under the stated nesting, not a forecast that every request always uses every attempt.
+
+## Classify the Outcome Before Repeating the Action
+
+A malformed request or denied permission usually requires a changed input or authority, not another identical attempt. A transient unavailable response may justify retry if enough time and budget remain. A timeout can be ambiguous: the receiver may have committed and lost its response. Do not interpret every transport failure as definite nonexecution.
+
+A safe read can often be repeated under its freshness contract, while a mutation needs idempotent semantics or stable operation identity. Preserve the same key across attempts for the same action. A library that generates a fresh identity on every retry can defeat the destination's deduplication. The [idempotency chapter](/docs/software-system-design/idempotency) explains the durable record and retention requirements.
+
+Server guidance such as `Retry-After` can indicate when another attempt may be useful, but is not a reservation guaranteeing success. A client still needs an overall deadline, maximum attempts, and a valid operation. Clock interpretation and units must follow the protocol. A long suggested delay may exceed the user's useful interval, in which case stopping is the correct behavior.
+
+## Nested Policies Multiply Attempts
+
+<RetryAmplification />
+
+The bars compare the deepest dependency's maximum attempt count when three layers retry independently versus one designated owner. Attempts here include the initial call, so “three attempts” means at most two retries. Mixing those terms can create an off-by-one load surprise before any distributed complication occurs.
+
+<RunnableCode code={`attempts_per_layer = [3, 3, 3]
+maximum = 1
+for attempts in attempts_per_layer:
+    maximum *= attempts
+print("Nested maximum dependency attempts:", maximum)
+print("One owner, three total attempts:", 3)
+print("At 1000 logical actions/s, worst nested attempts/s:", 1000 * maximum)
+# Try it: make the middle layer use one attempt; the remaining nested policies can still multiply.
+`} />
+
+Place policy at the layer with enough context to decide whether another attempt is safe and useful. Disable or account for implicit proxy, SDK, transport, and application retries. A service can see a much larger attempt rate than its caller's business-operation counter. Record both with a shared operation identity so load during failure is explainable.
+
+A retry budget can cap extra attempts relative to original demand. For an illustrative thousand original calls and a budget of a hundred retries, total attempts are bounded at 1,100 under that policy. A fixed three-attempt rule can permit 3,000 during a complete outage. The budget chooses how much recovery traffic the service can afford; it cannot guarantee every original caller gets another chance.
+
+## Backoff Gives Recovery Time; Jitter Spreads the Wakeup
+
+**Exponential backoff** increases delay after failures, commonly subject to a cap. With an illustrative 100 ms base, waits before successive retries can be 100, 200, and 400 ms, totaling 700 ms before call durations. A cap prevents unbounded intervals, while a maximum attempt count or total deadline prevents endless repetition.
+
+**Jitter** varies delay so many clients do not wake together. A full-jitter policy can choose a random value between zero and the current bound; other policies have different distributions and trade-offs. State the chosen algorithm rather than saying “add randomness.” A small random range around an identical large synchronized schedule may still create a damaging wave.
+
+Use independent randomness appropriate to scheduling, and test deterministic seeds for the model. Jitter is not a security token and need not be described as cryptographic identity. It also does not solve a sustained capacity shortage: a dependency that cannot serve the original load will not become healthy merely because repeated excess work is better spread out.
+
+<PredictFirst question="Each of three nested layers allows three total attempts. What is the worst-case deepest call count?" options={["Nine, because the counts add", "Twenty-seven, because nested attempts multiply", "Three, because all layers share the same operation name"]} correctIndex={1} explanation="Each outer attempt can trigger the inner layer's full policy. A shared operation name helps trace intent but does not automatically coordinate attempt budgets." />
+
+## All Attempts Spend One Useful Deadline
+
+A retry should start only if its delay and expected minimum useful call time fit the remaining budget. A fresh timeout per attempt can keep work alive after the original caller has given up. Propagate remaining time through the chain and include connection setup, queueing, backoff, and response handling in the same boundary.
+
+Suppose each illustrative attempt needs at least 80 ms and the overall budget is 500 ms. The first attempt uses 80, then a 100 ms wait leads to the second at 180. After another 80 and a 200 ms wait, starting a third 80 ms attempt at 460 would finish at 540 and cannot meet the budget. A correct controller stops rather than performing doomed work.
+
+Cancellation after the caller leaves should release expendable work, but cannot undo a committed side effect. Keep the outcome inspectable using operation identity. A deadline error is an observation about useful waiting, not a proof that every descendant stopped before committing. The [gRPC page](/docs/software-system-design/grpc) carries the same budget across RPC hops.
+
+<GoDeeper title="Go deeper: independent-failure averages can mislead during outages">
+If each attempt independently fails with probability p and at most three attempts are permitted, expected attempts are 1 + p + p squared. At p = 0.2 that is 1.24. An outage can correlate failures so nearly every attempt fails, approaching three attempts per action. Capacity planning based only on the independent normal-condition average can therefore underestimate retry traffic when the dependency is least able to serve it.
+</GoDeeper>
+
+## Combine With Breakers and Concurrency Bounds
+
+A circuit breaker can deny attempts while recovery is unlikely, but an outer retry loop can still repeatedly call the open breaker. Treat local denial according to policy rather than counting it as a reason to spin faster. Half-open probes need a bounded aggregate load; retrying probes independently can defeat the recovery cap.
+
+A concurrency limit protects occupied resources when calls become slow. Even a modest arrival rate can exhaust sockets or memory if every attempt waits a long time. Bound queue length and bytes, and stop admitting work whose deadline cannot survive the wait. Rate, concurrency, attempt count, and useful time protect different dimensions.
+
+Failover is another attempt at another destination, not automatically a new safe action. A region may be unreachable after committing the request. Repeating an unsafe write in another region without shared identity or reconciled authority can produce conflicting effects. The retry owner must understand whether alternate destinations share the required operation history.
+
+## Exercise a Deterministic Budget Controller
+
+The model below uses fixed backoff bounds to make the deadline calculation reproducible. It checks the minimum call duration before starting another attempt. Actual code needs a monotonic clock, observed elapsed time, cancellation, and outcome classification. Estimates should be conservative enough that another attempt has a plausible chance of being useful.
+
+<RunnableCode code={`budget_ms, attempt_ms = 500, 80
+elapsed, started = 0, 0
+for wait in (0, 100, 200, 400):
+    if elapsed + wait + attempt_ms > budget_ms:
+        print("Stop: next attempt cannot fit at", elapsed + wait, "ms")
+        break
+    elapsed += wait + attempt_ms
+    started += 1
+    print("Attempt:", started, "finished at ms:", elapsed)
+print("Started attempts:", started)
+assert started == 2
+# Try it: increase budget_ms to 1000; more attempts fit, but their effect semantics must still be safe.
+`} />
+
+For an HTTP test, `curl --max-time 1 --retry 2 --retry-delay 1` demonstrates that a tool can add attempts, but its exact retry conditions and total-time controls need to be inspected before using it as an application policy. Prefer an isolated failing endpoint and bounded request count. Do not test recovery load by repeatedly hammering an unrelated public service.
+
+Observe a dependency failure with retries disabled, then enable one bounded owner and compare original actions, attempts, completions, latency, and resource occupancy. A higher success fraction can be worthwhile while still raising load; a lower error count caused only by waiting beyond user deadlines is not improvement. Preserve failed and cancelled observations in the population.
+
+Audit the deployed path rather than only the application's explicit loop. A browser client, gateway, service library, database driver, and background redrive policy can each add attempts. Record the configuration and observed attempt identifiers at every boundary during a controlled failure. If a retry owner cannot tell whether an inner layer already repeated work, its budget is incomplete.
+
+A useful test deliberately delays the first response until after the caller's deadline while allowing its effect to commit. The retry should preserve identity and recover the original outcome, not create a fresh action. Separately reject the request before execution and verify a safe subsequent attempt can make progress. These paired histories distinguish an unknown commit from a definite nonexecution and prevent a policy that avoids duplicates only by permanently abandoning recoverable work.
+
+Verify cancellation during the backoff wait as well as during network execution. A caller that has already stopped should not wake later merely because a scheduled timer still exists.
+
+Record the original operation identifier across attempts so telemetry can distinguish additional effort from additional user demand.
+
+## Bound Attempts by Both Time and Work
+
+A retry policy needs more than an attempt count. In the 500 ms example, each useful attempt takes 80 ms and the selected waits are 100 and 200 ms. Two attempts plus both waits consume 460 ms, leaving only 40 ms; another full 80 ms attempt no longer fits. Before sleeping or dispatching, compare the remaining deadline with the minimum useful work budget. A nominal three-attempt policy should not issue a final request that cannot return within the caller's contract. Include queueing and response transit in that budget when they are material.
+
+Jitter changes synchronization, not the maximum amount of work by itself. If every client waits the same interval after an outage, they can retry together and create another load spike. Sampling waits spreads their arrivals, while retry budgets or admission limits bound the extra demand. A recovered dependency may still have less capacity than normal because caches are cold or a replica is rebuilding. Treat recovery as a constrained operating state rather than assuming every waiting request should immediately reappear. Prefer useful fresh work or prioritized recovery according to the product's policy.
+
+For mutations, classify uncertainty before retrying. A connection failure before sending any bytes may have a different outcome set from losing the response after the server committed. The caller often cannot distinguish those points reliably through an arbitrary network stack. Use operation identity and result reconciliation for effects that must not repeat. A retryable transport status is permission to consider another attempt under the application contract, not proof that the first attempt did nothing. Instrument logical operations and physical attempts separately, and carry the same operation identifier through all layers. That lets an incident review see whether three failed logical operations produced nine attempts or twenty-seven. The distinction connects deadline policy to actual dependency load and reveals hidden retries in SDKs, proxies, and database clients.
+
+## Failure Modes and Better Choices
+
+A library retries every exception, including invalid input. Classify stable failures and return useful feedback. A timeout generates a new idempotency key. Preserve intent identity and reconcile uncertain completion. Three layers each look conservative but overload the leaf. Audit the full call graph's attempt multiplication.
+
+All clients retry exactly one second later. Apply a bounded jitter policy and respect the shared budget. Backoff waits longer than the user's deadline. Stop rather than sending an unusable attempt. A region failover repeats an already committed effect. Establish shared operation history or an explicit unknown-outcome workflow before retrying elsewhere.
+
+## When Not to Retry
+
+| Situation | Better response |
+| --- | --- |
+| The input or permission is permanently invalid | Correct or reject the request |
+| An unsafe effect has an unknown outcome | Inspect or reconcile authoritative state |
+| The remaining deadline cannot fit another useful attempt | Stop and report the bounded outcome |
+| The dependency is known overloaded and budget exhausted | Shed load or defer under a durable contract |
+
+## Remember
+
+| Limit | Purpose |
+| --- | --- |
+| Operation identity | Preserve one intended effect |
+| Attempt budget | Bound extra recovery traffic |
+| Backoff and jitter | Give time and spread synchronized demand |
+| Deadline | Prevent work outliving usefulness |
+| Classification | Retry only outcomes another safe attempt can improve |
+
+You can now calculate retry amplification and implement a policy that stops before recovery traffic becomes the incident. Continue to [Reliability and Operations](/docs/software-system-design/reliability) to measure and recover the complete user path.
+
+## Sources
+
+- [AWS Builders Library, Timeouts, Retries, and Backoff with Jitter (2019)](https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/)
+- [AWS Builders Library, Making Retries Safe with Idempotent APIs (2021)](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/)
+- [gRPC, Deadlines](https://grpc.io/docs/guides/deadlines/)
+- [Microsoft, Circuit Breaker Pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/circuit-breaker)
+- [Google SRE, Handling Overload (2016)](https://sre.google/sre-book/handling-overload/)
