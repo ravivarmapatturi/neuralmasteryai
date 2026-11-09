@@ -1,0 +1,137 @@
+---
+title: "Observability From User Outcomes to Causal Evidence"
+sidebar_position: 6.1
+description: ""
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { OutcomePopulation } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
+
+# Observability From User Outcomes to Causal Evidence
+
+<ELI5>A restaurant can have every stove switched on while diners still receive no meals. Counting powered appliances answers a different question from counting completed orders. To find the problem, we connect each order to its waiting, cooking, and delivery steps. Observability makes that path inspectable without pretending one dashboard explains everything.</ELI5>
+
+Define outcome populations, combine metrics with structured events and traces, and diagnose latency and errors without hiding failures or exploding telemetry cardinality.
+**Observability** is the ability to investigate system behavior using evidence from its execution. Metrics summarize populations, logs record selected events, and traces connect work along a request or workflow. These signals serve different questions. A healthy component dashboard does not prove a successful user action, and a detailed trace does not measure how often an incident occurred unless its sampling supports that inference.
+
+The misconception is that successful requests alone are a valid denominator for availability. Our illustrative population contains 1,000 eligible requests, 980 successes, and twenty failures. The true success fraction is 98%. Filtering out the failures before counting produces an apparent 100%, changing the metric without repairing a single outcome. The diagram and code hold the requests fixed while changing the measurement.
+
+## Start With an Action and Observation Boundary
+
+Name the action the user needs: create an order, resolve a link, or retrieve an authorized record. Define eligible attempts and what constitutes success, including correctness and useful timeliness. A response generated after the client deadline can be a server completion while remaining a failed user action. Keep both boundaries visible rather than substituting the easier one.
+
+The observation point determines which failures are counted. A handler counter cannot see a request rejected before it reaches the process. Edge telemetry, external probes, and client observations can reveal different portions of the path. Combine them to locate gaps, and distinguish missing telemetry from an absence of traffic. No data is not automatically evidence of perfect health.
+
+<OutcomePopulation />
+
+The bars show total observed attempts, good outcomes, and bad outcomes under the selected filter. Excluding failed requests removes twenty from both the denominator and the visible failure count. The resulting green-looking ratio is a measurement defect. The [SLO chapter](/docs/software-system-design/availability-and-slos) derives objectives and budgets once the indicator is valid.
+
+<RunnableCode code={`good, bad = 980, 20
+for include_failures in (True, False):
+    total = good + bad if include_failures else good
+    visible_bad = bad if include_failures else 0
+    print("Include failed attempts:", include_failures,
+          "total:", total, "bad:", visible_bad,
+          "success percent:", round(100 * good / total, 2))
+# Try it: increase bad to 100; filtering failures still prints a misleading 100%.
+`} />
+
+Define outcomes semantically. A correct rejection of malformed input can differ from rejecting valid work under overload. An unauthorized request receiving protected data is not good merely because the status is 200. Outcome labels should be stable enough to query while retaining the relevant operation and policy distinctions.
+
+## Metrics Measure Populations With Bounded Dimensions
+
+Counters record cumulative events, gauges current quantities, and histograms distributions. Choose units and labels at instrumentation time so later queries can aggregate meaningfully. A latency histogram in seconds should not silently mix a millisecond input. A request counter should distinguish original operations from retries when both matter to the diagnosis.
+
+Use bounded labels such as route template, method, outcome, region, and deployed version where the resulting cardinality is manageable. Raw user IDs, URLs containing arbitrary codes, and request IDs can create unbounded series. Hashing a user ID does not reduce the number of distinct values. Put high-cardinality correlation in appropriately controlled events or traces rather than every metric label.
+
+For a counter named `http_requests_total` with a defined `outcome` label, a Prometheus error ratio can use `sum(rate(http_requests_total{outcome="bad"}[5m])) / sum(rate(http_requests_total[5m]))`. This assumes the instrumentation classifies all eligible outcomes correctly. Handle zero traffic and missing series deliberately; a query returning no sample should not silently authorize a release.
+
+## Histograms Preserve the Distribution Needed for Decisions
+
+A mean hides the slow tail. A p99 describes a population and window, not the longest request. Do not average per-instance p99 values and call the result a fleet p99. Compatible histogram bucket counts can be aggregated before estimating a quantile, while precomputed client quantiles generally do not merge that way.
+
+A classic Prometheus histogram can use `histogram_quantile(0.99, sum by (le) (rate(request_duration_seconds_bucket[5m])))` for a deliberately selected population. Filter by operation and other relevant dimensions before interpreting it as a user promise. Bucket resolution affects approximation, so include a bucket boundary at an important threshold when exact threshold counts are useful.
+
+Separate failed and successful latency observations where diagnosis requires it, while preserving failed attempts in the appropriate outcome objective. A timeout omitted from the latency population can make the remaining requests look fast as users suffer. The [latency chapter](/docs/software-system-design/latency) explains critical paths, fan-out, and why distinct percentiles do not simply add.
+
+<PredictFirst question="Twenty of a thousand eligible attempts fail, but the dashboard includes only successful requests in its denominator. What success rate does it display?" options={["98%, because omitted failures are inferred automatically", "100%, despite no actual improvement", "2%, because the denominator becomes the error count"]} correctIndex={1} explanation="The filter removes evidence of failure before calculating the ratio. The correct population remains 1,000 attempts with 980 good outcomes." />
+
+## Logs and Traces Explain Selected Executions
+
+A structured event should identify operation, stage, outcome, version, and bounded diagnostic context needed to investigate. Avoid treating free-form exception text as the only searchable contract. Preserve an operation or trace identifier across boundaries, but do not log bearer tokens, secrets, or whole private payloads merely for convenience.
+
+A trace links spans representing work and dependencies. Record queue wait, pool acquisition, network calls, and application work under meaningful boundaries. An application can show fast database execution spans while most time disappears waiting for a connection pool. Uninstrumented gaps matter; a trace is an explanation only to the extent that it covers the relevant path.
+
+Propagate context deliberately through queues and background jobs as well as synchronous calls. A long workflow may link several traces rather than keep one enormous span open indefinitely. Incoming context and baggage are not trusted authorization claims. Bound and validate propagated metadata so diagnostics do not become a channel for secrets or unbounded memory.
+
+<GoDeeper title="Go deeper: a missing error trace can be likely under sampling">
+If twenty failed requests are each independently sampled with probability 1%, the chance none is sampled is 0.99 to the twentieth power, about 81.8%. That calculated model explains why no observed error trace is weak evidence of no errors. Real sampling can be biased or coordinated rather than independent. Use population metrics for frequency and sampled traces for causal examples under a documented sampling policy.
+</GoDeeper>
+
+## Correlation Is a Hypothesis, Not a Root Cause
+
+A deployment and an error spike occurring together suggest a candidate explanation, but a traffic shift or shared dependency can create the same pattern. Compare cohorts, operation mix, regions, and dependency evidence. Use traces and controlled rollback or mitigation to test the hypothesis where safe. Avoid declaring a cause solely because two chart lines move together.
+
+A useful investigation follows the user path: where did eligible requests disappear, wait, fail, or receive incorrect results? Compare arrival and completion rate, resource saturation, queued age, retries, and external dependency outcomes. CPU utilization is one resource signal, not an application success metric. A waiting service can fail while CPU remains low.
+
+Alert on actionable impact and meaningful risk. Error-budget burn, rising oldest-work age, lost recovery coverage, and exhausted serving reserve can justify intervention. A page should identify the affected promise and a useful first diagnostic path. Alerting on every noisy metric independently can hide the incident in notifications.
+
+## Validate Telemetry With Known Outcomes
+
+Inject a controlled failure into a disposable path and verify it appears in the expected counters, logs, and trace relationships. Then stop one exporter or collector and verify missing-data handling. A dashboard query that returns a plausible percentage under healthy load has not proved it measures failure correctly.
+
+Include counter resets, process replacement, retries, timeouts, and cancelled requests in tests. Apply rate calculations before aggregation where the metric system requires that to handle resets correctly. Compare observed counts with a known input population and investigate dropped or duplicated telemetry. The measurement system has its own queues, storage, and failure modes.
+
+<RunnableCode code={`sampling_probability = .01
+failed_requests = 20
+none_observed = (1 - sampling_probability) ** failed_requests
+print("Chance no failed request trace is sampled:", round(none_observed, 4))
+latencies = [10] * 900 + [200] * 80 + [1000] * 20
+print("All-attempt average ms:", sum(latencies) / len(latencies))
+print("Successful-only average ms:", round(sum(latencies[:980]) / 980, 2))
+# Try it: raise sampling_probability to .1; the chance of missing every failure falls, but cost rises.
+`} />
+
+The latency list is a calculated teaching population: failed attempts occupy the final twenty values. It is not a benchmark. Different success/error distributions can create other misleading aggregates, so preserve the actual populations instead of hardcoding a universal relationship between average and user harm.
+
+## Keep Telemetry Useful During the Incident
+
+A sudden error can multiply logs and overload the diagnostic pipeline. Bound event sizes, rate-limit redundant messages appropriately, and retain counters that still summarize dropped detail. Sampling and dropping policies should be observable. A system that becomes completely opaque exactly when traffic rises is missing an operational resource budget.
+
+Protect access to telemetry because identifiers, business metadata, and error context can be sensitive. Set retention and redaction according to the data's meaning and operating needs. Do not let a debugging feature become an undocumented copy of every user's request. Include the instrumentation's overhead in performance tests when it materially changes the path.
+
+## Failure Modes and Better Choices
+
+A dashboard improves when errors are filtered out. Repair eligibility and denominator definitions. A global average hides one broken operation or canary. Split meaningful populations and compare rates, not raw counts alone. A trace omits queue wait. Instrument the waiting boundary. A log metric creates one series per user. Replace unbounded labels with controlled dimensions.
+
+No error trace appears, so an incident is dismissed. Check sampling and population counters. Telemetry disappears during overload and is treated as zero failures. Alert on the missing pipeline. A health probe succeeds while users cannot complete actions. Add outcome-oriented evidence and keep component probes for diagnosis.
+
+## When Not to Add Another Dashboard
+
+| Situation | Better next step |
+| --- | --- |
+| The indicator's population is undefined | Specify eligible and good outcomes |
+| The chart cannot change an operator decision | Identify the action it should support |
+| Detailed events expose unnecessary private data | Reduce and control the diagnostic context |
+| An unexplained latency gap dominates | Instrument that boundary before adding more totals |
+
+## Remember
+
+| Signal | Best question |
+| --- | --- |
+| Outcome counter | How often does the promised action succeed? |
+| Histogram | How is latency or size distributed? |
+| Structured event | What happened at a chosen transition? |
+| Trace | Which work and waits explain this execution? |
+| Missing-data indicator | Is the evidence pipeline itself available? |
+
+You can now separate a healthy-looking measurement from evidence that users can complete the intended action. Return to [Reliability and Operations](/docs/software-system-design/reliability) to use those outcomes during releases and recovery.
+
+## Sources
+
+- [Google SRE, Monitoring Distributed Systems (2016)](https://sre.google/sre-book/monitoring-distributed-systems/)
+- [OpenTelemetry, Signals](https://opentelemetry.io/docs/concepts/signals/)
+- [Prometheus, Histograms and Summaries](https://prometheus.io/docs/practices/histograms/)
+- [Google SRE, Handling Overload (2016)](https://sre.google/sre-book/handling-overload/)
+- [Google SRE Workbook, Canarying Releases (2018)](https://sre.google/workbook/canarying-releases/)
