@@ -1,0 +1,140 @@
+---
+title: "Delivery Guarantees and Exactly-Once Effects"
+sidebar_position: 4.9
+description: ""
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { DeliveryEffectBoundary } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
+
+# Delivery Guarantees and Exactly-Once Effects
+
+<ELI5>A courier can try once, keep trying until a receipt returns, or coordinate a signed handover with the recipient. If the receipt disappears, another delivery may be necessary even though the parcel already arrived. Counting trips and counting parcels accepted are different things. Software guarantees must name which count they protect.</ELI5>
+
+Distinguish attempts, deliveries, and committed effects; locate loss and duplication windows; and state exactly-once guarantees only within their actual atomic scope.
+A delivery guarantee describes behavior at a named boundary under stated failure assumptions. It can concern a message reaching a consumer, a handler running, or a durable business change. These are different observations. An architecture that says only “exactly once” leaves the most important part of the claim unstated.
+
+The misconception is that a broker acknowledgement makes every downstream effect happen once. Our example has one logical input, two possible delivery attempts, and one desired effect. Acknowledge progress before effect commit and a crash can leave zero effects. Commit the effect first and lose progress acknowledgement, and replay can create two. A supported atomic identity/effect boundary can leave one despite repeated attempts.
+
+## Count the Boundary the User Depends On
+
+An **attempt** is one execution or transmission try. A **delivery** is an observation at a specified receiving boundary. An **effect** is the committed state transition the application cares about. One logical input can generate several attempts, several received copies, and one deduplicated effect without contradiction. Label metrics accordingly so a delivery counter is not mistaken for a business ledger.
+
+**At-most-once** permits omission but prevents repeated delivery at its defined boundary under the protocol's assumptions. **At-least-once** permits repetition while requiring eventual delivery under its progress and retention assumptions. Neither phrase alone describes what happens if storage is permanently lost, messages expire, or every consumer remains unavailable forever. State the failure model and horizon.
+
+An **exactly-once effect** requires both no missing effect and no repeated effect for the intended input within the supported domain. This can be achieved for suitable transactional participants or through an invariant-preserving idempotent application protocol. It is not achieved merely by avoiding retries. A system that never processes anything produces no duplicates but fails the completion requirement.
+
+## The Crash Window Moves When Acknowledgement Moves
+
+<DeliveryEffectBoundary />
+
+In the first path, progress is recorded before the effect and the worker fails: recovery skips work that never committed. In the second, the effect commits before progress and a failure causes recovery to repeat it. The third path models an atomic effect plus deduplication record, so a repeated attempt finds an already completed input. These are calculated histories, not a benchmark of a particular broker.
+
+<RunnableCode code={`outcomes = {
+    "progress_before_effect": [],
+    "effect_before_progress_unguarded_replay": [7, 7],
+    "atomic_identity_and_effect": [7],
+}
+for policy, effects in outcomes.items():
+    print(policy, "committed effects:", len(effects),
+          "complete exactly once:", effects == [7])
+# Try it: add another unguarded replay; repeated attempts can amplify effects further.
+`} />
+
+A network timeout cannot reveal which side of the crash window occurred. The sender may have failed before sending, while the receiver was processing, or after receiver commit but before the response arrived. Treat the outcome as uncertain until durable evidence resolves it. Retrying is a policy choice that must preserve effect semantics, not proof that the earlier attempt vanished.
+
+## Transactions Can Align Supported Records
+
+If a consumer's input identity, result, and progress live in one database transaction, a crash can leave either all relevant records committed or none. The consumer can replay after rollback and inspect the identity after commit. A unique identity constraint prevents concurrent executors from both applying the effect. The exact schema must cover the business action, not just an unrelated message receipt row.
+
+Kafka transactions can coordinate supported Kafka outputs and consumed offsets when configured correctly, including consumers that observe the intended committed outputs. That guarantee does not automatically include an external database or HTTP service. A log-to-log pipeline and a log-to-email pipeline therefore have different effect boundaries even if they share the same input topic.
+
+A distributed transaction can coordinate participants that implement its protocol, but introduces coordination, recovery, and availability costs. Prepared participants may hold resources while a decision is unresolved. The trade-off is a systems design decision, not evidence that atomic outcomes are impossible in every distributed system. Select the protocol from the invariant and operating model.
+
+<PredictFirst question="A message is delivered twice, but an atomic consumer records one identity and one durable effect. Is exactly-once effect semantics necessarily violated?" options={["Yes, any repeated delivery means repeated effects", "No, delivery attempts and committed effects are different boundaries", "No, because dropping both deliveries would also count as exactly once"]} correctIndex={1} explanation="The effect can be applied once despite repeated transport attempts. Dropping both would fail completion, so a no-duplicates claim alone is insufficient." />
+
+## External Effects Need Cooperation or Reconciliation
+
+An email provider, payment endpoint, or third-party API may not participate in the local transaction. A local outbox makes the obligation to call it durable, but sending and marking that outbox item completed can still have a failure gap. The destination's stable operation identity, queryable result, or another supported protocol determines how safe recovery works.
+
+If the destination accepts an idempotency key, preserve it across retries and ensure its retention covers the promised horizon. If it offers a status query, reconcile an unknown outcome before issuing an unsafe repeat. If neither exists, the product may have to accept possible duplication, omission, manual review, or a different operation design. Do not invent certainty from a local exception message.
+
+Compensation can repair a business consequence without erasing the original effect. A refund does not mean a charge never happened, and a cancellation message does not recall an email already read. Record both the original effect and the corrective action with their identities. The saga topic treats those forward and compensating transitions as a workflow rather than pretending the network rolled back.
+
+## Ordering, Identity, and Retention Constrain the Claim
+
+Deduplication needs stable scope. A consumer-group receipt ID can be reused in another group, and one topic offset can exist in every partition. Include source and business identity as appropriate. The same business action republished under a new transport identity may still need suppression; conversely, distinct intended actions with identical payloads must not be collapsed.
+
+The deduplication record must outlive supported replays. Broker retention, dead-letter redrive, backups, offline clients, and disaster recovery can resurrect older inputs. If a result cache expires sooner than those paths, it is not a complete exactly-once effect protocol. A durable business uniqueness rule can persist longer than cached response bytes.
+
+A snapshot restore can also roll back the deduplication record while an external destination retains the effect. Disaster recovery must reconcile that difference before replaying old obligations. Restoring one database successfully does not restore a consistent global picture automatically. Include operation identities in recovery drills and inspect effects outside the restored store.
+
+<GoDeeper title="Go deeper: proving both safety and progress">
+The safety side forbids more than one committed effect for the input. The progress side requires an effect eventually to commit under the supported recovery assumptions. A unique key can establish part of safety but a permanently stuck pending record can defeat progress. A retry loop can improve progress while violating safety if it repeats an unguarded effect. Test both properties at every recoverable boundary.
+</GoDeeper>
+
+## Use a Failure Matrix as an Executable Test Plan
+
+Place failure injection before receipt, after receipt, before effect commit, after commit, before progress acknowledgement, and after acknowledgement. For each point, specify what durable state survives and which attempt recovery should make. The test should inspect business state using operation identity, not merely verify that a worker restarted or a broker eventually became empty.
+
+Control interleavings with barriers rather than sleeps where possible. A crash after commit should be triggered only after the test observes the intended durable boundary. Timing-dependent tests can miss the window while still reporting green. Use a disposable environment and keep the same input identity across restart so the test actually exercises replay.
+
+An operator also needs to distinguish currently pending work from definitely failed and unknown work. A queue drained by expiring all messages is not proof of completion. Track accepted obligations, terminal outcomes, unresolved identities, and recovery age. Metrics must reconcile over a meaningful window and account for inputs still legitimately in flight.
+
+<RunnableCode code={`state = {"completed": set(), "effects": []}
+def commit_effect(event_id):
+    # Model one atomic transaction over both fields.
+    if event_id not in state["completed"]:
+        state["effects"].append(event_id)
+        state["completed"].add(event_id)
+for event_id in (7, 7, 8, 7, 8):
+    commit_effect(event_id)
+print("Attempt count:", 5)
+print("Effect identities:", state["effects"])
+assert state["effects"] == [7, 8]
+# Try it: remove an identity after its effect remains; replay demonstrates why record lifetime matters.
+`} />
+
+This sequential model intentionally assumes its two updates commit atomically. Replace it with the actual store's transaction in a real consumer and test concurrent attempts as well as restart. An in-memory data structure is useful for understanding the invariant, but cannot make a multi-process durability claim.
+
+## Configuration Names Are Evidence to Inspect
+
+In RabbitMQ, inspect publisher confirms, persistence, acknowledgement mode, queue replication, and redelivery behavior separately. In Kafka, inspect producer acknowledgement and idempotence, transaction configuration where used, consumer isolation, and offset policy. The configuration set must match the tested failure model; enabling one promisingly named option does not establish every end-to-end property.
+
+Use the broker's describe tools to confirm what is deployed rather than relying only on a configuration file in source control. Then test with the application destination attached. A log-to-log transaction test can pass while a later external action remains unguarded. Record the exact participant boundary with the operational evidence so reviewers can assess what the result actually proves.
+
+## Failure Modes and Better Choices
+
+A consumer records receipt and then crashes before the effect, but duplicates are suppressed forever. Move the completed identity into the effect's atomic boundary or retain recoverable pending ownership. A replay uses a new event ID. Preserve logical identity rather than defeating the guard. A service advertises exactly once while silently discarding poison jobs. Define terminal failure and repair as part of the product contract.
+
+An external timeout is treated as definite rejection. Reconcile before repeating unsafe work. A restore replays obligations whose effects survived elsewhere. Restore and reconcile identity history together. A team measures only duplicate deliveries. Count committed effects and missing obligations too, because transport repetition is neither necessary nor sufficient evidence of a business violation.
+
+## When Not to Promise Exactly-Once Effects
+
+| Situation | More honest contract |
+| --- | --- |
+| The destination cannot deduplicate or expose outcome | Explicit possible duplicates or unresolved review |
+| Identity expires before supported replay | A bounded retry guarantee plus durable uniqueness where required |
+| Work is a harmless refresh hint | An explicitly lossy notification policy |
+| Several stores lack a coordinated boundary | A recoverable workflow with stated intermediate outcomes |
+
+## Remember
+
+| Guarantee | Boundary to name |
+| --- | --- |
+| At most once | Which deliveries may be omitted |
+| At least once | Which retries and retention support progress |
+| Exactly-once effect | Which identity and state commit together |
+| Reconciliation | Which authority resolves uncertain external outcomes |
+| Recovery | Which identity history survives replay and restore |
+
+You can now evaluate a delivery claim by naming its participants, atomic boundary, and failure windows. Continue to [Distributed Systems](/docs/software-system-design/distributed-systems), where coordination protocols preserve those boundaries across owners.
+
+## Sources
+
+- [RabbitMQ, Consumer Acknowledgements and Publisher Confirms](https://www.rabbitmq.com/docs/confirms)
+- [Apache Kafka, Design](https://kafka.apache.org/41/design/design/)
+- [Apache Kafka, Streams Core Concepts](https://kafka.apache.org/41/streams/core-concepts/)
+- [AWS Builders Library, Making Retries Safe with Idempotent APIs (2021)](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/)
+- [PostgreSQL, Transaction Isolation](https://www.postgresql.org/docs/current/transaction-iso.html)
