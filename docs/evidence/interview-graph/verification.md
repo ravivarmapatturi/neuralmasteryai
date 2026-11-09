@@ -1,6 +1,6 @@
 # Mastery Graph Verification & Measurement Report
 
-**Brief**: `docs/briefs/mastery-graph.md` (Plan item C1)  
+**Brief**: `docs/briefs/market-map-questions.md` (Graph fix, step 1)  
 **Target Route**: `/interview`  
 **Components**: `src/components/interview/InterviewGraph.tsx`, `src/components/interview/masteryScale.ts`, `src/components/interview/simpleInterview.css`  
 **Date**: 2026-11-09  
@@ -12,22 +12,23 @@
 1. **Progress Visibility on Topics & Connecting Lines**:
    - Each topic node reflects completion on a smooth, continuous scale from 0% to 100%.
    - Connecting lines between topics calculate the average mastery of the connected pair, smoothly brightening and thickening as questions in either topic are completed.
-2. **Dynamic Label Percentage Display**:
+2. **Dynamic Label Percentage Display Without Clipping**:
    - At 0% progress: displays clean base title without percentage (e.g. `Transformers`, `Classical ML`).
    - At > 0% progress: dynamically appends percentage (e.g. `Transformers 42%`, `Classical ML 49%`, `Deep Learning 100%`).
    - At 100% completion: displays `100%` with full circular stroke, halo glow, and `.is-complete` styling while labels stay completely legible.
+   - **Label Bounding Box Invariant**: In all widths where the graph shows (1440px, 1024px, 768px), every radial label and percentage bounding box is fully contained within `.si-stage` with >= 15px clearance to the stage boundaries (0 clipped labels).
 3. **Screen-Reader Accessibility**:
    - Accessible `aria-label` explicitly states percentage: e.g. `Transformers, 42% completed, 18 of 43 questions`.
 4. **Group Totals**:
    - Displays a clean interactive pill strip below the circular graph with group color indicator, group name, questions completed out of total (`done/count`), and group percentage.
    - Interactive: clicking or tapping a group pill activates the first topic of that group.
-   - On mobile viewports (`< 640px`), the centered HUD additionally displays the active group's overall percentage.
+   - On mobile viewports (`<= 640px`), the centered HUD additionally displays the active group's overall percentage.
 5. **Theme-Aware Colors & WCAG AAA/AA Contrast**:
    - Group colors and text tokens maintain high contrast across both light (`#f8f6f1` / `#ffffff`) and dark (`#111215` / `#17181c`) themes.
-6. **No Layout Shift & Zero Horizontal Overflow**:
+6. **No Layout Shift & Zero Horizontal Overflow (Mobile Fit at 375 and 320)**:
    - Zero layout shift across state changes.
-   - Verified responsive rendering at 1440px, 375px, and 320px with zero horizontal scroll (`scrollWidth === clientWidth`).
-   - At `<= 640px`, radial labels are hidden in favor of the centered HUD, preventing any text overlap on narrow screens.
+   - Responsive panel and filter selects fit completely within `.si-card` at 375px and 320px with zero horizontal scroll (`scrollWidth === clientWidth`) and zero cut-off on the right border or dropdown arrows (`box-sizing: border-box`, `max-width: 100%`, and vertical stacking on mobile).
+   - At `<= 640px`, radial labels are hidden in favor of the centered HUD (`.si-graph-hud`), preventing text overlap on narrow screens.
 7. **Reduced Motion**:
    - Orbital animation stops immediately when `(prefers-reduced-motion: reduce)` is detected.
    - Transitions are disabled via `@media (prefers-reduced-motion: reduce)`.
@@ -65,26 +66,32 @@ Every text and group element satisfies WCAG AA (>= 4.5:1), with the majority exc
 
 ---
 
-## 4. Responsive Viewport Measurements
+## 4. Responsive Viewport & Bounding Box Measurements
 
-Automated measurements collected via Playwright in `scripts/capture-mastery-graph.mjs`:
+Automated measurements collected via Playwright in `scripts/capture-mastery-graph.mjs` and `tests/interview-graph.spec.ts`:
 
-| Viewport | Theme | State | Client Width | Scroll Width | Horizontal Overflow | Overlapping Labels |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **1440 × 900** | Light | 0% | 1440px | 1440px | **None (false)** | None (divergent radial rays) |
-| **1440 × 900** | Dark | 0% | 1440px | 1440px | **None (false)** | None (divergent radial rays) |
-| **1440 × 900** | Light | Partial | 1440px | 1440px | **None (false)** | None (divergent radial rays) |
-| **1440 × 900** | Dark | Partial | 1440px | 1440px | **None (false)** | None (divergent radial rays) |
-| **1440 × 900** | Light | 100% | 1440px | 1440px | **None (false)** | None (divergent radial rays) |
-| **1440 × 900** | Dark | 100% | 1440px | 1440px | **None (false)** | None (divergent radial rays) |
-| **375 × 667** | Light | 0% | 375px | 375px | **None (false)** | None (HUD centered) |
-| **375 × 667** | Dark | 0% | 375px | 375px | **None (false)** | None (HUD centered) |
-| **375 × 667** | Light | Partial | 375px | 375px | **None (false)** | None (HUD centered) |
-| **375 × 667** | Dark | Partial | 375px | 375px | **None (false)** | None (HUD centered) |
-| **375 × 667** | Light | 100% | 375px | 375px | **None (false)** | None (HUD centered) |
-| **375 × 667** | Dark | 100% | 375px | 375px | **None (false)** | None (HUD centered) |
-| **320 × 568** | Light | Partial | 320px | 320px | **None (false)** | None (HUD centered) |
-| **320 × 568** | Dark | Partial | 320px | 320px | **None (false)** | None (HUD centered) |
+| Viewport | Theme | State | Client Width | Scroll Width | Horizontal Overflow | Clipped Labels (vs Stage) | Clipped Selects (vs Card) |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **1440 × 900** | Light | 0% | 1440px | 1440px | **None (false)** | **0 (0%)** | **0** |
+| **1440 × 900** | Dark | 0% | 1440px | 1440px | **None (false)** | **0 (0%)** | **0** |
+| **1440 × 900** | Light | Partial | 1440px | 1440px | **None (false)** | **0 (0%)** | **0** |
+| **1440 × 900** | Dark | Partial | 1440px | 1440px | **None (false)** | **0 (0%)** | **0** |
+| **1440 × 900** | Light | 100% | 1440px | 1440px | **None (false)** | **0 (0%)** | **0** |
+| **1440 × 900** | Dark | 100% | 1440px | 1440px | **None (false)** | **0 (0%)** | **0** |
+| **1024 × 768** | Light | 0% | 1024px | 1024px | **None (false)** | **0 (0%)** | **0** |
+| **1024 × 768** | Dark | 0% | 1024px | 1024px | **None (false)** | **0 (0%)** | **0** |
+| **1024 × 768** | Light | Partial | 1024px | 1024px | **None (false)** | **0 (0%)** | **0** |
+| **1024 × 768** | Dark | Partial | 1024px | 1024px | **None (false)** | **0 (0%)** | **0** |
+| **1024 × 768** | Light | 100% | 1024px | 1024px | **None (false)** | **0 (0%)** | **0** |
+| **1024 × 768** | Dark | 100% | 1024px | 1024px | **None (false)** | **0 (0%)** | **0** |
+| **375 × 667** | Light | 0% | 375px | 375px | **None (false)** | N/A (HUD centered) | **0** |
+| **375 × 667** | Dark | 0% | 375px | 375px | **None (false)** | N/A (HUD centered) | **0** |
+| **375 × 667** | Light | Partial | 375px | 375px | **None (false)** | N/A (HUD centered) | **0** |
+| **375 × 667** | Dark | Partial | 375px | 375px | **None (false)** | N/A (HUD centered) | **0** |
+| **375 × 667** | Light | 100% | 375px | 375px | **None (false)** | N/A (HUD centered) | **0** |
+| **375 × 667** | Dark | 100% | 375px | 375px | **None (false)** | N/A (HUD centered) | **0** |
+| **320 × 568** | Light | Partial | 320px | 320px | **None (false)** | N/A (HUD centered) | **0** |
+| **320 × 568** | Dark | Partial | 320px | 320px | **None (false)** | N/A (HUD centered) | **0** |
 
 ---
 
@@ -94,18 +101,24 @@ The following screenshots were generated and saved to `docs/evidence/interview-g
 
 1. `1440-light-0pct.png` — Desktop light theme at 0% baseline (clean base titles, subtle network lines).
 2. `1440-dark-0pct.png` — Desktop dark theme at 0% baseline.
-3. `375-light-0pct.png` — Mobile light theme at 0% baseline.
-4. `375-dark-0pct.png` — Mobile dark theme at 0% baseline.
-5. `1440-light-partial.png` — Desktop light theme with partial completions (Transformers 42%, Classical ML 49%, Deep Learning 100%, brightened connecting lines).
-6. `1440-dark-partial.png` — Desktop dark theme with partial completions.
-7. `375-light-partial.png` — Mobile light theme with partial completions (HUD shows Transformers 42% and group status).
-8. `375-dark-partial.png` — Mobile dark theme with partial completions.
-9. `1440-light-100pct.png` — Desktop light theme with 100% completion (all 22 topics mastered, solid glowing rings, 2.8px lines).
-10. `1440-dark-100pct.png` — Desktop dark theme with 100% completion.
-11. `375-light-100pct.png` — Mobile light theme with 100% completion.
-12. `375-dark-100pct.png` — Mobile dark theme with 100% completion.
-13. `320-light-partial.png` — Narrow mobile (320px) verification in light theme.
-14. `320-dark-partial.png` — Narrow mobile (320px) verification in dark theme.
+3. `1024-light-0pct.png` — Tablet/laptop light theme at 0% baseline.
+4. `1024-dark-0pct.png` — Tablet/laptop dark theme at 0% baseline.
+5. `375-light-0pct.png` — Mobile light theme at 0% baseline.
+6. `375-dark-0pct.png` — Mobile dark theme at 0% baseline.
+7. `1440-light-partial.png` — Desktop light theme with partial completions (Transformers 42%, Classical ML 49%, Deep Learning 100%, brightened connecting lines).
+8. `1440-dark-partial.png` — Desktop dark theme with partial completions (verified: "Deep Learning 100%" and bottom labels fully visible within stage).
+9. `1024-light-partial.png` — Tablet/laptop light theme with partial completions (verified: 0 clipped labels).
+10. `1024-dark-partial.png` — Tablet/laptop dark theme with partial completions.
+11. `375-light-partial.png` — Mobile light theme with partial completions (HUD shows active topic & group status, panel selects fit within card).
+12. `375-dark-partial.png` — Mobile dark theme with partial completions.
+13. `1440-light-100pct.png` — Desktop light theme with 100% completion (all 22 topics mastered, solid glowing rings, 2.8px lines).
+14. `1440-dark-100pct.png` — Desktop dark theme with 100% completion.
+15. `1024-light-100pct.png` — Tablet/laptop light theme with 100% completion.
+16. `1024-dark-100pct.png` — Tablet/laptop dark theme with 100% completion.
+17. `375-light-100pct.png` — Mobile light theme with 100% completion.
+18. `375-dark-100pct.png` — Mobile dark theme with 100% completion.
+19. `320-light-partial.png` — Narrow mobile (320px) verification in light theme (selects stack cleanly, 0 cut off on right).
+20. `320-dark-partial.png` — Narrow mobile (320px) verification in dark theme.
 
 ---
 
@@ -118,6 +131,6 @@ The following screenshots were generated and saved to `docs/evidence/interview-g
   - `InterviewGraph.test.tsx`: 4 passed (4 tests).
   - `InterviewTopicPages.test.tsx`: 2 passed (2 tests).
   - `dialogue.test.ts`: 31 passed (31 tests).
-  - `tests/interview-room.spec.ts`: 11 passed (11 Playwright tests).
+  - `scripts/capture-mastery-graph.mjs`: All 20 browser screenshot passes and bounding box clipping assertions passed (0 clipped labels, 0 clipped selects).
 - **Layer 4: Static Build**: Explicitly omitted per brief instruction ("No npm run build") and repository 8 GB RAM rule.
 - **Zero Push**: Per brief instruction ("Do not push"), changes remain local on branch `interview-mastery-graph`.

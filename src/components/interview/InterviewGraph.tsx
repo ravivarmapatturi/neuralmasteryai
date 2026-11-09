@@ -83,6 +83,7 @@ const GROUP_COLOURS_DARK: Record<string, string> = {
 const MAX_STAGE = 780;
 const SHORT_TITLES: Record<string, string> = {
   'math-classical-ml': 'Classical ML',
+  'deep-learning': 'Deep Learning',
   'tokenization-decoding': 'Tokenization',
   'post-training': 'Fine-tuning',
   'inference-serving': 'Serving',
@@ -102,9 +103,11 @@ interface NodeSpot {
 }
 
 // Topics sit around a circle, grouped, with a small gap between groups.
-function layout(topics: GraphTopic[], width: number) {
+// Margin must accommodate maximum label reach (text + percentage + padding) so
+// bounding boxes never clip against the stage boundary at any angle.
+function layout(topics: GraphTopic[], width: number, isMobile: boolean) {
   const size = Math.min(width, MAX_STAGE);
-  const margin = size < 480 ? 36 : size < 600 ? 92 : 102;
+  const margin = isMobile ? 36 : 158;
   const radius = Math.max(90, size / 2 - margin);
   const groups = GROUP_ORDER.map((g) => topics.filter((t) => t.group === g));
   const gap = 0.14;
@@ -138,11 +141,23 @@ export function InterviewGraph({
   const lineRefs = useRef<(SVGPathElement | null)[]>([]);
   const pausedRef = useRef(false);
   const [width, setWidth] = useState(760);
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(max-width: 640px)').matches;
+  });
   const [isDark, setIsDark] = useState(() => {
     if (typeof document === 'undefined') return false;
     const theme = document.documentElement.getAttribute('data-theme');
     return theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
   });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const media = window.matchMedia('(max-width: 640px)');
+    const update = () => setIsMobile(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
 
   useEffect(() => {
     const checkTheme = () => {
@@ -198,7 +213,7 @@ export function InterviewGraph({
     return () => observer.disconnect();
   }, []);
 
-  const { size, radius, spots, hubs } = useMemo(() => layout(topics, width), [topics, width]);
+  const { size, radius, spots, hubs } = useMemo(() => layout(topics, width, isMobile), [topics, width, isMobile]);
 
   useEffect(() => {
     const centre = size / 2;
@@ -275,7 +290,7 @@ export function InterviewGraph({
             );
           })}
         </svg>
-        {width < 640 && activeTopic && (() => {
+        {activeTopic && (() => {
           const activeProgress = progressMap[activeTopic.id] ?? calculateTopicProgress(activeTopic.done, activeTopic.count);
           const activeGroup = groupSummaries.find((g) => g.id === activeTopic.group);
           return (
