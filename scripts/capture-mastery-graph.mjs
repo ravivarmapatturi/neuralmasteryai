@@ -89,6 +89,7 @@ async function run() {
   const states = ['0pct', 'partial', '100pct'];
   const viewports = [
     { name: '1440', width: 1440, height: 900 },
+    { name: '1024', width: 1024, height: 768 },
     { name: '375', width: 375, height: 667 },
   ];
   const themes = ['light', 'dark'];
@@ -96,7 +97,7 @@ async function run() {
   const measurements = {
     states: {},
     responsive: {},
-    contrast: {},
+    clippingIssues: [],
   };
 
   for (const state of states) {
@@ -129,10 +130,12 @@ async function run() {
         await page.screenshot({ path: screenshotPath, fullPage: false });
 
         // Verify layout, overflow and node measurements
-        const metrics = await page.evaluate(() => {
+        const metrics = await page.evaluate(({ vpName, stateName, themeName }) => {
           const docEl = document.documentElement;
-          const body = document.body;
           const hasOverflow = docEl.scrollWidth > docEl.clientWidth;
+          const stageEl = document.querySelector('.si-stage');
+          const stageRect = stageEl ? stageEl.getBoundingClientRect() : null;
+
           const nodes = Array.from(document.querySelectorAll('.si-node')).map((el) => {
             const rect = el.getBoundingClientRect();
             const labelEl = el.querySelector('.si-label');
@@ -144,6 +147,63 @@ async function run() {
               rect: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
             };
           });
+
+          // Check for clipped labels against stageRect when labels are visible (vpName != '375')
+          const clippedLabels = [];
+          if (stageRect && vpName !== '375') {
+            const labelEls = Array.from(document.querySelectorAll('.si-node .si-label')).filter((el) => {
+              const style = window.getComputedStyle(el);
+              return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+            });
+
+            for (const label of labelEls) {
+              const rect = label.getBoundingClientRect();
+              const text = label.textContent || '';
+              // Allow 1.5px tolerance for subpixel anti-aliasing
+              const isClipped =
+                rect.top < stageRect.top - 1.5 ||
+                rect.bottom > stageRect.bottom + 1.5 ||
+                rect.left < stageRect.left - 1.5 ||
+                rect.right > stageRect.right + 1.5;
+
+              if (isClipped) {
+                clippedLabels.push({
+                  text,
+                  vp: vpName,
+                  state: stateName,
+                  theme: themeName,
+                  rect: { top: Math.round(rect.top), bottom: Math.round(rect.bottom), left: Math.round(rect.left), right: Math.round(rect.right) },
+                  stageRect: { top: Math.round(stageRect.top), bottom: Math.round(stageRect.bottom), left: Math.round(stageRect.left), right: Math.round(stageRect.right) },
+                  overhang: {
+                    top: Math.round(stageRect.top - rect.top),
+                    bottom: Math.round(rect.bottom - stageRect.bottom),
+                    left: Math.round(stageRect.left - rect.left),
+                    right: Math.round(rect.right - stageRect.right),
+                  },
+                });
+              }
+            }
+          }
+
+          // Check mobile panel selects fit within card at 375
+          const clippedSelects = [];
+          if (vpName === '375') {
+            const cardEl = document.querySelector('.si-card');
+            const cardRect = cardEl ? cardEl.getBoundingClientRect() : null;
+            if (cardRect) {
+              const selects = Array.from(document.querySelectorAll('.si-panel select, .si-speech-model select'));
+              for (const sel of selects) {
+                const sRect = sel.getBoundingClientRect();
+                if (sRect.right > cardRect.right + 1.5 || sRect.left < cardRect.left - 1.5) {
+                  clippedSelects.push({
+                    name: sel.getAttribute('aria-label') || sel.id || sel.className,
+                    right: Math.round(sRect.right),
+                    cardRight: Math.round(cardRect.right),
+                  });
+                }
+              }
+            }
+          }
 
           const edges = Array.from(document.querySelectorAll('.si-edges path')).map((el) => ({
             strokeWidth: window.getComputedStyle(el).strokeWidth,
@@ -159,6 +219,8 @@ async function run() {
             scrollWidth: docEl.scrollWidth,
             clientWidth: docEl.clientWidth,
             hasOverflow,
+            clippedLabels,
+            clippedSelects,
             nodeCount: nodes.length,
             edgeCount: edges.length,
             sampleNodes: nodes.filter((n) => n.text.includes('Transformers') || n.text.includes('Classical') || n.text.includes('Deep Learning')),
@@ -166,7 +228,14 @@ async function run() {
             edgeOpacitySample: [edges[0]?.opacity, edges[Math.floor(edges.length / 2)]?.opacity],
             groupPillCount: groupPills.length,
           };
-        });
+        }, { vpName: vp.name, stateName: state, themeName: theme });
+
+        if (metrics.clippedLabels.length > 0) {
+          measurements.clippingIssues.push(...metrics.clippedLabels);
+        }
+        if (metrics.clippedSelects && metrics.clippedSelects.length > 0) {
+          measurements.clippingIssues.push(...metrics.clippedSelects);
+        }
 
         measurements.states[state][`${vp.name}-${theme}`] = metrics;
         await context.close();
@@ -196,22 +265,47 @@ async function run() {
 
     const metrics320 = await page.evaluate(() => {
       const docEl = document.documentElement;
+      const cardEl = document.querySelector('.si-card');
+      const cardRect = cardEl ? cardEl.getBoundingClientRect() : null;
+      const selects = Array.from(document.querySelectorAll('.si-panel select, .si-speech-model select'));
+      const clippedSelects = [];
+      if (cardRect) {
+        for (const sel of selects) {
+          const sRect = sel.getBoundingClientRect();
+          if (sRect.right > cardRect.right + 1.5 || sRect.left < cardRect.left - 1.5) {
+            clippedSelects.push({
+              name: sel.getAttribute('aria-label') || sel.id || sel.className,
+              right: Math.round(sRect.right),
+              cardRight: Math.round(cardRect.right),
+            });
+          }
+        }
+      }
       return {
         scrollWidth: docEl.scrollWidth,
         clientWidth: docEl.clientWidth,
         hasOverflow: docEl.scrollWidth > docEl.clientWidth,
+        clippedSelects,
       };
     });
+    if (metrics320.clippedSelects.length > 0) {
+      measurements.clippingIssues.push(...metrics320.clippedSelects);
+    }
     measurements.responsive[`320-${theme}`] = metrics320;
     await context.close();
   }
 
   await browser.close();
   server.kill();
-  console.log('Capture complete! Measurements summary:');
-  console.log(JSON.stringify(measurements, null, 2));
 
   fs.writeFileSync(path.join(OUT_DIR, 'measurements.json'), JSON.stringify(measurements, null, 2));
+
+  if (measurements.clippingIssues.length > 0) {
+    console.error('CLIPPING ISSUES DETECTED:', JSON.stringify(measurements.clippingIssues, null, 2));
+    throw new Error(`FAIL: ${measurements.clippingIssues.length} clipping issue(s) detected!`);
+  }
+
+  console.log('Capture and clipping measurement complete! All labels and selects fit 100% within stage/card.');
 }
 
 run().catch((err) => {
