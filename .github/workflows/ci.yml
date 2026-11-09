@@ -1,7 +1,7 @@
 name: CI
 
 # Validates platform-vite on every PR and every push to main. This workflow
-# never deploys anything -- see deploy.yml (manual-only) for that.
+# saves the tested Pages artifact for deploy.yml; deployment waits for every job.
 #
 # Repository: ravivarmapatturi/NeuralMastery-vite, its own standalone repo
 # (root of this repo == root of platform-vite), separate from the existing
@@ -99,6 +99,16 @@ jobs:
 
       - name: Playwright smoke tests
         run: npm run test:smoke
+
+      # Only trusted main pushes produce a deployable artifact. PR artifacts
+      # must never cross into the privileged workflow_run deployment.
+      - name: Save tested Pages artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          name: ci-pages
+          path: dist
+          retention-days: 7
 
       - name: Upload Playwright report
         if: always()
