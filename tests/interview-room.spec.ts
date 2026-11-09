@@ -7,13 +7,16 @@ const PORT = process.env.TEST_PORT ? Number(process.env.TEST_PORT) : 4173;
 
 // Replace only inference workers: this works with both Vite modules and hashed CI bundles.
 // Playwright gives every test a fresh, non-persistent browser context (including model caches).
-async function controlledRoom(page: Page) {
+async function controlledRoom(page: Page, settings: {memory:number;gpu:boolean;failTurbo:boolean;deferTurbo?:boolean} = { memory: 4, gpu: false, failTurbo: false }) {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Network.clearBrowserCache');
   await cdp.detach();
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.addInitScript(() => {
+  await page.addInitScript((settings) => {
     const state = window as any;
+    Object.defineProperty(navigator, 'deviceMemory', {value:settings.memory, configurable:true});
+    Object.defineProperty(navigator, 'gpu', {value: settings.gpu ? {requestAdapter:async()=>({})} : undefined, configurable:true});
+    state.speechLoads = [];
     state.micTracks = [];
     state.inferenceOps = [];
     const RealWorker = window.Worker;
@@ -43,14 +46,19 @@ async function controlledRoom(page: Page) {
           state.reviewCalls = (state.reviewCalls || 0) + 1;
           reply({ ok: true, result: payload.pairs.map(() => ({ entails: 1, conflicts: 0 })) });
         } else if (op === 'init') {
-          reply({ type: 'init_done', device: 'wasm', loadTimeMs: 1 });
+          state.speechLoads.push(payload);
+          if(settings.deferTurbo && payload?.preloadModelId?.includes('large-v3-turbo')) {state.releaseTurbo=()=>reply({type:'init_done',device:'wasm',loadTimeMs:1});return;}
+          if(settings.failTurbo && payload?.preloadModelId?.includes('large-v3-turbo')) reply({type:'error',error:'GPU allocation failed'});
+          else reply({ type: 'init_done', device: 'wasm', loadTimeMs: 1 });
+        } else if (['transcribe','commit','batch'].includes(op)) {
+          reply({type:op==='transcribe'?'result':`${op}_result`,text:'',sampleCount:payload?.audio?.byteLength/4,inferMs:1});
         } else if (op === 'reset') {
           reply({ type: 'reset_done' });
         } else {
           throw new Error(`Unexpected inference operation: ${op}`);
         }
       }
-      terminate() {}
+      terminate() {state.terminatedSpeechWorkers=(state.terminatedSpeechWorkers||0)+1;}
     } as any;
 
     Object.defineProperty(navigator, 'mediaDevices', { value: {
@@ -68,7 +76,7 @@ async function controlledRoom(page: Page) {
       play() { this.dispatchEvent(new Event("playing")); return Promise.resolve(); }
       pause() {}
     } as any;
-  });
+  }, settings);
   const externalRequests: string[] = [];
   await page.context().route('**/*', route => {
     const url = new URL(route.request().url());
@@ -113,9 +121,7 @@ test.describe('Interview Room (/interview/room)', () => {
     });
     // Nodes hold still under reduced motion, so the test can click them.
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.addInitScript(() => {
-      Object.defineProperty(navigator, 'mediaDevices', { value: { getUserMedia: () => Promise.reject(new Error('no mic')) } });
-    });
+    await controlledRoom(page);
 
     await page.goto(`http://localhost:${PORT}/interview`, { waitUntil: 'domcontentloaded' });
     await expect(page.locator('h1')).toHaveText('Interview practice');
@@ -255,4 +261,81 @@ test.describe('Interview Room (/interview/room)', () => {
     const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
     expect(scrollWidth).toBe(375);
   });
+});
+
+
+test('Standard is the default, and High accuracy is opt-in, remembered, and reversible', async ({ page }) => {
+  const requests = await controlledRoom(page, { memory:8, gpu:false, failTurbo:false });
+  const control=page.getByLabel('Speech model', {exact:true});
+  await expect(control).toHaveValue('default');
+  await expect(control.locator('option')).toHaveText(['Standard', 'High accuracy · 794 MB + runtime']);
+  expect(await page.evaluate(()=>(window as any).speechLoads)).toHaveLength(0);
+  await control.selectOption('turbo');
+  await expect(control).toBeEnabled();
+  expect(await page.evaluate(()=>(window as any).speechLoads.at(-1).preloadModelId)).toContain('large-v3-turbo');
+  await page.reload();
+  await expect(control).toHaveValue('turbo');
+  // Remembered opt-in does not start downloads merely by opening the page.
+  expect(await page.evaluate(()=>(window as any).speechLoads)).toHaveLength(0);
+  await control.selectOption('default');
+  await expect(control).toBeEnabled();
+  expect(await page.evaluate(()=>(window as any).speechLoads.at(-1).preloadModelId)).toBe('onnx-community/whisper-base.en');
+  expect(requests).toHaveLength(0);
+});
+
+test('High accuracy load failure falls back to Standard', async ({page})=>{
+  const requests=await controlledRoom(page,{memory:4,gpu:true,failTurbo:true});
+  const control=page.getByLabel('Speech model',{exact:true});
+  await control.selectOption('turbo');
+  await expect(control).toHaveValue('default');
+  await expect(page.getByRole('status').filter({hasText:'High accuracy unavailable. Using Standard.'})).toBeVisible();
+  expect(await page.evaluate(()=>(window as any).speechLoads.at(-1).preloadModelId)).toBe('onnx-community/whisper-base.en');
+  expect(requests).toHaveLength(0);
+});
+
+test('a 4 GB device without WebGPU has no high-end download control',async({page})=>{
+  await controlledRoom(page);
+  await expect(page.getByLabel('Speech model',{exact:true})).toHaveCount(0);
+});
+
+test('Use microphone resumes capture after typing instead',async({page})=>{
+  await controlledRoom(page);
+  await page.locator('#start-topic').click();
+  await page.getByRole('button',{name:'Skip to answering'}).click();
+  await page.getByRole('button',{name:'Type instead',exact:true}).click();
+  const before=await page.evaluate(()=>(window as any).micTracks.length);
+  await page.getByRole('button',{name:'Use microphone',exact:true}).click();
+  await expect.poll(()=>page.evaluate(()=>(window as any).micTracks.length)).toBeGreaterThan(before);
+  await expect(page.locator('.si-status')).toContainText('Listening.');
+});
+
+test('speech model control fits both themes at mobile and desktop widths',async({page},testInfo)=>{
+  const errors:string[]=[];
+  page.on('pageerror',error=>errors.push(error.message));
+  await controlledRoom(page,{memory:8,gpu:false,failTurbo:false});
+  for(const width of [375,1440])for(const theme of ['light','dark']){
+    await page.setViewportSize({width,height:900});
+    await page.evaluate(theme=>document.documentElement.setAttribute('data-theme',theme),theme);
+    await page.evaluate(()=>window.scrollTo(0,0));
+    await page.evaluate(()=>new Promise(requestAnimationFrame));
+    await expect(page.getByLabel('Speech model',{exact:true})).toBeVisible();
+    const startButton=await page.locator('#start-topic').boundingBox();
+    expect(startButton!.x+startButton!.width).toBeLessThanOrEqual(width);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    await page.screenshot({path:testInfo.outputPath(`speech-${width}-${theme}.png`),fullPage:true});
+  }
+  expect(errors).toEqual([]);
+});
+
+
+test('switching back cancels a pending High accuracy load and ignores its late reply',async({page})=>{
+  await controlledRoom(page,{memory:8,gpu:false,failTurbo:false,deferTurbo:true});
+  const control=page.getByLabel('Speech model',{exact:true});
+  await control.selectOption('turbo');
+  await expect(page.getByRole('status').filter({hasText:'Preparing speech recognition'})).toBeVisible();
+  await control.selectOption('default');
+  await expect(control).toHaveValue('default');
+  expect(await page.evaluate(()=>(window as any).terminatedSpeechWorkers)).toBeGreaterThan(0);
+  await page.evaluate(()=>(window as any).releaseTurbo());
+  await expect(control).toHaveValue('default');
 });

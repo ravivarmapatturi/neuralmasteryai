@@ -1,4 +1,4 @@
-import { decodeRealTimeFactor, shouldSkipRefinement, refinementBudgetMs } from './refinementPolicy';
+import { decodeRealTimeFactor, refinementBudgetMs } from './refinementPolicy';
 import { normalizeQuietAudio, appendPhrase, chooseFinalTranscript } from './audioPreparation';
 
 /**
@@ -28,8 +28,14 @@ export interface EngineMetrics {
   finalPassWarning?: string;
   liveDecodeRTF?: number;
   finalDecodeRTF?: number;
-  refinementDecision?: 'accepted' | 'skipped-slow' | 'aborted-slow' | 'failed';
+  refinementDecision?: 'accepted' | 'skipped-slow' | 'aborted-slow' | 'failed' | 'rejected-incomplete';
   initialPrompt?: string;
+  finalModelUsed?: string;
+  captureSampleRate?: number;
+  inputSampleRate?: number;
+  captureBackend?: 'audio-worklet' | 'script-processor';
+  capturedSamples?: number;
+  inputTrackSettings?: MediaTrackSettings;
   isIdenticalToBatch?: boolean;
 }
 
@@ -389,6 +395,9 @@ export interface SingleThreadASROptions {
   finalModelId?: string;
   finalDevice?: 'wasm' | 'webgpu';
   finalDownloadBytes?: number;
+  finalDtype?: string | Record<string, string>;
+  fallbackModelId?: string;
+  preloadFinal?: boolean;
 }
 
 export class SingleThreadASREngine extends BaseSpeechEngine {
@@ -401,8 +410,11 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
   readonly finalModelId: string | undefined;
   private readonly finalDevice: 'wasm' | 'webgpu';
   private readonly finalDownloadBytes: number;
+  private readonly finalDtype: string | Record<string, string>;
+  private readonly fallbackModelId?: string;
+  private readonly preloadFinal: boolean;
+  private hasPreloadedFinal = false;
   private liveDecodeRatios: number[] = [];
-  private refinementDisabled = false;
   private initialPrompt = '';
   public setQuestionPrompt(prompt: string): void { this.initialPrompt = prompt.slice(0, 256); }
   private sessionId = 0;
@@ -413,6 +425,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
   private modelAfterStop: string | undefined;
   private latestInterimId: string | null = null;
   private readonly stopWaiters = new Set<() => void>();
+  private stopOperation: {session:number; promise:Promise<void>} | null = null;
 
   private readonly normalizeAudio: boolean;
   private readonly captureDrainMs: number;
@@ -422,6 +435,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
   private rejectLoad: ((error: Error) => void) | null = null;
   private audioContext: AudioContext | null = null;
   private processorNode: ScriptProcessorNode | null = null;
+  private captureWorklet: AudioWorkletNode | null = null;
   private isRunning = false;
   private isWorkerBusy = false;
 
@@ -453,6 +467,9 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
     this.normalizeAudio = options.normalizeAudio ?? false;
     this.captureDrainMs = options.captureDrainMs ?? 0;
     this.finalModelId = options.finalModelId;
+    this.finalDtype = options.finalDtype ?? 'q8';
+    this.fallbackModelId = options.fallbackModelId;
+    this.preloadFinal = options.preloadFinal ?? false;
     this.finalDevice = options.finalDevice ?? 'wasm';
     this.finalDownloadBytes = options.finalDownloadBytes ?? 77000000;
     this.id = options.id || 'moonshine-single';
@@ -515,14 +532,15 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
           const { type, loadTimeMs, error, device } = e.data;
 
           if (type === 'progress') {
-            this.reportProgress(e.data);
+            this.reportProgress(e.data, this.expectedDownloadBytes + (this.preloadFinal ? this.finalDownloadBytes : 0));
           } else if (type === 'init_done') {
+            if (this.preloadFinal) this.hasPreloadedFinal = true;
             const finalLoadTime = loadTimeMs || Math.round(performance.now() - startTime);
             this.updateMetrics({
               status: 'ready',
               device: `${device === 'webgpu' ? 'WebGPU' : 'WASM'} (Single-Threaded Worker, No COOP/COEP needed)`,
               downloadProgressPct: 100,
-              downloadBytes: this.expectedDownloadBytes,
+              downloadBytes: this.expectedDownloadBytes + (this.preloadFinal ? this.finalDownloadBytes : 0),
               loadTimeMs: finalLoadTime,
               errorMessage: null,
             });
@@ -550,6 +568,9 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
             modelId: this.modelId,
             device: this.device,
             dtype: this.dtype,
+            ...(this.preloadFinal && !this.hasPreloadedFinal && this.finalModelId ? {
+              preloadModelId: this.finalModelId, preloadDevice: this.finalDevice, preloadDtype: this.finalDtype,
+            } : {}),
           },
         });
       } catch (err) {
@@ -579,6 +600,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
   }
 
   public async start(stream: MediaStream): Promise<void> {
+    this.cancel();
     const session = ++this.sessionId;
     await this.prepareForListening();
     if (session !== this.sessionId) return;
@@ -619,6 +641,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       finalPassWarning: undefined,
       refinementDecision: undefined,
       finalDecodeRTF: undefined,
+      finalModelUsed: undefined,
       isIdenticalToBatch: undefined,
     });
 
@@ -626,16 +649,14 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
     this.audioContext = new AudioCtx({ sampleRate: 16000 });
     if (this.audioContext.sampleRate !== 16000) throw new Error('Speech capture requires a 16 kHz AudioContext');
+    this.updateMetrics({ captureSampleRate: this.audioContext.sampleRate, inputTrackSettings: stream.getAudioTracks?.()[0]?.getSettings?.(), inputSampleRate: stream.getAudioTracks?.()[0]?.getSettings?.().sampleRate });
     if (this.audioContext.state === 'suspended') {
       await this.audioContext.resume();
     }
 
     const source = this.audioContext.createMediaStreamSource(stream);
-    this.processorNode = this.audioContext.createScriptProcessor(4096, 1, 1);
-
-    this.processorNode.onaudioprocess = (e) => {
+    const capture = (channelData: Float32Array) => {
       if (!this.isRunning) return;
-      const channelData = e.inputBuffer.getChannelData(0);
       const copy = new Float32Array(channelData.length);
       copy.set(channelData);
 
@@ -648,24 +669,26 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       this.currentSegmentSamples += copy.length;
 
       // Energy (RMS) computation for local voice activity & pause detection
-      let sum = 0;
+      let sum = 0, peak = 0;
       for (let i = 0; i < copy.length; i++) {
         sum += copy[i] * copy[i];
+        peak = Math.max(peak, Math.abs(copy[i]));
       }
-      const rms = Math.sqrt(sum / copy.length);
+      const gain = this.normalizeAudio && peak >= 0.0005 && peak < 0.1 ? Math.min(8, 0.1 / peak) : 1;
+      const rms = Math.sqrt(sum / copy.length) * gain;
 
-      if (rms >= 0.012) {
+      if (rms >= 0.006) {
         this.hasSpeechInCurrentSegment = true;
         this.silenceFramesCount = 0;
         this.lastAudioSpeechTime = Date.now();
       } else {
-        this.silenceFramesCount++;
+        this.silenceFramesCount += copy.length;
       }
 
-      // Natural pause trigger: ~750ms of silence (3 frames of 256ms) after speaking and at least 1s of audio
+      // Pause duration uses samples, independent of capture callback size.
       if (
         this.hasSpeechInCurrentSegment &&
-        this.silenceFramesCount >= 3 &&
+        this.silenceFramesCount >= 12000 &&
         this.currentSegmentSamples >= 16000 &&
         !this.isCommitting &&
         this.worker &&
@@ -686,10 +709,23 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       }
     };
 
-    source.connect(this.processorNode);
+    // Prefer the rendering thread: ScriptProcessor loses audio when the main thread stalls.
+    if (this.audioContext.audioWorklet && typeof AudioWorkletNode !== 'undefined') {
+      await this.audioContext.audioWorklet.addModule(new URL('../../workers/speechCaptureWorklet.js', import.meta.url));
+      if (session !== this.sessionId) return;
+      this.updateMetrics({ captureBackend: 'audio-worklet' });
+      this.captureWorklet = new AudioWorkletNode(this.audioContext, 'interview-capture', { channelCount: 1, channelCountMode: 'explicit', channelInterpretation: 'speakers' });
+      this.captureWorklet.port.onmessage = event => { if (event.data instanceof Float32Array) capture(event.data); };
+      source.connect(this.captureWorklet);
+    } else {
+      this.updateMetrics({ captureBackend: 'script-processor' });
+      this.processorNode = this.audioContext.createScriptProcessor(4096, 1, 1);
+      this.processorNode.onaudioprocess = event => capture(event.inputBuffer.getChannelData(0));
+      source.connect(this.processorNode);
+    }
     const silentGain = this.audioContext.createGain();
     silentGain.gain.value = 0;
-    this.processorNode.connect(silentGain);
+    (this.captureWorklet ?? this.processorNode)!.connect(silentGain);
     silentGain.connect(this.audioContext.destination);
 
     // 2. Load worker if not already initialized (audio is already buffering into sessionChunks!)
@@ -853,18 +889,41 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
     );
   }
 
-  public async stop(onCaptureStopped?: () => void): Promise<void> {
+  public stop(onCaptureStopped?: () => void): Promise<void> {
+    if (this.stopOperation?.session === this.sessionId) return this.stopOperation.promise;
+    const operation = {session:this.sessionId, promise:Promise.resolve()};
+    operation.promise = this.finishCapture(onCaptureStopped).finally(() => { if (this.stopOperation === operation) this.stopOperation = null; });
+    this.stopOperation = operation;
+    return operation.promise;
+  }
+
+  private async finishCapture(onCaptureStopped?: () => void): Promise<void> {
     const session = this.sessionId;
     const worker = this.worker;
     // ScriptProcessor callbacks arrive in 256 ms blocks. Drain the last block
     // before disconnecting, so a click on the final word does not discard it.
     if (this.isRunning && this.captureDrainMs > 0) await new Promise(resolve => setTimeout(resolve, this.captureDrainMs));
+    if (session !== this.sessionId) return;
+    if (this.captureWorklet) {
+      const port = this.captureWorklet.port;
+      await new Promise<void>(resolve => {
+        const done = () => { clearTimeout(timer); port.removeEventListener('message', fence); this.stopWaiters.delete(done); resolve(); };
+        const fence = (event: MessageEvent) => { if (event.data?.type === 'flushed') done(); };
+        const timer = setTimeout(done, 1500);
+        this.stopWaiters.add(done);
+        port.addEventListener('message', fence);
+        port.postMessage({ type: 'flush' });
+      });
+    }
+    if (session !== this.sessionId) return;
     this.isRunning = false;
     if (this.pollIntervalId) {
       clearInterval(this.pollIntervalId);
       this.pollIntervalId = null;
     }
+    if (this.captureWorklet) { this.captureWorklet.port.onmessage = null; this.captureWorklet.disconnect(); this.captureWorklet = null; }
     if (this.processorNode) {
+      this.processorNode.onaudioprocess = null;
       this.processorNode.disconnect();
       this.processorNode = null;
     }
@@ -877,6 +936,8 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       this.audioContext = null;
     }
 
+    if (session !== this.sessionId) return;
+    this.updateMetrics({ capturedSamples: this.totalSessionSamples });
     onCaptureStopped?.();
     if (session !== this.sessionId) return;
 
@@ -933,9 +994,8 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
     let rawBatchTranscript = '';
     let finalPassWarning: string | undefined;
 
-    const skipFinal = Boolean(this.finalModelId && shouldSkipRefinement(this.liveDecodeRatios, this.refinementDisabled));
-    if (skipFinal) { this.refinementDisabled = true; this.updateMetrics({ refinementDecision: 'skipped-slow' }); }
-    if (!skipFinal && this.totalSessionSamples >= 8000 && worker && this.worker === worker) {
+    // Live throughput does not predict final-model accuracy or throughput. Always attempt refinement.
+    if ( this.totalSessionSamples >= 8000 && worker && this.worker === worker) {
       const fullAudio = new Float32Array(this.totalSessionSamples);
       let offset = 0;
       for (const chunk of this.sessionChunks) {
@@ -943,7 +1003,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
         offset += chunk.length;
       }
 
-      const cleanAudio = this.prepareAudio(fullAudio);
+      const cleanAudio = this.normalizeAudio ? normalizeQuietAudio(fullAudio) : fullAudio;
       const audioToBatch = cleanAudio.length >= 4000 ? cleanAudio : fullAudio;
 
       const id = this.nextId();
@@ -962,15 +1022,15 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
           if (session === this.sessionId && this.worker === worker) { worker?.terminate(); this.worker = null; }
           if (session === this.sessionId) this.updateMetrics({ errorMessage: 'Final speech check timed out; retained live text.' });
           cancel();
-        }, 90000);
+        }, 180000 + decodeBudget);
 
         const handler = (e: MessageEvent) => {
           if (e.data.id !== id) return;
           if (e.data.type === 'model_ready' && this.finalModelId && !decodeTimer) {
             decodeTimer = setTimeout(() => {
               if (session === this.sessionId && this.worker === worker) {
-                this.refinementDisabled = true; worker.terminate(); this.worker = null;
-                this.updateMetrics({ refinementDecision: 'aborted-slow' });
+                worker.terminate(); this.worker = null;
+                this.updateMetrics({ refinementDecision: 'aborted-slow', finalPassWarning: 'Final recognition timed out; retained live text.' });
               }
               cancel();
             }, decodeBudget);
@@ -979,7 +1039,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
             if (this.finalModelId) {
               const ratio = decodeRealTimeFactor(e.data.inferMs, e.data.sampleCount);
               if (ratio !== null) this.updateMetrics({ finalDecodeRTF: ratio });
-              this.updateMetrics({ refinementDecision: 'accepted', initialPrompt: this.initialPrompt });
+              this.updateMetrics({ refinementDecision: 'accepted', initialPrompt: this.initialPrompt, finalModelUsed: e.data.modelId ?? this.finalModelId });
             }
             clearTimeout(timeout);
             batchTranscript = (e.data.text || '').trim();
@@ -992,7 +1052,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
         };
         worker?.addEventListener('message', handler);
         worker?.postMessage(
-          { id, op: 'batch', payload: { audio: audioToBatch.buffer, ...(this.finalModelId ? { modelId: this.finalModelId, device: this.finalDevice, initialPrompt: this.initialPrompt } : {}) } },
+          { id, op: 'batch', payload: { audio: audioToBatch.buffer, ...(this.finalModelId ? { modelId: this.finalModelId, device: this.finalDevice, dtype: this.finalDtype, fallbackModelId: this.fallbackModelId, initialPrompt: this.initialPrompt } : {}) } },
           [audioToBatch.buffer]
         );
       });
@@ -1002,7 +1062,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       const choice = chooseFinalTranscript(liveBeforeBatch, batchTranscript);
       this.committedText = choice.text;
       finalPassWarning = choice.warning;
-      if (!choice.accepted) batchTranscript = '';
+      if (!choice.accepted) { batchTranscript = ''; if (this.metrics.refinementDecision === 'accepted') this.updateMetrics({ refinementDecision: 'rejected-incomplete' }); }
 
       const cleanLive = normalizeASRText(liveBeforeBatch);
       const cleanBatch = normalizeASRText(batchTranscript);
@@ -1014,6 +1074,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
     const words = this.committedText.split(/\s+/).filter(Boolean);
     const revPerWord = words.length > 0 ? this.earlierWordRevisions / words.length : 0;
 
+    if (this.finalModelId) { this.worker?.terminate(); this.worker = null; }
     this.updateMetrics({
       status: 'ready',
       downloadProgressPct: 100,
@@ -1021,7 +1082,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       partialText: this.committedText,
       batchTranscript: batchTranscript || undefined,
       rawBatchTranscript: rawBatchTranscript || undefined,
-      finalPassWarning,
+      finalPassWarning: finalPassWarning ?? this.metrics.finalPassWarning,
       isIdenticalToBatch,
       revisionsPerWord: Math.round(revPerWord * 1000) / 1000,
       earlierWordRevisions: this.earlierWordRevisions,
@@ -1066,6 +1127,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       finalPassWarning: undefined,
       refinementDecision: undefined,
       finalDecodeRTF: undefined,
+      finalModelUsed: undefined,
       isIdenticalToBatch: undefined,
     });
   }
@@ -1077,6 +1139,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
     this.sessionId++;
     if (this.pollIntervalId) clearInterval(this.pollIntervalId);
     this.pollIntervalId = null;
+    if (this.captureWorklet) { this.captureWorklet.port.onmessage = null; this.captureWorklet.disconnect(); this.captureWorklet = null; }
     if (this.processorNode) { this.processorNode.onaudioprocess = null; this.processorNode.disconnect(); }
     this.processorNode = null;
     void this.audioContext?.close().catch(() => undefined);

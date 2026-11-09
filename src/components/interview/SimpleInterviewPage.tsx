@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { useDocumentMeta } from '../../lib/useDocumentMeta';
 import { correctInterviewTerms } from '../../lib/interviewRoom/dialogue';
-import { createASREngineForQuality } from '../../lib/interviewRoom/qualitySettings';
+import { canUseHighEndSpeech, rememberedSpeechModel, rememberSpeechModel, type SpeechModelChoice } from '../../lib/interviewRoom/speechDevice';
+import { createASREngineForQuality, QUALITY_PROFILES } from '../../lib/interviewRoom/qualitySettings';
 import { INTERVIEW_AUDIO_CONSTRAINTS } from '../../lib/speechTest/audioPreparation';
 import { questionSpeechPrompt } from '../../lib/interviewRoom/speechPrompt';
 import { useFocusMusic } from '../../contexts/FocusMusicContext';
@@ -113,6 +114,24 @@ export default function SimpleInterviewPage() {
   const [transcript, setTranscript] = useState('');
   const [typing, setTyping] = useState(false);
   const [micStatus, setMicStatus] = useState('');
+  const [speechChoice, setSpeechChoice] = useState<SpeechModelChoice>('default');
+  const speechChoiceRef = useRef<SpeechModelChoice>('default');
+  const [highEndEligible, setHighEndEligible] = useState(false);
+  const [speechLoading, setSpeechLoading] = useState(false);
+  const [speechNotice, setSpeechNotice] = useState('');
+  const speechGeneration = useRef(0);
+  useEffect(() => {
+    let active = true;
+    void canUseHighEndSpeech().then(eligible => {
+      if (!active) return;
+      setHighEndEligible(eligible);
+      if (eligible && !enginePromiseRef.current) {
+        const choice = rememberedSpeechModel();
+        speechChoiceRef.current = choice; setSpeechChoice(choice);
+      }
+    });
+    return () => { active = false; };
+  }, []);
   const [reading, setReading] = useState(false);
   const [micStream, setMicStream] = useState<MediaStream | null>(null);
   const [transcribing, setTranscribing] = useState(false);
@@ -223,30 +242,53 @@ export default function SimpleInterviewPage() {
   // Download starts when the topic is chosen, so the first answer is not spoken into a loading model
   const prepareEngine = useCallback(() => {
     if (!enginePromiseRef.current) {
+      const generation = speechGeneration.current;
+      setSpeechLoading(true);
       enginePromiseRef.current = (async () => {
         const load = async (candidate: SingleThreadASREngine) => {
           const off = candidate.subscribe(m => {
             if (answeringRef.current && m.status === 'loading') setMicStatus(`Preparing speech recognition… ${m.downloadProgressPct}%`);
           });
+          engineRef.current = candidate;
           try { await candidate.load(); } finally { off(); }
+          if (generation !== speechGeneration.current) throw new Error('Speech preparation cancelled');
         };
-        let engine = createASREngineForQuality(looksLikePhone() ? 'fast' : 'better');
+        const requested = speechChoiceRef.current;
+        let engine = createASREngineForQuality(requested === 'turbo' ? 'best' : looksLikePhone() ? 'fast' : 'better');
         try {
           await load(engine);
         } catch {
-          engine = createASREngineForQuality('fast');
+          engine.destroy();
+          if (generation !== speechGeneration.current) return;
+          if (requested === 'turbo') {
+            speechChoiceRef.current = 'default'; setSpeechChoice('default'); rememberSpeechModel('default');
+            setSpeechNotice('High accuracy unavailable. Using Standard.');
+          } else {
+            setSpeechNotice('Standard unavailable. Using lightweight speech recognition.');
+          }
+          engine = createASREngineForQuality(requested === 'turbo' ? 'better' : 'fast');
           await load(engine);
         }
         engineRef.current = engine;
       })().catch((err) => {
-        enginePromiseRef.current = null;
+        if (generation === speechGeneration.current) enginePromiseRef.current = null;
         throw err;
-      });
+      }).finally(() => { if (generation === speechGeneration.current) setSpeechLoading(false); });
     }
     return enginePromiseRef.current;
   }, []);
 
-  const startAnswering = useCallback(async (promptQuestion?: string) => {
+  const switchSpeechModel = async (choice: SpeechModelChoice) => {
+    if (answeringRef.current || transcribing) return;
+    speechChoiceRef.current = choice; setSpeechChoice(choice); rememberSpeechModel(choice);
+    setSpeechNotice('');
+    speechGeneration.current++;
+    engineRef.current?.destroy(); engineRef.current = null; enginePromiseRef.current = null;
+    // Selecting the optional model explicitly authorizes its background download.
+    void prepareEngine().catch(() => setSpeechNotice('Speech recognition unavailable. You can type your answer.'));
+  };
+
+  const startAnswering = useCallback(async (promptQuestion?: string, forceSpeech = false) => {
     setStep('answering');
     setTranscript('');
     setCheck(null);
@@ -254,7 +296,7 @@ export default function SimpleInterviewPage() {
     const generation = ++reviewRef.current;
     await finishingRef.current;
     if (reviewRef.current !== generation) return;
-    if (typing) return;
+    if (typing && !forceSpeech) return;
     answeringRef.current = true;
     stopAudio();
     if (focusPlayingRef.current) resumeFocusRef.current = true;
@@ -286,6 +328,7 @@ export default function SimpleInterviewPage() {
       await engine.start(stream);
       setMicStatus('Listening.');
     } catch {
+      engineRef.current?.cancel();
       stopMic();
       setTyping(true);
       setMicStatus('The microphone is not available, so please type your answer.');
@@ -347,6 +390,11 @@ export default function SimpleInterviewPage() {
     const finalize = engine
       ? engine.stop(() => { stopMic(); readAnswer(); }).then(() => {
           const m = engine.getMetrics();
+          if (speechChoiceRef.current === 'turbo' && m.finalModelUsed && !m.finalModelUsed.includes('large-v3-turbo')) {
+            speechChoiceRef.current = 'default'; setSpeechChoice('default'); rememberSpeechModel('default');
+            setSpeechNotice('High accuracy unavailable. Using Standard.');
+            engine.destroy(); engineRef.current = null; enginePromiseRef.current = null;
+          }
           return (m.batchTranscript || m.finalText || m.partialText || liveText).trim();
         }).catch(() => liveText)
       : Promise.resolve(liveText);
@@ -483,6 +531,7 @@ export default function SimpleInterviewPage() {
       answeringRef.current = false;
       stopAudio();
       stopMic();
+      speechGeneration.current++;
       engineRef.current?.destroy();
     },
     [stopAudio, stopMic]
@@ -493,6 +542,17 @@ export default function SimpleInterviewPage() {
     <Navbar />
     <div className="interview-room-wrap simple-interview">
       <div className={`si-card${step === 'topics' || step === 'answer' ? ' si-card-wide' : ' si-card-stage'}`}>
+        {highEndEligible ? (
+          <div className="si-speech-model">
+            <label htmlFor="speech-model">Speech model</label>
+            <select id="speech-model" value={speechChoice} disabled={step === 'answering' || transcribing} onChange={event => void switchSpeechModel(event.target.value as SpeechModelChoice)}>
+              <option value="default">Standard</option>
+              <option value="turbo">High accuracy · {QUALITY_PROFILES.best.downloadSizeMB}</option>
+            </select>
+            {speechLoading && <span role="status">Preparing speech recognition…</span>}
+          </div>
+        ) : <div className="si-speech-model">Speech model: Standard</div>}
+        {speechNotice && <p role="status">{speechNotice}</p>}
         {step === 'topics' && (
           <>
             <h1>Interview practice</h1>
@@ -743,7 +803,7 @@ export default function SimpleInterviewPage() {
                   type="button"
                   onClick={() => {
                     setTyping(false);
-                    void startAnswering();
+                    void startAnswering(undefined, true);
                   }}
                 >
                   Use microphone

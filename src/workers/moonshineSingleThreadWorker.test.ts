@@ -61,3 +61,25 @@ describe('single-thread speech worker', () => {
     await vi.waitFor(() => expect(messages.map(m => m.type)).toEqual(['error', 'init_done']));
   });
 });
+
+it('warms the selected final model then disposes it before loading live speech', async () => {
+  const dispose = vi.fn();
+  mocks.pipeline.mockImplementation(async () => Object.assign(vi.fn(async () => ({text:'words'})), {dispose}));
+  await import('./moonshineSingleThreadWorker');
+  send(1,'init',{modelId:'onnx-community/moonshine-tiny-ONNX',device:'wasm',dtype:'q8',preloadModelId:'onnx-community/whisper-base.en',preloadDevice:'wasm',preloadDtype:'q8'});
+  await vi.waitFor(()=>expect(messages.some(m=>m.type==='init_done')).toBe(true));
+  expect(mocks.pipeline.mock.calls.map(c=>c[1])).toEqual(['onnx-community/whisper-base.en','onnx-community/moonshine-tiny-ONNX']);
+  expect(dispose).toHaveBeenCalledOnce();
+});
+
+it('uses Standard after a high-end GPU generation failure rather than retaining live text', async () => {
+  scope.navigator={gpu:{requestAdapter:async()=>({})}};
+  const gpu=Object.assign(vi.fn(async()=>{throw Error('GPU allocation failed');}),{dispose:vi.fn()});
+  const wasm=Object.assign(vi.fn(async()=>({text:'standard final words'})),{dispose:vi.fn()});
+  mocks.pipeline.mockResolvedValueOnce(gpu).mockResolvedValueOnce(wasm);
+  await import('./moonshineSingleThreadWorker');
+  send(1,'init',{modelId:'onnx-community/whisper-large-v3-turbo',device:'webgpu',dtype:'q4'});
+  send(2,'batch',{audio:new Float32Array(16000),fallbackModelId:'onnx-community/whisper-base.en'});
+  await vi.waitFor(()=>expect(messages).toContainEqual(expect.objectContaining({id:2,type:'batch_result',text:'standard final words',modelId:'onnx-community/whisper-base.en',device:'wasm'})));
+  expect(gpu.dispose).toHaveBeenCalledOnce();
+});
