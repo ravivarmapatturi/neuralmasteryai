@@ -87,3 +87,20 @@ it('preserves matching user evidence with bounds in history and JSON backup', ()
   const backup=collectProgress();localStorage.clear();restoreProgress(JSON.stringify(backup));
   expect(readInterviewAttempts()[0].points[0].evidence).toBe(bounded[0].points[0].evidence);
 });
+
+it('preserves delivery measurements through draft/review/follow-up merge and backup restore', () => {
+  const delivery = {durationSeconds:120,speakingSeconds:90,longPauses:2,wordCount:240,wordsPerMinute:120,
+    fillers:{um:2,uh:1,like:1,'you know':1,basically:0,actually:1}};
+  const final = {...attempt('delivery'),revision:1,delivery};
+  const reviewed = {...final,revision:2,status:'checked' as const};
+  const rows = mergeInterviewAttempts([reviewed], [final], [{...final,revision:0,followUp:{question:'Why?',transcript:'Because',status:'saved',revision:1}}]);
+  expect(rows[0].followUp?.transcript).toBe('Because');
+  expect(rows[0].delivery).toEqual(delivery);
+  localStorage.setItem(attemptsKey(), JSON.stringify(rows));
+  const backup = collectProgress();
+  localStorage.clear();
+  restoreProgress(JSON.stringify(backup));
+  expect(readInterviewAttempts()[0].delivery).toEqual(delivery);
+  expect(mergeInterviewAttempts([{...final,delivery:{...delivery,longPauses:-1}}])[0].delivery).toBeUndefined();
+  expect(mergeInterviewAttempts([attempt('legacy')])[0].delivery).toBeUndefined();
+});

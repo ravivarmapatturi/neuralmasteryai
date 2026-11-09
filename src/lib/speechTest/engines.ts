@@ -1,3 +1,4 @@
+import { DeliveryClock, type DeliveryTiming } from '../interviewDelivery';
 import { decodeRealTimeFactor, refinementBudgetMs } from './refinementPolicy';
 import { normalizeQuietAudio, appendPhrase, chooseFinalTranscript } from './audioPreparation';
 
@@ -48,6 +49,7 @@ export interface EngineMetrics {
   inputTrackSettings?: MediaTrackSettings;
   isIdenticalToBatch?: boolean;
   stageTimings?: StageTimings;
+  deliveryTiming?: DeliveryTiming;
 }
 
 export function detectBrowser(): string {
@@ -467,6 +469,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
 
   // Voice activity & pause tracking
   private silenceFramesCount = 0;
+  private deliveryClock = new DeliveryClock();
   private hasSpeechInCurrentSegment = false;
   private isCommitting = false;
 
@@ -683,6 +686,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
 
     this.sessionChunks = [];
     this.totalSessionSamples = 0;
+    this.deliveryClock = new DeliveryClock();
     this.currentSegmentChunks = [];
     this.currentSegmentSamples = 0;
     this.committedPhrases = [];
@@ -706,6 +710,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       revisionsPerWord: 0,
       batchTranscript: undefined,
       rawBatchTranscript: undefined,
+      deliveryTiming: undefined,
       finalPassWarning: undefined,
       refinementDecision: undefined,
       finalDecodeRTF: undefined,
@@ -790,6 +795,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       const gain = this.normalizeAudio && peak >= 0.0005 && peak < 0.1 ? Math.min(8, 0.1 / peak) : 1;
       const rms = Math.sqrt(sum / copy.length) * gain;
 
+      this.deliveryClock.observe(rms >= 0.006, copy.length);
       if (rms >= 0.006) {
         this.hasSpeechInCurrentSegment = true;
         this.silenceFramesCount = 0;
@@ -1050,7 +1056,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
     }
 
     if (session !== this.sessionId) return;
-    this.updateMetrics({ capturedSamples: this.totalSessionSamples });
+    this.updateMetrics({ capturedSamples: this.totalSessionSamples, deliveryTiming: this.deliveryClock.snapshot() });
     onCaptureStopped?.();
     if (session !== this.sessionId) return;
 
@@ -1263,6 +1269,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
     }
     this.sessionChunks = [];
     this.totalSessionSamples = 0;
+    this.deliveryClock = new DeliveryClock();
     this.currentSegmentChunks = [];
     this.currentSegmentSamples = 0;
     this.committedPhrases = [];
@@ -1287,6 +1294,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       revisionsPerWord: 0,
       batchTranscript: undefined,
       rawBatchTranscript: undefined,
+      deliveryTiming: undefined,
       finalPassWarning: undefined,
       refinementDecision: undefined,
       finalDecodeRTF: undefined,
@@ -1314,6 +1322,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
     this.sessionChunks = [];
     this.currentSegmentChunks = [];
     this.totalSessionSamples = 0;
+    this.deliveryClock = new DeliveryClock();
     this.currentSegmentSamples = 0;
   }
 

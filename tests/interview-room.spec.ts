@@ -67,7 +67,8 @@ async function controlledRoom(page: Page, settings: {memory:number;gpu:boolean;f
           if (settings.failTurbo && isTurbo) reply({ type: 'error', error: 'GPU allocation failed' });
           else reply({ type: 'init_done', device: 'wasm', loadTimeMs: 1 });
         } else if (['transcribe','commit','batch'].includes(op)) {
-          reply({type:op==='transcribe'?'result':`${op}_result`,text:state.asrText || '',sampleCount:payload?.audio?.byteLength/4,inferMs:1});
+          const text = op === 'commit' && Array.isArray(state.commitTexts) ? (state.commitTexts.shift() || '') : (state.asrText || '');
+          reply({type:op==='transcribe'?'result':`${op}_result`,text,sampleCount:payload?.audio?.byteLength/4,inferMs:1});
         } else if (op === 'reset') {
           reply({ type: 'reset_done' });
         } else {
@@ -86,6 +87,7 @@ async function controlledRoom(page: Page, settings: {memory:number;gpu:boolean;f
           const tone = ctx.createOscillator(); const gain = ctx.createGain();
           tone.frequency.value = 220; gain.gain.value = 0.1;
           tone.connect(gain); gain.connect(destination); tone.start();
+          state.setTone = (value:number) => { gain.gain.value = value; };
         }
         const stream = destination.stream;
         state.micTracks.push(...stream.getTracks());
@@ -705,6 +707,8 @@ test('self-ratings survive a late automated check and reload; queue and answer f
   await page.goto(`http://localhost:${PORT}/interview?q=senior:dropout`);
   await page.locator('#start-topic').click();await answerByTyping(page);await page.locator('#done').click();
   const rating=page.getByRole('group',{name:'How did your answer go?'});
+  await expect(rating).toContainText('Choose a rating.');
+  await expect(rating).not.toContainText('Automated detection');
   await rating.getByRole('button',{name:'Got it',exact:true}).click();
   await expect(rating.getByRole('button',{name:'Got it',exact:true})).toHaveAttribute('aria-pressed','true');
   await page.waitForFunction(()=>typeof (window as any).releaseReview==='function');
@@ -770,4 +774,45 @@ test('role readiness uses self-ratings, links to gaps, and fits every role at 37
   const question=questions.find(q=>q.title===opened);
   expect(question?.roles).toContain(roles.at(-1));
   expect(errors).toEqual([]);expect(requests).toEqual([]);
+});
+
+
+test('delivery numbers use captured timing, persist with the attempt, and fit both themes', async ({page}, testInfo) => {
+  const errors:string[]=[]; page.on('pageerror', e=>errors.push(e.message));
+  await controlledRoom(page);
+  await page.evaluate(() => { const w=window as any; w.toneSpeech=true; w.asrText='um uh like you know basically actually um you know'; w.commitTexts=['um uh like you know','basically actually um you know']; });
+  await page.locator('#start-topic').click();
+  await page.getByRole('button',{name:'Skip to answering'}).click();
+  await expect(page.getByText('Listening.',{exact:true})).toBeVisible();
+  await page.waitForTimeout(800);
+  await page.evaluate(()=>(window as any).setTone(0));
+  await page.waitForTimeout(3500);
+  await page.evaluate(()=>(window as any).setTone(0.1));
+  await page.waitForTimeout(500);
+  await page.locator('#done').click();
+  const row=page.getByRole('group',{name:'Delivery measurements'});
+  await expect(row).toContainText('8 filler matches');
+  await expect(row).toContainText('1 pauses >3s');
+  const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('nm-interview-attempts-v1:guest')||'[]'));
+  expect(saved[0].delivery.durationSeconds).toBeGreaterThan(4);
+  expect(saved[0].delivery.durationSeconds).toBeLessThan(15);
+  expect(saved[0].delivery.speakingSeconds).toBeLessThan(saved[0].delivery.durationSeconds);
+  expect(saved[0].delivery.wordCount).toBe(10);
+  expect(saved[0].delivery.wordsPerMinute).toBe(Math.round(600/saved[0].delivery.durationSeconds));
+  for(const theme of ['light','dark']) for(const width of [375,1440]) {
+    await page.setViewportSize({width,height:900});
+    await page.evaluate(theme=>{document.documentElement.dataset.theme=theme;},theme);
+    await row.scrollIntoViewIfNeeded();
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await page.screenshot({path:testInfo.outputPath(`delivery-${theme}-${width}.png`)});
+  }
+  await page.reload();
+  await page.locator('#start-topic').click();
+  await answerByTyping(page);
+  await page.locator('#done').click();
+  await expect(page.locator('.si-answer-stage > .si-delivery')).toHaveCount(0);
+  await page.getByText('Earlier attempts',{exact:true}).scrollIntoViewIfNeeded();
+  await page.locator('.si-attempt summary').first().click();
+  await expect(page.locator('.si-attempt .si-delivery')).toContainText('8 filler matches');
+  expect(errors).toEqual([]);
 });

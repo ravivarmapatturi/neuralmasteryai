@@ -1,3 +1,4 @@
+import { normalizeDelivery, type DeliveryFeedback } from './interviewDelivery';
 import type { PointResult } from './answerJudge';
 
 export const ATTEMPTS_KEY = 'nm-interview-attempts-v1';
@@ -14,6 +15,7 @@ export interface InterviewAttempt {
   status: 'unchecked' | 'checked' | 'failed';
   score?: number;
   revision?: number;
+  delivery?: DeliveryFeedback;
   followUp?: { question: string; transcript: string; status: 'draft' | 'saved'; revision: number };
 }
 export const attemptsKey = (uid?: string) => `${ATTEMPTS_KEY}:${uid ?? 'guest'}`;
@@ -31,7 +33,8 @@ function normalize(value: unknown): InterviewAttempt | null {
     && ['draft', 'saved'].includes(a.followUp.status)
     ? { question: a.followUp.question.slice(0, 1000), transcript: a.followUp.transcript.slice(0, 4000), status: a.followUp.status,
         revision: Number.isSafeInteger(a.followUp.revision) ? Math.max(0, Math.min(1_000_000, a.followUp.revision)) : 0 } : undefined;
-  return { ...(followUp ? { followUp } : {}), id: a.id, questionId: a.questionId, time: a.time, ...(a.revision !== undefined ? { revision: Math.max(0, Math.min(2, Math.trunc(a.revision) || 0)) } : {}), transcript: a.transcript.slice(0, 4000), points, source: a.source, status: a.status,
+  const delivery = normalizeDelivery(a.delivery);
+  return { ...(delivery ? { delivery } : {}), ...(followUp ? { followUp } : {}), id: a.id, questionId: a.questionId, time: a.time, ...(a.revision !== undefined ? { revision: Math.max(0, Math.min(2, Math.trunc(a.revision) || 0)) } : {}), transcript: a.transcript.slice(0, 4000), points, source: a.source, status: a.status,
     ...(Number.isFinite(a.score) && a.score! >= 0 && a.score! <= 100 && a.source === 'reference' ? { score: a.score } : {}) };
 }
 
