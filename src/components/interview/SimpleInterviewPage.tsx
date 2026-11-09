@@ -10,6 +10,8 @@ import { useFocusMusic } from '../../contexts/FocusMusicContext';
 import type { SingleThreadASREngine } from '../../lib/speechTest/engines';
 import practice from '../../data/interviewPractice.json';
 import { InterviewGraph } from './InterviewGraph';
+import { DeliveryRow } from './DeliveryRow';
+import { measureDelivery, type DeliveryTiming } from '../../lib/interviewDelivery';
 import { RoleReadiness } from './RoleReadiness';
 import { TodaysTen } from './TodaysTen';
 import { useInterviewLearning } from '../../contexts/InterviewLearningContext';
@@ -683,21 +685,24 @@ export default function SimpleInterviewPage() {
     const readAnswer = () => { if (reviewRef.current === id) play(`${current.id}_a`, () => undefined, current.answer); };
     if (!engine) readAnswer();
 
+    let deliveryTiming: DeliveryTiming | undefined;
     const finalize = engine
       ? engine.stop(() => { stopMic(); readAnswer(); }).then(() => {
           const m = engine.getMetrics();
+          deliveryTiming = m.deliveryTiming;
           if (speechChoiceRef.current === 'turbo' && m.finalModelUsed && !m.finalModelUsed.includes('large-v3-turbo')) {
             speechChoiceRef.current = 'default'; setSpeechChoice('default'); rememberSpeechModel('default');
             setSpeechNotice('High accuracy unavailable. Using Standard.');
             engine.destroy(); engineRef.current = null; enginePromiseRef.current = null;
           }
           return (m.batchTranscript || m.finalText || m.partialText || liveText).trim();
-        }).catch(() => liveText)
+        }).catch(() => { deliveryTiming = engine.getMetrics().deliveryTiming; return liveText; })
       : Promise.resolve(liveText);
     finishingRef.current = finalize.then(() => undefined);
     void finalize.then((finalText) => {
       const spoken = correctInterviewTerms(finalText, current.id, current.title);
-      const attempt = { ...draft, transcript: spoken, revision: 1 };
+      const attempt = { ...draft, transcript: spoken, revision: 1,
+        ...(deliveryTiming ? { delivery: measureDelivery(finalText, deliveryTiming) } : {}) };
       saveAttempt(attempt);
       if (spoken.trim()) saveLearning([{questionId:current.id,completion:{time:attempt.time,attemptId:attempt.id}}]);
       if (reviewRef.current === id) {
@@ -1387,6 +1392,7 @@ export default function SimpleInterviewPage() {
                 onClick={()=>{if(attemptId){const now=Date.now();saveLearning([{questionId,completion:{time:latest?.time ?? now,attemptId}},rateQuestion(learning,questionId,attemptId,value,now)]);}}}>{label}</button>)}</div>
               <p className="si-status" role="status">{learningSyncState==='storage-error' ? 'Your self-rating could not be saved on this device.' : selfRating ? `Self-rating saved. Next review: ${new Date(reviewDueAt(currentLearning!)!).toLocaleDateString()}.` : ''}</p>
             </fieldset>
+            <DeliveryRow delivery={latest?.delivery} />
             <div className="si-comparison-grid">
               <section className="si-col-yours" aria-label="Your answer and evaluation">
                 <div className="si-panel-header">
@@ -1446,6 +1452,7 @@ export default function SimpleInterviewPage() {
                   <h3>Earlier attempts</h3>
                   {earlier.map(attempt => <details key={attempt.id} className="si-attempt">
                     <summary><time dateTime={new Date(attempt.time).toISOString()}>{new Date(attempt.time).toLocaleString()}</time>{attempt.status === 'checked' ? (attempt.source === 'rubric' ? ' · Key points checked' : (!SHOW_COVERAGE_SCORE || attempt.score === undefined) ? ' · Checked against model answer' : ` · ${attempt.score}% coverage`) : ' · Not checked'}</summary>
+                    <DeliveryRow delivery={attempt.delivery} />
                     <p className="si-yours">{attempt.transcript || 'No answer was captured.'}</p>
                     {attempt.followUp && <div><h4>Follow-up</h4><p>{attempt.followUp.question}</p><p>{attempt.followUp.transcript || 'No follow-up answer was captured.'}</p></div>}
                     <ul className="si-points">{attempt.points.map(point => <li key={point.point}><span className="si-verdict">{point.verdict === 'covered' ? 'Covered' : 'Not detected'}</span>{point.point}{point.verdict === 'covered' && point.evidence && <blockquote className="si-point-evidence"><span>In your answer</span>{point.evidence}</blockquote>}</li>)}</ul>

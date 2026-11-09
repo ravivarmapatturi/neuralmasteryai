@@ -199,3 +199,30 @@ it('a cancelled capture drain cannot close the next question microphone',async()
   expect(oldStopped).not.toHaveBeenCalled();
   engine.destroy();
 });
+
+it('uses existing capture samples and RMS for delivery, then resets the next recording', async () => {
+  const engine = new SingleThreadASREngine({ captureDrainMs:0 });
+  await engine.load(); await engine.start({} as MediaStream);
+  const worker = FakeWorker.latest;
+  const originalPost = worker.postMessage.bind(worker);
+  vi.spyOn(worker, 'postMessage').mockImplementation(message => {
+    originalPost(message);
+    if (['commit','batch'].includes(message.op)) queueMicrotask(() => worker.reply({id:message.id,type:`${message.op}_result`,text:'um I like testing'}));
+  });
+  FakeAudio.latest.feed(0, 16); // Leading silence is not a pause.
+  FakeAudio.latest.feed(0.1, 4);
+  FakeAudio.latest.feed(0, 16); // One silence run >3s.
+  FakeAudio.latest.feed(0.1, 4);
+  await engine.stop();
+  const timing = engine.getMetrics().deliveryTiming!;
+  expect(timing.durationSeconds).toBeCloseTo(40 * 4096 / 16000);
+  expect(timing.speakingSeconds).toBeCloseTo(8 * 4096 / 16000);
+  expect(timing.longPauses).toBe(1);
+  engine.reset();
+  expect(engine.getMetrics().deliveryTiming).toBeUndefined();
+  await engine.start({} as MediaStream);
+  const nextStop = engine.stop();
+  await nextStop;
+  expect(engine.getMetrics().deliveryTiming).toEqual({durationSeconds:0,speakingSeconds:0,longPauses:0});
+  engine.destroy();
+});
