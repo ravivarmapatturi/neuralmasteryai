@@ -36,3 +36,13 @@ export function QueueAcknowledgementEffects() {
   const [mode,setMode]=useState<'unguarded'|'guarded'>('unguarded');
   return <Bars title="A lost acknowledgement permits another delivery" description="Job 7 commits, its acknowledgement is lost, and a second delivery arrives." footer="The calculated two-attempt model executes the effect twice without durable deduplication. An atomic identity/effect guard reduces committed effects to one without pretending that delivery itself happened once." rows={[{label:'Delivery attempts',value:2},{label:'Committed effects',value:mode==='guarded'?1:2}]} max={2} unit="count" status={mode==='guarded'?'Two deliveries, one committed effect.':'Redelivery repeats the effect.'} control={<PillSelect label="Effect boundary" value={mode} onChange={setMode} options={[{value:'unguarded',label:'No effect guard'},{value:'guarded',label:'Atomic effect guard'}]}/>}/>;
 }
+export function KafkaOffsetBoundary() {
+  const t=useVizTokens();
+  const [mode,setMode]=useState<'effect'|'offset'>('effect');
+  const effectFirst=mode==='effect';
+  return <VisualizationContainer footer="Partition offsets 10,11,12 remain in the log. After an effect-first crash, committed next offset 11 replays the completed effect; an offset-first crash can skip the uncommitted effect for 11. An external sink needs its own safe commit protocol."><VisualizationHeader title="The bookmark and the effect can disagree" description="Change which record commits before a crash at offset 11."/><PillSelect label="Crash boundary" value={mode} onChange={setMode} options={[{value:'effect',label:'Effect before offset'},{value:'offset',label:'Offset before effect'}]}/>
+    <svg viewBox="0 0 300 190" width="100%" role="img" aria-label={effectFirst?'Effect 11 exists; restart reads 11 again':'Effect 11 is missing; restart skips to 12'}>
+      {[10,11,12].map((n,i)=><g key={n}><rect x={8+i*95} y={18} width={88} height={45} fill={n===(effectFirst?11:12)?t.accentPrimary:t.surfaceAlt} stroke={t.border}/><text x={52+i*95} y={46} textAnchor="middle" fill={n===(effectFirst?11:12)?t.background:t.textPrimary} fontSize={14}>{n}</text></g>)}
+      <text x={8} y={92} fill={t.textPrimary} fontSize={14}>Committed next: {effectFirst?11:12}</text><text x={8} y={123} fill={t.textPrimary} fontSize={14}>Effect for 11: {effectFirst?'already committed':'not committed'}</text><text x={8} y={162} fill={t.textSecondary} fontSize={13}>Highlight = restart position in partition 0</text>
+    </svg><p role="status">{effectFirst?'Replay can duplicate effect 11.':'Resume can lose effect 11.'}</p></VisualizationContainer>;
+}
