@@ -1,7 +1,7 @@
 ---
 title: "Sagas, Compensation, and the Transactional Outbox"
 sidebar_position: 5.3
-description: ""
+description: "Persist multi-service workflow state, connect local commits to publication with an outbox, and make compensations recoverable instead of treating them as distributed rollback."
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -114,6 +114,20 @@ assert available == 100
 `} />
 
 This deliberately small model assumes the release is authorized and refers to an existing thirty-unit reservation. Production code must verify that relationship and atomically update reservation state and inventory. An arbitrary release request cannot be permitted to add stock simply because it has a new key. Idempotency protects repetition, not validity of a new action.
+
+A compensation command needs more than the number of units to add back. It should reference the original reservation, verify that the reservation is still releasable, and transition that reservation's durable state atomically with inventory. Otherwise a newly invented release identity can create stock even if duplicate release attempts are suppressed. Test a cancellation arriving after a successful downstream step and a delayed success arriving after cancellation. The workflow must choose a valid next action from its authoritative state rather than accepting whichever response arrived last.
+
+For the relay, pause immediately after broker acceptance and before the outbox progress update. Restart it with the same event identity and verify that a consumer's safe replay path preserves the intended effect. This test demonstrates why an outbox's durable obligation and a consumer's deduplication boundary complement each other rather than making either one redundant.
+
+A manual repair should also have a stable identity and an audited transition. Operator intervention must not become an unguarded path that can repeat the very compensation the automated workflow protects.
+
+## Make Compensation a Durable Forward Action
+
+Releasing a reservation is a new business operation with its own possible failures. In the 30-unit example, payment failure should eventually return availability from 70 to 100, but a network error during release leaves the system at 70 until recovery succeeds. Persist the need for compensation rather than keeping it only in a handler's stack. A worker can retry the release using the reservation identity, and the reservation state can make repeated release attempts harmless. The saga is complete only when its durable terminal state matches the chosen business outcome.
+
+Compensation is not always the algebraic inverse of the original step. A shipped package cannot be made unshipped by subtracting a row, and a notification already read by a customer cannot be erased from memory. Define an acceptable business remedy, such as cancellation before dispatch or a return workflow afterward. That distinction determines how far automation may proceed and when human resolution is required. The ordering of irreversible steps therefore belongs in the workflow design, alongside timeout and retry policies.
+
+For an outbox, the local transaction records both the domain change and the event intent. The relay can crash after publication but before marking the row published, so downstream consumers still need duplicate tolerance. Multiple relay workers also need a supported way to claim work without losing rows or violating required order. If order matters per aggregate, preserve an aggregate sequence and ensure a later event cannot conceal a missing earlier transition. Monitor the oldest unpublished intent rather than only relay process health. A healthy relay that repeatedly fails one row can leave the associated business state invisible elsewhere. During repair, distinguish republishing the same event from creating a replacement event with a new identity. The first asks consumers to recognize a retry; the second may legitimately cause a new effect. Keeping that distinction explicit makes operational replay safer.
 
 ## Failure Modes and Better Choices
 
