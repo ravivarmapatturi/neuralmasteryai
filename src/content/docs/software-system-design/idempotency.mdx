@@ -1,7 +1,7 @@
 ---
 title: "Idempotency and Durable Operation Identity"
 sidebar_position: 4.8
-description: ""
+description: "Recognize repeated intent with scoped durable keys, atomically bind identity to effects and results, and handle concurrent retries and uncertain external outcomes."
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -103,6 +103,18 @@ print("Changed intent:", claim("k7", 20))
 `} />
 
 This function intentionally models one operation slot and sequential calls. A real service stores many scoped records and uses a unique constraint or equivalent atomic primitive so two workers cannot both claim the same operation. Test actual concurrency and process replacement rather than counting only successful calls on one object in memory.
+
+Test result replay after another legitimate operation changes the same account. Complete k7, complete a distinct k8, then retry k7. The response must describe the original operation under its contract without performing a third debit. Also run the same textual key under a second authenticated tenant: the two scoped intentions must not collide or reveal results across tenants. These cases expose designs that work only while the first response remains the account's latest state and only one caller exists.
+
+Keep the operation identifier visible in support and reconciliation tools so an operator can inspect one intention without recreating it. Observing the current account balance alone cannot identify which historical attempt produced a change.
+
+## Resolve Concurrent Attempts Before Performing the Effect
+
+An idempotency table needs a concurrency rule, not just a lookup. Two workers can receive the same key at the same time, both observe no existing row, and both attempt the debit. A unique constraint on the scoped key can serialize ownership of the operation. The winner establishes the operation record under the chosen transaction protocol; the other must inspect or wait for that operation's state rather than performing another debit. For a database-local effect, storing the operation identity, balance transition, and durable result in one transaction gives recovery a single decision boundary.
+
+Request fingerprints protect a different invariant. If key k7 first represents a debit of 10 and later accompanies a debit of 20, returning the original result silently would conceal a client error. Normalize the fields that define the intended operation, compare their fingerprint, and reject conflicting reuse. Do not include irrelevant transport details that change on every retry, but do include the account, currency, and other fields that change the business effect. Scope the key to the authenticated principal or tenant according to the API contract so one caller cannot retrieve another caller's stored response by guessing its identifier.
+
+An external provider complicates atomicity because a local transaction cannot roll back an already completed remote charge. Preserve one provider operation identity across attempts and reconcile its durable result. A local state such as pending may mean the remote outcome is unknown, not that no charge happened. A recovery worker should query or retry using the same provider contract before deciding whether to create another effect. Retention matters here: deleting the local key while clients or providers can still replay the operation can make an old retry look new. Derive the retention horizon from actual retry and reconciliation lifetimes, and document what a caller must do after that horizon. A bounded idempotency promise can be useful, but its time boundary must match the workflow it protects.
 
 ## Failure Modes and Better Choices
 
