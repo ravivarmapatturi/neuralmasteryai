@@ -101,6 +101,30 @@ function questionFromPath(pathname: string) {
   return match ? decodeURIComponent(match[1]).replaceAll('__', ':') : null;
 }
 
+function SpeechModelStatus({ ready, loading, progress }: { ready: boolean; loading: boolean; progress: number }) {
+  if (!ready && !loading) return null;
+  const pct = ready ? 100 : Math.round(progress);
+  const circumference = 2 * Math.PI * 9;
+  return (
+    <span className={`si-model-status${ready ? ' is-ready' : ''}`} role="status">
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+        <circle className="si-model-track" cx="12" cy="12" r="9" />
+        <circle
+          className="si-model-arc"
+          cx="12"
+          cy="12"
+          r="9"
+          strokeDasharray={circumference}
+          strokeDashoffset={circumference * (1 - pct / 100)}
+          transform="rotate(-90 12 12)"
+        />
+        {ready && <path className="si-model-check" d="M7.5 12.5l3 3 6-6.5" />}
+      </svg>
+      {ready ? 'Ready' : `Loading ${pct}%`}
+    </span>
+  );
+}
+
 export default function SimpleInterviewPage() {
   useDocumentMeta('AI Interview Practice', 'Pick a topic, hear an AI engineering interview question, answer out loud, then hear and read a model answer. Runs in your browser.');
 
@@ -122,6 +146,8 @@ export default function SimpleInterviewPage() {
   const speechChoiceRef = useRef<SpeechModelChoice>('default');
   const [highEndEligible, setHighEndEligible] = useState(false);
   const [speechLoading, setSpeechLoading] = useState(false);
+  const [speechProgress, setSpeechProgress] = useState(0);
+  const [speechReady, setSpeechReady] = useState(false);
   const [speechNotice, setSpeechNotice] = useState('');
   const speechGeneration = useRef(0);
   useEffect(() => {
@@ -254,9 +280,12 @@ export default function SimpleInterviewPage() {
     if (!enginePromiseRef.current) {
       const generation = speechGeneration.current;
       setSpeechLoading(true);
+      setSpeechProgress(0);
+      setSpeechReady(false);
       enginePromiseRef.current = (async () => {
         const load = async (candidate: SingleThreadASREngine) => {
           const off = candidate.subscribe(m => {
+            if (m.status === 'loading' && generation === speechGeneration.current) setSpeechProgress(p => Math.max(p, m.downloadProgressPct));
             if (answeringRef.current && m.status === 'loading') setMicStatus(`Preparing speech recognition… ${m.downloadProgressPct}%`);
           });
           engineRef.current = candidate;
@@ -280,6 +309,7 @@ export default function SimpleInterviewPage() {
           await load(engine);
         }
         engineRef.current = engine;
+        if (generation === speechGeneration.current) setSpeechReady(true);
       })().catch((err) => {
         if (generation === speechGeneration.current) enginePromiseRef.current = null;
         throw err;
@@ -307,6 +337,8 @@ export default function SimpleInterviewPage() {
     speechChoiceRef.current = choice; setSpeechChoice(choice); rememberSpeechModel(choice);
     setSpeechNotice('');
     speechGeneration.current++;
+    setSpeechReady(false);
+    setSpeechProgress(0);
     engineRef.current?.destroy(); engineRef.current = null; enginePromiseRef.current = null;
     // Selecting the optional model explicitly authorizes its background download.
     void prepareEngine().catch(() => setSpeechNotice('Speech recognition unavailable. You can type your answer.'));
@@ -582,9 +614,14 @@ export default function SimpleInterviewPage() {
               <option value="default">Standard</option>
               <option value="turbo">High accuracy · {QUALITY_PROFILES.best.downloadSizeMB}</option>
             </select>
-            {speechLoading && <span role="status">Preparing speech recognition…</span>}
+            <SpeechModelStatus ready={speechReady} loading={speechLoading} progress={speechProgress} />
           </div>
-        ) : <div className="si-speech-model">Speech model: Standard</div>}
+        ) : (
+          <div className="si-speech-model">
+            Speech model: Standard
+            <SpeechModelStatus ready={speechReady} loading={speechLoading} progress={speechProgress} />
+          </div>
+        )}
         {speechNotice && <p role="status">{speechNotice}</p>}
         {step === 'topics' && (
           <>

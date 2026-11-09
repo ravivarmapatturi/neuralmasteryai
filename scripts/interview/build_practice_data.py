@@ -58,12 +58,22 @@ for q in json.loads((ROOT / "src/data/interviewCatalog.generated.json").read_tex
     ours.append((SECTION_TOPIC.get(q.get("section"), "rag"), item))
 # Fundamentals and senior-round questions written for this site.
 for topic, rows in json.loads((ROOT / "src/data/interviewSeniorQuestions.json").read_text()).items():
-    for row in rows:
-        qid, title, answer, *metadata = row
-        item = {"id": f"senior:{qid}", "title": title, "answer": answer}
-        if metadata and "keyPoints" in metadata[0]:
-            item["keyPoints"] = metadata[0]["keyPoints"]
-        ours.append((topic, item))
+    for item in rows:
+        if isinstance(item, dict):
+            q_data = {"id": f"senior:{item['id']}", "title": item["title"], "answer": item["answer"]}
+            for k in ["keyPoints", "tradeOffs", "followUps", "wrongAnswers", "rounds", "roles"]:
+                if k in item:
+                    q_data[k] = item[k]
+        else:
+            qid, title, answer, *metadata = item
+            q_data = {"id": f"senior:{qid}", "title": title, "answer": answer}
+            if metadata and isinstance(metadata[0], dict):
+                q_data.update(metadata[0])
+            else:
+                for k, value in zip(["followUps", "wrongAnswers", "rounds", "roles", "tradeOffs"], metadata):
+                    q_data[k] = value
+        ours.append((topic, q_data))
+
 titles_seen = set()
 for topic, item in ours:
     key = item["title"].strip().lower()

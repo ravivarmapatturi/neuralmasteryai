@@ -352,7 +352,7 @@ test('switching back cancels a pending High accuracy load and ignores its late r
   await controlledRoom(page,{memory:8,gpu:false,failTurbo:false,deferTurbo:true});
   const control=page.getByLabel('Speech model',{exact:true});
   await control.selectOption('turbo');
-  await expect(page.getByRole('status').filter({hasText:'Preparing speech recognition'})).toBeVisible();
+  await expect(page.getByRole('status').filter({hasText:'Loading'})).toBeVisible();
   await control.selectOption('default');
   await expect(control).toHaveValue('default');
   expect(await page.evaluate(()=>(window as any).terminatedSpeechWorkers)).toBeGreaterThan(0);
