@@ -14,6 +14,11 @@ on:
 
 env:
   NODE_VERSION: '22'
+  # Browser inference uses onnxruntime-web; CI needs no Node CUDA providers.
+  # Keep both flags: kokoro-js pins ORT 1.21 (CUDA flag only), while
+  # Transformers uses ORT 1.30 (new install flag). CPU bindings stay bundled.
+  ONNXRUNTIME_NODE_INSTALL: 'skip'
+  ONNXRUNTIME_NODE_INSTALL_CUDA: 'skip'
 
 jobs:
   unit-tests:
