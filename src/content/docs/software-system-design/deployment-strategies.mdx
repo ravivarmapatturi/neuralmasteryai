@@ -1,7 +1,7 @@
 ---
 title: "Deployment Strategies and Reversible Changes"
 sidebar_position: 6.2
-description: ""
+description: "Choose rolling, blue/green, canary, or shadow release paths from risk and capacity, then preserve compatibility so rollback remains a real recovery option."
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -108,6 +108,20 @@ print("If canary is withdrawn:", ready_baseline)
 `} />
 
 The probability model assumes independent requests with a fixed failure chance. Real bugs can depend on a rare operation or correlated state, so sample count alone cannot certify safety. Combine representative coverage with measured outcomes, compatibility tests, and a recovery path whose state consequences are understood.
+
+Include retained work in the release matrix. A worker deployed today may consume an event produced by last week's schema, and a rollback may run old code against a record produced by the canary. Test both directions using realistic historical fixtures. An old/new web request compatibility test alone misses those delayed readers.
+
+A blue/green switch can also leave background workers active in both environments. Decide which environment owns scheduled jobs and queue consumption before switching, and fence or drain the old owner where the operation requires exclusivity. Otherwise a release that serves HTTP correctly can still duplicate periodic effects. Observe accepted operation identities and background progress throughout reversal, not only the public endpoint's response version.
+
+Record which observations authorized each expansion step. After a rollback, that record helps distinguish a failed release hypothesis from missing or unrepresentative canary evidence. Automatic expansion without preserved cohort context is difficult to audit or improve.
+
+## Expand Compatibility Before Contracting the Old Schema
+
+A canary shares its environment with older application versions. If the canary writes a representation the old version cannot read, even a small traffic fraction can damage the rollback path. Introduce compatible schema changes first, deploy code that tolerates both forms, migrate data under observation, and remove old compatibility only after the supported overlap ends. The exact sequence depends on the database and application, but the invariant is consistent: every version that may serve traffic must understand the state it can encounter. Returning traffic to an older binary cannot reverse an incompatible data mutation.
+
+Background workers deserve the same analysis as request handlers. A new worker may claim jobs created by the old version, while an old worker may process jobs written by the canary. Queue payloads, retry records, and scheduled tasks can outlive the deployment window. Version them or preserve a compatible interpretation, and test replay of the oldest supported payload. A healthy HTTP canary says little about a batch path that has not run yet. Choose an observation period that includes representative work rather than declaring success after a convenient number of minutes.
+
+The cohort comparison must also be interpretable. Our canary's 50 failures among 1,000 requests gives 5 percent, while the baseline's 9 among 9,000 gives 0.1 percent. A release system should preserve those separate populations and inspect whether they represent comparable traffic. If the canary receives a different geography, endpoint mix, or customer class, a raw difference may have another cause. Stratify relevant dimensions without fragmenting the sample beyond usefulness. Monitor the intended change and its likely failure modes, define stop conditions before release, and ensure the operator can actually stop the rollout. A dashboard without an executable rollback or roll-forward procedure is observation without control. Rehearse that control using a compatible bad release in an isolated environment.
 
 ## Failure Modes and Better Choices
 
