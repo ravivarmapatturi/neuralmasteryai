@@ -21,20 +21,31 @@ async function controlledRoom(page: Page, settings: {memory:number;gpu:boolean;f
     state.inferenceOps = [];
     const RealWorker = window.Worker;
     window.Worker = class extends EventTarget {
+      voice = false;
       onmessage: ((event: MessageEvent) => void) | null = null;
       constructor(url: string | URL, options?: WorkerOptions) {
         super();
-        if (!/\/(mockInterviewWorker|moonshineSingleThreadWorker)[^/]*\.(?:ts|js)(?:\?|$)/.test(String(url))) {
+        this.voice = /kokoroWorker/.test(String(url));
+        if (!/\/(mockInterviewWorker|moonshineSingleThreadWorker|kokoroWorker)[^/]*\.(?:ts|js)(?:\?|$)/.test(String(url))) {
           return new RealWorker(url, options) as any;
         }
       }
-      postMessage({ id, op, payload }: any) {
+      postMessage({ id, op, payload, text, cancel }: any) {
         state.inferenceOps.push(op);
         const reply = (data: any) => queueMicrotask(() => {
           const event = new MessageEvent('message', { data: { id, ...data } });
           this.onmessage?.(event);
           this.dispatchEvent(event);
         });
+        if (this.voice) {
+          if (cancel) { state.voiceCancels = (state.voiceCancels || 0) + 1; return; }
+          state.spokenFollowUps = [...(state.spokenFollowUps || []), text];
+          state.releaseFollowUpVoice = () => {
+            reply({type:'chunk',samples:new Float32Array(240),rate:24000});
+            reply({type:'done'});
+          };
+          return;
+        }
         if (op === 'loadJudge') {
           if (state.failJudge) { reply({ok:false,error:'Inference unavailable'}); return; }
           state.releaseReview = () => {
@@ -52,7 +63,7 @@ async function controlledRoom(page: Page, settings: {memory:number;gpu:boolean;f
           if(settings.failTurbo && payload?.preloadModelId?.includes('large-v3-turbo')) reply({type:'error',error:'GPU allocation failed'});
           else reply({ type: 'init_done', device: 'wasm', loadTimeMs: 1 });
         } else if (['transcribe','commit','batch'].includes(op)) {
-          reply({type:op==='transcribe'?'result':`${op}_result`,text:'',sampleCount:payload?.audio?.byteLength/4,inferMs:1});
+          reply({type:op==='transcribe'?'result':`${op}_result`,text:state.asrText || '',sampleCount:payload?.audio?.byteLength/4,inferMs:1});
         } else if (op === 'reset') {
           reply({ type: 'reset_done' });
         } else {
@@ -64,9 +75,17 @@ async function controlledRoom(page: Page, settings: {memory:number;gpu:boolean;f
 
     Object.defineProperty(navigator, 'mediaDevices', { value: {
       getUserMedia: async () => {
+        if (state.failMic) throw new Error('Permission denied');
         const ctx = new AudioContext();
-        const stream = ctx.createMediaStreamDestination().stream;
+        const destination = ctx.createMediaStreamDestination();
+        if (state.toneSpeech) {
+          const tone = ctx.createOscillator(); const gain = ctx.createGain();
+          tone.frequency.value = 220; gain.gain.value = 0.1;
+          tone.connect(gain); gain.connect(destination); tone.start();
+        }
+        const stream = destination.stream;
         state.micTracks.push(...stream.getTracks());
+        if (state.deferMic) await new Promise<void>(resolve => { state.releaseMic = resolve; });
         return stream;
       },
     } });
@@ -356,6 +375,8 @@ test('rubric hits, history and improvement survive reload', async ({ page }) => 
   await expect(page.getByRole('heading',{name:'Automated key-point check'})).toBeVisible();
   await expect(page.locator('.si-check .si-points .covered')).toHaveCount(1);
   await expect(page.locator('.si-check .si-points .undetected')).toHaveCount(3);
+  await expect(page.locator('.si-check .si-verdict')).toHaveText(['Covered','Not detected','Not detected','Not detected']);
+  await expect(page.locator('.si-check')).not.toContainText(/Missed|Possible conflict|Partly covered/);
   await expect(page.locator('.si-score-pill')).toHaveCount(0);
   await page.evaluate(()=>{(window as any).rubricHitLimit=3;(window as any).releaseReview=undefined;});
   await page.locator('#practice-again').click();
@@ -412,4 +433,116 @@ test('keeps a failed review transcript in history and stores an empty rubric att
   const stored=await page.evaluate(()=>JSON.parse(localStorage.getItem('nm-interview-attempts-v1:guest')!));
   expect(stored.map((a:any)=>a.status)).toEqual(['failed','checked']);
   expect(stored[1].transcript).toBe('');
+});
+
+const followUpQuestion = practice.topics.flatMap(t => t.questions).find(q => q.id === 'repo:math-classical-ml:dense-layer-weight-shape')! as {id:string;followUps:string[]};
+async function openFollowUp(page: Page, releaseReview = false) {
+  const requests = await controlledRoom(page);
+  await page.goto(`http://localhost:${PORT}/interview?q=${encodeURIComponent(followUpQuestion.id)}`);
+  await page.locator('#start-topic').click();
+  await answerByTyping(page);
+  await page.locator('#done').click();
+  if (releaseReview) {
+    await page.waitForFunction(() => typeof (window as any).releaseReview === 'function');
+    await page.evaluate(() => (window as any).releaseReview());
+    await expect(page.locator('.si-check')).toBeVisible();
+  }
+  await page.getByRole('button', {name:'Answer a follow-up',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Spoken follow-up'})).toBeVisible();
+  return requests;
+}
+
+test('optional typed follow-up is saved with its attempt despite a late main review, and survives reload', async ({page}) => {
+  await openFollowUp(page);
+  const follow = page.getByRole('region',{name:'Spoken follow-up'});
+  const spoken = await page.evaluate(() => (window as any).spokenFollowUps[0]);
+  expect(followUpQuestion.followUps!.some(text => text.includes(spoken))).toBe(true);
+  expect(spoken).not.toContain('Expected:');
+  await follow.getByRole('button',{name:'Type follow-up answer',exact:true}).click();
+  await follow.getByLabel('Your follow-up answer').fill('The bias needs one value for each output.');
+  await follow.getByRole('button',{name:'Save follow-up',exact:true}).click();
+  await expect(follow).toContainText('Follow-up saved with this attempt.');
+  await page.waitForFunction(() => typeof (window as any).releaseReview === 'function');
+  await page.evaluate(() => (window as any).releaseReview());
+  await expect(page.locator('.si-check')).toBeVisible();
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('nm-interview-attempts-v1:guest')!));
+  expect(stored).toHaveLength(1);
+  expect(stored[0].status).toBe('checked');
+  expect(stored[0].followUp).toMatchObject({question:spoken,transcript:'The bias needs one value for each output.',status:'saved'});
+  await page.locator('#practice-again').click();
+  await page.getByRole('button',{name:'Skip to answering'}).click();
+  await page.getByLabel('Your answer',{exact:true}).fill('My second main answer.');
+  await page.locator('#done').click();
+  const history = page.getByRole('region',{name:'Earlier attempts'});
+  await history.locator('summary').click();
+  await expect(history).toContainText('The bias needs one value for each output.');
+  await page.reload();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('nm-interview-attempts-v1:guest')!)[0].followUp.transcript)).toBe('The bias needs one value for each output.');
+});
+
+test('follow-up uses the real capture lifecycle with voice and ASR inference doubles', async ({page}) => {
+  const requests = await openFollowUp(page, true);
+  await page.evaluate(() => { (window as any).toneSpeech = true; (window as any).asrText = 'The bias has one entry per output unit.'; (window as any).releaseFollowUpVoice(); });
+  const follow = page.getByRole('region',{name:'Spoken follow-up'});
+  // Typing the main answer must not force the follow-up into typing mode.
+  await expect(follow.getByRole('status')).toHaveText('Listening.');
+  await expect.poll(() => page.evaluate(() => (window as any).micTracks.filter((t: MediaStreamTrack) => t.readyState === 'live').length)).toBe(1);
+  // Let real AudioWorklet/ScriptProcessor blocks reach the engine before stopping.
+  await expect.poll(() => page.evaluate(() => (window as any).inferenceOps.includes('transcribe')), {timeout:10000}).toBe(true);
+  await follow.getByRole('button',{name:'Save follow-up'}).click();
+  await expect(follow).toContainText('Follow-up saved with this attempt.');
+  await expect(follow.locator('.si-follow-up-transcript')).toContainText('one entry per output unit');
+  expect(await page.evaluate(() => (window as any).micTracks.every((t: MediaStreamTrack) => t.readyState === 'ended'))).toBe(true);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('nm-interview-attempts-v1:guest')!)[0].followUp.transcript)).toContain('one entry per output unit');
+  expect(requests, 'No real model downloads').toEqual([]);
+});
+
+for (const phase of ['asking','answering','finishing','saved'] as const) for (const action of ['next','previous','retry'] as const) {
+  test(`${action} works during follow-up ${phase} and cleans up microphone and voice`, async ({page}) => {
+    await openFollowUp(page);
+    const follow = page.getByRole('region',{name:'Spoken follow-up'});
+    if (phase !== 'asking') {
+      await follow.getByRole('button',{name:'Answer now',exact:true}).click();
+      await expect(follow.getByRole('status')).toHaveText('Listening.');
+      if (phase === 'finishing' || phase === 'saved') {
+        await follow.getByRole('button',{name:'Save follow-up'}).click();
+        if (phase === 'saved') await expect(follow).toContainText('Follow-up saved with this attempt.');
+        else await expect(follow).toContainText('Finishing your transcript…');
+      }
+    }
+    const oldUrl = page.url();
+    await page.locator(action === 'next' ? '#next-question' : action === 'previous' ? '#previous-question' : '#practice-again').click();
+    if (action === 'retry') await expect(page).toHaveURL(oldUrl);
+    else expect(page.url()).not.toBe(oldUrl);
+    await expect(page.locator('.si-speaker-asking')).toBeVisible();
+    expect(await page.evaluate(() => (window as any).micTracks.every((t: MediaStreamTrack) => t.readyState === 'ended'))).toBe(true);
+    expect(await page.evaluate(() => (window as any).voiceCancels)).toBeGreaterThan(0);
+    // A generated chunk arriving after cancellation cannot restart the mic.
+    await page.evaluate(() => (window as any).releaseFollowUpVoice());
+    await expect(follow).toHaveCount(0);
+    await expect(page.locator('#model-answer')).toHaveCount(0);
+  });
+}
+
+test('follow-up mic failure offers typing; navigating before permission resolves stops the late stream', async ({page}) => {
+  await openFollowUp(page);
+  await page.evaluate(() => (window as any).failMic = true);
+  const follow = page.getByRole('region',{name:'Spoken follow-up'});
+  await follow.getByRole('button',{name:'Answer now',exact:true}).click();
+  await expect(follow.getByRole('status')).toContainText('The microphone is not available.');
+  await follow.getByLabel('Your follow-up answer').fill('A typed answer after permission was denied.');
+  await follow.getByRole('button',{name:'Save follow-up'}).click();
+  await expect(follow).toContainText('Follow-up saved');
+  await page.locator('#practice-again').click();
+  await page.getByRole('button',{name:'Skip to answering'}).click();
+  await page.getByLabel('Your answer',{exact:true}).fill('A second attempt.');
+  await page.locator('#done').click();
+  await page.getByRole('button',{name:'Answer a follow-up',exact:true}).click();
+  await page.evaluate(() => { (window as any).failMic=false; (window as any).deferMic=true; });
+  await follow.getByRole('button',{name:'Answer now',exact:true}).click();
+  await page.waitForFunction(() => typeof (window as any).releaseMic === 'function');
+  await page.locator('#next-question').click();
+  await page.evaluate(() => (window as any).releaseMic());
+  await expect.poll(() => page.evaluate(() => (window as any).micTracks.every((t:MediaStreamTrack) => t.readyState==='ended'))).toBe(true);
+  await expect(follow).toHaveCount(0);
 });

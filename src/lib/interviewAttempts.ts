@@ -14,6 +14,7 @@ export interface InterviewAttempt {
   status: 'unchecked' | 'checked' | 'failed';
   score?: number;
   revision?: number;
+  followUp?: { question: string; transcript: string; status: 'draft' | 'saved'; revision: number };
 }
 export const attemptsKey = (uid?: string) => `${ATTEMPTS_KEY}:${uid ?? 'guest'}`;
 const byteSize = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
@@ -26,7 +27,11 @@ function normalize(value: unknown): InterviewAttempt | null {
     || !['rubric', 'reference'].includes(a.source) || !['unchecked', 'checked', 'failed'].includes(a.status) || !Array.isArray(a.points)) return null;
   const points = a.points.slice(0, 6).filter(p => p && typeof p.point === 'string' && ['covered', 'partial', 'conflict', 'missed'].includes(p.verdict))
     .map(p => ({ point: p.point.slice(0, 200), verdict: p.verdict, confidence: Number.isFinite(p.confidence) ? Math.max(0, Math.min(100, p.confidence)) : 0 }));
-  return { id: a.id, questionId: a.questionId, time: a.time, ...(a.revision !== undefined ? { revision: Math.max(0, Math.min(2, Math.trunc(a.revision) || 0)) } : {}), transcript: a.transcript.slice(0, 4000), points, source: a.source, status: a.status,
+  const followUp = a.followUp && typeof a.followUp.question === 'string' && typeof a.followUp.transcript === 'string'
+    && ['draft', 'saved'].includes(a.followUp.status)
+    ? { question: a.followUp.question.slice(0, 1000), transcript: a.followUp.transcript.slice(0, 4000), status: a.followUp.status,
+        revision: Number.isSafeInteger(a.followUp.revision) ? Math.max(0, Math.min(1_000_000, a.followUp.revision)) : 0 } : undefined;
+  return { ...(followUp ? { followUp } : {}), id: a.id, questionId: a.questionId, time: a.time, ...(a.revision !== undefined ? { revision: Math.max(0, Math.min(2, Math.trunc(a.revision) || 0)) } : {}), transcript: a.transcript.slice(0, 4000), points, source: a.source, status: a.status,
     ...(Number.isFinite(a.score) && a.score! >= 0 && a.score! <= 100 && a.source === 'reference' ? { score: a.score } : {}) };
 }
 
@@ -34,10 +39,18 @@ function normalize(value: unknown): InterviewAttempt | null {
  * its unchecked draft; deterministic ties make listener echoes harmless. */
 export function mergeInterviewAttempts(...lists: unknown[]): InterviewAttempt[] {
   const byId = new Map<string, InterviewAttempt>();
-  const rank = (a: InterviewAttempt) => `${a.revision ?? (a.status === 'checked' || a.status === 'failed' ? 2 : 1)}:${a.status === 'checked' ? 2 : a.status === 'failed' ? 1 : 0}:${JSON.stringify(a)}`;
+  const rank = (a: InterviewAttempt) => `${a.revision ?? (a.status === 'checked' || a.status === 'failed' ? 2 : 1)}:${a.status === 'checked' ? 2 : a.status === 'failed' ? 1 : 0}:${JSON.stringify({ ...a, followUp: undefined })}`;
   for (const list of lists) if (Array.isArray(list)) for (const value of list) {
     const a = normalize(value);
-    if (a && (!byId.has(a.id) || rank(a) > rank(byId.get(a.id)!))) byId.set(a.id, a);
+    if (!a) continue;
+    const existing = byId.get(a.id);
+    if (!existing) { byId.set(a.id, a); continue; }
+    // Review and optional follow-up finish independently. Merge their fields
+    // separately so a late review or a remote draft cannot erase either result.
+    const winner = rank(a) > rank(existing) ? a : existing;
+    const followUp = [existing.followUp, a.followUp].filter((f): f is NonNullable<InterviewAttempt['followUp']> => Boolean(f))
+      .sort((x, y) => Number(y.status === 'saved') - Number(x.status === 'saved') || y.revision - x.revision || JSON.stringify(y).localeCompare(JSON.stringify(x)))[0];
+    byId.set(a.id, { ...winner, ...(followUp ? { followUp } : {}) });
   }
   const counts = new Map<string, number>();
   const result = [...byId.values()].sort((a, b) => b.time - a.time || b.id.localeCompare(a.id)).filter(a => {

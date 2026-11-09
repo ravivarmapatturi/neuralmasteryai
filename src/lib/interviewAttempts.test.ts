@@ -48,3 +48,33 @@ describe('attempt history', () => {
     expect(readInterviewAttempts('user')).toEqual([attempt('a')]);
   });
 });
+it('merges a follow-up independently of a late review in either order', () => {
+  const reviewed = {...attempt('a'), revision:2};
+  const followUp = {question:'Why use masks?',transcript:'They prevent coadaptation.',status:'saved' as const,revision:4};
+  const answered = {...attempt('a'),status:'unchecked' as const,revision:1,points:[],followUp};
+  const expected = {...reviewed,followUp};
+  expect(mergeInterviewAttempts([answered],[reviewed])).toEqual([expected]);
+  expect(mergeInterviewAttempts([reviewed],[answered])).toEqual([expected]);
+  const draft = {...answered,followUp:{...followUp,status:'draft' as const,revision:999,transcript:'stale'}};
+  expect(mergeInterviewAttempts([expected],[draft])).toEqual([expected]);
+});
+it('keeps the latest follow-up draft and bounds untrusted follow-up fields', () => {
+  const old = {...attempt('a'),followUp:{question:'Q',transcript:'Z partial',status:'draft' as const,revision:1}};
+  const next = {...old,followUp:{...old.followUp,transcript:'A corrected draft',revision:2}};
+  expect(mergeInterviewAttempts([next],[old])[0].followUp).toEqual(next.followUp);
+  const large = {...next,followUp:{...next.followUp,question:'Q'.repeat(5000),transcript:'界'.repeat(9000)}};
+  const normalized = mergeInterviewAttempts([large])[0].followUp!;
+  expect(normalized.question).toHaveLength(1000);
+  expect(normalized.transcript).toHaveLength(4000);
+  localStorage.setItem(attemptsKey(),JSON.stringify([next]));
+  const backup = collectProgress();localStorage.clear();restoreProgress(JSON.stringify(backup));
+  expect(readInterviewAttempts()[0].followUp).toEqual(next.followUp);
+});
+it('does not let follow-up merging change which main transcript wins', () => {
+  const a = {...attempt('a'),transcript:'A main answer',followUp:{question:'Q',transcript:'Z follow-up',status:'draft' as const,revision:1}};
+  const b = {...attempt('a'),transcript:'B main answer'};
+  const c = {...attempt('a'),transcript:'C main answer'};
+  const all = mergeInterviewAttempts([a,b,c]);
+  expect(mergeInterviewAttempts(mergeInterviewAttempts([a,b]),[c])).toEqual(all);
+  expect(all[0].transcript).toBe('C main answer');
+});

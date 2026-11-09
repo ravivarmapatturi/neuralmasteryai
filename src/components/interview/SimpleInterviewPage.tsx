@@ -10,6 +10,7 @@ import { useFocusMusic } from '../../contexts/FocusMusicContext';
 import type { SingleThreadASREngine } from '../../lib/speechTest/engines';
 import practice from '../../data/interviewPractice.json';
 import { InterviewGraph } from './InterviewGraph';
+import { FollowUpAnswer } from './FollowUpAnswer';
 import { LiveWaveform } from './LiveWaveform';
 import Navbar from '../layout/Navbar';
 import { judgePracticeAnswer, SHOW_RUBRIC_SCORE, type AnswerJudgement } from '../../lib/answerJudge';
@@ -136,6 +137,7 @@ export default function SimpleInterviewPage() {
     return () => { active = false; };
   }, []);
   const [reading, setReading] = useState(false);
+  const [followUpActive, setFollowUpActive] = useState(false);
   const [micStream, setMicStream] = useState<MediaStream | null>(null);
   const [transcribing, setTranscribing] = useState(false);
   const reviewRef = useRef(0);
@@ -285,6 +287,20 @@ export default function SimpleInterviewPage() {
     }
     return enginePromiseRef.current;
   }, []);
+
+  const prepareFollowUpSpeech = useCallback(async () => {
+    await finishingRef.current;
+    await prepareEngine();
+    if (!engineRef.current) throw new Error('Speech engine unavailable');
+    return engineRef.current;
+  }, [prepareEngine]);
+  const pauseForFollowUp = () => {
+    if (focusPlayingRef.current) resumeFocusRef.current = true;
+    pauseFocusMusic();
+  };
+  const resumeAfterFollowUp = () => {
+    if (resumeFocusRef.current) { resumeFocusRef.current = false; void playFocusMusic().catch(() => undefined); }
+  };
 
   const switchSpeechModel = async (choice: SpeechModelChoice) => {
     if (answeringRef.current || transcribing) return;
@@ -562,7 +578,7 @@ export default function SimpleInterviewPage() {
         {highEndEligible ? (
           <div className="si-speech-model">
             <label htmlFor="speech-model">Speech model</label>
-            <select id="speech-model" value={speechChoice} disabled={step === 'answering' || transcribing} onChange={event => void switchSpeechModel(event.target.value as SpeechModelChoice)}>
+            <select id="speech-model" value={speechChoice} disabled={step === 'answering' || transcribing || followUpActive} onChange={event => void switchSpeechModel(event.target.value as SpeechModelChoice)}>
               <option value="default">Standard</option>
               <option value="turbo">High accuracy · {QUALITY_PROFILES.best.downloadSizeMB}</option>
             </select>
@@ -699,7 +715,7 @@ export default function SimpleInterviewPage() {
             </nav>
             <div className="si-question-row">
               <h2 className="si-question-title">{question.title}</h2>
-              <button type="button" className="si-speak" id="read-question" aria-label="Read the question aloud" onClick={readQuestion}>
+              <button type="button" className="si-speak" id="read-question" disabled={followUpActive} aria-label="Read the question aloud" onClick={readQuestion}>
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M11 5 6 9H2v6h4l5 4z" />
                   <path d="M15.5 8.5a5 5 0 0 1 0 7" />
@@ -892,6 +908,7 @@ export default function SimpleInterviewPage() {
                   {earlier.map(attempt => <details key={attempt.id} className="si-attempt">
                     <summary><time dateTime={new Date(attempt.time).toISOString()}>{new Date(attempt.time).toLocaleString()}</time>{attempt.status === 'checked' ? (attempt.source === 'rubric' ? ' · Key points checked' : attempt.score === undefined ? ' · Checked against model answer' : ` · ${attempt.score}% coverage`) : ' · Not checked'}</summary>
                     <p className="si-yours">{attempt.transcript || 'No answer was captured.'}</p>
+                    {attempt.followUp && <div><h4>Follow-up</h4><p>{attempt.followUp.question}</p><p>{attempt.followUp.transcript || 'No follow-up answer was captured.'}</p></div>}
                     <ul className="si-points">{attempt.points.map(point => <li key={point.point}><span className="si-verdict">{point.verdict === 'covered' ? 'Covered' : 'Not detected'}</span>{point.point}</li>)}</ul>
                   </details>)}
                 </section>}
@@ -910,6 +927,7 @@ export default function SimpleInterviewPage() {
                       type="button"
                       className="si-audio-toggle"
                       onClick={() => play(`${questionId}_a`, () => undefined, question.answer)}
+                      disabled={followUpActive}
                       aria-label="Read model answer aloud"
                     >
                       Read aloud
@@ -920,6 +938,14 @@ export default function SimpleInterviewPage() {
                   {question.answer}
                 </div>
 
+                {latest && !transcribing && question.followUps?.length ? <FollowUpAnswer
+                  key={latest.id} attempt={latest} followUps={question.followUps}
+                  points={check && typeof check === 'object' ? check.points : undefined}
+                  prepareSpeech={prepareFollowUpSpeech} stopReading={stopAudio}
+                  pauseMusic={pauseForFollowUp} resumeMusic={resumeAfterFollowUp} save={saveAttempt}
+                  onActive={setFollowUpActive}
+                  onFinalizing={pending => { finishingRef.current = pending; }}
+                /> : null}
                 {question.followUps && question.followUps.length > 0 && (
                   <div className="si-sub-section">
                     <h3>Follow-ups you may get</h3>
