@@ -1,0 +1,7 @@
+# Timed mock interview (plan C7)
+
+First git fetch and merge origin/main. Follow AGENTS.md and the ui-design and writing-voice skills. Do not push. Stage files by name. Codex is editing src/components/interview/SimpleInterviewPage.tsx right now, so do not touch that file: build this as its own page and component, reusing the existing speech engine, voice, judge and question data through their modules. Check the existing MockInterviewPage first and reuse or replace it. Only start a browser when free -g shows at least 2 GB available, and close it right after.
+
+Flow: pick a role (Applied AI, Agentic, Inference, Evaluation) and a length (30 or 60 minutes). Build a realistic mix of screen, depth, system design, debugging and behavioral questions from the role and round tags, avoiding repeats of recently seen questions. The interviewer reads each question aloud; the user answers by voice or typing, under a visible per-question timer with a soft time limit that suggests moving on. No model answers until the end. Then a scorecard: each question with your transcript, the model answer, the Covered / Not detected checklist where key points exist, time taken, and your own Got it / Partly / Missed it rating. No percent grade and no pass prediction. Allow pausing and resuming after a reload. Mic and audio must clean up on exit.
+
+Add a clear entry point on /interview with one small link. Tests: unit for the question mix, browser flow with inference doubles at 375 and 1440 in both themes. Report what you measured.

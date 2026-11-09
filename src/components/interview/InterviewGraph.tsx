@@ -444,6 +444,11 @@ export function InterviewGraph({
           );
         })}
       </div>
+      <div className="si-mock-entry">
+        <a href="/interview/mock" className="si-mock-link">
+          Timed mock interview (30 or 60 min) →
+        </a>
+      </div>
     </div>
   );
 }
