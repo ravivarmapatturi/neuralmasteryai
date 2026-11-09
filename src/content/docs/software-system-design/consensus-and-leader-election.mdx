@@ -1,7 +1,7 @@
 ---
 title: "Consensus, Leader Election, and Committed History"
 sidebar_position: 5.1
-description: ""
+description: "Separate election from log commitment, calculate majority survival, and preserve one recoverable history through leader changes and membership updates."
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -96,6 +96,20 @@ assert commit_index == 10
 `} />
 
 This snippet isolates one rule after assuming a valid leader and log. It is not Raft: elections, append consistency, persistence, membership, snapshots, and message handling are omitted. Its purpose is to prevent confusing a current-term commit test with arbitrary acknowledgement counting. A production implementation needs a complete, reviewed protocol and failure testing.
+
+An election test should preserve evidence about the log as well as the current leader name. Propose a command, observe the supported commit boundary, isolate the leader, and let eligible voters replace it. The command must remain in the new committed history. Separately propose a command that was only locally appended before isolation; its presence on an old node does not require every valid future history to keep it. These two cases prevent a test from treating all local data as equally authoritative.
+
+Also distinguish command commitment from the client's receipt of success. If the response is lost after the entry commits, the replacement may correctly retain a command the client considers uncertain. Retrying under a new business identity can then create another valid log entry with an invalid repeated business effect. Preserve the original operation identity through the election and inspect application state after recovery. The consensus service's linearizable API and the application's retry protocol must agree on that boundary. A test passing only because it discards unknown client outcomes can miss a real duplicate transition even when the underlying log is correct.
+
+Record the exact voter membership used in the test. Quorum arithmetic over a stale or assumed membership can appear correct while describing a different cluster from the one accepting commands.
+
+## Distinguish a Committed Command From a Successful Client Session
+
+A leader can commit a command and fail before returning its result. The surviving cluster must retain that committed command even though the client sees a timeout. When the client reconnects, a new leader cannot infer whether a repeated payload represents a retry or a second intended action merely by comparing its bytes. Store a client operation identity in the replicated state machine when that distinction matters. The deterministic state transition can then return the previous result for the same operation rather than applying another debit. Log safety and application retry safety cooperate, but neither substitutes for the other.
+
+Read semantics also need a concrete observation. Suppose a client writes through the current leader, then a load balancer sends its next read to an isolated former leader. The former leader's locally applied value may predate the write even if its process and HTTP endpoint are healthy. A linearizable read path must establish appropriate current authority and applied progress through the implementation's supported protocol. A deliberately stale read can remain useful for a different workload, but it must not be presented as evidence that the write disappeared. Test both APIs so monitoring and application code do not accidentally mix their contracts.
+
+Finally, examine restart state rather than only a running quorum. A member that loses its persistent vote or log data is not equivalent to a member that simply pauses and resumes with intact storage. Reusing an old identity with incompatible state can violate assumptions made by the cluster. Follow the implementation's recovery and membership procedures, preserve snapshots and logs consistently, and avoid improvising a new cluster while the old majority may still accept work. The five-voter arithmetic describes which supported failures preserve progress. It does not authorize arbitrary disk replacement, membership rewriting, or simultaneous independent restoration. A recovery runbook should name the authoritative history and the point at which the old authority is conclusively retired before a replacement accepts writes.
 
 ## Failure Modes and Better Choices
 
