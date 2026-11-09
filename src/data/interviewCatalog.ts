@@ -2,7 +2,7 @@ import source from './interviewCatalog.generated.json';
 import criteriaOverrides from './interviewCriteria.json';
 export interface InterviewQuestion {
   id: string; bank: string; area: string; section?: string; title: string; context: string;
-  criteria: string[]; answer: string; followup: string; sourceRoute?: string;
+  criteria: string[]; keyPoints?: string[]; answer: string; followup: string; sourceRoute?: string;
   kind: 'explanation' | 'choice' | 'calculation';
   options?: { text: string; why: string }[]; correctOption?: number;
   numericAnswer?: number; tolerance?: number; unit?: string;

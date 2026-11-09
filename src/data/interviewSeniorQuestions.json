@@ -3,415 +3,1082 @@
     [
       "bias-variance",
       "Explain the bias-variance trade-off. How do you tell which problem you have?",
-      "Expected test error decomposes into bias squared, variance, and irreducible error. Bias is systematic error from an under-parameterized model that cannot capture the underlying structure; training and validation error are both high and close. Variance is sensitivity to fluctuations in the training sample; training error is low but the validation gap is large. Irreducible error is the noise floor from unmeasured variables or label noise, bounding performance regardless of model complexity. To diagnose, plot learning curves against training set size. If adding data asymptotes with high error, you have high bias—add capacity, features, or unfreeze layers. If validation error keeps improving as data grows, you have high variance—regularize, collect more samples, or reduce feature count."
+      "Expected test error decomposes into bias squared, variance, and irreducible error. Bias is systematic error from an under-parameterized model that cannot capture the underlying structure; training and validation error are both high and close. Variance is sensitivity to fluctuations in the training sample; training error is low but the validation gap is large. Irreducible error is the noise floor from unmeasured variables or label noise, bounding performance regardless of model complexity. To diagnose, plot learning curves against training set size. If adding data asymptotes with high error, you have high bias—add capacity, features, or unfreeze layers. If validation error keeps improving as data grows, you have high variance—regularize, collect more samples, or reduce feature count.",
+      {
+        "keyPoints": [
+          "High bias gives high training and validation error.",
+          "High variance gives low training error and a large validation gap.",
+          "Learning curves distinguish capacity limits from data sensitivity.",
+          "More capacity reduces bias; more data or regularization reduces variance."
+        ]
+      }
     ],
     [
       "l1-vs-l2",
       "What is the difference between L1 and L2 regularization, and when would you use each?",
-      "L2 regularization (Ridge) adds a squared weight penalty $\\lambda \\sum w_i^2$, shrinking weights smoothly toward zero without setting them to zero. Geometrically, its spherical loss contour meets the loss surface off-axis, handling multicollinearity by distributing weight across correlated features. L1 regularization (Lasso) penalizes absolute values $\\lambda \\sum |w_i|$; its diamond contour has non-differentiable corners on the coordinate axes, driving weights to exact zero and performing embedded feature selection. L1 struggles when features are collinear: it arbitrarily selects one and zeroes the rest. ElasticNet resolves this with a convex combination $\\alpha L_1 + (1-\\alpha) L_2$, retaining L1's sparsity while grouping correlated predictors via L2."
+      "L2 regularization (Ridge) adds a squared weight penalty $\\lambda \\sum w_i^2$, shrinking weights smoothly toward zero without setting them to zero. Geometrically, its spherical loss contour meets the loss surface off-axis, handling multicollinearity by distributing weight across correlated features. L1 regularization (Lasso) penalizes absolute values $\\lambda \\sum |w_i|$; its diamond contour has non-differentiable corners on the coordinate axes, driving weights to exact zero and performing embedded feature selection. L1 struggles when features are collinear: it arbitrarily selects one and zeroes the rest. ElasticNet resolves this with a convex combination $\\alpha L_1 + (1-\\alpha) L_2$, retaining L1's sparsity while grouping correlated predictors via L2.",
+      {
+        "keyPoints": [
+          "L1 penalizes absolute weights and can produce exact zeros.",
+          "L2 penalizes squared weights and shrinks correlated features together.",
+          "L1 can select arbitrarily among correlated predictors.",
+          "ElasticNet combines sparsity with L2 stabilization."
+        ]
+      }
     ],
     [
       "class-imbalance",
       "Your fraud dataset is 0.1% positive. How do you train and evaluate the model?",
-      "Never use raw accuracy: predicting the majority class trivially yields 99.9%. Evaluate with Precision-Recall AUC (PR-AUC) and set operational thresholds using recall at fixed precision or expected cost. Keep validation and test splits on the true 0.1% base rate to reflect deployment reality. For training, apply focal loss or class weights in the loss function, or use stratified undersampling of negatives on training folds only. If you resample training data, predicted probabilities will be systematically distorted; you must adjust the output log-odds back to the true prior or calibrate probabilities using Platt scaling or isotonic regression on unskewed validation data before feeding scores into downstream business logic."
+      "Never use raw accuracy: predicting the majority class trivially yields 99.9%. Evaluate with Precision-Recall AUC (PR-AUC) and set operational thresholds using recall at fixed precision or expected cost. Keep validation and test splits on the true 0.1% base rate to reflect deployment reality. For training, apply focal loss or class weights in the loss function, or use stratified undersampling of negatives on training folds only. If you resample training data, predicted probabilities will be systematically distorted; you must adjust the output log-odds back to the true prior or calibrate probabilities using Platt scaling or isotonic regression on unskewed validation data before feeding scores into downstream business logic.",
+      {
+        "keyPoints": [
+          "Accuracy hides failure on a rare positive class.",
+          "Evaluate precision-recall and choose a threshold using business costs.",
+          "Keep validation and test data at the deployment class prevalence.",
+          "Apply class weights or resampling only during training.",
+          "Calibrate probabilities on data with the true class prevalence."
+        ]
+      }
     ],
     [
       "roc-vs-pr",
       "When is PR-AUC more useful than ROC-AUC?",
-      "ROC-AUC evaluates True Positive Rate against False Positive Rate. Because FPR's denominator is all actual negatives, a surge of false positives in a 0.1% positive dataset barely changes FPR, making ROC-AUC misleadingly optimistic. PR-AUC evaluates precision ( / (TP + FP)$) against recall, directly exposing false positive contamination. ROC-AUC is baseline-invariant with a random guess scoring 0.5, allowing comparison across varying populations. PR-AUC has a random baseline equal to the positive prevalence  / (P+N)$, meaning 0.001 in fraud. Use PR-AUC for rare-event detection where false alerts carry real operational cost, and reserve ROC-AUC for ranking evaluation where class distribution is balanced or stable."
+      "ROC-AUC evaluates True Positive Rate against False Positive Rate. Because FPR's denominator is all actual negatives, a surge of false positives in a 0.1% positive dataset barely changes FPR, making ROC-AUC misleadingly optimistic. PR-AUC evaluates precision ( / (TP + FP)$) against recall, directly exposing false positive contamination. ROC-AUC is baseline-invariant with a random guess scoring 0.5, allowing comparison across varying populations. PR-AUC has a random baseline equal to the positive prevalence  / (P+N)$, meaning 0.001 in fraud. Use PR-AUC for rare-event detection where false alerts carry real operational cost, and reserve ROC-AUC for ranking evaluation where class distribution is balanced or stable.",
+      {
+        "keyPoints": [
+          "ROC plots true positive rate against false positive rate.",
+          "Many negatives can hide costly false positives in ROC metrics.",
+          "Precision-recall exposes false alerts for rare positive classes.",
+          "Random PR performance equals positive prevalence; random ROC AUC is 0.5."
+        ]
+      }
     ],
     [
       "boosting-vs-bagging",
       "How do bagging and boosting differ? Compare random forest with XGBoost.",
-      "Bagging trains deep, low-bias trees independently in parallel on bootstrap samples and averages them, reducing variance without altering bias. Feature subsampling decorrelates the trees, making Random Forest resilient to hyperparameter misconfiguration. Boosting trains shallow, high-bias trees sequentially, with each tree fitting the pseudo-residuals of the current ensemble to systematically reduce bias. XGBoost extends gradient boosting using second-order Taylor expansion (gradients and hessians), an exact or approximate greedy split finder with histogram binning, explicit leaf-weight regularization, and default split directions for missing values. Random Forest is parallel and hard to break; XGBoost delivers higher accuracy on tabular data but requires early stopping to avoid overfitting noisy labels."
+      "Bagging trains deep, low-bias trees independently in parallel on bootstrap samples and averages them, reducing variance without altering bias. Feature subsampling decorrelates the trees, making Random Forest resilient to hyperparameter misconfiguration. Boosting trains shallow, high-bias trees sequentially, with each tree fitting the pseudo-residuals of the current ensemble to systematically reduce bias. XGBoost extends gradient boosting using second-order Taylor expansion (gradients and hessians), an exact or approximate greedy split finder with histogram binning, explicit leaf-weight regularization, and default split directions for missing values. Random Forest is parallel and hard to break; XGBoost delivers higher accuracy on tabular data but requires early stopping to avoid overfitting noisy labels.",
+      {
+        "keyPoints": [
+          "Bagging trains models independently and averages to reduce variance.",
+          "Random forests use bootstrap samples and feature subsampling.",
+          "Boosting sequentially fits errors or loss gradients.",
+          "XGBoost uses gradient and Hessian information with regularization.",
+          "Boosting needs tuning and early stopping to control overfitting."
+        ]
+      }
     ],
     [
       "svm",
       "How does an SVM work, and what does the kernel trick do?",
-      "Support Vector Machines find the hyperplane maximizing the geometric margin between classes. Only points lying on or within the margin slab—the support vectors—determine the decision boundary; non-support vectors can be moved or deleted without changing the boundary. The hyperparameter $ balances margin width against training violations: high $ enforces a hard margin with low bias and high variance, while low $ allows slack for better generalization. The kernel trick computes inner products in a high-dimensional feature space using a kernel function (x, z) = \\langle \\phi(x), \\phi(z) \\rangle$ without evaluating the mapping explicitly. Because solving the dual problem scales between (N^2)$ and (N^3)$ with sample count $, SVMs do not scale to millions of rows."
+      "Support Vector Machines find the hyperplane maximizing the geometric margin between classes. Only points lying on or within the margin slab—the support vectors—determine the decision boundary; non-support vectors can be moved or deleted without changing the boundary. The hyperparameter $ balances margin width against training violations: high $ enforces a hard margin with low bias and high variance, while low $ allows slack for better generalization. The kernel trick computes inner products in a high-dimensional feature space using a kernel function (x, z) = \\langle \\phi(x), \\phi(z) \\rangle$ without evaluating the mapping explicitly. Because solving the dual problem scales between (N^2)$ and (N^3)$ with sample count $, SVMs do not scale to millions of rows.",
+      {
+        "keyPoints": [
+          "SVM maximizes the margin between classes.",
+          "Support vectors determine the decision boundary.",
+          "The C parameter trades margin size against training violations.",
+          "Kernels compute feature-space inner products without explicit mapping.",
+          "Kernel SVM training scales poorly to very large sample counts."
+        ]
+      }
     ],
     [
       "logistic-regression",
       "Why does logistic regression use log loss rather than squared error?",
-      "With a sigmoid output, squared error gives a non-convex problem and very small gradients when the model is confidently wrong. Log loss is the negative log likelihood of a Bernoulli model, it is convex in the weights, and it penalizes confident mistakes heavily. Weights are read as changes in log odds, which is why the model stays popular when explanations matter. It needs scaled features for regularization to treat them fairly."
+      "With a sigmoid output, squared error gives a non-convex problem and very small gradients when the model is confidently wrong. Log loss is the negative log likelihood of a Bernoulli model, it is convex in the weights, and it penalizes confident mistakes heavily. Weights are read as changes in log odds, which is why the model stays popular when explanations matter. It needs scaled features for regularization to treat them fairly.",
+      {
+        "keyPoints": [
+          "Log loss is the negative Bernoulli log likelihood.",
+          "Logistic log loss is convex in the linear model weights.",
+          "Squared error with sigmoid can give weak gradients for confident mistakes.",
+          "Logistic weights describe changes in log odds."
+        ]
+      }
     ],
     [
       "pca",
       "What does PCA do, and when does it fail?",
-      "PCA computes an orthogonal linear transformation projecting centered data onto directions of maximum variance, using eigenvectors of the sample covariance matrix or singular value decomposition (SVD). Retaining the top $ components minimizes reconstruction mean squared error. Features must be standardized first, or variables with larger numerical units dominate the projection. PCA fails in two common scenarios: when class separability lies along low-variance directions rather than high-variance ones—where Linear Discriminant Analysis (LDA) is appropriate—and when data lies on non-linear manifolds, where methods like UMAP, t-SNE, or autoencoders are required. The components are also linear combinations of all original features, reducing interpretability."
+      "PCA computes an orthogonal linear transformation projecting centered data onto directions of maximum variance, using eigenvectors of the sample covariance matrix or singular value decomposition (SVD). Retaining the top $ components minimizes reconstruction mean squared error. Features must be standardized first, or variables with larger numerical units dominate the projection. PCA fails in two common scenarios: when class separability lies along low-variance directions rather than high-variance ones—where Linear Discriminant Analysis (LDA) is appropriate—and when data lies on non-linear manifolds, where methods like UMAP, t-SNE, or autoencoders are required. The components are also linear combinations of all original features, reducing interpretability.",
+      {
+        "keyPoints": [
+          "PCA projects centered data onto orthogonal directions of maximum variance.",
+          "Top principal components minimize linear reconstruction error.",
+          "Feature scales can dominate PCA without standardization.",
+          "High variance need not preserve class separation.",
+          "Linear projections cannot represent a nonlinear manifold."
+        ]
+      }
     ],
     [
       "kmeans",
       "How does k-means work, what are its limits, and how do you choose k?",
-      "K-means minimizes within-cluster sum of squares (inertia) by alternating between assigning points to the nearest centroid and recomputing centroids as cluster means. It is guaranteed to converge to a local minimum; running k-means++ initialization with multiple random restarts avoids poor initializations. Because it uses Euclidean distance, it assumes isotropic, spherical clusters of similar size and density; it fails on non-convex manifolds or clusters with varying variances, where Gaussian Mixture Models or DBSCAN excel. Features must be scaled to avoid metric distortion. Select $ by combining the elbow curve, silhouette analysis for cluster separation and cohesion, and operational constraints such as downstream capacity."
+      "K-means minimizes within-cluster sum of squares (inertia) by alternating between assigning points to the nearest centroid and recomputing centroids as cluster means. It is guaranteed to converge to a local minimum; running k-means++ initialization with multiple random restarts avoids poor initializations. Because it uses Euclidean distance, it assumes isotropic, spherical clusters of similar size and density; it fails on non-convex manifolds or clusters with varying variances, where Gaussian Mixture Models or DBSCAN excel. Features must be scaled to avoid metric distortion. Select $ by combining the elbow curve, silhouette analysis for cluster separation and cohesion, and operational constraints such as downstream capacity.",
+      {
+        "keyPoints": [
+          "K-means alternates nearest-centroid assignment with centroid recomputation.",
+          "It minimizes within-cluster squared distance and may reach a local optimum.",
+          "Initialization and multiple restarts affect the result.",
+          "Euclidean distance favors scaled, spherical, similarly sized clusters.",
+          "Choose k using validation metrics and operational constraints."
+        ]
+      }
     ],
     [
       "trees-splits",
       "How does a decision tree choose a split, and why do trees overfit?",
-      "At each internal node, a decision tree evaluates all candidate feature splits and selects the threshold maximizing impurity reduction—Gini impurity or entropy for classification, and variance reduction for regression. Trees overfit because greedy recursive partitioning can continue until every leaf contains a single sample, memorizing noise and outlier points. Greedy splitting also has no lookahead: it cannot detect multi-feature interactions that provide no marginal gain in isolation. High-cardinality categorical features artificially inflate impurity reduction and cause severe overfitting. Mitigate this through pre-pruning (capping max depth, min samples per split, and min samples per leaf) or cost-complexity post-pruning ($\\alpha$), or ensemble methods."
+      "At each internal node, a decision tree evaluates all candidate feature splits and selects the threshold maximizing impurity reduction—Gini impurity or entropy for classification, and variance reduction for regression. Trees overfit because greedy recursive partitioning can continue until every leaf contains a single sample, memorizing noise and outlier points. Greedy splitting also has no lookahead: it cannot detect multi-feature interactions that provide no marginal gain in isolation. High-cardinality categorical features artificially inflate impurity reduction and cause severe overfitting. Mitigate this through pre-pruning (capping max depth, min samples per split, and min samples per leaf) or cost-complexity post-pruning ($\\alpha$), or ensemble methods.",
+      {
+        "keyPoints": [
+          "Tree splits maximize impurity reduction.",
+          "Deep leaves can memorize noise and overfit.",
+          "Greedy single-feature splits can miss interactions.",
+          "Depth and minimum leaf size or pruning control complexity."
+        ]
+      }
     ],
     [
       "feature-engineering",
       "How do you approach feature engineering for a tabular model?",
-      "Start from what would be known at prediction time, since anything later is leakage. Use domain ratios, time-window aggregates and recency features. Encode high-cardinality categoricals with target encoding fitted inside folds, or hashing. Treat missingness as a possible signal. Scale only for models that need it. Add features one group at a time, keep those that improve validation, and check that serving can compute each one within its latency budget."
+      "Start from what would be known at prediction time, since anything later is leakage. Use domain ratios, time-window aggregates and recency features. Encode high-cardinality categoricals with target encoding fitted inside folds, or hashing. Treat missingness as a possible signal. Scale only for models that need it. Add features one group at a time, keep those that improve validation, and check that serving can compute each one within its latency budget.",
+      {
+        "keyPoints": [
+          "Features must be available at prediction time to avoid leakage.",
+          "Domain ratios, window aggregates and recency can expose useful signal.",
+          "Target encodings must be fitted within training folds.",
+          "Validate feature groups incrementally.",
+          "Serving must compute features within its latency budget."
+        ]
+      }
     ],
     [
       "missing-data",
       "How do you handle missing values? When is dropping rows wrong?",
-      "Diagnose the missingness mechanism first. Under Missing Completely at Random (MCAR), missingness is independent of both observed and unobserved data; dropping rows is valid though wasteful. Under Missing at Random (MAR), missingness depends on observed features; dropping rows introduces selection bias, so use multivariate or model-based imputation with an explicit missingness indicator flag. Under Missing Not at Random (MNAR), missingness depends on the missing value itself (e.g., high-income earners withholding salary); imputation cannot fully correct this without modeling the missingness process. Always fit imputation parameters strictly on training splits to prevent data leakage, and ensure tree-based models leverage their native missing-value routing."
+      "Diagnose the missingness mechanism first. Under Missing Completely at Random (MCAR), missingness is independent of both observed and unobserved data; dropping rows is valid though wasteful. Under Missing at Random (MAR), missingness depends on observed features; dropping rows introduces selection bias, so use multivariate or model-based imputation with an explicit missingness indicator flag. Under Missing Not at Random (MNAR), missingness depends on the missing value itself (e.g., high-income earners withholding salary); imputation cannot fully correct this without modeling the missingness process. Always fit imputation parameters strictly on training splits to prevent data leakage, and ensure tree-based models leverage their native missing-value routing.",
+      {
+        "keyPoints": [
+          "MCAR missingness is independent of observed and unobserved values.",
+          "MAR missingness depends on observed data.",
+          "MNAR missingness depends on the missing value itself.",
+          "Dropping rows can bias results when missingness is not completely random.",
+          "Fit imputation only on training data and consider missingness indicators."
+        ]
+      }
     ],
     [
       "ab-testing",
       "Design an A/B test for a new ranking model. What can go wrong?",
-      "Choose one primary metric and guardrails such as latency. Fix the minimum detectable effect, then compute sample size from baseline variance, power and significance before starting. Randomize by user, not request, and run full weekly cycles. Problems include peeking at results, novelty effects, sample ratio mismatch, interference between users, and testing many metrics. A sample ratio check should run first, because it can invalidate the entire result."
+      "Choose one primary metric and guardrails such as latency. Fix the minimum detectable effect, then compute sample size from baseline variance, power and significance before starting. Randomize by user, not request, and run full weekly cycles. Problems include peeking at results, novelty effects, sample ratio mismatch, interference between users, and testing many metrics. A sample ratio check should run first, because it can invalidate the entire result.",
+      {
+        "keyPoints": [
+          "Randomize at a unit that avoids interference or contamination.",
+          "Choose a primary outcome and safety guardrails before the test.",
+          "Plan sample size and test duration using a minimum detectable effect.",
+          "Avoid repeated significance peeking and account for multiple comparisons.",
+          "Check sample ratio mismatch and delayed or seasonal effects."
+        ]
+      }
     ],
     [
       "p-values",
       "What does a p-value actually mean, and what is a common misreading?",
-      "It is the probability of seeing a result at least this extreme if the null hypothesis were true. It is not the probability that the null is true, and it says nothing about effect size. With very large samples, tiny useless effects become significant, so report a confidence interval and judge practical impact. Running many tests inflates false positives, so correct for multiple comparisons."
+      "It is the probability of seeing a result at least this extreme if the null hypothesis were true. It is not the probability that the null is true, and it says nothing about effect size. With very large samples, tiny useless effects become significant, so report a confidence interval and judge practical impact. Running many tests inflates false positives, so correct for multiple comparisons.",
+      {
+        "keyPoints": [
+          "A p-value is a tail probability under the null hypothesis.",
+          "It is not the probability that the null hypothesis is true.",
+          "Statistical significance does not measure effect size or business value.",
+          "Repeated tests and optional stopping can inflate false positives."
+        ]
+      }
     ],
     [
       "causal-vs-correlation",
       "A feature strongly predicts churn. Can you tell the business that changing it will reduce churn?",
-      "No. Prediction shows association, which may come from a confounder or reverse causation. For example, support tickets may predict churn because unhappy users file them, and reducing tickets would not fix the cause. To estimate an effect, run an experiment. If you cannot, use methods such as difference-in-differences or propensity matching, and state their assumptions. Uplift models target who responds to an action rather than who is at risk."
+      "No. Prediction shows association, which may come from a confounder or reverse causation. For example, support tickets may predict churn because unhappy users file them, and reducing tickets would not fix the cause. To estimate an effect, run an experiment. If you cannot, use methods such as difference-in-differences or propensity matching, and state their assumptions. Uplift models target who responds to an action rather than who is at risk.",
+      {
+        "keyPoints": [
+          "Prediction alone does not establish a causal effect.",
+          "Confounders or reverse causality can explain an association.",
+          "A randomized intervention can identify the effect of changing a feature.",
+          "Observational causal estimates require explicit identification assumptions."
+        ]
+      }
     ],
     [
       "time-series-validation",
       "Why can't you use random k-fold on a time series, and how do you validate instead?",
-      "Random folds let the model train on the future and predict the past, and nearby points are correlated, so the score is too optimistic. Use rolling or expanding-window validation, with a gap between train and test when features use lag windows. Compare against naive baselines such as last value or seasonal last value. Report error by horizon, because accuracy usually falls the further ahead you predict."
+      "Random folds let the model train on the future and predict the past, and nearby points are correlated, so the score is too optimistic. Use rolling or expanding-window validation, with a gap between train and test when features use lag windows. Compare against naive baselines such as last value or seasonal last value. Report error by horizon, because accuracy usually falls the further ahead you predict.",
+      {
+        "keyPoints": [
+          "Random folds can leak future information into training.",
+          "Use chronological holdouts or rolling-origin validation.",
+          "Fit preprocessing using only each training window.",
+          "A gap may be needed for overlapping features or delayed labels."
+        ]
+      }
     ],
     [
       "calibration",
       "What is model calibration and when does it matter?",
-      "A model is calibrated when predicted probabilities match observed event frequencies: among events predicted at 0.8, 80% should be positive. Complex models like gradient-boosted trees and deep networks often rank well (high AUC) while outputting overconfident, poorly calibrated probabilities. Calibration is essential when probabilities drive expected-value calculations, ad auction bidding, or multi-class ensemble weighting. Measure calibration with reliability diagrams and Expected Calibration Error (ECE). Fix it using Platt scaling (fitting a logistic sigmoid on logits) for smooth shifts, isotonic regression for non-parametric monotonic mapping, or temperature scaling for multiclass models. Fit calibration parameters strictly on a separate holdout set to prevent overfitting."
+      "A model is calibrated when predicted probabilities match observed event frequencies: among events predicted at 0.8, 80% should be positive. Complex models like gradient-boosted trees and deep networks often rank well (high AUC) while outputting overconfident, poorly calibrated probabilities. Calibration is essential when probabilities drive expected-value calculations, ad auction bidding, or multi-class ensemble weighting. Measure calibration with reliability diagrams and Expected Calibration Error (ECE). Fix it using Platt scaling (fitting a logistic sigmoid on logits) for smooth shifts, isotonic regression for non-parametric monotonic mapping, or temperature scaling for multiclass models. Fit calibration parameters strictly on a separate holdout set to prevent overfitting.",
+      {
+        "keyPoints": [
+          "A calibrated probability matches the observed event frequency.",
+          "Calibration matters when decisions use probabilities and costs.",
+          "Reliability diagrams and proper scoring rules assess calibration.",
+          "Fit Platt scaling or isotonic regression on separate validation data.",
+          "A model can rank well while its probabilities are miscalibrated."
+        ]
+      }
     ]
   ],
   "deep-learning": [
     [
       "vanishing-gradients",
       "What causes vanishing and exploding gradients, and how are they fixed?",
-      "Backpropagation computes gradients via the chain rule, multiplying Jacobian matrices across layers. When weight matrices or activation derivatives have singular values below 1—such as sigmoid or tanh whose maximum derivative is 0.25—gradients vanish exponentially with depth. If singular values exceed 1, gradients explode. Mitigate vanishing gradients using non-saturating activations (ReLU, GELU), residual connections that provide an additive gradient highway, normalization layers (LayerNorm, RMSNorm), and proper variance initialization such as He initialization for ReLU ((W) = 2/n_{in}$). For exploding gradients, enforce L2 gradient norm clipping (typically threshold 1.0) and monitor per-layer gradient norms during warmup."
+      "Backpropagation computes gradients via the chain rule, multiplying Jacobian matrices across layers. When weight matrices or activation derivatives have singular values below 1—such as sigmoid or tanh whose maximum derivative is 0.25—gradients vanish exponentially with depth. If singular values exceed 1, gradients explode. Mitigate vanishing gradients using non-saturating activations (ReLU, GELU), residual connections that provide an additive gradient highway, normalization layers (LayerNorm, RMSNorm), and proper variance initialization such as He initialization for ReLU ((W) = 2/n_{in}$). For exploding gradients, enforce L2 gradient norm clipping (typically threshold 1.0) and monitor per-layer gradient norms during warmup.",
+      {
+        "keyPoints": [
+          "Repeated Jacobian multiplication can shrink or amplify gradients.",
+          "Saturating activations and poor initialization worsen gradient flow.",
+          "Residual paths and suitable initialization improve propagation.",
+          "Gradient clipping controls exploding gradients but does not fix vanishing gradients."
+        ]
+      }
     ],
     [
       "rnn-lstm",
       "Why do LSTMs handle long sequences better than plain RNNs, and why did transformers replace them?",
-      "Plain RNNs apply the same transition matrix at each step, causing gradients to vanish or explode over long time horizons. An LSTM introduces a dedicated cell state updated via an additive highway:  = f_t \\odot c_{t-1} + i_t \\odot \tilde{c}_t$. When forget gate  \u0007pprox 1$, the gradient $\frac{\\partial c_t}{\\partial c_{t-1}}$ equals $, preserving gradient flow across hundreds of steps without exponential decay. Transformers replaced recurrent architectures because RNNs require sequential step-by-step computation that cannot parallelize across time during training. Self-attention connects any two token positions in O(1) operations and computes all interactions across the entire sequence in parallel on GPUs."
+      "Plain RNNs apply the same transition matrix at each step, causing gradients to vanish or explode over long time horizons. An LSTM introduces a dedicated cell state updated via an additive highway:  = f_t \\odot c_{t-1} + i_t \\odot \tilde{c}_t$. When forget gate  \u0007pprox 1$, the gradient $\frac{\\partial c_t}{\\partial c_{t-1}}$ equals $, preserving gradient flow across hundreds of steps without exponential decay. Transformers replaced recurrent architectures because RNNs require sequential step-by-step computation that cannot parallelize across time during training. Self-attention connects any two token positions in O(1) operations and computes all interactions across the entire sequence in parallel on GPUs.",
+      {
+        "keyPoints": [
+          "LSTM gates control what memory to retain, write and expose.",
+          "An additive cell path helps gradients travel across time.",
+          "Recurrent computation is sequential and limits training parallelism.",
+          "Attention offers shorter paths to distant tokens at a memory cost."
+        ]
+      }
     ],
     [
       "cnn-properties",
       "Why do CNNs work so well for images? Explain convolution and pooling.",
-      "CNNs succeed on images due to two inductive biases: translation equivariance and spatial locality. Locality assumes neighboring pixels share strong semantic correlation, captured by small convolutional kernels. Translation equivariance means shifting an object in the input shifts the resulting feature map identically, allowing shared weights to detect features anywhere in the image. Hierarchical stacking grows the effective receptive field from local edges to complex object semantics, while pooling or strided convolutions reduce spatial dimensions. Vision Transformers lack these built-in spatial priors: they treat image patches as arbitrary tokens with global attention from layer one, requiring far larger pretraining datasets to learn spatial structure from scratch."
+      "CNNs succeed on images due to two inductive biases: translation equivariance and spatial locality. Locality assumes neighboring pixels share strong semantic correlation, captured by small convolutional kernels. Translation equivariance means shifting an object in the input shifts the resulting feature map identically, allowing shared weights to detect features anywhere in the image. Hierarchical stacking grows the effective receptive field from local edges to complex object semantics, while pooling or strided convolutions reduce spatial dimensions. Vision Transformers lack these built-in spatial priors: they treat image patches as arbitrary tokens with global attention from layer one, requiring far larger pretraining datasets to learn spatial structure from scratch.",
+      {
+        "keyPoints": [
+          "Convolution shares local filters across image positions.",
+          "Weight sharing reduces parameters and gives translation equivariance.",
+          "Deeper layers combine local features into larger receptive fields.",
+          "Pooling reduces spatial resolution and can discard precise location."
+        ]
+      }
     ],
     [
       "resnet",
       "What problem do residual connections solve?",
-      "Deep plain networks fail not from overfitting, but from an optimization barrier: as depth increases, training error degrades because gradients struggle to propagate through non-linear layers. ResNet introduces identity shortcut connections where a block learns a residual mapping (x) = H(x) - x$, producing output (x) = F(x) + x$. When weights are initialized near zero, the block defaults to the identity function. During backpropagation, the gradient $\frac{\\partial L}{\\partial x} = \frac{\\partial L}{\\partial H}(1 + \frac{\\partial F}{\\partial x})$ passes back directly through the +1 term, ensuring gradient signal reaches early layers regardless of network depth and enabling models with hundreds of layers to converge."
+      "Deep plain networks fail not from overfitting, but from an optimization barrier: as depth increases, training error degrades because gradients struggle to propagate through non-linear layers. ResNet introduces identity shortcut connections where a block learns a residual mapping (x) = H(x) - x$, producing output (x) = F(x) + x$. When weights are initialized near zero, the block defaults to the identity function. During backpropagation, the gradient $\frac{\\partial L}{\\partial x} = \frac{\\partial L}{\\partial H}(1 + \frac{\\partial F}{\\partial x})$ passes back directly through the +1 term, ensuring gradient signal reaches early layers regardless of network depth and enabling models with hundreds of layers to converge.",
+      {
+        "keyPoints": [
+          "Deep plain networks can be harder to optimize even without overfitting.",
+          "A residual block learns a correction added to its input.",
+          "The identity path improves gradient flow.",
+          "Projection shortcuts handle changes in feature dimensions."
+        ]
+      }
     ],
     [
       "batchnorm-vs-layernorm",
       "Compare batch normalization and layer normalization. Why do transformers use layer norm?",
-      "Batch Normalization computes mean and variance across the batch dimension for each feature, tracking running statistics for inference. It degrades when batch sizes are small, and it fails in NLP because variable sequence lengths and autoregressive single-token decoding distort mini-batch statistics. Layer Normalization computes mean and variance across the hidden channel dimension {model}$ for each token independently (0 \to$ normalize over $). Because LayerNorm performs zero cross-sample or cross-token pooling, it behaves identically during training and single-token serving, handles dynamic sequence lengths naturally, and operates cleanly in distributed pipelines. BatchNorm remains effective for CNNs with large, fixed-size image batches."
+      "Batch Normalization computes mean and variance across the batch dimension for each feature, tracking running statistics for inference. It degrades when batch sizes are small, and it fails in NLP because variable sequence lengths and autoregressive single-token decoding distort mini-batch statistics. Layer Normalization computes mean and variance across the hidden channel dimension {model}$ for each token independently (0 \to$ normalize over $). Because LayerNorm performs zero cross-sample or cross-token pooling, it behaves identically during training and single-token serving, handles dynamic sequence lengths naturally, and operates cleanly in distributed pipelines. BatchNorm remains effective for CNNs with large, fixed-size image batches.",
+      {
+        "keyPoints": [
+          "Batch norm uses batch statistics per feature channel.",
+          "Layer norm normalizes features within each example or token.",
+          "Batch norm uses running statistics at inference.",
+          "Layer norm works without dependence on batch size and suits variable-length transformers."
+        ]
+      }
     ],
     [
       "optimizers",
       "Compare SGD with momentum, Adam and AdamW. What would you start with?",
-      "Momentum accelerates gradient descent by accumulating an exponentially decaying moving average of past gradients, dampening oscillations across steep ravines. Adam adds adaptive per-parameter learning rates by tracking both first moments (momentum) and uncentered second moments (variance). However, standard Adam couples L2 regularization with the gradient update: weight decay is divided by the square root of historical squared gradients, penalizing frequently updated weights far less than infrequently updated ones. AdamW fixes this by decoupling weight decay, subtracting $\\lambda \theta_{t-1}$ directly from the weights after the adaptive step. Use AdamW with linear warmup and cosine decay for transformers, and SGD with momentum for convolutional architectures."
+      "Momentum accelerates gradient descent by accumulating an exponentially decaying moving average of past gradients, dampening oscillations across steep ravines. Adam adds adaptive per-parameter learning rates by tracking both first moments (momentum) and uncentered second moments (variance). However, standard Adam couples L2 regularization with the gradient update: weight decay is divided by the square root of historical squared gradients, penalizing frequently updated weights far less than infrequently updated ones. AdamW fixes this by decoupling weight decay, subtracting $\\lambda \theta_{t-1}$ directly from the weights after the adaptive step. Use AdamW with linear warmup and cosine decay for transformers, and SGD with momentum for convolutional architectures.",
+      {
+        "keyPoints": [
+          "Momentum accumulates gradients to smooth SGD updates.",
+          "Adam adapts learning rates using first and second gradient moments.",
+          "AdamW decouples weight decay from the adaptive gradient update.",
+          "Optimizer choice and learning rate must be validated on the workload."
+        ]
+      }
     ],
     [
       "dropout",
       "How does dropout work, and how does it behave at inference?",
-      "During training it zeroes each unit with probability p, which stops units relying on each other and acts like training many thinned networks. Common implementations scale the kept activations by 1/(1-p) so expected values match, then disable dropout at inference. Forgetting eval mode is a common bug that makes predictions noisy. Keeping dropout on at inference, Monte Carlo dropout, gives a rough uncertainty estimate."
+      "During training it zeroes each unit with probability p, which stops units relying on each other and acts like training many thinned networks. Common implementations scale the kept activations by 1/(1-p) so expected values match, then disable dropout at inference. Forgetting eval mode is a common bug that makes predictions noisy. Keeping dropout on at inference, Monte Carlo dropout, gives a rough uncertainty estimate.",
+      {
+        "keyPoints": [
+          "Dropout randomly zeros activations during training.",
+          "It reduces reliance on particular co-adapted features.",
+          "Inverted dropout scales retained activations during training.",
+          "Ordinary inference disables dropout without random masking."
+        ]
+      }
     ],
     [
       "cross-entropy-softmax",
       "Why do we pair softmax with cross-entropy, and how should you compute it safely?",
-      "Softmax turns logits into a probability distribution, and cross-entropy is its negative log likelihood. Together they give a simple gradient, predicted probability minus target, times the input features at the last layer, and it stays large when the model is confidently wrong. Compute the loss directly from logits using a log-softmax function, because computing softmax first and then a log can underflow and produce infinities or NaNs."
+      "Softmax turns logits into a probability distribution, and cross-entropy is its negative log likelihood. Together they give a simple gradient, predicted probability minus target, times the input features at the last layer, and it stays large when the model is confidently wrong. Compute the loss directly from logits using a log-softmax function, because computing softmax first and then a log can underflow and produce infinities or NaNs.",
+      {
+        "keyPoints": [
+          "Softmax converts logits into a categorical probability distribution.",
+          "Cross-entropy penalizes low probability on the correct class.",
+          "Compute loss from logits with log-sum-exp for numerical stability.",
+          "Applying softmax before a logits-based loss is incorrect."
+        ]
+      }
     ],
     [
       "loss-debugging",
       "Training loss is NaN after a few hundred steps. How do you debug it?",
-      "Isolate the failure systematically. First, log gradient norms, loss components, and activation scales right before the NaN step. Common root causes are: 1) Data anomalies (unhandled NaNs, infs, or zero-length sequences in a batch). 2) Numerical instability in loss functions (log of zero, unscaled logits in cross-entropy, or division by variance without epsilon). 3) Mixed-precision underflow or overflow in FP16, where dynamic loss scaling fails. 4) Unstable learning rates without warmup. To debug, enable PyTorch anomaly detection (torch.autograd.set_detect_anomaly(True)), overfit on a single deterministic mini-batch, inspect whether gradients or activations blew up first, and enforce gradient norm clipping at 1.0."
+      "Isolate the failure systematically. First, log gradient norms, loss components, and activation scales right before the NaN step. Common root causes are: 1) Data anomalies (unhandled NaNs, infs, or zero-length sequences in a batch). 2) Numerical instability in loss functions (log of zero, unscaled logits in cross-entropy, or division by variance without epsilon). 3) Mixed-precision underflow or overflow in FP16, where dynamic loss scaling fails. 4) Unstable learning rates without warmup. To debug, enable PyTorch anomaly detection (torch.autograd.set_detect_anomaly(True)), overfit on a single deterministic mini-batch, inspect whether gradients or activations blew up first, and enforce gradient norm clipping at 1.0.",
+      {
+        "keyPoints": [
+          "Find the first non-finite activation, gradient or loss.",
+          "Check data, labels and invalid operations before changing the model.",
+          "Inspect learning rate and gradient norms.",
+          "Compare with full precision to isolate overflow or loss-scaling problems.",
+          "Use clipping or stable loss implementations when the diagnosis supports them."
+        ]
+      }
     ],
     [
       "distributed-training",
       "How does distributed data parallel training work, and what limits it?",
-      "Distributed Data Parallel (DDP) replicates the full model across all GPUs; each GPU computes forward and backward passes on an independent data micro-batch. During the backward pass, gradients are averaged synchronously across workers via ring or tree All-Reduce, keeping weights synchronized. DDP is bounded by inter-GPU network bandwidth (NCCL), straggler effects, and GPU memory capacity. In mixed-precision training, model weights, gradients, and AdamW optimizer states consume 16 bytes per parameter. When a model exceeds single-GPU VRAM, transition to ZeRO or FSDP: ZeRO-1 shards optimizer states (4x memory reduction), ZeRO-2 shards gradients (8x), and ZeRO-3/FSDP shards model weights, gathering them on-demand during forward and backward passes."
+      "Distributed Data Parallel (DDP) replicates the full model across all GPUs; each GPU computes forward and backward passes on an independent data micro-batch. During the backward pass, gradients are averaged synchronously across workers via ring or tree All-Reduce, keeping weights synchronized. DDP is bounded by inter-GPU network bandwidth (NCCL), straggler effects, and GPU memory capacity. In mixed-precision training, model weights, gradients, and AdamW optimizer states consume 16 bytes per parameter. When a model exceeds single-GPU VRAM, transition to ZeRO or FSDP: ZeRO-1 shards optimizer states (4x memory reduction), ZeRO-2 shards gradients (8x), and ZeRO-3/FSDP shards model weights, gathering them on-demand during forward and backward passes.",
+      {
+        "keyPoints": [
+          "Data parallel workers hold model replicas and process different batches.",
+          "Workers all-reduce gradients before a consistent optimizer step.",
+          "Communication and synchronization can limit scaling.",
+          "Gradient accumulation or larger batches trade throughput against optimization behavior.",
+          "Model states may require sharding when replicas do not fit."
+        ]
+      }
     ],
     [
       "mixed-precision",
       "What is mixed-precision training and what can go wrong?",
-      "Mixed precision uses 16-bit floating point (FP16 or BF16) for matrix multiplications and activations while maintaining FP32 master weights and optimizer states. FP16 has a 5-bit exponent and 10-bit mantissa (max value ~65,504, min subnormal $\\sim 6 \times 10^{-8}$); small backpropagated gradients easily underflow to zero, requiring a dynamic loss scaler that multiplies loss by a scale factor and skips optimizer steps on overflow. BF16 shares FP32's 8-bit exponent and has a 7-bit mantissa, offering the same dynamic range (0^{38}$) with reduced precision. BF16 eliminates gradient underflow and loss scaling entirely, making it the modern standard on Ampere and newer GPUs."
+      "Mixed precision uses 16-bit floating point (FP16 or BF16) for matrix multiplications and activations while maintaining FP32 master weights and optimizer states. FP16 has a 5-bit exponent and 10-bit mantissa (max value ~65,504, min subnormal $\\sim 6 \times 10^{-8}$); small backpropagated gradients easily underflow to zero, requiring a dynamic loss scaler that multiplies loss by a scale factor and skips optimizer steps on overflow. BF16 shares FP32's 8-bit exponent and has a 7-bit mantissa, offering the same dynamic range (0^{38}$) with reduced precision. BF16 eliminates gradient underflow and loss scaling entirely, making it the modern standard on Ampere and newer GPUs.",
+      {
+        "keyPoints": [
+          "Mixed precision uses lower precision for selected compute with higher precision where needed.",
+          "FP16 can underflow gradients or overflow activations.",
+          "Loss scaling protects small FP16 gradients.",
+          "BF16 has a wider exponent range than FP16.",
+          "Check numerical stability rather than assuming lower precision preserves results."
+        ]
+      }
     ],
     [
       "gans",
       "How do GANs train, and why did diffusion models overtake them?",
-      "GANs frame generative modeling as a minimax game between a generator producing synthetic samples and a discriminator distinguishing real from fake data. Training optimizes Jensen-Shannon divergence (or Wasserstein distance with a 1-Lipschitz critic). GANs suffer from non-convergence limit cycles, vanishing generator gradients, and mode collapse where the generator outputs limited repetitive variations. Diffusion models replace adversarial competition with denoising score matching: a forward Markov process adds Gaussian noise across discrete timesteps, and a reverse neural network learns to predict the added noise using a stable mean squared error loss. Diffusion guarantees stable training and full mode coverage, trading one-step inference for multi-step sampling."
+      "GANs frame generative modeling as a minimax game between a generator producing synthetic samples and a discriminator distinguishing real from fake data. Training optimizes Jensen-Shannon divergence (or Wasserstein distance with a 1-Lipschitz critic). GANs suffer from non-convergence limit cycles, vanishing generator gradients, and mode collapse where the generator outputs limited repetitive variations. Diffusion models replace adversarial competition with denoising score matching: a forward Markov process adds Gaussian noise across discrete timesteps, and a reverse neural network learns to predict the added noise using a stable mean squared error loss. Diffusion guarantees stable training and full mode coverage, trading one-step inference for multi-step sampling.",
+      {
+        "keyPoints": [
+          "A GAN trains a generator against a discriminator.",
+          "Adversarial training can be unstable or collapse to a few modes.",
+          "Diffusion learns to reverse progressive noise corruption.",
+          "Diffusion trades iterative sampling cost for more stable training and coverage."
+        ]
+      }
     ],
     [
       "vae",
       "What does a VAE optimize, and how does the reparameterization trick help?",
-      "A VAE maximizes the evidence lower bound, made of a reconstruction term and a KL term that keeps the latent distribution near a prior. Sampling is not differentiable, so the trick writes the latent as the mean plus the standard deviation times independent noise, which lets gradients flow to both. Too much KL weight can make the decoder ignore the latent, which is known as posterior collapse."
+      "A VAE maximizes the evidence lower bound, made of a reconstruction term and a KL term that keeps the latent distribution near a prior. Sampling is not differentiable, so the trick writes the latent as the mean plus the standard deviation times independent noise, which lets gradients flow to both. Too much KL weight can make the decoder ignore the latent, which is known as posterior collapse.",
+      {
+        "keyPoints": [
+          "A VAE optimizes a reconstruction term and KL regularization toward a prior.",
+          "The encoder predicts a latent distribution.",
+          "Reparameterization samples noise and transforms it using differentiable parameters.",
+          "The KL-reconstruction balance affects latent usefulness and reconstruction quality."
+        ]
+      }
     ],
     [
       "transfer-learning",
       "With only 2,000 labelled images, how would you build a classifier?",
-      "Start with a pretrained backbone, freeze it, and train a new head. Then unfreeze the top layers at a lower learning rate if validation improves. Use strong augmentation and a split that prevents near-duplicate leakage. Check class balance and label quality, since label errors matter more with small data. Compare against simple features plus logistic regression, and consider active learning to spend further labelling budget where it helps most."
+      "Start with a pretrained backbone, freeze it, and train a new head. Then unfreeze the top layers at a lower learning rate if validation improves. Use strong augmentation and a split that prevents near-duplicate leakage. Check class balance and label quality, since label errors matter more with small data. Compare against simple features plus logistic regression, and consider active learning to spend further labelling budget where it helps most.",
+      {
+        "keyPoints": [
+          "Start from a pretrained image model rather than training from scratch.",
+          "Use a clean representative split and appropriate augmentation.",
+          "Train a classifier head then selectively fine-tune with a smaller learning rate.",
+          "Use regularization and validation to control overfitting on limited labels."
+        ]
+      }
     ]
   ],
   "transformers": [
     [
       "bert-vs-gpt",
       "What is the difference between BERT and GPT?",
-      "BERT is an encoder-only architecture trained with bidirectional self-attention: every token attends to all tokens across both left and right context. It is pretrained using Masked Language Modeling (reconstructing 15% masked tokens), making it suited for classification, sequence labeling, and bi-encoder embedding retrieval. GPT is a decoder-only architecture utilizing causal masking, where lower-triangular attention matrices prevent tokens from attending to future positions. It is pretrained via autoregressive next-token prediction, optimizing the likelihood of the subsequent token. BERT cannot generate coherent open-ended text because it lacks autoregressive factorization, while GPT cannot condition on bidirectional context within a single forward pass."
+      "BERT is an encoder-only architecture trained with bidirectional self-attention: every token attends to all tokens across both left and right context. It is pretrained using Masked Language Modeling (reconstructing 15% masked tokens), making it suited for classification, sequence labeling, and bi-encoder embedding retrieval. GPT is a decoder-only architecture utilizing causal masking, where lower-triangular attention matrices prevent tokens from attending to future positions. It is pretrained via autoregressive next-token prediction, optimizing the likelihood of the subsequent token. BERT cannot generate coherent open-ended text because it lacks autoregressive factorization, while GPT cannot condition on bidirectional context within a single forward pass.",
+      {
+        "keyPoints": [
+          "BERT uses bidirectional encoder attention.",
+          "BERT pretraining masks tokens for reconstruction.",
+          "GPT uses causal attention with next-token prediction.",
+          "Encoder representations suit understanding tasks; causal decoders generate autoregressively."
+        ]
+      }
     ],
     [
       "why-sqrt-dk",
       "Why does scaled dot-product attention divide by the square root of d_k?",
-      "If query and key components have variance one, their dot product has variance d_k, so larger dimensions produce larger scores. Large scores push softmax into a nearly one-hot region where gradients become very small. Dividing by the square root of d_k brings the variance back to about one, which keeps attention trainable. It is a simple variance correction, the same reasoning behind careful weight initialization."
+      "If query and key components have variance one, their dot product has variance d_k, so larger dimensions produce larger scores. Large scores push softmax into a nearly one-hot region where gradients become very small. Dividing by the square root of d_k brings the variance back to about one, which keeps attention trainable. It is a simple variance correction, the same reasoning behind careful weight initialization.",
+      {
+        "keyPoints": [
+          "The dot-product variance grows with key dimension under unit-variance assumptions.",
+          "Large attention logits saturate softmax.",
+          "Dividing by square root of key dimension stabilizes logit variance.",
+          "Less saturated softmax gives healthier gradients."
+        ]
+      }
     ],
     [
       "multi-head",
       "Why use multiple attention heads instead of one big head?",
-      "Rather than computing a single attention pattern over the full hidden dimension {model}$, multi-head attention projects Queries, Keys, and Values $ times into lower-dimensional subspaces of size  = d_{model} / h$. Each head runs scaled dot-product attention independently, and the outputs are concatenated and projected through ^O$. This allows the model to attend simultaneously to diverse representation subspaces at different positions—such as syntax, coreference, and positional proximity—which a single attention matrix would collapse into an average distribution. Computational complexity and parameter count remain identical to single-head attention because  \times d_k = d_{model}$."
+      "Rather than computing a single attention pattern over the full hidden dimension {model}$, multi-head attention projects Queries, Keys, and Values $ times into lower-dimensional subspaces of size  = d_{model} / h$. Each head runs scaled dot-product attention independently, and the outputs are concatenated and projected through ^O$. This allows the model to attend simultaneously to diverse representation subspaces at different positions—such as syntax, coreference, and positional proximity—which a single attention matrix would collapse into an average distribution. Computational complexity and parameter count remain identical to single-head attention because  \times d_k = d_{model}$.",
+      {
+        "keyPoints": [
+          "Each head has learned query, key and value projections.",
+          "Different heads can represent different token relationships.",
+          "Heads attend in parallel in separate representation subspaces.",
+          "Head outputs are concatenated and projected back to the model dimension."
+        ]
+      }
     ],
     [
       "encoder-decoder-attention",
       "Explain self-attention, cross-attention and causal masking.",
-      "In self-attention, queries, keys and values come from the same sequence. In cross-attention, queries come from the decoder and keys and values come from the encoder, which lets a translation model look at the source. Causal masking blocks attention to future positions during training, so the model cannot see the token it must predict. Decoder-only LLMs use masked self-attention and no cross-attention."
+      "In self-attention, queries, keys and values come from the same sequence. In cross-attention, queries come from the decoder and keys and values come from the encoder, which lets a translation model look at the source. Causal masking blocks attention to future positions during training, so the model cannot see the token it must predict. Decoder-only LLMs use masked self-attention and no cross-attention.",
+      {
+        "keyPoints": [
+          "Self-attention takes queries, keys and values from one sequence.",
+          "Cross-attention takes queries from the decoder and keys and values from encoder outputs.",
+          "Causal masking blocks attention to future target tokens.",
+          "Masking preserves autoregressive training without target leakage."
+        ]
+      }
     ],
     [
       "attention-complexity",
       "What is the time and memory cost of attention, and how do models manage it?",
-      "Scaled dot-product attention requires (T^2 \\cdot d)$ FLOPs and materializes an (T^2)$ attention matrix, creating quadratic compute and memory scaling with sequence length $. During autoregressive generation, recomputing previous keys and values would take (T^2)$ time; the KV cache stores past key/value tensors, reducing per-token generation to (1)$ operations at the cost of (T)$ memory per request. Mitigations include: FlashAttention, which tiles attention in GPU SRAM to eliminate HBM read/writes of the (T^2)$ matrix; Grouped-Query Attention (GQA), which shares key/value heads across query heads to slash KV cache size by 4x to 8x; and sliding window attention for bounded context."
+      "Scaled dot-product attention requires (T^2 \\cdot d)$ FLOPs and materializes an (T^2)$ attention matrix, creating quadratic compute and memory scaling with sequence length $. During autoregressive generation, recomputing previous keys and values would take (T^2)$ time; the KV cache stores past key/value tensors, reducing per-token generation to (1)$ operations at the cost of (T)$ memory per request. Mitigations include: FlashAttention, which tiles attention in GPU SRAM to eliminate HBM read/writes of the (T^2)$ matrix; Grouped-Query Attention (GQA), which shares key/value heads across query heads to slash KV cache size by 4x to 8x; and sliding window attention for bounded context.",
+      {
+        "keyPoints": [
+          "Dense attention computes pairwise token scores with quadratic sequence cost.",
+          "Materializing the attention matrix requires quadratic memory.",
+          "FlashAttention reduces memory traffic without making exact dense attention linear.",
+          "Sparse or local attention changes connectivity to reduce cost.",
+          "KV caching avoids recomputing past keys and values during decoding."
+        ]
+      }
     ],
     [
       "temperature-top-p",
       "Explain temperature, top-k and top-p sampling. How would you set them?",
-      "Temperature $ scales logits prior to softmax ( / T$). Lowering temperature ( < 1.0$) sharpens the probability distribution, driving it toward deterministic greedy argmax selection, while higher temperature flattens entropy. Top-k sampling restricts the candidate pool to the $ most probable tokens. Top-p (nucleus sampling) dynamically computes the cumulative probability distribution and truncates candidates once the sum reaches threshold $. This adapts pool size to model uncertainty: confident predictions keep a tiny candidate set, while uncertain contexts widen the pool. Set  = 0.0 - 0.2$ for deterministic structured extraction and code generation; use  = 0.7$ with  = 0.9$ for conversational fluency."
+      "Temperature $ scales logits prior to softmax ( / T$). Lowering temperature ( < 1.0$) sharpens the probability distribution, driving it toward deterministic greedy argmax selection, while higher temperature flattens entropy. Top-k sampling restricts the candidate pool to the $ most probable tokens. Top-p (nucleus sampling) dynamically computes the cumulative probability distribution and truncates candidates once the sum reaches threshold $. This adapts pool size to model uncertainty: confident predictions keep a tiny candidate set, while uncertain contexts widen the pool. Set  = 0.0 - 0.2$ for deterministic structured extraction and code generation; use  = 0.7$ with  = 0.9$ for conversational fluency.",
+      {
+        "keyPoints": [
+          "Temperature rescales logits before softmax.",
+          "Top-k limits sampling to a fixed number of high-probability tokens.",
+          "Top-p keeps a variable-sized set reaching a probability mass threshold.",
+          "Lower temperature usually reduces diversity; settings require task evaluation."
+        ]
+      }
     ],
     [
       "llm-training-pipeline",
       "Walk me through how an LLM such as Llama is trained, from data to a chat model.",
-      "Modern LLM development follows a four-stage pipeline: 1) Pretraining: Self-supervised next-token cross-entropy over trillions of tokens of deduplicated, filtered web text and code, executed on thousands of GPUs using 3D parallelism and mixed precision. 2) Supervised Fine-Tuning (SFT): Training on tens of thousands of high-quality instruction-response demonstrations to teach multi-turn dialogue structure and task compliance. 3) Preference Alignment: Direct Preference Optimization (DPO) or RLHF using reward models and policy optimization (PPO/GRPO) to enforce helpfulness and safety boundaries. 4) Serving Optimization: Post-training quantization (AWQ/GPTQ to INT4/FP8), KV-cache allocation (PagedAttention), and red-team safety evaluation before production routing."
+      "Modern LLM development follows a four-stage pipeline: 1) Pretraining: Self-supervised next-token cross-entropy over trillions of tokens of deduplicated, filtered web text and code, executed on thousands of GPUs using 3D parallelism and mixed precision. 2) Supervised Fine-Tuning (SFT): Training on tens of thousands of high-quality instruction-response demonstrations to teach multi-turn dialogue structure and task compliance. 3) Preference Alignment: Direct Preference Optimization (DPO) or RLHF using reward models and policy optimization (PPO/GRPO) to enforce helpfulness and safety boundaries. 4) Serving Optimization: Post-training quantization (AWQ/GPTQ to INT4/FP8), KV-cache allocation (PagedAttention), and red-team safety evaluation before production routing.",
+      {
+        "keyPoints": [
+          "Clean, deduplicate and tokenize pretraining data.",
+          "Pretrain with next-token prediction.",
+          "Instruction supervised fine-tuning teaches response behavior.",
+          "Preference optimization aligns responses with chosen preferences.",
+          "Evaluate quality and safety and monitor deployment behavior."
+        ]
+      }
     ],
     [
       "context-window",
       "What happens when a prompt exceeds the context window, and how do you design for it?",
-      "Exceeding the context window triggers API truncation or rejection, dropping vital instructions or context and causing severe hallucination. Production architectures handle context through four defenses: 1) Strict Token Budgeting: Deterministically reserving token budgets for system prompts, retrieved evidence, history, and generation buffers. 2) State Compaction: Evicting raw conversational turns into structured JSON summaries or key-value memory scratchpads. 3) Retrieval Precision: Reranking and filtering retrieved chunks to avoid the 'Lost in the Middle' phenomenon, where models fail to attend to facts placed in the center of long contexts. 4) Prompt Assembly: Placing static system instructions first to maximize prefix KV-cache reuse in vLLM or SGLang."
+      "Exceeding the context window triggers API truncation or rejection, dropping vital instructions or context and causing severe hallucination. Production architectures handle context through four defenses: 1) Strict Token Budgeting: Deterministically reserving token budgets for system prompts, retrieved evidence, history, and generation buffers. 2) State Compaction: Evicting raw conversational turns into structured JSON summaries or key-value memory scratchpads. 3) Retrieval Precision: Reranking and filtering retrieved chunks to avoid the 'Lost in the Middle' phenomenon, where models fail to attend to facts placed in the center of long contexts. 4) Prompt Assembly: Placing static system instructions first to maximize prefix KV-cache reuse in vLLM or SGLang.",
+      {
+        "keyPoints": [
+          "The context budget includes prompt and generated tokens.",
+          "Over-budget inputs require rejection, truncation or application-level reduction.",
+          "Retrieval and summarization can select or compress relevant content.",
+          "Long contexts still face cost and information retrieval failures.",
+          "Reserve output space and measure token use before requests."
+        ]
+      }
     ]
   ],
   "production-mlops": [
     [
       "feature-store",
       "What is a feature store, and what problem does it solve?",
-      "A feature store centralizes the definition, computation, and storage of ML features across offline training and online serving. It solves two critical production issues: training-serving skew—where training uses batch SQL while serving computes features via Python microservices with differing logic—and point-in-time leakage, by performing AS OF time-travel joins so training instances only see features available before the event timestamp. Architecturally, it couples an offline store (Snowflake, BigQuery, or Parquet on S3) optimized for high-throughput batch reads with an online key-value store (Redis, DynamoDB) optimized for sub-10ms point lookups. The trade-off is infrastructure complexity: maintaining streaming pipelines (Flink/Kafka) to keep the online store synchronized with batch updates introduces synchronization lag, operational overhead, and storage costs. For teams without real-time feature requirements or feature reuse across models, a database view and a lightweight Redis cache are far simpler."
+      "A feature store centralizes the definition, computation, and storage of ML features across offline training and online serving. It solves two critical production issues: training-serving skew—where training uses batch SQL while serving computes features via Python microservices with differing logic—and point-in-time leakage, by performing AS OF time-travel joins so training instances only see features available before the event timestamp. Architecturally, it couples an offline store (Snowflake, BigQuery, or Parquet on S3) optimized for high-throughput batch reads with an online key-value store (Redis, DynamoDB) optimized for sub-10ms point lookups. The trade-off is infrastructure complexity: maintaining streaming pipelines (Flink/Kafka) to keep the online store synchronized with batch updates introduces synchronization lag, operational overhead, and storage costs. For teams without real-time feature requirements or feature reuse across models, a database view and a lightweight Redis cache are far simpler.",
+      {
+        "keyPoints": [
+          "A feature store shares feature definitions across training and serving.",
+          "Point-in-time joins avoid using future feature values.",
+          "Offline storage supports training and online storage supports low-latency retrieval.",
+          "Freshness and consistent transformations reduce training-serving skew."
+        ]
+      }
     ],
     [
       "training-serving-skew",
       "Offline AUC is 0.92 but production performance is poor. How do you investigate?",
-      "When offline AUC is high but online performance collapses, training-serving skew is the primary suspect. I triage this systematically across three vectors:\nFirst, feature pipeline skew. I log raw inference feature payloads with request IDs and compare them against features generated by the training pipeline for the exact same entity and timestamp. Computing Population Stability Index (PSI) or Kolmogorov-Smirnov tests across feature distributions quickly pinpoints discrepancies, such as missing value imputations or differing library versions between Python training and C++/Go serving.\nSecond, temporal data leakage. I check if training features inadvertently incorporated information from after the label event, such as a user's 30-day aggregate containing the target transaction.\nThird, feedback loops and distribution shifts. If the production model's own predictions influence user interactions, historical offline splits fail to simulate live policy changes.\nBefore rolling out, running the candidate model in shadow mode and validating feature parity against production logs prevents these discrepancies from reaching users."
+      "When offline AUC is high but online performance collapses, training-serving skew is the primary suspect. I triage this systematically across three vectors:\nFirst, feature pipeline skew. I log raw inference feature payloads with request IDs and compare them against features generated by the training pipeline for the exact same entity and timestamp. Computing Population Stability Index (PSI) or Kolmogorov-Smirnov tests across feature distributions quickly pinpoints discrepancies, such as missing value imputations or differing library versions between Python training and C++/Go serving.\nSecond, temporal data leakage. I check if training features inadvertently incorporated information from after the label event, such as a user's 30-day aggregate containing the target transaction.\nThird, feedback loops and distribution shifts. If the production model's own predictions influence user interactions, historical offline splits fail to simulate live policy changes.\nBefore rolling out, running the candidate model in shadow mode and validating feature parity against production logs prevents these discrepancies from reaching users.",
+      {
+        "keyPoints": [
+          "Compare production features and transformations with training.",
+          "Check label definition, leakage and point-in-time correctness.",
+          "Check distribution shifts and serving errors before blaming model capacity.",
+          "Evaluate representative cohorts with the production decision threshold."
+        ]
+      }
     ],
     [
       "drift-types",
       "Explain data drift and concept drift. How do you monitor when labels are delayed?",
-      "Data drift occurs when the input distribution P(X) changes while the conditional relationship P(Y|X) remains constant—for instance, a marketing campaign shifts user demographics. Concept drift occurs when the underlying relationship P(Y|X) shifts—such as macroeconomic changes causing users with high credit scores to suddenly default.\nWhen ground-truth labels are delayed by weeks or months (such as credit defaults or fraud chargebacks), we cannot measure accuracy directly. Instead, we monitor inputs and outputs:\nFirst, we track Population Stability Index (PSI) and two-sample Kolmogorov-Smirnov tests on top-ranked features; a PSI exceeding 0.2 indicates significant shift requiring investigation.\nSecond, we monitor prediction score distributions and calibration drifts against historical baselines.\nThird, we track short-term proxy signals, like click-through or engagement rates, that correlate with downstream conversion.\nThe trade-off is alert fatigue: feature drift alerts are noisy. We tier alerts by feature importance and business impact, triggering automated retraining only when core drivers show structural movement."
+      "Data drift occurs when the input distribution P(X) changes while the conditional relationship P(Y|X) remains constant—for instance, a marketing campaign shifts user demographics. Concept drift occurs when the underlying relationship P(Y|X) shifts—such as macroeconomic changes causing users with high credit scores to suddenly default.\nWhen ground-truth labels are delayed by weeks or months (such as credit defaults or fraud chargebacks), we cannot measure accuracy directly. Instead, we monitor inputs and outputs:\nFirst, we track Population Stability Index (PSI) and two-sample Kolmogorov-Smirnov tests on top-ranked features; a PSI exceeding 0.2 indicates significant shift requiring investigation.\nSecond, we monitor prediction score distributions and calibration drifts against historical baselines.\nThird, we track short-term proxy signals, like click-through or engagement rates, that correlate with downstream conversion.\nThe trade-off is alert fatigue: feature drift alerts are noisy. We tier alerts by feature importance and business impact, triggering automated retraining only when core drivers show structural movement.",
+      {
+        "keyPoints": [
+          "Data drift changes input distributions.",
+          "Concept drift changes the relationship between inputs and targets.",
+          "Unlabelled drift signals do not prove quality degradation.",
+          "Use proxy signals while labels are delayed and evaluate outcomes when labels arrive."
+        ]
+      }
     ],
     [
       "deployment-strategies",
       "Compare shadow, canary and blue-green deployment for an ML model.",
-      "For model releases, shadow, canary, and blue-green deployments balance verification fidelity against risk and infrastructure cost:\nShadow deployment mirrors live production traffic asynchronously to the candidate model without serving its outputs to users. It provides zero-risk verification of latency, GPU memory, and prediction sanity against production traffic, but cannot measure user behavioral impact and incurs 2x inference compute cost. Writes and external mutations must be mocked.\nCanary deployment routes a small slice of live traffic (e.g., 2% to 5%) to the new model, measuring real conversion metrics and p99 latency against the champion. It risks user experience for that slice if the model is degraded, but bounds the blast radius.\nBlue-green deployment maintains two identical production environments, switching load-balancer traffic instantly. It provides immediate zero-downtime cutover and instant rollback, but requires 2x full infrastructure footprint.\nIn production, we chain them: shadow for performance and stability, followed by canary with automated metric circuit-breakers for business impact."
+      "For model releases, shadow, canary, and blue-green deployments balance verification fidelity against risk and infrastructure cost:\nShadow deployment mirrors live production traffic asynchronously to the candidate model without serving its outputs to users. It provides zero-risk verification of latency, GPU memory, and prediction sanity against production traffic, but cannot measure user behavioral impact and incurs 2x inference compute cost. Writes and external mutations must be mocked.\nCanary deployment routes a small slice of live traffic (e.g., 2% to 5%) to the new model, measuring real conversion metrics and p99 latency against the champion. It risks user experience for that slice if the model is degraded, but bounds the blast radius.\nBlue-green deployment maintains two identical production environments, switching load-balancer traffic instantly. It provides immediate zero-downtime cutover and instant rollback, but requires 2x full infrastructure footprint.\nIn production, we chain them: shadow for performance and stability, followed by canary with automated metric circuit-breakers for business impact.",
+      {
+        "keyPoints": [
+          "Shadow traffic evaluates a model without affecting user decisions.",
+          "Canaries expose a limited share of real traffic.",
+          "Blue-green deployment switches between prepared environments.",
+          "Define monitored guardrails and a rollback path before rollout."
+        ]
+      }
     ],
     [
       "retraining-strategy",
       "How do you decide when to retrain a model?",
-      "We decide when to retrain by balancing the economic cost of model decay against the financial and compute cost of retraining and validation.\nTo determine policy, we first backtest model performance across historical time windows to measure decay rate. Rapidly decaying domains (like fraud or ad bidding) require continuous or daily retraining; structural domains (like credit scoring or document classification) require monthly cadences.\nOperationally, we combine a scheduled cadence with event-driven triggers based on statistical drift thresholds (PSI > 0.2) or drop in proxy metrics.\nEvery retraining pipeline must execute automated gates before deployment: schema validation on input data, a fixed golden test set evaluation, and a champion-challenger backtest on out-of-time data.\nThe critical trade-off is avoiding automated retraining on corrupt data. If an upstream logging failure causes missing features, blindly retraining bakes the corruption into the model weights. The pipeline must fail closed on data contract violations rather than automatically retraining."
+      "We decide when to retrain by balancing the economic cost of model decay against the financial and compute cost of retraining and validation.\nTo determine policy, we first backtest model performance across historical time windows to measure decay rate. Rapidly decaying domains (like fraud or ad bidding) require continuous or daily retraining; structural domains (like credit scoring or document classification) require monthly cadences.\nOperationally, we combine a scheduled cadence with event-driven triggers based on statistical drift thresholds (PSI > 0.2) or drop in proxy metrics.\nEvery retraining pipeline must execute automated gates before deployment: schema validation on input data, a fixed golden test set evaluation, and a champion-challenger backtest on out-of-time data.\nThe critical trade-off is avoiding automated retraining on corrupt data. If an upstream logging failure causes missing features, blindly retraining bakes the corruption into the model weights. The pipeline must fail closed on data contract violations rather than automatically retraining.",
+      {
+        "keyPoints": [
+          "Retraining decisions depend on measured quality and changing data.",
+          "Scheduled retraining and drift-triggered retraining have different costs.",
+          "Validate a candidate on recent representative data before promotion.",
+          "Keep lineage and a rollback path for each promoted model."
+        ]
+      }
     ],
     [
       "reproducibility",
       "How do you make model training reproducible?",
-      "Version code, data and configuration together, and record them with each model, using tools such as Git, DVC and MLflow. Pin dependencies in a container and log seeds and hardware. Full bit-level determinism on GPUs is costly and rarely needed, so aim to reproduce results within a small tolerance. Save the exact train and test splits, and a model registry should link every deployed model back to its run."
+      "Version code, data and configuration together, and record them with each model, using tools such as Git, DVC and MLflow. Pin dependencies in a container and log seeds and hardware. Full bit-level determinism on GPUs is costly and rarely needed, so aim to reproduce results within a small tolerance. Save the exact train and test splits, and a model registry should link every deployed model back to its run.",
+      {
+        "keyPoints": [
+          "Version data, code, configuration and model artifacts.",
+          "Record environment, dependencies and random seeds.",
+          "GPU operations can remain nondeterministic despite fixed seeds.",
+          "Track experiments and verify reproducibility within an explicit tolerance."
+        ]
+      }
     ],
     [
       "model-registry-rollback",
       "A new model degrades conversion by 3% in production. What do you do in the first hour?",
-      "In the first hour of a 3% production conversion drop, the priority is immediate containment:\nMinute 0 to 5: Roll back traffic immediately. In a mature model registry and serving setup, rollback is a routing pointer change at the API gateway or feature flag level, diverting 100% of traffic back to the previous champion model artifact within seconds. Never attempt to debug a live degraded model in production.\nMinute 5 to 20: Verify containment. Confirm conversion rates recover and verify secondary health metrics—p99 latency, error rates, and fallback activations.\nMinute 20 to 60: Isolate root cause. Freeze telemetry logs and slice metrics across dimensions: user cohort, client version, device type, and geography. Determine whether the degradation was model-driven (poor predictions on specific segments) or infrastructure-driven (feature store timeouts causing default fallbacks).\nAfterward, conduct a blameless post-mortem and implement preventative gates, such as tighter canary alert thresholds and segment-level regression tests in CI."
+      "In the first hour of a 3% production conversion drop, the priority is immediate containment:\nMinute 0 to 5: Roll back traffic immediately. In a mature model registry and serving setup, rollback is a routing pointer change at the API gateway or feature flag level, diverting 100% of traffic back to the previous champion model artifact within seconds. Never attempt to debug a live degraded model in production.\nMinute 5 to 20: Verify containment. Confirm conversion rates recover and verify secondary health metrics—p99 latency, error rates, and fallback activations.\nMinute 20 to 60: Isolate root cause. Freeze telemetry logs and slice metrics across dimensions: user cohort, client version, device type, and geography. Determine whether the degradation was model-driven (poor predictions on specific segments) or infrastructure-driven (feature store timeouts causing default fallbacks).\nAfterward, conduct a blameless post-mortem and implement preventative gates, such as tighter canary alert thresholds and segment-level regression tests in CI.",
+      {
+        "keyPoints": [
+          "Stop the rollout or roll back to a known good model promptly.",
+          "Verify the business metric and inspect affected cohorts.",
+          "Check model, data and feature versions and recent changes.",
+          "Preserve evidence and investigate the cause after containing harm."
+        ]
+      }
     ],
     [
       "kubernetes-gpu",
       "How would you serve an LLM on Kubernetes, and how do you autoscale it?",
-      "Serving an LLM on Kubernetes requires treating GPU workloads differently from standard stateless microservices:\nFirst, pod configuration. We pin dedicated GPUs using nvidia.com/gpu: 1 resource limits, mount a high-speed shared PVC or local NVMe daemonset to pre-cache model weights, and configure startup probes with a 5-minute timeout to allow weights to load into VRAM before accepting traffic.\nSecond, autoscaling. Horizontal Pod Autoscalers (HPA) driven by CPU or memory are ineffective because GPUs run near 100% compute during batching. Instead, we use KEDA to autoscale on inference queue depth, active concurrent requests, or KV cache memory utilization from vLLM/TGI metrics.\nThird, lifecycle management. LLM cold starts take several minutes, so we maintain pre-warmed standby capacity. When scaling down, we implement graceful termination with preStop lifecycle hooks that drain in-flight streaming requests before terminating the pod. The API gateway handles load balancing with round-robin routing aware of model replica capacity."
+      "Serving an LLM on Kubernetes requires treating GPU workloads differently from standard stateless microservices:\nFirst, pod configuration. We pin dedicated GPUs using nvidia.com/gpu: 1 resource limits, mount a high-speed shared PVC or local NVMe daemonset to pre-cache model weights, and configure startup probes with a 5-minute timeout to allow weights to load into VRAM before accepting traffic.\nSecond, autoscaling. Horizontal Pod Autoscalers (HPA) driven by CPU or memory are ineffective because GPUs run near 100% compute during batching. Instead, we use KEDA to autoscale on inference queue depth, active concurrent requests, or KV cache memory utilization from vLLM/TGI metrics.\nThird, lifecycle management. LLM cold starts take several minutes, so we maintain pre-warmed standby capacity. When scaling down, we implement graceful termination with preStop lifecycle hooks that drain in-flight streaming requests before terminating the pod. The API gateway handles load balancing with round-robin routing aware of model replica capacity.",
+      {
+        "keyPoints": [
+          "GPU requests require device plugins and suitable scheduling.",
+          "Model loading and GPU memory affect readiness and capacity.",
+          "Autoscale using queue depth or latency rather than CPU alone.",
+          "Account for slow cold starts with warm capacity.",
+          "Manage batching and resource limits to control throughput and latency."
+        ]
+      }
     ],
     [
       "data-quality",
       "How do you stop bad data from breaking a production model?",
-      "Validate at pipeline boundaries: schema, ranges, null rates, row counts, freshness and distributions, using tools such as Great Expectations or TFX Data Validation. Fail closed for training so a bad batch cannot produce a bad model. For serving, fall back to safe defaults and raise an alert. Assign owners to upstream data contracts, because most incidents begin with an upstream change that nobody announced."
+      "Validate at pipeline boundaries: schema, ranges, null rates, row counts, freshness and distributions, using tools such as Great Expectations or TFX Data Validation. Fail closed for training so a bad batch cannot produce a bad model. For serving, fall back to safe defaults and raise an alert. Assign owners to upstream data contracts, because most incidents begin with an upstream change that nobody announced.",
+      {
+        "keyPoints": [
+          "Validate schema, ranges, missingness and freshness at ingestion.",
+          "Quarantine or reject invalid data before it reaches the model.",
+          "Monitor distribution changes and pipeline health.",
+          "Version data contracts and alert an accountable owner."
+        ]
+      }
     ]
   ],
   "system-design": [
     [
       "recommender",
       "Design a recommendation system for a video platform with 100 million users.",
-      "We architect large-scale video recommendation as a four-stage funnel serving 100 million users under a 200ms latency budget:\nFirst, Candidate Generation (Retrieval): We prune 100 million videos down to ~1,000 candidates in under 30ms. We use a two-tower deep model (user tower embedding user history and context; video tower embedding video metadata) querying an approximate nearest neighbor index (HNSW or ScaNN).\nSecond, Filtering: We remove already-watched videos, blocked creators, and geo-restricted content.\nThird, Heavy Ranking: We score the remaining ~1,000 candidates using a deep multi-task network (like MMoE or DLRM) predicting probability of click, completion rate, and expected watch time. This stage utilizes dense cross-features and real-time user session signals from an online feature store.\nFourth, Re-ranking: We apply Maximal Marginal Relevance (MMR) to balance topic diversity, insert fresh uploads, and apply creator fatigue rules.\nWe handle cold start via exploration bandits (Thompson sampling) and video content embeddings. Offline we evaluate via NDCG and recall@K; online we launch via holdout A/B testing measuring 7-day retention and total watch time."
+      "We architect large-scale video recommendation as a four-stage funnel serving 100 million users under a 200ms latency budget:\nFirst, Candidate Generation (Retrieval): We prune 100 million videos down to ~1,000 candidates in under 30ms. We use a two-tower deep model (user tower embedding user history and context; video tower embedding video metadata) querying an approximate nearest neighbor index (HNSW or ScaNN).\nSecond, Filtering: We remove already-watched videos, blocked creators, and geo-restricted content.\nThird, Heavy Ranking: We score the remaining ~1,000 candidates using a deep multi-task network (like MMoE or DLRM) predicting probability of click, completion rate, and expected watch time. This stage utilizes dense cross-features and real-time user session signals from an online feature store.\nFourth, Re-ranking: We apply Maximal Marginal Relevance (MMR) to balance topic diversity, insert fresh uploads, and apply creator fatigue rules.\nWe handle cold start via exploration bandits (Thompson sampling) and video content embeddings. Offline we evaluate via NDCG and recall@K; online we launch via holdout A/B testing measuring 7-day retention and total watch time.",
+      {
+        "keyPoints": [
+          "Use candidate retrieval followed by ranking and possibly reranking.",
+          "Train from user interactions with careful negative sampling.",
+          "Balance relevance with diversity, freshness and cold-start needs.",
+          "Serve cached features and candidates within latency constraints.",
+          "Measure online outcomes and watch feedback loops and bias."
+        ]
+      }
     ],
     [
       "two-tower",
       "Explain the two-tower retrieval model and how you would train and serve it.",
-      "One tower embeds the user and another embeds the item, and their dot product scores relevance. Train with positive interactions and sampled negatives, correcting for popular items being oversampled. Item embeddings are computed offline and stored in an ANN index, and the user embedding is computed at request time. Because the towers meet only at the end, feature crosses are limited, so a heavier ranking model follows."
+      "One tower embeds the user and another embeds the item, and their dot product scores relevance. Train with positive interactions and sampled negatives, correcting for popular items being oversampled. Item embeddings are computed offline and stored in an ANN index, and the user embedding is computed at request time. Because the towers meet only at the end, feature crosses are limited, so a heavier ranking model follows.",
+      {
+        "keyPoints": [
+          "Separate encoders map users or queries and items into a shared space.",
+          "Train positive pairs against sampled negatives with a similarity loss.",
+          "Precompute item embeddings for approximate nearest-neighbor retrieval.",
+          "Refresh the index when embeddings or items change.",
+          "Two-tower retrieval is efficient but cannot model arbitrary cross-feature interactions."
+        ]
+      }
     ],
     [
       "search-ranking",
       "Design ranking for e-commerce search.",
-      "E-commerce search ranking balances query intent, semantic relevance, and business conversion through a multi-stage architecture:\nFirst, Query Understanding: The query passes through spelling correction, tokenization, brand/category entity recognition, and intent classification.\nSecond, Hybrid Retrieval: We retrieve ~1,000 candidates using dual indices: BM25 for precise lexical matches (crucial for exact part numbers and brand names) and dense vector retrieval for semantic exploration. We merge results using Reciprocal Rank Fusion (RRF).\nThird, Learning-to-Rank (LTR): A LambdaMART GBDT or deep ranking model scores the candidates. Features include text match scores, product historical CTR, price competitiveness, sales velocity, and user personalization signals. We debias training click data using Inverse Propensity Scoring (IPS) to correct for positional presentation bias.\nFourth, Business Logic & Reranking: We apply stock availability deprioritization, margin weighting, diversity constraints, and sponsored ad slots.\nWe measure offline using NDCG@10 and Mean Reciprocal Rank (MRR), and validate online through A/B testing on conversion rate and revenue per search."
+      "E-commerce search ranking balances query intent, semantic relevance, and business conversion through a multi-stage architecture:\nFirst, Query Understanding: The query passes through spelling correction, tokenization, brand/category entity recognition, and intent classification.\nSecond, Hybrid Retrieval: We retrieve ~1,000 candidates using dual indices: BM25 for precise lexical matches (crucial for exact part numbers and brand names) and dense vector retrieval for semantic exploration. We merge results using Reciprocal Rank Fusion (RRF).\nThird, Learning-to-Rank (LTR): A LambdaMART GBDT or deep ranking model scores the candidates. Features include text match scores, product historical CTR, price competitiveness, sales velocity, and user personalization signals. We debias training click data using Inverse Propensity Scoring (IPS) to correct for positional presentation bias.\nFourth, Business Logic & Reranking: We apply stock availability deprioritization, margin weighting, diversity constraints, and sponsored ad slots.\nWe measure offline using NDCG@10 and Mean Reciprocal Rank (MRR), and validate online through A/B testing on conversion rate and revenue per search.",
+      {
+        "keyPoints": [
+          "Retrieve candidates using lexical or semantic matching.",
+          "Rank with query, item and user features.",
+          "Learn from judgments or interactions while accounting for position bias.",
+          "Balance relevance with business constraints and serving latency.",
+          "Validate offline ranking metrics with online experiments."
+        ]
+      }
     ],
     [
       "fraud-system",
       "Design a real-time payment fraud system with a 100 ms budget.",
-      "A real-time payment fraud system requires a dual-path architecture executing within a 100ms SLA:\nSynchronous Fast Path (sub-50ms): The incoming transaction passes through a lightweight rules engine for hard blocks (sanctioned lists, velocity violations) and a gradient-boosted decision tree (LightGBM) optimized for fast C++ inference. Features are precomputed: static user profile features from an in-memory cache and real-time velocity features (transactions in past 10 minutes, count of distinct cards) maintained via streaming engines like Apache Flink into Redis.\nDecisions are tiered via cost-sensitive thresholds: low risk auto-approves, medium risk triggers step-up authentication (3D Secure / SMS OTP), high risk auto-declines.\nAsynchronous Deep Path: Complex graph analysis (detecting fraud rings across shared IP, device fingerprint, and bank account nodes) runs offline.\nA critical challenge is label delay: fraud chargebacks arrive 30 to 90 days after the transaction. We train models on mature historical cohorts and maintain shadow models. If the fraud service times out, the system fails open with basic deterministic rules to prevent checkout abandonment."
+      "A real-time payment fraud system requires a dual-path architecture executing within a 100ms SLA:\nSynchronous Fast Path (sub-50ms): The incoming transaction passes through a lightweight rules engine for hard blocks (sanctioned lists, velocity violations) and a gradient-boosted decision tree (LightGBM) optimized for fast C++ inference. Features are precomputed: static user profile features from an in-memory cache and real-time velocity features (transactions in past 10 minutes, count of distinct cards) maintained via streaming engines like Apache Flink into Redis.\nDecisions are tiered via cost-sensitive thresholds: low risk auto-approves, medium risk triggers step-up authentication (3D Secure / SMS OTP), high risk auto-declines.\nAsynchronous Deep Path: Complex graph analysis (detecting fraud rings across shared IP, device fingerprint, and bank account nodes) runs offline.\nA critical challenge is label delay: fraud chargebacks arrive 30 to 90 days after the transaction. We train models on mature historical cohorts and maintain shadow models. If the fraud service times out, the system fails open with basic deterministic rules to prevent checkout abandonment.",
+      {
+        "keyPoints": [
+          "Use features available within the payment latency budget.",
+          "Combine rules and model decisions with a fallback on timeout.",
+          "Choose thresholds using fraud losses and false decline costs.",
+          "Account for delayed fraud labels and imbalanced data.",
+          "Monitor drift and maintain auditable decision records."
+        ]
+      }
     ],
     [
       "ads-ctr",
       "Design a click-through rate prediction system for ads.",
-      "Ad CTR prediction requires calibrated probabilities because the predicted CTR directly determines auction ranking and cost in generalized second-price (GSP) auctions (eCPM = bid * pCTR):\nArchitecture: We deploy deep learning architectures designed for sparse feature interactions, such as DeepFM or Deep & Cross Network (DCN). Features include user profile embeddings, ad historical CTR across contexts, device, time, and explicit cross-features between user history and ad categories.\nCalibration: Ranking metrics like AUC are insufficient; calibration is mandatory. An over-calibrated model overcharges advertisers and burns budget, while an under-calibrated model loses profitable auctions. We apply Platt scaling or isotonic regression on a holdout calibration set, and evaluate using Normalized Entropy (Log Loss) and Expected Calibration Error (ECE).\nTraining: Because ad inventory and user interests shift continuously, we train models with online streaming updates or high-frequency incremental batch updates. Negative downsampling is required to manage extreme class imbalance, followed by mathematically re-calibrating predicted probabilities using the downsampling ratio."
+      "Ad CTR prediction requires calibrated probabilities because the predicted CTR directly determines auction ranking and cost in generalized second-price (GSP) auctions (eCPM = bid * pCTR):\nArchitecture: We deploy deep learning architectures designed for sparse feature interactions, such as DeepFM or Deep & Cross Network (DCN). Features include user profile embeddings, ad historical CTR across contexts, device, time, and explicit cross-features between user history and ad categories.\nCalibration: Ranking metrics like AUC are insufficient; calibration is mandatory. An over-calibrated model overcharges advertisers and burns budget, while an under-calibrated model loses profitable auctions. We apply Platt scaling or isotonic regression on a holdout calibration set, and evaluate using Normalized Entropy (Log Loss) and Expected Calibration Error (ECE).\nTraining: Because ad inventory and user interests shift continuously, we train models with online streaming updates or high-frequency incremental batch updates. Negative downsampling is required to manage extreme class imbalance, followed by mathematically re-calibrating predicted probabilities using the downsampling ratio.",
+      {
+        "keyPoints": [
+          "Train on impression and click logs with point-in-time features.",
+          "Correct for sampling and selection or position biases.",
+          "Calibrated click probabilities support downstream auction decisions.",
+          "Use online experiments alongside offline ranking and probability metrics.",
+          "Control serving latency and feature freshness."
+        ]
+      }
     ],
     [
       "enterprise-rag-design",
       "Design an internal AI assistant over 10 million company documents with access control.",
-      "An enterprise RAG system over 10 million documents must prioritize security and access control above raw retrieval:\nAccess Control: Permissions (ACLs) must be enforced at retrieval time, never as an LLM post-filter. Document chunks inherit security tokens (user, department, role group IDs) stored in the vector database metadata. Queries inject the authenticated user's active directory groups into the vector database filter, ensuring forbidden documents never enter the retrieval context.\nIngestion & Parsing: Documents (PDFs, spreadsheets, presentations) pass through layout-aware parsers (extracting tables and hierarchy), followed by semantic chunking. An asynchronous Change Data Capture (CDC) pipeline syncs document updates and immediate deletions.\nRetrieval & Generation: We combine BM25 and dense embeddings via Reciprocal Rank Fusion, followed by a cross-encoder reranker to pick the top 5 chunks. The system prompt requires citations with exact source links and instructs the model to refuse to answer if retrieved context is insufficient.\nEvaluation: We track retrieval Recall@K and answer faithfulness using automated LLM-as-a-judge pipelines on a curated golden dataset of internal queries."
+      "An enterprise RAG system over 10 million documents must prioritize security and access control above raw retrieval:\nAccess Control: Permissions (ACLs) must be enforced at retrieval time, never as an LLM post-filter. Document chunks inherit security tokens (user, department, role group IDs) stored in the vector database metadata. Queries inject the authenticated user's active directory groups into the vector database filter, ensuring forbidden documents never enter the retrieval context.\nIngestion & Parsing: Documents (PDFs, spreadsheets, presentations) pass through layout-aware parsers (extracting tables and hierarchy), followed by semantic chunking. An asynchronous Change Data Capture (CDC) pipeline syncs document updates and immediate deletions.\nRetrieval & Generation: We combine BM25 and dense embeddings via Reciprocal Rank Fusion, followed by a cross-encoder reranker to pick the top 5 chunks. The system prompt requires citations with exact source links and instructs the model to refuse to answer if retrieved context is insufficient.\nEvaluation: We track retrieval Recall@K and answer faithfulness using automated LLM-as-a-judge pipelines on a curated golden dataset of internal queries.",
+      {
+        "keyPoints": [
+          "Ingest, chunk and index documents with ownership metadata.",
+          "Enforce user permissions during retrieval and before returning evidence.",
+          "Combine retrieval and reranking to select relevant context.",
+          "Generate grounded answers with citations and an abstention path.",
+          "Evaluate retrieval and answer quality separately and maintain index freshness."
+        ]
+      }
     ],
     [
       "llm-gateway",
       "Design a platform that serves LLMs for 50 internal teams.",
-      "An internal LLM gateway serving 50 teams acts as a centralized control plane for cost, reliability, and security:\nAuthentication & Routing: Teams access a unified OpenAI-compatible API using scoped API keys. The gateway routes requests based on intent and cost tier: lightweight classification and extraction to small 8B models, complex reasoning to frontier models.\nResilience & Failover: The gateway manages provider redundancy. If a primary provider returns 429 or 500 errors, the gateway automatically falls back to an alternative region or secondary provider with exponential backoff and circuit breaking.\nCaching & Cost Management: Exact match and semantic caching (using Redis vector search) serve repeated queries at zero GPU cost. The gateway enforces per-team token budgets and rate limits (token bucket algorithm), logging prompt/completion token counts for monthly departmental chargebacks.\nSecurity & Observability: Streaming responses pass through real-time PII redaction and prompt injection filters. We separate interactive user traffic from background batch jobs to prevent batch processing from degrading interactive p99 latency."
+      "An internal LLM gateway serving 50 teams acts as a centralized control plane for cost, reliability, and security:\nAuthentication & Routing: Teams access a unified OpenAI-compatible API using scoped API keys. The gateway routes requests based on intent and cost tier: lightweight classification and extraction to small 8B models, complex reasoning to frontier models.\nResilience & Failover: The gateway manages provider redundancy. If a primary provider returns 429 or 500 errors, the gateway automatically falls back to an alternative region or secondary provider with exponential backoff and circuit breaking.\nCaching & Cost Management: Exact match and semantic caching (using Redis vector search) serve repeated queries at zero GPU cost. The gateway enforces per-team token budgets and rate limits (token bucket algorithm), logging prompt/completion token counts for monthly departmental chargebacks.\nSecurity & Observability: Streaming responses pass through real-time PII redaction and prompt injection filters. We separate interactive user traffic from background batch jobs to prevent batch processing from degrading interactive p99 latency.",
+      {
+        "keyPoints": [
+          "Centralize authentication, model access and per-team quotas.",
+          "Route requests using quality, latency and cost requirements.",
+          "Apply rate limits, batching or caching where appropriate.",
+          "Track token usage and costs per team.",
+          "Provide isolation, safety checks, observability and fallback behavior."
+        ]
+      }
     ],
     [
       "llm-cost-estimate",
       "Estimate the GPU cost of serving 1,000 requests per second with an LLM.",
-      "To estimate the infrastructure cost for 1,000 requests per second, we must explicitly state model parameters and operational assumptions:\nAssumptions: Assume an 8B parameter instruction model quantized to FP8, served on NVIDIA H100 GPUs using continuous batching and PagedAttention. Average prompt length is 1,000 tokens, and average completion length is 200 tokens.\nThroughput: Serving 1,000 RPS generates 200,000 output tokens per second. An H100 GPU running an FP8 8B model under optimal continuous batching achieves approximately 2,000 generated tokens per second while maintaining a time-per-output-token (TPOT) under 30ms.\nGPU Sizing: Sizing purely on output tokens: 200,000 / 2,000 = 100 H100 GPUs. Adding 30% headroom for peak diurnal traffic spikes, KV-cache memory pressure, and node redundancy requires approximately 130 GPUs.\nFinancials: At cloud pricing of roughly $2.50 per H100 GPU-hour on 1-year reserved instances, 130 GPUs cost $325 per hour, or approximately $234,000 monthly.\nOptimization: We reduce this cost by implementing prompt prefix caching for shared system instructions, semantic caching, and dynamic autoscaling during off-peak hours."
+      "To estimate the infrastructure cost for 1,000 requests per second, we must explicitly state model parameters and operational assumptions:\nAssumptions: Assume an 8B parameter instruction model quantized to FP8, served on NVIDIA H100 GPUs using continuous batching and PagedAttention. Average prompt length is 1,000 tokens, and average completion length is 200 tokens.\nThroughput: Serving 1,000 RPS generates 200,000 output tokens per second. An H100 GPU running an FP8 8B model under optimal continuous batching achieves approximately 2,000 generated tokens per second while maintaining a time-per-output-token (TPOT) under 30ms.\nGPU Sizing: Sizing purely on output tokens: 200,000 / 2,000 = 100 H100 GPUs. Adding 30% headroom for peak diurnal traffic spikes, KV-cache memory pressure, and node redundancy requires approximately 130 GPUs.\nFinancials: At cloud pricing of roughly $2.50 per H100 GPU-hour on 1-year reserved instances, 130 GPUs cost $325 per hour, or approximately $234,000 monthly.\nOptimization: We reduce this cost by implementing prompt prefix caching for shared system instructions, semantic caching, and dynamic autoscaling during off-peak hours.",
+      {
+        "keyPoints": [
+          "Request rate alone is insufficient; input and output token distributions are needed.",
+          "Separate prefill work from autoregressive decode work.",
+          "Benchmark throughput under the required latency target.",
+          "Estimate replicas from capacity and add utilization or redundancy headroom.",
+          "Multiply GPU count by time and price and include operational overhead."
+        ]
+      }
     ],
     [
       "computer-vision-system",
       "Design a visual defect detection system for a factory line.",
-      "Visual defect detection on a manufacturing line succeeds or fails on physical environmental control before software:\nPhysical Setup: Standardizing lighting (polarized LED rings, dome lights to remove reflections) and using telecentric lenses to eliminate perspective distortion yields far greater improvement than changing neural network architectures.\nEdge Architecture: Inspection must match line speed (often 50-100ms per part). We deploy optimized inference engines (TensorRT on industrial edge PCs or Jetson modules) running directly on the factory floor, isolating the line from cloud network dependency.\nModeling: Defective units represent less than 0.1% of production, making standard supervised classification impractical due to extreme class imbalance. We deploy patch-based unsupervised anomaly detection (e.g., PatchCore) trained purely on normal parts, paired with a lightweight detector for known defect categories.\nOperational Strategy: We set an asymmetric decision threshold: false rejects are acceptable for secondary human inspection, but false escapes (shipping a defective part) must approach zero. Unconfident predictions route to an operator verification UI, and confirmed edge cases automatically feed into an active learning dataset for retraining."
+      "Visual defect detection on a manufacturing line succeeds or fails on physical environmental control before software:\nPhysical Setup: Standardizing lighting (polarized LED rings, dome lights to remove reflections) and using telecentric lenses to eliminate perspective distortion yields far greater improvement than changing neural network architectures.\nEdge Architecture: Inspection must match line speed (often 50-100ms per part). We deploy optimized inference engines (TensorRT on industrial edge PCs or Jetson modules) running directly on the factory floor, isolating the line from cloud network dependency.\nModeling: Defective units represent less than 0.1% of production, making standard supervised classification impractical due to extreme class imbalance. We deploy patch-based unsupervised anomaly detection (e.g., PatchCore) trained purely on normal parts, paired with a lightweight detector for known defect categories.\nOperational Strategy: We set an asymmetric decision threshold: false rejects are acceptable for secondary human inspection, but false escapes (shipping a defective part) must approach zero. Unconfident predictions route to an operator verification UI, and confirmed edge cases automatically feed into an active learning dataset for retraining.",
+      {
+        "keyPoints": [
+          "Collect representative labelled defects and normal examples.",
+          "Select classification, detection or segmentation to match the task.",
+          "Use representative holdouts to test rare defects and shift.",
+          "Fit capture, inference and actuation within line timing.",
+          "Monitor false rejects and missed defects with human review and retraining."
+        ]
+      }
     ],
     [
       "multi-tenant-llm-isolation",
       "How do you prevent one customer's data from leaking to another in a multi-tenant AI product?",
-      "Multi-tenant LLM isolation requires strict defense-in-depth across authentication, data storage, runtime caching, and model context:\nIdentity & Storage: Tenant identity is cryptographically verified at the API gateway and propagated via signed tokens. In the storage layer, relational metadata enforces Row-Level Security (RLS). In vector databases, enterprise tenants are isolated via separate collections or dedicated namespaces, and metadata query filters unconditionally restrict vector retrieval to tenant_id == current_tenant. Access control is never delegated to LLM prompt instructions.\nCache Isolation: Prompt caching and KV-cache reuse must be explicitly scoped by hashing the tenant ID into the cache key: cache_key = hash(tenant_id + prompt_prefix). Sharing intermediate KV-cache states across tenants allows cross-tenant memory snooping.\nContext Sandboxing: Retrieved documents are treated as untrusted input. We wrap external text in structured XML tags and apply input guardrails to prevent indirect prompt injection from overriding system instructions or exfiltrating other tenants' data.\nVerification: CI pipelines execute automated cross-tenant security probes—attempting to retrieve across tenant boundaries—asserting that leak rates remain exactly zero."
+      "Multi-tenant LLM isolation requires strict defense-in-depth across authentication, data storage, runtime caching, and model context:\nIdentity & Storage: Tenant identity is cryptographically verified at the API gateway and propagated via signed tokens. In the storage layer, relational metadata enforces Row-Level Security (RLS). In vector databases, enterprise tenants are isolated via separate collections or dedicated namespaces, and metadata query filters unconditionally restrict vector retrieval to tenant_id == current_tenant. Access control is never delegated to LLM prompt instructions.\nCache Isolation: Prompt caching and KV-cache reuse must be explicitly scoped by hashing the tenant ID into the cache key: cache_key = hash(tenant_id + prompt_prefix). Sharing intermediate KV-cache states across tenants allows cross-tenant memory snooping.\nContext Sandboxing: Retrieved documents are treated as untrusted input. We wrap external text in structured XML tags and apply input guardrails to prevent indirect prompt injection from overriding system instructions or exfiltrating other tenants' data.\nVerification: CI pipelines execute automated cross-tenant security probes—attempting to retrieve across tenant boundaries—asserting that leak rates remain exactly zero.",
+      {
+        "keyPoints": [
+          "Enforce tenant identity and authorization on every data access.",
+          "Partition or filter retrieval and caches by tenant.",
+          "Use least-privilege tool access and keep secrets out of prompts.",
+          "Test cross-tenant access and prompt-injection failures.",
+          "Record auditable access and isolate training or logging data."
+        ]
+      }
     ]
   ],
   "evaluation": [
     [
       "offline-online-gap",
       "Your model improves offline metrics but loses the A/B test. Why might this happen?",
-      "When a model improves offline evaluation metrics but degrades live A/B test performance, I investigate across four common disconnects:\nFirst, metric misalignment. Offline proxies (such as offline AUC or cosine similarity) do not equal business objectives (such as 30-day user retention or revenue). If the model optimizes clicks, it may promote clickbait that degrades long-term engagement.\nSecond, selection bias and feedback loops. Offline evaluation on historical logs only measures predictions on items previously exposed to users (counterfactual evaluation problem). The new model may explore unexposed regions where historical behavior is absent, requiring off-policy evaluation like Inverse Propensity Scoring (IPS).\nThird, latency regression. The candidate model may achieve a higher F1 score but introduce 150ms of serving latency, which degrades conversion in time-sensitive user flows.\nFourth, experiment interference or cannibalization. In two-sided marketplaces, control and treatment groups often compete for the same inventory, violating SUTVA (Stable Unit Treatment Value Assumption) and requiring cluster-based or switchback experimentation."
+      "When a model improves offline evaluation metrics but degrades live A/B test performance, I investigate across four common disconnects:\nFirst, metric misalignment. Offline proxies (such as offline AUC or cosine similarity) do not equal business objectives (such as 30-day user retention or revenue). If the model optimizes clicks, it may promote clickbait that degrades long-term engagement.\nSecond, selection bias and feedback loops. Offline evaluation on historical logs only measures predictions on items previously exposed to users (counterfactual evaluation problem). The new model may explore unexposed regions where historical behavior is absent, requiring off-policy evaluation like Inverse Propensity Scoring (IPS).\nThird, latency regression. The candidate model may achieve a higher F1 score but introduce 150ms of serving latency, which degrades conversion in time-sensitive user flows.\nFourth, experiment interference or cannibalization. In two-sided marketplaces, control and treatment groups often compete for the same inventory, violating SUTVA (Stable Unit Treatment Value Assumption) and requiring cluster-based or switchback experimentation.",
+      {
+        "keyPoints": [
+          "Offline metrics can mismatch the actual product outcome.",
+          "Selection bias, leakage or distribution shift can inflate offline results.",
+          "Latency or serving integration can reduce online performance.",
+          "Check experiment validity, cohorts and guardrails before concluding causality."
+        ]
+      }
     ],
     [
       "llm-regression-testing",
       "How do you stop a prompt change from silently breaking an LLM feature?",
-      "Preventing prompt regressions in LLM production features requires treating prompts as versioned code with rigorous CI gates:\nFirst, we build a golden evaluation dataset with stratified slices: standard happy paths, historical production failure cases, complex edge cases, and adversarial prompt injections.\nSecond, we apply layered evaluation assertions. We use deterministic checks for schema compliance (valid JSON format, required keys, zero PII, token budget caps) and rubric-based LLM-as-a-judge for subjective dimensions (faithfulness, factual grounding, and tone). Because non-zero temperature introduces variance, we run multiple samples (n >= 3) per test case.\nThird, we enforce statistical pass thresholds in CI. A candidate prompt must achieve non-inferiority against the baseline prompt on core quality metrics with zero regressions on critical safety test cases.\nFinally, we capture production edge cases: user negative feedback and flagged responses automatically create pull requests to expand the regression test suite."
+      "Preventing prompt regressions in LLM production features requires treating prompts as versioned code with rigorous CI gates:\nFirst, we build a golden evaluation dataset with stratified slices: standard happy paths, historical production failure cases, complex edge cases, and adversarial prompt injections.\nSecond, we apply layered evaluation assertions. We use deterministic checks for schema compliance (valid JSON format, required keys, zero PII, token budget caps) and rubric-based LLM-as-a-judge for subjective dimensions (faithfulness, factual grounding, and tone). Because non-zero temperature introduces variance, we run multiple samples (n >= 3) per test case.\nThird, we enforce statistical pass thresholds in CI. A candidate prompt must achieve non-inferiority against the baseline prompt on core quality metrics with zero regressions on critical safety test cases.\nFinally, we capture production edge cases: user negative feedback and flagged responses automatically create pull requests to expand the regression test suite.",
+      {
+        "keyPoints": [
+          "Maintain a versioned representative evaluation set.",
+          "Test task correctness, grounding and safety rather than text similarity alone.",
+          "Compare prompt and model versions against a baseline.",
+          "Use human review to audit automated judges.",
+          "Gate rollout and monitor online regressions with rollback available."
+        ]
+      }
     ],
     [
       "fairness",
       "How do you check whether a model is fair, and what trade-offs arise?",
-      "Auditing algorithmic fairness begins by measuring performance disaggregated across protected demographic groups (such as race, gender, or age), analyzing error rates, calibration, and positive selection rates.\nThe central engineering reality is the mathematical impossibility theorem of fairness: when base rates P(Y=1) differ across groups, you cannot simultaneously achieve demographic parity (equal selection rates), equalized odds (equal false positive and false negative rates), and predictive parity (equal calibration). You must explicitly choose which definition satisfies your ethical and legal requirements in consultation with compliance teams.\nImportantly, removing protected attributes from training data fails because correlated proxy features (such as postal code or browser language) allow the model to reconstruct sensitive attributes.\nMitigation strategies include re-balancing training distributions, applying adversarial debiasing during training, calibrating post-processing decision thresholds per group where legally permitted, or routing uncertain boundary cases to human reviewers."
+      "Auditing algorithmic fairness begins by measuring performance disaggregated across protected demographic groups (such as race, gender, or age), analyzing error rates, calibration, and positive selection rates.\nThe central engineering reality is the mathematical impossibility theorem of fairness: when base rates P(Y=1) differ across groups, you cannot simultaneously achieve demographic parity (equal selection rates), equalized odds (equal false positive and false negative rates), and predictive parity (equal calibration). You must explicitly choose which definition satisfies your ethical and legal requirements in consultation with compliance teams.\nImportantly, removing protected attributes from training data fails because correlated proxy features (such as postal code or browser language) allow the model to reconstruct sensitive attributes.\nMitigation strategies include re-balancing training distributions, applying adversarial debiasing during training, calibrating post-processing decision thresholds per group where legally permitted, or routing uncertain boundary cases to human reviewers.",
+      {
+        "keyPoints": [
+          "Define harms and affected groups for the use case.",
+          "Measure disaggregated error and decision rates.",
+          "Fairness criteria can conflict when group base rates differ.",
+          "Discuss interventions and trade-offs with stakeholders and monitor outcomes."
+        ]
+      }
     ],
     [
       "explainability",
       "How would you explain a model's decision to a regulator or a customer?",
-      "Explaining model decisions requires matching the technical methodology to the stakeholder audience and regulatory context (such as GDPR Article 22 Right to Explanation or FCRA adverse action requirements):\nFor tabular and tree-based models, we compute TreeSHAP (Shapley Additive exPlanations). Grounded in cooperative game theory, Shapley values satisfy efficiency and additivity, enabling waterfall attribution plots showing exactly how each feature moved the prediction from the base value. However, we must account for feature correlation, which can create misleading off-manifold attributions.\nFor deep neural networks and text models, we apply Integrated Gradients or layer-wise relevance propagation, verifying implementation invariance.\nFor end users, technical feature attributions are unhelpful. We translate them into actionable counterfactual explanations: stating the top two factors and the minimum changes required to alter the outcome (for example, reducing debt-to-income ratio by 4%).\nCrucially, post-hoc explanations describe model mechanics, not causal reality. We store model lineage and data snapshots in a registry so any audited prediction can be reproduced identically."
+      "Explaining model decisions requires matching the technical methodology to the stakeholder audience and regulatory context (such as GDPR Article 22 Right to Explanation or FCRA adverse action requirements):\nFor tabular and tree-based models, we compute TreeSHAP (Shapley Additive exPlanations). Grounded in cooperative game theory, Shapley values satisfy efficiency and additivity, enabling waterfall attribution plots showing exactly how each feature moved the prediction from the base value. However, we must account for feature correlation, which can create misleading off-manifold attributions.\nFor deep neural networks and text models, we apply Integrated Gradients or layer-wise relevance propagation, verifying implementation invariance.\nFor end users, technical feature attributions are unhelpful. We translate them into actionable counterfactual explanations: stating the top two factors and the minimum changes required to alter the outcome (for example, reducing debt-to-income ratio by 4%).\nCrucially, post-hoc explanations describe model mechanics, not causal reality. We store model lineage and data snapshots in a registry so any audited prediction can be reproduced identically.",
+      {
+        "keyPoints": [
+          "Match the explanation to the stakeholder and decision.",
+          "Use interpretable models or attribution methods with stated limits.",
+          "Feature attribution is not proof of causality.",
+          "Keep lineage, decision records and validation evidence for audit."
+        ]
+      }
     ]
   ],
   "safety": [
     [
       "pii-privacy",
       "How do you build an LLM feature that handles personal data, in line with GDPR?",
-      "Minimize first: send only what the task needs, and detect and redact personal data before logs and third-party calls. Establish a legal basis and purpose, set retention limits, and support deletion across logs, indexes and training sets. Check where the provider stores data and whether it trains on it. Use on-device or private hosting for sensitive data. Run a privacy impact assessment, and don't put personal data in eval sets by default."
+      "Minimize first: send only what the task needs, and detect and redact personal data before logs and third-party calls. Establish a legal basis and purpose, set retention limits, and support deletion across logs, indexes and training sets. Check where the provider stores data and whether it trains on it. Use on-device or private hosting for sensitive data. Run a privacy impact assessment, and don't put personal data in eval sets by default.",
+      {
+        "keyPoints": [
+          "Minimize collected personal data and establish a lawful processing basis.",
+          "Redact or pseudonymize sensitive inputs where possible.",
+          "Apply access control, encryption and retention limits.",
+          "Support deletion and data subject rights throughout stored copies.",
+          "Assess vendors, data transfers and privacy risks before launch."
+        ]
+      }
     ]
   ],
   "multimodal": [
     [
       "object-detection",
       "Compare one-stage and two-stage object detectors. What is non-maximum suppression?",
-      "Two-stage and one-stage object detectors represent an architectural trade-off between localization precision and inference latency:\nTwo-stage detectors (such as Faster R-CNN) first generate candidate regions of interest (RoIs) using a Region Proposal Network (RPN), extract pooled feature maps via RoIAlign, and then perform bounding box regression and classification. They excel at high accuracy on small or densely clustered objects, but operate at higher computational latency.\nOne-stage detectors (such as YOLO or SSD) frame detection as a single regression problem, predicting bounding boxes and class probabilities directly across dense spatial grids in a single forward pass, enabling real-time edge serving (60+ FPS).\nNon-Maximum Suppression (NMS) is the greedy post-processing step that eliminates redundant overlapping bounding boxes. It selects the highest-scoring prediction and drops all adjacent boxes whose Intersection-over-Union (IoU) exceeds a set threshold (typically 0.5). A known failure mode is suppressing true adjacent objects. Modern architectures like DETR bypass NMS entirely by formulating detection as set prediction via bipartite matching."
+      "Two-stage and one-stage object detectors represent an architectural trade-off between localization precision and inference latency:\nTwo-stage detectors (such as Faster R-CNN) first generate candidate regions of interest (RoIs) using a Region Proposal Network (RPN), extract pooled feature maps via RoIAlign, and then perform bounding box regression and classification. They excel at high accuracy on small or densely clustered objects, but operate at higher computational latency.\nOne-stage detectors (such as YOLO or SSD) frame detection as a single regression problem, predicting bounding boxes and class probabilities directly across dense spatial grids in a single forward pass, enabling real-time edge serving (60+ FPS).\nNon-Maximum Suppression (NMS) is the greedy post-processing step that eliminates redundant overlapping bounding boxes. It selects the highest-scoring prediction and drops all adjacent boxes whose Intersection-over-Union (IoU) exceeds a set threshold (typically 0.5). A known failure mode is suppressing true adjacent objects. Modern architectures like DETR bypass NMS entirely by formulating detection as set prediction via bipartite matching.",
+      {
+        "keyPoints": [
+          "Two-stage detectors propose regions before classification and refinement.",
+          "One-stage detectors predict boxes and classes directly.",
+          "Non-maximum suppression removes overlapping lower-confidence detections.",
+          "Speed and small-object accuracy depend on architecture and workload."
+        ]
+      }
     ],
     [
       "diffusion-basics",
       "How do diffusion models generate images?",
-      "Diffusion models generate images by learning to reverse a gradual noising process:\nForward Process: Gaussian noise is incrementally added to a clean image over T discrete timesteps according to a fixed variance schedule. Because the process is Gaussian, any noisy state x_t can be sampled directly from x_0 in closed form without iterating through intermediate steps.\nReverse Denoising: A neural network (traditionally a U-Net with attention, or a Diffusion Transformer like DiT) is trained with Mean Squared Error (MSE) loss to predict the exact noise vector added at timestep t, conditioned on the timestep embedding.\nLatent Diffusion: Rather than operating in high-dimensional pixel space, models like Stable Diffusion operate inside a compressed latent space produced by a pretrained VAE, reducing compute requirements by 64x.\nControllability: Conditioning (such as text prompts) is injected via cross-attention. Classifier-Free Guidance (CFG) dynamically interpolates between unconditional and conditional predictions during inference, trading sample diversity for strict prompt alignment. Modern samplers (such as DDIM or DPMSolver) solve the reverse differential equations in 20 to 30 steps rather than 1,000."
+      "Diffusion models generate images by learning to reverse a gradual noising process:\nForward Process: Gaussian noise is incrementally added to a clean image over T discrete timesteps according to a fixed variance schedule. Because the process is Gaussian, any noisy state x_t can be sampled directly from x_0 in closed form without iterating through intermediate steps.\nReverse Denoising: A neural network (traditionally a U-Net with attention, or a Diffusion Transformer like DiT) is trained with Mean Squared Error (MSE) loss to predict the exact noise vector added at timestep t, conditioned on the timestep embedding.\nLatent Diffusion: Rather than operating in high-dimensional pixel space, models like Stable Diffusion operate inside a compressed latent space produced by a pretrained VAE, reducing compute requirements by 64x.\nControllability: Conditioning (such as text prompts) is injected via cross-attention. Classifier-Free Guidance (CFG) dynamically interpolates between unconditional and conditional predictions during inference, trading sample diversity for strict prompt alignment. Modern samplers (such as DDIM or DPMSolver) solve the reverse differential equations in 20 to 30 steps rather than 1,000.",
+      {
+        "keyPoints": [
+          "The forward process gradually adds noise to training images.",
+          "A neural network learns to predict noise or a denoising target.",
+          "Generation starts from noise and iteratively denoises.",
+          "Conditioning guides generation toward text or other inputs.",
+          "Sampling steps trade latency against quality."
+        ]
+      }
     ],
     [
       "speech-pipeline",
       "Design a real-time voice assistant. Where does the latency go?",
-      "Designing a real-time conversational voice assistant requires keeping total glass-to-glass latency under 800ms—the boundary where human conversation feels natural:\nPipeline Architecture: The pipeline cascades Voice Activity Detection (VAD), Streaming Speech-to-Text (STT), LLM generation, and Streaming Text-to-Speech (TTS).\nStreaming Strategy: We stream every intermediate boundary: partial audio chunks stream into STT; token streams emit from the LLM; and as soon as the first clause or punctuation boundary completes (5 to 8 tokens), tokens dispatch immediately to neural TTS chunk synthesis. This achieves sub-500ms Time-to-First-Audio (TTFA) before the LLM finishes the full response.\nEndpointing Trade-off: Determining when the user finished speaking is the most critical balance. A short silence threshold (e.g., 400ms) cuts off thoughtful pauses; a long threshold (1,200ms) introduces noticeable delay. We use acoustic VAD paired with LLM completion probability to detect turn completion.\nBarge-In: The client audio subsystem implements Acoustic Echo Cancellation (AEC). When user speech is detected during assistant playback, the client immediately cancels playback and interrupts server generation."
+      "Designing a real-time conversational voice assistant requires keeping total glass-to-glass latency under 800ms—the boundary where human conversation feels natural:\nPipeline Architecture: The pipeline cascades Voice Activity Detection (VAD), Streaming Speech-to-Text (STT), LLM generation, and Streaming Text-to-Speech (TTS).\nStreaming Strategy: We stream every intermediate boundary: partial audio chunks stream into STT; token streams emit from the LLM; and as soon as the first clause or punctuation boundary completes (5 to 8 tokens), tokens dispatch immediately to neural TTS chunk synthesis. This achieves sub-500ms Time-to-First-Audio (TTFA) before the LLM finishes the full response.\nEndpointing Trade-off: Determining when the user finished speaking is the most critical balance. A short silence threshold (e.g., 400ms) cuts off thoughtful pauses; a long threshold (1,200ms) introduces noticeable delay. We use acoustic VAD paired with LLM completion probability to detect turn completion.\nBarge-In: The client audio subsystem implements Acoustic Echo Cancellation (AEC). When user speech is detected during assistant playback, the client immediately cancels playback and interrupts server generation.",
+      {
+        "keyPoints": [
+          "A voice pipeline includes capture, endpointing, recognition, generation and synthesis.",
+          "Streaming and overlap reduce time to first audible response.",
+          "Endpoint detection trades responsiveness against cutting off speech.",
+          "Support interruption and cancel obsolete generation or audio.",
+          "Measure end-to-end latency rather than just model inference time."
+        ]
+      }
     ]
   ],
   "coding": [
     [
       "implement-kmeans",
       "Implement k-means from scratch in NumPy. What would you test?",
-      "Initialize k centroids, preferably using k-means++. Loop: compute distances with broadcasting, assign each point to its nearest centroid, recompute means, and stop when assignments stop changing or at a maximum iteration count. Handle empty clusters by reseeding them. Test with clearly separated synthetic blobs, k equal to one, a fixed seed, and a check that within-cluster error never increases between iterations."
+      "Initialize k centroids, preferably using k-means++. Loop: compute distances with broadcasting, assign each point to its nearest centroid, recompute means, and stop when assignments stop changing or at a maximum iteration count. Handle empty clusters by reseeding them. Test with clearly separated synthetic blobs, k equal to one, a fixed seed, and a check that within-cluster error never increases between iterations.",
+      {
+        "keyPoints": [
+          "Assign each sample to its nearest centroid using vectorized distances.",
+          "Recompute cluster means and iterate to convergence.",
+          "Handle empty clusters and reproducible initialization.",
+          "Test known clusters, degenerate inputs and multiple restarts."
+        ]
+      }
     ],
     [
       "implement-attention",
       "Implement scaled dot-product attention in PyTorch and explain the tensor shapes.",
-      "Given Q, K and V with shape batch, length, dim: scores = Q @ K.transpose(-2, -1) / sqrt(d_k). Apply the mask by filling blocked scores with negative infinity before softmax on the last dimension, then return weights @ V. Output shape matches V's. For multi-head, reshape to batch, heads, length, head dim. Common bugs are masking after softmax and applying softmax to the wrong dimension."
+      "Given Q, K and V with shape batch, length, dim: scores = Q @ K.transpose(-2, -1) / sqrt(d_k). Apply the mask by filling blocked scores with negative infinity before softmax on the last dimension, then return weights @ V. Output shape matches V's. For multi-head, reshape to batch, heads, length, head dim. Common bugs are masking after softmax and applying softmax to the wrong dimension.",
+      {
+        "keyPoints": [
+          "Compute query-key scores with compatible batch, head and sequence axes.",
+          "Scale logits by square root of key dimension.",
+          "Apply the mask before softmax over the key axis.",
+          "Multiply attention weights by values to produce output.",
+          "Test shapes, masks and numerical stability."
+        ]
+      }
     ],
     [
       "implement-metrics",
       "Write precision, recall and F1 from scratch, and handle the edge cases.",
-      "Count true positives, false positives and false negatives. Precision is TP over TP plus FP, recall is TP over TP plus FN, and F1 is their harmonic mean. Guard every division against zero, and state the convention you use, usually returning zero. For multi-class work, explain macro averaging, which treats classes equally, against micro averaging, which treats examples equally. Test with all-negative predictions and no positive labels."
+      "Count true positives, false positives and false negatives. Precision is TP over TP plus FP, recall is TP over TP plus FN, and F1 is their harmonic mean. Guard every division against zero, and state the convention you use, usually returning zero. For multi-class work, explain macro averaging, which treats classes equally, against micro averaging, which treats examples equally. Test with all-negative predictions and no positive labels.",
+      {
+        "keyPoints": [
+          "Precision is TP divided by TP plus FP.",
+          "Recall is TP divided by TP plus FN.",
+          "F1 is the harmonic mean of precision and recall.",
+          "Define zero-denominator behavior explicitly.",
+          "Test perfect, all-negative and no-positive-prediction cases."
+        ]
+      }
     ],
     [
       "top-k-streaming",
       "Find the top k most frequent items in a very large stream. What is your approach?",
-      "If it fits in memory, count with a hash map and keep a min-heap of size k, which takes O(n log k) time. If it doesn't, use an approximate sketch such as Count-Min with a heap, or Misra-Gries, which accept a bounded error for fixed memory. On a cluster, count by key with map-reduce, then merge. State your accuracy needs first, since they determine the design."
+      "If it fits in memory, count with a hash map and keep a min-heap of size k, which takes O(n log k) time. If it doesn't, use an approximate sketch such as Count-Min with a heap, or Misra-Gries, which accept a bounded error for fixed memory. On a cluster, count by key with map-reduce, then merge. State your accuracy needs first, since they determine the design.",
+      {
+        "keyPoints": [
+          "Exact counts require memory proportional to distinct items.",
+          "A size-k heap selects top counts efficiently after counting.",
+          "Approximate sketches or heavy-hitter algorithms bound memory.",
+          "Explain approximation error and whether a second pass is available."
+        ]
+      }
     ],
     [
       "dsa-for-ml",
       "An interviewer gives you a coding problem you haven't seen. How do you work through it?",
-      "Restate it and ask about input size and edge cases. Give the brute-force solution and its complexity, then improve it. Most problems at ML roles use hash maps, two pointers, sliding windows, heaps, binary search, BFS or DFS, and basic dynamic programming. Talk as you work, write clean code, then test with a small example and an edge case. A working simple solution beats an unfinished clever one."
+      "Restate it and ask about input size and edge cases. Give the brute-force solution and its complexity, then improve it. Most problems at ML roles use hash maps, two pointers, sliding windows, heaps, binary search, BFS or DFS, and basic dynamic programming. Talk as you work, write clean code, then test with a small example and an edge case. A working simple solution beats an unfinished clever one.",
+      {
+        "keyPoints": [
+          "Clarify constraints and input or output behavior before coding.",
+          "Start with a correct baseline and explain its complexity.",
+          "Choose a data structure using the constraints.",
+          "Test edge cases and reason through correctness.",
+          "Explain improvements and trade-offs while implementing."
+        ]
+      }
     ],
     [
       "sql-window",
       "Using SQL, find each user's most recent purchase and their 7-day rolling spend.",
-      "Use window functions. ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY purchased_at DESC) and filter to row 1 gives the latest purchase. For rolling spend, aggregate to one row per user per day, then use SUM(amount) OVER (PARTITION BY user_id ORDER BY day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW). Days with no purchases need a calendar join, or the seven rows will span more than seven days."
+      "Use window functions. ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY purchased_at DESC) and filter to row 1 gives the latest purchase. For rolling spend, aggregate to one row per user per day, then use SUM(amount) OVER (PARTITION BY user_id ORDER BY day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW). Days with no purchases need a calendar join, or the seven rows will span more than seven days.",
+      {
+        "keyPoints": [
+          "Use row numbering partitioned by user and ordered by descending time for latest purchases.",
+          "Define a deterministic tie-breaker for equal timestamps.",
+          "A seven-day window is a time range rather than seven rows.",
+          "Aggregate per user without losing required row-level information.",
+          "Test missing dates and multiple purchases on the same day."
+        ]
+      }
     ]
   ],
   "behavioral": [
     [
       "project-deep-dive",
       "Walk me through the most impactful ML project you led.",
-      "Use a clear shape: the business problem and metric, the baseline, your role, key decisions and alternatives you rejected, what failed, and the measured outcome. Senior interviewers will probe, so know your data size, latency, cost, evaluation method and what you would change now. Say I for your own decisions and we for the team's. Prepare one project deeply enough to discuss for 30 minutes."
+      "Use a clear shape: the business problem and metric, the baseline, your role, key decisions and alternatives you rejected, what failed, and the measured outcome. Senior interviewers will probe, so know your data size, latency, cost, evaluation method and what you would change now. Say I for your own decisions and we for the team's. Prepare one project deeply enough to discuss for 30 minutes.",
+      {
+        "keyPoints": [
+          "State the business problem, baseline and success metric.",
+          "Explain personal technical decisions and constraints.",
+          "Describe measured outcomes and how attribution was checked.",
+          "Explain trade-offs, failures and what changed afterward."
+        ]
+      }
     ],
     [
       "ml-not-needed",
       "Tell me about a time you decided not to use ML, or to use a simpler model.",
-      "Show judgment. Describe the problem, then how you compared a simple rule or baseline with a complex model on accuracy, cost, latency and maintenance. Give numbers, such as a rules system reaching most of the value in two weeks. Explain how you convinced people who wanted something more advanced, and what would have changed your decision. Interviewers look for evidence over enthusiasm for technology."
+      "Show judgment. Describe the problem, then how you compared a simple rule or baseline with a complex model on accuracy, cost, latency and maintenance. Give numbers, such as a rules system reaching most of the value in two weeks. Explain how you convinced people who wanted something more advanced, and what would have changed your decision. Interviewers look for evidence over enthusiasm for technology.",
+      {
+        "keyPoints": [
+          "Compare a simple baseline with ML using the actual product need.",
+          "Account for data quality, operating cost and maintenance.",
+          "Explain the evidence behind choosing the simpler approach.",
+          "Define when future evidence would justify adding ML."
+        ]
+      }
     ],
     [
       "failed-model",
       "Tell me about a model that failed in production. What did you do?",
-      "Pick a real failure with consequences. Explain how it was detected, how you limited the damage, the root cause and the lasting fix, such as a new monitor or release check. Take ownership without blaming others. A blameless account that produced a system change is much stronger than a story with no mistakes. Quantify the impact, and say what you now do differently."
+      "Pick a real failure with consequences. Explain how it was detected, how you limited the damage, the root cause and the lasting fix, such as a new monitor or release check. Take ownership without blaming others. A blameless account that produced a system change is much stronger than a story with no mistakes. Quantify the impact, and say what you now do differently.",
+      {
+        "keyPoints": [
+          "Describe the failure and its observable impact.",
+          "Explain containment or rollback before extended diagnosis.",
+          "Trace the cause using evidence rather than hindsight.",
+          "Describe prevention and what was learned without blaming others."
+        ]
+      }
     ],
     [
       "influence-stakeholders",
       "How do you handle a product manager who wants a launch date your model can't safely meet?",
-      "Translate risk into business terms and bring options, not just a no. For example, offer a limited launch to low-risk users, a human review step, or a simpler first version, each with its risk and timeline. Agree a metric that defines ready. If leadership accepts a risk, record the decision and set monitoring and rollback. Seniors are judged on keeping trust while finding a way forward."
+      "Translate risk into business terms and bring options, not just a no. For example, offer a limited launch to low-risk users, a human review step, or a simpler first version, each with its risk and timeline. Agree a metric that defines ready. If leadership accepts a risk, record the decision and set monitoring and rollback. Seniors are judged on keeping trust while finding a way forward.",
+      {
+        "keyPoints": [
+          "Clarify launch goals and quantify the specific risk.",
+          "Present evidence and options such as reduced scope or staged rollout.",
+          "Agree measurable launch criteria and communicate ownership.",
+          "Escalate unresolved high-impact risk with a clear recommendation."
+        ]
+      }
     ],
     [
       "mentoring-technical-direction",
       "As a senior engineer, how do you raise the quality of your team's ML work?",
-      "As a senior engineer, I raise team engineering quality by institutionalizing rigorous systems and multiplying collective output rather than acting as a gatekeeper:\nFirst, engineering scaffolding. I introduce standardized production checklists: experiment design templates with pre-registered hypotheses and power calculations, automated offline evaluation harnesses in CI, and deployment runbooks covering canary metrics and rollback procedures.\nSecond, pedagogical code and design reviews. I focus reviews on architectural trade-offs, failure modes, and data leakage rather than stylistic nitpicks. I frame feedback as architectural questions to build junior engineers' mental models.\nThird, technical direction. I help the team prioritize the highest-impact problems, identifying when a simple heuristic or linear baseline delivers 80% of business value faster than a complex deep learning architecture.\nSuccess is measured by systemic outcomes: reduced incident frequency, faster time-to-production for new models, and junior engineers independently driving complex technical designs."
+      "As a senior engineer, I raise team engineering quality by institutionalizing rigorous systems and multiplying collective output rather than acting as a gatekeeper:\nFirst, engineering scaffolding. I introduce standardized production checklists: experiment design templates with pre-registered hypotheses and power calculations, automated offline evaluation harnesses in CI, and deployment runbooks covering canary metrics and rollback procedures.\nSecond, pedagogical code and design reviews. I focus reviews on architectural trade-offs, failure modes, and data leakage rather than stylistic nitpicks. I frame feedback as architectural questions to build junior engineers' mental models.\nThird, technical direction. I help the team prioritize the highest-impact problems, identifying when a simple heuristic or linear baseline delivers 80% of business value faster than a complex deep learning architecture.\nSuccess is measured by systemic outcomes: reduced incident frequency, faster time-to-production for new models, and junior engineers independently driving complex technical designs.",
+      {
+        "keyPoints": [
+          "Set shared review, testing and evaluation standards.",
+          "Coach teammates through concrete technical decisions.",
+          "Create reusable tools or practices that reduce repeated failures.",
+          "Measure team outcomes and balance guidance with autonomy."
+        ]
+      }
     ],
     [
       "ambiguous-problem",
       "You are told to use AI to reduce support costs, with no further detail. What do you do?",
-      "Clarify first: how much is spent now, which ticket types drive it, and what quality is acceptable. Analyse the data before choosing a method. Propose a small test, such as drafting replies for one common category with human review, and define success and guardrails. Compare build and buy, and estimate cost per ticket. Then scale what works. Interviewers want structured thinking, not an immediate architecture."
+      "Clarify first: how much is spent now, which ticket types drive it, and what quality is acceptable. Analyse the data before choosing a method. Propose a small test, such as drafting replies for one common category with human review, and define success and guardrails. Compare build and buy, and estimate cost per ticket. Then scale what works. Interviewers want structured thinking, not an immediate architecture.",
+      {
+        "keyPoints": [
+          "Clarify support costs, user needs and the success metric.",
+          "Inspect workflows and data before selecting a model.",
+          "Compare automation with simpler process improvements.",
+          "Run a scoped pilot with quality and escalation guardrails.",
+          "Measure cost reduction alongside customer outcomes."
+        ]
+      }
     ],
     [
       "salary-senior-signals",
       "What separates a senior ML engineer from a mid-level one in interviews?",
-      "Seniors start with the business problem and metric, state assumptions, and compare options with numbers instead of naming tools. They discuss failure modes, cost, monitoring and rollback without being asked. They know their past projects in depth, admit what they don't know, and explain trade-offs clearly. They also show ownership beyond code, such as influencing direction, handling ambiguity and helping others improve."
+      "Seniors start with the business problem and metric, state assumptions, and compare options with numbers instead of naming tools. They discuss failure modes, cost, monitoring and rollback without being asked. They know their past projects in depth, admit what they don't know, and explain trade-offs clearly. They also show ownership beyond code, such as influencing direction, handling ambiguity and helping others improve.",
+      {
+        "keyPoints": [
+          "Senior engineers frame ambiguous problems and own outcomes.",
+          "They explain system trade-offs and production failure modes.",
+          "They use evidence to connect technical work to business impact.",
+          "They raise team quality through influence and mentoring."
+        ]
+      }
     ]
   ]
 }

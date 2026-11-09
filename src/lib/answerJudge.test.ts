@@ -24,3 +24,23 @@ describe('judgeAnswer', () => {
 });
 it('turns a criterion into a plain claim', () => { expect(toClaim('Explains that one model adapts')).toBe('One model adapts'); });
 it('splits unpunctuated speech into windows', () => { expect(splitAnswer(Array(40).fill('word').join(' ')).length).toBeGreaterThan(1); });
+
+import { judgePracticeAnswer } from './answerJudge';
+it('uses optional rubric points and requires entailment even with high similarity', async () => {
+  const q = { answer: 'A different reference sentence.', keyPoints: ['Alpha is useful', 'Beta is useful', 'Gamma is useful'] };
+  const result = await judgePracticeAnswer('Alpha is useful. Beta is related. Gamma is false.', q, {
+    embed: async texts => texts.map(() => [1]),
+    nli: async pairs => pairs.map(([premise, claim]) => premise.includes('false') && claim.includes('Gamma') ? {entails:0.01,conflicts:0.99} : premise === claim + '.' ? {entails:0.95,conflicts:0.01} : {entails:0.3,conflicts:0.1}),
+  });
+  expect(result.points.map(p=>p.point)).toEqual(q.keyPoints);
+  expect(result.points.map(p=>p.verdict)).toEqual(['covered','missed','conflict']);
+});
+it('retains the current reference-sentence check without a rubric', async () => {
+  const result = await judgePracticeAnswer('Alpha is a thing we use.',{answer:'Alpha is used. Beta holds here.'},models);
+  expect(result.points.map(p=>p.point)).toEqual(['Alpha is used.','Beta holds here.']);
+  expect(result.score).toBe(50);
+});
+it('does not mark a rubric claim hit when another sentence contradicts it', async () => {
+  const result = await judgePracticeAnswer('Alpha is useful. Alpha is false.', {answer:'',keyPoints:['Alpha is useful']},models);
+  expect(result.points[0].verdict).toBe('conflict');
+});

@@ -81,3 +81,35 @@ export async function judgeAnswer(answer: string, criteria: string[], reference:
   ].slice(0, 3);
   return { score, points, sentences: results, improvements };
 }
+
+/** Rubric checks require entailment, not just related wording. Scores stay hidden
+ * until a held-out evaluation supports presenting a numeric grade. */
+export const SHOW_RUBRIC_SCORE = false;
+export async function judgeKeyPoints(answer: string, keyPoints: string[], models: JudgeModels): Promise<AnswerJudgement> {
+  const sentences = splitAnswer(answer);
+  if (!sentences.length) return { score: 0, points: keyPoints.map(point => ({ point, verdict: 'missed', confidence: 0 })), sentences: [], improvements: [] };
+  const vectors = await models.embed([...keyPoints, ...sentences]);
+  // Check up to three related sentences: a paraphrase may not be the nearest match.
+  const candidates = keyPoints.map((_, i) => sentences.map((text, j) => ({ text, sim: dot(vectors[i], vectors[keyPoints.length + j]) }))
+    .sort((a, b) => b.sim - a.sim).slice(0, 3));
+  const pairs: [string, string][] = candidates.flatMap((rows, i) => rows.map((row): [string, string] => [row.text, keyPoints[i]]));
+  const scores = await models.nli(pairs);
+  let offset = 0;
+  const points: PointResult[] = keyPoints.map((point, i) => {
+    const rows = candidates[i].map(row => ({ ...row, ...scores[offset++] }));
+    const hit = rows.filter(row => row.sim >= ABOUT_POINT && row.entails >= 0.7 && row.conflicts < 0.3)
+      .sort((a, b) => b.entails - a.entails)[0];
+    const conflict = rows.find(row => row.sim >= ABOUT_POINT && row.conflicts >= CONFLICTS);
+    // Contradicting a point elsewhere in an answer prevents claiming it was hit.
+    const verdict: PointVerdict = conflict ? 'conflict' : hit ? 'covered' : 'missed';
+    return { point, verdict, confidence: Math.round((hit?.entails ?? 0) * 100), ...((conflict ?? hit) ? { evidence: (conflict ?? hit)!.text } : {}) };
+  });
+  return { score: Math.round(100 * points.filter(p => p.verdict === 'covered').length / keyPoints.length), points, sentences: [],
+    improvements: points.filter(p => p.verdict !== 'covered').map(p => `Review: ${p.point}`) };
+}
+
+export function judgePracticeAnswer(answer: string, question: { answer: string; keyPoints?: string[] }, models: JudgeModels) {
+  return question.keyPoints?.length
+    ? judgeKeyPoints(answer, question.keyPoints, models)
+    : judgeAnswer(answer, splitAnswer(question.answer).slice(0, 6), question.answer, models);
+}

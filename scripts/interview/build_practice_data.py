@@ -51,13 +51,19 @@ for q in json.loads((ROOT / "src/data/interviewCatalog.generated.json").read_tex
     if q.get("bank") == "software-system-design-questions":
         continue
     item = {"id": q["id"], "title": q["title"], "answer": tidy(q["answer"])}
+    if "keyPoints" in q:
+        item["keyPoints"] = q["keyPoints"]
     if q.get("options"):
         item["options"] = [o["text"] for o in q["options"]]
     ours.append((SECTION_TOPIC.get(q.get("section"), "rag"), item))
 # Fundamentals and senior-round questions written for this site.
 for topic, rows in json.loads((ROOT / "src/data/interviewSeniorQuestions.json").read_text()).items():
-    for qid, title, answer in rows:
-        ours.append((topic, {"id": f"senior:{qid}", "title": title, "answer": answer}))
+    for row in rows:
+        qid, title, answer, *metadata = row
+        item = {"id": f"senior:{qid}", "title": title, "answer": answer}
+        if metadata and "keyPoints" in metadata[0]:
+            item["keyPoints"] = metadata[0]["keyPoints"]
+        ours.append((topic, item))
 titles_seen = set()
 for topic, item in ours:
     key = item["title"].strip().lower()
@@ -100,8 +106,22 @@ for f in sorted((REPO / "interviews/questions").glob("*/*.md")):
                                               "followUps": bullets("Follow-ups"), "wrongAnswers": bullets("Wrong answers"),
                                               "rounds": meta.get("rounds") or [], "roles": meta.get("roles") or [],
                                               "priority": (meta.get("level", 2), -len(meta.get("roles") or []), -len(meta.get("rounds") or []))})
+    if "keyPoints" in meta:
+        topics[meta["card"]]["questions"][-1]["keyPoints"] = meta["keyPoints"]
 # Must-know first: our hand-written questions, then repo questions by level (basic first) and how many roles ask them.
+def validate_key_points(item):
+    if "keyPoints" not in item:
+        return
+    points = item["keyPoints"]
+    if (not isinstance(points, list) or not 3 <= len(points) <= 6
+            or any(not isinstance(p, str) or not p.strip() or len(p) > 200 for p in points)
+            or len(set(points)) != len(points)):
+        raise ValueError(f"Invalid keyPoints for {item['id']}: expected 3 to 6 unique short points")
+
+
 for t in topics.values():
+    for item in t["questions"]:
+        validate_key_points(item)
     t["questions"].sort(key=lambda q: (0, 0, 0) if "priority" not in q else (1, *q["priority"]))
     for q in t["questions"]:
         q.pop("priority", None)
