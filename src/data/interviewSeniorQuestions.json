@@ -90,32 +90,32 @@
     [
       "vanishing-gradients",
       "What causes vanishing and exploding gradients, and how are they fixed?",
-      "Backpropagation multiplies many Jacobians, so gradients shrink or grow exponentially with depth. Saturating activations such as sigmoid make shrinkage worse. Fixes include ReLU-family activations, careful initialization such as He or Xavier, normalization layers, and residual connections, which give gradients a direct path. Gradient clipping handles explosions, especially in RNNs. Check by logging per-layer gradient norms during training."
+      "Backpropagation computes gradients via the chain rule, multiplying Jacobian matrices across layers. When weight matrices or activation derivatives have singular values below 1\u2014such as sigmoid or tanh whose maximum derivative is 0.25\u2014gradients vanish exponentially with depth. If singular values exceed 1, gradients explode. Mitigate vanishing gradients using non-saturating activations (ReLU, GELU), residual connections that provide an additive gradient highway, normalization layers (LayerNorm, RMSNorm), and proper variance initialization such as He initialization for ReLU ((W) = 2/n_{in}$). For exploding gradients, enforce L2 gradient norm clipping (typically threshold 1.0) and monitor per-layer gradient norms during warmup."
     ],
     [
       "rnn-lstm",
       "Why do LSTMs handle long sequences better than plain RNNs, and why did transformers replace them?",
-      "A plain RNN multiplies through the same transition at each step, so gradients vanish. An LSTM adds a cell state with gated, mostly additive updates, so information and gradients persist longer. GRUs simplify this with fewer gates. Transformers replaced them because attention connects any two positions in one step and allows parallel training, whereas RNNs must process tokens in order. LSTMs can still suit small streaming models."
+      "Plain RNNs apply the same transition matrix at each step, causing gradients to vanish or explode over long time horizons. An LSTM introduces a dedicated cell state updated via an additive highway:  = f_t \\odot c_{t-1} + i_t \\odot \tilde{c}_t$. When forget gate  \u0007pprox 1$, the gradient $\frac{\\partial c_t}{\\partial c_{t-1}}$ equals $, preserving gradient flow across hundreds of steps without exponential decay. Transformers replaced recurrent architectures because RNNs require sequential step-by-step computation that cannot parallelize across time during training. Self-attention connects any two token positions in O(1) operations and computes all interactions across the entire sequence in parallel on GPUs."
     ],
     [
       "cnn-properties",
       "Why do CNNs work so well for images? Explain convolution and pooling.",
-      "Convolution applies the same small filter everywhere, so it uses few parameters and detects a pattern wherever it appears. Stacking layers grows the receptive field from edges to parts to objects. Pooling or strided convolution reduces resolution and adds tolerance to small shifts. These built-in assumptions let CNNs learn well from limited data, while vision transformers typically need more data or strong pretraining."
+      "CNNs succeed on images due to two inductive biases: translation equivariance and spatial locality. Locality assumes neighboring pixels share strong semantic correlation, captured by small convolutional kernels. Translation equivariance means shifting an object in the input shifts the resulting feature map identically, allowing shared weights to detect features anywhere in the image. Hierarchical stacking grows the effective receptive field from local edges to complex object semantics, while pooling or strided convolutions reduce spatial dimensions. Vision Transformers lack these built-in spatial priors: they treat image patches as arbitrary tokens with global attention from layer one, requiring far larger pretraining datasets to learn spatial structure from scratch."
     ],
     [
       "resnet",
       "What problem do residual connections solve?",
-      "Very deep plain networks trained worse than shallower ones, even on training data, so it was an optimization problem rather than overfitting. A residual block learns a change added to its input, so doing nothing is easy, and identity shortcuts give gradients a clean path. This made networks with over a hundred layers trainable. The same idea appears in the add-and-norm structure of transformers."
+      "Deep plain networks fail not from overfitting, but from an optimization barrier: as depth increases, training error degrades because gradients struggle to propagate through non-linear layers. ResNet introduces identity shortcut connections where a block learns a residual mapping (x) = H(x) - x$, producing output (x) = F(x) + x$. When weights are initialized near zero, the block defaults to the identity function. During backpropagation, the gradient $\frac{\\partial L}{\\partial x} = \frac{\\partial L}{\\partial H}(1 + \frac{\\partial F}{\\partial x})$ passes back directly through the +1 term, ensuring gradient signal reaches early layers regardless of network depth and enabling models with hundreds of layers to converge."
     ],
     [
       "batchnorm-vs-layernorm",
       "Compare batch normalization and layer normalization. Why do transformers use layer norm?",
-      "Batch norm normalizes each feature across the batch and keeps running statistics for inference, so it depends on batch size and can behave differently between training and serving. Layer norm normalizes across features within each example, so it works with any batch size and variable sequence lengths. That makes it the natural choice for transformers. Batch norm remains effective for CNNs with reasonably large batches."
+      "Batch Normalization computes mean and variance across the batch dimension for each feature, tracking running statistics for inference. It degrades when batch sizes are small, and it fails in NLP because variable sequence lengths and autoregressive single-token decoding distort mini-batch statistics. Layer Normalization computes mean and variance across the hidden channel dimension {model}$ for each token independently (0 \to$ normalize over $). Because LayerNorm performs zero cross-sample or cross-token pooling, it behaves identically during training and single-token serving, handles dynamic sequence lengths naturally, and operates cleanly in distributed pipelines. BatchNorm remains effective for CNNs with large, fixed-size image batches."
     ],
     [
       "optimizers",
       "Compare SGD with momentum, Adam and AdamW. What would you start with?",
-      "Momentum averages past gradients to speed progress along consistent directions. Adam also adapts a per-parameter step using squared gradient history, so it converges quickly with less tuning. AdamW applies weight decay directly to weights rather than through the gradient, which fixes how Adam interacts with L2. I would start with AdamW and warmup for transformers. SGD with momentum and a schedule can still generalize well for vision."
+      "Momentum accelerates gradient descent by accumulating an exponentially decaying moving average of past gradients, dampening oscillations across steep ravines. Adam adds adaptive per-parameter learning rates by tracking both first moments (momentum) and uncentered second moments (variance). However, standard Adam couples L2 regularization with the gradient update: weight decay is divided by the square root of historical squared gradients, penalizing frequently updated weights far less than infrequently updated ones. AdamW fixes this by decoupling weight decay, subtracting $\\lambda \theta_{t-1}$ directly from the weights after the adaptive step. Use AdamW with linear warmup and cosine decay for transformers, and SGD with momentum for convolutional architectures."
     ],
     [
       "dropout",
@@ -130,22 +130,22 @@
     [
       "loss-debugging",
       "Training loss is NaN after a few hundred steps. How do you debug it?",
-      "Find the first bad step and log the loss, gradient norms and activation ranges. Common causes are a learning rate that is too high, log of zero, division by zero, bad input values, and FP16 overflow. Check the data for NaNs first, then lower the learning rate and add gradient clipping. Overfit one small batch to separate model bugs from data problems. PyTorch anomaly detection can locate the failing operation."
+      "Isolate the failure systematically. First, log gradient norms, loss components, and activation scales right before the NaN step. Common root causes are: 1) Data anomalies (unhandled NaNs, infs, or zero-length sequences in a batch). 2) Numerical instability in loss functions (log of zero, unscaled logits in cross-entropy, or division by variance without epsilon). 3) Mixed-precision underflow or overflow in FP16, where dynamic loss scaling fails. 4) Unstable learning rates without warmup. To debug, enable PyTorch anomaly detection (torch.autograd.set_detect_anomaly(True)), overfit on a single deterministic mini-batch, inspect whether gradients or activations blew up first, and enforce gradient norm clipping at 1.0."
     ],
     [
       "distributed-training",
       "How does distributed data parallel training work, and what limits it?",
-      "Each GPU holds a model copy and processes a different slice of the batch. After backward, gradients are averaged with all-reduce so all copies stay identical. Limits are communication cost, slow stragglers and data loading bottlenecks. Larger effective batches usually need learning rate scaling with warmup. Models too large for one GPU need sharding methods such as FSDP or ZeRO, and long runs need checkpoint recovery."
+      "Distributed Data Parallel (DDP) replicates the full model across all GPUs; each GPU computes forward and backward passes on an independent data micro-batch. During the backward pass, gradients are asynchronously averaged across workers via ring or tree All-Reduce, keeping weights synchronized. DDP is bounded by inter-GPU network bandwidth (NCCL), straggler effects, and GPU memory capacity. In mixed-precision training, model weights, gradients, and AdamW optimizer states consume 16 bytes per parameter. When a model exceeds single-GPU VRAM, transition to ZeRO or FSDP: ZeRO-1 shards optimizer states (4x memory reduction), ZeRO-2 shards gradients (8x), and ZeRO-3/FSDP shards model weights, gathering them on-demand during forward and backward passes."
     ],
     [
       "mixed-precision",
       "What is mixed-precision training and what can go wrong?",
-      "It runs most operations in FP16 or BF16 and keeps sensitive parts in FP32, saving memory and increasing speed. FP16 has a small range, so small gradients can underflow to zero; a loss scaler multiplies the loss to prevent this and skips steps that overflow. BF16 has the same range as FP32 with less precision, so it usually needs no scaler. Watch for NaNs and check accuracy against a full precision baseline."
+      "Mixed precision uses 16-bit floating point (FP16 or BF16) for matrix multiplications and activations while maintaining FP32 master weights and optimizer states. FP16 has a 5-bit exponent and 10-bit mantissa (max value ~65,504, min subnormal $\\sim 6 \times 10^{-8}$); small backpropagated gradients easily underflow to zero, requiring a dynamic loss scaler that multiplies loss by a scale factor and skips optimizer steps on overflow. BF16 shares FP32's 8-bit exponent and has a 7-bit mantissa, offering the same dynamic range (0^{38}$) with reduced precision. BF16 eliminates gradient underflow and loss scaling entirely, making it the modern standard on Ampere and newer GPUs."
     ],
     [
       "gans",
       "How do GANs train, and why did diffusion models overtake them?",
-      "A generator tries to fool a discriminator while the discriminator learns to separate real from fake, forming a minimax game. Training can be unstable, and mode collapse leaves the generator producing little variety. Diffusion models learn to reverse gradual noising with a simple regression loss, which is stable and covers modes better. Their cost is many sampling steps, though GANs and fast samplers remain useful when speed matters."
+      "GANs frame generative modeling as a minimax game between a generator producing synthetic samples and a discriminator distinguishing real from fake data. Training optimizes Jensen-Shannon divergence (or Wasserstein distance with a 1-Lipschitz critic). GANs suffer from non-convergence limit cycles, vanishing generator gradients, and mode collapse where the generator outputs limited repetitive variations. Diffusion models replace adversarial competition with denoising score matching: a forward Markov process adds Gaussian noise across discrete timesteps, and a reverse neural network learns to predict the added noise using a stable mean squared error loss. Diffusion guarantees stable training and full mode coverage, trading one-step inference for multi-step sampling."
     ],
     [
       "vae",
@@ -162,7 +162,7 @@
     [
       "bert-vs-gpt",
       "What is the difference between BERT and GPT?",
-      "BERT uses an encoder with bidirectional attention, so each token sees context on both sides, and it is trained by masking tokens. That suits classification and embeddings. GPT uses a decoder with causal masking, so each token sees only earlier ones, and it is trained to predict the next token, which suits generation. BERT cannot generate naturally, and GPT cannot use future context when representing a token."
+      "BERT is an encoder-only architecture trained with bidirectional self-attention: every token attends to all tokens across both left and right context. It is pretrained using Masked Language Modeling (reconstructing 15% masked tokens), making it suited for classification, sequence labeling, and bi-encoder embedding retrieval. GPT is a decoder-only architecture utilizing causal masking, where lower-triangular attention matrices prevent tokens from attending to future positions. It is pretrained via autoregressive next-token prediction, optimizing the likelihood of the subsequent token. BERT cannot generate coherent open-ended text because it lacks autoregressive factorization, while GPT cannot condition on bidirectional context within a single forward pass."
     ],
     [
       "why-sqrt-dk",
@@ -172,7 +172,7 @@
     [
       "multi-head",
       "Why use multiple attention heads instead of one big head?",
-      "Each head projects into its own smaller subspace, so heads can learn different relationships, such as nearby syntax or long-range references. A single head averages everything into one attention pattern. The total cost stays about the same because each head's dimension is the model dimension divided by the number of heads. In practice, heads are not cleanly interpretable, and the benefit is mainly representational flexibility."
+      "Rather than computing a single attention pattern over the full hidden dimension {model}$, multi-head attention projects Queries, Keys, and Values $ times into lower-dimensional subspaces of size  = d_{model} / h$. Each head runs scaled dot-product attention independently, and the outputs are concatenated and projected through ^O$. This allows the model to attend simultaneously to diverse representation subspaces at different positions\u2014such as syntax, coreference, and positional proximity\u2014which a single attention matrix would collapse into an average distribution. Computational complexity and parameter count remain identical to single-head attention because  \times d_k = d_{model}$."
     ],
     [
       "encoder-decoder-attention",
@@ -182,22 +182,22 @@
     [
       "attention-complexity",
       "What is the time and memory cost of attention, and how do models manage it?",
-      "Standard attention compares every token with every other, so cost grows with the square of sequence length. During generation, the KV cache avoids recomputing past keys and values, though its memory grows linearly with length. Methods include sliding windows, sparse attention, grouped-query attention to share keys and values across heads, and efficient kernels such as FlashAttention, which reduces memory traffic but computes exact attention."
+      "Scaled dot-product attention requires (T^2 \\cdot d)$ FLOPs and materializes an (T^2)$ attention matrix, creating quadratic compute and memory scaling with sequence length $. During autoregressive generation, recomputing previous keys and values would take (T^2)$ time; the KV cache stores past key/value tensors, reducing per-token generation to (1)$ operations at the cost of (T)$ memory per request. Mitigations include: FlashAttention, which tiles attention in GPU SRAM to eliminate HBM read/writes of the (T^2)$ matrix; Grouped-Query Attention (GQA), which shares key/value heads across query heads to slash KV cache size by 4x to 8x; and sliding window attention for bounded context."
     ],
     [
       "temperature-top-p",
       "Explain temperature, top-k and top-p sampling. How would you set them?",
-      "Temperature divides logits before softmax, so low values sharpen the distribution and high values flatten it. Top-k keeps the k most likely tokens, while top-p keeps the smallest set whose probability reaches p, adapting to how confident the model is. For extraction or code, use a low temperature. For creative work, use moderate temperature with top-p near 0.9. Evaluate settings on your task instead of relying on defaults."
+      "Temperature $ scales logits prior to softmax ( / T$). Lowering temperature ( < 1.0$) sharpens the probability distribution, driving it toward deterministic greedy argmax selection, while higher temperature flattens entropy. Top-k sampling restricts the candidate pool to the $ most probable tokens. Top-p (nucleus sampling) dynamically computes the cumulative probability distribution and truncates candidates once the sum reaches threshold $. This adapts pool size to model uncertainty: confident predictions keep a tiny candidate set, while uncertain contexts widen the pool. Set  = 0.0 - 0.2$ for deterministic structured extraction and code generation; use  = 0.7$ with  = 0.9$ for conversational fluency."
     ],
     [
       "llm-training-pipeline",
       "Walk me through how an LLM such as Llama is trained, from data to a chat model.",
-      "Pretraining optimizes next-token cross-entropy over huge cleaned and deduplicated text, using distributed GPUs, mixed precision and checkpointing. That produces a text completer. Post-training then teaches behaviour through supervised fine-tuning on instruction data, followed by preference optimization such as RLHF or DPO, plus safety training. Evaluation runs throughout on held-out benchmarks and red teaming. Finally, the model is quantized and optimized for serving."
+      "Modern LLM development follows a four-stage pipeline: 1) Pretraining: Self-supervised next-token cross-entropy over trillions of tokens of deduplicated, filtered web text and code, executed on thousands of GPUs using 3D parallelism and mixed precision. 2) Supervised Fine-Tuning (SFT): Training on tens of thousands of high-quality instruction-response demonstrations to teach multi-turn dialogue structure and task compliance. 3) Preference Alignment: Direct Preference Optimization (DPO) or RLHF using reward models and policy optimization (PPO/GRPO) to enforce helpfulness and safety boundaries. 4) Serving Optimization: Post-training quantization (AWQ/GPTQ to INT4/FP8), KV-cache allocation (PagedAttention), and red-team safety evaluation before production routing."
     ],
     [
       "context-window",
       "What happens when a prompt exceeds the context window, and how do you design for it?",
-      "The API rejects it or truncates it, often removing something important without warning. Design a budget: count tokens before sending and reserve room for output. Keep system instructions and recent turns, summarize older history, and retrieve only relevant documents. For long documents, use map-reduce or hierarchical summarization. Prompt order also matters, since stable prefixes benefit from caching and long context can reduce quality even when it fits."
+      "Exceeding the context window triggers API truncation or rejection, dropping vital instructions or context and causing severe hallucination. Production architectures handle context through four defenses: 1) Strict Token Budgeting: Deterministically reserving token budgets for system prompts, retrieved evidence, history, and generation buffers. 2) State Compaction: Evicting raw conversational turns into structured JSON summaries or key-value memory scratchpads. 3) Retrieval Precision: Reranking and filtering retrieved chunks to avoid the 'Lost in the Middle' phenomenon, where models fail to attend to facts placed in the center of long contexts. 4) Prompt Assembly: Placing static system instructions first to maximize prefix KV-cache reuse in vLLM or SGLang."
     ]
   ],
   "production-mlops": [
