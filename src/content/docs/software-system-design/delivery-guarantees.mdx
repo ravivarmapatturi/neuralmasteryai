@@ -1,7 +1,7 @@
 ---
 title: "Delivery Guarantees and Exactly-Once Effects"
 sidebar_position: 4.9
-description: ""
+description: "Distinguish attempts, deliveries, and committed effects; locate loss and duplication windows; and state exactly-once guarantees only within their actual atomic scope."
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -103,6 +103,16 @@ This sequential model intentionally assumes its two updates commit atomically. R
 In RabbitMQ, inspect publisher confirms, persistence, acknowledgement mode, queue replication, and redelivery behavior separately. In Kafka, inspect producer acknowledgement and idempotence, transaction configuration where used, consumer isolation, and offset policy. The configuration set must match the tested failure model; enabling one promisingly named option does not establish every end-to-end property.
 
 Use the broker's describe tools to confirm what is deployed rather than relying only on a configuration file in source control. Then test with the application destination attached. A log-to-log transaction test can pass while a later external action remains unguarded. Record the exact participant boundary with the operational evidence so reviewers can assess what the result actually proves.
+
+A useful review question is whether a claimed guarantee survives restoring yesterday's deduplication state while today's external effects remain. If that combination is unsupported, state and test the recovery restriction explicitly rather than extending a normal-operation claim to every restore.
+
+## Specify the Effect Whose Cardinality You Promise
+
+A delivery guarantee becomes assessable when it names an effect and the failures included in the promise. For a projection, the effect might be one contribution to a database aggregate. For an email workflow, it might be one submission accepted by the provider, which still differs from one message displayed in a recipient's inbox. Counting broker deliveries cannot establish either downstream property. Write the invariant in terms of durable business state, then identify the atomic operation or external protocol that enforces it.
+
+For a database-local projection, one possible boundary stores the processed event identity and the projection update in a single transaction. If the transaction aborts, neither survives and replay may try again. If it commits, both survive and replay can detect completion. The identity must be unique for the intended contribution, and the update must not escape that transaction through an external side effect. Sending an email from inside the transaction does not make the email rollback-capable. A transactional outbox can record the intent to send, while the sender still needs the provider's duplicate-handling and reconciliation contract.
+
+Ordered delivery is another independent property. Processing event B after event A was received does not ensure that A's asynchronous effect finished before B's effect. Parallel handlers can complete in the opposite order. If an account balance transition requires per-account order, partition or serialize at that key and define what a failed earlier operation does to later ones. Global serialization may be unnecessary and expensive. During a failure drill, crash before the effect, after the effect, and after durable progress recording. For each point, inspect business state after restart rather than accepting a successful consumer status as proof. The same test should include a repeated source record and an uncertain external response. This makes the promised effect count observable across the windows where loss and duplication actually arise.
 
 ## Failure Modes and Better Choices
 
