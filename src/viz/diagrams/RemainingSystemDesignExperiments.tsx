@@ -46,3 +46,8 @@ export function KafkaOffsetBoundary() {
       <text x={8} y={92} fill={t.textPrimary} fontSize={14}>Committed next: {effectFirst?11:12}</text><text x={8} y={123} fill={t.textPrimary} fontSize={14}>Effect for 11: {effectFirst?'already committed':'not committed'}</text><text x={8} y={162} fill={t.textSecondary} fontSize={13}>Highlight = restart position in partition 0</text>
     </svg><p role="status">{effectFirst?'Replay can duplicate effect 11.':'Resume can lose effect 11.'}</p></VisualizationContainer>;
 }
+export function SubscriptionFanout() {
+  const [mode,setMode]=useState<'workers'|'groups'>('workers');
+  const groups=mode==='groups';
+  return <Bars title="Independent subscriptions multiply obligations" description="Four events go either to competing workers or to two independent subscription groups." footer="The chosen successful-delivery model splits four jobs between workers, two each. Two independent subscriptions each receive all four, requiring eight logical deliveries before retries." rows={[{label:groups?'Accounting':'Worker A',value:groups?4:2},{label:groups?'Fulfilment':'Worker B',value:groups?4:2},{label:'Total deliveries',value:groups?8:4}]} max={8} unit="events" status={groups?'Each group receives all four events.':'Each worker receives only its share of one obligation.'} control={<PillSelect label="Consumer scope" value={mode} onChange={setMode} options={[{value:'workers',label:'Competing workers'},{value:'groups',label:'Independent subscriptions'}]}/>}/>;
+}
