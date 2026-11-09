@@ -12,7 +12,7 @@ import practice from '../../data/interviewPractice.json';
 import { InterviewGraph } from './InterviewGraph';
 import { LiveWaveform } from './LiveWaveform';
 import Navbar from '../layout/Navbar';
-import { judgeAnswer, splitAnswer, type AnswerJudgement } from '../../lib/answerJudge';
+import { judgeAnswer, splitAnswer, precomputeModelAnswerEmbeddings, type AnswerJudgement } from '../../lib/answerJudge';
 import { embed, loadJudge, nli } from '../../lib/mockInterview/engine';
 import { speakInBrowser } from '../../lib/interviewRoom/browserVoice';
 import { useGamification } from '../../contexts/GamificationContext';
@@ -516,6 +516,12 @@ export default function SimpleInterviewPage() {
       });
       await engine.start(stream);
       setMicStatus('Listening.');
+      void loadJudge()
+        .then(() => {
+          const points = splitAnswer(question.answer).slice(0, 6);
+          return precomputeModelAnswerEmbeddings(points, question.answer, embed);
+        })
+        .catch(() => undefined);
     } catch (err) {
       engineRef.current?.cancel();
       stopMic();
@@ -1309,14 +1315,14 @@ export default function SimpleInterviewPage() {
                 <p className="si-yours">{transcript || (transcribing ? '' : 'No answer was captured.')}</p>
                 {transcribing && (
                   <p className="si-status" role="status">
-                    Evaluating your answer…
+                    Finishing your transcript…
                   </p>
                 )}
 
                 {check === 'checking' && (
                   <div className="si-check-loading">
                     <p className="si-status" role="status">
-                      Checking your answer against the model answer on your device…
+                      Checking key points against the model answer on your device…
                     </p>
                   </div>
                 )}

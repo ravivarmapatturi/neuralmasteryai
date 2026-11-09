@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { judgeAnswer, splitAnswer, toClaim } from './answerJudge';
+import { judgeAnswer, splitAnswer, toClaim, precomputeModelAnswerEmbeddings, clearModelAnswerEmbeddingsCache } from './answerJudge';
 
 // Each text gets a vector by the topic word it contains, so similarity is exact.
 const topics = ['alpha', 'beta', 'gamma', 'delta'];
@@ -20,6 +20,28 @@ describe('judgeAnswer', () => {
     const result = await judgeAnswer('  ', ['Names alpha'], 'Alpha.', { embed: async () => { throw new Error('no'); }, nli: async () => { throw new Error('no'); } });
     expect(result.score).toBe(0);
     expect(result.points[0].verdict).toBe('missed');
+  });
+  it('reuses precomputed model answer embeddings to avoid re-embedding criteria and reference', async () => {
+    clearModelAnswerEmbeddingsCache();
+    let embeddedTexts: string[][] = [];
+    const trackingEmbed = async (texts: string[]) => {
+      embeddedTexts.push(texts);
+      return embed(texts);
+    };
+    const criteria = ['Explains that alpha is used', 'States that beta holds'];
+    const reference = 'Alpha is used. Beta still holds.';
+
+    // Precompute model answer embeddings
+    await precomputeModelAnswerEmbeddings(criteria, reference, trackingEmbed);
+    expect(embeddedTexts.length).toBe(1);
+    // Target claims + reference sentences were embedded
+    expect(embeddedTexts[0]).toEqual(['Alpha is used', 'Beta holds', 'Alpha is used.', 'Beta still holds.']);
+
+    // Now judge an answer: trackingEmbed should only be called for candidate sentences!
+    const result = await judgeAnswer('Alpha is a thing we use.', criteria, reference, { embed: trackingEmbed, nli });
+    expect(embeddedTexts.length).toBe(2);
+    expect(embeddedTexts[1]).toEqual(['Alpha is a thing we use.']);
+    expect(result.points[0].verdict).toBe('covered');
   });
 });
 it('turns a criterion into a plain claim', () => { expect(toClaim('Explains that one model adapts')).toBe('One model adapts'); });
