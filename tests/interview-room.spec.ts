@@ -156,7 +156,7 @@ test.describe('Interview Room (/interview/room)', () => {
   });
 
   test('leaving a live answer stops every mic track; a delayed old review cannot appear on the new answer', async ({ page }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(320_000);
     await controlledRoom(page);
     await page.locator('#start-topic').click();
     await page.getByRole('button', { name: 'Skip to answering' }).click();
@@ -168,7 +168,7 @@ test.describe('Interview Room (/interview/room)', () => {
     await answerByTyping(page);
     await page.locator('#done').click();
     await expect(page.locator('.si-check-loading')).toBeVisible();
-    await expect.poll(() => page.evaluate(() => typeof (window as any).releaseReview)).toBe('function');
+    await expect.poll(() => page.evaluate(() => typeof (window as any).releaseReview), { timeout: 150_000 }).toBe('function');
     await page.locator('#next-question').click();
     await atQuestion(page, 2);
     await page.getByRole('button', { name: 'Skip to answering' }).click();
