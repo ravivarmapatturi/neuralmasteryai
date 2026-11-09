@@ -391,7 +391,6 @@ export function ProjectsPage() {
   const resolve = useStepResolver();
   useDocumentTitle('Project sheets');
   useDocumentMeta('Project sheets', 'Portfolio projects by field: a RAG app, an agent with tools, an evaluation harness, a LoRA fine-tune, batched serving and a voice assistant.');
-  const fields = Array.from(new Set(PROJECT_SHEETS.map((s) => s.field)));
 
   return (
     <Shell>
@@ -400,12 +399,26 @@ export function ProjectsPage() {
       <p className="nb-body" style={{ fontSize: '1.05rem', maxWidth: 640, margin: 0 }}>
         Larger builds you run on your own machine. Each sheet lists the milestones, how to tell you are done, and the problems and pages that prepare you.
       </p>
-      <nav aria-label="Fields" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1rem', margin: '1.25rem 0 0', fontSize: '0.9rem' }}>
-        {fields.map((f) => {
-          const sheet = PROJECT_SHEETS.find((s) => s.field === f)!;
-          return <a key={f} href={`#${sheet.slug}`} style={{ color: 'var(--nb-cobalt)' }}>{f}</a>;
+
+      <ul className="nm-category-widget-grid" style={{ marginTop: '2rem' }}>
+        {PROJECT_SHEETS.map((sheet) => {
+          const prepSteps = sheet.prepare.map(resolve);
+          const passedCount = prepSteps.filter((s) => s.done).length;
+          return (
+            <CategoryWidgetCard
+              key={sheet.slug}
+              title={sheet.title}
+              to={`#${sheet.slug}`}
+              summary={sheet.summary}
+              level={`${sheet.field} · ${sheet.level}`}
+              countText={`${sheet.milestones.length} milestones · ${sheet.prepare.length} prep steps`}
+              totalCount={sheet.prepare.length}
+              passedCount={passedCount}
+              topic={sheet.slug}
+            />
+          );
         })}
-      </nav>
+      </ul>
 
       {PROJECT_SHEETS.map((sheet) => {
         const plan = sheet.plan ? findStudyPlan(sheet.plan) : undefined;
