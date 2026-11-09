@@ -229,7 +229,7 @@ test.describe('Interview Room (/interview/room)', () => {
     expect(indices.length).toBeLessThan(navigationTopic.questions.length);
     await page.getByLabel('Interview round').selectOption(round);
     await page.getByLabel('Role', { exact: true }).selectOption(role);
-    await expect(page.locator('.si-list button')).toHaveCount(indices.length);
+    await expect(page.locator('.si-list .si-list-item')).toHaveCount(indices.length);
     await page.locator('#start-topic').click();
     for (const [position, index] of indices.entries()) {
       await atQuestion(page, index);
