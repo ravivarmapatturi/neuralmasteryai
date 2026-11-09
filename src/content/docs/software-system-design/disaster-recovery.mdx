@@ -1,0 +1,139 @@
+---
+title: "Disaster Recovery and Verified Restore Timelines"
+sidebar_position: 6.3
+description: ""
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { RecoveryTimeline } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
+
+# Disaster Recovery and Verified Restore Timelines
+
+<ELI5>A spare copy of a shop's records is useful only if staff can open it, understand it, and safely reopen the shop. Finding the key, restoring the shelves, and checking the accounts all take time. A recovery promise must include the whole reopening process, not only how quickly a file can be copied.</ELI5>
+
+Calculate recovery point and end-to-end recovery time, choose restorable history, and validate business and ownership state before resuming live traffic.
+**Disaster recovery** restores useful service after a failure beyond ordinary serving redundancy. It requires data, configuration, executable code, credentials, routing, authority, and an operator or automated controller able to coordinate them. Backup storage is one dependency in that process. A replica and a backup also protect different failure modes: replication can faithfully copy a mistaken deletion.
+
+The misconception is that a twenty-minute database restore establishes a twenty-minute recovery time. Our illustrative incident needs five minutes to detect and decide, twenty to restore, ten to validate, and two to route safely. End-to-end recovery takes 37 minutes. The last usable backup is at minute 60 and failure occurs at minute 75, so fifteen minutes of acknowledged changes are at risk if no later recoverable history exists.
+
+## Define RPO and RTO From the User Promise
+
+A **recovery point objective**, or RPO, limits the tolerated loss of data history under the specified disaster. A **recovery time objective**, or RTO, limits the time to restore the agreed useful service boundary. They are objectives, not properties automatically supplied by a backup interval or product setting. Measure the resulting procedure against them.
+
+A backup every fifteen minutes does not prove a fifteen-minute RPO if backups can fail, remain unverified, or depend on missing logs and keys. Continuous log archiving can improve recoverable progress, while a corrupted archive can worsen it. Identify the latest transaction actually recoverable from a consistent base and complete history, not the newest file timestamp in a bucket.
+
+A time-based RPO is also not a count of lost actions. A busy fifteen-minute period can contain far more user work than a quiet one. Preserve operation identities and reconciliation evidence so the business can determine which accepted effects are missing or uncertain. A vague statement that “some recent data may be lost” is not an operational recovery record.
+
+## Count the Entire Critical Recovery Path
+
+<RecoveryTimeline />
+
+The bars compare restore work alone with the full 37-minute path. Selecting the complete path reveals detection, validation, and routing overhead rather than pretending they are free. Parallel tasks can shorten the critical path, but only if their dependencies permit overlap. A validation that requires the restored database cannot finish before that database exists.
+
+<RunnableCode code={`failure_minute, backup_minute = 75, 60
+steps = {"detect_and_decide": 5, "restore": 20, "validate": 10, "route": 2}
+print("Unrecoverable-history exposure minutes:", failure_minute - backup_minute)
+print("Restore work minutes:", steps["restore"])
+print("End-to-end recovery minutes:", sum(steps.values()))
+print("Meets illustrative 30-minute RTO:", sum(steps.values()) <= 30)
+# Try it: reduce restore to 10; validation and routing still consume real recovery time.
+`} />
+
+The exposure calculation assumes no usable later transaction log or external repair source. If archived history reaches minute 74, the recoverable point changes. Keep the assumption attached to the number. Recovery evidence should record both the selected point and why newer history was unavailable, unsafe, or deliberately excluded.
+
+## Choose Consistent and Independently Recoverable History
+
+A logical dump, physical base backup, snapshot, and archived log stream have different consistency and restoration requirements. A filesystem copy taken without the engine's supported coordination can be internally inconsistent even when every copied file has a valid checksum. Follow the database's backup protocol and verify compatibility with the target runtime and storage.
+
+Point-in-time recovery can restore a base plus log history through a selected target. It is useful when corruption or an erroneous operation has propagated to replicas. The target must precede the unwanted effect while preserving as much valid history as the protocol allows. Reconcile valid actions after that point rather than blindly replaying the same damaging command.
+
+Keep recovery copies isolated enough from the failure or attacker they must survive. Required keys, credentials, account access, and manifests must also remain available to authorized recovery operators. A beautifully replicated encrypted backup whose only decryption key was destroyed in the same incident is not independently recoverable. Test the actual access path from the intended recovery environment.
+
+<PredictFirst question="The database restore takes twenty minutes, followed by ten minutes of required validation. Can the service claim an RTO of twenty minutes solely from that restore duration?" options={["Yes, validation does not count toward service recovery", "No, the useful-service boundary includes the required validation and other critical steps", "Yes, if a backup file checksum matches"]} correctIndex={1} explanation="Restoring bytes and restoring safe useful service are distinct milestones. RTO must use the agreed complete boundary, not omit steps needed before traffic resumes." />
+
+## Validate Business State Before Reopening
+
+Check more than table counts. Verify invariants, references, expected operation identities, critical queries, and authorization behavior. A database can start successfully while a schema, extension, collation, or application version is incompatible. Include the actual serving code and representative operations in an isolated restore test.
+
+External effects complicate recovery. A restored database may forget that a payment, email, or shipment already happened elsewhere. Replaying an old outbox can repeat it unless durable business identity or destination reconciliation prevents that. Preserve and compare effect history before allowing recovered workers to send irreversible actions. The [delivery-guarantee chapter](/docs/software-system-design/delivery-guarantees) explains the boundary.
+
+Deletion and permission changes also need reconciliation. Restoring old state can resurrect a revoked session or deleted private record. The product's security and data-lifecycle requirements must be reapplied under a documented procedure. Recovery should not silently weaken authorization because a historical snapshot was internally consistent.
+
+## Restore One Authorized Writer, Not Two Competing Copies
+
+A failed region can be unreachable rather than stopped. Before promoting a replacement, establish authority and fence the old writer under the supported protocol. Routing clients to the new address does not stop old clients or delayed workers from reaching the old one. A backup restore is not itself a writer-election mechanism.
+
+After the old environment returns, do not reconnect it as another authority without reconciling its history. It may contain acknowledged changes missing from the restored copy, or conflicting effects accepted during the outage. Preserve evidence and use the engine's supported resynchronization or rebuild procedure. Ordinary replication cannot be assumed to merge arbitrary divergent histories safely.
+
+Test return to the normal topology as well as initial failover. A recovery procedure can restore service while leaving no failure reserve, no new backups, or a fragile temporary credential. Include post-recovery protection and a plan for returning without another period of uncontrolled writes.
+
+<GoDeeper title="Go deeper: recovery dependencies form their own critical path">
+A restore can depend on identity service access, network routes, DNS, container images, storage provisioning, keys, and configuration. If any required dependency exists only in the failed environment, the apparent alternate region may not be usable. Map these dependencies and test from a cold recovery environment. A runbook exercised by an already-authenticated operator on a healthy network can miss the very conditions it is meant to handle.
+</GoDeeper>
+
+## Run a Disposable Logical Restore
+
+For a PostgreSQL test database with known fixture records, `pg_dump -Fc -d recovery_source -f recovery.dump` creates a custom-format logical dump under the tool's supported behavior. Create an isolated destination with `createdb recovery_check`, then use `pg_restore --exit-on-error -d recovery_check recovery.dump`. Confirm the intended server, database, and credentials before running any reset or restore operation.
+
+Logical restore is not a substitute for testing the physical and archived-log procedure used in production. PostgreSQL's `pg_verifybackup` checks supported base-backup integrity properties; it does not execute the application's business tests or prove every external effect is reconciled. Select the verification tools matching the actual backup format and recovery promise.
+
+In a drill, disable outbound notifications or route them to controlled fixtures so old pending jobs cannot contact real destinations. Record start, restore-complete, validation-complete, and safely-serving timestamps. Test a missing archive segment and unavailable key as failure cases; the drill should fail clearly instead of opening incomplete service to meet a stopwatch target.
+
+<RunnableCode code={`backups = [0, 15, 30, 45, 60]
+failure = 75
+verified = {0, 15, 30, 45}  # newest copy has not passed validation
+usable = max(point for point in backups if point in verified and point <= failure)
+print("Newest file point:", max(backups))
+print("Latest verified usable point:", usable)
+print("Exposure using usable history:", failure - usable, "minutes")
+assert failure - usable == 30
+# Try it: validate point 60; the modeled exposure falls to fifteen minutes without changing the schedule.
+`} />
+
+The verified set is a teaching distinction between file existence and usable recovery evidence. Actual validation should be performed before an incident, with alarms for missed or failed recovery coverage. A successful old drill does not establish today's procedure if schema, data volume, key policy, or infrastructure changed since then.
+
+## Keep Recovery Evidence and Runbooks Current
+
+Version the procedure with the systems it restores. Track recovery point coverage, archive gaps, restore-test age, measured duration, and unresolved reconciliation items. Assign an owner and a cadence from risk and change rate. A runbook whose commands reference retired infrastructure can increase incident time instead of reducing it.
+
+Exercise operator access and automation under degraded conditions. Prefer explicit decisions and checkpoints over a script that continues after a failed validation command. The procedure should distinguish a recoverable delay from a reason to stop before routing traffic. Record which person or controller established authority and which evidence authorized reopening.
+
+Compare restored operation records with a small external fixture representing effects that survived the incident. Include one effect whose local acknowledgement record was lost and one pending obligation whose effect never happened. Recovery should reconcile the first without repeating it and preserve progress for the second. This paired test exposes procedures that appear safe only because they disable all recovered work indefinitely or blindly replay everything.
+
+Preserve the drill result with the tested schema, data volume, and recovery configuration.
+
+## Failure Modes and Better Choices
+
+Backups exist but required keys or logs are missing. Test independent retrieval and complete history. The restore starts but the application cannot interpret its schema. Validate the actual serving version. A recovered outbox repeats external effects. Reconcile stable operation identities before enabling delivery. The old primary returns and accepts writes. Fence and resynchronize it under the ownership protocol.
+
+The measured restore time meets the target only because detection and validation were omitted. Time the whole user boundary. A recovery drill uses a tiny dataset unlike production. Measure representative volume and index/replay work. A restored system has no fresh backup or redundancy. Include rebuilding protection in the post-recovery plan.
+
+## When Not to Call a Replica a Backup
+
+| Situation | Required additional protection |
+| --- | --- |
+| Wrong writes replicate immediately | Historical restore points and tested selection |
+| Credentials can delete every copy | Appropriate independent recovery access and isolation |
+| External effects survive a local restore | Identity-based reconciliation |
+| Recovery has never been exercised | A controlled restore and business-validation drill |
+
+## Remember
+
+| Milestone | Evidence |
+| --- | --- |
+| Recovery point | Latest consistent, usable history |
+| Restore complete | Engine state restored under supported procedure |
+| Validation complete | Critical application and business invariants checked |
+| Safe authority | Old writers fenced and new ownership established |
+| Service restored | Routing and useful operations meet the agreed boundary |
+
+You can now calculate recovery exposure and time without equating a backup file with a working service. Return to [Reliability and Operations](/docs/software-system-design/reliability) to connect recovery with security and regional ownership.
+
+## Sources
+
+- [AWS Well-Architected, Disaster Recovery](https://docs.aws.amazon.com/wellarchitected/latest/reliability-pillar/plan-for-disaster-recovery-dr.html)
+- [PostgreSQL, Continuous Archiving and Point-in-Time Recovery](https://www.postgresql.org/docs/current/continuous-archiving.html)
+- [PostgreSQL, SQL Dump Backup](https://www.postgresql.org/docs/current/backup-dump.html)
+- [PostgreSQL, pg_verifybackup](https://www.postgresql.org/docs/current/app-pgverifybackup.html)
+- [PostgreSQL, Transaction Isolation](https://www.postgresql.org/docs/current/transaction-iso.html)
