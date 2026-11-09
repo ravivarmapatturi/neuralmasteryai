@@ -1,151 +1,64 @@
 ---
 title: "Communication and Delivery Guarantees"
 sidebar_position: 4
-description: "Choose request and streaming protocols, separate queues from event logs, and design retries and consumers that remain correct when messages are duplicated."
+description: "A request, a live connection, and a durable message make different promises. Read focused chapters with worked examples, interactive experiments, and failure analysis."
 ---
-import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
-import RunnableCode from '../../../components/content/RunnableCode';
-import PredictFirst from '../../../viz/primitives/PredictFirst';
-import SoftwareDeliveryTrace from '../../../viz/diagrams/SoftwareDeliveryTrace';
-import PubSubVsPointToPointDiagram from '../../../viz/diagrams/PubSubVsPointToPointDiagram';
+import { ELI5 } from '../../../components/content/ExpandableDepth';
 
 # Communication and Delivery Guarantees
 
-<ELI5>
-Sending a parcel and receiving its delivery receipt are different events. If the receipt disappears, the sender cannot tell whether the parcel arrived. Sending another parcel may create a duplicate. Reliable software therefore needs both a transport plan and a rule for recognizing work already done.
-</ELI5>
+<ELI5>A request, a live connection, and a durable message make different promises. Choose what must survive a disconnect and which effect a retry may repeat. These chapters trace one boundary at a time before combining them in a service.</ELI5>
 
-Our illustrative worker receives event `e17`, commits its business effect, and crashes before the broker receives acknowledgment. The broker redelivers `e17`. A correct design must turn two deliveries into one durable effect without discarding genuinely new work. The misconception is that a queue's delivery label can guarantee every downstream business action happens exactly once.
+Read the topics in order. Each chapter develops its own decision through a numerical example, an interactive experiment, runnable Python, and explicit failure behavior.
 
-The [existing API and protocol chapter](/docs/cs-fundamentals/apis-http-and-protocols) explains HTTP methods, polling, webhooks, SSE, and WebSockets. We reuse those mechanics here and focus on choosing a contract, propagating deadlines, and defining where durability begins and ends.
+| Chapter | Study page |
+| --- | --- |
+| 1 | [REST and conditional updates](/docs/software-system-design/rest) |
+| 2 | [gRPC deadlines and flow control](/docs/software-system-design/grpc) |
+| 3 | [GraphQL execution and resolver work](/docs/software-system-design/graphql) |
+| 4 | [WebSockets, SSE, and reconnect recovery](/docs/software-system-design/websockets-and-sse) |
+| 5 | [Message queues and acknowledgements](/docs/software-system-design/message-queues) |
+| 6 | [Kafka logs and offset boundaries](/docs/software-system-design/kafka-and-event-streaming) |
+| 7 | [Pub/sub and independent subscriptions](/docs/software-system-design/publish-subscribe) |
+| 8 | [Idempotency and operation identity](/docs/software-system-design/idempotency) |
+| 9 | [Delivery guarantees and effects](/docs/software-system-design/delivery-guarantees) |
 
 ## Request Protocols Express Different Contracts
 
-**REST** models an interface around resources and representations. Standard HTTP methods, status codes, caching, and conditional requests make public interfaces accessible to many clients. Resource naming alone does not make an API safe: authorization, pagination, schema evolution, and idempotency still need explicit semantics.
-
-**gRPC** describes remote procedures through an interface definition, commonly Protocol Buffers, and generates client and server bindings. It supports unary and streaming calls and makes typed internal contracts convenient. Code generation creates compatibility obligations: removing fields or reusing field numbers can break old clients. A typed stub still performs a fallible network operation, so every call needs a deadline and error handling.
-
-**GraphQL** lets a client select fields through a schema and resolver graph. It can reduce over-fetching for clients with different views. It can also turn one client operation into hundreds of backend calls if nested resolvers perform one query per item. Batch compatible reads, cap query cost and depth, enforce field-level authorization, and inspect the actual backend fan-out.
-
-Choose based on the caller and workload. A public link-creation API benefits from HTTP tooling and a small stable resource contract. An internal service mesh with controlled clients may benefit from generated RPC contracts. A product with varied relational client views may justify GraphQL, but a single point lookup does not need a query language merely to return two fields.
+Continue with [REST and conditional updates](/docs/software-system-design/rest), [gRPC deadlines and flow control](/docs/software-system-design/grpc), [GraphQL execution and resolver work](/docs/software-system-design/graphql). The dedicated chapters explain the mechanism, its observable boundary, and the failures its guarantees cover.
 
 ## Streaming Connections Do Not Replace Durable History
 
-**Server-sent events**, or SSE, carry server-to-client events over an HTTP response. They fit status updates and feeds where the client primarily receives. **WebSockets** provide bidirectional messaging after connection establishment, fitting chat and interactive collaboration. Neither establishes what happened while the client was offline.
-
-For reconnecting clients, include an event cursor or sequence number and define replay retention. If the requested cursor is older than retained history, return a clear resynchronization requirement. A “connected” indicator does not prove the client has every event, and a TCP acknowledgment does not prove the user read a chat message.
-
-Heartbeat intervals, proxy idle timeouts, and backpressure are part of the contract. A slow client must not force the server to retain an unbounded output buffer. Bound buffers, disconnect or shed with a resumable cursor where possible, and observe connection count separately from event throughput.
-
-An SSE response has a concrete wire form. The server uses `Content-Type: text/event-stream`; each event ends with a blank line. A client can present `Last-Event-ID` on reconnect, but the application must actually retain and replay the corresponding history.
-
-```text
-id: 417
-event: job-state
-data: {"job_id":"j9","state":"finished"}
-
-```
-
-Do not put secret authorization tokens into replayable event payloads merely because the connection was authenticated. Recheck subscription permissions and terminate streams when access is revoked. Public browser caches and intermediary buffering also need deliberate configuration for the chosen transport.
+Continue with [WebSockets, SSE, and reconnect recovery](/docs/software-system-design/websockets-and-sse). The dedicated chapters explain the mechanism, its observable boundary, and the failures its guarantees cover.
 
 ## Queues Distribute Work; Logs Preserve Replayable Sequences
 
-A **work queue** normally assigns a job to one competing worker, tracks acknowledgments, and makes failed work available again. A **publish/subscribe** system gives each subscription its own view of events. A **retained event log** preserves ordered records for consumers to replay by position. Products can support more than one pattern; specify behavior rather than inferring it from a product name.
-
-<PubSubVsPointToPointDiagram />
-
-Apache Kafka partitions a topic into ordered logs. A consumer group assigns each partition to a consumer at a time under the group's protocol, while different groups independently consume the topic. Ordering is per partition, not global across a topic. Key related events consistently when their order matters, and account for a hot key concentrating work on one partition.
-
-With an illustrative twelve partitions and twenty workers in one group, no more than twelve workers can actively own partitions at a time in the usual partition-assignment model. More workers do not split a single partition's ordered processing automatically. Increasing partitions may change key placement, so consumers need a deliberate migration and ordering plan.
-
-A queue or log absorbs temporary mismatch, not infinite overload. At 1,200 events/s arriving and 1,000 events/s consumed for five minutes, backlog grows by 60,000 events. If consumers later reach 1,500/s, the spare 300/s takes 200 seconds to drain it. Monitor oldest-event age and lag together; a modest count can still represent unacceptable delay for sparse high-priority events.
-
-<RunnableCode code={`arrivals, completion, seconds = 1200, 1000, 300
-backlog = (arrivals - completion) * seconds
-recovery_completion = 1500
-print("Backlog events:", backlog)
-print("Drain seconds:", backlog / (recovery_completion-arrivals))
-print("Active partition owners:", min(12, 20))
-# Try it: set recovery_completion to 1200; explain why the queue cannot drain.
-`} />
+Continue with [Message queues and acknowledgements](/docs/software-system-design/message-queues), [Kafka logs and offset boundaries](/docs/software-system-design/kafka-and-event-streaming). The dedicated chapters explain the mechanism, its observable boundary, and the failures its guarantees cover.
 
 ## Acknowledgment Boundaries Define Delivery Semantics
 
-**At-most-once** delivery permits loss while avoiding redelivery within the stated system boundary. A consumer that advances its position before performing work can crash and lose the work. **At-least-once** delivery retries unacknowledged work, which permits duplicates. It is often the right starting point for durable jobs if the consumer can handle repetition.
-
-**Exactly-once** must name a boundary. Kafka transactions can atomically coordinate consumed offsets and produced records inside supported Kafka workflows. They do not automatically make an external email provider or arbitrary database write part of that transaction. External effects need an idempotent destination, a transactionally coordinated state change, or a reconciliation design.
-
-<SoftwareDeliveryTrace />
-
-The trace starts with deduplication enabled. Switch it off to see why the same valid redelivery produces two business effects. The failure occurs after commit and before acknowledgment, so neither “ack sooner” nor “retry harder” resolves both loss and duplication. Correctness requires moving the effect and its deduplication record into one atomic boundary.
-
-<PredictFirst question="A consumer commits an order update, then crashes before acknowledging e17. What should redelivery do?" options={["Apply the update again because this delivery is new", "Skip the effect only if durable state proves e17 already committed", "Discard all redelivered messages"]} correctIndex={1} explanation="A durable event ID recorded atomically with the effect proves this event already took effect. Some redeliveries follow a pre-commit crash, so discarding every redelivery would lose work." />
+Continue with [Delivery guarantees and effects](/docs/software-system-design/delivery-guarantees). The dedicated chapters explain the mechanism, its observable boundary, and the failures its guarantees cover.
 
 ## Idempotency Requires a Durable Identity
 
-An **idempotent operation** has the same intended durable effect when repeated with the same operation identity. A payment request should include an idempotency key scoped to the customer and operation type. Store a request fingerprint, execution status, and result. A repeated key with a different amount must conflict instead of silently returning an unrelated success.
-
-In a database consumer, insert the event identity under a unique constraint and update business state in the same transaction. If the insert conflicts, load the previous outcome rather than repeat the effect. Retaining deduplication records for less time than messages can be replayed reopens the duplication window, so retention policies must agree.
-
-<RunnableCode code={`import sqlite3
-conn = sqlite3.connect(":memory:")
-conn.executescript("CREATE TABLE seen(id TEXT PRIMARY KEY); CREATE TABLE total(n INTEGER); INSERT INTO total VALUES(0);")
-for event in ["e17", "e17", "e18"]:
-    with conn:
-        inserted = conn.execute("INSERT OR IGNORE INTO seen VALUES(?)", (event,)).rowcount
-        if inserted:
-            conn.execute("UPDATE total SET n = n + 1")
-    print(event, "durable effects:", conn.execute("SELECT n FROM total").fetchone()[0])
-assert conn.execute("SELECT n FROM total").fetchone()[0] == 2
-# Try it: add another e18; the total remains two because identity is durable.
-`} />
-
-This example uses one local transaction and a counter to make the boundary visible. It does not send email or charge a card. For an external provider, pass a stable provider idempotency key when supported and reconcile ambiguous outcomes. A database row marked “sent” before sending can lose the email; marking it afterward can resend after a crash.
-
-<GoDeeper title="Go deeper: bounded retries and poison messages">
-Retry transient failures with a capped exponential delay and jitter, but keep an overall deadline or retry horizon. A deterministic schema error will not improve with ten thousand retries. Move exhausted work to a quarantined queue with the original identity, failure reason, and replay procedure. Quarantine is an operational state, not permission to forget the user's requested action.
-</GoDeeper>
+Continue with [Idempotency and operation identity](/docs/software-system-design/idempotency). The dedicated chapters explain the mechanism, its observable boundary, and the failures its guarantees cover.
 
 ## Evolution and Backpressure Are Part of the Interface
 
-Events should include a stable identity, occurrence time, entity key, and schema version where needed. Prefer compatible additive changes, and preserve the meaning of existing fields. A consumer replaying old records must not depend on a producer deployment that no longer exists. Test old payloads against new consumers and new optional fields against old consumers.
-
-Backpressure means a downstream limit changes upstream admission or production. A bounded worker queue can return a retryable rejection; a stream consumer can pause fetching; a gateway can reject expensive requests before allocating large buffers. Simply accumulating a bigger queue postpones the failure and increases recovery time.
-
-Avoid encoding a distributed transaction as a synchronous call chain with no timeout budget. If a gateway has a 300 ms deadline, three services cannot each independently spend 300 ms retrying the next hop. Propagate the remaining budget, stop work when cancellation is safe, and preserve durable operation identity when the response may be lost.
+Continue with [REST and conditional updates](/docs/software-system-design/rest), [WebSockets, SSE, and reconnect recovery](/docs/software-system-design/websockets-and-sse), [Kafka logs and offset boundaries](/docs/software-system-design/kafka-and-event-streaming). The dedicated chapters explain the mechanism, its observable boundary, and the failures its guarantees cover.
 
 ## Common Problems and Fixes
 
-Duplicate effects require atomic deduplication, not a process-local set. Out-of-order events require per-entity versions or ordered partition ownership, not wall-clock sorting alone. Stuck queues need oldest-event alerts and poison-message handling. Reconnect gaps need retained cursors and resynchronization, not just a new socket.
-
-A schema that “works with today's producer” can still fail during replay. Retain representative historical fixtures and exercise the replay path before changing payload interpretation. Event history is an interface to past software, and consumers must account for it.
+Continue with [Message queues and acknowledgements](/docs/software-system-design/message-queues), [Idempotency and operation identity](/docs/software-system-design/idempotency), [Delivery guarantees and effects](/docs/software-system-design/delivery-guarantees). The dedicated chapters explain the mechanism, its observable boundary, and the failures its guarantees cover.
 
 ## When Not to Introduce Messaging
 
-| Situation | Better choice |
-| --- | --- |
-| Caller needs one immediate authoritative result | A bounded synchronous request |
-| One local database transaction owns all changes | Commit the transaction directly |
-| No replay or independent consumers are required | A simple durable work queue |
-| Client receives rare updates | Polling with validators may suffice |
+Continue with [Message queues and acknowledgements](/docs/software-system-design/message-queues), [Pub/sub and independent subscriptions](/docs/software-system-design/publish-subscribe). The dedicated chapters explain the mechanism, its observable boundary, and the failures its guarantees cover.
 
 ## Remember
 
-| Boundary | Question to answer |
-| --- | --- |
-| RPC | Which deadline and compatibility rules apply? |
-| Stream | How does a disconnected client recover? |
-| Queue | When is work acknowledged and redelivered? |
-| Log | Which key defines order and replay? |
-| Effect | Where are identity and state committed together? |
-
-You can now explain why a redelivery is legitimate and still must not repeat a business effect. Next, [Coordination and Distributed Workflows](/docs/software-system-design/distributed-systems) connects these boundaries across service owners.
+Continue with [REST and conditional updates](/docs/software-system-design/rest), [WebSockets, SSE, and reconnect recovery](/docs/software-system-design/websockets-and-sse), [Delivery guarantees and effects](/docs/software-system-design/delivery-guarantees). The dedicated chapters explain the mechanism, its observable boundary, and the failures its guarantees cover.
 
 ## Sources
 
-- [RFC 9110, HTTP Semantics (2022)](https://www.rfc-editor.org/rfc/rfc9110).
-- [gRPC, Core Concepts](https://grpc.io/docs/what-is-grpc/core-concepts/).
-- [GraphQL Specification](https://spec.graphql.org/October2021/).
-- [WHATWG, Server-Sent Events](https://html.spec.whatwg.org/multipage/server-sent-events.html).
-- [Apache Kafka, Design and Delivery Semantics](https://kafka.apache.org/41/design/design/).
-- [RabbitMQ, Consumer Acknowledgments](https://www.rabbitmq.com/docs/confirms).
+Primary specifications, papers, configuration references, and worked calculations appear beside each topic in the linked chapters.
