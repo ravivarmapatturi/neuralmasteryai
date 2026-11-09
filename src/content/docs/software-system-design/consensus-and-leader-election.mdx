@@ -1,0 +1,133 @@
+---
+title: "Consensus, Leader Election, and Committed History"
+sidebar_position: 5.1
+description: ""
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ConsensusMajority } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
+
+# Consensus, Leader Election, and Committed History
+
+<ELI5>Several clerks keep copies of the same numbered ledger. Choosing a chairperson helps them coordinate, but does not make every note in that person's notebook an agreed entry. They also need rules for voting, preserving agreed entries, and replacing a missing chairperson without inventing a second official history.</ELI5>
+
+Separate election from log commitment, calculate majority survival, and preserve one recoverable history through leader changes and membership updates.
+**Consensus** lets participants agree on decisions under a defined failure model. A replicated state machine commonly uses consensus to establish a committed log, then applies that log deterministically. Leader election is part of some protocols' coordination, but a leader title alone does not establish which commands are committed or which reads may claim current state.
+
+The misconception is that electing a replacement makes all of its local entries authoritative. Our illustrative cluster has five voters and needs three for a majority. A three-node side of a partition can make progress under the valid protocol, while a two-node side cannot independently commit a conflicting history. We assume non-Byzantine failures and valid current-term Raft behavior; the count is not a standalone consensus implementation.
+
+## Election Establishes Authority Under Rules
+
+In Raft, terms distinguish leadership epochs, and voters follow persistent voting and log-eligibility rules. A candidate cannot simply count any three convenient responses while ignoring whether its log is suitable. Those rules preserve already committed history across elections. A node with a higher term is not entitled to replace durable data arbitrarily.
+
+Randomized election timeouts help reduce repeated split votes and improve progress when conditions permit. They do not prove another process has stopped, and safety should not rely on perfect network timing. A delayed former leader can still run application code. Its requests must remain subject to the protocol and any external fencing required by the effect boundary.
+
+Consensus protocols specify crash and communication assumptions. Ordinary majority replication does not tolerate arbitrary malicious behavior as if it were a Byzantine protocol. Durable votes and log records also depend on the storage model. A design review should state whether it considers process crashes, permanent disk loss, partitions, or adversarial participants rather than hiding them behind “distributed.”
+
+## Majority Intersection Protects Decisions Only With the Protocol
+
+<ConsensusMajority />
+
+With five voters, any two sets of three overlap in at least one voter. That arithmetic supports the safety argument when intersecting participants preserve the required vote and log rules. Two sets of two need not overlap. Losing two voters can leave a majority; losing three cannot. A three-node cluster tolerates fewer unavailable voters but can have lower resource and coordination cost.
+
+<RunnableCode code={`from itertools import combinations
+voters = set("ABCDE")
+majorities = [set(group) for group in combinations(sorted(voters), 3)]
+minimum_overlap = min(len(a & b) for a in majorities for b in majorities)
+print("Voters:", len(voters), "majority:", 3)
+print("Minimum overlap between majorities:", minimum_overlap)
+for reachable in (3, 2):
+    print("Reachable voters:", reachable, "majority available:", reachable >= 3)
+assert minimum_overlap == 1
+# Try it: use sets of two; nonintersecting sets exist and cannot support this majority argument.
+`} />
+
+Intersection alone does not tell a voter what to do with conflicting terms, stale candidates, or old log entries. A protocol supplies those constraints. The [replication chapter](/docs/software-system-design/replication) also distinguishes receipt, durable storage, and replay; a majority of volatile observations is not automatically a durable committed command under every failure model.
+
+## Append, Commit, and Apply Are Separate Stages
+
+A leader can append an entry locally before replicas store it. A committed entry is established according to the protocol's quorum and term rules. Applying committed entries changes the state machine. These stages can have different progress positions, and a client success contract must name the boundary it waits for.
+
+For Raft, directly advancing commitment by counting replicas requires the current-term rule described in the paper. Older-term entries cannot be declared committed merely by applying the same count shortcut; commitment of an appropriate current-term entry can establish the prefix. This detail prevents an apparently plausible majority-only implementation from violating leader completeness.
+
+A read also needs a current-authority argument. A former leader isolated with an old value cannot safely answer a linearizable read solely from its local memory. Protocol-supported read barriers or correctly implemented leases can establish the required condition under their assumptions. An option for a local stale read has a different contract, even if its response is faster.
+
+<PredictFirst question="Five voters split into groups of three and two. Can both sides independently commit conflicting current history while preserving the majority protocol?" options={["Yes, if each side elects a local leader", "No, the two-voter side lacks a majority", "Yes, because election timeouts prove the other side stopped"]} correctIndex={1} explanation="A local leader label and a timeout do not create the missing votes or safe authority. The minority must refuse or wait for operations requiring that majority." />
+
+## Progress Costs Include Placement and Slow Storage
+
+The leader's required acknowledgements add a network and storage path. Placing all voters in one failure domain may make normal coordination short while failing the intended zone-loss promise. Spreading voters across regions changes latency and partition behavior. Count failure domains, not merely process IDs or containers.
+
+A slow required voter can affect progress even when it has not crashed. Implementations can make progress through other eligible voters when the protocol permits, but repeatedly overloaded disks or a slow leader can still dominate latency. Measure proposal age, durable-log latency, applied progress, leader changes, and rejected requests. A healthy process count is insufficient evidence of useful consensus throughput.
+
+Do not replicate every application operation through one global consensus group without a reason. Several independent shards can have their own consensus groups while cross-shard operations need another coordination boundary. Consensus establishes ordering within its scope; it does not make unrelated data or external services participate automatically.
+
+<GoDeeper title="Go deeper: membership changes must preserve the intersection argument">
+Replacing a five-node voter set with another set cannot be treated as unrelated local configuration edits. A protocol such as Raft's joint-consensus approach requires compatible old/new agreement during the transition so decisions cannot be made by disjoint memberships. Adding a member that has not caught up can also change availability and recovery behavior. Use the implementation's supported membership protocol and verify the resulting configuration before removing old voters.
+</GoDeeper>
+
+## Recovery Preserves History Before Availability
+
+A restarting node needs its persistent state and supported catch-up path. A snapshot can compact an applied prefix while the remaining log carries later entries. The snapshot and log boundary must agree; otherwise a node can miss commands or apply them twice. Application state machine effects should be deterministic or record the decisions needed for replay.
+
+If a majority is permanently lost, restoring service may require a disaster-recovery procedure with explicit consequences for acknowledged history. Force-forming a new cluster from a stale survivor is not the same as ordinary safe failover. Preserve old evidence and understand the recovery-point contract before declaring the restored writer authoritative.
+
+A state-machine command can still represent a repeated client intent. A lost client response can cause the same request to be proposed again. Consensus orders commands; application identity or another protocol prevents a repeated logical debit from becoming two separate committed commands. The [idempotency chapter](/docs/software-system-design/idempotency) treats that boundary independently.
+
+## Inspect a Real Consensus Service
+
+In an isolated etcd environment, `etcdctl endpoint status --cluster -w table` and `etcdctl endpoint health --cluster` expose useful member state and ability to perform the tool's health operation. Configure endpoints and credentials for the test environment. Neither output proves all application invariants, but it can identify leadership and cluster progress during a controlled failure.
+
+Stop one test member, then another, and observe which operations still complete. Restore them before trying another scenario. Also isolate communication while leaving processes alive: process termination does not exercise every stale-leader path. Use the API's documented linearizable versus local read semantics explicitly when checking outcomes.
+
+<RunnableCode code={`log = [(9, 6), (10, 7)]  # (index, term)
+current_term = 7
+replicated_on = {9: 5, 10: 3}
+commit_index = 8
+for index, term in log:
+    if term == current_term and replicated_on[index] >= 3:
+        commit_index = max(commit_index, index)
+print("Current-term commit establishes prefix through:", commit_index)
+applied_index = 9
+print("Committed but not yet applied count:", commit_index - applied_index)
+assert commit_index == 10
+# Try it: reduce replicas for index 10 to two; this simplified current-term test cannot advance commitment.
+`} />
+
+This snippet isolates one rule after assuming a valid leader and log. It is not Raft: elections, append consistency, persistence, membership, snapshots, and message handling are omitted. Its purpose is to prevent confusing a current-term commit test with arbitrary acknowledgement counting. A production implementation needs a complete, reviewed protocol and failure testing.
+
+## Failure Modes and Better Choices
+
+A replacement is elected but serves a stale local read as current. Use the protocol's read-authority mechanism. A cluster has five members on one physical host and is called highly available. Place voters across the promised failure domains. A timeout triggers a second independent writer. Preserve quorum authority and fence external effects rather than treating silence as death.
+
+A membership change removes the only caught-up voters. Use supported reconfiguration and verify catch-up before retirement. A restore silently discards acknowledged commands. Treat it as disaster recovery with explicit history reconciliation. A consensus database commits the same business operation twice after client retry. Add operation identity at the state transition rather than blaming log ordering.
+
+## When Not to Add a Consensus Group
+
+| Situation | Better first boundary |
+| --- | --- |
+| One database transaction already owns the invariant | Use its supported durability and concurrency controls |
+| Data is a harmless approximate cache | A simpler explicitly weaker protocol |
+| The actual bottleneck is one inefficient query | Repair its access path |
+| The team is implementing a protocol from a diagram | Use a maintained complete implementation |
+
+## Remember
+
+| Stage | Meaning |
+| --- | --- |
+| Election | Authority under voting and log rules |
+| Append | A proposed local history entry |
+| Commit | A decision satisfying the protocol's safety rules |
+| Apply | State machine progress through committed entries |
+| Reconfiguration | A safe transition between voter memberships |
+
+You can now distinguish leadership from committed history and calculate which failures leave a majority. Return to [Distributed Systems](/docs/software-system-design/distributed-systems) before using that authority to coordinate external work.
+
+## Sources
+
+- [Ongaro and Ousterhout, In Search of an Understandable Consensus Algorithm (2014)](https://raft.github.io/raft.pdf)
+- [etcd, API Guarantees](https://etcd.io/docs/v3.6/learning/api_guarantees/)
+- [etcd, API Reference](https://etcd.io/docs/v3.6/learning/api/)
+- [PostgreSQL, Transaction Isolation](https://www.postgresql.org/docs/current/transaction-iso.html)
+- [Corbett et al., Spanner (2012)](https://research.google/pubs/spanner-googles-globally-distributed-database/)
