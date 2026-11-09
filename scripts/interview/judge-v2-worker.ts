@@ -42,13 +42,16 @@ self.onmessage=async(event:MessageEvent)=>{
     let result:unknown;
     if(op==='load') {
       candidate=payload.candidate;
-      env.allowLocalModels=true;env.allowRemoteModels=false;env.useBrowserCache=false;
-      env.localModelPath='http://127.0.0.1:5188/';
+      // Transformers.js 4's tokenizer metadata probe skips URL-shaped local paths.
+      // Use its remote transport against our pinned local HTTP mirror instead.
+      env.allowLocalModels=false;env.allowRemoteModels=true;env.useBrowserCache=false;
+      env.remoteHost='http://127.0.0.1:5188';env.remotePathTemplate='{model}/';
       env.backends.onnx.wasm.numThreads=1;
       env.backends.onnx.wasm.wasmPaths='http://127.0.0.1:5188/runtime/';
       const manifest=payload.manifest.models;
       const options=(key:string)=>({device:'wasm' as const,dtype:manifest[key].dtype,progress_callback,
-        ...(manifest[key].model_file_name?{model_file_name:manifest[key].model_file_name}:{})});
+        ...(manifest[key].model_file_name?{model_file_name:manifest[key].model_file_name}:{}),
+        ...(key==='nli'?{session_options:{graphOptimizationLevel:'disabled',enableCpuMemArena:false}}:{})});
       embedder=await pipeline('feature-extraction',manifest.embed.id,options('embed'));
       const nliKey=candidate==='baseline'?'baseline':'nli';
       nliTokenizer=await AutoTokenizer.from_pretrained(manifest[nliKey].id,{progress_callback});

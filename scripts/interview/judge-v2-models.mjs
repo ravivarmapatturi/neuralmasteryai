@@ -11,7 +11,8 @@ export const models = {
  baseline: {id:'Xenova/mobilebert-uncased-mnli',revision:'8b0ea66ab7b190bba77418ba03b67d69cfc9a1ee',file:'model_quantized.onnx',dtype:'q8'},
  marco: {id:'Xenova/ms-marco-MiniLM-L-6-v2',revision:'a09144355adeed5f58c8ed011d209bf8ee5a1fec',file:'model_quantized.onnx',dtype:'q8'},
  stsb: {id:'cross-encoder/stsb-TinyBERT-L4',revision:'1f478482145797a0cac02d6b9ab3c65c9d25fb1e',file:'model_qint8_avx512.onnx',dtype:'fp32',model_file_name:'model_qint8_avx512'},
- nli: {id:'Xenova/nli-deberta-v3-small',revision:'6bc2a55c7c0f7e2bc68de60bb248e523e2612abb',file:'model_quantized.onnx',dtype:'q8'},
+ nliSmall: {id:'Xenova/nli-deberta-v3-small',revision:'6bc2a55c7c0f7e2bc68de60bb248e523e2612abb',file:'model_quantized.onnx',dtype:'q8'},
+ nli: {id:'Xenova/nli-deberta-v3-xsmall',revision:'2a4f614a701367a02d51389039afc998faeda637',file:'model_quantized.onnx',dtype:'q8'},
 };
 async function prepare() {
  const manifest={preparedAt:new Date().toISOString(),models:{}};

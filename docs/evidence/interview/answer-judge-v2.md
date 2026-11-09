@@ -24,3 +24,11 @@ Measurements and the ship decision will be appended after the sequential WASM ru
 
 
 Before any model run, the frozen held-out set was extended to 36 answers (12 strong, 12 partial, 12 weak), adding two questions without rubrics to test the required model-answer-sentence fallback. It now has 162 point decisions: 80 present and 82 absent. No prediction had been observed when this addition was written. Development remains the original 30 answers only. The ship check will also require false positives not to increase separately for rubric questions and reference-sentence questions, preventing aggregate results from hiding a regression in either source.
+
+## Loading and resource adjustments before candidate predictions
+
+The isolated baseline reproduced the original development counts exactly: TP 27, TN 64, FP 2, FN 36. A local-mirror tokenizer metadata problem was corrected before that run; the failed attempt is retained in `judge-v2-load-failure.json`.
+
+The DeBERTa v3 small pipeline repeatedly reached the unchanged host floor during loading before producing any candidate predictions. Those attempts are retained in `judge-v2-guarded-loads.json`. The largest recorded sampled browser PSS was about 1.32 GB during these incomplete loads. Disabling NLI graph optimization was prepared to reduce loading allocations; no quality threshold was changed.
+
+Before any candidate prediction, the experiment added [Xenova/nli-deberta-v3-xsmall](https://huggingface.co/Xenova/nli-deberta-v3-xsmall), with an 87,246,587-byte q8 model file. Its [upstream NLI model](https://huggingface.co/cross-encoder/nli-deberta-v3-xsmall) uses Apache-2.0; the [Microsoft base model](https://huggingface.co/microsoft/deberta-v3-xsmall) uses MIT. Both relevance cross-encoders will use this smaller NLI model with graph optimization disabled. This is a resource-driven substitution made without candidate scores, not held-out tuning. Small remains recorded as an unsuccessful guarded load, requiring a larger opt-in/resource envelope before quality can be measured.

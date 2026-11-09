@@ -11,13 +11,15 @@ const groundTruth=JSON.parse(fs.readFileSync(`${dir}/judge-v2-ground-truth.json`
 const manifest=JSON.parse(fs.readFileSync(`${dir}/judge-v2-model-manifest.json`));
 const settingsFile=`${dir}/judge-v2-thresholds.json`;
 if(split==='heldout'&&!fs.existsSync(settingsFile))throw Error('Freeze development thresholds before held-out inference');
+const manifestSha256=createHash('sha256').update(JSON.stringify(manifest)).digest('hex');
 const output=`${dir}/judge-v2-${candidate}-${split}.json`;
 const previous=fs.existsSync(output)?JSON.parse(fs.readFileSync(output)):null;
 const hash=createHash('sha256').update(source).digest('hex');
 const workerSha256=createHash('sha256').update(fs.readFileSync((process.env.JUDGE_MODEL_CACHE??'/tmp/neuralmastery-judge-v2-models')+'/scripts/interview/judge-v2-worker.ts')).digest('hex');
+if(previous&&previous.manifestSha256!==manifestSha256)throw Error('Model manifest changed since partial measurement');
 if(previous&&previous.workerSha256!==workerSha256)throw Error('Compiled worker changed since partial measurement');
 if(previous&&previous.sampleSha256!==hash)throw Error('Sample changed since partial measurement');
-const report=previous??{candidate,split,sampleSha256:hash,workerSha256,startedAt:new Date().toISOString(),backend:'Browser WASM, one thread',status:'incomplete',rows:[],attempts:[],peakBrowserRssBytes:0,peakBrowserPssBytes:0,peakHarnessRssBytes:0};
+const report=previous??{candidate,split,sampleSha256:hash,workerSha256,manifestSha256,startedAt:new Date().toISOString(),backend:'Browser WASM, one thread',status:'incomplete',rows:[],attempts:[],peakBrowserRssBytes:0,peakBrowserPssBytes:0,peakHarnessRssBytes:0};
 if(report.status==='complete'){console.log('Already complete:',output);process.exit(0);}
 const attempt={startedAt:new Date().toISOString(),peakBrowserRssBytes:0,peakBrowserPssBytes:0,peakHarnessRssBytes:0,minAvailableMiB:Infinity,assets:{}};
 report.attempts.push(attempt);
