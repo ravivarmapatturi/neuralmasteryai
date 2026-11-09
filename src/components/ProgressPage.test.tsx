@@ -39,6 +39,8 @@ describe('ProgressPage layout', () => {
     expect(screen.getByText(/pages understood and solved/i)).toBeInTheDocument()
     expect(screen.getByText('Up next')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Lessons' })).toBeInTheDocument()
+    expect(screen.getByText('Focus time')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /open focus timer →/i })).toHaveAttribute('href', '/focus')
     expect(screen.getByText('By section')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Practice' })).toBeInTheDocument()
     expect(screen.getByText('By track')).toBeInTheDocument()

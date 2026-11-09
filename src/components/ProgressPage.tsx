@@ -14,6 +14,8 @@ import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useDocumentMeta } from '../lib/useDocumentMeta';
 import ConfirmDialog from './common/ConfirmDialog';
 import ProgressBackup from './ProgressBackup';
+import { useFocusTimer } from '../contexts/FocusTimerContext';
+import { todayFocusSeconds, weekFocusSeconds, focusStreak, formatFocusTime } from '../lib/focusTimer';
 
 /** Best-effort title lookup for a permalink -- falls back to the raw path
  * for the (should-be-rare) case a stored permalink no longer matches any
@@ -38,6 +40,10 @@ export default function ProgressPage() {
 
   const { understood, isUnderstood, toggle, countWithin, reset, dueForReview, markReviewed } = useProgress();
   const { points, streak, events, awardReviewCompleted } = useGamification();
+  const { sessions: focusSessions } = useFocusTimer();
+  const focusToday = useMemo(() => formatFocusTime(todayFocusSeconds(focusSessions)), [focusSessions]);
+  const focusWeek = useMemo(() => formatFocusTime(weekFocusSeconds(focusSessions)), [focusSessions]);
+  const focusStreakDays = useMemo(() => focusStreak(focusSessions), [focusSessions]);
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const { level } = levelForPoints(points);
 
@@ -154,6 +160,41 @@ export default function ProgressPage() {
             </Link>
           </div>
         )}
+
+        {/* --- Focus Time Card --- */}
+        <div
+          style={{
+            padding: '1.25rem 1.5rem',
+            borderRadius: 14,
+            border: '1px solid var(--nm-border)',
+            background: 'var(--nm-surface)',
+            marginBottom: '2rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 16,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 200 }}>
+            <span style={{ fontSize: 24, lineHeight: 1 }} aria-hidden="true">⏱</span>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--nm-text-primary)' }}>Focus time</div>
+              <div style={{ fontSize: 13, color: 'var(--nm-text-secondary)', marginTop: 2 }}>
+                Today: <strong>{focusToday}</strong> · This week: <strong>{focusWeek}</strong> · Streak: <strong>{focusStreakDays === 1 ? '1 day' : `${focusStreakDays} days`}</strong>
+              </div>
+            </div>
+          </div>
+
+          <Link
+            to="/focus"
+            className="nm-button nm-button-secondary"
+            style={{ padding: '0.55rem 1rem', fontSize: 13, fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, minHeight: 44 }}
+          >
+            Open focus timer →
+          </Link>
+        </div>
+
         {/* --- Side-by-side Progress Sections --- */}
         <div
           style={{

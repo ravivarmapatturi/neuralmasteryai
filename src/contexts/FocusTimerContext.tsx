@@ -19,6 +19,7 @@ import {
   updatePreset,
   mergeFocusSessions,
   formatClockTime,
+  DEFAULT_PRESET,
   type FocusPreset,
   type FocusPhase,
   type TimerStatus,
@@ -452,12 +453,35 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
   return <FocusTimerContext.Provider value={value}>{children}</FocusTimerContext.Provider>;
 }
 
+const defaultTimerContext: FocusTimerContextType = {
+  phase: 'idle',
+  status: 'idle',
+  preset: DEFAULT_PRESET,
+  completedFocusCount: 0,
+  remainingMs: 25 * 60 * 1000,
+  targetDurationMs: 25 * 60 * 1000,
+  endsAt: null,
+  startedAt: null,
+  autoStartNext: false,
+  notificationsEnabled: false,
+  pausedReason: null,
+  sessions: [],
+  startFocus: () => {},
+  startBreak: () => {},
+  pause: () => {},
+  resume: () => {},
+  skip: () => {},
+  stop: () => {},
+  setPreset: () => {},
+  setAutoStartNext: () => {},
+  setNotificationsEnabled: async () => false,
+  dismissAwayPause: () => {},
+  recordSession: () => {},
+};
+
 export function useFocusTimer(): FocusTimerContextType {
   const context = useContext(FocusTimerContext);
-  if (!context) {
-    throw new Error('useFocusTimer must be used within a FocusTimerProvider');
-  }
-  return context;
+  return context ?? defaultTimerContext;
 }
 
 /**
