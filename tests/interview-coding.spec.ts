@@ -4,7 +4,8 @@ import buildAnAgent from '../src/data/practice/buildAnAgent.generated.json' with
 import svd from '../src/data/practice/specifyVerifyDebug.generated.json' with { type: 'json' };
 import problemSets from '../src/data/practice/problemSets.generated.json' with { type: 'json' };
 
-const PORT = process.env.TEST_PORT ? Number(process.env.TEST_PORT) : 5173;
+// CI tests the built site on 4173; locally the dev server runs on 5173.
+const PORT = process.env.TEST_PORT ? Number(process.env.TEST_PORT) : process.env.CI ? 4173 : 5173;
 
 const allProblems = new Map<string, any>();
 for (const p of [...buildAnAgent, ...svd, ...problemSets]) allProblems.set(p.id, p);
@@ -167,6 +168,8 @@ test.describe('Interview Coding Questions & Pyodide Workspace', () => {
   });
 
   test('all 20 reference solutions pass all test cases through worker', async ({ page }) => {
+    // Loads the worker from /src, which only the dev server serves. Run locally with Vite.
+    test.skip(!!process.env.CI, 'needs the dev server');
     await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'domcontentloaded' });
     const results = await page.evaluate(async (problems) => {
       const worker = new Worker(new URL('/src/workers/pyodideWorker.ts', window.location.href), { type: 'module' });
