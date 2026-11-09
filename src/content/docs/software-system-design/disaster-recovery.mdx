@@ -1,7 +1,7 @@
 ---
 title: "Disaster Recovery and Verified Restore Timelines"
 sidebar_position: 6.3
-description: ""
+description: "Calculate recovery point and end-to-end recovery time, choose restorable history, and validate business and ownership state before resuming live traffic."
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -102,6 +102,14 @@ Exercise operator access and automation under degraded conditions. Prefer explic
 Compare restored operation records with a small external fixture representing effects that survived the incident. Include one effect whose local acknowledgement record was lost and one pending obligation whose effect never happened. Recovery should reconcile the first without repeating it and preserve progress for the second. This paired test exposes procedures that appear safe only because they disable all recovered work indefinitely or blindly replay everything.
 
 Preserve the drill result with the tested schema, data volume, and recovery configuration.
+
+## Restore the Application's Meaning, Not Only Its Tables
+
+A database restore can complete while the application remains inconsistent with external systems. Suppose the restored database predates a payment that the provider accepted. The provider still has the charge even if the restored order row does not. Replaying the old pending workflow with a new provider identity can charge again. Preserve external operation identifiers and reconcile uncertain outcomes during recovery. Recovery validation must therefore include the business boundaries that cannot be rolled back by replacing local storage.
+
+Backups also depend on keys, permissions, and configuration. An encrypted backup without an available decryption key is not a usable recovery point. A restore account that lacks permission to read the backup location can turn a routine procedure into a prolonged incident. Keep recovery credentials under a controlled, tested access path and verify that the surviving environment can obtain the necessary keys without relying on the failed region or identity service. Protect backup deletion and retention separately from normal application access so one compromised service account cannot destroy both current data and its recovery copies.
+
+The 37-minute recovery example includes validation because accepting traffic is a business decision. Inspect expected row counts, integrity constraints, representative user workflows, and the latest recoverable operation boundary before routing writes. Record which acknowledged operations may be absent and how they will be reconciled. Restore timing should begin at the defined incident boundary and include detection, access, provisioning, replay, validation, and routing steps required by the runbook. A backup tool's completion time measures only its part of that path. Repeat the drill with a different operator and a fresh target so hidden local files or remembered commands do not become accidental dependencies. Preserve the result as evidence tied to a specific backup, software version, and environment. A successful rehearsal establishes what that tested procedure achieved; later changes to keys, schemas, storage, or topology can require another rehearsal.
 
 ## Failure Modes and Better Choices
 
