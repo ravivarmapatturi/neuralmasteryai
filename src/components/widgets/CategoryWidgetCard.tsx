@@ -36,7 +36,7 @@ export function CategoryWidgetCard({
 
   return (
     <li className={`nm-category-widget-item ${className}`}>
-      <Link to={to} className="nm-category-widget-card" aria-label={`${title}: ${summary}`}>
+      <Link to={to} className="nm-category-widget-card" aria-label={title}>
         <div className="nm-category-widget-top">
           <div className="nm-category-widget-visual" aria-hidden="true">
             {visual ? visual : <CategoryVisual topic={topic || title} />}
