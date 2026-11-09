@@ -1,7 +1,7 @@
 ---
 title: "Publish/Subscribe and Independent Consumer Progress"
 sidebar_position: 4.7
-description: ""
+description: "Separate fan-out subscriptions from competing workers, calculate delivery amplification, and define retention, routing, and recovery independently for each subscriber."
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -94,6 +94,20 @@ for group, cursor in progress.items():
 `} />
 
 The progress dictionary assumes one contiguous source stream and no gaps. A real group can have many partitions with separate cursors. A global maximum can conceal unfinished work on a slower partition. Preserve the source scope in every progress record and alert on the oldest required work, not merely the newest event observed somewhere.
+
+Subscription ownership should be visible in the operational contract. Accounting may promise that every accepted order eventually reaches its ledger, while a live dashboard may promise only a recent view. Publishing the same event to both does not make their retention, retries, or repair requirements equal. Record the subscriber's owner, expected lag, source for rebuilding, and consequence of permanent failure before calling the event integration complete.
+
+Test a binding change as a deployment. Publish a small labelled set before, during, and after the change, then inspect each subscription's required identities. A configuration transition can temporarily route to neither old nor new queue, or to both. The application must know whether overlap is safely deduplicated and whether any gap can be replayed. A broker confirming the publication does not alone establish that the intended new responsibility received its historical starting set. Keep the old topology until the new subscriber's initialization boundary and recovery evidence are established, and remove it only under the agreed transition plan.
+
+Measure acceptance and application separately for every required subscription. An event seen by a monitoring subscriber does not prove that a slower business subscriber completed its obligation.
+
+## Give Each Subscription Its Own Recovery Contract
+
+An accounting subscription and a fulfilment subscription represent different obligations. If accounting is current while fulfilment is stopped, the publisher's success cannot mean both business actions finished. Define whether publish success means accepted by an ingress service, durably stored by the messaging system, or acknowledged by some application workflow. In the four-event example, independent durable groups allow accounting to consume its four events without consuming fulfilment's entitlement to its own four. Workers inside one group share a responsibility; separate groups preserve separate responsibilities.
+
+The groups may also need different retention and replay policies. Accounting may require a long audit history, while fulfilment may care about completing current orders without reissuing an old shipment. Replaying a historical event through a current handler can have consequences that a live-only test never exercises. Preserve event identity and define whether replay rebuilds a projection, repairs a failed effect, or intentionally creates a new action. A field that was optional in the old schema may be required by today's code. Versioned interpretation and compatibility checks therefore belong in subscription operations, not only producer deployment.
+
+Filtering can reduce unnecessary deliveries, but it changes where subscription intent is expressed. If a broker-side filter excludes an event, the consumer cannot recover it from its own received-message history. Record filter changes and decide how a new subscription backfills earlier eligible data. A newly added fraud service, for example, may need historical purchase events rather than only events published after deployment. Test that onboarding path independently from ordinary reconnection. Finally, monitor each group's lag and failure population separately. A healthy combined delivery rate can hide a permanently failed fulfilment group behind a fast accounting group. Name the affected responsibility in alerts so the recovery procedure follows the business obligation that remains unfinished.
 
 ## Failure Modes and Better Choices
 
