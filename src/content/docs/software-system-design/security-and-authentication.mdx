@@ -1,0 +1,138 @@
+---
+title: "Security, Authentication, and Resource Authorization"
+sidebar_position: 6.4
+description: ""
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { ResourceAuthorization } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
+
+# Security, Authentication, and Resource Authorization
+
+<ELI5>A valid employee badge can establish who entered a building without granting access to every cabinet. A cabinet still needs a permission rule for the person and the action. Software makes the same distinction: proving identity is one boundary, deciding which record may be read or changed is another.</ELI5>
+
+Trace identity and permission across trust boundaries, validate token context, and enforce resource ownership without confusing a valid credential with universal access.
+**Authentication** establishes an identity under a verification policy. **Authorization** decides whether that identity may perform an action on a resource. Transport security, input validation, credential handling, and audit evidence support those boundaries but do not replace them. A design should explain which component verifies each claim and which owner permits each state transition.
+
+The misconception is that a correctly signed token authorizes access to any requested object. Our example has document 7 owned by Alice. Alice and Bob each possess a valid credential establishing their own identity. A signature-only endpoint permits two reads and leaks the document to Bob. An ownership policy permits Alice and denies Bob while recognizing both identities correctly.
+
+## Start With Assets, Actors, and Trust Boundaries
+
+Name the protected state and harmful transitions: reading another tenant's document, modifying ownership, issuing an administrative command, or exposing credentials through logs. Include ordinary users, administrators, service identities, and compromised callers in the relevant threat model. A single broad “secure” requirement does not identify where those actions can occur.
+
+A **trust boundary** marks where information changes from caller-controlled to verified under a defined policy. An ingress may authenticate a token, but a backend must know whether the forwarded identity came through that trusted path. If callers can reach the backend directly and supply the same header, the claim is not established by its spelling. The [gateway chapter](/docs/software-system-design/reverse-proxies-and-api-gateways) traces this failure concretely.
+
+Apply least privilege to identities and service credentials. A catalogue reader should not automatically have permission to modify every account because both use the same database. Privilege scope also needs maintenance when features, ownership, or deployment topology change. A powerful temporary debugging credential can become a permanent hidden bypass unless its lifecycle is explicit.
+
+## Token Verification Includes Meaning, Not Only Cryptography
+
+A signed JWT is a format for claims protected under its supported cryptographic use. Verification must apply a configured algorithm and trusted key policy, then validate issuer, audience, lifetime, and other required context. Decoding base64 fields is not signature verification. Accepting an arbitrary algorithm named by an untrusted token can violate the intended verifier policy.
+
+An **audience** identifies the intended recipient context. A valid token meant for another API should not automatically work here. An **issuer** identifies the authority whose claims the service accepts. Key retrieval and rotation must remain bound to trusted issuer configuration rather than an attacker-controlled URL in a token. Use maintained protocol libraries and the current standard's validation rules.
+
+OAuth access tokens and OpenID Connect ID tokens have different roles. An ID token describing an authentication event to a client is not automatically an API access credential. Select and validate the token type expected by the endpoint. Flow-specific checks, including relevant nonce and redirect protections, belong to the actual authentication protocol rather than a generic “JWT accepted” rule.
+
+## Resource Authorization Must Follow the Identifier
+
+<ResourceAuthorization />
+
+The bars keep two successfully authenticated identities fixed. Adding ownership enforcement reduces permitted reads from two to one and unauthorized disclosures from one to zero. This is a policy model assuming identity verification already succeeded; it is not a toy cryptographic implementation. The decision must also apply to update, delete, export, and indirect lookup paths.
+
+<RunnableCode code={`document = {"id": 7, "owner": "alice", "text": "private"}
+verified_principals = ["alice", "bob"]
+for principal in verified_principals:
+    authenticated = True  # precondition of this authorization model
+    allowed = authenticated and document["owner"] == principal
+    print("Principal:", principal, "authenticated:", authenticated, "read allowed:", allowed)
+assert document["owner"] != "bob"
+# Try it: remove the owner comparison; Bob's valid identity now incorrectly permits the protected read.
+`} />
+
+Do not trust a request body's owner or tenant field to establish the caller's scope. Derive the permitted scope from verified context and authoritative relationships. A random or unguessable resource ID can reduce casual enumeration, but it is not a substitute for authorization when the product promises private ownership. A link can also be leaked through logs, referrers, or another authorized user.
+
+Enforce policy at a boundary every access path uses. A UI restriction does not protect a direct API request, and one checked route does not protect a batch export or background worker using the same data. Test object-level permissions under all supported operations. A graph resolver or cache must preserve the same scope as a direct read.
+
+<PredictFirst question="Bob presents a valid token for his own identity and requests Alice's document 7. Is signature validity sufficient to return it?" options={["Yes, a valid token grants all object access", "No, document authorization must still permit Bob's action", "Yes, if the document ID is hard to guess"]} correctIndex={1} explanation="Authentication establishes who Bob is. It does not establish that Bob owns or may access Alice's resource; identifier entropy does not supply that missing permission." />
+
+## Sessions and Credentials Need Revocation Policy
+
+Server-managed sessions can consult current state for revocation and permission changes, while self-contained tokens can permit local verification until their configured lifetime or another revocation mechanism applies. Neither model is universally preferable. Choose from the required freshness of permissions, availability, client environment, and operating cost.
+
+A permission cache needs a maximum age and invalidation policy. A strongly consistent authorization store behind an indefinitely stale application cache does not make the API's decision current. If a protected action cannot establish required permission during an outage, its failure policy must not invent access. Separate an unavailable authority from a confirmed absence of permission in diagnostics without leaking sensitive state.
+
+Credential storage and transport depend on the client model. Browser cookies can use appropriate Secure, HttpOnly, and SameSite controls, while the application still needs its CSRF and origin protections under the chosen flow. A bearer token exposed to script or logs can be used by whoever obtains it within its authority. Avoid long-lived credentials in URLs and unrestricted telemetry.
+
+## Validate Inputs Without Confusing Validation With Permission
+
+Structural validation bounds types, lengths, sizes, and allowed forms. Domain validation checks business meaning. Authorization decides who may act. A well-formed SQL parameter can still identify another tenant's record, and an authorized user can still submit an excessive payload. Keep these checks explicit so one passing stage does not bypass the others.
+
+Use parameter binding and supported storage APIs rather than constructing queries from untrusted text. Bound upload size, request concurrency, and expensive operations according to actual resources. Rate limiting can reduce some abuse but does not repair a missing owner check. The [admission-control chapter](/docs/software-system-design/rate-limiting) explains key and scope choices.
+
+Error responses should communicate useful behavior without unnecessarily revealing private object existence or credentials. Whether a forbidden lookup uses a distinct response or a deliberately uniform not-found policy depends on the API contract and threat model. Test the chosen behavior consistently rather than allowing accidental differences across routes to reveal hidden records.
+
+<GoDeeper title="Go deeper: policy checks and mutation can race">
+Checking ownership before a later unconditional write can fail if ownership changes in between. The authoritative operation may need to enforce permission and expected version in the same transaction or conditional mutation. The required boundary follows the invariant: a caller authorized under an old relationship should not necessarily retain permission to complete an arbitrarily delayed new action. Define that semantic choice and test it under concurrency.
+</GoDeeper>
+
+## Exercise Claim Context After Signature Verification
+
+The next model checks audience and expiry after assuming a trusted signature verifier has established the claims. It intentionally does not decode or verify a JWT. A production implementation must perform the complete protocol using a maintained library, including required issuer/key rules and the token type's validation. This keeps the educational policy example from masquerading as authentication code.
+
+<RunnableCode code={`now = 100
+verified_claims = {"iss": "trusted-issuer", "aud": "catalogue", "exp": 120, "sub": "alice"}
+def context_allowed(claims, audience):
+    return claims["iss"] == "trusted-issuer" and claims["aud"] == audience and now < claims["exp"]
+print("Correct API context:", context_allowed(verified_claims, "catalogue"))
+print("Wrong API context:", context_allowed(verified_claims, "billing"))
+now = 121
+print("After expiration:", context_allowed(verified_claims, "catalogue"))
+# Try it: change iss to an untrusted issuer; signature verification under some other key must not grant this API authority.
+`} />
+
+Time handling needs an explicit policy for valid lifetime checks and any supported skew; arbitrary long grace periods can defeat the intended boundary. Key rotation should preserve only the permitted validation interval, and a compromised key requires a distinct incident response. Do not treat routine rotation and emergency revocation as identical operations.
+
+For a local test API, create two fixture users and one private document owned by the first. Exercise direct IDs, list filters, graph fields, exports, updates, deletes, and cached paths as the other user. Repeat with a valid token for a different audience and an expired token. Negative tests should assert no protected content or mutation, not only that one endpoint returns a particular status.
+
+## Audit Decisions and Protect the Recovery Path
+
+Record enough context to explain sensitive permission decisions and administrative changes: verified principal, action, resource scope, outcome, policy version, and appropriate correlation. Avoid storing whole tokens or secrets in those events. Control access and retention because authorization logs can themselves reveal private relationships and identifiers.
+
+Recovery can restore old permissions or sessions. A database snapshot predating revocation must not silently reopen access when service returns. Reconcile current identity and deletion obligations before routing protected traffic. The [disaster-recovery material](/docs/software-system-design/reliability) treats application validation and external history as part of reopening, not only database startup.
+
+Repeat negative permission tests after warming every relevant cache. A cold path can correctly consult ownership while a later shortcut returns an object based only on its identifier. Include list, export, and nested-field access, because protecting one direct lookup does not establish complete policy enforcement.
+
+## Failure Modes and Better Choices
+
+A gateway verifies identity and the service trusts a client-supplied tenant. Bind scope to verified context. A valid token for another API is accepted. Enforce audience and token-type validation. A cache returns Alice's record to Bob under a shared key. Include the permitted visibility context or avoid that cache design.
+
+A UI hides an action but a direct request still performs it. Enforce policy server-side. A stale permission check authorizes a delayed mutation after ownership transfer. Protect the authoritative transition under the required concurrency rule. Logs contain reusable credentials. Redact and restrict them rather than assuming internal telemetry is harmless.
+
+## When Not to Invent an Authentication Protocol
+
+| Situation | Better boundary |
+| --- | --- |
+| Standard login or delegated access is required | A maintained implementation of the applicable standard |
+| The real bug is cross-tenant object access | Resource authorization, not another token format |
+| An action needs current permission during outages | A defined authoritative decision and failure policy |
+| A service only needs narrow machine access | Least-privileged workload identity with explicit scope |
+
+## Remember
+
+| Check | What it establishes |
+| --- | --- |
+| Authentication | Identity under a trusted verification policy |
+| Token context | Intended issuer, audience, type, and lifetime |
+| Authorization | Permission for this action on this resource |
+| Validation | Acceptable input structure and business meaning |
+| Audit/recovery | Evidence and preserved authority across change and failure |
+
+You can now trace a protected action through identity and resource permission without treating token validity as universal authority. Return to [Reliability and Operations](/docs/software-system-design/reliability) before carrying those decisions across regions.
+
+## Sources
+
+- [RFC 8725, JSON Web Token Best Current Practices (2020)](https://www.rfc-editor.org/rfc/rfc8725)
+- [RFC 9700, OAuth 2.0 Security Best Current Practice (2025)](https://www.rfc-editor.org/rfc/rfc9700)
+- [OWASP, Authorization Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html)
+- [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html)
+- [RFC 9110, HTTP Semantics (2022)](https://httpwg.org/specs/rfc9110.html)
