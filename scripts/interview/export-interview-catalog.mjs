@@ -51,6 +51,9 @@ else {
   writeFileSync(resolve(root, 'src/data/interviewTopics.generated.json'), JSON.stringify(topics) + '\n');
   // Titles only, for site search; loaded on the first search query.
   writeFileSync(resolve(root, 'src/data/interviewSearch.generated.json'), JSON.stringify(questions.map(q => ({ id: q.id, title: q.title, area: q.area }))) + '\n');
-  writeFileSync(resolve(root, 'src/data/interviewCounts.generated.json'), JSON.stringify({ questions: questions.length, guides: guides.length, byGuide }, null, 2) + '\n');
+  const practice = JSON.parse(readFileSync(resolve(root, 'src/data/interviewPractice.json'), 'utf8'));
+  // The live practice bank already includes the senior questions.
+  const practiceCount = practice.topics.reduce((sum, topic) => sum + topic.questions.length, 0);
+  writeFileSync(resolve(root, 'src/data/interviewCounts.generated.json'), JSON.stringify({ questions: practiceCount, guides: guides.length, byGuide }, null, 2) + '\n');
 }
 console.log(`Interview catalogue: ${questions.length} questions, ${guides.length} preparation guides.`);
