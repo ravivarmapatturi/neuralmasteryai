@@ -37,16 +37,80 @@ export function splitAnswer(text: string): string[] {
   return windows;
 }
 
+export interface CachedModelAnswerEmbeddings {
+  claims: string[];
+  refSentences: string[];
+  claimVecs: ArrayLike<number>[];
+  refVecs: ArrayLike<number>[];
+}
+
+const modelAnswerEmbeddingsCache = new Map<string, Promise<CachedModelAnswerEmbeddings> | CachedModelAnswerEmbeddings>();
+
+export function modelAnswerCacheKey(criteria: string[], reference: string): string {
+  return `${reference.trim()}:::${criteria.join('|||')}`;
+}
+
+export function clearModelAnswerEmbeddingsCache(): void {
+  modelAnswerEmbeddingsCache.clear();
+}
+
+export async function precomputeModelAnswerEmbeddings(
+  criteria: string[],
+  reference: string,
+  embed: (texts: string[]) => Promise<ArrayLike<number>[]>
+): Promise<CachedModelAnswerEmbeddings> {
+  const key = modelAnswerCacheKey(criteria, reference);
+  const existing = modelAnswerEmbeddingsCache.get(key);
+  if (existing) return existing;
+
+  const refClean = reference.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/See [^.]*\.?\s*$/, '').replace(/[`*]/g, '');
+  const refSentences = splitAnswer(refClean);
+  const claims = criteria.map(toClaim);
+  const targets = [...claims, ...refSentences];
+
+  const promise = (async () => {
+    const vectors = await embed(targets);
+    const cached: CachedModelAnswerEmbeddings = {
+      claims,
+      refSentences,
+      claimVecs: vectors.slice(0, claims.length),
+      refVecs: vectors.slice(claims.length),
+    };
+    modelAnswerEmbeddingsCache.set(key, cached);
+    return cached;
+  })();
+
+  modelAnswerEmbeddingsCache.set(key, promise);
+  return promise;
+}
+
 export async function judgeAnswer(answer: string, criteria: string[], reference: string, models: JudgeModels): Promise<AnswerJudgement> {
   const sentences = splitAnswer(answer);
-  const refSentences = splitAnswer(reference.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/See [^.]*\.?\s*$/, '').replace(/[`*]/g, ''));
+  const refClean = reference.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/See [^.]*\.?\s*$/, '').replace(/[`*]/g, '');
+  const refSentences = splitAnswer(refClean);
   const claims = criteria.map(toClaim);
   if (!sentences.length) return { score: 0, sentences: [], points: criteria.map(point => ({ point, verdict: 'missed', confidence: 0 })), improvements: [] };
 
-  const vectors = await models.embed([...claims, ...refSentences, ...sentences]);
-  const claimVecs = vectors.slice(0, claims.length);
-  const refVecs = vectors.slice(claims.length, claims.length + refSentences.length);
-  const sentVecs = vectors.slice(claims.length + refSentences.length);
+  const key = modelAnswerCacheKey(criteria, reference);
+  let cached = modelAnswerEmbeddingsCache.get(key);
+  if (cached instanceof Promise) cached = await cached;
+
+  let claimVecs: ArrayLike<number>[];
+  let refVecs: ArrayLike<number>[];
+  let sentVecs: ArrayLike<number>[];
+
+  if (cached && cached.claims.length === claims.length && cached.refSentences.length === refSentences.length) {
+    claimVecs = cached.claimVecs;
+    refVecs = cached.refVecs;
+    sentVecs = await models.embed(sentences);
+  } else {
+    const vectors = await models.embed([...claims, ...refSentences, ...sentences]);
+    claimVecs = vectors.slice(0, claims.length);
+    refVecs = vectors.slice(claims.length, claims.length + refSentences.length);
+    sentVecs = vectors.slice(claims.length + refSentences.length);
+    modelAnswerEmbeddingsCache.set(key, { claims, refSentences, claimVecs, refVecs });
+  }
+
   const bestOf = (target: ArrayLike<number>, pool: ArrayLike<number>[]) => pool.reduce((best, v, i) => { const s = dot(target, v); return s > best.sim ? { sim: s, at: i } : best; }, { sim: -1, at: 0 });
 
   const pointMatches = claimVecs.map(v => bestOf(v, sentVecs));
