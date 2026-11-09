@@ -1,7 +1,7 @@
 ---
 title: "Security, Authentication, and Resource Authorization"
 sidebar_position: 6.4
-description: ""
+description: "Trace identity and permission across trust boundaries, validate token context, and enforce resource ownership without confusing a valid credential with universal access."
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -101,6 +101,14 @@ Record enough context to explain sensitive permission decisions and administrati
 Recovery can restore old permissions or sessions. A database snapshot predating revocation must not silently reopen access when service returns. Reconcile current identity and deletion obligations before routing protected traffic. The [disaster-recovery material](/docs/software-system-design/reliability) treats application validation and external history as part of reopening, not only database startup.
 
 Repeat negative permission tests after warming every relevant cache. A cold path can correctly consult ownership while a later shortcut returns an object based only on its identifier. Include list, export, and nested-field access, because protecting one direct lookup does not establish complete policy enforcement.
+
+## Authorize the Object Transition Inside the Trusted Service
+
+A signed token establishes claims only after the verifier checks the signature and the token's expected context. The service must select allowed algorithms and trusted keys, validate issuer and audience, enforce time-related constraints, and interpret the token according to its protocol. A token meant for another service should not become valid merely because the same identity provider signed it. Do not let untrusted token fields choose arbitrary trust roots or disable required verification. The page's simplified identity example assumes this verification already happened so it can isolate the separate resource-authorization decision.
+
+For document 7, the trusted service compares Alice's permitted relationship with the requested action on that document. Checking only that Alice is logged in would allow a valid Bob token to pass the same endpoint gate. Authorization should constrain the actual data access or transition, including tenant and object scope, rather than relying on a user-interface button being hidden. If a request changes ownership or another permission-relevant field, evaluate both the authority to make the change and the allowed resulting state. A client-supplied owner identifier is input to validate, not an authoritative permission grant.
+
+Permission changes introduce cache and session questions. Revoking access in the database may not immediately invalidate a cached authorization decision or an already issued token. Define the required revocation latency, use appropriately bounded caches or supported revocation mechanisms, and understand which requests already in flight can still complete. Test removal of access as well as initial denial. Audit records should identify the actor, action, resource, decision, and relevant policy context while excluding secret credentials. Finally, protect service-to-service calls with their own identity and authorization scope. An internal network location is not evidence that every caller may read every tenant's document. The same object-level invariant needs to survive gateways, background workers, administrative tools, and replay jobs, because any path that bypasses it becomes another way to reach the protected state.
 
 ## Failure Modes and Better Choices
 
