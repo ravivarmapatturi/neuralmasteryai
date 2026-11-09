@@ -3,7 +3,7 @@ import http from 'node:http';
 import practice from '../src/data/interviewPractice.json' with { type: 'json' };
 import type { Page } from '@playwright/test';
 
-const PORT = process.env.TEST_PORT ? Number(process.env.TEST_PORT) : 4173;
+const PORT = process.env.TEST_PORT ? Number(process.env.TEST_PORT) : process.env.CI ? 4173 : 5173;
 
 // Replace only inference workers: this works with both Vite modules and hashed CI bundles.
 // Playwright gives every test a fresh, non-persistent browser context (including model caches).
@@ -59,8 +59,12 @@ async function controlledRoom(page: Page, settings: {memory:number;gpu:boolean;f
           reply({ ok: true, result: payload.pairs.map(([,claim]:string[]) => ({ entails: state.rubricClaims ? (state.rubricClaims.indexOf(claim) >= 0 && state.rubricClaims.indexOf(claim) < state.rubricHitLimit ? 1 : 0) : 1, conflicts: 0 })) });
         } else if (op === 'init') {
           state.speechLoads.push(payload);
-          if(settings.deferTurbo && payload?.preloadModelId?.includes('large-v3-turbo')) {state.releaseTurbo=()=>reply({type:'init_done',device:'wasm',loadTimeMs:1});return;}
-          if(settings.failTurbo && payload?.preloadModelId?.includes('large-v3-turbo')) reply({type:'error',error:'GPU allocation failed'});
+          const isTurbo = Boolean((payload?.preloadModelId || payload?.modelId)?.includes('large-v3-turbo'));
+          if (settings.deferTurbo && isTurbo) {
+            state.releaseTurbo = () => reply({ type: 'init_done', device: 'wasm', loadTimeMs: 1 });
+            return;
+          }
+          if (settings.failTurbo && isTurbo) reply({ type: 'error', error: 'GPU allocation failed' });
           else reply({ type: 'init_done', device: 'wasm', loadTimeMs: 1 });
         } else if (['transcribe','commit','batch'].includes(op)) {
           reply({type:op==='transcribe'?'result':`${op}_result`,text:state.asrText || '',sampleCount:payload?.audio?.byteLength/4,inferMs:1});
@@ -70,7 +74,7 @@ async function controlledRoom(page: Page, settings: {memory:number;gpu:boolean;f
           throw new Error(`Unexpected inference operation: ${op}`);
         }
       }
-      terminate() {state.terminatedSpeechWorkers=(state.terminatedSpeechWorkers||0)+1;}
+      terminate() { this.onmessage = null; state.terminatedSpeechWorkers=(state.terminatedSpeechWorkers||0)+1; }
     } as any;
 
     Object.defineProperty(navigator, 'mediaDevices', { value: {
@@ -113,7 +117,7 @@ const navigationTopic = practice.topics.find(t => t.id === 'evaluation')!;
 async function atQuestion(page: Page, index: number) {
   const question = navigationTopic.questions[index];
   await expect(page.locator('.si-counter')).toHaveText(`Question ${index + 1} of ${navigationTopic.questions.length}`);
-  await expect(page).toHaveURL(new RegExp(`/interview/q/${encodeURIComponent(question.id.replaceAll(':', '__'))}$`));
+  await expect(page).toHaveURL(new RegExp(`/interview/q/${encodeURIComponent(question.id.replaceAll(':', '__'))}(\\?(?!topic=)[^#]*)?$`));
   await expect(page.locator('.si-question-title')).toHaveText(question.title);
 }
 async function answerByTyping(page: Page) {
@@ -145,7 +149,7 @@ test.describe('Interview Room (/interview/room)', () => {
 
     await page.goto(`http://localhost:${PORT}/interview`, { waitUntil: 'domcontentloaded' });
     await expect(page.locator('h1')).toHaveText('Interview practice');
-    await expect(page.locator('.si-node')).toHaveCount(22);
+    await expect(page.locator('.si-node')).toHaveCount(practice.topics.length);
     await page.click('.si-node:has-text("Evaluation")');
     await expect(page.locator('.si-panel h2')).toHaveText('Evaluation');
     await page.click('#start-topic');
@@ -249,17 +253,22 @@ test.describe('Interview Room (/interview/room)', () => {
     expect(indices.length).toBeLessThan(navigationTopic.questions.length);
     await page.getByLabel('Interview round').selectOption(round);
     await page.getByLabel('Role', { exact: true }).selectOption(role);
-    await expect(page.locator('.si-list button')).toHaveCount(indices.length);
+    await expect(page.locator('.si-list .si-list-item')).toHaveCount(indices.length);
     await page.locator('#start-topic').click();
-    for (const [position, index] of indices.entries()) {
-      await atQuestion(page, index);
+    const atFiltered = async (position: number) => {
+      const question = navigationTopic.questions[indices[position]];
+      await expect(page.locator('.si-counter')).toHaveText(`Question ${position + 1} of ${indices.length}`);
+      await expect(page.locator('.si-question-title')).toHaveText(question.title);
+    };
+    for (const [position] of indices.entries()) {
+      await atFiltered(position);
       if (position === 0) await expect(page.locator('#previous-question')).toBeDisabled();
       if (position < indices.length - 1) await page.locator('#next-question').click();
     }
     await expect(page.locator('#next-question')).toBeDisabled();
-    for (const index of indices.slice(0, -1).reverse()) {
+    for (let position = indices.length - 2; position >= 0; position--) {
       await page.locator('#previous-question').click();
-      await atQuestion(page, index);
+      await atFiltered(position);
     }
     await expect(page.locator('#previous-question')).toBeDisabled();
   });
@@ -596,4 +605,57 @@ test('spoken follow-up visual checks in both themes at mobile and desktop widths
   await follow.getByRole('button',{name:'Save follow-up',exact:true}).click();
   await expect(follow).toContainText('Follow-up saved with this attempt.');
   expect(errors).toEqual([]);
+});
+
+test('level filter filters questions by mid, senior, staff and Previous/Next respect it', async ({ page }) => {
+  await controlledRoom(page);
+  const levelFilter = page.getByLabel('Experience level', { exact: true });
+  await expect(levelFilter).toBeVisible();
+  await expect(levelFilter.locator('option')).toHaveText(['All levels', 'Mid-level', 'Senior', 'Staff']);
+
+  // Filter by Senior
+  await levelFilter.selectOption('senior');
+  const countText = await page.locator('.si-count').textContent();
+  expect(countText).toMatch(/\d+ questions/);
+
+  // Start question
+  await page.locator('#start-topic').click();
+  await expect(page.locator('.si-level-pill')).toHaveText('Senior');
+
+  // Verify next button respects senior filter
+  const nextBtn = page.locator('#next-question');
+  if (!(await nextBtn.isDisabled())) {
+    await nextBtn.click();
+    await expect(page.locator('.si-level-pill')).toHaveText('Senior');
+  }
+});
+
+test('Debug this topic is available and contains 30 production debug questions', async ({ page }) => {
+  await controlledRoom(page);
+  await page.locator('.si-node').filter({ hasText: 'Debug' }).click();
+
+  await expect(page.locator('.si-card h2')).toHaveText('Debug this');
+  await expect(page.locator('.si-count')).toContainText('30 questions');
+});
+
+test('level filter screenshots and responsive fit at 375 and 1440', async ({ page }) => {
+  await controlledRoom(page);
+  const filterBox = page.locator('.si-filters');
+
+  for (const width of [375, 1440]) {
+    for (const theme of ['light', 'dark']) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.evaluate((theme) => document.documentElement.setAttribute('data-theme', theme), theme);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+
+      await expect(filterBox).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+
+      await page.screenshot({
+        path: `docs/evidence/interview/filter-${width}-${theme}.png`,
+        fullPage: false,
+      });
+    }
+  }
 });

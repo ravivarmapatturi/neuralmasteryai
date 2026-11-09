@@ -1,0 +1,71 @@
+---
+title: "Text Chunker With Overlap"
+description: "AI Engineering Primitives, problem 1 of 10: Split raw text into fixed-size chunks with overlapping context, preserving words so clauses stay readable."
+difficulty: "medium"
+topic: "AI Engineering Primitives"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Why chunking needs overlap
+
+Naive character slicing cuts words in half: "refund policy" becomes "ref" and "und policy". A vector search query for "refund" fails to retrieve either chunk cleanly because the token was mutilated.
+
+**Word-boundary chunking with overlap** ensures that complete sentences and key entities remain intact in at least one chunk. The overlap window guarantees that transitions between paragraphs do not lose the surrounding context required by the embedding model.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def chunk_text(text: str, chunk_size: int, overlap: int) -> list[str]:
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
+    if overlap < 0 or overlap >= chunk_size:
+        raise ValueError("overlap must satisfy 0 <= overlap < chunk_size")
+    if not text:
+        return []
+
+    text_len = len(text)
+    if text_len <= chunk_size:
+        cleaned = text.strip()
+        return [cleaned] if cleaned else []
+
+    chunks = []
+    start = 0
+
+    while start < text_len:
+        end = min(start + chunk_size, text_len)
+        if end < text_len:
+            last_space = text.rfind(" ", start, end)
+            if last_space > start:
+                end = last_space
+
+        chunk = text[start:end].strip()
+        if chunk:
+            chunks.append(chunk)
+
+        if end >= text_len:
+            break
+
+        target = max(start + 1, end - overlap)
+        space_after = text.find(" ", target, end)
+        if space_after != -1:
+            next_start = space_after + 1
+        else:
+            space_before = text.rfind(" ", start, target)
+            if space_before != -1 and (end - (space_before + 1)) <= chunk_size:
+                next_start = space_before + 1
+            else:
+                next_start = target
+
+        while next_start < text_len and text[next_start].isspace():
+            next_start += 1
+        start = max(start + 1, next_start)
+
+    return chunks
+```
+
+</Solution>

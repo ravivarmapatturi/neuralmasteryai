@@ -123,7 +123,35 @@ export function CategoryVisual({ topic = 'generic', className }: CategoryVisualP
     );
   }
 
-  // 5. Specify, Verify, Debug (Tests Pass / Fail / Fixed)
+  // 5. Debug / Incident Triage (Production Telemetry Spike -> Root Cause Isolation -> Resolved)
+  if (key === 'debug' || key.includes('debug-this') || key === 'debug this') {
+    return (
+      <svg viewBox="0 0 56 40" className={className} aria-hidden="true" focusable="false" style={{ width: '100%', height: '100%' }}>
+        {/* Terminal/dashboard frame */}
+        <rect x="5" y="6" width="46" height="28" rx="3" fill={t.surface} stroke={t.border} strokeWidth="1" />
+        <line x1="5" y1="13" x2="51" y2="13" stroke={t.border} strokeWidth="0.8" />
+        <circle cx="9" cy="9.5" r="1.5" fill={t.accentDanger} />
+        <circle cx="13.5" cy="9.5" r="1.5" fill={t.accentWarn} />
+        <circle cx="18" cy="9.5" r="1.5" fill={t.accentPrimary} />
+        {/* Incident Metric Line with Anomaly Spike */}
+        <path
+          d="M9 25 L18 25 L23 16 L27 30 L31 22 L36 22 L47 22"
+          fill="none"
+          stroke={t.textSecondary}
+          strokeWidth="1.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {/* Spike Danger Marker */}
+        <circle cx="23" cy="16" r="2.2" fill={t.surface} stroke={t.accentDanger} strokeWidth="1.2" />
+        {/* Isolated Root Cause & Fixed Indicator */}
+        <circle cx="36" cy="22" r="2.5" fill={t.surface} stroke={t.accentPrimary} strokeWidth="1.2" />
+        <path d="M34.8 22 L35.8 23 L37.5 21" stroke={t.accentPrimary} strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      </svg>
+    );
+  }
+
+  // 5b. Specify, Verify, Debug (Tests Pass / Fail / Fixed)
   if (key.includes('specify') || key.includes('verify') || key.includes('debug')) {
     return (
       <svg viewBox="0 0 56 40" className={className} aria-hidden="true" focusable="false" style={{ width: '100%', height: '100%' }}>

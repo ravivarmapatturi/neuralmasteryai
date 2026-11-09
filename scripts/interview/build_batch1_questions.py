@@ -1,0 +1,973 @@
+#!/usr/bin/env python3
+"""Build batch1_questions.py with all 50 revised questions."""
+
+import json
+
+QUESTIONS = {
+  "coding": [
+    {
+      "id": "coding-chunker-token-aware",
+      "title": "Implement a token-aware recursive text chunker in Python with configurable overlap and sentence boundary preservation. What would you test?",
+      "answer": "We chunk text by counting tokenizer subwords rather than raw characters or words. If you slice on raw characters, you break multi-byte UTF-8 sequences and split subword tokens in half, corrupting embeddings and overflowing model context windows. We implement a recursive hierarchy. We try paragraph boundaries first, fall back to sentence endings, and split on words only as a last resort. When accumulating text into a chunk, once the next sentence would exceed the token limit, we emit the chunk, retain a trailing overlap window of tokens, and continue. For testing, we verify edge cases: documents smaller than a single chunk, individual sentences longer than the chunk limit where word splitting is forced, unicode emojis and accents, and exact overlap continuity between adjacent chunks. The main trade-off is latency against precision: running the BPE tokenizer over every boundary is slower than raw string slicing, but it guarantees chunks never exceed context limits.",
+      "tradeOffs": [
+        "Token-exact counting guarantees chunks fit context windows, but invoking the BPE tokenizer for every sentence boundary adds CPU latency compared to character slicing.",
+        "Larger overlap (e.g. 20%) preserves cross-chunk reasoning at the expense of duplicate storage and redundant vector search scoring."
+      ],
+      "followUps": [
+        "How would you optimize tokenizer calls if chunking a 100 MB text corpus?",
+        "What happens if a single Markdown table or code block exceeds the maximum token limit?"
+      ],
+      "wrongAnswers": [
+        "Chunking by character length (e.g. text[:500]) and assuming each token is four characters. This causes token truncation, invalid UTF-8 fragments, and context window overflows.",
+        "Splitting strictly on full stops without handling abbreviations (e.g. 'e.g.', 'U.S.') or numbers ('3.14'), fragmenting sentences prematurely."
+      ],
+      "rounds": ["coding", "ml-depth"],
+      "roles": ["applied-ai-engineer", "ai-data-engineer"]
+    },
+    {
+      "id": "coding-bm25-from-scratch",
+      "title": "Implement Okapi BM25 scoring from scratch in Python given inverted document frequencies, term frequencies, and document lengths. What edge cases must you handle?",
+      "answer": "Okapi BM25 scores how relevant a document is to a query by combining inverse document frequency with saturated term frequency. In standard TF-IDF, repeating a keyword ten times gives ten times the score. BM25 caps that growth: the first few occurrences provide the strongest signal, and additional mentions quickly level off. We also normalize by document length so longer documents are penalized and do not win simply by having more words. For the inverse document frequency term, we use the standard plus-one floor formula to prevent negative scores when a word appears in more than half of the corpus. In code, we handle empty documents, queries with zero matches, and unseen vocabulary terms. The trade-off is lexical precision versus semantic understanding: BM25 requires zero GPU compute and excels at exact keywords like part numbers, but it misses synonyms and cross-lingual meaning entirely.",
+      "tradeOffs": [
+        "Robertson IDF with the plus-one floor guarantees strictly positive scores, whereas raw Robertson IDF turns negative for ubiquitous terms.",
+        "BM25 captures exact lexical keywords with zero GPU compute, but cannot capture semantic synonyms or cross-lingual intent."
+      ],
+      "followUps": [
+        "Why does BM25 saturate term frequency while standard TF-IDF grows linearly?",
+        "How do you combine BM25 scores with dense embedding cosine similarity without one dominating the other?"
+      ],
+      "wrongAnswers": [
+        "Using linear term frequency without saturation, causing keyword-stuffed documents to dominate search results.",
+        "Omitting the plus-one floor in Robertson IDF, resulting in negative relevance scores for frequent query terms."
+      ],
+      "rounds": ["coding", "ml-depth"],
+      "roles": ["applied-ai-engineer", "data-scientist-evals"]
+    },
+    {
+      "id": "coding-cross-encoder-reranker",
+      "title": "Implement a two-stage reranker pipeline in Python that scores candidate passages with a cross-encoder and blends semantic and lexical scores. How do you test it?",
+      "answer": "In two-stage retrieval, we use a fast first stage to fetch initial candidates, and then pass each candidate through a cross-encoder to rerank them. A bi-encoder embeds the query and passage separately, so they cannot interact until cosine similarity. A cross-encoder concatenates the query and passage together into a single transformer, letting every query token attend to every document token across all layers. We normalize the first-stage scores to zero and one, compute the cross-encoder logit, and blend them with an interpolation weight. To test this, we feed synthetic pairs: one with exact keyword matches in the wrong context, and one with rich semantic relevance but no keyword overlap. We verify that the cross-encoder down-ranks the keyword decoy and that score blending produces no missing values. The trade-off is accuracy against latency: cross-encoders give superior relevance ranking, but quadratic self-attention over every candidate makes reranking hundreds of passages too slow for interactive search.",
+      "tradeOffs": [
+        "Cross-encoders achieve significantly higher ranking precision via all-to-all token attention, but compute scales quadratically with candidate count.",
+        "Min-max score normalization is simple but sensitive to outlier first-stage scores; sigmoid normalization bounds outputs reliably."
+      ],
+      "followUps": [
+        "How do you calibrate the interpolation weight between lexical and cross-encoder scores?",
+        "Why can we not run cross-encoders directly over the entire document corpus of millions of passages?"
+      ],
+      "wrongAnswers": [
+        "Concatenating raw BM25 scores (unbounded) with cross-encoder probabilities (0 to 1) without normalization, letting lexical scores dominate.",
+        "Assuming bi-encoders and cross-encoders have identical accuracy, ignoring that bi-encoders compress entire passages into a single static vector."
+      ],
+      "rounds": ["coding", "ml-depth"],
+      "roles": ["applied-ai-engineer", "ml-systems-engineer"]
+    },
+    {
+      "id": "coding-json-output-parser",
+      "title": "Implement a streaming JSON output parser in Python that extracts complete key-value pairs from an LLM token stream before the closing brace arrives. What are the failure modes?",
+      "answer": "When an LLM streams JSON, waiting for the final closing bracket delays the first user render. A streaming JSON parser reads tokens character by character as they arrive, maintaining a small state machine. We track brace depth for objects, bracket depth for arrays, a boolean flag for whether we are inside a string, and escape backslashes. When we are at the top object depth and encounter an unquoted colon, we capture the key. As soon as a terminating comma or closing brace completes a scalar value, we emit that key-value pair immediately to downstream UI components. Key edge cases include numbers split across token boundaries, escaped quotation marks inside string values, and unexpected model truncation where a trailing string never closes. The trade-off is time-to-first-render versus parser complexity: streaming partial objects gives an interactive user experience, but downstream consumers must gracefully handle partial trees if the stream disconnects midway.",
+      "tradeOffs": [
+        "Streaming partial key-values minimizes perceived latency for end users, but partial JSON parsing requires maintaining complex state machines.",
+        "Early emission risks emitting incomplete nested structures if the model stream aborts midway through generation."
+      ],
+      "followUps": [
+        "How would you handle nested JSON objects and arrays in a streaming parser?",
+        "What happens if the model emits leading explanatory text or markdown code fences before the opening brace?"
+      ],
+      "wrongAnswers": [
+        "Calling json.loads() repeatedly on every arriving token chunk, causing O(N^2) JSONDecodeError exceptions on partial strings.",
+        "Splitting on commas with regular expressions, which breaks on commas embedded inside quoted string values."
+      ],
+      "rounds": ["coding", "agent-architecture"],
+      "roles": ["applied-ai-engineer", "agent-engineer"]
+    },
+    {
+      "id": "coding-eval-harness-precision-recall",
+      "title": "Implement an evaluation harness in Python that computes macro and micro Precision, Recall, and F1 across multi-label classification outputs without using scikit-learn.",
+      "answer": "In multi-label classification, each instance can belong to several classes at once. Our evaluation harness tallies true positives, false positives, and false negatives for every class independently, without relying on external libraries. We compute two views: micro and macro metrics. For micro-averages, we sum all true positives and divide by total predictions globally across all classes. This gives every individual prediction equal weight, meaning dominant classes heavily influence the result. For macro-averages, we calculate precision, recall, and F1 per class first, and then take their unweighted mean. This treats every class equally regardless of frequency. The trade-off is frequency balance versus rare class visibility: micro-F1 reflects overall user traffic volume, whereas macro-F1 exposes whether the model fails on critical rare classes.",
+      "tradeOffs": [
+        "Micro-averaging weights every instance equally, making it ideal for aggregate traffic accuracy; macro-averaging weights every class equally, exposing performance on rare classes.",
+        "Zero-division handling requires explicit policy: returning 0.0 when a class has zero positive predictions prevents NaN propagation."
+      ],
+      "followUps": [
+        "When would you prefer macro-F1 over micro-F1 in an enterprise intent classification system?",
+        "How do you compute sample-averaged F1 and how does it differ from micro and macro F1?"
+      ],
+      "wrongAnswers": [
+        "Treating multi-label evaluation as binary classification by flattening predictions without grouping by class, corrupting per-class metrics.",
+        "Dividing by zero when a rare class has zero predictions without handling the edge case, crashing the evaluation harness with ZeroDivisionError."
+      ],
+      "rounds": ["coding", "ml-depth"],
+      "roles": ["data-scientist-evals", "applied-ai-engineer"]
+    },
+    {
+      "id": "coding-dynamic-batcher",
+      "title": "Implement an asynchronous dynamic batching queue in Python that groups incoming concurrent inference requests by maximum batch size and timeout.",
+      "answer": "A dynamic batcher groups concurrent inference requests into single batches before calling a GPU model server. We run an asynchronous queue with two release conditions: maximum batch size and a short timeout window, typically a few milliseconds. When a request arrives, we push it onto an internal queue and wait. If the queue reaches the target batch size, we pop all requests and dispatch immediately. If traffic is light, the timer fires and we dispatch whatever requests have arrived, padding tensor inputs to matching sequence lengths. We return an awaitable future to each caller so responses route back to their specific connection. The trade-off is throughput versus individual request latency: batching maximizes GPU tensor core utilization and lowers cost per token, but the first request in a batch waits for the queue window to fill, slightly increasing tail latency.",
+      "tradeOffs": [
+        "Dynamic batching drastically increases GPU saturation and overall system throughput, but introduces artificial queuing delay for early-arriving requests.",
+        "Padding variable-length inputs in a batch wastes compute on padding tokens; bucketing by sequence length mitigates this."
+      ],
+      "followUps": [
+        "How do you adjust the batch timeout dynamically based on current queue depth and traffic volume?",
+        "What happens if one request in a batch fails during model execution?"
+      ],
+      "wrongAnswers": [
+        "Processing each request immediately in a separate thread without batching, resulting in 100% memory bandwidth stalls on GPU tensor cores.",
+        "Using a fixed sleep timer rather than event-driven dispatch, forcing every request to experience maximum wait time even when batches are full."
+      ],
+      "rounds": ["coding", "systems-design"],
+      "roles": ["ml-systems-engineer", "inference-platform-engineer"]
+    },
+    {
+      "id": "coding-token-bucket-rate-limiter",
+      "title": "Implement a thread-safe token bucket rate limiter in Python supporting burst capacity and continuous fractional refill without polling threads.",
+      "answer": "A token bucket rate limiter controls traffic while allowing controlled bursts. Instead of running background worker threads that sleep and poll, we calculate token refill lazily on each request. Each bucket stores its capacity, the refill rate per second, current token balance, and the timestamp of the last check. When a request arrives under a thread lock, we calculate how much time passed since the last request, add elapsed time multiplied by the refill rate to our tokens, and cap the total at maximum capacity. If we have at least one token, we decrement and allow the request; otherwise we reject it with a retry-after estimate. The trade-off is burst accommodation versus downstream overload: token buckets handle legitimate user bursts smoothly, unlike fixed-window counters that produce edge-of-window spikes, but if downstream LLM APIs are already saturated, burst allowances can temporarily overwhelm backend connections.",
+      "tradeOffs": [
+        "Lazy timestamp-based refill eliminates background thread CPU overhead and sleeps, but requires thread locking around timestamp updates.",
+        "Token buckets support bursty client traffic gracefully, unlike sliding window logs which require storing timestamps for every individual request."
+      ],
+      "followUps": [
+        "How do you extend this in-memory implementation to work across distributed API gateway instances?",
+        "How do you handle token rate limiting where different requests consume differing numbers of tokens (e.g. prompt length)?"
+      ],
+      "wrongAnswers": [
+        "Spawning a background daemon thread with time.sleep() to increment tokens, which wastes CPU cycles and drifts over time.",
+        "Omitting concurrency locks, causing race conditions where concurrent requests double-spend tokens."
+      ],
+      "rounds": ["coding", "systems-design"],
+      "roles": ["platform-engineer", "ml-systems-engineer"]
+    },
+    {
+      "id": "coding-streaming-sse-client",
+      "title": "Implement a Server-Sent Events (SSE) streaming client in Python with reconnection logic, buffer management, and event-type dispatch.",
+      "answer": "Server-Sent Events deliver real-time model tokens over a persistent HTTP connection using a text stream format. An SSE client reads raw byte chunks and accumulates them into an internal string buffer. The protocol specifies that events are separated by double newlines, while individual fields start with prefixes like 'data:' or 'event:'. When the buffer contains a double newline, we extract the complete block, parse the fields, deserialize JSON payloads, and dispatch them to the subscriber. If the network drops, the client reconnects automatically with exponential backoff and sends the last observed event identifier in the Last-Event-ID header to resume without losing tokens. The trade-off is framing simplicity versus binary payload efficiency: SSE runs over standard HTTP with no WebSocket handshake, making it easy to proxy and inspect, but parsing string lines adds CPU string-splitting overhead compared to binary protocols like gRPC.",
+      "tradeOffs": [
+        "SSE operates over standard HTTP/1.1 and HTTP/2 without WebSocket upgrades, simplifying proxy traversal and firewall rules.",
+        "Text-based line framing introduces string parsing overhead compared to binary streaming protocols like gRPC or WebSockets."
+      ],
+      "followUps": [
+        "How do you handle a scenario where an SSE chunk is split in the middle of a multi-byte UTF-8 character?",
+        "What is the difference in proxy buffering behavior between chunked transfer encoding and SSE?"
+      ],
+      "wrongAnswers": [
+        "Assuming each read() chunk from the socket represents exactly one complete SSE event, which corrupts multi-line payloads.",
+        "Failing to track Last-Event-ID on reconnects, causing dropped or duplicated tokens during network blips."
+      ],
+      "rounds": ["coding", "agent-architecture"],
+      "roles": ["applied-ai-engineer", "agent-engineer"]
+    },
+    {
+      "id": "coding-vector-l2-cosine-distance",
+      "title": "Implement batched cosine similarity and squared Euclidean distance in NumPy without nested Python loops. When does cosine equal Euclidean distance?",
+      "answer": "We implement batched similarity in NumPy using matrix multiplication. For cosine similarity, we normalize input matrices across their embedding dimension by dividing by their L2 norms, and then compute the dot product matrix. For squared Euclidean distance, we expand the binomial theorem: squared distance equals norm of u squared plus norm of v squared minus two times their dot product. When vectors are unit-normalized to length one, squared Euclidean distance simplifies directly to two minus two times cosine similarity. In that case, ranking by cosine similarity and ranking by Euclidean distance produce identical orderings. The trade-off is magnitude information versus directional semantic similarity: normalizing vectors removes vector length, which is beneficial when comparing text passages of differing lengths, but harmful if embedding magnitude encodes confidence or popularity.",
+      "tradeOffs": [
+        "Matrix multiplication vectorization achieves order-of-magnitude speedups over nested loops by utilizing optimized BLAS libraries.",
+        "Unit-normalizing vectors simplifies distance math to dot products, but permanently discards embedding norm information."
+      ],
+      "followUps": [
+        "How do you compute top-K nearest neighbors without sorting the entire N-by-M similarity matrix?",
+        "Why is squared Euclidean distance preferred over raw Euclidean distance in vector index retrieval?"
+      ],
+      "wrongAnswers": [
+        "Using nested for-loops over all vector pairs, resulting in O(N*M) Python interpreter overhead that fails to scale.",
+        "Claiming cosine similarity and Euclidean distance are always equivalent, ignoring that un-normalized vectors produce conflicting rankings."
+      ],
+      "rounds": ["coding", "ml-depth"],
+      "roles": ["applied-ai-engineer", "data-scientist-evals"]
+    },
+    {
+      "id": "coding-exponential-decay-cache",
+      "title": "Implement a semantic vector cache in Python with time-to-live expiration and cosine similarity threshold matching.",
+      "answer": "A semantic vector cache stores previous query embeddings alongside their generated answers to intercept redundant LLM calls. When a user submits a query, we embed it and compare it against cached query vectors using cosine similarity. If the highest similarity exceeds an exact threshold, such as 0.95, and the entry has not exceeded its time-to-live expiration, we return the cached response immediately without calling the model. We evict stale entries on access or through a periodic sweep. The trade-off is cache hit rate versus answer correctness: an exact string hash guarantees zero false semantic matches but yields few hits, while a semantic cache catches rephrased queries. However, if the similarity threshold is set too low, the cache returns answers for queries with subtle semantic differences, such as negations or conflicting constraints.",
+      "tradeOffs": [
+        "Semantic matching catches diverse natural language paraphrases that miss exact string caches, saving substantial API spend.",
+        "Setting the cosine threshold too low causes semantic drift, returning cached answers to subtly different questions."
+      ],
+      "followUps": [
+        "How do you handle cache invalidation when underlying knowledge documents update?",
+        "How does semantic caching interact with temperature > 0 and user personalization?"
+      ],
+      "wrongAnswers": [
+        "Relying solely on MD5/SHA256 string hashing for LLM caching, which misses identical user queries with minor punctuation changes.",
+        "Setting a loose similarity threshold (e.g. 0.80), causing the cache to return answers that contradict the user query."
+      ],
+      "rounds": ["coding", "systems-design"],
+      "roles": ["applied-ai-engineer", "ml-systems-engineer"]
+    }
+  ],
+  "deep-learning": [
+    {
+      "id": "dist-ddp-allreduce-synchronous",
+      "title": "In PyTorch Distributed Data Parallel (DDP), why is gradient synchronization strictly synchronous, and how does gradient bucketing overlap communication with backprop?",
+      "answer": "In Distributed Data Parallel, each GPU holds a full model replica and computes backward gradients on its own data shard. Gradient synchronization is strictly synchronous because all replicas must apply identical parameter updates at every step to keep weights mathematically identical without diverging. To hide communication latency, PyTorch does not wait until the entire backward pass finishes. It organizes parameters into buckets in reverse layer order. As soon as backward autograd completes the gradients for a bucket, DDP initiates an asynchronous Ring-AllReduce across all GPUs while earlier layers are still computing gradients. Ring-AllReduce shares gradients in logical rings of chunks: each GPU sends and receives simultaneously, transferring two times the gradient size divided by the number of ranks. The trade-off is bucket size tuning: large buckets achieve high network bandwidth utilization on InfiniBand, but small buckets start communication earlier to overlap with backward computation.",
+      "tradeOffs": [
+        "Bucket pipelining overlaps communication with computation, but setting buckets too small increases per-message kernel launch overhead.",
+        "Strictly synchronous AllReduce guarantees mathematical equivalence to single-GPU training, but forces fast GPUs to wait for the slowest straggler node."
+      ],
+      "followUps": [
+        "What happens if your model parameters are not executed in deterministic order during the forward pass?",
+        "How does Ring-AllReduce communication volume scale as you increase cluster size from 8 to 1,024 GPUs?"
+      ],
+      "wrongAnswers": [
+        "Claiming DDP uses asynchronous parameter updates like Parameter Server architectures, ignoring that DDP enforces strict synchronous lockstep.",
+        "Believing Ring-AllReduce transfers the entire model size from every GPU to every other GPU sequentially, rather than in ring chunks."
+      ],
+      "rounds": ["ml-depth", "systems-design"],
+      "roles": ["ml-infrastructure-engineer", "applied-scientist"]
+    },
+    {
+      "id": "dist-zero-stages-memory-tradeoff",
+      "title": "Compare ZeRO-1, ZeRO-2, and ZeRO-3 in terms of memory reduction and inter-node communication overhead.",
+      "answer": "ZeRO eliminates redundant memory across data-parallel ranks in three stages. In standard training, every GPU stores identical optimizer states, gradients, and model parameters. In ZeRO Stage 1, we shard the optimizer states across GPUs, which reduces memory by roughly four times with zero extra communication. In ZeRO Stage 2, we also shard the gradients, so each GPU reduces and stores only its slice of gradients, again with no extra communication cost. In ZeRO Stage 3, we shard the actual model parameters. Each GPU keeps only its partition; during the forward pass, it gathers layer parameters via an all-gather, computes the activations, and immediately discards the gathered weights. The backward pass repeats this all-gather and runs a reduce-scatter on gradients. The trade-off is memory capacity against interconnect bandwidth: ZeRO-3 lets you train massive models without model-parallel code, but it introduces 50% more communication, making training network-bound on slow ethernet networks.",
+      "tradeOffs": [
+        "ZeRO-1 and ZeRO-2 reduce memory significantly with 0% communication overhead, whereas ZeRO-3 requires 50% extra communication for layer all-gathers.",
+        "ZeRO-3 eliminates the need for tensor or pipeline model-sharding code, but requires high-bandwidth interconnects like NVLink or InfiniBand."
+      ],
+      "followUps": [
+        "How does ZeRO-Offload extend ZeRO-3 by utilizing host CPU memory and NVMe storage?",
+        "Why does ZeRO-2 have identical communication volume to standard DDP?"
+      ],
+      "wrongAnswers": [
+        "Asserting that ZeRO-1 increases network communication overhead, when optimizer state sharding requires zero extra collective traffic.",
+        "Thinking ZeRO-3 permanently holds gathered parameters in GPU memory, missing that weights are discarded immediately after layer computation."
+      ],
+      "rounds": ["ml-depth", "systems-design"],
+      "roles": ["ml-infrastructure-engineer", "pre-training-engineer"]
+    },
+    {
+      "id": "dist-fsdp-layer-allgather",
+      "title": "Walk through how PyTorch Fully Sharded Data Parallel (FSDP) shards model states across forward and backward passes. What is the communication cost?",
+      "answer": "Fully Sharded Data Parallel shards parameters, gradients, and optimizer states across ranks at the granularity of individual transformer layers. During the forward pass, before executing a specific layer, FSDP executes an all-gather collective so all ranks receive the full un-sharded weights. It computes the forward activations and immediately frees the un-sharded parameters from memory, keeping only its assigned shard. During the backward pass, FSDP all-gathers the layer weights a second time to compute input gradients, frees the weights again, and performs a reduce-scatter on gradients so each rank holds only its shard of the gradient. To minimize overhead, FSDP overlaps the all-gather of the next layer with computation of the current layer. The trade-off is memory efficiency against communication volume: FSDP scales model capacity linearly with GPU count, but communication volume increases by roughly 50% compared to standard DDP, requiring high-bandwidth interconnects like NVLink or InfiniBand.",
+      "tradeOffs": [
+        "FSDP achieves linear memory scaling with cluster size, but increases communication volume by roughly 50% relative to standard DDP.",
+        "Wrapping layers too granularly creates thousands of small collective launches; wrapping too coarsely spikes peak memory."
+      ],
+      "followUps": [
+        "What is the difference between FSDP FULL_SHARD and SHARD_GRAD_OP?",
+        "How do you implement activation checkpointing inside an FSDP-wrapped transformer block?"
+      ],
+      "wrongAnswers": [
+        "Believing FSDP gathers the entire model weights all at once before the forward pass, which would immediately cause an out-of-memory error.",
+        "Assuming FSDP eliminates the backward all-gather because parameters were already gathered during the forward pass."
+      ],
+      "rounds": ["ml-depth", "systems-design"],
+      "roles": ["ml-infrastructure-engineer", "pre-training-engineer"]
+    },
+    {
+      "id": "dist-pipeline-parallelism-bubbles",
+      "title": "What causes the pipeline bubble in pipeline parallelism, and how do 1F1B scheduling and interleaved micro-batching reduce idle GPU time?",
+      "answer": "In pipeline parallelism, we split model layers sequentially across multiple GPUs. When Rank 0 is running the first layer on a batch, downstream GPUs sit idle waiting for activations to arrive; similarly, during backward passes, upstream GPUs sit idle waiting for gradients. This idle time is the pipeline bubble. If a batch is split into m micro-batches across p pipeline stages, the bubble fraction is approximately p minus one divided by m plus p minus one. To minimize this bubble, 1F1B scheduling alternates one forward micro-batch with one backward micro-batch. Once the pipeline warms up, each GPU immediately runs a backward pass as soon as gradients arrive, freeing activation memory before launching the next forward micro-batch. The trade-off is activation memory versus bubble overhead: increasing micro-batches shrinks the bubble percentage, but keeping more micro-batches in flight increases peak activation memory across intermediate stages.",
+      "tradeOffs": [
+        "1F1B scheduling caps peak activation memory to p micro-batches, whereas standard GPipe retains all m micro-batches in memory.",
+        "Interleaved 1F1B reduces the bubble further by assigning multiple virtual stages per GPU, at the cost of additional P2P communication."
+      ],
+      "followUps": [
+        "How do you combine pipeline parallelism with tensor parallelism and data parallelism in 3D parallelism?",
+        "What happens to the pipeline schedule when layers have uneven computation times?"
+      ],
+      "wrongAnswers": [
+        "Believing pipeline bubbles can be eliminated completely without micro-batching, ignoring sequential data dependencies across layers.",
+        "Assuming 1F1B and GPipe have identical peak memory footprints, ignoring that GPipe delays all backward passes until all forwards complete."
+      ],
+      "rounds": ["ml-depth", "systems-design"],
+      "roles": ["pre-training-engineer", "ml-infrastructure-engineer"]
+    },
+    {
+      "id": "dist-tensor-parallelism-megatron",
+      "title": "How does Megatron-LM split transformer attention and MLP matrices across GPUs with only two AllReduce operations per layer?",
+      "answer": "Megatron-LM tensor parallelism shards individual matrix multiplications across GPUs within a single node. In multi-head attention, the projection matrices for queries, keys, and values are split column-wise across GPUs. Each GPU computes attention heads for its slice independently with no communication. The output projection matrix is split row-wise: each GPU multiplies its local head outputs by its weight slice, and a single all-reduce sums the partial vectors across ranks to produce the final attention output. For the feed-forward network, the first linear layer is split column-wise, GeLU activation is applied locally, and the second linear layer is split row-wise, followed by a second all-reduce. This achieves tensor parallelism with exactly two all-reduce operations per transformer layer. The trade-off is high communication frequency: every single layer requires two all-reduces, so tensor parallelism is strictly confined to high-bandwidth intra-node NVLink connections and cannot scale efficiently across slow inter-node networks.",
+      "tradeOffs": [
+        "Column-then-row matrix decomposition eliminates inter-layer communication, but requires ultra-fast NVLink bandwidth (e.g. 900 GB/s on H100).",
+        "Splitting attention heads requires head counts to be cleanly divisible by the tensor-parallel degree."
+      ],
+      "followUps": [
+        "Why can we not apply tensor parallelism across nodes connected by standard 100 Gbps Ethernet?",
+        "How does Sequence Parallelism build on Megatron-LM to shard LayerNorm and Dropout activations?"
+      ],
+      "wrongAnswers": [
+        "Row-splitting QKV and column-splitting output projections, which forces an extra AllReduce between every internal layer operation.",
+        "Attempting to scale Megatron tensor parallelism across 64 nodes over standard TCP, resulting in 95% communication stall time."
+      ],
+      "rounds": ["ml-depth", "systems-design"],
+      "roles": ["pre-training-engineer", "applied-scientist"]
+    },
+    {
+      "id": "dist-gradient-accumulation-boundary",
+      "title": "How does gradient accumulation simulate a larger effective batch size without running out of GPU memory, and what happens at optimizer step boundaries?",
+      "answer": "Gradient accumulation lets you train with large effective batch sizes when a full batch does not fit into GPU memory. We divide the target batch into smaller micro-batches that fit into VRAM, run forward and backward passes sequentially, and accumulate gradients into the parameter gradient buffers without zeroing them. In distributed training with DDP, calling backward on every micro-batch would trigger an expensive all-reduce collective every time. To prevent this, we wrap intermediate micro-batches in PyTorch's no_sync context manager, which suppresses gradient synchronization until the final micro-batch of the accumulation cycle. At that boundary, DDP synchronizes gradients across all ranks, the optimizer steps, and gradients are zeroed. The trade-off is training throughput against wall-clock step time: gradient accumulation reduces communication overhead and avoids out-of-memory errors, but optimizer updates happen less frequently, which requires adjusting learning rate warmup schedules.",
+      "tradeOffs": [
+        "no_sync() avoids redundant AllReduce collectives on intermediate micro-batches, but gradients must be scaled by accumulation steps to avoid loss explosion.",
+        "Large effective batch sizes improve hardware throughput, but past a critical threshold, larger batches yield diminishing returns in sample efficiency."
+      ],
+      "followUps": [
+        "Why must you divide loss by accumulation_steps before calling loss.backward()?",
+        "How does gradient accumulation interact with batch normalization statistics?"
+      ],
+      "wrongAnswers": [
+        "Calling optimizer.step() and optimizer.zero_grad() inside the accumulation loop, which updates weights on single micro-batches instead of accumulating.",
+        "Omitting model.no_sync() in DDP, triggering an AllReduce collective on every single micro-batch and destroying training throughput."
+      ],
+      "rounds": ["ml-depth", "coding"],
+      "roles": ["applied-scientist", "ml-infrastructure-engineer"]
+    },
+    {
+      "id": "dist-nccl-timeout-debugging",
+      "title": "Your distributed training job halts with an NCCL watchdog timeout error on node 4. How do you systematically isolate whether this is straggler compute, network packet drop, or silent GPU failure?",
+      "answer": "An NCCL watchdog timeout error indicates that an all-reduce or collective operation waited beyond its timeout limit, but the rank that timed out is rarely the root cause. Collective operations require all ranks to enter the call; if one rank hangs or runs slowly, every other rank eventually times out waiting for it. To isolate the issue, we set NCCL_DEBUG to INFO and enable asynchronous error handling. First, we inspect the logs to identify which rank failed to enter the collective. If one rank is delayed while others are waiting, we check for a compute straggler: uneven batch sizes, an un-sharded evaluation loop, or data loading bottlenecks on that host. Second, we verify GPU health by checking for thermal throttling, PCIe bus errors, or uncorrectable ECC memory errors using nvidia-smi. Third, if all compute ranks look normal, we test the network fabric with collective benchmarks like nccl-tests to check for dropped packets, InfiniBand link degradations, or route flapping. The trade-off is diagnostic verbosity against overhead: detailed tracing slows down execution, but it pinpoint the exact failing rank.",
+      "tradeOffs": [
+        "Enabling NCCL_DEBUG=INFO provides detailed ring topology and collective tracing, but generates substantial log volume on large clusters.",
+        "Asynchronous error handling halts jobs immediately upon collective failures, preventing GPU compute waste on dead runs."
+      ],
+      "followUps": [
+        "What is the difference between an NCCL barrier timeout and a silent kernel lockup?",
+        "How do you configure NCCL socket interfaces to ensure traffic routes over InfiniBand rather than secondary Ethernet interfaces?"
+      ],
+      "wrongAnswers": [
+        "Assuming the node reporting the timeout is the broken node, missing that healthy nodes time out waiting for a hung peer.",
+        "Immediately rebooting the host without checking GPU ECC errors, PCIe link speed degradation, or dmesg hardware logs."
+      ],
+      "rounds": ["ml-depth", "systems-design"],
+      "roles": ["ml-infrastructure-engineer", "pre-training-engineer"]
+    },
+    {
+      "id": "dist-activation-checkpointing-overhead",
+      "title": "How does activation checkpointing trade extra compute for GPU memory, and how do you decide which layers to checkpoint?",
+      "answer": "During the forward pass of training, standard backpropagation saves all intermediate layer activations in GPU memory so they can be used to compute gradients during the backward pass. For long sequences or deep models, these activations consume far more memory than the model weights themselves. Activation checkpointing discards intermediate activations during the forward pass, saving only the inputs to designated transformer blocks. During the backward pass, when gradients for that block are needed, we re-run the forward pass on that specific block from its saved input, recomputing the activations on the fly, and immediately compute gradients. This reduces activation memory from linear in the number of layers to roughly square root of the number of layers. The trade-off is compute against memory: activation checkpointing adds approximately 20 to 30 percent extra floating-point operations to training, but it lets you train significantly larger models or longer sequence lengths without out-of-memory crashes.",
+      "tradeOffs": [
+        "Full activation checkpointing cuts activation memory drastically at the cost of roughly 25% to 33% recomputation overhead.",
+        "Selective activation checkpointing checkpoints only memory-intensive operations (like attention softmax) while caching linear layer activations."
+      ],
+      "followUps": [
+        "Why is activation memory quadratic in sequence length for standard attention without FlashAttention?",
+        "How does FlashAttention reduce the necessity of activation checkpointing for intermediate attention matrices?"
+      ],
+      "wrongAnswers": [
+        "Believing activation checkpointing saves parameter or optimizer memory, when it strictly targets forward intermediate activations.",
+        "Claiming recomputation doubles total training time, ignoring that backward passes account for the majority of baseline compute."
+      ],
+      "rounds": ["ml-depth", "systems-design"],
+      "roles": ["applied-scientist", "pre-training-engineer"]
+    },
+    {
+      "id": "dist-bf16-vs-fp16-mixed-precision",
+      "title": "Why has bfloat16 largely replaced FP16 for distributed pre-training, and when is FP16 still preferred?",
+      "answer": "Bfloat16 has largely replaced standard FP16 for distributed pre-training because of its dynamic range. Both formats use 16 bits, but FP16 allocates 5 bits to the exponent and 10 bits to the mantissa, giving a maximum value of 65,504 and underflowing below roughly ten to the minus five. Small gradients in deep transformer layers frequently underflow to zero, requiring dynamic loss scaling to prevent training instability. Bfloat16 allocates 8 bits to the exponent and 7 bits to the mantissa, exactly matching the dynamic range of single-precision FP32 up to ten to the thirty-eighth power. This preserves gradient magnitudes without loss scaling, greatly reducing underflow and making large-scale pre-training runs significantly more stable. The trade-off is mantissa precision: BF16 has fewer precision bits than FP16, resulting in slightly higher rounding error. FP16 remains preferred when numerical accuracy is more important than dynamic range, such as inference tasks on hardware without native bfloat16 tensor cores.",
+      "tradeOffs": [
+        "BF16 eliminates dynamic loss scaling and gradient overflow instability, but trades off three bits of mantissa precision relative to FP16.",
+        "FP16 achieves lower quantization noise and higher numeric precision, but requires careful loss scaling to prevent underflow to zero."
+      ],
+      "followUps": [
+        "Why does FP16 require dynamic loss scaling during backward passes while BF16 does not?",
+        "What happens when you accumulate matrix products in BF16 versus accumulating in FP32?"
+      ],
+      "wrongAnswers": [
+        "Claiming BF16 completely eliminates all numerical underflow, ignoring that its lower mantissa precision creates higher rounding noise.",
+        "Believing FP16 and BF16 have identical dynamic ranges because both occupy 16 bits in memory."
+      ],
+      "rounds": ["ml-depth", "systems-design"],
+      "roles": ["pre-training-engineer", "applied-scientist"]
+    },
+    {
+      "id": "dist-data-loader-sharding-determinism",
+      "title": "When training across 64 GPUs, how do you configure the DistributedSampler and random seeds to guarantee no duplicate data across ranks and reproducible resumption?",
+      "answer": "When training across multiple GPUs, each rank must process a unique, non-overlapping subset of the dataset in every epoch. We wrap the dataset in PyTorch's DistributedSampler, configuring the total number of replicas and the rank of each GPU. The sampler calculates the slice of data indices assigned to that rank so data is partitioned cleanly. Crucially, in our training loop, we must call sampler.set_epoch(epoch) at the start of every epoch. The sampler uses the epoch number to seed its deterministic shuffle; if you omit set_epoch, the dataset will shuffle once at the start of training and repeat the exact same ordering every subsequent epoch, reducing model generalization. For reproducible resumption, we save the global epoch, the global step count, and the random states for PyTorch, NumPy, and Python in our checkpoint. The trade-off is dataset size alignment: when the dataset cannot be divided evenly across ranks, the sampler pads samples to keep batch counts identical, which slightly over-samples border items unless drop_last is enabled.",
+      "tradeOffs": [
+        "DistributedSampler guarantees non-overlapping rank partitions, but requires calling set_epoch() every epoch to ensure shuffling across epochs.",
+        "Padding uneven datasets ensures equal batch counts per rank, avoiding deadlock in AllReduce, but introduces duplicate border samples."
+      ],
+      "followUps": [
+        "What happens in DDP if one rank processes one fewer batch than the other ranks because drop_last was False?",
+        "How do you implement streaming webdataset sharding across thousands of workers without pre-computing index tables?"
+      ],
+      "wrongAnswers": [
+        "Omitting sampler.set_epoch(epoch), causing the DataLoader to produce identical data sample orderings across all epochs.",
+        "Seeding all dataloader worker processes with the identical random seed, causing all ranks to process identical data shards."
+      ],
+      "rounds": ["ml-depth", "coding"],
+      "roles": ["ml-infrastructure-engineer", "applied-scientist"]
+    }
+  ],
+  "agents": [
+    {
+      "id": "agent-idempotency-key-design",
+      "title": "How do you design an idempotency layer for agent tool execution to prevent duplicate side effects during retries?",
+      "answer": "An agent loop can retry a tool invocation if a network call times out or an execution step halts. Without idempotency, retrying an action like creating a database entry or sending a refund produces duplicate mutations. We generate a deterministic idempotency key before dispatching any tool. We construct the key by hashing the session identifier, the agent step index, the tool name, and the canonical JSON-serialized arguments with sorted keys. When a tool call arrives at our execution layer, we check a central key-value store for that key. If the key exists and the status is completed, we return the cached result immediately without re-executing the action. If the key is in progress, subsequent attempts wait; if it does not exist, we record the key, execute the tool, store the result, and set a time-to-live expiration. The trade-off is state management overhead versus mutation safety: storing idempotency keys requires distributed storage, but it prevents costly duplicate side effects during automatic retries.",
+      "tradeOffs": [
+        "Deterministic idempotency keys guarantee exactly-once tool semantics across network retries, but require central lock storage.",
+        "Setting key TTLs too short risks duplicate execution on delayed retries; setting them too long consumes unnecessary storage."
+      ],
+      "followUps": [
+        "How do you handle non-idempotent third-party APIs that do not support client-supplied idempotency keys?",
+        "What happens if an agent legitimately needs to execute the same tool twice in different steps of a task?"
+      ],
+      "wrongAnswers": [
+        "Generating random UUIDs as idempotency keys on every retry attempt, defeating the purpose of deduplication.",
+        "Hashing tool arguments without including the step index or session ID, incorrectly blocking repeated calls in later steps."
+      ],
+      "rounds": ["agent-architecture", "systems-design"],
+      "roles": ["agent-engineer", "applied-ai-engineer"]
+    },
+    {
+      "id": "agent-tool-permission-scopes",
+      "title": "How do you architect a least-privilege permission model for agent tool execution across read, write, and destructive actions?",
+      "answer": "We architect agent permissions using least-privilege capability tokens rather than granting broad administrative rights. We classify all tools into three distinct risk tiers. Tier 1 consists of read-only operations like searching documents or inspecting metrics, which execute automatically with no mutation risk. Tier 2 covers scoped idempotent mutations, such as drafting an email, writing to a staging database, or updating a ticket. Tier 3 includes destructive or high-impact actions, like deleting infrastructure, modifying production permissions, or transferring funds. When an agent session starts, it receives a scoped security token containing only the permissions required for that specific task. If the agent attempts to invoke a tool outside its granted scopes, the execution layer intercepts and rejects the call before it runs. The trade-off is agent autonomy versus security blast radius: strict permission boundaries restrict what an agent can accomplish without human approval, but they prevent catastrophic unauthorized actions.",
+      "tradeOffs": [
+        "Fine-grained tool scoping bounds security blast radius, but requires maintaining permission registries and token validation logic.",
+        "Coarse permissions allow full autonomous problem solving, but expose production systems to destructive agent mistakes."
+      ],
+      "followUps": [
+        "How do you pass user-level permissions into agent tool calls in multi-tenant enterprise environments?",
+        "What mechanism should downgrade an agent's permissions if an injection attempt is detected?"
+      ],
+      "wrongAnswers": [
+        "Relying on system prompts to tell the model not to call dangerous tools, which is easily bypassed via prompt injection.",
+        "Granting the agent a global admin API key for all tools, exposing all databases to unintended modification."
+      ],
+      "rounds": ["agent-architecture", "security-governance"],
+      "roles": ["agent-engineer", "security-engineer"]
+    },
+    {
+      "id": "agent-human-in-the-loop-elevation",
+      "title": "When an agent determines it needs to invoke a high-impact tool, how do you suspend execution, request human approval, and resume deterministically?",
+      "answer": "When an agent decides to invoke a high-impact tool, it must not execute the action autonomously. Instead, the runtime suspends execution, serializes the agent state, and alerts a human reviewer. We implement this using a durable execution workflow. When a tool call hits a protected permission boundary, the runtime creates an approval request detailing the tool name, input arguments, and model reasoning. The agent state, including conversation history and tool outputs, is saved to persistent storage, and the execution thread halts cleanly. Once a human reviews the request and submits an approve or reject decision through a dashboard or messaging channel, the workflow engine wakes up, restores the agent state, and injects the human decision as the tool response. The trade-off is decision safety versus latency: human-in-the-loop elevation provides strong governance for irreversible operations, but waiting for human approval pauses the workflow and introduces state staleness if underlying data changes during the delay.",
+      "tradeOffs": [
+        "Durable execution suspension eliminates active thread memory costs while awaiting human input, but requires persistent state serialization.",
+        "Human gates provide essential safety for irreversible mutations, but introduce minutes or hours of latency into autonomous workflows."
+      ],
+      "followUps": [
+        "How do you handle workspace state drift while an approval request is pending for several hours?",
+        "What happens if the human reviewer modifies the tool arguments before approving the execution?"
+      ],
+      "wrongAnswers": [
+        "Holding open an active HTTP connection with a long timeout while waiting for human review, exhausting server connection pools.",
+        "Allowing the agent to continue executing downstream actions before the high-impact tool has been approved."
+      ],
+      "rounds": ["agent-architecture", "systems-design"],
+      "roles": ["agent-engineer", "applied-ai-engineer"]
+    },
+    {
+      "id": "agent-content-addressed-caching",
+      "title": "How does content-addressing tool arguments with SHA-256 enable safe result caching and replay across agent runs?",
+      "answer": "Content-addressed caching caches the results of pure, deterministic tool calls by hashing their inputs. When an agent invokes a tool like calculating an equation or running an exact database query, we serialize the argument payload into canonical JSON with sorted keys and compute its SHA-256 hash. We use the tool name combined with this hash as the cache key in an in-memory store. If the agent calls the same tool with identical arguments later in the session or across sessions, the execution engine returns the cached response in milliseconds without calling external services. Crucially, we mark tools explicitly as cacheable or non-cacheable: mutating tools, random generators, and live real-time feeds must bypass the cache completely. The trade-off is execution speed against cache freshness: content-addressed caching saves latency and API costs on expensive deterministic operations, but caching time-sensitive data can return stale facts if the underlying data source changes.",
+      "tradeOffs": [
+        "Content-addressed caching accelerates deterministic tool calls and eliminates duplicate API billing, but requires strict purity guarantees.",
+        "Canonical JSON serialization requires sorting keys and formatting floats uniformly to prevent hash mismatches."
+      ],
+      "followUps": [
+        "Why must non-deterministic tools like live web search or time checks be excluded from content-addressed caching?",
+        "How do you invalidate content-addressed tool caches when underlying database schemas update?"
+      ],
+      "wrongAnswers": [
+        "Caching the output of mutating tools (e.g. create_user or send_email), causing repeated calls to silently skip execution.",
+        "Hashing raw JSON strings without canonical key sorting, producing cache misses on semantically identical arguments."
+      ],
+      "rounds": ["agent-architecture", "systems-design"],
+      "roles": ["agent-engineer", "ml-systems-engineer"]
+    },
+    {
+      "id": "agent-policy-engine-pre-execution",
+      "title": "Where should policy enforcement sit in an agent runtime: in system prompt instructions, application middleware, or kernel-level tool sandboxes?",
+      "answer": "Policy enforcement must never rely on system prompt instructions alone. Prompt guidelines are advisory: adversarial user inputs, prompt injections, and hallucinated model outputs easily bypass instructions like 'never delete files'. Robust policy enforcement sits in application middleware and kernel-level sandboxes as defense in depth. First, application middleware intercepts the structured tool call after model generation but before execution. It validates arguments against a strict JSON schema, checks user authentication tokens, and verifies organizational rate limits. Second, if the tool requires executing code or filesystem operations, execution happens inside a sandboxed container with restricted Linux namespaces, read-only root filesystems, and strict network egress allowlists. The trade-off is system latency versus security guarantees: running pre-execution policy checks adds a few milliseconds to each tool step, but it guarantees that security policies cannot be bypassed by prompt injection.",
+      "tradeOffs": [
+        "Deterministic middleware policy checks guarantee enforcement independently of prompt injection, but add slight dispatch overhead.",
+        "Kernel-level sandboxing provides bulletproof operating system isolation, but adds container initialization latency."
+      ],
+      "followUps": [
+        "How do you handle dynamic policy rules that depend on the runtime state of the enterprise database?",
+        "Why is prompt engineering considered an advisory guard rather than an enforcement mechanism?"
+      ],
+      "wrongAnswers": [
+        "Relying solely on system prompt instructions for security boundaries, which can be bypassed by indirect prompt injection.",
+        "Running untrusted code directly in the host agent runtime without OS-level namespace and filesystem isolation."
+      ],
+      "rounds": ["agent-architecture", "security-governance"],
+      "roles": ["agent-engineer", "security-engineer"]
+    },
+    {
+      "id": "agent-partial-failure-saga-rollback",
+      "title": "An agent executes three tools in sequence and fails on the third. How do you implement compensating transactions or a saga pattern to avoid leaving systems in a half-mutated state?",
+      "answer": "When an agent executes multiple sequential tools and fails midway, standard database transactions cannot roll back external API calls. We implement the saga pattern with compensating transactions. For every mutating tool in a sequence, we register a corresponding undo action. For example, if Step 1 books a flight and Step 2 reserves a hotel, but Step 3 fails to book the rental car, the runtime halts forward execution and executes compensating actions in reverse order: cancelling the hotel reservation and refunding the flight. If a compensating action fails, the runtime logs the error, marks the transaction as requiring manual intervention, and alerts an operator. The trade-off is recovery guarantees versus external side effects: compensating actions work well for reversible operations like database updates or booking reservations, but operations like sending an email or charging a payment card cannot be silently undone and require human reconciliation.",
+      "tradeOffs": [
+        "The saga pattern provides robust distributed consistency across heterogeneous APIs, but requires implementing custom undo logic per tool.",
+        "Compensating actions cannot reverse real-world side effects like sent emails or SMS messages, requiring human escalation."
+      ],
+      "followUps": [
+        "How do you handle a failure inside a compensating transaction itself?",
+        "What state must be preserved in the agent trace to allow resuming an interrupted saga?"
+      ],
+      "wrongAnswers": [
+        "Assuming distributed microservice tool calls can participate in a traditional ACID two-phase commit database transaction.",
+        "Ignoring tool failures and allowing the agent to proceed to subsequent steps after a mutation failed."
+      ],
+      "rounds": ["agent-architecture", "systems-design"],
+      "roles": ["agent-engineer", "applied-ai-engineer"]
+    },
+    {
+      "id": "agent-sandboxed-file-access-isolation",
+      "title": "An agent is granted permission to inspect and edit files in a workspace. How do you sandbox the execution environment to prevent path traversal and unauthorized exfiltration?",
+      "answer": "When an agent can view and edit files in a workspace, we must prevent it from traversing the directory tree to access sensitive host files like credentials or system binaries. We isolate the execution environment using containerized sandboxes with separate Linux mount and user namespaces. Inside the sandbox, the agent is restricted to an isolated workspace directory. In code, every file path requested by the agent is resolved to its canonical absolute path using realpath, and we verify that the resolved path starts with the workspace root, blocking path traversal tricks like dot-dot-slash or symlink redirections. We also enforce read-only mounts on system directories and block outbound internet access except for pre-approved package repositories to prevent data exfiltration. The trade-off is startup overhead versus isolation: lightweight process wrappers start fast but share kernel attack surfaces, while container sandboxes provide strong isolation at the expense of a brief startup delay.",
+      "tradeOffs": [
+        "Linux container sandboxing provides robust OS isolation, but adds startup and tear-down latency per agent session.",
+        "Restricting outbound network egress prevents data exfiltration, but blocks tools that require dynamic web access."
+      ],
+      "followUps": [
+        "How do you prevent an agent from exhausting disk space or memory inside a shared multi-tenant sandbox?",
+        "Why is checking '..' with string matching insufficient without calling realpath()?"
+      ],
+      "wrongAnswers": [
+        "Using simple substring checks like 'if .. not in path', which fails to catch symlinks pointing outside the workspace root.",
+        "Running the agent code execution tool under the host root user with read/write access to the host filesystem."
+      ],
+      "rounds": ["agent-architecture", "security-governance"],
+      "roles": ["agent-engineer", "security-engineer"]
+    },
+    {
+      "id": "agent-credential-vault-least-privilege",
+      "title": "How do you pass authentication credentials to agent-invoked tools without exposing long-lived API secrets to the LLM context window?",
+      "answer": "Long-lived API credentials, tokens, and database passwords must never be placed inside the prompt or model context window. If secrets appear in context, they can be leaked through prompt injection attacks or echoed in user responses. Instead, we use an execution proxy backed by a secure credential vault. The LLM only sees abstract tool definitions and parameters, such as a customer identifier or repository name. When the agent dispatches a tool call, the request routes to our backend execution proxy. The proxy verifies the agent session and user permissions, fetches short-lived credentials from the vault, injects the authentication headers into the outgoing HTTP request, and forwards the call to the external service. The model only receives the sanitized data response. The trade-off is architectural complexity: running an authenticated credential proxy introduces an additional network hop, but it ensures secret keys never enter the prompt.",
+      "tradeOffs": [
+        "Proxy credential injection guarantees secrets never enter prompt context or model logs, but requires maintaining an authenticated gateway.",
+        "Short-lived scoped tokens bound blast radius if compromised, but require token refresh machinery."
+      ],
+      "followUps": [
+        "How do you audit which specific user authorized an agent tool call that executed through the credential proxy?",
+        "What happens if a tool output accidentally includes sensitive tokens in its response payload?"
+      ],
+      "wrongAnswers": [
+        "Injecting AWS access keys or bearer tokens directly into the system prompt for the model to pass as tool parameters.",
+        "Storing API keys in plain text environment variables inside an unisolated agent sandbox."
+      ],
+      "rounds": ["agent-architecture", "security-governance"],
+      "roles": ["security-engineer", "agent-engineer"]
+    },
+    {
+      "id": "agent-recursion-depth-circuit-breaker",
+      "title": "How do you set deterministic recursion depth and step count limits in an autonomous agent loop, and how should it fail?",
+      "answer": "Autonomous agents can get caught in infinite reasoning loops if a tool returns unexpected output or the model fails to satisfy its goal. To prevent runaway execution and unbounded cost, we enforce deterministic recursion depth and step count limits in the agent runtime. We initialize a step counter when the session begins. Every forward model call and tool execution increments the counter. If the step count reaches a maximum threshold, typically 15 to 25 steps depending on task complexity, the loop halts immediately. Rather than throwing an unhandled exception, the runtime catches the limit, constructs a structured failure payload explaining that the step budget was exhausted, and asks the model to summarize its partial progress. The trade-off is false-positive termination versus cost runaway: setting step limits too tightly aborts complex multi-step tasks prematurely, while setting them too high risks runaway billing on stuck agents.",
+      "tradeOffs": [
+        "Hard step limits provide an absolute safety ceiling against runaway spend, but can terminate complex valid tasks before completion.",
+        "Graceful degradation with partial progress reporting gives users actionable summaries rather than abrupt system crashes."
+      ],
+      "followUps": [
+        "How do you determine the optimal maximum step count for different categories of agent tasks?",
+        "How should an agent preserve its work if the user wants to grant additional steps upon hitting the limit?"
+      ],
+      "wrongAnswers": [
+        "Using a while True loop with no step counter or timeout, allowing stuck agents to loop until API rate limits or budget exhaustion.",
+        "Throwing an uncaught fatal exception when the limit is hit, discarding all intermediate reasoning and tool results."
+      ],
+      "rounds": ["agent-architecture", "systems-design"],
+      "roles": ["agent-engineer", "applied-ai-engineer"]
+    },
+    {
+      "id": "agent-cycle-detection-state-hashing",
+      "title": "An agent repeatedly queries a search tool with minor wording changes without making progress. How do you detect and break semantic execution loops?",
+      "answer": "An agent can get stuck repeating the same failed action with minor phrasing variations, such as slightly tweaking a search query without learning from previous misses. We detect and break these loops using state hashing and semantic distance tracking. For exact loops, we maintain a rolling history of tool calls and hash the tool name alongside its arguments. If the identical hash appears more than twice in recent history, an exact loop is detected. For semantic loops where the agent rephrases arguments, we embed recent inputs and measure cosine similarity; if consecutive queries have near-identical semantic embeddings without new information, we flag a semantic cycle. When a loop is detected, we intercept execution and inject a system intervention message prompting the agent to reflect on its failure or try an alternate strategy. If the loop persists, the runtime terminates the task. The trade-off is exploratory flexibility versus loop prevention: aggressive cycle detection can interrupt legitimate iterative refinement, so detection thresholds must require multiple consecutive repetitions.",
+      "tradeOffs": [
+        "Semantic similarity tracking catches subtle paraphrased loops that bypass exact string hashing, but requires embedding compute per step.",
+        "Intervention prompts guide models to recover autonomously, but consume prompt tokens and can fail if the model lacks alternate tools."
+      ],
+      "followUps": [
+        "What embedding similarity threshold reliably separates repetitive loops from legitimate iterative query refinement?",
+        "How do you detect cyclical multi-tool loops (e.g. Tool A -> Tool B -> Tool A -> Tool B)?"
+      ],
+      "wrongAnswers": [
+        "Checking only exact argument string equality, which misses queries that differ by a single synonym or punctuation mark.",
+        "Terminating the agent on the first detected similarity without providing a corrective prompt to steer the model."
+      ],
+      "rounds": ["agent-architecture", "ml-depth"],
+      "roles": ["agent-engineer", "data-scientist-evals"]
+    },
+    {
+      "id": "agent-cost-token-budget-circuit-breaker",
+      "title": "How do you implement execution budget limits that halt an agent when cumulative token spend or step costs exceed thresholds?",
+      "answer": "To prevent an agent from burning through financial budgets during long-running tasks, we enforce a strict execution budget guard in the runtime. We assign each session a maximum spending cap in dollars and tokens. Before dispatching any model call, the runtime estimates the cost of the input context; after the call, it tallies the exact prompt and completion tokens returned in the provider usage metadata and calculates cumulative spend. If the running total crosses a warning threshold, such as 80% of budget, the runtime can switch from a frontier model to a smaller, cheaper model for remaining steps. If cumulative spend reaches 100%, the execution engine immediately intercepts the loop, prevents further API calls, and returns a structured response summarizing the work completed and reporting that the budget limit was reached. The trade-off is task completion versus financial predictability: hard budget cutoffs prevent unexpected cloud bills, but complex tasks that genuinely need more compute will halt unfinished unless dynamic budget approvals are supported.",
+      "tradeOffs": [
+        "Strict budget guards prevent catastrophic billing spikes from runaway loops, but can truncate valid high-value complex tasks.",
+        "Dynamic model downgrading (falling back to cheaper models) stretches budgets, but risks reasoning quality degradation."
+      ],
+      "followUps": [
+        "How do you calculate real-time cost when an agent uses multiple different model providers with differing pricing tiers?",
+        "What mechanism allows a user to approve a budget extension dynamically in an interactive session?"
+      ],
+      "wrongAnswers": [
+        "Relying solely on post-hoc billing alerts from cloud providers, which report spend hours after an agent has burned the budget.",
+        "Tracking only request counts without counting token usage, failing to catch prompts with massive context windows."
+      ],
+      "rounds": ["agent-architecture", "cost-capacity"],
+      "roles": ["agent-engineer", "platform-engineer"]
+    },
+    {
+      "id": "agent-stuck-tool-timeout-isolation",
+      "title": "When an external tool called by an agent hangs or encounters high latency, how do you enforce non-blocking timeouts and handle cancellation?",
+      "answer": "When an agent calls an external API or executes code that hangs indefinitely, the agent thread can block forever, holding memory and stalling the user. We wrap every tool execution in an asynchronous non-blocking timeout using asyncio.wait_for or equivalent timer guards. We set distinct timeouts based on tool type: fast API lookups time out in a few seconds, while heavy code execution or data processing jobs are allocated longer windows. If the timer expires before the tool finishes, the runtime cancels the future, sends a termination signal to the underlying subprocess or closes the HTTP connection, and returns a structured timeout error to the agent context. This lets the agent decide whether to retry with different parameters, try a fallback tool, or report an error. The trade-off is premature timeout versus hanging resources: setting timeouts too aggressively cancels long-running valid operations, but letting tools hang degrades system responsiveness and exhausts worker threads.",
+      "tradeOffs": [
+        "Non-blocking async timeouts keep the orchestrator responsive and prevent worker thread exhaustion, but require clean subprocess cleanup.",
+        "Overly aggressive timeouts cancel legitimate slow batch computations, while lax timeouts leave users waiting."
+      ],
+      "followUps": [
+        "How do you ensure a cancelled subprocess actually terminates and does not become an orphaned zombie process?",
+        "What information should the timeout error message provide to the LLM to help it recover?"
+      ],
+      "wrongAnswers": [
+        "Executing tools synchronously on the main agent event loop, causing a single hanging API call to freeze the entire application.",
+        "Catching a timeout but failing to kill the underlying spawned process, creating zombie processes that exhaust host memory."
+      ],
+      "rounds": ["agent-architecture", "systems-design"],
+      "roles": ["agent-engineer", "ml-systems-engineer"]
+    },
+    {
+      "id": "agent-hallucinated-tool-termination",
+      "title": "What runtime guard should intercept an agent when it invokes a non-existent tool or provides malformed arguments, and how should the error be fed back?",
+      "answer": "Large language models frequently hallucinate non-existent tool names or generate JSON arguments that violate the expected schema. If the execution runtime blindly attempts to dispatch an unknown tool, it crashes with runtime exceptions. We intercept all model outputs at a pre-dispatch validation layer. When the model outputs a tool call, we validate the requested tool name against the registered tool catalog and parse its arguments against the tool's JSON Schema. If the tool does not exist or arguments fail validation, we catch the error before execution. Instead of terminating the session immediately, we inject a structured error message into the conversation history: 'Tool X does not exist. Available tools are: A, B, C.' We permit up to two corrective retries. If the model continues hallucinating invalid tools, we abort the loop cleanly. The trade-off is self-correction capability versus wasted tokens: allowing retries lets models fix minor syntax errors on their own, but repeated retries consume prompt tokens when a model genuinely lacks the necessary tools.",
+      "tradeOffs": [
+        "Detailed schema validation feedback allows models to self-correct minor parameter mistakes autonomously.",
+        "Allowing multiple retries on invalid tools burns prompt tokens and latency if the model fundamentally lacks capability for the task."
+      ],
+      "followUps": [
+        "How do you design JSON schema descriptions to minimize model argument formatting errors?",
+        "What threshold of consecutive validation failures should trigger immediate task termination?"
+      ],
+      "wrongAnswers": [
+        "Crashing the server with an unhandled KeyError when an unknown tool name is encountered.",
+        "Allowing unlimited validation retries, letting the agent get stuck in an endless loop generating invalid arguments."
+      ],
+      "rounds": ["agent-architecture", "systems-design"],
+      "roles": ["agent-engineer", "applied-ai-engineer"]
+    },
+    {
+      "id": "agent-cascading-failure-multi-agent-backoff",
+      "title": "In a multi-agent system where Agent A delegates to Agent B, how do you prevent cascading retries and thundering herd failures across subagent trees?",
+      "answer": "In multi-agent systems where supervisor agents delegate sub-tasks to specialized subagents, a failure in a leaf agent can trigger rapid retries that cascade upstream, causing a thundering herd that saturates downstream services. We prevent cascading failures using two mechanisms: distributed hop limits and exponential backoff with full jitter. First, we attach a global time-to-live and hop budget header to every inter-agent task message. When Agent A delegates to Agent B, the hop counter decrements; if the counter reaches zero, further delegation is blocked, preventing unbounded recursive subagent spawning. Second, when a subagent tool fails due to rate limits or transient errors, we do not retry immediately. We apply exponential backoff with full jitter, calculating sleep time as a random value between zero and the exponentially backed-off interval. The trade-off is task completion latency versus system stability: backoff delays overall task execution, but it prevents multi-agent trees from synchronizing their retries and overwhelming backend infrastructure.",
+      "tradeOffs": [
+        "Exponential backoff with jitter desynchronizes retries and prevents downstream system collapse, but increases tail latency for failing workflows.",
+        "Strict delegation hop budgets bound call graph depth, but can artificially restrict deep collaborative workflows."
+      ],
+      "followUps": [
+        "How do you propagate distributed trace contexts across asynchronous agent message queues?",
+        "What circuit breaker pattern should a supervisor agent use to temporarily stop delegating to a failing subagent service?"
+      ],
+      "wrongAnswers": [
+        "Allowing every agent in a hierarchy to retry immediately upon failure, creating an exponential amplification of traffic downstream.",
+        "Omitting a maximum delegation depth, allowing two subagents to endlessly delegate sub-tasks to each other."
+      ],
+      "rounds": ["agent-architecture", "systems-design"],
+      "roles": ["agent-engineer", "ml-systems-engineer"]
+    },
+    {
+      "id": "agent-graceful-fallback-on-abort",
+      "title": "When an agent execution is aborted by a user or terminated by a safety rule, how do you preserve partial progress and leave the workspace in a recoverable state?",
+      "answer": "When an agent execution is interrupted by a user cancellation, safety violation, or budget cutoff, leaving the workspace in an inconsistent half-finished state corrupts files and confuses users. We handle abort signals through graceful lifecycle termination. At each step of the agent loop, before applying mutations, we create a lightweight checkpoint—such as a temporary git commit or file snapshot. When an abort signal arrives, the runtime halts forward execution and invokes an abort handler. The handler cancels running subprocesses, cleans up temporary files, and preserves uncommitted changes on a dedicated review branch rather than discarding them. It then generates a structured debrief detailing what sub-tasks succeeded, what step was in progress when aborted, and what actions were rolled back. The trade-off is abort latency versus state cleanliness: terminating a process immediately with a kill signal is instantaneous but leaves corrupt files, whereas running clean rollback handlers takes a few seconds but guarantees workspace consistency.",
+      "tradeOffs": [
+        "Atomic step checkpointing guarantees workspace consistency on sudden aborts, but adds disk snapshot overhead to each step.",
+        "Preserving partial progress on a review branch gives users salvageable work, but requires branch management and cleanup."
+      ],
+      "followUps": [
+        "How do you handle in-flight database transactions when a user clicks 'Cancel' on a running agent?",
+        "What debrief structure best explains to an end user why an agent stopped and what was preserved?"
+      ],
+      "wrongAnswers": [
+        "Sending an immediate SIGKILL to the agent container without running cleanup handlers, leaving dangling lockfiles and half-written files.",
+        "Silently discarding all agent work on abort, forcing users to re-run the entire multi-step task from scratch."
+      ],
+      "rounds": ["agent-architecture", "systems-design"],
+      "roles": ["agent-engineer", "applied-ai-engineer"]
+    }
+  ],
+  "cost-capacity": [
+    {
+      "id": "gpu-fair-share-drf-scheduling",
+      "title": "How does Dominant Resource Fairness (DRF) allocate multi-tenant cluster compute when teams have heterogeneous GPU, CPU, and memory demands?",
+      "answer": "In multi-tenant clusters, teams have diverse resource requirements: some jobs need high GPU count with low CPU, while others require high host memory and multiple CPUs per GPU. Simple slot-based scheduling leads to starvation and poor utilization. Dominant Resource Fairness calculates each tenant's dominant share: the fraction of the total cluster capacity allocated to them for their most heavily consumed resource. For example, if Team A uses 10% of total cluster GPUs and 30% of total CPU, their dominant resource is CPU and their dominant share is 30%. The DRF scheduler always picks the tenant with the lowest dominant share and allocates resources to their next waiting job, ensuring max-min fairness across multiple heterogeneous resources. The trade-off is cluster-wide throughput versus per-tenant fairness: DRF guarantees that no team starves and encourages honest resource requests, but prioritizing the tenant with the lowest share can leave GPUs idle if that tenant's jobs cannot utilize available hardware.",
+      "tradeOffs": [
+        "DRF guarantees multi-resource max-min fairness and sharing incentive, but can achieve lower overall GPU utilization than greedy schedulers.",
+        "Tenants can game allocation by misrepresenting secondary resource requirements unless resource usage is strictly enforced."
+      ],
+      "followUps": [
+        "How does DRF handle gang-scheduled distributed training jobs where all workers must launch simultaneously?",
+        "What happens when dominant resources fluctuate dynamically during training (e.g. data preprocessing spikes)?"
+      ],
+      "wrongAnswers": [
+        "Allocating resources based solely on GPU counts while ignoring CPU and memory, leading to node memory exhaustion and hung jobs.",
+        "Assuming DRF always yields maximum cluster FLOP utilization, ignoring that fairness often conflicts with packing efficiency."
+      ],
+      "rounds": ["systems-design", "cost-capacity"],
+      "roles": ["platform-engineer", "ml-infrastructure-engineer"]
+    },
+    {
+      "id": "gpu-mig-vs-mps-tradeoffs",
+      "title": "When partitioning an NVIDIA A100 or H100 across multiple inference workloads, what are the trade-offs between Multi-Instance GPU (MIG) and Multi-Process Service (MPS)?",
+      "answer": "Multi-Instance GPU and Multi-Process Service represent two distinct approaches to sharing a large GPU like an NVIDIA A100 or H100 across multiple inference jobs. Multi-Instance GPU partitions the physical GPU at the hardware level into up to seven independent GPU instances, each with dedicated streaming multiprocessors, memory controllers, and isolated high-bandwidth memory. MIG provides strict hardware fault isolation and predictable performance: if one container crashes or runs out of memory, it cannot affect adjacent instances. Multi-Process Service, by contrast, is a software-level server that multiplexes multiple CUDA processes onto a single shared GPU context. MPS eliminates CUDA context switching overhead and dynamically shares all GPU resources, maximizing utilization for small, bursty workloads. The trade-off is isolation versus flexibility: MIG offers guaranteed hardware isolation and deterministic latency but locks memory into rigid partition sizes, while MPS shares all memory dynamically but lacks memory fault isolation—a memory crash in one process can take down all co-located workloads.",
+      "tradeOffs": [
+        "MIG guarantees hardware-level fault and memory isolation, but only supports static, fixed-size slice configurations.",
+        "MPS allows dynamic, fine-grained resource sharing with high GPU utilization, but lacks memory fault isolation across tenants."
+      ],
+      "followUps": [
+        "When is it appropriate to use MPS inside an individual MIG slice?",
+        "How does CUDA context switching latency compare between time-slicing and MPS?"
+      ],
+      "wrongAnswers": [
+        "Claiming MPS provides hardware-level memory protection, when a single CUDA memory fault under MPS terminates all co-located processes.",
+        "Believing MIG partitions can be resized dynamically on the fly without stopping running GPU workloads."
+      ],
+      "rounds": ["systems-design", "cost-capacity"],
+      "roles": ["ml-infrastructure-engineer", "inference-platform-engineer"]
+    },
+    {
+      "id": "gpu-preemption-graceful-checkpointing",
+      "title": "When a high-priority production job preempts a low-priority research job on a shared GPU cluster, how do you guarantee checkpoint integrity without wasting progress?",
+      "answer": "When a high-priority production inference job or priority training run needs compute on a shared GPU cluster, the scheduler preempts lower-priority batch jobs. If preemption kills a job abruptly, hours of training progress are lost. We implement graceful preemption using Unix termination signals and atomic checkpointing. When the scheduler decides to reclaim a node, it does not issue an immediate kill signal; it sends a SIGTERM or custom preemption signal and grants a grace period, typically 60 to 120 seconds. The training loop catches this signal, completes the current backward pass, writes model weights and optimizer states to local NVMe storage, and performs an atomic rename of the checkpoint directory to prevent corrupt partial writes. Once the write completes, the job exits cleanly with code zero, signaling the scheduler that resources are released. The trade-off is scheduling latency versus lost compute: providing a checkpoint grace period slightly delays the start of high-priority jobs, but it saves days of wasted GPU hours on interrupted training runs.",
+      "tradeOffs": [
+        "Graceful termination signals allow saving full state, but delay resource acquisition for high-priority incoming workloads.",
+        "Writing checkpoints to local NVMe is fast enough for 60-second grace windows, but requires an asynchronous background sync to network storage."
+      ],
+      "followUps": [
+        "How do you ensure checkpoint writes are atomic so that a crash during the save does not corrupt the last valid checkpoint?",
+        "What happens if a training step takes longer than the scheduler's preemption grace period?"
+      ],
+      "wrongAnswers": [
+        "Issuing an immediate SIGKILL to preempted jobs, destroying in-memory training states and corrupting half-written checkpoints.",
+        "Writing checkpoints directly over slow cloud object storage during the preemption window, exceeding the grace period timeout."
+      ],
+      "rounds": ["systems-design", "cost-capacity"],
+      "roles": ["ml-infrastructure-engineer", "pre-training-engineer"]
+    },
+    {
+      "id": "gpu-credit-token-bucket-fairness",
+      "title": "How do you design a token-bucket or credit-based quota system for multi-tenant LLM inference to prevent burst starvation across teams?",
+      "answer": "In a multi-tenant LLM serving platform, treating all requests equally leads to starvation: a single team sending large prompt batches can monopolize GPU memory and degrade latency for interactive users. We implement a two-tier token bucket quota system that separates prompt prefill tokens from generated output tokens. Prefill computation is compute-heavy and dominates latency, while decode token generation is memory-bandwidth bound. We allocate each tenant a bucket that refills at a sustained rate per second with a configurable burst limit. When a request arrives, the gateway estimates the prompt token count and reserves initial capacity. If the tenant has exhausted their token bucket, their requests are queued or throttled with HTTP 429 responses rather than blocking the GPU engine. The trade-off is strict budget isolation versus cluster utilization: rigid per-tenant rate limits prevent noisy neighbors and guarantee fair service, but if one team is idle, their unused capacity cannot be utilized by busy teams unless dynamic borrowing is supported.",
+      "tradeOffs": [
+        "Separating prompt prefill quotas from decode token quotas prevents prefill compute spikes from starving interactive decoding.",
+        "Strict per-tenant rate limiting guarantees service predictability, but leaves GPU capacity idle if active tenants hit their caps while others sleep."
+      ],
+      "followUps": [
+        "How do you accurately deduct tokens when generated sequence lengths are unknown before inference completes?",
+        "How do you implement burst borrowing where teams can exceed quotas when overall cluster load is below 50%?"
+      ],
+      "wrongAnswers": [
+        "Rate limiting solely on raw HTTP request counts without tracking token volume, allowing one request with 100k tokens to monopolize the GPU.",
+        "Allowing unconstrained token bursting, enabling a single team's batch script to cause latency spikes for all interactive users."
+      ],
+      "rounds": ["systems-design", "cost-capacity"],
+      "roles": ["inference-platform-engineer", "platform-engineer"]
+    },
+    {
+      "id": "gpu-vram-fragmentation-prevention",
+      "title": "In a shared inference cluster, what causes GPU VRAM fragmentation across dynamic request batches, and how do modern memory allocators mitigate it?",
+      "answer": "In transformer inference, each active request stores key and value tensors for every token in GPU memory. In traditional serving runtimes, memory for this KV-cache is allocated contiguously for the maximum possible sequence length. Because request lengths vary widely and are unpredictable in advance, contiguous allocation leads to severe internal and external memory fragmentation—often wasting 60 to 80 percent of GPU memory on unreserved space. PagedAttention solves this by allocating the KV-cache in non-contiguous, fixed-size blocks, typically 16 or 32 tokens per block, analogous to virtual memory paging in operating systems. A block table maps logical sequence tokens to physical memory blocks anywhere in GPU memory. When a sequence generates a new token, the runtime allocates a physical block only when the current block fills. The trade-off is small index lookup overhead versus massive memory savings: managing block tables introduces minor software scheduling overhead, but it virtually eliminates memory fragmentation, allowing serving engines to increase batch sizes and throughput significantly.",
+      "tradeOffs": [
+        "PagedAttention eliminates external memory fragmentation, boosting inference batch size and concurrency by 2x to 4x.",
+        "Block-level non-contiguous memory access requires specialized CUDA kernels to maintain high memory bandwidth utilization."
+      ],
+      "followUps": [
+        "How does PagedAttention enable zero-copy memory sharing during parallel sampling and beam search?",
+        "What is the impact of block size (e.g. 16 vs 32 vs 64 tokens) on internal memory fragmentation and kernel efficiency?"
+      ],
+      "wrongAnswers": [
+        "Pre-allocating max_sequence_length contiguous memory buffers for every incoming request, wasting up to 80% of VRAM on ungenerated tokens.",
+        "Relying on standard PyTorch memory caching for dynamic inference requests, which cannot prevent external fragmentation under variable token lengths."
+      ],
+      "rounds": ["systems-design", "cost-capacity"],
+      "roles": ["inference-platform-engineer", "ml-systems-engineer"]
+    },
+    {
+      "id": "gpu-burst-quota-noisy-neighbors",
+      "title": "How do you allow teams to burst beyond their baseline GPU quota during idle cluster periods without risking noisy neighbor interference on latency-critical workloads?",
+      "answer": "To maximize expensive GPU utilization, clusters should allow teams to burst beyond their baseline quotas when cluster resources are idle, without risking performance regressions on mission-critical workloads. We implement this through priority tiers and quality-of-service node pools. Production services run on dedicated, non-preemptible nodes with strict resource limits and CPU core pinning to ensure steady tail latency. Opportunistic burst workloads run on separate pooled nodes using lowest-priority preemptible classes. When a team with burst permissions submits extra jobs, the scheduler places them on idle GPUs but labels them as immediately revocable. If a higher-priority production workload demands those GPUs, the burst jobs receive a preemption signal and release the resources within seconds. The trade-off is cluster utilization versus execution predictability: allowing opportunistic bursts raises cluster GPU utilization from 50% to over 85%, but teams using burst compute must design their jobs to tolerate frequent interruptions and restarts.",
+      "tradeOffs": [
+        "Opportunistic burst scheduling drives GPU utilization up to 85%+, but requires all burst jobs to be designed for frequent preemption.",
+        "Isolating latency-critical services on dedicated hardware guarantees flat tail latencies, but sacrifices fractional hardware sharing."
+      ],
+      "followUps": [
+        "How do you prevent a bursting workload from saturating shared host memory or PCIe bandwidth on multi-GPU nodes?",
+        "What metric should trigger automated throttling of burst workloads before production tail latency degrades?"
+      ],
+      "wrongAnswers": [
+        "Co-locating un-throttled batch burst jobs on the same physical GPUs as production inference services, causing latency spikes.",
+        "Permitting burst jobs without preemption mechanisms, causing production deployments to stall waiting for batch runs to complete."
+      ],
+      "rounds": ["systems-design", "cost-capacity"],
+      "roles": ["platform-engineer", "ml-infrastructure-engineer"]
+    },
+    {
+      "id": "gpu-idle-workload-reclamation",
+      "title": "How do you design an automated GPU reclamation controller that detects idle development notebooks and reclaims allocations without disrupting active debugging?",
+      "answer": "In machine learning organizations, developers frequently launch interactive GPU notebooks, run a few experiments, and leave the instance allocated overnight while doing zero computation, locking tens of thousands of dollars of hardware. We implement an automated reclamation controller that monitors both kernel compute activity and network socket traffic. Checking memory allocation alone is insufficient, because an idle PyTorch notebook retains allocated GPU memory indefinitely. The controller inspects GPU compute utilization via nvidia-smi: if active GPU compute remains below 1% for an extended window, such as two hours, it checks whether any active WebSocket or HTTP sessions are interacting with the notebook. If both compute and user traffic are zero, the controller sends an automated alert with a link to extend the session. If the user does not respond within thirty minutes, the container state is checkpointed and the GPU allocation is released back to the shared pool. The trade-off is developer convenience versus hardware cost: automated reclamation occasionally interrupts a developer who stepped away for lunch, but it prevents massive idle GPU spend across large engineering teams.",
+      "tradeOffs": [
+        "Automated idle reclamation recovers 20% to 40% of wasted enterprise GPU spend, but requires tuning idle timeouts to avoid annoying developers.",
+        "Checkpointing container disk state ensures developers can resume work seamlessly, but requires persistent volume storage per user."
+      ],
+      "followUps": [
+        "Why is checking GPU memory allocation misleading when attempting to detect idle PyTorch sessions?",
+        "How do you handle background jobs that intentionally sleep between batch data syncs?"
+      ],
+      "wrongAnswers": [
+        "Checking only memory usage (e.g. nvidia-smi memory used), assuming non-empty memory means active computation.",
+        "Immediately killing containers without warning, causing developers to lose unsaved notebook cell outputs and progress."
+      ],
+      "rounds": ["systems-design", "cost-capacity"],
+      "roles": ["platform-engineer", "ml-infrastructure-engineer"]
+    },
+    {
+      "id": "gpu-slurm-vs-k8s-orchestration",
+      "title": "Compare Kubernetes with the NVIDIA GPU Operator against Slurm for managing large-scale distributed training and inference clusters.",
+      "answer": "Slurm and Kubernetes represent two different philosophies for managing GPU clusters. Slurm was built for high-performance computing batch workloads. It excels at gang scheduling: if a distributed pre-training run needs 128 GPUs, Slurm ensures all 128 GPUs across 16 nodes are allocated and launched at the exact same second, with direct bare-metal network topologies and near-zero orchestration overhead. However, Slurm lacks native support for auto-scaling HTTP services, dynamic ingress routing, and cloud-native rolling updates. Kubernetes with the NVIDIA GPU Operator is built for microservices and cloud infrastructure. It excels at hosting model serving endpoints, auto-scaling inference replicas based on request traffic, rolling out canary deployments, and integrating with enterprise logging and monitoring stacks. The trade-off is workload fit versus operational overhead: Slurm is simpler and more efficient for pure distributed training runs, while Kubernetes is far superior for production inference and web platforms, requiring specialized gang schedulers like Volcano to handle large-scale distributed training.",
+      "tradeOffs": [
+        "Slurm offers native, zero-overhead gang scheduling and topology awareness for batch training, but lacks modern service routing and auto-scaling APIs.",
+        "Kubernetes provides rich cloud-native APIs, service meshes, and auto-scaling for inference, but requires specialized operators (Volcano, Kueue) for gang training."
+      ],
+      "followUps": [
+        "How does Kueue improve Kubernetes scheduling for multi-node distributed training jobs?",
+        "What network plugin configurations are required in Kubernetes to support native InfiniBand SR-IOV?"
+      ],
+      "wrongAnswers": [
+        "Attempting to manage production low-latency LLM serving APIs with auto-scaling using batch Slurm job submission scripts.",
+        "Running multi-node distributed training on vanilla Kubernetes without gang scheduling, leading to deadlocks where incomplete pods hold GPUs."
+      ],
+      "rounds": ["systems-design", "cost-capacity"],
+      "roles": ["ml-infrastructure-engineer", "platform-engineer"]
+    }
+  ],
+  "safety": [
+    {
+      "id": "gov-audit-trail-tamper-evident",
+      "title": "How do you design a tamper-evident audit logging architecture for enterprise AI agent decisions and tool executions?",
+      "answer": "Enterprise AI agents make decisions that affect real users, requiring an audit trail that proves exactly what the agent saw, decided, and executed, without the risk of retroactive alteration. We implement tamper-evident audit logging using cryptographic hash chaining combined with write-once storage. Every log record captures the timestamp, session ID, user identity, prompt text, model response, tool invocation arguments, and execution result. To guarantee integrity, each record includes the SHA-256 hash of the immediately preceding record in the sequence, creating an immutable cryptographic chain. If any historical record is modified or deleted, the hash chain breaks upon verification. We stream these signed records to append-only cloud storage with Object Lock enabled, preventing even administrative credentials from deleting logs before retention periods expire. The trade-off is storage overhead and verification latency versus regulatory verifiability: cryptographic signing adds small processing overhead on log ingestion, but it provides mathematical proof of compliance during legal and regulatory audits.",
+      "tradeOffs": [
+        "Cryptographic hash chaining and WORM storage guarantee mathematical proof of audit integrity, but require strict append-only log pipelines.",
+        "Detailed full-prompt logging provides comprehensive auditability, but requires automated PII redaction to avoid compliance violations."
+      ],
+      "followUps": [
+        "How do you verify the integrity of a 10-million-row audit log without reading every single record sequentially?",
+        "What mechanism handles user GDPR 'Right to be Forgotten' requests when audit logs are stored in append-only immutable storage?"
+      ],
+      "wrongAnswers": [
+        "Storing agent decision logs in a standard mutable PostgreSQL table without cryptographic checksums or change tracking.",
+        "Allowing administrative database accounts to directly update or delete historical audit entries without detection."
+      ],
+      "rounds": ["security-governance", "systems-design"],
+      "roles": ["security-engineer", "ai-governance-lead"]
+    },
+    {
+      "id": "gov-pii-redaction-bidirectional",
+      "title": "How do you implement bidirectional PII scrubbing that sanitizes user prompts before sending to external model providers and restores placeholders in the final response?",
+      "answer": "When sending enterprise data to external model providers, personally identifiable information like names, phone numbers, and account numbers must be redacted to comply with privacy regulations. Bidirectional PII scrubbing sanitizes the prompt before transmission and restores the original data in the response. On input, an entity recognition pipeline scans the text, detects sensitive entities, and replaces them with deterministic surrogate tokens, like replacing 'John Smith' with '[PERSON_1]' and an email with '[EMAIL_1]'. We store the mapping from surrogate tokens to original values in an encrypted, short-lived session cache. The model processes the prompt and reasons about the surrogate tokens. When the model streams its completion back, our proxy scans for surrogate tokens, looks up their real values in the session cache, and restores the original text before delivering it to the end user. The trade-off is privacy compliance versus model reasoning accuracy: surrogate replacement prevents data leakage, but replacing descriptive names or addresses with abstract tokens can degrade model reasoning if names carry context relevant to the task.",
+      "tradeOffs": [
+        "Surrogate replacement prevents sensitive customer data from reaching external third-party model providers, satisfying GDPR requirements.",
+        "NER extraction false negatives risk leaking obscure PII formats, while false positives corrupt valid non-sensitive domain terms."
+      ],
+      "followUps": [
+        "How do you handle situations where the LLM alters or hallucinates a surrogate token in its response (e.g. outputting [PERSON_99])?",
+        "What is the latency impact of running bidirectional NER entity recognition inline on streaming LLM responses?"
+      ],
+      "wrongAnswers": [
+        "Sending raw customer prompts directly to external commercial LLM APIs without inspecting or sanitizing sensitive fields.",
+        "Masking PII with irreversible asterisks (e.g. ****), preventing the model from distinguishing different entities in conversation."
+      ],
+      "rounds": ["security-governance", "applied-ai-engineer"],
+      "roles": ["security-engineer", "applied-ai-engineer"]
+    },
+    {
+      "id": "gov-hallucination-audit-monitoring",
+      "title": "What statistical and automated metrics do you track in production to detect model hallucination and factual drift over time?",
+      "answer": "Detecting hallucinations in production is challenging because real user queries lack ground-truth reference answers. We monitor hallucination through reference-free statistical evaluations and automated judge models. For retrieval-augmented generation, we evaluate faithfulness using small Natural Language Inference models: we segment the generated answer into claims and check whether each claim is logically entailed by the retrieved context chunks. A low entailment score flags that the model generated statements unsupported by the source text. For open-ended generation, we measure self-consistency: we sample multiple responses at a low temperature and compute semantic similarity across the outputs; high semantic variance indicates that the model is uncertain and likely hallucinating. We aggregate these scores into daily distributions and track shifts over time. The trade-off is evaluation cost and latency versus detection coverage: running secondary NLI checks on every request adds inference cost, so teams often run full evaluation on an asynchronous sample of production traffic rather than inline on every call.",
+      "tradeOffs": [
+        "Asynchronous NLI entailment auditing catches factual drift across production traffic without adding latency to the user critical path.",
+        "Automated LLM judges and NLI models have their own false positive rates and cannot reliably catch hallucinations in highly niche technical domains."
+      ],
+      "followUps": [
+        "How do you distinguish between legitimate factual drift due to knowledge updates and true model hallucination?",
+        "What sample percentage of production traffic is sufficient to detect statistical shifts in hallucination rates?"
+      ],
+      "wrongAnswers": [
+        "Relying solely on user thumbs-up/thumbs-down feedback, which catches less than 2% of subtle hallucinations.",
+        "Running multi-step LLM-as-a-judge evaluations synchronously on 100% of live user requests, blowing up latency and API costs."
+      ],
+      "rounds": ["security-governance", "ml-depth"],
+      "roles": ["data-scientist-evals", "ai-governance-lead"]
+    },
+    {
+      "id": "gov-model-card-metadata-provenance",
+      "title": "What metadata must an enterprise model registry capture to prove regulatory compliance, training data provenance, and alignment evaluations?",
+      "answer": "An enterprise model registry cannot treat models as simple binary blobs; it must capture comprehensive metadata to prove data provenance, safety evaluations, and operational boundaries. First, we record identity and provenance: the exact model architecture, weights cryptographic checksum, tokenizer configuration, and detailed manifests of training datasets, including licensing terms, collection dates, and verified PII scrubbing records. Second, we record alignment and evaluation scorecards: task benchmark results, safety red-teaming reports, refusal calibration rates, and bias metrics across demographic groups. Third, we document operational boundaries: explicit intended use cases, documented out-of-scope deployments, known failure modes, and hardware serving requirements. Storing this metadata alongside versioned model artifacts ensures that every deployed model has an audit trail verifying where it came from, how it was vetted, and how it is safe to use. The trade-off is developer registration friction versus compliance assurance: enforcing strict metadata collection slows down model promotion pipelines, but it prevents deploying un-audited models that violate regulatory standards.",
+      "tradeOffs": [
+        "Comprehensive model cards ensure compliance with regulatory frameworks (like the EU AI Act and NIST AI RMF), but require engineering overhead.",
+        "Immutable versioning prevents silent model swaps in production, but increases storage and registry tracking complexity."
+      ],
+      "followUps": [
+        "How do you automate the capture of dataset hashes and licenses during CI/CD training pipelines?",
+        "What artifact should be generated if a deployed model is found to contain copyrighted training data?"
+      ],
+      "wrongAnswers": [
+        "Deploying model weights directly from unversioned S3 buckets or local developer laptops without provenance records.",
+        "Treating model cards as static, handwritten text files that never update when models are re-quantized or fine-tuned."
+      ],
+      "rounds": ["security-governance", "systems-design"],
+      "roles": ["ai-governance-lead", "ml-infrastructure-engineer"]
+    },
+    {
+      "id": "gov-access-control-row-level-rag",
+      "title": "When deploying an enterprise RAG system over proprietary company documents, how do you enforce document-level and row-level access control without leaking embeddings?",
+      "answer": "In an enterprise RAG system spanning multiple departments, users must only retrieve documents they are authorized to see. If you use post-retrieval filtering—fetching top documents first and dropping unauthorized ones—a query can return zero results because all top matches were confidential, even when relevant authorized documents exist. Instead, we implement metadata pre-filtering directly at the vector database index. When documents are ingested, each chunk is tagged with an access control list containing authorized group identifiers, such as 'engineering' or 'finance_leadership'. When an authenticated user submits a query, our gateway extracts their verified group permissions from their security token and injects them as a hard boolean filter into the vector search query. The vector search engine filters the index so only authorized document chunks are scored and returned. The trade-off is indexing performance versus security guarantees: metadata pre-filtering requires maintaining index filters and slightly increases search latency, but it guarantees that confidential document embeddings and text are never leaked to unauthorized users.",
+      "tradeOffs": [
+        "Index pre-filtering guarantees zero unauthorized document leakage, but requires vector databases to support efficient filtered ANN search.",
+        "Hierarchical permission inheritance (e.g. department -> team -> individual) requires expanding ACL groups at ingestion or query time."
+      ],
+      "followUps": [
+        "How do you handle permission revocation when an employee changes departments?",
+        "Why does post-retrieval filtering lead to empty result sets for queries matching confidential documents?"
+      ],
+      "wrongAnswers": [
+        "Relying on post-retrieval filtering, where unauthorized chunks are dropped after scoring, leading to empty result sets.",
+        "Building separate vector database instances for every individual user, creating an unmaintainable operational burden."
+      ],
+      "rounds": ["security-governance", "systems-design"],
+      "roles": ["security-engineer", "applied-ai-engineer"]
+    },
+    {
+      "id": "gov-automated-policy-guardrails",
+      "title": "Compare rule-based input filters with semantic guardrails in terms of latency, bypass resistance, and false positive rates.",
+      "answer": "Rule-based input filters and semantic guardrails represent a trade-off between execution latency, bypass resistance, and false positive rates. Rule-based filters use regular expressions and keyword blocklists. They execute in less than a millisecond with predictable resource usage. However, they suffer from both false positives—such as blocking valid medical or technical discussions that contain flagged terms—and low bypass resistance, because users easily evade them using leetspeak, zero-width characters, or base64 encoding. Semantic guardrails use small classifier models or language models to evaluate user intent. They offer high bypass resistance, catching subtle prompt injections and policy violations that use adversarial rephrasing. However, semantic models introduce noticeable latency, typically dozens to hundreds of milliseconds, and can occasionally reject benign ambiguous requests. Production architectures use a tiered funnel: fast regex filters run first to catch obvious attacks cheaply, followed by semantic classifiers on flagged or sensitive interactions.",
+      "tradeOffs": [
+        "Rule-based filters provide ultra-low latency and deterministic execution, but are easily bypassed via obfuscation.",
+        "Semantic guardrails capture adversarial intent and context, but add model inference latency and occasional false-positive rejections."
+      ],
+      "followUps": [
+        "How do you test and benchmark guardrails against automated red-teaming toolkits?",
+        "What architecture allows running semantic guardrails in parallel with model token generation to hide latency?"
+      ],
+      "wrongAnswers": [
+        "Claiming regex filters have zero false positives, ignoring that legitimate domain text frequently triggers broad regex rules.",
+        "Relying on a large frontier LLM as a synchronous input guardrail for every user request, adding massive latency and cost."
+      ],
+      "rounds": ["security-governance", "ml-depth"],
+      "roles": ["security-engineer", "applied-ai-engineer"]
+    },
+    {
+      "id": "gov-bias-disparate-impact-testing",
+      "title": "How do you statistically test an AI scoring or categorization system for disparate impact and demographic parity prior to production deployment?",
+      "answer": "Before deploying AI models that score or categorize people, such as credit underwriting, hiring tools, or fraud detection, models must undergo statistical testing for disparate impact across protected demographic groups. We evaluate two core statistical standards. First is Demographic Parity using the Four-Fifths Rule: we compute the selection rate for each protected group and divide it by the selection rate of the highest-scoring group to find the Adverse Impact Ratio. Under standard regulatory guidelines, an Adverse Impact Ratio below 0.80 indicates potential disparate impact. Second is Equalized Odds, where we verify that false positive rates and true positive rates are balanced across demographic groups so that equally qualified individuals receive equal outcomes. If disparities exist, we adjust feature representations or apply post-hoc threshold calibration. The trade-off is mathematical fairness versus raw predictive accuracy: enforcing demographic parity across groups often requires setting different classification thresholds per group, which can slightly reduce unconstrained model accuracy in exchange for legal and ethical fairness.",
+      "tradeOffs": [
+        "The Four-Fifths Rule provides a clear regulatory compliance metric, but enforces equality of outcome regardless of underlying feature distribution differences.",
+        "Equalized Odds guarantees equal error rates across groups, but requires access to ground-truth outcomes which are often delayed or biased."
+      ],
+      "followUps": [
+        "Why is it mathematically impossible to satisfy both Demographic Parity and Equalized Odds simultaneously when base rates differ across groups?",
+        "How do you test for bias when protected attributes (e.g. race or religion) are deliberately omitted from the training dataset?"
+      ],
+      "wrongAnswers": [
+        "Assuming that removing demographic columns from the dataset guarantees zero bias, ignoring proxy features that correlate with protected attributes.",
+        "Claiming a model with 95% accuracy cannot have disparate impact, missing that high accuracy can mask severe adverse selection rates."
+      ],
+      "rounds": ["security-governance", "ml-depth"],
+      "roles": ["ai-governance-lead", "data-scientist-evals"]
+    }
+  ]
+}
+
+with open("scripts/interview/batch1_questions.py", "w") as f:
+    f.write("# Generated Batch 1 revised questions\n")
+    f.write(f"NEW_QUESTIONS = {repr(QUESTIONS)}\n")
+
+print("batch1_questions.py generated successfully.")

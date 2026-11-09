@@ -7,6 +7,16 @@ import { normalizeQuietAudio, appendPhrase, chooseFinalTranscript } from './audi
  * 2. Moonshine Tiny Single-Threaded (ONNX Runtime Web in Web Worker)
  */
 
+export interface StageTimings {
+  audioDrainMs: number;
+  liveWaitMs: number;
+  modelLoadMs: number;
+  whisperFinalMs: number;
+  judgeLoadMs?: number;
+  judgeInferenceMs?: number;
+  totalPostDoneMs: number;
+}
+
 export interface EngineMetrics {
   status: 'idle' | 'loading' | 'ready' | 'listening' | 'error';
   partialText: string;
@@ -37,6 +47,7 @@ export interface EngineMetrics {
   capturedSamples?: number;
   inputTrackSettings?: MediaTrackSettings;
   isIdenticalToBatch?: boolean;
+  stageTimings?: StageTimings;
 }
 
 export function detectBrowser(): string {
@@ -413,7 +424,6 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
   private readonly finalDtype: string | Record<string, string>;
   private readonly fallbackModelId?: string;
   private readonly preloadFinal: boolean;
-  private hasPreloadedFinal = false;
   private liveDecodeRatios: number[] = [];
   private initialPrompt = '';
   public setQuestionPrompt(prompt: string): void { this.initialPrompt = prompt.slice(0, 256); }
@@ -430,6 +440,9 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
   private readonly normalizeAudio: boolean;
   private readonly captureDrainMs: number;
   private worker: Worker | null = null;
+  private finalWorker: Worker | null = null;
+  private hasFinalWorkerReady = false;
+  private backgroundWindowsDispatched = 0;
   private loadingPromise: Promise<void> | null = null;
   private preparationPromise: Promise<void> | null = null;
   private rejectLoad: ((error: Error) => void) | null = null;
@@ -513,7 +526,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
 
   public async load(): Promise<void> {
     if (this.loadingPromise) return this.loadingPromise;
-    if (this.worker) return;
+    if (this.worker && (!this.preloadFinal || !this.finalModelId || this.hasFinalWorkerReady)) return;
     this.downloadFiles.clear();
 
     this.updateMetrics({ status: 'loading', errorMessage: null, downloadProgressPct: 5 });
@@ -523,22 +536,14 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       const timeout = setTimeout(() => reject(new Error('Speech model download timed out')), 180000);
       this.rejectLoad = (error) => { clearTimeout(timeout); reject(error); };
       try {
-        this.worker = new Worker(
-          new URL('../../workers/moonshineSingleThreadWorker.ts', import.meta.url),
-          { type: 'module' }
-        );
+        let liveDone = false;
+        let finalDone = !this.preloadFinal || !this.finalModelId;
 
-        this.worker.onmessage = (e: MessageEvent) => {
-          const { type, loadTimeMs, error, device } = e.data;
-
-          if (type === 'progress') {
-            this.reportProgress(e.data, this.expectedDownloadBytes + (this.preloadFinal ? this.finalDownloadBytes : 0));
-          } else if (type === 'init_done') {
-            if (this.preloadFinal) this.hasPreloadedFinal = true;
-            const finalLoadTime = loadTimeMs || Math.round(performance.now() - startTime);
+        const checkDone = (finalLoadTime: number, dev: string) => {
+          if (liveDone && finalDone) {
             this.updateMetrics({
               status: 'ready',
-              device: `${device === 'webgpu' ? 'WebGPU' : 'WASM'} (Single-Threaded Worker, No COOP/COEP needed)`,
+              device: `${dev === 'webgpu' ? 'WebGPU' : 'WASM'} (Single-Threaded Worker, No COOP/COEP needed)`,
               downloadProgressPct: 100,
               downloadBytes: this.expectedDownloadBytes + (this.preloadFinal ? this.finalDownloadBytes : 0),
               loadTimeMs: finalLoadTime,
@@ -546,33 +551,93 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
             });
             clearTimeout(timeout);
             resolve();
-          } else if (type === 'error') {
-            const msg = error || 'Worker initialization failed';
-            this.updateMetrics({ status: 'error', errorMessage: msg });
-            clearTimeout(timeout);
-            reject(new Error(msg));
           }
         };
 
-        this.worker.onerror = (err) => {
-          const msg = err.message || 'Worker syntax or import error';
-          this.updateMetrics({ status: 'error', errorMessage: msg });
-          clearTimeout(timeout);
-          reject(new Error(msg));
-        };
+        if (!this.worker) {
+          this.worker = new Worker(
+            new URL('../../workers/moonshineSingleThreadWorker.ts', import.meta.url),
+            { type: 'module' }
+          );
 
-        this.worker.postMessage({
-          id: 'init',
-          op: 'init',
-          payload: {
-            modelId: this.modelId,
-            device: this.device,
-            dtype: this.dtype,
-            ...(this.preloadFinal && !this.hasPreloadedFinal && this.finalModelId ? {
-              preloadModelId: this.finalModelId, preloadDevice: this.finalDevice, preloadDtype: this.finalDtype,
-            } : {}),
-          },
-        });
+          this.worker.onmessage = (e: MessageEvent) => {
+            const { type, loadTimeMs, error, device } = e.data;
+
+            if (type === 'progress') {
+              this.reportProgress(e.data, this.expectedDownloadBytes + (this.preloadFinal ? this.finalDownloadBytes : 0));
+            } else if (type === 'init_done') {
+              liveDone = true;
+              const finalLoadTime = loadTimeMs || Math.round(performance.now() - startTime);
+              checkDone(finalLoadTime, device);
+            } else if (type === 'error') {
+              const msg = error || 'Worker initialization failed';
+              this.updateMetrics({ status: 'error', errorMessage: msg });
+              clearTimeout(timeout);
+              reject(new Error(msg));
+            }
+          };
+
+          this.worker.onerror = (err) => {
+            const msg = err.message || 'Worker syntax or import error';
+            this.updateMetrics({ status: 'error', errorMessage: msg });
+            clearTimeout(timeout);
+            reject(new Error(msg));
+          };
+
+          this.worker.postMessage({
+            id: 'init',
+            op: 'init',
+            payload: {
+              modelId: this.modelId,
+              device: this.device,
+              dtype: this.dtype,
+            },
+          });
+        } else {
+          liveDone = true;
+        }
+
+        if (this.preloadFinal && this.finalModelId && !this.finalWorker) {
+          this.finalWorker = new Worker(
+            new URL('../../workers/moonshineSingleThreadWorker.ts', import.meta.url),
+            { type: 'module' }
+          );
+
+          this.finalWorker.onmessage = (e: MessageEvent) => {
+            const { type, loadTimeMs, error, device } = e.data;
+            if (type === 'progress') {
+              this.reportProgress(e.data, this.expectedDownloadBytes + this.finalDownloadBytes);
+            } else if (type === 'init_done') {
+              this.hasFinalWorkerReady = true;
+              finalDone = true;
+              const finalLoadTime = loadTimeMs || Math.round(performance.now() - startTime);
+              checkDone(finalLoadTime, device);
+            } else if (type === 'error') {
+              const msg = error || 'Final worker initialization failed';
+              this.updateMetrics({ status: 'error', errorMessage: msg });
+              clearTimeout(timeout);
+              reject(new Error(msg));
+            }
+          };
+
+          this.finalWorker.onerror = (err) => {
+            const msg = err.message || 'Final worker syntax or import error';
+            this.updateMetrics({ status: 'error', errorMessage: msg });
+            clearTimeout(timeout);
+            reject(new Error(msg));
+          };
+
+          this.finalWorker.postMessage({
+            id: 'init_final',
+            op: 'init',
+            payload: {
+              modelId: this.finalModelId,
+              preloadModelId: this.finalModelId,
+              device: this.finalDevice,
+              dtype: this.finalDtype,
+            },
+          });
+        }
       } catch (err) {
         const msg = (err as Error).message;
         this.updateMetrics({ status: 'error', errorMessage: msg });
@@ -582,6 +647,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
     });
     try { await this.loadingPromise; } catch (error) {
       this.worker?.terminate(); this.worker = null;
+      this.finalWorker?.terminate(); this.finalWorker = null;
       throw error;
     } finally { this.loadingPromise = null; this.rejectLoad = null; }
   }
@@ -591,7 +657,9 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
     this.preparationPromise = (async () => {
       if (this.modelAfterStop && this.modelAfterStop !== this.modelId) {
         // Restore the cached live model before the page requests a microphone.
-        this.worker?.terminate(); this.worker = null;
+        if (!this.finalWorker) {
+          this.worker?.terminate(); this.worker = null;
+        }
       }
       this.modelAfterStop = undefined;
       await this.load();
@@ -654,6 +722,11 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       await this.audioContext.resume();
     }
 
+    this.backgroundWindowsDispatched = 0;
+    if (this.finalWorker && this.hasFinalWorkerReady) {
+      this.finalWorker.postMessage({ id: this.nextId(), op: 'reset' });
+    }
+
     const source = this.audioContext.createMediaStreamSource(stream);
     const capture = (channelData: Float32Array) => {
       if (!this.isRunning) return;
@@ -663,6 +736,46 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       // Keep complete audio in session history from the very first frame!
       this.sessionChunks.push(copy);
       this.totalSessionSamples += copy.length;
+
+      // (a) Background Whisper window decoding as user speaks
+      const WINDOW_SAMPLES = 480000; // 30s
+      const JUMP_SAMPLES = 320000;   // 20s
+      const nextWindowEnd = this.backgroundWindowsDispatched * JUMP_SAMPLES + WINDOW_SAMPLES;
+      if (
+        this.finalWorker &&
+        this.hasFinalWorkerReady &&
+        this.totalSessionSamples >= nextWindowEnd
+      ) {
+        const chunkIdx = this.backgroundWindowsDispatched;
+        const start = chunkIdx * JUMP_SAMPLES;
+        const end = start + WINDOW_SAMPLES;
+        const slice = new Float32Array(WINDOW_SAMPLES);
+        let writeOffset = 0;
+        let sampleIdx = 0;
+        for (const c of this.sessionChunks) {
+          const cStart = sampleIdx;
+          const cEnd = sampleIdx + c.length;
+          sampleIdx = cEnd;
+          if (cEnd <= start || cStart >= end) continue;
+          const copyFrom = Math.max(0, start - cStart);
+          const copyTo = Math.min(c.length, end - cStart);
+          slice.set(c.subarray(copyFrom, copyTo), writeOffset);
+          writeOffset += (copyTo - copyFrom);
+        }
+        const clean = this.prepareAudio(slice);
+        this.backgroundWindowsDispatched++;
+        this.finalWorker.postMessage({
+          id: this.nextId(),
+          op: 'batch',
+          payload: {
+            mode: 'window',
+            audio: clean.buffer,
+            chunkIndex: chunkIdx,
+            isFirst: chunkIdx === 0,
+            initialPrompt: this.initialPrompt,
+          },
+        }, [clean.buffer]);
+      }
 
       // Keep in current active segment
       this.currentSegmentChunks.push(copy);
@@ -994,8 +1107,12 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
     let rawBatchTranscript = '';
     let finalPassWarning: string | undefined;
 
+    const tDoneClicked = session === this.sessionId ? performance.now() : 0;
+    let modelLoadDurationMs = 0;
+    let whisperFinalDurationMs = 0;
+
     // Live throughput does not predict final-model accuracy or throughput. Always attempt refinement.
-    if ( this.totalSessionSamples >= 8000 && worker && this.worker === worker) {
+    if (this.totalSessionSamples >= 8000 && (this.finalWorker || (worker && this.worker === worker))) {
       const fullAudio = new Float32Array(this.totalSessionSamples);
       let offset = 0;
       for (const chunk of this.sessionChunks) {
@@ -1008,34 +1125,42 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
 
       const id = this.nextId();
       const decodeBudget = refinementBudgetMs(audioToBatch.length);
-      if (this.finalModelId) {
+      const activeWorker = this.finalWorker && this.hasFinalWorkerReady ? this.finalWorker : worker;
+
+      if (!this.finalWorker && this.finalModelId) {
         this.downloadFiles.clear();
         this.updateMetrics({ downloadProgressPct: 0 });
         this.modelAfterStop = this.finalModelId;
       }
+
+      const tWhisperStart = performance.now();
       await new Promise<void>((resolve) => {
         let decodeTimer: ReturnType<typeof setTimeout> | undefined;
-        const cancel = () => { clearTimeout(decodeTimer); clearTimeout(timeout); worker?.removeEventListener('message', handler); this.stopWaiters.delete(cancel); resolve(); };
+        const cancel = () => { clearTimeout(decodeTimer); clearTimeout(timeout); activeWorker?.removeEventListener('message', handler); this.stopWaiters.delete(cancel); resolve(); };
         this.stopWaiters.add(cancel);
         const timeout = setTimeout(() => {
-          worker?.removeEventListener('message', handler);
-          if (session === this.sessionId && this.worker === worker) { worker?.terminate(); this.worker = null; }
+          activeWorker?.removeEventListener('message', handler);
+          if (session === this.sessionId && this.worker === activeWorker) { this.worker?.terminate(); this.worker = null; }
+          if (session === this.sessionId && this.finalWorker === activeWorker) { this.finalWorker?.terminate(); this.finalWorker = null; this.hasFinalWorkerReady = false; }
           if (session === this.sessionId) this.updateMetrics({ errorMessage: 'Final speech check timed out; retained live text.' });
           cancel();
         }, 180000 + decodeBudget);
 
         const handler = (e: MessageEvent) => {
           if (e.data.id !== id) return;
-          if (e.data.type === 'model_ready' && this.finalModelId && !decodeTimer) {
+          if (e.data.type === 'model_ready' && !decodeTimer) {
+            modelLoadDurationMs = Math.max(0, performance.now() - tWhisperStart);
             decodeTimer = setTimeout(() => {
-              if (session === this.sessionId && this.worker === worker) {
-                worker.terminate(); this.worker = null;
+              if (session === this.sessionId && (this.worker === activeWorker || this.finalWorker === activeWorker)) {
+                if (this.worker === activeWorker) { this.worker.terminate(); this.worker = null; }
+                if (this.finalWorker === activeWorker) { this.finalWorker.terminate(); this.finalWorker = null; this.hasFinalWorkerReady = false; }
                 this.updateMetrics({ refinementDecision: 'aborted-slow', finalPassWarning: 'Final recognition timed out; retained live text.' });
               }
               cancel();
             }, decodeBudget);
           }
           if (e.data.type === 'batch_result') {
+            whisperFinalDurationMs = Math.max(0, performance.now() - tWhisperStart - modelLoadDurationMs);
             if (this.finalModelId) {
               const ratio = decodeRealTimeFactor(e.data.inferMs, e.data.sampleCount);
               if (ratio !== null) this.updateMetrics({ finalDecodeRTF: ratio });
@@ -1050,11 +1175,36 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
             cancel();
           }
         };
-        worker?.addEventListener('message', handler);
-        worker?.postMessage(
-          { id, op: 'batch', payload: { audio: audioToBatch.buffer, ...(this.finalModelId ? { modelId: this.finalModelId, device: this.finalDevice, dtype: this.finalDtype, fallbackModelId: this.fallbackModelId, initialPrompt: this.initialPrompt } : {}) } },
-          [audioToBatch.buffer]
-        );
+        activeWorker?.addEventListener('message', handler);
+
+        // (a) If background windows were decoded, decode remaining tail only!
+        if (this.finalWorker && this.hasFinalWorkerReady && this.backgroundWindowsDispatched > 0) {
+          const tailStart = this.backgroundWindowsDispatched * 320000;
+          const tailAudio = audioToBatch.subarray(tailStart);
+          const cleanTail = this.prepareAudio(tailAudio);
+          activeWorker?.postMessage(
+            {
+              id,
+              op: 'batch',
+              payload: {
+                mode: 'tail',
+                audio: cleanTail.buffer,
+                fullAudio: audioToBatch.buffer,
+                chunkIndex: this.backgroundWindowsDispatched,
+                isFirst: false,
+                isLast: true,
+                initialPrompt: this.initialPrompt,
+              },
+            },
+            [cleanTail.buffer, audioToBatch.buffer]
+          );
+        } else {
+          // Standard full batch pass
+          activeWorker?.postMessage(
+            { id, op: 'batch', payload: { audio: audioToBatch.buffer, mode: 'full', ...(this.finalModelId ? { modelId: this.finalModelId, device: this.finalDevice, dtype: this.finalDtype, fallbackModelId: this.fallbackModelId, initialPrompt: this.initialPrompt } : {}) } },
+            [audioToBatch.buffer]
+          );
+        }
       });
 
       if (session !== this.sessionId) return;
@@ -1074,7 +1224,15 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
     const words = this.committedText.split(/\s+/).filter(Boolean);
     const revPerWord = words.length > 0 ? this.earlierWordRevisions / words.length : 0;
 
-    if (this.finalModelId) { this.worker?.terminate(); this.worker = null; }
+    if (!this.finalWorker && this.finalModelId) { this.worker?.terminate(); this.worker = null; }
+    const totalPostDoneMs = tDoneClicked > 0 ? Math.round(performance.now() - tDoneClicked) : 0;
+    const stageTimings: StageTimings = {
+      audioDrainMs: this.captureDrainMs,
+      liveWaitMs: 0,
+      modelLoadMs: Math.round(modelLoadDurationMs),
+      whisperFinalMs: Math.round(whisperFinalDurationMs),
+      totalPostDoneMs,
+    };
     this.updateMetrics({
       status: 'ready',
       downloadProgressPct: 100,
@@ -1086,6 +1244,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
       isIdenticalToBatch,
       revisionsPerWord: Math.round(revPerWord * 1000) / 1000,
       earlierWordRevisions: this.earlierWordRevisions,
+      stageTimings,
     });
   }
 
@@ -1094,6 +1253,10 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
     this.sessionId++;
     this.requestOverlap.clear();
     this.segmentHasOverlap = false;
+    this.backgroundWindowsDispatched = 0;
+    if (this.finalWorker && this.hasFinalWorkerReady) {
+      this.finalWorker.postMessage({ id: 'reset', op: 'reset' });
+    }
     if (this.pollIntervalId) {
       clearInterval(this.pollIntervalId);
       this.pollIntervalId = null;
@@ -1137,6 +1300,10 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
     this.stopWaiters.clear();
     this.isRunning = false;
     this.sessionId++;
+    this.backgroundWindowsDispatched = 0;
+    if (this.finalWorker && this.hasFinalWorkerReady) {
+      this.finalWorker.postMessage({ id: 'reset', op: 'reset' });
+    }
     if (this.pollIntervalId) clearInterval(this.pollIntervalId);
     this.pollIntervalId = null;
     if (this.captureWorklet) { this.captureWorklet.port.onmessage = null; this.captureWorklet.disconnect(); this.captureWorklet = null; }
@@ -1153,8 +1320,19 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
   public destroy(): void {
     this.rejectLoad?.(new Error('Speech engine disposed'));
     this.cancel();
-    this.worker?.terminate();
-    this.worker = null;
+    if (this.worker) {
+      this.worker.onmessage = null;
+      this.worker.onerror = null;
+      this.worker.terminate();
+      this.worker = null;
+    }
+    if (this.finalWorker) {
+      this.finalWorker.onmessage = null;
+      this.finalWorker.onerror = null;
+      this.finalWorker.terminate();
+      this.finalWorker = null;
+    }
+    this.hasFinalWorkerReady = false;
     this.listeners.clear();
   }
 }

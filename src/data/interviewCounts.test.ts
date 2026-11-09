@@ -28,7 +28,7 @@ it('preserves all 79 authored senior rubrics alongside model-answer fallback que
     expect((row[3] as {keyPoints:string[]}).keyPoints).toEqual(q.keyPoints);
   }
   const fallbackQuestions = seniors.filter(q => !q.keyPoints);
-  expect(fallbackQuestions).toHaveLength(100);
+  expect(fallbackQuestions).toHaveLength(Object.values(senior).flat().length - 79);
   for (const q of fallbackQuestions) {
     expect(q.answer.length).toBeGreaterThan(40);
     expect(q.followUps?.length).toBeGreaterThan(0);

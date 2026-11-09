@@ -87,6 +87,14 @@ class MockIntersectionObserver {
 // @ts-expect-error -- intentionally partial, see comment above
 globalThis.IntersectionObserver = MockIntersectionObserver
 
+class MockResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+// @ts-expect-error -- intentionally partial
+globalThis.ResizeObserver = globalThis.ResizeObserver || MockResizeObserver
+
 // jsdom also doesn't implement window.matchMedia (it has no real rendering
 // engine to evaluate media queries against) -- ThemeProvider's
 // prefers-color-scheme fallback needs SOME implementation to not throw.

@@ -1,0 +1,38 @@
+---
+title: "Reciprocal Rank Fusion"
+description: "AI Engineering Primitives, problem 2 of 10: Combine rankings from multiple search systems using reciprocal ranks, giving robust hybrid search without score calibration."
+difficulty: "medium"
+topic: "AI Engineering Primitives"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Why RRF beats score blending
+
+BM25 scores range from 0 to 40+, while dense embedding cosine similarities sit between 0.3 and 0.85. Direct addition lets BM25 completely dominate, while min-max normalization is sensitive to outlier scores.
+
+**Reciprocal Rank Fusion (Cormack et al., 2009)** discards raw scores entirely and uses only ranks. Adding a constant `k = 60` dampens the influence of top-ranked items and rewards documents that consistently place well across multiple independent retrieval algorithms.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def reciprocal_rank_fusion(rankings: list[list[str]], k: int = 60) -> list[list]:
+    if k < 1:
+        raise ValueError("k must be >= 1")
+    if not rankings:
+        return []
+
+    scores = {}
+    for r in rankings:
+        for rank_idx, doc_id in enumerate(r, start=1):
+            scores[doc_id] = scores.get(doc_id, 0.0) + (1.0 / (k + rank_idx))
+
+    sorted_docs = sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [[doc_id, round(score, 6)] for doc_id, score in sorted_docs]
+```
+
+</Solution>

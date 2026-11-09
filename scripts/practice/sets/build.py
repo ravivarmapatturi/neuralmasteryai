@@ -23,7 +23,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 sys.path.insert(0, HERE)
 
-SETS = ["numpy_sheet", "micrograd", "attention", "tokenizer", "optimizers", "losses", "metrics", "rag_pieces"]
+SETS = ["numpy_sheet", "micrograd", "attention", "tokenizer", "optimizers", "losses", "metrics", "rag_pieces", "ai_engineering"]
 POINTS = {"easy": 25, "medium": 50, "hard": 100}
 TIME = {"easy": "10 min", "medium": "15-20 min", "hard": "25-35 min"}
 
@@ -115,6 +115,7 @@ def build_problem(p, track, prev_id, number):
         "testCases": tests,
         "libraryPolicyText": "NumPy available · runs in your browser" if p.get("numpy") else "Standard library only · runs in your browser",
         "hints": p["hints"],
+        "solution": p["solution"].strip(),
         "conceptConnections": [track["learn"]],
         "runtime": {"language": "python", "capabilities": ["python", "numpy"] if p.get("numpy") else ["python"]},
         "judgeMode": "local",

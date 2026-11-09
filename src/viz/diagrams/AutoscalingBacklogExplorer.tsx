@@ -14,11 +14,11 @@ export default function AutoscalingBacklogExplorer() {
       <text x={8} y={18} fill={t.textPrimary} fontSize={13}>Queued jobs (0–240,000)</text>
       <path d="M40 35 V165 H280" fill="none" stroke={t.border}/>
       <path d={`M40 165 L${x(delay)} ${y(peak)} L${x(2*delay)} 165`} fill="none" stroke={t.accentPrimary} strokeWidth={3}/>
-      <text x={150} y={35} textAnchor="middle" fill={t.textPrimary} fontSize={13}>Peak: {peak.toLocaleString()} jobs</text>
+      <text x={150} y={35} textAnchor="middle" fill={t.textPrimary} fontSize={13}>Peak: {peak.toLocaleString('en-US')} jobs</text>
       <text x={40} y={188} fill={t.textSecondary} fontSize={12}>0 s</text>
       <text x={280} y={188} textAnchor="end" fill={t.textSecondary} fontSize={12}>240 s</text>
       <text x={150} y={215} textAnchor="middle" fill={t.textPrimary} fontSize={13}>Elapsed time (seconds)</text>
     </svg>
-    <p role="status">Startup {delay}s · backlog {peak.toLocaleString()} · drain {delay}s · recovered at {2*delay}s</p>
+    <p role="status">Startup {delay}s · backlog {peak.toLocaleString('en-US')} · drain {delay}s · recovered at {2*delay}s</p>
   </VisualizationContainer>;
 }

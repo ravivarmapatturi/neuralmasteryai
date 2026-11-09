@@ -136,6 +136,7 @@
    "strong": "Replace zero sums with 1 before dividing: the zero row divided by 1 is still zeros.",
    "concept": "Broadcasting stretches a size-1 axis to match the other array without copying data."
   },
+  "solution": "import numpy as np\n\ndef row_normalize(counts):\n    c = np.asarray(counts, dtype=float)\n    sums = c.sum(axis=1, keepdims=True)   # shape (n, 1)\n    sums[sums == 0] = 1.0                 # zero rows divide by 1 and stay zero\n    return (c / sums).tolist()",
   "conceptConnections": [
    {
     "title": "Linear algebra for AI",
@@ -328,6 +329,7 @@
    "strong": "Build a mask `ids != pad_id` of shape (batch, seq), then multiply by `mask[..., None]` to broadcast over d.",
    "concept": "This is exactly what nn.Embedding does on the forward pass, plus the padding_idx behaviour."
   },
+  "solution": "import numpy as np\n\ndef gather_embeddings(table, ids, pad_id):\n    table = np.asarray(table, dtype=float)\n    ids = np.asarray(ids)\n    out = table[ids]                       # (batch, seq, d)\n    mask = (ids != pad_id)[..., None]      # (batch, seq, 1)\n    return (out * mask).tolist()",
   "conceptConnections": [
    {
     "title": "Linear algebra for AI",
@@ -552,6 +554,7 @@
    "strong": "mask = np.abs(X - mean) > k * std; then np.where(mask, mean, X). Broadcasting lines the (d,) vectors up with each row.",
    "concept": "A z-score threshold is the simplest outlier rule; it assumes roughly normal columns."
   },
+  "solution": "import numpy as np\n\ndef replace_outliers(X, k):\n    X = np.asarray(X, dtype=float)\n    mean = X.mean(axis=0)            # (d,)\n    std = X.std(axis=0)              # population std, ddof=0\n    mask = np.abs(X - mean) > k * std\n    return np.where(mask, mean, X).tolist()",
   "conceptConnections": [
    {
     "title": "Linear algebra for AI",
@@ -713,6 +716,7 @@
    "strong": "Use kind='stable' so equal scores keep their original (index) order, then take [:, :k].",
    "concept": "argpartition is O(n) per row when you do not need the k results in order."
   },
+  "solution": "import numpy as np\n\ndef topk_per_row(scores, k):\n    s = np.asarray(scores, dtype=float)\n    if k < 1 or k > s.shape[1]:\n        raise ValueError(\"k must be between 1 and the number of columns\")\n    order = np.argsort(-s, axis=1, kind=\"stable\")  # stable: ties keep index order\n    return order[:, :k].tolist()",
   "conceptConnections": [
    {
     "title": "Linear algebra for AI",
@@ -888,6 +892,7 @@
    "strong": "A_unit @ B_unit.T is (m, d) @ (d, n) = (m, n).",
    "concept": "Normalising once and multiplying is m + n normalisations instead of m * n."
   },
+  "solution": "import numpy as np\n\ndef cosine_matrix(A, B):\n    A = np.asarray(A, dtype=float)\n    B = np.asarray(B, dtype=float)\n    na = np.linalg.norm(A, axis=1, keepdims=True)\n    nb = np.linalg.norm(B, axis=1, keepdims=True)\n    if (na == 0).any() or (nb == 0).any():\n        raise ValueError(\"zero-length row\")\n    return ((A / na) @ (B / nb).T).tolist()",
   "conceptConnections": [
    {
     "title": "Linear algebra for AI",
@@ -1019,6 +1024,7 @@
    "strong": "c = np.concatenate([[0.0], np.cumsum(x)]); then (c[w:] - c[:-w]) / w.",
    "concept": "Prefix sums turn any range-sum query into one subtraction."
   },
+  "solution": "import numpy as np\n\ndef moving_average(x, window):\n    x = np.asarray(x, dtype=float)\n    if window < 1 or window > len(x):\n        raise ValueError(\"window must be between 1 and len(x)\")\n    c = np.concatenate([[0.0], np.cumsum(x)])   # c[i] = sum of x[:i]\n    return ((c[window:] - c[:-window]) / window).tolist()",
   "conceptConnections": [
    {
     "title": "Linear algebra for AI",
@@ -1214,6 +1220,7 @@
    "strong": "np.einsum('ij,jk,ik->i', X, W, Y). Indices that appear in the inputs but not after -> are summed.",
    "concept": "einsum names every axis, so the shapes are documented in the call itself."
   },
+  "solution": "import numpy as np\n\ndef bilinear_scores(X, W, Y):\n    X, W, Y = (np.asarray(m, dtype=float) for m in (X, W, Y))\n    if X.shape[1] != W.shape[0] or W.shape[1] != Y.shape[1] or X.shape[0] != Y.shape[0]:\n        raise ValueError(\"shapes do not line up\")\n    # i: pair, j: x feature, k: y feature. j and k are summed away.\n    return np.einsum(\"ij,jk,ik->i\", X, W, Y).tolist()",
   "conceptConnections": [
    {
     "title": "Linear algebra for AI",
@@ -1439,6 +1446,7 @@
    "strong": "np.add.at(sums, ids, values) adds every row, even when ids repeat. counts = np.bincount(ids, minlength=num_segments).",
    "concept": "Scatter-add is how graph neural networks aggregate messages from neighbours."
   },
+  "solution": "import numpy as np\n\ndef segment_mean(values, segment_ids, num_segments):\n    v = np.asarray(values, dtype=float)\n    ids = np.asarray(segment_ids)\n    if ((ids < 0) | (ids >= num_segments)).any():\n        raise ValueError(\"segment id out of range\")\n    sums = np.zeros((num_segments, v.shape[1]))\n    np.add.at(sums, ids, v)                       # unbuffered: repeated ids all add\n    counts = np.bincount(ids, minlength=num_segments).astype(float)\n    counts[counts == 0] = 1.0                     # empty segments stay zero\n    return (sums / counts[:, None]).tolist()",
   "conceptConnections": [
    {
     "title": "Linear algebra for AI",
@@ -1535,6 +1543,7 @@
    "strong": "In forward, `b` and `c` arrive as plain numbers, so Value(a) * b only works if __mul__ wraps them.",
    "concept": "The graph is built as a side effect of ordinary arithmetic. That is what PyTorch calls define-by-run."
   },
+  "solution": "import math\n\nclass Value:\n    \"\"\"A scalar that remembers how it was computed, so it can backpropagate.\"\"\"\n\n    def __init__(self, data, _children=(), _op=\"\"):\n        self.data = data\n        self.grad = 0.0\n        self._backward = lambda: None\n        self._prev = set(_children)\n        self._op = _op\n\n    def __repr__(self):\n        return f\"Value(data={self.data}, grad={self.grad})\"\n\n    def __add__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data + other.data, (self, other), \"+\")\n        return out\n\n    def __mul__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data * other.data, (self, other), \"*\")\n        return out\n\n\ndef forward(a, b, c):\n    \"\"\"Build L = a * b + c from Values and describe the result node.\"\"\"\n    L = Value(a) * b + c\n    return {\"value\": L.data, \"op\": L._op, \"children\": sorted(ch.data for ch in L._prev)}",
   "conceptConnections": [
    {
     "title": "Neural network fundamentals",
@@ -1624,6 +1633,7 @@
    "strong": "The closure captures self, other and out, so it can read out.grad after the forward pass has finished.",
    "concept": "The chain rule is local: each node only needs its inputs' values and its output's gradient."
   },
+  "solution": "import math\n\nclass Value:\n    \"\"\"A scalar that remembers how it was computed, so it can backpropagate.\"\"\"\n\n    def __init__(self, data, _children=(), _op=\"\"):\n        self.data = data\n        self.grad = 0.0\n        self._backward = lambda: None\n        self._prev = set(_children)\n        self._op = _op\n\n    def __repr__(self):\n        return f\"Value(data={self.data}, grad={self.grad})\"\n\n    def __add__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data + other.data, (self, other), \"+\")\n\n        def _backward():\n            # d(a + b)/da = 1: the gradient passes through unchanged.\n            self.grad += out.grad\n            other.grad += out.grad\n\n        out._backward = _backward\n        return out\n\n    def __mul__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data * other.data, (self, other), \"*\")\n\n        def _backward():\n            # d(a * b)/da = b: each side gets the other side's value.\n            self.grad += other.data * out.grad\n            other.grad += self.data * out.grad\n\n        out._backward = _backward\n        return out\n\n\ndef grads(a, b, c):\n    \"\"\"L = a * b + c. Run each node's _backward by hand, output first.\"\"\"\n    a, b, c = Value(a), Value(b), Value(c)\n    ab = a * b\n    L = ab + c\n    L.grad = 1.0\n    L._backward()\n    ab._backward()\n    return [L.data, a.grad, b.grad, c.grad]",
   "conceptConnections": [
    {
     "title": "Neural network fundamentals",
@@ -1739,6 +1749,7 @@
    "strong": "Keep a visited set. Then self.grad = 1.0 and for v in reversed(topo): v._backward().",
    "concept": "Reverse topological order guarantees a node has received all of its gradient before it distributes any."
   },
+  "solution": "import math\n\nclass Value:\n    \"\"\"A scalar that remembers how it was computed, so it can backpropagate.\"\"\"\n\n    def __init__(self, data, _children=(), _op=\"\"):\n        self.data = data\n        self.grad = 0.0\n        self._backward = lambda: None\n        self._prev = set(_children)\n        self._op = _op\n\n    def __repr__(self):\n        return f\"Value(data={self.data}, grad={self.grad})\"\n\n    def __add__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data + other.data, (self, other), \"+\")\n\n        def _backward():\n            # d(a + b)/da = 1: the gradient passes through unchanged.\n            self.grad += out.grad\n            other.grad += out.grad\n\n        out._backward = _backward\n        return out\n\n    def __mul__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data * other.data, (self, other), \"*\")\n\n        def _backward():\n            # d(a * b)/da = b: each side gets the other side's value.\n            self.grad += other.data * out.grad\n            other.grad += self.data * out.grad\n\n        out._backward = _backward\n        return out\n\n    def __radd__(self, other):\n        return self + other\n\n    def __rmul__(self, other):\n        return self * other\n\n    def __neg__(self):\n        return self * -1\n\n    def __sub__(self, other):\n        return self + (-other)\n\n    def __rsub__(self, other):\n        return other + (-self)\n\n    def backward(self):\n        # Order nodes so every node comes after everything it depends on.\n        topo, visited = [], set()\n\n        def build(v):\n            if v not in visited:\n                visited.add(v)\n                for child in v._prev:\n                    build(child)\n                topo.append(v)\n\n        build(self)\n        self.grad = 1.0\n        for v in reversed(topo):\n            v._backward()\n\n\ndef grads_of(expr, x, y):\n    \"\"\"Build one of a few expressions, call backward(), report value and grads.\"\"\"\n    x, y = Value(x), Value(y)\n    if expr == \"reuse\":\n        L = x * x + x\n    elif expr == \"chain\":\n        L = (x * y + x) * y\n    elif expr == \"diamond\":\n        a = x * y\n        L = (a + a) * a\n    else:\n        L = x * y - y * 3\n    L.backward()\n    return [L.data, x.grad, y.grad]",
   "conceptConnections": [
    {
     "title": "Neural network fundamentals",
@@ -1856,6 +1867,7 @@
    "strong": "tanh: t = math.tanh(self.data); self.grad += (1 - t * t) * out.grad.",
    "concept": "Division is x * y ** -1, so the power rule gives its gradient without a separate rule."
   },
+  "solution": "import math\n\nclass Value:\n    \"\"\"A scalar that remembers how it was computed, so it can backpropagate.\"\"\"\n\n    def __init__(self, data, _children=(), _op=\"\"):\n        self.data = data\n        self.grad = 0.0\n        self._backward = lambda: None\n        self._prev = set(_children)\n        self._op = _op\n\n    def __repr__(self):\n        return f\"Value(data={self.data}, grad={self.grad})\"\n\n    def __add__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data + other.data, (self, other), \"+\")\n\n        def _backward():\n            # d(a + b)/da = 1: the gradient passes through unchanged.\n            self.grad += out.grad\n            other.grad += out.grad\n\n        out._backward = _backward\n        return out\n\n    def __mul__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data * other.data, (self, other), \"*\")\n\n        def _backward():\n            # d(a * b)/da = b: each side gets the other side's value.\n            self.grad += other.data * out.grad\n            other.grad += self.data * out.grad\n\n        out._backward = _backward\n        return out\n\n    def __radd__(self, other):\n        return self + other\n\n    def __rmul__(self, other):\n        return self * other\n\n    def __neg__(self):\n        return self * -1\n\n    def __sub__(self, other):\n        return self + (-other)\n\n    def __rsub__(self, other):\n        return other + (-self)\n\n    def __pow__(self, k):\n        assert isinstance(k, (int, float)), \"only constant exponents\"\n        out = Value(self.data ** k, (self,), f\"**{k}\")\n\n        def _backward():\n            self.grad += k * self.data ** (k - 1) * out.grad\n\n        out._backward = _backward\n        return out\n\n    def __truediv__(self, other):\n        return self * other ** -1\n\n    def tanh(self):\n        t = math.tanh(self.data)\n        out = Value(t, (self,), \"tanh\")\n\n        def _backward():\n            self.grad += (1 - t * t) * out.grad\n\n        out._backward = _backward\n        return out\n\n    def relu(self):\n        out = Value(self.data if self.data > 0 else 0.0, (self,), \"relu\")\n\n        def _backward():\n            self.grad += (1.0 if out.data > 0 else 0.0) * out.grad\n\n        out._backward = _backward\n        return out\n\n    def backward(self):\n        # Order nodes so every node comes after everything it depends on.\n        topo, visited = [], set()\n\n        def build(v):\n            if v not in visited:\n                visited.add(v)\n                for child in v._prev:\n                    build(child)\n                topo.append(v)\n\n        build(self)\n        self.grad = 1.0\n        for v in reversed(topo):\n            v._backward()\n\n\ndef activation_grads(op, x):\n    \"\"\"Apply one operation to Value(x), backpropagate, return [output, d output / dx].\"\"\"\n    v = Value(x)\n    if op == \"tanh\":\n        out = v.tanh()\n    elif op == \"relu\":\n        out = v.relu()\n    elif op == \"cube\":\n        out = v ** 3\n    elif op == \"inverse\":\n        out = v ** -1\n    else:  # \"squash\": tanh(2x + 1) / 2\n        out = (v * 2 + 1).tanh() / 2\n    out.backward()\n    return [out.data, v.grad]",
   "conceptConnections": [
    {
     "title": "Neural network fundamentals",
@@ -1990,6 +2002,7 @@
    "strong": "act = bv; for wi, xi in zip(ws, x): act = act + wi * xi; out = act.tanh(); out.backward().",
    "concept": "dout/dw_i = (1 - out**2) * x_i: each weight's gradient is its input scaled by the tanh slope."
   },
+  "solution": "import math\n\nclass Value:\n    \"\"\"A scalar that remembers how it was computed, so it can backpropagate.\"\"\"\n\n    def __init__(self, data, _children=(), _op=\"\"):\n        self.data = data\n        self.grad = 0.0\n        self._backward = lambda: None\n        self._prev = set(_children)\n        self._op = _op\n\n    def __repr__(self):\n        return f\"Value(data={self.data}, grad={self.grad})\"\n\n    def __add__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data + other.data, (self, other), \"+\")\n\n        def _backward():\n            # d(a + b)/da = 1: the gradient passes through unchanged.\n            self.grad += out.grad\n            other.grad += out.grad\n\n        out._backward = _backward\n        return out\n\n    def __mul__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data * other.data, (self, other), \"*\")\n\n        def _backward():\n            # d(a * b)/da = b: each side gets the other side's value.\n            self.grad += other.data * out.grad\n            other.grad += self.data * out.grad\n\n        out._backward = _backward\n        return out\n\n    def __radd__(self, other):\n        return self + other\n\n    def __rmul__(self, other):\n        return self * other\n\n    def __neg__(self):\n        return self * -1\n\n    def __sub__(self, other):\n        return self + (-other)\n\n    def __rsub__(self, other):\n        return other + (-self)\n\n    def __pow__(self, k):\n        assert isinstance(k, (int, float)), \"only constant exponents\"\n        out = Value(self.data ** k, (self,), f\"**{k}\")\n\n        def _backward():\n            self.grad += k * self.data ** (k - 1) * out.grad\n\n        out._backward = _backward\n        return out\n\n    def __truediv__(self, other):\n        return self * other ** -1\n\n    def tanh(self):\n        t = math.tanh(self.data)\n        out = Value(t, (self,), \"tanh\")\n\n        def _backward():\n            self.grad += (1 - t * t) * out.grad\n\n        out._backward = _backward\n        return out\n\n    def relu(self):\n        out = Value(self.data if self.data > 0 else 0.0, (self,), \"relu\")\n\n        def _backward():\n            self.grad += (1.0 if out.data > 0 else 0.0) * out.grad\n\n        out._backward = _backward\n        return out\n\n    def backward(self):\n        # Order nodes so every node comes after everything it depends on.\n        topo, visited = [], set()\n\n        def build(v):\n            if v not in visited:\n                visited.add(v)\n                for child in v._prev:\n                    build(child)\n                topo.append(v)\n\n        build(self)\n        self.grad = 1.0\n        for v in reversed(topo):\n            v._backward()\n\n\ndef neuron_grads(x, w, b):\n    if len(x) != len(w):\n        raise ValueError(\"x and w must have the same length\")\n    ws = [Value(wi) for wi in w]\n    bv = Value(b)\n    act = bv\n    for wi, xi in zip(ws, x):\n        act = act + wi * xi\n    out = act.tanh()\n    out.backward()\n    return {\"out\": out.data, \"dw\": [wi.grad for wi in ws], \"db\": bv.grad}",
   "conceptConnections": [
    {
     "title": "Neural network fundamentals",
@@ -2170,6 +2183,7 @@
    "strong": "Forgetting w.grad = 0 makes step 2 use the sum of step 1 and step 2 gradients, and the fit drifts or diverges.",
    "concept": "This is the whole training loop of every framework: zero_grad, forward, loss, backward, step."
   },
+  "solution": "import math\n\nclass Value:\n    \"\"\"A scalar that remembers how it was computed, so it can backpropagate.\"\"\"\n\n    def __init__(self, data, _children=(), _op=\"\"):\n        self.data = data\n        self.grad = 0.0\n        self._backward = lambda: None\n        self._prev = set(_children)\n        self._op = _op\n\n    def __repr__(self):\n        return f\"Value(data={self.data}, grad={self.grad})\"\n\n    def __add__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data + other.data, (self, other), \"+\")\n\n        def _backward():\n            # d(a + b)/da = 1: the gradient passes through unchanged.\n            self.grad += out.grad\n            other.grad += out.grad\n\n        out._backward = _backward\n        return out\n\n    def __mul__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data * other.data, (self, other), \"*\")\n\n        def _backward():\n            # d(a * b)/da = b: each side gets the other side's value.\n            self.grad += other.data * out.grad\n            other.grad += self.data * out.grad\n\n        out._backward = _backward\n        return out\n\n    def __radd__(self, other):\n        return self + other\n\n    def __rmul__(self, other):\n        return self * other\n\n    def __neg__(self):\n        return self * -1\n\n    def __sub__(self, other):\n        return self + (-other)\n\n    def __rsub__(self, other):\n        return other + (-self)\n\n    def __pow__(self, k):\n        assert isinstance(k, (int, float)), \"only constant exponents\"\n        out = Value(self.data ** k, (self,), f\"**{k}\")\n\n        def _backward():\n            self.grad += k * self.data ** (k - 1) * out.grad\n\n        out._backward = _backward\n        return out\n\n    def __truediv__(self, other):\n        return self * other ** -1\n\n    def tanh(self):\n        t = math.tanh(self.data)\n        out = Value(t, (self,), \"tanh\")\n\n        def _backward():\n            self.grad += (1 - t * t) * out.grad\n\n        out._backward = _backward\n        return out\n\n    def relu(self):\n        out = Value(self.data if self.data > 0 else 0.0, (self,), \"relu\")\n\n        def _backward():\n            self.grad += (1.0 if out.data > 0 else 0.0) * out.grad\n\n        out._backward = _backward\n        return out\n\n    def backward(self):\n        # Order nodes so every node comes after everything it depends on.\n        topo, visited = [], set()\n\n        def build(v):\n            if v not in visited:\n                visited.add(v)\n                for child in v._prev:\n                    build(child)\n                topo.append(v)\n\n        build(self)\n        self.grad = 1.0\n        for v in reversed(topo):\n            v._backward()\n\n\ndef train_linear(xs, ys, w, b, lr, steps):\n    if not xs or len(xs) != len(ys):\n        raise ValueError(\"need equal-length, non-empty xs and ys\")\n    w, b = Value(w), Value(b)\n\n    def mse():\n        total = Value(0.0)\n        for x, y in zip(xs, ys):\n            total = total + (w * x + b - y) ** 2\n        return total / len(xs)\n\n    for _ in range(steps):\n        w.grad = 0.0           # zero_grad: closures accumulate with +=\n        b.grad = 0.0\n        loss = mse()\n        loss.backward()\n        w.data -= lr * w.grad  # step: move against the gradient\n        b.data -= lr * b.grad\n    return [w.data, b.data, mse().data]",
   "conceptConnections": [
    {
     "title": "Neural network fundamentals",
@@ -2377,6 +2391,7 @@
    "strong": "w = softmax(Q @ K.T / np.sqrt(d)); return (w @ V).tolist().",
    "concept": "Without the sqrt(d) scale, dot products grow with d and the softmax saturates to one-hot."
   },
+  "solution": "import numpy as np\n\ndef softmax(x, axis=-1):\n    x = x - x.max(axis=axis, keepdims=True)   # subtract the max: exp never overflows\n    e = np.exp(x)\n    return e / e.sum(axis=axis, keepdims=True)\n\ndef attention(Q, K, V):\n    Q, K, V = (np.asarray(m, dtype=float) for m in (Q, K, V))\n    d = K.shape[1]\n    weights = softmax(Q @ K.T / np.sqrt(d))   # (n, m), rows sum to 1\n    return (weights @ V).tolist()",
   "conceptConnections": [
    {
     "title": "Attention and transformers",
@@ -2652,6 +2667,7 @@
    "strong": "A row of all -inf gives max = -inf and exp(nan). Find those rows first and handle them separately.",
    "concept": "Padding masks and causal masks are both just boolean matrices applied here."
   },
+  "solution": "import numpy as np\n\ndef masked_attention(Q, K, V, mask):\n    Q, K, V = (np.asarray(m, dtype=float) for m in (Q, K, V))\n    mask = np.asarray(mask, dtype=bool)\n    scores = np.where(mask, Q @ K.T / np.sqrt(K.shape[1]), -np.inf)\n    empty = ~mask.any(axis=1)                 # rows with nothing to attend to\n    scores[empty] = 0.0                       # any finite value; zeroed below\n    scores = scores - scores.max(axis=1, keepdims=True)\n    weights = np.exp(scores) * mask           # exp(-inf) = 0, mask keeps it exact\n    weights = weights / np.where(empty, 1.0, weights.sum(axis=1))[:, None]\n    return (weights @ V).tolist()",
   "conceptConnections": [
    {
     "title": "Attention and transformers",
@@ -3137,6 +3153,7 @@
    "strong": "scores = Qh @ Kh.transpose(0, 2, 1) gives (H, n, n) in one batched matmul.",
    "concept": "Each head can attend to a different pattern because it sees a different slice of the projection."
   },
+  "solution": "import numpy as np\n\ndef softmax(x, axis=-1):\n    x = x - x.max(axis=axis, keepdims=True)   # subtract the max: exp never overflows\n    e = np.exp(x)\n    return e / e.sum(axis=axis, keepdims=True)\n\ndef multi_head_attention(X, Wq, Wk, Wv, Wo, num_heads):\n    X, Wq, Wk, Wv, Wo = (np.asarray(m, dtype=float) for m in (X, Wq, Wk, Wv, Wo))\n    n, d = X.shape\n    if d % num_heads:\n        raise ValueError(\"d must be divisible by num_heads\")\n    dh = d // num_heads\n\n    def heads(M):                      # (n, d) -> (H, n, dh)\n        return M.reshape(n, num_heads, dh).transpose(1, 0, 2)\n\n    Q, K, V = heads(X @ Wq), heads(X @ Wk), heads(X @ Wv)\n    weights = softmax(Q @ K.transpose(0, 2, 1) / np.sqrt(dh))   # (H, n, n)\n    out = (weights @ V).transpose(1, 0, 2).reshape(n, d)        # concat heads\n    return (out @ Wo).tolist()",
   "conceptConnections": [
    {
     "title": "Attention and transformers",
@@ -3428,6 +3445,7 @@
    "strong": "scores = K @ q / sqrt(d) has shape (t,). Softmax it and return weights @ V.",
    "concept": "With a cache, each step costs O(t) instead of O(t^2): the earlier keys and values are never recomputed."
   },
+  "solution": "import numpy as np\n\ndef decode_step(k_cache, v_cache, q, k, v):\n    if k_cache and len(k) != len(k_cache[0]):\n        raise ValueError(\"new key size does not match the cache\")\n    k_cache = [list(row) for row in k_cache] + [list(k)]\n    v_cache = [list(row) for row in v_cache] + [list(v)]\n    K, V, q = np.asarray(k_cache, float), np.asarray(v_cache, float), np.asarray(q, float)\n    scores = K @ q / np.sqrt(K.shape[1])          # (t,)\n    w = np.exp(scores - scores.max())\n    w /= w.sum()\n    return {\"output\": (w @ V).tolist(), \"k_cache\": k_cache, \"v_cache\": v_cache}",
   "conceptConnections": [
    {
     "title": "Attention and transformers",
@@ -3839,6 +3857,7 @@
    "strong": "np.repeat repeats each head in place (0, 0, 1, 1); np.tile would interleave (0, 1, 0, 1), which is wrong.",
    "concept": "Only the cache shrinks: the attention compute per query head is unchanged."
   },
+  "solution": "import numpy as np\n\ndef softmax(x, axis=-1):\n    x = x - x.max(axis=axis, keepdims=True)   # subtract the max: exp never overflows\n    e = np.exp(x)\n    return e / e.sum(axis=axis, keepdims=True)\n\ndef grouped_query_attention(Q, K, V):\n    Q, K, V = (np.asarray(m, dtype=float) for m in (Q, K, V))\n    hq, n, d = Q.shape\n    hkv = K.shape[0]\n    if hq % hkv:\n        raise ValueError(\"query heads must be a multiple of KV heads\")\n    group = hq // hkv\n    K = np.repeat(K, group, axis=0)    # (Hq, n, d): head h -> KV head h // group\n    V = np.repeat(V, group, axis=0)\n    scores = Q @ K.transpose(0, 2, 1) / np.sqrt(d)\n    causal = np.tril(np.ones((n, n), dtype=bool))\n    scores = np.where(causal, scores, -np.inf)\n    return (softmax(scores) @ V).tolist()",
   "conceptConnections": [
    {
     "title": "Attention and transformers",
@@ -4024,6 +4043,7 @@
    "strong": "biased = scores - slope * dist, then set entries with dist < 0 to -inf before softmax.",
    "concept": "Because the penalty depends only on distance, the model sees the same pattern at length 2,000 as at 200."
   },
+  "solution": "import numpy as np\n\ndef softmax(x, axis=-1):\n    x = x - x.max(axis=axis, keepdims=True)   # subtract the max: exp never overflows\n    e = np.exp(x)\n    return e / e.sum(axis=axis, keepdims=True)\n\ndef alibi_attention_weights(scores, slope):\n    s = np.asarray(scores, dtype=float)\n    if s.ndim != 2 or s.shape[0] != s.shape[1]:\n        raise ValueError(\"scores must be square\")\n    if slope < 0:\n        raise ValueError(\"slope must be non-negative\")\n    n = s.shape[0]\n    dist = np.arange(n)[:, None] - np.arange(n)[None, :]   # i - j\n    biased = np.where(dist >= 0, s - slope * dist, -np.inf)\n    return softmax(biased).tolist()",
   "conceptConnections": [
    {
     "title": "Attention and transformers",
@@ -4161,6 +4181,7 @@
    "strong": "Build a dict from character to index once, then use .get(ch, 0) per character.",
    "concept": "A tokenizer is a fixed mapping chosen at training time. Text it never saw still has to map somewhere."
   },
+  "solution": "def char_encode(corpus, text):\n    vocab = [\"<unk>\"] + sorted(set(corpus))\n    index = {ch: i for i, ch in enumerate(vocab)}\n    return {\"vocab\": vocab, \"ids\": [index.get(ch, 0) for ch in text]}",
   "conceptConnections": [
    {
     "title": "Foundation model internals",
@@ -4263,6 +4284,7 @@
    "strong": "Pick with min(counts, key=lambda p: (-counts[p], p)).",
    "concept": "Counting within words is why BPE never merges the end of one word with the start of the next."
   },
+  "solution": "def pair_counts(words):\n    \"\"\"words maps a space-separated token string to its frequency.\"\"\"\n    counts = {}\n    for word, freq in words.items():\n        toks = word.split(\" \")\n        for a, b in zip(toks, toks[1:]):\n            counts[(a, b)] = counts.get((a, b), 0) + freq\n    return counts\n\ndef most_frequent_pair(words):\n    counts = pair_counts(words)\n    if not counts:\n        return None\n    best = min(counts, key=lambda p: (-counts[p], p))\n    return [best[0], best[1], counts[best]]",
   "conceptConnections": [
    {
     "title": "Foundation model internals",
@@ -4392,6 +4414,7 @@
    "strong": "while i < len(tokens): check i + 1 < len(tokens) before reading tokens[i + 1].",
    "concept": "Left-to-right, non-overlapping is the convention BPE implementations use, so training and encoding agree."
   },
+  "solution": "def merge(tokens, pair, new_token):\n    \"\"\"Replace every non-overlapping occurrence of pair, left to right.\"\"\"\n    pair = tuple(pair)\n    out, i = [], 0\n    while i < len(tokens):\n        if i + 1 < len(tokens) and (tokens[i], tokens[i + 1]) == pair:\n            out.append(new_token)\n            i += 2\n        else:\n            out.append(tokens[i])\n            i += 1\n    return out",
   "conceptConnections": [
    {
     "title": "Foundation model internals",
@@ -4528,6 +4551,7 @@
    "strong": "Counts change after each merge, so recount pairs every iteration (fine at this size).",
    "concept": "The merge list is the tokenizer. Encoding replays the merges in the same order."
   },
+  "solution": "def merge(tokens, pair, new_token):\n    \"\"\"Replace every non-overlapping occurrence of pair, left to right.\"\"\"\n    out, i = [], 0\n    while i < len(tokens):\n        if i + 1 < len(tokens) and (tokens[i], tokens[i + 1]) == pair:\n            out.append(new_token)\n            i += 2\n        else:\n            out.append(tokens[i])\n            i += 1\n    return out\n\ndef train_bpe(text, num_merges):\n    freqs = {}\n    for word in text.split():\n        key = tuple(word) + (\"</w>\",)\n        freqs[key] = freqs.get(key, 0) + 1\n    merges = []\n    for _ in range(num_merges):\n        counts = {}\n        for toks, f in freqs.items():\n            for a, b in zip(toks, toks[1:]):\n                counts[(a, b)] = counts.get((a, b), 0) + f\n        if not counts:\n            break\n        pair = min(counts, key=lambda p: (-counts[p], p))\n        merges.append(list(pair))\n        new = {}\n        for toks, f in freqs.items():\n            key = tuple(merge(list(toks), pair, pair[0] + pair[1]))\n            new[key] = new.get(key, 0) + f\n        freqs = new\n    return merges",
   "conceptConnections": [
    {
     "title": "Foundation model internals",
@@ -4666,6 +4690,7 @@
    "strong": "Each loop: candidates = pairs present that are in rank; if none, stop; else merge min(candidates, key=rank.get).",
    "concept": "Encoding replays training: the same merges, in the same priority order."
   },
+  "solution": "def merge(tokens, pair, new_token):\n    \"\"\"Replace every non-overlapping occurrence of pair, left to right.\"\"\"\n    out, i = [], 0\n    while i < len(tokens):\n        if i + 1 < len(tokens) and (tokens[i], tokens[i + 1]) == pair:\n            out.append(new_token)\n            i += 2\n        else:\n            out.append(tokens[i])\n            i += 1\n    return out\n\ndef bpe_encode(word, merges):\n    rank = {tuple(m): i for i, m in enumerate(merges)}\n    tokens = list(word) + [\"</w>\"]\n    while True:\n        present = {(a, b) for a, b in zip(tokens, tokens[1:]) if (a, b) in rank}\n        if not present:\n            return tokens\n        best = min(present, key=rank.get)   # lowest rank = learned first\n        tokens = merge(tokens, best, best[0] + best[1])",
   "conceptConnections": [
    {
     "title": "Foundation model internals",
@@ -4810,6 +4835,7 @@
    "strong": "f\"<0x{b:02X}>\" formats one byte.",
    "concept": "With 256 byte tokens in the vocabulary, every possible string has an encoding."
   },
+  "solution": "def byte_fallback_tokens(text, vocab):\n    known = set(vocab)\n    tokens = []\n    for ch in text:\n        if ch in known:\n            tokens.append(ch)\n        else:\n            tokens.extend(f\"<0x{b:02X}>\" for b in ch.encode(\"utf-8\"))\n    return tokens",
   "conceptConnections": [
    {
     "title": "Foundation model internals",
@@ -4959,6 +4985,7 @@
    "strong": "scale = max_norm / total_norm only when total_norm > max_norm.",
    "concept": "Clipping by global norm keeps the update direction and only limits its length."
   },
+  "solution": "import math\n\ndef clip_grad_norm(grads, max_norm):\n    if max_norm <= 0:\n        raise ValueError(\"max_norm must be positive\")\n    total = math.sqrt(sum(g * g for vec in grads for g in vec))\n    scale = max_norm / total if total > max_norm else 1.0\n    return {\"total_norm\": total, \"grads\": [[g * scale for g in vec] for vec in grads]}",
   "conceptConnections": [
    {
     "title": "Optimizers",
@@ -5106,6 +5133,7 @@
    "strong": "On the first step from sq_avg = 0, sqrt(sq) = sqrt(1 - alpha) * |g|, so the step is about lr / sqrt(1 - alpha), 10x lr at alpha = 0.99.",
    "concept": "Dividing by the RMS of recent gradients equalises step sizes across parameters with very different gradient scales."
   },
+  "solution": "import math\n\ndef rmsprop_step(params, grads, sq_avg, lr, alpha=0.99, eps=1e-8):\n    if not (len(params) == len(grads) == len(sq_avg)):\n        raise ValueError(\"params, grads and sq_avg must have the same length\")\n    new_p, new_sq = [], []\n    for p, g, s in zip(params, grads, sq_avg):\n        s = alpha * s + (1 - alpha) * g * g\n        new_p.append(p - lr * g / (math.sqrt(s) + eps))\n        new_sq.append(s)\n    return {\"params\": new_p, \"sq_avg\": new_sq}",
   "conceptConnections": [
    {
     "title": "Optimizers",
@@ -5226,6 +5254,7 @@
    "strong": "grad = [2 * a * look[0], 2 * b * look[1]]; update v, then p.",
    "concept": "Plain momentum measures the slope where you are; Nesterov measures it where momentum is about to take you."
   },
+  "solution": "def nesterov_minimize(a, b, x0, lr, momentum, steps):\n    if a <= 0 or b <= 0:\n        raise ValueError(\"a and b must be positive\")\n    p = list(x0)\n    v = [0.0, 0.0]\n    for _ in range(steps):\n        look = [p[0] + momentum * v[0], p[1] + momentum * v[1]]\n        grad = [2 * a * look[0], 2 * b * look[1]]\n        v = [momentum * v[i] - lr * grad[i] for i in range(2)]\n        p = [p[i] + v[i] for i in range(2)]\n    return [p[0], p[1], a * p[0] ** 2 + b * p[1] ** 2]",
   "conceptConnections": [
    {
     "title": "Optimizers",
@@ -5400,6 +5429,7 @@
    "strong": "Compute the update from the old m, then update m.",
    "concept": "Every coordinate moves by lr regardless of gradient size, so Lion typically needs a 3-10x smaller learning rate than AdamW."
   },
+  "solution": "def lion_step(params, grads, m, lr, beta1=0.9, beta2=0.99, weight_decay=0.0):\n    def sign(x):\n        return 1.0 if x > 0 else -1.0 if x < 0 else 0.0\n    new_p, new_m = [], []\n    for p, g, mi in zip(params, grads, m):\n        c = beta1 * mi + (1 - beta1) * g          # interpolate for the update\n        new_p.append(p - lr * (sign(c) + weight_decay * p))\n        new_m.append(beta2 * mi + (1 - beta2) * g)  # slower average is stored\n    return {\"params\": new_p, \"m\": new_m}",
   "conceptConnections": [
    {
     "title": "Optimizers",
@@ -5516,6 +5546,7 @@
    "strong": "At step = warmup_steps progress is 0, so the cosine term gives max_lr.",
    "concept": "Warmup lets Adam's moment estimates settle before steps get large."
   },
+  "solution": "import math\n\ndef lr_at(step, max_lr, warmup_steps, total_steps, min_lr):\n    if warmup_steps >= total_steps or min_lr > max_lr:\n        raise ValueError(\"need warmup_steps < total_steps and min_lr <= max_lr\")\n    if step < warmup_steps:\n        return max_lr * (step + 1) / warmup_steps\n    if step >= total_steps:\n        return min_lr\n    progress = (step - warmup_steps) / (total_steps - warmup_steps)\n    return min_lr + 0.5 * (max_lr - min_lr) * (1 + math.cos(math.pi * progress))",
   "conceptConnections": [
    {
     "title": "Optimizers",
@@ -5648,6 +5679,7 @@
    "strong": "For a quadratic, SGD diverges in a coordinate when lr * 2 * curvature > 2, i.e. lr > 1 / curvature.",
    "concept": "Momentum's effective step size on consistent directions is lr / (1 - momentum), which is what lets it move along the flat axis."
   },
+  "solution": "def compare_optimizers(a, b, x0, lr, momentum, steps):\n    def f(p):\n        return a * p[0] ** 2 + b * p[1] ** 2\n\n    def grad(p):\n        return [2 * a * p[0], 2 * b * p[1]]\n\n    def run(use_momentum):\n        p, v = list(x0), [0.0, 0.0]\n        first_below = None\n        for step in range(1, steps + 1):\n            g = grad(p)\n            if use_momentum:\n                v = [momentum * v[i] - lr * g[i] for i in range(2)]\n                p = [p[i] + v[i] for i in range(2)]\n            else:\n                p = [p[i] - lr * g[i] for i in range(2)]\n            if first_below is None and f(p) < 1e-3:\n                first_below = step\n        return f(p), first_below\n\n    sgd_loss, sgd_steps = run(False)\n    mom_loss, mom_steps = run(True)\n    return {\n        \"sgd_loss\": sgd_loss,\n        \"momentum_loss\": mom_loss,\n        \"sgd_steps_to_1e-3\": sgd_steps,\n        \"momentum_steps_to_1e-3\": mom_steps,\n        \"sgd_diverged\": sgd_loss > f(x0),\n    }",
   "conceptConnections": [
    {
     "title": "Optimizers",
@@ -5769,6 +5801,7 @@
    "strong": "Outside the band the gradient is capped at +/- delta / n regardless of how large e is.",
    "concept": "The two branches meet with the same value and slope at |e| = delta, so the loss is smooth."
   },
+  "solution": "def huber(preds, targets, delta=1.0):\n    if not preds or len(preds) != len(targets):\n        raise ValueError(\"need equal-length, non-empty inputs\")\n    n = len(preds)\n    loss, grad = 0.0, []\n    for p, t in zip(preds, targets):\n        e = p - t\n        if abs(e) <= delta:\n            loss += 0.5 * e * e\n            grad.append(e / n)\n        else:\n            loss += delta * (abs(e) - 0.5 * delta)\n            grad.append(delta * (1 if e > 0 else -1) / n)\n    return {\"loss\": loss / n, \"grad\": grad}",
   "conceptConnections": [
    {
     "title": "Loss functions",
@@ -5935,6 +5968,7 @@
    "strong": "per = max(0.0, d_ap - d_an + margin); active counts per > 0.",
    "concept": "Once most triplets are inactive, training stalls; that is why mining hard negatives matters."
   },
+  "solution": "import math\n\ndef triplet_loss(anchors, positives, negatives, margin):\n    if not anchors or not (len(anchors) == len(positives) == len(negatives)):\n        raise ValueError(\"need three equal-length, non-empty lists\")\n    losses = []\n    for a, p, n in zip(anchors, positives, negatives):\n        losses.append(max(0.0, math.dist(a, p) - math.dist(a, n) + margin))\n    return {\"loss\": sum(losses) / len(losses), \"active\": sum(1 for l in losses if l > 0)}",
   "conceptConnections": [
    {
     "title": "Loss functions",
@@ -6089,6 +6123,7 @@
    "strong": "loss_row = -(1 - smoothing) * logp[target] - (smoothing / K) * sum(logp).",
    "concept": "With smoothing, the loss is minimised by finite logits, so the model cannot become arbitrarily confident."
   },
+  "solution": "import math\n\ndef smoothed_cross_entropy(logits, targets, smoothing):\n    if not 0 <= smoothing < 1:\n        raise ValueError(\"smoothing must be in [0, 1)\")\n    total = 0.0\n    for row, t in zip(logits, targets):\n        k = len(row)\n        m = max(row)\n        log_z = m + math.log(sum(math.exp(x - m) for x in row))\n        logp = [x - log_z for x in row]\n        total += -(1 - smoothing) * logp[t] - (smoothing / k) * sum(logp)\n    return total / len(logits)",
   "conceptConnections": [
    {
     "title": "Loss functions",
@@ -6191,6 +6226,7 @@
    "strong": "An easy example with p_t = 0.99 is scaled by (0.01)**2 = 0.0001.",
    "concept": "The (1 - p_t)**gamma factor is what makes the loss focus on misclassified examples."
   },
+  "solution": "import math\n\ndef focal_loss(probs, labels, gamma=2.0, alpha=0.25):\n    total = 0.0\n    for p, y in zip(probs, labels):\n        p_t = p if y == 1 else 1 - p\n        a_t = alpha if y == 1 else 1 - alpha\n        p_t = min(max(p_t, 1e-7), 1.0)\n        total += -a_t * (1 - p_t) ** gamma * math.log(p_t)\n    return total / len(probs)",
   "conceptConnections": [
    {
     "title": "Loss functions",
@@ -6325,6 +6361,7 @@
    "strong": "Terms where p_t is 0 contribute 0; with finite logits p_t is never exactly 0.",
    "concept": "Gradients of the softened loss scale as 1 / T^2, and multiplying by T^2 keeps them comparable across temperatures."
   },
+  "solution": "import math\n\ndef distillation_loss(student_logits, teacher_logits, temperature):\n    if temperature <= 0 or len(student_logits) != len(teacher_logits):\n        raise ValueError(\"need temperature > 0 and equal lengths\")\n\n    def log_softmax(xs):\n        xs = [x / temperature for x in xs]\n        m = max(xs)\n        log_z = m + math.log(sum(math.exp(x - m) for x in xs))\n        return [x - log_z for x in xs]\n\n    lt, ls = log_softmax(teacher_logits), log_softmax(student_logits)\n    kl = sum(math.exp(t) * (t - s) for t, s in zip(lt, ls))\n    return kl * temperature ** 2",
   "conceptConnections": [
    {
     "title": "Loss functions",
@@ -6513,6 +6550,7 @@
    "strong": "loss_ab = mean(-diag(log_softmax(S, axis=1))); loss_ba uses axis=0. Return (loss_ab + loss_ba) / 2.",
    "concept": "Every other item in the batch is a free negative, which is why contrastive training likes large batches."
   },
+  "solution": "import numpy as np\n\ndef info_nce(a, b, temperature):\n    a, b = np.asarray(a, dtype=float), np.asarray(b, dtype=float)\n    if temperature <= 0 or a.shape != b.shape:\n        raise ValueError(\"need temperature > 0 and matching shapes\")\n    a = a / np.linalg.norm(a, axis=1, keepdims=True)\n    b = b / np.linalg.norm(b, axis=1, keepdims=True)\n    s = a @ b.T / temperature                     # (n, n), positives on the diagonal\n\n    def log_softmax(x, axis):\n        m = x.max(axis=axis, keepdims=True)\n        return x - m - np.log(np.exp(x - m).sum(axis=axis, keepdims=True))\n\n    loss_ab = -np.diag(log_softmax(s, axis=1)).mean()\n    loss_ba = -np.diag(log_softmax(s, axis=0)).mean()\n    return float((loss_ab + loss_ba) / 2)",
   "conceptConnections": [
    {
     "title": "Loss functions",
@@ -6688,6 +6726,7 @@
    "strong": "Break out of the loop at the first hit.",
    "concept": "MRR suits tasks with one right answer, such as a question answered by one document."
   },
+  "solution": "def mean_reciprocal_rank(rankings, relevant):\n    if not rankings or len(rankings) != len(relevant):\n        raise ValueError(\"need one relevant set per ranking\")\n    total = 0.0\n    for ranking, rel in zip(rankings, relevant):\n        rel = set(rel)\n        for pos, item in enumerate(ranking, start=1):\n            if item in rel:\n                total += 1 / pos\n                break\n    return total / len(rankings)",
   "conceptConnections": [
    {
     "title": "Model evaluation metrics",
@@ -6851,6 +6890,7 @@
    "strong": "Micro sums TP, FP and FN across classes before computing one F1.",
    "concept": "Macro treats every class equally; micro treats every example equally."
   },
+  "solution": "def macro_micro_f1(y_true, y_pred):\n    classes = sorted(set(y_true) | set(y_pred))\n    tp = {c: 0 for c in classes}\n    fp = {c: 0 for c in classes}\n    fn = {c: 0 for c in classes}\n    for t, p in zip(y_true, y_pred):\n        if t == p:\n            tp[t] += 1\n        else:\n            fn[t] += 1\n            fp[p] += 1\n\n    def f1(tp_, fp_, fn_):\n        denom = 2 * tp_ + fp_ + fn_\n        return 2 * tp_ / denom if denom else 0.0\n\n    per_class = {c: f1(tp[c], fp[c], fn[c]) for c in classes}\n    micro = f1(sum(tp.values()), sum(fp.values()), sum(fn.values()))\n    return {\"macro\": sum(per_class.values()) / len(classes), \"micro\": micro, \"per_class\": per_class}",
   "conceptConnections": [
    {
     "title": "Model evaluation metrics",
@@ -6977,6 +7017,7 @@
    "strong": "Truncate both to k after sorting, not before: the ideal top k comes from all results.",
    "concept": "Normalising by the ideal makes scores comparable across queries with different numbers of relevant results."
   },
+  "solution": "import math\n\ndef ndcg_at_k(ranked_relevance, k):\n    if k < 1:\n        raise ValueError(\"k must be at least 1\")\n\n    def dcg(rels):\n        return sum((2 ** r - 1) / math.log2(i + 2) for i, r in enumerate(rels[:k]))\n\n    ideal = dcg(sorted(ranked_relevance, reverse=True))\n    return dcg(ranked_relevance) / ideal if ideal else 0.0",
   "conceptConnections": [
    {
     "title": "Model evaluation metrics",
@@ -7125,6 +7166,7 @@
    "strong": "ece += len(bin) / n * abs(sum(correct) / len(bin) - sum(conf) / len(bin)).",
    "concept": "A model can be accurate and badly calibrated at the same time, and the reverse."
   },
+  "solution": "def expected_calibration_error(confidences, correct, n_bins):\n    if not confidences or n_bins < 1 or len(confidences) != len(correct):\n        raise ValueError(\"need matching, non-empty inputs and n_bins >= 1\")\n    bins = {}\n    for c, ok in zip(confidences, correct):\n        b = min(int(c * n_bins), n_bins - 1)\n        bins.setdefault(b, []).append((c, ok))\n    n = len(confidences)\n    ece = 0.0\n    for items in bins.values():\n        acc = sum(1 for _, ok in items if ok) / len(items)\n        conf = sum(c for c, _ in items) / len(items)\n        ece += len(items) / n * abs(acc - conf)\n    return ece",
   "conceptConnections": [
    {
     "title": "Model evaluation metrics",
@@ -7272,6 +7314,7 @@
    "strong": "Keep a running count of positives; at each positive add hits / position.",
    "concept": "This is the non-interpolated area under the precision-recall curve, the same definition scikit-learn uses."
   },
+  "solution": "def average_precision(scores, labels):\n    total_pos = sum(1 for y in labels if y == 1)\n    if total_pos == 0:\n        raise ValueError(\"average precision needs at least one positive\")\n    order = sorted(range(len(scores)), key=lambda i: -scores[i])\n    hits, ap = 0, 0.0\n    for position, i in enumerate(order, start=1):\n        if labels[i] == 1:\n            hits += 1\n            ap += hits / position\n    return ap / total_pos",
   "conceptConnections": [
    {
     "title": "Model evaluation metrics",
@@ -7364,6 +7407,7 @@
    "strong": "clipped = sum(min(c, ref_counts[g]) for g, c in cand_counts.items()).",
    "concept": "Precision rewards saying correct things; the brevity penalty stops a very short candidate from scoring well by saying almost nothing."
   },
+  "solution": "import math\nfrom collections import Counter\n\ndef sentence_bleu(candidate, reference, max_n=4):\n    cand, ref = candidate.split(), reference.split()\n    if not cand:\n        return 0.0\n\n    def ngrams(toks, n):\n        return Counter(tuple(toks[i:i + n]) for i in range(len(toks) - n + 1))\n\n    log_sum = 0.0\n    for n in range(1, max_n + 1):\n        c, r = ngrams(cand, n), ngrams(ref, n)\n        total = sum(c.values())\n        clipped = sum(min(count, r[g]) for g, count in c.items())\n        if total == 0 or clipped == 0:\n            return 0.0\n        log_sum += math.log(clipped / total)\n    bp = 1.0 if len(cand) > len(ref) else math.exp(1 - len(ref) / len(cand))\n    return bp * math.exp(log_sum / max_n)",
   "conceptConnections": [
    {
     "title": "Model evaluation metrics",
@@ -7473,6 +7517,7 @@
    "strong": "Filter with a list comprehension against STOPWORDS.",
    "concept": "The same function must run on documents at index time and on queries at search time."
   },
+  "solution": "import re\n\nSTOPWORDS = {\"a\", \"an\", \"and\", \"are\", \"as\", \"at\", \"be\", \"by\", \"for\", \"from\", \"in\", \"is\", \"it\", \"of\", \"on\", \"or\", \"the\", \"to\", \"was\", \"with\"}\n\ndef terms(text):\n    words = re.findall(r\"[a-z0-9]+\", text.lower())\n    return [w for w in words if w not in STOPWORDS]",
   "conceptConnections": [
    {
     "title": "Retrieval-augmented generation",
@@ -7665,6 +7710,7 @@
    "strong": "Counter(doc) gives term frequencies for one document.",
    "concept": "k1 caps how much repeating a term helps; b controls how much long documents are penalised."
   },
+  "solution": "import math\nfrom collections import Counter\n\ndef bm25_scores(query, docs, k1=1.5, b=0.75):\n    if not docs:\n        raise ValueError(\"need at least one document\")\n    n = len(docs)\n    avgdl = sum(len(d) for d in docs) / n\n    df = {t: sum(1 for d in docs if t in d) for t in set(query)}\n    idf = {t: math.log((n - df[t] + 0.5) / (df[t] + 0.5) + 1) for t in df}\n    scores = []\n    for doc in docs:\n        tf = Counter(doc)\n        norm = k1 * (1 - b + b * len(doc) / avgdl)\n        scores.append(sum(idf[t] * tf[t] * (k1 + 1) / (tf[t] + norm) for t in query if tf[t]))\n    return scores",
   "conceptConnections": [
    {
     "title": "Retrieval-augmented generation",
@@ -7772,6 +7818,7 @@
    "strong": "Handle short chunks: if len(words) < k, use {tuple(words)}.",
    "concept": "Shingles capture word order, so two chunks with the same words in a different order are not duplicates."
   },
+  "solution": "def dedupe_chunks(chunks, threshold, shingle=3):\n    def shingles(text):\n        words = text.lower().split()\n        if len(words) < shingle:\n            return {tuple(words)}\n        return {tuple(words[i:i + shingle]) for i in range(len(words) - shingle + 1)}\n\n    kept, kept_sets = [], []\n    for i, text in enumerate(chunks):\n        s = shingles(text)\n        if all(len(s & k) / len(s | k) < threshold for k in kept_sets):\n            kept.append(i)\n            kept_sets.append(s)\n    return kept",
   "conceptConnections": [
    {
     "title": "Retrieval-augmented generation",
@@ -7944,6 +7991,7 @@
    "strong": "Union the ids from both dicts, then fuse with .get(id, 0.0).",
    "concept": "BM25 scores can be 0 to 30 while cosine scores sit in 0.2 to 0.9; blending raw values lets BM25 decide everything."
   },
+  "solution": "def hybrid_top_k(bm25, dense, alpha, k):\n    if not 0 <= alpha <= 1:\n        raise ValueError(\"alpha must be in [0, 1]\")\n\n    def norm(scores):\n        if not scores:\n            return {}\n        lo, hi = min(scores.values()), max(scores.values())\n        if hi == lo:\n            return {key: 1.0 for key in scores}\n        return {key: (v - lo) / (hi - lo) for key, v in scores.items()}\n\n    b, d = norm(bm25), norm(dense)\n    fused = {i: alpha * d.get(i, 0.0) + (1 - alpha) * b.get(i, 0.0) for i in set(b) | set(d)}\n    ranked = sorted(fused.items(), key=lambda kv: (-kv[1], kv[0]))\n    return [[i, s] for i, s in ranked[:k]]",
   "conceptConnections": [
    {
     "title": "Retrieval-augmented generation",
@@ -8179,6 +8227,7 @@
    "strong": "When merging, extend the last passage if doc matches and pos == last['end'] + 1.",
    "concept": "Models answer better from contiguous text than from fragments in score order."
   },
+  "solution": "def assemble_context(chunks, max_tokens):\n    chosen, used = [], 0\n    for c in sorted(chunks, key=lambda c: (-c[\"score\"], c[\"doc\"], c[\"pos\"])):\n        if used + c[\"tokens\"] <= max_tokens:\n            chosen.append(c)\n            used += c[\"tokens\"]\n    passages = []\n    for c in sorted(chosen, key=lambda c: (c[\"doc\"], c[\"pos\"])):\n        last = passages[-1] if passages else None\n        if last and last[\"doc\"] == c[\"doc\"] and c[\"pos\"] == last[\"end\"] + 1:\n            last[\"end\"] = c[\"pos\"]\n            last[\"text\"] += \" \" + c[\"text\"]\n            last[\"tokens\"] += c[\"tokens\"]\n        else:\n            passages.append({\"doc\": c[\"doc\"], \"start\": c[\"pos\"], \"end\": c[\"pos\"], \"text\": c[\"text\"], \"tokens\": c[\"tokens\"]})\n    return passages",
   "conceptConnections": [
    {
     "title": "Retrieval-augmented generation",
@@ -8307,6 +8356,7 @@
    "strong": "Split sentences with re.split(r\"(?<=[.!?])\\s+\", answer.strip()).",
    "concept": "An invalid citation is a sign the model invented a source; an uncited sentence may be unsupported."
   },
+  "solution": "import re\n\ndef check_citations(answer, sources):\n    sentences = [s for s in re.split(r\"(?<=[.!?])\\s+\", answer.strip()) if s.strip()]\n    cited, invalid, uncited = set(), set(), []\n    for i, sentence in enumerate(sentences):\n        markers = re.findall(r\"\\[(\\d+(?:\\s*,\\s*\\d+)*)\\]\", sentence)\n        if not markers:\n            uncited.append(i)\n        for group in markers:\n            for num in (int(x) for x in group.split(\",\")):\n                (cited if 1 <= num <= len(sources) else invalid).add(num)\n    return {\"cited\": sorted(cited), \"invalid\": sorted(invalid), \"uncited_sentences\": uncited}",
   "conceptConnections": [
    {
     "title": "Retrieval-augmented generation",
@@ -8324,6 +8374,1571 @@
   "prerequisite": null,
   "stage": "RAG Pieces",
   "stageNumber": 6,
+  "points": 50
+ },
+ {
+  "id": "coding-text-chunker",
+  "title": "Text Chunker With Overlap",
+  "difficulty": "medium",
+  "topic": "AI Engineering Primitives",
+  "estimatedTime": "15-20 min",
+  "functionName": "chunk_text",
+  "functionSignature": "chunk_text(text: str, chunk_size: int, overlap: int) -> list[str]",
+  "starterCode": "def chunk_text(text: str, chunk_size: int, overlap: int) -> list[str]:\n    # Your code here\n    pass\n",
+  "mission": "Split raw text into fixed-size chunks with overlapping context, preserving words so clauses stay readable.",
+  "taskDescription": "Implement `chunk_text(text, chunk_size, overlap)`. Split `text` into chunks of at most `chunk_size` characters with approximately `overlap` characters of overlap between consecutive chunks. Break chunks on word boundaries (whitespace) when possible. If a word exceeds `chunk_size`, cut hard at `chunk_size`. Advance the next chunk's start to `max(start + 1, end - overlap)`, skipping leading whitespace. Strip leading and trailing whitespace from each emitted chunk and omit empty chunks. Raise `ValueError` if `chunk_size <= 0` or `overlap < 0` or `overlap >= chunk_size`.",
+  "constraints": [
+   "0 <= overlap < chunk_size",
+   "Strip whitespace from each chunk",
+   "Break on whitespace unless word is longer than chunk_size",
+   "Raise ValueError on invalid chunk_size or overlap"
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Short text fits in single chunk",
+    "input": {
+     "text": "Hello world",
+     "chunk_size": 20,
+     "overlap": 5
+    },
+    "expectedOutput": [
+     "Hello world"
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Two chunks with word boundary split",
+    "input": {
+     "text": "The quick brown fox jumps over the lazy dog",
+     "chunk_size": 20,
+     "overlap": 5
+    },
+    "expectedOutput": [
+     "The quick brown fox",
+     "fox jumps over the",
+     "the lazy dog"
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Empty text returns empty list",
+    "input": {
+     "text": "",
+     "chunk_size": 10,
+     "overlap": 2
+    },
+    "expectedOutput": []
+   },
+   {
+    "id": "tc4",
+    "label": "Invalid overlap raises ValueError",
+    "input": {
+     "text": "abc",
+     "chunk_size": 10,
+     "overlap": 10
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc5",
+    "label": "Single word exceeding chunk size",
+    "input": {
+     "text": "supercalifragilisticexpialidocious text",
+     "chunk_size": 10,
+     "overlap": 2
+    },
+    "hidden": true,
+    "expectedOutput": [
+     "supercalif",
+     "ifragilist",
+     "sticexpial",
+     "alidocious",
+     "us text"
+    ]
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Find the last whitespace character with text.rfind(' ', start, end).",
+   "strong": "When end reaches text length, break out of the loop.",
+   "concept": "Word boundary preservation prevents truncating search tokens across chunk borders."
+  },
+  "solution": "def chunk_text(text: str, chunk_size: int, overlap: int) -> list[str]:\n    if chunk_size <= 0:\n        raise ValueError(\"chunk_size must be positive\")\n    if overlap < 0 or overlap >= chunk_size:\n        raise ValueError(\"overlap must satisfy 0 <= overlap < chunk_size\")\n    if not text:\n        return []\n\n    text_len = len(text)\n    if text_len <= chunk_size:\n        cleaned = text.strip()\n        return [cleaned] if cleaned else []\n\n    chunks = []\n    start = 0\n\n    while start < text_len:\n        end = min(start + chunk_size, text_len)\n        if end < text_len:\n            last_space = text.rfind(\" \", start, end)\n            if last_space > start:\n                end = last_space\n\n        chunk = text[start:end].strip()\n        if chunk:\n            chunks.append(chunk)\n\n        if end >= text_len:\n            break\n\n        target = max(start + 1, end - overlap)\n        space_after = text.find(\" \", target, end)\n        if space_after != -1:\n            next_start = space_after + 1\n        else:\n            space_before = text.rfind(\" \", start, target)\n            if space_before != -1 and (end - (space_before + 1)) <= chunk_size:\n                next_start = space_before + 1\n            else:\n                next_start = target\n\n        while next_start < text_len and text[next_start].isspace():\n            next_start += 1\n        start = max(start + 1, next_start)\n\n    return chunks",
+  "conceptConnections": [
+   {
+    "title": "AI Engineering in Production",
+    "route": "/docs/agents/react-agent-production",
+    "description": "Core production primitives for retrieval, caching, agents, and evaluation."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "AI Engineering Primitives",
+  "stageNumber": 1,
+  "points": 50
+ },
+ {
+  "id": "coding-reciprocal-rank-fusion",
+  "title": "Reciprocal Rank Fusion",
+  "difficulty": "medium",
+  "topic": "AI Engineering Primitives",
+  "estimatedTime": "15-20 min",
+  "functionName": "reciprocal_rank_fusion",
+  "functionSignature": "reciprocal_rank_fusion(rankings: list[list[str]], k: int = 60) -> list[list]",
+  "starterCode": "def reciprocal_rank_fusion(rankings: list[list[str]], k: int = 60) -> list[list]:\n    # Your code here\n    pass\n",
+  "mission": "Combine rankings from multiple search systems using reciprocal ranks, giving robust hybrid search without score calibration.",
+  "taskDescription": "Implement `reciprocal_rank_fusion(rankings, k=60)`. Each list in `rankings` contains document IDs in ranked order (rank 1 at index 0). For each document, sum `1.0 / (k + rank)` across all rankings where it appears. Return `[doc_id, score]` pairs sorted by score descending, ties by doc_id ascending. Round scores to 6 decimal places. Raise `ValueError` if `k < 1`.",
+  "constraints": [
+   "1-based rank indexing (first doc has rank 1)",
+   "Score formula: sum(1 / (k + rank))",
+   "Round score to 6 decimals",
+   "Ties broken by doc_id ascending",
+   "Raise ValueError if k < 1"
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Two retrievers in agreement",
+    "input": {
+     "rankings": [
+      [
+       "docA",
+       "docB",
+       "docC"
+      ],
+      [
+       "docA",
+       "docC",
+       "docB"
+      ]
+     ],
+     "k": 60
+    },
+    "expectedOutput": [
+     [
+      "docA",
+      0.032787
+     ],
+     [
+      "docB",
+      0.032002
+     ],
+     [
+      "docC",
+      0.032002
+     ]
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Disjoint rankings merged",
+    "input": {
+     "rankings": [
+      [
+       "docA",
+       "docB"
+      ],
+      [
+       "docC",
+       "docD"
+      ]
+     ],
+     "k": 60
+    },
+    "expectedOutput": [
+     [
+      "docA",
+      0.016393
+     ],
+     [
+      "docC",
+      0.016393
+     ],
+     [
+      "docB",
+      0.016129
+     ],
+     [
+      "docD",
+      0.016129
+     ]
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Empty rankings list",
+    "input": {
+     "rankings": [],
+     "k": 60
+    },
+    "expectedOutput": []
+   },
+   {
+    "id": "tc4",
+    "label": "Invalid k raises ValueError",
+    "input": {
+     "rankings": [
+      [
+       "a"
+      ]
+     ],
+     "k": 0
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc5",
+    "label": "Three rankings with tie-breaking",
+    "input": {
+     "rankings": [
+      [
+       "a",
+       "b",
+       "c"
+      ],
+      [
+       "b",
+       "c",
+       "d"
+      ],
+      [
+       "c",
+       "a",
+       "d"
+      ]
+     ],
+     "k": 60
+    },
+    "hidden": true,
+    "expectedOutput": [
+     [
+      "c",
+      0.048395
+     ],
+     [
+      "a",
+      0.032522
+     ],
+     [
+      "b",
+      0.032522
+     ],
+     [
+      "d",
+      0.031746
+     ]
+    ]
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Enumerate each ranking list with enumerate(r, start=1).",
+   "strong": "Sort with key=lambda kv: (-kv[1], kv[0]) for descending score and ascending id.",
+   "concept": "RRF depends only on positions, making it immune to incompatible score scales between BM25 and vector search."
+  },
+  "solution": "def reciprocal_rank_fusion(rankings: list[list[str]], k: int = 60) -> list[list]:\n    if k < 1:\n        raise ValueError(\"k must be >= 1\")\n    if not rankings:\n        return []\n\n    scores = {}\n    for r in rankings:\n        for rank_idx, doc_id in enumerate(r, start=1):\n            scores[doc_id] = scores.get(doc_id, 0.0) + (1.0 / (k + rank_idx))\n\n    sorted_docs = sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))\n    return [[doc_id, round(score, 6)] for doc_id, score in sorted_docs]",
+  "conceptConnections": [
+   {
+    "title": "AI Engineering in Production",
+    "route": "/docs/agents/react-agent-production",
+    "description": "Core production primitives for retrieval, caching, agents, and evaluation."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "AI Engineering Primitives",
+  "stageNumber": 2,
+  "points": 50
+ },
+ {
+  "id": "coding-simple-reranker",
+  "title": "Two-Stage Passage Reranker",
+  "difficulty": "medium",
+  "topic": "AI Engineering Primitives",
+  "estimatedTime": "15-20 min",
+  "functionName": "rerank_passages",
+  "functionSignature": "rerank_passages(query: str, passages: list[dict], top_k: int) -> list[dict]",
+  "starterCode": "def rerank_passages(query: str, passages: list[dict], top_k: int) -> list[dict]:\n    # Your code here\n    pass\n",
+  "mission": "Re-score retrieval candidates by combining their initial retriever score with lexical term overlap.",
+  "taskDescription": "Implement `rerank_passages(query, passages, top_k)`. Each passage is `{\"id\": str, \"text\": str, \"score\": float}`. Extract lower-case alphanumeric query words. Compute lexical overlap count per passage. Min-max normalize both the initial score and lexical overlap to [0.0, 1.0] (constant arrays normalize to 1.0). Compute blended score `0.5 * norm_initial + 0.5 * norm_lexical` rounded to 4 decimals. Return top `top_k` passages as `[{\"id\": str, \"score\": float}]` sorted by score descending, ties by id ascending. Raise `ValueError` if `top_k <= 0`.",
+  "constraints": [
+   "Min-max normalize both scores separately before blending",
+   "Identical min and max normalizes to 1.0",
+   "Round blended score to 4 decimal places",
+   "Return at most top_k entries",
+   "Raise ValueError if top_k <= 0"
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Lexical match boosts candidate passage",
+    "input": {
+     "query": "vector database",
+     "passages": [
+      {
+       "id": "p1",
+       "text": "relational database system",
+       "score": 0.9
+      },
+      {
+       "id": "p2",
+       "text": "vector database index",
+       "score": 0.5
+      }
+     ],
+     "top_k": 2
+    },
+    "expectedOutput": [
+     {
+      "id": "p1",
+      "score": 0.5
+     },
+     {
+      "id": "p2",
+      "score": 0.5
+     }
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Single passage normalization",
+    "input": {
+     "query": "test",
+     "passages": [
+      {
+       "id": "p1",
+       "text": "test passage",
+       "score": 0.8
+      }
+     ],
+     "top_k": 1
+    },
+    "expectedOutput": [
+     {
+      "id": "p1",
+      "score": 1.0
+     }
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Empty passages returns empty list",
+    "input": {
+     "query": "test",
+     "passages": [],
+     "top_k": 3
+    },
+    "expectedOutput": []
+   },
+   {
+    "id": "tc4",
+    "label": "Invalid top_k raises ValueError",
+    "input": {
+     "query": "test",
+     "passages": [
+      {
+       "id": "p1",
+       "text": "a",
+       "score": 0.1
+      }
+     ],
+     "top_k": 0
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc5",
+    "label": "Three passages with truncation",
+    "input": {
+     "query": "prompt injection guardrails",
+     "passages": [
+      {
+       "id": "doc1",
+       "text": "prompt injection attacks and defense",
+       "score": 0.2
+      },
+      {
+       "id": "doc2",
+       "text": "guardrails prevent prompt injection",
+       "score": 0.9
+      },
+      {
+       "id": "doc3",
+       "text": "unrelated weather report",
+       "score": 0.8
+      }
+     ],
+     "top_k": 2
+    },
+    "hidden": true,
+    "expectedOutput": [
+     {
+      "id": "doc2",
+      "score": 1.0
+     },
+     {
+      "id": "doc3",
+      "score": 0.4286
+     }
+    ]
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Extract query words with re.findall(r'[a-z0-9]+', query.lower()).",
+   "strong": "Handle hi == lo edge cases during normalization by assigning 1.0.",
+   "concept": "Two-stage retrieval pairs fast candidate generation with precise cross-encoder reranking."
+  },
+  "solution": "import re\n\ndef rerank_passages(query: str, passages: list[dict], top_k: int) -> list[dict]:\n    if top_k <= 0:\n        raise ValueError(\"top_k must be positive\")\n    if not passages:\n        return []\n\n    query_terms = set(re.findall(r\"[a-z0-9]+\", query.lower()))\n\n    lexical_scores = []\n    initial_scores = []\n    for p in passages:\n        p_terms = set(re.findall(r\"[a-z0-9]+\", p[\"text\"].lower()))\n        lex_score = float(len(query_terms & p_terms))\n        lexical_scores.append(lex_score)\n        initial_scores.append(float(p[\"score\"]))\n\n    def min_max(vals):\n        lo, hi = min(vals), max(vals)\n        if hi == lo:\n            return [1.0] * len(vals)\n        return [(v - lo) / (hi - lo) for v in vals]\n\n    norm_lex = min_max(lexical_scores)\n    norm_init = min_max(initial_scores)\n\n    ranked = []\n    for i, p in enumerate(passages):\n        blended = round(0.5 * norm_init[i] + 0.5 * norm_lex[i], 4)\n        ranked.append({\"id\": p[\"id\"], \"score\": blended})\n\n    ranked.sort(key=lambda x: (-x[\"score\"], x[\"id\"]))\n    return ranked[:top_k]",
+  "conceptConnections": [
+   {
+    "title": "AI Engineering in Production",
+    "route": "/docs/agents/react-agent-production",
+    "description": "Core production primitives for retrieval, caching, agents, and evaluation."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "AI Engineering Primitives",
+  "stageNumber": 3,
+  "points": 50
+ },
+ {
+  "id": "coding-json-output-repair",
+  "title": "Structured JSON Parser With Repair",
+  "difficulty": "medium",
+  "topic": "AI Engineering Primitives",
+  "estimatedTime": "15-20 min",
+  "functionName": "parse_and_repair_json",
+  "functionSignature": "parse_and_repair_json(raw: str, schema_keys: list[str]) -> dict",
+  "starterCode": "def parse_and_repair_json(raw: str, schema_keys: list[str]) -> dict:\n    # Your code here\n    pass\n",
+  "mission": "Extract structured data from messy LLM responses, repairing markdown fences, trailing commas, single quotes, and missing keys.",
+  "taskDescription": "Implement `parse_and_repair_json(raw, schema_keys)`. Strip markdown fences (` ```json ... ``` `) if present, or find content between the first `{` and last `}`. Repair single quotes on keys and values, strip trailing commas before `}` or `]`, and append missing closing braces. Parse with `json.loads`. Backfill any missing `schema_keys` with `None`. Raise `ValueError` if no JSON object exists or if parsing fails.",
+  "constraints": [
+   "Strip markdown fences cleanly",
+   "Remove trailing commas before closing braces/brackets",
+   "Convert single quotes to double quotes",
+   "Backfill missing schema_keys with None",
+   "Raise ValueError on unrepairable input"
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Markdown fence with trailing comma",
+    "input": {
+     "raw": "```json\n{\"name\": \"Alice\", \"age\": 30,}\n```",
+     "schema_keys": [
+      "name",
+      "age",
+      "role"
+     ]
+    },
+    "expectedOutput": {
+     "name": "Alice",
+     "age": 30,
+     "role": null
+    }
+   },
+   {
+    "id": "tc2",
+    "label": "Single quotes and missing key",
+    "input": {
+     "raw": "{'status': 'active', 'code': 200}",
+     "schema_keys": [
+      "status",
+      "code",
+      "message"
+     ]
+    },
+    "expectedOutput": {
+     "status": "active",
+     "code": 200,
+     "message": null
+    }
+   },
+   {
+    "id": "tc3",
+    "label": "Unclosed trailing brace",
+    "input": {
+     "raw": "{\"query\": \"search text\", \"limit\": 10",
+     "schema_keys": [
+      "query",
+      "limit"
+     ]
+    },
+    "expectedOutput": {
+     "query": "search text",
+     "limit": 10
+    }
+   },
+   {
+    "id": "tc4",
+    "label": "Unrepairable garbage raises ValueError",
+    "input": {
+     "raw": "I cannot fulfill this request as an AI.",
+     "schema_keys": [
+      "result"
+     ]
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc5",
+    "label": "Array trailing comma and conversational preamble",
+    "input": {
+     "raw": "Here is your JSON:\n```\n{\"items\": [1, 2, 3,], \"valid\": true}\n```\nHope this helps!",
+     "schema_keys": [
+      "items",
+      "valid"
+     ]
+    },
+    "hidden": true,
+    "expectedOutput": {
+     "items": [
+      1,
+      2,
+      3
+     ],
+     "valid": true
+    }
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Check for code fences with regex r'```(?:json)?\\s*([\\s\\S]*?)```'.",
+   "strong": "Count opening vs closing braces to append missing '}'.",
+   "concept": "LLMs often produce valid JSON except for trailing commas or markdown framing."
+  },
+  "solution": "import json\nimport re\n\ndef parse_and_repair_json(raw: str, schema_keys: list[str]) -> dict:\n    text = raw.strip()\n\n    fence_match = re.search(r\"```(?:json)?\\s*([\\s\\S]*?)```\", text)\n    if fence_match:\n        text = fence_match.group(1).strip()\n    else:\n        start = text.find(\"{\")\n        end = text.rfind(\"}\")\n        if start == -1:\n            raise ValueError(\"No JSON object found\")\n        if end != -1 and end > start:\n            text = text[start : end + 1].strip()\n        else:\n            text = text[start:].strip()\n\n    text = re.sub(r\"'([a-zA-Z0-9_\\-\\.\\s]+)'\\s*:\", r'\"\\1\":', text)\n    text = re.sub(r\":\\s*'([^']*?)'\", r': \"\\1\"', text)\n    text = re.sub(r\",\\s*([\\}\\]])\", r\"\\1\", text)\n\n    open_braces = text.count(\"{\") - text.count(\"}\")\n    if open_braces > 0:\n        text += \"}\" * open_braces\n\n    try:\n        data = json.loads(text)\n    except Exception as e:\n        raise ValueError(f\"Unrepairable JSON: {e}\")\n\n    if not isinstance(data, dict):\n        raise ValueError(\"Parsed JSON must be an object\")\n\n    for k in schema_keys:\n        if k not in data:\n            data[k] = None\n\n    return data",
+  "conceptConnections": [
+   {
+    "title": "AI Engineering in Production",
+    "route": "/docs/agents/react-agent-production",
+    "description": "Core production primitives for retrieval, caching, agents, and evaluation."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "AI Engineering Primitives",
+  "stageNumber": 4,
+  "points": 50
+ },
+ {
+  "id": "coding-eval-regression-harness",
+  "title": "Evaluation Harness With Regression Gate",
+  "difficulty": "medium",
+  "topic": "AI Engineering Primitives",
+  "estimatedTime": "15-20 min",
+  "functionName": "evaluate_predictions",
+  "functionSignature": "evaluate_predictions(predictions: list[dict], baseline_accuracy: float, max_allowed_drop: float = 0.02) -> dict",
+  "starterCode": "def evaluate_predictions(predictions: list[dict], baseline_accuracy: float, max_allowed_drop: float = 0.02) -> dict:\n    # Your code here\n    pass\n",
+  "mission": "Gate LLM prompt or model changes by measuring accuracy against ground truth and blocking regressions.",
+  "taskDescription": "Implement `evaluate_predictions(predictions, baseline_accuracy, max_allowed_drop=0.02)`. Each item in `predictions` has `{\"id\": str, \"prediction\": str, \"label\": str}`. Match predictions case-insensitively with stripped whitespace. Compute accuracy and delta against baseline_accuracy, rounded to 4 decimals. Regressed is True if `(baseline_accuracy - accuracy) > max_allowed_drop`. Return `{\"accuracy\": float, \"delta\": float, \"passed\": bool, \"regressed\": bool, \"failed_ids\": list[str]}`. Raise `ValueError` if predictions is empty or baseline_accuracy not in [0.0, 1.0].",
+  "constraints": [
+   "Case-insensitive stripped string comparison",
+   "Round accuracy and delta to 4 decimal places",
+   "Regressed when drop exceeds max_allowed_drop",
+   "passed is not regressed",
+   "Raise ValueError on empty predictions or invalid baseline"
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Improvement over baseline passes",
+    "input": {
+     "predictions": [
+      {
+       "id": "q1",
+       "prediction": "yes",
+       "label": "yes"
+      },
+      {
+       "id": "q2",
+       "prediction": "no",
+       "label": "no"
+      }
+     ],
+     "baseline_accuracy": 0.8
+    },
+    "expectedOutput": {
+     "accuracy": 1.0,
+     "delta": 0.2,
+     "passed": true,
+     "regressed": false,
+     "failed_ids": []
+    }
+   },
+   {
+    "id": "tc2",
+    "label": "Minor drop within allowed tolerance passes",
+    "input": {
+     "predictions": [
+      {
+       "id": "q1",
+       "prediction": "yes",
+       "label": "yes"
+      },
+      {
+       "id": "q2",
+       "prediction": "wrong",
+       "label": "no"
+      }
+     ],
+     "baseline_accuracy": 0.51,
+     "max_allowed_drop": 0.02
+    },
+    "expectedOutput": {
+     "accuracy": 0.5,
+     "delta": -0.01,
+     "passed": true,
+     "regressed": false,
+     "failed_ids": [
+      "q2"
+     ]
+    }
+   },
+   {
+    "id": "tc3",
+    "label": "Regression exceeding threshold fails",
+    "input": {
+     "predictions": [
+      {
+       "id": "q1",
+       "prediction": "a",
+       "label": "a"
+      },
+      {
+       "id": "q2",
+       "prediction": "b",
+       "label": "c"
+      }
+     ],
+     "baseline_accuracy": 0.9,
+     "max_allowed_drop": 0.05
+    },
+    "expectedOutput": {
+     "accuracy": 0.5,
+     "delta": -0.4,
+     "passed": false,
+     "regressed": true,
+     "failed_ids": [
+      "q2"
+     ]
+    }
+   },
+   {
+    "id": "tc4",
+    "label": "Empty predictions raises ValueError",
+    "input": {
+     "predictions": [],
+     "baseline_accuracy": 0.8
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc5",
+    "label": "All fail test case with edge baseline",
+    "input": {
+     "predictions": [
+      {
+       "id": "t1",
+       "prediction": "no",
+       "label": "yes"
+      },
+      {
+       "id": "t2",
+       "prediction": "false",
+       "label": "true"
+      }
+     ],
+     "baseline_accuracy": 0.0,
+     "max_allowed_drop": 0.01
+    },
+    "hidden": true,
+    "expectedOutput": {
+     "accuracy": 0.0,
+     "delta": 0.0,
+     "passed": true,
+     "regressed": false,
+     "failed_ids": [
+      "t1",
+      "t2"
+     ]
+    }
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Strip and lowercase both prediction and label before comparing.",
+   "strong": "Keep failed IDs in their original order.",
+   "concept": "Eval regression gates prevent prompt drift from breaking edge cases in production."
+  },
+  "solution": "def evaluate_predictions(predictions: list[dict], baseline_accuracy: float, max_allowed_drop: float = 0.02) -> dict:\n    if not predictions:\n        raise ValueError(\"predictions cannot be empty\")\n    if not (0.0 <= baseline_accuracy <= 1.0):\n        raise ValueError(\"baseline_accuracy must be in [0.0, 1.0]\")\n\n    total = len(predictions)\n    correct = 0\n    failed_ids = []\n\n    for item in predictions:\n        pred = str(item.get(\"prediction\", \"\")).strip().lower()\n        label = str(item.get(\"label\", \"\")).strip().lower()\n        if pred == label:\n            correct += 1\n        else:\n            failed_ids.append(item[\"id\"])\n\n    accuracy = round(correct / total, 4)\n    delta = round(accuracy - baseline_accuracy, 4)\n    regressed = (baseline_accuracy - accuracy) > (max_allowed_drop + 1e-9)\n    passed = not regressed\n\n    return {\n        \"accuracy\": accuracy,\n        \"delta\": delta,\n        \"passed\": passed,\n        \"regressed\": regressed,\n        \"failed_ids\": failed_ids,\n    }",
+  "conceptConnections": [
+   {
+    "title": "AI Engineering in Production",
+    "route": "/docs/agents/react-agent-production",
+    "description": "Core production primitives for retrieval, caching, agents, and evaluation."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "AI Engineering Primitives",
+  "stageNumber": 5,
+  "points": 50
+ },
+ {
+  "id": "coding-token-bucket",
+  "title": "Token Bucket Rate Limiter",
+  "difficulty": "medium",
+  "topic": "AI Engineering Primitives",
+  "estimatedTime": "15-20 min",
+  "functionName": "simulate_token_bucket",
+  "functionSignature": "simulate_token_bucket(events: list[dict], capacity: float, refill_rate: float) -> list[bool]",
+  "starterCode": "def simulate_token_bucket(events: list[dict], capacity: float, refill_rate: float) -> list[bool]:\n    # Your code here\n    pass\n",
+  "mission": "Simulate a token bucket rate limiter to protect model APIs from bursts while allowing steady-state throughput.",
+  "taskDescription": "Implement `simulate_token_bucket(events, capacity, refill_rate)`. The bucket starts full at `capacity` tokens. Each event is `{\"time\": float, \"tokens\": float}` with non-decreasing times. At each event, refill the bucket by `(current_time - last_time) * refill_rate`, capped at `capacity`. If available tokens >= requested tokens, deduct and record `True`; otherwise record `False` without deducting tokens. Return list of booleans. Raise `ValueError` if capacity or refill_rate <= 0.",
+  "constraints": [
+   "Bucket starts completely full at capacity",
+   "Tokens refill continuously based on elapsed time",
+   "Denied requests consume zero tokens",
+   "Return list of booleans matching events",
+   "Raise ValueError if capacity <= 0 or refill_rate <= 0"
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Burst consumed then rejected",
+    "input": {
+     "events": [
+      {
+       "time": 0.0,
+       "tokens": 5.0
+      },
+      {
+       "time": 0.0,
+       "tokens": 6.0
+      }
+     ],
+     "capacity": 10.0,
+     "refill_rate": 1.0
+    },
+    "expectedOutput": [
+     true,
+     false
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Refill allows subsequent request",
+    "input": {
+     "events": [
+      {
+       "time": 0.0,
+       "tokens": 10.0
+      },
+      {
+       "time": 2.0,
+       "tokens": 2.0
+      }
+     ],
+     "capacity": 10.0,
+     "refill_rate": 1.0
+    },
+    "expectedOutput": [
+     true,
+     true
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Empty events returns empty list",
+    "input": {
+     "events": [],
+     "capacity": 10.0,
+     "refill_rate": 2.0
+    },
+    "expectedOutput": []
+   },
+   {
+    "id": "tc4",
+    "label": "Invalid capacity raises ValueError",
+    "input": {
+     "events": [
+      {
+       "time": 0.0,
+       "tokens": 1.0
+      }
+     ],
+     "capacity": -1.0,
+     "refill_rate": 1.0
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc5",
+    "label": "Fractional token consumption and idle cap",
+    "input": {
+     "events": [
+      {
+       "time": 0.0,
+       "tokens": 4.5
+      },
+      {
+       "time": 1.0,
+       "tokens": 6.5
+      },
+      {
+       "time": 20.0,
+       "tokens": 10.0
+      }
+     ],
+     "capacity": 10.0,
+     "refill_rate": 0.5
+    },
+    "hidden": true,
+    "expectedOutput": [
+     true,
+     false,
+     true
+    ]
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Update available tokens: min(capacity, tokens + elapsed * refill_rate).",
+   "strong": "Do not deduct tokens when a request is rejected.",
+   "concept": "Token bucket permits brief bursts up to capacity while bounding sustained traffic to refill_rate."
+  },
+  "solution": "def simulate_token_bucket(events: list[dict], capacity: float, refill_rate: float) -> list[bool]:\n    if capacity <= 0:\n        raise ValueError(\"capacity must be positive\")\n    if refill_rate <= 0:\n        raise ValueError(\"refill_rate must be positive\")\n    if not events:\n        return []\n\n    tokens = float(capacity)\n    last_time = float(events[0][\"time\"])\n    results = []\n\n    for event in events:\n        current_time = float(event[\"time\"])\n        cost = float(event[\"tokens\"])\n\n        elapsed = max(0.0, current_time - last_time)\n        tokens = min(float(capacity), tokens + elapsed * refill_rate)\n        last_time = current_time\n\n        if tokens >= cost:\n            tokens -= cost\n            results.append(True)\n        else:\n            results.append(False)\n\n    return results",
+  "conceptConnections": [
+   {
+    "title": "AI Engineering in Production",
+    "route": "/docs/agents/react-agent-production",
+    "description": "Core production primitives for retrieval, caching, agents, and evaluation."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "AI Engineering Primitives",
+  "stageNumber": 6,
+  "points": 50
+ },
+ {
+  "id": "coding-request-batcher",
+  "title": "Dynamic Request Batcher",
+  "difficulty": "medium",
+  "topic": "AI Engineering Primitives",
+  "estimatedTime": "15-20 min",
+  "functionName": "batch_requests",
+  "functionSignature": "batch_requests(requests: list[dict], max_batch_size: int, max_wait_ms: float) -> list[list[str]]",
+  "starterCode": "def batch_requests(requests: list[dict], max_batch_size: int, max_wait_ms: float) -> list[list[str]]:\n    # Your code here\n    pass\n",
+  "mission": "Group concurrent inference requests by batch size and latency budget to maximize GPU utilization.",
+  "taskDescription": "Implement `batch_requests(requests, max_batch_size, max_wait_ms)`. Each request is `{\"id\": str, \"arrival_time\": float}` (arrival_time in ms, non-decreasing). Group into batches in arrival order. A batch closes when it reaches `max_batch_size`, or when an incoming request arrives with `arrival_time - batch_start_time > max_wait_ms` (closing the current batch before adding the incoming request to a new batch). Return list of batches (lists of request IDs). Raise `ValueError` if `max_batch_size < 1` or `max_wait_ms <= 0`.",
+  "constraints": [
+   "Batch closes at max_batch_size or when wait time exceeds max_wait_ms",
+   "Requests grouped strictly in arrival order",
+   "Empty requests returns []",
+   "Raise ValueError if max_batch_size < 1 or max_wait_ms <= 0"
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Immediate arrivals grouped by max_batch_size",
+    "input": {
+     "requests": [
+      {
+       "id": "r1",
+       "arrival_time": 0.0
+      },
+      {
+       "id": "r2",
+       "arrival_time": 1.0
+      },
+      {
+       "id": "r3",
+       "arrival_time": 2.0
+      }
+     ],
+     "max_batch_size": 2,
+     "max_wait_ms": 10.0
+    },
+    "expectedOutput": [
+     [
+      "r1",
+      "r2"
+     ],
+     [
+      "r3"
+     ]
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Slow arrivals split by timeout",
+    "input": {
+     "requests": [
+      {
+       "id": "r1",
+       "arrival_time": 0.0
+      },
+      {
+       "id": "r2",
+       "arrival_time": 15.0
+      }
+     ],
+     "max_batch_size": 4,
+     "max_wait_ms": 10.0
+    },
+    "expectedOutput": [
+     [
+      "r1"
+     ],
+     [
+      "r2"
+     ]
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Empty input returns empty list",
+    "input": {
+     "requests": [],
+     "max_batch_size": 4,
+     "max_wait_ms": 5.0
+    },
+    "expectedOutput": []
+   },
+   {
+    "id": "tc4",
+    "label": "Invalid max_batch_size raises ValueError",
+    "input": {
+     "requests": [
+      {
+       "id": "r1",
+       "arrival_time": 0.0
+      }
+     ],
+     "max_batch_size": 0,
+     "max_wait_ms": 5.0
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc5",
+    "label": "Mixed arrivals with timeout and size triggers",
+    "input": {
+     "requests": [
+      {
+       "id": "a",
+       "arrival_time": 10.0
+      },
+      {
+       "id": "b",
+       "arrival_time": 12.0
+      },
+      {
+       "id": "c",
+       "arrival_time": 14.0
+      },
+      {
+       "id": "d",
+       "arrival_time": 30.0
+      }
+     ],
+     "max_batch_size": 3,
+     "max_wait_ms": 15.0
+    },
+    "hidden": true,
+    "expectedOutput": [
+     [
+      "a",
+      "b",
+      "c"
+     ],
+     [
+      "d"
+     ]
+    ]
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Keep track of batch_start_time from the first request in the open batch.",
+   "strong": "When wait time exceeds max_wait_ms, append current batch and start new batch with the current request.",
+   "concept": "Dynamic batching trades bounded latency for massive GPU tensor parallel efficiency."
+  },
+  "solution": "def batch_requests(requests: list[dict], max_batch_size: int, max_wait_ms: float) -> list[list[str]]:\n    if max_batch_size < 1:\n        raise ValueError(\"max_batch_size must be >= 1\")\n    if max_wait_ms <= 0:\n        raise ValueError(\"max_wait_ms must be positive\")\n    if not requests:\n        return []\n\n    batches = []\n    current_batch = []\n    batch_start_time = None\n\n    for req in requests:\n        req_id = req[\"id\"]\n        arr_time = float(req[\"arrival_time\"])\n\n        if not current_batch:\n            current_batch.append(req_id)\n            batch_start_time = arr_time\n        elif (arr_time - batch_start_time) > max_wait_ms:\n            batches.append(current_batch)\n            current_batch = [req_id]\n            batch_start_time = arr_time\n        else:\n            current_batch.append(req_id)\n\n        if len(current_batch) == max_batch_size:\n            batches.append(current_batch)\n            current_batch = []\n            batch_start_time = None\n\n    if current_batch:\n        batches.append(current_batch)\n\n    return batches",
+  "conceptConnections": [
+   {
+    "title": "AI Engineering in Production",
+    "route": "/docs/agents/react-agent-production",
+    "description": "Core production primitives for retrieval, caching, agents, and evaluation."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "AI Engineering Primitives",
+  "stageNumber": 7,
+  "points": 50
+ },
+ {
+  "id": "coding-retry-backoff-jitter",
+  "title": "Exponential Backoff With Full Jitter",
+  "difficulty": "medium",
+  "topic": "AI Engineering Primitives",
+  "estimatedTime": "15-20 min",
+  "functionName": "calculate_backoff_delays",
+  "functionSignature": "calculate_backoff_delays(attempts: int, base_delay: float, max_delay: float, seed: int) -> list[float]",
+  "starterCode": "def calculate_backoff_delays(attempts: int, base_delay: float, max_delay: float, seed: int) -> list[float]:\n    # Your code here\n    pass\n",
+  "mission": "Calculate retry delays with exponential backoff and jitter to prevent thundering herds on rate-limited model endpoints.",
+  "taskDescription": "Implement `calculate_backoff_delays(attempts, base_delay, max_delay, seed)`. For attempt i in [0, attempts - 1], ceiling is min(max_delay, base_delay * 2^i). Draw uniform random delay in [0.0, ceiling] using random.Random(seed + i).uniform(0.0, ceiling). Round each delay to 4 decimal places. Return list of delays. Raise ValueError if attempts < 0, base_delay <= 0, or max_delay < base_delay.",
+  "constraints": [
+   "Exponential growth: base_delay * 2^i capped at max_delay",
+   "Full jitter: uniform(0, ceiling) with seed + i",
+   "Round each delay to 4 decimals",
+   "Raise ValueError on invalid arguments"
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Three attempts with seed 42",
+    "input": {
+     "attempts": 3,
+     "base_delay": 1.0,
+     "max_delay": 10.0,
+     "seed": 42
+    },
+    "expectedOutput": [
+     0.6394,
+     0.0771,
+     1.6341
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Max delay capping enforced",
+    "input": {
+     "attempts": 4,
+     "base_delay": 2.0,
+     "max_delay": 5.0,
+     "seed": 100
+    },
+    "expectedOutput": [
+     0.2913,
+     2.3246,
+     0.7409,
+     4.8953
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Zero attempts returns empty list",
+    "input": {
+     "attempts": 0,
+     "base_delay": 1.0,
+     "max_delay": 5.0,
+     "seed": 1
+    },
+    "expectedOutput": []
+   },
+   {
+    "id": "tc4",
+    "label": "Invalid max_delay raises ValueError",
+    "input": {
+     "attempts": 2,
+     "base_delay": 5.0,
+     "max_delay": 2.0,
+     "seed": 1
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc5",
+    "label": "Long retry sequence reaches ceiling",
+    "input": {
+     "attempts": 5,
+     "base_delay": 0.5,
+     "max_delay": 4.0,
+     "seed": 77
+    },
+    "hidden": true,
+    "expectedOutput": [
+     0.3996,
+     0.8145,
+     0.2907,
+     1.086,
+     2.0238
+    ]
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Compute ceiling = min(max_delay, base_delay * (2 ** i)).",
+   "strong": "Instantiate random.Random(seed + i) per attempt for reproducibility.",
+   "concept": "Full jitter spreads retries evenly across time, preventing retry spikes from re-saturating services."
+  },
+  "solution": "import random\n\ndef calculate_backoff_delays(attempts: int, base_delay: float, max_delay: float, seed: int) -> list[float]:\n    if attempts < 0:\n        raise ValueError(\"attempts must be non-negative\")\n    if base_delay <= 0:\n        raise ValueError(\"base_delay must be positive\")\n    if max_delay < base_delay:\n        raise ValueError(\"max_delay must be >= base_delay\")\n    if attempts == 0:\n        return []\n\n    delays = []\n    for i in range(attempts):\n        ceiling = min(max_delay, base_delay * (2 ** i))\n        rng = random.Random(seed + i)\n        delay = rng.uniform(0.0, ceiling)\n        delays.append(round(delay, 4))\n\n    return delays",
+  "conceptConnections": [
+   {
+    "title": "AI Engineering in Production",
+    "route": "/docs/agents/react-agent-production",
+    "description": "Core production primitives for retrieval, caching, agents, and evaluation."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "AI Engineering Primitives",
+  "stageNumber": 8,
+  "points": 50
+ },
+ {
+  "id": "coding-semantic-cache",
+  "title": "Semantic Vector Cache",
+  "difficulty": "medium",
+  "topic": "AI Engineering Primitives",
+  "estimatedTime": "15-20 min",
+  "functionName": "semantic_cache_lookup",
+  "functionSignature": "semantic_cache_lookup(query_vector: list[float], cache_entries: list[dict], threshold: float, current_time: float) -> dict | None",
+  "starterCode": "def semantic_cache_lookup(query_vector: list[float], cache_entries: list[dict], threshold: float, current_time: float) -> dict | None:\n    # Your code here\n    pass\n",
+  "mission": "Look up cached LLM responses by embedding similarity to eliminate duplicate API calls and cut latency.",
+  "taskDescription": "Implement `semantic_cache_lookup(query_vector, cache_entries, threshold, current_time)`. Each entry has `{\"id\": str, \"vector\": list[float], \"response\": str, \"created_at\": float, \"ttl\": float}`. Ignore expired entries where `created_at + ttl <= current_time`. For non-expired entries, compute cosine similarity with `query_vector`. Return the match with highest similarity if it meets or exceeds `threshold` as `{\"id\": str, \"response\": str, \"similarity\": round(sim, 4)}`. If no valid entry meets the threshold, return `None`. Raise `ValueError` if `threshold` not in [-1.0, 1.0].",
+  "constraints": [
+   "Ignore expired entries (created_at + ttl <= current_time)",
+   "Cosine similarity: dot(u, v) / (|u| * |v|)",
+   "Return highest similarity match meeting threshold or None",
+   "Round similarity to 4 decimal places",
+   "Raise ValueError if threshold not in [-1.0, 1.0]"
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Cache hit above threshold",
+    "input": {
+     "query_vector": [
+      1.0,
+      0.0
+     ],
+     "cache_entries": [
+      {
+       "id": "c1",
+       "vector": [
+        0.99,
+        0.01
+       ],
+       "response": "Refund policy is 30 days.",
+       "created_at": 100.0,
+       "ttl": 300.0
+      }
+     ],
+     "threshold": 0.95,
+     "current_time": 200.0
+    },
+    "expectedOutput": {
+     "id": "c1",
+     "response": "Refund policy is 30 days.",
+     "similarity": 0.9999
+    }
+   },
+   {
+    "id": "tc2",
+    "label": "Expired entry is ignored",
+    "input": {
+     "query_vector": [
+      1.0,
+      0.0
+     ],
+     "cache_entries": [
+      {
+       "id": "c1",
+       "vector": [
+        1.0,
+        0.0
+       ],
+       "response": "Old answer",
+       "created_at": 10.0,
+       "ttl": 50.0
+      }
+     ],
+     "threshold": 0.9,
+     "current_time": 100.0
+    },
+    "expectedOutput": null
+   },
+   {
+    "id": "tc3",
+    "label": "Below threshold returns None",
+    "input": {
+     "query_vector": [
+      1.0,
+      0.0
+     ],
+     "cache_entries": [
+      {
+       "id": "c1",
+       "vector": [
+        0.0,
+        1.0
+       ],
+       "response": "Unrelated answer",
+       "created_at": 10.0,
+       "ttl": 500.0
+      }
+     ],
+     "threshold": 0.8,
+     "current_time": 20.0
+    },
+    "expectedOutput": null
+   },
+   {
+    "id": "tc4",
+    "label": "Invalid threshold raises ValueError",
+    "input": {
+     "query_vector": [
+      1.0
+     ],
+     "cache_entries": [],
+     "threshold": 1.5,
+     "current_time": 0.0
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc5",
+    "label": "Multiple entries selects highest similarity",
+    "input": {
+     "query_vector": [
+      1.0,
+      1.0
+     ],
+     "cache_entries": [
+      {
+       "id": "e1",
+       "vector": [
+        1.0,
+        0.0
+       ],
+       "response": "Partial match",
+       "created_at": 0.0,
+       "ttl": 100.0
+      },
+      {
+       "id": "e2",
+       "vector": [
+        0.9,
+        0.9
+       ],
+       "response": "Best match",
+       "created_at": 0.0,
+       "ttl": 100.0
+      }
+     ],
+     "threshold": 0.7,
+     "current_time": 10.0
+    },
+    "hidden": true,
+    "expectedOutput": {
+     "id": "e2",
+     "response": "Best match",
+     "similarity": 1.0
+    }
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Compute vector norm with math.sqrt(sum(x * x for x in vec)).",
+   "strong": "Skip entries with norm == 0 or expired TTL.",
+   "concept": "Semantic caching serves semantically equivalent queries instantly with zero model inference cost."
+  },
+  "solution": "import math\n\ndef semantic_cache_lookup(query_vector: list[float], cache_entries: list[dict], threshold: float, current_time: float) -> dict | None:\n    if not (-1.0 <= threshold <= 1.0):\n        raise ValueError(\"threshold must be in [-1.0, 1.0]\")\n    if not cache_entries:\n        return None\n\n    def norm(vec):\n        return math.sqrt(sum(x * x for x in vec))\n\n    q_norm = norm(query_vector)\n    if q_norm == 0.0:\n        return None\n\n    best_match = None\n    best_sim = -2.0\n\n    for entry in cache_entries:\n        created = float(entry[\"created_at\"])\n        ttl = float(entry[\"ttl\"])\n        if created + ttl <= current_time:\n            continue\n\n        e_vec = entry[\"vector\"]\n        e_norm = norm(e_vec)\n        if e_norm == 0.0:\n            continue\n\n        dot = sum(q * e for q, e in zip(query_vector, e_vec))\n        sim = dot / (q_norm * e_norm)\n\n        if sim > best_sim:\n            best_sim = sim\n            best_match = entry\n\n    if best_match and best_sim >= threshold:\n        return {\n            \"id\": best_match[\"id\"],\n            \"response\": best_match[\"response\"],\n            \"similarity\": round(best_sim, 4),\n        }\n\n    return None",
+  "conceptConnections": [
+   {
+    "title": "AI Engineering in Production",
+    "route": "/docs/agents/react-agent-production",
+    "description": "Core production primitives for retrieval, caching, agents, and evaluation."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "AI Engineering Primitives",
+  "stageNumber": 9,
+  "points": 50
+ },
+ {
+  "id": "coding-idempotent-tool",
+  "title": "Idempotent Tool Call Wrapper",
+  "difficulty": "medium",
+  "topic": "AI Engineering Primitives",
+  "estimatedTime": "15-20 min",
+  "functionName": "execute_idempotent_tool_calls",
+  "functionSignature": "execute_idempotent_tool_calls(calls: list[dict]) -> list[dict]",
+  "starterCode": "def execute_idempotent_tool_calls(calls: list[dict]) -> list[dict]:\n    # Your code here\n    pass\n",
+  "mission": "Wrap state-mutating agent actions with idempotency keys to prevent duplicate execution during retries.",
+  "taskDescription": "Implement `execute_idempotent_tool_calls(calls)`. Each call has `{\"idempotency_key\": str, \"tool\": str, \"params\": dict}`. For new keys, execute call (`{\"tool\": tool, \"result\": f\"{tool}_success\", \"call_count\": 1}`) and record `{\"status\": \"executed\", \"key\": key, \"result\": result}`. For previously seen keys with matching params, return `{\"status\": \"cached\", \"key\": key, \"result\": stored_result}` without re-executing. If params differ from original call, return `{\"status\": \"conflict\", \"key\": key, \"error\": \"Idempotency key reused with different parameters\"}`. Raise `ValueError` if idempotency_key or tool is missing.",
+  "constraints": [
+   "New key executes once and caches result",
+   "Same key and same params returns cached result",
+   "Same key with different params returns conflict status",
+   "Raise ValueError if idempotency_key or tool is missing"
+  ],
+  "testCases": [
+   {
+    "id": "tc1",
+    "label": "Single tool execution",
+    "input": {
+     "calls": [
+      {
+       "idempotency_key": "k1",
+       "tool": "refund",
+       "params": {
+        "order_id": 101
+       }
+      }
+     ]
+    },
+    "expectedOutput": [
+     {
+      "status": "executed",
+      "key": "k1",
+      "result": {
+       "tool": "refund",
+       "result": "refund_success",
+       "call_count": 1
+      }
+     }
+    ]
+   },
+   {
+    "id": "tc2",
+    "label": "Retry with same key returns cached",
+    "input": {
+     "calls": [
+      {
+       "idempotency_key": "k1",
+       "tool": "charge",
+       "params": {
+        "amount": 50
+       }
+      },
+      {
+       "idempotency_key": "k1",
+       "tool": "charge",
+       "params": {
+        "amount": 50
+       }
+      }
+     ]
+    },
+    "expectedOutput": [
+     {
+      "status": "executed",
+      "key": "k1",
+      "result": {
+       "tool": "charge",
+       "result": "charge_success",
+       "call_count": 1
+      }
+     },
+     {
+      "status": "cached",
+      "key": "k1",
+      "result": {
+       "tool": "charge",
+       "result": "charge_success",
+       "call_count": 1
+      }
+     }
+    ]
+   },
+   {
+    "id": "tc3",
+    "label": "Parameter conflict on reused key",
+    "input": {
+     "calls": [
+      {
+       "idempotency_key": "k1",
+       "tool": "charge",
+       "params": {
+        "amount": 50
+       }
+      },
+      {
+       "idempotency_key": "k1",
+       "tool": "charge",
+       "params": {
+        "amount": 999
+       }
+      }
+     ]
+    },
+    "expectedOutput": [
+     {
+      "status": "executed",
+      "key": "k1",
+      "result": {
+       "tool": "charge",
+       "result": "charge_success",
+       "call_count": 1
+      }
+     },
+     {
+      "status": "conflict",
+      "key": "k1",
+      "error": "Idempotency key reused with different parameters"
+     }
+    ]
+   },
+   {
+    "id": "tc4",
+    "label": "Missing tool raises ValueError",
+    "input": {
+     "calls": [
+      {
+       "idempotency_key": "k1"
+      }
+     ]
+    },
+    "expectError": "ValueError"
+   },
+   {
+    "id": "tc5",
+    "label": "Interleaved calls across multiple keys",
+    "input": {
+     "calls": [
+      {
+       "idempotency_key": "k1",
+       "tool": "book_hotel",
+       "params": {
+        "room": 10
+       }
+      },
+      {
+       "idempotency_key": "k2",
+       "tool": "book_flight",
+       "params": {
+        "seat": "1A"
+       }
+      },
+      {
+       "idempotency_key": "k1",
+       "tool": "book_hotel",
+       "params": {
+        "room": 10
+       }
+      }
+     ]
+    },
+    "hidden": true,
+    "expectedOutput": [
+     {
+      "status": "executed",
+      "key": "k1",
+      "result": {
+       "tool": "book_hotel",
+       "result": "book_hotel_success",
+       "call_count": 1
+      }
+     },
+     {
+      "status": "executed",
+      "key": "k2",
+      "result": {
+       "tool": "book_flight",
+       "result": "book_flight_success",
+       "call_count": 1
+      }
+     },
+     {
+      "status": "cached",
+      "key": "k1",
+      "result": {
+       "tool": "book_hotel",
+       "result": "book_hotel_success",
+       "call_count": 1
+      }
+     }
+    ]
+   }
+  ],
+  "libraryPolicyText": "Standard library only · runs in your browser",
+  "hints": {
+   "small": "Serialize params deterministically with json.dumps(params, sort_keys=True).",
+   "strong": "Store both the serialized params and the executed result in a registry dict.",
+   "concept": "Idempotency keys prevent double charges and duplicate tickets when agent loops retry transient failures."
+  },
+  "solution": "import json\n\ndef execute_idempotent_tool_calls(calls: list[dict]) -> list[dict]:\n    registry = {}\n    responses = []\n\n    for call in calls:\n        if \"idempotency_key\" not in call or \"tool\" not in call:\n            raise ValueError(\"Call must include idempotency_key and tool\")\n\n        key = call[\"idempotency_key\"]\n        tool = call[\"tool\"]\n        params = call.get(\"params\", {})\n\n        serialized_params = json.dumps(params, sort_keys=True)\n\n        if key not in registry:\n            result = {\"tool\": tool, \"result\": f\"{tool}_success\", \"call_count\": 1}\n            registry[key] = {\"params_str\": serialized_params, \"result\": result}\n            responses.append({\"status\": \"executed\", \"key\": key, \"result\": result})\n        else:\n            stored = registry[key]\n            if stored[\"params_str\"] == serialized_params:\n                responses.append({\"status\": \"cached\", \"key\": key, \"result\": stored[\"result\"]})\n            else:\n                responses.append({\n                    \"status\": \"conflict\",\n                    \"key\": key,\n                    \"error\": \"Idempotency key reused with different parameters\",\n                })\n\n    return responses",
+  "conceptConnections": [
+   {
+    "title": "AI Engineering in Production",
+    "route": "/docs/agents/react-agent-production",
+    "description": "Core production primitives for retrieval, caching, agents, and evaluation."
+   }
+  ],
+  "runtime": {
+   "language": "python",
+   "capabilities": [
+    "python"
+   ]
+  },
+  "judgeMode": "local",
+  "prerequisite": null,
+  "stage": "AI Engineering Primitives",
+  "stageNumber": 10,
   "points": 50
  }
 ]

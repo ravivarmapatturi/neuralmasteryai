@@ -1,0 +1,69 @@
+---
+title: "Semantic Vector Cache"
+description: "AI Engineering Primitives, problem 9 of 10: Look up cached LLM responses by embedding similarity to eliminate duplicate API calls and cut latency."
+difficulty: "medium"
+topic: "AI Engineering Primitives"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Semantic vs exact string caching
+
+Exact string caching fails on LLM prompts because minor variations ("How do I cancel?" vs "How to cancel subscription") have different MD5 hashes.
+
+A **semantic cache** stores the query embedding alongside the generated response. Incoming queries compute cosine similarity against non-expired entries in VRAM, returning sub-5ms responses for repeated intent without making an LLM API call.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import math
+
+def semantic_cache_lookup(query_vector: list[float], cache_entries: list[dict], threshold: float, current_time: float) -> dict | None:
+    if not (-1.0 <= threshold <= 1.0):
+        raise ValueError("threshold must be in [-1.0, 1.0]")
+    if not cache_entries:
+        return None
+
+    def norm(vec):
+        return math.sqrt(sum(x * x for x in vec))
+
+    q_norm = norm(query_vector)
+    if q_norm == 0.0:
+        return None
+
+    best_match = None
+    best_sim = -2.0
+
+    for entry in cache_entries:
+        created = float(entry["created_at"])
+        ttl = float(entry["ttl"])
+        if created + ttl <= current_time:
+            continue
+
+        e_vec = entry["vector"]
+        e_norm = norm(e_vec)
+        if e_norm == 0.0:
+            continue
+
+        dot = sum(q * e for q, e in zip(query_vector, e_vec))
+        sim = dot / (q_norm * e_norm)
+
+        if sim > best_sim:
+            best_sim = sim
+            best_match = entry
+
+    if best_match and best_sim >= threshold:
+        return {
+            "id": best_match["id"],
+            "response": best_match["response"],
+            "similarity": round(best_sim, 4),
+        }
+
+    return None
+```
+
+</Solution>

@@ -99,6 +99,7 @@
     "description": "Unit, behavioural and regression tests for code you didn't write."
    }
   ],
+  "solution": "def order(ordered=\"2026-03-01\", delivered=\"2026-03-05\", digital=False, downloaded=False,\n          total=40.0, final_sale=False):\n    return {\"ordered\": ordered, \"delivered\": delivered, \"digital\": digital,\n            \"downloaded\": downloaded, \"total\": total, \"final_sale\": final_sale}\n\n\ndef acceptance_cases():\n    return [\n        # The window runs from delivery, not from the order.\n        {\"order\": order(), \"request_date\": \"2026-04-04\", \"expected\": True},     # day 30 after delivery\n        {\"order\": order(), \"request_date\": \"2026-04-05\", \"expected\": False},    # day 31\n        {\"order\": order(), \"request_date\": \"2026-03-05\", \"expected\": True},     # same day\n        # Digital: fine until downloaded.\n        {\"order\": order(digital=True), \"request_date\": \"2026-03-10\", \"expected\": True},\n        {\"order\": order(digital=True, downloaded=True), \"request_date\": \"2026-03-10\", \"expected\": False},\n        # The $5 line: under $5 is out, exactly $5 is in.\n        {\"order\": order(total=4.99), \"request_date\": \"2026-03-10\", \"expected\": False},\n        {\"order\": order(total=5.0), \"request_date\": \"2026-03-10\", \"expected\": True},\n        # Final sale never.\n        {\"order\": order(final_sale=True), \"request_date\": \"2026-03-10\", \"expected\": False},\n    ]",
   "runtime": {
    "language": "python",
    "capabilities": [
@@ -228,6 +229,7 @@
     "description": "What a good test set looks like, and why the boundary cases carry the signal."
    }
   ],
+  "solution": "def local_days_between(delivered_at, requested_at, tz_offset_hours):\n    offset = timedelta(hours=tz_offset_hours)\n    start = datetime.fromisoformat(delivered_at.replace(\"Z\", \"+00:00\")) + offset\n    end = datetime.fromisoformat(requested_at.replace(\"Z\", \"+00:00\")) + offset\n    return (end.date() - start.date()).days",
   "runtime": {
    "language": "python",
    "capabilities": [
@@ -395,6 +397,7 @@
     "description": "Retries, timeouts and idempotency in services that call each other."
    }
   ],
+  "solution": "def first_failure(lines):\n    errors = []\n    for position, line in enumerate(lines):\n        fields = {}\n        parts = line.split(\" \")\n        for part in parts[1:]:\n            if \"=\" in part:\n                key, _, value = part.partition(\"=\")\n                fields[key] = value\n        try:\n            at = datetime.fromisoformat(parts[0].replace(\"Z\", \"+00:00\"))\n        except ValueError:\n            continue\n        if fields.get(\"level\") != \"ERROR\" or \"svc\" not in fields:\n            continue\n        errors.append((at, position, fields[\"svc\"], fields.get(\"req\"), parts[0]))\n    if not errors:\n        return None\n    at, _, service, request_id, raw_time = min(errors)\n    return {\"service\": service, \"request_id\": request_id, \"time\": raw_time}",
   "runtime": {
    "language": "python",
    "capabilities": [
@@ -799,6 +802,7 @@
     "description": "Unit, behavioural and regression tests for code you didn't write."
    }
   ],
+  "solution": "def handle(store, request):\n    key = request[\"idempotency_key\"]\n    body = {\"order_id\": request[\"order_id\"], \"amount\": request[\"amount\"]}\n    if key in store[\"seen\"]:\n        first_body, response = store[\"seen\"][key]\n        if first_body != body:\n            return {\"status\": \"error\", \"code\": \"idempotency_key_reused\"}\n        return response\n    order = store[\"orders\"].get(body[\"order_id\"])\n    if order is None:\n        response = {\"status\": \"error\", \"code\": \"unknown_order\"}\n    elif body[\"amount\"] <= 0:\n        response = {\"status\": \"error\", \"code\": \"invalid_amount\"}\n    elif store[\"refunded\"].get(body[\"order_id\"], 0) + body[\"amount\"] > order[\"total\"]:\n        response = {\"status\": \"error\", \"code\": \"exceeds_order_total\"}\n    else:\n        store[\"refunded\"][body[\"order_id\"]] = store[\"refunded\"].get(body[\"order_id\"], 0) + body[\"amount\"]\n        store[\"next_id\"] += 1\n        response = {\"status\": \"ok\", \"refund_id\": \"rf-\" + str(store[\"next_id\"])}\n    store[\"seen\"][key] = (body, response)\n    return response",
   "runtime": {
    "language": "python",
    "capabilities": [
@@ -1171,6 +1175,7 @@
     "description": "How retrieval feeds the model, and where answers go stale."
    }
   ],
+  "solution": "def cache_key(question, retrieved):\n    normalized = \" \".join(question.lower().split()).rstrip(\"?.! \")\n    versions = \",\".join(f\"{doc['id']}@{doc['version']}\" for doc in sorted(retrieved, key=lambda d: d[\"id\"]))\n    return normalized + \"|\" + versions",
   "runtime": {
    "language": "python",
    "capabilities": [
@@ -1755,6 +1760,7 @@
     "description": "How retrieval feeds the model, and where answers go stale."
    }
   ],
+  "solution": "def retrieval_report(results, labels, k):\n    per_query = []\n    unlabeled = 0\n    for row in results:\n        relevant = set(labels.get(row[\"query_id\"], []))\n        if not relevant:\n            unlabeled += 1\n            continue\n        top = []\n        for doc in row[\"retrieved\"]:\n            if doc not in top:\n                top.append(doc)\n        top = top[:k]\n        recall = len(relevant & set(top)) / len(relevant)\n        rr = 0.0\n        for rank, doc in enumerate(top, start=1):\n            if doc in relevant:\n                rr = 1 / rank\n                break\n        per_query.append((row[\"category\"], recall, rr))\n\n    def summarise(rows):\n        return {\"recall_at_k\": round(sum(r for _, r, _ in rows) / len(rows), 3),\n                \"mrr\": round(sum(m for _, _, m in rows) / len(rows), 3),\n                \"queries\": len(rows)}\n\n    by_category = {}\n    for category in sorted({c for c, _, _ in per_query}):\n        by_category[category] = summarise([q for q in per_query if q[0] == category])\n    worst = min(by_category, key=lambda c: (by_category[c][\"recall_at_k\"], c)) if by_category else None\n    return {\"overall\": summarise(per_query) if per_query else None, \"by_category\": by_category,\n            \"worst_category\": worst, \"unlabeled\": unlabeled}",
   "runtime": {
    "language": "python",
    "capabilities": [
@@ -2028,6 +2034,7 @@
     "description": "When to trust a model as the grader, and how to check it."
    }
   ],
+  "solution": "REFUSALS = (\"i couldn't find\", \"i could not find\", \"i don't know\", \"i do not know\")\n\n\ndef is_grounded(trace):\n    answer = trace[\"answer\"]\n    if any(phrase in answer.lower() for phrase in REFUSALS):\n        return True\n    retrieved = {doc[\"id\"]: doc[\"text\"] for doc in trace[\"retrieved\"]}\n    cited = re.findall(r\"\\[([a-z0-9-]+)\\]\", answer)\n    if not cited or any(doc_id not in retrieved for doc_id in cited):\n        return False\n    sources = \" \".join(retrieved[doc_id] for doc_id in cited)\n    for claim in re.findall(r\"\\$\\d+(?:\\.\\d+)?|\\b\\d+ (?:days?|hours?|business days?)\\b\", answer):\n        if claim not in sources:\n            return False\n    return True",
   "runtime": {
    "language": "python",
    "capabilities": [
@@ -2234,6 +2241,7 @@
     "description": "Retrieval metrics, groundedness, and judging answers with no single right output."
    }
   ],
+  "solution": "def evaluate_judge(pairs):\n    raw_agree = swapped_agree = flips = 0\n    for pair in pairs:\n        q, a, b, human = pair[\"question\"], pair[\"a\"], pair[\"b\"], pair[\"human\"]\n        forward = \"a\" if judge(q, a, b) == \"first\" else \"b\"\n        backward = \"b\" if judge(q, b, a) == \"first\" else \"a\"\n        raw_agree += forward == human\n        if forward != backward:\n            flips += 1\n            verdict = \"tie\"\n        else:\n            verdict = forward\n        swapped_agree += verdict == human\n    n = len(pairs)\n    return {\"raw_agreement\": round(raw_agree / n, 3),\n            \"swap_checked_agreement\": round(swapped_agree / n, 3),\n            \"position_flip_rate\": round(flips / n, 3)}",
   "runtime": {
    "language": "python",
    "capabilities": [
@@ -2608,6 +2616,7 @@
     "description": "Turning a traffic estimate into replicas and a monthly bill."
    }
   ],
+  "solution": "def plan_capacity(load, options, slo_p95_seconds, utilization=0.7, p95_factor=1.5):\n    best = None\n    for option in options:\n        latency = (load[\"input_tokens\"] / option[\"prefill_tokens_per_s\"]\n                   + load[\"output_tokens\"] / option[\"decode_tokens_per_s\"])\n        if latency * p95_factor > slo_p95_seconds:\n            continue\n        in_flight = load[\"requests_per_s\"] * latency\n        replicas = max(1, math.ceil(in_flight / (option[\"max_concurrent\"] * utilization)))\n        monthly = round(replicas * option[\"cost_per_hour\"] * 730, 2)\n        candidate = {\"option\": option[\"name\"], \"replicas\": replicas,\n                     \"p95_seconds\": round(latency * p95_factor, 2), \"monthly_cost\": monthly}\n        if best is None or (monthly, option[\"name\"]) < (best[\"monthly_cost\"], best[\"option\"]):\n            best = candidate\n    return best",
   "runtime": {
    "language": "python",
    "capabilities": [
@@ -3224,6 +3233,7 @@
     "description": "Retries, timeouts and idempotency in services that call each other."
    }
   ],
+  "solution": "WRITE_TOOLS = {\"issue_refund\", \"update_address\"}\nREAD_TOOLS = {\"lookup_order\"}\nAPPROVAL_OVER = 100\n\n\ndef authorize(call, session):\n    tool = call.get(\"tool\")\n    args = call.get(\"arguments\") or {}\n    if tool not in WRITE_TOOLS | READ_TOOLS:\n        return {\"decision\": \"deny\", \"reason\": \"unknown_tool\"}\n    if tool in WRITE_TOOLS and call.get(\"source\") != \"user\":\n        return {\"decision\": \"deny\", \"reason\": \"untrusted_source\"}\n    order = session[\"orders\"].get(args.get(\"order_id\"))\n    if order is None or order[\"customer\"] != session[\"customer\"]:\n        return {\"decision\": \"deny\", \"reason\": \"not_your_order\"}\n    if tool == \"issue_refund\":\n        amount = args.get(\"amount\")\n        if isinstance(amount, bool) or not isinstance(amount, (int, float)) or amount <= 0:\n            return {\"decision\": \"deny\", \"reason\": \"invalid_amount\"}\n        if amount > order[\"total\"] - order.get(\"refunded\", 0):\n            return {\"decision\": \"deny\", \"reason\": \"exceeds_order_total\"}\n        if amount > APPROVAL_OVER:\n            return {\"decision\": \"needs_approval\", \"reason\": \"over_limit\"}\n    return {\"decision\": \"allow\", \"reason\": \"ok\"}",
   "runtime": {
    "language": "python",
    "capabilities": [
@@ -3441,6 +3451,7 @@
     "description": "Telling a code regression from a data change."
    }
   ],
+  "solution": "def canary_decision(control, canary, min_requests=500, enough_requests=2000, z_threshold=2.33,\n                    latency_ratio_limit=1.2):\n    if canary[\"requests\"] < min_requests:\n        return {\"decision\": \"keep_waiting\", \"z\": None}\n    p_control = control[\"errors\"] / control[\"requests\"]\n    p_canary = canary[\"errors\"] / canary[\"requests\"]\n    pooled = (control[\"errors\"] + canary[\"errors\"]) / (control[\"requests\"] + canary[\"requests\"])\n    spread = math.sqrt(pooled * (1 - pooled) * (1 / control[\"requests\"] + 1 / canary[\"requests\"]))\n    z = 0.0 if spread == 0 else (p_canary - p_control) / spread\n    z = round(z, 2)\n    if z > z_threshold:\n        return {\"decision\": \"rollback\", \"z\": z}\n    if canary[\"p95_ms\"] > latency_ratio_limit * control[\"p95_ms\"]:\n        return {\"decision\": \"rollback\", \"z\": z}\n    if canary[\"requests\"] >= enough_requests:\n        return {\"decision\": \"promote\", \"z\": z}\n    return {\"decision\": \"keep_waiting\", \"z\": z}",
   "runtime": {
    "language": "python",
    "capabilities": [
@@ -3686,6 +3697,7 @@
     "description": "Canary, blue-green and shadow releases, and when to roll back."
    }
   ],
+  "solution": "def incident_review(deploys, lines):\n    first = first_failure(lines)\n    if first is None:\n        return None\n    failed_at = datetime.fromisoformat(first[\"time\"].replace(\"Z\", \"+00:00\"))\n    history = sorted((d for d in deploys if d[\"service\"] == first[\"service\"]),\n                     key=lambda d: datetime.fromisoformat(d[\"at\"].replace(\"Z\", \"+00:00\")))\n    before = [d for d in history if datetime.fromisoformat(d[\"at\"].replace(\"Z\", \"+00:00\")) <= failed_at]\n    affected = set()\n    for line in lines:\n        parts = line.split(\" \")\n        try:\n            datetime.fromisoformat(parts[0].replace(\"Z\", \"+00:00\"))\n        except ValueError:\n            continue\n        fields = dict(p.partition(\"=\")[::2] for p in parts[1:] if \"=\" in p)\n        if fields.get(\"level\") == \"ERROR\" and fields.get(\"req\"):\n            affected.add(fields[\"req\"])\n    return {\"root_service\": first[\"service\"], \"first_failure_at\": first[\"time\"],\n            \"trigger_deploy\": before[-1][\"id\"] if before else None,\n            \"rollback_to\": before[-2][\"id\"] if len(before) >= 2 else None,\n            \"affected_requests\": len(affected)}",
   "runtime": {
    "language": "python",
    "capabilities": [

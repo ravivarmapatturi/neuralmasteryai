@@ -1,0 +1,65 @@
+---
+title: "Structured JSON Parser With Repair"
+description: "AI Engineering Primitives, problem 4 of 10: Extract structured data from messy LLM responses, repairing markdown fences, trailing commas, single quotes, and missing keys."
+difficulty: "medium"
+topic: "AI Engineering Primitives"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## The reality of LLM structured output
+
+Even with structured output schemas or system prompts, models occasionally wrap JSON in markdown blocks (` ```json `), insert trailing commas (valid in JavaScript, fatal in standard Python `json.loads`), or get cut off by max token limits leaving unclosed brackets.
+
+A robust **JSON repair filter** saves expensive API retries by fixing syntactic trivialities deterministically in milliseconds before escalating to a model retry.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import json
+import re
+
+def parse_and_repair_json(raw: str, schema_keys: list[str]) -> dict:
+    text = raw.strip()
+
+    fence_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+    if fence_match:
+        text = fence_match.group(1).strip()
+    else:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1:
+            raise ValueError("No JSON object found")
+        if end != -1 and end > start:
+            text = text[start : end + 1].strip()
+        else:
+            text = text[start:].strip()
+
+    text = re.sub(r"'([a-zA-Z0-9_\-\.\s]+)'\s*:", r'"\1":', text)
+    text = re.sub(r":\s*'([^']*?)'", r': "\1"', text)
+    text = re.sub(r",\s*([\}\]])", r"\1", text)
+
+    open_braces = text.count("{") - text.count("}")
+    if open_braces > 0:
+        text += "}" * open_braces
+
+    try:
+        data = json.loads(text)
+    except Exception as e:
+        raise ValueError(f"Unrepairable JSON: {e}")
+
+    if not isinstance(data, dict):
+        raise ValueError("Parsed JSON must be an object")
+
+    for k in schema_keys:
+        if k not in data:
+            data[k] = None
+
+    return data
+```
+
+</Solution>

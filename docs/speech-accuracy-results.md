@@ -1,5 +1,8 @@
 # Browser speech recognition: the 4 GB Standard profile
 
+> [!NOTE]
+> For the comprehensive stage-by-stage acceleration benchmark (audio drain, live wait, model load, background Whisper window decoding, judge preloading, and model answer caching) across 15s, 30s, 60s, and 120s answers, see the dedicated report in [`docs/faster-evaluation-results.md`](faster-evaluation-results.md).
+
 Standard uses Moonshine Tiny for live text and Whisper Base.en q8 for final recognition. It works through single-thread WASM and requests WebGPU when a usable adapter is available. We selected it for Indian-English and long-answer accuracy within the download and memory limits. The candidate table below includes the short-clip result where Moonshine Base does better; Base does not win every metric.
 
 High accuracy is an explicit switch to Whisper Large v3 Turbo q4. The control appears when reported memory is at least 8 GB **or** a WebGPU adapter is available. It shows **794 MB + runtime**, derived from pinned model-file inventory, and remembers the choice. Opening the page alone does not download it. Switching back cancels a pending download; model-load failure returns to Standard. Turbo inference, peak memory and accuracy remain **unmeasured** here: Chromium returned no WebGPU adapter, and we did not attempt a high-memory WASM run on this busy laptop.

@@ -1,0 +1,60 @@
+---
+title: "Dynamic Request Batcher"
+description: "AI Engineering Primitives, problem 7 of 10: Group concurrent inference requests by batch size and latency budget to maximize GPU utilization."
+difficulty: "medium"
+topic: "AI Engineering Primitives"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## GPU memory bandwidth vs batch size
+
+LLM token decoding is memory-bandwidth bound: streaming billions of weights from VRAM to compute cores for a single token wastes over 95% of peak GPU FLOPS.
+
+A **dynamic request batcher** accumulates incoming requests into a micro-batch. Processing 8 sequences together reuses the exact same weight reads across 8 tokens, increasing throughput by up to 6x while bounding user latency to `max_wait_ms`.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def batch_requests(requests: list[dict], max_batch_size: int, max_wait_ms: float) -> list[list[str]]:
+    if max_batch_size < 1:
+        raise ValueError("max_batch_size must be >= 1")
+    if max_wait_ms <= 0:
+        raise ValueError("max_wait_ms must be positive")
+    if not requests:
+        return []
+
+    batches = []
+    current_batch = []
+    batch_start_time = None
+
+    for req in requests:
+        req_id = req["id"]
+        arr_time = float(req["arrival_time"])
+
+        if not current_batch:
+            current_batch.append(req_id)
+            batch_start_time = arr_time
+        elif (arr_time - batch_start_time) > max_wait_ms:
+            batches.append(current_batch)
+            current_batch = [req_id]
+            batch_start_time = arr_time
+        else:
+            current_batch.append(req_id)
+
+        if len(current_batch) == max_batch_size:
+            batches.append(current_batch)
+            current_batch = []
+            batch_start_time = None
+
+    if current_batch:
+        batches.append(current_batch)
+
+    return batches
+```
+
+</Solution>

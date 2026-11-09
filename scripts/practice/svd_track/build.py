@@ -113,6 +113,7 @@ def build_stage(stage, prev_id):
         "constraints": stage["constraints"], "testCases": cases,
         "libraryPolicyText": "Standard library only · runs in your browser",
         "hints": stage["hints"], "conceptConnections": stage["connections"],
+        "solution": stage["solution"].strip(),
         "runtime": {"language": "python", "capabilities": ["python"]}, "judgeMode": "local",
         "prerequisite": prev_id, "stage": TRACK, "stageNumber": stage["n"], "points": POINTS[stage["difficulty"]],
     }
