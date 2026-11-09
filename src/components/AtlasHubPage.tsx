@@ -1,8 +1,8 @@
-import { Link } from 'react-router-dom';
 import Navbar from './layout/Navbar';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useDocumentMeta } from '../lib/useDocumentMeta';
 import { AtlasTimeline } from './atlas/AtlasTimeline';
+import { CategoryWidgetCard } from './widgets/CategoryWidgetCard';
 import './atlasHub.css';
 
 // Counts and year ranges come from src/data/*Atlas.ts; update them when an atlas changes.
@@ -26,21 +26,18 @@ export default function AtlasHubPage() {
           <p className="nb-body">112 techniques across four fields, in date order. Lines show what led to what.</p>
         </header>
         <AtlasTimeline />
-        <ul className="atlas-hub__list">
+        <ul className="nm-category-widget-grid" style={{ marginTop: '2rem' }}>
           {ATLASES.map((atlas) => (
-            <li key={atlas.to}>
-              <Link to={atlas.to} className="atlas-hub__card">
-                <div className="atlas-hub__cover" aria-hidden="true">
-                  <span>{atlas.years}</span>
-                </div>
-                <div className="atlas-hub__body">
-                  <p className="atlas-hub__meta">{atlas.count} entries</p>
-                  <h2>{atlas.title}</h2>
-                  <p className="atlas-hub__question">{atlas.question}</p>
-                  <p>{atlas.body}</p>
-                </div>
-              </Link>
-            </li>
+            <CategoryWidgetCard
+              key={atlas.to}
+              title={atlas.title}
+              to={atlas.to}
+              summary={atlas.body}
+              level={atlas.years}
+              countText={`${atlas.count} entries`}
+              totalCount={atlas.count}
+              topic={atlas.title.toLowerCase().replace(/\s+/g, '-')}
+            />
           ))}
         </ul>
       </main>

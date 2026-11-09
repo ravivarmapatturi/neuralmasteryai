@@ -5,6 +5,7 @@ import { useDocumentTitle } from '../../lib/useDocumentTitle';
 import { useDocumentMeta } from '../../lib/useDocumentMeta';
 import { interviewQuestionRoute } from '../../lib/interviewSearch';
 import topics from '../../data/interviewTopics.generated.json';
+import { CategoryWidgetCard } from '../widgets/CategoryWidgetCard';
 
 export const topicName = (title: string) => title.replace(/ Interview Questions.*$/, '').replace('Interview Q&A Quick Reference', 'LLMs and agents');
 
@@ -24,12 +25,17 @@ export function InterviewTopicsPage() {
         <h1>Interview questions by topic</h1>
         <p className="nm-changelog-lead">{total} questions with worked answers. Open a topic to see every question, then practise any of them out loud or in writing.</p>
       </header>
-      <ul className="nm-topic-list">
+      <ul className="nm-category-widget-grid" style={{ marginTop: '2rem' }}>
         {topics.map((t) => (
-          <li key={t.slug}>
-            <Link to={`/interview/topics/${t.slug}`}>{topicName(t.title)}</Link>
-            <span>{t.questions.length} questions</span>
-          </li>
+          <CategoryWidgetCard
+            key={t.slug}
+            title={topicName(t.title)}
+            to={`/interview/topics/${t.slug}`}
+            summary={t.description || `${t.questions.length} worked questions with explanation rubrics and follow-ups.`}
+            countText={`${t.questions.length} questions`}
+            totalCount={t.questions.length}
+            topic={t.slug}
+          />
         ))}
       </ul>
     </Shell>

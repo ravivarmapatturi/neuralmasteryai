@@ -13,6 +13,7 @@ export interface CategoryWidgetCardProps {
   passedCount?: number;
   topic?: string;
   visual?: ReactNode;
+  children?: ReactNode;
   className?: string;
 }
 
@@ -26,6 +27,7 @@ export function CategoryWidgetCard({
   passedCount = 0,
   topic,
   visual,
+  children,
   className = '',
 }: CategoryWidgetCardProps) {
   const percent = totalCount > 0 && passedCount > 0
@@ -34,7 +36,7 @@ export function CategoryWidgetCard({
 
   return (
     <li className={`nm-category-widget-item ${className}`}>
-      <Link to={to} className="nm-category-widget-card" aria-label={`${title}: ${summary}`}>
+      <Link to={to} className="nm-category-widget-card" aria-label={title}>
         <div className="nm-category-widget-top">
           <div className="nm-category-widget-visual" aria-hidden="true">
             {visual ? visual : <CategoryVisual topic={topic || title} />}
@@ -74,6 +76,7 @@ export function CategoryWidgetCard({
           )}
         </div>
       </Link>
+      {children}
     </li>
   );
 }

@@ -16,6 +16,7 @@ import { embed, loadJudge, nli } from '../../lib/mockInterview/engine';
 import { speakInBrowser } from '../../lib/interviewRoom/browserVoice';
 import { useGamification } from '../../contexts/GamificationContext';
 import { INTERVIEW_COMPLETED_POINTS, hasAward } from '../../lib/gamification';
+import { CategoryVisual } from '../widgets/CategoryVisual';
 import './interviewRoom.css';
 import './simpleInterview.css';
 
@@ -535,8 +536,15 @@ export default function SimpleInterviewPage() {
                   {round || role ? `${shown.length} of ${topic.questions.length}` : topic.questions.length} questions ·{' '}
                   {shown.filter(({ q }) => isDone(q.id)).length} completed
                 </p>
-                <h2>{topic.title}</h2>
-                <p className="si-lede">{topic.about}</p>
+                <div className="si-topic-widget" style={{ display: 'flex', alignItems: 'flex-start', gap: '0.85rem', margin: '0.85rem 0' }}>
+                  <div className="nm-category-widget-visual" aria-hidden="true" style={{ width: 68, height: 48, flexShrink: 0 }}>
+                    <CategoryVisual topic={topic.id} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <h2 style={{ margin: 0, fontSize: '1.25rem' }}>{topic.title}</h2>
+                    <p className="si-lede" style={{ margin: '0.25rem 0 0', fontSize: '0.88rem' }}>{topic.about}</p>
+                  </div>
+                </div>
                 {linkedHere && (
                   <p className="si-linked">
                     <strong>{topic.questions[linkedHere.question].title}</strong>
