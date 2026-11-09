@@ -1,0 +1,1129 @@
+{
+  "repo:rag:design-rag-over-company-docs": {
+    "nodes": [
+      {
+        "id": "0",
+        "label": "Documents",
+        "x": 0,
+        "y": 2
+      },
+      {
+        "id": "1",
+        "label": "Parse / chunk / embed",
+        "x": 34,
+        "y": 2
+      },
+      {
+        "id": "2",
+        "label": "Dense + BM25 index",
+        "x": 68,
+        "y": 2
+      },
+      {
+        "id": "3",
+        "label": "Query + access filter",
+        "x": 0,
+        "y": 34
+      },
+      {
+        "id": "4",
+        "label": "Hybrid retrieval",
+        "x": 34,
+        "y": 34
+      },
+      {
+        "id": "5",
+        "label": "Cross-encoder",
+        "x": 68,
+        "y": 34
+      },
+      {
+        "id": "6",
+        "label": "Cited answer / refuse",
+        "x": 0,
+        "y": 66
+      }
+    ],
+    "edges": [
+      {
+        "from": "0",
+        "to": "1",
+        "label": "ingest"
+      },
+      {
+        "from": "1",
+        "to": "2",
+        "label": "metadata + access labels"
+      },
+      {
+        "from": "3",
+        "to": "4",
+        "label": "authorized search"
+      },
+      {
+        "from": "2",
+        "to": "4",
+        "label": "candidates"
+      },
+      {
+        "from": "4",
+        "to": "5",
+        "label": "rank fusion"
+      },
+      {
+        "from": "5",
+        "to": "6",
+        "label": "context"
+      }
+    ],
+    "answerExcerpt": "filters by access first",
+    "note": "Compare retrieval quality weekly and check citations per turn.",
+    "reviewedAnswerSha256": "ad430647ff81cae7a88df8ab6e692f46a2e9bbf7d53487b43b2988e649dc8b78"
+  },
+  "repo:system-design:drift-monitoring-design": {
+    "nodes": [
+      {
+        "id": "0",
+        "label": "System health",
+        "x": 0,
+        "y": 2
+      },
+      {
+        "id": "1",
+        "label": "Inputs + predictions",
+        "x": 34,
+        "y": 2
+      },
+      {
+        "id": "2",
+        "label": "Delayed outcomes",
+        "x": 68,
+        "y": 2
+      },
+      {
+        "id": "3",
+        "label": "Reference + current windows",
+        "x": 0,
+        "y": 34
+      },
+      {
+        "id": "4",
+        "label": "Statistical tests",
+        "x": 34,
+        "y": 34
+      },
+      {
+        "id": "5",
+        "label": "Persistent alert gate",
+        "x": 68,
+        "y": 34
+      },
+      {
+        "id": "6",
+        "label": "Dashboard",
+        "x": 0,
+        "y": 66
+      }
+    ],
+    "edges": [
+      {
+        "from": "0",
+        "to": "6",
+        "label": "health"
+      },
+      {
+        "from": "1",
+        "to": "3",
+        "label": "distributions"
+      },
+      {
+        "from": "2",
+        "to": "3",
+        "label": "labels"
+      },
+      {
+        "from": "3",
+        "to": "4",
+        "label": "numeric + categorical"
+      },
+      {
+        "from": "4",
+        "to": "5",
+        "label": "p-value + effect size"
+      },
+      {
+        "from": "5",
+        "to": "6",
+        "label": "consecutive windows"
+      }
+    ],
+    "answerExcerpt": "outcomes once labels arrive",
+    "note": "Warnings go to a dashboard after persistence and effect-size checks.",
+    "reviewedAnswerSha256": "0a975758073320073be4c998e156d9b37cdc2339ad0550c5f4d0f2efc3ea7f44"
+  },
+  "repo:system-design:streaming-and-fallback": {
+    "nodes": [
+      {
+        "id": "0",
+        "label": "Client",
+        "x": 0,
+        "y": 2
+      },
+      {
+        "id": "1",
+        "label": "SSE API",
+        "x": 34,
+        "y": 2
+      },
+      {
+        "id": "2",
+        "label": "Ordered model chain",
+        "x": 68,
+        "y": 2
+      },
+      {
+        "id": "3",
+        "label": "Cache",
+        "x": 0,
+        "y": 34
+      },
+      {
+        "id": "4",
+        "label": "Vector store",
+        "x": 34,
+        "y": 34
+      },
+      {
+        "id": "5",
+        "label": "Unavailable response",
+        "x": 68,
+        "y": 34
+      }
+    ],
+    "edges": [
+      {
+        "from": "0",
+        "to": "1",
+        "label": "request"
+      },
+      {
+        "from": "1",
+        "to": "2",
+        "label": "backoff + jitter; max 3 retries"
+      },
+      {
+        "from": "2",
+        "to": "3",
+        "label": "fallback after model chain"
+      },
+      {
+        "from": "3",
+        "to": "5",
+        "label": "cache miss / failure"
+      },
+      {
+        "from": "4",
+        "to": "1",
+        "label": "optional context"
+      },
+      {
+        "from": "1",
+        "to": "0",
+        "label": "stream tokens"
+      }
+    ],
+    "answerExcerpt": "capped at three retries",
+    "note": "Cache and retrieval failures degrade the response path; guardrail blocks return a clear message.",
+    "reviewedAnswerSha256": "d97ab1221eb1fc84cd4abf32c75973e988b14ff0ac8e8ed1280ff6de80e1bdb9"
+  },
+  "repo:system-design:ab-test-prompt-rollout": {
+    "nodes": [
+      {
+        "id": "0",
+        "label": "User hash router",
+        "x": 0,
+        "y": 2
+      },
+      {
+        "id": "1",
+        "label": "Current prompt",
+        "x": 34,
+        "y": 2
+      },
+      {
+        "id": "2",
+        "label": "New prompt",
+        "x": 68,
+        "y": 2
+      },
+      {
+        "id": "3",
+        "label": "Shadow logs",
+        "x": 0,
+        "y": 34
+      },
+      {
+        "id": "4",
+        "label": "Metric window",
+        "x": 34,
+        "y": 34
+      },
+      {
+        "id": "5",
+        "label": "Automatic rollback",
+        "x": 68,
+        "y": 34
+      }
+    ],
+    "edges": [
+      {
+        "from": "0",
+        "to": "1",
+        "label": "control"
+      },
+      {
+        "from": "0",
+        "to": "2",
+        "label": "10 → 25 → 50 → 100%"
+      },
+      {
+        "from": "2",
+        "to": "3",
+        "label": "shadow before exposure"
+      },
+      {
+        "from": "1",
+        "to": "4",
+        "label": "baseline errors"
+      },
+      {
+        "from": "2",
+        "to": "4",
+        "label": "candidate errors"
+      },
+      {
+        "from": "4",
+        "to": "5",
+        "label": "2× error threshold"
+      },
+      {
+        "from": "5",
+        "to": "0",
+        "label": "restore current"
+      }
+    ],
+    "answerExcerpt": "deterministic hash of the user id",
+    "note": "Keep each user on one prompt version while widening exposure.",
+    "reviewedAnswerSha256": "f7811796e7968f8677971f44c1294b225bf4a1d5c05a1ac34d95e57ff721c7c7"
+  },
+  "repo:system-design:batch-vs-online-serving-choice": {
+    "nodes": [
+      {
+        "id": "0",
+        "label": "Request",
+        "x": 0,
+        "y": 2
+      },
+      {
+        "id": "1",
+        "label": "Online replica A",
+        "x": 34,
+        "y": 2
+      },
+      {
+        "id": "2",
+        "label": "Online replica B",
+        "x": 68,
+        "y": 2
+      },
+      {
+        "id": "3",
+        "label": "Fresh ranking score",
+        "x": 0,
+        "y": 34
+      }
+    ],
+    "edges": [
+      {
+        "from": "0",
+        "to": "1",
+        "label": "load share"
+      },
+      {
+        "from": "0",
+        "to": "2",
+        "label": "load share"
+      },
+      {
+        "from": "1",
+        "to": "3",
+        "label": "score"
+      },
+      {
+        "from": "2",
+        "to": "3",
+        "label": "score"
+      }
+    ],
+    "answerExcerpt": "Online wins here",
+    "note": "Two online replicas beat hourly batch cost under this answer’s stated traffic and freshness assumptions.",
+    "reviewedAnswerSha256": "fb9d03d96c62cc9b6ca59fa877a45db51c1ad690467dd52b18273e7b405e1b9b"
+  },
+  "repo:system-design:churn-model-system": {
+    "nodes": [
+      {
+        "id": "0",
+        "label": "User features",
+        "x": 0,
+        "y": 2
+      },
+      {
+        "id": "1",
+        "label": "Nightly batch model",
+        "x": 34,
+        "y": 2
+      },
+      {
+        "id": "2",
+        "label": "Top 5% selection",
+        "x": 68,
+        "y": 2
+      },
+      {
+        "id": "3",
+        "label": "Retention offer",
+        "x": 0,
+        "y": 34
+      },
+      {
+        "id": "4",
+        "label": "Idle-days rule",
+        "x": 34,
+        "y": 34
+      }
+    ],
+    "edges": [
+      {
+        "from": "0",
+        "to": "1",
+        "label": "all users"
+      },
+      {
+        "from": "1",
+        "to": "2",
+        "label": "30-day churn probability"
+      },
+      {
+        "from": "2",
+        "to": "3",
+        "label": "target offers"
+      },
+      {
+        "from": "1",
+        "to": "4",
+        "label": "failure"
+      },
+      {
+        "from": "4",
+        "to": "2",
+        "label": "fallback ranking"
+      }
+    ],
+    "answerExcerpt": "nightly job can pick the top 5 percent",
+    "note": "Validate lift over the rule, then use shadow and canary rollout.",
+    "reviewedAnswerSha256": "88a8e7fbd7a3fc161bea9db58f9f18d3f6955bb0b81d6132c52fac4e7c889118"
+  },
+  "repo:system-design:feature-store-design": {
+    "nodes": [
+      {
+        "id": "0",
+        "label": "Feature registry",
+        "x": 0,
+        "y": 2
+      },
+      {
+        "id": "1",
+        "label": "Offline history",
+        "x": 34,
+        "y": 2
+      },
+      {
+        "id": "2",
+        "label": "Materialization job",
+        "x": 68,
+        "y": 2
+      },
+      {
+        "id": "3",
+        "label": "Online KV + TTL",
+        "x": 0,
+        "y": 34
+      },
+      {
+        "id": "4",
+        "label": "Training rows",
+        "x": 34,
+        "y": 34
+      }
+    ],
+    "edges": [
+      {
+        "from": "0",
+        "to": "1",
+        "label": "shared definitions"
+      },
+      {
+        "from": "0",
+        "to": "2",
+        "label": "shared definitions"
+      },
+      {
+        "from": "1",
+        "to": "2",
+        "label": "latest per entity"
+      },
+      {
+        "from": "2",
+        "to": "3",
+        "label": "materialize"
+      },
+      {
+        "from": "1",
+        "to": "4",
+        "label": "point-in-time join within TTL"
+      }
+    ],
+    "answerExcerpt": "latest feature row at or before its label time",
+    "note": "Timestamped history prevents future values leaking into training.",
+    "reviewedAnswerSha256": "bdce5881753feb76eab52b911d9afd31f0314526bbef6d72a78c466ad9284566"
+  },
+  "repo:system-design:public-demo-controls": {
+    "nodes": [
+      {
+        "id": "0",
+        "label": "Client",
+        "x": 0,
+        "y": 2
+      },
+      {
+        "id": "1",
+        "label": "Body size + token",
+        "x": 34,
+        "y": 2
+      },
+      {
+        "id": "2",
+        "label": "Token bucket",
+        "x": 68,
+        "y": 2
+      },
+      {
+        "id": "3",
+        "label": "Validate + daily cap",
+        "x": 0,
+        "y": 34
+      },
+      {
+        "id": "4",
+        "label": "Model",
+        "x": 34,
+        "y": 34
+      },
+      {
+        "id": "5",
+        "label": "JSON result / error",
+        "x": 68,
+        "y": 34
+      },
+      {
+        "id": "6",
+        "label": "Keyed-hash logs",
+        "x": 0,
+        "y": 66
+      }
+    ],
+    "edges": [
+      {
+        "from": "0",
+        "to": "1",
+        "label": "request"
+      },
+      {
+        "from": "1",
+        "to": "2",
+        "label": "authorized"
+      },
+      {
+        "from": "2",
+        "to": "3",
+        "label": "within rate"
+      },
+      {
+        "from": "3",
+        "to": "4",
+        "label": "valid + within budget"
+      },
+      {
+        "from": "4",
+        "to": "5",
+        "label": "result"
+      },
+      {
+        "from": "5",
+        "to": "6",
+        "label": "status / latency; no input text"
+      }
+    ],
+    "answerExcerpt": "only then the model call",
+    "note": "Reject cheaply before spending on inference; stable errors include hints and request IDs.",
+    "reviewedAnswerSha256": "6fc8e63cb507f8faf4a7e25a3ec5e94fd59b6fd04314d1212d10896819fd3b96"
+  },
+  "repo:system-design:eval-platform-ship-gate": {
+    "nodes": [
+      {
+        "id": "0",
+        "label": "Run manifest",
+        "x": 0,
+        "y": 2
+      },
+      {
+        "id": "1",
+        "label": "Eval worker",
+        "x": 34,
+        "y": 2
+      },
+      {
+        "id": "2",
+        "label": "Regression gate",
+        "x": 68,
+        "y": 2
+      },
+      {
+        "id": "3",
+        "label": "KL budget gate",
+        "x": 0,
+        "y": 34
+      },
+      {
+        "id": "4",
+        "label": "Serving",
+        "x": 34,
+        "y": 34
+      },
+      {
+        "id": "5",
+        "label": "Named reviewer",
+        "x": 68,
+        "y": 34
+      }
+    ],
+    "edges": [
+      {
+        "from": "0",
+        "to": "1",
+        "label": "seed + revision + hashes"
+      },
+      {
+        "from": "1",
+        "to": "2",
+        "label": "benchmarks"
+      },
+      {
+        "from": "2",
+        "to": "3",
+        "label": "pass"
+      },
+      {
+        "from": "3",
+        "to": "4",
+        "label": "pass"
+      },
+      {
+        "from": "2",
+        "to": "5",
+        "label": "failure"
+      },
+      {
+        "from": "3",
+        "to": "5",
+        "label": "failure"
+      },
+      {
+        "from": "5",
+        "to": "0",
+        "label": "logged override"
+      }
+    ],
+    "answerExcerpt": "eval report is content-addressed",
+    "note": "Freeze numeric gates before the run and retain report and data hashes for replay.",
+    "reviewedAnswerSha256": "ec263e65da2959d1754c3ec46754c29852808cdb5d4e16130746815094c588c4"
+  },
+  "repo:system-design:batched-inference-api-budget": {
+    "nodes": [
+      {
+        "id": "0",
+        "label": "Client",
+        "x": 0,
+        "y": 2
+      },
+      {
+        "id": "1",
+        "label": "Auth + rate limit",
+        "x": 34,
+        "y": 2
+      },
+      {
+        "id": "2",
+        "label": "Input guardrails",
+        "x": 68,
+        "y": 2
+      },
+      {
+        "id": "3",
+        "label": "Semantic cache",
+        "x": 0,
+        "y": 34
+      },
+      {
+        "id": "4",
+        "label": "Streaming model",
+        "x": 34,
+        "y": 34
+      },
+      {
+        "id": "5",
+        "label": "Output guardrails",
+        "x": 68,
+        "y": 34
+      },
+      {
+        "id": "6",
+        "label": "Eval + cost tracker",
+        "x": 0,
+        "y": 66
+      }
+    ],
+    "edges": [
+      {
+        "from": "0",
+        "to": "1",
+        "label": "request"
+      },
+      {
+        "from": "1",
+        "to": "2",
+        "label": "authorized"
+      },
+      {
+        "from": "2",
+        "to": "3",
+        "label": "allowed"
+      },
+      {
+        "from": "3",
+        "to": "4",
+        "label": "miss"
+      },
+      {
+        "from": "4",
+        "to": "5",
+        "label": "tokens"
+      },
+      {
+        "from": "3",
+        "to": "5",
+        "label": "hit"
+      },
+      {
+        "from": "5",
+        "to": "6",
+        "label": "record"
+      }
+    ],
+    "answerExcerpt": "a single async process holds a hundred or more concurrent requests",
+    "note": "Scale async servers behind a load balancer; inspect latency, cache hits, guardrails and request cost.",
+    "reviewedAnswerSha256": "cca8e67b0c33f1602197112afa9cbbe06f9ca024a9cc8c3d8432299718816a86"
+  },
+  "repo:system-design:finetune-pipeline-design": {
+    "nodes": [
+      {
+        "id": "0",
+        "label": "Data preparation",
+        "x": 0,
+        "y": 2
+      },
+      {
+        "id": "1",
+        "label": "SFT",
+        "x": 34,
+        "y": 2
+      },
+      {
+        "id": "2",
+        "label": "Preference tuning",
+        "x": 68,
+        "y": 2
+      },
+      {
+        "id": "3",
+        "label": "Quantization",
+        "x": 0,
+        "y": 34
+      },
+      {
+        "id": "4",
+        "label": "Serving",
+        "x": 34,
+        "y": 34
+      },
+      {
+        "id": "5",
+        "label": "Ablation + safety report",
+        "x": 68,
+        "y": 34
+      }
+    ],
+    "edges": [
+      {
+        "from": "0",
+        "to": "1",
+        "label": "dedup / scrub / contamination check"
+      },
+      {
+        "from": "1",
+        "to": "2",
+        "label": "supervised checkpoint"
+      },
+      {
+        "from": "2",
+        "to": "3",
+        "label": "aligned checkpoint"
+      },
+      {
+        "from": "3",
+        "to": "4",
+        "label": "three formats"
+      },
+      {
+        "from": "4",
+        "to": "5",
+        "label": "batch 1 / 8 / 32; draft acceptance"
+      }
+    ],
+    "answerExcerpt": "autoscaling on queue wait",
+    "note": "Version every stage config and record seeds, hashes, task benchmarks and serving cost.",
+    "reviewedAnswerSha256": "8b036b76ffd1f6be75b51b27b87c5332c9889602a8f14e9203539a994eae8fbc"
+  },
+  "repo:system-design:fraud-check-100ms": {
+    "nodes": [
+      {
+        "id": "0",
+        "label": "Payment",
+        "x": 0,
+        "y": 2
+      },
+      {
+        "id": "1",
+        "label": "Feature fetch",
+        "x": 34,
+        "y": 2
+      },
+      {
+        "id": "2",
+        "label": "Online model",
+        "x": 68,
+        "y": 2
+      },
+      {
+        "id": "3",
+        "label": "Two thresholds",
+        "x": 0,
+        "y": 34
+      },
+      {
+        "id": "4",
+        "label": "Approve / review / block",
+        "x": 34,
+        "y": 34
+      },
+      {
+        "id": "5",
+        "label": "Heuristic rule",
+        "x": 68,
+        "y": 34
+      },
+      {
+        "id": "6",
+        "label": "Delayed labels",
+        "x": 0,
+        "y": 66
+      }
+    ],
+    "edges": [
+      {
+        "from": "0",
+        "to": "1",
+        "label": "request-time data"
+      },
+      {
+        "from": "1",
+        "to": "2",
+        "label": "features"
+      },
+      {
+        "from": "2",
+        "to": "3",
+        "label": "fraud probability"
+      },
+      {
+        "from": "3",
+        "to": "4",
+        "label": "decision"
+      },
+      {
+        "from": "2",
+        "to": "5",
+        "label": "timeout"
+      },
+      {
+        "from": "5",
+        "to": "4",
+        "label": "default"
+      },
+      {
+        "from": "4",
+        "to": "6",
+        "label": "chargebacks weeks later"
+      }
+    ],
+    "answerExcerpt": "heuristic rule as the default on timeout",
+    "note": "Use time-split training and monitor outcomes; blocked payments leave a label blind spot.",
+    "reviewedAnswerSha256": "8b29a3325f5b62dfdb5a9ee95bdc497d67cde53dac1bc05dd42c61dedf68bbe8"
+  },
+  "repo:system-design:rag-service-company-docs": {
+    "nodes": [
+      {
+        "id": "0",
+        "label": "Symbol diff + parser",
+        "x": 0,
+        "y": 2
+      },
+      {
+        "id": "1",
+        "label": "Dense / sparse / graph",
+        "x": 34,
+        "y": 2
+      },
+      {
+        "id": "2",
+        "label": "Query",
+        "x": 68,
+        "y": 2
+      },
+      {
+        "id": "3",
+        "label": "Merge + deduplicate",
+        "x": 0,
+        "y": 34
+      },
+      {
+        "id": "4",
+        "label": "Cross-encoder top 50",
+        "x": 34,
+        "y": 34
+      },
+      {
+        "id": "5",
+        "label": "Top 10 context",
+        "x": 68,
+        "y": 34
+      },
+      {
+        "id": "6",
+        "label": "Cited model answer",
+        "x": 0,
+        "y": 66
+      }
+    ],
+    "edges": [
+      {
+        "from": "0",
+        "to": "1",
+        "label": "changed chunks only"
+      },
+      {
+        "from": "2",
+        "to": "1",
+        "label": "parallel search"
+      },
+      {
+        "from": "1",
+        "to": "3",
+        "label": "candidates"
+      },
+      {
+        "from": "3",
+        "to": "4",
+        "label": "rerank"
+      },
+      {
+        "from": "4",
+        "to": "5",
+        "label": "select 10"
+      },
+      {
+        "from": "5",
+        "to": "6",
+        "label": "file + line citations"
+      }
+    ],
+    "answerExcerpt": "only changed chunks re-embed",
+    "note": "Drop uncited claims; evaluate cross-repo retrieval, faithfulness and latency.",
+    "reviewedAnswerSha256": "04f4c85e57ebdcf637d9d39fbcdaf86a4a32cb8790f9a748aaead6666a3df6de"
+  },
+  "repo:system-design:pipeline-rollback-plan": {
+    "nodes": [
+      {
+        "id": "0",
+        "label": "Typed hashed DAG",
+        "x": 0,
+        "y": 2
+      },
+      {
+        "id": "1",
+        "label": "Failed stage",
+        "x": 34,
+        "y": 2
+      },
+      {
+        "id": "2",
+        "label": "Invalidate descendants",
+        "x": 68,
+        "y": 2
+      },
+      {
+        "id": "3",
+        "label": "Last good checkpoint",
+        "x": 0,
+        "y": 34
+      },
+      {
+        "id": "4",
+        "label": "Revised downstream run",
+        "x": 34,
+        "y": 34
+      },
+      {
+        "id": "5",
+        "label": "Metric replay",
+        "x": 68,
+        "y": 34
+      }
+    ],
+    "edges": [
+      {
+        "from": "0",
+        "to": "1",
+        "label": "dependency lookup"
+      },
+      {
+        "from": "1",
+        "to": "2",
+        "label": "transitive invalidation"
+      },
+      {
+        "from": "3",
+        "to": "4",
+        "label": "retain expensive base"
+      },
+      {
+        "from": "2",
+        "to": "4",
+        "label": "rerun affected stages"
+      },
+      {
+        "from": "4",
+        "to": "5",
+        "label": "same recipe + source hashes"
+      }
+    ],
+    "answerExcerpt": "not bit-identical weights",
+    "note": "Choose reruns by dependency and cost; replay promises the same headline metrics.",
+    "reviewedAnswerSha256": "4ae1be9befc6b3a990007c3360abea746e42b763a8a2f90822e5d59b5046b350"
+  },
+  "repo:system-design:feedback-loop-clean-data": {
+    "nodes": [
+      {
+        "id": "0",
+        "label": "Production model",
+        "x": 0,
+        "y": 2
+      },
+      {
+        "id": "1",
+        "label": "Decision + score log",
+        "x": 34,
+        "y": 2
+      },
+      {
+        "id": "2",
+        "label": "Intervention",
+        "x": 68,
+        "y": 2
+      },
+      {
+        "id": "3",
+        "label": "Observed labels",
+        "x": 0,
+        "y": 34
+      },
+      {
+        "id": "4",
+        "label": "Random holdout",
+        "x": 34,
+        "y": 34
+      },
+      {
+        "id": "5",
+        "label": "Training join",
+        "x": 68,
+        "y": 34
+      }
+    ],
+    "edges": [
+      {
+        "from": "0",
+        "to": "1",
+        "label": "score + decision"
+      },
+      {
+        "from": "1",
+        "to": "2",
+        "label": "offer / block / ranking"
+      },
+      {
+        "from": "2",
+        "to": "3",
+        "label": "influenced outcomes"
+      },
+      {
+        "from": "4",
+        "to": "3",
+        "label": "unaffected or exploratory outcomes"
+      },
+      {
+        "from": "1",
+        "to": "5",
+        "label": "decision-time features"
+      },
+      {
+        "from": "3",
+        "to": "5",
+        "label": "separate clean from influenced"
+      }
+    ],
+    "answerExcerpt": "a random holdout that never receives the intervention",
+    "note": "Production decisions change future labels; retain uninfluenced data and log the intervention.",
+    "reviewedAnswerSha256": "4a39ba87c8bab0d8827ada86b11462068a2ab54445d13db2debee58fa7a4d259"
+  }
+}
