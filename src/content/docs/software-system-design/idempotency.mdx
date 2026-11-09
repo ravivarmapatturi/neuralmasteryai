@@ -1,0 +1,140 @@
+---
+title: "Idempotency and Durable Operation Identity"
+sidebar_position: 4.8
+description: ""
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { IdempotentOperationBalance } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
+
+# Idempotency and Durable Operation Identity
+
+<ELI5>A customer who cannot hear a cashier's confirmation may ask again. The cashier needs to recognize the same purchase rather than charge twice, while still allowing a genuine second purchase of the same item. A receipt number identifies the intention; matching the basket alone cannot distinguish a retry from a new order.</ELI5>
+
+Recognize repeated intent with scoped durable keys, atomically bind identity to effects and results, and handle concurrent retries and uncertain external outcomes.
+An **idempotent operation** can be repeated without changing its intended result beyond the first successful application. In a distributed API, a stable operation identity lets the service recognize retries even when responses disappear or execution moves to another process. This is stronger than keeping an in-memory cache of recent request bodies.
+
+The misconception is that identical payloads always represent the same business action. Two legitimate purchases can contain the same item and amount. Conversely, retries of one purchase can have different transport timestamps or request IDs. Our example uses operation `k7` to debit ten illustrative units from a balance of 100. Two delivery attempts must leave 90, while a distinct valid operation may debit again.
+
+## Define Identity Before Choosing a Cache
+
+An **idempotency key** identifies a logical action within a documented scope. Include the authenticated tenant or account and operation type in that scope. A key supplied by one tenant must not replay another tenant's result. A random string is not a permission token; the caller still needs authorization for the requested transition and any stored response it retrieves.
+
+The client should preserve the key when retrying the same intent and create a new key for a genuinely new action. Replacing the key after a timeout can turn uncertainty into a second effect. Deriving keys only from amount and destination can incorrectly suppress repeated legitimate actions. The product contract must explain the lifecycle clearly enough that SDKs and users can follow it.
+
+Store a fingerprint of the meaningful request alongside the key. If a later request reuses `k7` with a different amount, do not silently return a result for another intent or apply the new amount under the old identity. Reject the mismatch under the API's documented conflict behavior. Canonicalize structured meaning deliberately; whitespace or JSON member order should not accidentally create a different intent.
+
+## Identity and Effect Need One Durable Boundary
+
+<IdempotentOperationBalance />
+
+The experiment sends `k7` twice. A process that simply applies every request leaves balance 80. A guarded operation checks the durable identity and commits its effect only once, leaving 90. The important boundary is atomic claim, effect, and recorded outcome, not the fact that a set contains a string during one process lifetime.
+
+<RunnableCode code={`for guarded in (False, True):
+    balance, results = 100, {}
+    for key in ("k7", "k7"):
+        if guarded and key in results:
+            reply = results[key]
+        else:
+            balance -= 10
+            reply = {"balance_after_operation": balance}
+            results[key] = reply
+        print("Guard:", guarded, "key:", key, "reply:", reply)
+    print("Final balance:", balance)
+# Try it: use k8 for the second request; a new operation is allowed to change the balance again.
+`} />
+
+A relational design can use a unique key on `(tenant, operation_type, idempotency_key)`, with effect and result written in the same transaction when they share a store. Concurrent duplicate inserts cannot both own that key. The losing attempt then follows the recorded status rather than repeating the effect. A separate check followed by an unconditional insert is still a race.
+
+Atomicity scope matters. A local database transaction cannot automatically include an external payment service or email provider. If that destination accepts the operation identity under a suitable contract, pass it through. If it does not, preserve an unknown-outcome state and reconcile using authoritative evidence instead of treating a local timeout as permission to issue another irreversible effect.
+
+## In-Progress Is a Real State
+
+A duplicate can arrive while the first attempt is still executing. Model pending, completed, and terminal failure states explicitly. The second caller may wait within its deadline, receive an operation-status reference, or get a documented in-progress response. It should not become another owner merely because the first result is not yet available.
+
+If pending ownership uses a lease, expiry means the previous owner may be unreachable or paused, not necessarily stopped. A replacement must establish whether the effect happened and prevent stale ownership from writing a conflicting result. A fencing token or destination idempotency protocol can help under its assumptions. Deleting a pending record on timeout can erase the evidence needed for recovery.
+
+Some failures are safe to retry because the transaction definitely rolled back; others are uncertain because commit acknowledgement was lost. Keep these categories separate. Recording every exception as a permanent business failure can suppress a valid retry, while deleting every failed record can invite duplicate effects after ambiguous completion. Define which outcomes are retained and replayed.
+
+<PredictFirst question="Two requests have the same amount and destination. Must they use the same idempotency key?" options={["Yes, identical payloads always mean a retry", "No, distinct purchases can have identical payloads; the key must identify intent", "No, every network attempt should always get a new key"]} correctIndex={1} explanation="Payload equality does not distinguish one retried action from two intended actions. Preserve a key across retries of one action and use a new identity for a genuinely new action." />
+
+## Replay the Original Result Without Rewriting History
+
+A completed operation can store the response or sufficient immutable outcome to reconstruct it. If `k7` left balance 90, a later operation `k8` may leave balance 80. Replaying `k7` should not claim it just performed a new debit or confuse the current balance with the original operation's recorded result. Label result fields so historical outcome and current state are distinguishable.
+
+Response retention must also respect authorization and privacy. A caller whose permissions changed should not automatically receive sensitive old data because the key still exists. Preserve enough state for correctness while applying an appropriate access policy to result retrieval. An idempotency record is an application data object with its own lifecycle, not disposable invisible metadata.
+
+The API may choose to return the same operation result with a replay indicator or a stable status resource. It need not reproduce every original transport header or server timestamp byte for byte. What matters is the promised semantic outcome and the ability to distinguish a new action from inspection of an old one. Document this before clients assume response equality means effect equality.
+
+## Retention Determines the Late-Retry Guarantee
+
+If an idempotency record expires after a fixed interval, a sufficiently late retry may appear new. A five-minute response cache cannot guarantee that a financial effect never repeats over an unlimited period. Align identity retention with maximum supported retry age, redrive, offline clients, reconciliation, and legal storage requirements determined by the product.
+
+A permanent business uniqueness rule can live separately from a shorter response cache. An order identifier or ledger reference can prevent duplicate business effects after cached response bytes are removed. That boundary needs its own durable invariant and migration policy. Deleting presentation data need not delete all evidence that an action already happened.
+
+Keys with no bound can exhaust storage or enable abuse. Apply authenticated quotas, validate reasonable key sizes, and expire records only under the stated correctness policy. A random unauthenticated caller should not create unbounded durable metadata indefinitely. Observe record age and pending states so stuck operations are repaired rather than silently forgotten.
+
+<GoDeeper title="Go deeper: deduplication is scoped to the effect being counted">
+One operation can create a database row, publish a message, send an email, and trigger another service. Deduplicating the local row does not prove the email was sent once. Each boundary needs a protocol or a shared atomic commit covering the relevant effect. A durable outbox can make publication recoverable, while the consumer still needs safe repeated application. Trace the entire effect chain before naming the end-to-end guarantee.
+</GoDeeper>
+
+## Exercise Fingerprints and Concurrent Claims
+
+A production table can include tenant, operation kind, key, fingerprint, status, result, and timestamps with a uniqueness constraint covering the identity scope. For a local PostgreSQL test, inspect the constraint with `\d operation_results` in `psql`. Then issue two concurrent transactions with the same scoped key and verify only one effect commits, including a crash or lost response after that commit.
+
+The next model checks request intent independently from current balance. It uses canonical JSON for the small semantic request and SHA-256 as a stable fingerprint. A key reused with a different amount produces a conflict instead of returning a misleading old result. Production code must choose its semantic fields, units, normalization, and atomic transaction deliberately.
+
+<RunnableCode code={`import hashlib
+import json
+record = None
+def claim(key, amount):
+    global record
+    body = json.dumps({"amount": amount}, sort_keys=True, separators=(",", ":"))
+    fingerprint = hashlib.sha256(body.encode()).hexdigest()
+    if record is not None:
+        return "replay" if record == (key, fingerprint) else "conflict"
+    record = (key, fingerprint)
+    return "claimed"
+print("First:", claim("k7", 10))
+print("Retry:", claim("k7", 10))
+print("Changed intent:", claim("k7", 20))
+# Try it: add currency to the canonical request; the fingerprint must distinguish different monetary meanings.
+`} />
+
+This function intentionally models one operation slot and sequential calls. A real service stores many scoped records and uses a unique constraint or equivalent atomic primitive so two workers cannot both claim the same operation. Test actual concurrency and process replacement rather than counting only successful calls on one object in memory.
+
+## Failure Modes and Better Choices
+
+A timeout causes the client to generate a fresh key. Persist identity with the client's pending action and inspect uncertain outcomes. A key is unique globally but results are not tenant-isolated. Include trusted scope and authorize retrieval. Two workers both pass a preliminary lookup. Move the claim and effect into one atomic boundary.
+
+A pending lease expires and the old worker later completes. Fence stale ownership or reconcile with the destination. A late replay arrives after deduplication expiry. Preserve the business uniqueness invariant or explicitly limit the supported guarantee. A failed external request is recorded as definitely absent. Distinguish confirmed failure from unknown completion before retrying.
+
+## When Not to Deduplicate by Request Body
+
+| Situation | Better identity |
+| --- | --- |
+| Repeated legitimate purchases can look identical | A client action ID |
+| Events are replayed from several partitions | Stable event or business identity with source scope |
+| The same key crosses tenants | Authenticated tenant and operation scope |
+| External outcomes can be ambiguous | Destination idempotency plus reconciliation |
+
+## Remember
+
+| Record | Purpose |
+| --- | --- |
+| Key and scope | Identify one intended action |
+| Fingerprint | Reject reuse for a different meaning |
+| Pending ownership | Prevent competing executors |
+| Effect and result | Commit or reconcile the promised outcome |
+| Retention | Preserve correctness for the supported retry horizon |
+
+You can now design retries around durable intent instead of payload coincidence. Return to [Communication](/docs/software-system-design/communication) to state exactly which delivery and effect boundaries are guaranteed.
+
+## Sources
+
+- [AWS Builders Library, Making Retries Safe with Idempotent APIs (2021)](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/)
+- [PostgreSQL, Constraints](https://www.postgresql.org/docs/current/ddl-constraints.html)
+- [PostgreSQL, Transaction Isolation](https://www.postgresql.org/docs/current/transaction-iso.html)
+- [RFC 9110, HTTP Semantics (2022)](https://httpwg.org/specs/rfc9110.html)
+- [AWS Builders Library, Timeouts, Retries, and Backoff with Jitter (2019)](https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/)
