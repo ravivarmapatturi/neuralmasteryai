@@ -1,0 +1,132 @@
+---
+title: "GraphQL Execution and Bounded Resolver Work"
+sidebar_position: 4.3
+description: ""
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { GraphqlResolverWork } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
+
+# GraphQL Execution and Bounded Resolver Work
+
+<ELI5>A restaurant order can ask for a complete meal on one sheet, but the kitchen still performs many tasks. Asking for ten meals can repeat the same ingredient lookup ten times unless the kitchen groups it. A graph query reduces the number of client conversations; it does not automatically reduce the work behind the counter.</ELI5>
+
+Trace a graph query through resolvers, eliminate repeated backend lookups with request-scoped batching, and bound cost without weakening authorization.
+GraphQL lets a client select fields from a typed schema and executes that selection through server-defined behavior. It can make one interface serve several client views without returning every available field. The schema is an application contract, not a direct invitation to expose database tables or let clients choose arbitrary storage commands.
+
+The misconception is that one HTTP request means one efficient backend operation. Our example fetches ten orders whose owners alternate between IDs 1 and 2. A naive resolver makes one list call and ten owner calls, eleven backend calls total. Deduplicating the two owner IDs and fetching them in one batch reduces that count to two. The response still contains ten owner fields, and its authorization requirements remain unchanged.
+
+## A Selection Set Becomes a Resolver Tree
+
+A **selection set** names the fields requested at a point in the graph. A **resolver** provides the value of a field, potentially using parent state, arguments, authenticated context, or another service. Nested selections can therefore expand into substantial downstream work even when the request body is short. The schema constrains which fields exist, while execution determines how their values are obtained.
+
+Consider `orders(first: 10) { id owner { name } }`. Resolving `orders` returns ten parent objects. Each `owner` field can then request an owner record. If the implementation performs a remote call per parent, the query expresses a familiar N+1 pattern: one list operation plus one related lookup for each result. Typed fields alone do not tell the executor how to share those lookups.
+
+Execution order depends on operation semantics and dependencies. Query fields can allow parallel work where independent, while top-level mutation fields have defined serial execution behavior. Serial mutation fields still do not automatically wrap all storage effects in a single database transaction. The service must provide the transactional boundary required by its invariant.
+
+## Batching Changes Backend Work, Not Response Meaning
+
+<GraphqlResolverWork />
+
+The bars count backend calls, not resolver invocations or milliseconds. A batch fetch can return both distinct owners once, then map those records back to ten positions. If the backend lacks a batch API, request-scoped memoization can still reduce repeated identical lookups from ten to two, but then total calls are three rather than two. State exactly which optimization the implementation supports.
+
+<RunnableCode code={`owner_ids = [1, 2] * 5
+naive_calls = 1 + len(owner_ids)
+unique_ids = list(dict.fromkeys(owner_ids))
+batch_calls = 1 + 1
+memoized_single_calls = 1 + len(unique_ids)
+print("Requested orders:", len(owner_ids))
+print("Distinct owners:", unique_ids)
+print("Naive backend calls:", naive_calls)
+print("One batch backend calls:", batch_calls)
+print("Memoized individual backend calls:", memoized_single_calls)
+# Try it: use ten distinct owner IDs; batching still groups calls, while memoization alone saves none.
+`} />
+
+DataLoader is one implementation pattern for batching and caching requests during an execution. Its batch function must align output positions with input keys, including missing values and individual errors. Returning rows in database order without restoring key order can associate the wrong owner with an order. Correct mapping is part of the optimization, not a minor formatting detail.
+
+Scope the loader to the appropriate request or authorization context. A global loader that reuses a record fetched under one tenant's permissions can leak state to another tenant. Even within a request, changing principal or permission context needs deliberate handling. A cache key must include any context that changes whether the result may be returned.
+
+<PredictFirst question="Ten orders reference only two owners. A request-scoped batch resolves both IDs in one backend call. How many backend calls are needed including the order list?" options={["One, because there is one HTTP request", "Two, one list fetch and one owner batch", "Eleven, because batching cannot share work across fields"]} correctIndex={1} explanation="The list and owner batch are separate backend operations. A single network request is not a backend cost unit, while repeated owner fields can share a correctly scoped batch." />
+
+## Nullability Defines Error Propagation
+
+GraphQL can return partial data alongside errors under its execution rules. A failed nullable field can leave other fields usable; a failed non-null field can propagate null to an enclosing boundary. Choose nullability from the meaning clients require, not solely from a desire to eliminate checks in generated code. An overly broad non-null chain can turn one optional dependency failure into a much larger missing result.
+
+A response status alone is insufficient to evaluate a successful operation. Clients need to inspect data and errors according to the API contract, while operators need metrics distinguishing useful partial results from failed required actions. A 200 transport response containing a failed payment mutation is not evidence that the business action succeeded. Preserve operation names and error classes without logging sensitive variable values indiscriminately.
+
+Schema validation verifies that the query is structurally permitted. It does not prove the caller may read every selected object. Resource-level authorization belongs in the service or data access boundary owning the record, and field-level policies may be needed for sensitive attributes. Hiding a field in the client UI is not authorization.
+
+## Bound Cost Before and During Execution
+
+Depth limits prevent some deeply nested queries but do not bound width, aliases, list sizes, or expensive field arguments. A shallow query can request a million records or repeat an expensive field under many aliases. Define pagination limits and a cost model that reflects actual work, then also enforce runtime budgets because estimates cannot know every dependency condition.
+
+A simple illustrative cost for our query is one list unit plus one owner-resolution unit per returned order, eleven units for ten orders under the naive model. After batching, backend call count is two, but response serialization still processes ten results. Do not replace a query-cost limit with a raw count of backend calls if bytes, result objects, or CPU remain constrained.
+
+Persisted operations can restrict accepted queries to reviewed shapes when suitable for the product. They do not remove the need to bound variables such as `first`, validate tenant scope, or authorize selected records. A reviewed query with an unbounded parameter can still overload a service. Keep cost enforcement on the server rather than trusting a client-generated estimate.
+
+<GoDeeper title="Go deeper: batching can trade calls for a larger critical operation">
+A batch of two owner IDs is small; a batch of hundreds of thousands can exceed request, memory, or storage limits. Split batches under measured size and concurrency bounds, preserve input/output alignment, and budget the resulting calls. One enormous operation is not automatically safer or faster than many bounded operations. Observe total returned bytes and tail latency as well as the number of calls.
+</GoDeeper>
+
+## Pagination and Caching Need Graph-Specific Identity
+
+A connection or cursor pattern can make list traversal explicit, but the API still needs stable ordering and a policy for concurrent changes. A cursor should carry enough ordering and filter context to continue safely. It must not allow a caller to switch tenant or bypass a maximum page size by modifying an internal offset. Treat cursor validation as part of query semantics.
+
+Shared HTTP caching is less automatic when many distinct selections and variables use the same transport endpoint. A cache key must include the relevant operation, variables, identity, and representation policy. Request-scoped batching caches and public response caches have different lifetimes and trust boundaries. The [caching chapter](/docs/software-system-design/caching-and-invalidation) applies to both, including stale refill and context mistakes.
+
+Client normalization can store objects by stable identity and update several views after a mutation. That can improve the user experience while introducing another copy whose invalidation and permission changes need policy. A revoked field can remain in local storage if the client never refreshes or clears it. Server authority does not make every client-side copy current.
+
+## Exercise Mapping and Missing Values
+
+The following experiment implements the small batch boundary directly. Input order contains repeated IDs and one missing owner. The result is restored to exactly the original positions, so the missing owner does not shift later results. This is the kind of assertion a loader needs before a call-count improvement is considered correct.
+
+<RunnableCode code={`keys = [2, 1, 2, 99]
+backend_rows = [{"id": 1, "name": "Ada"}, {"id": 2, "name": "Lin"}]
+by_id = {row["id"]: row for row in backend_rows}
+results = [by_id.get(key) for key in keys]
+print("Requested keys:", keys)
+print("Aligned names:", [row["name"] if row else None for row in results])
+assert [row["id"] if row else None for row in results] == [2, 1, 2, None]
+# Try it: reverse backend_rows; the aligned response must remain unchanged.
+`} />
+
+The dictionary uses one visibility context for the exercise. Production loaders need the same resource authorization as individual fetches and must define errors for missing, forbidden, or unavailable objects. Do not return a row merely because its ID was present in a shared process cache. The optimization should preserve observable semantics under every permitted key sequence.
+
+A real HTTP query can be inspected with `curl -H 'Content-Type: application/json' --data '{"query":"query { orders(first: 10) { id owner { name } } }"}' http://127.0.0.1:8080/graphql` against a local server implementing that schema. Instrument order and owner calls while running it. Compare the returned object graph before and after batching, then introduce a missing owner and verify the documented null/error behavior.
+
+## Failure Modes and Better Choices
+
+Latency grows with list size despite one client request. Count resolver work and downstream fan-out before adding network capacity. Batching returns the wrong records because a backend reordered its output. Restore key alignment and test duplicates and missing values. A loader survives across users and leaks data. Scope it to the authorization context and remove unsafe cross-request reuse.
+
+An introspection setting is treated as the main security boundary. Enforce actual authorization and cost limits; hiding schema metadata does not make forbidden fields unreachable. A mutation sequence partially commits while the client expects atomicity. Provide a real transactional operation or expose the workflow's partial states. A query log contains access tokens or private filters. Record bounded operation metadata and redact sensitive variables.
+
+## When Not to Add GraphQL
+
+| Situation | Better starting choice |
+| --- | --- |
+| Few stable public resources with strong shared-cache benefit | A clear HTTP resource interface |
+| Internal calls need tightly bounded typed operations | A suitable RPC contract |
+| The server cannot enforce query cost or field authorization | Establish those boundaries before exposing flexible selection |
+| Work must continue after disconnect | Durable operations or messaging, independent of the query transport |
+
+## Remember
+
+| Mechanism | What it must preserve |
+| --- | --- |
+| Schema | Field meaning and compatible client expectations |
+| Resolver | Authorization and the selected field's semantics |
+| Batch | Key alignment, errors, and bounded size |
+| Cost limit | Work, bytes, and concurrency, not only query depth |
+| Partial response | Clear distinction between optional and required outcomes |
+
+You can now explain the backend work behind one graph request and verify batching without changing its meaning. Return to [Communication](/docs/software-system-design/communication) before choosing a transport for live events.
+
+## Sources
+
+- [GraphQL Specification](https://spec.graphql.org/October2021/)
+- [GraphQL, Execution](https://graphql.org/learn/execution/)
+- [GraphQL, Security](https://graphql.org/learn/security/)
+- [GraphQL, Serving over HTTP](https://graphql.org/learn/serving-over-http/)
+- [GraphQL DataLoader](https://github.com/graphql/dataloader)
