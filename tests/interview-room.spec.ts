@@ -231,15 +231,20 @@ test.describe('Interview Room (/interview/room)', () => {
     await page.getByLabel('Role', { exact: true }).selectOption(role);
     await expect(page.locator('.si-list .si-list-item')).toHaveCount(indices.length);
     await page.locator('#start-topic').click();
-    for (const [position, index] of indices.entries()) {
-      await atQuestion(page, index);
+    const atFiltered = async (position: number) => {
+      const question = navigationTopic.questions[indices[position]];
+      await expect(page.locator('.si-counter')).toHaveText(`Question ${position + 1} of ${indices.length}`);
+      await expect(page.locator('.si-question-title')).toHaveText(question.title);
+    };
+    for (const [position] of indices.entries()) {
+      await atFiltered(position);
       if (position === 0) await expect(page.locator('#previous-question')).toBeDisabled();
       if (position < indices.length - 1) await page.locator('#next-question').click();
     }
     await expect(page.locator('#next-question')).toBeDisabled();
-    for (const index of indices.slice(0, -1).reverse()) {
+    for (let position = indices.length - 2; position >= 0; position--) {
       await page.locator('#previous-question').click();
-      await atQuestion(page, index);
+      await atFiltered(position);
     }
     await expect(page.locator('#previous-question')).toBeDisabled();
   });
