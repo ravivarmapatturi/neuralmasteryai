@@ -1,7 +1,7 @@
 ---
 title: "Observability From User Outcomes to Causal Evidence"
 sidebar_position: 6.1
-description: ""
+description: "Define outcome populations, combine metrics with structured events and traces, and diagnose latency and errors without hiding failures or exploding telemetry cardinality."
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -100,6 +100,16 @@ The latency list is a calculated teaching population: failed attempts occupy the
 A sudden error can multiply logs and overload the diagnostic pipeline. Bound event sizes, rate-limit redundant messages appropriately, and retain counters that still summarize dropped detail. Sampling and dropping policies should be observable. A system that becomes completely opaque exactly when traffic rises is missing an operational resource budget.
 
 Protect access to telemetry because identifiers, business metadata, and error context can be sensitive. Set retention and redaction according to the data's meaning and operating needs. Do not let a debugging feature become an undocumented copy of every user's request. Include the instrumentation's overhead in performance tests when it materially changes the path.
+
+Compare telemetry with a labelled fixture population after a process restart. A counter reset must not become a negative request rate or erase earlier failures from the chosen window. Also disable one collector while the application remains healthy: the dashboard should distinguish missing observations from a true zero error count. These tests validate the evidence pipeline's interpretation, not only the application's instrumentation calls.
+
+## Preserve the Population Through Aggregation
+
+A good-outcome ratio is meaningful only if the numerator and denominator describe the same population and period. In the example, 980 successful requests out of 1,000 eligible requests means 98 percent. Removing the 20 failures from the denominator produces a plausible-looking 100 percent that answers a different question. Define eligibility before observing the result. Exclude requests only under a documented rule that represents the user promise, and keep excluded traffic visible elsewhere so a classification change cannot silently improve the score.
+
+Aggregation can introduce another distortion. Averaging two instances' success percentages gives each instance equal weight even if one handled almost all requests. Sum good and eligible counts across the intended population, then divide. For latency, do not average per-instance percentile values and call the result the fleet percentile. A percentile is a rank in a distribution, and combining ranks without the distributions loses the information needed for the combined rank. Use compatible histogram buckets and the monitoring system's supported aggregation. Verify that the selected buckets can distinguish the objective boundary at the required precision.
+
+Traces explain paths but may observe a sampled subset. A trace search returning no failures does not prove no failures occurred, especially when sampling decisions or collection loss are correlated with overload. Use unsampled aggregate outcome counters for population measurements where feasible, and connect traces through identifiers for diagnosis. Logs should record the facts needed to explain a transition without leaking credentials or protected payloads. Test telemetry during an actual failure injection: reject some eligible requests, delay a dependency, and restart a worker. Confirm that the outcome ratio changes, the latency distribution reflects waiting, and diagnostic context survives the restart. If an alert fires but cannot identify the affected user action or recovery owner, improve the signal's definition before adding another dashboard panel.
 
 ## Failure Modes and Better Choices
 
