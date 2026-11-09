@@ -5,7 +5,8 @@ import { beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { renderWithTheme } from '../../../tests/unit/renderWithProviders';
 import SimpleInterviewPage from './SimpleInterviewPage';
 
-vi.mock('../../contexts/InterviewLearningContext', () => ({ useInterviewLearning: () => ({ records: [], save: vi.fn(), syncState: 'local' }) }));
+const learningState = vi.hoisted(()=>({records:[] as {questionId:string;completion:{time:number;attemptId:string}}[]}));
+vi.mock('../../contexts/InterviewLearningContext', () => ({ useInterviewLearning: () => ({ records: learningState.records, save: vi.fn(), syncState: 'local' }) }));
 
 vi.mock('../../contexts/InterviewAttemptsContext', () => ({ useInterviewAttempts: () => ({ attempts: [], save: vi.fn(), syncState: 'local' }) }));
 
@@ -45,6 +46,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  learningState.records=[];
   localStorage.clear();
   window.history.replaceState(null, '', '/interview');
 });
@@ -205,3 +207,12 @@ it('renders clear error banner when microphone access is denied', async () => {
   expect(screen.getByRole('button', { name: /Try microphone again/i })).toBeInTheDocument();
 });
 
+
+it('does not label a captured coding answer as solved in the editor without its completion award',async()=>{
+  const id='senior:coding-reciprocal-rank-fusion';
+  learningState.records=[{questionId:id,completion:{time:1,attemptId:'spoken'}}];
+  renderWithTheme(<MemoryRouter initialEntries={[`/interview?q=${id}`]}><SimpleInterviewPage /></MemoryRouter>);
+  fireEvent.click(await screen.findByText(/Start the linked question/i));
+  expect(await screen.findByText(/Implement Reciprocal Rank Fusion/i)).toBeInTheDocument();
+  expect(screen.queryByText('Solved in editor')).not.toBeInTheDocument();
+});

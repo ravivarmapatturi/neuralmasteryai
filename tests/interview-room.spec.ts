@@ -724,3 +724,50 @@ test('self-ratings survive a late automated check and reload; queue and answer f
   expect(saved.rating.value).toBe('got-it');expect(saved.rating.stage).toBe(0);expect(saved.completion.attemptId).toBe(saved.rating.attemptId);
   expect(errors).toEqual([]);
 });
+
+test('role readiness uses self-ratings, links to gaps, and fits every role at 375 and 1440 in both themes',async({page},testInfo)=>{
+  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+  const requests=await controlledRoom(page);
+  const roles=['applied-ai-engineer','agentic-ai-engineer','inference-engineer','ai-evaluation-reliability-engineer'];
+  const questions=practice.topics.flatMap(t=>t.questions) as {id:string;title:string;roles?:string[]|null}[];
+  const ids=[...new Set(roles.flatMap(role=>questions.filter(q=>(q.roles ?? []).includes(role)).slice(0,2).map(q=>q.id)))];
+  const records=ids.map((questionId,i)=>({questionId,completion:{time:Date.now()-86_400_000,attemptId:questionId},rating:{time:Date.now(),attemptId:questionId,value:i%2 ? 'missed':'got-it',stage:0}}));
+  await page.evaluate(({records,last})=>{
+    localStorage.setItem('nm-interview-learning-v1:guest',JSON.stringify(records));
+    localStorage.setItem('nm-interview-last',last);
+  },{records,last:'senior:dropout'});
+  await page.reload();
+  const readiness=page.getByRole('region',{name:'Role readiness',exact:true});
+  for(const role of roles){
+    await readiness.getByLabel('Readiness role',{exact:true}).selectOption(role);
+    const pool=questions.filter(q=>(q.roles ?? []).includes(role));
+    const completed=records.filter(r=>pool.some(q=>q.id===r.questionId)).length;
+    const gotIt=records.filter(r=>r.rating.value==='got-it' && pool.some(q=>q.id===r.questionId)).length;
+    await expect(readiness.locator('.si-role-completed')).toHaveText(`${completed} of ${pool.length} questions completed`);
+    await expect(readiness.locator('.si-role-got-it')).toHaveText(`${gotIt} of ${pool.length} self-rated Got it`);
+    await expect(readiness.getByRole('link')).toHaveCount(3);
+    await expect(readiness).not.toContainText(/%|likelihood|passing|judge score/i);
+    for(const width of [375,1440])for(const theme of ['light','dark']){
+      await page.setViewportSize({width,height:1000});
+      await page.evaluate(theme=>document.documentElement.setAttribute('data-theme',theme),theme);
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBe(width);
+      await readiness.evaluate(element=>element.scrollIntoView({block:'center'}));
+      await readiness.screenshot({path:testInfo.outputPath(`readiness-${role}-${width}-${theme}.png`)});
+    }
+  }
+  const link=readiness.getByRole('link').first();
+  const target=new URL((await link.getAttribute('href'))!,page.url());
+  expect(target.searchParams.get('role')).toBe(roles.at(-1));
+  const targetTopic=target.searchParams.get('topic')!;
+  const outsideRole=practice.topics.find(t=>t.id===targetTopic)?.questions.find(q=>!((q as {roles?:string[]|null}).roles ?? []).includes(roles.at(-1)!));
+  if(outsideRole)await page.evaluate(id=>localStorage.setItem('nm-interview-last',id),outsideRole.id);
+  await link.click();
+  await expect(page.getByLabel('Topic',{exact:true})).toHaveValue(targetTopic);
+  await expect(page.getByLabel('Role',{exact:true})).toHaveValue(roles.at(-1)!);
+  await expect(page.locator('.si-linked')).toHaveCount(0);
+  await page.locator('#start-topic').click();
+  const opened=await page.locator('.si-question-title').textContent();
+  const question=questions.find(q=>q.title===opened);
+  expect(question?.roles).toContain(roles.at(-1));
+  expect(errors).toEqual([]);expect(requests).toEqual([]);
+});

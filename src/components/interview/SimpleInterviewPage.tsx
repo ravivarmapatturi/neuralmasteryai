@@ -10,6 +10,7 @@ import { useFocusMusic } from '../../contexts/FocusMusicContext';
 import type { SingleThreadASREngine } from '../../lib/speechTest/engines';
 import practice from '../../data/interviewPractice.json';
 import { InterviewGraph } from './InterviewGraph';
+import { RoleReadiness } from './RoleReadiness';
 import { TodaysTen } from './TodaysTen';
 import { useInterviewLearning } from '../../contexts/InterviewLearningContext';
 import { rateQuestion, reviewDueAt, RATING_LABELS, type SelfRating } from '../../lib/interviewLearning';
@@ -185,8 +186,9 @@ export default function SimpleInterviewPage() {
   // A link like /interview?q=<id> (the home page's daily question) opens on that question.
   // Otherwise it offers to resume the last question you opened.
   const [pathQuestion] = useState(() => questionFromPath(window.location.pathname));
-  const [resuming] = useState(() => !pathQuestion && !locate(params.get('q')) && !!locate(readLast()));
-  const [linked, setLinked] = useState(() => locate(pathQuestion) ?? locate(params.get('q')) ?? locate(readLast()));
+  const allowResume = !['topic','role','level','round','status','search'].some(key=>params.has(key)) && !initialSearch;
+  const [resuming] = useState(() => allowResume && !pathQuestion && !locate(params.get('q')) && !!locate(readLast()));
+  const [linked, setLinked] = useState(() => locate(pathQuestion) ?? locate(params.get('q')) ?? (allowResume ? locate(readLast()) : null));
   const sharedTopic = topics.findIndex((t) => t.id === params.get('topic'));
 
   const [topicFilter, setTopicFilter] = useState(() => {
@@ -339,6 +341,8 @@ export default function SimpleInterviewPage() {
     });
     if(imported.length)saveLearning(imported);
   },[events,learning,learningReady,allCatalogQuestions,saveLearning]);
+
+  const readinessQuestions = useMemo(()=>allCatalogQuestions.map(({q,topicId,topicTitle})=>({id:q.id,topicId,topicTitle,roles:q.roles})),[allCatalogQuestions]);
 
   const learningQuestions = useMemo(()=>allCatalogQuestions.map(({q,topicId})=>({id:q.id,title:q.title,topicId})),[allCatalogQuestions]);
 
@@ -877,6 +881,7 @@ export default function SimpleInterviewPage() {
               <strong>{completedTotal}</strong> of <strong>{totalQuestions}</strong> questions completed across {graphTopics.length} topics.
             </p>
             <TodaysTen questions={learningQuestions} onStart={(id,session)=>{const item=allCatalogQuestions.find(item=>item.q.id===id);if(item)startQuestionFromItem(item,session);}} />
+            <RoleReadiness questions={readinessQuestions} initialRole={role} />
             <div className="si-map">
               <InterviewGraph
                 topics={graphTopics}
@@ -1165,7 +1170,7 @@ export default function SimpleInterviewPage() {
             <div className="si-question-row">
               <h2 className="si-question-title">
                 {question.title}
-                {question.problemId && isDone(question.id) && (
+                {question.problemId && hasAward(events, `/interview#${question.id}`, 'interview') && (
                   <span className="si-solved-badge"><span className="si-tick">✓</span> Solved in editor</span>
                 )}
               </h2>
@@ -1532,7 +1537,7 @@ export default function SimpleInterviewPage() {
               <button type="button" id="practice-again" onClick={() => goToQuestion(questionIndex)}>
                 Practice again
               </button>
-              {isDone(questionId) ? (
+              {hasAward(events, `/interview#${questionId}`, 'interview') ? (
                 <span className="si-done" role="status">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }} aria-hidden="true">
                     <polyline points="20 6 9 17 4 12" />
