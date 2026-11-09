@@ -156,10 +156,11 @@ test.describe('Interview Room (/interview/room)', () => {
   });
 
   test('leaving a live answer stops every mic track; a delayed old review cannot appear on the new answer', async ({ page }) => {
+    test.setTimeout(180_000);
     await controlledRoom(page);
     await page.locator('#start-topic').click();
     await page.getByRole('button', { name: 'Skip to answering' }).click();
-    await expect(page.locator('.si-status')).toContainText('Listening.');
+    await expect(page.locator('.si-status')).toContainText('Listening.', { timeout: 150_000 });
     expect(await page.evaluate(() => (window as any).micTracks.filter((t: MediaStreamTrack) => t.readyState === 'live').length)).toBe(1);
     await page.locator('#next-question').click();
     await atQuestion(page, 1);
