@@ -170,6 +170,6 @@ The first full unit run had 872 passes and one failure: an older test assumed th
 
 The final browser images remain in ignored `test-results/pending-3/` and `test-results/pending-4/`; they are not committed. Tests used inference doubles for UI behavior; the accuracy measurements used real ONNX/WASM models. A physical mic and simultaneous ASR/judge residency were not tested.
 
-Research commits: `a59103a5` and `5432d867` freeze the held-out data; `fb43444f` adds the harness; `05ba1e99` records baseline parity and loading constraints; `cdecef10` freezes development settings; `9d4fbcd6` records the held-out rejection. The final UI commit adds matching quotes, retains Covered / Not detected, and hides unvalidated numeric coverage in both answer review and history. The scorer is unchanged and still runs after the model answer has appeared.
+Research commits: `a59103a5` and `5432d867` freeze the held-out data; `fb43444f` adds the harness; `05ba1e99` records baseline parity and loading constraints; `cdecef10` freezes development settings; `9d4fbcd6` records the held-out rejection. UI commit `a3b107e1` adds matching quotes, retains Covered / Not detected, and hides unvalidated numeric coverage in both answer review and history. The scorer is unchanged and still runs after the model answer has appeared.
 
 All started dev/model servers and test browsers are stopped. Codex's own tool-host processes are left running. The model mirror stays cached outside the repository for reproducibility; no weights, screenshot files, or scratch scripts are committed. No push.
