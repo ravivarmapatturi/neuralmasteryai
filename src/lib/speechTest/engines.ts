@@ -613,20 +613,18 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
               const finalLoadTime = loadTimeMs || Math.round(performance.now() - startTime);
               checkDone(finalLoadTime, device);
             } else if (type === 'error') {
-              console.warn('[SingleThreadASREngine] finalWorker init failed, using live worker fallback', error);
-              this.finalWorker = null;
-              this.hasFinalWorkerReady = false;
-              finalDone = true;
-              checkDone(Math.round(performance.now() - startTime), 'wasm');
+              const msg = error || 'Final worker initialization failed';
+              this.updateMetrics({ status: 'error', errorMessage: msg });
+              clearTimeout(timeout);
+              reject(new Error(msg));
             }
           };
 
           this.finalWorker.onerror = (err) => {
-            console.warn('[SingleThreadASREngine] finalWorker error, using live worker fallback', err);
-            this.finalWorker = null;
-            this.hasFinalWorkerReady = false;
-            finalDone = true;
-            checkDone(Math.round(performance.now() - startTime), 'wasm');
+            const msg = err.message || 'Final worker syntax or import error';
+            this.updateMetrics({ status: 'error', errorMessage: msg });
+            clearTimeout(timeout);
+            reject(new Error(msg));
           };
 
           this.finalWorker.postMessage({
@@ -634,6 +632,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
             op: 'init',
             payload: {
               modelId: this.finalModelId,
+              preloadModelId: this.finalModelId,
               device: this.finalDevice,
               dtype: this.finalDtype,
             },
@@ -1190,13 +1189,14 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
               payload: {
                 mode: 'tail',
                 audio: cleanTail.buffer,
+                fullAudio: audioToBatch.buffer,
                 chunkIndex: this.backgroundWindowsDispatched,
                 isFirst: false,
                 isLast: true,
                 initialPrompt: this.initialPrompt,
               },
             },
-            [cleanTail.buffer]
+            [cleanTail.buffer, audioToBatch.buffer]
           );
         } else {
           // Standard full batch pass
@@ -1320,10 +1320,18 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
   public destroy(): void {
     this.rejectLoad?.(new Error('Speech engine disposed'));
     this.cancel();
-    this.worker?.terminate();
-    this.worker = null;
-    this.finalWorker?.terminate();
-    this.finalWorker = null;
+    if (this.worker) {
+      this.worker.onmessage = null;
+      this.worker.onerror = null;
+      this.worker.terminate();
+      this.worker = null;
+    }
+    if (this.finalWorker) {
+      this.finalWorker.onmessage = null;
+      this.finalWorker.onerror = null;
+      this.finalWorker.terminate();
+      this.finalWorker = null;
+    }
     this.hasFinalWorkerReady = false;
     this.listeners.clear();
   }

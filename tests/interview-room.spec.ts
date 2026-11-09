@@ -3,7 +3,7 @@ import http from 'node:http';
 import practice from '../src/data/interviewPractice.json' with { type: 'json' };
 import type { Page } from '@playwright/test';
 
-const PORT = process.env.TEST_PORT ? Number(process.env.TEST_PORT) : 4173;
+const PORT = process.env.TEST_PORT ? Number(process.env.TEST_PORT) : process.env.CI ? 4173 : 5173;
 
 // Replace only inference workers: this works with both Vite modules and hashed CI bundles.
 // Playwright gives every test a fresh, non-persistent browser context (including model caches).
@@ -47,9 +47,16 @@ async function controlledRoom(page: Page, settings: {memory:number;gpu:boolean;f
           reply({ ok: true, result: payload.pairs.map(() => ({ entails: 1, conflicts: 0 })) });
         } else if (op === 'init') {
           state.speechLoads.push(payload);
-          if(settings.deferTurbo && payload?.preloadModelId?.includes('large-v3-turbo')) {state.releaseTurbo=()=>reply({type:'init_done',device:'wasm',loadTimeMs:1});return;}
-          if(settings.failTurbo && payload?.preloadModelId?.includes('large-v3-turbo')) reply({type:'error',error:'GPU allocation failed'});
-          else reply({ type: 'init_done', device: 'wasm', loadTimeMs: 1 });
+          const isTurbo = Boolean((payload?.preloadModelId || payload?.modelId)?.includes('large-v3-turbo'));
+          if (settings.deferTurbo && isTurbo) {
+            state.releaseTurbo = () => reply({ type: 'init_done', device: 'wasm', loadTimeMs: 1 });
+            return;
+          }
+          if (settings.failTurbo && isTurbo) {
+            reply({ type: 'error', error: 'GPU allocation failed' });
+          } else {
+            reply({ type: 'init_done', device: 'wasm', loadTimeMs: 1 });
+          }
         } else if (['transcribe','commit','batch'].includes(op)) {
           reply({type:op==='transcribe'?'result':`${op}_result`,text:'',sampleCount:payload?.audio?.byteLength/4,inferMs:1});
         } else if (op === 'reset') {
@@ -58,7 +65,10 @@ async function controlledRoom(page: Page, settings: {memory:number;gpu:boolean;f
           throw new Error(`Unexpected inference operation: ${op}`);
         }
       }
-      terminate() {state.terminatedSpeechWorkers=(state.terminatedSpeechWorkers||0)+1;}
+      terminate() {
+        this.onmessage = null;
+        state.terminatedSpeechWorkers = (state.terminatedSpeechWorkers || 0) + 1;
+      }
     } as any;
 
     Object.defineProperty(navigator, 'mediaDevices', { value: {

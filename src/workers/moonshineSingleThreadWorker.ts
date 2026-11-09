@@ -59,7 +59,7 @@ async function handle({ id, op, payload }: any) {
       const start = performance.now();
       // Warm the final model in the background, dispose it, then prepare live speech.
       // No two model sessions coexist, including during first-use downloads.
-      if (payload?.preloadModelId) await initialize(payload.preloadModelId, payload.preloadDevice, payload.preloadDtype);
+      if (payload?.preloadModelId && payload.preloadModelId !== payload?.modelId) await initialize(payload.preloadModelId, payload.preloadDevice, payload.preloadDtype);
       await initialize(payload?.modelId, payload?.device, payload?.dtype);
       self.postMessage({ id, type: 'init_done', loadTimeMs: Math.round(performance.now() - start), modelId, device: actualDevice, requestedDevice });
       return;
@@ -117,8 +117,29 @@ async function handle({ id, op, payload }: any) {
     }
 
     // (a) Decode remaining tail and merge with pre-decoded background windows
-    if (op === 'batch' && payload?.mode === 'tail' && modelId.includes('whisper') && backgroundChunks.length > 0) {
+    if (op === 'batch' && payload?.mode === 'tail' && modelId.includes('whisper')) {
       const { chunkIndex, isFirst } = payload;
+      const allChunksPresent = backgroundChunks.length === chunkIndex && backgroundChunks.every(Boolean);
+      if (!allChunksPresent && payload?.fullAudio) {
+        console.warn('[moonshineSingleThreadWorker] Background chunks incomplete; decoding full audio');
+        backgroundChunks = [];
+        const fullAudio = payload.fullAudio instanceof Float32Array ? payload.fullAudio : new Float32Array(payload.fullAudio);
+        const options = fullAudio.length > 28 * 16000 ? { chunk_length_s: 30, stride_length_s: 5, return_timestamps: true } : {};
+        const decodeStart = performance.now();
+        const result = await transcribeWithPrompt(pipe, fullAudio, options, prompt);
+        self.postMessage({
+          id,
+          type: 'batch_result',
+          text: (result?.text ?? '').trim(),
+          inferMs: Math.round(performance.now() - decodeStart),
+          totalMs: Math.round(performance.now() - start),
+          prompted: Boolean(prompt),
+          sampleCount: fullAudio.length,
+          device: actualDevice,
+          modelId,
+        });
+        return;
+      }
       const sampling_rate = 16000;
       const stride = 80000;
       const is_first = Boolean(isFirst);

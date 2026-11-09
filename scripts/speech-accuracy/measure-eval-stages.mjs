@@ -16,6 +16,14 @@ const targetCaseArg = process.argv.find((a) => a.startsWith('--case='));
 const targetCaseId = targetCaseArg ? targetCaseArg.split('=')[1] : null;
 const cases = targetCaseId ? allCases.filter((c) => c.id === targetCaseId) : allCases;
 
+// Support optional --throttle=4
+const throttleArg = process.argv.find((a) => a.startsWith('--throttle='));
+const throttleRate = throttleArg ? Number(throttleArg.split('=')[1]) : 1;
+
+// Support optional --out=filename.json
+const outArg = process.argv.find((a) => a.startsWith('--out='));
+const outPath = outArg ? path.resolve(outArg.split('=')[1]) : path.join(root, 'stage-baseline-after.json');
+
 // Check free memory before running
 const hostAvailableMB = () => Number(fs.readFileSync('/proc/meminfo', 'utf8').match(/^MemAvailable:\s+(\d+)/m)[1]) / 1024;
 if (hostAvailableMB() < 2048) {
@@ -92,7 +100,6 @@ console.log(`Fixture server listening on port ${PORT}`);
 const questionTitle = 'What are the main causes of high variance in decision trees?';
 const modelAnswer = 'A decision tree with no depth limit scores 99% on training data and 71% on validation. A 28-point gap between training and validation is the textbook sign of high variance: the tree has memorised the training set. Constrain it using max_depth, min_samples_leaf, or pruning, or average many trees into a random forest to reduce variance.';
 
-const outPath = path.join(root, 'stage-baseline-after.json');
 let allResults = [];
 if (fs.existsSync(outPath)) {
   try {
@@ -107,7 +114,7 @@ try {
       break;
     }
 
-    console.log(`\n--- Measuring case: ${c.id} (${c.durationSeconds}s) ---`);
+    console.log(`\n--- Measuring case: ${c.id} (${c.durationSeconds}s, throttle=${throttleRate}x) ---`);
 
     const browser = await chromium.launch({
       headless: true,
@@ -116,6 +123,22 @@ try {
 
     try {
       const page = await browser.newPage();
+      if (throttleRate > 1) {
+        const cdp = await page.context().newCDPSession(page);
+        cdp.on('Target.attachedToTarget', async (event) => {
+          for (const [id, method, params] of [
+            [1, 'Emulation.setCPUThrottlingRate', { rate: throttleRate }],
+            [2, 'Runtime.runIfWaitingForDebugger', {}],
+          ]) {
+            await cdp.send('Target.sendMessageToTarget', {
+              sessionId: event.sessionId,
+              message: JSON.stringify({ id, method, params }),
+            });
+          }
+        });
+        await cdp.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: false });
+        await cdp.send('Emulation.setCPUThrottlingRate', { rate: throttleRate });
+      }
       await page.goto(`http://localhost:${PORT}/harness`);
 
       const measurement = await page.evaluate(async ({ c, questionTitle, modelAnswer }) => {
