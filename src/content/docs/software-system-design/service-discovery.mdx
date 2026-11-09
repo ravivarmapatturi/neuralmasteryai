@@ -1,7 +1,7 @@
 ---
 title: "Service Discovery and Endpoint Freshness"
 sidebar_position: 5.5
-description: ""
+description: "Resolve logical services to eligible endpoints, model stale discovery caches, and coordinate readiness, draining, and reconnect without treating registration as authority."
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -90,6 +90,20 @@ print("Existing connection to A requires separate draining or failure handling."
 `} />
 
 The example deliberately omits network calls and health checks. It isolates the routing set so the refresh's effect is inspectable. A complete test should delay updates, restart the control plane, drop the watch, remove an endpoint during an active request, and restore connectivity. Verify the application's deadline and effect correctness while the routing map changes.
+
+Observe the data plane while changing membership. Keep one pooled connection to A open, remove A from the test directory, and create new connections using both cached and refreshed maps. Record which requests still reach A and which use B or C. This separates resolver refresh, endpoint selection, and connection draining instead of compressing them into one propagation number.
+
+Next interrupt only the discovery control plane while leaving B and C healthy. The client should follow its documented last-known-state policy without spinning or inventing authority. Restore the control plane with a newer map and verify atomic replacement or the supported revision sequence. Also test a stale update arriving after the new map: it must not silently restore a retired endpoint. These cases make the freshness contract observable beyond a successful name lookup.
+
+Include the logical authority name and endpoint revision in diagnostic evidence where appropriate. An address alone can be reused by a different process later, so historical failures need enough context to identify which instance actually handled the request.
+
+## Follow an Endpoint From Registration to a Real Request
+
+Removing A from the registry at time 5 does not instantly remove A from every client's cache, connection pool, or retry list. In the example, a client with a 30-second cache can still consider A at time 20. A pooled connection may outlive the name lookup that created it. A deployment drain therefore needs to account for discovery propagation and connection lifetime in addition to changing registry membership. Stop admitting new work under the chosen policy, allow bounded in-flight work to finish, and define how remaining connections terminate.
+
+DNS-based discovery makes this distinction particularly visible. A DNS record provides an address resolution result, while the application runtime and resolver determine how long that result remains in use. A client that resolves only at startup may not observe later changes at the expected interval. A service virtual address can hide backend membership changes behind a stable address, but routing and connection tracking still have their own behavior. Test the actual client library and networking path instead of assuming the authoritative record's TTL describes every cache in the stack.
+
+Health information also has a scope. A process can answer a liveness probe while its database is unavailable, and a readiness check can become too aggressive if it removes every instance during a shared dependency outage. Decide whether readiness means the instance can accept its own workload, which dependencies it checks, and what failure response clients should receive. Discovery is not a replacement for request timeouts or circuit breaking because a recently eligible endpoint can fail immediately afterward. During a rolling update, trace one client's resolved candidates, selected endpoint, connection reuse, and response. Repeat with a deliberately stale cache and a slow drain. That trace reveals whether a failed request is caused by stale membership, broken transport, or an application that was advertised before it could serve. Each cause needs a different repair.
 
 ## Failure Modes and Better Choices
 
