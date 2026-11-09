@@ -1,0 +1,127 @@
+---
+title: "Service Discovery and Endpoint Freshness"
+sidebar_position: 5.5
+description: ""
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { DiscoveryCacheFreshness } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
+
+# Service Discovery and Endpoint Freshness
+
+<ELI5>An office directory tells callers which desks exist. A printed copy can still list a desk after it closes, and a listed desk may not be ready to help. Callers need a refresh policy and a safe reaction when the directory and reality disagree. Service discovery manages that changing map without making it perfect.</ELI5>
+
+Resolve logical services to eligible endpoints, model stale discovery caches, and coordinate readiness, draining, and reconnect without treating registration as authority.
+**Service discovery** maps a logical service identity to locations or routes that can currently serve it. A registry, DNS record, orchestrator service, client library, or proxy can participate. The map changes during scaling, deployment, failure, and recovery. Discovery does not itself authenticate every endpoint, prove readiness for every operation, or preserve a mutation's correctness after retry.
+
+The misconception is that deleting an endpoint from the registry instantly removes it from every client. Our illustrative client caches A, B, and C at time zero for thirty seconds. A is removed at second 5. At second 20 the cached set still contains three while only B and C remain eligible. A refresh at second 30 removes the obsolete route under this deliberately simple cache model.
+
+## Separate Logical Identity From Network Location
+
+A stable service name lets callers avoid embedding transient instance addresses in business identifiers. Instances can then restart or move without changing the concept of the service. The application still needs an authority name and credential policy so finding an address does not imply trusting any process that happens to answer there.
+
+A client-side discovery design obtains endpoints and selects among them. A server-side or proxy design lets a stable intermediary route to eligible backends. Both have caches and failure boundaries. Client-side selection can use application context while multiplying rollout responsibility across clients; proxy selection centralizes policy while adding another critical component.
+
+DNS can map a service name to a stable virtual address or directly to endpoints under a headless design. The caller's resolver, runtime cache, connection pool, and existing sockets can all retain location information. A DNS TTL is not a universal promise that every application connection disappears at that exact moment. Inspect the deployed client behavior.
+
+## Registration and Readiness Answer Different Questions
+
+A process can register before configuration, credentials, data, or warmup are ready. **Readiness** should describe eligibility for the traffic the service promises to handle. **Liveness** concerns whether the process should continue running. Restarting every process because one shared dependency is slow can worsen an outage without improving readiness.
+
+A lease or heartbeat can detect that registration is no longer renewed, but silence does not prove the old process has stopped. An endpoint can fail immediately after a successful check. Health information is always an observation with a delay, not an infallible future prediction. Correctness-critical writer authority must use the appropriate ownership protocol rather than registry presence alone.
+
+<DiscoveryCacheFreshness />
+
+The bars distinguish cached candidates from currently eligible endpoints. At second 20 one candidate is stale; after the modeled refresh, the client sees two and no known stale member. This assumes the cache honors the chosen expiry and refresh succeeds. Real watches, resolvers, and connection pools need their own measured propagation and failure behavior.
+
+<RunnableCode code={`cached = ["A", "B", "C"]
+ready = {"B", "C"}
+expires_at = 30
+for now in (20, 30):
+    selected = cached if now < expires_at else sorted(ready)
+    stale = [endpoint for endpoint in selected if endpoint not in ready]
+    print("Second:", now, "candidates:", selected, "known stale:", stale)
+# Try it: extend expires_at to 60; obsolete membership remains usable in this simple client longer.
+`} />
+
+## Cache and Watch Recovery Must Be Explicit
+
+Polling gives a bounded refresh opportunity only if the poll succeeds and the client applies it. A watch can distribute changes promptly, but can disconnect, fall behind retained history, or lose local state. A client needs a supported relist or snapshot procedure when it cannot resume safely. Continuing with an unknown partial map can accidentally remove all good endpoints or retain obsolete ones indefinitely.
+
+Version discovery state so clients can distinguish an older snapshot from a newer one. Atomic replacement of a complete set differs from partially applying a sequence of updates. If a relist and watch overlap, use the control plane's documented revision boundary rather than inventing a timestamp comparison. The same snapshot/live gap appears in [stream recovery](/docs/software-system-design/websockets-and-sse).
+
+Define discovery-outage behavior. Reusing last-known endpoints can preserve some availability, but needs age limits, authority checks, and failure handling. Clearing the entire map on one temporary control-plane timeout can create a fleet-wide outage. A policy should distinguish “no endpoints are eligible” from “the directory could not be reached.”
+
+<PredictFirst question="A is removed from the registry at second 5, but a client cached membership through second 30. Must a request at second 20 avoid A?" options={["Yes, registry deletion changes every local cache instantly", "No, the client may still select its stale entry under this cache policy", "Yes, because all existing TCP connections close when DNS changes"]} correctIndex={1} explanation="Discovery information propagates through caches and connections. Removing a control-plane entry is not the same as every data-plane client observing it." />
+
+## Draining Includes Existing Connections and Work
+
+During planned replacement, stop new assignments before terminating the instance and allow bounded in-flight work to finish. Updating readiness or endpoint membership does not necessarily close long-lived connections. WebSockets, streaming RPCs, and pooled connections can keep using an instance after a map update. Define a maximum lifetime or protocol-level reconnect path where needed.
+
+A client that detects a dead endpoint can choose another, but the original request may already have committed. A routing retry must preserve method and business semantics. The [idempotency chapter](/docs/software-system-design/idempotency) explains why a new destination cannot infer the earlier outcome from a socket error. Discovery recovers location, not intent history.
+
+Do not remove so many endpoints that survivors overload. Deployment, health thresholds, and minimum serving reserve should agree. Readiness flapping can repeatedly concentrate traffic and trigger retries, creating a feedback loop. Observe useful completions and downstream pools as membership changes, not only the count listed in the registry.
+
+<GoDeeper title="Go deeper: a registry is not a writer-election protocol">
+A registry entry can tell clients where a candidate is. It does not necessarily establish a unique authorized writer or prevent an old process accepting requests after its record expires. If the service mutates an authoritative resource, use its supported consensus, lease, and fencing rules. Discovery should reflect that authority, but stale discovery must not bypass the destination's rejection of obsolete ownership.
+</GoDeeper>
+
+## Inspect Kubernetes Service Routing
+
+A Kubernetes Service provides an abstraction for routing to selected endpoints under its configuration. EndpointSlices describe endpoint membership, and readiness influences eligibility under documented options. A selector mistake can route to the wrong workloads or to none. Inspect the actual labels and slices instead of assuming a YAML Service name proves correct binding.
+
+On a test cluster, `kubectl get service catalogue -o yaml` and `kubectl get endpointslices -l kubernetes.io/service-name=catalogue -o yaml` expose useful control-plane state. From a permitted test pod, `getent hosts catalogue` can inspect name resolution where the image provides that tool. These commands observe different layers; compare them with real connection destinations and requests.
+
+A headless service can expose individual addresses, while a normal service can present a stable service address whose routing implementation selects endpoints. The application must know which model it uses before assuming DNS answers enumerate all current workers. Service meshes and sidecars can add another endpoint cache, policy, and telemetry layer; they do not remove the need to understand it.
+
+## Bound Selection and Recovery Work
+
+A client with an empty or stale map should not spin on discovery without backoff. A control-plane outage can otherwise produce a thundering herd of refreshes from every instance. Cache useful state under a deliberate policy, jitter retries, and bound outstanding discovery calls. Keep a path for recovery without allowing the discovery service to become the next overloaded dependency.
+
+For a toy round-robin client, removing one of three candidates changes the future selection sequence. The second experiment shows that a fresh list avoids A but does not redistribute already accepted work or close old connections. Real clients also need synchronization around map changes and a safe policy for operations already selected under the old version.
+
+<RunnableCode code={`before, after = ["A", "B", "C"], ["B", "C"]
+for label, candidates in (("cached", before), ("refreshed", after)):
+    route = [candidates[i % len(candidates)] for i in range(6)]
+    print(label, "future destinations:", route)
+print("Existing connection to A requires separate draining or failure handling.")
+# Try it: make after empty; specify a bounded unavailable response instead of indexing an empty list.
+`} />
+
+The example deliberately omits network calls and health checks. It isolates the routing set so the refresh's effect is inspectable. A complete test should delay updates, restart the control plane, drop the watch, remove an endpoint during an active request, and restore connectivity. Verify the application's deadline and effect correctness while the routing map changes.
+
+## Failure Modes and Better Choices
+
+All clients clear good endpoints during a registry timeout. Separate unknown control-plane state from a confirmed empty set. Old connections keep using a retiring instance indefinitely. Add protocol-aware draining and a bounded lifetime. One stale endpoint receives repeated attempts from every client. Use passive failure signals and bounded selection retries without converting every business operation into unsafe replay.
+
+A service name resolves but the backend cannot perform its action. Fix readiness and dependency policy rather than only DNS. A stale former leader accepts writes. Enforce ownership at the mutation boundary. A selector binds another environment's instances. Scope labels, namespaces, identity, and policy so location discovery cannot become cross-environment authorization.
+
+## When Not to Build a Custom Registry
+
+| Situation | Better starting point |
+| --- | --- |
+| The platform already supplies suitable service routing | Use and test that supported mechanism |
+| A stable external endpoint is sufficient | A bounded static configuration with rotation policy |
+| The real need is exclusive write authority | A supported coordination protocol |
+| Client libraries cannot safely handle versioned updates | A suitable proxy boundary |
+
+## Remember
+
+| Layer | What it establishes |
+| --- | --- |
+| Name | Logical service identity |
+| Discovery map | Candidate locations at an observed revision |
+| Readiness | Current traffic eligibility under policy |
+| Connection | A separate lifetime that can outlive membership |
+| Authority | Permission to perform the protected effect |
+
+You can now trace endpoint freshness from control plane to client selection and separate it from readiness and write authority. Return to [Distributed Systems](/docs/software-system-design/distributed-systems) to bound repeated failures after a destination is selected.
+
+## Sources
+
+- [Kubernetes, Services](https://kubernetes.io/docs/concepts/services-networking/service/)
+- [Kubernetes, DNS for Services and Pods](https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/)
+- [Kubernetes, Probes](https://kubernetes.io/docs/concepts/workloads/pods/probes/)
+- [Kubernetes, Pod Lifecycle](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/)
+- [gRPC, Core Concepts](https://grpc.io/docs/what-is-grpc/core-concepts/)
