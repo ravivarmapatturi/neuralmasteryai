@@ -1,3 +1,4 @@
+import { normalizeSketch, type SystemDesignSketch } from './systemDesignSketch';
 import { normalizeDelivery, type DeliveryFeedback } from './interviewDelivery';
 import type { PointResult } from './answerJudge';
 
@@ -16,6 +17,7 @@ export interface InterviewAttempt {
   score?: number;
   revision?: number;
   delivery?: DeliveryFeedback;
+  sketch?: SystemDesignSketch;
   followUp?: { question: string; transcript: string; status: 'draft' | 'saved'; revision: number };
 }
 export const attemptsKey = (uid?: string) => `${ATTEMPTS_KEY}:${uid ?? 'guest'}`;
@@ -34,7 +36,8 @@ function normalize(value: unknown): InterviewAttempt | null {
     ? { question: a.followUp.question.slice(0, 1000), transcript: a.followUp.transcript.slice(0, 4000), status: a.followUp.status,
         revision: Number.isSafeInteger(a.followUp.revision) ? Math.max(0, Math.min(1_000_000, a.followUp.revision)) : 0 } : undefined;
   const delivery = normalizeDelivery(a.delivery);
-  return { ...(delivery ? { delivery } : {}), ...(followUp ? { followUp } : {}), id: a.id, questionId: a.questionId, time: a.time, ...(a.revision !== undefined ? { revision: Math.max(0, Math.min(2, Math.trunc(a.revision) || 0)) } : {}), transcript: a.transcript.slice(0, 4000), points, source: a.source, status: a.status,
+  const sketch = normalizeSketch(a.sketch);
+  return { ...(sketch ? { sketch } : {}), ...(delivery ? { delivery } : {}), ...(followUp ? { followUp } : {}), id: a.id, questionId: a.questionId, time: a.time, ...(a.revision !== undefined ? { revision: Math.max(0, Math.min(2, Math.trunc(a.revision) || 0)) } : {}), transcript: a.transcript.slice(0, 4000), points, source: a.source, status: a.status,
     ...(Number.isFinite(a.score) && a.score! >= 0 && a.score! <= 100 && a.source === 'reference' ? { score: a.score } : {}) };
 }
 

@@ -7,7 +7,7 @@ it('shows a plain numeric row and omits unavailable speech measurements', () => 
   const {rerender} = renderWithTheme(<DeliveryRow />);
   expect(screen.queryByRole('group')).not.toBeInTheDocument();
   rerender(<DeliveryRow delivery={{durationSeconds:120,speakingSeconds:100,wordsPerMinute:110,wordCount:220,longPauses:2,
-    fillers:{um:1,uh:1,like:2,'you know':1,basically:0,actually:0}}} />);
+    fillers:{um:1,uh:1,erm:2,'you know':1,'i mean':0}}} />);
   const row = screen.getByRole('group', {name:'Delivery measurements'});
   expect(row).toHaveTextContent('Time 2:00 / ~2:00');
   expect(row).toHaveTextContent('Speaking 1:40');

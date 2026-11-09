@@ -1,3 +1,6 @@
+import { SystemDesignCanvas } from './SystemDesignCanvas';
+import references from '../../data/systemDesignReferences.json';
+import { emptySketch, type SystemDesignSketch } from '../../lib/systemDesignSketch';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { useDocumentMeta } from '../../lib/useDocumentMeta';
@@ -209,6 +212,7 @@ export default function SimpleInterviewPage() {
   const [shareStatus, setShareStatus] = useState('');
   const [questionIndex, setQuestionIndex] = useState(linked?.question ?? 0);
   const [transcript, setTranscript] = useState('');
+  const [sketch, setSketch] = useState<SystemDesignSketch>(emptySketch);
   const [typing, setTyping] = useState(false);
   const [micStatus, setMicStatus] = useState('');
   const [micError, setMicError] = useState<string | null>(null);
@@ -398,6 +402,7 @@ export default function SimpleInterviewPage() {
   const linkedHere = linked && linked.topic === topicIndex ? linked : null;
   const question = topic.questions[questionIndex];
   const questionId = question.id;
+  const referenceDiagram = (references as Record<string, SystemDesignSketch & { note: string }>)[questionId];
   const earlier = attempts.filter(a => a.questionId === questionId && a.id !== attemptId).slice().reverse();
   const latest = attempts.find(a => a.id === attemptId && a.questionId === questionId);
   const currentLearning = learning.find(r=>r.questionId===questionId);
@@ -604,6 +609,7 @@ export default function SimpleInterviewPage() {
     (id: string) => {
       reviewRef.current++;
       setAttemptId(null);
+      setSketch(emptySketch());
       setStep('asking');
       try {
         localStorage.setItem(LAST_KEY, id);
@@ -675,7 +681,8 @@ export default function SimpleInterviewPage() {
     const engine = !typing && streamRef.current ? engineRef.current : null;
     const current = question;
     const draft: InterviewAttempt = { id: crypto.randomUUID(), questionId: current.id, time: Date.now(), transcript: '', points: [],
-      source: current.keyPoints?.length ? 'rubric' : 'reference', status: 'unchecked', revision: 0 };
+      source: current.keyPoints?.length ? 'rubric' : 'reference', status: 'unchecked', revision: 0,
+      ...(current.rounds?.includes('system-design') ? { sketch } : {}) };
     saveAttempt({ ...draft, transcript: correctInterviewTerms(liveText, current.id, current.title) });
     setAttemptId(draft.id);
     setStep('answer');
@@ -1330,6 +1337,7 @@ export default function SimpleInterviewPage() {
                 {transcript || <span className="si-placeholder">Your words will appear here as you speak…</span>}
               </div>
             )}
+            {question.rounds?.includes('system-design') && <SystemDesignCanvas key={questionId} value={sketch} onChange={setSketch} />}
             <div className="si-actions si-sticky">
               <button type="button" className="si-primary" id="done" onClick={finishAnswer}>
                 I'm done, show the answer <span className="si-key-hint">Space</span>
@@ -1393,6 +1401,11 @@ export default function SimpleInterviewPage() {
               <p className="si-status" role="status">{learningSyncState==='storage-error' ? 'Your self-rating could not be saved on this device.' : selfRating ? `Self-rating saved. Next review: ${new Date(reviewDueAt(currentLearning!)!).toLocaleDateString()}.` : ''}</p>
             </fieldset>
             <DeliveryRow delivery={latest?.delivery} />
+            {question.rounds?.includes('system-design') && <div className="sd-comparison">
+              <SystemDesignCanvas value={latest?.sketch ?? sketch} />
+              {referenceDiagram ? <div><SystemDesignCanvas value={referenceDiagram} title="Reference architecture" /><p>{referenceDiagram.note}</p></div>
+                : <p>No reference diagram for this question yet. Compare your sketch with the model answer below.</p>}
+            </div>}
             <div className="si-comparison-grid">
               <section className="si-col-yours" aria-label="Your answer and evaluation">
                 <div className="si-panel-header">
@@ -1453,6 +1466,7 @@ export default function SimpleInterviewPage() {
                   {earlier.map(attempt => <details key={attempt.id} className="si-attempt">
                     <summary><time dateTime={new Date(attempt.time).toISOString()}>{new Date(attempt.time).toLocaleString()}</time>{attempt.status === 'checked' ? (attempt.source === 'rubric' ? ' · Key points checked' : (!SHOW_COVERAGE_SCORE || attempt.score === undefined) ? ' · Checked against model answer' : ` · ${attempt.score}% coverage`) : ' · Not checked'}</summary>
                     <DeliveryRow delivery={attempt.delivery} />
+                    {attempt.sketch && <details><summary>Saved sketch</summary><SystemDesignCanvas value={attempt.sketch} /></details>}
                     <p className="si-yours">{attempt.transcript || 'No answer was captured.'}</p>
                     {attempt.followUp && <div><h4>Follow-up</h4><p>{attempt.followUp.question}</p><p>{attempt.followUp.transcript || 'No follow-up answer was captured.'}</p></div>}
                     <ul className="si-points">{attempt.points.map(point => <li key={point.point}><span className="si-verdict">{point.verdict === 'covered' ? 'Covered' : 'Not detected'}</span>{point.point}{point.verdict === 'covered' && point.evidence && <blockquote className="si-point-evidence"><span>In your answer</span>{point.evidence}</blockquote>}</li>)}</ul>

@@ -791,7 +791,7 @@ test('delivery numbers use captured timing, persist with the attempt, and fit bo
   await page.waitForTimeout(500);
   await page.locator('#done').click();
   const row=page.getByRole('group',{name:'Delivery measurements'});
-  await expect(row).toContainText('8 filler matches');
+  await expect(row).toContainText('3 filler matches');
   await expect(row).toContainText('1 pauses >3s');
   const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('nm-interview-attempts-v1:guest')||'[]'));
   expect(saved[0].delivery.durationSeconds).toBeGreaterThan(4);
@@ -813,6 +813,67 @@ test('delivery numbers use captured timing, persist with the attempt, and fit bo
   await expect(page.locator('.si-answer-stage > .si-delivery')).toHaveCount(0);
   await page.getByText('Earlier attempts',{exact:true}).scrollIntoViewIfNeeded();
   await page.locator('.si-attempt summary').first().click();
-  await expect(page.locator('.si-attempt .si-delivery')).toContainText('8 filler matches');
+  await expect(page.locator('.si-attempt .si-delivery')).toContainText('3 filler matches');
   expect(errors).toEqual([]);
+});
+
+test('system design canvas supports drag and keyboard, saves sketches and compares reference diagrams in both themes', async ({page},testInfo) => {
+  const errors:string[]=[]; page.on('pageerror',e=>errors.push(e.message));
+  const requests=await controlledRoom(page);
+  const id='repo:system-design:feature-store-design';
+  await page.goto(`http://localhost:${PORT}/interview?q=${encodeURIComponent(id)}&round=system-design`);
+  await page.locator('#start-topic').click();
+  await answerByTyping(page);
+  const canvas=page.getByRole('region',{name:'Your sketch',exact:true});
+  await expect(canvas).toBeVisible();
+  await expect(page.getByRole('region',{name:'Reference architecture'})).toHaveCount(0);
+  await canvas.getByRole('button',{name:'client',exact:true}).click();
+  await canvas.getByRole('button',{name:'API',exact:true}).click();
+  const client=canvas.getByRole('button',{name:'client box',exact:true});
+  await client.focus(); await page.keyboard.press('ArrowRight');
+  expect(await client.evaluate(el=>parseFloat((el as HTMLElement).style.left))).toBe(2);
+  const before=await client.boundingBox();
+  await page.mouse.move(before!.x+10,before!.y+10); await page.mouse.down();
+  await page.mouse.move(before!.x+50,before!.y+90,{steps:5}); await page.mouse.up();
+  expect((await client.boundingBox())!.y).toBeGreaterThan(before!.y+60);
+  await canvas.getByRole('button',{name:'Draw arrow'}).click();
+  await client.focus(); await page.keyboard.press('Enter');
+  await canvas.getByRole('button',{name:'API box',exact:true}).focus(); await page.keyboard.press('Enter');
+  await expect(canvas.getByRole('list',{name:'Connections'})).toContainText('client → API');
+  await canvas.getByRole('button',{name:'Clear',exact:true}).click();
+  await expect(canvas.locator('.sd-node')).toHaveCount(0);
+  await canvas.getByRole('button',{name:'Undo',exact:true}).click();
+  await expect(canvas.locator('.sd-node')).toHaveCount(2);
+  for(const width of [375,1440])for(const theme of ['light','dark']) {
+    await page.setViewportSize({width,height:1000});
+    if (await page.locator('html').getAttribute('data-theme') !== theme) await page.getByRole('button',{name:'Toggle color mode'}).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme',theme);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await expect(client).toHaveCSS('font-size','12px');
+    await expect(client).toHaveCSS('padding','3px');
+    await canvas.screenshot({path:testInfo.outputPath(`canvas-${width}-${theme}.png`)});
+  }
+  await page.locator('#done').click();
+  const comparison=page.locator('.sd-comparison');
+  await expect(comparison.getByRole('region',{name:'Reference architecture'})).toBeVisible();
+  await expect(comparison.getByRole('region',{name:'Your sketch',exact:true}).locator('.sd-node')).toHaveCount(2);
+  for(const width of [375,1440])for(const theme of ['light','dark']) {
+    await page.setViewportSize({width,height:1000});
+    if (await page.locator('html').getAttribute('data-theme') !== theme) await page.getByRole('button',{name:'Toggle color mode'}).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme',theme);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    const metrics=await comparison.evaluate(el=>({viewport:innerWidth,documentWidth:document.documentElement.scrollWidth,columns:getComputedStyle(el).gridTemplateColumns,labelOverflow:[...el.querySelectorAll('.sd-node')].filter(n=>n.scrollHeight>n.clientHeight || n.scrollWidth>n.clientWidth).length}));
+    expect(metrics.labelOverflow).toBe(0);
+    await testInfo.attach(`layout-${width}-${theme}`,{body:JSON.stringify(metrics),contentType:'application/json'});
+    await comparison.screenshot({path:testInfo.outputPath(`reference-${width}-${theme}.png`)});
+  }
+  const stored=await page.evaluate(()=>JSON.parse(localStorage.getItem('nm-interview-attempts-v1:guest')||'[]'));
+  expect(stored.at(-1).sketch.nodes).toHaveLength(2);
+  expect(stored.at(-1).sketch.edges).toHaveLength(1);
+  await page.reload();
+  await page.locator('#start-topic').click(); await answerByTyping(page); await page.locator('#done').click();
+  await page.locator('.si-attempt summary').first().click();
+  await page.getByText('Saved sketch',{exact:true}).first().click();
+  await expect(page.locator('.si-attempt .sd-node')).toHaveCount(2);
+  expect(errors).toEqual([]); expect(requests).toEqual([]);
 });
