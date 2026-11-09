@@ -85,13 +85,17 @@ export async function judgeAnswer(answer: string, criteria: string[], reference:
 /** Rubric checks require entailment, not just related wording. Scores stay hidden
  * until a held-out evaluation supports presenting a numeric grade. */
 export const SHOW_RUBRIC_SCORE = false;
-export async function judgeKeyPoints(answer: string, keyPoints: string[], models: JudgeModels): Promise<AnswerJudgement> {
+export async function judgeKeyPoints(answer: string, keyPoints: string[], models: JudgeModels, includeSentencePairs = false): Promise<AnswerJudgement> {
   const sentences = splitAnswer(answer);
   if (!sentences.length) return { score: 0, points: keyPoints.map(point => ({ point, verdict: 'missed', confidence: 0 })), sentences: [], improvements: [] };
-  const vectors = await models.embed([...keyPoints, ...sentences]);
-  // Check up to three related sentences: a paraphrase may not be the nearest match.
-  const candidates = keyPoints.map((_, i) => sentences.map((text, j) => ({ text, sim: dot(vectors[i], vectors[keyPoints.length + j]) }))
-    .sort((a, b) => b.sim - a.sim).slice(0, 3));
+  // Adjacent sentences can jointly express a point (definition followed by its
+  // consequence). Keep singles too: unrelated context must not replace evidence.
+  const windows = [...sentences, ...(includeSentencePairs ? sentences.slice(0, -1).map((text, i) => `${text} ${sentences[i + 1]}`) : [])];
+  const vectors = await models.embed([...keyPoints, ...windows]);
+  const candidates = keyPoints.map((_, i) => {
+    const ranked = windows.map((text, j) => ({ text, sim: dot(vectors[i], vectors[keyPoints.length + j]), single: j < sentences.length }));
+    return [true, false].flatMap(single => ranked.filter(row => row.single === single).sort((a, b) => b.sim - a.sim).slice(0, 3));
+  });
   const pairs: [string, string][] = candidates.flatMap((rows, i) => rows.map((row): [string, string] => [row.text, keyPoints[i]]));
   const scores = await models.nli(pairs);
   let offset = 0;

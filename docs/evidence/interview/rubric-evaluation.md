@@ -76,3 +76,25 @@ The four-layer completion gate is **not satisfied**. Full typecheck, full unit t
 The checklist now labels detections **Covered** and every other point **Not detected**, with an instruction to compare the checklist with both answers. Conflict detection has no separately validated conflict labels in this sample, so it does not receive a separate UI verdict. Internal legacy verdict names remain readable in saved attempts. Comparisons show newly detected points and both transcripts, without claiming a previously detected point was lost. History uses the same labels.
 
 Focused judge/history tests: 14 passed; links passed. Full typecheck and the first sentence-pair WASM evaluation attempt were stopped by the unchanged 2 GiB memory floor. The build was not started because available memory was below 5 GB. This checkpoint is not full verification sign-off.
+
+## Sentence-pair recall experiment (prepared, not enabled)
+
+The candidate retains the top three single sentences and adds the top three adjacent sentence pairs per point. Similarity, entailment and contradiction thresholds are unchanged. No rubric wording, sample answer or manual mark was changed. The original measured output is preserved in `rubric-results-before.json`.
+
+The first candidate run was stopped at 2,030 MiB available RAM by the unchanged 2 GiB memory floor, before a page was created. It produced no result. The production checker therefore retains single-sentence matching; the pair option is for evaluation only until measurements support enabling it.
+
+| Measure | Original measurement | Candidate |
+| --- | --- | --- |
+| Recall | 27/63 = 42.9% | Not measured |
+| False positives | 2/66 = 3.0% | Not measured |
+| Point agreement | 91/129 = 70.5% | Not measured |
+| Strong-answer agreement | 17/43 = 39.5% | Not measured |
+
+Once memory permits, run the same 30 answers sequentially against Vite:
+
+```bash
+RUBRIC_SENTENCE_PAIRS=0 RUBRIC_REPORT=docs/evidence/interview/rubric-results-before-rerun.json node scripts/speech-accuracy/with-memory-floor.mjs node scripts/interview/evaluate-rubric.mjs
+RUBRIC_SENTENCE_PAIRS=1 RUBRIC_REPORT=docs/evidence/interview/rubric-results-pairs.json node scripts/speech-accuracy/with-memory-floor.mjs node scripts/interview/evaluate-rubric.mjs
+```
+
+Keep the candidate disabled if false positives increase. This is one general context-window experiment, without sample-specific tuning so far. Any later tuning against these examples would make the sample a development set and would require new held-out answers before claiming generalization. No recall improvement is claimed at this checkpoint.

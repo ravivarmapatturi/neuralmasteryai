@@ -25,7 +25,7 @@ describe('judgeAnswer', () => {
 it('turns a criterion into a plain claim', () => { expect(toClaim('Explains that one model adapts')).toBe('One model adapts'); });
 it('splits unpunctuated speech into windows', () => { expect(splitAnswer(Array(40).fill('word').join(' ')).length).toBeGreaterThan(1); });
 
-import { judgePracticeAnswer } from './answerJudge';
+import { judgePracticeAnswer, judgeKeyPoints } from './answerJudge';
 it('uses optional rubric points and requires entailment even with high similarity', async () => {
   const q = { answer: 'A different reference sentence.', keyPoints: ['Alpha is useful', 'Beta is useful', 'Gamma is useful'] };
   const result = await judgePracticeAnswer('Alpha is useful. Beta is related. Gamma is false.', q, {
@@ -43,4 +43,25 @@ it('retains the current reference-sentence check without a rubric', async () => 
 it('does not mark a rubric claim hit when another sentence contradicts it', async () => {
   const result = await judgePracticeAnswer('Alpha is useful. Alpha is false.', {answer:'',keyPoints:['Alpha is useful']},models);
   expect(result.points[0].verdict).toBe('conflict');
+});
+it('checks adjacent context without lowering entailment thresholds', async () => {
+  const premises: string[] = [];
+  const result = await judgeKeyPoints('Alpha uses random masks. This prevents coadaptation.', ['Alpha prevents coadaptation'], {
+    embed: async texts => texts.map(() => [1]),
+    nli: async pairs => pairs.map(([premise]) => {
+      premises.push(premise);
+      return {entails:premise.includes('masks. This') ? 0.9 : 0.2,conflicts:0.01};
+    }),
+  }, true);
+  expect(premises).toContain('Alpha uses random masks. This prevents coadaptation.');
+  expect(result.points[0].verdict).toBe('covered');
+});
+it('retains a single-sentence baseline for the fixed-sample comparison', async () => {
+  const { judgeKeyPoints } = await import('./answerJudge');
+  const premises: string[] = [];
+  await judgeKeyPoints('Alpha is one thing. Beta is another thing.', ['Alpha is one thing'], {
+    embed: async texts => texts.map(() => [1]),
+    nli: async pairs => pairs.map(([premise]) => { premises.push(premise); return {entails:0.1,conflicts:0.1}; }),
+  }, false);
+  expect(premises).toEqual(['Alpha is one thing.','Beta is another thing.']);
 });
