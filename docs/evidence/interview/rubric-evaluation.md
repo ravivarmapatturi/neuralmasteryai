@@ -98,3 +98,5 @@ RUBRIC_SENTENCE_PAIRS=1 RUBRIC_REPORT=docs/evidence/interview/rubric-results-pai
 ```
 
 Keep the candidate disabled if false positives increase. This is one general context-window experiment, without sample-specific tuning so far. Any later tuning against these examples would make the sample a development set and would require new held-out answers before claiming generalization. No recall improvement is claimed at this checkpoint.
+
+Later verification in this continuation: all 20 focused judge/history/follow-up tests and scoped TypeScript passed. The unchanged baseline rerun was stopped at 2,015 MiB before inference, producing no result. The new typed follow-up browser case passed separately; the full browser suite passed its first 17 existing cases before the memory floor stopped it at 2,040 MiB. Candidate matching remains disabled.
