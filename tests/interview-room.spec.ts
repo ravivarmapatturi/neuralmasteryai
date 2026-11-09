@@ -546,3 +546,51 @@ test('follow-up mic failure offers typing; navigating before permission resolves
   await expect.poll(() => page.evaluate(() => (window as any).micTracks.every((t:MediaStreamTrack) => t.readyState==='ended'))).toBe(true);
   await expect(follow).toHaveCount(0);
 });
+
+test('Not detected checklist visual checks in both themes at mobile and desktop widths', async ({page}, testInfo) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await controlledRoom(page);
+  await page.goto(`http://localhost:${PORT}/interview?q=senior:dropout`);
+  const question = practice.topics.flatMap(t => t.questions).find(q => q.id==='senior:dropout') as {keyPoints:string[]};
+  await page.evaluate(points => { (window as any).rubricClaims=points; (window as any).rubricHitLimit=1; }, question.keyPoints);
+  await page.locator('#start-topic').click();
+  await answerByTyping(page);
+  await page.locator('#done').click();
+  await page.waitForFunction(() => typeof (window as any).releaseReview==='function');
+  await page.evaluate(() => (window as any).releaseReview());
+  await expect(page.locator('.si-check .si-verdict')).toHaveText(['Covered','Not detected','Not detected','Not detected']);
+  await expect(page.locator('.si-check')).not.toContainText(/Missed|Possible conflict|Partly covered/);
+  for(const width of [375,1440]) for(const theme of ['light','dark']) {
+    await page.setViewportSize({width,height:1000});
+    await page.evaluate(theme => document.documentElement.setAttribute('data-theme',theme), theme);
+    await page.evaluate(() => document.fonts.ready);
+    await expect(page.locator('.si-check')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    await page.locator('.si-check').evaluate(element => element.scrollIntoView({block:'center'}));
+    await page.screenshot({path:testInfo.outputPath(`checklist-${width}-${theme}.png`)});
+  }
+  expect(errors).toEqual([]);
+});
+
+test('spoken follow-up visual checks in both themes at mobile and desktop widths', async ({page}, testInfo) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await openFollowUp(page);
+  const follow = page.getByRole('region',{name:'Spoken follow-up'});
+  await follow.getByRole('button',{name:'Type follow-up answer',exact:true}).click();
+  await follow.getByLabel('Your follow-up answer').fill('The bias has one value for each output unit.');
+  for(const width of [375,1440]) for(const theme of ['light','dark']) {
+    await page.setViewportSize({width,height:1000});
+    await page.evaluate(theme => document.documentElement.setAttribute('data-theme',theme), theme);
+    await page.evaluate(() => document.fonts.ready);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    for(const selector of ['#previous-question','#next-question','#practice-again']) await expect(page.locator(selector)).toBeVisible();
+    await follow.evaluate(element => element.scrollIntoView({block:'center'}));
+    await page.screenshot({path:testInfo.outputPath(`follow-up-${width}-${theme}.png`)});
+  }
+  await page.setViewportSize({width:375,height:1000});
+  await follow.getByRole('button',{name:'Save follow-up',exact:true}).click();
+  await expect(follow).toContainText('Follow-up saved with this attempt.');
+  expect(errors).toEqual([]);
+});

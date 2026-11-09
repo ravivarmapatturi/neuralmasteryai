@@ -1,6 +1,6 @@
 # Spoken follow-up checkpoint — 9 November 2026
 
-Status: implementation committed; partial runtime verification passed, remaining checks blocked by available memory. Do not treat this checkpoint as release sign-off.
+Status: implementation committed; pending interview browser and visual verification completed in the continuation below. Broader production gates remain separate. Do not treat this checkpoint as release sign-off.
 
 ## Behavior implemented
 
@@ -44,3 +44,25 @@ Run both fixed-sample commands in `rubric-evaluation.md` with Vite on 5173 once 
 All dev server/browser processes started for this checkpoint were stopped. Other applications and other worktrees' processes were left untouched. No push.
 
 A subsequent baseline rerun with unchanged single-sentence matching was stopped at 2,015 MiB before inference. It also produced no result. Both the original baseline and unchanged sample remain available; no after metric exists.
+
+
+## Pending browser and visual checks completed — 9 November, 17:32 IST
+
+Ran each of the 19 pending cases individually with one Playwright worker, waiting for memory between cases. The unchanged process-group guard retained its 2,048 MiB floor; the queue waited for 2,816 MiB before launching a case. The initial voice attempt stopped at 2,037 MiB, then the queued rerun passed. No test assertion or guard was weakened.
+
+| Coverage | Observed result |
+| --- | --- |
+| Rubric labels, retry comparison, history and reload | Passed, 10.0s command total |
+| Failed review and empty rubric attempt | Passed, 6.4s |
+| Typed follow-up, late main review, retry/history/reload | Passed, 7.6s |
+| Real capture lifecycle with synthetic tone and TTS/ASR inference doubles | Passed, 6.7s |
+| Next / Previous / Practice again during asking, answering, final transcription and saved state | All 12 cases passed individually, 5.9–7.1s each |
+| Permission denial and late permission resolution after navigation | Passed, 6.6s |
+| Checklist visual case | Passed; final viewport capture rerun 5.4s |
+| Follow-up visual case, including mobile Save follow-up click | Passed; final viewport capture rerun 5.2s |
+| Focused judge/history/selector Vitest | 20/20 passed, 3.60s |
+| Links and anchors | Passed |
+
+Inspected all eight focused viewport screenshots: checklist and active typed follow-up at 375×1,000 and 1,440×1,000, light and dark. Labels, wrapping, focus outline, textarea and buttons were readable. Document scroll width matched viewport width in every case. All checklist points fit above the mobile sticky actions in the focused view. The follow-up save and mic controls remained accessible, and saving at 375px passed. No page exceptions were observed in either visual case. Full-page screenshots initially showed fixed bars at the capture's scroll offset; viewport recaptures confirmed the actual layout.
+
+Images remain in ignored `test-results/pending-18/` and `test-results/pending-19/`, not committed. This is 19 passing individual cases, not a claim of a new full-suite run. Speech accuracy and a physical mic remain unmeasured. The Vite server and all test browser processes were stopped. Build was not started: `free -g` showed 3 GB available, below the repository's 5 GB requirement. Full project gates will be revisited after the next answer-judge change. No push.
