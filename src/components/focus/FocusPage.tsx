@@ -93,7 +93,7 @@ export default function FocusPage() {
         <header className="nm-focus-header">
           <h1 className="nm-focus-title">Focus</h1>
           <p className="nm-focus-subtitle">
-            Structure your work with focused intervals, take real breaks, and track your momentum.
+            Work in focused intervals and take real breaks.
           </p>
         </header>
 

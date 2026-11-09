@@ -346,4 +346,65 @@ describe('focus stats and merge logic', () => {
     expect(breakdown[1].section).toBe('labs');
     expect(breakdown[1].percentage).toBe(44); // 1200 / 2700 ~ 44.4% -> 44%
   });
+
+  it('splits session crossing midnight proportionally across local day boundaries', () => {
+    // Session starting 15 minutes before local midnight and ending 10 minutes after midnight
+    // Rule chosen: Proportional splitting at local 00:00 boundary.
+    // 15 min before midnight (900s) belongs to Day 1.
+    // 10 min after midnight (600s) belongs to Day 2.
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+
+    const start = new Date(midnight.getTime() - 15 * 60 * 1000); // 23:45
+    const end = new Date(midnight.getTime() + 10 * 60 * 1000);   // 00:10
+
+    const crossMidnightSession: FocusSession = {
+      id: 'midnight-sess-1',
+      startedAt: start.toISOString(),
+      endedAt: end.toISOString(),
+      plannedMinutes: 25,
+      focusedSeconds: 1500, // 25 minutes
+      completed: true,
+      section: 'learn',
+    };
+
+    // When evaluated at end (Day 2, after midnight):
+    const todayAtEnd = todayFocusSeconds([crossMidnightSession], end.getTime());
+    expect(todayAtEnd).toBe(600); // exactly 10 minutes for Day 2
+
+    // When evaluated at start (Day 1, before midnight):
+    const todayAtStart = todayFocusSeconds([crossMidnightSession], start.getTime());
+    expect(todayAtStart).toBe(900); // exactly 15 minutes for Day 1
+
+    // Bar chart should distribute 15m to Day 1 and 10m to Day 2
+    const bars = sevenDayBarStats([crossMidnightSession], end.getTime());
+    const day2Bar = bars[6]; // today (Day 2)
+    const day1Bar = bars[5]; // yesterday (Day 1)
+    expect(day2Bar.focusMinutes).toBe(10);
+    expect(day1Bar.focusMinutes).toBe(15);
+  });
+
+  it('caps focused time to endsAt when stopping or restoring after endsAt has passed', () => {
+    const t0 = 1000000;
+    const initial = createInitialState();
+    const running = startPhase(initial, 'focus', 'learn', t0);
+    const endsAt = running.endsAt!;
+    expect(endsAt).toBe(t0 + 25 * 60 * 1000);
+
+    // Stop 30 minutes after endsAt (55 minutes after start)
+    const lateNow = endsAt + 30 * 60 * 1000;
+    const { completedSession } = stopSession(running, lateNow);
+
+    expect(completedSession).not.toBeNull();
+    // Must be capped at planned 25 minutes (1500s), NOT 55 minutes
+    expect(completedSession?.focusedSeconds).toBe(1500);
+    expect(completedSession?.endedAt).toBe(new Date(endsAt).toISOString());
+    expect(completedSession?.completed).toBe(true);
+
+    // Test restoreStateFromStorage after endsAt has passed
+    const restored = restoreStateFromStorage(running, lateNow);
+    expect(restored.status).toBe('phaseEnded');
+    expect(restored.accumulatedFocusMs).toBe(25 * 60 * 1000);
+    expect(restored.remainingMs).toBe(0);
+  });
 });

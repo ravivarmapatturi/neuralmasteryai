@@ -99,16 +99,19 @@ test.describe('Focus Pomodoro Timer E2E', () => {
     // Desktop 1440px Dark
     const themeBtn = page.getByRole('button', { name: /toggle color mode/i });
     await themeBtn.click();
+    await page.evaluate(() => document.getAnimations().forEach((a) => a.finish()));
     await page.screenshot({ path: join(EVIDENCE_DIR, 'focus-desktop-1440-dark.png'), fullPage: false });
 
     // Desktop Navbar Popover
     const navBtn = page.locator('.nm-timer-nav-btn');
     await navBtn.click();
     await page.waitForSelector('.nm-timer-popover', { state: 'visible' });
+    await page.evaluate(() => document.getAnimations().forEach((a) => a.finish()));
     await page.screenshot({ path: join(EVIDENCE_DIR, 'navbar-desktop-1440-dark.png'), fullPage: false });
 
     // Switch back to light for mobile shots
     await themeBtn.click();
+    await page.evaluate(() => document.getAnimations().forEach((a) => a.finish()));
     await page.screenshot({ path: join(EVIDENCE_DIR, 'navbar-desktop-1440-light.png'), fullPage: false });
 
     // Mobile 375px Light
@@ -126,9 +129,36 @@ test.describe('Focus Pomodoro Timer E2E', () => {
     // Mobile 375px Dark
     const mobileThemeBtn = page.getByRole('button', { name: /toggle color mode/i });
     await mobileThemeBtn.click();
+    await page.evaluate(() => document.getAnimations().forEach((a) => a.finish()));
     await page.screenshot({ path: join(EVIDENCE_DIR, 'focus-mobile-375-dark.png'), fullPage: false });
 
     // Mobile Navbar Dark
     await page.screenshot({ path: join(EVIDENCE_DIR, 'navbar-mobile-375-dark.png'), clip: { x: 0, y: 0, width: 375, height: 80 } });
+  });
+
+  test('reload after endsAt has passed: session saved exactly once with time up to endsAt only', async ({ page }) => {
+    const startTime = new Date('2026-11-09T14:00:00.000Z');
+    await page.clock.install({ time: startTime });
+    await page.goto('/focus');
+    await page.getByRole('button', { name: /start 25m focus/i }).click();
+
+    // Fast-forward 30 minutes (5 minutes past endsAt) then reload
+    await page.clock.fastForward(30 * 60 * 1000);
+    await page.reload();
+    await page.waitForLoadState('domcontentloaded');
+
+    // Break card should be visible
+    await expect(page.locator('.nm-timer-break-card')).toBeVisible();
+
+    // Stats should show exactly 25m (not 30m)
+    await expect(page.locator('.nm-focus-metrics-grid')).toHaveText(/25m/);
+    const sessions = await page.evaluate(() => JSON.parse(localStorage.getItem('nm_focus_sessions') || '[]'));
+    expect(sessions.length).toBe(1);
+    expect(sessions[0].focusedSeconds).toBe(1500);
+
+    // Another reload does not duplicate session
+    await page.reload();
+    const sessionsAfter = await page.evaluate(() => JSON.parse(localStorage.getItem('nm_focus_sessions') || '[]'));
+    expect(sessionsAfter.length).toBe(1);
   });
 });

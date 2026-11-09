@@ -336,10 +336,16 @@ export function stopSession(state: FocusTimerState, now = Date.now()): {
 } {
   let session: FocusSession | null = null;
   const isFocus = state.phase === 'focus';
+  const effectiveNow = state.endsAt !== null ? Math.min(now, state.endsAt) : now;
   let totalFocusedMs = state.accumulatedFocusMs;
 
   if (isFocus && state.status === 'running' && state.lastTickTimestamp !== null) {
-    totalFocusedMs += Math.max(0, now - state.lastTickTimestamp);
+    totalFocusedMs += Math.max(0, effectiveNow - state.lastTickTimestamp);
+  }
+
+  // Focused time is capped by targetDurationMs for focus phases
+  if (isFocus && state.targetDurationMs > 0) {
+    totalFocusedMs = Math.min(state.targetDurationMs, totalFocusedMs);
   }
 
   const focusedSeconds = Math.floor(totalFocusedMs / 1000);
@@ -347,13 +353,17 @@ export function stopSession(state: FocusTimerState, now = Date.now()): {
   // A session is saved when it completes or is stopped, if it has at least 1 minute (60s) of focus
   if (focusedSeconds >= 60 && state.currentSessionId) {
     const started = state.startedAt ? new Date(state.startedAt).toISOString() : new Date(now - totalFocusedMs).toISOString();
+    const sessionEndedAt = (state.endsAt !== null && now >= state.endsAt)
+      ? new Date(state.endsAt).toISOString()
+      : new Date(effectiveNow).toISOString();
+
     session = {
       id: state.currentSessionId,
       startedAt: started,
-      endedAt: new Date(now).toISOString(),
+      endedAt: sessionEndedAt,
       plannedMinutes: state.preset.focusMinutes,
       focusedSeconds,
-      completed: state.remainingMs <= 0 && state.status === 'phaseEnded',
+      completed: state.remainingMs <= 0 || (state.endsAt !== null && now >= state.endsAt),
       section: state.currentSessionSection || 'home',
     };
   }
@@ -431,14 +441,32 @@ export function restoreStateFromStorage(saved: Partial<FocusTimerState> | null, 
 
   if (state.status === 'running' && state.endsAt !== null) {
     if (now >= state.endsAt) {
-      // Completed while tab/browser was closed
-      return completePhase({ ...state, remainingMs: 0 }, now);
+      // Completed while tab/browser was closed:
+      // Cap focus accumulation to endsAt / targetDurationMs
+      const effectiveAccumulatedMs = state.phase === 'focus'
+        ? (state.targetDurationMs > 0 ? state.targetDurationMs : Math.max(0, state.endsAt - (state.startedAt || state.endsAt)))
+        : state.accumulatedFocusMs;
+
+      return completePhase(
+        {
+          ...state,
+          accumulatedFocusMs: effectiveAccumulatedMs,
+          remainingMs: 0,
+        },
+        state.endsAt,
+      );
     }
     // Still running: recalculate remainingMs from timestamp
-    const remainingMs = state.endsAt - now;
+    const remainingMs = Math.max(0, state.endsAt - now);
+    const elapsedSinceLastTick = state.lastTickTimestamp !== null ? Math.max(0, now - state.lastTickTimestamp) : 0;
+    const accumulatedFocusMs = state.phase === 'focus'
+      ? state.accumulatedFocusMs + elapsedSinceLastTick
+      : state.accumulatedFocusMs;
+
     return {
       ...state,
       remainingMs,
+      accumulatedFocusMs,
       lastTickTimestamp: state.phase === 'focus' ? now : null,
     };
   }
@@ -455,6 +483,69 @@ export function localDateString(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+/**
+ * Splits a session's focusedSeconds across local calendar days.
+ * Rule: Focus time crossing local midnight (00:00) is split proportionally between
+ * the calendar day before midnight and the calendar day after midnight based on elapsed time.
+ */
+export function splitSessionByLocalDay(session: FocusSession): Array<{ date: string; seconds: number }> {
+  if (!session || !session.startedAt || !session.endedAt || session.focusedSeconds <= 0) {
+    return [];
+  }
+
+  const startMs = new Date(session.startedAt).getTime();
+  const endMs = new Date(session.endedAt).getTime();
+
+  if (isNaN(startMs) || isNaN(endMs) || endMs <= startMs) {
+    const dStr = localDateString(new Date(session.endedAt || session.startedAt));
+    return [{ date: dStr, seconds: session.focusedSeconds }];
+  }
+
+  const startDateStr = localDateString(new Date(startMs));
+  const endDateStr = localDateString(new Date(endMs));
+
+  if (startDateStr === endDateStr) {
+    return [{ date: startDateStr, seconds: session.focusedSeconds }];
+  }
+
+  // Crosses local midnight (or multiple midnights)
+  const totalDurationMs = endMs - startMs;
+  const result: Array<{ date: string; seconds: number }> = [];
+  let currentStartMs = startMs;
+  let remainingSeconds = session.focusedSeconds;
+
+  while (currentStartMs < endMs) {
+    const curDate = new Date(currentStartMs);
+    const dateStr = localDateString(curDate);
+
+    // Find next midnight in local timezone
+    const nextMidnight = new Date(curDate);
+    nextMidnight.setHours(24, 0, 0, 0);
+    const nextMidnightMs = nextMidnight.getTime();
+
+    const segmentEndMs = Math.min(endMs, nextMidnightMs);
+    const segmentDurationMs = segmentEndMs - currentStartMs;
+
+    // Proportion of this segment relative to total elapsed time
+    const ratio = segmentDurationMs / totalDurationMs;
+    const segmentSeconds = Math.min(remainingSeconds, Math.round(session.focusedSeconds * ratio));
+
+    if (segmentSeconds > 0) {
+      result.push({ date: dateStr, seconds: segmentSeconds });
+      remainingSeconds -= segmentSeconds;
+    }
+
+    currentStartMs = segmentEndMs;
+  }
+
+  // Assign any rounding difference to the last segment
+  if (remainingSeconds > 0 && result.length > 0) {
+    result[result.length - 1].seconds += remainingSeconds;
+  }
+
+  return result;
 }
 
 /** Merge two session lists by id, de-duplicating and sorting chronologically */
@@ -482,8 +573,11 @@ export function todayFocusSeconds(sessions: FocusSession[], now = Date.now()): n
   const todayStr = localDateString(new Date(now));
   let total = 0;
   for (const s of sessions) {
-    if (localDateString(new Date(s.endedAt)) === todayStr) {
-      total += s.focusedSeconds;
+    const splits = splitSessionByLocalDay(s);
+    for (const split of splits) {
+      if (split.date === todayStr) {
+        total += split.seconds;
+      }
     }
   }
   return total;
@@ -498,12 +592,20 @@ export function weekFocusSeconds(sessions: FocusSession[], now = Date.now()): nu
   monday.setDate(d.getDate() - diffToMonday);
   monday.setHours(0, 0, 0, 0);
 
-  const mondayMs = monday.getTime();
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
+
+  const mondayStr = localDateString(monday);
+  const sundayStr = localDateString(sunday);
+
   let total = 0;
   for (const s of sessions) {
-    const endMs = new Date(s.endedAt).getTime();
-    if (endMs >= mondayMs) {
-      total += s.focusedSeconds;
+    const splits = splitSessionByLocalDay(s);
+    for (const split of splits) {
+      if (split.date >= mondayStr && split.date <= sundayStr) {
+        total += split.seconds;
+      }
     }
   }
   return total;
@@ -573,18 +675,22 @@ export function sevenDayBarStats(sessions: FocusSession[], now = Date.now()): Da
   const days: DayBarStat[] = [];
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+  // Map dates to total seconds using proportional midnight splitting
+  const dateToSeconds: Record<string, number> = {};
+  for (const s of sessions) {
+    const splits = splitSessionByLocalDay(s);
+    for (const split of splits) {
+      dateToSeconds[split.date] = (dateToSeconds[split.date] || 0) + split.seconds;
+    }
+  }
+
   for (let i = 6; i >= 0; i--) {
     const d = new Date(now);
     d.setDate(d.getDate() - i);
     const dateStr = localDateString(d);
     const dayLabel = dayNames[d.getDay()];
 
-    let seconds = 0;
-    for (const s of sessions) {
-      if (localDateString(new Date(s.endedAt)) === dateStr) {
-        seconds += s.focusedSeconds;
-      }
-    }
+    const seconds = dateToSeconds[dateStr] || 0;
 
     days.push({
       date: dateStr,
@@ -617,8 +723,10 @@ export function twelveWeekHeatmapStats(sessions: FocusSession[], now = Date.now(
 
   const dateToSeconds: Record<string, number> = {};
   for (const s of sessions) {
-    const dStr = localDateString(new Date(s.endedAt));
-    dateToSeconds[dStr] = (dateToSeconds[dStr] || 0) + s.focusedSeconds;
+    const splits = splitSessionByLocalDay(s);
+    for (const split of splits) {
+      dateToSeconds[split.date] = (dateToSeconds[split.date] || 0) + split.seconds;
+    }
   }
 
   const result: HeatmapDay[] = [];

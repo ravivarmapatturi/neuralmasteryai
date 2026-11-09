@@ -32,6 +32,7 @@ import { useFocusMusic } from './FocusMusicContext';
 
 const TIMER_STORAGE_KEY = 'nm_focus_timer_state';
 const SESSIONS_STORAGE_KEY = 'nm_focus_sessions';
+const PENDING_SESSIONS_STORAGE_KEY = 'nm_focus_pending_sync';
 const MAX_STORED_SESSIONS = 500;
 
 function readStorage<T>(key: string): T | null {
@@ -114,11 +115,18 @@ export function notifyPhaseEnded(phase: FocusPhase) {
 }
 
 async function loadFirestoreFor(uid: string) {
-  const [{ db }, { doc, getDoc, setDoc }] = await Promise.all([
+  const [{ db }, firestore] = await Promise.all([
     import('../lib/firebase'),
     import('firebase/firestore'),
   ]);
-  return { progressRef: doc(db, 'progress', uid), getDoc, setDoc };
+  return {
+    db,
+    progressRef: firestore.doc(db, 'progress', uid),
+    getDoc: firestore.getDoc,
+    setDoc: firestore.setDoc,
+    runTransaction: firestore.runTransaction,
+    onSnapshot: firestore.onSnapshot,
+  };
 }
 
 async function withRetry<T>(fn: () => Promise<T>, attempts = 5, attemptTimeoutMs = 5000): Promise<T> {
@@ -137,6 +145,38 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 5, attemptTimeoutMs
     }
   }
   throw lastErr;
+}
+
+async function syncFocusSessionsToRemote(
+  uid: string,
+  localSessions: FocusSession[],
+  pendingSessions: FocusSession[],
+): Promise<FocusSession[]> {
+  const { db, progressRef, getDoc, setDoc, runTransaction } = await loadFirestoreFor(uid);
+
+  if (typeof runTransaction === 'function') {
+    return await withRetry(async () => {
+      return await runTransaction(db, async (tx) => {
+        const snap = await tx.get(progressRef);
+        const remoteSessions: FocusSession[] = snap.exists() && Array.isArray(snap.data()?.focusSessions)
+          ? snap.data().focusSessions
+          : [];
+        const merged = mergeFocusSessions(remoteSessions, [...localSessions, ...pendingSessions]);
+        tx.set(progressRef, { focusSessions: merged.slice(-MAX_STORED_SESSIONS) }, { merge: true });
+        return merged;
+      });
+    });
+  } else {
+    return await withRetry(async () => {
+      const snap = await getDoc(progressRef);
+      const remoteSessions: FocusSession[] = snap.exists() && Array.isArray(snap.data()?.focusSessions)
+        ? snap.data()!.focusSessions
+        : [];
+      const merged = mergeFocusSessions(remoteSessions, [...localSessions, ...pendingSessions]);
+      await setDoc(progressRef, { focusSessions: merged.slice(-MAX_STORED_SESSIONS) }, { merge: true });
+      return merged;
+    });
+  }
 }
 
 export interface FocusTimerContextType {
@@ -168,19 +208,63 @@ export interface FocusTimerContextType {
 
 const FocusTimerContext = createContext<FocusTimerContextType | null>(null);
 
+interface InitialFocusData {
+  timerState: FocusTimerState;
+  sessions: FocusSession[];
+  reloadCompletedSession: FocusSession | null;
+}
+
+function getInitialFocusTimerStateAndSessions(): InitialFocusData {
+  const savedTimer = readStorage<Partial<FocusTimerState> & { lastHandledSessionId?: string }>(TIMER_STORAGE_KEY);
+  const savedSessions = readStorage<FocusSession[]>(SESSIONS_STORAGE_KEY);
+  let sessions: FocusSession[] = Array.isArray(savedSessions) ? savedSessions : [];
+  let reloadCompletedSession: FocusSession | null = null;
+
+  const now = Date.now();
+  if (savedTimer && savedTimer.status === 'running' && savedTimer.endsAt !== null && now >= savedTimer.endsAt) {
+    if (savedTimer.phase === 'focus' && savedTimer.currentSessionId) {
+      const alreadyHandled =
+        sessions.some((s) => s.id === savedTimer.currentSessionId) ||
+        savedTimer.lastHandledSessionId === savedTimer.currentSessionId;
+
+      if (!alreadyHandled) {
+        const plannedMinutes = savedTimer.preset?.focusMinutes || 25;
+        const targetMs = savedTimer.targetDurationMs || plannedMinutes * 60 * 1000;
+        const focusedSeconds = Math.floor(targetMs / 1000);
+        const started = savedTimer.startedAt
+          ? new Date(savedTimer.startedAt).toISOString()
+          : new Date(savedTimer.endsAt - targetMs).toISOString();
+
+        reloadCompletedSession = {
+          id: savedTimer.currentSessionId,
+          startedAt: started,
+          endedAt: new Date(savedTimer.endsAt).toISOString(), // focused time up to endsAt only
+          plannedMinutes,
+          focusedSeconds: Math.max(60, focusedSeconds),
+          completed: true,
+          section: savedTimer.currentSessionSection || 'home',
+        };
+
+        sessions = mergeFocusSessions(sessions, [reloadCompletedSession]);
+        writeStorage(SESSIONS_STORAGE_KEY, sessions);
+        const pending = readStorage<FocusSession[]>(PENDING_SESSIONS_STORAGE_KEY) || [];
+        writeStorage(PENDING_SESSIONS_STORAGE_KEY, mergeFocusSessions(pending, [reloadCompletedSession]));
+        savedTimer.lastHandledSessionId = savedTimer.currentSessionId;
+      }
+    }
+  }
+
+  const timerState = restoreStateFromStorage(savedTimer, now);
+  return { timerState, sessions, reloadCompletedSession };
+}
+
 export function FocusTimerProvider({ children }: { children: ReactNode }) {
   const { user, loading: authLoading } = useAuth();
   const { enabled: musicEnabled, playing: musicPlaying, play: playMusic, pause: pauseMusic } = useFocusMusic();
 
-  const [state, setState] = useState<FocusTimerState>(() => {
-    const saved = readStorage<Partial<FocusTimerState>>(TIMER_STORAGE_KEY);
-    return restoreStateFromStorage(saved);
-  });
-
-  const [sessions, setSessions] = useState<FocusSession[]>(() => {
-    const saved = readStorage<FocusSession[]>(SESSIONS_STORAGE_KEY);
-    return Array.isArray(saved) ? saved : [];
-  });
+  const [initialData] = useState<InitialFocusData>(() => getInitialFocusTimerStateAndSessions());
+  const [state, setState] = useState<FocusTimerState>(initialData.timerState);
+  const [sessions, setSessions] = useState<FocusSession[]>(initialData.sessions);
 
   const stateRef = useRef(state);
   useEffect(() => {
@@ -197,7 +281,7 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
     writeStorage(SESSIONS_STORAGE_KEY, bounded);
   }, []);
 
-  // Sync with Firestore for signed-in users
+  // Sync with Firestore for signed-in users (initial fetch, retry pending, and live onSnapshot)
   useEffect(() => {
     if (authLoading) return;
     if (!user) {
@@ -207,34 +291,49 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
     }
 
     let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
 
     user.getIdToken(true).then(() => {
       if (cancelled) return;
-      loadFirestoreFor(user.uid).then(async ({ progressRef, getDoc, setDoc }) => {
-        if (cancelled) return;
-        try {
-          const snap = await withRetry(() => getDoc(progressRef));
-          const remoteSessions: FocusSession[] = snap.exists() && Array.isArray(snap.data()?.focusSessions)
-            ? snap.data()!.focusSessions
-            : [];
-          const localSessions = readStorage<FocusSession[]>(SESSIONS_STORAGE_KEY) || [];
-          const merged = mergeFocusSessions(remoteSessions, localSessions);
+      const localSessions = readStorage<FocusSession[]>(SESSIONS_STORAGE_KEY) || [];
+      const pendingSessions = readStorage<FocusSession[]>(PENDING_SESSIONS_STORAGE_KEY) || [];
 
+      syncFocusSessionsToRemote(user.uid, localSessions, pendingSessions)
+        .then((merged) => {
           if (cancelled) return;
-          await withRetry(() =>
-            setDoc(progressRef, { focusSessions: merged.slice(-MAX_STORED_SESSIONS) }, { merge: true }),
-          );
-
-          if (cancelled) return;
+          writeStorage(PENDING_SESSIONS_STORAGE_KEY, []);
           updateSessions(merged);
-        } catch (err) {
-          console.warn('Focus timer: failed to sync with Firestore', err);
-        }
-      });
+        })
+        .catch((err) => {
+          console.warn('Focus timer: failed to sync with Firestore on sign-in, will retry next save', err);
+        });
+
+      loadFirestoreFor(user.uid)
+        .then(({ progressRef, onSnapshot }) => {
+          if (cancelled) return;
+          unsubscribe = onSnapshot(
+            progressRef,
+            (snap) => {
+              if (cancelled) return;
+              const remoteSessions: FocusSession[] = snap.exists() && Array.isArray(snap.data()?.focusSessions)
+                ? snap.data()!.focusSessions
+                : [];
+              const local = readStorage<FocusSession[]>(SESSIONS_STORAGE_KEY) || [];
+              const pending = readStorage<FocusSession[]>(PENDING_SESSIONS_STORAGE_KEY) || [];
+              const merged = mergeFocusSessions(remoteSessions, [...local, ...pending]);
+              updateSessions(merged);
+            },
+            (err) => {
+              console.error('Focus timer live sync error:', err);
+            },
+          );
+        })
+        .catch(() => {});
     });
 
     return () => {
       cancelled = true;
+      if (unsubscribe) unsubscribe();
     };
   }, [user, authLoading, updateSessions]);
 
@@ -243,20 +342,84 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
       const merged = mergeFocusSessions(sessionsRef.current, [session]);
       updateSessions(merged);
 
+      const pending = readStorage<FocusSession[]>(PENDING_SESSIONS_STORAGE_KEY) || [];
+      const nextPending = mergeFocusSessions(pending, [session]);
+      writeStorage(PENDING_SESSIONS_STORAGE_KEY, nextPending);
+
       if (user) {
-        loadFirestoreFor(user.uid).then(async ({ progressRef, setDoc }) => {
-          try {
-            await withRetry(() =>
-              setDoc(progressRef, { focusSessions: merged.slice(-MAX_STORED_SESSIONS) }, { merge: true }),
-            );
-          } catch {
-            // will re-sync next cycle
-          }
-        });
+        user.getIdToken(true).then(() => {
+          syncFocusSessionsToRemote(user.uid, merged, nextPending)
+            .then((syncedMerged) => {
+              writeStorage(PENDING_SESSIONS_STORAGE_KEY, []);
+              updateSessions(syncedMerged);
+            })
+            .catch((err) => {
+              console.warn('Focus timer: save failed, queued in pending sync for next retry', err);
+            });
+        }).catch(() => {});
       }
     },
     [user, updateSessions],
   );
+
+  // Phase completion deduplication ref
+  const phaseEndHandledRef = useRef<string | null>(
+    initialData.reloadCompletedSession
+      ? `${initialData.reloadCompletedSession.id}_${new Date(initialData.reloadCompletedSession.endedAt).getTime()}`
+      : null,
+  );
+
+  const handlePhaseEnd = useCallback(
+    (currentState: FocusTimerState, now: number) => {
+      if (currentState.status !== 'running' || currentState.endsAt === null) return;
+      const phaseKey = `${currentState.currentSessionId || currentState.phase}_${currentState.endsAt}`;
+      if (phaseEndHandledRef.current === phaseKey) return;
+      phaseEndHandledRef.current = phaseKey;
+
+      playChime();
+      if (currentState.notificationsEnabled) {
+        notifyPhaseEnded(currentState.phase);
+      }
+
+      if (currentState.phase === 'focus' && currentState.currentSessionId) {
+        const plannedMinutes = currentState.preset.focusMinutes;
+        const targetMs = currentState.targetDurationMs || plannedMinutes * 60 * 1000;
+        // Focused time is strictly capped up to endsAt only
+        const effectiveElapsed = currentState.lastTickTimestamp !== null
+          ? Math.max(0, currentState.endsAt - currentState.lastTickTimestamp)
+          : 0;
+        const totalMs = Math.min(targetMs, currentState.accumulatedFocusMs + effectiveElapsed);
+        const focusedSeconds = Math.floor(totalMs / 1000);
+        const started = currentState.startedAt ? new Date(currentState.startedAt).toISOString() : new Date(currentState.endsAt - totalMs).toISOString();
+
+        const completedSession: FocusSession = {
+          id: currentState.currentSessionId,
+          startedAt: started,
+          endedAt: new Date(currentState.endsAt).toISOString(),
+          plannedMinutes,
+          focusedSeconds: Math.max(60, focusedSeconds),
+          completed: true,
+          section: currentState.currentSessionSection || 'home',
+        };
+        recordSession(completedSession);
+      }
+
+      const next = completePhase(currentState, now);
+      setState(next);
+      writeStorage(TIMER_STORAGE_KEY, { ...next, lastHandledSessionId: currentState.currentSessionId });
+    },
+    [recordSession],
+  );
+
+  // If a session completed while tab was reloaded or closed, chime and notify once on mount
+  useEffect(() => {
+    if (initialData.reloadCompletedSession) {
+      playChime();
+      if (initialData.timerState.notificationsEnabled) {
+        notifyPhaseEnded('focus');
+      }
+    }
+  }, [initialData]);
 
   // Music coordination:
   // "Focus music: if music is enabled, play during focus and pause during breaks, through the existing useFocusMusic. Do not change music behaviour when the timer is not running."
@@ -286,6 +449,11 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
       if (document.hidden) {
         hiddenAt = Date.now();
       } else {
+        if (stateRef.current.status === 'running' && stateRef.current.endsAt !== null && Date.now() >= stateRef.current.endsAt) {
+          handlePhaseEnd(stateRef.current, Date.now());
+          return;
+        }
+
         if (hiddenAt !== null) {
           const duration = Date.now() - hiddenAt;
           hiddenAt = null;
@@ -303,7 +471,7 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
     return () => {
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, []);
+  }, [handlePhaseEnd]);
 
   // Phase completion timer effect
   useEffect(() => {
@@ -313,27 +481,13 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
 
     const msUntilEnd = Math.max(0, state.endsAt - Date.now());
     const timeout = setTimeout(() => {
-      const next = completePhase(stateRef.current, Date.now());
-      playChime();
-      if (stateRef.current.notificationsEnabled) {
-        notifyPhaseEnded(stateRef.current.phase);
-      }
-
-      // If phase was focus and finished, save session
-      if (stateRef.current.phase === 'focus') {
-        const { completedSession } = stopSession(stateRef.current, Date.now());
-        if (completedSession) {
-          recordSession({ ...completedSession, completed: true });
-        }
-      }
-
-      setState(next);
+      handlePhaseEnd(stateRef.current, Date.now());
     }, msUntilEnd);
 
     return () => {
       clearTimeout(timeout);
     };
-  }, [state.status, state.endsAt, state.phase, recordSession]);
+  }, [state.status, state.endsAt, state.phase, handlePhaseEnd]);
 
   // Document title updater while running
   useEffect(() => {
