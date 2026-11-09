@@ -7,6 +7,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ProgressProvider } from './contexts/ProgressContext';
 import { GamificationProvider } from './contexts/GamificationContext';
 import { FocusMusicProvider } from './contexts/FocusMusicContext';
+import { FocusTimerProvider } from './contexts/FocusTimerContext';
 import DocLayout from './components/layout/DocLayout';
 // The practice problem bank is several MB; load it only on practice routes.
 const PracticeProblemLayout = lazy(() => import('./components/layout/PracticeProblemLayout'));
@@ -70,8 +71,9 @@ export default function App() {
         <ProgressProvider>
           <GamificationProvider>
             <FocusMusicProvider>
-              <ConfettiCanvas />
-              <MDXProvider components={mdxComponents}>
+              <FocusTimerProvider>
+                <ConfettiCanvas />
+                <MDXProvider components={mdxComponents}>
 
               {/* Reads Vite's own BASE_URL (derived from vite.config.ts's
                   `base`) instead of a second hardcoded copy of the same
@@ -139,7 +141,8 @@ export default function App() {
                 </div>
               </BrowserRouter>
             </MDXProvider>
-          </FocusMusicProvider>
+          </FocusTimerProvider>
+        </FocusMusicProvider>
         </GamificationProvider>
         </ProgressProvider>
       </AuthProvider>

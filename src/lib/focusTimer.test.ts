@@ -43,6 +43,9 @@ describe('focusTimer pure logic', () => {
     expect(state.status).toBe('idle');
     expect(state.remainingMs).toBe(25 * 60 * 1000);
     expect(state.completedFocusCount).toBe(0);
+
+    const state50 = createInitialState(PRESET_50_10);
+    expect(state50.remainingMs).toBe(50 * 60 * 1000);
   });
 
   it('starts focus phase with correct durations and session ID', () => {
@@ -240,6 +243,7 @@ describe('focus stats and merge logic', () => {
 
   it('computes today and all-time focus seconds and completed count', () => {
     expect(todayFocusSeconds(sessions, baseMs)).toBe(2700); // 45m
+    expect(weekFocusSeconds(sessions, baseMs)).toBe(2700);
     expect(allTimeFocusSeconds(sessions)).toBe(2700);
     expect(completedSessionCount(sessions)).toBe(1);
     expect(formatFocusTime(2700)).toBe('45m');
