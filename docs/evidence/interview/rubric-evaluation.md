@@ -70,3 +70,9 @@ Feature commits: `27323497` (rubrics and scorer), `0272c2c3` (attempt history an
 The browser inference doubles exercise worker RPC and UI behavior, not scoring accuracy. The 30-answer accuracy measurement uses real browser WASM inference. Firestore transaction, retry and account-switch behavior were tested with doubles; no production account or emulator was used for this task. All started servers and browsers were closed.
 
 The four-layer completion gate is **not satisfied**. Full typecheck, full unit tests, production build and final browser/visual review remain for a machine with sufficient available memory. The tracker stays blocked on verification; these commits are available for lead review and must not be treated as deployment sign-off.
+
+## Review correction (9 November, continuation)
+
+The checklist now labels detections **Covered** and every other point **Not detected**, with an instruction to compare the checklist with both answers. Conflict detection has no separately validated conflict labels in this sample, so it does not receive a separate UI verdict. Internal legacy verdict names remain readable in saved attempts. Comparisons show newly detected points and both transcripts, without claiming a previously detected point was lost. History uses the same labels.
+
+Focused judge/history tests: 14 passed; links passed. Full typecheck and the first sentence-pair WASM evaluation attempt were stopped by the unchanged 2 GiB memory floor. The build was not started because available memory was below 5 GB. This checkpoint is not full verification sign-off.

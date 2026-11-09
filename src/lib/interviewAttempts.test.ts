@@ -32,10 +32,10 @@ describe('attempt history', () => {
     expect(readInterviewAttempts('a')).toEqual([attempt('a')]);
     expect(readInterviewAttempts('b')).toEqual([]);
   });
-  it('compares gains and losses only for matching, checked rubrics', () => {
+  it('compares newly detected points only for matching, checked rubrics', () => {
     const a = attempt('a');
     const b = {...attempt('b'), points: [{...a.points[0],verdict:'missed' as const}]};
-    expect(compareAttempts(a,b)).toEqual({comparable:true,gained:[],lost:['One claim']});
+    expect(compareAttempts(a,b)).toEqual({comparable:true,gained:[]});
     expect(compareAttempts(b,a).gained).toEqual(['One claim']);
     expect(compareAttempts(a,{...b,status:'failed'}).comparable).toBe(false);
     expect(compareAttempts(a,{...b,points:[]} ).comparable).toBe(false);

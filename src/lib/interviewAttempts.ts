@@ -56,5 +56,5 @@ export function compareAttempts(previous: InterviewAttempt, current: InterviewAt
   const after = new Set(current.points.filter(p => p.verdict === 'covered').map(p => p.point));
   const comparable = previous.status === 'checked' && current.status === 'checked' && previous.source === current.source
     && previous.points.map(p => p.point).join('\n') === current.points.map(p => p.point).join('\n');
-  return { comparable, gained: [...after].filter(p => !before.has(p)), lost: [...before].filter(p => !after.has(p)) };
+  return { comparable, gained: [...after].filter(p => !before.has(p)) };
 }

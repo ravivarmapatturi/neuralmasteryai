@@ -355,7 +355,7 @@ test('rubric hits, history and improvement survive reload', async ({ page }) => 
   await page.evaluate(()=>(window as any).releaseReview());
   await expect(page.getByRole('heading',{name:'Automated key-point check'})).toBeVisible();
   await expect(page.locator('.si-check .si-points .covered')).toHaveCount(1);
-  await expect(page.locator('.si-check .si-points .missed')).toHaveCount(3);
+  await expect(page.locator('.si-check .si-points .undetected')).toHaveCount(3);
   await expect(page.locator('.si-score-pill')).toHaveCount(0);
   await page.evaluate(()=>{(window as any).rubricHitLimit=3;(window as any).releaseReview=undefined;});
   await page.locator('#practice-again').click();
@@ -365,7 +365,7 @@ test('rubric hits, history and improvement survive reload', async ({ page }) => 
   await page.waitForFunction(()=>typeof (window as any).releaseReview==='function');
   await page.evaluate(()=>(window as any).releaseReview());
   const comparison=page.getByRole('region',{name:'Change since your previous attempt'});
-  await expect(comparison).toContainText('You now hit these points:');
+  await expect(comparison).toContainText('Newly detected points:');
   await expect(comparison).toContainText(q.keyPoints[1]);
   await expect(comparison).toContainText(q.keyPoints[2]);
   await expect(page.getByRole('region',{name:'Earlier attempts'}).locator('details')).toHaveCount(1);
@@ -403,7 +403,7 @@ test('keeps a failed review transcript in history and stores an empty rubric att
   await page.getByRole('button',{name:'Skip to answering'}).click();
   await page.locator('#done').click();
   await expect(page.getByRole('heading',{name:'Automated key-point check'})).toBeVisible();
-  await expect(page.locator('.si-check .missed')).toHaveCount(4);
+  await expect(page.locator('.si-check .undetected')).toHaveCount(4);
   await expect(page.locator('.si-score-pill')).toHaveCount(0);
   const history=page.getByRole('region',{name:'Earlier attempts'});
   await expect(history).toContainText('Not checked');

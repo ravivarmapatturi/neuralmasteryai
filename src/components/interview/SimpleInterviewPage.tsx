@@ -862,17 +862,12 @@ export default function SimpleInterviewPage() {
                       <h3>{question.keyPoints?.length ? 'Automated key-point check' : 'How your answer compares'}</h3>
                       {(!question.keyPoints?.length || SHOW_RUBRIC_SCORE) && <span className="si-score-pill">{check.score}% coverage</span>}
                     </div>
+                    <p>Compare this automated checklist with your answer and the model answer. Not detected points may still be in your answer.</p>
                     <ul className="si-points">
                       {check.points.map((p) => (
-                        <li key={p.point} className={p.verdict}>
+                        <li key={p.point} className={p.verdict === 'covered' ? 'covered' : 'undetected'}>
                           <span className="si-verdict">
-                            {p.verdict === 'covered'
-                              ? 'Hit'
-                              : p.verdict === 'partial'
-                                ? 'Partly covered'
-                                : p.verdict === 'conflict'
-                                  ? 'Missed · conflicting claim'
-                                  : 'Missed'}
+                            {p.verdict === 'covered' ? 'Covered' : 'Not detected'}
                           </span>
                           {p.point}
                         </li>
@@ -884,10 +879,12 @@ export default function SimpleInterviewPage() {
                   <section className="si-sub-section" aria-label="Change since your previous attempt" aria-live="polite">
                     <h3>Since your previous attempt</h3>
                     {comparison.comparable ? <>
-                      <p>{comparison.gained.length ? 'You now hit these points:' : 'No new points hit.'}</p>
+                      <p>{comparison.gained.length ? 'Newly detected points:' : 'No newly detected points.'}</p>
                       {comparison.gained.length > 0 && <ul className="si-bullets">{comparison.gained.map(point => <li key={point}>{point}</li>)}</ul>}
-                      {comparison.lost.length > 0 && <><p>Previously hit, missed this time:</p><ul className="si-bullets">{comparison.lost.map(point => <li key={point}>{point}</li>)}</ul></>}
+
                     </> : <p>{latest?.status !== 'checked' ? 'The comparison will appear after this answer is checked.' : 'These attempts used different checks, or the previous answer was not checked.'}</p>}
+                    <p>Previous answer</p><p className="si-previous-transcript">{earlier[0].transcript || 'No answer was captured.'}</p>
+                    <p>Current answer</p><p>{transcript || 'No answer was captured.'}</p>
                   </section>
                 )}
                 {earlier.length > 0 && <section className="si-sub-section" aria-label="Earlier attempts">
@@ -895,7 +892,7 @@ export default function SimpleInterviewPage() {
                   {earlier.map(attempt => <details key={attempt.id} className="si-attempt">
                     <summary><time dateTime={new Date(attempt.time).toISOString()}>{new Date(attempt.time).toLocaleString()}</time>{attempt.status === 'checked' ? (attempt.source === 'rubric' ? ' · Key points checked' : attempt.score === undefined ? ' · Checked against model answer' : ` · ${attempt.score}% coverage`) : ' · Not checked'}</summary>
                     <p className="si-yours">{attempt.transcript || 'No answer was captured.'}</p>
-                    <ul className="si-points">{attempt.points.map(point => <li key={point.point}><span className="si-verdict">{point.verdict === 'covered' ? 'Hit' : 'Missed'}</span>{point.point}</li>)}</ul>
+                    <ul className="si-points">{attempt.points.map(point => <li key={point.point}><span className="si-verdict">{point.verdict === 'covered' ? 'Covered' : 'Not detected'}</span>{point.point}</li>)}</ul>
                   </details>)}
                 </section>}
                 <p className="si-status" role="status">{syncState === 'storage-error' ? 'Attempt history could not be saved on this device.' : syncState === 'offline' ? 'Saved on this device. Sync will retry when connected.' : syncState === 'syncing' ? 'Syncing attempt history…' : syncState === 'synced' ? 'Attempt history synced.' : 'Attempt history saved on this device.'}</p>
