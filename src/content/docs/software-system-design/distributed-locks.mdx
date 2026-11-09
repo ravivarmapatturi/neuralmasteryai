@@ -1,7 +1,7 @@
 ---
 title: "Distributed Locks, Leases, and Fencing Tokens"
 sidebar_position: 5.2
-description: ""
+description: "Distinguish lock ownership from effect authority, reject paused owners with storage-enforced fencing, and choose simpler atomic alternatives where they cover the invariant."
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -97,6 +97,18 @@ assert lock == {}
 In an isolated Redis test, inspect acquisition with `SET nm:lock token-A NX PX 30000` and observe its expiry with `PTTL nm:lock`. Do not release by unconditional DEL when another owner may have replaced it. Use the documented atomic compare-and-delete operation supported by the chosen version or an appropriate script. A production test should pause A, let B acquire, then resume A's release and effect requests independently.
 
 Also test coordination-service failover and destination restore. A restored resource must not forget a fencing floor while old workers can still send requests. Credentials and authorization should prevent callers from inventing a large epoch to seize authority. The fence's number is evidence supplied by the coordination protocol, not a user-controlled priority value.
+
+A lock test should control delayed messages independently from paused code. Let A prepare a write with epoch 7, hold that request in the test transport, then allow B to acquire epoch 8 and commit. Release A's old request afterward and assert that the destination state does not change. This exercises the fence where it matters, even if A checked its lease immediately before sending. Repeat with A's release request to verify the separate owner-equality rule. Finally restore the destination from a test snapshot and verify how its fencing floor is recovered before old requests are accepted again. These interleavings reveal assumptions a simple acquire/write/release loop never exercises.
+
+Retain the rejected stale-write evidence for diagnosis. A fence correctly refusing old work can otherwise look like a random application failure and tempt an operator to bypass the protection.
+
+## Put the Fence at the Protected Resource
+
+A fencing token only helps when the system accepting the protected operation checks it. Imagine worker A pauses while holding epoch 7, worker B acquires epoch 8, and B updates a storage service. If the storage service remembers 8 as the latest accepted epoch, A's later write carrying 7 can be rejected. If only the lock client compares tokens in memory, the delayed request may still reach a storage system that accepts it. Carry the token with every relevant write and make the acceptance check atomic with the resource transition.
+
+The resource must also define what repeated writes within one epoch mean. A fence orders owners; it does not necessarily deduplicate several operations from the same owner. B may issue two valid commands carrying epoch 8, and the resource needs an operation identity or normal transaction semantics if one command is a retry. Conversely, rejecting every repeated epoch would incorrectly prohibit B from performing several legitimate updates unless the protocol intentionally permits only one. Keep ownership order and operation identity distinct in both the data model and tests.
+
+Lease renewal has an uncertainty window as well. A client that stops receiving renewal responses cannot know from that absence alone whether the server accepted the last renewal. It should stop initiating protected work according to its lease protocol, yet an already issued request may remain in flight. Fencing handles that stale request at the resource boundary when a newer owner has been established. Clock measurements and generous expiry margins can reduce accidental overlap, but they do not make an old process cease to exist. Test a paused process that resumes after another worker has completed a write, not merely a process that exits cleanly. Also verify release ownership: an old worker's cleanup must not delete a newer worker's lock. A unique release token addresses that deletion race; it is not automatically the monotonic fence the storage service requires.
 
 ## Failure Modes and Better Choices
 
