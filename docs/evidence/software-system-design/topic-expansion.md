@@ -1,8 +1,8 @@
-# Software system design topic expansion checkpoint
+# Software system design topic expansion
 
 2026-11-09, branch `software-system-design`. No push.
 
-The requested expansion is **not complete**. Foundations, Scaling, and Data have been expanded into 21 topic pages. Communication, Distributed Systems, and Reliability still contain their original survey chapters and need the same treatment next. Existing case studies and the interview bank are preserved.
+The six-section expansion is complete: 42 topic pages and six short linked section overviews. Foundations, Scaling, and Data were delivered at the earlier checkpoint below. Communication, Distributed Systems, and Reliability are now complete; see [remaining-section verification](remaining-verification.md) for their checks and commits. Existing case studies and the interview bank are preserved.
 
 `git fetch origin` and `git merge origin/main` ran successfully; the merge reported already up to date.
 
@@ -35,7 +35,7 @@ The requested expansion is **not complete**. Foundations, Scaling, and Data have
 
 Each topic commit contains one MDX topic, its relevant diagram/test assets, and its route metadata. The Foundations and Scaling overview commits are 10ea6829 and 7219bbbc; Data's overview is committed with this checkpoint. All three overview URLs and all their former H2 heading IDs remain available. Replication reuses the existing topic-specific version explorer rather than duplicating it.
 
-## Verification actually run
+## Earlier Foundations, Scaling, and Data verification
 
 - Typecheck passed after every new TypeScript topic component.
 - Internal prose and anchor checks passed at the final 1,946-page state.
@@ -56,6 +56,6 @@ Build, Pagefind, full Vitest, and full Playwright were not run, as explicitly ex
 
 Clicking the shared “Mark as understood” control introduces a streak indicator that expands the navbar to approximately 387px at a 375px viewport. The new topic layouts and executed code output fit without that shared-state change. The navbar was not changed in this task. It requires a separate shared-layout fix and a regression check with a nonzero streak.
 
-## Remaining sequence
+## Final continuation
 
-Continue with Communication in brief order: REST, gRPC, GraphQL, WebSockets/SSE, message queues, Kafka/event streaming, pub/sub, idempotency, delivery guarantees. Then Distributed Systems and Reliability topics in brief order. Convert each corresponding original chapter into a short linked overview only after its topic pages exist, preserve old headings, and commit each page separately. Do not push.
+Communication now has nine topic pages, Distributed Systems seven, and Reliability five. All three original URLs retain their original titles and H2 headings and link to the full-depth topics. Each topic has its own interactive experiment and two runnable examples. The final continuation and its per-page deepening changes are committed individually; no commit bundles two learning pages. See remaining-verification.md for the exact final scope and the intentionally excluded heavy checks.

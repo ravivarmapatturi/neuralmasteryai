@@ -13,7 +13,7 @@ root = Path(__file__).resolve().parents[1]
 results = []
 for page in sorted((root / 'src/content/docs/software-system-design').glob('*.mdx')):
     snippets = re.findall(r'<RunnableCode code=\{`([\s\S]*?)`\}', page.read_text())
-    expected = 0 if page.stem in {'roadmap', 'foundations', 'scaling', 'data', 'communication', 'distributed-systems'} else 2
+    expected = 0 if page.stem in {'roadmap', 'foundations', 'scaling', 'data', 'communication', 'distributed-systems', 'reliability'} else 2
     if len(snippets) != expected:
         raise SystemExit(f'{page.name}: expected {expected} snippets, found {len(snippets)}')
     for index, code in enumerate(snippets, 1):
