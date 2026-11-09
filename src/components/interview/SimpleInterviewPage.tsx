@@ -10,6 +10,9 @@ import { useFocusMusic } from '../../contexts/FocusMusicContext';
 import type { SingleThreadASREngine } from '../../lib/speechTest/engines';
 import practice from '../../data/interviewPractice.json';
 import { InterviewGraph } from './InterviewGraph';
+import { TodaysTen } from './TodaysTen';
+import { useInterviewLearning } from '../../contexts/InterviewLearningContext';
+import { rateQuestion, reviewDueAt, RATING_LABELS, type SelfRating } from '../../lib/interviewLearning';
 import { FollowUpAnswer } from './FollowUpAnswer';
 import { LiveWaveform } from './LiveWaveform';
 import Navbar from '../layout/Navbar';
@@ -196,6 +199,7 @@ export default function SimpleInterviewPage() {
   });
 
   const [step, setStep] = useState<Step>('topics');
+  const [reviewSession,setReviewSession]=useState<string[] | null>(null);
   const previousStepRef = useRef<Step>('asking');
   const [topicIndex, setTopicIndex] = useState(sharedTopic >= 0 ? sharedTopic : (linked?.topic ?? firstTopic));
   const [shareStatus, setShareStatus] = useState('');
@@ -309,9 +313,10 @@ export default function SimpleInterviewPage() {
   const finishingRef = useRef<Promise<void>>(Promise.resolve());
   const [check, setCheck] = useState<AnswerJudgement | 'checking' | 'failed' | null>(null);
   const { attempts, save: saveAttempt, syncState } = useInterviewAttempts();
+  const { records: learning, save: saveLearning, syncState: learningSyncState, ready: learningReady } = useInterviewLearning();
   const [attemptId, setAttemptId] = useState<string | null>(null);
   const { events, awardInterviewCompleted } = useGamification();
-  const isDone = useCallback((id: string) => hasAward(events, `/interview#${id}`, 'interview'), [events]);
+  const isDone = useCallback((id: string) => Boolean(learning.find(r=>r.questionId===id)?.completion) || hasAward(events, `/interview#${id}`, 'interview'), [events,learning]);
 
   const allCatalogQuestions = useMemo(() => {
     const list: CatalogItem[] = [];
@@ -322,6 +327,20 @@ export default function SimpleInterviewPage() {
     });
     return list;
   }, []);
+
+  useEffect(()=>{
+    if(learningReady===false)return;
+    const imported=allCatalogQuestions.flatMap(({q})=>{
+      if(learning.some(r=>r.questionId===q.id && r.completion))return [];
+      const event=events.find(e=>e.kind==='interview' && e.permalink===`/interview#${q.id}`);
+      if(!event)return [];
+      const time=new Date(`${event.date}T12:00:00`).getTime();
+      return Number.isFinite(time) ? [{questionId:q.id,completion:{time,attemptId:`legacy:${q.id}`}}] : [];
+    });
+    if(imported.length)saveLearning(imported);
+  },[events,learning,learningReady,allCatalogQuestions,saveLearning]);
+
+  const learningQuestions = useMemo(()=>allCatalogQuestions.map(({q,topicId})=>({id:q.id,title:q.title,topicId})),[allCatalogQuestions]);
 
   const filteredList = useMemo(() => {
     return allCatalogQuestions.filter(({ q, topicId, topicTitle }) => {
@@ -363,17 +382,20 @@ export default function SimpleInterviewPage() {
 
   const handleComplete = () => {
     awardInterviewCompleted(questionId);
+    if(!learning.find(r=>r.questionId===questionId)?.completion)saveLearning([{questionId,completion:{time:Date.now(),attemptId:attemptId ?? crypto.randomUUID()}}]);
   };
   const completedTotal = topics.reduce((sum, t) => sum + t.questions.filter((q) => isDone(q.id)).length, 0);
   const graphTopics = useMemo(
-    () => baseGraphTopics.map((g, i) => ({ ...g, done: topics[i].questions.filter((q) => hasAward(events, `/interview#${q.id}`, 'interview')).length })),
-    [events]
+    () => baseGraphTopics.map((g, i) => ({ ...g, done: topics[i].questions.filter((q) => isDone(q.id)).length })),
+    [isDone]
   );
   const linkedHere = linked && linked.topic === topicIndex ? linked : null;
   const question = topic.questions[questionIndex];
   const questionId = question.id;
   const earlier = attempts.filter(a => a.questionId === questionId && a.id !== attemptId).slice().reverse();
   const latest = attempts.find(a => a.id === attemptId && a.questionId === questionId);
+  const currentLearning = learning.find(r=>r.questionId===questionId);
+  const selfRating = currentLearning?.rating && currentLearning.rating.attemptId===attemptId ? currentLearning.rating : undefined;
   const comparison = latest && earlier[0] ? compareAttempts(earlier[0], latest) : null;
 
   const voiceCancelRef = useRef<(() => void) | null>(null);
@@ -605,6 +627,7 @@ export default function SimpleInterviewPage() {
   };
 
   const startQuestion = (index: number) => {
+    setReviewSession(null);
     void prepareEngine().catch(() => undefined);
     setQuestionIndex(index);
     const qStr = questionQuery();
@@ -612,7 +635,8 @@ export default function SimpleInterviewPage() {
     ask(topic.questions[index].id);
   };
 
-  const startQuestionFromItem = (item: CatalogItem) => {
+  const startQuestionFromItem = (item: CatalogItem, session:string[] | null = null) => {
+    setReviewSession(session);
     void prepareEngine().catch(() => undefined);
     setTopicIndex(item.topicIndex);
     setQuestionIndex(item.questionIndex);
@@ -671,6 +695,7 @@ export default function SimpleInterviewPage() {
       const spoken = correctInterviewTerms(finalText, current.id, current.title);
       const attempt = { ...draft, transcript: spoken, revision: 1 };
       saveAttempt(attempt);
+      if (spoken.trim()) saveLearning([{questionId:current.id,completion:{time:attempt.time,attemptId:attempt.id}}]);
       if (reviewRef.current === id) {
         stopMic();
         setTranscript(spoken);
@@ -710,9 +735,10 @@ export default function SimpleInterviewPage() {
     ask(topic.questions[index].id);
   };
 
-  const currentFilteredIndex = filteredList.findIndex((item) => item.q.id === question.id);
-  const previousItem = currentFilteredIndex > 0 ? filteredList[currentFilteredIndex - 1] : null;
-  const nextItem = currentFilteredIndex >= 0 && currentFilteredIndex < filteredList.length - 1 ? filteredList[currentFilteredIndex + 1] : null;
+  const navigationList = reviewSession ? reviewSession.map(id=>allCatalogQuestions.find(item=>item.q.id===id)).filter((item):item is CatalogItem=>Boolean(item)) : filteredList;
+  const currentFilteredIndex = navigationList.findIndex((item) => item.q.id === question.id);
+  const previousItem = currentFilteredIndex > 0 ? navigationList[currentFilteredIndex - 1] : null;
+  const nextItem = currentFilteredIndex >= 0 && currentFilteredIndex < navigationList.length - 1 ? navigationList[currentFilteredIndex + 1] : null;
 
   const previousQuestion = () => {
     if (!previousItem) return;
@@ -850,6 +876,7 @@ export default function SimpleInterviewPage() {
             <p className="si-lede">
               <strong>{completedTotal}</strong> of <strong>{totalQuestions}</strong> questions completed across {graphTopics.length} topics.
             </p>
+            <TodaysTen questions={learningQuestions} onStart={(id,session)=>{const item=allCatalogQuestions.find(item=>item.q.id===id);if(item)startQuestionFromItem(item,session);}} />
             <div className="si-map">
               <InterviewGraph
                 topics={graphTopics}
@@ -995,7 +1022,7 @@ export default function SimpleInterviewPage() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <h2 style={{ margin: 0, fontSize: '1.25rem' }}>{topicFilter === 'all' ? 'All topics' : topic.title}</h2>
                     <p className="si-lede" style={{ margin: '0.25rem 0 0', fontSize: '0.88rem' }}>
-                      {topicFilter === 'all' ? 'Search and practice across all 907 AI engineering interview questions.' : topic.about}
+                      {topicFilter === 'all' ? `Search and practice across all ${totalQuestions} AI engineering interview questions.` : topic.about}
                     </p>
                   </div>
                 </div>
@@ -1097,7 +1124,7 @@ export default function SimpleInterviewPage() {
                 )}
                 <span className="si-counter">
                   {currentFilteredIndex >= 0
-                    ? `Question ${currentFilteredIndex + 1} of ${filteredList.length}`
+                    ? `Question ${currentFilteredIndex + 1} of ${navigationList.length}`
                     : `Question ${questionIndex + 1} of ${topic.questions.length}`}
                 </span>
                 <span className="si-done-counter">
@@ -1347,6 +1374,14 @@ export default function SimpleInterviewPage() {
 
         {step === 'answer' && (
           <div className="si-answer-stage">
+            <fieldset className="si-self-rating">
+              <legend>How did your answer go?</legend>
+              <p>Compare your answer with the model answer, then choose a rating. Automated detection can miss points you made; your rating controls the review schedule.</p>
+              <div className="si-actions">{(Object.entries(RATING_LABELS) as [SelfRating,string][]).map(([value,label])=><button key={value} disabled={!attemptId || transcribing}
+                aria-pressed={selfRating?.value===value}
+                onClick={()=>{if(attemptId){const now=Date.now();saveLearning([{questionId,completion:{time:latest?.time ?? now,attemptId}},rateQuestion(learning,questionId,attemptId,value,now)]);}}}>{label}</button>)}</div>
+              <p className="si-status" role="status">{learningSyncState==='storage-error' ? 'Your self-rating could not be saved on this device.' : selfRating ? `Self-rating saved. Next review: ${new Date(reviewDueAt(currentLearning!)!).toLocaleDateString()}.` : 'Got it advances due reviews through 1, 3, 7, 14 and 30 days. Partly or Missed it brings the question back tomorrow.'}</p>
+            </fieldset>
             <div className="si-comparison-grid">
               <section className="si-col-yours" aria-label="Your answer and evaluation">
                 <div className="si-panel-header">

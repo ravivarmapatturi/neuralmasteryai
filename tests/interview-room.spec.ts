@@ -634,7 +634,7 @@ test('Debug this topic is available and contains 30 production debug questions',
   await controlledRoom(page);
   await page.locator('.si-node').filter({ hasText: 'Debug' }).click();
 
-  await expect(page.locator('.si-card h2')).toHaveText('Debug this');
+  await expect(page.locator('.si-topic-widget h2')).toHaveText('Debug this');
   await expect(page.locator('.si-count')).toContainText('30 questions');
 });
 
@@ -658,4 +658,69 @@ test('level filter screenshots and responsive fit at 375 and 1440', async ({ pag
       });
     }
   }
+});
+
+test('Today’s 10 freezes a mixed queue across reloads and allows one daily skip', async ({page})=>{
+  await controlledRoom(page);
+  const due=practice.topics[0].questions.slice(0,6).map(q=>q.id);
+  await page.evaluate(ids=>{
+    const time=Date.now()-2*86_400_000;
+    localStorage.setItem('nm-interview-learning-v1:guest',JSON.stringify(ids.map(questionId=>({questionId,completion:{time,attemptId:questionId},rating:{time,attemptId:questionId,value:'got-it',stage:0}}))));
+  },due);
+  await page.reload();
+  const today=page.getByRole('region',{name:"Today's 10",exact:true});
+  await expect(today.getByRole('status').first()).toHaveText('0 of 10 completed today · 5 due reviews · 5 new');
+  await expect(today.locator('.si-review-queue summary')).toHaveText('All due reviews (6)');
+  const assigned=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('nm-interview-learning-v1:guest')!).filter((r:any)=>r.assignment).map((r:any)=>r.questionId).sort());
+  const before=await assigned();
+  await page.reload();expect(await assigned()).toEqual(before);
+  await today.getByRole('button',{name:'Skip one question today'}).click();
+  await expect(today.getByRole('button',{name:'Skip one question today'})).toBeDisabled();
+  await expect(today.getByRole('status').first()).toContainText('of 10');
+  await page.reload();
+  await expect(today.getByRole('button',{name:'Skip one question today'})).toBeDisabled();
+  const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('nm-interview-learning-v1:guest')!));
+  expect(saved.filter((r:any)=>r.skippedAt)).toHaveLength(1);
+  expect(saved.filter((r:any)=>r.assignment)).toHaveLength(11);
+  const active=saved.filter((r:any)=>r.assignment && !r.skippedAt).sort((a:any,b:any)=>a.assignment.time-b.assignment.time||a.questionId.localeCompare(b.questionId));
+  await today.getByRole('button',{name:'Continue today’s 10'}).click();
+  await expect(page.locator('.si-counter')).toHaveText('Question 1 of 10');
+  await expect(page.locator('.si-question-title')).toHaveText(practice.topics.flatMap(t=>t.questions).find(q=>q.id===active[0].questionId)!.title);
+  await page.locator('#next-question').click();
+  await expect(page.locator('.si-counter')).toHaveText('Question 2 of 10');
+  await expect(page.locator('.si-question-title')).toHaveText(practice.topics.flatMap(t=>t.questions).find(q=>q.id===active[1].questionId)!.title);
+});
+
+test('self-ratings survive a late automated check and reload; queue and answer fit both themes',async({page},testInfo)=>{
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  await controlledRoom(page);
+  const today=page.getByRole('region',{name:"Today's 10",exact:true});
+  for(const width of [375,1440])for(const theme of ['light','dark']){
+    await page.setViewportSize({width,height:1000});
+    await page.evaluate(theme=>document.documentElement.setAttribute('data-theme',theme),theme);
+    await expect(today).toBeVisible();
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBe(width);
+    await today.screenshot({path:testInfo.outputPath(`queue-${width}-${theme}.png`)});
+  }
+  await page.goto(`http://localhost:${PORT}/interview?q=senior:dropout`);
+  await page.locator('#start-topic').click();await answerByTyping(page);await page.locator('#done').click();
+  const rating=page.getByRole('group',{name:'How did your answer go?'});
+  await rating.getByRole('button',{name:'Got it',exact:true}).click();
+  await expect(rating.getByRole('button',{name:'Got it',exact:true})).toHaveAttribute('aria-pressed','true');
+  await page.waitForFunction(()=>typeof (window as any).releaseReview==='function');
+  await page.evaluate(()=>(window as any).releaseReview());
+  for(const label of ['Partly','Missed it','Got it']){
+    await rating.getByRole('button',{name:label,exact:true}).click();
+    await expect(rating.getByRole('button',{name:label,exact:true})).toHaveAttribute('aria-pressed','true');
+  }
+  for(const width of [375,1440])for(const theme of ['light','dark']){
+    await page.setViewportSize({width,height:1000});
+    await page.evaluate(theme=>document.documentElement.setAttribute('data-theme',theme),theme);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBe(width);
+    await rating.screenshot({path:testInfo.outputPath(`rating-${width}-${theme}.png`)});
+  }
+  await page.reload();
+  const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('nm-interview-learning-v1:guest')!).find((r:any)=>r.questionId==='senior:dropout'));
+  expect(saved.rating.value).toBe('got-it');expect(saved.rating.stage).toBe(0);expect(saved.completion.attemptId).toBe(saved.rating.attemptId);
+  expect(errors).toEqual([]);
 });

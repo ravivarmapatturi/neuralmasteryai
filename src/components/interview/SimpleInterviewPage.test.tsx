@@ -5,6 +5,8 @@ import { beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { renderWithTheme } from '../../../tests/unit/renderWithProviders';
 import SimpleInterviewPage from './SimpleInterviewPage';
 
+vi.mock('../../contexts/InterviewLearningContext', () => ({ useInterviewLearning: () => ({ records: [], save: vi.fn(), syncState: 'local' }) }));
+
 vi.mock('../../contexts/InterviewAttemptsContext', () => ({ useInterviewAttempts: () => ({ attempts: [], save: vi.fn(), syncState: 'local' }) }));
 
 vi.mock('../layout/Navbar', () => ({ default: () => <nav>Navigation</nav> }));

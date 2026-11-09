@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-
 import { MDXProvider } from '@mdx-js/react';
 import { mdxComponents } from './components/content/mdxComponents';
 import { ThemeProvider } from './theme/ThemeProvider';
+import { InterviewLearningProvider } from './contexts/InterviewLearningContext';
 import { InterviewAttemptsProvider } from './contexts/InterviewAttemptsContext';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProgressProvider } from './contexts/ProgressContext';
@@ -70,7 +71,7 @@ export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-      <InterviewAttemptsProvider>
+      <InterviewLearningProvider><InterviewAttemptsProvider>
         <ProgressProvider>
           <GamificationProvider>
             <FocusMusicProvider>
@@ -149,7 +150,7 @@ export default function App() {
         </FocusMusicProvider>
         </GamificationProvider>
         </ProgressProvider>
-      </InterviewAttemptsProvider>
+      </InterviewAttemptsProvider></InterviewLearningProvider>
       </AuthProvider>
     </ThemeProvider>
   );
