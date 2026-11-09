@@ -18,9 +18,9 @@ function Arrow() {
 }
 
 export default function ChooserPage() {
-  useDocumentTitle('Neural Mastery — Learn AI through visualization');
+  useDocumentTitle('Neural Mastery — Learn and Explore AI');
   useDocumentMeta(
-    'Neural Mastery — Learn AI through visualization',
+    'Neural Mastery — Learn and Explore AI',
     'AI engineering lessons with visual explanations, practice problems, interview questions and study plans.',
   );
 
@@ -40,9 +40,9 @@ export default function ChooserPage() {
           <div className="nm-landing-shell nm-hero-grid">
             <div>
               <h1 className="nb-heading" style={{ fontSize: 'clamp(2.3rem, 4.6vw, 3.8rem)', lineHeight: 1.05, margin: 0, position: 'relative' }}>
-                Learn AI through<br />
+                Learn and Explore<br />
                 <span style={{ color: 'var(--nb-teal)', position: 'relative', display: 'inline-block' }}>
-                  visualization.
+                  AI
                   <svg viewBox="0 0 320 16" width="100%" style={{ position: 'absolute', left: 0, bottom: -8, height: 16 }} aria-hidden="true">
                     <SketchUnderline x={4} y={8} width={300} color="var(--nb-teal)" id="hero-underline" />
                   </svg>
