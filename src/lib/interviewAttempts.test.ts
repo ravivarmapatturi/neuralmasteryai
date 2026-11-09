@@ -90,7 +90,7 @@ it('preserves matching user evidence with bounds in history and JSON backup', ()
 
 it('preserves delivery measurements through draft/review/follow-up merge and backup restore', () => {
   const delivery = {durationSeconds:120,speakingSeconds:90,longPauses:2,wordCount:240,wordsPerMinute:120,
-    fillers:{um:2,uh:1,like:1,'you know':1,basically:0,actually:1}};
+    fillers:{um:2,uh:1,erm:1,'you know':1,'i mean':1}};
   const final = {...attempt('delivery'),revision:1,delivery};
   const reviewed = {...final,revision:2,status:'checked' as const};
   const rows = mergeInterviewAttempts([reviewed], [final], [{...final,revision:0,followUp:{question:'Why?',transcript:'Because',status:'saved',revision:1}}]);

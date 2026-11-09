@@ -791,7 +791,7 @@ test('delivery numbers use captured timing, persist with the attempt, and fit bo
   await page.waitForTimeout(500);
   await page.locator('#done').click();
   const row=page.getByRole('group',{name:'Delivery measurements'});
-  await expect(row).toContainText('8 filler matches');
+  await expect(row).toContainText('3 filler matches');
   await expect(row).toContainText('1 pauses >3s');
   const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('nm-interview-attempts-v1:guest')||'[]'));
   expect(saved[0].delivery.durationSeconds).toBeGreaterThan(4);
@@ -813,6 +813,7 @@ test('delivery numbers use captured timing, persist with the attempt, and fit bo
   await expect(page.locator('.si-answer-stage > .si-delivery')).toHaveCount(0);
   await page.getByText('Earlier attempts',{exact:true}).scrollIntoViewIfNeeded();
   await page.locator('.si-attempt summary').first().click();
-  await expect(page.locator('.si-attempt .si-delivery')).toContainText('8 filler matches');
+  await expect(page.locator('.si-attempt .si-delivery')).toContainText('3 filler matches');
   expect(errors).toEqual([]);
 });
+

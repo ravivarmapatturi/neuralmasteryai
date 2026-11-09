@@ -1,4 +1,4 @@
-export const FILLERS = ['um', 'uh', 'like', 'you know', 'basically', 'actually'] as const;
+export const FILLERS = ['um', 'uh', 'erm', 'you know', 'i mean'] as const;
 export interface DeliveryTiming {
   durationSeconds: number;
   speakingSeconds: number;
@@ -33,14 +33,15 @@ export class DeliveryClock {
   }
 }
 
-/** Literal matches: contextual uses of like/actually/etc. also count. */
+/** Conservative transcript matches. Without punctuation, only the initial phrase is a sentence start. */
 export function measureDelivery(transcript: string, timing: DeliveryTiming): DeliveryFeedback {
   const words = transcript.toLowerCase().match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu) ?? [];
   const fillers = Object.fromEntries(FILLERS.map(f => [f, 0])) as DeliveryFeedback['fillers'];
-  for (let i = 0; i < words.length; i++) {
-    const word = words[i];
-    if (word === 'you' && words[i + 1] === 'know') fillers['you know']++;
-    else if (Object.hasOwn(fillers, word)) fillers[word as keyof typeof fillers]++;
+  for (const word of words) if (word === 'um' || word === 'uh' || word === 'erm') fillers[word]++;
+  for (const sentence of transcript.toLowerCase().split(/[.!?\n]+/)) {
+    const start = sentence.trim().replace(/^["'“‘]+/, '');
+    if (/^you\s+know\b/.test(start)) fillers['you know']++;
+    if (/^i\s+mean\b/.test(start)) fillers['i mean']++;
   }
   return { ...timing, wordCount: words.length,
     wordsPerMinute: timing.durationSeconds > 0 ? Math.round(words.length * 60 / timing.durationSeconds) : 0, fillers };

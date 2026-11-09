@@ -35,3 +35,11 @@ Measured fixture totals (focused test exit 0): 7 labelled filler uses, 12 matche
 - Final full Vitest: 188 files, 905 tests passed in 263.65s; host minimum 2138 MiB. Final typecheck, links and MDX (2003/2003) passed; combined scope host minimum 2214 MiB.
 
 Heavy jobs run sequentially in a 500 MiB-high / 1800 MiB-hard systemd scope with up to 6 GiB swap and a 2048 MiB Node heap. The 2 GiB host-available guard remains unchanged. Production build requires 5 GB available; `free -g` showed 2 GB, so it was not started. Started browser/server processes are closed after each run; final process inspection found none remaining. No push.
+
+## Conservative revision (2026-11-10)
+
+The new matcher counts um, uh and erm as whole words. You know and I mean count only at sentence starts (start of transcript, newline or after . ! ?). Punctuation-free internal phrases are deliberately omitted. Like, basically and actually are excluded. Historical measurements with the old schema are omitted rather than relabelled.
+
+Frozen fixtures are in src/lib/interviewDelivery.fixtures.json. The original four transcripts are unchanged: before 12 matches / 7 true positives / 5 false positives; after 3 matches / 3 true positives / 0 false positives / 4 missed fillers. Precision rises from 58.3% to 100%; recall falls from 100% to 42.9%. The 20 new punctuation-free synthetic transcripts have 14 labelled fillers: before 17 matches / 9 true positives / 8 false positives / 5 misses; after 14 matches / 14 true positives / 0 false positives / 0 misses. These small hand-labelled fixtures do not establish real-speech accuracy. Sentence-initial literal uses can still be ambiguous.
+
+Revision checks: typecheck, internal links, 2003 MDX files and full single-worker Vitest (188 files / 905 tests, 251.57s) passed. Final focused run passed all 11 tests, including 6 delivery tests and the new C8 tests. The initial default-worker full run was terminated by the unchanged 2048 MiB host guard; the single-worker retry passed. All heavy checks retain the 500 MiB-high / 1800 MiB-hard / 6 GiB swap scope. Build preflight still reports 2 GB available, below 5 GB, so build is deferred. No push.
