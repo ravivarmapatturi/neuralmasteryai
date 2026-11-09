@@ -4,6 +4,8 @@ import { test, expect } from '@playwright/test';
 // at 1440, 1024, or any width where the graph shows, and that mobile panel selects
 // fit within the card at 375 and 320 with zero horizontal overflow.
 
+const PORT = process.env.TEST_PORT ? Number(process.env.TEST_PORT) : 4173;
+
 test.describe('Interview Mastery Graph Bounding Box & Fit Verification', () => {
   const viewports = [
     { name: '1440px desktop', width: 1440, height: 900, expectLabels: true },
@@ -28,7 +30,8 @@ test.describe('Interview Mastery Graph Bounding Box & Fit Verification', () => {
         window.localStorage.setItem('neural-mastery-gamification', JSON.stringify(awards));
       });
 
-      await page.goto('/interview');
+      const url = PORT === 4173 ? '/interview' : `http://localhost:${PORT}/interview`;
+      await page.goto(url);
       await page.waitForSelector('.si-node');
 
       const evaluation = await page.evaluate(({ expectLabels }) => {
