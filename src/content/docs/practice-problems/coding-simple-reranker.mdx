@@ -1,0 +1,59 @@
+---
+title: "Two-Stage Passage Reranker"
+description: "AI Engineering Primitives, problem 3 of 10: Re-score retrieval candidates by combining their initial retriever score with lexical term overlap."
+difficulty: "medium"
+topic: "AI Engineering Primitives"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Two-stage retrieval in production
+
+First-stage retrievers (bi-encoders and BM25) search millions of documents in sub-10ms by comparing vectors independently. However, they lack joint cross-attention between query and document tokens.
+
+A **reranker** acts as the second stage: it inspects the top-50 candidates with deep cross-attention or term verification, filtering out false positives before feeding context to the LLM.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import re
+
+def rerank_passages(query: str, passages: list[dict], top_k: int) -> list[dict]:
+    if top_k <= 0:
+        raise ValueError("top_k must be positive")
+    if not passages:
+        return []
+
+    query_terms = set(re.findall(r"[a-z0-9]+", query.lower()))
+
+    lexical_scores = []
+    initial_scores = []
+    for p in passages:
+        p_terms = set(re.findall(r"[a-z0-9]+", p["text"].lower()))
+        lex_score = float(len(query_terms & p_terms))
+        lexical_scores.append(lex_score)
+        initial_scores.append(float(p["score"]))
+
+    def min_max(vals):
+        lo, hi = min(vals), max(vals)
+        if hi == lo:
+            return [1.0] * len(vals)
+        return [(v - lo) / (hi - lo) for v in vals]
+
+    norm_lex = min_max(lexical_scores)
+    norm_init = min_max(initial_scores)
+
+    ranked = []
+    for i, p in enumerate(passages):
+        blended = round(0.5 * norm_init[i] + 0.5 * norm_lex[i], 4)
+        ranked.append({"id": p["id"], "score": blended})
+
+    ranked.sort(key=lambda x: (-x["score"], x["id"]))
+    return ranked[:top_k]
+```
+
+</Solution>

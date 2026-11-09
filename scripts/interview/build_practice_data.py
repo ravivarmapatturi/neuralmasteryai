@@ -121,7 +121,7 @@ for topic, rows in json.loads((ROOT / "src/data/interviewSeniorQuestions.json").
                 else:
                     level = "senior"
             q_data = {"id": f"senior:{item['id']}", "title": item["title"], "answer": item["answer"], "level": level}
-            for k in ["tradeOffs", "followUps", "wrongAnswers", "rounds", "roles"]:
+            for k in ["tradeOffs", "followUps", "wrongAnswers", "rounds", "roles", "problemId"]:
                 if k in item:
                     q_data[k] = item[k]
             ours.append((topic, q_data))
@@ -146,6 +146,8 @@ for topic, rows in json.loads((ROOT / "src/data/interviewSeniorQuestions.json").
                 q_data["roles"] = item[6]
             if len(item) > 7:
                 q_data["tradeOffs"] = item[7]
+            if len(item) > 9 and item[9]:
+                q_data["problemId"] = item[9]
             ours.append((topic, q_data))
 titles_seen = set()
 for topic, item in ours:

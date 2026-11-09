@@ -1,0 +1,55 @@
+---
+title: "Evaluation Harness With Regression Gate"
+description: "AI Engineering Primitives, problem 5 of 10: Gate LLM prompt or model changes by measuring accuracy against ground truth and blocking regressions."
+difficulty: "medium"
+topic: "AI Engineering Primitives"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Automated regression gates in CI/CD
+
+Prompt engineering without evals is guessing. When modifying system prompts, adding few-shot examples, or switching model providers, developers often verify only the one query they care about while silently degrading five other edge cases.
+
+An **automated eval regression gate** enforces an empirical baseline in CI: unless accuracy on the benchmark suite meets or exceeds the threshold, the pull request cannot merge.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+def evaluate_predictions(predictions: list[dict], baseline_accuracy: float, max_allowed_drop: float = 0.02) -> dict:
+    if not predictions:
+        raise ValueError("predictions cannot be empty")
+    if not (0.0 <= baseline_accuracy <= 1.0):
+        raise ValueError("baseline_accuracy must be in [0.0, 1.0]")
+
+    total = len(predictions)
+    correct = 0
+    failed_ids = []
+
+    for item in predictions:
+        pred = str(item.get("prediction", "")).strip().lower()
+        label = str(item.get("label", "")).strip().lower()
+        if pred == label:
+            correct += 1
+        else:
+            failed_ids.append(item["id"])
+
+    accuracy = round(correct / total, 4)
+    delta = round(accuracy - baseline_accuracy, 4)
+    regressed = (baseline_accuracy - accuracy) > (max_allowed_drop + 1e-9)
+    passed = not regressed
+
+    return {
+        "accuracy": accuracy,
+        "delta": delta,
+        "passed": passed,
+        "regressed": regressed,
+        "failed_ids": failed_ids,
+    }
+```
+
+</Solution>

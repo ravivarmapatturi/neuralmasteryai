@@ -1,0 +1,57 @@
+---
+title: "Idempotent Tool Call Wrapper"
+description: "AI Engineering Primitives, problem 10 of 10: Wrap state-mutating agent actions with idempotency keys to prevent duplicate execution during retries."
+difficulty: "medium"
+topic: "AI Engineering Primitives"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Preventing the duplicate refund nightmare
+
+When an autonomous agent calls an external API (Stripe, Zendesk, Salesforce) and experiences a 504 Gateway Timeout, the agent cannot know whether the action succeeded before the network dropped.
+
+If the agent simply retries, a customer might be refunded twice. **Idempotency keys** (RFC 9440) guarantee that repeated dispatches with the same key execute exactly once, returning the cached response safely.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import json
+
+def execute_idempotent_tool_calls(calls: list[dict]) -> list[dict]:
+    registry = {}
+    responses = []
+
+    for call in calls:
+        if "idempotency_key" not in call or "tool" not in call:
+            raise ValueError("Call must include idempotency_key and tool")
+
+        key = call["idempotency_key"]
+        tool = call["tool"]
+        params = call.get("params", {})
+
+        serialized_params = json.dumps(params, sort_keys=True)
+
+        if key not in registry:
+            result = {"tool": tool, "result": f"{tool}_success", "call_count": 1}
+            registry[key] = {"params_str": serialized_params, "result": result}
+            responses.append({"status": "executed", "key": key, "result": result})
+        else:
+            stored = registry[key]
+            if stored["params_str"] == serialized_params:
+                responses.append({"status": "cached", "key": key, "result": stored["result"]})
+            else:
+                responses.append({
+                    "status": "conflict",
+                    "key": key,
+                    "error": "Idempotency key reused with different parameters",
+                })
+
+    return responses
+```
+
+</Solution>

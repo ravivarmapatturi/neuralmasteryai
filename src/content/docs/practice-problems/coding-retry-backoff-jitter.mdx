@@ -1,0 +1,45 @@
+---
+title: "Exponential Backoff With Full Jitter"
+description: "AI Engineering Primitives, problem 8 of 10: Calculate retry delays with exponential backoff and jitter to prevent thundering herds on rate-limited model endpoints."
+difficulty: "medium"
+topic: "AI Engineering Primitives"
+---
+
+import { Solution } from '../../../components/content/ExpandableDepth';
+
+## Thundering herds and why backoff alone fails
+
+When an LLM endpoint returns HTTP 429 Too Many Requests, naive exponential backoff causes all clients to wait exactly 1s, then all retry simultaneously, causing another spike.
+
+**Full Jitter (Amazon Architecture Blog, 2015)** replaces the deterministic delay with a uniform draw between 0 and the exponential ceiling. This completely desynchronizes clients and minimizes total completion time.
+
+## Reference solution
+
+Try the tests first. The reference is here to compare approaches after you pass, or to get unstuck after a real attempt.
+
+<Solution title="Show the reference solution">
+
+```python
+import random
+
+def calculate_backoff_delays(attempts: int, base_delay: float, max_delay: float, seed: int) -> list[float]:
+    if attempts < 0:
+        raise ValueError("attempts must be non-negative")
+    if base_delay <= 0:
+        raise ValueError("base_delay must be positive")
+    if max_delay < base_delay:
+        raise ValueError("max_delay must be >= base_delay")
+    if attempts == 0:
+        return []
+
+    delays = []
+    for i in range(attempts):
+        ceiling = min(max_delay, base_delay * (2 ** i))
+        rng = random.Random(seed + i)
+        delay = rng.uniform(0.0, ceiling)
+        delays.append(round(delay, 4))
+
+    return delays
+```
+
+</Solution>

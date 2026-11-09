@@ -43,9 +43,12 @@ import BrandMark from '../brand/BrandMark';
 interface PracticeWorkspaceProps {
   problemId: string;
   mdxContent?: React.ReactNode;
+  onSolve?: () => void;
+  onReturn?: () => void;
+  returnLabel?: string;
 }
 
-export default function PracticeWorkspace({ problemId, mdxContent }: PracticeWorkspaceProps) {
+export default function PracticeWorkspace({ problemId, mdxContent, onSolve, onReturn, returnLabel }: PracticeWorkspaceProps) {
   const problem = getPracticeProblem(problemId);
   const location = useLocation();
   const permalink = normalizeRoute(location.pathname);
@@ -361,6 +364,7 @@ export default function PracticeWorkspace({ problemId, mdxContent }: PracticeWor
         const bonusToAward = res.bonusEarned ? (res.bonusPoints ?? 0) : 0;
         const hintUsed = hasViewedHints(problemId);
         awardProblemCompleted(permalink, problem.difficulty, bonusToAward, hintUsed);
+        onSolve?.();
         void import('../../lib/firebase').then(({ trackFeatureEvent }) => trackFeatureEvent('practice_problem_solve', { problem_id: problemId }));
 
         showRewardToast({
@@ -512,6 +516,29 @@ export default function PracticeWorkspace({ problemId, mdxContent }: PracticeWor
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 12, minWidth: 0, flex: '1 1 auto' }}>
+          {onReturn && (
+            <button
+              type="button"
+              onClick={onReturn}
+              style={{
+                background: 'transparent',
+                border: '1px solid var(--nm-border)',
+                borderRadius: 6,
+                padding: '4px 10px',
+                fontSize: 12,
+                fontWeight: 600,
+                color: 'var(--nm-accent-primary)',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
+              }}
+            >
+              ← {returnLabel || 'Return to interview'}
+            </button>
+          )}
           {!isMobile && (
             <>
               <Link
@@ -794,6 +821,7 @@ export default function PracticeWorkspace({ problemId, mdxContent }: PracticeWor
             problem={problem}
             mdxContent={mdxContent}
             solved={solved}
+            attempted={lastAction !== null || result !== null || submissions.length > 0 || solved}
             masteryTier={masteryTier}
             relatedLesson={concept}
             onHintViewed={() => recordHintViewed(problemId)}

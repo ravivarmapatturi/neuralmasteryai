@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { useDocumentMeta } from '../../lib/useDocumentMeta';
 import { correctInterviewTerms } from '../../lib/interviewRoom/dialogue';
@@ -21,7 +21,9 @@ import { CategoryVisual } from '../widgets/CategoryVisual';
 import './interviewRoom.css';
 import './simpleInterview.css';
 
-type Step = 'topics' | 'asking' | 'answering' | 'answer' | 'done';
+const PracticeWorkspace = lazy(() => import('../practice/PracticeWorkspace'));
+
+type Step = 'topics' | 'asking' | 'answering' | 'answer' | 'code' | 'done';
 
 interface PracticeQuestion {
   id: string;
@@ -34,6 +36,7 @@ interface PracticeQuestion {
   rounds?: string[];
   roles?: string[];
   level?: string;
+  problemId?: string;
 }
 
 const ROUNDS: Record<string, string> = {
@@ -138,6 +141,7 @@ export default function SimpleInterviewPage() {
   const [linked, setLinked] = useState(() => locate(pathQuestion) ?? locate(params.get('q')) ?? locate(readLast()));
   const sharedTopic = topics.findIndex((t) => t.id === params.get('topic'));
   const [step, setStep] = useState<Step>('topics');
+  const previousStepRef = useRef<Step>('asking');
   const [topicIndex, setTopicIndex] = useState(sharedTopic >= 0 ? sharedTopic : (linked?.topic ?? firstTopic));
   const [shareStatus, setShareStatus] = useState('');
   const [questionIndex, setQuestionIndex] = useState(linked?.question ?? 0);
@@ -688,6 +692,7 @@ export default function SimpleInterviewPage() {
                     <li key={q.id}>
                       <button type="button" className={isDone(q.id) ? 'done' : undefined} onClick={() => startQuestion(i)}>
                         {isDone(q.id) && <span className="si-tick">Completed</span>}
+                        {q.problemId && <span className="si-coding-pill">Python</span>}
                         {q.level && <span className={`si-level-tag si-level-${q.level}`}>{LEVELS[q.level] ?? q.level}</span>}
                         {q.title}
                       </button>
@@ -739,7 +744,12 @@ export default function SimpleInterviewPage() {
               </button>
             </nav>
             <div className="si-question-row">
-              <h2 className="si-question-title">{question.title}</h2>
+              <h2 className="si-question-title">
+                {question.title}
+                {question.problemId && isDone(question.id) && (
+                  <span className="si-solved-badge"><span className="si-tick">✓</span> Solved in editor</span>
+                )}
+              </h2>
               <button type="button" className="si-speak" id="read-question" aria-label="Read the question aloud" onClick={readQuestion}>
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M11 5 6 9H2v6h4l5 4z" />
@@ -793,6 +803,24 @@ export default function SimpleInterviewPage() {
               >
                 Skip to answering <span className="si-key-hint">Space</span>
               </button>
+              {question.problemId && (
+                <button
+                  type="button"
+                  className="si-code-button"
+                  id="open-code-editor-asking"
+                  onClick={() => {
+                    stopAudio();
+                    previousStepRef.current = 'asking';
+                    setStep('code');
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <polyline points="16 18 22 12 16 6" />
+                    <polyline points="8 6 2 12 8 18" />
+                  </svg>
+                  <span>Open code editor</span>
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -844,6 +872,26 @@ export default function SimpleInterviewPage() {
               <button type="button" className="si-primary" id="done" onClick={finishAnswer}>
                 I'm done, show the answer <span className="si-key-hint">Space</span>
               </button>
+              {question.problemId && (
+                <button
+                  type="button"
+                  className="si-code-button"
+                  id="open-code-editor-answering"
+                  onClick={() => {
+                    answeringRef.current = false;
+                    void engineRef.current?.stop().catch(() => undefined);
+                    stopMic();
+                    previousStepRef.current = 'answering';
+                    setStep('code');
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <polyline points="16 18 22 12 16 6" />
+                    <polyline points="8 6 2 12 8 18" />
+                  </svg>
+                  <span>Open code editor</span>
+                </button>
+              )}
               {!typing ? (
                 <button
                   type="button"
@@ -972,6 +1020,24 @@ export default function SimpleInterviewPage() {
             </div>
 
             <div className="si-actions si-sticky">
+              {question.problemId && (
+                <button
+                  type="button"
+                  className="si-code-button"
+                  id="open-code-editor-answer"
+                  onClick={() => {
+                    stopAudio();
+                    previousStepRef.current = 'answer';
+                    setStep('code');
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <polyline points="16 18 22 12 16 6" />
+                    <polyline points="8 6 2 12 8 18" />
+                  </svg>
+                  <span>Open code editor</span>
+                </button>
+              )}
               <button type="button" className="si-primary" id="next" onClick={nextQuestion}>
                 {questionIndex + 1 < topic.questions.length ? 'Next question' : 'Finish topic'}{' '}
                 <span className="si-key-hint">N</span>
@@ -992,6 +1058,19 @@ export default function SimpleInterviewPage() {
                 </button>
               ) : null}
             </div>
+          </div>
+        )}
+
+        {step === 'code' && question.problemId && (
+          <div className="si-code-overlay" style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'var(--nm-bg, #090d16)' }}>
+            <Suspense fallback={<div style={{ padding: '3rem', textAlign: 'center', color: 'var(--nm-text-muted)' }}>Loading code editor…</div>}>
+              <PracticeWorkspace
+                problemId={question.problemId}
+                onReturn={() => setStep(previousStepRef.current === 'code' ? 'asking' : previousStepRef.current)}
+                returnLabel="Return to interview question"
+                onSolve={handleComplete}
+              />
+            </Suspense>
           </div>
         )}
 

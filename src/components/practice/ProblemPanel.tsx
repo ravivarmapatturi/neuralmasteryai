@@ -124,6 +124,7 @@ interface ProblemPanelProps {
   onHintViewed?: () => void;
   onExpandFocus?: () => void;
   isFocused?: boolean;
+  attempted?: boolean;
 }
 
 const DIFFICULTY_ACCENT: Record<string, string> = {
@@ -141,6 +142,7 @@ export default function ProblemPanel({
   onHintViewed,
   onExpandFocus,
   isFocused,
+  attempted,
 }: ProblemPanelProps) {
   const [hintLevel, setHintLevel] = useState<number>(0);
   const [showAiDrawer, setShowAiDrawer] = useState<boolean>(false);
@@ -551,6 +553,29 @@ export default function ProblemPanel({
                 ))}
               </ul>
             </div>
+
+            {/* Reference Solution */}
+            {problem.solution && (
+              <div style={{ marginBottom: 24 }}>
+                <h3 style={{ fontSize: 12, fontWeight: 700, color: 'var(--nm-text-muted)', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Reference Solution
+                </h3>
+                {!attempted && !solved ? (
+                  <div style={{ padding: '10px 14px', borderRadius: 6, background: 'var(--nm-surface-alt)', border: '1px solid var(--nm-border)', fontSize: 13, color: 'var(--nm-text-muted)' }}>
+                    Run or submit your code to unlock the verified reference solution.
+                  </div>
+                ) : (
+                  <details style={{ borderRadius: 6, border: '1px solid var(--nm-border)', background: 'var(--nm-surface-alt)', padding: '10px 14px' }}>
+                    <summary style={{ cursor: 'pointer', fontWeight: 600, color: 'var(--nm-accent-primary)', fontSize: 13 }}>
+                      Show verified reference solution
+                    </summary>
+                    <pre style={{ margin: '10px 0 0', padding: 12, borderRadius: 6, background: 'var(--nm-bg)', overflowX: 'auto', fontSize: 12.5, fontFamily: 'ui-monospace, monospace', lineHeight: 1.5, color: 'var(--nm-text-primary)' }}>
+                      {problem.solution}
+                    </pre>
+                  </details>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           /* Intuition Tab: structured step-by-step + related-skills content

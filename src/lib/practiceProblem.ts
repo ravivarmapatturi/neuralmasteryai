@@ -123,6 +123,7 @@ export interface PracticeProblem {
   stage?: string;
   stageNumber?: number;
   points?: number;
+  solution?: string;
   canvasSpec?: CanvasSpec;
   guidedSteps?: GuidedStep[];
   frameworkSpec?: FrameworkSpec;
