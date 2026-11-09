@@ -1381,11 +1381,11 @@ export default function SimpleInterviewPage() {
           <div className="si-answer-stage">
             <fieldset className="si-self-rating">
               <legend>How did your answer go?</legend>
-              <p>Compare your answer with the model answer, then choose a rating. Automated detection can miss points you made; your rating controls the review schedule.</p>
+              <p>Choose a rating.</p>
               <div className="si-actions">{(Object.entries(RATING_LABELS) as [SelfRating,string][]).map(([value,label])=><button key={value} disabled={!attemptId || transcribing}
                 aria-pressed={selfRating?.value===value}
                 onClick={()=>{if(attemptId){const now=Date.now();saveLearning([{questionId,completion:{time:latest?.time ?? now,attemptId}},rateQuestion(learning,questionId,attemptId,value,now)]);}}}>{label}</button>)}</div>
-              <p className="si-status" role="status">{learningSyncState==='storage-error' ? 'Your self-rating could not be saved on this device.' : selfRating ? `Self-rating saved. Next review: ${new Date(reviewDueAt(currentLearning!)!).toLocaleDateString()}.` : 'Got it advances due reviews through 1, 3, 7, 14 and 30 days. Partly or Missed it brings the question back tomorrow.'}</p>
+              <p className="si-status" role="status">{learningSyncState==='storage-error' ? 'Your self-rating could not be saved on this device.' : selfRating ? `Self-rating saved. Next review: ${new Date(reviewDueAt(currentLearning!)!).toLocaleDateString()}.` : ''}</p>
             </fieldset>
             <div className="si-comparison-grid">
               <section className="si-col-yours" aria-label="Your answer and evaluation">

@@ -705,6 +705,8 @@ test('self-ratings survive a late automated check and reload; queue and answer f
   await page.goto(`http://localhost:${PORT}/interview?q=senior:dropout`);
   await page.locator('#start-topic').click();await answerByTyping(page);await page.locator('#done').click();
   const rating=page.getByRole('group',{name:'How did your answer go?'});
+  await expect(rating).toContainText('Choose a rating.');
+  await expect(rating).not.toContainText('Automated detection');
   await rating.getByRole('button',{name:'Got it',exact:true}).click();
   await expect(rating.getByRole('button',{name:'Got it',exact:true})).toHaveAttribute('aria-pressed','true');
   await page.waitForFunction(()=>typeof (window as any).releaseReview==='function');
