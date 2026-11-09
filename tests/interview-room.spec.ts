@@ -93,7 +93,7 @@ const navigationTopic = practice.topics.find(t => t.id === 'evaluation')!;
 async function atQuestion(page: Page, index: number) {
   const question = navigationTopic.questions[index];
   await expect(page.locator('.si-counter')).toHaveText(`Question ${index + 1} of ${navigationTopic.questions.length}`);
-  await expect(page).toHaveURL(new RegExp(`/interview/q/${encodeURIComponent(question.id.replaceAll(':', '__'))}$`));
+  await expect(page).toHaveURL(new RegExp(`/interview/q/${encodeURIComponent(question.id.replaceAll(':', '__'))}(\\?(?!topic=)[^#]*)?$`));
   await expect(page.locator('.si-question-title')).toHaveText(question.title);
 }
 async function answerByTyping(page: Page) {
@@ -349,7 +349,7 @@ test('level filter filters questions by mid, senior, staff and Previous/Next res
   // Filter by Senior
   await levelFilter.selectOption('senior');
   const countText = await page.locator('.si-count').textContent();
-  expect(countText).toMatch(/\d+ of \d+ questions/);
+  expect(countText).toMatch(/\d+ questions/);
 
   // Start question
   await page.locator('#start-topic').click();

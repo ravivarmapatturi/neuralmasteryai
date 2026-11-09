@@ -134,6 +134,14 @@ interface CatalogItem {
   questionIndex: number;
 }
 
+// Question addresses stay clean: the id already names the topic, so only real filters follow it.
+function questionQuery() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('topic') !== 'all') params.delete('topic');
+  const query = params.toString();
+  return query ? `?${query}` : '';
+}
+
 function SpeechModelStatus({ ready, loading, progress }: { ready: boolean; loading: boolean; progress: number }) {
   if (!ready && !loading) return null;
   const pct = ready ? 100 : Math.round(progress);
@@ -568,7 +576,7 @@ export default function SimpleInterviewPage() {
   const startQuestion = (index: number) => {
     void prepareEngine().catch(() => undefined);
     setQuestionIndex(index);
-    const qStr = window.location.search;
+    const qStr = questionQuery();
     window.history.pushState(null, '', questionPath(topic.questions[index].id) + qStr);
     ask(topic.questions[index].id);
   };
@@ -577,7 +585,7 @@ export default function SimpleInterviewPage() {
     void prepareEngine().catch(() => undefined);
     setTopicIndex(item.topicIndex);
     setQuestionIndex(item.questionIndex);
-    const qStr = window.location.search;
+    const qStr = questionQuery();
     window.history.pushState(null, '', questionPath(item.q.id) + qStr);
     ask(item.q.id);
   };
@@ -593,7 +601,7 @@ export default function SimpleInterviewPage() {
     setTranscribing(false);
     setTopicIndex(item.topicIndex);
     setQuestionIndex(item.questionIndex);
-    const qStr = window.location.search;
+    const qStr = questionQuery();
     window.history.pushState(null, '', questionPath(item.q.id) + qStr);
     ask(item.q.id);
   };
@@ -657,7 +665,7 @@ export default function SimpleInterviewPage() {
     setTranscribing(false);
     if (index !== questionIndex) {
       setQuestionIndex(index);
-      const qStr = window.location.search;
+      const qStr = questionQuery();
       window.history.pushState(null, '', questionPath(topic.questions[index].id) + qStr);
     }
     ask(topic.questions[index].id);
