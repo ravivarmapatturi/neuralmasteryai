@@ -1,4 +1,89 @@
-# Browser speech accuracy: measured limits and changes
+# Browser speech recognition: the 4 GB Standard profile
+
+Standard uses Moonshine Tiny for live text and Whisper Base.en q8 for final recognition. It works through single-thread WASM and requests WebGPU when a usable adapter is available. We selected it for Indian-English and long-answer accuracy within the download and memory limits. The candidate table below includes the short-clip result where Moonshine Base does better; Base does not win every metric.
+
+High accuracy is an explicit switch to Whisper Large v3 Turbo q4. The control appears when reported memory is at least 8 GB **or** a WebGPU adapter is available. It shows **794 MB + runtime**, derived from pinned model-file inventory, and remembers the choice. Opening the page alone does not download it. Switching back cancels a pending download; model-load failure returns to Standard. Turbo inference, peak memory and accuracy remain **unmeasured** here: Chromium returned no WebGPU adapter, and we did not attempt a high-memory WASM run on this busy laptop.
+
+## Measured before and after: answers longer than 30 seconds
+
+Both diagnostics use a 64.2705-second composite of the held-out Indian-English recordings, including a six-second hesitation. They reuse the existing speaker and references; they are not new independent subjects. The second diagnostic attenuates audio after 35 seconds to 3% of its original amplitude. Audio enters a real Web Audio MediaStream at 48 kHz and is captured at 16 kHz; these are digital-injection tests, **not physical microphone recordings**.
+
+| Diagnostic | Before WER | After WER | Before finish | After finish | Final decoder behavior |
+| :--- | ---: | ---: | ---: | ---: | :--- |
+| 64-second answer | 22.5% (18/80) | 17.5% (14/80) | 22.10 s | 23.95 s | Before aborted Whisper; after accepted Whisper |
+| 64-second answer with quiet tail | 38.8% (31/80) | 16.3% (13/80) | 0.73 s | 28.43 s | Before skipped Whisper; after accepted Whisper |
+
+Finish measures time after source playback ends, including drain, queued live work, model preparation and final inference. Background preparation is separate: the after run loaded both models before microphone capture; its first preparation took 18.90 seconds. The old profile initially loaded only Tiny and could download Base during finalization. These are observed wall times, not a controlled network-speed comparison.
+
+The old quiet-tail case followed the timed-out answer in the same engine, reproducing the permanent-disable bug. The after quiet-tail case ran separately because the host-memory guard interrupted the larger run during that last case. It uses the current policy and capture implementation. These results test the combined policy and capture fixes; they do not isolate gain, trimming, resampling and timeout effects individually. Raw results: [before diagnostics](../scripts/speech-accuracy/tier-capture-before-long.json), [after main run](../scripts/speech-accuracy/tier-capture-after-budgeted.json), and [completed after quiet-tail run](../scripts/speech-accuracy/tier-capture-after-quiet-tail.json).
+
+### Memory proof for Standard
+
+The after runs executed inside a kernel-enforced **2.25 GiB scope** covering Node, the HTTP fixture server, Chromium and its workers, with **swap disabled**. The largest recorded kernel `memory.peak` was **1,300,307,968 bytes (1.21 GiB)**. This demonstrates operation inside that process budget and reserves the rest of a 4 GB machine for the operating system and other browser work; the physical laptop has about 7.2 GiB usable RAM, so this is not a claim of testing on separate 4 GB hardware. A second guard stops the job whenever host available RAM drops below 2 GiB.
+
+The main after run completed all 18 VCTK clips, five term cases, the original composite, and the 64-second normal answer before that guard stopped its last case. The isolated quiet-tail run then completed. The complete short set measured **6.7% WER (8/120)**, the Indian-English subset **15.0% (6/40)**, and question-conditioned technical-term accuracy **4/5**. Completed cohorts are retained even when a later diagnostic was interrupted; an interrupted run is never marked completed.
+
+## Capture-path audit
+
+The current acceptance limits are under 400 MB for the complete Standard speech download and operation within a 4 GB laptop budget.
+
+Two final-pass policy defects were confirmed in code: a median live-model real-time factor above 0.75 skipped Whisper and disabled it for the engine's remaining lifetime, and a 12-second maximum decode budget could abort a normal laptop's long answer. The page would then use Moonshine's live transcript as its final answer. Final decoding now runs independently of live throughput, with a duration-scaled background deadline. Empty or severely truncated final results still preserve the live transcript, and cancellation still invalidates late results.
+
+Capture previously used main-thread ScriptProcessor callbacks. React work, layout, or other main-thread stalls can delay those callbacks; audio capture now prefers an AudioWorklet on the audio rendering thread. The fallback remains for browsers without AudioWorklet. Capture packets contain 2,048 samples at 16 kHz; pause detection counts samples rather than callbacks. The 300 ms drain exceeds both the new 128 ms packet interval and the fallback's 256 ms interval. The worklet sends PCM to the main thread without running recognition there.
+
+The input requests mono, echo cancellation, noise suppression and automatic gain control. We retain these browser requests because acoustic effects cannot be measured through injected digital WAVs. The browser may ignore ideal constraints. Track settings, actual input rate, context rate, capture backend and captured sample count are now available in engine diagnostics. A 16 kHz AudioContext performs the browser's sample-rate conversion; the implementation never relabels or drops 48 kHz samples to pretend they are 16 kHz. An unexpected context rate fails explicitly.
+
+The former fixed RMS threshold of 0.012 operated before bounded quiet-audio gain. Quiet speech could fail to count as speech and miss pause commits. Pause detection now uses the same bounded gain and a lower threshold. This remains an energy detector, which cannot reliably distinguish fan noise from speech. The complete session is retained independently of live chunk boundaries. Final Whisper input is no longer edge-trimmed using a fixed loudness threshold, which could discard a soft trailing phrase. Long Whisper answers still use timestamp-based 30-second windows with five-second strides.
+
+These observations explain plausible real-use failures and identify reproducible policy bugs; they do not establish the owner's physical microphone's acoustic quality. Physical microphone, Bluetooth, room echo and browser noise-suppression effects remain unmeasured.
+
+### Default selection under the revised download and memory limits
+
+This repeats evaluation on previously used held-out files; it is not a new untouched validation set. We compared q8 Whisper Small.en, Whisper Base.en, Distil Small.en and Moonshine Base using the same held-out VCTK recordings, including six Indian-English clips. Five licensed human FOSDEM excerpts test XGBoost, RAG, LoRA, embeddings and BM25. We scored those excerpts for term presence only: their conference captions are not audited gold WER references. The existing 29.14-second Indian-English composite is reported separately. It reuses the six Indian-English clips and is not another independent subject.
+
+| Candidate, q8 WASM | Held-out WER (18 clips) | Indian-English WER (6 clips) | AI terms, no question hints | Mean decode after complete audio | Model download, observed payload | Peak sampled Chromium RSS | Loads here |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | :--- |
+| Whisper Base.en | 6.7% (8/120) | 15.0% (6/40) | 3/5 | 4.45 s | 79.59 MB | 1.25 GiB | Yes |
+| Whisper Small.en | 6.7% (8/120) | 15.0% (6/40) | 3/5 | 12.28 s | 251.77 MB | 1.92 GiB | Yes |
+| Moonshine Base, bounded windows | 5.8% (7/120) | 17.5% (7/40) | 3/5 | 0.73 s | 66.91 MB | 1.11 GiB | Yes |
+| Distil Small.en | Not evaluated completely | Not evaluated completely | Not measured | Not reported | 174.77 MB | 3.86 GiB | Loaded; rejected for memory |
+| Whisper Large v3 Turbo, WebGPU | Not measured | Not measured | Not measured | Not measured | Inventory only; not downloaded | Not measured | No adapter available |
+
+MB denotes decimal download bytes; GiB denotes binary memory units. RSS was sampled every 500 ms across all Chromium processes and includes shared pages more than once. It excludes Node and other applications; the separately capped production run below measures the entire benchmark scope. Candidate timing is whole-buffer decode wall time after loading, not microphone-to-word latency or a claim about other laptops. CPU contention and download conditions are uncontrolled; accuracy, timing and memory artifacts retain each run independently.
+
+Standard uses Tiny for live text and Whisper Base.en q8 for the complete final answer. Its observed combined model payload is **111,666,188 bytes**. The WASM runtime used here is a 26,861,777-byte uncompressed artifact; its observed CDN response Content-Length was 5,547,312 bytes. The compiled benchmark worker is about 1.3 MB. These artifacts fit below 400 MB with substantial headroom; model payload and compressed HTTP transfer are different measurements.
+
+This is a trade-off, not a claim that Base wins every column. Moonshine Base makes one fewer edit on the short set, but its bounded-window composite WER was **57.5% (23/40)**, versus Base's **15.0% (6/40)** and Small's **17.5% (7/40)**. Base ties Small's short and Indian-English WER and unprompted term score, while using less memory and finishing sooner here. Distil Small's third completed clip still left Chromium at a sampled 3.86 GiB peak, which leaves no room for the operating system on a 4 GB laptop. That run was stopped, not scored as a complete evaluation. An earlier unbounded Moonshine long pass also hit the host-memory floor; the bounded-window result is retained separately.
+
+The model revisions and file sizes are in [tier model metadata](../scripts/speech-accuracy/tier-model-metadata.json); the measured runs and per-condition aggregates are in [tier summary](../scripts/speech-accuracy/tier-summary.json). Early run artifacts contain worker-request IDs in the `id` field because of an object-spread collision in the harness. Their `sourceSHA256`, corpus and order identify the recordings unambiguously; later runs write the corpus ID last. No reference or hypothesis was changed to repair that bookkeeping bug.
+
+### Reproduce the current measurements
+
+Each command below starts one model at a time, uses a fresh browser, closes its HTTP server and browser, and refuses to overwrite an existing output. The kernel scope caps the entire job and disables swap. The host-memory guard remains active inside it. Run commands sequentially, using new output names for another measurement.
+
+```bash
+python scripts/speech-accuracy/prepare-capture-cases.py
+systemd-run --user --scope -p MemoryMax=2304M -p MemorySwapMax=0 \
+  node scripts/speech-accuracy/evaluate-tiers.mjs \
+  --only=whisper-base-wasm --name=local-whisper-base
+systemd-run --user --scope -p MemoryMax=2304M -p MemorySwapMax=0 \
+  node scripts/speech-accuracy/evaluate-tiers.mjs \
+  --capture=after --name=local-capture-after --cpuBrowser=true
+node scripts/speech-accuracy/summarize-tiers.mjs
+```
+
+The normal before recapture was interrupted after seven clips; a new engine instance completed two more before another host-memory interruption. Those partial attempts remain in `tier-capture-before-budgeted.json` and `tier-capture-before-remainder.json`. We do not label their nine completed clips as a full baseline or report a new 18-clip before WER from them. The complete older baseline remains in the historical section. The current before/after diagnostic table uses the two completed long cases instead.
+
+### Licenses checked for this comparison
+
+[Whisper Small.en](https://huggingface.co/openai/whisper-small.en) and [Whisper Base.en](https://huggingface.co/openai/whisper-base.en) publish Apache-2.0 metadata; [Whisper Large v3 Turbo](https://huggingface.co/openai/whisper-large-v3-turbo), [Distil Small.en](https://huggingface.co/distil-whisper/distil-small.en), and [Moonshine Base](https://huggingface.co/onnx-community/moonshine-base-ONNX) publish MIT metadata. The ONNX Whisper exports point to their upstream models; their ONNX cards do not independently declare a license. We retained upstream license metadata rather than inferring a new license from the export namespace. VCTK's publisher specifies CC BY 4.0. FOSDEM's source-directory footers specify CC BY 2.0 Belgium. Attribution and exact source times remain in the corpus manifests. The [fresh license evidence](../scripts/speech-accuracy/tier-license-evidence.json) retains source URLs, revisions and footer excerpts. No gated or ambiguously licensed audio was added.
+
+
+## Historical experiments retained for comparison
+
+The following report describes earlier implementations and their original measurements. Its slow-refinement policy has been replaced by the capture fixes above.
+
+### Earlier report
 
 The browser recognizer now uses measured decoding speed to skip or abort slow Whisper refinement and can condition Whisper on the current question’s vocabulary. The follow-up below reports normal and 25% CPU results, technical-term gains, and negative controls. Earlier frozen results remain for comparison. The owner’s physical microphone remains untested.
 
@@ -215,17 +300,3 @@ Build, pagefind and the full Playwright suite were omitted under the brief's exp
 Record consented, spontaneously spoken technical answers in Indian English, with natural hesitations and fast passages. Include all five requested terms and ordinary-word controls such as a person named Laura. Compare a headset with built-in laptop speakers, quiet speech with fan noise, and speech starting immediately after the question. Inspect actual track settings, clipped peaks, final-word retention, transcript lag and cancellation while a model is loading. Browser and OS audio processing, room echo, microphone distance and physical sample-rate conversion cannot be validated with injected WAVs.
 
 The held-out split is held out from this configuration search; it does not establish whether a pretrained model previously encountered VCTK. Natural fast speech, real background interference, silence-only hallucination rates, Bluetooth devices and long spontaneous answers need a broader manually transcribed corpus. The FOSDEM term cases are small positive examples, not a precision study or a full technical-answer benchmark. These results support the measured browser trade-off, not a promise of server-model equivalence.
-
-## Capture audit, November 9 continuation
-
-The owner replaced the large-model comparison with a default download ceiling of 400 MB and a 4 GB laptop requirement. The unfinished Firestore sync changes are preserved in WIP commit `1813dc69`; `origin/main` was fetched and merged before speech changes. No push is authorized.
-
-Two final-pass policy defects were confirmed in code: a median live-model real-time factor above 0.75 skipped Whisper and disabled it for the engine's remaining lifetime, and a 12-second maximum decode budget could abort a normal laptop's long answer. The page would then use Moonshine's live transcript as its final answer. Final decoding now runs independently of live throughput, with a duration-scaled background deadline. Empty or severely truncated final results still preserve the live transcript, and cancellation still invalidates late results.
-
-Capture previously used main-thread ScriptProcessor callbacks. React work, layout, or other main-thread stalls can delay those callbacks; audio capture now prefers an AudioWorklet on the audio rendering thread. The fallback remains for browsers without AudioWorklet. Capture packets contain 2,048 samples at 16 kHz; pause detection counts samples rather than callbacks. The 300 ms drain exceeds both the new 128 ms packet interval and the fallback's 256 ms interval. The worklet sends PCM to the main thread without running recognition there.
-
-The input requests mono, echo cancellation, noise suppression and automatic gain control. We retain these browser requests because acoustic effects cannot be measured through injected digital WAVs. The browser may ignore ideal constraints. Track settings, actual input rate, context rate, capture backend and captured sample count are now available in engine diagnostics. A 16 kHz AudioContext performs the browser's sample-rate conversion; the implementation never relabels or drops 48 kHz samples to pretend they are 16 kHz. An unexpected context rate fails explicitly.
-
-The former fixed RMS threshold of 0.012 operated before bounded quiet-audio gain. Quiet speech could fail to count as speech and miss pause commits. Pause detection now uses the same bounded gain and a lower threshold. This remains an energy detector, which cannot reliably distinguish fan noise from speech. The complete session is retained independently of live chunk boundaries. Final Whisper input is no longer edge-trimmed using a fixed loudness threshold, which could discard a soft trailing phrase. Long Whisper answers still use timestamp-based 30-second windows with five-second strides.
-
-These observations explain plausible real-use failures and identify reproducible policy bugs; they do not establish the owner's physical microphone's acoustic quality. Physical microphone, Bluetooth, room echo and browser noise-suppression effects remain unmeasured.
