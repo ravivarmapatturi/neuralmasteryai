@@ -1,7 +1,7 @@
 ---
 title: "Multi-Region Ownership, Latency, and Failover"
 sidebar_position: 6.5
-description: ""
+description: "Choose regional read and write ownership, calculate coordination and quorum costs, and fail over without losing the meaning of acknowledged operations or creating competing writers."
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -102,6 +102,14 @@ In a test environment, compare requests through each regional endpoint and prese
 For PostgreSQL-based designs, inspect the configured standby and synchronous-replication state using supported monitoring views before a promotion exercise. For consensus services, inspect membership and progress through the service's supported tools. Do not substitute a DNS update for a safe promotion procedure. The [recovery chapter](/docs/software-system-design/disaster-recovery) supplies the validation and reopening boundary.
 
 Include a returning old writer in the failover test. Leave its process alive but isolated, switch authority under the supported protocol, then restore a delayed client path to the former region. It must reject obsolete authoritative effects even if that client's DNS or connection state still points there.
+
+## Make Failback a Second Ownership Transition
+
+Regional failover is not finished when another region begins accepting writes. The old region may return with state from before the transition and requests that were still buffered during isolation. It must not resume writing simply because its health checks recover. Establish the current ownership epoch, fence the former writer at the protected resources, and reconcile its data through the supported replication or recovery procedure. Only then decide whether to transfer ownership again. Failback is another controlled transition, not the reversal of a routing flag.
+
+The 42 ms synchronous path models one network round trip plus the stated flush costs. It is not a complete latency prediction for a real geography. Queueing, transport behavior, protocol rounds, and which replicas the quorum actually requires can change the path. Likewise, putting two voters in region A and one in B means losing A removes the majority; geographic labels alone do not make the cluster survive either region's loss. Evaluate each promised failure against the actual voting configuration, storage placement, and control-plane dependencies. A third region can change the quorum options while adding another dependency and operating cost.
+
+Asynchronous replication changes the recovery-point question. If the former primary acknowledged an operation that never reached the promoted replica, the new primary cannot reconstruct that operation from missing data. The system needs a documented loss bound and reconciliation process, or a stronger acknowledgement contract. Routing clients to the nearest region does not resolve this missing-history problem. Test a partition in which both regions remain alive and clients can reach different sides. Observe writes, read freshness, ownership fencing, and the response shown to users whose operations are uncertain. Include identity, DNS, secrets, and deployment controls in the drill because a healthy data replica may still depend on a failed regional control service. The architecture's useful availability is the intersection of those required paths, not the count of application instances visible on a map.
 
 ## Failure Modes and Better Choices
 
