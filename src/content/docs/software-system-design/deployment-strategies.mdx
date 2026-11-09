@@ -1,0 +1,145 @@
+---
+title: "Deployment Strategies and Reversible Changes"
+sidebar_position: 6.2
+description: ""
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { CanaryCohortRates } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
+
+# Deployment Strategies and Reversible Changes
+
+<ELI5>A restaurant can try a new recipe at a few tables before serving everyone. It needs to compare those tables with the old recipe and keep enough kitchen capacity to switch back. If the new recipe already changed all stored ingredients, changing the menu card back is not a complete rollback. Software releases have the same difference between routing code and reversing state.</ELI5>
+
+Choose rolling, blue/green, canary, or shadow release paths from risk and capacity, then preserve compatibility so rollback remains a real recovery option.
+A deployment changes the code or configuration handling live work. Its safety depends on exposure, compatible state, outcome evidence, and an executable recovery path. A successful process restart is not proof that user actions remain correct. Release strategy should control which requests see a change and how quickly the team can stop further harm.
+
+The misconception is that a healthy global average proves a small canary is healthy. Our example routes 1,000 requests to a canary with fifty failures and 9,000 to a baseline with nine. Canary failure rate is 5%, baseline 0.1%, but the combined rate is 0.59%. A global alarm at 1% would miss the canary's severe regression. Compare cohorts before increasing exposure.
+
+## Match the Strategy to the Failure You Need to Limit
+
+A **rolling deployment** gradually replaces instances, retaining a mixture of versions. It can reuse capacity efficiently while requiring old/new compatibility and safe draining. A **blue/green deployment** prepares another environment and switches traffic, offering a clear routing reversal if shared state remains compatible. It needs enough resources and a policy for work already accepted in either environment.
+
+A **canary** exposes a controlled cohort and compares outcomes before expanding. The cohort can be defined by users, requests, instances, or regions, with different representativeness. A **shadow** path copies suitable work for comparison without becoming the authoritative response. It must not repeat irreversible external effects merely because its output is hidden from the user.
+
+These are techniques to combine deliberately, not maturity levels every product must traverse. A small compatible internal change can use a simpler rollout than a storage-format migration. Choose the exposure and reversal mechanism from the actual harm, not from the popularity of a deployment label.
+
+## Compare Rates Within Meaningful Cohorts
+
+<CanaryCohortRates />
+
+The bars show baseline, canary, and global error percentages for the same requests. The global denominator dilutes the canary because most requests still use the old code. Selecting cohort view makes the 5% versus 0.1% contrast visible. This is computed evidence for the chosen population, not a claim of causality independent of traffic mix.
+
+<RunnableCode code={`baseline_total, baseline_bad = 9000, 9
+canary_total, canary_bad = 1000, 50
+for name, bad, total in (
+    ("baseline", baseline_bad, baseline_total),
+    ("canary", canary_bad, canary_total),
+    ("combined", baseline_bad + canary_bad, baseline_total + canary_total),
+):
+    print(name, "error percent:", round(100 * bad / total, 3))
+print("Canary/baseline error-rate ratio:", (canary_bad/canary_total)/(baseline_bad/baseline_total))
+# Try it: reduce canary traffic share while preserving its rate; the global average hides more of its harm.
+`} />
+
+Stratify by operation, tenant class, region, cache state, and payload where those affect outcomes. A canary receiving only easy internal requests can look good while failing real traffic. Compare latency, correctness, resource saturation, and business invariants alongside error ratios. A release can return fast incorrect data without producing an exception.
+
+Define stop and expansion rules before deployment. Use enough relevant observations and time to cover the failure modes in scope, including cold starts, scheduled work, and older data. A short zero-error interval with little traffic is weak evidence. Operator judgement remains necessary when the automatic comparison lacks representative data.
+
+<PredictFirst question="A canary fails 5% of its requests while the combined fleet fails 0.59%. Which population should directly assess canary health?" options={["Only the combined fleet, because it has more samples", "The comparable canary and baseline cohorts, with their operation mix checked", "Only process readiness, because it proves business correctness"]} correctIndex={1} explanation="A small bad cohort can be diluted by healthy baseline traffic. Readiness and global aggregates are useful but do not replace cohort-specific user outcomes." />
+
+## Capacity and Readiness Bound the Transition
+
+A rollout temporarily changes useful capacity. New instances may load data, build caches, or establish connections before serving safely. Old instances may retain in-flight jobs or streams after they stop receiving new assignments. Include both phases in resource and deadline budgets. A declared desired replica count is not the same as sustained available serving capacity.
+
+For ten desired replicas, an illustrative Kubernetes RollingUpdate policy can use `maxSurge: 2` and `maxUnavailable: 1`. Those settings constrain the controller's rollout under its rules; terminating workloads and actual resource occupancy need separate consideration. They do not prove the application survives a zone failure or meets tail latency while warming. Test the real failure envelope.
+
+Readiness should reflect the operation the instance can safely accept. A fixed sleep is a poor substitute for verifying initialization. Liveness should not restart every instance because one shared dependency is slow. [Service discovery](/docs/software-system-design/service-discovery) explains how readiness and existing connections propagate into actual routing.
+
+## Rollback Requires Compatible State
+
+Code can be switched back while data written by new code remains. If a new version changes a stored enum, schema, or event meaning that the old version cannot interpret, routing reversal can fail immediately. Treat data compatibility as part of the deployment plan. A backup is not a fast automatic undo for all writes accepted during a release.
+
+An **expand/contract** migration first introduces compatible new structure, then moves readers and writers, backfills historical data, and only later removes the old structure. Each stage needs a supported overlap and rollback policy. Do not remove the old column while old instances or retained jobs still require it. Backfill itself needs bounded load and recoverable progress.
+
+Dual writes inside one local transaction can maintain two local representations when appropriate; dual writes across independent stores reintroduce partial failure. An outbox or supported migration stream may be required. Verify authority during cutover and determine what must happen to writes accepted by the new owner before attempting to switch back.
+
+<GoDeeper title="Go deeper: feature activation and code deployment are distinct changes">
+A feature flag can deploy dormant code before enabling behavior for selected users. The flag still needs compatible clients, trustworthy evaluation, bounded propagation, and an owner. Turning it off may stop new actions while leaving already-created records or jobs. A kill switch is useful only if the operation and recovery state remain valid after activation has had effects.
+</GoDeeper>
+
+## Shadowing Must Not Create a Second Authority
+
+A shadow read can compare response structure or latency without replacing the user's result. A shadow mutation can duplicate charges, notifications, or inventory changes unless its effects are explicitly isolated or suppressed. Logging that the response is ignored does not prevent the destination from performing the action. Design a test harness appropriate to the side effects.
+
+Comparisons also need stable inputs. If primary and shadow read different snapshots, an output difference may reflect concurrent updates rather than a code defect. Record versions or use controlled captured data when that distinction matters. Avoid retaining sensitive production payloads without a justified access and retention policy.
+
+Use shadow evidence as one signal, not proof that activation is safe. It may omit write contention, user interaction with new fields, or downstream behavior triggered only by authoritative responses. The staged rollout should still observe actual user outcomes once the new path begins serving real work.
+
+## Exercise a Real Rollout Plan in Isolation
+
+A Kubernetes test Deployment can specify the following transition policy alongside a real image, container port, and readiness implementation. The numeric values are illustrative. Do not apply a rollout policy to a shared production object merely to test documentation.
+
+```yaml
+spec:
+  replicas: 10
+  minReadySeconds: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 1
+```
+
+Inspect `kubectl rollout status deployment/catalogue` and `kubectl rollout history deployment/catalogue` in the intended test namespace. A supported `kubectl rollout undo deployment/catalogue` can restore an earlier pod template, but does not restore database contents or reverse external effects. Test an incompatible-data scenario explicitly before calling that command a full rollback procedure.
+
+A release drill should inject a bad canary, verify stop conditions, preserve baseline capacity, and reverse routing while checking data invariants. Measure the time from detecting harm to stopping further exposure, not only image startup time. Keep the operator's required credentials and commands available even when the new application path is broken.
+
+<RunnableCode code={`failure_probability = .05
+for observations in (20, 100):
+    no_failure_seen = (1-failure_probability) ** observations
+    print("Independent observations:", observations,
+          "chance no failure appears:", round(no_failure_seen, 6))
+ready_baseline, ready_canary = 9, 1
+print("Useful ready replicas:", ready_baseline + ready_canary)
+print("If canary is withdrawn:", ready_baseline)
+# Try it: require ten useful replicas after withdrawing the canary; provide reserve instead of assuming it exists.
+`} />
+
+The probability model assumes independent requests with a fixed failure chance. Real bugs can depend on a rare operation or correlated state, so sample count alone cannot certify safety. Combine representative coverage with measured outcomes, compatibility tests, and a recovery path whose state consequences are understood.
+
+## Failure Modes and Better Choices
+
+A canary is healthy globally but broken for one route. Compare the relevant cohort and route. A rolling release replaces capacity faster than new instances become useful. Adjust readiness and reserve from measured startup. A rollback restores code but fails on new data. Use compatible phases and rehearse the reversal.
+
+A shadow worker emits real notifications. Isolate or suppress effects under a deliberate test design. A feature flag is removed from code while stale instances still read it. Treat configuration evolution as an interface. A schema cleanup runs before retained jobs migrate. Include all old readers, not only currently deployed web instances, in compatibility evidence.
+
+## When Not to Use a Complex Rollout
+
+| Situation | Better focus |
+| --- | --- |
+| No reliable outcome indicators exist | Establish release evidence before automating expansion |
+| The main risk is incompatible state | A staged schema and data migration |
+| The change is small, compatible, and readily reversible | A simpler measured rollout |
+| Shadow traffic can repeat irreversible effects | A controlled replay or isolated test harness |
+
+## Remember
+
+| Mechanism | Safety question |
+| --- | --- |
+| Canary | Is the exposed cohort comparable and healthy? |
+| Rolling replacement | Is useful capacity preserved while versions overlap? |
+| Blue/green | Can routing reverse while state remains compatible? |
+| Expand/contract | Can every supported old reader survive each phase? |
+| Rollback | Which code, data, and external effects actually reverse? |
+
+You can now assess a rollout by exposure, compatibility, and recovery evidence instead of process success alone. Return to [Reliability and Operations](/docs/software-system-design/reliability) to plan recovery when the failure exceeds a release reversal.
+
+## Sources
+
+- [Google SRE Workbook, Canarying Releases (2018)](https://sre.google/workbook/canarying-releases/)
+- [Kubernetes, Deployments](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)
+- [Kubernetes, Probes](https://kubernetes.io/docs/concepts/workloads/pods/probes/)
+- [PostgreSQL, Transaction Isolation](https://www.postgresql.org/docs/current/transaction-iso.html)
+- [AWS Prescriptive Guidance, Transactional Outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html)
