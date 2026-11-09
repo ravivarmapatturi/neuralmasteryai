@@ -22,3 +22,33 @@ print('validated')
 `],{encoding:'utf8'});
   expect(result.trim()).toBe('validated');
 });
+
+it('applies a durable rubric without changing the answer or replacing existing points', () => {
+  const result = execFileSync('python3', ['-c', `
+import ast
+from pathlib import Path
+module = ast.parse(Path('scripts/interview/build_practice_data.py').read_text())
+functions = [n for n in module.body if isinstance(n, ast.FunctionDef) and n.name in ('validate_key_points', 'apply_key_point_override')]
+ns = {}
+exec(compile(ast.Module(body=functions, type_ignores=[]), '<rubrics>', 'exec'), ns)
+apply = ns['apply_key_point_override']
+original = {'id': 'question', 'answer': 'Exact answer.\\n  Keep whitespace.', 'level': 'senior'}
+item = original.copy()
+apply(item, {'question': ['First', 'Second', 'Third']})
+assert {k: v for k, v in item.items() if k != 'keyPoints'} == original
+try:
+    apply(item, {'question': ['Replacement', 'Second', 'Third']})
+except ValueError:
+    pass
+else:
+    raise AssertionError('Existing rubric replaced')
+try:
+    apply(original.copy(), {'question': ['Too few']})
+except ValueError:
+    pass
+else:
+    raise AssertionError('Malformed rubric accepted')
+print('validated')
+`], {encoding: 'utf8'});
+  expect(result.trim()).toBe('validated');
+});

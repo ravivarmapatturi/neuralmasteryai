@@ -212,9 +212,24 @@ def validate_key_points(item):
         raise ValueError(f"Invalid keyPoints for {item['id']}: expected 3 to 6 unique short points")
 
 
+# Hand-authored rubrics are keyed by stable practice IDs, independent of source format.
+# Keep answer text and all source metadata intact when rebuilding the bank.
+key_point_overrides = json.loads((ROOT / "src/data/interviewKeyPoints.json").read_text())
+question_ids = {q["id"] for t in topics.values() for q in t["questions"]}
+unknown_ids = set(key_point_overrides) - question_ids
+if unknown_ids:
+    raise ValueError(f"Unknown key-point question IDs: {sorted(unknown_ids)}")
+def apply_key_point_override(item, overrides):
+    if item["id"] in overrides:
+        if "keyPoints" in item:
+            raise ValueError(f"Key-point override would replace an existing rubric: {item['id']}")
+        item["keyPoints"] = overrides[item["id"]]
+    validate_key_points(item)
+
+
 for t in topics.values():
     for item in t["questions"]:
-        validate_key_points(item)
+        apply_key_point_override(item, key_point_overrides)
     t["questions"].sort(key=lambda q: (0, 0, 0) if "priority" not in q else (1, *q["priority"]))
     for q in t["questions"]:
         q.pop("priority", None)
