@@ -1,0 +1,230 @@
+{
+  "senior:attention-complexity": {
+    "id": "senior:attention-complexity",
+    "title": "What is the time and memory cost of attention, and how do models manage it?",
+    "answer": "Scaled dot-product attention requires (T^2 \\cdot d)$ FLOPs and materializes an (T^2)$ attention matrix, creating quadratic compute and memory scaling with sequence length $. During autoregressive generation, recomputing previous keys and values would take (T^2)$ time; the KV cache stores past key/value tensors, reducing per-token generation to (1)$ operations at the cost of (T)$ memory per request. Mitigations include: FlashAttention, which tiles attention in GPU SRAM to eliminate HBM read/writes of the (T^2)$ matrix; Grouped-Query Attention (GQA), which shares key/value heads across query heads to slash KV cache size by 4x to 8x; and sliding window attention for bounded context.",
+    "keyPoints": [
+      "Dense attention computes pairwise token scores with quadratic sequence cost.",
+      "Materializing the attention matrix requires quadratic memory.",
+      "FlashAttention reduces memory traffic without making exact dense attention linear.",
+      "Sparse or local attention changes connectivity to reduce cost.",
+      "KV caching avoids recomputing past keys and values during decoding."
+    ]
+  },
+  "senior:batchnorm-vs-layernorm": {
+    "id": "senior:batchnorm-vs-layernorm",
+    "title": "Compare batch normalization and layer normalization. Why do transformers use layer norm?",
+    "answer": "Batch Normalization computes mean and variance across the batch dimension for each feature, tracking running statistics for inference. It degrades when batch sizes are small, and it fails in NLP because variable sequence lengths and autoregressive single-token decoding distort mini-batch statistics. Layer Normalization computes mean and variance across the hidden channel dimension {model}$ for each token independently (0 \to$ normalize over $). Because LayerNorm performs zero cross-sample or cross-token pooling, it behaves identically during training and single-token serving, handles dynamic sequence lengths naturally, and operates cleanly in distributed pipelines. BatchNorm remains effective for CNNs with large, fixed-size image batches.",
+    "keyPoints": [
+      "Batch norm uses batch statistics per feature channel.",
+      "Layer norm normalizes features within each example or token.",
+      "Batch norm uses running statistics at inference.",
+      "Layer norm works without dependence on batch size and suits variable-length transformers."
+    ]
+  },
+  "senior:bert-vs-gpt": {
+    "id": "senior:bert-vs-gpt",
+    "title": "What is the difference between BERT and GPT?",
+    "answer": "BERT is an encoder-only architecture trained with bidirectional self-attention: every token attends to all tokens across both left and right context. It is pretrained using Masked Language Modeling (reconstructing 15% masked tokens), making it suited for classification, sequence labeling, and bi-encoder embedding retrieval. GPT is a decoder-only architecture utilizing causal masking, where lower-triangular attention matrices prevent tokens from attending to future positions. It is pretrained via autoregressive next-token prediction, optimizing the likelihood of the subsequent token. BERT cannot generate coherent open-ended text because it lacks autoregressive factorization, while GPT cannot condition on bidirectional context within a single forward pass.",
+    "keyPoints": [
+      "BERT uses bidirectional encoder attention.",
+      "BERT pretraining masks tokens for reconstruction.",
+      "GPT uses causal attention with next-token prediction.",
+      "Encoder representations suit understanding tasks; causal decoders generate autoregressively."
+    ]
+  },
+  "senior:bias-variance": {
+    "id": "senior:bias-variance",
+    "title": "Explain the bias-variance trade-off. How do you tell which problem you have?",
+    "answer": "Expected test error decomposes into bias squared, variance, and irreducible error. Bias is systematic error from an under-parameterized model that cannot capture the underlying structure; training and validation error are both high and close. Variance is sensitivity to fluctuations in the training sample; training error is low but the validation gap is large. Irreducible error is the noise floor from unmeasured variables or label noise, bounding performance regardless of model complexity. To diagnose, plot learning curves against training set size. If adding data asymptotes with high error, you have high bias\u2014add capacity, features, or unfreeze layers. If validation error keeps improving as data grows, you have high variance\u2014regularize, collect more samples, or reduce feature count.",
+    "keyPoints": [
+      "High bias gives high training and validation error.",
+      "High variance gives low training error and a large validation gap.",
+      "Learning curves distinguish capacity limits from data sensitivity.",
+      "More capacity reduces bias; more data or regularization reduces variance."
+    ]
+  },
+  "senior:calibration": {
+    "id": "senior:calibration",
+    "title": "What is model calibration and when does it matter?",
+    "answer": "A model is calibrated when predicted probabilities match observed event frequencies: among events predicted at 0.8, 80% should be positive. Complex models like gradient-boosted trees and deep networks often rank well (high AUC) while outputting overconfident, poorly calibrated probabilities. Calibration is essential when probabilities drive expected-value calculations, ad auction bidding, or multi-class ensemble weighting. Measure calibration with reliability diagrams and Expected Calibration Error (ECE). Fix it using Platt scaling (fitting a logistic sigmoid on logits) for smooth shifts, isotonic regression for non-parametric monotonic mapping, or temperature scaling for multiclass models. Fit calibration parameters strictly on a separate holdout set to prevent overfitting.",
+    "keyPoints": [
+      "A calibrated probability matches the observed event frequency.",
+      "Calibration matters when decisions use probabilities and costs.",
+      "Reliability diagrams and proper scoring rules assess calibration.",
+      "Fit Platt scaling or isotonic regression on separate validation data.",
+      "A model can rank well while its probabilities are miscalibrated."
+    ]
+  },
+  "senior:class-imbalance": {
+    "id": "senior:class-imbalance",
+    "title": "Your fraud dataset is 0.1% positive. How do you train and evaluate the model?",
+    "answer": "Never use raw accuracy: predicting the majority class trivially yields 99.9%. Evaluate with Precision-Recall AUC (PR-AUC) and set operational thresholds using recall at fixed precision or expected cost. Keep validation and test splits on the true 0.1% base rate to reflect deployment reality. For training, apply focal loss or class weights in the loss function, or use stratified undersampling of negatives on training folds only. If you resample training data, predicted probabilities will be systematically distorted; you must adjust the output log-odds back to the true prior or calibrate probabilities using Platt scaling or isotonic regression on unskewed validation data before feeding scores into downstream business logic.",
+    "keyPoints": [
+      "Accuracy hides failure on a rare positive class.",
+      "Evaluate precision-recall and choose a threshold using business costs.",
+      "Keep validation and test data at the deployment class prevalence.",
+      "Apply class weights or resampling only during training.",
+      "Calibrate probabilities on data with the true class prevalence."
+    ]
+  },
+  "senior:deployment-strategies": {
+    "id": "senior:deployment-strategies",
+    "title": "Compare shadow, canary and blue-green deployment for an ML model.",
+    "answer": "For model releases, shadow, canary, and blue-green deployments balance verification fidelity against risk and infrastructure cost:\nShadow deployment mirrors live production traffic asynchronously to the candidate model without serving its outputs to users. It provides zero-risk verification of latency, GPU memory, and prediction sanity against production traffic, but cannot measure user behavioral impact and incurs 2x inference compute cost. Writes and external mutations must be mocked.\nCanary deployment routes a small slice of live traffic (e.g., 2% to 5%) to the new model, measuring real conversion metrics and p99 latency against the champion. It risks user experience for that slice if the model is degraded, but bounds the blast radius.\nBlue-green deployment maintains two identical production environments, switching load-balancer traffic instantly. It provides immediate zero-downtime cutover and instant rollback, but requires 2x full infrastructure footprint.\nIn production, we chain them: shadow for performance and stability, followed by canary with automated metric circuit-breakers for business impact.",
+    "keyPoints": [
+      "Shadow traffic evaluates a model without affecting user decisions.",
+      "Canaries expose a limited share of real traffic.",
+      "Blue-green deployment switches between prepared environments.",
+      "Define monitored guardrails and a rollback path before rollout."
+    ]
+  },
+  "senior:drift-types": {
+    "id": "senior:drift-types",
+    "title": "Explain data drift and concept drift. How do you monitor when labels are delayed?",
+    "answer": "Data drift occurs when the input distribution P(X) changes while the conditional relationship P(Y|X) remains constant\u2014for instance, a marketing campaign shifts user demographics. Concept drift occurs when the underlying relationship P(Y|X) shifts\u2014such as macroeconomic changes causing users with high credit scores to suddenly default.\nWhen ground-truth labels are delayed by weeks or months (such as credit defaults or fraud chargebacks), we cannot measure accuracy directly. Instead, we monitor inputs and outputs:\nFirst, we track Population Stability Index (PSI) and two-sample Kolmogorov-Smirnov tests on top-ranked features; a PSI exceeding 0.2 indicates significant shift requiring investigation.\nSecond, we monitor prediction score distributions and calibration drifts against historical baselines.\nThird, we track short-term proxy signals, like click-through or engagement rates, that correlate with downstream conversion.\nThe trade-off is alert fatigue: feature drift alerts are noisy. We tier alerts by feature importance and business impact, triggering automated retraining only when core drivers show structural movement.",
+    "keyPoints": [
+      "Data drift changes input distributions.",
+      "Concept drift changes the relationship between inputs and targets.",
+      "Unlabelled drift signals do not prove quality degradation.",
+      "Use proxy signals while labels are delayed and evaluate outcomes when labels arrive."
+    ]
+  },
+  "senior:dropout": {
+    "id": "senior:dropout",
+    "title": "How does dropout work, and how does it behave at inference?",
+    "answer": "During training it zeroes each unit with probability p, which stops units relying on each other and acts like training many thinned networks. Common implementations scale the kept activations by 1/(1-p) so expected values match, then disable dropout at inference. Forgetting eval mode is a common bug that makes predictions noisy. Keeping dropout on at inference, Monte Carlo dropout, gives a rough uncertainty estimate.",
+    "keyPoints": [
+      "Dropout randomly zeros activations during training.",
+      "It reduces reliance on particular co-adapted features.",
+      "Inverted dropout scales retained activations during training.",
+      "Ordinary inference disables dropout without random masking."
+    ]
+  },
+  "senior:encoder-decoder-attention": {
+    "id": "senior:encoder-decoder-attention",
+    "title": "Explain self-attention, cross-attention and causal masking.",
+    "answer": "In self-attention, queries, keys and values come from the same sequence. In cross-attention, queries come from the decoder and keys and values come from the encoder, which lets a translation model look at the source. Causal masking blocks attention to future positions during training, so the model cannot see the token it must predict. Decoder-only LLMs use masked self-attention and no cross-attention.",
+    "keyPoints": [
+      "Self-attention takes queries, keys and values from one sequence.",
+      "Cross-attention takes queries from the decoder and keys and values from encoder outputs.",
+      "Causal masking blocks attention to future target tokens.",
+      "Masking preserves autoregressive training without target leakage."
+    ]
+  },
+  "senior:enterprise-rag-design": {
+    "id": "senior:enterprise-rag-design",
+    "title": "Design an internal AI assistant over 10 million company documents with access control.",
+    "answer": "An enterprise RAG system over 10 million documents must prioritize security and access control above raw retrieval:\nAccess Control: Permissions (ACLs) must be enforced at retrieval time, never as an LLM post-filter. Document chunks inherit security tokens (user, department, role group IDs) stored in the vector database metadata. Queries inject the authenticated user's active directory groups into the vector database filter, ensuring forbidden documents never enter the retrieval context.\nIngestion & Parsing: Documents (PDFs, spreadsheets, presentations) pass through layout-aware parsers (extracting tables and hierarchy), followed by semantic chunking. An asynchronous Change Data Capture (CDC) pipeline syncs document updates and immediate deletions.\nRetrieval & Generation: We combine BM25 and dense embeddings via Reciprocal Rank Fusion, followed by a cross-encoder reranker to pick the top 5 chunks. The system prompt requires citations with exact source links and instructs the model to refuse to answer if retrieved context is insufficient.\nEvaluation: We track retrieval Recall@K and answer faithfulness using automated LLM-as-a-judge pipelines on a curated golden dataset of internal queries.",
+    "keyPoints": [
+      "Ingest, chunk and index documents with ownership metadata.",
+      "Enforce user permissions during retrieval and before returning evidence.",
+      "Combine retrieval and reranking to select relevant context.",
+      "Generate grounded answers with citations and an abstention path.",
+      "Evaluate retrieval and answer quality separately and maintain index freshness."
+    ]
+  },
+  "senior:feature-store": {
+    "id": "senior:feature-store",
+    "title": "What is a feature store, and what problem does it solve?",
+    "answer": "A feature store centralizes the definition, computation, and storage of ML features across offline training and online serving. It solves two critical production issues: training-serving skew\u2014where training uses batch SQL while serving computes features via Python microservices with differing logic\u2014and point-in-time leakage, by performing AS OF time-travel joins so training instances only see features available before the event timestamp. Architecturally, it couples an offline store (Snowflake, BigQuery, or Parquet on S3) optimized for high-throughput batch reads with an online key-value store (Redis, DynamoDB) optimized for sub-10ms point lookups. The trade-off is infrastructure complexity: maintaining streaming pipelines (Flink/Kafka) to keep the online store synchronized with batch updates introduces synchronization lag, operational overhead, and storage costs. For teams without real-time feature requirements or feature reuse across models, a database view and a lightweight Redis cache are far simpler.",
+    "keyPoints": [
+      "A feature store shares feature definitions across training and serving.",
+      "Point-in-time joins avoid using future feature values.",
+      "Offline storage supports training and online storage supports low-latency retrieval.",
+      "Freshness and consistent transformations reduce training-serving skew."
+    ]
+  },
+  "senior:implement-metrics": {
+    "id": "senior:implement-metrics",
+    "title": "Write precision, recall and F1 from scratch, and handle the edge cases.",
+    "answer": "Count true positives, false positives and false negatives. Precision is TP over TP plus FP, recall is TP over TP plus FN, and F1 is their harmonic mean. Guard every division against zero, and state the convention you use, usually returning zero. For multi-class work, explain macro averaging, which treats classes equally, against micro averaging, which treats examples equally. Test with all-negative predictions and no positive labels.",
+    "keyPoints": [
+      "Precision is TP divided by TP plus FP.",
+      "Recall is TP divided by TP plus FN.",
+      "F1 is the harmonic mean of precision and recall.",
+      "Define zero-denominator behavior explicitly.",
+      "Test perfect, all-negative and no-positive-prediction cases."
+    ]
+  },
+  "senior:l1-vs-l2": {
+    "id": "senior:l1-vs-l2",
+    "title": "What is the difference between L1 and L2 regularization, and when would you use each?",
+    "answer": "L2 regularization (Ridge) adds a squared weight penalty $\\lambda \\sum w_i^2$, shrinking weights smoothly toward zero without setting them to zero. Geometrically, its spherical loss contour meets the loss surface off-axis, handling multicollinearity by distributing weight across correlated features. L1 regularization (Lasso) penalizes absolute values $\\lambda \\sum |w_i|$; its diamond contour has non-differentiable corners on the coordinate axes, driving weights to exact zero and performing embedded feature selection. L1 struggles when features are collinear: it arbitrarily selects one and zeroes the rest. ElasticNet resolves this with a convex combination $\\alpha L_1 + (1-\\alpha) L_2$, retaining L1's sparsity while grouping correlated predictors via L2.",
+    "keyPoints": [
+      "L1 penalizes absolute weights and can produce exact zeros.",
+      "L2 penalizes squared weights and shrinks correlated features together.",
+      "L1 can select arbitrarily among correlated predictors.",
+      "ElasticNet combines sparsity with L2 stabilization."
+    ]
+  },
+  "senior:missing-data": {
+    "id": "senior:missing-data",
+    "title": "How do you handle missing values? When is dropping rows wrong?",
+    "answer": "Diagnose the missingness mechanism first. Under Missing Completely at Random (MCAR), missingness is independent of both observed and unobserved data; dropping rows is valid though wasteful. Under Missing at Random (MAR), missingness depends on observed features; dropping rows introduces selection bias, so use multivariate or model-based imputation with an explicit missingness indicator flag. Under Missing Not at Random (MNAR), missingness depends on the missing value itself (e.g., high-income earners withholding salary); imputation cannot fully correct this without modeling the missingness process. Always fit imputation parameters strictly on training splits to prevent data leakage, and ensure tree-based models leverage their native missing-value routing.",
+    "keyPoints": [
+      "MCAR missingness is independent of observed and unobserved values.",
+      "MAR missingness depends on observed data.",
+      "MNAR missingness depends on the missing value itself.",
+      "Dropping rows can bias results when missingness is not completely random.",
+      "Fit imputation only on training data and consider missingness indicators."
+    ]
+  },
+  "senior:mixed-precision": {
+    "id": "senior:mixed-precision",
+    "title": "What is mixed-precision training and what can go wrong?",
+    "answer": "Mixed precision uses 16-bit floating point (FP16 or BF16) for matrix multiplications and activations while maintaining FP32 master weights and optimizer states. FP16 has a 5-bit exponent and 10-bit mantissa (max value ~65,504, min subnormal $\\sim 6 \times 10^{-8}$); small backpropagated gradients easily underflow to zero, requiring a dynamic loss scaler that multiplies loss by a scale factor and skips optimizer steps on overflow. BF16 shares FP32's 8-bit exponent and has a 7-bit mantissa, offering the same dynamic range (0^{38}$) with reduced precision. BF16 eliminates gradient underflow and loss scaling entirely, making it the modern standard on Ampere and newer GPUs.",
+    "keyPoints": [
+      "Mixed precision uses lower precision for selected compute with higher precision where needed.",
+      "FP16 can underflow gradients or overflow activations.",
+      "Loss scaling protects small FP16 gradients.",
+      "BF16 has a wider exponent range than FP16.",
+      "Check numerical stability rather than assuming lower precision preserves results."
+    ]
+  },
+  "senior:p-values": {
+    "id": "senior:p-values",
+    "title": "What does a p-value actually mean, and what is a common misreading?",
+    "answer": "It is the probability of seeing a result at least this extreme if the null hypothesis were true. It is not the probability that the null is true, and it says nothing about effect size. With very large samples, tiny useless effects become significant, so report a confidence interval and judge practical impact. Running many tests inflates false positives, so correct for multiple comparisons.",
+    "keyPoints": [
+      "A p-value is a tail probability under the null hypothesis.",
+      "It is not the probability that the null hypothesis is true.",
+      "Statistical significance does not measure effect size or business value.",
+      "Repeated tests and optional stopping can inflate false positives."
+    ]
+  },
+  "senior:pca": {
+    "id": "senior:pca",
+    "title": "What does PCA do, and when does it fail?",
+    "answer": "PCA computes an orthogonal linear transformation projecting centered data onto directions of maximum variance, using eigenvectors of the sample covariance matrix or singular value decomposition (SVD). Retaining the top $ components minimizes reconstruction mean squared error. Features must be standardized first, or variables with larger numerical units dominate the projection. PCA fails in two common scenarios: when class separability lies along low-variance directions rather than high-variance ones\u2014where Linear Discriminant Analysis (LDA) is appropriate\u2014and when data lies on non-linear manifolds, where methods like UMAP, t-SNE, or autoencoders are required. The components are also linear combinations of all original features, reducing interpretability.",
+    "keyPoints": [
+      "PCA projects centered data onto orthogonal directions of maximum variance.",
+      "Top principal components minimize linear reconstruction error.",
+      "Feature scales can dominate PCA without standardization.",
+      "High variance need not preserve class separation.",
+      "Linear projections cannot represent a nonlinear manifold."
+    ]
+  },
+  "senior:top-k-streaming": {
+    "id": "senior:top-k-streaming",
+    "title": "Find the top k most frequent items in a very large stream. What is your approach?",
+    "answer": "If it fits in memory, count with a hash map and keep a min-heap of size k, which takes O(n log k) time. If it doesn't, use an approximate sketch such as Count-Min with a heap, or Misra-Gries, which accept a bounded error for fixed memory. On a cluster, count by key with map-reduce, then merge. State your accuracy needs first, since they determine the design.",
+    "keyPoints": [
+      "Exact counts require memory proportional to distinct items.",
+      "A size-k heap selects top counts efficiently after counting.",
+      "Approximate sketches or heavy-hitter algorithms bound memory.",
+      "Explain approximation error and whether a second pass is available."
+    ]
+  },
+  "senior:why-sqrt-dk": {
+    "id": "senior:why-sqrt-dk",
+    "title": "Why does scaled dot-product attention divide by the square root of d_k?",
+    "answer": "If query and key components have variance one, their dot product has variance d_k, so larger dimensions produce larger scores. Large scores push softmax into a nearly one-hot region where gradients become very small. Dividing by the square root of d_k brings the variance back to about one, which keeps attention trainable. It is a simple variance correction, the same reasoning behind careful weight initialization.",
+    "keyPoints": [
+      "The dot-product variance grows with key dimension under unit-variance assumptions.",
+      "Large attention logits saturate softmax.",
+      "Dividing by square root of key dimension stabilizes logit variance.",
+      "Less saturated softmax gives healthier gradients."
+    ]
+  }
+}
