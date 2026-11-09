@@ -21,7 +21,7 @@ export default function FocusTimerControl() {
   const phaseText = isBreak ? 'Break' : 'Focus';
 
   return (
-    <div className="nm-timer-control-wrapper">
+    <div className={`nm-timer-control-wrapper${isIdle ? " is-idle" : ""}`}>
       <button
         type="button"
         className={`nm-timer-nav-btn ${statusClass}`}

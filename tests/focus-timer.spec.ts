@@ -6,7 +6,7 @@ const EVIDENCE_DIR = join(process.cwd(), 'docs', 'evidence', 'focus');
 
 test.describe('Focus Pomodoro Timer E2E', () => {
   test.use({
-    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5173',
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:4173',
   });
 
   test.beforeAll(() => {
@@ -136,14 +136,47 @@ test.describe('Focus Pomodoro Timer E2E', () => {
     await page.screenshot({ path: join(EVIDENCE_DIR, 'navbar-mobile-375-dark.png'), clip: { x: 0, y: 0, width: 375, height: 80 } });
   });
 
+  for (const width of [320, 375]) {
+    test(`mobile timer fits routes at ${width}px idle, running and paused`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      for (const route of ['/focus', '/learn', '/labs', '/interview', '/progress', '/docs/deep-learning/attention-transformers']) {
+        await page.goto(route);
+        await expect(page.locator('.nm-navbar-header')).toBeVisible();
+        const measure = async () => {
+          await page.evaluate(() => document.fonts.ready);
+          expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+          const bounds = await page.locator('.nm-navbar-nav').boundingBox();
+          expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+        };
+        await measure();
+        await page.getByRole('button', { name: 'Open menu', exact: true }).click();
+        await page.getByRole('button', { name: 'Start focus timer', exact: true }).filter({ visible: true }).click();
+        const popover = await page.locator('.nm-timer-popover').boundingBox();
+        expect(popover!.x).toBeGreaterThanOrEqual(0);
+        expect(popover!.x + popover!.width).toBeLessThanOrEqual(width);
+        await page.locator('.nm-timer-popover').getByRole('button', { name: /start/i }).first().click();
+        await page.getByRole('button', { name: 'Close focus timer', exact: true }).click();
+        await page.getByRole('button', { name: 'Close menu', exact: true }).click();
+        await measure();
+        await page.locator('.nm-navbar-nav .nm-timer-nav-btn').click();
+        await page.getByRole('button', { name: /pause/i }).filter({ visible: true }).first().click();
+        await page.keyboard.press('Escape');
+        await measure();
+        await page.evaluate(() => localStorage.removeItem('nm_focus_timer_state'));
+      }
+    });
+  }
+
   test('reload after endsAt has passed: session saved exactly once with time up to endsAt only', async ({ page }) => {
     const startTime = new Date('2026-11-09T14:00:00.000Z');
     await page.clock.install({ time: startTime });
     await page.goto('/focus');
     await page.getByRole('button', { name: /start 25m focus/i }).click();
 
-    // Fast-forward 30 minutes (5 minutes past endsAt) then reload
-    await page.clock.fastForward(30 * 60 * 1000);
+    // Move wall time without firing interval callbacks: the persisted timer is
+    // still running and unsaved when a real document reload discovers expiry.
+    await page.clock.setSystemTime(new Date(startTime.getTime() + 30 * 60 * 1000));
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('nm_focus_sessions') || '[]'))).toEqual([]);
     await page.reload();
     await page.waitForLoadState('domcontentloaded');
 
@@ -158,6 +191,7 @@ test.describe('Focus Pomodoro Timer E2E', () => {
 
     // Another reload does not duplicate session
     await page.reload();
+    await expect(page.locator('.nm-focus-metrics-grid')).toContainText('1 session');
     const sessionsAfter = await page.evaluate(() => JSON.parse(localStorage.getItem('nm_focus_sessions') || '[]'));
     expect(sessionsAfter.length).toBe(1);
   });
