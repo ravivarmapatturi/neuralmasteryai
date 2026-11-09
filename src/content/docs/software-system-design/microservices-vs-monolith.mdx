@@ -1,7 +1,7 @@
 ---
 title: "Microservices and Modular Monolith Boundaries"
 sidebar_position: 5.4
-description: ""
+description: "Choose deployment boundaries from ownership, change patterns, and failure isolation; calculate network costs and plan extraction without creating a distributed monolith."
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -94,6 +94,20 @@ The change sets are a small decision-record exercise, not an organizational benc
 For an HTTP extraction, route a disposable capability through a local reverse proxy and compare old/new contract responses with controlled data. For a typed RPC extraction, compile and test old/new schema versions. Include missing dependencies, delayed responses, authorization failures, and cancellation. The [REST](/docs/software-system-design/rest) and [gRPC](/docs/software-system-design/grpc) chapters provide concrete interface boundaries.
 
 Also rehearse operations: deploy a compatible new version, drain the old instance, restore its data, and revoke its credentials. If the team cannot perform those tasks safely for one extracted service, multiplying the pattern is premature. A migration is reviewable when its ownership, routing, failure, and rollback behavior are concrete.
+
+Before extraction, write a dependency map for one real change: which module owns the rule, which stored fields change, which callers need new behavior, and which deployments must overlap. Then propose the service interface and repeat the same exercise. If the proposed boundary still requires every caller and schema to change together, process separation has not removed the underlying dependency. That is evidence to improve the contract or keep the operation local.
+
+Exercise the failure path introduced by the new boundary too. A local function cannot lose its response across a network; a remote call can commit and then time out. Decide how the caller discovers that outcome and whether a repeated request is safe. Including these new states in the decision record makes the operational cost concrete, rather than attributing all migration work to temporary implementation inconvenience.
+
+Preserve the decision record after extraction. If the expected independent changes or resource savings do not appear, use that evidence to simplify or revise the boundary rather than maintaining it solely because migration already occurred.
+
+## Choose the Transaction Boundary Before the Deployment Boundary
+
+A module boundary can enforce ownership inside one deployable application. For example, an order module can expose a command that reserves inventory through a clear interface while both changes remain in one database transaction when that is the intended invariant. Extracting inventory into a separate service removes the ordinary local transaction across those states. The resulting workflow needs an explicit distributed protocol, such as a reservation and saga, or a revised business promise. Moving code across a network is therefore a change to failure semantics as well as deployment topology.
+
+The 60 ms business path plus 10 ms of network handover illustrates one serial cost. Real extraction may also introduce serialization, authentication, connection pools, queueing, and independent capacity limits. Measure those costs at the actual load and payload size instead of treating the example's 5 ms handover as a universal constant. Parallel calls can reduce a serial path when dependencies permit it, but they can also multiply backend work. A boundary that saves deployment coordination while increasing every request's dependency count should be evaluated against both operational benefits and runtime cost.
+
+Independent deployment requires compatibility work. If service A cannot be released until B is released in the same window, the architecture has retained coordinated deployment while adding distributed failure modes. Version interfaces, expand schemas compatibly, and let older and newer callers coexist during the migration. Teams also need ownership of alerts, data repair, capacity, and incident response for the extracted service. Without that ownership, an apparent organizational boundary becomes another ambiguous dependency during failure. A practical extraction begins with a module whose data and responsibility are already clear, establishes observability and rollback, and measures whether the new independence is used. If the system still changes as one unit, retaining a modular monolith can preserve simpler transactions and debugging while leaving an extraction path open for a concrete future need.
 
 ## Failure Modes and Better Choices
 
