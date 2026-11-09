@@ -78,12 +78,32 @@ function locate(id: string | null) {
 }
 
 const LAST_KEY = 'nm-interview-last';
+const BOOKMARKS_KEY = 'nm-interview-bookmarks';
 
 function readLast() {
   try {
     return localStorage.getItem(LAST_KEY);
   } catch {
     return null;
+  }
+}
+
+function readBookmarks(): Set<string> {
+  try {
+    const raw = localStorage.getItem(BOOKMARKS_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeBookmarks(set: Set<string>) {
+  try {
+    localStorage.setItem(BOOKMARKS_KEY, JSON.stringify(Array.from(set)));
+  } catch {
+    // Private mode
   }
 }
 
@@ -104,6 +124,14 @@ function questionPath(id: string) {
 function questionFromPath(pathname: string) {
   const match = pathname.match(/^\/interview\/q\/([^/]+)/);
   return match ? decodeURIComponent(match[1]).replaceAll('__', ':') : null;
+}
+
+interface CatalogItem {
+  q: PracticeQuestion;
+  topicId: string;
+  topicTitle: string;
+  topicIndex: number;
+  questionIndex: number;
 }
 
 function SpeechModelStatus({ ready, loading, progress }: { ready: boolean; loading: boolean; progress: number }) {
@@ -134,12 +162,27 @@ export default function SimpleInterviewPage() {
   useDocumentMeta('AI Interview Practice', 'Pick a topic, hear an AI engineering interview question, answer out loud, then hear and read a model answer. Runs in your browser.');
 
   const [params] = useSearchParams();
+  const rawQ = params.get('q');
+  const isDirectQuestionQ = Boolean(rawQ && locate(rawQ));
+  const initialSearch = params.get('search') ?? (!isDirectQuestionQ && rawQ ? rawQ : '');
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
+
   // A link like /interview?q=<id> (the home page's daily question) opens on that question.
   // Otherwise it offers to resume the last question you opened.
   const [pathQuestion] = useState(() => questionFromPath(window.location.pathname));
   const [resuming] = useState(() => !pathQuestion && !locate(params.get('q')) && !!locate(readLast()));
   const [linked, setLinked] = useState(() => locate(pathQuestion) ?? locate(params.get('q')) ?? locate(readLast()));
   const sharedTopic = topics.findIndex((t) => t.id === params.get('topic'));
+
+  const [topicFilter, setTopicFilter] = useState(() => {
+    const pTopic = params.get('topic');
+    if (pTopic === 'all') return 'all';
+    if (pTopic && topics.some((t) => t.id === pTopic)) return pTopic;
+    if (sharedTopic >= 0) return topics[sharedTopic].id;
+    if (linked) return topics[linked.topic].id;
+    return initialSearch ? 'all' : (topics[firstTopic]?.id ?? 'rag');
+  });
+
   const [step, setStep] = useState<Step>('topics');
   const previousStepRef = useRef<Step>('asking');
   const [topicIndex, setTopicIndex] = useState(sharedTopic >= 0 ? sharedTopic : (linked?.topic ?? firstTopic));
@@ -148,6 +191,84 @@ export default function SimpleInterviewPage() {
   const [transcript, setTranscript] = useState('');
   const [typing, setTyping] = useState(false);
   const [micStatus, setMicStatus] = useState('');
+  const [micError, setMicError] = useState<string | null>(null);
+
+  const [status, setStatus] = useState(() => {
+    const pStatus = params.get('status');
+    if (pStatus) return pStatus;
+    if (params.get('unanswered') === '1' || params.get('unanswered') === 'true') return 'unanswered';
+    if (params.get('bookmarked') === '1' || params.get('bookmarked') === 'true') return 'bookmarked';
+    return '';
+  });
+  const [round, setRound] = useState(() => params.get('round') ?? '');
+  const [role, setRole] = useState(() => params.get('role') ?? '');
+  const [level, setLevel] = useState(() => params.get('level') ?? '');
+  const [bookmarks, setBookmarks] = useState<Set<string>>(() => readBookmarks());
+
+  const toggleBookmark = useCallback((id: string) => {
+    setBookmarks((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      writeBookmarks(next);
+      return next;
+    });
+  }, []);
+
+  const updateUrlFilters = useCallback(
+    (updates: {
+      search?: string;
+      topic?: string;
+      status?: string;
+      level?: string;
+      round?: string;
+      role?: string;
+    }) => {
+      const nextParams = new URLSearchParams(window.location.search);
+      const nextSearch = updates.search !== undefined ? updates.search : searchQuery;
+      const nextTopic = updates.topic !== undefined ? updates.topic : topicFilter;
+      const nextStatus = updates.status !== undefined ? updates.status : status;
+      const nextLevel = updates.level !== undefined ? updates.level : level;
+      const nextRound = updates.round !== undefined ? updates.round : round;
+      const nextRole = updates.role !== undefined ? updates.role : role;
+
+      if (nextSearch.trim()) {
+        nextParams.set('search', nextSearch.trim());
+        nextParams.delete('q');
+      } else {
+        nextParams.delete('search');
+        if (!isDirectQuestionQ) nextParams.delete('q');
+      }
+
+      if (nextTopic && nextTopic !== 'all') nextParams.set('topic', nextTopic);
+      else if (nextTopic === 'all') nextParams.set('topic', 'all');
+      else nextParams.delete('topic');
+
+      if (nextStatus) {
+        nextParams.set('status', nextStatus);
+        nextParams.delete('unanswered');
+        nextParams.delete('bookmarked');
+      } else {
+        nextParams.delete('status');
+        nextParams.delete('unanswered');
+        nextParams.delete('bookmarked');
+      }
+
+      if (nextLevel) nextParams.set('level', nextLevel);
+      else nextParams.delete('level');
+
+      if (nextRound) nextParams.set('round', nextRound);
+      else nextParams.delete('round');
+
+      if (nextRole) nextParams.set('role', nextRole);
+      else nextParams.delete('role');
+
+      const queryStr = nextParams.toString();
+      const newUrl = window.location.pathname + (queryStr ? `?${queryStr}` : '');
+      window.history.replaceState(null, '', newUrl);
+    },
+    [searchQuery, topicFilter, status, level, round, role, isDirectQuestionQ]
+  );
   const [speechChoice, setSpeechChoice] = useState<SpeechModelChoice>('default');
   const speechChoiceRef = useRef<SpeechModelChoice>('default');
   const [highEndEligible, setHighEndEligible] = useState(false);
@@ -175,14 +296,40 @@ export default function SimpleInterviewPage() {
   const finishingRef = useRef<Promise<void>>(Promise.resolve());
   const [check, setCheck] = useState<AnswerJudgement | 'checking' | 'failed' | null>(null);
   const { events, awardInterviewCompleted } = useGamification();
-  const [round, setRound] = useState('');
-  const [role, setRole] = useState('');
-  const [level, setLevel] = useState('');
-  const matches = (q: PracticeQuestion) =>
-    (!round || (q.rounds ?? []).includes(round)) &&
-    (!role || (q.roles ?? []).includes(role)) &&
-    (!level || q.level === level);
-  const isDone = (id: string) => hasAward(events, `/interview#${id}`, 'interview');
+  const isDone = useCallback((id: string) => hasAward(events, `/interview#${id}`, 'interview'), [events]);
+
+  const allCatalogQuestions = useMemo(() => {
+    const list: CatalogItem[] = [];
+    topics.forEach((t, tIdx) => {
+      t.questions.forEach((q, qIdx) => {
+        list.push({ q, topicId: t.id, topicTitle: t.title, topicIndex: tIdx, questionIndex: qIdx });
+      });
+    });
+    return list;
+  }, []);
+
+  const filteredList = useMemo(() => {
+    return allCatalogQuestions.filter(({ q, topicId, topicTitle }) => {
+      if (topicFilter !== 'all' && topicId !== topicFilter) return false;
+      if (level && q.level !== level) return false;
+      if (round && !(q.rounds ?? []).includes(round)) return false;
+      if (role && !(q.roles ?? []).includes(role)) return false;
+      if (status === 'unanswered' || status === 'unanswered-bookmarked') {
+        if (isDone(q.id)) return false;
+      }
+      if (status === 'bookmarked' || status === 'unanswered-bookmarked') {
+        if (!bookmarks.has(q.id)) return false;
+      }
+      if (searchQuery.trim()) {
+        const term = searchQuery.toLowerCase().trim();
+        const inTitle = q.title.toLowerCase().includes(term);
+        const inTopic = topicTitle.toLowerCase().includes(term);
+        const inAnswer = q.answer.toLowerCase().includes(term);
+        if (!inTitle && !inTopic && !inAnswer) return false;
+      }
+      return true;
+    });
+  }, [allCatalogQuestions, topicFilter, level, round, role, status, searchQuery, bookmarks, isDone]);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const { playing: focusPlaying, pause: pauseFocusMusic, play: playFocusMusic } = useFocusMusic();
@@ -208,7 +355,6 @@ export default function SimpleInterviewPage() {
     [events]
   );
   const linkedHere = linked && linked.topic === topicIndex ? linked : null;
-  const shown = topic.questions.map((q, i) => ({ q, i })).filter(({ q }) => matches(q));
   const question = topic.questions[questionIndex];
   const questionId = question.id;
 
@@ -346,6 +492,7 @@ export default function SimpleInterviewPage() {
     stopAudio();
     if (focusPlayingRef.current) resumeFocusRef.current = true;
     pauseFocusMusic();
+    setMicError(null);
     try {
       setMicStatus('Preparing speech recognition…');
       await prepareEngine();
@@ -372,11 +519,21 @@ export default function SimpleInterviewPage() {
       });
       await engine.start(stream);
       setMicStatus('Listening.');
-    } catch {
+    } catch (err) {
       engineRef.current?.cancel();
       stopMic();
       setTyping(true);
-      setMicStatus('The microphone is not available, so please type your answer.');
+      let errorMsg = 'Microphone access is unavailable. Please type your explanation below.';
+      const errName = (err && typeof err === 'object' && 'name' in err) ? String((err as { name: unknown }).name) : '';
+      if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+        errorMsg = 'Microphone access was denied. Please allow microphone permissions in your browser address bar to speak your answers, or type below.';
+      } else if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
+        errorMsg = 'No microphone device was detected. You can type your explanation below.';
+      } else if (errName === 'NotReadableError' || errName === 'TrackStartError') {
+        errorMsg = 'Microphone is currently in use by another application. You can type your answer below.';
+      }
+      setMicError(errorMsg);
+      setMicStatus(errorMsg);
     }
   }, [typing, stopMic, prepareEngine, stopAudio, pauseFocusMusic, question.title]);
 
@@ -414,8 +571,34 @@ export default function SimpleInterviewPage() {
   const startQuestion = (index: number) => {
     void prepareEngine().catch(() => undefined);
     setQuestionIndex(index);
-    window.history.pushState(null, '', questionPath(topic.questions[index].id));
+    const qStr = window.location.search;
+    window.history.pushState(null, '', questionPath(topic.questions[index].id) + qStr);
     ask(topic.questions[index].id);
+  };
+
+  const startQuestionFromItem = (item: CatalogItem) => {
+    void prepareEngine().catch(() => undefined);
+    setTopicIndex(item.topicIndex);
+    setQuestionIndex(item.questionIndex);
+    const qStr = window.location.search;
+    window.history.pushState(null, '', questionPath(item.q.id) + qStr);
+    ask(item.q.id);
+  };
+
+  const goToItem = (item: CatalogItem) => {
+    reviewRef.current++;
+    answeringRef.current = false;
+    stopAudio();
+    stopMic();
+    void engineRef.current?.stop().catch(() => undefined);
+    setTranscript('');
+    setCheck(null);
+    setTranscribing(false);
+    setTopicIndex(item.topicIndex);
+    setQuestionIndex(item.questionIndex);
+    const qStr = window.location.search;
+    window.history.pushState(null, '', questionPath(item.q.id) + qStr);
+    ask(item.q.id);
   };
 
   // The model answer appears and starts reading at once; transcript and checking finish behind it.
@@ -477,27 +660,28 @@ export default function SimpleInterviewPage() {
     setTranscribing(false);
     if (index !== questionIndex) {
       setQuestionIndex(index);
-      window.history.pushState(null, '', questionPath(topic.questions[index].id));
+      const qStr = window.location.search;
+      window.history.pushState(null, '', questionPath(topic.questions[index].id) + qStr);
     }
     ask(topic.questions[index].id);
   };
 
-  const findQuestion = (step: 1 | -1) => {
-    for (let i = questionIndex + step; i >= 0 && i < topic.questions.length; i += step) {
-      if (matches(topic.questions[i])) return i;
-    }
-    return -1;
+  const currentFilteredIndex = filteredList.findIndex((item) => item.q.id === question.id);
+  const previousItem = currentFilteredIndex > 0 ? filteredList[currentFilteredIndex - 1] : null;
+  const nextItem = currentFilteredIndex >= 0 && currentFilteredIndex < filteredList.length - 1 ? filteredList[currentFilteredIndex + 1] : null;
+
+  const previousQuestion = () => {
+    if (!previousItem) return;
+    goToItem(previousItem);
   };
-  const previousIndex = findQuestion(-1);
-  const nextIndex = findQuestion(1);
 
   const nextQuestion = () => {
-    if (nextIndex < 0) {
+    if (!nextItem) {
       stopAudio();
       setStep('done');
       return;
     }
-    goToQuestion(nextIndex);
+    goToItem(nextItem);
   };
 
   const backToTopics = () => {
@@ -506,7 +690,8 @@ export default function SimpleInterviewPage() {
     stopAudio();
     stopMic();
     void engineRef.current?.stop().catch(() => undefined);
-    if (window.location.pathname !== '/interview/') window.history.pushState(null, '', '/interview/');
+    const qStr = window.location.search;
+    if (window.location.pathname !== '/interview/') window.history.pushState(null, '', '/interview/' + qStr);
     setStep('topics');
   };
 
@@ -602,7 +787,19 @@ export default function SimpleInterviewPage() {
             <SpeechModelStatus ready={speechReady} loading={speechLoading} progress={speechProgress} />
           </div>
         )}
-        {speechNotice && <p role="status">{speechNotice}</p>}
+        {speechNotice && (
+          <div className="si-notice-banner" role="status">
+            <span>{speechNotice}</span>
+            <button
+              type="button"
+              className="si-notice-dismiss"
+              aria-label="Dismiss notice"
+              onClick={() => setSpeechNotice('')}
+            >
+              ×
+            </button>
+          </div>
+        )}
         {step === 'topics' && (
           <>
             <h1>Interview practice</h1>
@@ -612,89 +809,221 @@ export default function SimpleInterviewPage() {
             <div className="si-map">
               <InterviewGraph
                 topics={graphTopics}
-                activeId={topic.id}
-                onActivate={(id) => setTopicIndex(topics.findIndex((t) => t.id === id))}
+                activeId={topicFilter === 'all' ? '' : topic.id}
+                onActivate={(id) => {
+                  setTopicFilter(id);
+                  const idx = topics.findIndex((t) => t.id === id);
+                  if (idx >= 0) setTopicIndex(idx);
+                  updateUrlFilters({ topic: id });
+                }}
               />
               <aside className="si-panel" aria-live="polite">
+                <div className="si-search-wrap">
+                  <label htmlFor="interview-search" className="sr-only">Search all questions</label>
+                  <div className="si-search-input-box">
+                    <svg className="si-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <circle cx="11" cy="11" r="8" />
+                      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                    <input
+                      type="search"
+                      id="interview-search"
+                      placeholder="Search all questions…"
+                      value={searchQuery}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value);
+                        updateUrlFilters({ search: e.target.value });
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          setSearchQuery('');
+                          updateUrlFilters({ search: '' });
+                        }
+                      }}
+                    />
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        className="si-search-clear"
+                        aria-label="Clear search"
+                        onClick={() => {
+                          setSearchQuery('');
+                          updateUrlFilters({ search: '' });
+                        }}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 <select
                   className="si-topic-select"
                   aria-label="Topic"
-                  value={topic.id}
-                  onChange={(e) => setTopicIndex(topics.findIndex((t) => t.id === e.target.value))}
+                  value={topicFilter}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setTopicFilter(val);
+                    if (val !== 'all') {
+                      const idx = topics.findIndex((t) => t.id === val);
+                      if (idx >= 0) setTopicIndex(idx);
+                    }
+                    updateUrlFilters({ topic: val });
+                  }}
                 >
+                  <option value="all">All topics ({totalQuestions})</option>
                   {topics.map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.title}
+                      {t.title} ({t.questions.length})
                     </option>
                   ))}
                 </select>
+
                 <div className="si-filters">
-                  <select aria-label="Interview round" value={round} onChange={(e) => setRound(e.target.value)}>
-                    <option value="">All rounds</option>
-                    {Object.entries(ROUNDS).map(([id, label]) => (
-                      <option key={id} value={id}>{label}</option>
-                    ))}
+                  <select
+                    aria-label="Question status"
+                    value={status}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setStatus(val);
+                      updateUrlFilters({ status: val });
+                    }}
+                  >
+                    <option value="">All questions</option>
+                    <option value="unanswered">Unanswered</option>
+                    <option value="bookmarked">Bookmarked ({bookmarks.size})</option>
+                    <option value="unanswered-bookmarked">Unanswered & Bookmarked</option>
                   </select>
-                  <select aria-label="Role" value={role} onChange={(e) => setRole(e.target.value)}>
-                    <option value="">All roles</option>
-                    {Object.entries(ROLES).map(([id, label]) => (
-                      <option key={id} value={id}>{label}</option>
-                    ))}
-                  </select>
-                  <select aria-label="Experience level" value={level} onChange={(e) => setLevel(e.target.value)}>
+                  <select
+                    aria-label="Experience level"
+                    value={level}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setLevel(val);
+                      updateUrlFilters({ level: val });
+                    }}
+                  >
                     <option value="">All levels</option>
                     {Object.entries(LEVELS).map(([id, label]) => (
                       <option key={id} value={id}>{label}</option>
                     ))}
                   </select>
+                  <select
+                    aria-label="Interview round"
+                    value={round}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setRound(val);
+                      updateUrlFilters({ round: val });
+                    }}
+                  >
+                    <option value="">All rounds</option>
+                    {Object.entries(ROUNDS).map(([id, label]) => (
+                      <option key={id} value={id}>{label}</option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label="Role"
+                    value={role}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setRole(val);
+                      updateUrlFilters({ role: val });
+                    }}
+                  >
+                    <option value="">All roles</option>
+                    {Object.entries(ROLES).map(([id, label]) => (
+                      <option key={id} value={id}>{label}</option>
+                    ))}
+                  </select>
                 </div>
+
                 <p className="si-count">
-                  {round || role || level ? `${shown.length} of ${topic.questions.length}` : topic.questions.length} questions ·{' '}
-                  {shown.filter(({ q }) => isDone(q.id)).length} completed
+                  {filteredList.length} question{filteredList.length === 1 ? '' : 's'} ·{' '}
+                  {filteredList.filter(({ q }) => isDone(q.id)).length} completed ·{' '}
+                  {filteredList.filter(({ q }) => bookmarks.has(q.id)).length} bookmarked
                 </p>
+
                 <div className="si-topic-widget" style={{ display: 'flex', alignItems: 'flex-start', gap: '0.85rem', margin: '0.85rem 0' }}>
                   <div className="nm-category-widget-visual" aria-hidden="true" style={{ width: 68, height: 48, flexShrink: 0 }}>
-                    <CategoryVisual topic={topic.id} />
+                    <CategoryVisual topic={topicFilter === 'all' ? (topics[0]?.id ?? 'rag') : topic.id} />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <h2 style={{ margin: 0, fontSize: '1.25rem' }}>{topic.title}</h2>
-                    <p className="si-lede" style={{ margin: '0.25rem 0 0', fontSize: '0.88rem' }}>{topic.about}</p>
+                    <h2 style={{ margin: 0, fontSize: '1.25rem' }}>{topicFilter === 'all' ? 'All topics' : topic.title}</h2>
+                    <p className="si-lede" style={{ margin: '0.25rem 0 0', fontSize: '0.88rem' }}>
+                      {topicFilter === 'all' ? 'Search and practice across all 907 AI engineering interview questions.' : topic.about}
+                    </p>
                   </div>
                 </div>
+
                 {linkedHere && (
                   <p className="si-linked">
                     <strong>{topic.questions[linkedHere.question].title}</strong>
                   </p>
                 )}
+
                 <div className="si-actions">
                   <button
                     type="button"
                     className="si-primary"
                     id="start-topic"
-                    disabled={shown.length === 0 && !linkedHere}
+                    disabled={filteredList.length === 0 && !linkedHere}
                     onClick={() => {
                       setLinked(null);
-                      startQuestion(linkedHere ? linkedHere.question : (shown.find(({ q }) => !isDone(q.id)) ?? shown[0]).i);
+                      if (linkedHere) {
+                        startQuestion(linkedHere.question);
+                      } else if (filteredList.length > 0) {
+                        const nextUnsolved = filteredList.find(({ q }) => !isDone(q.id)) ?? filteredList[0];
+                        startQuestionFromItem(nextUnsolved);
+                      }
                     }}
                   >
-                    {linkedHere ? (resuming ? 'Resume where you left off' : 'Start the linked question') : shown.some(({ q }) => isDone(q.id)) ? 'Next unsolved question' : 'Start this topic'}
+                    {linkedHere
+                      ? (resuming ? 'Resume where you left off' : 'Start the linked question')
+                      : filteredList.some(({ q }) => isDone(q.id))
+                        ? 'Next unsolved question'
+                        : topicFilter === 'all'
+                          ? 'Start practicing'
+                          : 'Start this topic'}
                   </button>
-                  {topic.questions.every((q) => isDone(q.id)) && (
+                  {topicFilter !== 'all' && topic.questions.every((q) => isDone(q.id)) && (
                     <button type="button" onClick={shareTopic}>
                       Share this topic
                     </button>
                   )}
                   {shareStatus && <span className="si-done" role="status">{shareStatus}</span>}
                 </div>
+
                 <ol className="si-list">
-                  {shown.length === 0 && <li className="si-empty">No questions in this topic match these filters.</li>}
-                  {shown.map(({ q, i }) => (
-                    <li key={q.id}>
-                      <button type="button" className={isDone(q.id) ? 'done' : undefined} onClick={() => startQuestion(i)}>
-                        {isDone(q.id) && <span className="si-tick">Completed</span>}
-                        {q.problemId && <span className="si-coding-pill">Python</span>}
-                        {q.level && <span className={`si-level-tag si-level-${q.level}`}>{LEVELS[q.level] ?? q.level}</span>}
-                        {q.title}
+                  {filteredList.length === 0 && (
+                    <li className="si-empty">No questions match these filters. Try clearing your search or filters.</li>
+                  )}
+                  {filteredList.map((item) => (
+                    <li key={item.q.id} className="si-list-item">
+                      <button
+                        type="button"
+                        className={`si-question-btn${isDone(item.q.id) ? ' done' : ''}`}
+                        onClick={() => startQuestionFromItem(item)}
+                      >
+                        {isDone(item.q.id) && <span className="si-tick">Completed</span>}
+                        {item.q.problemId && <span className="si-coding-pill">Python</span>}
+                        {topicFilter === 'all' && <span className="si-topic-tag">{item.topicTitle}</span>}
+                        {item.q.level && <span className={`si-level-tag si-level-${item.q.level}`}>{LEVELS[item.q.level] ?? item.q.level}</span>}
+                        <span className="si-q-text">{item.q.title}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={`si-bookmark-btn${bookmarks.has(item.q.id) ? ' is-bookmarked' : ''}`}
+                        aria-label={bookmarks.has(item.q.id) ? `Remove bookmark for ${item.q.title}` : `Bookmark ${item.q.title}`}
+                        aria-pressed={bookmarks.has(item.q.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleBookmark(item.q.id);
+                        }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill={bookmarks.has(item.q.id) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" />
+                        </svg>
                       </button>
                     </li>
                   ))}
@@ -717,8 +1046,15 @@ export default function SimpleInterviewPage() {
                     {LEVELS[question.level] ?? question.level}
                   </span>
                 )}
+                {bookmarks.has(question.id) && (
+                  <span className="si-bookmarked-pill" aria-label="Bookmarked question">
+                    ★ Bookmarked
+                  </span>
+                )}
                 <span className="si-counter">
-                  Question {questionIndex + 1} of {topic.questions.length}
+                  {currentFilteredIndex >= 0
+                    ? `Question ${currentFilteredIndex + 1} of ${filteredList.length}`
+                    : `Question ${questionIndex + 1} of ${topic.questions.length}`}
                 </span>
                 <span className="si-done-counter">
                   {completedTopicCount} of {topic.questions.length} completed
@@ -736,10 +1072,22 @@ export default function SimpleInterviewPage() {
               <div className="si-progress-bar" style={{ width: `${topicProgressPct}%` }} />
             </div>
             <nav className="si-question-nav" aria-label="Move between questions">
-              <button type="button" className="si-link" id="previous-question" disabled={previousIndex < 0} onClick={() => goToQuestion(previousIndex)}>
+              <button
+                type="button"
+                className="si-link"
+                id="previous-question"
+                disabled={!previousItem}
+                onClick={previousQuestion}
+              >
                 ← Previous question
               </button>
-              <button type="button" className="si-link" id="next-question" disabled={nextIndex < 0} onClick={() => goToQuestion(nextIndex)}>
+              <button
+                type="button"
+                className="si-link"
+                id="next-question"
+                disabled={!nextItem}
+                onClick={nextQuestion}
+              >
                 Next question →
               </button>
             </nav>
@@ -750,13 +1098,27 @@ export default function SimpleInterviewPage() {
                   <span className="si-solved-badge"><span className="si-tick">✓</span> Solved in editor</span>
                 )}
               </h2>
-              <button type="button" className="si-speak" id="read-question" aria-label="Read the question aloud" onClick={readQuestion}>
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M11 5 6 9H2v6h4l5 4z" />
-                  <path d="M15.5 8.5a5 5 0 0 1 0 7" />
-                  <path d="M18.5 5.5a9 9 0 0 1 0 13" />
-                </svg>
-              </button>
+              <div className="si-question-stage-actions">
+                <button
+                  type="button"
+                  className={`si-speak si-bookmark-stage-btn${bookmarks.has(question.id) ? ' is-bookmarked' : ''}`}
+                  id="bookmark-question"
+                  aria-label={bookmarks.has(question.id) ? 'Remove bookmark' : 'Bookmark this question'}
+                  aria-pressed={bookmarks.has(question.id)}
+                  onClick={() => toggleBookmark(question.id)}
+                >
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill={bookmarks.has(question.id) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" />
+                  </svg>
+                </button>
+                <button type="button" className="si-speak" id="read-question" aria-label="Read the question aloud" onClick={readQuestion}>
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M11 5 6 9H2v6h4l5 4z" />
+                    <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+                    <path d="M18.5 5.5a9 9 0 0 1 0 13" />
+                  </svg>
+                </button>
+              </div>
             </div>
             {question.options && (
               <ol className="si-options" type="A">
@@ -849,6 +1211,25 @@ export default function SimpleInterviewPage() {
                 </p>
               </div>
             </div>
+            {micError && (
+              <div className="si-error-banner" role="alert">
+                <div className="si-error-content">
+                  <strong className="si-error-title">Microphone unavailable</strong>
+                  <p className="si-error-desc">{micError}</p>
+                </div>
+                <button
+                  type="button"
+                  className="si-error-action"
+                  onClick={() => {
+                    setMicError(null);
+                    setTyping(false);
+                    void startAnswering(undefined, true);
+                  }}
+                >
+                  Try microphone again
+                </button>
+              </div>
+            )}
             {!typing && (
               <div className="si-speaker-wave" aria-hidden="true">
                 <LiveWaveform active={true} stream={micStream} height={46} barColor="var(--accent)" />
