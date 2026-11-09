@@ -24,6 +24,7 @@ const VoiceTestPage = lazy(() => import('./components/VoiceTestPage'));
 const VizAuditPage = lazy(() => import('./components/VizAuditPage'));
 import PracticeTrackPage from './components/PracticeTrackPage';
 import ProgressPage from './components/ProgressPage';
+import FocusPage from './components/focus/FocusPage';
 import BlogListPage from './components/BlogListPage';
 import BlogPostPage from './components/BlogPostPage';
 import BlogSeriesPage from './components/BlogSeriesPage';
@@ -113,6 +114,7 @@ export default function App() {
                       <Route path="/blog/write" element={<BlogEditorPage />} />
                       <Route path="/blog/write/:slug" element={<BlogEditorPage />} />
                       <Route path="/blog/:slug" element={<BlogPostPage />} />
+                      <Route path="/focus" element={<FocusPage />} />
                       <Route path="/progress" element={<ProgressPage />} />
                       <Route path="/profile" element={<ProfilePage />} />
                       <Route path="/leaderboard" element={<LeaderboardPage />} />
