@@ -1001,7 +1001,7 @@ export default function InterviewRoomPage() {
                             {record.debrief.overallCall}
                           </span>
                         </div>
-                        <p style={{ fontSize: '14px', lineHeight: 1.5, color: 'var(--text)' }}>
+                        <p style={{ fontSize: '14px', lineHeight: 1.5, color: 'var(--soft)' }}>
                           {record.debrief.overallSummary}
                         </p>
                         <div className="rows">
