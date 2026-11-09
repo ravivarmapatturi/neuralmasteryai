@@ -1,0 +1,149 @@
+---
+title: "gRPC Contracts, Deadlines, and Flow Control"
+sidebar_position: 4.2
+description: ""
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { GrpcDeadlineBudget } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
+
+# gRPC Contracts, Deadlines, and Flow Control
+
+<ELI5>A receptionist can pass your request through several departments, but the time you can wait does not restart at each desk. Departments also need a shared form so they agree on what the request means. A typed RPC interface supplies that form; deadlines and flow control keep the conversation within useful limits.</ELI5>
+
+Define typed RPC messages, propagate one useful deadline, and bound streaming work while preserving schema compatibility and ambiguous-outcome semantics.
+An internal service call needs more than a compact payload. Both sides must agree on operation names, message structure, errors, cancellation, and what success acknowledges. gRPC combines service definitions, generated client/server bindings, and RPC semantics. Protocol Buffers is a common message format, while the transport and runtime supply capabilities such as streaming and deadlines.
+
+The misconception is that a fresh timeout on every call preserves the original caller's latency promise. Our illustrative request has a 200 ms budget. Gateway work consumes 30 ms and application preparation consumes another 50 ms. The downstream call has at most 120 ms left, including work needed to return. Giving it a fresh 200 ms permits a path lasting 280 ms before additional overhead.
+
+## A Service Definition Is a Compatibility Boundary
+
+An RPC method names an operation with typed request and response messages. Generated stubs make constructing and decoding those messages convenient, but do not establish business authorization or validate every meaningful value. A nonempty string can still identify another tenant's order. Treat structural decoding, domain validation, and authorization as separate stages.
+
+Protocol Buffer field numbers identify fields on the wire. Reusing a retired number for a different meaning can make old data or old clients decode incorrectly. Reserve removed numbers and names as appropriate, evolve compatible fields deliberately, and test old/new readers. Changing a field from optional meaning to mandatory business behavior can break compatibility even when the wire decoder still accepts it.
+
+Presence also matters. A missing value and an explicitly supplied zero can mean different things for a partial update. Choose a representation that preserves that distinction under the syntax and generated API in use. Do not infer user intent from a language default without documenting how omission is represented.
+
+```proto
+syntax = "proto3";
+package catalogue.v1;
+service Catalogue {
+  rpc GetProduct(GetProductRequest) returns (GetProductResponse);
+}
+message GetProductRequest { string product_id = 1; }
+message GetProductResponse {
+  string product_id = 1;
+  int64 price_minor_units = 2;
+  string currency = 3;
+}
+```
+
+The schema makes integer price units explicit but does not define which currency exponents apply or whether a product may be read by the caller. Those belong in the operation contract. Keep identifiers independent of a particular database host so the service can migrate without regenerating every client's concept of identity.
+
+## Deadlines Travel Across the Call Graph
+
+A **deadline** marks when a result ceases to be useful. A local timeout bounds one wait. A caller can spend its budget before reaching a dependency, so downstream code needs remaining time rather than an unrelated full allowance. gRPC supports deadlines, but propagation behavior depends on the language and integration; verify the actual client/server path.
+
+<GrpcDeadlineBudget />
+
+Select remaining deadline and compare the same 80 ms of prior work with a 120 ms downstream allowance. This is a budget calculation, not measured RPC overhead. Transport, serialization, queueing, and final response handling must fit the same end-to-end interval. In practice reserve room for return and cleanup rather than allocating every last millisecond to the deepest operation.
+
+<RunnableCode code={`budget_ms = 200
+for stage, elapsed in (("gateway", 30), ("preparation", 50)):
+    budget_ms -= elapsed
+    print("After", stage, "remaining ms:", budget_ms)
+print("Fresh downstream timeout possible total ms:", 30 + 50 + 200)
+print("Propagated deadline possible total ms:", 30 + 50 + budget_ms)
+assert budget_ms == 120
+# Try it: raise preparation to 100; the remaining downstream budget shrinks to 70 ms.
+`} />
+
+Use monotonic elapsed time locally. Across machines, account for how the runtime translates a deadline or timeout and avoids relying on perfectly aligned wall clocks. A propagated duration still spends time in transit and queues. Inspect traces with client and server boundaries to find where time disappears rather than blaming message encoding by default.
+
+<PredictFirst question="A 200 ms request has spent 80 ms before its final RPC. How much useful budget remains?" options={["200 ms, because a new RPC starts a new timer", "120 ms before allowing for additional return overhead", "280 ms, because timeouts add capacity"]} correctIndex={1} explanation="All stages consume the same caller budget. Restarting a full timeout permits a longer total path; it does not restore time already spent." />
+
+## Cancellation Is Resource Control, Not Rollback
+
+A cancelled or expired call tells work to stop when possible. Application code may still need to notice cancellation and release database requests, buffers, or background computation. The framework cannot automatically undo an external side effect committed before it received the cancellation. A payment or durable mutation can therefore have an unknown outcome after a deadline error.
+
+Expose an operation identity for effects that can be retried. A client seeing deadline exceeded should not assume that repeating the request creates only one effect. Read-only calls and idempotent mutations have different retry policies. Preserve the original deadline across attempts and include backoff in it, as the [latency chapter](/docs/software-system-design/latency) explains.
+
+Errors need stable semantics. Distinguish invalid input, missing resources, denied permission, exhaustion, unavailability, and cancellation rather than mapping every exception to an opaque internal error. The same status can still require method-specific interpretation. Document whether an unavailable response means the request definitely did not execute or whether the outcome remains uncertain.
+
+## Streaming Requires Bounded Producers and Consumers
+
+gRPC supports unary calls and streaming request or response patterns. A stream preserves a transport conversation, not durable event history. If a connection breaks, recovery needs an application cursor, operation identity, or another resumption contract. A server cannot infer which results a client durably processed merely because transport bytes were written.
+
+**Flow control** regulates how much data can move before the receiver is ready for more. Application queues can still grow unbounded if a producer keeps generating objects before awaiting the transport. Bound message size, queued bytes, in-flight work, and stream lifetime. A limit expressed only in message count ignores a single unexpectedly large payload.
+
+For an illustrative producer generating 100 messages/s and a consumer handling 60/s, backlog grows by 40 messages/s. After ten seconds it holds 400 additional messages if nothing rejects or slows production. A streaming API has not eliminated the queue; it has moved the queue to whichever layer continues accepting work. Choose an observable backpressure response before memory becomes the controller.
+
+<GoDeeper title="Go deeper: a successful send is not an application acknowledgement">
+Transport acceptance can mean a message entered a local buffer or the remote transport stack. It does not prove that the recipient committed its business effect. A durable streaming protocol needs a separate acknowledgement or cursor whose meaning is explicit. If the effect and progress record cannot commit together, a reconnect can replay a message or skip an effect, just as in a queued workflow.
+</GoDeeper>
+
+## Connection Reuse and Load Balancing Need Measurements
+
+Multiplexing many RPCs over long-lived connections can reduce connection setup, but a connection-level balancer may concentrate a busy client's streams on one backend. A request-aware policy or appropriate client-side balancing can distribute work differently. Verify the unit actually selected by the deployed load balancer; [load balancing](/docs/software-system-design/load-balancing) shows why equal connections need not mean equal work.
+
+Avoid creating a new channel for every unary call unless a measured requirement justifies it. Reuse channels according to the library's guidance, configure credentials and authority verification, and watch connection state during deployments. A channel being established does not prove every downstream operation or tenant route is ready.
+
+Long-lived streams complicate draining. Removing a backend from discovery affects future selections but may leave existing streams attached. Define maximum ages, reconnect behavior, and in-flight progress recovery. If reconnecting loses accepted state, fix the operation's durable boundary rather than holding every deployment indefinitely.
+
+## Exercise the Contract, Not Just the Generated Stub
+
+Generate code from the schema with the chosen language toolchain and pin compatible compiler/runtime versions in the project. A command such as `protoc --descriptor_set_out=catalogue.pb --include_imports catalogue.proto` checks compilation with a local Protocol Buffers compiler. A compiled schema proves syntax and import resolution, not application authorization, deadline propagation, or compatible field meaning.
+
+Integration tests should call an intentionally slow test handler with a short deadline, inspect the returned status, and verify server-side work stops or safely records its outcome. Test an old client against the new server and the reverse direction. Include missing fields, maximum permitted payloads, cancelled streams, and reconnect after a partial result.
+
+<RunnableCode code={`produced_per_second, consumed_per_second = 100, 60
+queue = 0
+limit = 120
+for second in range(1, 11):
+    offered = queue + produced_per_second
+    completed = min(offered, consumed_per_second)
+    after = offered - completed
+    rejected = max(0, after - limit)
+    queue = min(limit, after)
+    print("Second:", second, "queued:", queue, "not admitted:", rejected)
+assert queue == 120
+# Try it: raise consumed_per_second to 100; this constant-rate workload no longer accumulates backlog.
+`} />
+
+The queue model rejects excess work after applying its illustrative per-second completion rule. It is not a packet-level gRPC simulation. Its role is to make the missing admission policy visible. Replace the rates and message sizes with measurements when selecting real buffer limits, and define whether a rejected input can be safely retried or must be resumed from a cursor.
+
+## Failure Modes and Better Choices
+
+An RPC expires but its database query continues until the pool is exhausted. Propagate cancellation and bound backend work under the remaining deadline. A retry library repeats unsafe mutations. Give effects stable identity and document retryable outcomes. An unknown enum or missing field breaks an old client. Test schema evolution and preserve forward-compatible behavior where the contract permits it.
+
+A stream's memory grows while transport metrics look normal. Inspect application buffers and producer rate, not only network windows. One backend is overloaded despite many healthy replicas. Inspect connection affinity and client-side selection. A generated method exposes another tenant's record. Perform resource authorization in the service that owns the data, even when transport authentication succeeded.
+
+## When Not to Use gRPC
+
+| Situation | Better fit |
+| --- | --- |
+| A public interface primarily benefits from generic HTTP caching and inspection | Resource-oriented HTTP |
+| Browser constraints make the required transport impractical | A compatible gateway or browser-native protocol |
+| Work must survive disconnected consumers | Durable messaging plus an explicit delivery contract |
+| The team cannot maintain generated schema compatibility | A simpler interface with equally explicit versioning |
+
+## Remember
+
+| Boundary | Required evidence |
+| --- | --- |
+| Schema | Old and new messages preserve field meaning |
+| Deadline | All hops share the caller's useful interval |
+| Cancellation | Resources stop while committed effects remain reconcilable |
+| Stream | Queues, bytes, and reconnect progress are bounded |
+| Status | Clients know whether to correct, retry, inspect, or stop |
+
+You can now review a typed RPC as a bounded conversation rather than only a serialization choice. Return to [Communication](/docs/software-system-design/communication) and compare it with resource and graph interfaces.
+
+## Sources
+
+- [gRPC, Core Concepts](https://grpc.io/docs/what-is-grpc/core-concepts/)
+- [gRPC, Deadlines](https://grpc.io/docs/guides/deadlines/)
+- [gRPC, Flow Control](https://grpc.io/docs/guides/flow-control/)
+- [Protocol Buffers, Proto3 Language Guide](https://protobuf.dev/programming-guides/proto3/)
+- [gRPC, Status Codes](https://grpc.io/docs/guides/status-codes/)
