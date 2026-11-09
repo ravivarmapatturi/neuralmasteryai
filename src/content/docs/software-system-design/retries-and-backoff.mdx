@@ -1,7 +1,7 @@
 ---
 title: "Retries, Backoff, Jitter, and Attempt Budgets"
 sidebar_position: 5.7
-description: ""
+description: "Choose retryable outcomes from effect semantics, propagate one deadline, and calculate how nested retries and synchronized backoff amplify dependency load."
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -96,6 +96,22 @@ assert started == 2
 For an HTTP test, `curl --max-time 1 --retry 2 --retry-delay 1` demonstrates that a tool can add attempts, but its exact retry conditions and total-time controls need to be inspected before using it as an application policy. Prefer an isolated failing endpoint and bounded request count. Do not test recovery load by repeatedly hammering an unrelated public service.
 
 Observe a dependency failure with retries disabled, then enable one bounded owner and compare original actions, attempts, completions, latency, and resource occupancy. A higher success fraction can be worthwhile while still raising load; a lower error count caused only by waiting beyond user deadlines is not improvement. Preserve failed and cancelled observations in the population.
+
+Audit the deployed path rather than only the application's explicit loop. A browser client, gateway, service library, database driver, and background redrive policy can each add attempts. Record the configuration and observed attempt identifiers at every boundary during a controlled failure. If a retry owner cannot tell whether an inner layer already repeated work, its budget is incomplete.
+
+A useful test deliberately delays the first response until after the caller's deadline while allowing its effect to commit. The retry should preserve identity and recover the original outcome, not create a fresh action. Separately reject the request before execution and verify a safe subsequent attempt can make progress. These paired histories distinguish an unknown commit from a definite nonexecution and prevent a policy that avoids duplicates only by permanently abandoning recoverable work.
+
+Verify cancellation during the backoff wait as well as during network execution. A caller that has already stopped should not wake later merely because a scheduled timer still exists.
+
+Record the original operation identifier across attempts so telemetry can distinguish additional effort from additional user demand.
+
+## Bound Attempts by Both Time and Work
+
+A retry policy needs more than an attempt count. In the 500 ms example, each useful attempt takes 80 ms and the selected waits are 100 and 200 ms. Two attempts plus both waits consume 460 ms, leaving only 40 ms; another full 80 ms attempt no longer fits. Before sleeping or dispatching, compare the remaining deadline with the minimum useful work budget. A nominal three-attempt policy should not issue a final request that cannot return within the caller's contract. Include queueing and response transit in that budget when they are material.
+
+Jitter changes synchronization, not the maximum amount of work by itself. If every client waits the same interval after an outage, they can retry together and create another load spike. Sampling waits spreads their arrivals, while retry budgets or admission limits bound the extra demand. A recovered dependency may still have less capacity than normal because caches are cold or a replica is rebuilding. Treat recovery as a constrained operating state rather than assuming every waiting request should immediately reappear. Prefer useful fresh work or prioritized recovery according to the product's policy.
+
+For mutations, classify uncertainty before retrying. A connection failure before sending any bytes may have a different outcome set from losing the response after the server committed. The caller often cannot distinguish those points reliably through an arbitrary network stack. Use operation identity and result reconciliation for effects that must not repeat. A retryable transport status is permission to consider another attempt under the application contract, not proof that the first attempt did nothing. Instrument logical operations and physical attempts separately, and carry the same operation identifier through all layers. That lets an incident review see whether three failed logical operations produced nine attempts or twenty-seven. The distinction connects deadline policy to actual dependency load and reveals hidden retries in SDKs, proxies, and database clients.
 
 ## Failure Modes and Better Choices
 
