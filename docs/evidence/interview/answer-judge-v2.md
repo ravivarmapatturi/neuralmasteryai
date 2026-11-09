@@ -21,3 +21,6 @@ Tune a small declared threshold grid using development predictions only, choosin
 Export model cards do not repeat the upstream licence field. Record export and upstream revisions and preserve attribution if a candidate ships. No model weights are committed to the repository.
 
 Measurements and the ship decision will be appended after the sequential WASM runs. No v2 model is live at this checkpoint. The numeric rubric grade remains disabled.
+
+
+Before any model run, the frozen held-out set was extended to 36 answers (12 strong, 12 partial, 12 weak), adding two questions without rubrics to test the required model-answer-sentence fallback. It now has 162 point decisions: 80 present and 82 absent. No prediction had been observed when this addition was written. Development remains the original 30 answers only. The ship check will also require false positives not to increase separately for rubric questions and reference-sentence questions, preventing aggregate results from hiding a regression in either source.
