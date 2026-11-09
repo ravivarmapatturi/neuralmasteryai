@@ -1,0 +1,133 @@
+---
+title: "WebSockets, SSE, and Reconnect Recovery"
+sidebar_position: 4.4
+description: ""
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { StreamReplayWindow } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
+
+# WebSockets, SSE, and Reconnect Recovery
+
+<ELI5>A phone conversation lets two people speak immediately, but a dropped call does not preserve the sentences nobody heard. A radio announcement has only one speaking direction, yet listeners still need to know what they missed. Live software connections need a separate memory of events and a rule for restarting the conversation.</ELI5>
+
+Choose a live transport from direction and payload needs, then recover missed events with durable cursors, bounded buffers, and an explicit retention-gap policy.
+WebSockets provide a bidirectional message conversation after the protocol handshake. Server-sent events, or SSE, carry a server-to-client event stream over HTTP. Both can deliver updates promptly, but neither creates durable application history merely by keeping a connection open. The transport choice and recovery contract are separate decisions.
+
+The misconception is that automatic reconnect means no events are lost. Our client has applied event 41 and disconnects while events 42 through 45 are published. If retained history begins at 40, all four missing events can be replayed. If history begins at 44, events 42 and 43 are unavailable: the server must require a snapshot or another documented repair instead of silently pretending replay is complete.
+
+## Match Direction and Message Semantics
+
+A WebSocket supports messages in both directions and distinguishes its application message boundaries from the underlying TCP byte stream. It can suit interactive collaboration, game input, or bidirectional control. Applications still define message schemas, size limits, authorization, acknowledgements, and reconnect behavior. A successful handshake proves protocol setup, not permission for every later subscription.
+
+SSE uses the `text/event-stream` media type and a textual event format, with fields such as event name, data, and ID. It suits server notifications where client commands can remain ordinary HTTP requests. The browser EventSource API supplies reconnect behavior under its rules. That convenience does not prove the server retained the required events or that the client committed their effects.
+
+Choose from actual requirements: direction, binary payload needs, proxy support, client environment, authentication integration, and operating cost. A chat interface can send commands through HTTP and receive updates through SSE; a bidirectional socket is not mandatory because the UI looks interactive. Conversely, simulating every rapid input as a new request can be a poor fit for a real bidirectional control loop.
+
+## A Cursor Connects Live Delivery to Durable History
+
+A **cursor** identifies progress in an application event history. Define whether it means last received, last displayed, or last durably applied. If receiving event 42 advances the cursor before its effect commits, reconnecting after 42 can skip that effect. If commit happens before cursor advancement, reconnect may repeat 42, requiring safe replay.
+
+<StreamReplayWindow />
+
+The visual keeps cursor 41 fixed while changing the retention floor. Four events are required. With floor 44 only two remain available, and a gap-free replay cannot be claimed. The number of open connections has no bearing on this missing history. Recovery needs either the old events or a current snapshot plus a safe continuation boundary.
+
+<RunnableCode code={`cursor = 41
+latest = 45
+for retained_from in (40, 44):
+    required = list(range(cursor + 1, latest + 1))
+    replay = [event for event in required if event >= retained_from]
+    missing = [event for event in required if event < retained_from]
+    print("Retention floor:", retained_from, "replay:", replay, "missing:", missing)
+    print("Snapshot required:", bool(missing))
+# Try it: advance cursor to 43; the floor-44 history can now supply every remaining event.
+`} />
+
+SSE event IDs and `Last-Event-ID` help carry reconnect context, but the server decides what an ID means and whether it can resume from it. IDs must refer to the authorized stream, not let callers read another tenant's history. With several partitions, one scalar cursor may not describe all progress. Preserve the stream identity and dependency scope in the token.
+
+## Snapshot and Live Events Need One Boundary
+
+A fresh snapshot followed by live subscription has a race if events can occur between the two operations. Reading snapshot version 100 and subscribing only to future events after version 103 can omit changes 101 through 103. Subscribing first can instead produce buffered events that overlap the snapshot. Either protocol needs a defined version boundary and deduplication rule.
+
+One design obtains a snapshot at a known log position, then replays events after that position before following live updates. Another starts a subscription and buffers while reading a snapshot, discarding events already represented by its version. The store and log must support the claimed relationship. An arbitrary timestamp from a different machine is not automatically a safe cut.
+
+A snapshot can also be too large for a reconnect storm. Bound concurrent rebuilds, use pagination or chunking under a consistent snapshot contract, and avoid sending every returning client through an unbounded full scan. A service that handles steady streams may still fail when a regional network interruption reconnects all clients together.
+
+<PredictFirst question="A client last applied event 41, but the server retains only 44 and later. Can reconnecting and sending 44 and 45 guarantee complete recovery?" options={["Yes, they are the newest events", "No, events 42 and 43 need replay or an explicit snapshot repair", "Yes, because TCP repairs all prior connections"]} correctIndex={1} explanation="The new connection cannot recover application events no longer retained. Current delivery and historical completeness are different guarantees." />
+
+## Bound Slow Consumers Without Hiding Loss
+
+A live producer can outrun a client. Bound queued messages and bytes per connection, global queued memory, maximum message size, and time waiting for progress. Dropping intermediate state updates can be valid for a latest-value display if the protocol says so. Dropping transactions or chat messages under the same policy silently changes the application contract.
+
+For a stream of state versions, coalescing several pending versions into the newest full state can reduce backlog. For incremental deltas, coalescing needs a correct merge or a replacement snapshot. A delta that assumes a missing predecessor cannot simply be delivered after dropping that predecessor. Use message types that tell clients whether an update is complete state or an incremental change.
+
+A slow client can be disconnected with a resumable cursor rather than consuming unbounded server memory. That makes retention and reconnect load part of backpressure. Measure oldest unsent age and queued bytes alongside connection count. A million idle connections and a few overloaded connections have different resource profiles.
+
+<GoDeeper title="Go deeper: ordered delivery is scoped to one conversation">
+Transport ordering can preserve a sequence on one connection. It does not impose one global order across several servers, reconnects, or event partitions. If the application needs per-room order, allocate sequence numbers at the room's authoritative boundary and resume that stream by its own cursor. Cross-room ordering requires a different contract rather than sorting unrelated arrival timestamps at the client.
+</GoDeeper>
+
+## Intermediaries and Authentication Affect the Stream
+
+A proxy can buffer SSE responses, impose idle timeouts, or terminate long connections during deployment. Heartbeats can keep an otherwise idle path observable, but their period must fit every relevant timeout and they do not prove business events are progressing. For WebSockets, ensure the proxy supports the protocol upgrade and the required connection lifecycle.
+
+A minimal NGINX SSE location can disable proxy buffering and use an explicit idle-read timeout. For example, `proxy_buffering off; proxy_read_timeout 75s;` can support an illustrative 20-second heartbeat policy. Those values are configuration choices, not universal requirements. Test the actual chain, including any CDN, rather than assuming a local server's flush reaches the browser immediately.
+
+Native browser EventSource does not expose arbitrary request headers like a general fetch call. Integrate authentication deliberately using appropriate cookies or another supported design, and account for origin and credential policy. Avoid placing long-lived bearer credentials in URLs that infrastructure may log. A WebSocket subscription also needs authorization at subscription time and a policy for changes during its lifetime.
+
+## Exercise Resume and Duplicate Handling
+
+Start a local SSE test endpoint with a response containing `Content-Type: text/event-stream`, then inspect it with `curl -N http://127.0.0.1:8080/events`. An event can contain `id: 42`, `event: order-updated`, and a data line, followed by a blank line. The blank line terminates the event record; a half-written record is not necessarily an application event ready for use.
+
+Test a disconnect immediately before and after applying an event. On reconnect, supply the appropriate cursor and assert which events are replayed. Then expire history past the cursor and verify the explicit gap response or snapshot transition. A test that only sees a reconnect button become green has not tested data recovery.
+
+<RunnableCode code={`applied = {41}
+replayed = [42, 42, 43, 44, 45]
+effects = []
+for event in replayed:
+    if event not in applied:
+        effects.append(event)
+        applied.add(event)
+print("Unique effects:", effects)
+print("Applied cursor for contiguous history:", max(applied))
+assert effects == [42, 43, 44, 45]
+# Try it: remove the membership check; replaying 42 now repeats its effect.
+`} />
+
+This set models a tiny idempotent application boundary. A real client must retain enough progress to survive its relevant failure, and a server-side effect needs durable deduplication rather than browser memory. Advancing to the maximum event ID is valid here only because the example has a contiguous single stream. A gap or several partitions needs a richer progress representation.
+
+## Failure Modes and Better Choices
+
+The connection stays open while no business updates arrive. Monitor event progress and heartbeat separately. Reconnect replays messages from another user because the cursor is treated as authority. Verify stream ownership independently of token parsing. A deployment disconnects all clients simultaneously and overloads snapshot generation. Stagger reconnect, bound recovery work, and test a connection-drain event.
+
+A browser receives the newest delta after older deltas were dropped. Send a complete replacement state or repair the missing dependency. A proxy delays SSE until a buffer fills. Check flushing and intermediary buffering along the real route. An idle socket holds expired permissions forever. Define reauthorization, revocation, or bounded session lifetime appropriate to the action.
+
+## When Not to Hold a Live Connection
+
+| Situation | Better fit |
+| --- | --- |
+| Updates are rare and latency tolerance is large | Conditional polling |
+| Offline consumers need durable independent progress | A durable subscription or log |
+| The result is a one-off bounded request | Ordinary HTTP or unary RPC |
+| No retention or repair protocol exists | Establish recovery before promising loss-free live updates |
+
+## Remember
+
+| Boundary | Decision |
+| --- | --- |
+| Transport | Direction, framing, and client support |
+| Cursor | Received versus applied progress and stream identity |
+| Retention | Replay or an explicit gap repair |
+| Buffer | Bounded bytes and slow-consumer policy |
+| Authorization | Subscription permission and lifetime changes |
+
+You can now reconnect a live interface without confusing a new socket with restored history. Return to [Communication](/docs/software-system-design/communication) to compare that recovery contract with durable messaging.
+
+## Sources
+
+- [RFC 6455, WebSocket Protocol (2011)](https://www.rfc-editor.org/rfc/rfc6455)
+- [WHATWG HTML, Server-Sent Events](https://html.spec.whatwg.org/multipage/server-sent-events.html)
+- [RFC 9110, HTTP Semantics (2022)](https://httpwg.org/specs/rfc9110.html)
+- [RFC 9111, HTTP Caching (2022)](https://httpwg.org/specs/rfc9111.html)
+- [RabbitMQ, Consumer Acknowledgements and Publisher Confirms](https://www.rabbitmq.com/docs/confirms)
