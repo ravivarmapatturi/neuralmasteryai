@@ -27,7 +27,7 @@ function renderChooser() {
 describe('ChooserPage', () => {
   it('introduces the product, says how a page works, and routes to both real destinations', () => {
     renderChooser()
-    expect(screen.getByRole('heading', { name: /Learn AI through visualization/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Learn and Explore\s*AI/i })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /Understand it\. See it work\. Make the decision\./i })).toBeInTheDocument()
     const learnLink = screen.getByRole('link', { name: /Explore the curriculum/i })
     const practiceLink = screen.getByRole('link', { name: /Explore Labs/i })
