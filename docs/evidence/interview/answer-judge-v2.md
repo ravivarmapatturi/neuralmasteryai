@@ -32,3 +32,18 @@ The isolated baseline reproduced the original development counts exactly: TP 27,
 The DeBERTa v3 small pipeline repeatedly reached the unchanged host floor during loading before producing any candidate predictions. Those attempts are retained in `judge-v2-guarded-loads.json`. The largest recorded sampled browser PSS was about 1.32 GB during these incomplete loads. Disabling NLI graph optimization was prepared to reduce loading allocations; no quality threshold was changed.
 
 Before any candidate prediction, the experiment added [Xenova/nli-deberta-v3-xsmall](https://huggingface.co/Xenova/nli-deberta-v3-xsmall), with an 87,246,587-byte q8 model file. Its [upstream NLI model](https://huggingface.co/cross-encoder/nli-deberta-v3-xsmall) uses Apache-2.0; the [Microsoft base model](https://huggingface.co/microsoft/deberta-v3-xsmall) uses MIT. Both relevance cross-encoders will use this smaller NLI model with graph optimization disabled. This is a resource-driven substitution made without candidate scores, not held-out tuning. Small remains recorded as an unsuccessful guarded load, requiring a larger opt-in/resource envelope before quality can be measured.
+
+
+## Development selection (frozen before held-out inference)
+
+Both browser-sized cross-encoders loaded and ran with xsmall NLI. The 60-setting grid per candidate was used once on the original 30 answers. It varied only the declared similarity, cross-score and entailment thresholds; contradiction remained 0.8. The selected settings are committed in `judge-v2-thresholds.json` before any held-out inference.
+
+| Development candidate | TP | FP | FN | Recall | Precision | Point agreement |
+| --- | --- | --- | --- | --- | --- | --- |
+| Today's judge | 27 | 2 | 36 | 42.9% | 93.1% | 70.5% |
+| MS MARCO MiniLM + xsmall NLI | 21 | 0 | 42 | 33.3% | 100.0% | 67.4% |
+| STS-B TinyBERT + xsmall NLI | 31 | 1 | 32 | 49.2% | 96.9% | 74.4% |
+
+Selected MS MARCO thresholds: similarity 0.35, sigmoid cross-score 0.25, entailment 0.5. Selected STS-B thresholds: similarity 0.25, sigmoid cross-score 0.25, entailment 0.5. These are operating thresholds, not calibrated correctness probabilities. STS-B's six-percentage-point development gain is not sufficient to claim a winner. No further grid expansion or rubric paraphrase tuning was applied after seeing these results.
+
+Forward and reverse raw scores, actual matching text, timings and memory records are retained in the per-candidate JSON files. All runs used the actual pinned ONNX weights in a real browser, WASM, one thread, a 2 GiB process limit with swap disabled, and the unchanged 2 GiB host-memory floor.
