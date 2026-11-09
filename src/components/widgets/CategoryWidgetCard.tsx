@@ -13,6 +13,7 @@ export interface CategoryWidgetCardProps {
   passedCount?: number;
   topic?: string;
   visual?: ReactNode;
+  children?: ReactNode;
   className?: string;
 }
 
@@ -26,6 +27,7 @@ export function CategoryWidgetCard({
   passedCount = 0,
   topic,
   visual,
+  children,
   className = '',
 }: CategoryWidgetCardProps) {
   const percent = totalCount > 0 && passedCount > 0
@@ -74,6 +76,7 @@ export function CategoryWidgetCard({
           )}
         </div>
       </Link>
+      {children}
     </li>
   );
 }

@@ -10,6 +10,7 @@ import { isSolved } from '../lib/mastery';
 import { useGamification } from '../contexts/GamificationContext';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useDocumentMeta } from '../lib/useDocumentMeta';
+import { CategoryWidgetCard } from './widgets/CategoryWidgetCard';
 import './labs.css';
 
 type Row = ProblemRow;
@@ -29,19 +30,30 @@ function TrackCard({ track, rows, solved }: { track: CatalogTrack; rows: Row[]; 
   const trackRows = rows.filter((r) => r.track.slug === track.slug);
   const done = trackRows.filter((r) => solved.has(r.page.route)).length;
   return (
-    <li className="labs__card">
-      <p className="labs__meta">{track.level} · {trackRows.length} problems{done > 0 ? ` · ${done} solved` : ''}</p>
-      <h3><Link to={`/practice/track/${track.slug}`}>{track.title}</Link></h3>
-      <p>{track.summary}</p>
-      <details>
-        <summary>Show problems</summary>
+    <CategoryWidgetCard
+      title={track.title}
+      to={`/practice/track/${track.slug}`}
+      summary={track.summary}
+      level={track.level}
+      countText={`${trackRows.length} problems`}
+      totalCount={trackRows.length}
+      passedCount={done}
+      topic={track.slug}
+    >
+      <details className="labs__problems-drawer">
+        <summary>Show problems ({trackRows.length})</summary>
         <ol>
           {trackRows.map((r) => (
-            <li key={r.page.route}><Link to={r.page.route}>{r.page.title}{solved.has(r.page.route) ? ' ✓' : ''}</Link></li>
+            <li key={r.page.route}>
+              <Link to={r.page.route}>
+                {r.page.title}
+                {solved.has(r.page.route) ? ' ✓' : ''}
+              </Link>
+            </li>
           ))}
         </ol>
       </details>
-    </li>
+    </CategoryWidgetCard>
   );
 }
 
@@ -152,12 +164,12 @@ export default function PracticeListPage() {
             <section className="labs__section">
               <h2>Build something</h2>
               <p className="labs__lead">Each problem adds a piece to one working program.</p>
-              <ul className="labs__grid">{CATALOG.filter((t) => t.kind === 'project').map((t) => <TrackCard key={t.slug} track={t} rows={rows} solved={solved} />)}</ul>
+              <ul className="nm-category-widget-grid">{CATALOG.filter((t) => t.kind === 'project').map((t) => <TrackCard key={t.slug} track={t} rows={rows} solved={solved} />)}</ul>
             </section>
             <section className="labs__section">
               <h2>Practise a topic</h2>
               <p className="labs__lead">Standalone problems, easiest first.</p>
-              <ul className="labs__grid">{CATALOG.filter((t) => t.kind !== 'project').map((t) => <TrackCard key={t.slug} track={t} rows={rows} solved={solved} />)}</ul>
+              <ul className="nm-category-widget-grid">{CATALOG.filter((t) => t.kind !== 'project').map((t) => <TrackCard key={t.slug} track={t} rows={rows} solved={solved} />)}</ul>
             </section>
             <section className="labs__section">
               <h2>Make the call</h2>
