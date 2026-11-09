@@ -78,6 +78,6 @@ describe('study pages', () => {
     renderAt('/research')
     expect(screen.getByText('Attention Is All You Need')).toBeInTheDocument()
     renderAt('/projects')
-    expect(screen.getByText('A voice assistant')).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { name: 'A voice assistant' })).toHaveLength(2)
   })
 })
