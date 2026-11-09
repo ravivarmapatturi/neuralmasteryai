@@ -1,7 +1,7 @@
 ---
 title: "REST and Conditional Resource Updates"
 sidebar_position: 4.1
-description: ""
+description: "Design HTTP resources, method semantics, validators, and error responses so clients can retry safely without silently overwriting concurrent changes."
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -108,6 +108,14 @@ print("Final representation:", product)
 assert product == {"version": 8, "price": 12}
 # Try it: retry A with expected version 7; the effect remains once even though the response changes.
 `} />
+
+## Design the Conditional Update as One Database Decision
+
+An HTTP precondition needs an atomic implementation behind it. Suppose the stored row contains identifier 7, price 10, and version 7. After editor A succeeds, the row contains price 12 and version 8. Editor B's request still carries the validator for version 7. A conditional SQL update can match both the resource identifier and expected version, change the fields, and increment the version in the same database operation. An affected-row count of zero means the expected state did not match; the application must distinguish a missing resource from a failed precondition according to its response contract. Reading version 7, checking it in application memory, and later issuing an unconditional write leaves a race between the check and write.
+
+The version also needs a defined relationship to the representation. If a resource response combines a product row, inventory state, and localized text, changing any of those inputs might change the selected representation. A validator derived only from the product row may therefore be unsuitable as a strong validator for that entire response. Decide whether the edit endpoint owns one versioned resource, whether related state belongs in another resource, and which representation the validator identifies. Document content negotiation because different selected representations need validators consistent with HTTP's rules.
+
+Now trace an ambiguous result. A sends its conditional update, the database commits version 8, and the response disappears. Repeating the same request with the old validator can return a precondition failure even though A's first attempt succeeded. That response protects the current state but does not explain the original operation's outcome. A client can fetch and reconcile the resource, or the service can provide an operation identity when the workflow requires durable result lookup. Avoid responding to this ambiguity by removing the precondition. That would restore the lost-update race the version check was meant to prevent. Conditional mutation, operation identity, and retrieval each answer a different question in the recovery workflow.
 
 ## Failure Modes and Better Choices
 
