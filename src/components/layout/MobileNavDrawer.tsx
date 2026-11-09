@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 import Sidebar from './Sidebar';
 import TableOfContents from './TableOfContents';
+import FocusMusicControl from '../focus-music/FocusMusicControl';
+import FocusTimerControl from '../focus-timer/FocusTimerControl';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
@@ -137,6 +139,11 @@ export default function MobileNavDrawer({
 
         <div style={{ borderTop: '1px solid var(--nm-border)', marginTop: '1rem', paddingTop: '1rem' }}>
           <TableOfContents contentRef={contentRef} variant="mobile" onNavigate={onClose} />
+        </div>
+
+        <div style={{ borderTop: '1px solid var(--nm-border)', marginTop: '1rem', paddingTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <FocusTimerControl />
+          <FocusMusicControl />
         </div>
       </div>
     </>
