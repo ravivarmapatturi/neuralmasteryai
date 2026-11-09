@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import {createHash} from 'node:crypto';
 import {build} from 'esbuild';
-const dir='docs/evidence/interview';
+const dir=process.env.JUDGE_V2_DIR??'docs/evidence/interview';
 const compiled=await build({entryPoints:['src/lib/answerJudgeV2.ts'],bundle:true,write:false,format:'esm',platform:'node'});
 const {decideV2}=await import('data:text/javascript;base64,'+Buffer.from(compiled.outputFiles[0].text).toString('base64'));
 const read=file=>JSON.parse(fs.readFileSync(`${dir}/${file}`));
@@ -20,7 +20,7 @@ function metrics(rows) {
  return {answers:rows.length,points:tp+tn+fp+fn,tp,tn,fp,fn,exactAnswers,recall:tp+fn?tp/(tp+fn):null,
   precision:tp+fp?tp/(tp+fp):null,falsePositiveRate:fp+tn?fp/(fp+tn):null,agreement:tp+tn+fp+fn?(tp+tn)/(tp+tn+fp+fn):null};
 }
-const q=(values,quantile)=>{const sorted=[...values].sort((a,b)=>a-b);return sorted[Math.floor((sorted.length-1)*quantile)]??null;};
+const q=(values,quantile)=>{const sorted=[...values].sort((a,b)=>a-b);if(!sorted.length)return null;const at=(sorted.length-1)*quantile;const lo=Math.floor(at),hi=Math.ceil(at);return sorted[lo]+(at-lo)*(sorted[hi]-sorted[lo]);};
 function summarize(rows) {
  const result={overall:metrics(rows),byStrength:{},bySource:{},coverageDistributions:{}};
  for(const strength of ['strong','partial','weak']){
@@ -47,6 +47,7 @@ function bootstrap(baseline,candidate) {
 }
 const mode=process.argv[2];
 if(mode==='tune'){
+ if(['baseline','marco','stsb'].some(name=>fs.existsSync(`${dir}/judge-v2-${name}-heldout.json`)))throw Error('Held-out inference has started; this experiment cannot be retuned');
  const baseline=read('judge-v2-baseline-dev.json');if(baseline.status!=='complete')throw Error('Baseline development incomplete');
  const baselineSummary=summarize(predictions(baseline));
  if(JSON.stringify([baselineSummary.overall.tp,baselineSummary.overall.tn,baselineSummary.overall.fp,baselineSummary.overall.fn])!==JSON.stringify([27,64,2,36]))throw Error('Baseline no longer reproduces original counts; investigate before tuning');

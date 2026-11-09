@@ -3,7 +3,7 @@ import {createHash} from 'node:crypto';
 import {chromium} from 'playwright';
 const [candidate='baseline', split='dev']=process.argv.slice(2);
 if(!['baseline','marco','stsb'].includes(candidate)||!['dev','heldout'].includes(split))throw Error('Use baseline|marco|stsb dev|heldout');
-const dir='docs/evidence/interview';
+const dir=process.env.JUDGE_V2_DIR??'docs/evidence/interview';
 const sampleFile=`${dir}/${split==='dev'?'rubric-sample.json':'judge-v2-heldout.json'}`;
 const source=fs.readFileSync(sampleFile);
 const sample=JSON.parse(source);

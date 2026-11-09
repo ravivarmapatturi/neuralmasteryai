@@ -38,7 +38,9 @@ async function prepare() {
   manifest.models[key]=row;
   console.log(`Prepared ${key}: ${row.files.reduce((n,f)=>n+f.bytes,0)} bytes at ${revision}`);
  }
- fs.writeFileSync('docs/evidence/interview/judge-v2-model-manifest.json',JSON.stringify(manifest,null,2)+'\n');
+ const directory=process.env.JUDGE_V2_DIR??'docs/evidence/interview';
+ fs.mkdirSync(directory,{recursive:true});
+ fs.writeFileSync(path.join(directory,'judge-v2-model-manifest.json'),JSON.stringify(manifest,null,2)+'\n');
 }
 function serve() {
  const server=http.createServer((req,res)=>{
