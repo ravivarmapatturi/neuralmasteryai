@@ -7,6 +7,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ProgressProvider } from './contexts/ProgressContext';
 import { GamificationProvider } from './contexts/GamificationContext';
 import { FocusMusicProvider } from './contexts/FocusMusicContext';
+import { FocusTimerProvider } from './contexts/FocusTimerContext';
 import DocLayout from './components/layout/DocLayout';
 // The practice problem bank is several MB; load it only on practice routes.
 const PracticeProblemLayout = lazy(() => import('./components/layout/PracticeProblemLayout'));
@@ -23,6 +24,7 @@ const VoiceTestPage = lazy(() => import('./components/VoiceTestPage'));
 const VizAuditPage = lazy(() => import('./components/VizAuditPage'));
 import PracticeTrackPage from './components/PracticeTrackPage';
 import ProgressPage from './components/ProgressPage';
+import FocusPage from './components/focus/FocusPage';
 import BlogListPage from './components/BlogListPage';
 import BlogPostPage from './components/BlogPostPage';
 import BlogSeriesPage from './components/BlogSeriesPage';
@@ -70,8 +72,9 @@ export default function App() {
         <ProgressProvider>
           <GamificationProvider>
             <FocusMusicProvider>
-              <ConfettiCanvas />
-              <MDXProvider components={mdxComponents}>
+              <FocusTimerProvider>
+                <ConfettiCanvas />
+                <MDXProvider components={mdxComponents}>
 
               {/* Reads Vite's own BASE_URL (derived from vite.config.ts's
                   `base`) instead of a second hardcoded copy of the same
@@ -111,6 +114,7 @@ export default function App() {
                       <Route path="/blog/write" element={<BlogEditorPage />} />
                       <Route path="/blog/write/:slug" element={<BlogEditorPage />} />
                       <Route path="/blog/:slug" element={<BlogPostPage />} />
+                      <Route path="/focus" element={<FocusPage />} />
                       <Route path="/progress" element={<ProgressPage />} />
                       <Route path="/profile" element={<ProfilePage />} />
                       <Route path="/leaderboard" element={<LeaderboardPage />} />
@@ -139,7 +143,8 @@ export default function App() {
                 </div>
               </BrowserRouter>
             </MDXProvider>
-          </FocusMusicProvider>
+          </FocusTimerProvider>
+        </FocusMusicProvider>
         </GamificationProvider>
         </ProgressProvider>
       </AuthProvider>

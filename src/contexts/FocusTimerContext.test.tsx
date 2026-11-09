@@ -1,0 +1,391 @@
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { onAuthStateChanged } from 'firebase/auth';
+import type { User } from 'firebase/auth';
+import { getDoc, setDoc } from 'firebase/firestore';
+import { FocusMusicProvider } from './FocusMusicContext';
+import { FocusTimerProvider, useFocusTimer, useFocusCountdown } from './FocusTimerContext';
+import { AuthProvider } from './AuthContext';
+import type { FocusSession } from '../lib/focusTimer';
+
+function TestTimerWidget() {
+  const timer = useFocusTimer();
+  const countdown = useFocusCountdown();
+
+  return (
+    <div>
+      <span data-testid="phase">{timer.phase}</span>
+      <span data-testid="status">{timer.status}</span>
+      <span data-testid="countdown">{countdown.formatted}</span>
+      <span data-testid="reason">{timer.pausedReason || 'none'}</span>
+      <span data-testid="sessions-count">{timer.sessions.length}</span>
+
+      <button onClick={() => timer.startFocus('learn')}>Start Focus</button>
+      <button onClick={timer.pause}>Pause</button>
+      <button onClick={timer.resume}>Resume</button>
+      <button onClick={timer.stop}>Stop</button>
+      <button onClick={timer.skip}>Skip</button>
+      <button
+        onClick={() =>
+          timer.recordSession({
+            id: 'device-a-session',
+            startedAt: new Date(Date.now() - 1500000).toISOString(),
+            endedAt: new Date().toISOString(),
+            plannedMinutes: 25,
+            focusedSeconds: 1500,
+            completed: true,
+            section: 'learn',
+          })
+        }
+      >
+        Record Device A
+      </button>
+      <button
+        onClick={() =>
+          timer.recordSession({
+            id: 'session-retry-1',
+            startedAt: new Date(Date.now() - 3000000).toISOString(),
+            endedAt: new Date(Date.now() - 1500000).toISOString(),
+            plannedMinutes: 25,
+            focusedSeconds: 1500,
+            completed: true,
+            section: 'learn',
+          })
+        }
+      >
+        Record Retry 1
+      </button>
+      <button
+        onClick={() =>
+          timer.recordSession({
+            id: 'session-retry-2',
+            startedAt: new Date(Date.now() - 1500000).toISOString(),
+            endedAt: new Date().toISOString(),
+            plannedMinutes: 25,
+            focusedSeconds: 1500,
+            completed: true,
+            section: 'learn',
+          })
+        }
+      >
+        Record Retry 2
+      </button>
+    </div>
+  );
+}
+
+function Wrapper({ children }: { children: React.ReactNode }) {
+  return (
+    <AuthProvider>
+      <FocusMusicProvider>
+        <FocusTimerProvider>{children}</FocusTimerProvider>
+      </FocusMusicProvider>
+    </AuthProvider>
+  );
+}
+
+describe('FocusTimerContext', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.useFakeTimers();
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    vi.stubGlobal('Audio', class extends EventTarget {
+      paused = true;
+      src = '';
+      preload = '';
+      loop = false;
+      volume = 0;
+      load = vi.fn();
+      play = vi.fn(async () => {
+        this.paused = false;
+        this.dispatchEvent(new Event('play'));
+      });
+      pause = vi.fn(() => {
+        this.paused = true;
+        this.dispatchEvent(new Event('pause'));
+      });
+      constructor() {
+        super();
+      }
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('initializes in idle state and starts focus countdown', async () => {
+    render(
+      <Wrapper>
+        <TestTimerWidget />
+      </Wrapper>,
+    );
+
+    expect(screen.getByTestId('phase').textContent).toBe('idle');
+    expect(screen.getByTestId('status').textContent).toBe('idle');
+    expect(screen.getByTestId('countdown').textContent).toBe('25:00');
+
+    // Click Start Focus
+    fireEvent.click(screen.getByText('Start Focus'));
+
+    expect(screen.getByTestId('phase').textContent).toBe('focus');
+    expect(screen.getByTestId('status').textContent).toBe('running');
+
+    // Advance 5 seconds
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+
+    expect(screen.getByTestId('countdown').textContent).toBe('24:55');
+  });
+
+  it('pauses and resumes timer', async () => {
+    render(
+      <Wrapper>
+        <TestTimerWidget />
+      </Wrapper>,
+    );
+
+    fireEvent.click(screen.getByText('Start Focus'));
+    act(() => {
+      vi.advanceTimersByTime(10000);
+    });
+
+    fireEvent.click(screen.getByText('Pause'));
+    expect(screen.getByTestId('status').textContent).toBe('paused');
+
+    // Time does not tick while paused
+    act(() => {
+      vi.advanceTimersByTime(10000);
+    });
+    expect(screen.getByTestId('countdown').textContent).toBe('24:50');
+
+    // Resume
+    fireEvent.click(screen.getByText('Resume'));
+    expect(screen.getByTestId('status').textContent).toBe('running');
+
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(screen.getByTestId('countdown').textContent).toBe('24:45');
+  });
+
+  it('auto-pauses with reason away when tab is hidden for > 60 seconds', async () => {
+    render(
+      <Wrapper>
+        <TestTimerWidget />
+      </Wrapper>,
+    );
+
+    fireEvent.click(screen.getByText('Start Focus'));
+    expect(screen.getByTestId('status').textContent).toBe('running');
+
+    // Tab becomes hidden
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+    fireEvent(document, new Event('visibilitychange'));
+
+    // 70 seconds pass while hidden
+    act(() => {
+      vi.advanceTimersByTime(70000);
+    });
+
+    // Tab becomes visible again
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    fireEvent(document, new Event('visibilitychange'));
+
+    expect(screen.getByTestId('status').textContent).toBe('paused');
+    expect(screen.getByTestId('reason').textContent).toBe('away');
+  });
+
+  it('saves session on stop if focused >= 60 seconds', async () => {
+    render(
+      <Wrapper>
+        <TestTimerWidget />
+      </Wrapper>,
+    );
+
+    fireEvent.click(screen.getByText('Start Focus'));
+
+    // Advance 65 seconds
+    act(() => {
+      vi.advanceTimersByTime(65000);
+    });
+
+    fireEvent.click(screen.getByText('Stop'));
+    expect(screen.getByTestId('status').textContent).toBe('idle');
+    expect(screen.getByTestId('sessions-count').textContent).toBe('1');
+
+    // Verify localStorage has the session
+    const stored = JSON.parse(localStorage.getItem('nm_focus_sessions') || '[]');
+    expect(stored.length).toBe(1);
+    expect(stored[0].section).toBe('learn');
+    expect(stored[0].focusedSeconds).toBeGreaterThanOrEqual(60);
+  });
+
+  it('handles reload after endsAt has passed: saves session exactly once with time up to endsAt only', async () => {
+    // Simulate user had started a 25m session 30 minutes ago, then reloaded the tab
+    const now = Date.now();
+    const startedAt = now - 30 * 60 * 1000;
+    const endsAt = startedAt + 25 * 60 * 1000; // passed 5 minutes ago
+
+    localStorage.setItem(
+      'nm_focus_timer_state',
+      JSON.stringify({
+        phase: 'focus',
+        status: 'running',
+        preset: { id: '25-5', focusMinutes: 25, shortBreakMinutes: 5, longBreakMinutes: 15 },
+        completedFocusCount: 0,
+        startedAt,
+        endsAt,
+        remainingMs: 0,
+        targetDurationMs: 25 * 60 * 1000,
+        autoStartNext: false,
+        notificationsEnabled: false,
+        currentSessionId: 'reload-test-session',
+        currentSessionSection: 'learn',
+        accumulatedFocusMs: 0,
+        lastTickTimestamp: startedAt,
+        pausedReason: null,
+      }),
+    );
+
+    render(
+      <Wrapper>
+        <TestTimerWidget />
+      </Wrapper>,
+    );
+
+    // Initial render should restore state to phaseEnded and save the session
+    expect(screen.getByTestId('status').textContent).toBe('phaseEnded');
+    expect(screen.getByTestId('sessions-count').textContent).toBe('1');
+
+    const stored = JSON.parse(localStorage.getItem('nm_focus_sessions') || '[]');
+    expect(stored.length).toBe(1);
+    expect(stored[0].id).toBe('reload-test-session');
+    // Focused time must be 25 minutes (1500s), NOT 30 minutes
+    expect(stored[0].focusedSeconds).toBe(1500);
+    expect(stored[0].endedAt).toBe(new Date(endsAt).toISOString());
+    expect(stored[0].completed).toBe(true);
+
+    // Re-rendering or advancing timers must NOT save a duplicate session
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(screen.getByTestId('sessions-count').textContent).toBe('1');
+    const storedAfter = JSON.parse(localStorage.getItem('nm_focus_sessions') || '[]');
+    expect(storedAfter.length).toBe(1);
+  });
+
+  it('cross-device sync: two devices each save a session and both survive', async () => {
+    vi.useRealTimers();
+    const fakeUser = { uid: 'user-dual-device', getIdToken: vi.fn().mockResolvedValue('token') } as unknown as User;
+    vi.mocked(onAuthStateChanged).mockImplementation((_auth: unknown, cb: (u: User) => void) => {
+      cb(fakeUser);
+      return () => {};
+    });
+
+    const firestoreData: Record<string, unknown> = {
+      focusSessions: [
+        {
+          id: 'device-b-session',
+          startedAt: new Date(Date.now() - 3600000).toISOString(),
+          endedAt: new Date(Date.now() - 2100000).toISOString(),
+          plannedMinutes: 25,
+          focusedSeconds: 1500,
+          completed: true,
+          section: 'interview',
+        },
+      ],
+    };
+
+    vi.mocked(getDoc).mockImplementation(async () => {
+      return {
+        exists: () => true,
+        data: () => firestoreData,
+      } as never;
+    });
+
+    vi.mocked(setDoc).mockImplementation(async (_ref: unknown, data: Record<string, unknown>) => {
+      if (data.focusSessions) {
+        firestoreData.focusSessions = data.focusSessions;
+      }
+    });
+
+    render(
+      <Wrapper>
+        <TestTimerWidget />
+      </Wrapper>,
+    );
+
+    // Initial sign-in sync loads Device B session
+    await waitFor(() => {
+      expect(screen.getByTestId('sessions-count').textContent).toBe('1');
+    });
+
+    // Device A saves a session
+    fireEvent.click(screen.getByText('Record Device A'));
+
+    // Both Device A and Device B sessions must survive
+    await waitFor(() => {
+      expect(screen.getByTestId('sessions-count').textContent).toBe('2');
+    });
+
+    const sessionsInFirestore = firestoreData.focusSessions as FocusSession[];
+    expect(sessionsInFirestore.length).toBe(2);
+    expect(sessionsInFirestore.map((s) => s.id)).toContain('device-b-session');
+    expect(sessionsInFirestore.map((s) => s.id)).toContain('device-a-session');
+  });
+
+  it('retries failed saves on next save rather than dropping them', async () => {
+    vi.useRealTimers();
+    const fakeUser = { uid: 'user-retry-test', getIdToken: vi.fn().mockResolvedValue('token') } as unknown as User;
+    vi.mocked(onAuthStateChanged).mockImplementation((_auth: unknown, cb: (u: User) => void) => {
+      cb(fakeUser);
+      return () => {};
+    });
+
+    const firestoreData: Record<string, unknown> = { focusSessions: [] };
+    let shouldFail = true;
+
+    vi.mocked(getDoc).mockImplementation(async () => ({
+      exists: () => true,
+      data: () => firestoreData,
+    }) as never);
+
+    vi.mocked(setDoc).mockImplementation(async (_ref: unknown, data: Record<string, unknown>) => {
+      if (shouldFail) {
+        throw new Error('Network error writing to Firestore');
+      }
+      firestoreData.focusSessions = data.focusSessions;
+    });
+
+    render(
+      <Wrapper>
+        <TestTimerWidget />
+      </Wrapper>,
+    );
+
+    // Save session 1 while offline/failing
+    fireEvent.click(screen.getByText('Record Retry 1'));
+
+    // Session 1 is queued in pending sync
+    await waitFor(() => {
+      const pending = JSON.parse(localStorage.getItem('nm_focus_pending_sync') || '[]');
+      expect(pending.length).toBe(1);
+    });
+
+    // Network recovers
+    shouldFail = false;
+
+    // Save session 2
+    fireEvent.click(screen.getByText('Record Retry 2'));
+
+    // Both session 1 and session 2 should be in Firestore, and pending sync cleared
+    await waitFor(() => {
+      const saved = firestoreData.focusSessions as FocusSession[];
+      expect(saved.length).toBe(2);
+      expect(JSON.parse(localStorage.getItem('nm_focus_pending_sync') || '[]').length).toBe(0);
+    });
+  });
+});

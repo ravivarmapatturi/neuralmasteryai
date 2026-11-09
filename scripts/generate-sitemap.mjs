@@ -36,6 +36,7 @@ const urls = [
   ...trackSlugs.map((slug) => ({ loc: `${SITE_URL}/practice/track/${slug}`, lastmod: null })),
   { loc: `${SITE_URL}/`, lastmod: null },
   { loc: `${SITE_URL}/learn`, lastmod: null },
+  { loc: `${SITE_URL}/focus`, lastmod: null },
   { loc: `${SITE_URL}/labs`, lastmod: null },
   { loc: `${SITE_URL}/atlas`, lastmod: null },
   ...studyRoutes().map((route) => ({ loc: `${SITE_URL}${route}`, lastmod: null })),

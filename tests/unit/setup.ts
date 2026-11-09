@@ -31,12 +31,21 @@ vi.mock('firebase/auth', () => ({
   createUserWithEmailAndPassword: vi.fn().mockResolvedValue({ user: null }),
   signInWithEmailAndPassword: vi.fn().mockResolvedValue({ user: null }),
 }))
+const mockGetDoc = vi.fn().mockResolvedValue({ exists: () => false, data: () => undefined })
+const mockSetDoc = vi.fn().mockResolvedValue(undefined)
+
 vi.mock('firebase/firestore', () => ({
   getFirestore: vi.fn(() => ({})),
   connectFirestoreEmulator: vi.fn(),
   doc: vi.fn(() => ({})),
-  getDoc: vi.fn().mockResolvedValue({ exists: () => false, data: () => undefined }),
-  setDoc: vi.fn().mockResolvedValue(undefined),
+  getDoc: mockGetDoc,
+  setDoc: mockSetDoc,
+  runTransaction: vi.fn(async (_db: unknown, updateFunction: (tx: { get: (ref: unknown) => Promise<unknown>; set: (ref: unknown, data: unknown, opts?: unknown) => void }) => Promise<unknown>) => {
+    return updateFunction({
+      get: (ref: unknown) => mockGetDoc(ref as never),
+      set: (ref: unknown, data: unknown, opts?: unknown) => mockSetDoc(ref as never, data as never, opts as never),
+    });
+  }),
   onSnapshot: vi.fn(() => () => {}),
   enableNetwork: vi.fn().mockResolvedValue(undefined),
   disableNetwork: vi.fn().mockResolvedValue(undefined),
