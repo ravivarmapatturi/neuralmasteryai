@@ -3,11 +3,11 @@ export function decodeRealTimeFactor(inferMs: number, sampleCount: number): numb
   return Number.isFinite(inferMs) && inferMs >= 0 && sampleCount >= 8000
     ? inferMs / (sampleCount / 16) : null;
 }
-export function shouldSkipRefinement(ratios: number[], disabled: boolean): boolean {
-  const recent = ratios.slice(-5).sort((a, b) => a - b);
-  return disabled || (recent.length > 0 && recent[Math.floor(recent.length / 2)] > 0.75);
+/** Retained for consumers of the old policy API. Live speed never vetoes final decoding. */
+export function shouldSkipRefinement(_ratios: number[], _disabled: boolean): boolean {
+  return false;
 }
-/** Decode-only budget; model download has a separate deadline. */
+/** A duration-scaled safety deadline, not an interactive UI deadline: review runs in background. */
 export function refinementBudgetMs(sampleCount: number): number {
-  return Math.min(12000, Math.max(6000, sampleCount / 16 * 2.5));
+  return Math.min(600000, Math.max(30000, sampleCount / 16 * 8));
 }

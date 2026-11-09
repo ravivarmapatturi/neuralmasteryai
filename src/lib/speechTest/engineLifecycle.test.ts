@@ -123,20 +123,34 @@ describe('speech finalization and cancellation', () => {
     expect(worker.sent).toHaveLength(before);
     expect(worker.terminate).toHaveBeenCalledOnce();
   });
-  it('skips Whisper from measured slow live decoding and retains the committed transcript', async () => {
+  it('runs the final decoder even when live decoding was slow, including on the next answer', async () => {
     const engine = new SingleThreadASREngine({ finalModelId: 'whisper-base.en' });
-    await engine.load(); await engine.start({} as MediaStream);
-    FakeAudio.latest.feed(0.1, 4);
-    const worker = FakeWorker.latest;
-    const stopping = engine.stop();
-    await vi.waitFor(() => expect(worker.sent.some(m => m.op === 'commit')).toBe(true));
-    const commit = worker.sent.find(m => m.op === 'commit');
-    worker.reply({ id: commit.id, type: 'commit_result', text: 'retain this live answer', inferMs: 2000, sampleCount: 16384 });
-    await stopping;
-    expect(worker.sent.some(m => m.op === 'batch')).toBe(false);
-    expect(engine.getMetrics()).toMatchObject({ finalText: 'retain this live answer', refinementDecision: 'skipped-slow' });
+    for (let answer = 0; answer < 2; answer++) {
+      await engine.start({} as MediaStream);
+      FakeAudio.latest.feed(0.1, 4);
+      const worker = FakeWorker.latest;
+      const stopping = engine.stop();
+      await vi.waitFor(() => expect(worker.sent.some(m => m.op === 'commit')).toBe(true));
+      const commit = worker.sent.filter(m => m.op === 'commit').at(-1);
+      worker.reply({ id: commit.id, type: 'commit_result', text: 'inaccurate live words', inferMs: 2000, sampleCount: 16384 });
+      await vi.waitFor(() => expect(worker.sent.some(m => m.op === 'batch')).toBe(true));
+      const batch = worker.sent.filter(m => m.op === 'batch').at(-1);
+      worker.reply({ id: batch.id, type: 'batch_result', text: 'accurate final words' });
+      await stopping;
+      expect(engine.getMetrics()).toMatchObject({ finalText: 'accurate final words', refinementDecision: 'accepted' });
+    }
     engine.destroy();
   });
+
+  it('commits a quiet microphone after a real pause', async () => {
+    const engine = new SingleThreadASREngine({ normalizeAudio: true });
+    await engine.start({} as MediaStream);
+    FakeAudio.latest.feed(0.002, 4);
+    FakeAudio.latest.feed(0, 3);
+    expect(FakeWorker.latest.sent.some(m => m.op === 'commit')).toBe(true);
+    engine.destroy();
+  });
+
   it('aborts slow Whisper after model readiness, retains live text and can reload the live model', async () => {
     vi.useFakeTimers();
     const engine = new SingleThreadASREngine({ finalModelId: 'whisper-base.en' });
@@ -155,7 +169,7 @@ describe('speech finalization and cancellation', () => {
     await vi.advanceTimersByTimeAsync(10000);
     expect(worker.terminate).not.toHaveBeenCalled();
     worker.reply({ id: batch.id, type: 'model_ready', device: 'wasm' });
-    await vi.advanceTimersByTimeAsync(6001);
+    await vi.advanceTimersByTimeAsync(30001);
     await stopping;
     expect(worker.terminate).toHaveBeenCalledOnce();
     expect(engine.getMetrics()).toMatchObject({ finalText: 'the actual live answer', refinementDecision: 'aborted-slow' });
