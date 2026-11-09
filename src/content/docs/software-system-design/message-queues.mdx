@@ -1,7 +1,7 @@
 ---
 title: "Message Queues and Worker Acknowledgements"
 sidebar_position: 4.5
-description: ""
+description: "Choose durable acceptance and acknowledgement boundaries, bound worker prefetch, and recover redelivered jobs without confusing transport delivery with committed effects."
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -98,6 +98,16 @@ for expanded in (100, 140):
 `} />
 
 For a local RabbitMQ deployment, `rabbitmqctl list_queues name messages_ready messages_unacknowledged consumers` exposes useful queue boundaries when the node and user permit it. Inspect ready versus unacknowledged counts during a paused worker, then terminate that worker and verify redelivery. Broker metrics alone cannot confirm the database effect; check authoritative state using job identity too.
+
+Include a worker that remains alive but cannot reach the broker in the recovery test. A process-kill test can make ownership transfer look clean because the old code is definitely gone. A communication failure can instead overlap old work and redelivery. The effect identity or fencing boundary must remain correct in that overlap, not only after a tidy restart.
+
+## Keep Broker Delivery State Separate From Business State
+
+A consumer acknowledgement tells the broker that a delivery can leave the pending population. The business database does not participate in that acknowledgement automatically. For job 7, a database commit followed by a lost acknowledgement leaves the broker correct to redeliver and the database correct to retain the first effect. The duplicate appears at the boundary between the two systems. If a unique job record and the intended state transition commit in one database transaction, redelivery can inspect that durable record and avoid repeating the transition. Recording completion in a different transaction reopens a failure window.
+
+Prefetch changes the number of deliveries held by a consumer before acknowledgement. Increasing it can improve utilization when work has variable latency, but it also increases the amount of unacknowledged work associated with a failed worker. A consumer that fetches far ahead and then processes serially may hold deliveries that another healthy worker could have finished. Compare the prefetch window with useful concurrency and the size of each delivery. Track pending age and processing latency alongside queue depth; a stable queue length can hide a few permanently stuck jobs.
+
+A poison delivery needs a disposition policy as well. Immediate requeue after a deterministic validation failure can create a tight failure loop, consuming capacity without changing the input. Decide which errors are transient, how attempts are counted durably, and when a message moves to a dead-letter workflow. That workflow needs an owner and a replay procedure because moving data aside does not repair it. When replaying, preserve the original business identity if the intent is the same operation. Inspect whether a partial effect already occurred before permitting another attempt. The operator should be able to explain whether job 7 is waiting, executing, completed, rejected, or awaiting intervention without deriving its business status solely from a broker's transient delivery counters.
 
 ## Failure Modes and Better Choices
 
