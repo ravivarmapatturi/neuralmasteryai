@@ -48,6 +48,8 @@ for t in curated["topics"]:
         ours.append((CURATED_OVERRIDE.get(qid, CURATED_TOPIC[t["id"]]),
                      {"id": qid, "title": titles[qid], "answer": curated["answers"][qid]}))
 for q in json.loads((ROOT / "src/data/interviewCatalog.generated.json").read_text())["questions"]:
+    if q.get("bank") == "software-system-design-questions":
+        continue
     item = {"id": q["id"], "title": q["title"], "answer": tidy(q["answer"])}
     if q.get("options"):
         item["options"] = [o["text"] for o in q["options"]]
