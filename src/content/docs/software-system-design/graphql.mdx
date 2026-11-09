@@ -1,7 +1,7 @@
 ---
 title: "GraphQL Execution and Bounded Resolver Work"
 sidebar_position: 4.3
-description: ""
+description: "Trace a graph query through resolvers, eliminate repeated backend lookups with request-scoped batching, and bound cost without weakening authorization."
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -95,6 +95,16 @@ assert [row["id"] if row else None for row in results] == [2, 1, 2, None]
 The dictionary uses one visibility context for the exercise. Production loaders need the same resource authorization as individual fetches and must define errors for missing, forbidden, or unavailable objects. Do not return a row merely because its ID was present in a shared process cache. The optimization should preserve observable semantics under every permitted key sequence.
 
 A real HTTP query can be inspected with `curl -H 'Content-Type: application/json' --data '{"query":"query { orders(first: 10) { id owner { name } } }"}' http://127.0.0.1:8080/graphql` against a local server implementing that schema. Instrument order and owner calls while running it. Compare the returned object graph before and after batching, then introduce a missing owner and verify the documented null/error behavior.
+
+Test two users requesting the same object identifier through different graph paths. An owner resolver, a search result, and a nested relationship must apply the same visibility rule. Repeat that test after warming the request machinery so an improperly shared loader cannot hide behind a cold-cache pass. Performance tests should compare complete authorized responses, not only backend call counts.
+
+## Give Every Resolver the Same Authorization Context
+
+Request-scoped batching solves repeated lookups only if its key identifies the correct data boundary. Suppose two organizations both use the local customer identifier 7. A loader keyed only by 7 can reuse the wrong result if the implementation accidentally shares it across authorization scopes. Construct loaders for the request, include the required tenant identity in lookup decisions, and apply authorization before returning protected fields. A cache hit must obey the same access policy as a database fetch. The shape of the query does not grant permission to traverse every object reachable through the schema.
+
+The batch function also has a precise result contract. It must return an entry for every requested key in the expected order, including an explicit missing or error result where appropriate. A database query that returns rows in its preferred order cannot simply be handed back as if it matched the loader's key order. Build a key-to-result mapping, then reconstruct the output sequence. In the ten-order example, repeated references to two owners should still produce ten correctly associated owner results while requiring only the intended batch fetch. Test missing owners and mixed permitted/forbidden objects as well as the happy path.
+
+Finally, a single operation may contain several independent aliases or nested list expansions. Counting HTTP requests does not bound that work. Estimate query cost using the schema's actual cardinality limits, enforce pagination at every expandable connection, and set execution budgets that account for database calls and response size. A depth limit alone can permit a shallow but enormous fanout. Persisted operations can make a known application's workload easier to inspect, while public schema exploration needs its own policy. Measure resolver latency and calls by operation shape without logging secret variables. The goal is to connect the client's selected fields to the backend effort and authorization decisions they cause, then reject a request before it consumes an unbounded share of that effort.
 
 ## Failure Modes and Better Choices
 
