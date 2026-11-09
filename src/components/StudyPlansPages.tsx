@@ -17,6 +17,7 @@ import {
   type StudyPlan,
 } from '../data/studyPlans';
 import ResearchArchitectureDiagram from '../viz/ResearchArchitectureDiagram';
+import { CategoryWidgetCard } from './widgets/CategoryWidgetCard';
 
 /* ---------------- shared ---------------- */
 
@@ -165,34 +166,44 @@ export function StudyPlansPage() {
       </p>
 
       <h2 className="nb-heading" style={{ fontSize: '1.3rem', margin: '2.25rem 0 0' }}>Build from scratch</h2>
-      <ul style={listStyle}>
+      <ul className="nm-category-widget-grid">
         {STUDY_PLANS.map((plan) => {
           const c = planCounts(plan.steps.map(resolve));
           return (
-            <li key={plan.slug} style={{ borderBottom: '1px solid var(--nb-rule)' }}>
-              <Link to={`/study-plans/${plan.slug}`} style={{ display: 'block', padding: '1rem 0.25rem', textDecoration: 'none' }}>
-                <span style={{ color: 'var(--nb-ink)', fontWeight: 700, fontSize: '1.05rem' }}>{plan.title}</span>
-                <span className="nb-body" style={{ display: 'block', marginTop: 4, color: 'var(--nb-ink)' }}>{plan.summary}</span>
-                <span style={{ ...metaStyle, display: 'block' }}>{plan.level} · {countsLine(c)}</span>
-              </Link>
-            </li>
+            <CategoryWidgetCard
+              key={plan.slug}
+              title={plan.title}
+              to={`/study-plans/${plan.slug}`}
+              summary={plan.summary}
+              level={plan.level}
+              countText={countsLine(c)}
+              totalCount={c.problems}
+              passedCount={c.passed}
+              topic={plan.slug}
+            />
           );
         })}
       </ul>
 
       <h2 className="nb-heading" style={{ fontSize: '1.3rem', margin: '2.5rem 0 0' }}>Practice sheets</h2>
       <p className="nb-body" style={{ margin: '0.5rem 0 0' }}>Sets of standalone problems on one subject, easiest first.</p>
-      <ul style={listStyle}>
+      <ul className="nm-category-widget-grid">
         {CATALOG.map((track) => {
           const pages = track.problems.flatMap((id) => (curated.get(id) ? [curated.get(id)!] : []));
           const passed = pages.filter((pg) => isSolved(pg, events)).length;
+          const countLabel = `${pages.length} problems${passed > 0 ? ` · ${passed} passed` : ''}`;
           return (
-            <li key={track.slug} style={{ borderBottom: '1px solid var(--nb-rule)' }}>
-              <Link to={`/practice/track/${track.slug}`} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '1rem', padding: '0.8rem 0.25rem', textDecoration: 'none', alignItems: 'baseline' }}>
-                <span style={{ color: 'var(--nb-ink)' }}>{track.title}</span>
-                <span style={{ fontSize: '0.84rem', color: 'var(--nb-ink-soft)', whiteSpace: 'nowrap' }}>{pages.length} problems · {passed} passed</span>
-              </Link>
-            </li>
+            <CategoryWidgetCard
+              key={track.slug}
+              title={track.title}
+              to={`/practice/track/${track.slug}`}
+              summary={track.summary}
+              level={track.level}
+              countText={countLabel}
+              totalCount={pages.length}
+              passedCount={passed}
+              topic={track.slug}
+            />
           );
         })}
       </ul>
