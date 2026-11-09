@@ -13,7 +13,7 @@ import { InterviewGraph } from './InterviewGraph';
 import { FollowUpAnswer } from './FollowUpAnswer';
 import { LiveWaveform } from './LiveWaveform';
 import Navbar from '../layout/Navbar';
-import { judgePracticeAnswer, SHOW_RUBRIC_SCORE, type AnswerJudgement } from '../../lib/answerJudge';
+import { judgePracticeAnswer, SHOW_COVERAGE_SCORE, type AnswerJudgement } from '../../lib/answerJudge';
 import { embed, loadJudge, nli } from '../../lib/mockInterview/engine';
 import { speakInBrowser } from '../../lib/interviewRoom/browserVoice';
 import { useInterviewAttempts } from '../../contexts/InterviewAttemptsContext';
@@ -913,7 +913,7 @@ export default function SimpleInterviewPage() {
                   <div className="si-check">
                     <div className="si-check-header">
                       <h3>{question.keyPoints?.length ? 'Automated key-point check' : 'How your answer compares'}</h3>
-                      {(!question.keyPoints?.length || SHOW_RUBRIC_SCORE) && <span className="si-score-pill">{check.score}% coverage</span>}
+                      {SHOW_COVERAGE_SCORE && <span className="si-score-pill">{check.score}% coverage</span>}
                     </div>
                     <p>Compare this automated checklist with your answer and the model answer. Not detected points may still be in your answer.</p>
                     <ul className="si-points">
@@ -923,6 +923,7 @@ export default function SimpleInterviewPage() {
                             {p.verdict === 'covered' ? 'Covered' : 'Not detected'}
                           </span>
                           {p.point}
+                          {p.verdict === 'covered' && p.evidence && <blockquote className="si-point-evidence"><span>In your answer</span>{p.evidence}</blockquote>}
                         </li>
                       ))}
                     </ul>
@@ -943,10 +944,10 @@ export default function SimpleInterviewPage() {
                 {earlier.length > 0 && <section className="si-sub-section" aria-label="Earlier attempts">
                   <h3>Earlier attempts</h3>
                   {earlier.map(attempt => <details key={attempt.id} className="si-attempt">
-                    <summary><time dateTime={new Date(attempt.time).toISOString()}>{new Date(attempt.time).toLocaleString()}</time>{attempt.status === 'checked' ? (attempt.source === 'rubric' ? ' · Key points checked' : attempt.score === undefined ? ' · Checked against model answer' : ` · ${attempt.score}% coverage`) : ' · Not checked'}</summary>
+                    <summary><time dateTime={new Date(attempt.time).toISOString()}>{new Date(attempt.time).toLocaleString()}</time>{attempt.status === 'checked' ? (attempt.source === 'rubric' ? ' · Key points checked' : (!SHOW_COVERAGE_SCORE || attempt.score === undefined) ? ' · Checked against model answer' : ` · ${attempt.score}% coverage`) : ' · Not checked'}</summary>
                     <p className="si-yours">{attempt.transcript || 'No answer was captured.'}</p>
                     {attempt.followUp && <div><h4>Follow-up</h4><p>{attempt.followUp.question}</p><p>{attempt.followUp.transcript || 'No follow-up answer was captured.'}</p></div>}
-                    <ul className="si-points">{attempt.points.map(point => <li key={point.point}><span className="si-verdict">{point.verdict === 'covered' ? 'Covered' : 'Not detected'}</span>{point.point}</li>)}</ul>
+                    <ul className="si-points">{attempt.points.map(point => <li key={point.point}><span className="si-verdict">{point.verdict === 'covered' ? 'Covered' : 'Not detected'}</span>{point.point}{point.verdict === 'covered' && point.evidence && <blockquote className="si-point-evidence"><span>In your answer</span>{point.evidence}</blockquote>}</li>)}</ul>
                   </details>)}
                 </section>}
                 <p className="si-status" role="status">{syncState === 'storage-error' ? 'Attempt history could not be saved on this device.' : syncState === 'offline' ? 'Saved on this device. Sync will retry when connected.' : syncState === 'syncing' ? 'Syncing attempt history…' : syncState === 'synced' ? 'Attempt history synced.' : 'Attempt history saved on this device.'}</p>

@@ -26,7 +26,7 @@ function normalize(value: unknown): InterviewAttempt | null {
     || !Number.isSafeInteger(a.time) || a.time < 0 || a.time > 8_640_000_000_000_000 || typeof a.transcript !== 'string'
     || !['rubric', 'reference'].includes(a.source) || !['unchecked', 'checked', 'failed'].includes(a.status) || !Array.isArray(a.points)) return null;
   const points = a.points.slice(0, 6).filter(p => p && typeof p.point === 'string' && ['covered', 'partial', 'conflict', 'missed'].includes(p.verdict))
-    .map(p => ({ point: p.point.slice(0, 200), verdict: p.verdict, confidence: Number.isFinite(p.confidence) ? Math.max(0, Math.min(100, p.confidence)) : 0 }));
+    .map(p => ({ point: p.point.slice(0, 200), verdict: p.verdict, ...(typeof p.evidence === 'string' ? {evidence:p.evidence.slice(0,1000)} : {}), confidence: Number.isFinite(p.confidence) ? Math.max(0, Math.min(100, p.confidence)) : 0 }));
   const followUp = a.followUp && typeof a.followUp.question === 'string' && typeof a.followUp.transcript === 'string'
     && ['draft', 'saved'].includes(a.followUp.status)
     ? { question: a.followUp.question.slice(0, 1000), transcript: a.followUp.transcript.slice(0, 4000), status: a.followUp.status,

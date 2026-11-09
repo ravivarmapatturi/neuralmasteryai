@@ -84,7 +84,7 @@ export async function judgeAnswer(answer: string, criteria: string[], reference:
 
 /** Rubric checks require entailment, not just related wording. Scores stay hidden
  * until a held-out evaluation supports presenting a numeric grade. */
-export const SHOW_RUBRIC_SCORE = false;
+export const SHOW_COVERAGE_SCORE = false;
 export async function judgeKeyPoints(answer: string, keyPoints: string[], models: JudgeModels, includeSentencePairs = false): Promise<AnswerJudgement> {
   const sentences = splitAnswer(answer);
   if (!sentences.length) return { score: 0, points: keyPoints.map(point => ({ point, verdict: 'missed', confidence: 0 })), sentences: [], improvements: [] };

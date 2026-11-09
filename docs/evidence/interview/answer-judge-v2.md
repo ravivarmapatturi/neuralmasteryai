@@ -6,9 +6,9 @@ The pending browser/visual checks were finished first and committed as `453cfd87
 
 ## Frozen evaluation protocol
 
-`rubric-sample.json` is the 30-answer development set. Its original 129 hand marks and all rubric wording are unchanged. `judge-v2-ground-truth.json` freezes the 20 questions used for development and held-out evaluation, preventing later bank edits from changing the experiment.
+`rubric-sample.json` is the 30-answer development set. Its original 129 hand marks and all rubric wording are unchanged. `judge-v2-ground-truth.json` freezes the 22 questions used for development and held-out evaluation, preventing later bank edits from changing the experiment.
 
-`judge-v2-heldout.json` contains 30 new answers across ten questions absent from the development set: ten strong, ten partial and ten weak answers, with 135 marked point decisions (66 present, 69 absent). They include paraphrases, unpunctuated spoken-style responses, swapped definitions, explicit negations and an unrelated sentence. The answers and labels were written and committed before any v2 predictions. These are Codex-authored manual semantic labels, not an independent human evaluation. No thresholds will be tuned on this set.
+`judge-v2-heldout.json` contains 36 new answers across twelve questions absent from the development set: twelve strong, twelve partial and twelve weak answers, with 162 marked point decisions (80 present, 82 absent). They include paraphrases, unpunctuated spoken-style responses, swapped definitions, explicit negations and an unrelated sentence. The answers and labels were frozen in `a59103a5` and extended for reference-answer fallback coverage in `5432d867`, before the first quality prediction. These are Codex-authored manual semantic labels, not an independent human evaluation. No thresholds were tuned on this set.
 
 The fixed candidate family is a MiniLM bi-encoder selecting three single sentences or overlapping pairs per ground-truth point, followed by one relevance/similarity cross-encoder and DeBERTa NLI. Compare MS MARCO MiniLM L6 with STS-B TinyBERT L4, provided their actual ONNX files load in Transformers.js. NLI checks user evidence as the premise and the ground-truth point as the hypothesis. The reverse check swaps that direction to flag unsupported user sentences and contradictions. Similarity alone must not establish coverage.
 
@@ -22,10 +22,10 @@ Tune a small declared threshold grid using development predictions only, choosin
 
 Export model cards do not repeat the upstream licence field. Record export and upstream revisions and preserve attribution if a candidate ships. No model weights are committed to the repository.
 
-Measurements and the ship decision will be appended after the sequential WASM runs. No v2 model is live at this checkpoint. The numeric rubric grade remains disabled.
+The sequential WASM measurements and final rejection decision are recorded below. Candidate models remain experimental; no numeric coverage grade is enabled.
 
 
-Before any model run, the frozen held-out set was extended to 36 answers (12 strong, 12 partial, 12 weak), adding two questions without rubrics to test the required model-answer-sentence fallback. It now has 162 point decisions: 80 present and 82 absent. No prediction had been observed when this addition was written. Development remains the original 30 answers only. The ship check will also require false positives not to increase separately for rubric questions and reference-sentence questions, preventing aggregate results from hiding a regression in either source.
+The ship check requires false positives not to increase separately for rubric questions and reference-sentence questions, preventing aggregate results from hiding a regression in either source. This additional check was declared before held-out inference.
 
 ## Loading and resource adjustments before candidate predictions
 
@@ -51,7 +51,7 @@ Selected MS MARCO thresholds: similarity 0.35, sigmoid cross-score 0.25, entailm
 Forward and reverse raw scores, actual matching text, timings and memory records are retained in the per-candidate JSON files. All runs used the actual pinned ONNX weights in a real browser, WASM, one thread, a 2 GiB process limit with swap disabled, and the unchanged 2 GiB host-memory floor.
 
 
-## Held-out decision: retain today's judge
+## Held-out decision: keep the current scorer
 
 The held-out set has 36 answers, 162 point decisions, 80 present points and 82 absent points. All three pipelines ran on the same frozen answers and ground truth. The first 30 held-out answers use rubrics; six additional answers exercise model-answer-sentence ground truth. No held-out answer, label, rubric wording or threshold was changed after predictions began. Statistical summaries use linearly interpolated empirical quantiles; their medians were checked independently with Python's `statistics.median`.
 
@@ -148,3 +148,28 @@ Final verification and commit details follow below. No push.
 ### Larger-NLI load attempt (not a completed candidate)
 
 MS MARCO with DeBERTa v3 small never produced a prediction under the current host floor. Recall, precision, false positives, strength-group agreement and time per answer are therefore **not available** for that variant. The planned cold model assets total about 228.64 MB from the pinned manifest, including the 172.44 MB NLI model graph. Guarded incomplete loads reached a sampled browser PSS lower bound of about 1.32 GB. Those values describe incomplete attempts, not a complete Standard-budget pass. The successful comparisons above use xsmall NLI.
+
+
+## Final verification and commits
+
+| Check | Observed result |
+| --- | --- |
+| Pending interview browser/visual checks before v2 | 19/19 passed individually; eight focused light/dark 375/1440 captures inspected; `453cfd87` |
+| Final browser rechecks after matching quotes and hidden percentages | 4/4 passed individually: rubric/history/reload, typed follow-up persistence, checklist visual case, follow-up visual case including mobile save |
+| Final visual inspection | All eight final 375×1,000 / 1,440×1,000 light/dark viewport images inspected; no overflow or page exceptions observed; quotes, focus outline and controls readable |
+| Full project typecheck | `npm run typecheck` exit 0 with 896 MiB heap / 8 MiB semi-space after waiting/retrying under the unchanged host floor |
+| Full unit suite | 873/873 passed across 181 files, 246.73s, one worker, 512 MiB heap |
+| MDX compile | 1,993 files, zero failed |
+| Internal prose/anchor links | Passed, zero broken links |
+| Criteria | 259/259, zero problems |
+| Tracker / diff / banned-phrase check | Passed |
+| Freeze enforcement | A post-held-out tune attempt was rejected and the threshold file's SHA-256 remained unchanged |
+| Production build | Not started: final `free -g` showed 2 GB available, below AGENTS.md's required 5 GB; no production-build pass is claimed |
+
+The first full unit run had 872 passes and one failure: an older test assumed the entire senior bank still contained 79 questions after main added 100. The updated test retains all 79 original rubric-count, uniqueness, length and source-parity assertions, checks the complete source-derived senior count, and separately validates all 100 reference-answer fallback records and their follow-ups. The complete rerun passed. Full typecheck also found a token-list inference error in the follow-up selector; an explicit `string[]` annotation fixes it without changing the routing behavior.
+
+The final browser images remain in ignored `test-results/pending-3/` and `test-results/pending-4/`; they are not committed. Tests used inference doubles for UI behavior; the accuracy measurements used real ONNX/WASM models. A physical mic and simultaneous ASR/judge residency were not tested.
+
+Research commits: `a59103a5` and `5432d867` freeze the held-out data; `fb43444f` adds the harness; `05ba1e99` records baseline parity and loading constraints; `cdecef10` freezes development settings; `9d4fbcd6` records the held-out rejection. The final UI commit adds matching quotes, retains Covered / Not detected, and hides unvalidated numeric coverage in both answer review and history. The scorer is unchanged and still runs after the model answer has appeared.
+
+All started dev/model servers and test browsers are stopped. Codex's own tool-host processes are left running. The model mirror stays cached outside the repository for reproducibility; no weights, screenshot files, or scratch scripts are committed. No push.

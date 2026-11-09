@@ -78,3 +78,12 @@ it('does not let follow-up merging change which main transcript wins', () => {
   expect(mergeInterviewAttempts(mergeInterviewAttempts([a,b]),[c])).toEqual(all);
   expect(all[0].transcript).toBe('C main answer');
 });
+
+it('preserves matching user evidence with bounds in history and JSON backup', () => {
+  const saved={...attempt('quoted'),points:[{...attempt('quoted').points[0],evidence:'My matching sentence. '+ 'x'.repeat(2000)}]};
+  const bounded=mergeInterviewAttempts([saved]);
+  expect(bounded[0].points[0].evidence).toHaveLength(1000);
+  localStorage.setItem(attemptsKey(),JSON.stringify(bounded));
+  const backup=collectProgress();localStorage.clear();restoreProgress(JSON.stringify(backup));
+  expect(readInterviewAttempts()[0].points[0].evidence).toBe(bounded[0].points[0].evidence);
+});

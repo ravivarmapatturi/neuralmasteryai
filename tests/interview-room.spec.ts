@@ -375,6 +375,7 @@ test('rubric hits, history and improvement survive reload', async ({ page }) => 
   await expect(page.getByRole('heading',{name:'Automated key-point check'})).toBeVisible();
   await expect(page.locator('.si-check .si-points .covered')).toHaveCount(1);
   await expect(page.locator('.si-check .si-points .undetected')).toHaveCount(3);
+  await expect(page.locator('.si-check .si-point-evidence')).toContainText('A distinct old typed answer');
   await expect(page.locator('.si-check .si-verdict')).toHaveText(['Covered','Not detected','Not detected','Not detected']);
   await expect(page.locator('.si-check')).not.toContainText(/Missed|Possible conflict|Partly covered/);
   await expect(page.locator('.si-score-pill')).toHaveCount(0);
@@ -395,6 +396,7 @@ test('rubric hits, history and improvement survive reload', async ({ page }) => 
   const stored=await page.evaluate(()=>JSON.parse(localStorage.getItem('nm-interview-attempts-v1:guest')!));
   expect(stored).toHaveLength(2);
   expect(stored.map((a:any)=>a.points.filter((p:any)=>p.verdict==='covered').length)).toEqual([1,3]);
+  expect(stored[0].points[0].evidence).toContain('A distinct old typed answer');
   for (const width of [320,375,1440]) for (const theme of ['light','dark']) {
     await page.setViewportSize({width,height:900});
     await page.evaluate(theme=>document.documentElement.setAttribute('data-theme',theme),theme);
@@ -465,6 +467,7 @@ test('optional typed follow-up is saved with its attempt despite a late main rev
   await page.waitForFunction(() => typeof (window as any).releaseReview === 'function');
   await page.evaluate(() => (window as any).releaseReview());
   await expect(page.locator('.si-check')).toBeVisible();
+  await expect(page.locator('.si-score-pill')).toHaveCount(0);
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('nm-interview-attempts-v1:guest')!));
   expect(stored).toHaveLength(1);
   expect(stored[0].status).toBe('checked');

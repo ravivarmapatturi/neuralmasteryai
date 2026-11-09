@@ -2,9 +2,12 @@ import type { PointResult } from './answerJudge';
 
 // Prefer a follow-up sharing substantive terms with an undetected point. This
 // is a routing heuristic, not another correctness check; ties keep bank order.
-const words = (text: string) => new Set((text.toLowerCase().match(/[a-z0-9]+/g) ?? [])
-  .filter(word => word.length > 3 && !new Set(['that', 'this', 'with', 'from', 'what', 'when', 'would', 'does', 'which', 'have', 'your', 'explain', 'their', 'than', 'will', 'into']).has(word))
-  .map(word => word.replace(/(?:ing|es|s)$/, '')));
+const stopWords = new Set(['that', 'this', 'with', 'from', 'what', 'when', 'would', 'does', 'which', 'have', 'your', 'explain', 'their', 'than', 'will', 'into']);
+const words = (text: string) => {
+  const terms: string[] = text.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+  return new Set(terms.filter(word => word.length > 3 && !stopWords.has(word))
+    .map(word => word.replace(/(?:ing|es|s)$/, '')));
+};
 export function selectInterviewFollowUp(followUps: string[], points: PointResult[] = []): string | undefined {
   const targets = points.filter(point => point.verdict !== 'covered').map(point => words(point.point));
   let best = followUps[0];
