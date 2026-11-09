@@ -369,7 +369,7 @@ export default function PracticeWorkspace({ problemId, mdxContent, onSolve, onRe
 
         showRewardToast({
           title: 'Problem Solved!',
-          subtitle: `All ${res.caseResults.length} test cases passed. Real browser verification complete!`,
+          subtitle: `All ${res.caseResults.length} tests passed.`,
           icon: '',
           type: 'celebration',
         });
