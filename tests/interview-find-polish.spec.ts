@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const PORT = process.env.TEST_PORT ? Number(process.env.TEST_PORT) : 5173;
+const PORT = process.env.TEST_PORT ? Number(process.env.TEST_PORT) : process.env.CI ? 4173 : 5173;
 const EVIDENCE_DIR = path.resolve(process.cwd(), 'docs/evidence/interview');
 
 test.describe('Find, Filter & Polish (C9 & C10)', () => {
