@@ -1,7 +1,7 @@
 ---
 title: "Circuit Breakers and Controlled Recovery Probes"
 sidebar_position: 5.6
-description: ""
+description: "Implement closed, open, and half-open admission states; select meaningful failure evidence; and cap probes and fallbacks without pretending a breaker repairs dependencies."
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -98,6 +98,22 @@ This function models an atomic admission decision. In a real asynchronous implem
 Record state changes, their reasons, qualifying sample counts, open duration, attempted calls, denied calls, probe outcomes, and end-user success. A breaker that remains permanently open can make dependency traffic look quiet while users continue to fail. An alert should reflect the product's degraded promise and recovery progress, not only whether the breaker process is healthy.
 
 Tune from measured failure behavior. Too short a cooldown can produce repeated overload; too long can delay useful recovery. A threshold of five failures is our teaching choice, not a universal safe setting. Evaluate low-volume and high-volume paths separately, and preserve configuration history so an incident review can explain the observed state transitions.
+
+Test failure classification with the same dependency endpoint returning three deliberately different outcomes: invalid business input, a slow successful response, and an unavailable response. The expected contribution to breaker evidence should follow the chosen operation policy. A test that treats every non-200 response as identical can pass while denying valid traffic because one caller repeatedly sends bad input.
+
+For half-open recovery, release several concurrent callers at the cooldown boundary and count actual dependency attempts. Exactly one should acquire the illustrative probe slot; the others need a bounded local outcome. Then cancel the probe before its response and verify the implementation releases or transitions ownership safely. Repeat after an instance restart to measure the aggregate recovery load from fresh breaker state. These checks turn a three-state diagram into a concurrency contract rather than a collection of unsynchronized booleans.
+
+A state transition should carry a reason and the observation window that produced it. During an incident, operators need to distinguish a breaker opened by recent dependency failures from one still open because no eligible probe has completed. That distinction changes whether the next action is dependency repair, probe investigation, or configuration correction.
+
+A successful probe should restore traffic gradually enough that queued demand cannot immediately overwhelm the recovering dependency.
+
+## Measure the Dependency at the Boundary the Breaker Controls
+
+A breaker protecting a payment provider should count outcomes from that provider call, not every error returned by the enclosing endpoint. A malformed customer request may fail before any dependency call occurs. Counting it as provider failure can open the breaker even when the provider is healthy. Similarly, a local rejection caused by an already open breaker is not another failed provider attempt. Define the observed population and classify errors according to the dependency contract. Some application responses are expected business refusals rather than infrastructure failures.
+
+The state machine also has a scope. A breaker stored in each application process can protect that process from repeatedly waiting on a failed dependency, but ten instances can each permit their own half-open probe. The fleet therefore permits more than one probe even if each local implementation is correct. A shared breaker can coordinate a broader limit, at the cost of another dependency and synchronization path. Choose the scope according to provider capacity and the desired recovery behavior. The example's one probe describes one breaker instance, not an unlimited deployment's total traffic.
+
+Recovery needs enough evidence without recreating the outage. A single successful response may show that one request completed, while the dependency remains unable to handle normal load. Combine bounded probes with the implementation's supported recovery thresholds and a gradual return of useful traffic where required. Keep timeouts and concurrency limits active when the breaker closes. Otherwise queued demand can overwhelm the dependency immediately and cause repeated opening. During testing, let the provider recover only partially: make a few requests fast while others still time out. Observe admitted work, rejected work, connection occupancy, and state transitions. Also verify the fallback's meaning. Returning a cached recommendation may be acceptable; returning a fabricated payment success is not. A breaker chooses whether to attempt work. It cannot manufacture the missing business outcome.
 
 ## Failure Modes and Better Choices
 
