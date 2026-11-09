@@ -1,7 +1,7 @@
 ---
 title: "gRPC Contracts, Deadlines, and Flow Control"
 sidebar_position: 4.2
-description: ""
+description: "Define typed RPC messages, propagate one useful deadline, and bound streaming work while preserving schema compatibility and ambiguous-outcome semantics."
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -112,6 +112,18 @@ assert queue == 120
 `} />
 
 The queue model rejects excess work after applying its illustrative per-second completion rule. It is not a packet-level gRPC simulation. Its role is to make the missing admission policy visible. Replace the rates and message sizes with measurements when selecting real buffer limits, and define whether a rejected input can be safely retried or must be resumed from a cursor.
+
+Inspect cancellation across each adapter rather than only at the original stub. A gateway can translate one protocol's deadline into another timeout incorrectly, or discard cancellation when work enters a background executor. Establish a short caller deadline, hold a test dependency behind a barrier, and observe which resources remain occupied after the caller stops waiting. Then release the dependency and verify whether a late durable effect was recorded. This separates resource cleanup from effect rollback and gives the operator a concrete explanation of an apparently contradictory timeout and successful write.
+
+A cancelled client still needs server-side cleanup for work already admitted.
+
+## Follow Cancellation Through the Server's Work Queue
+
+A propagated deadline has to survive queueing as well as the network hop. In our 200 ms example, the gateway and upstream service have already consumed 80 ms. The downstream handler receives at most the remaining 120 ms, and any local queue consumes part of that allowance. If a worker begins after the deadline, starting the expensive operation cannot produce a timely result for this caller. Check cancellation before admission and at meaningful interruption points. A library context makes the signal available; it cannot undo every operation the handler has already performed.
+
+Consider a database mutation that commits just before cancellation reaches the handler. The response can be unavailable to the client even though the business state changed successfully. A cancelled status is therefore an observation about the RPC's completion from the caller's perspective, not proof of rollback. Use an application operation identity when retrying that mutation, and make its durable state inspectable. Conversely, cancellation of a read should release the cursor, buffered response, and downstream request where the implementation supports interruption. Otherwise failed callers leave a growing population of useless work competing with healthy traffic.
+
+Streaming adds another lifetime boundary. A stream can remain open while individual messages carry separate business deadlines. A single connection deadline may be inappropriate for a long-lived subscription, but unlimited per-message work is also unsafe. Bound outstanding messages and buffered bytes, define how either peer signals completion, and decide whether an application acknowledgement represents receipt or a committed effect. Transport flow control limits transmission pressure; it does not establish that a receiver has safely applied a command. During a failure drill, slow the receiving application while keeping the connection alive. Watch memory, pending work, and cancellation cleanup rather than only whether the socket disconnects. That experiment separates resource backpressure from application progress and shows which limit actually protects the service.
 
 ## Failure Modes and Better Choices
 
