@@ -371,17 +371,39 @@ export default function SimpleInterviewPage() {
     });
   };
 
-  const nextQuestion = () => {
+  // Moves to a question from any step: stops whatever is playing or listening, then asks it.
+  const goToQuestion = (index: number) => {
+    reviewRef.current++;
+    answeringRef.current = false;
     stopAudio();
-    let next = questionIndex + 1;
-    while (next < topic.questions.length && !matches(topic.questions[next])) next++;
-    if (next >= topic.questions.length) {
+    stopMic();
+    void engineRef.current?.stop().catch(() => undefined);
+    setTranscript('');
+    setCheck(null);
+    setTranscribing(false);
+    if (index !== questionIndex) {
+      setQuestionIndex(index);
+      window.history.pushState(null, '', questionPath(topic.questions[index].id));
+    }
+    ask(topic.questions[index].id);
+  };
+
+  const findQuestion = (step: 1 | -1) => {
+    for (let i = questionIndex + step; i >= 0 && i < topic.questions.length; i += step) {
+      if (matches(topic.questions[i])) return i;
+    }
+    return -1;
+  };
+  const previousIndex = findQuestion(-1);
+  const nextIndex = findQuestion(1);
+
+  const nextQuestion = () => {
+    if (nextIndex < 0) {
+      stopAudio();
       setStep('done');
       return;
     }
-    setQuestionIndex(next);
-    window.history.pushState(null, '', questionPath(topic.questions[next].id));
-    ask(topic.questions[next].id);
+    goToQuestion(nextIndex);
   };
 
   const backToTopics = () => {
@@ -582,6 +604,14 @@ export default function SimpleInterviewPage() {
             >
               <div className="si-progress-bar" style={{ width: `${topicProgressPct}%` }} />
             </div>
+            <nav className="si-question-nav" aria-label="Move between questions">
+              <button type="button" className="si-link" id="previous-question" disabled={previousIndex < 0} onClick={() => goToQuestion(previousIndex)}>
+                ← Previous question
+              </button>
+              <button type="button" className="si-link" id="next-question" disabled={nextIndex < 0} onClick={() => goToQuestion(nextIndex)}>
+                Next question →
+              </button>
+            </nav>
             <div className="si-question-row">
               <h2 className="si-question-title">{question.title}</h2>
               <button type="button" className="si-speak" id="read-question" aria-label="Read the question aloud" onClick={readQuestion}>
@@ -727,7 +757,7 @@ export default function SimpleInterviewPage() {
                 <p className="si-yours">{transcript || (transcribing ? '' : 'No answer was captured.')}</p>
                 {transcribing && (
                   <p className="si-status" role="status">
-                    Finalizing your transcript…
+                    Evaluating your answer…
                   </p>
                 )}
 
@@ -819,6 +849,9 @@ export default function SimpleInterviewPage() {
               <button type="button" className="si-primary" id="next" onClick={nextQuestion}>
                 {questionIndex + 1 < topic.questions.length ? 'Next question' : 'Finish topic'}{' '}
                 <span className="si-key-hint">N</span>
+              </button>
+              <button type="button" id="practice-again" onClick={() => goToQuestion(questionIndex)}>
+                Practice again
               </button>
               {isDone(questionId) ? (
                 <span className="si-done" role="status">
