@@ -5,6 +5,7 @@ import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useDocumentMeta } from '../lib/useDocumentMeta';
 import { SECTION_META, SECTION_ORDER, completionFor } from '../data/sectionMeta';
 import { useProgress } from '../contexts/ProgressContext';
+import { CategoryWidgetCard } from './widgets/CategoryWidgetCard';
 
 /** The first top-level group (in SECTION_ORDER) the visitor hasn't fully
  * finished yet -- "current group" for a "continue where you left off" CTA.
@@ -93,27 +94,47 @@ export default function Home() {
                 .filter((section): section is NonNullable<typeof section> => Boolean(section?.pages[0]));
               if (topics.length === 0) return null;
               return (
-                <div key={key} style={{ '--section-color': meta.color } as React.CSSProperties}>
-                  <h3>{meta.label}</h3>
-                  <ul>
-                    {topics.map((section) => (
-                      <li key={section.id}>
-                        <details>
-                          <summary>
-                            <span className="nm-learn-topic-name">{section.label}</span>
-                            <span className="nm-learn-topic-count">{section.pages.length}</span>
-                          </summary>
-                          <ol>
-                            {section.pages.map((page) => (
-                              <li key={page.route}>
-                                <Link to={page.route}>{page.navLabel}</Link>
-                                {isUnderstood(page.route) && <span aria-label="understood"> ✓</span>}
-                              </li>
-                            ))}
-                          </ol>
-                        </details>
-                      </li>
-                    ))}
+                <div key={key} style={{ '--section-color': meta.color, margin: '2rem 0 3.5rem' } as React.CSSProperties}>
+                  <h2 style={{ fontSize: '1.35rem', fontWeight: 700, margin: '0 0 0.4rem', color: 'var(--nm-text-primary)' }}>
+                    {meta.label}
+                  </h2>
+                  <p style={{ margin: '0 0 1.25rem', fontSize: '0.92rem', color: 'var(--nm-text-secondary)', lineHeight: 1.5 }}>
+                    {meta.description}
+                  </p>
+                  <ul className="nm-category-widget-grid">
+                    {topics.map((section) => {
+                      const sub = meta.subsections.find((s) => s.dir === section.id);
+                      const landing = sub?.landing ?? section.pages[0].route;
+                      const doneCount = section.pages.filter((p) => isUnderstood(p.route)).length;
+                      const summary = section.pages[0]?.description || `${section.pages.length} lessons building core mechanisms.`;
+                      return (
+                        <CategoryWidgetCard
+                          key={section.id}
+                          title={section.label}
+                          to={landing}
+                          summary={summary}
+                          level={meta.label}
+                          countText={`${section.pages.length} pages`}
+                          totalCount={section.pages.length}
+                          passedCount={doneCount}
+                          topic={section.id}
+                        >
+                          <details className="labs__problems-drawer">
+                            <summary>Show pages ({section.pages.length})</summary>
+                            <ol>
+                              {section.pages.map((page) => (
+                                <li key={page.route}>
+                                  <Link to={page.route}>
+                                    {page.navLabel}
+                                    {isUnderstood(page.route) && <span aria-label="understood"> ✓</span>}
+                                  </Link>
+                                </li>
+                              ))}
+                            </ol>
+                          </details>
+                        </CategoryWidgetCard>
+                      );
+                    })}
                   </ul>
                 </div>
               );
