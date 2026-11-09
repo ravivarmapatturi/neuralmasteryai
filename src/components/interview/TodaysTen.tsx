@@ -20,7 +20,7 @@ export function TodaysTen({questions,onStart}:{questions:Question[];onStart:(id:
     <p>Revisit due questions and try new ones from topics you have covered least. Your self-rating sets the next review.</p>
     <p className="si-today-count" role="status">{today.filter(completed).length} of {today.length} completed today · {today.filter(r=>r.assignment?.kind==='review').length} due reviews · {today.filter(r=>r.assignment?.kind==='new').length} new</p>
     <div className="si-actions">
-      {next ? <button className="si-primary" onClick={()=>onStart(next.questionId,today.map(r=>r.questionId))}>Continue today’s 10</button> : <p>{today.length ? 'Today’s questions are complete.' : 'No new questions or due reviews today.'}</p>}
+      {next ? <button className="si-secondary" onClick={()=>onStart(next.questionId,today.map(r=>r.questionId))}>Continue today’s 10</button> : <p>{today.length ? 'Today’s questions are complete.' : 'No new questions or due reviews today.'}</p>}
       <button disabled={skipped || !next} onClick={()=>{if(next){save([{questionId:next.questionId,skippedAt:Date.now()}]);setNow(Date.now());}}}>Skip one question today</button>
     </div>
     {skipped && <p className="si-status">One question skipped from today’s 10. It remains in the question list.</p>}
