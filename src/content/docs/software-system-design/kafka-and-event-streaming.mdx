@@ -1,7 +1,7 @@
 ---
 title: "Kafka Logs, Offsets, and Processing Boundaries"
 sidebar_position: 4.6
-description: ""
+description: "Trace partition logs and committed offsets, size replay and retention, and distinguish Kafka transaction guarantees from effects committed in an external store."
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -96,6 +96,20 @@ print("Daily payload GB:", payload_bytes_per_day / 1e9)
 print("Three-copy payload GB:", payload_bytes_per_day * 3 / 1e9)
 # Try it: add 11 to completed; the frontier can advance through 12 to 13.
 `} />
+
+A practical lag investigation should distinguish records not fetched, fetched but waiting locally, executing, committed at the destination, and recorded in group progress. These stages can disagree without a broker defect. A consumer that fetches far ahead can report a current local position while still holding a large amount of unfinished business work. Conversely, a deliberately conservative committed frontier can show lag even when some later effects already exist.
+
+During a partition transfer, capture the old consumer's outstanding identities and the new consumer's restart point. Pause one effect after its external commit, revoke ownership, and start the replacement. The expected result should be stated before the test: one durable business effect, a safe replay or reconciliation, and no skipped earlier work. Repeat with the effect blocked before commit. That second history must eventually complete rather than being suppressed by a premature receipt record. Together the tests examine both safety and progress across the actual consumer lifecycle, rather than validating only a steady stream with no crashes.
+
+During recovery, compare the committed frontier with destination receipts using the full topic, partition, and history identity. A numerical offset that matches by coincidence is not evidence that the intended record committed.
+
+## Recover the Consumer's State at the Same Boundary as Its Position
+
+The committed offset is a restart bookmark for one consumer group and partition. It does not describe every external effect that happened before the crash. In the example, committing next offset 12 says that the group will resume after record 11. If the sink never committed record 11's effect, advancing that bookmark has hidden unfinished work. If the sink committed first but the bookmark remains 11, replay is expected. A recoverable consumer must make one of those windows harmless through sink idempotency, a transactional integration, or another explicit reconciliation protocol.
+
+Partition assignment changes do not remove this problem. A worker can lose an assignment while an external request it started is still in flight. The new owner may read the same record and issue another request. Consumer-group ownership coordinates reading; it does not necessarily fence an arbitrary external sink. Bound processing time, react to assignment changes, and keep the sink's operation identity tied to the source event. A unique source position can be useful when it identifies exactly the effect being guarded, but business deduplication may need a broader identity if the same intent can appear in several records.
+
+Stateful processing has another recovery surface: local state and its changelog. Restoring a bookmark without the corresponding aggregate state can skip contributions; restoring state from a later point while replaying earlier records can count them twice. Use the framework's supported state restoration and transaction boundaries instead of copying directories and offsets independently. Also verify the retention horizon against the maximum supported recovery delay. A consumer that falls behind data already deleted from the log cannot reconstruct that history merely by selecting an older number. Define whether it rebuilds from another durable source, restores an aligned snapshot, or explicitly starts a new incomplete history. Those alternatives have different business meanings even when all of them result in a running consumer process.
 
 ## Failure Modes and Better Choices
 
