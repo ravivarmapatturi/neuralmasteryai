@@ -387,6 +387,21 @@ export function CategoryVisual({ topic = 'generic', className }: CategoryVisualP
     );
   }
 
+  // 17b. Training Techniques (Warmup + Cosine Decay & Checkpoint Epochs)
+  if (key.includes('training') || key.includes('train')) {
+    return (
+      <svg viewBox="0 0 56 40" className={className} aria-hidden="true" focusable="false" style={{ width: '100%', height: '100%' }}>
+        <line x1="8" y1="32" x2="48" y2="32" stroke={t.border} strokeWidth="1.1" />
+        <line x1="8" y1="32" x2="8" y2="8" stroke={t.border} strokeWidth="1.1" />
+        <path d="M8 30L16 10C24 10 32 18 46 28" stroke={t.accentPrimary} strokeWidth="1.5" strokeLinecap="round" fill="none" />
+        <circle cx="16" cy="10" r="2.2" fill={t.accentTeal} stroke={t.surface} strokeWidth="0.8" />
+        <circle cx="30" cy="17" r="2.2" fill={t.accentSecondary} stroke={t.surface} strokeWidth="0.8" />
+        <circle cx="46" cy="28" r="2.2" fill={t.accentPrimary} stroke={t.surface} strokeWidth="0.8" />
+        <text x="28" y="7" fontSize="5" fontWeight="bold" fill={t.accentPrimary} textAnchor="middle">LR Warmup</text>
+      </svg>
+    );
+  }
+
   // 18. ResNet / Residual Skip Connection: F(x) + x
   if (key.includes('resnet') || key.includes('residual')) {
     return (
