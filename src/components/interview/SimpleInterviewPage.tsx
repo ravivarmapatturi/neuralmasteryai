@@ -494,10 +494,6 @@ export default function SimpleInterviewPage() {
     pauseFocusMusic();
     setMicError(null);
     try {
-      setMicStatus('Preparing speech recognition…');
-      await prepareEngine();
-      await engineRef.current?.prepareForListening();
-      if (!answeringRef.current) return;
       setMicStatus('Allow your microphone to answer out loud.');
       const stream = await navigator.mediaDevices.getUserMedia({ audio: INTERVIEW_AUDIO_CONSTRAINTS });
       if (!answeringRef.current) {
@@ -508,6 +504,7 @@ export default function SimpleInterviewPage() {
       setMicStream(stream);
       setMicStatus('Please wait, speech recognition is still getting ready on your device…');
       await prepareEngine();
+      await engineRef.current?.prepareForListening();
       if (!answeringRef.current) return;
       const engine = engineRef.current;
       if (!engine) throw new Error('Speech engine unavailable');
