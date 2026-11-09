@@ -1,0 +1,134 @@
+---
+title: "Distributed Locks, Leases, and Fencing Tokens"
+sidebar_position: 5.2
+description: ""
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { LockFencingEpoch } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
+
+# Distributed Locks, Leases, and Fencing Tokens
+
+<ELI5>A maintenance key is lent to one worker for a limited time. If that worker pauses and returns late, a second worker may already have received a new key. Expiry in the lending office does not physically stop the first worker opening a door. The door must recognize which key belongs to the current ownership era.</ELI5>
+
+Distinguish lock ownership from effect authority, reject paused owners with storage-enforced fencing, and choose simpler atomic alternatives where they cover the invariant.
+A **distributed lock** coordinates ownership across processes or machines. A **lease** limits ownership in time under its protocol's assumptions. These mechanisms can reduce conflicting work, but do not automatically prevent a former owner from issuing delayed writes after its lease expires. Correctness depends on the resource accepting the effect, not only the service granting the lock.
+
+The misconception is that an expired lease stops the old worker. Our example gives worker A fencing token 7. A pauses long enough for ownership to move to B with token 8. B writes the new result, then A resumes and sends its old result. Without a destination check, A can overwrite B. With a retained token floor of 8, the destination rejects A's token 7.
+
+## Decide Whether the Lock Protects Correctness or Efficiency
+
+A cache fill lock can avoid redundant expensive computation while tolerating occasional duplicate fills under a suitable freshness policy. A lock protecting a unique irreversible state transition has a stronger obligation. Do not choose a lease algorithm solely because it works for a performance optimization and assume it satisfies the business invariant's failure model.
+
+First ask whether the authoritative store already provides the needed atomic operation. A conditional update, unique constraint, or transaction can protect many invariants without a separate lock service. Adding another network owner creates another recovery problem and can still leave the destination unprotected. The [transaction chapter](/docs/software-system-design/transactions-and-isolation) shows why the protected decision must cover its read/write set.
+
+Define the exact resource scope. One lock for the whole system can serialize unrelated tenants, while several differently named locks can accidentally protect the same underlying object independently. Stable resource naming, trusted tenant scope, and a documented acquisition order are part of the protocol. A lock key assembled from inconsistent encodings can create two apparent owners.
+
+## Lease Expiry and Worker Lifetime Are Different Clocks
+
+A worker can pause because of scheduling, garbage collection, swapping, a debugger, or an interrupted network. Its lease may expire while its code still believes it owns the resource. Even checking lease validity immediately before a write leaves a gap in which the process can pause or the request can be delayed. The resource needs a way to reject an obsolete request when it actually arrives.
+
+Renewal is also a protocol. A renewal response can be lost, the lock service can become unreachable, or the worker can miss its renewal deadline. The worker should stop initiating work when it cannot establish valid ownership, but that local policy does not recall messages already in flight. Bound resource-side effects independently of the worker's good intentions.
+
+A random ownership token can help ensure a worker releases only its own lock record. It is not automatically a monotonically increasing fencing token. Comparing a random string for equality prevents deleting another owner's current lease, while comparing ordered epochs at the destination prevents an old owner overwriting a newer one. Those solve different races.
+
+## Fencing Moves the Check to the Destination
+
+<LockFencingEpoch />
+
+The resource has already accepted token 8 when token 7 arrives. Its highest accepted epoch and the protected update must be checked and changed atomically. The rejected old request must not partially modify state before returning an error. If some write path bypasses the check, the invariant is no longer protected by the fence.
+
+<RunnableCode code={`for fenced in (False, True):
+    highest, value = 0, None
+    for token, result in ((8, "B-new"), (7, "A-old")):
+        accepted = not fenced or token >= highest
+        if accepted:
+            highest = max(highest, token)
+            value = result
+        print("Fence:", fenced, "token:", token, "accepted:", accepted)
+    print("Stored result:", value, "highest epoch:", highest)
+# Try it: deliver token 7 first; token 8 can still replace it, while later token-7 writes remain obsolete.
+`} />
+
+The model allows repeated requests from the same epoch; fencing is not an idempotency mechanism. A current owner can still repeat a non-idempotent effect unless operation identity protects it. The token issuer must also provide the ordering and persistence guarantees the resource assumes. Generating a counter in each process independently does not create a global ownership epoch.
+
+If the resource cannot enforce a token, a lock alone may be insufficient for a correctness-critical effect under arbitrary pauses and delays. Use a destination-supported conditional version, transactional owner, idempotency contract, or another design matching the failure model. A diagram with a lock icon cannot create capabilities an external API lacks.
+
+<PredictFirst question="A's lease expired while A was paused. B acquired epoch 8 and wrote. A resumes with epoch 7. Where must the stale request be rejected?" options={["Only in A's memory before the pause", "At the protected effect boundary using retained ownership information", "Nowhere, because expiry physically terminated A"]} correctIndex={1} explanation="The old code and its delayed requests can still run. The destination must atomically reject obsolete authority; a prior local check cannot close every delay window." />
+
+## Acquisition and Release Need Atomic Semantics
+
+A lock acquisition must atomically establish ownership only if the resource is available under the chosen protocol. A separate get followed by set can let two clients both observe absence and acquire. A release must compare the ownership token before deleting, or an old owner can remove a newer lease after a delay.
+
+Redis documents a single-instance acquisition pattern using `SET key token NX PX duration` and an ownership-aware release script. Its distributed-lock documentation also states assumptions for more elaborate designs. Evaluate those assumptions explicitly; asynchronous replication and failover can change which acquisitions survive. A command succeeding on one node is not a universal proof of fault-tolerant exclusive authority.
+
+An etcd lease and transaction can provide different coordination semantics under its documented API guarantees. That still does not make an external storage write atomic with lease lifetime. Distinguish the coordination record, its revision or epoch, and the destination's acceptance rule. The [consensus chapter](/docs/software-system-design/distributed-systems) supplies context for what the coordination service itself can guarantee.
+
+## Contention, Deadlocks, and Fairness Affect Progress
+
+A correct lock can still make a service unusable if one holder performs unbounded work. Keep the critical section narrow, bound its lifetime and input size, and avoid holding ownership while waiting for unrelated external services. If several resources must be acquired, use an order that all code paths follow or a protocol that handles conflicts safely.
+
+Retries for acquisition can synchronize clients and overload the lock service. Apply bounded jittered retry under the caller's deadline rather than spinning on a hot key. Fairness is not implied by mutual exclusion: one aggressive client can repeatedly win while another waits. Choose a supported queue or fairness mechanism when starvation matters to the product.
+
+Monitor acquisition wait, ownership duration, renewals, failed release attempts, rejected fenced writes, and abandoned work. A high successful-acquisition rate can hide repeated ownership churn without useful completions. Separate contention from coordination-service failure and from a protected resource that is itself too slow.
+
+<GoDeeper title="Go deeper: the fence is an invariant over accepted effects">
+Let the destination retain the largest accepted epoch h. An incoming effect with epoch e may proceed only under the protocol's rule, commonly e at least h, while updating h atomically with state. Once epoch 8 is accepted, no later epoch-7 effect may change the resource. The issuer's monotonicity, durable retention of h, and complete enforcement on every mutation path are assumptions of this argument. Losing h during restore can invalidate it.
+</GoDeeper>
+
+## Exercise Late Release and Replacement
+
+The next model uses equality to protect release, not ordering to protect writes. Worker A's ownership token differs from B's. A's late release must leave B's lock intact. Keeping these two examples separate helps avoid claiming that a random token suitable for release is sufficient as a resource fence.
+
+<RunnableCode code={`lock = {"owner": "B-random-token"}
+def release(token):
+    if lock.get("owner") != token:
+        return False
+    lock.clear()
+    return True
+print("Late A release:", release("A-random-token"))
+print("B still owns:", lock)
+print("Current B release:", release("B-random-token"))
+assert lock == {}
+# Try it: replace the ownership check with unconditional clear; A can delete B's replacement lock.
+`} />
+
+In an isolated Redis test, inspect acquisition with `SET nm:lock token-A NX PX 30000` and observe its expiry with `PTTL nm:lock`. Do not release by unconditional DEL when another owner may have replaced it. Use the documented atomic compare-and-delete operation supported by the chosen version or an appropriate script. A production test should pause A, let B acquire, then resume A's release and effect requests independently.
+
+Also test coordination-service failover and destination restore. A restored resource must not forget a fencing floor while old workers can still send requests. Credentials and authorization should prevent callers from inventing a large epoch to seize authority. The fence's number is evidence supplied by the coordination protocol, not a user-controlled priority value.
+
+## Failure Modes and Better Choices
+
+A lease heartbeat stops and both workers continue effects. Enforce destination fencing and stop initiating new work when authority is unknown. An old release deletes the replacement lock. Compare owner identity atomically. A lock is used to repair a single-row race already covered by a conditional update. Simplify the design and keep the invariant at one authoritative boundary.
+
+A global lock serializes independent operations. Partition ownership only where the business rule permits it. A worker performs an external call that cannot check its epoch. Use the destination's supported identity/reconciliation protocol or state the weaker guarantee. A restore resets token history and permits stale writes. Include ownership metadata in recovery and invalidate obsolete workers deliberately.
+
+## When Not to Use a Distributed Lock
+
+| Situation | Better mechanism |
+| --- | --- |
+| One local store can enforce the rule atomically | Transaction or conditional update |
+| Only duplicate computation is undesirable | A bounded fill lease with an explicit weaker contract |
+| The destination cannot reject stale effects | Redesign ownership or use supported effect identity |
+| Work can be owned durably in a queue | Queue lifecycle and idempotent processing |
+
+## Remember
+
+| Token or record | Role |
+| --- | --- |
+| Lease | Time-bounded coordination ownership |
+| Release token | Prevent deleting another owner's lease |
+| Fencing epoch | Let the destination reject obsolete authority |
+| Operation identity | Prevent repeated effects within valid ownership |
+| Recovery metadata | Preserve those guarantees after restart and restore |
+
+You can now identify the stale-owner window and decide whether the protected destination can actually close it. Return to [Distributed Systems](/docs/software-system-design/distributed-systems) to coordinate multi-step work without pretending leases undo committed effects.
+
+## Sources
+
+- [Kleppmann, How to Do Distributed Locking (2016)](https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html)
+- [Redis, Distributed Locks](https://redis.io/docs/latest/develop/clients/patterns/distributed-locks/)
+- [etcd, API Reference](https://etcd.io/docs/v3.6/learning/api/)
+- [PostgreSQL, Transaction Isolation](https://www.postgresql.org/docs/current/transaction-iso.html)
+- [PostgreSQL, Constraints](https://www.postgresql.org/docs/current/ddl-constraints.html)
