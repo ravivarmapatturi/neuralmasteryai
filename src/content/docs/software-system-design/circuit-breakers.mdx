@@ -1,0 +1,135 @@
+---
+title: "Circuit Breakers and Controlled Recovery Probes"
+sidebar_position: 5.6
+description: ""
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { CircuitBreakerAdmission } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
+
+# Circuit Breakers and Controlled Recovery Probes
+
+<ELI5>If a workshop's machine repeatedly fails, workers stop feeding it more material and try a small test later. Stopping new work protects the rest of the workshop, but does not repair the machine. Reopening the whole line after one hopeful guess can recreate the failure. A circuit breaker manages admission while evidence of recovery is gathered.</ELI5>
+
+Implement closed, open, and half-open admission states; select meaningful failure evidence; and cap probes and fallbacks without pretending a breaker repairs dependencies.
+A **circuit breaker** temporarily denies calls to a dependency after configured evidence suggests they are unlikely to succeed. This can preserve threads, sockets, deadlines, and downstream recovery capacity. It is one control over future attempts, not a replacement for timeouts, resource bounds, idempotency, or the dependency's own recovery mechanism.
+
+The misconception is that opening a breaker fixes the dependency or makes the denied business action successful. Our illustrative policy opens after five consecutive qualifying failures, waits thirty seconds, then permits one half-open probe. Ten calls arriving during the open interval are denied locally instead of becoming ten more dependency attempts. They still require an honest user-visible outcome.
+
+## Closed, Open, and Half-Open Describe Admission
+
+In **closed** state, calls may reach the dependency while outcomes update the policy's evidence. In **open** state, protected calls are denied or routed through an explicitly permitted alternative. In **half-open** state, a bounded test evaluates recovery. State names refer to the circuit analogy; open means the protected path is interrupted, not freely open to traffic.
+
+A successful probe can permit a controlled return to normal traffic, while another qualifying failure can reopen the breaker. More elaborate policies use several probes, rolling rates, minimum samples, or gradual ramp-up. Whatever policy is chosen, the implementation must bound concurrent probes so a traffic burst does not turn half-open into the original overload.
+
+<CircuitBreakerAdmission />
+
+The bars count calls in a chosen ten-arrival recovery window. Closed pass-through allows all ten, open allows none, and the illustrative half-open state allows one. The five failures that triggered opening occur before that window. The chart deliberately separates admission from effects: zero dependency attempts does not mean ten successful business operations.
+
+<RunnableCode code={`failures, open_until = 0, None
+for second in range(5):
+    failures += 1
+    if failures >= 5:
+        open_until = second + 30
+print("Opened after failure count:", failures, "open until second:", open_until)
+for now in (5, 20, 34):
+    state = "open" if now < open_until else "half-open"
+    print("Second:", now, "state:", state,
+          "dependency calls allowed:", 0 if state == "open" else 1)
+# Try it: raise the cooldown to 60; recovery probes wait longer, but the dependency is not repaired by waiting itself.
+`} />
+
+The example assumes consecutive failures at seconds zero through four and a single controlled probe after the cooldown. A production breaker needs synchronized state transitions for concurrent requests and a clear clock model. If every caller independently sees the cooldown expire and starts a probe, the numerical policy was never actually enforced.
+
+## Count Failures Relevant to This Dependency
+
+A client sending invalid input should not necessarily cause a dependency's breaker to open for valid callers. Classify timeouts, connection errors, overloaded responses, business rejection, and authorization failures according to the protected operation. A legitimate declined reservation is different from an unavailable inventory service. The breaker should use evidence of path health, not merely every non-success status.
+
+Slow calls can exhaust resources even when they eventually succeed. A timeout or latency-threshold policy may be needed alongside error counts. Conversely, one isolated failure on a low-volume service can produce a misleading percentage. Set minimum samples and observation windows appropriate to actual traffic, and record the reason for state changes.
+
+Choose scope deliberately: endpoint, operation, tenant, or dependency pool. A global breaker for unrelated operations can amplify one bad path into a total outage. An extremely narrow breaker can fail to protect a shared exhausted resource. Connect the scope to the capacity or failure boundary it is intended to protect.
+
+<PredictFirst question="A breaker denies ten calls locally during its open interval. Did those ten business actions necessarily succeed?" options={["Yes, the breaker handled them", "No, admission protection and useful completion are different outcomes", "Yes, because no dependency error was recorded"]} correctIndex={1} explanation="A denied attempt protects resources but cannot manufacture the requested result. User outcomes must count the refusal or an explicitly valid fallback honestly." />
+
+## Timeouts and Bulkheads Still Matter
+
+A breaker needs completed observations to update its evidence. Calls already in flight can keep consuming resources after it opens. Bound connect, read, and total useful deadlines, and propagate cancellation where safe. The [gRPC chapter](/docs/software-system-design/grpc) explains why a fresh per-hop timeout cannot preserve an end-to-end budget.
+
+A **bulkhead** limits the resources one dependency or workload can consume. Separate concurrency pools can prevent a slow optional service from exhausting every worker needed for essential operations. A breaker can deny future calls after failures, while a bulkhead protects current occupancy. Neither should be treated as an alias for the other.
+
+Rate limiting controls arrivals, and a queue can defer work when deadlines allow. Combining these controls requires understanding their order. An unbounded queue before an open breaker can retain useless requests, while a retry loop outside it can repeatedly hammer local rejection and inflate apparent demand. Count logical actions separately from attempts and denials.
+
+## Fallbacks Must Preserve the Product Contract
+
+A cached public catalogue description may be a valid degraded response under a stated freshness bound. Inventing an authorization success or a payment confirmation is not. Define what information a fallback proves, how old it can be, and which actions must fail closed or remain unresolved. A lower error chart is not a reason to hide incorrect outcomes.
+
+A fallback can have its own scarce dependencies. Redirecting all failed traffic to a smaller standby or database can overload it and extend the incident. Test degraded-path capacity and avoid making a rarely used alternative more complex than the primary. The [capacity model](/docs/software-system-design/capacity-estimation) should include the promised failure state.
+
+For writes, an unknown outcome remains unknown after the breaker opens. The first attempt may have committed before timing out. A local fallback must not issue a conflicting new effect without idempotency or reconciliation. Opening the breaker stops additional attempts; it does not roll back or classify earlier ones automatically.
+
+<GoDeeper title="Go deeper: per-instance breakers do not impose one fleet-wide probe limit">
+If a hundred instances each permit one half-open probe, the dependency can receive a hundred probes together. New instances may also start without failure history. A local breaker can still be valuable, but its aggregate behavior must fit recovery capacity. Jittered cooldowns, admission budgets, or supported coordinated controls can reduce synchronized recovery load; a label saying one probe is incomplete without its scope.
+</GoDeeper>
+
+## Exercise the Recovery State Machine
+
+Use a disposable dependency that can return controlled success, failure, and delay. A bounded `curl -i --max-time 1 http://127.0.0.1:8080/dependency` can observe one direct attempt, but does not test a breaker unless the application path actually includes it. Instrument attempted dependency calls and local denials so the test can distinguish them.
+
+Drive five qualifying failures, send ten requests during open state, and assert no protected dependency calls occur in that interval. Advance the test clock through the cooldown, release one probe, and attempt concurrent requests to verify the cap. Then fail the probe and confirm reopening; repeat with success and verify the documented transition to normal admission.
+
+<RunnableCode code={`def admitted(state, arrivals):
+    if state == "open":
+        return 0
+    if state == "half-open":
+        return min(1, arrivals)
+    return arrivals
+for state in ("closed", "open", "half-open"):
+    calls = admitted(state, 10)
+    print("State:", state, "dependency calls:", calls, "locally denied:", 10-calls)
+assert admitted("half-open", 10) == 1
+# Try it: remove the half-open cap; recovery can send the whole burst to a fragile dependency.
+`} />
+
+This function models an atomic admission decision. In a real asynchronous implementation, reserve probe capacity before sending, and release or transition it under every completion and cancellation path. An exception between checking state and marking a probe active can defeat the cap. Keep the policy testable without waiting thirty real seconds in every test.
+
+## Observe Recovery Without Masking Incidents
+
+Record state changes, their reasons, qualifying sample counts, open duration, attempted calls, denied calls, probe outcomes, and end-user success. A breaker that remains permanently open can make dependency traffic look quiet while users continue to fail. An alert should reflect the product's degraded promise and recovery progress, not only whether the breaker process is healthy.
+
+Tune from measured failure behavior. Too short a cooldown can produce repeated overload; too long can delay useful recovery. A threshold of five failures is our teaching choice, not a universal safe setting. Evaluate low-volume and high-volume paths separately, and preserve configuration history so an incident review can explain the observed state transitions.
+
+## Failure Modes and Better Choices
+
+All error codes trip one global breaker. Separate client/business outcomes from dependency health and choose an appropriate scope. Every instance probes simultaneously. Bound fleet recovery demand as well as local probes. A fallback returns stale permission data as current. Preserve the security and freshness contract instead of hiding failure.
+
+The breaker opens but in-flight calls exhaust the pool. Add deadlines, cancellation, and bulkheads. Local rejection is retried at several layers. Keep one bounded retry owner and a shared deadline. The breaker closes after one tiny probe, then full load fails again. Test a recovery ramp appropriate to the dependency's actual capacity.
+
+## When Not to Add a Breaker
+
+| Situation | Better first control |
+| --- | --- |
+| Calls have no deadlines or occupancy limits | Add those resource boundaries |
+| Failure is a permanent invalid request | Correct input rather than probe recovery |
+| The fallback cannot preserve required meaning | Return an honest unavailable or unresolved outcome |
+| A tiny local operation has no remote failure boundary | Keep the simpler code path |
+
+## Remember
+
+| State or control | Responsibility |
+| --- | --- |
+| Closed | Admit and collect relevant evidence |
+| Open | Deny protected attempts under policy |
+| Half-open | Probe with explicit concurrency scope |
+| Timeout/bulkhead | Bound existing occupancy and wait |
+| Fallback | Preserve a defined degraded result, not invent success |
+
+You can now test breaker admission and recovery without confusing it with dependency repair. Return to [Distributed Systems](/docs/software-system-design/distributed-systems) to bound the retry traffic that can surround this control.
+
+## Sources
+
+- [Microsoft, Circuit Breaker Pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/circuit-breaker)
+- [Google SRE, Addressing Cascading Failures (2016)](https://sre.google/sre-book/addressing-cascading-failures/)
+- [Google SRE, Handling Overload (2016)](https://sre.google/sre-book/handling-overload/)
+- [AWS Builders Library, Timeouts, Retries, and Backoff with Jitter (2019)](https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/)
+- [gRPC, Deadlines](https://grpc.io/docs/guides/deadlines/)
