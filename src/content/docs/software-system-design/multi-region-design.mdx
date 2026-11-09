@@ -1,0 +1,139 @@
+---
+title: "Multi-Region Ownership, Latency, and Failover"
+sidebar_position: 6.5
+description: ""
+---
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import { RegionalCommitLatency } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
+
+# Multi-Region Ownership, Latency, and Failover
+
+<ELI5>Two branches can serve nearby customers from copied records, but they still need to decide who may change the official account. Waiting for both branches can slow a transaction. Letting each act independently during a broken connection can produce conflicting promises. Regional design chooses where authority lives and what clients may observe when that authority is unreachable.</ELI5>
+
+Choose regional read and write ownership, calculate coordination and quorum costs, and fail over without losing the meaning of acknowledged operations or creating competing writers.
+A **multi-region design** places serving or state across geographically separate failure domains. It can reduce some client distances and improve recovery options, while adding network delay, partial communication failure, data movement, and operating complexity. The useful question is which regional failures the service can survive while preserving each operation's promise.
+
+The misconception is that two active frontends imply safely independent active writers. A region can accept local reads while forwarding writes to one authority. Another design can coordinate writes across regions, or partition authority by tenant or key. These architectures have different latency, recovery, and conflict semantics even if both diagrams show healthy servers in every region.
+
+## Separate Serving Presence From Mutation Authority
+
+An **active/passive** topology can keep one region authoritative while another stands ready to recover. **Active/active serving** can route clients to several regions without requiring that all regions independently accept conflicting writes. State the read path, write path, and ownership scope separately rather than relying on one broad label.
+
+A home-region design can assign a tenant or aggregate to one writer and route other requests there. This preserves a local authority boundary for that group while creating a remote path for clients elsewhere. Moving the home region becomes an ownership migration requiring catch-up, fencing, and routing updates. The [sharding chapter](/docs/software-system-design/sharding) applies across geographic placement too.
+
+A multi-writer design needs a supported conflict or coordination protocol. Some commutative updates can merge under appropriate semantics, while unique reservations and nonnegative balances require stronger invariants. A generic last-write-wins rule can discard a legitimate concurrent action. Select the data model from the product rule rather than assuming later timestamps identify the right business outcome.
+
+## Coordination Adds a Real Critical Path
+
+Our illustrative local durable work takes 2 ms. One-way transport to a remote region takes 20 ms, and remote durable work takes 2 ms. Waiting for the remote acknowledgement has a 42 ms path, while local-only acknowledgement takes 2 ms in this model. These are chosen values to inspect the trade-off, not measured cloud-network constants.
+
+<RegionalCommitLatency />
+
+The bars show local and remote acknowledgement paths and the chosen write boundary. Local and remote work are assumed to overlap; the coordinated path is their maximum. Queueing, serialization, client transport, and protocol-specific waits are omitted. Replace the numbers with measurements and the actual quorum topology before using them to set an SLO.
+
+<RunnableCode code={`local_ms, one_way_ms, remote_flush_ms = 2, 20, 2
+remote_ack_ms = 2 * one_way_ms + remote_flush_ms
+for wait_remote in (False, True):
+    latency = max(local_ms, remote_ack_ms) if wait_remote else local_ms
+    print("Wait remote durable boundary:", wait_remote, "illustrative ms:", latency)
+print("Remote acknowledgement path ms:", remote_ack_ms)
+# Try it: reduce one_way_ms to 5; placement changes latency but not the need to define authority.
+`} />
+
+A remote durable acknowledgement protects the configured history boundary; it does not imply every reader everywhere has replayed the write. Regional read routing still needs its consistency contract. The [replication chapter](/docs/software-system-design/replication) distinguishes durable flush from replay, and [consistency models](/docs/software-system-design/consistency-models) defines what a client's next read may require.
+
+## Asynchronous Copies Trade Recovery Exposure for a Shorter Write Path
+
+Asynchronous replication lets a primary acknowledge before the remote copy catches up. Losing that primary can lose acknowledged changes if no surviving history contains them. Track recoverable progress rather than assuming a healthy replication connection implies zero exposure. A few missing log positions represent unknown business impact until reconciled with operation identities.
+
+A region returning after failover may contain changes absent from the promoted copy. Do not simply enable both writers and hope ordinary replication merges them correctly. Preserve their histories, establish one authority, and apply the supported repair or rebuild procedure. A product may need explicit reconciliation for accepted but lost or conflicting operations.
+
+Recovery identity must also survive. If an idempotency record exists only in the failed region while the external effect succeeded elsewhere, a retry in the new region can repeat it. Shared or reconciled business identity is part of regional recovery, not an optional cache optimization. The [idempotency chapter](/docs/software-system-design/idempotency) defines the retention and effect boundary.
+
+<PredictFirst question="Both regions serve requests, but all writes for one tenant go to its home region. Is that necessarily independent multi-writer operation for that tenant?" options={["Yes, every active frontend is a writer", "No, serving presence and mutation authority are separate decisions", "Yes, if DNS returns addresses in both regions"]} correctIndex={1} explanation="Regional entry points can forward to one authoritative owner. Routing presence does not establish independent permission to commit conflicting state." />
+
+## Quorum Placement Determines Which Regional Losses Are Tolerated
+
+A three-voter consensus group needs two voters. Placing two in A and one in B lets it survive losing B, but not losing A. A diagram with two regions does not make the failure tolerance symmetric. Count voters and the failure domains that can remove them together under the actual membership protocol.
+
+With one voter in each of three regions, losing any one leaves two under the simple majority model. That introduces additional geographic paths and does not eliminate resource, disk, or control-plane failures. The [consensus chapter](/docs/software-system-design/consensus-and-leader-election) explains the log and membership rules required beyond the arithmetic.
+
+Surviving regions also need enough useful serving capacity for redirected demand. A failover that preserves a write quorum but overwhelms application workers can still violate the service objective. Include cold caches, connection establishment, retries, and background catch-up in the load test. Healthy capacity in all regions is not the same as reserve after a region disappears.
+
+<GoDeeper title="Go deeper: clocks and global order do not remove partition trade-offs">
+Systems such as Spanner use a complete replication, transaction, and time-uncertainty design to provide strong ordering under their supported model. A synchronized clock alone does not make disconnected nodes know each other's writes. Coordination and waiting can still affect progress and latency. Evaluate the whole protocol and failure envelope rather than treating a timestamp service as an exception to CAP.
+</GoDeeper>
+
+## Routing Failover Must Respect State Readiness
+
+DNS, global load balancers, clients, proxies, and existing connections can hold different routing views. Moving a public endpoint does not instantly stop every old request. Before advertising a replacement writer, establish its eligible history and fence former authority. A health endpoint answering successfully is not evidence that state catch-up or permissions are ready.
+
+A control plane can itself be regional. Identity, key management, configuration, image distribution, observability, and recovery access may depend on the supposedly failed region. Map those dependencies and test from an independently usable environment. Several healthy application clusters can still share one broken authentication or metadata service.
+
+Keep failback explicit. Returning traffic to the original region can require data movement, ownership transfer, and another reserve period. A one-way emergency failover procedure is incomplete if normal restoration later creates split brain or loses newly accepted work. Treat both directions as state transitions with evidence, not merely endpoint toggles.
+
+## Data Placement and Operations Need Named Owners
+
+Some data can be copied globally while other state must remain within an agreed placement boundary. Record the organization's actual policy and ensure backups, logs, replicas, and diagnostic exports follow it. Do not infer a legal or contractual rule from a generic cloud-region diagram. Engineering implements the specific approved constraints supplied to the service.
+
+Regional configuration must remain compatible. A feature enabled in A but not B can write records B cannot interpret after failover. A credential available only on the primary path can block recovery. Test version skew, key rotation, schema migration, and pending workflow delivery in the secondary environment before depending on it during an incident.
+
+Cost also includes replication bandwidth, retained copies, cross-region queries, and idle recovery reserve. A read routed locally can still trigger several remote storage calls. Measure the complete request path and actual transferred bytes. A lower frontend round trip does not guarantee lower end-to-end latency or lower network spend.
+
+<RunnableCode code={`placements = [{"A": 2, "B": 1}, {"A": 1, "B": 1, "C": 1}]
+for placement in placements:
+    total = sum(placement.values())
+    majority = total // 2 + 1
+    print("Placement:", placement, "majority:", majority)
+    for lost, count in placement.items():
+        survivors = total - count
+        print("Lose region:", lost, "survivors:", survivors, "can form majority:", survivors >= majority)
+# Try it: put every voter in A; process replication no longer protects the regional failure.
+`} />
+
+This model checks only one region loss at a time and assumes all remaining voters communicate and obey the protocol. It does not evaluate latency, data durability, Byzantine failures, or application capacity. Use it to identify an impossible placement claim, then validate the full design through controlled failover and recovery tests.
+
+## Rehearse the Actual Regional Contract
+
+In a test environment, compare requests through each regional endpoint and preserve operation identities across a controlled routing change. Introduce delayed replication, isolate communication without stopping every process, and verify which reads and writes wait or fail. Check the old writer after the switch, not just the new endpoint. It must not continue accepting obsolete authoritative mutations.
+
+For PostgreSQL-based designs, inspect the configured standby and synchronous-replication state using supported monitoring views before a promotion exercise. For consensus services, inspect membership and progress through the service's supported tools. Do not substitute a DNS update for a safe promotion procedure. The [recovery chapter](/docs/software-system-design/disaster-recovery) supplies the validation and reopening boundary.
+
+Include a returning old writer in the failover test. Leave its process alive but isolated, switch authority under the supported protocol, then restore a delayed client path to the former region. It must reject obsolete authoritative effects even if that client's DNS or connection state still points there.
+
+## Failure Modes and Better Choices
+
+A two-region design is advertised as surviving either region but its voter layout is asymmetric. Count surviving majorities. Asynchronous lag is ignored until acknowledged writes disappear. Measure recoverable history and reconcile operations. A failover only changes DNS while old writers remain reachable. Enforce authority at the destination.
+
+The secondary region has cold caches and insufficient reserve. Test failure-state load, not only warm steady serving. Identity or keys depend on the primary region. Exercise independent recovery access. Failback overwrites work accepted during the emergency. Transfer and reconcile history under the supported ownership protocol before routing it back.
+
+## When Not to Add Multi-Region Writes
+
+| Situation | Better starting design |
+| --- | --- |
+| One region with multi-zone redundancy meets the promise | Keep the smaller tested topology |
+| The main need is faster public content delivery | An appropriate CDN and cache policy |
+| Cross-region conflicts have no valid business resolution | One write authority or supported strong coordination |
+| Recovery has never been rehearsed | Establish verified backup and failover procedures first |
+
+## Remember
+
+| Decision | Evidence required |
+| --- | --- |
+| Write authority | Who may commit each key's state |
+| Acknowledgement | Which surviving history backs success |
+| Read routing | Which consistency and freshness the caller receives |
+| Placement | Which regional losses leave quorum and capacity |
+| Recovery | Fencing, reconciliation, validation, and failback |
+
+You can now explain a multi-region service in terms of ownership and recoverable promises rather than the number of active frontends. Return to the [track roadmap](/docs/software-system-design/roadmap) and apply the complete set of mechanisms to its worked case studies.
+
+## Sources
+
+- [Corbett et al., Spanner (2012)](https://research.google/pubs/spanner-googles-globally-distributed-database/)
+- [DeCandia et al., Dynamo (2007)](https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf)
+- [Ongaro and Ousterhout, In Search of an Understandable Consensus Algorithm (2014)](https://raft.github.io/raft.pdf)
+- [AWS Well-Architected, Disaster Recovery](https://docs.aws.amazon.com/wellarchitected/latest/reliability-pillar/plan-for-disaster-recovery-dr.html)
+- [PostgreSQL, Standby and Synchronous Replication](https://www.postgresql.org/docs/current/warm-standby.html)
