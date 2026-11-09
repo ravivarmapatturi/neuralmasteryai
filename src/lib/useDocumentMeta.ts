@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 
-const SITE_NAME = 'Neural Mastery AI';
+import { documentTitle, SITE_NAME } from './documentTitle';
 export const SITE_URL = 'https://neuralmasteryai.com/';
 export const DEFAULT_DESCRIPTION =
   'Free lessons on AI from the maths up to LLMs and agents, plus coding problems you run in your browser against real tests. No sign-up, nothing to install.';
@@ -145,7 +145,7 @@ export function withTrailingSlash(path: string): string {
 export function useDocumentMeta(pageTitle: string | undefined, description?: string, breadcrumb?: BreadcrumbItem[]): void {
   useEffect(() => {
     const desc = description ?? DEFAULT_DESCRIPTION;
-    const fullTitle = pageTitle ? `${pageTitle} — ${SITE_NAME}` : SITE_NAME;
+    const fullTitle = documentTitle(pageTitle);
     // No prefix to strip anymore -- the site serves from the domain's own
     // root now, so location.pathname already matches the route directly.
     const canonical = SITE_URL.replace(/\/$/, '') + withTrailingSlash(window.location.pathname);

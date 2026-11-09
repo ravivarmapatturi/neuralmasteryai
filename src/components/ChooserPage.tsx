@@ -18,9 +18,9 @@ function Arrow() {
 }
 
 export default function ChooserPage() {
-  useDocumentTitle('Neural Mastery — Learn AI from First Principles');
+  useDocumentTitle('Neural Mastery: Learn AI from First Principles');
   useDocumentMeta(
-    'Neural Mastery — Learn AI from First Principles',
+    'Neural Mastery: Learn AI from First Principles',
     'AI engineering lessons with visual explanations, practice problems, interview questions and study plans.',
   );
 
