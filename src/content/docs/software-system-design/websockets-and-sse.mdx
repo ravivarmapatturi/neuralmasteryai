@@ -1,7 +1,7 @@
 ---
 title: "WebSockets, SSE, and Reconnect Recovery"
 sidebar_position: 4.4
-description: ""
+description: "Choose a live transport from direction and payload needs, then recover missed events with durable cursors, bounded buffers, and an explicit retention-gap policy."
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
@@ -96,6 +96,18 @@ assert effects == [42, 43, 44, 45]
 `} />
 
 This set models a tiny idempotent application boundary. A real client must retain enough progress to survive its relevant failure, and a server-side effect needs durable deduplication rather than browser memory. Advancing to the maximum event ID is valid here only because the example has a contiguous single stream. A gap or several partitions needs a richer progress representation.
+
+A useful reconnect drill distinguishes three losses: the server never generated an event, the server generated it but the connection did not deliver it, or the client received it but failed before applying it. Preserve event identity and durable progress so those cases can be investigated. A packet capture alone cannot establish the client's application commit. Likewise, a client rendering an event once in one browser session does not prove it survives a refresh or a second device.
+
+For a room subscription, authenticate the caller, authorize that room, and bind the cursor to its room and history epoch. If the room's history is recreated, an old cursor can be numerically plausible while referring to a different sequence. Return an explicit restart or repair result rather than interpreting it against unrelated events. This also prevents a stale cursor from silently bypassing a deletion or a changed membership policy during a long disconnect.
+
+## Recover a Subscription Without Hiding a Gap
+
+A replay cursor must identify a position in a particular stream history. If event identifiers reset when a process restarts, a client carrying cursor 41 can be mistaken for a client in a different history that also reached 41. Persist the sequence or include an epoch that distinguishes incompatible histories. For a filtered subscription, define whether the cursor belongs to the underlying log or the filtered result. A gap in numeric identifiers may represent invisible events rather than data loss, so the server must interpret continuity according to the documented stream contract.
+
+When the replay window no longer includes event 42, simply continuing with event 44 can leave a client with an impossible local state. A patch that changes a field may depend on an earlier creation event. Return an explicit resynchronization path: fetch a snapshot with a well-defined position, then consume events after that position. Establish the snapshot-and-cursor boundary so events cannot disappear between the snapshot read and subscription startup. Buffering, a database-consistent snapshot, or replay from a durable position can solve that race under the system's assumptions. Fetching an arbitrary current object and then attaching to only future events does not automatically close it.
+
+For bidirectional WebSockets, reconnect recovery also needs a policy for commands the client sent before disconnection. A client-side pending list cannot infer success from the lost socket. Preserve operation identifiers, reconcile server results, and resend only under the command's retry contract. For SSE, the browser's reconnection machinery helps carry the event cursor, but the server still owns history retention and interpretation. Test both directions of uncertainty: an event delivered but not recorded locally, and a command committed but not acknowledged. Duplicates and gaps require different repairs. A connection that reconnects quickly can still produce incorrect application state if either boundary remains undefined.
 
 ## Failure Modes and Better Choices
 
