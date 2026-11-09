@@ -33,6 +33,7 @@ interface PracticeQuestion {
   wrongAnswers?: string[];
   rounds?: string[];
   roles?: string[];
+  level?: string;
 }
 
 const ROUNDS: Record<string, string> = {
@@ -46,6 +47,11 @@ const ROLES: Record<string, string> = {
   'ai-evaluation-reliability-engineer': 'Evaluation and reliability engineer',
   'forward-deployed-ai-engineer': 'Forward-deployed AI engineer',
   'ai-developer-relations-engineer': 'Developer relations engineer',
+};
+const LEVELS: Record<string, string> = {
+  mid: 'Mid-level',
+  senior: 'Senior',
+  staff: 'Staff',
 };
 
 const topics = practice.topics as {
@@ -141,8 +147,11 @@ export default function SimpleInterviewPage() {
   const { events, awardInterviewCompleted } = useGamification();
   const [round, setRound] = useState('');
   const [role, setRole] = useState('');
+  const [level, setLevel] = useState('');
   const matches = (q: PracticeQuestion) =>
-    (!round || (q.rounds ?? []).includes(round)) && (!role || (q.roles ?? []).includes(role));
+    (!round || (q.rounds ?? []).includes(round)) &&
+    (!role || (q.roles ?? []).includes(role)) &&
+    (!level || q.level === level);
   const isDone = (id: string) => hasAward(events, `/interview#${id}`, 'interview');
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -591,9 +600,15 @@ export default function SimpleInterviewPage() {
                       <option key={id} value={id}>{label}</option>
                     ))}
                   </select>
+                  <select aria-label="Experience level" value={level} onChange={(e) => setLevel(e.target.value)}>
+                    <option value="">All levels</option>
+                    {Object.entries(LEVELS).map(([id, label]) => (
+                      <option key={id} value={id}>{label}</option>
+                    ))}
+                  </select>
                 </div>
                 <p className="si-count">
-                  {round || role ? `${shown.length} of ${topic.questions.length}` : topic.questions.length} questions ·{' '}
+                  {round || role || level ? `${shown.length} of ${topic.questions.length}` : topic.questions.length} questions ·{' '}
                   {shown.filter(({ q }) => isDone(q.id)).length} completed
                 </p>
                 <div className="si-topic-widget" style={{ display: 'flex', alignItems: 'flex-start', gap: '0.85rem', margin: '0.85rem 0' }}>
@@ -636,6 +651,7 @@ export default function SimpleInterviewPage() {
                     <li key={q.id}>
                       <button type="button" className={isDone(q.id) ? 'done' : undefined} onClick={() => startQuestion(i)}>
                         {isDone(q.id) && <span className="si-tick">Completed</span>}
+                        {q.level && <span className={`si-level-tag si-level-${q.level}`}>{LEVELS[q.level] ?? q.level}</span>}
                         {q.title}
                       </button>
                     </li>
@@ -654,6 +670,11 @@ export default function SimpleInterviewPage() {
               </button>
               <div className="si-progress-tags">
                 <span className="si-topic-pill">{topic.title}</span>
+                {question.level && (
+                  <span className={`si-level-pill si-level-${question.level}`}>
+                    {LEVELS[question.level] ?? question.level}
+                  </span>
+                )}
                 <span className="si-counter">
                   Question {questionIndex + 1} of {topic.questions.length}
                 </span>

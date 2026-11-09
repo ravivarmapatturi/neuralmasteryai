@@ -49,6 +49,8 @@ const LINKS: [string, string][] = [
   ['evaluation', 'safety'],
   ['sandboxes', 'safety'],
   ['production-mlops', 'system-design'],
+  ['production-mlops', 'debug'],
+  ['debug', 'system-design'],
   ['multi-agent', 'system-design'],
   ['safety', 'system-design'],
   ['math-classical-ml', 'coding'],
@@ -94,6 +96,7 @@ const SHORT_TITLES: Record<string, string> = {
   'evidence-reverse-engineering': 'Evidence',
   'production-mlops': 'MLOps',
   'cost-capacity': 'Cost',
+  debug: 'Debug',
 };
 const bundle = line<[number, number]>().curve(curveBundle.beta(0.85));
 
@@ -229,7 +232,7 @@ export function InterviewGraph({
       });
       LINKS.forEach(([a, b], i) => {
         const el = lineRefs.current[i];
-        if (!el) return;
+        if (!el || !spots[a] || !spots[b] || !moved[a] || !moved[b]) return;
         const ga = spots[a].group;
         const gb = spots[b].group;
         const route: [number, number][] =

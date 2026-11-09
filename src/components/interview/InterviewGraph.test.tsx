@@ -23,6 +23,7 @@ const sampleTopics: GraphTopic[] = [
   { id: 'cost-capacity', title: 'Cost, Capacity & Latency Optimization', group: 'production', count: 18, done: 0 },
   { id: 'safety', title: 'Safety, Alignment & Red-Teaming', group: 'production', count: 16, done: 0 },
   { id: 'system-design', title: 'AI System Design', group: 'rounds', count: 30, done: 0 },
+  { id: 'debug', title: 'Debug this', group: 'rounds', count: 30, done: 0 },
   { id: 'coding', title: 'Coding Exercises', group: 'rounds', count: 20, done: 0 },
   { id: 'behavioral', title: 'Behavioral & Leadership', group: 'rounds', count: 15, done: 0 },
 ];

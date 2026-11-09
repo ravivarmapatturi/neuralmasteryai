@@ -25,6 +25,51 @@ CURATED_TOPIC = {"foundations": "post-training", "rag": "rag", "prompting": "pro
 CURATED_OVERRIDE = {"genai-fm-fundamentals": "transformers", "genai-guardrails-prompt-injection-pii": "safety",
                     "genai-serving-quantization": "gpu-memory-quantization"}
 
+CURATED_LEVELS = {
+    "genai-fm-fundamentals": "mid",
+    "genai-chunking-strategies": "mid",
+    "genai-prompt-structured-outputs": "mid",
+    "genai-prompt-cot-reasoning": "mid",
+    "genai-dense-vs-sparse-search": "mid",
+    "genai-rag-vs-finetuning": "senior",
+    "genai-lora-production-serving": "senior",
+    "genai-rag-reranking-pipeline": "senior",
+    "genai-eval-llm-as-judge": "senior",
+    "genai-eval-rag-triad-hallucination": "senior",
+    "genai-hallucination-mitigation": "senior",
+    "genai-agent-react-tool-calling": "senior",
+    "genai-guardrails-prompt-injection-pii": "senior",
+    "genai-cost-latency-ttft-tpot": "senior",
+    "genai-serving-kv-cache-pagedattention": "senior",
+    "genai-serving-quantization": "senior",
+    "genai-finetuning-alignment-dpo-rlhf": "senior",
+    "genai-finetuning-data-curation-forgetting": "senior",
+    "genai-rag-advanced-query-expansion": "senior",
+    "genai-agent-single-vs-multi": "staff",
+}
+
+SECTION_LEVELS = {
+    "Overfitting, underfitting and validation": "mid",
+    "Metrics and thresholds": "mid",
+    "Models and features": "mid",
+    "Reading the loss curve": "mid",
+    "Learning rates and optimisers": "mid",
+    "Normalisation and initialisation": "mid",
+    "LLM Fundamentals": "mid",
+    "Parameters and memory": "senior",
+    "Prefill, decode and memory": "senior",
+    "Throughput, latency and batching": "senior",
+    "Fine-tuning": "senior",
+    "Drift, monitoring and experiments": "senior",
+    "RAG in Production — Deployment & Scaling": "senior",
+    "RAG in Production — Monitoring, Debugging & Incidents": "senior",
+    "RAG in Production — Security & Compliance": "senior",
+    "Agentic & Self-Correcting RAG (Beyond the Basics)": "senior",
+    "AI Agents": "senior",
+    "Evaluation & Testing (Advanced)": "senior",
+    "System Design / Scenario Questions": "staff",
+}
+
 
 def tidy(text):
     text = text.split("**Follow-ups")[0]
@@ -40,17 +85,26 @@ def words(text):
 cards = yaml.safe_load((REPO / "interviews/topics.yaml").read_text())
 topics = {c["id"]: {"id": c["id"], "title": c["title"], "group": c["group"], "about": c["summary"], "questions": []}
           for c in cards["cards"] if c["id"] != "scenarios"}
+topics["debug"] = {
+    "id": "debug",
+    "title": "Debug this",
+    "group": "rounds",
+    "about": "Production failure scenarios with real metrics: triage hypotheses in order, test each root cause, deploy fixes, and prevent recurrence.",
+    "questions": [],
+}
 ours = []
 curated = json.loads((ROOT / "src/data/interviewModelAnswers.json").read_text())
 titles = {q["id"]: q["title"] for q in json.loads((ROOT / "src/data/interviewRoomQuestions.json").read_text())["questions"]}
 for t in curated["topics"]:
     for qid in t["questions"]:
+        level = CURATED_LEVELS.get(qid, "senior")
         ours.append((CURATED_OVERRIDE.get(qid, CURATED_TOPIC[t["id"]]),
-                     {"id": qid, "title": titles[qid], "answer": curated["answers"][qid]}))
+                     {"id": qid, "title": titles[qid], "answer": curated["answers"][qid], "level": level}))
 for q in json.loads((ROOT / "src/data/interviewCatalog.generated.json").read_text())["questions"]:
     if q.get("bank") == "software-system-design-questions":
         continue
-    item = {"id": q["id"], "title": q["title"], "answer": tidy(q["answer"])}
+    level = SECTION_LEVELS.get(q.get("section"), "mid")
+    item = {"id": q["id"], "title": q["title"], "answer": tidy(q["answer"]), "level": level}
     if q.get("options"):
         item["options"] = [o["text"] for o in q["options"]]
     ours.append((SECTION_TOPIC.get(q.get("section"), "rag"), item))
@@ -58,14 +112,30 @@ for q in json.loads((ROOT / "src/data/interviewCatalog.generated.json").read_tex
 for topic, rows in json.loads((ROOT / "src/data/interviewSeniorQuestions.json").read_text()).items():
     for item in rows:
         if isinstance(item, dict):
-            q_data = {"id": f"senior:{item['id']}", "title": item["title"], "answer": item["answer"]}
+            level = item.get("level")
+            if not level:
+                if any(w in item["title"].lower() for w in ["governance", "multi-tenant", "distributed", "allreduce", "nccl", "quota", "cross-org", "cluster", "sandbox", "audit", "rsp"]):
+                    level = "staff"
+                elif topic in ("coding", "math-classical-ml") and not any(w in item["title"].lower() for w in ["drift", "leakage", "scale"]):
+                    level = "mid"
+                else:
+                    level = "senior"
+            q_data = {"id": f"senior:{item['id']}", "title": item["title"], "answer": item["answer"], "level": level}
             for k in ["tradeOffs", "followUps", "wrongAnswers", "rounds", "roles"]:
                 if k in item:
                     q_data[k] = item[k]
             ours.append((topic, q_data))
         elif isinstance(item, (list, tuple)):
             qid, title, answer = item[0], item[1], item[2]
-            q_data = {"id": f"senior:{qid}", "title": title, "answer": answer}
+            level = item[8] if len(item) > 8 else None
+            if not level:
+                if any(w in title.lower() for w in ["governance", "multi-tenant", "distributed", "allreduce", "nccl", "quota", "cross-org", "cluster", "sandbox", "audit", "rsp", "speculative-decoding-throughput"]):
+                    level = "staff"
+                elif topic in ("coding", "math-classical-ml") and not any(w in title.lower() for w in ["drift", "leakage", "scale"]):
+                    level = "mid"
+                else:
+                    level = "senior"
+            q_data = {"id": f"senior:{qid}", "title": title, "answer": answer, "level": level}
             if len(item) > 3:
                 q_data["followUps"] = item[3]
             if len(item) > 4:
@@ -114,10 +184,13 @@ for f in sorted((REPO / "interviews/questions").glob("*/*.md")):
             return []
         items = re.findall(r"^- (.+)$", part.group(1), re.M)
         return [re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", i).replace("`", "").replace("**", "") for i in items][:4]
+    meta_lvl = meta.get("level", 2)
+    lvl_tag = "mid" if meta_lvl in (1, 2) else ("senior" if meta_lvl == 3 else "staff")
     topics[meta["card"]]["questions"].append({"id": f"repo:{meta['card']}:{meta['id']}", "title": prompt, "answer": answer,
                                               "sourceUrl": f"{GITHUB}/{meta['card']}/{f.name}",
                                               "followUps": bullets("Follow-ups"), "wrongAnswers": bullets("Wrong answers"),
                                               "rounds": meta.get("rounds") or [], "roles": meta.get("roles") or [],
+                                              "level": lvl_tag,
                                               "priority": (meta.get("level", 2), -len(meta.get("roles") or []), -len(meta.get("rounds") or []))})
 # Must-know first: our hand-written questions, then repo questions by level (basic first) and how many roles ask them.
 for t in topics.values():

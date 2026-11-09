@@ -125,7 +125,7 @@ test.describe('Interview Room (/interview/room)', () => {
 
     await page.goto(`http://localhost:${PORT}/interview`, { waitUntil: 'domcontentloaded' });
     await expect(page.locator('h1')).toHaveText('Interview practice');
-    await expect(page.locator('.si-node')).toHaveCount(22);
+    await expect(page.locator('.si-node')).toHaveCount(practice.topics.length);
     await page.click('.si-node:has-text("Evaluation")');
     await expect(page.locator('.si-panel h2')).toHaveText('Evaluation');
     await page.click('#start-topic');
@@ -338,4 +338,57 @@ test('switching back cancels a pending High accuracy load and ignores its late r
   expect(await page.evaluate(()=>(window as any).terminatedSpeechWorkers)).toBeGreaterThan(0);
   await page.evaluate(()=>(window as any).releaseTurbo());
   await expect(control).toHaveValue('default');
+});
+
+test('level filter filters questions by mid, senior, staff and Previous/Next respect it', async ({ page }) => {
+  await controlledRoom(page);
+  const levelFilter = page.getByLabel('Experience level', { exact: true });
+  await expect(levelFilter).toBeVisible();
+  await expect(levelFilter.locator('option')).toHaveText(['All levels', 'Mid-level', 'Senior', 'Staff']);
+
+  // Filter by Senior
+  await levelFilter.selectOption('senior');
+  const countText = await page.locator('.si-count').textContent();
+  expect(countText).toMatch(/\d+ of \d+ questions/);
+
+  // Start question
+  await page.locator('#start-topic').click();
+  await expect(page.locator('.si-level-pill')).toHaveText('Senior');
+
+  // Verify next button respects senior filter
+  const nextBtn = page.locator('#next-question');
+  if (!(await nextBtn.isDisabled())) {
+    await nextBtn.click();
+    await expect(page.locator('.si-level-pill')).toHaveText('Senior');
+  }
+});
+
+test('Debug this topic is available and contains 30 production debug questions', async ({ page }) => {
+  await controlledRoom(page);
+  await page.locator('.si-node').filter({ hasText: 'Debug' }).click();
+
+  await expect(page.locator('.si-card h2')).toHaveText('Debug this');
+  await expect(page.locator('.si-count')).toContainText('30 questions');
+});
+
+test('level filter screenshots and responsive fit at 375 and 1440', async ({ page }) => {
+  await controlledRoom(page);
+  const filterBox = page.locator('.si-filters');
+
+  for (const width of [375, 1440]) {
+    for (const theme of ['light', 'dark']) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.evaluate((theme) => document.documentElement.setAttribute('data-theme', theme), theme);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+
+      await expect(filterBox).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+
+      await page.screenshot({
+        path: `docs/evidence/interview/filter-${width}-${theme}.png`,
+        fullPage: false,
+      });
+    }
+  }
 });
