@@ -17,4 +17,8 @@ it('captures ordered 16 kHz packets on the audio thread without missing or dupli
   expect(packets).toHaveLength(4);
   expect(packets.flatMap(p => [...p])).toEqual(Array.from({length: 8192}, (_, i) => i));
   expect(processor.process([])).toBe(true);
+  processor.process([[new Float32Array(128).fill(42)]]);
+  processor.port.onmessage({data:{type:'flush'}});
+  expect([...packets.at(-2)!]).toEqual(Array(128).fill(42));
+  expect(packets.at(-1)).toEqual({type:'flushed'});
 });

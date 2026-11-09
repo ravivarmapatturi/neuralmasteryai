@@ -181,3 +181,21 @@ describe('speech finalization and cancellation', () => {
   });
 
 });
+
+it('a cancelled capture drain cannot close the next question microphone',async()=>{
+  vi.useFakeTimers();
+  const engine=new SingleThreadASREngine({captureDrainMs:300});
+  await engine.start({} as MediaStream);
+  FakeAudio.latest.feed(0.1);
+  const oldStopped=vi.fn();
+  const firstStop=engine.stop(oldStopped);
+  expect(engine.stop()).toBe(firstStop);
+  engine.cancel();
+  await engine.start({} as MediaStream);
+  const current=FakeAudio.latest;
+  await vi.advanceTimersByTimeAsync(300);
+  await firstStop;
+  expect(current.close).not.toHaveBeenCalled();
+  expect(oldStopped).not.toHaveBeenCalled();
+  engine.destroy();
+});

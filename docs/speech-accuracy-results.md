@@ -37,6 +37,14 @@ The former fixed RMS threshold of 0.012 operated before bounded quiet-audio gain
 
 These observations explain plausible real-use failures and identify reproducible policy bugs; they do not establish the owner's physical microphone's acoustic quality. Physical microphone, Bluetooth, room echo and browser noise-suppression effects remain unmeasured.
 
+Capture also explicitly downmixes to mono, flushes the AudioWorklet's partial packet before shutdown, coalesces repeated stop calls, and prevents an old drain from closing a new question's microphone. The page's Use microphone action now bypasses stale typing state; previously a click could change the display without starting capture. ASR workers are released before grading models load. These paths have unit and browser regression coverage.
+
+### Verification of this change
+
+Typecheck passed with a 1 GB Node heap and a 1 MB young-generation semi-space. Internal links and all 1,993 MDX files passed. The focused speech/worker/profile suite passed **55 tests**, and metric/corpus integrity checks passed **5 tests**. The final interview browser run passed **17 tests** using inference-protocol doubles: opt-in loading, remembered choice, capability gating, failure fallback, cancellation of an in-progress download, stale replies, microphone resumption and navigation. Light/dark screenshots at 375px and 1440px were inspected. The responsive check also measures the topic button's bounds; a late grid override had clipped the mobile panel despite no document-level overflow, and the scoped responsive rule now fixes it.
+
+The full unit suite did **not** finish. The host-memory guard stopped the unrestricted and 512 MB-heap attempts below 2 GiB available; a 384 MB-heap attempt exhausted its heap. No assertions were removed or weakened. The production build was not started: `free -g` showed 3 GB available, below AGENTS.md's required 5 GB. Pagefind and production smoke remain unrun. These are pending verification gates, not passing results. All test servers and browsers started here were closed. No push was performed.
+
 ### Default selection under the revised download and memory limits
 
 This repeats evaluation on previously used held-out files; it is not a new untouched validation set. We compared q8 Whisper Small.en, Whisper Base.en, Distil Small.en and Moonshine Base using the same held-out VCTK recordings, including six Indian-English clips. Five licensed human FOSDEM excerpts test XGBoost, RAG, LoRA, embeddings and BM25. We scored those excerpts for term presence only: their conference captions are not audited gold WER references. The existing 29.14-second Indian-English composite is reported separately. It reuses the six Indian-English clips and is not another independent subject.
