@@ -378,12 +378,13 @@ button:focus-visible, a:focus-visible, select:focus-visible, textarea:focus-visi
 .si-graph {
   position: relative;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .si-stage {
   position: relative;
   margin: 0 auto;
+  overflow: visible;
 }
 
 .si-edges path {
@@ -451,12 +452,12 @@ button.si-node,
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 104px;
+  width: max-content;
   margin-top: -0.6em;
-  padding-left: 16px;
+  padding-left: 14px;
   box-sizing: border-box;
   color: var(--fg);
-  font-size: 0.76rem;
+  font-size: 0.74rem;
   line-height: 1.2;
   text-align: left;
   white-space: nowrap;
@@ -467,12 +468,92 @@ button.si-node,
 .si-label.flip {
   left: auto;
   right: 50%;
-  padding: 0 16px 0 0;
+  padding: 0 14px 0 0;
   text-align: right;
   transform-origin: 100% 50%;
 }
 
 .si-node.on .si-label, .si-node:hover .si-label {
+  font-weight: 700;
+  color: var(--fg);
+}
+
+.si-label-pct {
+  font-size: 0.68rem;
+  font-weight: 700;
+  margin-left: 3px;
+  color: currentColor;
+  opacity: 0.95;
+}
+
+.si-node.is-complete .si-dot {
+  box-shadow: 0 0 0 2px var(--bg), 0 0 8px currentColor;
+}
+
+.si-node.is-complete .si-ring {
+  box-shadow: 0 0 10px currentColor;
+}
+
+.si-group-totals {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px 10px;
+  max-width: 680px;
+  margin: 14px auto 0;
+  padding: 0 6px;
+  min-height: 32px;
+}
+
+.si-group-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 0.74rem;
+  font-family: inherit;
+  line-height: 1.25;
+  cursor: pointer;
+  transition: border-color 160ms, background 160ms, transform 160ms;
+}
+
+.si-group-pill:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.si-group-pill.active {
+  border-color: currentColor;
+  background: var(--surface-alt, var(--surface));
+}
+
+.si-group-pill.is-complete {
+  font-weight: 600;
+}
+
+.si-group-pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.si-group-pill-label {
+  font-weight: 600;
+}
+
+.si-group-pill-stat {
+  color: var(--soft);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.70rem;
+}
+
+.si-group-pill-pct {
   font-weight: 700;
   color: var(--fg);
 }
@@ -574,6 +655,9 @@ button.si-node,
   flex-wrap: wrap;
   gap: 8px;
   margin: 0 0 10px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .si-filters select {
@@ -586,11 +670,16 @@ button.si-node,
   color: var(--fg);
   font: inherit;
   font-size: 0.85rem;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .si-topic-select {
   display: none;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   min-height: 44px;
   margin-top: 10px;
   padding: 8px 10px;
@@ -928,6 +1017,10 @@ button.si-node,
   }
 }
 
+.si-graph-hud {
+  display: none;
+}
+
 @media (max-width: 640px) {
   .si-label,
   .si-node.on .si-label,
@@ -936,12 +1029,23 @@ button.si-node,
   .si-node:focus-visible .si-label {
     display: none !important;
   }
+  .si-graph-hud {
+    display: block;
+  }
   .si-topic-select {
     display: block;
   }
 }
 
 @media (max-width: 560px) {
+  .si-filters {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .si-filters select {
+    width: 100%;
+    flex: 1 1 auto;
+  }
   .simple-interview {
     padding: 12px 0 48px;
   }
@@ -1040,3 +1144,26 @@ button.si-node,
 .si-attempt { padding-block: var(--space-3, 12px); border-bottom: 1px solid var(--nm-border); overflow-wrap: anywhere; }
 .si-attempt summary { cursor: pointer; min-height: 40px; font-family: var(--font-sans); }
 .si-attempt summary:focus-visible { outline: 2px solid var(--nm-accent-primary); outline-offset: 3px; }
+@media (max-width: 640px) {
+  .si-group-totals {
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .si-group-pill {
+    padding: 3px 8px;
+    font-size: 0.70rem;
+    gap: 4px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .si-edges path,
+  .si-node,
+  .si-dot,
+  .si-ring,
+  .si-group-pill {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
