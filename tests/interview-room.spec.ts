@@ -5,12 +5,54 @@ import type { Page } from '@playwright/test';
 
 const PORT = process.env.TEST_PORT ? Number(process.env.TEST_PORT) : 4173;
 
-// Dev-server module doubles keep these UI lifecycle checks independent of model downloads.
+// Replace only inference workers: this works with both Vite modules and hashed CI bundles.
+// Playwright gives every test a fresh, non-persistent browser context (including model caches).
 async function controlledRoom(page: Page) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Network.clearBrowserCache');
+  await cdp.detach();
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.addInitScript(() => {
     const state = window as any;
     state.micTracks = [];
+    state.inferenceOps = [];
+    const RealWorker = window.Worker;
+    window.Worker = class extends EventTarget {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      constructor(url: string | URL, options?: WorkerOptions) {
+        super();
+        if (!/\/(mockInterviewWorker|moonshineSingleThreadWorker)[^/]*\.(?:ts|js)(?:\?|$)/.test(String(url))) {
+          return new RealWorker(url, options) as any;
+        }
+      }
+      postMessage({ id, op, payload }: any) {
+        state.inferenceOps.push(op);
+        const reply = (data: any) => queueMicrotask(() => {
+          const event = new MessageEvent('message', { data: { id, ...data } });
+          this.onmessage?.(event);
+          this.dispatchEvent(event);
+        });
+        if (op === 'loadJudge') {
+          state.releaseReview = () => {
+            state.reviewReleased = true;
+            reply({ ok: true, result: true });
+          };
+        } else if (op === 'embed') {
+          reply({ ok: true, result: payload.texts.map(() => [1]) });
+        } else if (op === 'nli') {
+          state.reviewCalls = (state.reviewCalls || 0) + 1;
+          reply({ ok: true, result: payload.pairs.map(() => ({ entails: 1, conflicts: 0 })) });
+        } else if (op === 'init') {
+          reply({ type: 'init_done', device: 'wasm', loadTimeMs: 1 });
+        } else if (op === 'reset') {
+          reply({ type: 'reset_done' });
+        } else {
+          throw new Error(`Unexpected inference operation: ${op}`);
+        }
+      }
+      terminate() {}
+    } as any;
+
     Object.defineProperty(navigator, 'mediaDevices', { value: {
       getUserMedia: async () => {
         const ctx = new AudioContext();
@@ -20,37 +62,23 @@ async function controlledRoom(page: Page) {
       },
     } });
     window.Audio = class extends Audio {
+      // Do not fetch clips: missing audio would start the separate TTS model worker.
+      constructor() { super(); }
       get currentTime() { return 1; }
       play() { this.dispatchEvent(new Event("playing")); return Promise.resolve(); }
       pause() {}
     } as any;
   });
-  await page.route('**/src/lib/interviewRoom/qualitySettings.ts*', route => route.request().url().includes('actual') ? route.continue() : route.fulfill({
-    contentType: 'application/javascript',
-    body: `export * from "/src/lib/interviewRoom/qualitySettings.ts?actual";
-    export function createASREngineForQuality() {
-      let listener; return {
-        load: async () => {}, prepareForListening: async () => {},
-        subscribe: fn => { listener = fn; return () => { listener = null; }; },
-        reset() {}, setQuestionPrompt() {}, destroy() {},
-        start: async () => { listener?.({partialText: 'Old spoken answer about evaluation.'}); },
-        stop: async callback => { callback?.(); },
-        getMetrics: () => ({finalText: 'Old spoken answer about evaluation.'})
-      };
-    }`,
-  }));
-  await page.route('**/src/lib/mockInterview/engine.ts*', route => route.request().url().includes('actual') ? route.continue() : route.fulfill({
-    contentType: 'application/javascript',
-    body: `export * from "/src/lib/mockInterview/engine.ts?actual";
-    export const loadJudge = () => new Promise(resolve => {
-      window.releaseReview = () => { window.reviewReleased = true; resolve(); };
-    });
-    export const embed = async texts => texts.map(() => [1]);
-    export const nli = async pairs => { window.reviewCalls = (window.reviewCalls || 0) + 1;
-      return pairs.map(() => ({entails: 1, conflicts: 0})); };`,
-  }));
+  const externalRequests: string[] = [];
+  await page.context().route('**/*', route => {
+    const url = new URL(route.request().url());
+    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') return route.continue();
+    if (/huggingface|hf\.co|\.onnx|\.wasm/.test(url.href)) externalRequests.push(url.href);
+    return route.abort('blockedbyclient');
+  });
   await page.goto(`http://localhost:${PORT}/interview`, { waitUntil: 'domcontentloaded' });
   await page.locator('.si-node').filter({ hasText: 'Evaluation' }).click();
+  return externalRequests;
 }
 
 const navigationTopic = practice.topics.find(t => t.id === 'evaluation')!;
@@ -79,7 +107,6 @@ test.describe('Interview Room (/interview/room)', () => {
   });
 
   test('picks a topic, answers by typing, shows the model answer, moves to next', async ({ page }) => {
-    test.setTimeout(120000);
     const answersSent: string[] = [];
     page.on('request', (req) => {
       if ((req.postData() || '').includes('probabilistic')) answersSent.push(req.url());
@@ -156,11 +183,10 @@ test.describe('Interview Room (/interview/room)', () => {
   });
 
   test('leaving a live answer stops every mic track; a delayed old review cannot appear on the new answer', async ({ page }) => {
-    test.setTimeout(320_000);
-    await controlledRoom(page);
+    const modelRequests = await controlledRoom(page);
     await page.locator('#start-topic').click();
     await page.getByRole('button', { name: 'Skip to answering' }).click();
-    await expect(page.locator('.si-status')).toContainText('Listening.', { timeout: 150_000 });
+    await expect(page.locator('.si-status')).toContainText('Listening.');
     expect(await page.evaluate(() => (window as any).micTracks.filter((t: MediaStreamTrack) => t.readyState === 'live').length)).toBe(1);
     await page.locator('#next-question').click();
     await atQuestion(page, 1);
@@ -168,7 +194,7 @@ test.describe('Interview Room (/interview/room)', () => {
     await answerByTyping(page);
     await page.locator('#done').click();
     await expect(page.locator('.si-check-loading')).toBeVisible();
-    await expect.poll(() => page.evaluate(() => typeof (window as any).releaseReview), { timeout: 150_000 }).toBe('function');
+    await expect.poll(() => page.evaluate(() => typeof (window as any).releaseReview)).toBe('function');
     await page.locator('#next-question').click();
     await atQuestion(page, 2);
     await page.getByRole('button', { name: 'Skip to answering' }).click();
@@ -176,13 +202,18 @@ test.describe('Interview Room (/interview/room)', () => {
     await expect(page.locator('.si-yours')).toHaveText('No answer was captured.');
     await page.evaluate(() => (window as any).releaseReview());
     await expect.poll(() => page.evaluate(() => (window as any).reviewCalls)).toBe(2);
+    // Let the real worker client's promises and React's commit finish before checking absence.
+    await page.evaluate(() => new Promise<void>(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    }));
     await expect(page.locator('.si-check, .si-check-loading, .si-failed-status')).toHaveCount(0);
     await expect(page.locator('.si-yours')).toHaveText('No answer was captured.');
     await expect(page.locator('#model-answer')).toHaveText(navigationTopic.questions[2].answer);
+    expect(modelRequests, 'No real model downloads').toEqual([]);
+    expect(await page.evaluate(() => (window as any).inferenceOps)).toContain('loadJudge');
   });
 
   test('navigation follows the intersection of round and role filters', async ({ page }) => {
-    test.setTimeout(60000);
     await controlledRoom(page);
     const round = 'system-design';
     const role = 'ai-evaluation-reliability-engineer';
