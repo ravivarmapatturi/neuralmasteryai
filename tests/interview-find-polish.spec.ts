@@ -156,8 +156,10 @@ test.describe('Find, Filter & Polish (C9 & C10)', () => {
     const askingCardBox = await page.locator('.si-card').boundingBox();
     expect(askingCardBox).not.toBeNull();
 
-    // Asking card width should match wide card max bound
-    expect(Math.abs(topicsCardBox!.width - askingCardBox!.width)).toBeLessThan(50);
+    // The question room is a centred column of at most 860px; the topic list stays wide.
+    expect(askingCardBox!.width).toBeLessThanOrEqual(860);
+    expect(askingCardBox!.width).toBeGreaterThan(800);
+    expect(Math.abs(askingCardBox!.x + askingCardBox!.width / 2 - 720)).toBeLessThan(10);
 
     // Capture asking evidence
     await page.screenshot({ path: path.join(EVIDENCE_DIR, 'polish-asking-1440-light.png') });
