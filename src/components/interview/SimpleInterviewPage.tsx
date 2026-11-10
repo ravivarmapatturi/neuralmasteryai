@@ -46,6 +46,7 @@ interface PracticeQuestion {
   sourceUrl?: string;
   followUps?: string[];
   wrongAnswers?: string[];
+  tradeOffs?: string[];
   rounds?: string[];
   roles?: string[];
   level?: string;
@@ -207,6 +208,17 @@ export default function SimpleInterviewPage() {
   const [resuming] = useState(() => allowResume && !pathQuestion && !locate(params.get('q')) && !!locate(readLast()));
   const [linked, setLinked] = useState(() => directQuestion ?? locate(rawQ) ?? (allowResume ? locate(readLast()) : null));
   const sharedTopic = topics.findIndex((t) => t.id === params.get('topic'));
+
+  const INPUT_MODE_KEY = 'nm-interview-input-mode';
+  const [inputMode, setInputMode] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(INPUT_MODE_KEY);
+    } catch {
+      return null;
+    }
+  });
+  const [showInputPrimer, setShowInputPrimer] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [topicFilter, setTopicFilter] = useState(() => {
     const pTopic = params.get('topic');
@@ -418,8 +430,6 @@ export default function SimpleInterviewPage() {
   const enginePromiseRef = useRef<Promise<void> | null>(null);
 
   const topic = topics[topicIndex];
-  const completedTopicCount = topic.questions.filter((q) => isDone(q.id)).length;
-  const topicProgressPct = Math.round((completedTopicCount / Math.max(1, topic.questions.length)) * 100);
 
   const handleComplete = () => {
     awardInterviewCompleted(questionId);
@@ -659,12 +669,52 @@ export default function SimpleInterviewPage() {
     }
   }, [typing, stopMic, prepareEngine, stopAudio, pauseFocusMusic, question.title]);
 
+  const handleStartAnswering = useCallback((promptQuestion?: string) => {
+    stopAudio();
+    const mode = inputMode ?? (() => {
+      try {
+        return localStorage.getItem(INPUT_MODE_KEY);
+      } catch {
+        return null;
+      }
+    })();
+    setStep('answering');
+    if (!mode) {
+      setShowInputPrimer(true);
+    } else if (mode === 'type') {
+      setTyping(true);
+    } else {
+      setTyping(false);
+      void startAnswering(promptQuestion, true);
+    }
+  }, [inputMode, stopAudio, startAnswering]);
+
+  const chooseVoice = useCallback(() => {
+    try {
+      localStorage.setItem(INPUT_MODE_KEY, 'voice');
+    } catch {}
+    setInputMode('voice');
+    setShowInputPrimer(false);
+    setTyping(false);
+    void startAnswering(undefined, true);
+  }, [startAnswering]);
+
+  const chooseType = useCallback(() => {
+    try {
+      localStorage.setItem(INPUT_MODE_KEY, 'type');
+    } catch {}
+    setInputMode('type');
+    setShowInputPrimer(false);
+    setTyping(true);
+  }, []);
+
   const ask = useCallback(
     (id: string) => {
       reviewRef.current++;
       setAttemptId(null);
       setSketch(emptySketch());
       setStep('asking');
+      setShowInputPrimer(false);
       try {
         localStorage.setItem(LAST_KEY, id);
       } catch {
@@ -676,13 +726,13 @@ export default function SimpleInterviewPage() {
         play(
           `${id}_q`,
           () => {
-            void startAnswering(q?.title);
+            handleStartAnswering(q?.title);
           },
           spoken
         );
       }
     },
-    [play, startAnswering]
+    [play, handleStartAnswering]
   );
 
   const readQuestion = () => {
@@ -694,7 +744,7 @@ export default function SimpleInterviewPage() {
       `${questionId}_q`,
       () => {
         if (step === 'asking') {
-          void startAnswering(q?.title);
+          handleStartAnswering(q?.title);
         }
       },
       spoken
@@ -888,7 +938,7 @@ export default function SimpleInterviewPage() {
     if (e.key === ' ' && step === 'asking') {
       e.preventDefault();
       stopAudio();
-      void startAnswering();
+      handleStartAnswering();
     } else if (e.key === ' ' && step === 'answering') {
       e.preventDefault();
       void finishAnswer();
@@ -930,21 +980,23 @@ export default function SimpleInterviewPage() {
     <>
     <Navbar />
     <div className={`interview-room-wrap simple-interview${isRoomStep ? ' si-room-active' : ''}`}>
-      <div className={`si-card${step === 'topics' || step === 'answer' ? ' si-card-wide' : ' si-card-stage'}`}>
-        {highEndEligible ? (
-          <div className="si-speech-model">
-            <label htmlFor="speech-model">Speech model</label>
-            <select id="speech-model" value={speechChoice} disabled={step === 'answering' || transcribing || followUpActive} onChange={event => void switchSpeechModel(event.target.value as SpeechModelChoice)}>
-              <option value="default">Standard</option>
-              <option value="turbo">High accuracy · {QUALITY_PROFILES.best.downloadSizeMB}</option>
-            </select>
-            <SpeechModelStatus ready={speechReady} loading={speechLoading} progress={speechProgress} />
-          </div>
-        ) : (
-          <div className="si-speech-model">
-            Speech model: Standard
-            <SpeechModelStatus ready={speechReady} loading={speechLoading} progress={speechProgress} />
-          </div>
+      <div className={`si-card${step === 'topics' ? ' si-card-wide' : ' si-card-stage'}`}>
+        {step === 'topics' && (
+          highEndEligible ? (
+            <div className="si-speech-model">
+              <label htmlFor="speech-model">Speech model</label>
+              <select id="speech-model" value={speechChoice} disabled={transcribing || followUpActive} onChange={event => void switchSpeechModel(event.target.value as SpeechModelChoice)}>
+                <option value="default">Standard</option>
+                <option value="turbo">High accuracy · {QUALITY_PROFILES.best.downloadSizeMB}</option>
+              </select>
+              <SpeechModelStatus ready={speechReady} loading={speechLoading} progress={speechProgress} />
+            </div>
+          ) : (
+            <div className="si-speech-model">
+              Speech model: Standard
+              <SpeechModelStatus ready={speechReady} loading={speechLoading} progress={speechProgress} />
+            </div>
+          )
         )}
         {speechNotice && (
           <div className="si-notice-banner" role="status">
@@ -1194,89 +1246,45 @@ export default function SimpleInterviewPage() {
         )}
 
         {step !== 'topics' && step !== 'done' && (
-          <header className="si-stage-header">
-            <div className="si-progress-header">
-              <button type="button" className="si-link" onClick={backToTopics}>
-                ← Topics
-              </button>
-              <div className="si-progress-tags">
-                <span className="si-topic-pill">{topic.title}</span>
+          <header className="si-stage-header si-slim-header">
+            <div className="si-slim-header-row">
+              <div className="si-slim-left">
+                <button type="button" className="si-link si-header-back" onClick={backToTopics} aria-label="Back to topics">
+                  ← Topics
+                </button>
+                <span className="si-header-topic">{topic.title}</span>
                 {question.level && (
                   <span className={`si-level-pill si-level-${question.level}`}>
                     {LEVELS[question.level] ?? question.level}
                   </span>
                 )}
-                {bookmarks.has(question.id) && (
-                  <span className="si-bookmarked-pill" aria-label="Bookmarked question">
-                    ★ Bookmarked
-                  </span>
-                )}
-                <span className="si-counter">
+              </div>
+              <div className="si-slim-center">
+                <span className="si-counter" aria-label="Question progress">
                   {currentFilteredIndex >= 0
-                    ? `Question ${currentFilteredIndex + 1} of ${navigationList.length}`
-                    : `Question ${questionIndex + 1} of ${topic.questions.length}`}
-                </span>
-                <span className="si-done-counter">
-                  {completedTopicCount} of {topic.questions.length} completed
+                    ? `${currentFilteredIndex + 1} / ${navigationList.length}`
+                    : `${questionIndex + 1} / ${topic.questions.length}`}
                 </span>
               </div>
-            </div>
-            <div
-              className="si-progress-track"
-              role="progressbar"
-              aria-valuenow={topicProgressPct}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label={`${topic.title} progress`}
-            >
-              <div className="si-progress-bar" style={{ width: `${topicProgressPct}%` }} />
-            </div>
-            <nav className="si-question-nav" aria-label="Move between questions">
-              <button
-                type="button"
-                className="si-link"
-                id="previous-question"
-                disabled={!previousItem}
-                onClick={previousQuestion}
-              >
-                ← Previous question
-              </button>
-              <button
-                type="button"
-                className="si-link"
-                id="next-question"
-                disabled={!nextItem}
-                onClick={nextQuestion}
-              >
-                Next question →
-              </button>
-            </nav>
-            <div className="si-question-row">
-              <h2 className="si-question-title">
-                {question.title}
-                {question.problemId && hasAward(events, `/interview#${question.id}`, 'interview') && (
-                  <span className="si-solved-badge"><span className="si-tick">✓</span> Solved in editor</span>
-                )}
-              </h2>
-              <div className="si-question-stage-actions">
+              <div className="si-slim-right">
                 <button
                   type="button"
-                  className={`si-speak si-bookmark-stage-btn${bookmarks.has(question.id) ? ' is-bookmarked' : ''}`}
+                  className={`si-header-icon-btn${bookmarks.has(question.id) ? ' is-bookmarked' : ''}`}
                   id="bookmark-question"
                   aria-label={bookmarks.has(question.id) ? 'Remove bookmark' : 'Bookmark this question'}
                   aria-pressed={bookmarks.has(question.id)}
                   onClick={() => toggleBookmark(question.id)}
                 >
-                  <svg viewBox="0 0 24 24" width="20" height="20" fill={bookmarks.has(question.id) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill={bookmarks.has(question.id) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" />
                   </svg>
                 </button>
                 <button
                   type="button"
-                  className={`si-speak${readAloud ? ' on' : ''}`}
+                  className={`si-header-icon-btn${readAloud ? ' on' : ''}`}
                   id="read-question"
                   disabled={followUpActive}
-                  aria-label={readAloud ? "Turn off read aloud" : "Read the question aloud"}
+                  aria-label={readAloud ? 'Turn off read aloud' : 'Read question aloud'}
                   aria-pressed={readAloud}
                   onClick={() => {
                     toggleReadAloud();
@@ -1284,13 +1292,86 @@ export default function SimpleInterviewPage() {
                     else stopAudio();
                   }}
                 >
-                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M11 5 6 9H2v6h4l5 4z" />
                     <path d="M15.5 8.5a5 5 0 0 1 0 7" />
                     <path d="M18.5 5.5a9 9 0 0 1 0 13" />
                   </svg>
                 </button>
+                <div className="si-settings-wrapper">
+                  <button
+                    type="button"
+                    className={`si-header-icon-btn${settingsOpen ? ' on' : ''}`}
+                    id="room-settings-btn"
+                    aria-label="Speech settings"
+                    aria-expanded={settingsOpen}
+                    onClick={() => setSettingsOpen((prev) => !prev)}
+                  >
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <circle cx="12" cy="12" r="3" />
+                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                    </svg>
+                  </button>
+                  {settingsOpen && (
+                    <div className="si-settings-dropdown" role="dialog" aria-label="Audio settings">
+                      <div className="si-settings-header">
+                        <span>Speech settings</span>
+                        <button type="button" className="si-settings-close" onClick={() => setSettingsOpen(false)} aria-label="Close settings">×</button>
+                      </div>
+                      <div className="si-settings-body">
+                        <label htmlFor="speech-model-room">Speech model</label>
+                        {highEndEligible ? (
+                          <div className="si-speech-model-picker">
+                            <select
+                              id="speech-model-room"
+                              aria-label="Speech model"
+                              value={speechChoice}
+                              disabled={step === 'answering' || transcribing || followUpActive}
+                              onChange={(event) => void switchSpeechModel(event.target.value as SpeechModelChoice)}
+                            >
+                              <option value="default">Standard</option>
+                              <option value="turbo">High accuracy · {QUALITY_PROFILES.best.downloadSizeMB}</option>
+                            </select>
+                            <SpeechModelStatus ready={speechReady} loading={speechLoading} progress={speechProgress} />
+                          </div>
+                        ) : (
+                          <div className="si-speech-model-fixed">
+                            <span>Standard</span>
+                            <SpeechModelStatus ready={speechReady} loading={speechLoading} progress={speechProgress} />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
+            </div>
+
+            {/* 3-Step Indicator: Listen -> Answer -> Review */}
+            <div className="si-step-indicator" role="navigation" aria-label="Interview stages">
+              <div className={`si-step-item${step === 'asking' ? ' active' : ''}${step === 'answering' || step === 'code' || step === 'answer' ? ' completed' : ''}`}>
+                <span className="si-step-badge">1</span>
+                <span className="si-step-text">Listen</span>
+              </div>
+              <span className="si-step-line" aria-hidden="true" />
+              <div className={`si-step-item${step === 'answering' || step === 'code' ? ' active' : ''}${step === 'answer' ? ' completed' : ''}`}>
+                <span className="si-step-badge">2</span>
+                <span className="si-step-text">Answer</span>
+              </div>
+              <span className="si-step-line" aria-hidden="true" />
+              <div className={`si-step-item${step === 'answer' ? ' active' : ''}`}>
+                <span className="si-step-badge">3</span>
+                <span className="si-step-text">Review</span>
+              </div>
+            </div>
+
+            <div className="si-question-row">
+              <h2 className="si-question-title">
+                {question.title}
+                {question.problemId && hasAward(events, `/interview#${question.id}`, 'interview') && (
+                  <span className="si-solved-badge"><span className="si-tick">✓</span> Solved in editor</span>
+                )}
+              </h2>
             </div>
             {question.options && (
               <ol className="si-options" type="A">
@@ -1315,26 +1396,46 @@ export default function SimpleInterviewPage() {
               <div className="si-speaker-info">
                 <span className="si-speaker-label">{readAloud ? 'Interviewer speaking' : 'Your question'}</span>
                 <p className="si-status" role="status">
-                  {!readAloud
-                    ? 'Read the question, then start your answer.'
-                    : voiceLoading === null
-                    ? 'The interviewer is reading the question aloud…'
-                    : voiceLoading < 1
-                      ? `Preparing the voice on your device (${Math.round(voiceLoading * 100)}%)…`
-                      : 'Preparing the voice…'}
+                  {readAloud
+                    ? voiceLoading === null
+                      ? 'The interviewer is reading the question aloud…'
+                      : voiceLoading < 1
+                        ? `Preparing the voice on your device (${Math.round(voiceLoading * 100)}%)…`
+                        : 'Preparing the voice…'
+                    : 'Read the question above, then begin answering.'}
                 </p>
               </div>
             </div>
             <div className="si-speaker-wave" aria-hidden="true">
-              <LiveWaveform active={readAloud} stream={null} height={46} barColor="var(--accent)" />
+              <LiveWaveform active={Boolean(readAloud && reading)} stream={null} height={46} barColor="var(--accent)" />
             </div>
-            <div className="si-actions">
+            <div className="si-actions si-bottom-bar-fixed">
+              <nav className="si-bottom-nav" aria-label="Question navigation">
+                <button
+                  type="button"
+                  className="si-link"
+                  id="previous-question"
+                  disabled={!previousItem}
+                  onClick={previousQuestion}
+                >
+                  ← Previous
+                </button>
+                <button
+                  type="button"
+                  className="si-link"
+                  id="next-question"
+                  disabled={!nextItem}
+                  onClick={nextQuestion}
+                >
+                  Next →
+                </button>
+              </nav>
               <button
                 type="button"
                 className="si-primary"
                 onClick={() => {
                   stopAudio();
-                  void startAnswering();
+                  handleStartAnswering();
                 }}
               >
                 Skip to answering <span className="si-key-hint">Space</span>
@@ -1363,144 +1464,252 @@ export default function SimpleInterviewPage() {
 
         {step === 'answering' && (
           <div className="si-speaker-card si-speaker-answering">
-            <div className="si-speaker-identity">
-              <div className={`si-speaker-avatar ${typing ? 'si-avatar-typing' : 'si-avatar-listening'}`} aria-hidden="true">
-                {typing ? (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect width="20" height="14" x="2" y="5" rx="2" />
-                    <line x1="6" x2="6.01" y1="9" y2="9" />
-                    <line x1="10" x2="10.01" y1="9" y2="9" />
-                    <line x1="14" x2="14.01" y1="9" y2="9" />
-                    <line x1="18" x2="18.01" y1="9" y2="9" />
-                    <line x1="8" x2="16" y1="15" y2="15" />
-                  </svg>
-                ) : (
-                  <span className="si-recording-dot" />
-                )}
-              </div>
-              <div className="si-speaker-info">
-                <span className="si-speaker-label">{typing ? 'Typing your answer' : 'Listening to you'}</span>
-                <p className="si-status" role="status">
-                  {typing ? 'Type your explanation below.' : micStatus}
-                </p>
-              </div>
-            </div>
-            {micError && (
-              <div className="si-error-banner" role="alert">
-                <div className="si-error-content">
-                  <strong className="si-error-title">Microphone unavailable</strong>
-                  <p className="si-error-desc">{micError}</p>
+            {showInputPrimer ? (
+              <div className="si-primer-card" role="region" aria-label="Answer method selection">
+                <h3 className="si-primer-title">Speak your answer or type it</h3>
+                <p className="si-primer-text">Choose how you prefer to answer questions. You can switch between voice and typing anytime.</p>
+                <div className="si-primer-actions">
+                  <button
+                    type="button"
+                    className="si-primary"
+                    id="primer-speak"
+                    onClick={chooseVoice}
+                  >
+                    Speak answer
+                  </button>
+                  <button
+                    type="button"
+                    className="si-secondary-btn"
+                    id="primer-type"
+                    onClick={chooseType}
+                  >
+                    Type instead
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  className="si-error-action"
-                  onClick={() => {
-                    setMicError(null);
-                    setTyping(false);
-                    void startAnswering(undefined, true);
-                  }}
-                >
-                  Try microphone again
-                </button>
               </div>
-            )}
-            {!typing && (
-              <div className="si-speaker-wave" aria-hidden="true">
-                <LiveWaveform active={true} stream={micStream} height={46} barColor="var(--accent)" />
-              </div>
-            )}
-            {typing ? (
-              <textarea
-                className="si-answer-box"
-                aria-label="Your answer"
-                rows={7}
-                placeholder="Type your explanation as you would talk it through with an interviewer..."
-                value={transcript}
-                onChange={(e) => setTranscript(e.target.value)}
-              />
             ) : (
-              <div className="si-answer-box" aria-live="polite">
-                {transcript || <span className="si-placeholder">Your words will appear here as you speak…</span>}
-              </div>
+              <>
+                <div className="si-speaker-identity">
+                  <div className={`si-speaker-avatar ${typing ? 'si-avatar-typing' : 'si-avatar-listening'}`} aria-hidden="true">
+                    {typing ? (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect width="20" height="14" x="2" y="5" rx="2" />
+                        <line x1="6" x2="6.01" y1="9" y2="9" />
+                        <line x1="10" x2="10.01" y1="9" y2="9" />
+                        <line x1="14" x2="14.01" y1="9" y2="9" />
+                        <line x1="18" x2="18.01" y1="9" y2="9" />
+                        <line x1="8" x2="16" y1="15" y2="15" />
+                      </svg>
+                    ) : (
+                      <span className="si-recording-dot" />
+                    )}
+                  </div>
+                  <div className="si-speaker-info">
+                    <span className="si-speaker-label">{typing ? 'Typing your answer' : 'Listening to you'}</span>
+                    <p className="si-status" role="status">
+                      {typing ? 'Type your explanation below.' : micStatus}
+                    </p>
+                  </div>
+                </div>
+
+                {micError && (
+                  <div className="si-error-banner" role="alert">
+                    <div className="si-error-content">
+                      <strong className="si-error-title">Microphone unavailable</strong>
+                      <p className="si-error-desc">Typing your answer below.</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="si-error-action"
+                      onClick={() => {
+                        setMicError(null);
+                        setTyping(false);
+                        void startAnswering(undefined, true);
+                      }}
+                    >
+                      Try microphone again
+                    </button>
+                  </div>
+                )}
+
+                {!typing && (
+                  <div className="si-speaker-wave" aria-hidden="true">
+                    <LiveWaveform active={true} stream={micStream} height={46} barColor="var(--accent)" />
+                  </div>
+                )}
+
+                {typing ? (
+                  <textarea
+                    className="si-answer-box"
+                    aria-label="Your answer"
+                    rows={7}
+                    placeholder="Type your explanation as you would talk it through with an interviewer..."
+                    value={transcript}
+                    onChange={(e) => setTranscript(e.target.value)}
+                  />
+                ) : (
+                  <div className="si-answer-box" aria-live="polite">
+                    {transcript || <span className="si-placeholder">Your words will appear here as you speak…</span>}
+                  </div>
+                )}
+
+                {question.rounds?.includes('system-design') && <SystemDesignCanvas key={questionId} value={sketch} onChange={setSketch} />}
+
+                <div className="si-actions si-bottom-bar-fixed si-sticky">
+                  <nav className="si-bottom-nav" aria-label="Question navigation">
+                    <button
+                      type="button"
+                      className="si-link"
+                      id="previous-question"
+                      disabled={!previousItem}
+                      onClick={previousQuestion}
+                    >
+                      ← Previous
+                    </button>
+                    <button
+                      type="button"
+                      className="si-link"
+                      id="next-question"
+                      disabled={!nextItem}
+                      onClick={nextQuestion}
+                    >
+                      Next →
+                    </button>
+                  </nav>
+
+                  <button
+                    type="button"
+                    className="si-primary"
+                    id="done"
+                    aria-label="Done"
+                    onClick={finishAnswer}
+                  >
+                    <span>Done</span>
+                    <span className="si-key-hint" aria-hidden="true">Space</span>
+                  </button>
+
+                  {question.problemId && (
+                    <button
+                      type="button"
+                      className="si-code-button"
+                      id="open-code-editor-answering"
+                      onClick={() => {
+                        answeringRef.current = false;
+                        void engineRef.current?.stop().catch(() => undefined);
+                        stopMic();
+                        previousStepRef.current = 'answering';
+                        setStep('code');
+                      }}
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <polyline points="16 18 22 12 16 6" />
+                        <polyline points="8 6 2 12 8 18" />
+                      </svg>
+                      <span>Open code editor</span>
+                    </button>
+                  )}
+
+                  {!typing ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        answeringRef.current = false;
+                        void engineRef.current?.stop().catch(() => undefined);
+                        stopMic();
+                        setTyping(true);
+                        setInputMode('type');
+                        try { localStorage.setItem(INPUT_MODE_KEY, 'type'); } catch {}
+                      }}
+                    >
+                      Type instead
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTyping(false);
+                        setInputMode('voice');
+                        try { localStorage.setItem(INPUT_MODE_KEY, 'voice'); } catch {}
+                        void startAnswering(undefined, true);
+                      }}
+                    >
+                      Use microphone
+                    </button>
+                  )}
+                </div>
+              </>
             )}
-            {question.rounds?.includes('system-design') && <SystemDesignCanvas key={questionId} value={sketch} onChange={setSketch} />}
-            <div className="si-actions si-sticky">
-              <button
-                type="button"
-                className="si-primary"
-                id="done"
-                aria-label="Done"
-                onClick={finishAnswer}
-              >
-                <span>Done</span>
-                <span className="si-key-hint" aria-hidden="true">Space</span>
-              </button>
-              {question.problemId && (
-                <button
-                  type="button"
-                  className="si-code-button"
-                  id="open-code-editor-answering"
-                  onClick={() => {
-                    answeringRef.current = false;
-                    void engineRef.current?.stop().catch(() => undefined);
-                    stopMic();
-                    previousStepRef.current = 'answering';
-                    setStep('code');
-                  }}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <polyline points="16 18 22 12 16 6" />
-                    <polyline points="8 6 2 12 8 18" />
-                  </svg>
-                  <span>Open code editor</span>
-                </button>
-              )}
-              {!typing ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    answeringRef.current = false;
-                    void engineRef.current?.stop().catch(() => undefined);
-                    stopMic();
-                    setTyping(true);
-                  }}
-                >
-                  Type instead
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTyping(false);
-                    void startAnswering(undefined, true);
-                  }}
-                >
-                  Use microphone
-                </button>
-              )}
-            </div>
           </div>
         )}
 
 
         {step === 'answer' && (
           <div className="si-answer-stage">
-            <fieldset className="si-self-rating">
-              <legend>How did your answer go?</legend>
-              <p>Choose a rating.</p>
-              <div className="si-actions">{(Object.entries(RATING_LABELS) as [SelfRating,string][]).map(([value,label])=><button key={value} disabled={!attemptId || transcribing}
-                aria-pressed={selfRating?.value===value}
-                onClick={()=>{if(attemptId){const now=Date.now();saveLearning([{questionId,completion:{time:latest?.time ?? now,attemptId}},rateQuestion(learning,questionId,attemptId,value,now)]);}}}>{label}</button>)}</div>
-              <p className="si-status" role="status">{selfRating ? `Self-rating saved. Next review: ${new Date(reviewDueAt(currentLearning!)!).toLocaleDateString()}.` : ''}</p>
-            </fieldset>
-            <DeliveryRow delivery={latest?.delivery} />
-            {question.rounds?.includes('system-design') && <div className="sd-comparison">
-              <SystemDesignCanvas value={latest?.sketch ?? sketch} />
-              {referenceDiagram ? <div><SystemDesignCanvas value={referenceDiagram} title="Reference architecture" /><p>{referenceDiagram.note}</p></div>
-                : <p>No reference diagram for this question yet. Compare your sketch with the model answer below.</p>}
-            </div>}
+            {/* 1. KEY-POINT CHECK (Full width, Covered and Not heard) */}
+            {check === 'checking' && (
+              <div className="si-check-loading">
+                <p className="si-status" role="status">
+                  Checking key points…
+                </p>
+              </div>
+            )}
+            {check === 'failed' && (
+              <p className="si-status si-failed-status">Answer checking could not load on this device.</p>
+            )}
+            {check && typeof check === 'object' && (
+              <div className="si-check si-keypoints-card">
+                <div className="si-check-header">
+                  <h3>Key points</h3>
+                  {SHOW_COVERAGE_SCORE && <span className="si-score-pill">{check.score}% coverage</span>}
+                </div>
+                <div className="si-keypoints-grid">
+                  <div className="si-keypoints-col covered">
+                    <h4>Covered</h4>
+                    {check.points.filter((p) => p.verdict === 'covered').length > 0 ? (
+                      <ul className="si-points">
+                        {check.points
+                          .filter((p) => p.verdict === 'covered')
+                          .map((p) => (
+                            <li key={p.point} className="covered">
+                              <span className="si-verdict">Covered</span>
+                              <span className="si-point-title">{p.point}</span>
+                              {p.evidence && (
+                                <blockquote className="si-point-evidence">
+                                  <span>In your answer</span>
+                                  {p.evidence}
+                                </blockquote>
+                              )}
+                            </li>
+                          ))}
+                      </ul>
+                    ) : (
+                      <p className="si-empty-points">No key points covered in this attempt.</p>
+                    )}
+                  </div>
+                  <div className="si-keypoints-col missed">
+                    <h4>Not heard</h4>
+                    {check.points.filter((p) => p.verdict !== 'covered').length > 0 ? (
+                      <ul className="si-points">
+                        {check.points
+                          .filter((p) => p.verdict !== 'covered')
+                          .map((p) => (
+                            <li key={p.point} className="undetected">
+                              <span className="si-verdict">Not heard</span>
+                              <span className="si-point-title">{p.point}</span>
+                            </li>
+                          ))}
+                      </ul>
+                    ) : (
+                      <p className="si-empty-points">All key points covered!</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 2. ANSWERS COMPARISON */}
             <div className="si-comparison-grid">
-              <section className="si-col-yours" aria-label="Your answer and evaluation">
+              <section className="si-col-yours" aria-label="Your answer">
                 <div className="si-panel-header">
                   <h3>Your answer</h3>
                   <span className="si-type-tag">{typing ? 'Typed' : 'Spoken'}</span>
@@ -1510,37 +1719,6 @@ export default function SimpleInterviewPage() {
                   <p className="si-status" role="status">
                     Finishing your transcript…
                   </p>
-                )}
-
-                {check === 'checking' && (
-                  <div className="si-check-loading">
-                    <p className="si-status" role="status">
-                      Checking key points…
-                    </p>
-                  </div>
-                )}
-                {check === 'failed' && (
-                  <p className="si-status si-failed-status">Answer checking could not load on this device.</p>
-                )}
-                {check && typeof check === 'object' && (
-                  <div className="si-check">
-                    <div className="si-check-header">
-                      <h3>{question.keyPoints?.length ? 'Automated key-point check' : 'How your answer compares'}</h3>
-                      {SHOW_COVERAGE_SCORE && <span className="si-score-pill">{check.score}% coverage</span>}
-                    </div>
-                    <p>Compare this automated checklist with your answer and the model answer. Not detected points may still be in your answer.</p>
-                    <ul className="si-points">
-                      {check.points.map((p) => (
-                        <li key={p.point} className={p.verdict === 'covered' ? 'covered' : 'undetected'}>
-                          <span className="si-verdict">
-                            {p.verdict === 'covered' ? 'Covered' : 'Not detected'}
-                          </span>
-                          {p.point}
-                          {p.verdict === 'covered' && p.evidence && <blockquote className="si-point-evidence"><span>In your answer</span>{p.evidence}</blockquote>}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
                 )}
                 {comparison && (
                   <section className="si-sub-section" aria-label="Change since your previous attempt" aria-live="polite">
@@ -1592,6 +1770,18 @@ export default function SimpleInterviewPage() {
                   {question.answer}
                 </div>
 
+                {/* Trade-offs */}
+                {question.tradeOffs && question.tradeOffs.length > 0 && (
+                  <div className="si-sub-section si-tradeoffs">
+                    <h4>Trade-offs</h4>
+                    <ul className="si-bullets">
+                      {question.tradeOffs.map((t) => (
+                        <li key={t}>{t}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
                 {latest && !transcribing && question.followUps?.length ? <FollowUpAnswer
                   key={latest.id} attempt={latest} followUps={question.followUps}
                   points={check && typeof check === 'object' ? check.points : undefined}
@@ -1626,7 +1816,77 @@ export default function SimpleInterviewPage() {
               </section>
             </div>
 
-            <div className="si-actions si-sticky">
+            {/* DeliveryRow & SD comparison */}
+            <DeliveryRow delivery={latest?.delivery} />
+            {question.rounds?.includes('system-design') && (
+              <div className="sd-comparison">
+                <SystemDesignCanvas value={latest?.sketch ?? sketch} />
+                {referenceDiagram ? (
+                  <div>
+                    <SystemDesignCanvas value={referenceDiagram} title="Reference architecture" />
+                    <p>{referenceDiagram.note}</p>
+                  </div>
+                ) : (
+                  <p>No reference diagram for this question yet. Compare your sketch with the model answer above.</p>
+                )}
+              </div>
+            )}
+
+            {/* 3. SELF-RATING (FINAL STEP, COMPLETES QUESTION) */}
+            <fieldset className="si-self-rating">
+              <legend>How did your answer go?</legend>
+              <p>Choose a rating. Rating completes this question and saves your progress.</p>
+              <div className="si-actions">
+                {(Object.entries(RATING_LABELS) as [SelfRating, string][]).map(([value, label]) => (
+                  <button
+                    key={value}
+                    disabled={!attemptId || transcribing}
+                    aria-pressed={selfRating?.value === value}
+                    onClick={() => {
+                      if (attemptId) {
+                        const now = Date.now();
+                        awardInterviewCompleted(questionId);
+                        saveLearning([
+                          { questionId, completion: { time: latest?.time ?? now, attemptId } },
+                          rateQuestion(learning, questionId, attemptId, value, now),
+                        ]);
+                      }
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="si-status" role="status">
+                {selfRating
+                  ? `Self-rating saved. Question completed (+${INTERVIEW_COMPLETED_POINTS} points). Next review: ${new Date(reviewDueAt(currentLearning!)!).toLocaleDateString()}.`
+                  : ''}
+              </p>
+            </fieldset>
+
+            {/* 4. BOTTOM ACTION BAR */}
+            <div className="si-actions si-bottom-bar-fixed si-sticky">
+              <nav className="si-bottom-nav" aria-label="Question navigation">
+                <button
+                  type="button"
+                  className="si-link"
+                  id="previous-question"
+                  disabled={!previousItem}
+                  onClick={previousQuestion}
+                >
+                  ← Previous
+                </button>
+                <button
+                  type="button"
+                  className="si-link"
+                  id="next-question"
+                  disabled={!nextItem}
+                  onClick={nextQuestion}
+                >
+                  Next →
+                </button>
+              </nav>
+
               {question.problemId && (
                 <button
                   type="button"
@@ -1652,18 +1912,14 @@ export default function SimpleInterviewPage() {
               <button type="button" id="practice-again" onClick={() => goToQuestion(questionIndex)}>
                 Practice again
               </button>
-              {hasAward(events, `/interview#${questionId}`, 'interview') ? (
+              {hasAward(events, `/interview#${questionId}`, 'interview') && (
                 <span className="si-done" role="status">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }} aria-hidden="true">
                     <polyline points="20 6 9 17 4 12" />
                   </svg>
                   Completed · +{INTERVIEW_COMPLETED_POINTS} points
                 </span>
-              ) : transcript.trim().length > 0 ? (
-                <button type="button" id="mark-complete" onClick={handleComplete}>
-                  Mark complete <span className="si-wide-only">(+{INTERVIEW_COMPLETED_POINTS} points)</span>
-                </button>
-              ) : null}
+              )}
             </div>
           </div>
         )}

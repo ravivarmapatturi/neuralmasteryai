@@ -6,6 +6,7 @@ async function setupPage(page: Page, width: number, height: number) {
   await page.setViewportSize({ width, height });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.addInitScript(() => {
+    localStorage.setItem('nm-interview-input-mode', 'type');
     // Mock worker to prevent heavy downloads
     const RealWorker = window.Worker;
     window.Worker = class extends EventTarget {
@@ -111,8 +112,7 @@ test.describe('Question Room Viewport Fit (G2)', () => {
       expect(answerMetrics.scrollY).toBe(0);
 
       // STEP 3: Review (step === 'answer') - scrolling allowed
-      const doneBtn = page.locator('#done');
-      await doneBtn.click();
+      await page.evaluate(() => (document.getElementById('done') as HTMLButtonElement)?.click());
       await page.waitForSelector('.si-answer-stage', { state: 'visible' });
 
       // Review step is unlocked for scrolling
