@@ -1,0 +1,34 @@
+name: Speech eval
+on:
+  push:
+    branches: [speech-eval]
+env:
+  ONNXRUNTIME_NODE_INSTALL: 'skip'
+  ONNXRUNTIME_NODE_INSTALL_CUDA: 'skip'
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: v2-base, args: '--only=whisper-base-wasm --set=v2' }
+          - { name: v2-small, args: '--only=small-wasm --set=v2' }
+          - { name: v2-base-wide, args: '--only=whisper-base-wasm --set=v2 --prompt=wide' }
+          - { name: terms-base-off, args: '--only=whisper-base-wasm --set=terms' }
+          - { name: terms-base-question, args: '--only=whisper-base-wasm --set=terms --prompt=question' }
+          - { name: terms-base-wide, args: '--only=whisper-base-wasm --set=terms --prompt=wide' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: npm }
+      - run: npm ci
+      - run: node scripts/speech-accuracy/evaluate-tiers.mjs ${{ matrix.args }} --name=${{ matrix.name }} --repeat
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tier-${{ matrix.name }}
+          path: scripts/speech-accuracy/tier-${{ matrix.name }}.json
