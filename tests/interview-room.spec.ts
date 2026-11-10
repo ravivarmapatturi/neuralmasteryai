@@ -695,46 +695,38 @@ test('level filter screenshots and responsive fit at 375 and 1440', async ({ pag
   }
 });
 
-test('Today’s 10 freezes a mixed queue across reloads and allows one daily skip', async ({page})=>{
+test('a due review rated Got it on a new attempt advances its review stage, and survives reload', async ({page})=>{
   await controlledRoom(page);
-  const due=practice.topics[0].questions.slice(0,6).map(q=>q.id);
-  await page.evaluate(ids=>{
-    const time=Date.now()-2*86_400_000;
-    localStorage.setItem('nm-interview-learning-v1:guest',JSON.stringify(ids.map(questionId=>({questionId,completion:{time,attemptId:questionId},rating:{time,attemptId:questionId,value:'got-it',stage:0}}))));
-  },due);
+  // Today's 10 was removed on purpose; review scheduling now lives in the self-rating alone.
+  await expect(page.getByRole('region',{name:"Today's 10",exact:true})).toHaveCount(0);
+  await page.evaluate(()=>{
+    const time=Date.now()-30*86_400_000;
+    localStorage.setItem('nm-interview-learning-v1:guest',JSON.stringify([{questionId:'senior:dropout',completion:{time,attemptId:'old-attempt'},rating:{time,attemptId:'old-attempt',value:'got-it',stage:0}}]));
+  });
+  await page.goto(`http://localhost:${PORT}/interview?q=senior:dropout`);
+  await page.locator('#start-topic').click();await answerByTyping(page);await page.locator('#done').click();
+  const rating=page.getByRole('group',{name:'How did your answer go?'});
+  await rating.getByRole('button',{name:'Got it',exact:true}).click();
+  await expect(rating.getByRole('button',{name:'Got it',exact:true})).toHaveAttribute('aria-pressed','true');
+  const read=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('nm-interview-learning-v1:guest')!).find((r:any)=>r.questionId==='senior:dropout'));
+  await expect.poll(async()=>(await read()).rating.stage).toBe(1);
+  expect((await read()).rating.attemptId).not.toBe('old-attempt');
+  // Correcting the rating on the same attempt is not another review: Missed it resets to stage 0.
+  await rating.getByRole('button',{name:'Missed it',exact:true}).click();
+  await expect.poll(async()=>(await read()).rating.stage).toBe(0);
   await page.reload();
-  const today=page.getByRole('region',{name:"Today's 10",exact:true});
-  await expect(today.getByRole('status').first()).toHaveText('0 of 10 completed today · 5 due reviews · 5 new');
-  const assigned=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('nm-interview-learning-v1:guest')!).filter((r:any)=>r.assignment).map((r:any)=>r.questionId).sort());
-  const before=await assigned();
-  await page.reload();expect(await assigned()).toEqual(before);
-  await today.getByRole('button',{name:'Skip one question today'}).click();
-  await expect(today.getByRole('button',{name:'Skip one question today'})).toBeDisabled();
-  await expect(today.getByRole('status').first()).toContainText('of 10');
-  await page.reload();
-  await expect(today.getByRole('button',{name:'Skip one question today'})).toBeDisabled();
-  const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('nm-interview-learning-v1:guest')!));
-  expect(saved.filter((r:any)=>r.skippedAt)).toHaveLength(1);
-  expect(saved.filter((r:any)=>r.assignment)).toHaveLength(11);
-  const active=saved.filter((r:any)=>r.assignment && !r.skippedAt).sort((a:any,b:any)=>a.assignment.time-b.assignment.time||a.questionId.localeCompare(b.questionId));
-  await today.getByRole('button',{name:'Continue today’s 10'}).click();
-  await expect(page.locator('.si-counter')).toHaveText('1 / 10');
-  await expect(page.locator('.si-question-title')).toHaveText(practice.topics.flatMap(t=>t.questions).find(q=>q.id===active[0].questionId)!.title);
-  await page.locator('#next-question').click();
-  await expect(page.locator('.si-counter')).toHaveText('2 / 10');
-  await expect(page.locator('.si-question-title')).toHaveText(practice.topics.flatMap(t=>t.questions).find(q=>q.id===active[1].questionId)!.title);
+  expect((await read()).rating.value).toBe('missed');
 });
 
-test('self-ratings survive a late automated check and reload; queue and answer fit both themes',async({page},testInfo)=>{
+test('self-ratings survive a late automated check and reload; topic page and answer fit both themes',async({page},testInfo)=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
   await controlledRoom(page);
-  const today=page.getByRole('region',{name:"Today's 10",exact:true});
   for(const width of [375,1440])for(const theme of ['light','dark']){
     await page.setViewportSize({width,height:1000});
     await page.evaluate(theme=>document.documentElement.setAttribute('data-theme',theme),theme);
-    await expect(today).toBeVisible();
+    await expect(page.locator('#start-topic')).toBeVisible();
     expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBe(width);
-    await today.screenshot({path:testInfo.outputPath(`queue-${width}-${theme}.png`)});
+    await page.screenshot({path:testInfo.outputPath(`topic-${width}-${theme}.png`)});
   }
   await page.goto(`http://localhost:${PORT}/interview?q=senior:dropout`);
   await page.locator('#start-topic').click();await answerByTyping(page);await page.locator('#done').click();

@@ -29,11 +29,7 @@ test.describe('Focus Pomodoro Timer E2E', () => {
     await expect(page.locator('.nm-focus-digits')).toHaveText('25:00');
     await expect(page.getByText('No focus sessions recorded yet')).toBeVisible();
 
-    // 3. Start focus session
-    const startBtn = page.getByRole('button', { name: /start 25m focus/i });
-    await startBtn.click();
-
-    // Confirm running state
+    // 3. The focus session starts on its own when the site opens: no click needed.
     await expect(page.locator('.nm-focus-phase-pill')).toHaveText('Focus');
     await expect(page.getByRole('button', { name: /pause timer/i })).toBeVisible();
 
@@ -149,17 +145,18 @@ test.describe('Focus Pomodoro Timer E2E', () => {
           expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
         };
         await measure();
+        // The timer starts on its own when the site opens, so the control is already running.
         await page.getByRole('button', { name: 'Open menu', exact: true }).click();
-        await page.getByRole('button', { name: 'Start focus timer', exact: true }).filter({ visible: true }).click();
+        await page.getByRole('button', { name: /focus timer running/i }).filter({ visible: true }).click();
         const popover = await page.locator('.nm-timer-popover').boundingBox();
         expect(popover!.x).toBeGreaterThanOrEqual(0);
         expect(popover!.x + popover!.width).toBeLessThanOrEqual(width);
-        await page.locator('.nm-timer-popover').getByRole('button', { name: /start/i }).first().click();
+        await page.locator('.nm-timer-popover').getByRole('button', { name: 'Pause timer', exact: true }).click();
         await page.getByRole('button', { name: 'Close focus timer', exact: true }).click();
         await page.getByRole('button', { name: 'Close menu', exact: true }).click();
         await measure();
         await page.locator('.nm-navbar-nav .nm-timer-nav-btn').click();
-        await page.getByRole('button', { name: /pause/i }).filter({ visible: true }).first().click();
+        await page.getByRole('button', { name: /resume timer/i }).filter({ visible: true }).first().click();
         await page.keyboard.press('Escape');
         await measure();
         await page.evaluate(() => localStorage.removeItem('nm_focus_timer_state'));
@@ -171,7 +168,8 @@ test.describe('Focus Pomodoro Timer E2E', () => {
     const startTime = new Date('2026-11-09T14:00:00.000Z');
     await page.clock.install({ time: startTime });
     await page.goto('/focus');
-    await page.getByRole('button', { name: /start 25m focus/i }).click();
+    // Focus starts on its own when the site opens.
+    await expect(page.locator('.nm-focus-phase-pill')).toHaveText('Focus');
 
     // Move wall time without firing interval callbacks: the persisted timer is
     // still running and unsaved when a real document reload discovers expiry.
@@ -194,5 +192,29 @@ test.describe('Focus Pomodoro Timer E2E', () => {
     await expect(page.locator('.nm-focus-metrics-grid')).toContainText('1 session');
     const sessionsAfter = await page.evaluate(() => JSON.parse(localStorage.getItem('nm_focus_sessions') || '[]'));
     expect(sessionsAfter.length).toBe(1);
+  });
+
+  test('timer starts on its own, pauses while the tab is hidden and resumes when visible', async ({ page }) => {
+    await page.clock.install({ time: new Date('2026-11-09T16:00:00.000Z') });
+    await page.goto('/focus');
+    const readState = () => page.evaluate(() => JSON.parse(localStorage.getItem('nm_focus_timer_state') || 'null'));
+    await expect.poll(async () => (await readState())?.status).toBe('running');
+    await expect(page.locator('.nm-focus-digits')).toHaveText('25:00');
+
+    const setHidden = (hidden: boolean) => page.evaluate((h) => {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => h });
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (h ? 'hidden' : 'visible') });
+      document.dispatchEvent(new Event('visibilitychange'));
+    }, hidden);
+
+    await page.clock.fastForward(5000);
+    await setHidden(true);
+    await expect.poll(async () => (await readState())?.status).toBe('paused');
+    expect((await readState()).pausedReason).toBe('away');
+    // Time away does not count: no 60-second grace rule.
+    await page.clock.fastForward(10 * 60 * 1000);
+    await setHidden(false);
+    await expect.poll(async () => (await readState())?.status).toBe('running');
+    await expect(page.locator('.nm-focus-digits')).toHaveText(/^24:5\d$/);
   });
 });
