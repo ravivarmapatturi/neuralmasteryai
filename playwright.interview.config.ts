@@ -3,7 +3,7 @@ import base from './playwright.config';
 process.env.TEST_PORT = '5173';
 export default defineConfig({
   ...base,
-  testMatch: 'interview-room.spec.ts',
+  testMatch: /interview-.*\.spec\.ts/,
   workers: 1,
   use: { ...base.use, baseURL: 'http://127.0.0.1:5173/' },
   webServer: {

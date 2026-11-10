@@ -28,7 +28,7 @@ export function SystemDesignCanvas({ value, onChange, title = 'Your sketch' }: {
   return <section className="sd-canvas" aria-label={title}>
     <h3>{title}</h3>
     {onChange && <>
-      <p>Add boxes, drag to move, then choose Draw arrow and two boxes. Focus a box and use arrow keys to move; Delete removes it.</p>
+      <p>Add boxes, drag to arrange, and draw arrows to connect them.</p>
       <div className="sd-tools" aria-label="Box palette">{BOX_TYPES.map(label => <button type="button" key={label} disabled={value.nodes.length >= 24}
         onClick={() => { const i = value.nodes.length; change({ ...value, nodes: [...value.nodes, { id: crypto.randomUUID(), label, x: (i % 3) * 34, y: Math.floor(i / 3) * 12 }] }); }}>{label}</button>)}</div>
       <div className="sd-tools">

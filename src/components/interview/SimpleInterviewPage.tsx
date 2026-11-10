@@ -1339,8 +1339,17 @@ export default function SimpleInterviewPage() {
             )}
             {question.rounds?.includes('system-design') && <SystemDesignCanvas key={questionId} value={sketch} onChange={setSketch} />}
             <div className="si-actions si-sticky">
-              <button type="button" className="si-primary" id="done" onClick={finishAnswer}>
-                I'm done, show the answer <span className="si-key-hint">Space</span>
+              <button
+                type="button"
+                className="si-primary"
+                id="done"
+                aria-label="I'm done, show the answer"
+                onClick={finishAnswer}
+              >
+                <span className="si-btn-short" aria-hidden="true">Done</span>
+                <span className="si-btn-full" aria-hidden="true">I'm done, show the answer</span>
+                <span className="sr-only">I'm done, show the answer</span>
+                <span className="si-key-hint">Space</span>
               </button>
               {question.problemId && (
                 <button
