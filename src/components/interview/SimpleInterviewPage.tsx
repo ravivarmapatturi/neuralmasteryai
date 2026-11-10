@@ -14,6 +14,7 @@ import { useFocusMusic } from '../../contexts/FocusMusicContext';
 import type { SingleThreadASREngine } from '../../lib/speechTest/engines';
 import practice from '../../data/interviewPractice.json';
 import { LearnLinks } from './LearnLinks';
+import { SpokenText } from './SpokenText';
 import { InterviewGraph } from './InterviewGraph';
 import { DeliveryRow } from './DeliveryRow';
 import { measureDelivery, type DeliveryTiming } from '../../lib/interviewDelivery';
@@ -474,6 +475,7 @@ export default function SimpleInterviewPage() {
 
   const voiceCancelRef = useRef<(() => void) | null>(null);
   const [voiceLoading, setVoiceLoading] = useState<number | null>(null);
+  const [spoken, setSpoken] = useState<{ name: string; audio: HTMLAudioElement } | null>(null);
 
   const stopAudio = useCallback(() => {
     voiceCancelRef.current?.();
@@ -523,6 +525,7 @@ export default function SimpleInterviewPage() {
       audio.onplaying = () => {
         window.clearTimeout(stalled);
         setVoiceLoading(null);
+        setSpoken({ name, audio });
       };
       audio.play().catch(() => finish(true));
     },
@@ -1365,7 +1368,7 @@ export default function SimpleInterviewPage() {
 
             <div className="si-question-row">
               <h2 className="si-question-title">
-                {question.title}
+                <SpokenText text={question.title} audio={spoken?.name === `${questionId}_q` && reading ? spoken.audio : null} />
                 {question.problemId && hasAward(events, `/interview#${question.id}`, 'interview') && (
                   <span className="si-solved-badge"><span className="si-tick">✓</span> Solved in editor</span>
                 )}
@@ -1766,7 +1769,7 @@ export default function SimpleInterviewPage() {
                   )}
                 </div>
                 <div className="si-model" id="model-answer">
-                  {question.answer}
+                  <SpokenText text={question.answer} audio={spoken?.name === `${questionId}_a` && reading ? spoken.audio : null} />
                 </div>
 
                 {/* Trade-offs */}
