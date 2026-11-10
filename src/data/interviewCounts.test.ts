@@ -43,5 +43,6 @@ it('preserves all 79 authored senior rubrics alongside model-answer fallback que
     expect(points.length).toBeLessThanOrEqual(6);
     expect(points.every(point => q.answer.replace(/\s+/g, ' ').includes(point))).toBe(true);
   }
-  expect(questions.some(q=>!q.keyPoints)).toBe(true);
+  // Every question now has a rubric, so the checklist never falls back to answer sentences.
+  expect(questions.every(q => q.keyPoints?.length)).toBe(true);
 });
