@@ -2998,5 +2998,605 @@
     "Ship bounded shared-host rules and a DELETE deny in a kit.",
     "Use clone mode and host-managed secret binding.",
     "Gate the environment plan and test real allow/deny behavior."
+  ],
+  "repo:cost-capacity:batch-lane-triage": [
+    "Classify workloads by acceptable user latency.",
+    "Keep interactive work synchronous with caching.",
+    "Use async queues for minute-scale responses.",
+    "Use batch only when its deadline or a fallback meets the product deadline."
+  ],
+  "repo:cost-capacity:cost-per-outcome": [
+    "Measure cost per successful product outcome.",
+    "Tag calls with user, task, route and tenant.",
+    "Split prompt, tool, memory and response tokens.",
+    "Join call costs to outcome events."
+  ],
+  "repo:cost-capacity:two-cache-layers": [
+    "Provider prefix caches reuse computed attention state.",
+    "Prefix hits still require generation.",
+    "Semantic caches return stored answers for similar queries.",
+    "Semantic hits can skip the model call entirely."
+  ],
+  "repo:cost-capacity:budget-circuit-breaker": [
+    "Track cost on every model call.",
+    "Alert at 70 percent and throttle at 85 percent.",
+    "At 95 percent serve cached answers only.",
+    "Add tenant rate limits, daily caps and anomaly kill switches."
+  ],
+  "repo:cost-capacity:cache-break-even": [
+    "A five-minute write and one read average 0.675 normal cost.",
+    "One write and ten reads average 0.205.",
+    "One-hour writes need two reads to break even.",
+    "Cache prefixes expected to recur at least three times within TTL."
+  ],
+  "repo:cost-capacity:gateway-latency-budget": [
+    "The gateway has a 20 ms tail budget.",
+    "Fast edge and high-performance gateways fit it.",
+    "A 20-to-40 ms control-plane gateway exceeds it.",
+    "Move heavy features off-path or recover model latency budget."
+  ],
+  "repo:cost-capacity:hit-rate-gauge-lies": [
+    "An idle hit-rate gauge can retain an old batch's value.",
+    "Cumulative prefill counters cover the whole run.",
+    "The given counters imply 0.636 rather than 0.942.",
+    "Compute windowed hit rates from counter deltas."
+  ],
+  "repo:cost-capacity:parallel-calls-miss-the-cache": [
+    "Concurrent requests can all arrive before a cache write completes.",
+    "Each then misses and pays the write premium.",
+    "Send one request first to warm the prefix.",
+    "Fan out the rest after the write lands."
+  ],
+  "repo:cost-capacity:per-token-or-per-minute": [
+    "Per-token pricing suits low or bursty usage.",
+    "Per-minute pricing pays for idle wall-clock time.",
+    "Dedicated capacity wins at sustained high utilization.",
+    "Measure a full week before choosing the billing model."
+  ],
+  "repo:cost-capacity:semantic-threshold": [
+    "Wrong semantic hits are correctness failures.",
+    "Cache misses merely cost another model call.",
+    "Keep strict thresholds unless answers are interchangeable.",
+    "Label pairs from actual traffic at each candidate threshold."
+  ],
+  "repo:cost-capacity:warm-pool-or-cold-start": [
+    "Warm replicas trade idle GPU cost for cold-start avoidance.",
+    "Large interactive models may need warm capacity.",
+    "Small models or tolerant background paths can scale to zero.",
+    "Reduce cold-start duration to shrink the warm pool."
+  ],
+  "repo:cost-capacity:autoscale-on-the-right-signal": [
+    "Autoscale on waiting requests and KV cache usage.",
+    "CPU can lag serving saturation.",
+    "Startup probes must outlast measured model loading.",
+    "Use cheap liveness probes and persist weights and compile caches."
+  ],
+  "repo:cost-capacity:cheap-model-drift": [
+    "Traffic drift made the old routing classifier stale.",
+    "Rising escalations indicate cheap-model failures.",
+    "Unescalated requests can lose quality silently.",
+    "Gate routes with live quality and retrain on current traffic."
+  ],
+  "repo:cost-capacity:overnight-pipeline-cost": [
+    "Batch discounts both input and output tokens.",
+    "Prompt caching reduces repeated input cost.",
+    "The lesson's combined example reaches about 180 dollars nightly.",
+    "Consider owned GPUs for sustained utilization with little prefix reuse."
+  ],
+  "repo:cost-capacity:cold-start-anatomy": [
+    "Weight loading dominated the cited cold start.",
+    "Engine initialization also included graph capture and compilation.",
+    "A restart reuses compile cache but still loads weights.",
+    "Host-memory staging or snapshots can reduce the remaining startup time."
+  ],
+  "repo:cost-capacity:loops-hold-the-pool": [
+    "Looping generations retain growing KV state.",
+    "A few nonterminating requests can crowd out the pool.",
+    "Cap output length and add presence penalties where suitable.",
+    "Set shutdown grace periods from the new maximum request duration."
+  ],
+  "repo:cost-capacity:router-decides-hit-rate": [
+    "Each replica has its own KV cache.",
+    "Random routing can resend full conversation prefills.",
+    "Use cache-aware conversation routing with load checks.",
+    "Verify hit rates on servers rather than trusting router estimates."
+  ],
+  "repo:cost-capacity:size-the-pool-from-peak": [
+    "An underfilled benchmark cannot reveal pool-capacity benefits.",
+    "Open-loop overload exposed waiting requests at high occupancy.",
+    "The larger pool improved overloaded throughput in the cited run.",
+    "Size from peak token use including bursts and scheduler decode logs."
+  ],
+  "repo:cost-capacity:cost-attribution-take-home": [
+    "Price calls and aggregate by tenant, task, route and user.",
+    "Split token costs by prompt, tool, memory and response.",
+    "Compute cost per resolved task from outcome events.",
+    "Demonstrate rate limits, daily caps and spend-anomaly kill switches."
+  ],
+  "repo:cost-capacity:scale-to-zero-policy": [
+    "Keep warm replicas for paid chat's tight first-token target.",
+    "Give trials spare capacity or a looser margin.",
+    "Let delay-tolerant batch work scale to zero.",
+    "Compare idle GPU cost with cold starts and missed targets per tier."
+  ],
+  "repo:cost-capacity:two-provider-minimum": [
+    "Use a gateway alias per use case with two provider priorities.",
+    "Bound retries and fall back on errors or rate limits.",
+    "Keep prompt prefixes, tool order and schemas consistent.",
+    "Budget for running evals and prompt tests on both providers."
+  ],
+  "repo:evidence-reverse-engineering:observed-derived-inferred": [
+    "Observed means read directly from bytes or execution.",
+    "Derived means computed from observed records.",
+    "Inferred means an expectation not yet observed.",
+    "Execution needs controlled-replay evidence before becoming observed."
+  ],
+  "repo:evidence-reverse-engineering:empty-list-is-not-absence": [
+    "Complete references do not cover unresolved indirect calls.",
+    "A DATA reference is not a call instruction.",
+    "State only that no resolved call targets this build's function.",
+    "Record residual unknowns and the probe needed to close them."
+  ],
+  "repo:evidence-reverse-engineering:evidence-id-excludes-the-path": [
+    "Evidence IDs hash canonical semantic record content.",
+    "Exclude names and local paths from subject identity.",
+    "Include limitations so deleting one changes the ID.",
+    "Regenerate evidence when identifier rules change across releases."
+  ],
+  "repo:evidence-reverse-engineering:listing-before-pseudocode": [
+    "Decompiler signatures are inferences rather than program facts.",
+    "Read operation widths from the instruction listing.",
+    "Rebuild the arithmetic with 32-bit integer behavior.",
+    "Use overflow tests and cite the source evidence record."
+  ],
+  "repo:evidence-reverse-engineering:stale-snapshot-refused": [
+    "Snapshot keys include target, binding, operation and parameters.",
+    "Profile-version changes invalidate cached query identities.",
+    "Mutating calls invalidate snapshots even after failed replies.",
+    "Export evidence, close and reopen instead of saving stale state."
+  ],
+  "repo:evidence-reverse-engineering:addend-0x10-table-0x14": [
+    "Compute file offsets from section offset and symbol address.",
+    "The given function starts at file offset 0x50.",
+    "RIP-relative relocation writes symbol plus addend minus field address.",
+    "Account for the four bytes to the next instruction when resolving the table."
+  ],
+  "repo:evidence-reverse-engineering:function-finders-in-a-stripped-build": [
+    "LC_FUNCTION_STARTS survives stripping and lists function starts.",
+    "Prologue patterns miss optimized leaf functions.",
+    "Call targets plus entry points can recover starts.",
+    "Wildcard relocations and compare tails and lengths to split signature collisions."
+  ],
+  "repo:evidence-reverse-engineering:sweep-trap-addq-at-0x13": [
+    "Linear sweep can decode table bytes as instructions.",
+    "A misplaced REX prefix changed width and instruction alignment.",
+    "Recursive descent follows reachable branch targets.",
+    "Agreement with another sweep does not prove execution reachability."
+  ],
+  "repo:evidence-reverse-engineering:byte-match-is-not-source": [
+    "Mask relocation fields before comparing code bytes.",
+    "Compare relocation offsets, types and target sections.",
+    "Compare the referenced data as a separate step.",
+    "Matching compiler output does not establish original source text."
+  ],
+  "repo:evidence-reverse-engineering:four-bases-four-block-counts": [
+    "Normalize tool addresses by subtracting each text base.",
+    "The same function then resolves to offset 0x10.",
+    "Indirect-jump coverage changes recovered block counts.",
+    "Label placement and block models also change graph counts."
+  ],
+  "repo:evidence-reverse-engineering:hazard-grid-estimate": [
+    "Derive zero, rounding, signed and overflow hazards from the listing.",
+    "Include divide traps and switch-boundary cases.",
+    "The worked grid has 92 targeted cells.",
+    "Plausible reconstructions fail hazard cases despite passing naive tests."
+  ],
+  "repo:evidence-reverse-engineering:resolved-breakpoint-zero-hits": [
+    "Resolved breakpoints prove address resolution rather than execution.",
+    "Zero hits refute only the claimed call edge for that build.",
+    "Inlining and constant folding explain the successful output.",
+    "Use plain breakpoints, stop hooks and bounded continue commands."
+  ],
+  "repo:evidence-reverse-engineering:agent-dossier-take-home": [
+    "Record authorization, purpose, scope and release-expression limits.",
+    "Plan analysis and table reads before closing the binary.",
+    "Export evidence and budget for measured cold import time.",
+    "Keep a per-claim confidence ledger and treat file strings as data."
+  ],
+  "repo:evidence-reverse-engineering:fail-closed-proof-record": [
+    "Mint a controlled-replay reconstruction-proof record.",
+    "Link each behavioral or structural claim to evidence IDs.",
+    "Aggregate fail before unknown and treat empty claims as unknown.",
+    "Without a compiler, behavioral claims remain unknown despite byte matches."
+  ],
+  "genai-chunking-strategies": [
+    "Choose chunking from document structure and user questions.",
+    "Small chunks improve precision but lose context.",
+    "Large chunks dilute embeddings and consume more tokens.",
+    "Use overlap and tune on labelled retrieval evaluations."
+  ],
+  "genai-dense-vs-sparse-search": [
+    "Dense retrieval finds semantic paraphrases.",
+    "Sparse retrieval preserves exact names, codes and rare terms.",
+    "Hybrid search covers their different failures.",
+    "Fuse by rank when raw score scales differ."
+  ],
+  "genai-rag-reranking-pipeline": [
+    "Bi-encoders embed queries and documents independently.",
+    "Cross-encoders jointly attend to query-document pairs.",
+    "Retrieve broadly before reranking a shortlist.",
+    "Tune candidate count against the added latency."
+  ],
+  "genai-rag-advanced-query-expansion": [
+    "HyDE generates and embeds a hypothetical answer.",
+    "Answer-like text can bridge the query-document embedding gap.",
+    "Query expansion retrieves multiple rewritten or decomposed queries.",
+    "Extra calls cost latency and bad hypotheses can misdirect retrieval."
+  ],
+  "qa-quick-reference:qa-rag-or-finetune": [
+    "RAG retrieves documents at query time.",
+    "Retrieved evidence enters the model's context.",
+    "Knowledge updates use re-indexing rather than retraining.",
+    "Fine-tuning is slower to update and does not supply citations."
+  ],
+  "qa-quick-reference:9f86bd1675da": [
+    "Chunk and embed the source documents.",
+    "Index chunk vectors in a vector store.",
+    "Embed the query and retrieve nearest chunks.",
+    "Give retrieved chunks and the query to the model."
+  ],
+  "qa-quick-reference:qa-chunk-size": [
+    "Chunking splits documents into retrievable pieces.",
+    "Tiny chunks can lose necessary surrounding context.",
+    "Oversized chunks dilute embedding precision.",
+    "Irrelevant retrieved text wastes context budget."
+  ],
+  "qa-quick-reference:qa-dense-sparse": [
+    "Dense search compares learned semantic embeddings.",
+    "Dense search catches synonyms and paraphrases.",
+    "Sparse BM25 matches literal terms.",
+    "Sparse search handles IDs and jargon but misses synonyms."
+  ],
+  "qa-quick-reference:8c1f29816cef": [
+    "BM25 ranks sparse term overlap.",
+    "Repeated terms receive diminishing returns.",
+    "Document length is normalized.",
+    "It requires neither learned embeddings nor model training."
+  ],
+  "qa-quick-reference:qa-rrf-score": [
+    "RRF sums reciprocal rank terms across lists.",
+    "The example computes 1/61 plus 1/63, about 0.0323.",
+    "Rank-only fusion avoids incompatible score scales.",
+    "Hybrid retrieval covers different dense and sparse failures."
+  ],
+  "qa-quick-reference:qa-why-rerank-shortlist": [
+    "Retrieval uses cheap bi-encoder similarity at corpus scale.",
+    "Reranking rescales the retrieved shortlist.",
+    "Cross-encoders improve relevance accuracy at higher cost.",
+    "Running the reranker over the entire corpus is infeasible."
+  ],
+  "qa-quick-reference:qa-bi-encoder-precompute": [
+    "Bi-encoders compute query and document vectors independently.",
+    "Cheap similarity enables corpus-scale retrieval.",
+    "Cross-encoders process each query-document pair jointly.",
+    "Use slower joint attention only for a shortlist."
+  ],
+  "qa-quick-reference:qa-graphrag-when": [
+    "GraphRAG extracts entities from source documents.",
+    "It stores relationships in a knowledge graph.",
+    "Retrieval traverses relationships alongside or instead of similarity.",
+    "Graph traversal supports multi-hop facts across documents."
+  ],
+  "qa-quick-reference:qa-faithfulness": [
+    "Faithfulness measures support from retrieved context.",
+    "Relevance asks whether chunks address the query.",
+    "Context precision measures retrieved usefulness.",
+    "Context recall measures how much useful evidence was retrieved."
+  ],
+  "qa-quick-reference:qa-topk-hurts": [
+    "Increasing top-k lengthens the context.",
+    "Long contexts suffer lost-in-the-middle effects.",
+    "Irrelevant chunks dilute attention to useful evidence.",
+    "Redundant context can hurt rather than improve coverage."
+  ],
+  "qa-quick-reference:a23d90828199": [
+    "Standard RAG uses a fixed retrieve-then-generate pass.",
+    "Agentic RAG decides whether retrieval is needed.",
+    "It chooses search queries and retrieval counts.",
+    "It can reformulate or search again after weak results."
+  ],
+  "qa-quick-reference:qa-crag": [
+    "CRAG grades relevance and sufficiency after retrieval.",
+    "Use a lightweight evaluator for that check.",
+    "Rewrite or broaden search when evidence is weak.",
+    "Avoid generating from unsupported context."
+  ],
+  "qa-quick-reference:5da690649c81": [
+    "Self-RAG trains the model to emit reflection tokens.",
+    "Those tokens decide whether to retrieve.",
+    "They critique passage relevance.",
+    "They assess output grounding inside generation."
+  ],
+  "qa-quick-reference:qa-adaptive-rag": [
+    "Adaptive RAG routes queries by complexity.",
+    "Simple factual cases can skip retrieval.",
+    "Straightforward queries receive one pass.",
+    "Complex queries use decomposition or multi-hop retrieval."
+  ],
+  "qa-quick-reference:qa-raptor": [
+    "RAPTOR clusters related corpus chunks.",
+    "It recursively summarizes clusters into a tree.",
+    "Broad queries retrieve high-level summaries.",
+    "Narrow queries retrieve specific leaf chunks."
+  ],
+  "qa-quick-reference:5a11f2549901": [
+    "Isolated chunk embeddings miss document-wide context.",
+    "Contextual retrieval prepends generated contextual text.",
+    "Late chunking embeds the whole document before pooling chunks.",
+    "Late chunking transfers context through attention rather than added text."
+  ],
+  "qa-quick-reference:qa-cag-manual": [
+    "CAG preloads the corpus into the model's KV cache.",
+    "Queries attend over the preloaded material.",
+    "No selective retrieval step is required.",
+    "The corpus must fit the available context and cache."
+  ],
+  "qa-quick-reference:qa-hyde": [
+    "HyDE generates a hypothetical answer first.",
+    "Embed the generated answer rather than the raw query.",
+    "Use that embedding to search documents.",
+    "Answer-like passages can lie closer to relevant documents."
+  ],
+  "qa-quick-reference:e1cce5204340": [
+    "ColBERT retains separate token embeddings.",
+    "MaxSim selects each query token's best document-token match.",
+    "Sum those matches to score relevance.",
+    "Document embeddings remain precomputable without a joint forward pass."
+  ],
+  "qa-quick-reference:qa-rag-injection": [
+    "Retrieved documents can carry attacker instructions.",
+    "Corpus access can become a prompt-injection path.",
+    "Structure prompts so retrieved content remains data.",
+    "Filter outputs and restrict consequential agent actions."
+  ],
+  "qa-quick-reference:qa-acl-where": [
+    "Apply user authorization filters during retrieval.",
+    "Scope metadata filters to the requesting user.",
+    "Do not retrieve documents outside that scope.",
+    "Output filtering is too late once the model has read them."
+  ],
+  "qa-quick-reference:qa-ingestion-tables": [
+    "Parsing determines the text every downstream stage sees.",
+    "Broken tables or headings silently corrupt retrieval.",
+    "Naive extraction mishandles columns and tables.",
+    "Use a dedicated document-layout parser in production ingestion."
+  ],
+  "qa-quick-reference:8a0912ef538b": [
+    "Multimodal embeddings map images and text into one space.",
+    "Text queries can retrieve images by similarity.",
+    "Charts and diagrams can become direct evidence.",
+    "Use this when visual source content is needed to answer."
+  ],
+  "qa-quick-reference:f9592a217214": [
+    "Run offline faithfulness and context metrics before shipping.",
+    "Track similar quality signals on live traffic.",
+    "Use judges and drift alerts continuously.",
+    "Trace individual queries end-to-end to debug bad answers."
+  ],
+  "qa-quick-reference:qa-finetune-embeddings": [
+    "Fine-tune embeddings when domain relevance differs from general text.",
+    "Collect labelled or weakly labelled query-document pairs.",
+    "Contrastive or triplet losses pull relevant pairs together.",
+    "Push irrelevant pairs apart to learn domain-specific relevance."
+  ],
+  "qa-quick-reference:qa-semantic-cache-risk": [
+    "Semantic caches match queries by embedding similarity.",
+    "Hits reuse prior retrievals or answers.",
+    "Loose thresholds can return merely similar wrong answers.",
+    "In multi-tenant systems, cached data can cross user boundaries."
+  ],
+  "qa-quick-reference:qa-embedding-mismatch": [
+    "Changing embedding models requires fully re-embedding the index.",
+    "Mixed embedding spaces create geometrically incompatible vectors.",
+    "Treat that failure as migration rather than model quality.",
+    "Wrong shortlist promotion needs reranker recalibration or replacement."
+  ],
+  "rag-interview-questions:647a45474ff5": [
+    "REALM jointly trains retriever and language model.",
+    "A latent-variable objective passes downstream task learning to retrieval.",
+    "Retriever updates can drift from asynchronously refreshed indexes.",
+    "Later frozen-retriever designs avoid that synchronization difficulty."
+  ],
+  "rag-interview-questions:c894675504ab": [
+    "RETRO uses a frozen nearest-neighbor datastore.",
+    "Generation uses chunked cross-attention to retrieved neighbors.",
+    "Each output chunk uses neighbors of the preceding input chunk.",
+    "Frozen cheap lookup enables very large external datastores."
+  ],
+  "rag-interview-questions:e024704d168b": [
+    "Atlas jointly trains a retriever and FiD-style reader.",
+    "It targets learning from few labelled examples.",
+    "Retrieval supplies factual knowledge externally.",
+    "Scarce labels can teach the task rather than memorized facts."
+  ],
+  "rag-interview-questions:5d8b21d8a9d5": [
+    "FiD encodes each retrieved passage independently.",
+    "Passage evidence interacts jointly in the decoder.",
+    "Encoder attention costs remain per passage.",
+    "This supports more passages than full concatenated encoder attention."
+  ],
+  "rag-interview-questions:d718bc92e167": [
+    "Branching retrieval explores multiple reasoning paths.",
+    "Each branch may trigger conditional retrieval.",
+    "Prune weaker branches instead of committing to one chain.",
+    "Use it when ambiguous paths justify extra cost."
+  ],
+  "rag-interview-questions:770a297b7987": [
+    "DPR uses contrastively trained query and passage bi-encoders.",
+    "Pull relevant pairs together in embedding space.",
+    "Score with inner product or cosine similarity.",
+    "It demonstrated learned dense retrieval for open-domain QA."
+  ],
+  "rag-interview-questions:cbd03ce2fa8c": [
+    "WebGPT learns browsing behavior in model weights.",
+    "Human preferences compare full browsing transcripts.",
+    "RLHF trains when to search, click and quote.",
+    "Prompted tool use instead relies on in-context instructions."
+  ],
+  "rag-interview-questions:241264b7c92c": [
+    "Valid JSON can still contain hallucinated field values.",
+    "Enforce schemas at the API or tool-call layer.",
+    "Use per-field NLI entailment against cited passages.",
+    "Check semantic support separately from structural validity."
+  ],
+  "rag-interview-questions:c596059798d2": [
+    "Document-recursive summaries stay within source boundaries.",
+    "RAPTOR clusters across documents bottom-up.",
+    "Document-local trees preserve explicit provenance.",
+    "Choose cross-document trees for thematic clustering."
+  ],
+  "rag-interview-questions:fbc0e6c47e54": [
+    "Search-R1 learns retrieve-or-reason decisions with reinforcement learning.",
+    "Task reward trains when to search mid-reasoning.",
+    "It shares agentic RAG's behavioral shape.",
+    "The policy is learned rather than solely prompted."
+  ],
+  "rag-interview-questions:29e1db44106a": [
+    "Deep Research decomposes briefs into independent sub-questions.",
+    "Sub-agents research in isolated contexts.",
+    "Run independent research in parallel and merge at the end.",
+    "Increasing one loop's search cap still accumulates serial context."
+  ],
+  "rag-interview-questions:4fdc66d88cf6": [
+    "MemoRAG generates a corpus-aware draft before retrieval.",
+    "Its compressed corpus knowledge supplies search clues.",
+    "The distinctive step occurs at query time.",
+    "RAPTOR builds its summary hierarchy at index time."
+  ],
+  "rag-interview-questions:df58f195e84a": [
+    "LongRAG enlarges retrieval units rather than changing retrieval timing.",
+    "Larger units simplify retrieval over fewer candidates.",
+    "Readers must search and synthesize longer spans.",
+    "Distinguish retrieval-unit size from generation context length."
+  ],
+  "rag-interview-questions:780cadd18047": [
+    "VisRAG uses rendered page images as retrieval units.",
+    "Generation also consumes those page images.",
+    "It omits text extraction throughout the pipeline.",
+    "The vision-language model must interpret text, layout, tables and figures."
+  ],
+  "rag-interview-questions:675a0594a722": [
+    "LazyGraphRAG defers LLM summaries until query time.",
+    "Summarize only subgraphs surfaced by relevance testing.",
+    "Build the index with deterministic noun phrases and co-occurrence.",
+    "Avoid upfront LLM extraction and community-summary costs."
+  ],
+  "rag-interview-questions:6893bd11f0ba": [
+    "Astute RAG explicitly elicits internal model knowledge.",
+    "Tag it as a competing information source.",
+    "Consolidate it with retrieved passages.",
+    "Resolve conflicts explicitly rather than allowing silent overrides."
+  ],
+  "rag-interview-questions:40a39971d741": [
+    "Auto-RAG and DeepRAG choose retrieval at each reasoning step.",
+    "Some steps can use parametric memory alone.",
+    "CoRAG retrieves at every chain step.",
+    "Optional retrieval can reduce unnecessary external calls."
+  ],
+  "rag-interview-questions:65b32d8406f9": [
+    "CoRAG trains on correct retrieval-reasoning chains.",
+    "Rejection sampling selects chains by outcome correctness.",
+    "Training develops query-reformulation skill.",
+    "Inference chain length trades compute for difficult-query performance."
+  ],
+  "rag-interview-questions:0d43829e2301": [
+    "RQ-RAG uses a fine-tuned action-selection policy.",
+    "Special control tokens select query transformations.",
+    "Choose rewriting, decomposition, disambiguation or no change per query.",
+    "Avoid forcing one transformation onto every input."
+  ],
+  "rag-interview-questions:bde08b30b0eb": [
+    "REFRAG compresses chunks to dense embeddings by default.",
+    "A lightweight RL policy selects chunks to expand.",
+    "Expansion restores raw tokens for important evidence.",
+    "Compressed inclusion adds a third state beyond include or omit."
+  ],
+  "rag-interview-questions:069959a1f3ba": [
+    "Retrieve similar solved demonstrations rather than factual documents.",
+    "Populate dynamic few-shot prompts from those examples.",
+    "Match the new case to useful prior patterns.",
+    "This suits tasks such as text-to-SQL and structured generation."
+  ],
+  "rag-interview-questions:8d64013fc8da": [
+    "Live web search replaces a fixed vetted corpus.",
+    "Assess source quality for every result.",
+    "Track citations as changing evidence.",
+    "Protect fetching from prompt injection and unintended endpoints."
+  ],
+  "rag-interview-questions:rag-citation-grounded": [
+    "A citation alone does not establish claim support.",
+    "Citation precision measures supporting cited passages.",
+    "Citation recall measures claims with supporting citations.",
+    "Use entailment checks for attribution accuracy."
+  ],
+  "rag-interview-questions:e09bf2405833": [
+    "Keep sensitive raw text within the trust boundary.",
+    "Consider on-device or federated embedding.",
+    "Use differential privacy and PII redaction as appropriate.",
+    "Choose protections from the threat model and account for quality or latency costs."
+  ],
+  "rag-interview-questions:rag-tables": [
+    "Character chunking can destroy table structure.",
+    "Parse rows, columns and headers before retrieval.",
+    "Linearize structure as full-table Markdown or row chunks.",
+    "Reattach headers so individual rows remain self-contained."
+  ],
+  "rag-interview-questions:0e42b0267711": [
+    "Update indexes incrementally as new data arrives.",
+    "Make new documents searchable within seconds to minutes.",
+    "Avoid waiting for periodic full rebuilds.",
+    "Freshness matters when a formerly correct answer can become wrong."
+  ],
+  "rag-interview-questions:2a003e9f0582": [
+    "LightRAG indexes fine-grained entity relationships.",
+    "It also indexes higher-level themes.",
+    "Query modes choose either level or both.",
+    "It avoids expensive community clustering but reduces corpus-wide thematic coverage."
+  ],
+  "rag-interview-questions:rag-kg-vs-vector": [
+    "Vectors retrieve semantic entry points.",
+    "Knowledge graphs store typed entity relationships.",
+    "Graphs support explicit multi-hop traversal.",
+    "Combine semantic search with relational reasoning when needed."
+  ],
+  "rag-interview-questions:977228530d6e": [
+    "Normalize surface forms before expensive entity matching.",
+    "Apply curated alias tables for known synonyms.",
+    "Cluster embedding candidates and use contextual LLM checks for ambiguity.",
+    "Assign canonical node IDs and retain every alias."
+  ],
+  "rag-interview-questions:7a2d1d1912d0": [
+    "Track which source document produced each graph edge.",
+    "Delete that document's edges when it changes.",
+    "Re-extract edges from the new version.",
+    "Provenance enables targeted updates rather than full rebuilds."
+  ],
+  "rag-interview-questions:rag-graphrag-global": [
+    "Local GraphRAG starts at entities found by vector search.",
+    "Expand their neighborhoods for precise entity questions.",
+    "Global search map-reduces precomputed community summaries.",
+    "Global thematic coverage costs more per query."
+  ],
+  "rag-interview-questions:3539b741e0a0": [
+    "Use graphs for multi-hop queries and typed relationships.",
+    "Graphs help canonicalize inconsistent entity names.",
+    "Existing domain ontologies strengthen the case.",
+    "Prefer vectors for free-form similarity or constrained build time."
+  ],
+  "rag-interview-questions:8c679f7614b2": [
+    "Sliding windows drop old turns when full.",
+    "Compress-and-carry retains an evolving summary.",
+    "Summary size bounds context cost but loses exact detail.",
+    "Keep recent turns verbatim alongside the summary."
   ]
 }
