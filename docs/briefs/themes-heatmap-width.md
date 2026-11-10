@@ -54,3 +54,41 @@ Work in this order. After each numbered step run `npm run typecheck`. Do not inv
 1. The room's width is capped in `src/components/interview/simpleInterview.css` (`grep -n "max-width" src/components/interview/simpleInterview.css`). At `@media (min-width: 1200px)` raise the cap to about 1600 px and lay out the answer screen as a two-column grid: left = question, live transcript and buttons; right = model answer, key points, follow-ups and earlier attempts.
 2. The transcript box: remove fixed or viewport heights; use `min-height: 8rem` and let it grow with content.
 3. Below 1200 px keep today's single column. At 375 px: `document.documentElement.scrollWidth` must equal the viewport width.
+
+---
+
+## Completion Summary (agy)
+
+All three parts of the brief have been executed and verified in accordance with `AGENTS.md`:
+
+### What Changed:
+1. **Part 1 (Themes & Picker)**:
+   - Added 5 background themes in `src/theme/themes.ts`: Light (`light`), Dark (`dark`), Pure White Notebook (`pure-white`), Warm Sepia (`sepia`), and Forest Dark (`forest`).
+   - Integrated theme persistence in `localStorage` under `neural-mastery-palette`.
+   - Built an accessible navbar `ThemePicker` component with direct Quick Toggle (`aria-label="Toggle color mode"`) and dropdown menu (`aria-label="Theme picker"`) with live swatches and keyboard navigation (Arrow keys, Escape).
+   - Defined comprehensive token mappings across `src/styles/theme.css`, `src/styles/notebook.css`, `src/theme/vizTokens.ts`, `src/theme/notebookPalette.ts`, and `src/components/interview/interviewRoom.css`. Pure White Notebook removes ruled/dotted lines.
+   - Added automated WCAG relative luminance contrast test suite in `src/theme/themeContrast.test.ts` verifying text contrast $\ge 4.5:1$ and accents $\ge 3:1$ across all 5 themes (15/15 unit tests passed).
+   - Captured 40 screenshots in `docs/evidence/themes/` across `/interview`, question room, `/docs/deep-learning/attention-transformers`, and `/` at 375px and 1280px.
+   - Committed in `53d6bb78`.
+
+2. **Part 2 (Graph Heat Map)**:
+   - Added `getHeatmapWeight` and `getHeatmapColorMix` in `src/components/interview/masteryScale.ts` with sequential scale: $8\%$ base tint up to $100\%$ accent tint, switching label text to `var(--on-accent)` above $55\%$ completion for contrast.
+   - Rendered dynamic fills on topic nodes in `src/components/interview/InterviewGraph.tsx`.
+   - Added an accessible 3-step legend (`.si-graph-legend`: 0%, 50%, 100%) below the graph with themed swatches in `src/components/interview/simpleInterview.css`.
+   - Preserved completion percentages in node labels and ARIA labels.
+   - Added comprehensive tests in `src/components/interview/masteryScale.test.ts` (22 tests) and `InterviewGraph.test.tsx` (4 tests).
+   - Committed in `16ab11ec`.
+
+3. **Part 3 (Full-Width Room & Compact Transcript)**:
+   - Raised question room card width cap to 1600px on screens $\ge 1200$px (`.si-card-stage`, `.si-card-wide`, `.simple-interview.si-room-active .si-card-stage`).
+   - Sized the transcript box (`.si-answer-box`) to its content with `min-height: 8rem` and `flex: 0 1 auto` instead of expanding to fill viewport height.
+   - Restructured the review/answer screen (`step === 'answer'`) in `SimpleInterviewPage.tsx` and `simpleInterview.css` into a responsive 2-column grid for $\ge 1200$px:
+     - **Left column**: Question panel (title, options, learn links), live transcript (`.si-col-yours`), self-rating (`.si-self-rating`), and action buttons (`.si-actions`).
+     - **Right column**: Key points checklist (`.si-keypoints-card`), model answer with trade-offs (`.si-col-model`), follow-ups, earlier attempts (`.si-earlier-section`), delivery row, and system design comparison.
+   - Maintained single-column vertical flow below 1200px via `display: contents` and CSS `order`.
+   - Verified zero horizontal scroll (`scrollWidth === innerWidth`) at 375px, 768px, 1280px, and 1920px via Playwright automated script `scripts/verify-interview-width.mjs`, capturing 12 screenshots in `docs/evidence/interview-width/`.
+   - Committed in `2a571114`.
+
+### Anything that could not be done:
+- None. All requirements across Parts 1, 2, and 3 were completed, tested, and verified with zero skipped or weakened checks.
+

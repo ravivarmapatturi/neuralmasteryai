@@ -1363,21 +1363,25 @@ export default function SimpleInterviewPage() {
               </div>
             </div>
 
-            <div className="si-question-row">
-              <h2 className="si-question-title">
-                {question.title}
-                {question.problemId && hasAward(events, `/interview#${question.id}`, 'interview') && (
-                  <span className="si-solved-badge"><span className="si-tick">✓</span> Solved in editor</span>
+            {step !== 'answer' && (
+              <>
+                <div className="si-question-row">
+                  <h2 className="si-question-title">
+                    {question.title}
+                    {question.problemId && hasAward(events, `/interview#${question.id}`, 'interview') && (
+                      <span className="si-solved-badge"><span className="si-tick">✓</span> Solved in editor</span>
+                    )}
+                  </h2>
+                </div>
+                <LearnLinks questionId={question.id} topicQuestionIds={topic.questions.map(q => q.id)} />
+                {question.options && (
+                  <ol className="si-options" type="A">
+                    {question.options.map((o) => (
+                      <li key={o}>{o}</li>
+                    ))}
+                  </ol>
                 )}
-              </h2>
-            </div>
-            <LearnLinks questionId={question.id} topicQuestionIds={topic.questions.map(q => q.id)} />
-            {question.options && (
-              <ol className="si-options" type="A">
-                {question.options.map((o) => (
-                  <li key={o}>{o}</li>
-                ))}
-              </ol>
+              </>
             )}
           </header>
         )}
@@ -1644,70 +1648,28 @@ export default function SimpleInterviewPage() {
 
         {step === 'answer' && (
           <div className="si-answer-stage">
-            {/* 1. KEY-POINT CHECK (Full width, Covered and Not heard) */}
-            {check === 'checking' && (
-              <div className="si-check-loading">
-                <p className="si-status" role="status">
-                  Checking key points…
-                </p>
-              </div>
-            )}
-            {check === 'failed' && (
-              <p className="si-status si-failed-status">Answer checking could not load on this device.</p>
-            )}
-            {check && typeof check === 'object' && (
-              <div className="si-check si-keypoints-card">
-                <div className="si-check-header">
-                  <h3>Key points</h3>
-                  {SHOW_COVERAGE_SCORE && <span className="si-score-pill">{check.score}% coverage</span>}
-                </div>
-                <div className="si-keypoints-grid">
-                  <div className="si-keypoints-col covered">
-                    <h4>Covered</h4>
-                    {check.points.filter((p) => p.verdict === 'covered').length > 0 ? (
-                      <ul className="si-points">
-                        {check.points
-                          .filter((p) => p.verdict === 'covered')
-                          .map((p) => (
-                            <li key={p.point} className="covered">
-                              <span className="si-verdict">Covered</span>
-                              <span className="si-point-title">{p.point}</span>
-                              {p.evidence && (
-                                <blockquote className="si-point-evidence">
-                                  <span>In your answer</span>
-                                  {p.evidence}
-                                </blockquote>
-                              )}
-                            </li>
-                          ))}
-                      </ul>
-                    ) : (
-                      <p className="si-empty-points">No key points covered in this attempt.</p>
+            <div className="si-answer-col-left">
+              {/* 1. QUESTION PANEL */}
+              <section className="si-answer-question-panel" aria-label="Question details">
+                <div className="si-question-row">
+                  <h2 className="si-question-title">
+                    {question.title}
+                    {question.problemId && hasAward(events, `/interview#${question.id}`, 'interview') && (
+                      <span className="si-solved-badge"><span className="si-tick">✓</span> Solved in editor</span>
                     )}
-                  </div>
-                  <div className="si-keypoints-col missed">
-                    <h4>Not heard</h4>
-                    {check.points.filter((p) => p.verdict !== 'covered').length > 0 ? (
-                      <ul className="si-points">
-                        {check.points
-                          .filter((p) => p.verdict !== 'covered')
-                          .map((p) => (
-                            <li key={p.point} className="undetected">
-                              <span className="si-verdict">Not heard</span>
-                              <span className="si-point-title">{p.point}</span>
-                            </li>
-                          ))}
-                      </ul>
-                    ) : (
-                      <p className="si-empty-points">All key points covered!</p>
-                    )}
-                  </div>
+                  </h2>
                 </div>
-              </div>
-            )}
+                <LearnLinks questionId={question.id} topicQuestionIds={topic.questions.map(q => q.id)} />
+                {question.options && (
+                  <ol className="si-options" type="A">
+                    {question.options.map((o) => (
+                      <li key={o}>{o}</li>
+                    ))}
+                  </ol>
+                )}
+              </section>
 
-            {/* 2. ANSWERS COMPARISON */}
-            <div className="si-comparison-grid">
+              {/* 2. YOUR ANSWER / LIVE TRANSCRIPT */}
               <section className="si-col-yours" aria-label="Your answer">
                 <div className="si-panel-header">
                   <h3>Your answer</h3>
@@ -1719,33 +1681,163 @@ export default function SimpleInterviewPage() {
                     Finishing your transcript…
                   </p>
                 )}
-                {comparison && (
-                  <section className="si-sub-section" aria-label="Change since your previous attempt" aria-live="polite">
-                    <h3>Since your previous attempt</h3>
-                    {comparison.comparable ? <>
-                      <p>{comparison.gained.length ? 'Newly detected points:' : 'No newly detected points.'}</p>
-                      {comparison.gained.length > 0 && <ul className="si-bullets">{comparison.gained.map(point => <li key={point}>{point}</li>)}</ul>}
-
-                    </> : <p>{latest?.status !== 'checked' ? 'The comparison will appear after this answer is checked.' : 'These attempts used different checks, or the previous answer was not checked.'}</p>}
-                    <p>Previous answer</p><p className="si-previous-transcript">{earlier[0].transcript || 'No answer was captured.'}</p>
-                    <p>Current answer</p><p>{transcript || 'No answer was captured.'}</p>
-                  </section>
-                )}
-                {earlier.length > 0 && <section className="si-sub-section" aria-label="Earlier attempts">
-                  <h3>Earlier attempts</h3>
-                  {earlier.map(attempt => <details key={attempt.id} className="si-attempt">
-                    <summary><time dateTime={new Date(attempt.time).toISOString()}>{new Date(attempt.time).toLocaleString()}</time>{attempt.status === 'checked' ? (attempt.source === 'rubric' ? ' · Key points checked' : (!SHOW_COVERAGE_SCORE || attempt.score === undefined) ? ' · Checked against model answer' : ` · ${attempt.score}% coverage`) : ' · Not checked'}</summary>
-                    <DeliveryRow delivery={attempt.delivery} />
-                    {attempt.sketch && <details><summary>Saved sketch</summary><SystemDesignCanvas value={attempt.sketch} /></details>}
-                    <p className="si-yours">{attempt.transcript || 'No answer was captured.'}</p>
-                    {attempt.followUp && <div><h4>Follow-up</h4><p>{attempt.followUp.question}</p><p>{attempt.followUp.transcript || 'No follow-up answer was captured.'}</p></div>}
-                    <ul className="si-points">{attempt.points.map(point => <li key={point.point}><span className="si-verdict">{point.verdict === 'covered' ? 'Covered' : 'Not detected'}</span>{point.point}{point.verdict === 'covered' && point.evidence && <blockquote className="si-point-evidence"><span>In your answer</span>{point.evidence}</blockquote>}</li>)}</ul>
-                  </details>)}
-                </section>}
-                {syncState === 'syncing' && <p className="si-status" role="status">Syncing attempt history…</p>}
-                {syncState === 'synced' && <p className="si-status" role="status">Attempt history synced.</p>}
               </section>
 
+              {/* 3. SELF-RATING */}
+              <fieldset className="si-self-rating">
+                <legend>How did your answer go?</legend>
+                <p>Choose a rating. Rating completes this question and saves your progress.</p>
+                <div className="si-actions">
+                  {(Object.entries(RATING_LABELS) as [SelfRating, string][]).map(([value, label]) => (
+                    <button
+                      key={value}
+                      disabled={!attemptId || transcribing}
+                      aria-pressed={selfRating?.value === value}
+                      onClick={() => {
+                        if (attemptId) {
+                          const now = Date.now();
+                          awardInterviewCompleted(questionId);
+                          saveLearning([
+                            { questionId, completion: { time: latest?.time ?? now, attemptId } },
+                            rateQuestion(learning, questionId, attemptId, value, now),
+                          ]);
+                        }
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="si-status" role="status">
+                  {selfRating
+                    ? `Self-rating saved. Question completed (+${INTERVIEW_COMPLETED_POINTS} points). Next review: ${new Date(reviewDueAt(currentLearning!)!).toLocaleDateString()}.`
+                    : ''}
+                </p>
+              </fieldset>
+
+              {/* 4. BUTTONS & ACTIONS */}
+              <div className="si-actions si-bottom-bar-fixed si-sticky si-answer-actions">
+                <nav className="si-bottom-nav" aria-label="Question navigation">
+                  <button
+                    type="button"
+                    className="si-link"
+                    id="previous-question"
+                    disabled={!previousItem}
+                    onClick={previousQuestion}
+                  >
+                    ← Previous
+                  </button>
+                  <button
+                    type="button"
+                    className="si-link"
+                    id="next-question"
+                    disabled={!nextItem}
+                    onClick={nextQuestion}
+                  >
+                    Next →
+                  </button>
+                </nav>
+
+                {question.problemId && (
+                  <button
+                    type="button"
+                    className="si-code-button"
+                    id="open-code-editor-answer"
+                    onClick={() => {
+                      stopAudio();
+                      previousStepRef.current = 'answer';
+                      setStep('code');
+                    }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <polyline points="16 18 22 12 16 6" />
+                      <polyline points="8 6 2 12 8 18" />
+                    </svg>
+                    <span>Open code editor</span>
+                  </button>
+                )}
+                <button type="button" className="si-primary" id="next" onClick={nextQuestion}>
+                  {questionIndex + 1 < topic.questions.length ? 'Next question' : 'Finish topic'}{' '}
+                  <span className="si-key-hint">N</span>
+                </button>
+                <button type="button" id="practice-again" onClick={() => goToQuestion(questionIndex)}>
+                  Practice again
+                </button>
+                {hasAward(events, `/interview#${questionId}`, 'interview') && (
+                  <span className="si-done" role="status">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }} aria-hidden="true">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    Completed · +{INTERVIEW_COMPLETED_POINTS} points
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="si-answer-col-right">
+              {/* 5. KEY-POINT CHECK */}
+              {check === 'checking' && (
+                <div className="si-check-loading">
+                  <p className="si-status" role="status">
+                    Checking key points…
+                  </p>
+                </div>
+              )}
+              {check === 'failed' && (
+                <p className="si-status si-failed-status">Answer checking could not load on this device.</p>
+              )}
+              {check && typeof check === 'object' && (
+                <div className="si-check si-keypoints-card">
+                  <div className="si-check-header">
+                    <h3>Key points</h3>
+                    {SHOW_COVERAGE_SCORE && <span className="si-score-pill">{check.score}% coverage</span>}
+                  </div>
+                  <div className="si-keypoints-grid">
+                    <div className="si-keypoints-col covered">
+                      <h4>Covered</h4>
+                      {check.points.filter((p) => p.verdict === 'covered').length > 0 ? (
+                        <ul className="si-points">
+                          {check.points
+                            .filter((p) => p.verdict === 'covered')
+                            .map((p) => (
+                              <li key={p.point} className="covered">
+                                <span className="si-verdict">Covered</span>
+                                <span className="si-point-title">{p.point}</span>
+                                {p.evidence && (
+                                  <blockquote className="si-point-evidence">
+                                    <span>In your answer</span>
+                                    {p.evidence}
+                                  </blockquote>
+                                )}
+                              </li>
+                            ))}
+                        </ul>
+                      ) : (
+                        <p className="si-empty-points">No key points covered in this attempt.</p>
+                      )}
+                    </div>
+                    <div className="si-keypoints-col missed">
+                      <h4>Not heard</h4>
+                      {check.points.filter((p) => p.verdict !== 'covered').length > 0 ? (
+                        <ul className="si-points">
+                          {check.points
+                            .filter((p) => p.verdict !== 'covered')
+                            .map((p) => (
+                              <li key={p.point} className="undetected">
+                                <span className="si-verdict">Not heard</span>
+                                <span className="si-point-title">{p.point}</span>
+                              </li>
+                            ))}
+                        </ul>
+                      ) : (
+                        <p className="si-empty-points">All key points covered!</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 6. MODEL ANSWER & FOLLOW-UPS */}
               <section className="si-col-model" aria-label="Model answer and follow-ups">
                 <div className="si-panel-header">
                   <h3>Model answer</h3>
@@ -1781,14 +1873,16 @@ export default function SimpleInterviewPage() {
                   </div>
                 )}
 
-                {latest && !transcribing && question.followUps?.length ? <FollowUpAnswer
-                  key={latest.id} attempt={latest} followUps={question.followUps}
-                  points={check && typeof check === 'object' ? check.points : undefined}
-                  prepareSpeech={prepareFollowUpSpeech} stopReading={stopAudio}
-                  pauseMusic={pauseForFollowUp} resumeMusic={resumeAfterFollowUp} save={saveAttempt}
-                  onActive={setFollowUpActive}
-                  onFinalizing={pending => { finishingRef.current = pending; }}
-                /> : null}
+                {latest && !transcribing && question.followUps?.length ? (
+                  <FollowUpAnswer
+                    key={latest.id} attempt={latest} followUps={question.followUps}
+                    points={check && typeof check === 'object' ? check.points : undefined}
+                    prepareSpeech={prepareFollowUpSpeech} stopReading={stopAudio}
+                    pauseMusic={pauseForFollowUp} resumeMusic={resumeAfterFollowUp} save={saveAttempt}
+                    onActive={setFollowUpActive}
+                    onFinalizing={pending => { finishingRef.current = pending; }}
+                  />
+                ) : null}
                 {question.followUps && question.followUps.length > 0 && (
                   <div className="si-sub-section">
                     <h3>Follow-ups you may get</h3>
@@ -1810,114 +1904,67 @@ export default function SimpleInterviewPage() {
                     </ul>
                   </div>
                 )}
-
-
               </section>
-            </div>
 
-            {/* DeliveryRow & SD comparison */}
-            <DeliveryRow delivery={latest?.delivery} />
-            {question.rounds?.includes('system-design') && (
-              <div className="sd-comparison">
-                <SystemDesignCanvas value={latest?.sketch ?? sketch} />
-                {referenceDiagram ? (
-                  <div>
-                    <SystemDesignCanvas value={referenceDiagram} title="Reference architecture" />
-                    <p>{referenceDiagram.note}</p>
-                  </div>
-                ) : (
-                  <p>No reference diagram for this question yet. Compare your sketch with the model answer above.</p>
-                )}
-              </div>
-            )}
-
-            {/* 3. SELF-RATING (FINAL STEP, COMPLETES QUESTION) */}
-            <fieldset className="si-self-rating">
-              <legend>How did your answer go?</legend>
-              <p>Choose a rating. Rating completes this question and saves your progress.</p>
-              <div className="si-actions">
-                {(Object.entries(RATING_LABELS) as [SelfRating, string][]).map(([value, label]) => (
-                  <button
-                    key={value}
-                    disabled={!attemptId || transcribing}
-                    aria-pressed={selfRating?.value === value}
-                    onClick={() => {
-                      if (attemptId) {
-                        const now = Date.now();
-                        awardInterviewCompleted(questionId);
-                        saveLearning([
-                          { questionId, completion: { time: latest?.time ?? now, attemptId } },
-                          rateQuestion(learning, questionId, attemptId, value, now),
-                        ]);
-                      }
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <p className="si-status" role="status">
-                {selfRating
-                  ? `Self-rating saved. Question completed (+${INTERVIEW_COMPLETED_POINTS} points). Next review: ${new Date(reviewDueAt(currentLearning!)!).toLocaleDateString()}.`
-                  : ''}
-              </p>
-            </fieldset>
-
-            {/* 4. BOTTOM ACTION BAR */}
-            <div className="si-actions si-bottom-bar-fixed si-sticky">
-              <nav className="si-bottom-nav" aria-label="Question navigation">
-                <button
-                  type="button"
-                  className="si-link"
-                  id="previous-question"
-                  disabled={!previousItem}
-                  onClick={previousQuestion}
-                >
-                  ← Previous
-                </button>
-                <button
-                  type="button"
-                  className="si-link"
-                  id="next-question"
-                  disabled={!nextItem}
-                  onClick={nextQuestion}
-                >
-                  Next →
-                </button>
-              </nav>
-
-              {question.problemId && (
-                <button
-                  type="button"
-                  className="si-code-button"
-                  id="open-code-editor-answer"
-                  onClick={() => {
-                    stopAudio();
-                    previousStepRef.current = 'answer';
-                    setStep('code');
-                  }}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <polyline points="16 18 22 12 16 6" />
-                    <polyline points="8 6 2 12 8 18" />
-                  </svg>
-                  <span>Open code editor</span>
-                </button>
+              {/* 7. EARLIER ATTEMPTS & COMPARISON */}
+              {(comparison || earlier.length > 0) && (
+                <section className="si-sub-section si-earlier-section" aria-label="Earlier attempts">
+                  {comparison && (
+                    <section className="si-sub-section" aria-label="Change since your previous attempt" aria-live="polite">
+                      <h3>Since your previous attempt</h3>
+                      {comparison.comparable ? (
+                        <>
+                          <p>{comparison.gained.length ? 'Newly detected points:' : 'No newly detected points.'}</p>
+                          {comparison.gained.length > 0 && (
+                            <ul className="si-bullets">
+                              {comparison.gained.map(point => <li key={point}>{point}</li>)}
+                            </ul>
+                          )}
+                        </>
+                      ) : (
+                        <p>{latest?.status !== 'checked' ? 'The comparison will appear after this answer is checked.' : 'These attempts used different checks, or the previous answer was not checked.'}</p>
+                      )}
+                      <p>Previous answer</p><p className="si-previous-transcript">{earlier[0].transcript || 'No answer was captured.'}</p>
+                      <p>Current answer</p><p>{transcript || 'No answer was captured.'}</p>
+                    </section>
+                  )}
+                  {earlier.length > 0 && (
+                    <>
+                      <h3>Earlier attempts</h3>
+                      {earlier.map(attempt => (
+                        <details key={attempt.id} className="si-attempt">
+                          <summary>
+                            <time dateTime={new Date(attempt.time).toISOString()}>{new Date(attempt.time).toLocaleString()}</time>
+                            {attempt.status === 'checked' ? (attempt.source === 'rubric' ? ' · Key points checked' : (!SHOW_COVERAGE_SCORE || attempt.score === undefined) ? ' · Checked against model answer' : ` · ${attempt.score}% coverage`) : ' · Not checked'}
+                          </summary>
+                          <DeliveryRow delivery={attempt.delivery} />
+                          {attempt.sketch && <details><summary>Saved sketch</summary><SystemDesignCanvas value={attempt.sketch} /></details>}
+                          <p className="si-yours">{attempt.transcript || 'No answer was captured.'}</p>
+                          {attempt.followUp && <div><h4>Follow-up</h4><p>{attempt.followUp.question}</p><p>{attempt.followUp.transcript || 'No follow-up answer was captured.'}</p></div>}
+                          <ul className="si-points">{attempt.points.map(point => <li key={point.point}><span className="si-verdict">{point.verdict === 'covered' ? 'Covered' : 'Not detected'}</span>{point.point}{point.verdict === 'covered' && point.evidence && <blockquote className="si-point-evidence"><span>In your answer</span>{point.evidence}</blockquote>}</li>)}</ul>
+                        </details>
+                      ))}
+                    </>
+                  )}
+                  {syncState === 'syncing' && <p className="si-status" role="status">Syncing attempt history…</p>}
+                  {syncState === 'synced' && <p className="si-status" role="status">Attempt history synced.</p>}
+                </section>
               )}
-              <button type="button" className="si-primary" id="next" onClick={nextQuestion}>
-                {questionIndex + 1 < topic.questions.length ? 'Next question' : 'Finish topic'}{' '}
-                <span className="si-key-hint">N</span>
-              </button>
-              <button type="button" id="practice-again" onClick={() => goToQuestion(questionIndex)}>
-                Practice again
-              </button>
-              {hasAward(events, `/interview#${questionId}`, 'interview') && (
-                <span className="si-done" role="status">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }} aria-hidden="true">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                  Completed · +{INTERVIEW_COMPLETED_POINTS} points
-                </span>
+
+              {/* 8. DELIVERY & SYSTEM DESIGN */}
+              <DeliveryRow delivery={latest?.delivery} />
+              {question.rounds?.includes('system-design') && (
+                <div className="sd-comparison">
+                  <SystemDesignCanvas value={latest?.sketch ?? sketch} />
+                  {referenceDiagram ? (
+                    <div>
+                      <SystemDesignCanvas value={referenceDiagram} title="Reference architecture" />
+                      <p>{referenceDiagram.note}</p>
+                    </div>
+                  ) : (
+                    <p>No reference diagram for this question yet. Compare your sketch with the model answer above.</p>
+                  )}
+                </div>
               )}
             </div>
           </div>
