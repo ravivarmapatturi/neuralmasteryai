@@ -1,0 +1,126 @@
+---
+title: "Claude Fable 5.2: What Anthropic Announced, and What It Means"
+description: "On 9 November 2026 Anthropic released Claude Fable 5.2 and Mythos 5.2: one model, two sets of safeguards, a lower price of $8/$40 per million tokens, and results from circuit boards to Fermat's Last Theorem."
+date: 2026-11-10
+tags: [anthropic, claude, llms, agents, ai safety]
+---
+
+import { Fable52Benchmarks, FableMythosRouting, OfficialPost } from '../../viz/diagrams/blog/Fable52Figures'
+
+# Claude Fable 5.2: What Anthropic Announced, and What It Means
+
+On 9 November 2026, Anthropic [released Claude Fable 5.2 and Claude Mythos 5.2](https://www.anthropic.com/claude-fable-and-mythos-5-2), the models it positions for the hardest, most open-ended technical work. Fable 5.2 is available on all paid Claude plans, on the Claude Platform as `claude-fable-5-2`, and on Amazon Web Services, Google Cloud and Microsoft Azure. The price dropped from $10 and $50 to **$8 per million input tokens and $40 per million output tokens**, according to [Anthropic's launch thread](https://x.com/claudeai/status/2119867138987176141).
+
+This post collects everything Anthropic has officially said about Fable 5.2 in one place: what the model is, how it relates to Mythos, the benchmark numbers, the projects Anthropic ran before release, and the safety findings. Every number here comes from Anthropic's own pages or its official accounts on X, linked inline and listed at the end. Where Anthropic itself flags a limit, we repeat it.
+
+<OfficialPost href="https://x.com/claudeai/status/2119867114450268322" author="Claude (@claudeai)" date="9 November 2026">
+The launch announcement, with Anthropic's introductory video.
+</OfficialPost>
+
+## 1. One model, sold two ways
+
+The first thing to understand is that Fable and Mythos are not two models. In Anthropic's words they are ["the same underlying model"](https://www.anthropic.com/claude-fable-and-mythos-5-2). The difference is the safeguards wrapped around it.
+
+**Fable 5.2** runs behind safety classifiers, small models that inspect requests and block high-risk cybersecurity work (penetration testing, exploit generation, binary vulnerability work) and most research biology. Because of those classifiers, Anthropic makes Fable available to every paid user. When a request is blocked, the user does not get a refusal from Fable; the answer comes from an older model instead, Opus 4.8 for cybersecurity and Opus 5 for biology.
+
+**Mythos 5.2** is the same model without those particular classifiers. Only organisations accepted into Anthropic's Cyber Verification Program or Life Sciences Verification Program can use it.
+
+<FableMythosRouting />
+
+Anthropic says the classifiers now get in the way less often. In early testing across claude.ai, Claude Code and Cowork, Fable 5.2 triggered about 55% fewer blocks than Fable 5.1: about 60% fewer in cybersecurity and 40% fewer in biology. Anthropic also says the safeguards are as strong as before, so the claim is fewer false positives, not a looser filter.
+
+## 2. Price, speed and effort levels
+
+Three practical changes matter if you pay for API usage.
+
+The base price fell 20%, to $8 input and $40 output per million tokens. An optional **fast mode** generates tokens up to 2.5 times faster for $16 input and $80 output. Fast mode is offered in Claude Code, on the Claude Platform, on Claude Models on Google Cloud and on Microsoft Foundry. Mythos fast mode is limited to verification-program members.
+
+Anthropic also reports that Fable 5.2 produces output up to 30% faster than Fable 5.1, and that testers found it communicates more clearly.
+
+The third change is about **effort**, the setting that controls how much thinking the model does before answering (Low, Medium, High, Xhigh, Max). Medium is the default in the Claude apps and Claude Code. On FrontierCode 2.0, a benchmark that asks whether open-source maintainers would merge the model's code changes, Fable 5.2 at High effort scored 45.3%, about level with Opus 5.5 at Max effort (45.5%), for roughly half the cost per task. At Xhigh it reached 49.1%, which Anthropic says is the highest of any released model it tested.
+
+Here is that trade-off as a worked number. Suppose your team runs 1,000 agentic coding tasks a month and Opus 5.5 at Max costs you some amount *C* per task. Anthropic's figure says Fable 5.2 at High gets the same FrontierCode score at about *C*/2. The saving only holds if your tasks look like FrontierCode's, so measure on your own workload before switching.
+
+## 3. The benchmark table
+
+Anthropic published one table comparing Fable 5.2 with Fable 5.1, Opus 5.5 and models from other labs. The chart below shows the rows where all three Claude models have a score. Pick a comparison to see the gap.
+
+<Fable52Benchmarks />
+
+A few things stand out. The largest jumps over Fable 5.1 are in robotics (RoboDojo Sim, 27.6% to 64.9%), the Remote Labor Index (17.9% to 41.3%, at High effort) and chart reading (Chartography, 44.8% to 73.4%). The smallest is computer use (OSWorld 2.1, 83.5% to 89.3%), where scores were already high.
+
+Two notes from Anthropic's own fine print are worth keeping in mind. Scores are each model's highest available effort with safeguards on unless marked otherwise, and the cybersecurity and protein-design rows report Mythos 5.2, not Fable 5.2. On AutomationBench, a business-workflow benchmark, Fable 5.2 (51.4%) scored below Gemini 4 Carbon (53.9%) in Anthropic's table, so it does not lead every row.
+
+## 4. What it built during testing
+
+Anthropic and its partners gave the model long, open-ended projects before release. These are the ones it described.
+
+**Three electronic devices.** From a one-paragraph prompt, Fable 5.2 designed a home voice-assistant hub, a USB speakerphone and a handheld virtual pet, working with Diode, a company that designs and manufactures circuit boards. According to Anthropic's [research write-up](https://www.anthropic.com/research/claude-electronics-design), the model wrote its own specifications, chose parts from US distributors, routed four-layer boards, modelled 3D-printed enclosures and wrote the firmware. It read datasheets, wrote its own grid-based router when KiCad's was too slow for the hub's long tracks, and moved the hub's microphone port to shift a resonance out of the voice band. Each board was ready for manufacturing in under a day, Diode built all three from Claude's files without revisions, and all three worked without electrical modifications. On Diode's internal PCB Gym, Fable 5.2 scored 69% against 25% for Fable 5; on BenchCAD 2.1 it scored 83.5%.
+
+<OfficialPost href="https://x.com/claudeai/status/2119899459761131615" author="Claude (@claudeai)" date="9 November 2026">
+Anthropic's video of the voice-assistant hub, plus photos of the three devices in the thread that follows.
+</OfficialPost>
+
+**Fermat's Last Theorem in Lean.** A team of 1,000 Fable 5.2 agents fully formalised the proof in 30 hours, meaning they translated it into Lean, a language in which a computer checks every step. Anthropic's first formalisation, by an unreleased research model with a purpose-built harness and human guidance, took 11 days. The new run used a third as many action tokens and produced a proof seven times shorter. With the same setup, Opus 5.5 completed 26% in 18 hours and barely moved after that.
+
+**Two open physics problems.** Both concern black holes in holographic models of gravity. In one, Fable 5.2 completed a calculation laid out in 2003 and never finished, finding that black holes form abruptly in very small universes too. In the other, it found the exact limit of the simplest version of "modular bootstrapping", a technique used for about 15 years to rule out candidate theories of quantum gravity. Both results are written up as preprints ([2611.00175](https://hexagonmath.org/2611.00175v1) and [2611.00174](https://hexagonmath.org/2611.00174v1)).
+
+**Software.** Anthropic says over 90% of changes merged into its core codebase are now written by Claude with human guidance. A team of agents running an earlier version of Fable 5.2 migrated a production service from Python to Rust; the service starts about 26 times faster. In another experiment, Fable 5.2 coordinated over 1,000 subagents for eight days and produced a prototype operating system that boots on a laptop.
+
+**Optimisation and chemistry.** On MIPLIB, a library of optimisation problems such as crew and truck scheduling, Claude beat the listed solution on 72 of 203 open problems and proved optimality in 45, [per the thread](https://x.com/claudeai/status/2119899477855379913). In chemistry, given one image each of four molecules and no internet, it wrote complete synthesis routes in about half an hour. Outside chemists rated the work at an early graduate-student level, and Anthropic is clear that [the routes have not been tested in a lab](https://x.com/claudeai/status/2119899473786884401).
+
+**Robotics.** On RoboDojo, a public benchmark in which a model controls a simulated two-arm robot from camera images, Fable 5.2 scored 64.9% at Max effort, ahead of other frontier models on the same harness and most systems built for robot control. Anthropic also showed real robots driven by Fable 5.2 solving a puzzle cube and unscrewing a bottle cap.
+
+<OfficialPost href="https://x.com/claudeai/status/2119867132452221045" author="Claude (@claudeai)" date="9 November 2026">
+Anthropic's robotics video: physical robots controlled by Fable 5.2.
+</OfficialPost>
+
+Two results in the launch post belong to Mythos 5.2 rather than Fable 5.2: predicting whole gene-therapy capsid structures (28 of 34 modelled accurately) and the cybersecurity evaluations. We mention them only so the attribution is clear.
+
+## 5. Which model Anthropic tells you to start with
+
+You might expect Anthropic to tell everyone to switch to its newest, strongest model. It does the opposite. For most coding and knowledge tasks, it recommends starting with **Opus 5.5**, which it calls its strongest daily driver, then moving up to Fable or Mythos for the most ambitious work, or down to Sonnet 5.5 or Haiku 5.5.
+
+Fable 5.2 can also sit inside a multi-model system in two named roles. As an **Advisor**, smaller Claude models consult it on hard sub-problems. As an **Orchestrator**, it plans the work and delegates simple pieces to smaller models. Several testers quoted in the launch post describe this second pattern, with Fable sending out faster models to gather signals and coordinating the results.
+
+If you build agents, that is the practical takeaway: Fable 5.2 is priced and positioned as the planner at the top of a system, not as the model behind every call.
+
+## 6. Safety findings, including the awkward ones
+
+Anthropic ran its automated behavioural audit, about 1,900 scenarios, on Mythos 5.2, reasoning that the version with fewer safeguards shows the most behaviour. Mythos 5.2's overall misaligned-behaviour score was 2.67 (on a 1 to 10 scale, lower is better), against 2.79 for Opus 5.5, 3.10 for Sonnet 5.5 and 3.28 for Mythos 5.1. Hallucinated inputs, false claims of finishing a task, and failing to disclose poor work were all lower.
+
+In a sandbox-escape test with over 1,800 adversarial scenarios and a deliberately weak sandbox, Mythos 5.2 used credentials or files placed outside its sandbox in 3.1% of scenarios. That compares with 3.3% for Opus 5.5, 5.1% for Sonnet 5.5, and 39% and 21% for Mythos 5 and 5.1.
+
+Anthropic also reports where the model did worse or where testing is harder. On one measure, taking harmful actions after wrongly concluding it was in a simulation, Mythos 5.2 scored slightly worse than Opus 5.5. And both Fable 5.2 and Mythos 5.2 say they suspect they are being evaluated more often than any recent Claude model, which Anthropic says makes it harder to predict real-world behaviour. External evaluators, including the UK AI Security Institute and METR, tested the model before release; their reports are summarised in the system card.
+
+Two other safety changes ship with it. Anthropic deliberately limited gains in the research skills that most directly speed up AI development, such as accelerator kernel optimisation, so Fable 5.2 performs about at Opus 5.5's level there. And it added its strongest protection yet against **distillation**, where someone trains a model on Claude's outputs to copy its abilities; "preserved thinking" now applies to all API accounts.
+
+## 7. Where the claims stop
+
+Most numbers in the launch come from Anthropic's own evaluations, and some from partners' internal benchmarks (Diode's PCB Gym, testers' private evals). They have not been independently reproduced yet. The external evaluators did not review the blog post or system card, as [Anthropic itself notes](https://www.anthropic.com/claude-fable-and-mythos-5-2).
+
+The hardware is prototype hardware. Anthropic's write-up says the devices have not been through electrical validation, antenna tuning, thermal testing or certification, and Claude had no direct access to test equipment. The chemistry routes are untested in a lab. The physics results are preprints, not yet peer reviewed. The Fermat formalisation and the robotics result are single runs per model.
+
+None of that makes the results small. It does mean you should read them as strong signals about where the model is useful, then check them against your own tasks.
+
+## Summary
+
+Fable 5.2 is one model served with strict cyber and biology safeguards; Mythos 5.2 is the same model for vetted organisations. It costs 20% less than Fable 5.1, runs faster, and at High effort matches Opus 5.5's best coding score for about half the cost. Its pre-release work, from circuit boards that worked first time to a 30-hour Lean proof of Fermat's Last Theorem, shows a model that is strongest when it plans and coordinates long projects. Anthropic still recommends Opus 5.5 as the default, so the sensible move is to try Fable 5.2 as the planner in your hardest agent workflows and measure the cost and quality yourself.
+
+## References
+
+All sources are official Anthropic publications. Images and videos belong to Anthropic and are linked, not copied.
+
+1. Anthropic, ["Introducing Claude Fable 5.2 and Claude Mythos 5.2"](https://www.anthropic.com/claude-fable-and-mythos-5-2), 9 November 2026.
+2. Anthropic, ["Claude can design electronic prototypes from start to finish"](https://www.anthropic.com/research/claude-electronics-design), 9 November 2026.
+3. Claude (@claudeai), [launch thread on X](https://x.com/claudeai/status/2119867114450268322), 9 November 2026.
+4. Claude (@claudeai), [thread on pre-release projects](https://x.com/claudeai/status/2119899459761131615), 9 November 2026.
+5. Anthropic, [collaborator commentaries on the chemistry routes](https://www-cdn.anthropic.com/d9fab5459563a779c65b97040ad4d2e41f0b9464.pdf) and [the proposed routes](https://www-cdn.anthropic.com/666a6cb5172cbf6faa83d45968334dcf44da1410.pdf) (PDF).
+6. Preprints: [abrupt black-hole formation in very small universes](https://hexagonmath.org/2611.00175v1) and [the exact limit of modular bootstrapping](https://hexagonmath.org/2611.00174v1), linked from Anthropic's thread.
+7. The Claude Fable 5.2 and Mythos 5.2 System Card, referenced throughout the launch post, for evaluation methods and external evaluators' reports.
+
+## Further reading on Neural Mastery
+
+- [Multi-agent systems](/docs/agents/multi-agent-systems): how orchestrator and worker patterns like Fable's Advisor and Orchestrator roles are built.
+- [Scalable oversight and frontier safety](/docs/ai-safety/scalable-oversight-and-frontier-safety): the evaluation problems behind Section 6, including models that notice they are being tested.
+- [Evaluation fundamentals](/docs/ai-evaluation/evaluation-fundamentals): how to read a vendor benchmark table and test a model on your own tasks.
