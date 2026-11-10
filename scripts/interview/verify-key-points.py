@@ -13,6 +13,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--baseline", default="3b261bd1")
 parser.add_argument("--batch", default="b4")
 parser.add_argument("--expected", type=int, default=200)
+parser.add_argument("--allow-new-reference-rubrics", action="store_true",
+                    help="Permit new practice rubrics on previously reference-only frozen questions; never change frozen inputs")
 args = parser.parse_args()
 BASE = args.baseline
 
@@ -36,6 +38,7 @@ assert len(before) == len(after) == 917
 assert before.keys() == after.keys(), "Question IDs changed"
 overrides = {qid: points for qid, points in overrides.items() if "keyPoints" not in before[qid]}
 assert len(overrides) == args.expected
+assert all(len(points) == 4 for points in overrides.values()), "Batch rubrics must have four points"
 module = ast.parse((ROOT / "scripts/interview/build_practice_data.py").read_text())
 validator = next(n for n in module.body if isinstance(n, ast.FunctionDef) and n.name == "validate_key_points")
 namespace = {}
@@ -65,10 +68,19 @@ for row in sample["questions"]:
 # verdicts are a recorded manual reading of each point against its own answer.
 heldout = read("docs/evidence/interview/judge-v2-heldout.json")
 ground_truth = read("docs/evidence/interview/judge-v2-ground-truth.json")
+for frozen in ("judge-v2-heldout.json", "judge-v2-ground-truth.json",
+               "judge-v2-model-manifest.json", "judge-v2-thresholds.json"):
+    path = f"docs/evidence/interview/{frozen}"
+    assert (ROOT / path).read_bytes() == subprocess.check_output(
+        ["git", "show", f"{BASE}:{path}"], cwd=ROOT), f"Frozen artifact changed: {frozen}"
 for example in heldout["examples"]:
     qid = example["questionId"]
     for field in ("answer", "keyPoints"):
-        assert after[qid].get(field) == before[qid].get(field) == ground_truth[qid].get(field)
+        assert before[qid].get(field) == ground_truth[qid].get(field)
+        if (field == "keyPoints" and args.allow_new_reference_rubrics
+                and field not in before[qid] and qid in overrides):
+            continue
+        assert after[qid].get(field) == before[qid].get(field)
 answers = sorted((qid, q["answer"]) for qid, q in after.items())
 print(json.dumps({
     "baseline": BASE,
@@ -81,5 +93,9 @@ print(json.dumps({
     "answerPairsSha256": hashlib.sha256(json.dumps(answers, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest(),
     "sampleQuestions": len(sample["questions"]), "samplePoints": sum(len(r["checks"]) for r in sample["questions"]),
     "unchangedHeldoutAnswers": len(heldout["examples"]),
-    "heldoutNote": "Inputs match the frozen baseline; this is not an inference measurement.",
+    "newPracticeRubricsOnFrozenReferenceQuestions": len({
+        e["questionId"] for e in heldout["examples"]
+        if e["questionId"] in overrides and "keyPoints" not in before[e["questionId"]]
+    }),
+    "heldoutNote": "Frozen harness inputs match the baseline; new practice reference rubrics, if allowed, are not exercised by that harness. This is not an inference measurement.",
 }, indent=2))
