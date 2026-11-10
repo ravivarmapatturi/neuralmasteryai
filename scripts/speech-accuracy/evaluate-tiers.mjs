@@ -15,7 +15,8 @@ const candidates=args.capture ? [[`capture-${args.capture}`,'onnx-community/whis
 const rowSets={v2:['heldout-v2'],terms:['human-terms','terms']};
 const rows=(rowSets[args.set]??['corpus','human-terms','sequence']).flatMap(name=>JSON.parse(fs.readFileSync(`scripts/speech-accuracy/${name}.json`)).filter(r=>r.split==='heldout').map(r=>({...r,corpus:name})));
 // --prompt=wide gives every clip the same topic vocabulary, to measure a list wider than the question title.
-const widePrompt='XGBoost, RAG, LoRA, QLoRA, embeddings, BM25, LLM, GPU, PyTorch, Kubernetes, Transformer, tokenization, fine-tuning, FAISS, HNSW, reranker.';
+// --promptText=BM25. replaces that list, for example with the single term a question title gives today.
+const widePrompt=args.promptText??'XGBoost, RAG, LoRA, QLoRA, embeddings, BM25, LLM, GPU, PyTorch, Kubernetes, Transformer, tokenization, fine-tuning, FAISS, HNSW, reranker.';
 if(args.capture){
  const long=JSON.parse(fs.readFileSync('scripts/speech-accuracy/capture-cases.json'))[0];
  rows.push({...long,corpus:'capture-long'}, {...long,id:'capture-long-quiet-tail',corpus:'capture-quiet-tail',quietAfterSeconds:35,quietGain:0.03});
