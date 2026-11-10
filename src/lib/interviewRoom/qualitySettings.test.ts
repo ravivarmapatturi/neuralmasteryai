@@ -27,7 +27,7 @@ describe('qualitySettings', () => {
     expect(QUALITY_PROFILES.fast.werPct).toBeNull();
 
     expect(QUALITY_PROFILES.better.label).toBe('Standard');
-    expect(QUALITY_PROFILES.better.downloadSizeMB).toBe('~112 MB total + runtime');
+    expect(QUALITY_PROFILES.better.downloadSizeMB).toBe('112 to 240 MB + runtime');
     expect(QUALITY_PROFILES.better.werPct).toBeNull();
 
     // High accuracy is exposed only by the capability-gated control.

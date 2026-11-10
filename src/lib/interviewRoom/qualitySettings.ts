@@ -25,7 +25,7 @@ export const QUALITY_PROFILES: Record<QualityOption, QualityProfile> = {
   better: {
     id: 'better',
     label: 'Standard',
-    downloadSizeMB: '~112 MB total + runtime',
+    downloadSizeMB: '112 to 240 MB + runtime',
     downloadBytes: 111666188,
     werPct: null,
     modelName: 'Moonshine Tiny + Whisper Base.en final check',
@@ -127,7 +127,7 @@ export function shouldWarnBeforeDownload(
 ): string | null {
   if (selected === 'better') {
     if (capability.isSaveData) {
-      return 'Data Saver is on: downloading Standard requires ~112 MB of model data in total.';
+      return 'Data Saver is on: downloading Standard requires 112 to 240 MB of model data.';
     }
     if (capability.isLowMemory) {
       return `Device memory is low (${capability.deviceMemoryGB} GB). The final speech check may cause memory pressure.`;
@@ -147,7 +147,8 @@ export function createASREngineForQuality(quality: QualityOption): SingleThreadA
     ...(quality !== 'fast' ? {
       finalModelId: finalModel,
       finalDevice: 'webgpu' as const,
-      finalDtype: quality === 'best' ? 'q4' : 'q8',
+      // On WebGPU, Whisper Base runs with a full-precision encoder; WASM keeps 8-bit weights.
+      finalDtype: quality === 'best' ? 'q4' : { webgpu: { encoder_model: 'fp32', decoder_model_merged: 'q4' }, wasm: 'q8' },
       finalDownloadBytes: quality === 'best' ? 761859026 : 79586556,
       fallbackModelId: quality === 'best' ? 'onnx-community/whisper-base.en' : undefined,
       preloadFinal: true,

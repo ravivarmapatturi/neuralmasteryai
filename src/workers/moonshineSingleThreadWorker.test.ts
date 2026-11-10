@@ -83,3 +83,17 @@ it('uses Standard after a high-end GPU generation failure rather than retaining 
   await vi.waitFor(()=>expect(messages).toContainEqual(expect.objectContaining({id:2,type:'batch_result',text:'standard final words',modelId:'onnx-community/whisper-base.en',device:'wasm'})));
   expect(gpu.dispose).toHaveBeenCalledOnce();
 });
+
+it('loads the per-device dtype: full-precision encoder on WebGPU, 8-bit on WASM', async () => {
+  const dtype={webgpu:{encoder_model:'fp32',decoder_model_merged:'q4'},wasm:'q8'};
+  mocks.pipeline.mockImplementation(async () => Object.assign(vi.fn(async () => ({text:'words'})), {dispose:vi.fn()}));
+  scope.navigator={gpu:{requestAdapter:async()=>({})}};
+  await import('./moonshineSingleThreadWorker');
+  send(1,'init',{modelId:'onnx-community/whisper-base.en',device:'webgpu',dtype});
+  await vi.waitFor(()=>expect(messages.some(m=>m.id===1&&m.type==='init_done')).toBe(true));
+  expect(mocks.pipeline.mock.calls.at(-1)![2]).toMatchObject({device:'webgpu',dtype:dtype.webgpu});
+  scope.navigator={gpu:{requestAdapter:async()=>null}};
+  send(2,'init',{modelId:'onnx-community/whisper-base',device:'webgpu',dtype});
+  await vi.waitFor(()=>expect(messages.some(m=>m.id===2&&m.type==='init_done')).toBe(true));
+  expect(mocks.pipeline.mock.calls.at(-1)![2]).toMatchObject({device:'wasm',dtype:'q8'});
+});

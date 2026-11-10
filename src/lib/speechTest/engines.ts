@@ -396,6 +396,10 @@ export function trimAudioSilence(
  * - Retains all audio in a session buffer to verify whether final text equals
  *   a batch pass over the same audio.
  */
+type DtypeChoice = string | Record<string, string>;
+/** One dtype for every device, or one per device the worker ends up running on. */
+export type SpeechDtype = DtypeChoice | { webgpu: DtypeChoice; wasm: DtypeChoice };
+
 export interface SingleThreadASROptions {
   id?: string;
   name?: string;
@@ -408,7 +412,7 @@ export interface SingleThreadASROptions {
   finalModelId?: string;
   finalDevice?: 'wasm' | 'webgpu';
   finalDownloadBytes?: number;
-  finalDtype?: string | Record<string, string>;
+  finalDtype?: SpeechDtype;
   fallbackModelId?: string;
   preloadFinal?: boolean;
 }
@@ -423,7 +427,7 @@ export class SingleThreadASREngine extends BaseSpeechEngine {
   readonly finalModelId: string | undefined;
   private readonly finalDevice: 'wasm' | 'webgpu';
   private readonly finalDownloadBytes: number;
-  private readonly finalDtype: string | Record<string, string>;
+  private readonly finalDtype: SpeechDtype;
   private readonly fallbackModelId?: string;
   private readonly preloadFinal: boolean;
   private liveDecodeRatios: number[] = [];

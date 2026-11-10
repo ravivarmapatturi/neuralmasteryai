@@ -14,12 +14,16 @@ let dtype: any = 'q8';
 let transcriber: any = null;
 let backgroundChunks: Array<{ stride: number[]; tokens: any[]; is_last?: boolean }> = [];
 
+// A dtype may be given per device, e.g. { webgpu: { encoder_model: 'fp32', ... }, wasm: 'q8' }:
+// WebGPU runs full-precision encoders well, while 8-bit weights are the right fit for WASM.
+const dtypeFor = (device: string) => (dtype && typeof dtype === 'object' && ('webgpu' in dtype || 'wasm' in dtype)) ? (dtype[device] ?? 'q8') : dtype;
+
 const progress = (p: any) => {
   if (p.status === 'progress') self.postMessage({ type: 'progress', file: `${modelId}/${p.file}`, loaded: p.loaded, total: p.total, progress: p.progress });
 };
 
 async function initialize(nextModel = modelId, nextDevice = requestedDevice, nextDtype = dtype) {
-  if (transcriber && modelId === nextModel && requestedDevice === nextDevice && dtype === nextDtype) return transcriber;
+  if (transcriber && modelId === nextModel && requestedDevice === nextDevice && JSON.stringify(dtype) === JSON.stringify(nextDtype)) return transcriber;
   // Release the live model before loading a different final-pass model on small devices.
   if (transcriber) await transcriber.dispose();
   transcriber = null;
@@ -38,11 +42,11 @@ async function initialize(nextModel = modelId, nextDevice = requestedDevice, nex
 
   }
   try {
-    transcriber = await pipeline('automatic-speech-recognition', modelId, { revision: ASR_MODEL_REVISIONS[modelId] ?? 'main', dtype, device: actualDevice, progress_callback: progress } as any);
+    transcriber = await pipeline('automatic-speech-recognition', modelId, { revision: ASR_MODEL_REVISIONS[modelId] ?? 'main', dtype: dtypeFor(actualDevice), device: actualDevice, progress_callback: progress } as any);
   } catch (error) {
     if (actualDevice !== 'webgpu' || nextModel.includes('large-v3-turbo')) throw error;
     actualDevice = 'wasm';
-    transcriber = await pipeline('automatic-speech-recognition', modelId, { revision: ASR_MODEL_REVISIONS[modelId] ?? 'main', dtype, device: 'wasm', progress_callback: progress } as any);
+    transcriber = await pipeline('automatic-speech-recognition', modelId, { revision: ASR_MODEL_REVISIONS[modelId] ?? 'main', dtype: dtypeFor('wasm'), device: 'wasm', progress_callback: progress } as any);
   }
   return transcriber;
 }
