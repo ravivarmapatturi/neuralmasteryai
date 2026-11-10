@@ -10,6 +10,8 @@ import {
   getNodeOpacity,
   formatTopicLabel,
   formatAccessibleTopicLabel,
+  getHeatmapWeight,
+  getHeatmapColorMix,
 } from './masteryScale';
 
 describe('masteryScale unit tests', () => {
@@ -182,6 +184,27 @@ describe('masteryScale unit tests', () => {
         .toBe('Transformers, 42% completed, 13 of 32 questions');
       expect(formatAccessibleTopicLabel('Transformers', 100, 32, 32))
         .toBe('Transformers, 100% completed, 32 of 32 questions');
+    });
+  });
+
+  describe('heatmap sequential color scale', () => {
+    it('scales weight monotonically from 18% at 0% to 100% at 100%', () => {
+      expect(getHeatmapWeight(0)).toBe(18);
+      expect(getHeatmapWeight(50)).toBe(59);
+      expect(getHeatmapWeight(100)).toBe(100);
+      expect(getHeatmapWeight(0)).toBeLessThan(getHeatmapWeight(50));
+      expect(getHeatmapWeight(50)).toBeLessThan(getHeatmapWeight(100));
+    });
+
+    it('clamps out of bounds percentages safely', () => {
+      expect(getHeatmapWeight(-10)).toBe(18);
+      expect(getHeatmapWeight(150)).toBe(100);
+    });
+
+    it('generates valid CSS color-mix expressions', () => {
+      expect(getHeatmapColorMix(0)).toBe('color-mix(in srgb, var(--accent) 18%, var(--surface-alt))');
+      expect(getHeatmapColorMix(50)).toBe('color-mix(in srgb, var(--accent) 59%, var(--surface-alt))');
+      expect(getHeatmapColorMix(100)).toBe('color-mix(in srgb, var(--accent) 100%, var(--surface-alt))');
     });
   });
 });

@@ -156,26 +156,61 @@ body.nm-no-footer footer {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: 6px;
   border: 1px solid var(--line);
   background: var(--surface);
-  color: var(--soft);
+  color: var(--fg);
   cursor: pointer;
   transition: all 0.15s ease;
   padding: 0;
+  flex-shrink: 0;
+}
+
+.si-header-icon-btn svg {
+  display: block;
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+  min-height: 18px !important;
+  flex-shrink: 0 !important;
+  stroke: currentColor;
 }
 
 .si-header-icon-btn:hover {
-  color: var(--fg);
+  color: var(--accent);
   border-color: var(--accent);
+  background: var(--surface-alt, var(--surface));
 }
 
 .si-header-icon-btn.is-bookmarked,
 .si-header-icon-btn.on {
   color: var(--accent);
   border-color: var(--accent);
+}
+
+[data-theme='pure-white'] .si-header-icon-btn,
+[data-page-theme='pure-white'] .si-header-icon-btn {
+  background: #ffffff !important;
+  border-color: #c7d2fe !important;
+  color: #3730a3 !important;
+}
+
+[data-theme='pure-white'] .si-header-icon-btn:hover,
+[data-page-theme='pure-white'] .si-header-icon-btn:hover {
+  background: #f5f3ff !important;
+  border-color: #818cf8 !important;
+  color: #312e81 !important;
+}
+
+[data-theme='pure-white'] .si-header-icon-btn.is-bookmarked,
+[data-theme='pure-white'] .si-header-icon-btn.on,
+[data-page-theme='pure-white'] .si-header-icon-btn.is-bookmarked,
+[data-page-theme='pure-white'] .si-header-icon-btn.on {
+  background: #e0e7ff !important;
+  border-color: #6366f1 !important;
+  color: #3730a3 !important;
 }
 
 .si-settings-wrapper {
@@ -462,11 +497,12 @@ body.nm-no-footer footer {
 }
 
 .simple-interview.si-room-active .si-answer-box {
-  flex: 1 1 0% !important;
-  min-height: 60px !important;
-  max-height: 100% !important;
+  flex: 0 1 auto !important;
+  min-height: 8rem !important;
+  height: auto !important;
+  max-height: 45vh !important;
   overflow-y: auto !important;
-  margin: 4px 0 !important;
+  margin: 8px 0 !important;
 }
 
 .simple-interview.si-room-active .si-actions {
@@ -856,7 +892,7 @@ body.nm-no-footer footer {
   display: block;
   box-sizing: border-box;
   width: 100%;
-  min-height: 160px;
+  min-height: 8rem;
   padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -1088,6 +1124,32 @@ button.si-node,
 
 .si-node.is-complete .si-ring {
   box-shadow: 0 0 10px currentColor;
+}
+
+.si-graph-legend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin: 10px auto 4px;
+  font-size: 0.72rem;
+  font-family: var(--font-sans);
+  color: var(--soft);
+}
+
+.si-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.si-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  display: inline-block;
+  flex-shrink: 0;
 }
 
 .si-group-totals {
@@ -1333,7 +1395,7 @@ button.si-node,
 }
 
 /* Light theme outlined buttons */
-:root:not([data-theme="dark"]) .interview-room-wrap button:not(.primary):not(.si-primary):not(.si-node):not(.si-link):not(.si-settings-close),
+:root:not([data-theme="dark"]) .interview-room-wrap button:not(.primary):not(.si-primary):not(.si-node):not(.si-link):not(.si-settings-close):not(.si-header-icon-btn),
 :root:not([data-theme="dark"]) .interview-room-wrap .btn-link:not(.primary),
 :root:not([data-theme="dark"]) .si-secondary,
 :root:not([data-theme="dark"]) .si-entry-action-btn,
@@ -1344,7 +1406,7 @@ button.si-node,
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
-:root:not([data-theme="dark"]) .interview-room-wrap button:not(.primary):not(.si-primary):not(.si-node):not(.si-link):not(.si-settings-close):hover,
+:root:not([data-theme="dark"]) .interview-room-wrap button:not(.primary):not(.si-primary):not(.si-node):not(.si-link):not(.si-settings-close):not(.si-header-icon-btn):hover,
 :root:not([data-theme="dark"]) .interview-room-wrap .btn-link:not(.primary):hover,
 :root:not([data-theme="dark"]) .si-secondary:hover,
 :root:not([data-theme="dark"]) .si-entry-action-btn:hover,
@@ -1382,52 +1444,139 @@ button.si-node,
   background: var(--surface);
 }
 
-/* Side-by-side Answer Comparison Grid */
+/* Side-by-side Answer Comparison Grid and Wide Stage Layout */
 .si-answer-stage {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
-@media (min-width: 900px) {
-  .si-comparison-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24px;
-    align-items: stretch;
-    margin-top: 10px;
+.si-answer-question-panel {
+  display: flex;
+  flex-direction: column;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  gap: 12px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.si-answer-question-panel .si-question-title {
+  margin: 0;
+  font-family: var(--display);
+  font-size: clamp(1.05rem, 2vw, 1.35rem);
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--fg);
+}
+
+.si-col-yours,
+.si-col-model,
+.si-earlier-section {
+  display: flex;
+  flex-direction: column;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  gap: 14px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+@media (min-width: 1200px) {
+  .si-card,
+  .si-card-wide,
+  .si-card-stage {
+    max-width: 1600px;
   }
 
-  .si-col-yours, .si-col-model {
+  .simple-interview.si-room-active .si-card-stage {
+    max-width: 1600px !important;
+  }
+
+  .si-answer-stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.18fr);
+    gap: 28px;
+    align-items: start;
+  }
+
+  .si-answer-col-left {
     display: flex;
     flex-direction: column;
-    padding: 22px;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    background: var(--surface);
-    gap: 14px;
+    gap: 18px;
     min-width: 0;
+    max-width: 100%;
     box-sizing: border-box;
+  }
+
+  .si-answer-col-right {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+}
+
+@media (max-width: 1199px) {
+  .si-answer-col-left,
+  .si-answer-col-right {
+    display: contents;
+  }
+
+  .si-answer-question-panel {
+    order: 1;
+  }
+
+  .si-check-loading,
+  .si-failed-status,
+  .si-keypoints-card {
+    order: 2;
+  }
+
+  .si-col-yours {
+    order: 3;
+  }
+
+  .si-col-model {
+    order: 4;
+  }
+
+  .si-earlier-section {
+    order: 5;
+  }
+
+  .sd-comparison,
+  .si-delivery {
+    order: 6;
+  }
+
+  .si-self-rating {
+    order: 7;
+  }
+
+  .si-answer-actions {
+    order: 8;
   }
 }
 
 @media (max-width: 899px) {
-  .si-comparison-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-    margin-top: 10px;
-  }
-
-  .si-col-yours, .si-col-model {
-    display: flex;
-    flex-direction: column;
+  .si-col-yours,
+  .si-col-model,
+  .si-earlier-section,
+  .si-answer-question-panel {
     padding: 18px;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    background: var(--surface);
     gap: 14px;
-    box-sizing: border-box;
   }
 }
 
@@ -1836,8 +1985,8 @@ button.si-node,
 .simple-interview .si-speak { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 44px; height: 44px; margin: 6px 0 0; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--accent); cursor: pointer; }
 .simple-interview .si-speak:hover { border-color: var(--accent); }
 
-.si-card-wide { max-width: min(1240px, 100%); min-height: calc(100vh - 150px); }
-.si-card-stage { max-width: min(1240px, 100%); min-height: calc(100vh - 150px); }
+.si-card-wide { max-width: min(1600px, 100%); min-height: calc(100vh - 150px); }
+.si-card-stage { max-width: min(1600px, 100%); min-height: calc(100vh - 150px); }
 .si-card-wide .si-map { grid-template-columns: minmax(0, 1fr) minmax(360px, 32%); }
 .si-card-wide .si-panel { max-height: calc(100vh - 290px); min-height: 520px; }
 

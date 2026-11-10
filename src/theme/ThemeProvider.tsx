@@ -1,50 +1,68 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { THEMES, isDarkTheme, type ThemeId } from './themes';
 
-export type ColorMode = 'light' | 'dark';
+export type { ThemeId };
+export type ColorMode = ThemeId;
 
 const STORAGE_KEY = 'neural-mastery-theme';
 
 interface ThemeContextValue {
-  colorMode: ColorMode;
-  setColorMode: (mode: ColorMode) => void;
+  theme: ThemeId;
+  colorMode: ThemeId;
+  setTheme: (theme: ThemeId) => void;
+  setColorMode: (mode: ThemeId) => void;
   toggleColorMode: () => void;
+  isDark: boolean;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-function getInitialColorMode(): ColorMode {
+function getInitialTheme(): ThemeId {
   if (typeof window === 'undefined') return 'dark';
   const stored = window.localStorage.getItem(STORAGE_KEY);
-  if (stored === 'light' || stored === 'dark') return stored;
-  // Matches the old Docusaurus config's respectPrefersColorScheme: true.
+  if (stored && stored in THEMES) return stored as ThemeId;
+  // Fall back to dark / light preference
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
 /**
- * Replaces @docusaurus/theme-common's useColorMode(). Sets data-theme on
- * <html> (same attribute convention the old platform used, so CSS ported
- * from custom.css needs zero selector changes), persists explicit choices,
- * and falls back to the OS preference when no choice has been made yet.
+ * Manages the platform's theme across 5 background choices:
+ * 'light', 'dark', 'pure-white', 'sepia', 'forest'.
+ * Sets `data-theme` on <html> and remembers the choice in localStorage.
  */
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [colorMode, setColorModeState] = useState<ColorMode>(getInitialColorMode);
+  const [theme, setThemeState] = useState<ThemeId>(getInitialTheme);
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', colorMode);
-  }, [colorMode]);
+    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('data-page-theme', theme);
+    document.documentElement.setAttribute('data-color-scheme', isDarkTheme(theme) ? 'dark' : 'light');
+  }, [theme]);
 
-  const setColorMode = useCallback((mode: ColorMode) => {
-    setColorModeState(mode);
-    window.localStorage.setItem(STORAGE_KEY, mode);
+  const setTheme = useCallback((nextTheme: ThemeId) => {
+    setThemeState(nextTheme);
+    window.localStorage.setItem(STORAGE_KEY, nextTheme);
   }, []);
 
+  const setColorMode = setTheme;
+
   const toggleColorMode = useCallback(() => {
-    setColorMode(colorMode === 'dark' ? 'light' : 'dark');
-  }, [colorMode, setColorMode]);
+    // If dark or forest, toggle to light; if light, pure-white, or sepia, toggle to dark
+    setTheme(isDarkTheme(theme) ? 'light' : 'dark');
+  }, [theme, setTheme]);
+
+  const isDark = isDarkTheme(theme);
 
   const value = useMemo(
-    () => ({ colorMode, setColorMode, toggleColorMode }),
-    [colorMode, setColorMode, toggleColorMode],
+    () => ({
+      theme,
+      colorMode: theme,
+      setTheme,
+      setColorMode,
+      toggleColorMode,
+      isDark,
+    }),
+    [theme, setTheme, toggleColorMode, isDark],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

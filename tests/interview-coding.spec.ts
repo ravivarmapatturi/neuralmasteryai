@@ -102,7 +102,8 @@ test.describe('Interview Coding Questions & Pyodide Workspace', () => {
     await expect(lockedNotice).toBeVisible();
 
     // 6. Run wrong solution (default starter code)
-    const runBtn = page.getByRole('button', { name: /▶ Run|Run/i }).first();
+    // Scoped to the editor: the focus timer's nav button ("Focus timer running…") also matches /run/i.
+    const runBtn = overlay.getByRole('button', { name: /^\W*Run\b/i }).first();
     await runBtn.click();
 
     // Verify failures in test results and reference solution unlocked
@@ -129,7 +130,7 @@ test.describe('Interview Coding Questions & Pyodide Workspace', () => {
     }, solutionText);
 
     // 8. Submit right solution
-    const submitBtn = page.getByRole('button', { name: /Submit/i }).first();
+    const submitBtn = overlay.getByRole('button', { name: /Submit/i }).first();
     await submitBtn.click();
 
     // Wait for pass

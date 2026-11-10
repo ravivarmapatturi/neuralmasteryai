@@ -90,7 +90,7 @@ test.describe('Find, Filter & Polish (C9 & C10)', () => {
 
     // Verify stage counter reflects filtered list
     const counterText1 = await page.locator('.si-counter').textContent();
-    expect(counterText1).toContain('Question 1 of');
+    expect(counterText1).toMatch(/^1 \/ \d+$/);
 
     // Screen 2: Asking stage - verify exactly one primary action (Skip to answering)
     const screen2Primary = await page.$$('.si-primary');
@@ -104,7 +104,7 @@ test.describe('Find, Filter & Polish (C9 & C10)', () => {
 
     // Verify counter advanced to Question 2 of filtered list
     const counterText2 = await page.locator('.si-counter').textContent();
-    expect(counterText2).toContain('Question 2 of');
+    expect(counterText2).toMatch(/^2 \/ \d+$/);
 
     // Previous button should now be enabled
     const prevNavBtn = page.locator('#previous-question');
@@ -114,6 +114,9 @@ test.describe('Find, Filter & Polish (C9 & C10)', () => {
     const skipBtn = page.locator('.si-speaker-asking .si-primary');
     await skipBtn.click();
     await page.waitForSelector('.si-speaker-answering');
+
+    // First answer asks how to answer: speak or type. Pick typing.
+    await page.locator('#primer-type').click();
 
     // Screen 3: Answering stage - verify exactly one primary action (#done)
     const screen3Primary = await page.$$('.si-primary');
@@ -133,7 +136,7 @@ test.describe('Find, Filter & Polish (C9 & C10)', () => {
     await page.locator('#next').click();
     await page.waitForTimeout(200);
     const counterText3 = await page.locator('.si-counter').textContent();
-    expect(counterText3).toContain('Question 3 of');
+    expect(counterText3).toMatch(/^3 \/ \d+$/);
   });
 
   test('C10: Layout stability, no width jump between steps', async ({ page }) => {
@@ -167,6 +170,7 @@ test.describe('Find, Filter & Polish (C9 & C10)', () => {
     // Move to answering step
     await page.locator('.si-speaker-asking .si-primary').click();
     await page.waitForSelector('.si-speaker-answering');
+    await page.locator('#primer-type').click();
     const answeringCardBox = await page.locator('.si-card').boundingBox();
     expect(answeringCardBox).not.toBeNull();
 
@@ -213,6 +217,9 @@ test.describe('Find, Filter & Polish (C9 & C10)', () => {
     // Skip to answering
     await page.locator('.si-speaker-asking .si-primary').click();
     await page.waitForSelector('.si-speaker-answering');
+
+    // Choosing to speak asks for the microphone, which is denied.
+    await page.locator('#primer-speak').click();
 
     // Error banner should be clearly rendered
     const errorBanner = page.locator('.si-error-banner');

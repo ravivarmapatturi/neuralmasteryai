@@ -459,6 +459,12 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
       const now = Date.now();
       const current = stateRef.current;
       if (document.hidden || event?.type === 'pagehide') {
+        // A focus phase that already ran out (throttled tab, sleeping laptop) is finished,
+        // not paused: pausing here would save it as an "away" pause with 0 left and lose the session.
+        if (current.status === 'running' && current.endsAt !== null && now >= current.endsAt) {
+          handlePhaseEnd(current, now);
+          return;
+        }
         if (current.status === 'running' && current.phase === 'focus') {
           // Saved straight away: the page may unload before React re-renders.
           const paused = pauseTimer(current, 'away', now);
