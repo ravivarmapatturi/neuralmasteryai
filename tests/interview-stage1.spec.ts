@@ -95,9 +95,8 @@ test.describe('Stage 1 Audit Fixes', () => {
     await page.goto(`http://localhost:${PORT}/interview/q/genai-chunking-strategies`, { waitUntil: 'domcontentloaded' });
     await page.getByRole('button', { name: /Skip to answering/i }).click();
     const typeInstead = page.getByRole('button', { name: 'Type instead', exact: true });
-    if (await typeInstead.isVisible()) {
-      await typeInstead.click();
-    }
+    // Without a microphone the room can switch to typing by itself, so the button may vanish.
+    await typeInstead.click({ timeout: 3000 }).catch(() => undefined);
     await page.waitForSelector('textarea.si-answer-box');
     await page.fill('textarea.si-answer-box', 'Test answer for banned copy verification.');
     await page.locator('#done').click();
