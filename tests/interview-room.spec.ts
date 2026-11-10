@@ -36,6 +36,7 @@ async function controlledRoom(page: Page, settings: {memory:number;gpu:boolean;f
           const event = new MessageEvent('message', { data: { id, ...data } });
           this.onmessage?.(event);
           this.dispatchEvent(event);
+          if (op === 'nli') state.reviewReplyDelivered = true;
         });
         if (this.voice) {
           if (cancel) { state.voiceCancels = (state.voiceCancels || 0) + 1; return; }
@@ -232,13 +233,28 @@ test.describe('Interview Room (/interview/room)', () => {
     await page.getByRole('button', { name: 'Skip to answering' }).click();
     await page.locator('#done').click();
     await expect(page.locator('.si-yours')).toHaveText('No answer was captured.');
+    const newQuestionPoints = navigationTopic.questions[2].keyPoints;
+    const expectNewReview = async () => {
+      await expect(page.locator('.si-check-loading, .si-failed-status')).toHaveCount(0);
+      if (newQuestionPoints?.length) {
+        await expect(page.locator('.si-check .si-points li')).toHaveText(
+          newQuestionPoints.map(point => `Not detected${point}`));
+      } else {
+        await expect(page.locator('.si-check')).toHaveCount(0);
+      }
+    };
+    // Empty rubric answers have their own local "Not detected" checklist;
+    // reference answers have none. Neither may be replaced by the old review.
+    await expectNewReview();
     await page.evaluate(() => (window as any).releaseReview());
-    await expect.poll(() => page.evaluate(() => (window as any).reviewCalls)).toBe(2);
+    // Rubric and reference scoring use different numbers of NLI batches. Wait
+    // for the delayed result to cross the worker boundary, then check the UI.
+    await expect.poll(() => page.evaluate(() => (window as any).reviewReplyDelivered)).toBe(true);
     // Let the real worker client's promises and React's commit finish before checking absence.
     await page.evaluate(() => new Promise<void>(resolve => {
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
     }));
-    await expect(page.locator('.si-check, .si-check-loading, .si-failed-status')).toHaveCount(0);
+    await expectNewReview();
     await expect(page.locator('.si-yours')).toHaveText('No answer was captured.');
     await expect(page.locator('#model-answer')).toHaveText(navigationTopic.questions[2].answer);
     expect(modelRequests, 'No real model downloads').toEqual([]);
