@@ -233,11 +233,12 @@ export default function MockInterviewPage() {
 
     // Evaluate criteria checklist
     const evaluatedCriteria = evaluateCriteriaChecklist(transcript, currentQ.criteria);
+    const isSkipped = transcript === '(Skipped)';
 
     const answerRecord = {
       questionId: currentQ.id,
       transcript,
-      seconds: questionElapsed,
+      seconds: isSkipped ? 0 : Math.max(1, questionElapsed),
       selfRating: undefined,
       evaluatedCriteria,
     };
@@ -314,7 +315,7 @@ export default function MockInterviewPage() {
   const totalRemainingSeconds = Math.max(0, totalTargetSeconds - (session?.totalElapsedSeconds || 0));
 
   return (
-    <div className="nb-theme" style={{ minHeight: '100vh' }}>
+    <div className="nb-theme" style={{ minHeight: '100vh', background: 'var(--nm-bg)' }}>
       <Navbar />
       <main className="nm-timed-mock-shell">
         <p className="nm-mock-eyebrow">
@@ -328,7 +329,7 @@ export default function MockInterviewPage() {
               Timed mock interview
             </h1>
             <p className="nm-mock-lede">
-              Practise under real interview pressure. Pick a role and duration to get a curated mix of screen, depth, system design, debugging, and behavioral questions. Answers are evaluated only at the end on your scorecard.
+              Pick a role and a length.
             </p>
 
             {hasSavedSession && session && session.currentQuestionIndex < session.questions.length && (
@@ -406,16 +407,6 @@ export default function MockInterviewPage() {
                   <span className="nm-mock-length-meta">10 questions · 2 screen, 2 depth, 2 system design, 2 debugging, 2 behavioral</span>
                 </button>
               </div>
-            </div>
-
-            <div className="nm-mock-guidelines">
-              <ul className="nm-mock-guidelines-list">
-                <li><strong>Voice or typing:</strong> The interviewer reads each question aloud; answer out loud or type if preferred.</li>
-                <li><strong>Realistic timing:</strong> A soft per-question limit suggests when to wrap up without cutting you off.</li>
-                <li><strong>No spoilers:</strong> Model answers and evaluation checklists are revealed only on your final scorecard.</li>
-                <li><strong>Self-assessment:</strong> Rate each answer at the end (Got it / Partly / Missed it). No artificial percent grades.</li>
-                <li><strong>Private & resumable:</strong> Runs client-side; reload or pause anytime to take a breath.</li>
-              </ul>
             </div>
 
             <button
@@ -597,11 +588,11 @@ export default function MockInterviewPage() {
                         <span>Finish answer ({formatTime(questionElapsed)}) →</span>
                       </button>
                     )}
-                    <p className="nm-mock-voice-hint">
-                      {isRecording
-                        ? 'Listening to your answer on-device. State your approach, trade-offs, and verification.'
-                        : 'Take a breath to organize your thoughts, then press start and answer out loud.'}
-                    </p>
+                    {isRecording && (
+                      <p className="nm-mock-voice-hint">
+                        Listening on-device…
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -637,7 +628,7 @@ export default function MockInterviewPage() {
                     Skip question
                   </button>
 
-                  {answerMode === 'typed' ? (
+                  {answerMode === 'typed' && (
                     <button
                       type="button"
                       className="nm-mock-btn-primary"
@@ -648,10 +639,6 @@ export default function MockInterviewPage() {
                         ? 'Finish interview & see scorecard →'
                         : 'Submit answer & next question →'}
                     </button>
-                  ) : (
-                    <span style={{ fontSize: '0.875rem', color: 'var(--nm-text-secondary)' }}>
-                      Press “Finish answer” above when done speaking.
-                    </span>
                   )}
                 </div>
               </>
@@ -667,13 +654,15 @@ export default function MockInterviewPage() {
                 Interview scorecard
               </h1>
               <p className="nm-mock-lede">
-                Review your session for <strong>{session.roleLabel}</strong> ({session.targetMinutes} min format). Check your transcripts against the model answers and key points, then rate each answer honestly.
+                {session.roleLabel} · {session.targetMinutes} min. Review your answers against the key points and rate each one.
               </p>
 
               {/* Summary Stats without percent grade and without pass prediction */}
               <div className="nm-mock-summary-stats">
                 <div className="nm-mock-stat-box">
-                  <span className="nm-mock-stat-value">{session.answers.length} of {session.questions.length}</span>
+                  <span className="nm-mock-stat-value">
+                    {session.answers.filter(a => a.transcript !== '(Skipped)' && a.transcript !== '(No answer recorded)').length} of {session.questions.length}
+                  </span>
                   <span className="nm-mock-stat-label">Questions answered</span>
                 </div>
                 <div className="nm-mock-stat-box">
@@ -688,17 +677,17 @@ export default function MockInterviewPage() {
 
               {/* Self-Rating Tally */}
               <div className="nm-mock-ratings-tally" role="region" aria-label="Self-assessment tally">
-                <span className="nm-mock-tally-pill" style={{ color: '#059669' }}>
+                <span className="nm-mock-tally-pill got-it">
                   ✓ {ratingsTally.gotIt} Got it
                 </span>
-                <span className="nm-mock-tally-pill" style={{ color: '#d97706' }}>
+                <span className="nm-mock-tally-pill partly">
                   ~ {ratingsTally.partly} Partly
                 </span>
-                <span className="nm-mock-tally-pill" style={{ color: '#dc2626' }}>
+                <span className="nm-mock-tally-pill missed-it">
                   ✗ {ratingsTally.missedIt} Missed it
                 </span>
                 {ratingsTally.unrated > 0 && (
-                  <span className="nm-mock-tally-pill" style={{ color: 'var(--nm-text-secondary)' }}>
+                  <span className="nm-mock-tally-pill unrated">
                     ○ {ratingsTally.unrated} Unrated
                   </span>
                 )}
@@ -709,6 +698,7 @@ export default function MockInterviewPage() {
             <div className="nm-mock-scorecard-list">
               {session.questions.map((q, idx) => {
                 const answerRecord = session.answers.find(a => a.questionId === q.id);
+                const isSkipped = !answerRecord || answerRecord.transcript === '(Skipped)' || answerRecord.transcript === '(No answer recorded)';
                 const transcript = answerRecord?.transcript || '(No answer recorded)';
                 const secondsTaken = answerRecord?.seconds || 0;
                 const criteriaResults = answerRecord?.evaluatedCriteria || [];
@@ -727,26 +717,24 @@ export default function MockInterviewPage() {
                         <h3 className="nm-mock-report-title">{q.title}</h3>
                       </div>
                       <div className="nm-mock-report-summary-right">
-                        <span style={{ fontSize: '0.8125rem', color: 'var(--nm-text-secondary)' }}>
-                          ⏱ {formatDurationHuman(secondsTaken)}
-                        </span>
+                        {isSkipped ? (
+                          <span className="nm-mock-report-time is-skipped">
+                            Skipped
+                          </span>
+                        ) : (
+                          <span className="nm-mock-report-time">
+                            ⏱ {formatDurationHuman(secondsTaken)}
+                          </span>
+                        )}
                         {answerRecord?.selfRating && (
                           <span
-                            className="nm-mock-check-badge"
-                            style={{
-                              background:
-                                answerRecord.selfRating === 'got-it'
-                                  ? 'color-mix(in srgb, #10b981 18%, transparent)'
-                                  : answerRecord.selfRating === 'partly'
-                                  ? 'color-mix(in srgb, #f59e0b 18%, transparent)'
-                                  : 'color-mix(in srgb, #ef4444 18%, transparent)',
-                              color:
-                                answerRecord.selfRating === 'got-it'
-                                  ? '#059669'
-                                  : answerRecord.selfRating === 'partly'
-                                  ? '#d97706'
-                                  : '#dc2626',
-                            }}
+                            className={`nm-mock-check-badge ${
+                              answerRecord.selfRating === 'got-it'
+                                ? 'is-covered'
+                                : answerRecord.selfRating === 'partly'
+                                ? 'is-partly'
+                                : 'is-missed-it'
+                            }`}
                           >
                             {answerRecord.selfRating === 'got-it'
                               ? 'Got it'
