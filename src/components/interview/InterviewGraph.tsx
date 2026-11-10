@@ -10,6 +10,7 @@ import {
   getNodeRingStrokeWidth,
   getNodeOpacity,
   formatAccessibleTopicLabel,
+  getHeatmapColorMix,
 } from './masteryScale';
 
 export interface GraphTopic {
@@ -365,6 +366,7 @@ export function InterviewGraph({
           const isComplete = progress.isComplete;
           const baseTitle = SHORT_TITLES[t.id] ?? t.title;
           const ariaLabel = formatAccessibleTopicLabel(t.title, progress.pct, t.done ?? 0, t.count);
+          const nodeColor = getHeatmapColorMix(progress.pct);
 
           return (
             <button
@@ -375,7 +377,7 @@ export function InterviewGraph({
               }}
               className={`si-node${t.id === activeId ? ' on' : ''}${isFar ? ' far' : ''}${isComplete ? ' is-complete' : ''}`}
               style={{
-                color: groupColours[t.group],
+                color: nodeColor,
                 opacity: nodeOpacity,
               }}
               aria-pressed={t.id === activeId}
@@ -421,6 +423,20 @@ export function InterviewGraph({
             </button>
           );
         })}
+      </div>
+      <div className="si-graph-legend" role="region" aria-label="Topic completion heat map legend">
+        <span className="si-legend-item">
+          <span className="si-legend-swatch" style={{ background: getHeatmapColorMix(0) }} />
+          <span>0%</span>
+        </span>
+        <span className="si-legend-item">
+          <span className="si-legend-swatch" style={{ background: getHeatmapColorMix(50) }} />
+          <span>50%</span>
+        </span>
+        <span className="si-legend-item">
+          <span className="si-legend-swatch" style={{ background: getHeatmapColorMix(100) }} />
+          <span>100%</span>
+        </span>
       </div>
       <div className="si-group-totals" role="region" aria-label="Topic group totals">
         {groupSummaries.map((g) => {

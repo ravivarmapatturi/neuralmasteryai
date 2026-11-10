@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Link } from 'react-router-dom';
-import { useColorMode } from '../../theme/ThemeProvider';
 import SearchModal from './SearchModal';
 import AuthButton from './AuthButton';
 import StreakBadge from './StreakBadge';
-import { MoonIcon, SidebarIcon, SunIcon } from '../icons/UiIcons';
+import { SidebarIcon } from '../icons/UiIcons';
 import BrandMark from '../brand/BrandMark';
 import FocusMusicControl from '../focus-music/FocusMusicControl';
 import FocusTimerControl from '../focus-timer/FocusTimerControl';
+import ThemePicker, { MobileThemeList } from '../ThemePicker';
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform ?? navigator.userAgent);
 /** Every destination, grouped the way people look for them: things you use, then things you read or check. */
@@ -47,7 +47,6 @@ export default function Navbar({
   onMenuClick?: () => void;
   menuButtonRef?: RefObject<HTMLButtonElement | null>;
 }) {
-  const { colorMode, toggleColorMode } = useColorMode();
   const learnDestination = '/learn';
   const [searchOpen, setSearchOpen] = useState(false);
   const [primaryMenuOpen, setPrimaryMenuOpen] = useState(false);
@@ -239,22 +238,7 @@ export default function Navbar({
               {isMac ? '⌘K' : 'Ctrl+K'}
             </span>
           </button>
-          <button
-            type="button"
-            onClick={toggleColorMode}
-            aria-label="Toggle color mode"
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: '50%',
-              border: '1px solid var(--nm-border)',
-              background: 'transparent',
-              color: 'var(--nm-text-primary)',
-              cursor: 'pointer',
-            }}
-          >
-            {colorMode === 'dark' ? <SunIcon /> : <MoonIcon />}
-          </button>
+          <ThemePicker />
           <StreakBadge />
           <AuthButton />
         </nav>
@@ -311,7 +295,8 @@ export default function Navbar({
             ))}
             <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--nm-border)' }}>
               <FocusMusicControl />
-          <FocusTimerControl />
+              <FocusTimerControl />
+              <MobileThemeList />
             </div>
           </nav>
         </>

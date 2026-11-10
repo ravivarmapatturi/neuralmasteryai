@@ -4,6 +4,7 @@
 // stay pixel-consistent with the static diagram assets on the same page.
 
 import { useColorMode } from './ThemeProvider';
+import type { ThemeId } from './themes';
 
 export interface VizTokens {
   mode: 'dark' | 'light';
@@ -25,25 +26,15 @@ export interface VizTokens {
   edge: string;
 }
 
-// 2026-10-12: promoted to the "notebook" palette sitewide, mirroring the
-// same change in src/styles/theme.css's --nm-* tokens (see that file's
-// comment for the full rationale). Same semantic slot per color (accent
-// primary stays green/brand, secondary stays blue, warn stays amber,
-// danger stays red, purple stays purple, teal stays teal) -- only the
-// actual hex values moved to the warmer, paper-consistent palette. Every
-// light-mode value re-verified computationally against WCAG AA (4.5:1) at
-// caption/label text size, same discipline as the darkening pass already
-// documented below for the previous palette -- this is the second such
-// pass on this exact file, not the first.
 export const DARK: VizTokens = {
   mode: 'dark',
   background: '#16181F',
   surface: '#1D202A',
   surfaceAlt: '#232734',
-  border: '#363B4A',
-  textPrimary: '#F1EDE1',
-  textSecondary: '#C2C6D4',
-  textMuted: '#9A9FB0',
+  border: '#5B657E',
+  textPrimary: '#E8EEFC',
+  textSecondary: '#BCCADF',
+  textMuted: '#9FB0C8',
   accentPrimary: '#7FD99A',
   accentSecondary: '#7EA2FF',
   accentWarn: '#FFC857',
@@ -60,18 +51,10 @@ export const LIGHT: VizTokens = {
   background: '#FAF4E6',
   surface: '#F3EAD4',
   surfaceAlt: '#ECE0C5',
-  border: '#D8C9A3',
-  textPrimary: '#1C2230',
-  textSecondary: '#4A4F5C',
-  // mint/amber/coral/green (accentPrimary/Warn/Danger/-- see notebook.css)
-  // all failed WCAG AA (4.5:1) at caption/label size against this file's
-  // own surfaceAlt in their first pass (as low as 3.6:1) -- same failure
-  // mode the ORIGINAL palette below already hit once. HSL-lightness-only
-  // adjustment again, hue/saturation preserved so relative distinctness
-  // between concept colors (getConceptColor) is unchanged. All now clear
-  // 4.5:1 against every light-theme background, including surface-alt
-  // (#ECE0C5), verified computationally 2026-11-07.
-  textMuted: '#5C6270',
+  border: '#948663',
+  textPrimary: '#17305F',
+  textSecondary: '#3D5570',
+  textMuted: '#4E5F72',
   accentPrimary: '#1A6E36',
   accentSecondary: '#1D4FC4',
   accentWarn: '#865505',
@@ -81,6 +64,74 @@ export const LIGHT: VizTokens = {
   nodeFill: '#ECE0C5',
   nodeBorder: '#1A6E36',
   edge: '#1D4FC4',
+};
+
+export const PURE_WHITE: VizTokens = {
+  mode: 'light',
+  background: '#FFFFFF',
+  surface: '#FFFFFF',
+  surfaceAlt: '#FFFFFF',
+  border: '#C7D2FE',
+  textPrimary: '#1A1A2E',
+  textSecondary: '#334155',
+  textMuted: '#475569',
+  accentPrimary: '#3730A3',
+  accentSecondary: '#0F766E',
+  accentWarn: '#C2410C',
+  accentDanger: '#B91C1C',
+  accentPurple: '#A21CAF',
+  accentTeal: '#0F766E',
+  nodeFill: '#FFFFFF',
+  nodeBorder: '#C7D2FE',
+  edge: '#3730A3',
+};
+
+export const SEPIA: VizTokens = {
+  mode: 'light',
+  background: '#F5ECD8',
+  surface: '#EBDCC0',
+  surfaceAlt: '#E2CFAE',
+  border: '#8C7653',
+  textPrimary: '#2C1F14',
+  textSecondary: '#4D3B2C',
+  textMuted: '#63503F',
+  accentPrimary: '#1E6834',
+  accentSecondary: '#1C448E',
+  accentWarn: '#8A4908',
+  accentDanger: '#A82B20',
+  accentPurple: '#682C7D',
+  accentTeal: '#155A52',
+  nodeFill: '#E2CFAE',
+  nodeBorder: '#1E6834',
+  edge: '#1C448E',
+};
+
+export const FOREST: VizTokens = {
+  mode: 'dark',
+  background: '#0D1713',
+  surface: '#14231D',
+  surfaceAlt: '#1B3027',
+  border: '#437863',
+  textPrimary: '#E6F4ED',
+  textSecondary: '#B2D3C2',
+  textMuted: '#84A996',
+  accentPrimary: '#4ADE80',
+  accentSecondary: '#38BDF8',
+  accentWarn: '#FBBF24',
+  accentDanger: '#F87171',
+  accentPurple: '#C084FC',
+  accentTeal: '#2DD4BF',
+  nodeFill: '#1B3027',
+  nodeBorder: '#4ADE80',
+  edge: '#38BDF8',
+};
+
+export const VIZ_THEMES: Record<ThemeId, VizTokens> = {
+  light: LIGHT,
+  dark: DARK,
+  'pure-white': PURE_WHITE,
+  sepia: SEPIA,
+  forest: FOREST,
 };
 
 export const RADIUS = { sm: 6, md: 12, lg: 20 };
@@ -96,6 +147,6 @@ export function getFeatureColors(t: VizTokens): string[] {
 }
 
 export function useVizTokens(): VizTokens {
-  const { colorMode } = useColorMode();
-  return colorMode === 'dark' ? DARK : LIGHT;
+  const { theme } = useColorMode();
+  return VIZ_THEMES[theme] || LIGHT;
 }

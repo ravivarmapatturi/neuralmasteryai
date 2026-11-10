@@ -112,3 +112,20 @@ export function formatAccessibleTopicLabel(
 ): string {
   return `${title}, ${pct}% completed, ${done} of ${count} questions`;
 }
+
+/**
+ * Calculates the percentage weight for color-mix interpolation [18, 100].
+ */
+export function getHeatmapWeight(pct: number): number {
+  const clamped = Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
+  return Math.round(18 + 0.82 * clamped);
+}
+
+/**
+ * Returns CSS color-mix expression for node heatmap on sequential scale.
+ * Scales from a pale tint (18% accent) at 0% to the full accent (100% accent) at 100%.
+ */
+export function getHeatmapColorMix(pct: number): string {
+  const weight = getHeatmapWeight(pct);
+  return `color-mix(in srgb, var(--accent) ${weight}%, var(--surface-alt))`;
+}
