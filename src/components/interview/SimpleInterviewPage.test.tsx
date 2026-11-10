@@ -162,11 +162,11 @@ it('follows the filtered list when navigating with Previous and Next', async () 
   fireEvent.click(startBtn);
 
   // We are now on the asking stage with question counter reflecting filtered list
-  expect(await screen.findByText(/Question 1 of/i)).toBeInTheDocument();
+  expect(await screen.findByText(/1 \//i)).toBeInTheDocument();
 
-  // Header should contain Next question button and Previous question button (disabled at start)
-  const prevBtn = screen.getByRole('button', { name: /Previous question/i });
-  const nextBtn = screen.getByRole('button', { name: /Next question/i });
+  // Bottom bar contains Next question button and Previous question button (disabled at start)
+  const prevBtn = screen.getByRole('button', { name: /Previous/i });
+  const nextBtn = screen.getByRole('button', { name: /Next/i });
   expect(prevBtn).toBeDisabled();
   expect(nextBtn).toBeEnabled();
 
@@ -174,7 +174,7 @@ it('follows the filtered list when navigating with Previous and Next', async () 
   fireEvent.click(nextBtn);
 
   // Counter advances to Question 2
-  expect(await screen.findByText(/Question 2 of/i)).toBeInTheDocument();
+  expect(await screen.findByText(/2 \//i)).toBeInTheDocument();
   expect(prevBtn).toBeEnabled();
 });
 
@@ -200,6 +200,10 @@ it('renders clear error banner when microphone access is denied', async () => {
   // Skip to answering
   const skipBtn = await screen.findByRole('button', { name: /Skip to answering/i });
   fireEvent.click(skipBtn);
+
+  // First time primer appears; choose Speak answer
+  const speakBtn = await screen.findByRole('button', { name: /Speak answer/i });
+  fireEvent.click(speakBtn);
 
   // Error banner should appear with clear explanation and try again button
   expect(await screen.findByRole('alert')).toBeInTheDocument();

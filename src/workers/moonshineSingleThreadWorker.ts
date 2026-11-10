@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 import { pipeline, env } from '@huggingface/transformers';
 import { transcribeMoonshineLongAudio } from '../lib/speechTest/moonshineLongAudio';
-import { transcribeWithPrompt } from '../lib/speechTest/whisperPrompt';
+import { transcribeWithPrompt, promptedTranscriptLooksWrong } from '../lib/speechTest/whisperPrompt';
 import { ASR_MODEL_REVISIONS } from '../lib/speechTest/modelVersions';
 
 env.backends.onnx.wasm.numThreads = 1;
@@ -88,28 +88,7 @@ async function handle({ id, op, payload }: any) {
         num_frames: Math.floor(audio.length / hop_length),
         return_timestamps: true,
       };
-      let data;
-      if (prompt) {
-        const prefix = [
-          ...pipe.tokenizer.encode('<|startofprev|>', { add_special_tokens: false }),
-          ...pipe.tokenizer.encode(' ' + prompt, { add_special_tokens: false }).slice(-64),
-        ];
-        const model = pipe.model;
-        const generate = model.generate;
-        model.generate = async function (args: any) {
-          const config = this._prepare_generation_config(args.generation_config, args);
-          const initial = this._retrieve_init_tokens(config);
-          const res = await generate.call(this, { ...args, decoder_input_ids: [...prefix, ...initial] });
-          return res.slice(null, [prefix.length, res.dims[1]]);
-        };
-        try {
-          data = await pipe.model.generate({ inputs: feature.input_features, ...generation_config });
-        } finally {
-          model.generate = generate;
-        }
-      } else {
-        data = await pipe.model.generate({ inputs: feature.input_features, ...generation_config });
-      }
+      const data = await generateWindow(pipe, audio, feature, generation_config, prompt);
       const tokens = data[0].tolist();
       backgroundChunks[chunkIndex] = {
         stride: strideTuple.map((x: number) => x / sampling_rate),
@@ -154,28 +133,7 @@ async function handle({ id, op, payload }: any) {
         num_frames: Math.floor(audio.length / hop_length),
         return_timestamps: true,
       };
-      let data;
-      if (prompt) {
-        const prefix = [
-          ...pipe.tokenizer.encode('<|startofprev|>', { add_special_tokens: false }),
-          ...pipe.tokenizer.encode(' ' + prompt, { add_special_tokens: false }).slice(-64),
-        ];
-        const model = pipe.model;
-        const generate = model.generate;
-        model.generate = async function (args: any) {
-          const config = this._prepare_generation_config(args.generation_config, args);
-          const initial = this._retrieve_init_tokens(config);
-          const res = await generate.call(this, { ...args, decoder_input_ids: [...prefix, ...initial] });
-          return res.slice(null, [prefix.length, res.dims[1]]);
-        };
-        try {
-          data = await pipe.model.generate({ inputs: feature.input_features, ...generation_config });
-        } finally {
-          model.generate = generate;
-        }
-      } else {
-        data = await pipe.model.generate({ inputs: feature.input_features, ...generation_config });
-      }
+      const data = await generateWindow(pipe, audio, feature, generation_config, prompt);
       const tokens = data[0].tolist();
       backgroundChunks[chunkIndex] = {
         stride: strideTuple.map((x: number) => x / sampling_rate),
@@ -224,5 +182,32 @@ async function handle({ id, op, payload }: any) {
 
 // One FIFO for init, interim, commit, final pass and reset. No polling locks and
 // no two callers can observe an idle flag and enter inference simultaneously.
+// One Whisper window, conditioned on the question's terms. Falls back to an unprompted decode when the
+// prompted one drops speech or loops (see promptedTranscriptLooksWrong).
+async function generateWindow(pipe: any, audio: Float32Array, feature: any, generation_config: any, prompt: string) {
+  const plain = () => pipe.model.generate({ inputs: feature.input_features, ...generation_config });
+  if (!prompt) return plain();
+  const prefix = [
+    ...pipe.tokenizer.encode('<|startofprev|>', { add_special_tokens: false }),
+    ...pipe.tokenizer.encode(' ' + prompt, { add_special_tokens: false }).slice(-64),
+  ];
+  const model = pipe.model;
+  const generate = model.generate;
+  model.generate = async function (args: any) {
+    const config = this._prepare_generation_config(args.generation_config, args);
+    const initial = this._retrieve_init_tokens(config);
+    const res = await generate.call(this, { ...args, decoder_input_ids: [...prefix, ...initial] });
+    return res.slice(null, [prefix.length, res.dims[1]]);
+  };
+  let data;
+  try {
+    data = await pipe.model.generate({ inputs: feature.input_features, ...generation_config });
+  } finally {
+    model.generate = generate;
+  }
+  const text = pipe.tokenizer.decode(data[0].tolist(), { skip_special_tokens: true });
+  return promptedTranscriptLooksWrong(text, audio) ? plain() : data;
+}
+
 let queue = Promise.resolve();
 self.onmessage = (event: MessageEvent) => { queue = queue.then(() => handle(event.data)); };

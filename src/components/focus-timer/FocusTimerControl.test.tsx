@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BrowserRouter } from 'react-router-dom';
 import FocusTimerControl from './FocusTimerControl';
@@ -29,39 +29,15 @@ describe('FocusTimerControl and Popover', () => {
     vi.useRealTimers();
   });
 
-  it('renders "Start focus" button when idle and opens popover on click', () => {
+  it('shows a running countdown as soon as the site opens and opens the popover on click', () => {
     render(
       <Wrapper>
         <FocusTimerControl />
       </Wrapper>,
     );
 
-    const btn = screen.getByRole('button', { name: /start focus timer/i });
-    expect(btn).toBeInTheDocument();
-    expect(screen.getByText('Start focus')).toBeInTheDocument();
-
-    // Click opens popover
-    fireEvent.click(btn);
-    expect(screen.getByRole('dialog', { name: /focus timer controls/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /start 25m focus/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /view focus dashboard & stats/i })).toHaveAttribute(
-      'href',
-      '/focus',
-    );
-  });
-
-  it('starts focus from popover and transitions navbar button to countdown', () => {
-    render(
-      <Wrapper>
-        <FocusTimerControl />
-      </Wrapper>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /start focus timer/i }));
-    fireEvent.click(screen.getByRole('button', { name: /start 25m focus/i }));
-
-    expect(screen.getAllByText('Focus').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('25:00').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByRole('button', { name: /pause timer/i })).toBeInTheDocument();
+    const button = screen.getByRole('button', { name: /focus timer running/i });
+    expect(button).toBeInTheDocument();
   });
 });

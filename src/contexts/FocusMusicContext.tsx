@@ -13,7 +13,7 @@ const defaults: FocusMusicContextType = { enabled:false, playing:false, volume:.
 const Context = createContext<FocusMusicContextType | null>(null);
 export const useFocusMusic = () => useContext(Context) ?? defaults;
 export function FocusMusicProvider({ children }: { children: ReactNode }) {
-  const [enabled, updateEnabled] = useState(() => read(KEYS.enabled) !== 'false');
+  const [enabled, updateEnabled] = useState(() => read(KEYS.enabled) === 'true');
   const [volume, updateVolume] = useState(() => { const value = read(KEYS.volume); const n = value === null ? .15 : Number(value); return Number.isFinite(n) && n >= 0 && n <= 1 ? n : .15; });
   const [trackIndex, updateTrack] = useState(() => Math.max(0, FOCUS_TRACKS.findIndex(t => t.id === read(KEYS.track))));
   const [playing, setPlaying] = useState(false);
@@ -67,7 +67,7 @@ export function FocusMusicProvider({ children }: { children: ReactNode }) {
     };
   }, [attempt]);
   const play = useCallback(async () => { desired.current = true; enabledRef.current = true; updateEnabled(true); save(KEYS.enabled,'true'); await attempt(); }, [attempt]);
-  const pause = useCallback(() => { desired.current = false; ++attemptId.current; audio.current?.pause(); setPlaying(false); }, []);
+  const pause = useCallback(() => { desired.current = false; enabledRef.current = false; updateEnabled(false); save(KEYS.enabled,'false'); ++attemptId.current; audio.current?.pause(); setPlaying(false); }, []);
   const toggle = useCallback(() => { if (audio.current && !audio.current.paused) pause(); else void play(); }, [pause,play]);
   const setEnabled = useCallback((value: boolean) => { enabledRef.current = value; updateEnabled(value); save(KEYS.enabled,String(value)); if (value) void play(); else pause(); }, [pause,play]);
   const setVolume = useCallback((value: number) => { if (!Number.isFinite(value)) return; const clamped = Math.max(0,Math.min(1,value)); updateVolume(clamped); if (audio.current) audio.current.volume = clamped; save(KEYS.volume,String(clamped)); }, []);

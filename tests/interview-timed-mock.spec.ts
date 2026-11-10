@@ -90,9 +90,9 @@ test.describe('Timed Mock Interview Browser Flow', () => {
         }, theme);
         await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
 
-        const mockLink = page.locator('.si-mock-link');
+        const mockLink = page.locator('#landing-timed-mock-btn');
         await expect(mockLink).toBeVisible();
-        await expect(mockLink).toHaveText(/Timed mock interview/i);
+        await expect(mockLink).toHaveText(/Timed mock/i);
 
         // 2. Click through to /interview/mock
         await mockLink.click();

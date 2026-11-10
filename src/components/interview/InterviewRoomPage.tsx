@@ -49,25 +49,6 @@ export default function InterviewRoomPage() {
     'Real-time spoken AI engineering interview room. Practice out loud with browser speech synthesis and on-device transcription and evaluation.'
   );
 
-  // Dynamically load Google Fonts only while on this route
-  useEffect(() => {
-    const fontId = 'nm-interview-room-fonts';
-    let link = document.getElementById(fontId) as HTMLLinkElement | null;
-    if (!link) {
-      link = document.createElement('link');
-      link.id = fontId;
-      link.rel = 'stylesheet';
-      link.href =
-        'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Source+Sans+3:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap';
-      document.head.appendChild(link);
-    }
-    return () => {
-      // Remove fonts when navigating away to keep styling scoped
-      const existing = document.getElementById(fontId);
-      if (existing) existing.remove();
-    };
-  }, []);
-
   // Configuration options
   const [track, setTrack] = useState('genai');
   const [level, setLevel] = useState('mid');

@@ -421,6 +421,21 @@ export function updatePreset(state: FocusTimerState, preset: FocusPreset): Focus
       targetDurationMs: targetMs,
     };
   }
+  // The focus phase that is already running takes the new length, keeping the time already focused.
+  if (state.phase === 'focus' && (state.status === 'running' || state.status === 'paused')) {
+    const now = Date.now();
+    const remainingNow = state.status === 'running' && state.endsAt !== null ? Math.max(0, state.endsAt - now) : state.remainingMs;
+    const elapsed = state.targetDurationMs - remainingNow;
+    const targetMs = preset.focusMinutes * 60 * 1000;
+    const remainingMs = Math.max(60 * 1000, targetMs - elapsed);
+    return {
+      ...state,
+      preset,
+      targetDurationMs: targetMs,
+      remainingMs,
+      endsAt: state.status === 'running' ? now + remainingMs : state.endsAt,
+    };
+  }
   return {
     ...state,
     preset,

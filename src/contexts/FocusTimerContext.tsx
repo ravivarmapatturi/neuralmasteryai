@@ -11,7 +11,6 @@ import {
   startPhase,
   pauseTimer,
   resumeTimer,
-  handleVisibilityChange,
   completePhase,
   skipPhase,
   stopSession,
@@ -441,35 +440,48 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
     }
   }, [state.status, state.phase, musicEnabled, musicPlaying, playMusic, pauseMusic]);
 
-  // Tab visibility: 60-second background tab away rule
+  // Focus time counts screen time on this tab: it starts on its own when the site opens,
+  // pauses the moment the tab is hidden and resumes when the learner comes back.
   useEffect(() => {
-    let hiddenAt: number | null = null;
+    const now = Date.now();
+    const current = stateRef.current;
+    if (current.status === 'paused' && current.pausedReason === 'away') setState((prev) => resumeTimer(prev, now));
+    else if (current.status === 'idle' && !document.hidden) {
+      const sec = window.location.pathname.replace(/^\/+/, '').split('/')[0] || 'home';
+      setState((prev) => startPhase(prev, 'focus', sec));
+    }
+  }, []);
 
-    const onVisibilityChange = () => {
-      if (document.hidden) {
-        hiddenAt = Date.now();
-      } else {
-        if (stateRef.current.status === 'running' && stateRef.current.endsAt !== null && Date.now() >= stateRef.current.endsAt) {
-          handlePhaseEnd(stateRef.current, Date.now());
-          return;
+  useEffect(() => {
+    // visibilitychange covers switching tabs, minimising the window and locking the screen;
+    // pagehide/pageshow cover closing the tab and the back-forward cache.
+    const onVisibilityChange = (event?: Event) => {
+      const now = Date.now();
+      const current = stateRef.current;
+      if (document.hidden || event?.type === 'pagehide') {
+        if (current.status === 'running' && current.phase === 'focus') {
+          // Saved straight away: the page may unload before React re-renders.
+          const paused = pauseTimer(current, 'away', now);
+          stateRef.current = paused;
+          writeStorage(TIMER_STORAGE_KEY, paused);
+          setState(paused);
         }
-
-        if (hiddenAt !== null) {
-          const duration = Date.now() - hiddenAt;
-          hiddenAt = null;
-          if (stateRef.current.status === 'running') {
-            const result = handleVisibilityChange(stateRef.current, duration, Date.now());
-            if (result.autoPaused) {
-              setState(result.state);
-            }
-          }
-        }
+        return;
       }
+      if (current.status === 'running' && current.endsAt !== null && now >= current.endsAt) {
+        handlePhaseEnd(current, now);
+        return;
+      }
+      if (current.status === 'paused' && current.pausedReason === 'away') setState((prev) => resumeTimer(prev, now));
     };
 
     document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pagehide', onVisibilityChange);
+    window.addEventListener('pageshow', onVisibilityChange);
     return () => {
       document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pagehide', onVisibilityChange);
+      window.removeEventListener('pageshow', onVisibilityChange);
     };
   }, [handlePhaseEnd]);
 

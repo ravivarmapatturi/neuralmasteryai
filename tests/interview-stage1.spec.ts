@@ -63,6 +63,10 @@ test.describe('Stage 1 Audit Fixes', () => {
     // Skip to answering
     await page.getByRole('button', { name: /Skip to answering/i }).click();
     await page.waitForSelector('.si-speaker-answering');
+    const primerType = page.locator('#primer-type');
+    if (await primerType.isVisible()) {
+      await primerType.click();
+    }
 
     // Verify B12: Done button accessible name
     const doneBtn = page.locator('#done');

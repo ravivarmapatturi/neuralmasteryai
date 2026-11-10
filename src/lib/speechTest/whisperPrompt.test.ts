@@ -1,16 +1,27 @@
-import { it, expect, vi } from 'vitest';
-import { transcribeWithPrompt } from './whisperPrompt';
-it('conditions decoding but removes prompt tokens before transcript decoding, including repeated chunk calls', async () => {
-  const generate = vi.fn(async (_args: any) => ({ dims: [1, 6], slice: vi.fn((_: null, bounds: number[]) => { expect(bounds).toEqual([3, 6]); return 'generated-only'; }) }));
-  const model = { generate, _prepare_generation_config: () => ({}), _retrieve_init_tokens: () => [50, 51] };
-  const pipe = Object.assign(vi.fn(async () => ({ text: await model.generate({}), second: await model.generate({}) })), { model, tokenizer: { encode: (s: string) => s.includes('startofprev') ? [49] : [1, 2] } });
-  expect(await transcribeWithPrompt(pipe, new Float32Array(16000), {}, 'LoRA.')).toEqual({ text: 'generated-only', second: 'generated-only' });
-  expect(generate.mock.calls[0][0]).toEqual({ decoder_input_ids: [49, 1, 2, 50, 51] });
-  expect(model.generate).toBe(generate);
+import { expect, it } from 'vitest';
+import { promptedTranscriptLooksWrong, speechSeconds } from './whisperPrompt';
+
+const tone = (seconds: number, amp = 0.2) => Float32Array.from({ length: seconds * 16000 }, (_, i) => amp * Math.sin(i / 5));
+const join = (...parts: Float32Array[]) => { const out = new Float32Array(parts.reduce((s, p) => s + p.length, 0)); let at = 0; for (const p of parts) { out.set(p, at); at += p.length; } return out; };
+
+it('measures speech, not silence', () => {
+  const audio = join(tone(4), new Float32Array(16000 * 6), tone(4));
+  expect(speechSeconds(audio)).toBeGreaterThan(7.5);
+  expect(speechSeconds(audio)).toBeLessThan(8.5);
 });
-it('restores generation after errors so context cannot leak into the next question', async () => {
-  const generate = vi.fn();
-  const pipe = Object.assign(vi.fn(async () => { throw Error('failed'); }), { model: { generate }, tokenizer: { encode: () => [1] } });
-  await expect(transcribeWithPrompt(pipe, new Float32Array(16000), {}, 'RAG.')).rejects.toThrow('failed');
-  expect(pipe.model.generate).toBe(generate);
+
+it('flags a transcript that stops after a pause', () => {
+  const audio = join(tone(5), new Float32Array(16000), tone(10));
+  expect(promptedTranscriptLooksWrong('we use retrieval augmented generation here', audio)).toBe(true);
+});
+
+it('flags a transcript stuck repeating a phrase', () => {
+  const words = Array(8).fill('we have a lot of data').join(' ');
+  expect(promptedTranscriptLooksWrong(words, tone(12))).toBe(true);
+});
+
+it('accepts a normal answer and silence', () => {
+  const text = 'first we chunk the documents then embed each chunk with a sentence model store the vectors in an index and at query time retrieve the closest chunks rerank them with a cross encoder and pass the best few to the model with the question so the answer cites real passages';
+  expect(promptedTranscriptLooksWrong(text, tone(18))).toBe(false);
+  expect(promptedTranscriptLooksWrong('', new Float32Array(16000 * 5))).toBe(false);
 });

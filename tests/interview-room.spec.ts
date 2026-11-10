@@ -49,9 +49,11 @@ async function controlledRoom(page: Page, settings: {memory:number;gpu:boolean;f
         }
         if (op === 'loadJudge') {
           if (state.failJudge) { reply({ok:false,error:'Inference unavailable'}); return; }
+          const prevRelease = state.releaseReview;
           state.releaseReview = () => {
             state.reviewReleased = true;
             reply({ ok: true, result: true });
+            prevRelease?.();
           };
         } else if (op === 'embed') {
           reply({ ok: true, result: payload.texts.map(() => [1]) });
@@ -119,7 +121,7 @@ async function controlledRoom(page: Page, settings: {memory:number;gpu:boolean;f
 const navigationTopic = practice.topics.find(t => t.id === 'evaluation')!;
 async function atQuestion(page: Page, index: number) {
   const question = navigationTopic.questions[index];
-  await expect(page.locator('.si-counter')).toHaveText(`Question ${index + 1} of ${navigationTopic.questions.length}`);
+  await expect(page.locator('.si-counter')).toHaveText(`${index + 1} / ${navigationTopic.questions.length}`);
   await expect(page).toHaveURL(new RegExp(`/interview/q/${encodeURIComponent(question.id.replaceAll(':', '__'))}(\\?(?!topic=)[^#]*)?$`));
   await expect(page.locator('.si-question-title')).toHaveText(question.title);
 }
@@ -132,7 +134,13 @@ async function reloadIntoRoom(page: Page) {
 }
 async function answerByTyping(page: Page) {
   await page.getByRole('button', { name: 'Skip to answering' }).click();
-  await page.getByRole('button', { name: 'Type instead', exact: true }).click();
+  const primerType = page.locator('#primer-type');
+  if (await primerType.isVisible()) {
+    await primerType.click();
+  } else {
+    const typeInstead = page.getByRole('button', { name: 'Type instead', exact: true });
+    if (await typeInstead.isVisible()) await typeInstead.click();
+  }
   await page.getByLabel('Your answer', { exact: true }).fill('A distinct old typed answer about evaluation.');
 }
 
@@ -163,7 +171,7 @@ test.describe('Interview Room (/interview/room)', () => {
     await page.click('.si-node:has-text("Evaluation")');
     await expect(page.locator('.si-panel h2')).toHaveText('Evaluation');
     await page.click('#start-topic');
-    await expect(page.locator('.si-counter')).toContainText('Question 1 of');
+    await expect(page.locator('.si-counter')).toContainText('1 /');
 
     await page.click('button:has-text("Skip to answering")');
     await page.getByRole('button', { name: 'Type instead', exact: true }).click();
@@ -173,10 +181,10 @@ test.describe('Interview Room (/interview/room)', () => {
 
     await expect(page.locator('.si-yours')).toContainText('probabilistic');
     expect(((await page.locator('#model-answer').textContent()) ?? '').length).toBeGreaterThan(40);
-    await page.click('#mark-complete');
+    await page.getByRole('button', { name: 'Got it' }).click();
     await expect(page.locator('.si-done')).toContainText('+10 points');
     await page.click('#next');
-    await expect(page.locator('.si-counter')).toContainText('Question 2 of');
+    await expect(page.locator('.si-counter')).toContainText('2 /');
     expect(answersSent).toHaveLength(0);
   });
 
@@ -226,6 +234,8 @@ test.describe('Interview Room (/interview/room)', () => {
     const modelRequests = await controlledRoom(page);
     await page.locator('#start-topic').click();
     await page.getByRole('button', { name: 'Skip to answering' }).click();
+    const primerSpeak = page.locator('#primer-speak');
+    if (await primerSpeak.isVisible()) await primerSpeak.click();
     await expect(page.locator('.si-status')).toContainText('Listening.');
     expect(await page.evaluate(() => (window as any).micTracks.filter((t: MediaStreamTrack) => t.readyState === 'live').length)).toBe(1);
     await page.locator('#next-question').click();
@@ -245,7 +255,7 @@ test.describe('Interview Room (/interview/room)', () => {
       await expect(page.locator('.si-check-loading, .si-failed-status')).toHaveCount(0);
       if (newQuestionPoints?.length) {
         await expect(page.locator('.si-check .si-points li')).toHaveText(
-          newQuestionPoints.map(point => `Not detected${point}`));
+          newQuestionPoints.map(point => `Not heard${point}`));
       } else {
         await expect(page.locator('.si-check')).toHaveCount(0);
       }
@@ -282,7 +292,7 @@ test.describe('Interview Room (/interview/room)', () => {
     await page.locator('#start-topic').click();
     const atFiltered = async (position: number) => {
       const question = navigationTopic.questions[indices[position]];
-      await expect(page.locator('.si-counter')).toHaveText(`Question ${position + 1} of ${indices.length}`);
+      await expect(page.locator('.si-counter')).toHaveText(`${position + 1} / ${indices.length}`);
       await expect(page.locator('.si-question-title')).toHaveText(question.title);
     };
     for (const [position] of indices.entries()) {
@@ -406,11 +416,11 @@ test('rubric hits, history and improvement survive reload', async ({ page }) => 
   await page.locator('#done').click();
   await page.waitForFunction(()=>typeof (window as any).releaseReview==='function');
   await page.evaluate(()=>(window as any).releaseReview());
-  await expect(page.getByRole('heading',{name:'Automated key-point check'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Key points'})).toBeVisible();
   await expect(page.locator('.si-check .si-points .covered')).toHaveCount(1);
   await expect(page.locator('.si-check .si-points .undetected')).toHaveCount(3);
   await expect(page.locator('.si-check .si-point-evidence')).toContainText('A distinct old typed answer');
-  await expect(page.locator('.si-check .si-verdict')).toHaveText(['Covered','Not detected','Not detected','Not detected']);
+  await expect(page.locator('.si-check .si-verdict')).toHaveText(['Covered','Not heard','Not heard','Not heard']);
   await expect(page.locator('.si-check')).not.toContainText(/Missed|Possible conflict|Partly covered/);
   await expect(page.locator('.si-score-pill')).toHaveCount(0);
   await page.evaluate(()=>{(window as any).rubricHitLimit=3;(window as any).releaseReview=undefined;});
@@ -439,7 +449,8 @@ test('rubric hits, history and improvement survive reload', async ({ page }) => 
   }
   await reloadIntoRoom(page);
   await page.getByRole('button',{name:'Skip to answering'}).click();
-  await page.getByRole('button',{name:'Type instead',exact:true}).click();
+  const typeBtn = page.getByRole('button',{name:'Type instead',exact:true});
+  if (await typeBtn.isVisible()) await typeBtn.click();
   await page.getByLabel('Your answer',{exact:true}).fill('A third answer that is stored while checking loads.');
   await page.locator('#done').click();
   await expect(page.getByRole('region',{name:'Earlier attempts'}).locator('details')).toHaveCount(2);
@@ -458,7 +469,7 @@ test('keeps a failed review transcript in history and stores an empty rubric att
   await page.locator('#practice-again').click();
   await page.getByRole('button',{name:'Skip to answering'}).click();
   await page.locator('#done').click();
-  await expect(page.getByRole('heading',{name:'Automated key-point check'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Key points'})).toBeVisible();
   await expect(page.locator('.si-check .undetected')).toHaveCount(4);
   await expect(page.locator('.si-score-pill')).toHaveCount(0);
   const history=page.getByRole('region',{name:'Earlier attempts'});
@@ -595,7 +606,7 @@ test('Not detected checklist visual checks in both themes at mobile and desktop 
   await page.locator('#done').click();
   await page.waitForFunction(() => typeof (window as any).releaseReview==='function');
   await page.evaluate(() => (window as any).releaseReview());
-  await expect(page.locator('.si-check .si-verdict')).toHaveText(['Covered','Not detected','Not detected','Not detected']);
+  await expect(page.locator('.si-check .si-verdict')).toHaveText(['Covered','Not heard','Not heard','Not heard']);
   await expect(page.locator('.si-check')).not.toContainText(/Missed|Possible conflict|Partly covered/);
   for(const width of [375,1440]) for(const theme of ['light','dark']) {
     await page.setViewportSize({width,height:1000});
@@ -707,10 +718,10 @@ test('Today’s 10 freezes a mixed queue across reloads and allows one daily ski
   expect(saved.filter((r:any)=>r.assignment)).toHaveLength(11);
   const active=saved.filter((r:any)=>r.assignment && !r.skippedAt).sort((a:any,b:any)=>a.assignment.time-b.assignment.time||a.questionId.localeCompare(b.questionId));
   await today.getByRole('button',{name:'Continue today’s 10'}).click();
-  await expect(page.locator('.si-counter')).toHaveText('Question 1 of 10');
+  await expect(page.locator('.si-counter')).toHaveText('1 / 10');
   await expect(page.locator('.si-question-title')).toHaveText(practice.topics.flatMap(t=>t.questions).find(q=>q.id===active[0].questionId)!.title);
   await page.locator('#next-question').click();
-  await expect(page.locator('.si-counter')).toHaveText('Question 2 of 10');
+  await expect(page.locator('.si-counter')).toHaveText('2 / 10');
   await expect(page.locator('.si-question-title')).toHaveText(practice.topics.flatMap(t=>t.questions).find(q=>q.id===active[1].questionId)!.title);
 });
 
@@ -756,6 +767,8 @@ test('delivery numbers use captured timing, persist with the attempt, and fit bo
   await page.evaluate(() => { const w=window as any; w.toneSpeech=true; w.asrText='um uh like you know basically actually um you know'; w.commitTexts=['um uh like you know','basically actually um you know']; });
   await page.locator('#start-topic').click();
   await page.getByRole('button',{name:'Skip to answering'}).click();
+  const primerSpeak = page.locator('#primer-speak');
+  if (await primerSpeak.isVisible()) await primerSpeak.click();
   await expect(page.getByText('Listening.',{exact:true})).toBeVisible();
   await page.waitForTimeout(800);
   await page.evaluate(()=>(window as any).setTone(0));
