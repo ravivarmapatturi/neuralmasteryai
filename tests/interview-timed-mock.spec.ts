@@ -70,15 +70,26 @@ test.describe('Timed Mock Interview Browser Flow', () => {
       test(`full timed mock flow at ${vp.name} in ${theme} mode`, async ({ page }) => {
         await page.setViewportSize({ width: vp.width, height: vp.height });
         await setupInferenceDoubles(page);
+        await page.emulateMedia({ colorScheme: theme });
 
-        // Clear local storage and set theme
+        // Set theme in localStorage and document attribute before page loads
         await page.addInitScript((th) => {
-          localStorage.clear();
+          try {
+            localStorage.setItem('neural-mastery-theme', th);
+          } catch {}
           document.documentElement.setAttribute('data-theme', th);
         }, theme);
 
         // 1. Visit /interview and check entry point link
         await page.goto(`http://localhost:${PORT}/interview`);
+
+        // Ensure theme persists on the root element
+        await page.evaluate((th) => {
+          localStorage.setItem('neural-mastery-theme', th);
+          document.documentElement.setAttribute('data-theme', th);
+        }, theme);
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+
         const mockLink = page.locator('.si-mock-link');
         await expect(mockLink).toBeVisible();
         await expect(mockLink).toHaveText(/Timed mock interview/i);
@@ -87,17 +98,23 @@ test.describe('Timed Mock Interview Browser Flow', () => {
         await mockLink.click();
         await expect(page).toHaveURL(/\/interview\/mock/);
 
+        // Wait for real content to mount (avoid capturing Suspense loading fallback)
+        const heading = page.locator('h1.nm-mock-title');
+        await expect(heading).toBeVisible();
+        await expect(heading).toHaveText(/Timed mock interview/i);
+        await expect(page.locator('.nm-mock-role-card')).toHaveCount(4);
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+
         // Check horizontal overflow
         const setupOverflow = await page.evaluate(() => {
           return document.documentElement.scrollWidth <= document.documentElement.clientWidth;
         });
         expect(setupOverflow).toBe(true);
+
+        // Capture setup screenshot with real content
         await page.screenshot({ path: path.join(EVIDENCE_DIR, `setup-${vp.width}-${theme}.png`) });
 
-        // 3. Verify setup elements: roles, length, start button
-        const heading = page.locator('h1.nm-mock-title');
-        await expect(heading).toHaveText(/Timed mock interview/i);
-
+        // 3. Select role and start
         const agenticCard = page.locator('.nm-mock-role-card', { hasText: 'Agentic' });
         await agenticCard.click();
         await expect(agenticCard).toHaveClass(/is-active/);
@@ -108,8 +125,10 @@ test.describe('Timed Mock Interview Browser Flow', () => {
 
         // 4. In active interview: check question, timer, and no model answers
         await expect(page.getByText(/Question 1 of 5/i)).toBeVisible();
+        await expect(page.locator('.nm-mock-question-title')).toBeVisible();
         await expect(page.locator('.nm-mock-timer-digits')).toBeVisible();
         await expect(page.locator('.nm-mock-timer-limit')).toHaveText(/\/ suggested/i);
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
 
         // Model answer must NOT be shown
         await expect(page.getByText('Model answer', { exact: true })).not.toBeVisible();
@@ -130,9 +149,15 @@ test.describe('Timed Mock Interview Browser Flow', () => {
         await resumeBtn.click();
         await expect(page.getByRole('heading', { name: /Interview paused/i })).not.toBeVisible();
 
-        // 6. Fast-forward through questions to scorecard
+        // 6. Fast-forward through questions to scorecard: Answer 1, 2, 4, 5; Skip 3
         for (let q = 1; q <= 5; q++) {
           await expect(page.getByText(new RegExp(`Question ${q} of 5`, 'i'))).toBeVisible();
+
+          if (q === 3) {
+            // Test Skip question button
+            await page.getByRole('button', { name: /Skip question/i }).click();
+            continue;
+          }
 
           // Switch to typed answer
           await page.getByRole('tab', { name: /Type your answer/i }).click();
@@ -150,7 +175,18 @@ test.describe('Timed Mock Interview Browser Flow', () => {
 
         // 7. Verify Scorecard
         await expect(page.getByRole('heading', { level: 1, name: /Interview scorecard/i })).toBeVisible();
-        await expect(page.locator('.nm-mock-stat-value', { hasText: '5 of 5' })).toBeVisible();
+        await expect(page.locator('.nm-mock-question-report')).toHaveCount(5);
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+
+        // Verify answered tally shows 4 of 5 (1 skipped)
+        await expect(page.locator('.nm-mock-stat-value', { hasText: '4 of 5' })).toBeVisible();
+
+        // Verify skipped question 3 shows "Skipped" (not 0s)
+        await expect(page.locator('.nm-mock-report-time.is-skipped', { hasText: 'Skipped' })).toBeVisible();
+
+        // Verify answered questions show real recorded time
+        const answeredTimes = page.locator('.nm-mock-report-time:not(.is-skipped)');
+        await expect(answeredTimes.first()).toContainText('⏱');
 
         // Strictly verify NO percent grade and NO pass prediction
         const scorecardText = await page.innerText('.nm-timed-mock-shell');
