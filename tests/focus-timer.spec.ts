@@ -123,8 +123,9 @@ test.describe('Focus Pomodoro Timer E2E', () => {
     await page.screenshot({ path: join(EVIDENCE_DIR, 'navbar-mobile-375-light.png'), clip: { x: 0, y: 0, width: 375, height: 80 } });
 
     // Mobile 375px Dark
-    const mobileThemeBtn = page.getByRole('button', { name: /toggle color mode/i });
-    await mobileThemeBtn.click();
+    // On phones the theme menu replaces the quick light/dark button.
+    await page.getByRole('button', { name: 'Theme picker' }).filter({ visible: true }).first().click();
+    await page.getByRole('option', { name: /dark/i }).first().click();
     await page.evaluate(() => document.getAnimations().forEach((a) => a.finish()));
     await page.screenshot({ path: join(EVIDENCE_DIR, 'focus-mobile-375-dark.png'), fullPage: false });
 
