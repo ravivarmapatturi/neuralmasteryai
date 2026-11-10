@@ -41,7 +41,9 @@ test.describe('Stage 4: One Visual System', () => {
     const secondaryBtn = page.locator('a.si-mock-link[href="/interview/mock"]');
     const secBg = await secondaryBtn.evaluate(el => window.getComputedStyle(el).backgroundColor);
     const secBorder = await secondaryBtn.evaluate(el => window.getComputedStyle(el).borderWidth);
-    expect(secBg).toBe('rgb(255, 255, 255)');
+    // Buttons sit on the theme's own surface colour (white, paper or cream), never a flat grey.
+    const surface = await secondaryBtn.evaluate(el => { const probe = document.createElement('span'); probe.style.background = 'var(--surface)'; el.parentElement!.appendChild(probe); const c = getComputedStyle(probe).backgroundColor; probe.remove(); return c; });
+    expect(secBg).toBe(surface);
     expect(parseFloat(secBorder)).toBeGreaterThanOrEqual(1);
 
     // Focus nav button in light theme

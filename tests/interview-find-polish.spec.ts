@@ -159,9 +159,9 @@ test.describe('Find, Filter & Polish (C9 & C10)', () => {
     const askingCardBox = await page.locator('.si-card').boundingBox();
     expect(askingCardBox).not.toBeNull();
 
-    // The question room is a centred column of at most 860px; the topic list stays wide.
-    expect(askingCardBox!.width).toBeLessThanOrEqual(860);
-    expect(askingCardBox!.width).toBeGreaterThan(800);
+    // On wide screens the question room uses the width (two columns from 1200px) and stays centred.
+    expect(askingCardBox!.width).toBeGreaterThan(1200);
+    expect(askingCardBox!.width).toBeLessThanOrEqual(1440);
     expect(Math.abs(askingCardBox!.x + askingCardBox!.width / 2 - 720)).toBeLessThan(10);
 
     // Capture asking evidence

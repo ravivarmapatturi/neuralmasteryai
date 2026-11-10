@@ -73,6 +73,7 @@ export default function ThemePicker() {
       >
         <button
           type="button"
+          className="nm-theme-quick-toggle"
           onClick={toggleColorMode}
           aria-label="Toggle color mode"
           title={`Quick toggle: ${isDark ? 'Switch to light' : 'Switch to dark'}`}
