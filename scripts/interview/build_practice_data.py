@@ -4,6 +4,9 @@ import json, re, sys
 from pathlib import Path
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from open_answers import OPEN_ANSWERS, OPEN_TITLES
+
 ROOT = Path(__file__).resolve().parents[2]
 REPO = Path(sys.argv[1] if len(sys.argv) > 1 else ROOT.parents[1] / "ai-engineering-from-scratch")
 GITHUB = "https://github.com/rohitg00/ai-engineering-from-scratch/blob/main/interviews/questions"
@@ -107,8 +110,12 @@ for q in json.loads((ROOT / "src/data/interviewCatalog.generated.json").read_tex
     item = {"id": q["id"], "title": q["title"], "answer": tidy(q["answer"]), "level": level}
     if "keyPoints" in q:
         item["keyPoints"] = q["keyPoints"]
-    if q.get("options"):
-        item["options"] = [o["text"] for o in q["options"]]
+    # Catalog quiz questions are asked aloud as open questions, so options are not carried over.
+    short_id = q["id"].split(":")[-1]
+    if short_id in OPEN_TITLES:
+        item["title"] = OPEN_TITLES[short_id]
+    if short_id in OPEN_ANSWERS:
+        item["answer"] = OPEN_ANSWERS[short_id]
     ours.append((SECTION_TOPIC.get(q.get("section"), "rag"), item))
 # Fundamentals and senior-round questions written for this site.
 for topic, rows in json.loads((ROOT / "src/data/interviewSeniorQuestions.json").read_text()).items():
