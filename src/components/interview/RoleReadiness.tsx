@@ -3,7 +3,7 @@ import { useInterviewLearning } from '../../contexts/InterviewLearningContext';
 import { READINESS_ROLES, readinessForRole, type ReadinessRole, type RoleQuestion } from '../../lib/interviewReadiness';
 
 export function RoleReadiness({questions,initialRole}:{questions:RoleQuestion[];initialRole?:string}) {
-  const {records,ready,syncState}=useInterviewLearning();
+  const {records,ready}=useInterviewLearning();
   const [role,setRole]=useState<ReadinessRole>(()=>initialRole && Object.hasOwn(READINESS_ROLES,initialRole) ? initialRole as ReadinessRole : 'applied-ai-engineer');
   const coverage=useMemo(()=>readinessForRole(questions,records,role),[questions,records,role]);
   return <section className="si-learning-section si-role-readiness" aria-label="Role readiness">
@@ -25,7 +25,5 @@ export function RoleReadiness({questions,initialRole}:{questions:RoleQuestion[];
       </li>)}</ol>
       {coverage.total===0 && <p>No questions are tagged for this role yet.</p>}
     </>}
-    {syncState==='storage-error' && <p role="status">Role progress could not be saved on this device.</p>}
-    {syncState==='offline' && <p role="status">Role progress is saved on this device. Sync will retry when connected.</p>}
   </section>;
 }

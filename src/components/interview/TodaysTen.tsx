@@ -31,6 +31,7 @@ export function TodaysTen({questions,onStart}:{questions:Question[];onStart:(id:
     <details className="si-review-queue"><summary>All due reviews ({due.length})</summary>
       {due.length ? <><ol className="si-today-list">{due.slice(0,reviewLimit).map(r=><li key={r.questionId}><button onClick={()=>onStart(r.questionId,due.map(item=>item.questionId))}>{byId.get(r.questionId)?.title}</button><span>Due {new Date(reviewDueAt(r)!).toLocaleDateString()}</span></li>)}</ol>{due.length>reviewLimit && <button onClick={()=>setReviewLimit(n=>n+20)}>Show more due reviews</button>}</> : <p>No reviews are due. Your next self-rating will set the review date.</p>}
     </details>
-    <p className="si-status">{syncState==='storage-error' ? 'Review progress could not be saved on this device.' : syncState==='offline' ? 'Reviews saved on this device. Sync will retry when connected.' : syncState==='syncing' ? 'Syncing review progress…' : syncState==='synced' ? 'Review progress synced.' : 'Reviews saved on this device.'}</p>
+    {syncState === 'syncing' && <p className="si-status">Syncing review progress…</p>}
+    {syncState === 'synced' && <p className="si-status">Review progress synced.</p>}
   </section>;
 }

@@ -3,6 +3,7 @@ import references from '../../data/systemDesignReferences.json';
 import { emptySketch, type SystemDesignSketch } from '../../lib/systemDesignSketch';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
+import { useDocumentTitle } from '../../lib/useDocumentTitle';
 import { useDocumentMeta } from '../../lib/useDocumentMeta';
 import { correctInterviewTerms } from '../../lib/interviewRoom/dialogue';
 import { canUseHighEndSpeech, rememberedSpeechModel, rememberSpeechModel, type SpeechModelChoice } from '../../lib/interviewRoom/speechDevice';
@@ -135,8 +136,22 @@ function questionPath(id: string) {
 }
 
 function questionFromPath(pathname: string) {
-  const match = pathname.match(/^\/interview\/q\/([^/]+)/);
+  const match = pathname.match(/\/interview\/q\/([^/?#]+)/);
   return match ? decodeURIComponent(match[1]).replaceAll('__', ':') : null;
+}
+
+const READ_ALOUD_KEY = 'nm-interview-read-aloud';
+function readAloudPreference(): boolean {
+  try {
+    return localStorage.getItem(READ_ALOUD_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+function writeAloudPreference(enabled: boolean) {
+  try {
+    localStorage.setItem(READ_ALOUD_KEY, enabled ? 'true' : 'false');
+  } catch {}
 }
 
 interface CatalogItem {
@@ -180,20 +195,18 @@ function SpeechModelStatus({ ready, loading, progress }: { ready: boolean; loadi
 }
 
 export default function SimpleInterviewPage() {
-  useDocumentMeta('AI Interview Practice', 'Pick a topic, hear an AI engineering interview question, answer out loud, then hear and read a model answer. Runs in your browser.');
-
   const [params] = useSearchParams();
   const rawQ = params.get('q');
   const isDirectQuestionQ = Boolean(rawQ && locate(rawQ));
   const initialSearch = params.get('search') ?? (!isDirectQuestionQ && rawQ ? rawQ : '');
   const [searchQuery, setSearchQuery] = useState(initialSearch);
 
-  // A link like /interview?q=<id> (the home page's daily question) opens on that question.
-  // Otherwise it offers to resume the last question you opened.
+  // A link like /interview/q/<id> or /interview/q/<id>/ opens directly on that question in the room (B1).
   const [pathQuestion] = useState(() => questionFromPath(window.location.pathname));
+  const directQuestion = useMemo(() => locate(pathQuestion), [pathQuestion]);
   const allowResume = !['topic','role','level','round','status','search'].some(key=>params.has(key)) && !initialSearch;
   const [resuming] = useState(() => allowResume && !pathQuestion && !locate(params.get('q')) && !!locate(readLast()));
-  const [linked, setLinked] = useState(() => locate(pathQuestion) ?? locate(params.get('q')) ?? (allowResume ? locate(readLast()) : null));
+  const [linked, setLinked] = useState(() => directQuestion ?? locate(rawQ) ?? (allowResume ? locate(readLast()) : null));
   const sharedTopic = topics.findIndex((t) => t.id === params.get('topic'));
 
   const [topicFilter, setTopicFilter] = useState(() => {
@@ -201,16 +214,36 @@ export default function SimpleInterviewPage() {
     if (pTopic === 'all') return 'all';
     if (pTopic && topics.some((t) => t.id === pTopic)) return pTopic;
     if (sharedTopic >= 0) return topics[sharedTopic].id;
+    if (directQuestion) return topics[directQuestion.topic].id;
     if (linked) return topics[linked.topic].id;
     return initialSearch ? 'all' : (topics[firstTopic]?.id ?? 'rag');
   });
 
-  const [step, setStep] = useState<Step>('topics');
+  const [step, setStep] = useState<Step>(() => {
+    if (directQuestion) return 'asking';
+    return 'topics';
+  });
   const [reviewSession,setReviewSession]=useState<string[] | null>(null);
   const previousStepRef = useRef<Step>('asking');
-  const [topicIndex, setTopicIndex] = useState(sharedTopic >= 0 ? sharedTopic : (linked?.topic ?? firstTopic));
+  const [topicIndex, setTopicIndex] = useState(() => {
+    if (directQuestion) return directQuestion.topic;
+    if (sharedTopic >= 0) return sharedTopic;
+    if (linked) return linked.topic;
+    return firstTopic;
+  });
   const [shareStatus, setShareStatus] = useState('');
-  const [questionIndex, setQuestionIndex] = useState(linked?.question ?? 0);
+  const [questionIndex, setQuestionIndex] = useState(() => {
+    if (directQuestion) return directQuestion.question;
+    return linked?.question ?? 0;
+  });
+  const [readAloud, setReadAloud] = useState<boolean>(() => readAloudPreference());
+  const toggleReadAloud = useCallback(() => {
+    setReadAloud((prev) => {
+      const next = !prev;
+      writeAloudPreference(next);
+      return next;
+    });
+  }, []);
   const [transcript, setTranscript] = useState('');
   const [sketch, setSketch] = useState<SystemDesignSketch>(emptySketch);
   const [typing, setTyping] = useState(false);
@@ -321,7 +354,7 @@ export default function SimpleInterviewPage() {
   const finishingRef = useRef<Promise<void>>(Promise.resolve());
   const [check, setCheck] = useState<AnswerJudgement | 'checking' | 'failed' | null>(null);
   const { attempts, save: saveAttempt, syncState } = useInterviewAttempts();
-  const { records: learning, save: saveLearning, syncState: learningSyncState, ready: learningReady } = useInterviewLearning();
+  const { records: learning, save: saveLearning, ready: learningReady } = useInterviewLearning();
   const [attemptId, setAttemptId] = useState<string | null>(null);
   const { events, awardInterviewCompleted } = useGamification();
   const isDone = useCallback((id: string) => Boolean(learning.find(r=>r.questionId===id)?.completion) || hasAward(events, `/interview#${id}`, 'interview'), [events,learning]);
@@ -401,6 +434,29 @@ export default function SimpleInterviewPage() {
   );
   const linkedHere = linked && linked.topic === topicIndex ? linked : null;
   const question = topic.questions[questionIndex];
+
+  const pageTitle = useMemo(() => {
+    if (step !== 'topics' && question) {
+      return `${question.title} | AI Engineering Interview`;
+    }
+    if (topicFilter !== 'all' && topic) {
+      return `${topic.title} Interview Questions | Neural Mastery`;
+    }
+    return 'AI Engineering Interview Practice | Neural Mastery';
+  }, [step, question, topicFilter, topic]);
+
+  const pageDesc = useMemo(() => {
+    if (step !== 'topics' && question) {
+      return `Practice this ${topic?.title || 'AI engineering'} interview question: "${question.title}". Answer out loud or in writing with on-device evaluation.`;
+    }
+    if (topicFilter !== 'all' && topic) {
+      return `${topic.title}: ${topic.about || `Practice ${topic.title} AI engineering interview questions.`}`;
+    }
+    return 'Practice 900+ AI engineering, deep learning, and system design interview questions with live feedback and worked model answers.';
+  }, [step, question, topicFilter, topic]);
+
+  useDocumentTitle(pageTitle);
+  useDocumentMeta(pageTitle, pageDesc);
   const questionId = question.id;
   const referenceDiagram = (references as Record<string, SystemDesignSketch & { note: string }>)[questionId];
   const earlier = attempts.filter(a => a.questionId === questionId && a.id !== attemptId).slice().reverse();
@@ -617,25 +673,34 @@ export default function SimpleInterviewPage() {
         // Private mode: resume is simply unavailable.
       }
       const q = topics.flatMap((t) => t.questions).find((x) => x.id === id);
-      const spoken = q ? q.title + (q.options ? ` The options are: ${q.options.join('. ')}` : '') : undefined;
-      play(
-        `${id}_q`,
-        () => {
-          void startAnswering(q?.title);
-        },
-        spoken
-      );
+      if (readAloudPreference()) {
+        const spoken = q ? q.title + (q.options ? ` The options are: ${q.options.join('. ')}` : '') : undefined;
+        play(
+          `${id}_q`,
+          () => {
+            void startAnswering(q?.title);
+          },
+          spoken
+        );
+      }
     },
     [play, startAnswering]
   );
 
   const readQuestion = () => {
-    if (step === 'asking') {
-      ask(questionId);
-      return;
-    }
-    const spoken = question.title + (question.options ? ` The options are: ${question.options.join('. ')}` : '');
-    play(`${questionId}_q`, () => undefined, spoken);
+    writeAloudPreference(true);
+    setReadAloud(true);
+    const q = topics.flatMap((t) => t.questions).find((x) => x.id === questionId);
+    const spoken = q ? q.title + (q.options ? ` The options are: ${q.options.join('. ')}` : '') : undefined;
+    play(
+      `${questionId}_q`,
+      () => {
+        if (step === 'asking') {
+          void startAnswering(q?.title);
+        }
+      },
+      spoken
+    );
   };
 
   const startQuestion = (index: number) => {
@@ -689,12 +754,10 @@ export default function SimpleInterviewPage() {
     setCheck(null);
     setTranscribing(Boolean(engine));
     setTranscript(correctInterviewTerms(liveText, current.id, current.title));
-    const readAnswer = () => { if (reviewRef.current === id) play(`${current.id}_a`, () => undefined, current.answer); };
-    if (!engine) readAnswer();
 
     let deliveryTiming: DeliveryTiming | undefined;
     const finalize = engine
-      ? engine.stop(() => { stopMic(); readAnswer(); }).then(() => {
+      ? engine.stop(() => { stopMic(); }).then(() => {
           const m = engine.getMetrics();
           deliveryTiming = m.deliveryTiming;
           if (speechChoiceRef.current === 'turbo' && m.finalModelUsed && !m.finalModelUsed.includes('large-v3-turbo')) {
@@ -1211,7 +1274,19 @@ export default function SimpleInterviewPage() {
                     <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" />
                   </svg>
                 </button>
-                <button type="button" className="si-speak" id="read-question" disabled={followUpActive} aria-label="Read the question aloud" onClick={readQuestion}>
+                <button
+                  type="button"
+                  className={`si-speak${readAloud ? ' on' : ''}`}
+                  id="read-question"
+                  disabled={followUpActive}
+                  aria-label={readAloud ? "Turn off read aloud" : "Read the question aloud"}
+                  aria-pressed={readAloud}
+                  onClick={() => {
+                    toggleReadAloud();
+                    if (!readAloud) readQuestion();
+                    else stopAudio();
+                  }}
+                >
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M11 5 6 9H2v6h4l5 4z" />
                     <path d="M15.5 8.5a5 5 0 0 1 0 7" />
@@ -1355,13 +1430,11 @@ export default function SimpleInterviewPage() {
                 type="button"
                 className="si-primary"
                 id="done"
-                aria-label="I'm done, show the answer"
+                aria-label="Done"
                 onClick={finishAnswer}
               >
-                <span className="si-btn-short" aria-hidden="true">Done</span>
-                <span className="si-btn-full" aria-hidden="true">I'm done, show the answer</span>
-                <span className="sr-only">I'm done, show the answer</span>
-                <span className="si-key-hint">Space</span>
+                <span>Done</span>
+                <span className="si-key-hint" aria-hidden="true">Space</span>
               </button>
               {question.problemId && (
                 <button
@@ -1419,7 +1492,7 @@ export default function SimpleInterviewPage() {
               <div className="si-actions">{(Object.entries(RATING_LABELS) as [SelfRating,string][]).map(([value,label])=><button key={value} disabled={!attemptId || transcribing}
                 aria-pressed={selfRating?.value===value}
                 onClick={()=>{if(attemptId){const now=Date.now();saveLearning([{questionId,completion:{time:latest?.time ?? now,attemptId}},rateQuestion(learning,questionId,attemptId,value,now)]);}}}>{label}</button>)}</div>
-              <p className="si-status" role="status">{learningSyncState==='storage-error' ? 'Your self-rating could not be saved on this device.' : selfRating ? `Self-rating saved. Next review: ${new Date(reviewDueAt(currentLearning!)!).toLocaleDateString()}.` : ''}</p>
+              <p className="si-status" role="status">{selfRating ? `Self-rating saved. Next review: ${new Date(reviewDueAt(currentLearning!)!).toLocaleDateString()}.` : ''}</p>
             </fieldset>
             <DeliveryRow delivery={latest?.delivery} />
             {question.rounds?.includes('system-design') && <div className="sd-comparison">
@@ -1443,7 +1516,7 @@ export default function SimpleInterviewPage() {
                 {check === 'checking' && (
                   <div className="si-check-loading">
                     <p className="si-status" role="status">
-                      Checking key points against the model answer on your device…
+                      Checking key points…
                     </p>
                   </div>
                 )}
@@ -1493,7 +1566,8 @@ export default function SimpleInterviewPage() {
                     <ul className="si-points">{attempt.points.map(point => <li key={point.point}><span className="si-verdict">{point.verdict === 'covered' ? 'Covered' : 'Not detected'}</span>{point.point}{point.verdict === 'covered' && point.evidence && <blockquote className="si-point-evidence"><span>In your answer</span>{point.evidence}</blockquote>}</li>)}</ul>
                   </details>)}
                 </section>}
-                <p className="si-status" role="status">{syncState === 'storage-error' ? 'Attempt history could not be saved on this device.' : syncState === 'offline' ? 'Saved on this device. Sync will retry when connected.' : syncState === 'syncing' ? 'Syncing attempt history…' : syncState === 'synced' ? 'Attempt history synced.' : 'Attempt history saved on this device.'}</p>
+                {syncState === 'syncing' && <p className="si-status" role="status">Syncing attempt history…</p>}
+                {syncState === 'synced' && <p className="si-status" role="status">Attempt history synced.</p>}
               </section>
 
               <section className="si-col-model" aria-label="Model answer and follow-ups">

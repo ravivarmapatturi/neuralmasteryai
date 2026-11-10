@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Navbar from '../layout/Navbar';
 import Markdown from '../content/Markdown';
+import { useDocumentTitle } from '../../lib/useDocumentTitle';
 import { useDocumentMeta } from '../../lib/useDocumentMeta';
 import { useFocusMusic } from '../../contexts/FocusMusicContext';
 import {
@@ -28,7 +29,8 @@ type ScreenState = 'setup' | 'interview' | 'scorecard';
 type AnswerMode = 'voice' | 'typed';
 
 export default function MockInterviewPage() {
-  useDocumentMeta('Timed mock interview — 30 or 60 min role practice', 'Practise a 30 or 60 minute AI engineering interview for your target role. Answer timed questions, compare model answers, and review your scorecard.');
+  useDocumentTitle('Timed Mock Interview | Neural Mastery');
+  useDocumentMeta('Timed Mock Interview | Neural Mastery', 'Practise a 30 or 60 minute AI engineering interview for your target role. Answer timed questions, compare model answers, and review your scorecard.');
   const { pause: pauseFocusMusic } = useFocusMusic();
 
   // Setup options
