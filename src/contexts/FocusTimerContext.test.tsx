@@ -115,28 +115,18 @@ describe('FocusTimerContext', () => {
     vi.unstubAllGlobals();
   });
 
-  it('initializes in idle state and starts focus countdown', async () => {
+  it('starts focus on its own when the site opens', async () => {
     render(
       <Wrapper>
         <TestTimerWidget />
       </Wrapper>,
     );
 
-    expect(screen.getByTestId('phase').textContent).toBe('idle');
-    expect(screen.getByTestId('status').textContent).toBe('idle');
-    expect(screen.getByTestId('countdown').textContent).toBe('25:00');
-
-    // Click Start Focus
-    fireEvent.click(screen.getByText('Start Focus'));
-
     expect(screen.getByTestId('phase').textContent).toBe('focus');
     expect(screen.getByTestId('status').textContent).toBe('running');
-
-    // Advance 5 seconds
     act(() => {
       vi.advanceTimersByTime(5000);
     });
-
     expect(screen.getByTestId('countdown').textContent).toBe('24:55');
   });
 
@@ -171,31 +161,26 @@ describe('FocusTimerContext', () => {
     expect(screen.getByTestId('countdown').textContent).toBe('24:45');
   });
 
-  it('auto-pauses with reason away when tab is hidden for > 60 seconds', async () => {
+  it('counts only time on this tab: pauses when hidden and resumes on return', async () => {
     render(
       <Wrapper>
         <TestTimerWidget />
       </Wrapper>,
     );
-
-    fireEvent.click(screen.getByText('Start Focus'));
     expect(screen.getByTestId('status').textContent).toBe('running');
 
-    // Tab becomes hidden
     Object.defineProperty(document, 'hidden', { configurable: true, value: true });
     fireEvent(document, new Event('visibilitychange'));
-
-    // 70 seconds pass while hidden
+    expect(screen.getByTestId('status').textContent).toBe('paused');
+    expect(screen.getByTestId('reason').textContent).toBe('away');
     act(() => {
       vi.advanceTimersByTime(70000);
     });
 
-    // Tab becomes visible again
     Object.defineProperty(document, 'hidden', { configurable: true, value: false });
     fireEvent(document, new Event('visibilitychange'));
-
-    expect(screen.getByTestId('status').textContent).toBe('paused');
-    expect(screen.getByTestId('reason').textContent).toBe('away');
+    expect(screen.getByTestId('status').textContent).toBe('running');
+    expect(screen.getByTestId('countdown').textContent).toBe('25:00');
   });
 
   it('saves session on stop if focused >= 60 seconds', async () => {

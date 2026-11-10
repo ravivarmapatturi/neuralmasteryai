@@ -10,7 +10,14 @@ beforeEach(() => {
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 describe('focus playback intent', () => {
-  it('attempts bamboo after three seconds and pauses/resumes with visibility', async () => {
+  it('stays paused by default until the learner presses play', async () => {
+    render(<FocusMusicProvider><Controls /></FocusMusicProvider>);
+    await act(async () => { vi.advanceTimersByTime(5000); fireEvent.pointerDown(window); }); expect(player.play).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.click(screen.getByText('Play')); }); expect(player.play).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem('nm_focus_music_enabled')).toBe('true');
+  });
+  it('once switched on, attempts bamboo after three seconds and pauses/resumes with visibility', async () => {
+    localStorage.setItem('nm_focus_music_enabled','true');
     render(<FocusMusicProvider><Controls /></FocusMusicProvider>);
     await act(async () => { vi.advanceTimersByTime(2999); }); expect(player.play).not.toHaveBeenCalled();
     await act(async () => { vi.advanceTimersByTime(1); }); expect(player.src).toContain('bamboo-collection.m4a'); expect(player.play).toHaveBeenCalledTimes(1);
@@ -18,6 +25,7 @@ describe('focus playback intent', () => {
     Object.defineProperty(document,'hidden',{configurable:true,value:false}); await act(async () => { fireEvent(document,new Event('visibilitychange')); }); expect(player.play).toHaveBeenCalledTimes(2);
   });
   it('respects manual pause across tab changes and unrelated clicks', async () => {
+    localStorage.setItem('nm_focus_music_enabled','true');
     render(<FocusMusicProvider><Controls /></FocusMusicProvider>); await act(async () => { vi.advanceTimersByTime(3000); });
     fireEvent.click(screen.getByText('Pause')); fireEvent.pointerDown(window); fireEvent(document,new Event('visibilitychange')); expect(player.play).toHaveBeenCalledTimes(1);
     await act(async () => { fireEvent.click(screen.getByText('Play')); }); expect(player.play).toHaveBeenCalledTimes(2);
@@ -28,6 +36,7 @@ describe('focus playback intent', () => {
     fireEvent.click(screen.getByText('Noise')); expect(player.src).toContain('white-noise.ogg'); expect(screen.getByText('white-noise')).toBeInTheDocument();
   });
   it('offers a fallback after browser rejection and retries on a gesture', async () => {
+    localStorage.setItem('nm_focus_music_enabled','true');
     render(<FocusMusicProvider><Controls /></FocusMusicProvider>); player.play.mockRejectedValueOnce(new DOMException('gesture required','NotAllowedError'));
     await act(async () => { vi.advanceTimersByTime(3000); }); expect(screen.getByText('blocked')).toBeInTheDocument();
     await act(async () => { fireEvent.pointerDown(window); }); expect(screen.getByText('ready')).toBeInTheDocument();

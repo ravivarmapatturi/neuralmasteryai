@@ -46,7 +46,7 @@ describe('FocusPage Component', () => {
     );
 
     expect(screen.getByRole('heading', { level: 1, name: 'Focus' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /start 25m focus/i })).toBeInTheDocument();
+    expect(screen.getAllByText('25:00').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('No focus sessions recorded yet')).toBeInTheDocument();
     expect(screen.getAllByText('0m').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('0 days')).toBeInTheDocument();
@@ -104,7 +104,7 @@ describe('FocusPage Component', () => {
 
     const btn50 = screen.getByRole('button', { name: '50 / 10 / 30' });
     fireEvent.click(btn50);
-    expect(screen.getByRole('button', { name: /start 50m focus/i })).toBeInTheDocument();
+    expect(screen.getAllByText('50:00').length).toBeGreaterThanOrEqual(1);
 
     const btnCustom = screen.getByRole('button', { name: 'Custom' });
     fireEvent.click(btnCustom);
