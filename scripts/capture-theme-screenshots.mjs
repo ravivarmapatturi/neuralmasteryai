@@ -11,7 +11,9 @@ if (!fs.existsSync(OUT_DIR)) {
 const PORT = 5188;
 const BASE_URL = `http://localhost:${PORT}`;
 
-const THEMES = ['light', 'dark', 'pure-white', 'sepia', 'forest'];
+const targetTheme = process.argv[2];
+const ALL_THEMES = ['light', 'dark', 'pure-white', 'sepia', 'forest'];
+const THEMES = targetTheme ? [targetTheme] : ALL_THEMES;
 const VIEWPORTS = [
   { width: 375, height: 667, name: '375' },
   { width: 1280, height: 800, name: '1280' },
@@ -71,6 +73,7 @@ async function run() {
             // Ensure theme applied
             await page.evaluate((th) => {
               document.documentElement.setAttribute('data-theme', th);
+              document.documentElement.setAttribute('data-page-theme', th);
             }, theme);
             await page.waitForTimeout(600);
 

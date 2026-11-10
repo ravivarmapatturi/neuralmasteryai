@@ -54,16 +54,16 @@ export const NOTEBOOK_DARK: NotebookPalette = {
 
 export const NOTEBOOK_PURE_WHITE: NotebookPalette = {
   paper: '#ffffff',
-  paperAlt: '#f8f9fa',
-  rule: '#71717a',
-  ink: '#18181b',
+  paperAlt: '#ffffff',
+  rule: '#c7d2fe',
+  ink: '#1a1a2e',
   inkSoft: '#334155',
-  cobalt: '#312e81',
+  cobalt: '#3730a3',
   teal: '#0f766e',
   mint: '#15803d',
-  amber: '#9a3412',
+  amber: '#c2410c',
   coral: '#b91c1c',
-  lavender: '#831843',
+  lavender: '#a21caf',
   green: '#15803d',
 };
 
