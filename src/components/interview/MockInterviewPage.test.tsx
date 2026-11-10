@@ -147,7 +147,8 @@ describe('MockInterviewPage Component', () => {
 
     // Now we are on the scorecard screen!
     expect(screen.getByRole('heading', { level: 1, name: /Interview scorecard/i })).toBeInTheDocument();
-    expect(screen.getByText(/5 of 5/i)).toBeInTheDocument();
+    // Answer text is random and can contain '5 of 5' too, so read the summary line itself.
+    expect(screen.getByText(/Questions answered/i).parentElement).toHaveTextContent(/5 of 5/i);
     expect(screen.getByText(/Questions answered/i)).toBeInTheDocument();
 
     // Strictly verify NO percent grade and NO pass prediction
