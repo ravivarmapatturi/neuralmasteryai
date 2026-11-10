@@ -1,0 +1,25 @@
+name: Interview voice clips
+on:
+  push:
+    branches: [interview-voice]
+  workflow_dispatch:
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: npm }
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: npm ci
+      - run: node scripts/interview-voice/generate-clips.mjs --shard=${{ matrix.shard }} --shards=12
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: voice-${{ matrix.shard }}
+          path: public/audio/interview-voice/*.opus
