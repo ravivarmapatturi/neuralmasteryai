@@ -311,3 +311,47 @@ Build, pagefind and the full Playwright suite were omitted under the brief's exp
 Record consented, spontaneously spoken technical answers in Indian English, with natural hesitations and fast passages. Include all five requested terms and ordinary-word controls such as a person named Laura. Compare a headset with built-in laptop speakers, quiet speech with fan noise, and speech starting immediately after the question. Inspect actual track settings, clipped peaks, final-word retention, transcript lag and cancellation while a model is loading. Browser and OS audio processing, room echo, microphone distance and physical sample-rate conversion cannot be validated with injected WAVs.
 
 The held-out split is held out from this configuration search; it does not establish whether a pretrained model previously encountered VCTK. Natural fast speech, real background interference, silence-only hallucination rates, Bluetooth devices and long spontaneous answers need a broader manually transcribed corpus. The FOSDEM term cases are small positive examples, not a precision study or a full technical-answer benchmark. These results support the measured browser trade-off, not a promise of server-model equivalence.
+
+## Answer-length set, 10 November 2026
+
+The first held-out set has 24 clips of about four seconds and could not tell Whisper Base from Whisper Small. This second set has 123 clips of 12 to 24 seconds (35 minutes in total), each with a reference written by a person:
+
+| Group | Clips | Source | Reference |
+| --- | --- | --- | --- |
+| Indian accent, lecture | 58 | NPTEL lectures from the AI4Bharat NPTEL2020 Pure-Set, only chunks whose YouTube licence is Creative Commons Attribution | Transcript corrected by hand by the dataset authors |
+| Indian accent, read sentences | 55 | VCTK speakers p376, p248 and p251 (CC BY 4.0), sentences not used in the first set | Text the speaker read |
+| British Isles, read sentences | 10 | VCTK speaker p227 | Text the speaker read |
+
+Each clip joins two to five source chunks with 0.6 s of silence. Lecture chunks start and end mid-sentence and come from different lecturers, so a lecture clip changes voice at each join. Chunks with spelled-out numbers or single letters are left out, because they have more than one correct written form. 38 lecture clips carry 63 labelled subject words (momentum, eigenvector, compiler and similar). There is no openly licensed, hand-transcribed speech with RAG, LoRA or BM25 in it, so those terms are still measured on the 10 older clips (5 conference excerpts, 5 synthetic voices).
+
+`scripts/speech-accuracy/prepare-heldout-v2.py` builds the set and `heldout-v2.json` records source, licence and SHA-256 for every clip. The audio is on the `speech-eval` branch, which also runs the measurement on a GitHub runner (4 vCPU, WASM, no GPU). Word errors now treat "it's" and "it is" as the same words.
+
+### Models, no prompt
+
+| Model | Indian lecture | Indian read | British read | Subject words heard | Seconds per clip | Download | Peak memory |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Whisper Base, 8-bit (default) | 17.6% (353 of 2005) | 5.0% (93 of 1874) | 1.6% (5 of 320) | 52 of 63 | 4.0 | 80 MB | 1.26 GB |
+| Whisper Small, 8-bit | 19.1% (383 of 2005) | 3.3% (62 of 1874) | 0.9% (3 of 320) | 55 of 63 | 13.0 | 252 MB | 2.04 GB |
+
+Both models lose a whole chunk in 6 of the 58 lecture clips: the transcript stops at a join or starts after one. Without those 6 clips the lecture error rate is 14.1% for Base and 12.7% for Small. No read-sentence clip loses a chunk. Small is better by about a third on read Indian-accent speech and takes three times as long with three times the download, so Base stays the default.
+
+### Vocabulary prompt
+
+Today the model is given the technical terms that appear in the question title. The test was a wider list of 16 terms for every question: `XGBoost, RAG, LoRA, QLoRA, embeddings, BM25, LLM, GPU, PyTorch, Kubernetes, Transformer, tokenization, fine-tuning, FAISS, HNSW, reranker.`
+
+| Prompt (Whisper Base) | ML terms heard, 10 clips | Indian lecture | Lecture clips losing a chunk | Lecture clips stuck repeating | Indian read | British read | Prompt terms invented, 123 clips |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| None | 3 of 10 | 17.6% | 6 | 0 | 5.0% | 1.6% | not applicable |
+| Terms in the question title (today) | 10 of 10 | not run, clips have no question | | | | | |
+| One term, `BM25.` | not run | 27.4% | 14 | 0 | 4.8% | 1.9% | 0 |
+| Four terms | not run | 54.3% | 15 | 2 | 5.1% | 1.6% | 0 |
+| 16 terms | 10 of 10 | 68.5% | 13 | 3 | 4.9% | 1.3% | 0 |
+
+Decision: the wider vocabulary is not shipped. It hears the same 10 of 10 terms as the title prompt, so it adds nothing on the clips that exist, and on lecture speech it raises word error from 17.6% to 68.5%. The failures are not invented terms (none in 123 clips). They are lost speech and repeated phrases, for example one clip became "we have a lot of data" repeated to the end.
+
+Two things this run found that were not being measured before:
+
+1. A prompt makes Whisper Base less stable on rough speech even when it is one word long (17.6% to 27.4%, chunks lost in 14 clips instead of 6). The lecture clips are a hard case: the prompt has nothing to do with the lecture and the voice changes mid-clip. In the product the prompt matches the question, and on clean read speech every prompt was harmless. It is still a risk for a spoken answer with pauses and background noise, and it is not yet measured on that kind of answer.
+2. Losing everything after a pause is the largest single source of error on this set, larger than accent.
+
+Reproduce a row with `node scripts/speech-accuracy/evaluate-tiers.mjs --only=whisper-base-wasm --set=v2 --name=v2-base --repeat` on the `speech-eval` branch, add `--prompt=wide` or `--prompt=wide --promptText=BM25.` for the prompt rows, use `--set=terms` for the 10 term clips, then `node scripts/speech-accuracy/summarize-v2.mjs scripts/speech-accuracy/tier-v2-*.json`. Stored runs: `tier-v2-base.json`, `tier-v2-small.json`, `tier-v2-base-wide.json`, `tier-v2-base-one-term.json`, `tier-v2-base-four-terms.json`, `tier-terms-base-off.json`, `tier-terms-base-question.json`, `tier-terms-base-wide.json`.
