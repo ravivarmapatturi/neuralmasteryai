@@ -8,13 +8,15 @@ import { Link, useLocation } from 'react-router-dom';
  */
 /** A practice problem's workspace fills the viewport with its own
  * scrolling panes (like an IDE), so a footer below it only adds a second,
- * page-level scrollbar. Track pages (/practice/track/...) keep it. */
+ * page-level scrollbar. Track pages (/practice/track/...) keep it.
+ * The interview question room similarly fits exact viewport height on Listen and Answer. */
 const WORKSPACE_ROUTE = /^\/practice\/(?!track\/)[^/]+\/?$/;
+const INTERVIEW_ROOM_ROUTE = /^\/interview\/q(\/.*)?$/;
 
 export default function Footer() {
   const { pathname } = useLocation();
   const year = new Date().getFullYear();
-  if (WORKSPACE_ROUTE.test(pathname)) return null;
+  if (WORKSPACE_ROUTE.test(pathname) || INTERVIEW_ROOM_ROUTE.test(pathname)) return null;
   return (
     <footer
       data-pagefind-ignore

@@ -117,6 +117,8 @@ export default function Navbar({
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '0.75rem 1.5rem',
+          height: 56,
+          boxSizing: 'border-box',
           background: 'var(--nm-surface)',
           borderBottom: '1px solid var(--nm-border)',
           gap: '0.75rem',

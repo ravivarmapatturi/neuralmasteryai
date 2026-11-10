@@ -853,10 +853,22 @@ export default function SimpleInterviewPage() {
     [stopAudio, stopMic]
   );
 
+  const isRoomStep = step === 'asking' || step === 'answering';
+  useEffect(() => {
+    if (isRoomStep) {
+      document.body.classList.add('si-viewport-lock');
+    } else {
+      document.body.classList.remove('si-viewport-lock');
+    }
+    return () => {
+      document.body.classList.remove('si-viewport-lock');
+    };
+  }, [isRoomStep]);
+
   return (
     <>
     <Navbar />
-    <div className="interview-room-wrap simple-interview">
+    <div className={`interview-room-wrap simple-interview${isRoomStep ? ' si-room-active' : ''}`}>
       <div className={`si-card${step === 'topics' || step === 'answer' ? ' si-card-wide' : ' si-card-stage'}`}>
         {highEndEligible ? (
           <div className="si-speech-model">
