@@ -7,7 +7,7 @@ import { mergeInterviewAttempts } from './interviewAttempts';
 
 it('validates all 15 hand-authored reference diagrams against their model answers and round', () => {
   expect(Object.keys(references)).toHaveLength(15);
-  const questions = practice.topics.flatMap(t => t.questions);
+  const questions = practice.topics.flatMap(t => t.questions as unknown[]) as { id: string; answer: string; rounds?: string[] }[];
   for (const [id, diagram] of Object.entries(references)) {
     const q = questions.find(q => q.id === id)!;
     expect(q.rounds).toContain('system-design');
