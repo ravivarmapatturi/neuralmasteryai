@@ -38,7 +38,7 @@ test.describe('Stage 4: One Visual System', () => {
     await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
 
     // Secondary button on landing
-    const secondaryBtn = page.locator('#landing-timed-mock-btn');
+    const secondaryBtn = page.locator('a.si-mock-link[href="/interview/mock"]');
     const secBg = await secondaryBtn.evaluate(el => window.getComputedStyle(el).backgroundColor);
     const secBorder = await secondaryBtn.evaluate(el => window.getComputedStyle(el).borderWidth);
     expect(secBg).toBe('rgb(255, 255, 255)');
