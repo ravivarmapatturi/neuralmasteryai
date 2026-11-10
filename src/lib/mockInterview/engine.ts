@@ -67,12 +67,21 @@ export async function startRecording() {
   };
 }
 
-/** Read a question aloud with the browser's built-in voice (free, no network for most voices). */
-export function speak(text: string) {
-  if (!('speechSynthesis' in window)) return;
-  speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.rate = 0.95; u.lang = 'en-US';
-  speechSynthesis.speak(u);
+/** Read a question aloud in the interviewer's recorded voice; questions without a clip are voiced on the device. */
+let stopCurrent: (() => void) | null = null;
+export function speak(text: string, questionId?: string) {
+  stopSpeaking();
+  let cancelled = false;
+  const audio = questionId ? new Audio(`/audio/interview-voice/${questionId.replaceAll(':', '__')}_q.opus`) : null;
+  const onDevice = () => {
+    if (cancelled) return;
+    void import('../interviewRoom/browserVoice').then(({ speakInBrowser }) => {
+      if (!cancelled) stopCurrent = speakInBrowser(text, () => undefined);
+    });
+  };
+  stopCurrent = () => { cancelled = true; audio?.pause(); };
+  if (!audio) { onDevice(); return; }
+  audio.onerror = onDevice;
+  audio.play().catch(onDevice);
 }
-export const stopSpeaking = () => { if ('speechSynthesis' in window) speechSynthesis.cancel(); };
+export const stopSpeaking = () => { stopCurrent?.(); stopCurrent = null; if ('speechSynthesis' in window) speechSynthesis.cancel(); };

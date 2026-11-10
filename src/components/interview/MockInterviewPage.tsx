@@ -119,7 +119,7 @@ export default function MockInterviewPage() {
     if (screen === 'interview' && session && !isPaused && !isMuted) {
       const currentQ = session.questions[session.currentQuestionIndex];
       if (currentQ) {
-        speak(currentQ.title);
+        speak(currentQ.title, currentQ.id);
       }
     }
   }, [screen, session?.currentQuestionIndex, isPaused, isMuted]);
@@ -491,7 +491,7 @@ export default function MockInterviewPage() {
                     <button
                       type="button"
                       className="nm-mock-speak-btn"
-                      onClick={() => speak(currentQuestion.title)}
+                      onClick={() => speak(currentQuestion.title, currentQuestion.id)}
                       disabled={isRecording}
                     >
                       🔊 Read question aloud
