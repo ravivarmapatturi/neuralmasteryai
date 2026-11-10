@@ -123,6 +123,13 @@ async function atQuestion(page: Page, index: number) {
   await expect(page).toHaveURL(new RegExp(`/interview/q/${encodeURIComponent(question.id.replaceAll(':', '__'))}(\\?(?!topic=)[^#]*)?$`));
   await expect(page.locator('.si-question-title')).toHaveText(question.title);
 }
+// Reloading inside the room keeps the question's own address, so the room reopens directly.
+async function reloadIntoRoom(page: Page) {
+  await page.reload();
+  const start = page.locator('#start-topic');
+  await expect(start.or(page.locator('.si-speaker-asking')).first()).toBeVisible();
+  if (await start.isVisible()) await start.click();
+}
 async function answerByTyping(page: Page) {
   await page.getByRole('button', { name: 'Skip to answering' }).click();
   await page.getByRole('button', { name: 'Type instead', exact: true }).click();
@@ -430,8 +437,7 @@ test('rubric hits, history and improvement survive reload', async ({ page }) => 
     expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBe(width);
     await page.screenshot({path:`test-results/rubric-${theme}-${width}.png`,fullPage:true});
   }
-  await page.reload();
-  await page.locator('#start-topic').click();
+  await reloadIntoRoom(page);
   await page.getByRole('button',{name:'Skip to answering'}).click();
   await page.getByRole('button',{name:'Type instead',exact:true}).click();
   await page.getByLabel('Your answer',{exact:true}).fill('A third answer that is stored while checking loads.');
@@ -773,8 +779,7 @@ test('delivery numbers use captured timing, persist with the attempt, and fit bo
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     await page.screenshot({path:testInfo.outputPath(`delivery-${theme}-${width}.png`)});
   }
-  await page.reload();
-  await page.locator('#start-topic').click();
+  await reloadIntoRoom(page);
   await answerByTyping(page);
   await page.locator('#done').click();
   await expect(page.locator('.si-answer-stage > .si-delivery')).toHaveCount(0);
@@ -837,8 +842,7 @@ test('system design canvas supports drag and keyboard, saves sketches and compar
   const stored=await page.evaluate(()=>JSON.parse(localStorage.getItem('nm-interview-attempts-v1:guest')||'[]'));
   expect(stored.at(-1).sketch.nodes).toHaveLength(2);
   expect(stored.at(-1).sketch.edges).toHaveLength(1);
-  await page.reload();
-  await page.locator('#start-topic').click(); await answerByTyping(page); await page.locator('#done').click();
+  await reloadIntoRoom(page); await answerByTyping(page); await page.locator('#done').click();
   await page.locator('.si-attempt summary').first().click();
   await page.getByText('Saved sketch',{exact:true}).first().click();
   await expect(page.locator('.si-attempt .sd-node')).toHaveCount(2);

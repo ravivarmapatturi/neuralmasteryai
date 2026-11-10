@@ -154,6 +154,7 @@ test.describe('Interview Coding Questions & Pyodide Workspace', () => {
     await page.reload({ waitUntil: 'domcontentloaded' });
 
     // If not in question asking screen, re-enter question
+    await expect(page.locator('.si-question-title').or(page.locator('.si-list button')).first()).toBeVisible();
     if (!await page.locator('.si-question-title').isVisible()) {
       await page.locator('.si-list button').filter({ hasText: 'token-aware recursive text chunker' }).first().dispatchEvent('click');
     }
