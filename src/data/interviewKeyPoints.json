@@ -1,0 +1,1202 @@
+{
+  "senior:debug-retrieval-recall-drop-reindex": [
+    "Check ef_search, M, vector normalization and distance metric.",
+    "Sweep ef_search against held-out queries.",
+    "Restore ef_search from 16 to 128.",
+    "Gate index promotion on 500 gold queries."
+  ],
+  "senior:debug-continuous-batching-ttft-tail-spike": [
+    "Correlate TTFT with prompt length and track preemptions.",
+    "Long prefills block queued generations.",
+    "Enable chunked prefill and cap batched tokens at 2048.",
+    "Separate prefill and decode worker pools."
+  ],
+  "senior:debug-eval-accuracy-up-complaints-up": [
+    "Investigate length bias, rubric overfitting and query drift.",
+    "Compare response length with user dissatisfaction.",
+    "Constrain response length and penalize verbosity in the rubric.",
+    "Calibrate judges against human-reviewed production conversations."
+  ],
+  "senior:debug-agent-cost-doubled-prompt-change": [
+    "Compare reasoning step counts before and after the prompt change.",
+    "Repeated source verification expands searches and context.",
+    "Limit verification to two sources and reasoning to eight steps.",
+    "Cache searches and enforce token budgets in CI."
+  ],
+  "senior:debug-radix-cache-hit-rate-collapse": [
+    "Inspect prompt serialization for dynamic fields before shared instructions.",
+    "Compare raw tokens across requests.",
+    "User IDs and timestamps at the start fragment the prefix cache.",
+    "Put static instructions and tool schemas before user-specific fields."
+  ],
+  "senior:debug-speculative-decoding-throughput-regression": [
+    "Measure accepted draft tokens on legal documents.",
+    "Low draft acceptance adds target verification overhead.",
+    "Gate speculative decoding by predicted acceptance length.",
+    "Evaluate throughput across separate domain slices."
+  ],
+  "senior:debug-vector-similarity-inversion-short-queries": [
+    "Check vector norms, anisotropy and pooling.",
+    "Test similarity between unrelated sentences.",
+    "Apply L2 normalization and a retrieval query prefix.",
+    "Assert unit norms during ingestion and test short-query rankings."
+  ],
+  "senior:debug-w4a16-quantized-repetitive-loop": [
+    "Inspect the language distribution of AWQ calibration data.",
+    "Compare multilingual perplexity and logits on looping outputs.",
+    "Recalibrate with target-language data and smaller quantization groups.",
+    "Require multilingual perplexity checks before deployment."
+  ],
+  "senior:debug-streaming-disconnect-quota-leak": [
+    "Simulate mid-stream disconnects and compare debits with emitted tokens.",
+    "Upfront max_tokens debits leak quota when unused tokens are not refunded.",
+    "Debit streamed tokens incrementally and settle in a finally block.",
+    "Reconcile gateway logs with tenant balances."
+  ],
+  "senior:debug-agent-tool-call-json-parse-failure": [
+    "Inspect failed raw JSON and the training prompt template.",
+    "The smaller model emits malformed JSON without grammar constraints.",
+    "Enforce JSON schema decoding and zero temperature for tool calls.",
+    "Run tool-calling contract tests before model promotion."
+  ],
+  "senior:debug-ddp-nan-loss-divergence": [
+    "Replay the failing batch with anomaly detection.",
+    "An unmasked empty sequence creates all-negative-infinity attention rows and NaNs.",
+    "Filter sequences below the minimum token length and clip gradients.",
+    "Restore a checkpoint with the faulty batch removed."
+  ],
+  "senior:debug-rope-extrapolation-hallucination-spike": [
+    "Test retrieval across positions beyond the original context window.",
+    "Unscaled RoPE produces out-of-distribution positional inner products.",
+    "Apply YaRN or dynamic NTK-aware frequency scaling.",
+    "Validate the expanded window with needle-in-a-haystack benchmarks."
+  ],
+  "senior:debug-cross-encoder-reranker-latency-breach": [
+    "Profile candidate counts, padding and sequence lengths.",
+    "Cross-encoders score concatenated query-document pairs.",
+    "Use lightweight first-stage reranking before the heavy cross-encoder.",
+    "Cap cross-encoder candidates and enforce an SLA timeout."
+  ],
+  "senior:debug-guided-json-decoding-throughput-collapse": [
+    "Profile CPU grammar masking versus GPU forward time.",
+    "Complex schemas compute allowed token masks at every position.",
+    "Precompile an optimized DFA and simplify recursive schemas.",
+    "Benchmark grammar compilation overhead in CI."
+  ],
+  "senior:debug-lora-catastrophic-forgetting-reasoning": [
+    "Check training data, target modules, learning rate and epochs.",
+    "Evaluate general reasoning alongside domain accuracy during training.",
+    "Mix general reasoning replay data and restrict LoRA target projections.",
+    "Reduce learning rate and enforce general-performance regression gates."
+  ],
+  "senior:debug-guardrail-redos-cpu-starvation": [
+    "Inspect guardrail regexes and reproduce with repetitive inputs.",
+    "Nested quantifiers cause catastrophic backtracking.",
+    "Use a linear-time regex engine or remove overlapping groups.",
+    "Add regex security linting before deployment."
+  ],
+  "senior:debug-semantic-cache-stale-pricing-data": [
+    "Inspect TTLs and source-entity metadata in cache entries.",
+    "A static similarity cache lacks pricing-update invalidation.",
+    "Tag entries with SKU IDs and purge them on pricing events.",
+    "Use short TTLs and bypass caching for checkout queries."
+  ],
+  "senior:debug-multi-agent-debate-deadlock": [
+    "Inspect debate turns and consensus termination conditions.",
+    "Repeated similar arguments indicate rhetorical deadlock.",
+    "Add an independent judge and factual retrieval.",
+    "Bound debate turns and test convergence."
+  ],
+  "senior:debug-voice-vad-speech-clipping": [
+    "Compare VAD speech boundaries against manually marked recordings.",
+    "Short silence timeouts and missing pre-speech buffers clip speech.",
+    "Increase the silence cutoff and add pre-trigger audio buffering.",
+    "Validate on conversational recordings with hesitation pauses."
+  ],
+  "senior:debug-coding-agent-path-traversal-sandbox": [
+    "Inspect container mounts, user privileges and capabilities.",
+    "Reproduce path traversal and inspect container mount output.",
+    "Use an unprivileged user, isolated mount and read-only root.",
+    "Drop capabilities, canonicalize paths and test restricted access."
+  ],
+  "senior:debug-feature-store-skew-timestamp-alignment": [
+    "Compare feature timestamps with label event times.",
+    "Training joins included information unavailable at decision time.",
+    "Use point-in-time correct feature joins.",
+    "Require timestamp-correctness checks and monitor data drift."
+  ],
+  "senior:debug-kv-cache-fragmentation-cuda-oom": [
+    "Compare allocated and reserved GPU memory.",
+    "Inspect memory_summary and the largest available contiguous block.",
+    "Fragmentation leaves free memory without a sufficiently large contiguous allocation.",
+    "Use expandable segments or preallocated paged KV blocks and load-test headroom."
+  ],
+  "senior:debug-contrastive-loss-collapse-inbatch-negatives": [
+    "Inspect batch composition, embedding norms and InfoNCE temperature.",
+    "Very low temperature without normalization saturates softmax and collapses gradients.",
+    "Normalize embeddings, adjust temperature and remove duplicate passages.",
+    "Log embedding norms and validation recall at checkpoints."
+  ],
+  "senior:debug-multimodal-markdown-image-exfiltration": [
+    "Inspect hidden PDF instructions and outbound client requests.",
+    "Prompt injection encodes document text in external Markdown image URLs.",
+    "Restrict image rendering to trusted domains.",
+    "Enforce an image Content Security Policy and outbound network restrictions."
+  ],
+  "senior:debug-canary-rollout-healthcheck-timeout": [
+    "Inspect pod events and model loading duration.",
+    "A liveness probe kills the pod before model initialization completes.",
+    "Add a startup probe with sufficient loading time.",
+    "Use a lightweight liveness endpoint and test cold starts in staging."
+  ],
+  "senior:debug-model-router-cascading-fallback-failure": [
+    "Inspect fallback triggers and primary-cluster error logs.",
+    "Single timeouts shift traffic into an overloaded fallback cluster.",
+    "Use circuit breakers, backoff and fallback concurrency caps.",
+    "Enforce tenant budgets and provide cached degraded responses."
+  ],
+  "senior:debug-ab-test-sample-ratio-mismatch": [
+    "Check assignment hashing and device-specific tracking losses.",
+    "Latency causes variant users to leave before client beacons fire.",
+    "Log experiment assignments server-side before rendering.",
+    "Run daily chi-square SRM checks and fix the latency regression."
+  ],
+  "senior:debug-rag-chunk-boundary-truncation": [
+    "Inspect retrieved chunks and omitted qualifying policy text.",
+    "Fixed-token splitting separates conditions from their statements.",
+    "Use sentence-aware overlapping chunks and parent-document retrieval.",
+    "Add tests that keep exceptions attached to qualifying statements."
+  ],
+  "senior:debug-lora-svd-gradient-vanishing": [
+    "Inspect alpha/r, adapter initialization and gradient norms.",
+    "Alpha 8 divided by rank 64 scales updates to 0.125.",
+    "Increase alpha or proportionally raise the adapter learning rate.",
+    "Validate scaling configuration before training."
+  ],
+  "senior:debug-agent-async-tool-race-condition": [
+    "Inspect tool dispatch timestamps and replay sequential execution.",
+    "Concurrent read-modify-write updates overwrite state and repeat bookings.",
+    "Use idempotency keys and transactional state locks.",
+    "Serialize mutating tools while retaining concurrency for read-only tools."
+  ],
+  "senior:agent-idempotency-key-design": [
+    "Hash session ID, step index, tool name and canonical arguments into an idempotency key.",
+    "Return cached results for completed keys.",
+    "Wait on in-progress keys and record new executions centrally.",
+    "Distributed key storage adds overhead but prevents duplicate side effects."
+  ],
+  "senior:agent-tool-permission-scopes": [
+    "Use scoped least-privilege capability tokens.",
+    "Separate read-only, scoped mutation and high-impact tools into risk tiers.",
+    "Reject calls outside granted scopes before execution.",
+    "Permission boundaries limit autonomy while reducing unauthorized actions."
+  ],
+  "senior:agent-human-in-the-loop-elevation": [
+    "Suspend execution and persist agent state at a protected tool boundary.",
+    "Request approval with tool name, arguments and reasoning.",
+    "Restore state and inject the review decision as a tool response.",
+    "Approval delays can make underlying state stale."
+  ],
+  "senior:agent-content-addressed-caching": [
+    "Hash canonical JSON arguments with the tool name for deterministic tool caching.",
+    "Return cached results for identical inputs.",
+    "Bypass caching for mutations, randomness and live feeds.",
+    "Caching saves latency and cost but risks stale time-sensitive data."
+  ],
+  "senior:agent-policy-engine-pre-execution": [
+    "Enforce policy after tool generation and before execution.",
+    "Validate schemas, authentication and rate limits in middleware.",
+    "Sandbox code and filesystem tools with restricted namespaces and egress.",
+    "System prompt instructions alone cannot enforce security."
+  ],
+  "senior:agent-partial-failure-saga-rollback": [
+    "Register a compensating action for each mutating tool.",
+    "Stop forward execution on failure and compensate in reverse order.",
+    "Alert an operator if compensation fails.",
+    "Irreversible side effects require human reconciliation."
+  ],
+  "senior:agent-sandboxed-file-access-isolation": [
+    "Isolate workspace access with mount and user namespaces.",
+    "Canonicalize requested paths and verify workspace containment.",
+    "Restrict system mounts and outbound network access.",
+    "Containers add startup overhead compared with lightweight process wrappers."
+  ],
+  "senior:agent-credential-vault-least-privilege": [
+    "Keep credentials out of prompts and model context.",
+    "Route tools through a proxy that checks session permissions.",
+    "Inject short-lived vault credentials into outgoing requests.",
+    "Return sanitized responses to the model despite the extra network hop."
+  ],
+  "senior:agent-recursion-depth-circuit-breaker": [
+    "Enforce deterministic step and recursion limits in the runtime.",
+    "Increment the counter for model calls and tool executions.",
+    "Halt at the limit and return a structured partial-progress summary.",
+    "Tight limits may terminate valid complex tasks prematurely."
+  ],
+  "senior:agent-cycle-detection-state-hashing": [
+    "Hash tool names and arguments to detect repeated exact calls.",
+    "Use embedding similarity to detect rephrased queries without new information.",
+    "Intervene with an alternate-strategy instruction and terminate persistent loops.",
+    "Require repeated cycles to avoid interrupting legitimate refinement."
+  ],
+  "senior:agent-cost-token-budget-circuit-breaker": [
+    "Assign session spending caps in dollars and tokens.",
+    "Estimate input cost before calls and tally provider usage afterward.",
+    "Switch to a cheaper model near the warning threshold.",
+    "Block further calls at the cap and summarize completed work."
+  ],
+  "senior:agent-stuck-tool-timeout-isolation": [
+    "Wrap tool execution in non-blocking timeouts tailored to tool type.",
+    "Cancel the future and terminate the subprocess or connection on timeout.",
+    "Return a structured timeout error for retry or fallback decisions.",
+    "Aggressive timeouts can cancel valid long-running work."
+  ],
+  "senior:agent-hallucinated-tool-termination": [
+    "Validate tool names against the registered catalog before dispatch.",
+    "Validate arguments against the tool JSON Schema.",
+    "Return structured errors and allow two corrective retries.",
+    "Abort cleanly if invalid calls persist."
+  ],
+  "senior:agent-cascading-failure-multi-agent-backoff": [
+    "Attach global time-to-live and hop budgets to delegated tasks.",
+    "Decrement hop counts and block delegation at zero.",
+    "Retry transient failures with exponential backoff and full jitter.",
+    "Backoff adds latency but avoids synchronized retry storms."
+  ],
+  "senior:agent-graceful-fallback-on-abort": [
+    "Checkpoint state before mutations.",
+    "On abort, cancel subprocesses and clean temporary files.",
+    "Preserve unfinished changes on a review branch.",
+    "Report succeeded, interrupted and rolled-back work."
+  ],
+  "senior:serving-continuous-batching-iteration": [
+    "Static batching waits for the longest request to finish.",
+    "Continuous batching schedules at individual token iterations.",
+    "Remove completed requests and insert arrivals at each step.",
+    "Dynamic scheduling adds CPU overhead while improving GPU utilization."
+  ],
+  "senior:serving-chunked-prefill-disaggregation": [
+    "Prefill is compute-bound while decode is memory-bandwidth bound.",
+    "Full long-prompt prefills stall concurrent decoding.",
+    "Schedule fixed-size prompt chunks alongside decode tokens within a token budget.",
+    "Chunking delays the long request's first token but stabilizes decode latency."
+  ],
+  "senior:serving-paged-attention-block-eviction": [
+    "Allocate KV cache in fixed-size physical blocks.",
+    "Map sequence logical blocks to physical blocks and allocate on demand.",
+    "Under pressure, preempt with recomputation or host swapping.",
+    "Swapping adds PCIe transfer latency."
+  ],
+  "senior:serving-speculative-decoding-verification": [
+    "A draft model proposes K tokens for parallel target verification.",
+    "At the first mismatch, sample a residual replacement and discard later drafts.",
+    "High acceptance yields multiple tokens per target pass.",
+    "Low acceptance retains draft and verification overhead without enough progress."
+  ],
+  "senior:serving-radix-prefix-caching": [
+    "Match incoming token prefixes against a radix tree of KV blocks.",
+    "Reuse matching blocks to skip prefix prefill.",
+    "Evict least-recently-used leaves while retaining popular roots.",
+    "Retained cache blocks consume VRAM after requests finish."
+  ],
+  "senior:routing-pareto-cost-latency-quality": [
+    "Route queries to the cheapest model meeting the quality bar.",
+    "Predict complexity with a classifier or reference-query embeddings.",
+    "Send simple extraction to small models and complex reasoning to frontier models.",
+    "Monitor cost versus accuracy while accounting for misrouting and router latency."
+  ],
+  "senior:routing-fallback-timeout-cascade": [
+    "Apply an initial-token deadline to the primary provider.",
+    "Cancel and fall back on rate limits or a missed first-token deadline.",
+    "Once streaming starts, retry only at step boundaries.",
+    "Secondary models may differ in formatting, reasoning or refusal behavior."
+  ],
+  "senior:routing-semantic-intent-clustering": [
+    "Embedding routing compares queries with intent centroids.",
+    "Reference examples let intent categories change without retraining.",
+    "Fine-tuned classifiers learn sharper boundaries with lower inference latency.",
+    "Classifier updates require a retraining pipeline."
+  ],
+  "senior:routing-uncertainty-escalation": [
+    "Top softmax confidence alone can be misleading on out-of-distribution inputs.",
+    "Use top-two probability margins and entropy for classification uncertainty.",
+    "Measure semantic consistency across sampled generative outputs.",
+    "Escalate high uncertainty to humans with a review-volume trade-off."
+  ],
+  "senior:routing-dynamic-prompt-compression": [
+    "Prune low-information tokens with extractive scoring.",
+    "Remove decorative Markdown and compress verbose structured data.",
+    "Preserve key semantics before dispatching to a smaller model.",
+    "Compression adds compute but reduces downstream tokens and latency."
+  ],
+  "senior:cache-prompt-prefix-breakpoint-alignment": [
+    "Identical prefixes are required for prompt-cache reuse.",
+    "Put invariant system instructions, tools and examples before dynamic data.",
+    "Place explicit cache breakpoints after static tools where supported.",
+    "Standardized prompt order constrains template design while saving cost."
+  ],
+  "senior:cache-prompt-radix-tree-vllm": [
+    "Walk the radix tree for the longest matching prompt prefix.",
+    "Reuse prior-turn KV blocks and prefill only new tool-result tokens.",
+    "Share ancestor blocks across branching trajectories.",
+    "Tree maintenance adds CPU overhead while reducing redundant prefill."
+  ],
+  "senior:cache-prompt-eviction-lru-cost-weighted": [
+    "LRU evicts the least recently accessed prefix.",
+    "LRU ignores the different costs of recomputing short and long prefixes.",
+    "Weight eviction by recency, frequency and regeneration cost.",
+    "Protect expensive roots and evict cheap leaves using additional priority bookkeeping."
+  ],
+  "senior:cache-prompt-context-ordering-multi-tenant": [
+    "Canonicalize shared schemas with sorted keys and identical whitespace.",
+    "Order global policy and shared tools before tenant policy.",
+    "Put session history and user queries after shared prefixes.",
+    "Standardization restricts team formatting choices but enables cache sharing."
+  ],
+  "senior:cache-semantic-vector-similarity-thresholds": [
+    "Semantic caches match paraphrases using query-vector similarity.",
+    "Low thresholds admit incorrect matches while high thresholds lose paraphrase hits.",
+    "Tune thresholds on historical query pairs using ROC curves.",
+    "Balance compute savings against false semantic matches."
+  ],
+  "senior:cache-semantic-asymmetric-invalidation": [
+    "Record source chunk and entity IDs with each cached answer.",
+    "Publish invalidation events when source documents change or disappear.",
+    "Purge entries tagged with modified IDs from the vector index.",
+    "Provenance metadata adds write overhead in exchange for freshness."
+  ],
+  "senior:cache-semantic-multi-tenant-isolation": [
+    "Store tenant and required-role metadata on cache entries.",
+    "Extract authenticated tenant and role scopes from validated tokens.",
+    "Apply authorization filters before vector scoring.",
+    "Bypass the cache when no authorized match exists, accepting fewer shared hits."
+  ],
+  "senior:cache-semantic-negation-false-positives": [
+    "Dense embeddings can place opposite intents close together.",
+    "Check negation, boolean constraints and named entities after similarity matching.",
+    "Reject hits with conflicting polarity or entities.",
+    "Route rejected hits to the full pipeline despite verification overhead."
+  ],
+  "senior:experiment-switchback-marketplace-sutva": [
+    "User-level randomization fails when treatment consumes shared marketplace supply.",
+    "Switchbacks randomize geographic clusters and time windows.",
+    "Everyone in a zone uses the same policy during a window.",
+    "Temporal autocorrelation and carryover require longer experiments."
+  ],
+  "senior:experiment-interleaving-vs-ab-ranking": [
+    "Interleave alternating picks from both rankers into one result list.",
+    "Credit clicks to the contributing ranker.",
+    "The same query and layout reduce between-user variance.",
+    "Interleaving measures ranking preference rather than long-term retention or conversion."
+  ],
+  "senior:experiment-guardrail-metrics-automated-rollback": [
+    "Canary a small traffic share while monitoring primary and guardrail metrics.",
+    "Include errors, p99 latency, timeouts and user complaints.",
+    "Use sequential threshold triggers to revert traffic and report incidents.",
+    "Volatile metrics can cause false-alarm rollbacks."
+  ],
+  "senior:experiment-sample-ratio-mismatch-detection": [
+    "Detect allocation mismatch with a chi-square goodness-of-fit test.",
+    "SRM invalidates cohort comparability and downstream causal conclusions.",
+    "Investigate tracking loss, bot filtering and browser redirects.",
+    "Stop, debug and rerun the experiment rather than statistically reweighting it."
+  ],
+  "senior:experiment-multi-armed-bandits-thompson": [
+    "Bandits shift traffic to reduce cumulative regret.",
+    "Thompson Sampling maintains reward posteriors such as Beta distributions for CTR.",
+    "Sample each posterior and choose the highest draw.",
+    "Adaptive allocation suits short-lived content but complicates unbiased causal estimates."
+  ],
+  "senior:recsys-two-tower-in-batch-negatives": [
+    "Separate user and item towers map inputs into a shared embedding space.",
+    "In-batch positives serve as negatives for other users via B-by-B dot products.",
+    "Subtract log sampling probability Q to correct popularity-biased negatives.",
+    "Add hard-negative mining when in-batch negatives are too easy."
+  ],
+  "senior:recsys-multi-task-ranking-mmoe": [
+    "Competing ranking objectives can cause negative transfer under hard sharing.",
+    "MMoE shares expert networks but gives each task its own gate.",
+    "Task-specific softmax gates weight shared expert representations.",
+    "More experts increase parameters and inference compute."
+  ],
+  "senior:recsys-sequential-user-session-modeling": [
+    "Static pooled histories collapse diverse interests into one embedding.",
+    "DIN attends to history relative to each candidate item.",
+    "Candidate-aware weights emphasize relevant past interactions.",
+    "Per-candidate history attention increases ranking latency."
+  ],
+  "senior:recsys-exploration-cold-start-contextual": [
+    "New items lack the history needed by collaborative filtering.",
+    "LinUCB uses context features with ridge regression and parameter covariance.",
+    "Add an uncertainty-based exploration bonus to expected reward.",
+    "Exploration trades immediate clicks for discovering new items."
+  ],
+  "senior:recsys-diversity-reranking-mmr-dpp": [
+    "MMR greedily trades relevance against similarity to selected items.",
+    "DPP scores subsets through a similarity-kernel determinant.",
+    "Similar items reduce determinant volume while diverse items increase it.",
+    "MMR is simpler and faster; DPP adds global diversity with more complexity."
+  ],
+  "senior:gpu-fair-share-drf-scheduling": [
+    "Compute each tenant's largest fraction of cluster resources as its dominant share.",
+    "Schedule the tenant with the lowest dominant share next.",
+    "DRF balances heterogeneous resources with max-min fairness.",
+    "Fair allocation can leave GPUs idle when the selected jobs cannot use them."
+  ],
+  "senior:gpu-mig-vs-mps-tradeoffs": [
+    "MIG hardware partitions provide dedicated compute and memory resources.",
+    "MPS multiplexes processes through a shared GPU context.",
+    "MIG offers predictable isolation with rigid partition sizes.",
+    "MPS improves dynamic utilization but lacks memory fault isolation."
+  ],
+  "senior:gpu-preemption-graceful-checkpointing": [
+    "Send SIGTERM with a grace period before reclaiming a training node.",
+    "Complete the current backward pass and save weights and optimizer state.",
+    "Atomically rename the checkpoint to prevent partial writes.",
+    "Checkpointing delays high-priority work but preserves training progress."
+  ],
+  "senior:gpu-credit-token-bucket-fairness": [
+    "Separate prefill and decode token quota buckets.",
+    "Give tenants sustained refill rates and configurable burst limits.",
+    "Reserve prompt capacity before admitting work.",
+    "Queue or reject exhausted tenants, with borrowing needed to reuse idle quotas."
+  ],
+  "senior:gpu-vram-fragmentation-prevention": [
+    "Contiguous maximum-length KV allocation wastes memory through fragmentation.",
+    "Allocate non-contiguous fixed-size KV blocks on demand.",
+    "Map logical sequence tokens to physical blocks with a block table.",
+    "Block-table lookups add overhead while enabling larger batches."
+  ],
+  "senior:gpu-burst-quota-noisy-neighbors": [
+    "Protect production workloads with dedicated non-preemptible pools.",
+    "Place opportunistic bursts in low-priority preemptible pools.",
+    "Reclaim burst allocations when higher-priority work needs resources.",
+    "Burst users must tolerate interruptions and restarts."
+  ],
+  "senior:gpu-idle-workload-reclamation": [
+    "Monitor compute activity and notebook network traffic rather than memory alone.",
+    "Check prolonged low utilization for absence of active user sessions.",
+    "Warn users and offer a session extension before reclamation.",
+    "Checkpoint inactive containers and release GPU allocations."
+  ],
+  "senior:gpu-slurm-vs-k8s-orchestration": [
+    "Slurm suits batch training with gang scheduling.",
+    "Kubernetes suits autoscaled inference, ingress and rolling deployments.",
+    "Kubernetes needs specialized gang schedulers for large distributed training.",
+    "Choose orchestration by workload and operational overhead."
+  ],
+  "senior:gov-audit-trail-tamper-evident": [
+    "Log identities, prompts, responses, tool arguments and results.",
+    "Link each record to the preceding record with a SHA-256 hash.",
+    "Verify the chain to detect historical modification or deletion.",
+    "Store records in append-only Object Lock storage with retention."
+  ],
+  "senior:gov-pii-redaction-bidirectional": [
+    "Replace sensitive entities with deterministic surrogate tokens before model transmission.",
+    "Keep the reversible mapping in an encrypted short-lived session cache.",
+    "Restore original values through the response proxy.",
+    "Surrogates protect privacy but may remove useful reasoning context."
+  ],
+  "senior:gov-hallucination-audit-monitoring": [
+    "Split RAG answers into claims and test entailment against retrieved chunks.",
+    "Measure response self-consistency for open-ended generation.",
+    "Track score distributions and shifts over time.",
+    "Sample evaluations asynchronously to reduce secondary-inference cost."
+  ],
+  "senior:gov-model-card-metadata-provenance": [
+    "Record model identity, weight checksum, tokenizer and training-data provenance.",
+    "Store benchmark, safety and demographic evaluation scorecards.",
+    "Document intended uses, exclusions, failure modes and hardware requirements.",
+    "Version metadata with model artifacts despite registration overhead."
+  ],
+  "senior:gov-access-control-row-level-rag": [
+    "Tag ingested chunks with authorized group ACLs.",
+    "Extract verified group permissions from the authenticated user's token.",
+    "Apply authorization filters before vector scoring.",
+    "Post-retrieval filtering can hide relevant authorized results."
+  ],
+  "senior:gov-automated-policy-guardrails": [
+    "Regex filters are fast but allow obfuscation bypasses and false positives.",
+    "Semantic classifiers inspect intent with greater latency.",
+    "Use a tiered funnel of fast rules followed by semantic checks.",
+    "Apply semantic checks to flagged or sensitive interactions."
+  ],
+  "senior:gov-bias-disparate-impact-testing": [
+    "Compare protected-group selection rates using an adverse impact ratio.",
+    "Check true- and false-positive rate balance for equalized odds.",
+    "Adjust features or calibrate thresholds when disparities appear.",
+    "Fairness constraints can trade off against unconstrained predictive accuracy."
+  ],
+  "senior:feature-store-point-in-time-correctness": [
+    "Use only feature values known at the historical decision time.",
+    "Future feature values leak labels and inflate offline scores.",
+    "AS OF joins select the latest feature timestamp no later than the event.",
+    "Immutable temporal logs add storage and query complexity."
+  ],
+  "senior:feature-store-online-offline-parity": [
+    "Separate offline and online implementations can diverge and cause serving skew.",
+    "Define feature transformations once in a canonical framework.",
+    "Compile definitions into historical batch and live streaming paths.",
+    "Dual warehouse and key-value storage adds operational complexity."
+  ],
+  "senior:feature-store-streaming-ingestion-kafka": [
+    "Publish raw events to Kafka.",
+    "Use stateful Flink windows to compute rolling features.",
+    "Write updated vectors to Redis by entity ID for inference lookups.",
+    "Manage checkpoints and out-of-order events to maintain freshness."
+  ],
+  "senior:feature-store-drift-psi-monitoring": [
+    "Compare sliding-window live feature distributions with training baselines.",
+    "Use PSI for categorical features and Wasserstein distance for numeric features.",
+    "Feature drift can warn before delayed labels arrive.",
+    "Small windows increase sensitivity but can alert on seasonal changes."
+  ],
+  "senior:ratelimit-dual-token-bucket-tpm-rpm": [
+    "Enforce both request and token quotas for each tenant.",
+    "Estimate prompt plus maximum completion tokens before admission.",
+    "Acquire from both buckets atomically.",
+    "Return HTTP 429 identifying the exhausted limit and require client backoff."
+  ],
+  "senior:ratelimit-redis-sliding-window-distributed": [
+    "Fixed windows allow bursts at window boundaries.",
+    "Store approved request timestamps in Redis sorted sets.",
+    "Atomically remove expired entries, count and admit with a Lua script.",
+    "Compute retry-after from the oldest entry at the cost of per-request storage."
+  ],
+  "senior:ratelimit-priority-shedding-http429": [
+    "Prioritize interactive traffic over asynchronous workflows and offline jobs.",
+    "Trigger load shedding on upstream 429s or excessive queue latency.",
+    "Defer low-priority jobs into durable queues with backoff.",
+    "Throttle the next tier if pressure persists to preserve interactive capacity."
+  ],
+  "senior:ratelimit-streaming-token-reservation": [
+    "Reserve prompt plus max completion tokens when a stream starts.",
+    "Reject requests whose tenant cannot cover the reservation.",
+    "Reconcile actual usage and refund unused tokens on completion or abort.",
+    "Upfront reservations prevent overdrafts but temporarily block concurrency."
+  ],
+  "senior:quant-ptq-vs-qat-activation-outliers": [
+    "Activation outliers expand quantization ranges and crush normal-value precision.",
+    "PTQ calibrates without full retraining.",
+    "QAT simulates quantization noise and uses a straight-through gradient estimator.",
+    "QAT adds retraining cost while improving tolerance to low precision."
+  ],
+  "senior:quant-weight-only-vs-weight-activation": [
+    "Decode is memory-bandwidth bound while prefill and large batches are compute-bound.",
+    "Weight-only quantization reduces transferred weights and dequantizes for computation.",
+    "Weight-activation quantization uses low-precision tensor-core computation.",
+    "Quantizing activations requires careful outlier handling."
+  ],
+  "senior:quant-kv-cache-compression": [
+    "Long-context KV caches can dominate memory usage.",
+    "FP8 halves cache memory while INT4 reduces it further.",
+    "Key quantization perturbs attention scores and can harm retrieval.",
+    "Use dynamic scaling and validate concurrency gains against long-context quality."
+  ],
+  "senior:quant-per-channel-vs-per-token-scaling": [
+    "Per-tensor scales let a single outlier reduce precision for all tokens.",
+    "Per-channel scales handle consistently large feature dimensions.",
+    "Per-token dynamic scales isolate token-specific outliers.",
+    "Dynamic scale computation adds kernel overhead."
+  ],
+  "senior:quant-qlora-nf4-double-quant": [
+    "NF4 uses a quantile grid suited to normally distributed weights.",
+    "Double quantization compresses the quantization scale factors.",
+    "Paged optimizers move optimizer memory to CPU during spikes.",
+    "Train full-precision LoRA adapters while accepting dequantization overhead."
+  ],
+  "senior:a2a-supervisor-vs-peer-choreography": [
+    "Supervisors decompose tasks, delegate and maintain global state.",
+    "Peer choreography communicates directly without a central controller.",
+    "Supervisors can bottleneck while peer messaging risks storms and deadlocks.",
+    "Bound peer communication with hop counters and timeout deadlines."
+  ],
+  "senior:a2a-protocol-mcp-vs-jsonrpc": [
+    "MCP standardizes Tools, Resources and Prompts over JSON-RPC.",
+    "Discover tool capabilities and schemas through tools/list.",
+    "Clients handle isolation and approval while servers execute actions.",
+    "Standard framing adds overhead but reduces custom integration code."
+  ],
+  "senior:a2a-distributed-tracing-opentelemetry": [
+    "Start a root span and propagate W3C trace context on delegation.",
+    "Subagents extract headers and create linked child spans.",
+    "Record roles, token counts and tool parameters in span metadata.",
+    "Centralized tracing adds overhead but exposes stalled subagent calls."
+  ],
+  "senior:a2a-shared-workspace-concurrency-control": [
+    "Capture the file's SHA-256 hash before editing.",
+    "Check the original version hash before an atomic write.",
+    "Reject conflicts and provide the current diff for reapplication.",
+    "Optimistic concurrency avoids locks but requires conflict retries."
+  ],
+  "senior:dist-ddp-allreduce-synchronous": [
+    "DDP replicas must apply identical synchronized gradient updates.",
+    "Bucket gradients and start asynchronous all-reduce as buckets become ready.",
+    "Overlap communication with remaining backward computation.",
+    "Large buckets favor bandwidth while small buckets begin overlap sooner."
+  ],
+  "senior:dist-zero-stages-memory-tradeoff": [
+    "ZeRO-1 shards optimizer states and ZeRO-2 additionally shards gradients.",
+    "ZeRO-3 also shards model parameters.",
+    "Gather layer weights for computation and reduce-scatter gradients.",
+    "Greater memory savings require more interconnect communication."
+  ],
+  "senior:dist-fsdp-layer-allgather": [
+    "FSDP shards parameters, gradients and optimizer states by layer.",
+    "All-gather layer weights before forward and backward computation.",
+    "Free full weights after use and reduce-scatter gradients.",
+    "Overlap next-layer gathering with current computation to reduce overhead."
+  ],
+  "senior:dist-pipeline-parallelism-bubbles": [
+    "Pipeline stages idle while awaiting activations or gradients.",
+    "Splitting batches into more micro-batches reduces the bubble fraction.",
+    "1F1B alternates forward and backward micro-batches to release activations sooner.",
+    "More in-flight micro-batches increase activation-memory pressure."
+  ],
+  "senior:dist-tensor-parallelism-megatron": [
+    "Column-shard QKV projections so ranks compute separate heads.",
+    "Row-shard output projections and all-reduce partial outputs.",
+    "Apply column then row sharding to feed-forward layers.",
+    "Frequent layer collectives favor high-bandwidth intra-node links."
+  ],
+  "senior:dist-gradient-accumulation-boundary": [
+    "Accumulate gradients over micro-batches without zeroing between them.",
+    "Use no_sync on intermediate DDP micro-batches.",
+    "Synchronize, step the optimizer and clear gradients at the accumulation boundary.",
+    "Less frequent updates require adjusted warmup schedules."
+  ],
+  "senior:dist-nccl-timeout-debugging": [
+    "A collective timeout can be caused by another rank failing to enter.",
+    "Enable NCCL diagnostics and identify the delayed rank.",
+    "Check data loading, uneven work and GPU health.",
+    "Test network collectives if compute ranks look healthy."
+  ],
+  "senior:dist-activation-checkpointing-overhead": [
+    "Save block inputs instead of every intermediate activation.",
+    "Recompute discarded activations during backward before calculating gradients.",
+    "Checkpointing reduces memory at the cost of extra forward computation.",
+    "Use it to fit deeper models or longer sequences."
+  ],
+  "senior:dist-bf16-vs-fp16-mixed-precision": [
+    "FP16 has a narrower exponent range and may need loss scaling.",
+    "BF16 matches FP32 exponent range and preserves small gradient magnitudes.",
+    "BF16 has fewer mantissa bits and more rounding error.",
+    "Hardware support and numerical needs affect the format choice."
+  ],
+  "senior:dist-data-loader-sharding-determinism": [
+    "Use DistributedSampler to assign data across ranks.",
+    "Call set_epoch each epoch to change the deterministic shuffle.",
+    "Save epoch, step and random states for reproducible resumption.",
+    "Uneven dataset sizes require padding or dropping samples."
+  ],
+  "senior:coding-chunker-token-aware": [
+    "Count tokenizer subwords rather than raw characters.",
+    "Split by paragraphs, then sentences, then words as needed.",
+    "Emit at the token limit and retain trailing overlap.",
+    "Test oversized sentences, small documents, Unicode and overlap continuity."
+  ],
+  "senior:coding-bm25-from-scratch": [
+    "Combine inverse document frequency with saturated term frequency.",
+    "Normalize by document length so length alone does not dominate.",
+    "Handle empty documents, unmatched queries and unseen vocabulary.",
+    "BM25 favors exact lexical matches but misses semantic synonyms."
+  ],
+  "senior:coding-cross-encoder-reranker": [
+    "Cross-encoders jointly attend to concatenated query and passage tokens.",
+    "Rerank candidates after a fast first-stage retriever.",
+    "Normalize and blend retrieval scores with cross-encoder logits.",
+    "Test keyword decoys while accounting for per-candidate latency."
+  ],
+  "senior:coding-json-output-parser": [
+    "Track object depth, array depth, string state and escapes incrementally.",
+    "Emit completed scalar key-value pairs before the full object closes.",
+    "Handle numbers split across chunks and escaped quotes.",
+    "Downstream consumers must tolerate partial output after truncation."
+  ],
+  "senior:coding-eval-harness-precision-recall": [
+    "Tally true positives, false positives and false negatives per class.",
+    "Micro metrics pool counts across classes.",
+    "Macro metrics average per-class precision, recall and F1 equally.",
+    "Macro-F1 reveals rare-class failures hidden by traffic-dominated micro metrics."
+  ],
+  "senior:coding-dynamic-batcher": [
+    "Queue concurrent requests asynchronously.",
+    "Dispatch when maximum batch size or timeout is reached.",
+    "Pad inputs and map responses back through caller futures.",
+    "Batching improves utilization but adds waiting latency."
+  ],
+  "senior:coding-token-bucket-rate-limiter": [
+    "Store capacity, refill rate, balance and last-check time.",
+    "Refill lazily from elapsed time and cap at capacity.",
+    "Lock refill and debit together for thread safety.",
+    "Reject exhausted requests with retry-after estimates while controlling bursts."
+  ],
+  "senior:coding-streaming-sse-client": [
+    "Buffer incoming bytes until a complete double-newline-delimited SSE event arrives.",
+    "Parse event fields and deserialize data payloads.",
+    "Reconnect with exponential backoff and Last-Event-ID.",
+    "HTTP text framing is easy to proxy but adds string-processing overhead."
+  ],
+  "senior:coding-vector-l2-cosine-distance": [
+    "Normalize embedding rows and use matrix multiplication for cosine similarity.",
+    "Compute squared distance from norms and dot products.",
+    "Unit-normalized squared distance equals two minus twice cosine similarity.",
+    "Normalization discards magnitude information that may encode confidence."
+  ],
+  "senior:coding-exponential-decay-cache": [
+    "Compare query embeddings with cached vectors using cosine similarity.",
+    "Return a hit only above the threshold and before TTL expiry.",
+    "Evict expired entries on access or by sweep.",
+    "Low thresholds confuse negation or constraints despite better paraphrase hits."
+  ],
+  "senior:coding-reciprocal-rank-fusion": [
+    "Fuse ranks rather than uncalibrated raw retriever scores.",
+    "Sum 1/(60 + one-based rank) for each document.",
+    "Sort by fused score with document-ID tie breaking.",
+    "Test disjoint lists and ties while recognizing score margins are discarded."
+  ],
+  "senior:coding-retry-backoff-jitter": [
+    "Compute each retry ceiling as min(max_delay, base_delay times two to the attempt).",
+    "Draw full-jitter delays uniformly between zero and that ceiling.",
+    "Test cap behavior, zero attempts and seeded reproducibility.",
+    "Jitter disperses synchronized retries but can yield near-zero waits."
+  ],
+  "senior:coding-agent-loop-guardrails": [
+    "Check step and total token budgets during every iteration.",
+    "Track tool signatures using names and sorted JSON arguments.",
+    "Abort repeated consecutive failed tool calls.",
+    "Test graceful budget exhaustion and normal completion."
+  ],
+  "senior:coding-idempotent-tool-wrapper": [
+    "Look up the idempotency key before executing a mutating tool.",
+    "Store a parameter hash and result after first execution.",
+    "Return cached results for matching duplicate parameters.",
+    "Reject reused keys with different parameters and validate missing keys."
+  ],
+  "senior:coding-agent-parse-tool": [
+    "Extract JSON from code fences or inline invocation text.",
+    "Validate the parsed tool name and arguments dictionary.",
+    "Return structured parse errors for model correction.",
+    "Test preambles, fenced output and malformed syntax."
+  ],
+  "senior:coding-hybrid-retrieval-fusion": [
+    "Normalize dense and BM25 scores separately to zero through one.",
+    "Blend normalized scores with alpha and one minus alpha.",
+    "Assign zero for documents missing from a retriever.",
+    "Test equal-score lists, alpha boundaries, empty inputs and ties."
+  ],
+  "senior:coding-rag-assemble-context": [
+    "Select chunks by descending relevance within a token budget.",
+    "Skip chunks that would overflow the budget.",
+    "Restore document and character order after selection.",
+    "Merge adjacent selected chunks and test continuity and token counts."
+  ],
+  "senior:coding-rag-near-duplicates": [
+    "Represent chunks as lowercase three-word shingle sets.",
+    "Compare candidates with retained chunks using Jaccard similarity.",
+    "Drop chunks above the duplicate threshold before indexing.",
+    "Test exact duplicates, boilerplate variants and short chunks."
+  ],
+  "senior:coding-rag-check-citations": [
+    "Split responses into sentences and extract bracketed source numbers.",
+    "Validate citation indices against the available source list.",
+    "Flag uncited sentences as well as out-of-range references.",
+    "Test multi-source brackets and valid citations."
+  ],
+  "senior:coding-kv-cache-decode": [
+    "Project the incoming token into query, key and value vectors.",
+    "Append new keys and values to historical cache tensors.",
+    "Attend the new query over cached keys with head-dimension scaling and softmax.",
+    "Test concatenation shapes and recurrent cache accumulation."
+  ],
+  "senior:voice-streaming-tts-neural-vocoder": [
+    "Accumulate generated text into short grammatical phrase chunks.",
+    "Send phrases to an acoustic model and synthesize incremental audio with a vocoder.",
+    "Stream audio while the model continues generating text.",
+    "Smaller chunks reduce first-audio latency but weaken cross-phrase prosody."
+  ],
+  "senior:voice-vad-pause-detection-turn-taking": [
+    "Combine neural VAD with semantic end-of-turn classification.",
+    "Distinguish reflective pauses from completed turns.",
+    "Extend the silence threshold for incomplete clauses.",
+    "Balance interruption risk against response delay and classifier latency."
+  ],
+  "senior:voice-streaming-asr-chunk-overlap": [
+    "Overlap adjacent audio windows to avoid splitting phonemes.",
+    "Align successive transcripts and freeze stable prefixes.",
+    "Use VAD to bypass silent chunks and prevent hallucination loops.",
+    "Overlap improves boundary stability but repeats compute."
+  ],
+  "senior:voice-wer-normalization-accents": [
+    "Compute WER as substitutions, deletions and insertions divided by reference words.",
+    "Normalize case, numbers, punctuation and contractions before scoring.",
+    "Report separate accent, noise and speaking-rate cohorts.",
+    "Aggregate WER can hide severe regional-accent failures."
+  ],
+  "senior:voice-full-duplex-barge-in": [
+    "Keep the microphone active while the agent speaks.",
+    "Remove speaker echo before speech detection using AEC.",
+    "On genuine user speech, cancel generation and flush playback buffers.",
+    "Thresholds trade responsive barge-in against accidental interruptions."
+  ],
+  "rag-interview-questions:bcf8b4d2f56d": [
+    "Use structural per-tenant index isolation for sensitive legal data.",
+    "Enforce passage-level attribution with NLI checks.",
+    "Apply late-binding permissions within each firm's access tiers.",
+    "Audit users, applied filters and retrieved chunk IDs."
+  ],
+  "rag-interview-questions:9219b939f9c2": [
+    "Check source format and schema changes first.",
+    "Check for provider-side embedding or generation model changes.",
+    "Compare traffic mix for harder query distributions.",
+    "Inspect stale or partially corrupted indexes through systematic elimination."
+  ],
+  "rag-interview-questions:rag-embedding-migration": [
+    "Build a new embedding index alongside the serving index.",
+    "Validate the new index on a golden set before atomic cutover.",
+    "Never mix old and new embedding spaces within one index.",
+    "Dual-embed documents arriving during the rebuild window."
+  ],
+  "rag-interview-questions:5d9b8c2a0b2d": [
+    "CAG fits a small stable corpus within the model's KV-cache budget.",
+    "Including the full corpus avoids selective retrieval misses.",
+    "Corpus growth and frequent invalidation make CAG less suitable.",
+    "Use RAG or a cached stable core plus retrieved changing content when needed."
+  ],
+  "rag-interview-questions:9d5eba796e50": [
+    "Use coarse BM25 and quantized dense retrieval to narrow the corpus.",
+    "Rerank only the candidate subset with a cross-encoder or ColBERT.",
+    "Partition early by a natural dimension such as topic or date.",
+    "Early partitioning makes later sharding easier."
+  ],
+  "rag-interview-questions:6d88306c9184": [
+    "Fine-tuned facts require retraining when knowledge changes.",
+    "Weight-encoded facts lack document-level citation provenance.",
+    "RAG updates through re-indexing and can cite sources.",
+    "Fine-tuning remains useful for tone, format or a narrow skill."
+  ],
+  "repo:system-design:when-not-ml": [
+    "Check whether a short rule already meets the goal.",
+    "Confirm labels, usable decision-time signal and an action on predictions.",
+    "Compare model cost and error tolerance with decision value.",
+    "Prefer a learned model when heuristics become long and fragile."
+  ],
+  "repo:system-design:demo-to-product-signals": [
+    "External recurring users and uptime expectations signal product needs.",
+    "Sign-in, history, model budgets and regulated inputs add production obligations.",
+    "Add authentication, fallback models and tracing.",
+    "Track model cost per user."
+  ],
+  "repo:system-design:metric-layers-churn-auc": [
+    "Define the action and match score delivery to the decision cadence.",
+    "Check cancellation-related label leakage and compare the existing rule.",
+    "Measure precision in the top five percent rather than relying on AUC.",
+    "Pair offline metrics with online, business and guardrail metrics."
+  ],
+  "repo:system-design:llm-cost-projection": [
+    "Apply the cache hit rate before calculating billable model traffic.",
+    "A 35 percent hit rate leaves 32,500 daily model queries.",
+    "The answer's monthly input and output costs total about $7,556.",
+    "Limit output length because output tokens cost more per token."
+  ],
+  "repo:system-design:drift-monitoring-design": [
+    "Monitor system health, inputs, predictions and delayed outcomes.",
+    "Compare fixed reference and sliding current windows with statistical tests.",
+    "Require corrected significance, effect size and persistence before alerting.",
+    "Send warnings to a dashboard rather than paging a person."
+  ],
+  "repo:system-design:streaming-and-fallback": [
+    "Stream responses over server-sent events for early first tokens.",
+    "Retry with exponential backoff and jitter up to three retries.",
+    "Fall through models, cached answers and an unavailable response.",
+    "Degrade secondary cache and retrieval failures gracefully."
+  ],
+  "repo:system-design:classifier-head-swap-choice": [
+    "Replace the vocabulary head with a two-class linear head over masked mean pooling.",
+    "Freeze the pretrained body for the small 800-example dataset.",
+    "Head-only training reduces time, memory and overfitting risk.",
+    "Full fine-tuning becomes more useful with more examples or domain shift."
+  ],
+  "repo:system-design:ab-test-prompt-rollout": [
+    "Run the prompt in shadow before exposing its answers.",
+    "Roll out to increasing user shares while quality metrics hold.",
+    "Assign versions by deterministic user-ID hash.",
+    "Roll back automatically when the new error rate doubles over a request window."
+  ],
+  "repo:system-design:batch-vs-online-serving-choice": [
+    "Account for job duration when satisfying a batch staleness limit.",
+    "Hourly batch runs cost more than two online replicas in this example.",
+    "Online serving provides fresher data for the stated traffic.",
+    "Relaxed freshness or higher peak traffic can reverse the cost choice."
+  ],
+  "repo:system-design:churn-model-system": [
+    "Predict 30-day churn and select the top five percent nightly.",
+    "Use batch scoring because fresher online scores are unnecessary.",
+    "Require lift over the idle-days heuristic.",
+    "Roll out through shadow and canary with heuristic fallback."
+  ],
+  "repo:system-design:feature-store-design": [
+    "Keep feature entity, window, default, TTL and version in one registry.",
+    "Store timestamped history offline and materialize latest values online.",
+    "Join training features at or before label time within their TTL.",
+    "Latest-snapshot joins leak future information and degrade new-data performance."
+  ],
+  "repo:system-design:public-demo-controls": [
+    "Define bounded validated input and structured output errors.",
+    "Run cheap checks before the model: size, auth, quota, validation and daily cap.",
+    "Return stable codes with hints and request IDs.",
+    "Log operational metadata and keyed client hashes without raw text or addresses."
+  ],
+  "repo:system-design:eval-platform-ship-gate": [
+    "Describe runs with manifests, seeds, revisions and stage hashes.",
+    "Freeze numeric evaluation gates before execution.",
+    "Gate core regressions and policy KL drift separately.",
+    "Log named-reviewer overrides and content-address reports for replay."
+  ],
+  "repo:system-design:batched-inference-api-budget": [
+    "Authenticate, rate-limit, guard inputs and check cache before model inference.",
+    "Stream model output through guardrails, evaluation logging and cost tracking.",
+    "Set latency, cache-hit, block-rate and per-request cost budgets.",
+    "Scale I/O-bound asynchronous servers behind a load balancer."
+  ],
+  "repo:system-design:finetune-pipeline-design": [
+    "Version configurations for data preparation, SFT, preference tuning, quantization and serving.",
+    "Deduplicate, scrub personal data and check evaluation contamination.",
+    "Compare base and tuned variants in an ablation table.",
+    "Report serving throughput, draft acceptance, cost, safety and model provenance."
+  ],
+  "repo:system-design:fraud-check-100ms": [
+    "Use online fraud scoring with approve, review and block thresholds.",
+    "Train with time splits and payment-time features because labels are delayed.",
+    "Roll out shadow then canary with heuristic fallback on timeout.",
+    "Monitor blocked-payment feedback loops and outcome-based concept drift."
+  ],
+  "repo:system-design:rag-service-company-docs": [
+    "Chunk code at function and class boundaries with embeddings, sparse terms and summaries.",
+    "Fuse dense and sparse results, deduplicate and cross-encode a narrowed set.",
+    "Require file-and-line citations and drop uncited claims.",
+    "Re-embed changed symbols and evaluate retrieval, faithfulness and latency."
+  ],
+  "repo:system-design:concept-drift-blind-spot": [
+    "Concept drift changes the input-label relationship without necessarily changing inputs.",
+    "Input and score monitors can miss the changed conditional label distribution.",
+    "Outcome monitoring detects it only after labels arrive.",
+    "Collect post-change labels before retraining instead of relearning old-quarter relationships."
+  ],
+  "repo:system-design:skew-triage": [
+    "Compare online reads with training joins for matching entities and times.",
+    "Compare fresh computation with joins to isolate stale features.",
+    "Compare alternate code paths with fresh computation to isolate logic differences.",
+    "Use one registry definition and verify logged serving features against it."
+  ],
+  "repo:system-design:design-doc-blocking-review": [
+    "Require a decision, business metric and meaningful baseline before review.",
+    "Confirm features exist at prediction time and serving meets freshness constraints.",
+    "Require rollout, rollback and default failure actions.",
+    "Ask for precision at the operating threshold rather than AUC alone."
+  ],
+  "repo:system-design:pipeline-rollback-plan": [
+    "Choose reruns by stage cost and preserve expensive base checkpoints.",
+    "Invalidate a failed stage and all descendants in the hashed dependency graph.",
+    "Rerun cheaper downstream stages when possible.",
+    "Replay promises the same recipe and data with comparable metrics, not identical weights."
+  ],
+  "repo:system-design:feedback-loop-clean-data": [
+    "Model interventions change the data used to train later versions.",
+    "Keep a random holdout or small random-decision share free of model influence.",
+    "Log scores and decisions with each row.",
+    "Join decision-time features to distinguish influenced and clean data."
+  ],
+  "rag-interview-questions:f5c12c573de0": [
+    "Clarify corpus type, freshness and query volume before choosing components.",
+    "Establish latency budget and user access boundaries.",
+    "Define domain correctness, including exact facts versus synthesis.",
+    "Requirements determine the architecture rather than a memorized vendor stack."
+  ],
+  "rag-interview-questions:60066a4a1419": [
+    "Separate offline ingestion, chunking, embedding and indexing from serving.",
+    "Online serving includes query understanding, retrieval, reranking and generation.",
+    "Include context assembly and guardrails in the online path.",
+    "Offline work favors throughput while each user request is latency-critical."
+  ],
+  "rag-interview-questions:rag-debug-stage-first": [
+    "Verify ingestion and indexing before changing generation prompts.",
+    "Check permissions, chunk boundaries and query transformation for exclusions or drift.",
+    "Inspect retrieval ranks and whether context was truncated or overlooked.",
+    "Localize the failed stage before selecting a fix."
+  ],
+  "rag-interview-questions:2e13795da5b5": [
+    "Naive RAG suits small-to-medium corpora and single-fact lookups.",
+    "Use it when latency, cost and operational capacity are constrained.",
+    "Simple failure modes are easier to diagnose.",
+    "Multi-hop or synthesis needs may justify more complex pipelines."
+  ],
+  "rag-interview-questions:3a10c5cac37f": [
+    "Progress from naive to advanced, modular and agentic architectures as needed.",
+    "Tie each addition to a measured failure of the previous design.",
+    "Add one component at a time and evaluate on a fixed golden set.",
+    "Retain components only when they improve the metric."
+  ],
+  "rag-interview-questions:462d2fe379be": [
+    "Measure chunk-size effects rather than assuming smaller is better.",
+    "Confirm multi-hop failures before adding agentic loops.",
+    "Add reranking only when first-stage retrieval is demonstrably inadequate.",
+    "Use tenant isolation and a fixed CI golden set."
+  ],
+  "rag-interview-questions:rag-ft-long-context": [
+    "Use RAG for changing facts and large document collections.",
+    "Fine-tune for tone, format or narrow skills.",
+    "Use long context for bounded corpora when token cost is acceptable.",
+    "Combine these approaches when their purposes differ."
+  ],
+  "rag-interview-questions:rag-chunk-code": [
+    "Chunk code at AST-defined function or method boundaries.",
+    "Preserve signature, docstring and body together.",
+    "Use a real parser to locate exact boundaries.",
+    "Fixed-character splits can break signatures and harm grounded code generation."
+  ],
+  "rag-interview-questions:91ab7f6540d9": [
+    "Detect text, tables and images as separate content regions.",
+    "Chunk prose by structure with overlap and serialize tables separately.",
+    "Generate text descriptions for charts before embedding.",
+    "Carry page and section metadata on every chunk."
+  ],
+  "rag-interview-questions:81d655b86d86": [
+    "Match extraction tools to PDFs, rendered websites, databases, APIs and SaaS sources.",
+    "Validate that extraction returns non-empty text.",
+    "Route scanned PDFs to OCR when no text layer is available.",
+    "Incorrect source tooling can return nothing rather than degrade gracefully."
+  ],
+  "rag-interview-questions:575cc6c04f5a": [
+    "Choose pdfplumber for structured tables despite lower throughput.",
+    "Use PyMuPDF for fast layout-aware extraction.",
+    "Choose pypdf when a pure-Python dependency matters most.",
+    "Scanned PDFs require OCR regardless of the text-extraction library."
+  ],
+  "rag-interview-questions:rag-chunk-too-long": [
+    "Oversized chunks can be silently truncated by the embedding model.",
+    "Truncation drops trailing content from the index.",
+    "Long tables and dense unsplit paragraphs are vulnerable.",
+    "Silent content loss degrades retrieval without an explicit pipeline error."
+  ],
+  "rag-interview-questions:7ea5129725e0": [
+    "Short queries and long passages have a style and length distribution mismatch.",
+    "HyDE embeds a generated answer-like passage.",
+    "INSTRUCTOR adds a task-specific embedding instruction.",
+    "E5 learns query-passage asymmetry using explicit prefixes."
+  ],
+  "rag-interview-questions:5e132e72450b": [
+    "Use a cross-lingually aligned multilingual embedding model for broad coverage.",
+    "Query translation is an alternative with per-request cost and latency.",
+    "Fine-tune on domain cross-lingual pairs if needed.",
+    "Validate on held-out target-language queries rather than relying on model cards."
+  ],
+  "rag-interview-questions:rag-billion-vectors": [
+    "A billion 768-dimensional float32 vectors need about 3.07 TB before index overhead.",
+    "Quantize vectors and shard the index across nodes.",
+    "Keep hot segments in memory and cold segments on SSD.",
+    "Plan incremental indexing alongside expensive full rebuilds."
+  ],
+  "rag-interview-questions:rag-diskann": [
+    "DiskANN addresses the RAM cost of very large resident HNSW indexes.",
+    "Keep PQ-compressed vectors in RAM for navigation.",
+    "Fetch full-precision SSD vectors for final reranking.",
+    "SSD reads add latency that may not suit sub-millisecond requirements."
+  ],
+  "rag-interview-questions:3d6a2d33d3cd": [
+    "Index loading after restart causes cold queries to slow or fail.",
+    "Warm nodes with probes before admitting real traffic.",
+    "Scale through warm replicas instead of restarting the primary directly.",
+    "Use memory locking or mapped files to manage paging and startup loading."
+  ],
+  "rag-interview-questions:230ea10b8577": [
+    "Serverless bills by operations and stored data and suits bursty traffic.",
+    "Cold namespaces add startup latency.",
+    "Provisioned nodes cost money while idle but stay warm.",
+    "Steady high volume favors predictable provisioned capacity."
+  ],
+  "rag-interview-questions:rag-rerank-first": [
+    "Tune the reranker first because pairwise training needs fewer labels.",
+    "Reranker changes do not require corpus re-indexing.",
+    "Embedding changes require full re-embedding and slower feedback.",
+    "Compare iteration cost before choosing which model to tune."
+  ],
+  "rag-interview-questions:rag-hard-negatives": [
+    "Random negatives are often too easy to teach the relevance boundary.",
+    "Mine hard negatives with BM25 or current model embeddings.",
+    "Hard negatives may include relevant but unlabeled documents.",
+    "Filter suspicious high-scoring negatives with a cross-encoder."
+  ],
+  "rag-interview-questions:3c9457d43706": [
+    "Regenerate all vectors when switching embedding models.",
+    "Mixed model versions occupy incompatible geometric spaces.",
+    "Build the new index alongside the old and cut over atomically.",
+    "Handle documents arriving during the migration window explicitly."
+  ],
+  "rag-interview-questions:aecd9ff3fe5c": [
+    "Domain-only updates can overwrite general semantic representations.",
+    "Hold out a general-domain slice alongside domain evaluations.",
+    "Compare recall, MRR and nDCG before and after tuning on both slices.",
+    "A sharp general-domain drop signals catastrophic forgetting."
+  ],
+  "rag-interview-questions:bfbbfd3c81a1": [
+    "Advanced RAG adds rewriting, hybrid search and reranking to naive retrieval.",
+    "The enhancements run as one fixed end-to-end pass.",
+    "Modular RAG differs by making components swappable and routable.",
+    "The distinction is orchestration rather than the individual techniques."
+  ],
+  "rag-interview-questions:548f7d703d2f": [
+    "Modular RAG exposes independent retrievers, fusion, routing and memory components.",
+    "A router selects strategy or data source per query.",
+    "Orchestration decides which modules to invoke.",
+    "Advanced RAG instead follows the same fixed sequence."
+  ],
+  "rag-interview-questions:68adb8eaa723": [
+    "Generate draft answers and rationales from document subsets in parallel.",
+    "A larger verifier selects among drafts without reading all raw documents.",
+    "Traffic must amortize running two models.",
+    "Similar subsets reduce meaningful draft disagreement and the benefit."
+  ],
+  "rag-interview-questions:464a23ee38fb": [
+    "Feed larger document spans directly into a long-context window.",
+    "This trades precise retrieval for fewer chunk-boundary failures.",
+    "Small corpora or prompt-cached stable documents can make it worthwhile.",
+    "The approach fails when the corpus exceeds context capacity."
+  ],
+  "rag-interview-questions:aa993df62e4b": [
+    "Train with a golden document plus plausible retrieval distractors.",
+    "Omit the golden document in some examples to teach retrieval-miss behavior.",
+    "Standard clean QA tuning does not expose distractors or misses.",
+    "RAFT targets robustness to imperfect retrieved context."
+  ],
+  "rag-interview-questions:1bea9812d7a6": [
+    "Both methods retrieve for multiple query rephrasings.",
+    "Multi-query retrieval unions result sets.",
+    "RAG-Fusion merges ranked lists with Reciprocal Rank Fusion.",
+    "Fusion rewards documents ranking well across rephrasings."
+  ],
+  "rag-interview-questions:rag-multihop-chain": [
+    "Each hop forms its query from previous retrieved evidence.",
+    "Sequential retrieval connects facts across documents.",
+    "Early wrong facts propagate and compound through later hops.",
+    "Four hops at 0.9 reliability yield 0.656 chain reliability in the example."
+  ],
+  "rag-interview-questions:da872d982290": [
+    "Build a graph-like associative index.",
+    "Seed Personalized PageRank with query entities.",
+    "Weighted multiple paths increase a connected node's relevance.",
+    "BFS and DFS do not express the same weighted-path aggregation."
+  ],
+  "rag-interview-questions:4b87c24eacc4": [
+    "Keep graph and source text linked through mutual indexing.",
+    "Fall back to source text when graph facts are incomplete.",
+    "Use logical-form-guided deterministic operations for parts of a query.",
+    "KAG targets graph incompleteness and multi-step reasoning reliability."
+  ],
+  "rag-interview-questions:2ff790e9ef2a": [
+    "GraphReader uses an agent to explore the graph step by step.",
+    "Carry compressed findings instead of the full document context.",
+    "GNN-RAG learns graph traversal with a graph neural network.",
+    "Pass retrieved output to the LLM for final verbalization."
+  ]
+}
