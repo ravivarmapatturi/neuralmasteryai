@@ -4198,5 +4198,605 @@
     "Preference data constrains it only where data has coverage.",
     "Out-of-distribution optimization can peak then collapse gold reward.",
     "Use blind evals, early stopping, broader data and multiple signals."
+  ],
+  "repo:post-training:post-training-pipeline-take-home": [
+    "Start with low-rate QLoRA SFT and assistant-only loss.",
+    "Apply DPO against the frozen SFT checkpoint.",
+    "Evaluate blind preferences and absolute chosen likelihood.",
+    "Gate refusal behavior and unseen-task regressions against the base."
+  ],
+  "repo:post-training:async-rl-sample-age": [
+    "Async rollouts trade utilization for older-policy samples.",
+    "One-step-ahead and fully async modes bound age differently.",
+    "Limit sample age and define running-request behavior at updates.",
+    "Monitor versions, dropped samples, clipping and log-probability gaps."
+  ],
+  "repo:tokenization-decoding:bpe-training-loop": [
+    "Split words into base bytes or characters.",
+    "Count adjacent pairs weighted by word frequency.",
+    "Merge the highest-frequency pair and rewrite occurrences.",
+    "Save the ordered merges for deterministic encoding."
+  ],
+  "repo:tokenization-decoding:multilingual-tax": [
+    "English-heavy tokenizer training favors English merges.",
+    "Other scripts split into short pieces or bytes.",
+    "Equivalent meanings can incur substantially more tokens.",
+    "Train a larger vocabulary on representative multilingual text."
+  ],
+  "repo:tokenization-decoding:why-subword-tokens": [
+    "Whole-word vocabularies cannot cover all new words.",
+    "Characters avoid unknowns but lengthen sequences.",
+    "Subwords preserve common words and split rare ones.",
+    "Byte-based fallback can encode any script without unknown tokens."
+  ],
+  "repo:tokenization-decoding:chat-template-garbage": [
+    "Inspect the flattened token sequence rather than message objects.",
+    "Chat templates require exact markers and whitespace.",
+    "Diff token IDs between working and failing paths.",
+    "Check special markers use reserved IDs rather than literal bytes."
+  ],
+  "repo:tokenization-decoding:constrained-decoding-how": [
+    "Compile the target grammar into valid continuation states.",
+    "At each step identify vocabulary tokens that advance it.",
+    "Mask invalid logits to minus infinity.",
+    "Forced grammar tokens can avoid extra model steps."
+  ],
+  "repo:tokenization-decoding:merge-order-at-encode": [
+    "Encoding must replay learned merge priority.",
+    "Later merges can depend on earlier merged pieces.",
+    "The lowest learned rank wins overlapping choices.",
+    "Changing priority changes IDs outside the training distribution."
+  ],
+  "repo:tokenization-decoding:pre-tokenization-regex": [
+    "Pre-tokenization splits words, contractions and punctuation.",
+    "Leading spaces can remain attached to words.",
+    "BPE merges stay within each pre-tokenized chunk.",
+    "Boundaries prevent vocabulary from filling with whole phrases."
+  ],
+  "repo:tokenization-decoding:vocab-size-tradeoff": [
+    "Larger vocabularies enlarge embeddings and untied output heads.",
+    "Better compression reduces sequence length.",
+    "Shorter outputs require fewer forward passes.",
+    "Multilingual scripts can gain most from larger vocabularies."
+  ],
+  "repo:tokenization-decoding:bpe-wordpiece-unigram": [
+    "BPE merges the most frequent adjacent pair.",
+    "WordPiece scores pair association relative to component counts.",
+    "Unigram starts with many candidates and prunes by likelihood impact.",
+    "Unigram probabilities also support sampled segmentations."
+  ],
+  "repo:tokenization-decoding:temperature-and-acceptance": [
+    "Speculative acceptance depends on draft-target agreement.",
+    "High-temperature sampling can reduce useful acceptance.",
+    "Predictable code or structured output can accept more drafts.",
+    "At zero temperature accept only the target's most likely token."
+  ],
+  "repo:tokenization-decoding:schema-field-order": [
+    "Schema field order can commit answers before reasoning.",
+    "Put reasoning before the final answer.",
+    "Strict dates without an unknown state can force inventions.",
+    "Allow null or a sentinel for missing dates."
+  ],
+  "repo:tokenization-decoding:mtp-sequential-vs-parallel": [
+    "Chained prediction modules consume previous-depth states and actual next tokens.",
+    "Shared embeddings and output heads preserve a causal chain.",
+    "Independent heads cannot condition on each other's predictions.",
+    "Sequential modules add training cost but supply inference drafts."
+  ],
+  "repo:tokenization-decoding:take-home-bpe-tokenizer": [
+    "Reserve byte IDs and separate special markers.",
+    "Train deterministic frequency-weighted pair merges.",
+    "Encode by merge rank and decode joined bytes once.",
+    "Test byte-exact round trips, special handling and compression curves."
+  ],
+  "repo:tokenization-decoding:tokenizer-drift-ci": [
+    "Compare tokenizer hashes across training and serving.",
+    "Matching vocabularies can still differ in token settings.",
+    "Check normalization, prefix spaces and added specials.",
+    "Freeze hashes and golden token IDs in CI."
+  ],
+  "repo:tokenization-decoding:hidden-state-drafts": [
+    "Feature-based drafts use the verifier's hidden representations.",
+    "Candidate trees verify multiple branches in one pass.",
+    "Direct-token training removes feature-matching loss.",
+    "Training on prior draft outputs reduces exposure bias."
+  ],
+  "repo:tokenization-decoding:speedup-from-alpha": [
+    "Expected accepted tokens follow the geometric-series formula.",
+    "At alpha 0.8 and four drafts the expectation is about 3.36.",
+    "Draft cost grows linearly while accepted-length gains saturate.",
+    "Measure acceptance because it strongly controls speedup."
+  ],
+  "repo:tokenization-decoding:design-tokenizer-for-new-model": [
+    "Train byte-fallback subwords on target languages and code.",
+    "Preserve useful whitespace, digit and punctuation boundaries.",
+    "Measure language token rates, unknowns and compression.",
+    "Require byte-exact round trips and freeze the tokenizer before training."
+  ],
+  "repo:tokenization-decoding:acceptance-fell-after-upgrade": [
+    "Target upgrades can misalign trained draft heads.",
+    "Traffic changes also alter draft acceptance.",
+    "Inspect acceptance by target version and traffic slice.",
+    "Retrain or rollback aligned heads and gate speculation by request class."
+  ],
+  "repo:tokenization-decoding:choose-the-draft-for-a-new-model": [
+    "Bake sequential drafts into pretraining when architecture control allows.",
+    "Train post-hoc feature heads for existing weights.",
+    "A small same-family model avoids new draft training.",
+    "Choose using real-traffic acceptance and production tail latency."
+  ],
+  "deep-learning-training-questions:dl-initial-loss": [
+    "Uniform ten-class predictions yield log 10, about 2.303.",
+    "Vocabulary-size log loss is an initialization sanity check.",
+    "Excessively high loss suggests overlarge initialization.",
+    "Suspiciously low initial loss suggests label leakage."
+  ],
+  "deep-learning-training-questions:dl-flat-loss": [
+    "Loss at log class count suggests uniform outputs.",
+    "Check learning rate, parameter hookup and optimizer steps.",
+    "Inspect frozen layers and input-label alignment.",
+    "Overfit one batch to isolate training-code failures."
+  ],
+  "deep-learning-training-questions:dl-val-rises": [
+    "Falling train loss with rising validation loss indicates overfitting.",
+    "Stop at the best validation epoch.",
+    "Try weight decay, dropout or augmentation.",
+    "Reduce model size or add data to narrow the gap."
+  ],
+  "deep-learning-training-questions:dl-oscillating": [
+    "Wild loss oscillation often means excessive learning rate.",
+    "Lower the rate and consider warmup.",
+    "Tiny batches can produce similar noisy gradients.",
+    "Use a learning-rate range test to find a stable region."
+  ],
+  "deep-learning-training-questions:dl-nan-fp16": [
+    "FP16 activation or gradient spikes can overflow to infinity.",
+    "Later operations can turn infinity into NaN.",
+    "Prefer supported bf16 or dynamic fp16 loss scaling.",
+    "Clip gradients, lower learning rate and inspect unstable operations."
+  ],
+  "deep-learning-training-questions:dl-eval-mode": [
+    "Training-mode dropout makes evaluation outputs stochastic.",
+    "Batch norm also uses current-batch statistics in training.",
+    "Call model.eval and disable gradient tracking for evaluation.",
+    "Restore model.train before training resumes."
+  ],
+  "deep-learning-training-questions:dl-warmup": [
+    "Linear warmup scales peak rate by elapsed warmup fraction.",
+    "At step 500 of 2000, 3e-4 becomes 7.5e-5.",
+    "Warmup limits badly directed early updates.",
+    "It lets Adam moment estimates settle."
+  ],
+  "deep-learning-training-questions:dl-cosine": [
+    "Use the cosine-decay formula between maximum and minimum rates.",
+    "At half the run, the cosine term is zero.",
+    "With zero floor the example rate is 1.5e-4.",
+    "Decay is slow near both ends and fastest in the middle."
+  ],
+  "deep-learning-training-questions:dl-adamw": [
+    "Adam rescales an in-gradient L2 term adaptively.",
+    "That makes effective decay vary by parameter.",
+    "AdamW applies learning-rate-scaled weight decay separately.",
+    "Decoupling makes regularization behavior more transferable."
+  ],
+  "deep-learning-training-questions:dl-batch-lr": [
+    "Batch-size changes require learning-rate reconsideration.",
+    "Linear scaling is an SGD starting point.",
+    "Square-root scaling is a common Adam heuristic.",
+    "Validate either heuristic with a short sweep."
+  ],
+  "deep-learning-training-questions:dl-grad-clip": [
+    "Rare batches can produce excessive gradient norms.",
+    "Norm clipping rescales the gradient while retaining direction.",
+    "Bound large steps with a chosen threshold.",
+    "If spikes persist, inspect rate, data and Adam settings."
+  ],
+  "deep-learning-training-questions:dl-he-init": [
+    "He initialization uses weight variance two over fan-in.",
+    "At fan-in 512 its standard deviation is 0.0625.",
+    "The factor compensates for ReLU discarding half its inputs.",
+    "Xavier variance is more appropriate for tanh-like activations."
+  ],
+  "deep-learning-training-questions:dl-batchnorm-small": [
+    "Tiny batches give noisy batch-normalization statistics.",
+    "Training statistics can mismatch evaluation running averages.",
+    "GroupNorm and LayerNorm work within each example.",
+    "SyncBatchNorm combines statistics across GPUs."
+  ],
+  "deep-learning-training-questions:dl-residual": [
+    "Worse training accuracy with depth is degradation.",
+    "It differs from validation-only overfitting.",
+    "Residual connections make identity mappings easy.",
+    "They provide direct gradient paths; normalization and initialization also help."
+  ],
+  "repo:deep-learning:stacked-linear-layers-collapse": [
+    "Composed affine layers collapse to one matrix and bias.",
+    "Extra linear depth does not change the boundary class.",
+    "The resulting boundary remains a hyperplane.",
+    "Nonlinear problems such as XOR need nonlinear transformations."
+  ],
+  "repo:deep-learning:train-mode-and-eval-mode": [
+    "Training-mode dropout changes the active subnetwork each pass.",
+    "Batch norm uses current-batch rather than running statistics.",
+    "Switch to evaluation mode for inference.",
+    "Disable gradient tracking as well."
+  ],
+  "repo:deep-learning:xor-needs-a-hidden-layer": [
+    "One perceptron gives a straight-line decision boundary.",
+    "AND and OR are linearly separable.",
+    "XOR's opposite-corner classes are not.",
+    "A hidden OR/NAND layer and AND output can represent XOR."
+  ],
+  "repo:deep-learning:adam-bias-correction-first-steps": [
+    "Adam's moment averages start at zero.",
+    "Early first and second moments are biased downward.",
+    "Divide by their beta-dependent correction factors.",
+    "Without correction the adaptive update can stay too large."
+  ],
+  "repo:deep-learning:adamw-not-adam-plus-l2": [
+    "Adam and L2 decay are equivalent only for plain SGD.",
+    "Adaptive denominators distort an in-loss penalty.",
+    "AdamW decays weights outside the adaptive gradient update.",
+    "Each weight then shrinks by the same fraction."
+  ],
+  "repo:deep-learning:kaiming-factor-of-two": [
+    "Linear-layer variance scales with fan-in and weight variance.",
+    "Xavier balances forward and backward signal sizes.",
+    "ReLU removes half the signal, motivating variance two over fan-in.",
+    "Unscaled standard-normal weights can explode deep activations."
+  ],
+  "repo:deep-learning:mse-predicts-half-for-everything": [
+    "A balanced constant 0.5 prediction gives MSE 0.25.",
+    "Sigmoid saturation weakens MSE gradients on confident mistakes.",
+    "Cross-entropy strongly penalizes confident wrong labels.",
+    "Use binary cross-entropy for this classification problem."
+  ],
+  "repo:deep-learning:sigmoid-gradient-after-ten-layers": [
+    "Sigmoid derivatives peak at 0.25.",
+    "Ten activation derivatives can shrink to about one millionth.",
+    "Weight-matrix norms also affect the full gradient.",
+    "Small initialized weights leave early layers with little learning signal."
+  ],
+  "repo:deep-learning:zero-init-symmetry": [
+    "Zero-initialized neurons compute identical outputs.",
+    "They receive identical gradients and updates.",
+    "Symmetry prevents distinct feature learning.",
+    "Use appropriately scaled random initialization."
+  ],
+  "repo:deep-learning:half-the-relus-are-dead": [
+    "Confirm dead ReLUs are zero across many inputs.",
+    "Always-negative preactivations give zero derivatives.",
+    "Large updates can push units permanently into that region.",
+    "Lower the rate, reinitialize and consider leaky or GELU activations."
+  ],
+  "repo:deep-learning:layernorm-not-batchnorm": [
+    "BatchNorm depends on batch composition and size.",
+    "LayerNorm normalizes features within one sample.",
+    "LayerNorm behaves consistently for single-sequence generation.",
+    "RMSNorm drops mean subtraction and shift for cheaper normalization."
+  ],
+  "repo:deep-learning:loss-stuck-at-log-classes": [
+    "A ten-class loss near 2.3 is compatible with uniform predictions.",
+    "The mean loss alone does not locate the bug.",
+    "Start with a one-batch overfit test.",
+    "Then inspect data alignment, gradients, optimizer and learning rate."
+  ],
+  "repo:deep-learning:overfit-one-batch-first": [
+    "Train on 8 to 32 samples for a few hundred steps.",
+    "Expect nearly zero loss and full training accuracy.",
+    "Passing checks fitting mechanics for that batch.",
+    "It does not establish correct labels, generalization or absence of leakage."
+  ],
+  "repo:deep-learning:residual-scaling-deep-transformer": [
+    "Residual additions accumulate variance across depth.",
+    "Sublayer initialization alone does not control stream growth.",
+    "Growing residual scale enlarges attention and FFN activations.",
+    "Scale residual-writing weights by one over square root of 2N."
+  ],
+  "repo:deep-learning:warmup-before-the-peak-rate": [
+    "Initial weights and Adam moments make early updates fragile.",
+    "Large noisy gradients can destabilize a full-rate start.",
+    "Warm up for about 1 to 5 percent of training.",
+    "Specify warmup as a run fraction rather than fixed steps."
+  ],
+  "repo:deep-learning:cosine-warmup-schedule-boundaries": [
+    "Implement linear warmup, cosine decay and a floor branch.",
+    "Check zero, peak and final-floor values.",
+    "Bound adjacent-step changes for continuity.",
+    "Resume schedules from the saved global step."
+  ],
+  "repo:deep-learning:loss-becomes-nan-mid-run": [
+    "Late NaNs can follow oversized updates or forward overflow.",
+    "Compare gradient-norm spikes with the first infinite loss.",
+    "Use clipping, lower peak rates, warmup and logits-based loss.",
+    "Resume from the last good checkpoint."
+  ],
+  "repo:deep-learning:pick-the-peak-rate-and-schedule": [
+    "Run an exponential learning-rate range test.",
+    "Choose a peak below the fastest-loss-drop region.",
+    "Warm up into cosine decay or use a fixed-budget 1cycle policy.",
+    "Log schedule, learning rate and gradient norm."
+  ],
+  "classical-ml-questions:cml-high-variance-tree": [
+    "A large train-validation gap indicates high variance.",
+    "Limit depth or increase minimum leaf size.",
+    "Prune or average trees with a random forest.",
+    "More training data can help."
+  ],
+  "classical-ml-questions:cml-high-bias": [
+    "Low similar train and validation scores indicate high bias.",
+    "Add model capacity or better features.",
+    "Reduce regularization or train longer.",
+    "More data alone is the wrong first remedy."
+  ],
+  "classical-ml-questions:cml-kfold-rows": [
+    "Five-fold validation holds out one fifth each run.",
+    "Train on the remaining four fifths.",
+    "For 10000 rows that is 8000 training rows per fold.",
+    "Each row is validated exactly once."
+  ],
+  "classical-ml-questions:cml-time-series-split": [
+    "Forecast validation must predict future data from past data.",
+    "Train before a cutoff and validate afterward.",
+    "Use rolling or expanding windows.",
+    "Random folds leak highly correlated neighboring days across splits."
+  ],
+  "classical-ml-questions:cml-leaky-feature": [
+    "Check whether every feature exists at prediction time.",
+    "Closure reasons appear only when the target event happens.",
+    "Remove that feature and its derivatives.",
+    "Expect the inflated validation AUC to fall."
+  ],
+  "classical-ml-questions:cml-smote-before-split": [
+    "SMOTE interpolates minority training examples.",
+    "Before-split resampling can put near-copies across the split.",
+    "Split before any resampling.",
+    "Apply SMOTE only within each training fold's pipeline."
+  ],
+  "classical-ml-questions:cml-precision": [
+    "Precision divides true positives by flagged examples.",
+    "The numerator is 15 true positives.",
+    "The denominator is 50 flags.",
+    "The result is 0.3, or 30 percent fraud among flags."
+  ],
+  "classical-ml-questions:cml-recall": [
+    "Recall divides detected positives by all actual positives.",
+    "The numerator is 15 caught frauds.",
+    "The denominator is 20 actual frauds.",
+    "Recall is 0.75, or three quarters caught."
+  ],
+  "classical-ml-questions:cml-f1": [
+    "F1 is the harmonic mean of precision and recall.",
+    "Compute twice their product divided by their sum.",
+    "The example gives 0.45 divided by 1.05, about 0.429.",
+    "Poor performance on either input pulls F1 down."
+  ],
+  "classical-ml-questions:cml-accuracy-imbalance": [
+    "Accuracy mostly reflects the majority class under imbalance.",
+    "Report precision and recall at the operating threshold.",
+    "Use PR-AUC to compare rare-class performance.",
+    "A small ROC false-positive rate can coexist with mostly wrong flags."
+  ],
+  "classical-ml-questions:cml-base-rate": [
+    "Among 100000 people, 100 have the condition.",
+    "The test catches 99 true positives.",
+    "One percent of 99900 healthy people adds 999 false positives.",
+    "Precision is 99 over 1098, about 9 percent."
+  ],
+  "classical-ml-questions:cml-threshold-capacity": [
+    "Human review capacity sets the operational threshold.",
+    "Rank cases by model score.",
+    "Take the top k and measure precision at k.",
+    "Compare missed-fraud costs with review costs when sizing capacity."
+  ],
+  "classical-ml-questions:cml-calibration": [
+    "AUC measures ranking rather than probability calibration.",
+    "Use reliability diagrams or Brier scores.",
+    "Compare bucket probabilities with observed frequencies.",
+    "Fit Platt or isotonic calibration on held-out data."
+  ],
+  "classical-ml-questions:cml-log-loss": [
+    "Positive-label log loss is minus log predicted probability.",
+    "A 0.9 prediction costs about 0.105.",
+    "A 0.1 prediction costs about 2.30.",
+    "Confident wrong predictions incur much larger penalties."
+  ],
+  "classical-ml-questions:cml-l1-sparse": [
+    "L1 geometry favors optima on coordinate axes.",
+    "Many fitted coefficients become exactly zero.",
+    "Correlated features can make lasso choose arbitrarily.",
+    "Use elastic net to combine L1 and L2 behavior."
+  ],
+  "classical-ml-questions:cml-scaling": [
+    "Distance-based models need feature standardization.",
+    "Dot-product models and weight penalties also depend on scale.",
+    "Examples include kNN, SVMs and neural networks.",
+    "Trees compare within individual features and usually need no scaling."
+  ],
+  "classical-ml-questions:cml-impurity-importance": [
+    "Impurity importance is computed on training data.",
+    "It favors high-cardinality and continuous features.",
+    "Check held-out performance after permuting the feature.",
+    "If needed, use within-fold target encoding or regional grouping."
+  ],
+  "classical-ml-questions:cml-knn-dimensions": [
+    "High-dimensional distances become less distinguishable.",
+    "Irrelevant dimensions add noise to every distance.",
+    "Select features, use PCA or learn a metric.",
+    "Consider models that learn feature relevance such as boosted trees."
+  ],
+  "classical-ml-questions:cml-collinearity": [
+    "Collinear features admit many equally good coefficient combinations.",
+    "Small data changes can then swing coefficients.",
+    "Drop or combine redundant features for interpretation.",
+    "Ridge stabilizes weights; VIF quantifies collinearity."
+  ],
+  "classical-ml-questions:cml-missing-informative": [
+    "Missing income can itself contain predictive information.",
+    "Impute values so the model can use numeric inputs.",
+    "Add a missingness indicator.",
+    "Some boosted trees learn missing-value branches natively."
+  ],
+  "repo:math-classical-ml:dense-layer-weight-shape": [
+    "Use one matrix row per output and column per input.",
+    "The weight shape is 128 by 784.",
+    "Multiplying by a 784-by-1 input gives 128-by-1 output.",
+    "Write operand shapes to locate inner-dimension mismatches."
+  ],
+  "repo:math-classical-ml:log-probs-instead-of-products": [
+    "Multiplying many small probabilities can underflow.",
+    "Sum log probabilities instead.",
+    "The sum remains a finite negative number.",
+    "More-negative sums retain the ordering of less-likely sentences."
+  ],
+  "repo:math-classical-ml:negative-r-squared": [
+    "R-squared is one minus residual-to-total sum of squares.",
+    "A perfect fit scores one.",
+    "Predicting the mean scores zero.",
+    "Negative values mean worse performance than that constant baseline."
+  ],
+  "repo:math-classical-ml:cross-entropy-is-kl-plus-entropy": [
+    "Cross-entropy equals target entropy plus KL divergence.",
+    "The target distribution is fixed during training.",
+    "Its constant entropy leaves identical optimization gradients.",
+    "One-hot entropy is zero, making cross-entropy and KL numerically equal."
+  ],
+  "repo:math-classical-ml:momentum-in-a-narrow-valley": [
+    "Narrow valleys make plain gradients oscillate across walls.",
+    "Momentum accumulates past gradients as velocity.",
+    "Alternating cross-valley components cancel.",
+    "Consistent along-valley components build useful progress."
+  ],
+  "repo:math-classical-ml:reverse-mode-one-pass": [
+    "Networks usually have many parameters and one scalar loss.",
+    "Reverse mode seeds that loss with gradient one.",
+    "One backward sweep computes all parameter gradients.",
+    "Forward mode suits few inputs and many outputs."
+  ],
+  "repo:math-classical-ml:scaler-fit-before-split": [
+    "Fitting scalers before splitting leaks test statistics.",
+    "Test means and standard deviations influence training.",
+    "Split before fitting preprocessing.",
+    "Fit on training rows and reuse that transform for validation and test."
+  ],
+  "repo:math-classical-ml:softmax-inf-at-large-logits": [
+    "Large logits overflow float32 exponentials.",
+    "Subtract the maximum logit before exponentiation.",
+    "This preserves exact-arithmetic softmax probabilities.",
+    "The largest exponential becomes one and avoids overflow."
+  ],
+  "repo:math-classical-ml:threshold-precision-or-recall": [
+    "High imbalanced accuracy can match an all-negative baseline.",
+    "Request the confusion matrix and thresholded precision, recall and F1.",
+    "Use AUC-ROC to assess ranking.",
+    "Raise thresholds for costly false positives and lower them for costly misses."
+  ],
+  "repo:math-classical-ml:gini-for-a-mixed-node": [
+    "Class shares are 0.6 and 0.4.",
+    "Gini is one minus squared shares, or 0.48.",
+    "Entropy is about 0.971 bits.",
+    "Choose splits by weighted child impurity reduction."
+  ],
+  "repo:math-classical-ml:perplexity-from-cross-entropy": [
+    "Perplexity is exponentiated mean cross-entropy.",
+    "Cross-entropy log V gives perplexity V.",
+    "That matches average uncertainty of uniform vocabulary choice.",
+    "Inspect per-token predictions because the mean alone proves little."
+  ],
+  "repo:math-classical-ml:bag-or-boost-the-base-model": [
+    "Deep trees have low bias and high variance.",
+    "Bag bootstrap-trained trees to reduce variance.",
+    "Stumps have high bias and low variance.",
+    "Boost sequential stumps to correct residual ensemble errors."
+  ],
+  "repo:math-classical-ml:bfloat16-or-float16-for-training": [
+    "Bfloat16 keeps float32's exponent range.",
+    "That reduces overflow risk during training.",
+    "Float16 has more mantissa precision but a narrower range.",
+    "FP16 training needs loss scaling for tiny gradients."
+  ],
+  "repo:math-classical-ml:gradient-check-step-size": [
+    "Use two-sided finite differences in float64.",
+    "Sweep step sizes from 1e-5 to 1e-7.",
+    "Normalize errors by the maximum gradient magnitude.",
+    "Persistent large discrepancies indicate a backward-pass bug."
+  ],
+  "repo:math-classical-ml:logistic-loss-on-separable-data": [
+    "Separable logistic loss has no finite unregularized minimum.",
+    "Increasing weights keeps pushing probabilities toward labels.",
+    "Sigmoid squared error adds nonconvex flat regions.",
+    "Keep log loss and add L2 for a finite optimum."
+  ],
+  "repo:math-classical-ml:mdi-ranks-noise-feature": [
+    "High-cardinality IDs offer many accidental pure training splits.",
+    "Those splits inflate impurity importance.",
+    "Shuffle the column on held-out data.",
+    "An uninformative ID should cause little accuracy loss."
+  ],
+  "repo:math-classical-ml:variance-of-large-numbers": [
+    "Subtracting nearly equal large moments loses precision.",
+    "Float32 spacing can exceed the true variance.",
+    "Roundoff can even yield negative variance.",
+    "Center values first or use Welford updates."
+  ],
+  "repo:math-classical-ml:compare-two-models-with-folds": [
+    "Use the same cross-validation folds for both models.",
+    "Keep paired per-fold score differences.",
+    "Report means, spreads and a paired t-statistic.",
+    "Leave the test set outside model comparison."
+  ],
+  "repo:math-classical-ml:past-the-interpolation-threshold": [
+    "Variance peaks near the interpolation threshold.",
+    "Just-fitting models can be highly noise-sensitive.",
+    "Further capacity can admit simpler implicitly regularized solutions.",
+    "Stay well below or well beyond the threshold."
+  ],
+  "repo:math-classical-ml:stacking-without-leakage": [
+    "Create stacking features using out-of-fold base predictions.",
+    "Fit the meta-learner only on those unseen-row predictions.",
+    "Refit base models on all training data for inference.",
+    "Compare both levels on an untouched test set with fold spreads."
+  ],
+  "repo:multimodal:image-tokens-per-image": [
+    "A 336-pixel image with 14-pixel patches yields 576 tokens.",
+    "Those tokens consume part of the language context.",
+    "Multiple crops multiply the visual token budget.",
+    "Query bridges or resamplers compress to fixed token counts."
+  ],
+  "repo:multimodal:vlm-three-parts": [
+    "A VLM combines a vision encoder, projector and language model.",
+    "The encoder produces patch tokens.",
+    "The projector maps them into language embedding space.",
+    "The decoder reads image and text tokens together."
+  ],
+  "repo:multimodal:train-only-the-projector": [
+    "Pretrained vision and language components already work independently.",
+    "The bridge learns translation between their vector spaces.",
+    "Bridge-only training is cheap and protects both pretrained parts.",
+    "Unfreeze the language model after projected tokens become usable."
+  ],
+  "repo:multimodal:early-or-late-fusion": [
+    "Late-fusion adapters project images into a pretrained text decoder.",
+    "Early-fusion models learn over discrete text and image codes.",
+    "Adapters suit screenshot understanding with text output.",
+    "Image generation justifies discrete codes despite quantizer and decode costs."
+  ],
+  "repo:multimodal:emu3-generation-cost": [
+    "The given tokenizer maps a 512-square image to 4096 codes.",
+    "At 30 codes per second generation takes about two minutes.",
+    "Video adds spatial and temporal code counts.",
+    "Reduce codes, accelerate decoding or use masked parallel generation."
+  ],
+  "repo:multimodal:llm-size-sets-ceiling": [
+    "The language model limits multimodal reasoning capacity.",
+    "Encoder quality and visual token count also matter.",
+    "Fixed-budget connector swaps had small gains in the cited studies.",
+    "Prioritize model, encoder, tokens and data before connector complexity."
+  ],
+  "repo:multimodal:qformer-or-mlp": [
+    "Compare connectors at the same visual token budget.",
+    "Query bridges compress images to fixed token counts.",
+    "MLPs emit full patches with simpler training.",
+    "Use compression for tight context and MLPs when context permits."
   ]
 }
