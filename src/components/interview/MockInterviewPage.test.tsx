@@ -195,4 +195,56 @@ describe('MockInterviewPage Component', () => {
     unmount();
     expect(engine.stopSpeaking).toHaveBeenCalled();
   });
+
+  it('shows "Skipped" for skipped questions and real elapsed times for answered ones', async () => {
+    render(
+      <MemoryRouter>
+        <MockInterviewPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Start 30-minute mock interview/i }));
+
+    // Question 1: Answered
+    expect(screen.getByText(/Question 1 of 5/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /Type your answer/i }));
+    fireEvent.change(screen.getByPlaceholderText(/Type your response as you would explain it/i), {
+      target: { value: 'Answer for question 1' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Submit answer & next question/i }));
+    });
+
+    // Question 2: Skipped
+    expect(screen.getByText(/Question 2 of 5/i)).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Skip question/i }));
+    });
+
+    // Questions 3, 4, 5: Answered
+    for (let q = 3; q <= 5; q++) {
+      expect(screen.getByText(new RegExp(`Question ${q} of 5`, 'i'))).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('tab', { name: /Type your answer/i }));
+      fireEvent.change(screen.getByPlaceholderText(/Type your response as you would explain it/i), {
+        target: { value: `Answer for question ${q}` },
+      });
+      const submitBtn = screen.getByRole('button', {
+        name: q === 5 ? /Finish interview & see scorecard/i : /Submit answer & next question/i,
+      });
+      await act(async () => {
+        fireEvent.click(submitBtn);
+      });
+    }
+
+    // On Scorecard
+    expect(screen.getByRole('heading', { level: 1, name: /Interview scorecard/i })).toBeInTheDocument();
+    expect(screen.getByText(/4 of 5/i)).toBeInTheDocument();
+
+    // Verify "Skipped" is displayed for question 2
+    expect(screen.getByText('Skipped')).toBeInTheDocument();
+
+    // Verify answered questions display real elapsed time, e.g. "⏱ 1s"
+    const timeElements = screen.getAllByText(/⏱ \d+s/i);
+    expect(timeElements.length).toBe(4);
+  });
 });
