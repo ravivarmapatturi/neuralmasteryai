@@ -16,7 +16,6 @@ import practice from '../../data/interviewPractice.json';
 import { InterviewGraph } from './InterviewGraph';
 import { DeliveryRow } from './DeliveryRow';
 import { measureDelivery, type DeliveryTiming } from '../../lib/interviewDelivery';
-import { RoleReadiness } from './RoleReadiness';
 import { TodaysTen } from './TodaysTen';
 import { useInterviewLearning } from '../../contexts/InterviewLearningContext';
 import { rateQuestion, reviewDueAt, RATING_LABELS, type SelfRating } from '../../lib/interviewLearning';
@@ -381,7 +380,6 @@ export default function SimpleInterviewPage() {
     if(imported.length)saveLearning(imported);
   },[events,learning,learningReady,allCatalogQuestions,saveLearning]);
 
-  const readinessQuestions = useMemo(()=>allCatalogQuestions.map(({q,topicId,topicTitle})=>({id:q.id,topicId,topicTitle,roles:q.roles})),[allCatalogQuestions]);
 
   const learningQuestions = useMemo(()=>allCatalogQuestions.map(({q,topicId})=>({id:q.id,title:q.title,topicId})),[allCatalogQuestions]);
 
@@ -968,7 +966,6 @@ export default function SimpleInterviewPage() {
               <strong>{completedTotal}</strong> of <strong>{totalQuestions}</strong> questions completed across {graphTopics.length} topics.
             </p>
             <TodaysTen questions={learningQuestions} onStart={(id,session)=>{const item=allCatalogQuestions.find(item=>item.q.id===id);if(item)startQuestionFromItem(item,session);}} />
-            <RoleReadiness questions={readinessQuestions} initialRole={role} />
             <div className="si-map">
               <InterviewGraph
                 topics={graphTopics}
@@ -1316,9 +1313,11 @@ export default function SimpleInterviewPage() {
                 </svg>
               </div>
               <div className="si-speaker-info">
-                <span className="si-speaker-label">Interviewer speaking</span>
+                <span className="si-speaker-label">{readAloud ? 'Interviewer speaking' : 'Your question'}</span>
                 <p className="si-status" role="status">
-                  {voiceLoading === null
+                  {!readAloud
+                    ? 'Read the question, then start your answer.'
+                    : voiceLoading === null
                     ? 'The interviewer is reading the question aloud…'
                     : voiceLoading < 1
                       ? `Preparing the voice on your device (${Math.round(voiceLoading * 100)}%)…`
@@ -1327,7 +1326,7 @@ export default function SimpleInterviewPage() {
               </div>
             </div>
             <div className="si-speaker-wave" aria-hidden="true">
-              <LiveWaveform active={true} stream={null} height={46} barColor="var(--accent)" />
+              <LiveWaveform active={readAloud} stream={null} height={46} barColor="var(--accent)" />
             </div>
             <div className="si-actions">
               <button

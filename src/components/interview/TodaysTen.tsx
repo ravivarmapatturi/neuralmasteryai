@@ -1,16 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useInterviewLearning } from '../../contexts/InterviewLearningContext';
-import { localDay, planTodaysTen, reviewDueAt, todaysQuestions, type LearningQuestion } from '../../lib/interviewLearning';
+import { localDay, planTodaysTen, todaysQuestions, type LearningQuestion } from '../../lib/interviewLearning';
 
 interface Question extends LearningQuestion { title:string }
 export function TodaysTen({questions,onStart}:{questions:Question[];onStart:(id:string,session:string[])=>void}) {
   const {records,save,syncState,ready}=useInterviewLearning();
   const [now,setNow]=useState(Date.now);
-  const [reviewLimit,setReviewLimit]=useState(20);
   useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),60_000);return()=>clearInterval(timer);},[]);
   useEffect(()=>{if(ready===false)return;const plan=planTodaysTen(questions,records,now);if(plan.length)save(plan);},[questions,records,now,save,ready]);
   const byId=useMemo(()=>new Map(questions.map(q=>[q.id,q])),[questions]);
-  const due=records.filter(r=>byId.has(r.questionId) && (reviewDueAt(r) ?? Infinity)<=now).sort((a,b)=>reviewDueAt(a)!-reviewDueAt(b)!||a.questionId.localeCompare(b.questionId));
   const today=todaysQuestions(questions,records,now);
   const completed=(r:typeof today[number]) => Boolean(r.completion && r.completion.time>=r.assignment!.time);
   const next=today.find(r=>!completed(r));
@@ -28,9 +26,6 @@ export function TodaysTen({questions,onStart}:{questions:Question[];onStart:(id:
       <button onClick={()=>onStart(r.questionId,today.map(item=>item.questionId))}>{byId.get(r.questionId)?.title}</button>
       <span>{completed(r) ? 'Completed today' : r.assignment?.kind==='review' ? 'Due review' : 'New question'}</span>
     </li>)}</ol></details>
-    <details className="si-review-queue"><summary>All due reviews ({due.length})</summary>
-      {due.length ? <><ol className="si-today-list">{due.slice(0,reviewLimit).map(r=><li key={r.questionId}><button onClick={()=>onStart(r.questionId,due.map(item=>item.questionId))}>{byId.get(r.questionId)?.title}</button><span>Due {new Date(reviewDueAt(r)!).toLocaleDateString()}</span></li>)}</ol>{due.length>reviewLimit && <button onClick={()=>setReviewLimit(n=>n+20)}>Show more due reviews</button>}</> : <p>No reviews are due. Your next self-rating will set the review date.</p>}
-    </details>
     {syncState === 'syncing' && <p className="si-status">Syncing review progress…</p>}
     {syncState === 'synced' && <p className="si-status">Review progress synced.</p>}
   </section>;

@@ -218,10 +218,3 @@ it('does not label a captured coding answer as solved in the editor without its 
 });
 
 
-it('keeps readiness actions and counts without explanatory fine print', async () => {
-  renderWithTheme(<MemoryRouter><SimpleInterviewPage /></MemoryRouter>);
-  expect(await screen.findByRole('heading', {name: 'Role readiness'})).toBeInTheDocument();
-  expect(screen.getByLabelText('Readiness role')).toBeInTheDocument();
-  expect(screen.getByRole('heading', {name: 'Three topics to revisit'})).toBeInTheDocument();
-  expect(screen.queryByText(/Totals follow|Topics with the least|Use your practice and self-ratings/)).not.toBeInTheDocument();
-});
