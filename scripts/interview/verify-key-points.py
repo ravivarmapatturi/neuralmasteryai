@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Audit B3 against a frozen Git baseline without rewriting any content."""
+"""Audit an answer-grounded rubric batch against its frozen Git baseline."""
 import ast
+import argparse
 import hashlib
 import json
 import subprocess
@@ -8,7 +9,12 @@ from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-BASE = "9fcc2846"
+parser = argparse.ArgumentParser()
+parser.add_argument("--baseline", default="3b261bd1")
+parser.add_argument("--batch", default="b4")
+parser.add_argument("--expected", type=int, default=200)
+args = parser.parse_args()
+BASE = args.baseline
 
 
 def read(name):
@@ -28,7 +34,8 @@ after = flat(bank)
 overrides = read("src/data/interviewKeyPoints.json")
 assert len(before) == len(after) == 917
 assert before.keys() == after.keys(), "Question IDs changed"
-assert len(overrides) == 200
+overrides = {qid: points for qid, points in overrides.items() if "keyPoints" not in before[qid]}
+assert len(overrides) == args.expected
 module = ast.parse((ROOT / "scripts/interview/build_practice_data.py").read_text())
 validator = next(n for n in module.body if isinstance(n, ast.FunctionDef) and n.name == "validate_key_points")
 namespace = {}
@@ -45,7 +52,7 @@ for qid, question in after.items():
     else:
         assert question.get("keyPoints") == original.get("keyPoints"), f"Unrelated rubric changed: {qid}"
 
-sample = read("docs/evidence/interview/b3-support-sample.json")
+sample = read(f"docs/evidence/interview/{args.batch}-support-sample.json")
 assert len(sample["questions"]) == 30
 assert len({q["questionId"] for q in sample["questions"]}) == 30
 for row in sample["questions"]:

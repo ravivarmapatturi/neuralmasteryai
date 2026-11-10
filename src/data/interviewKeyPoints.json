@@ -1798,5 +1798,605 @@
     "Prose without a check cannot block an unsafe write.",
     "Conflicting documents push the agent toward guessing.",
     "Fix reachability, add a blocking approval check and remove conflicts."
+  ],
+  "repo:inference-serving:read-the-clock-first": [
+    "Check GPU clock and temperature during each run.",
+    "Thermal slowdown can explain poor throughput.",
+    "Compare after cooling while recording clocks.",
+    "The stated hot and cool runs used the same card and command."
+  ],
+  "repo:inference-serving:one-token-budget-per-step": [
+    "Set each step's token budget with max-num-batched-tokens.",
+    "Schedule running requests' next tokens first.",
+    "Fill remaining budget with waiting prompt tokens.",
+    "Split long prefills over steps using the same budget."
+  ],
+  "repo:inference-serving:paged-blocks-and-the-hash-chain": [
+    "Allocate KV memory as pooled 16-token blocks.",
+    "Map growing requests through block tables.",
+    "Chain full-block hashes to identify shared prefixes.",
+    "Preempt and later recompute the newest request when blocks run out."
+  ],
+  "repo:inference-serving:sleep-mode-for-rl-rollouts": [
+    "Sleep and wake routes release and reclaim GPU memory.",
+    "Pause and resume control generation during rollout loops.",
+    "Level two drops weights as well as cache state.",
+    "Wake before updating weights and check draft reload, KV scales and caches."
+  ],
+  "repo:inference-serving:tensor-pipeline-or-data-parallel": [
+    "Use data-parallel replicas when model and cache fit on one GPU.",
+    "Use tensor parallelism with fast links and divisible head counts.",
+    "Use pipeline parallelism across unsuitable links or multiple machines.",
+    "Compare per-layer tensor communication with per-stage pipeline communication."
+  ],
+  "repo:inference-serving:a-cap-only-chooses-who-waits": [
+    "Concurrency caps move excess users into the queue.",
+    "Smoother decode can come with much slower first tokens.",
+    "The stated cap reduced output while half the users waited.",
+    "Use fewer users per replica when caps cannot meet latency targets."
+  ],
+  "repo:inference-serving:fp8-weights": [
+    "FP8 weights halve most parameter storage.",
+    "Freed memory can enlarge the KV pool.",
+    "FP8-capable hardware can also accelerate matrix work.",
+    "Measure throughput and task accuracy with intervals before judging the trade-off."
+  ],
+  "repo:inference-serving:goodput-sets-the-cap": [
+    "Goodput counts requests meeting all latency targets.",
+    "Goodput can collapse while throughput still rises.",
+    "Choose the concurrency cap at goodput's peak.",
+    "Use throughput curves to explain rather than determine that choice."
+  ],
+  "repo:inference-serving:the-cost-of-batch-invariance": [
+    "Batch-invariant kernels keep a fixed reduction order.",
+    "They stabilize logits across different batch sizes.",
+    "Measure the speed penalty at real serving concurrency.",
+    "Use for evaluation or rollouts and check prefix-cache backend effects."
+  ],
+  "genai-serving-quantization": [
+    "Weight-only quantization compresses stored parameters.",
+    "Weight-activation quantization also compresses runtime activations.",
+    "Activation outliers require protection such as SmoothQuant or AWQ.",
+    "Measure accuracy alongside bandwidth and speed gains."
+  ],
+  "deep-learning-training-questions:dl-linear-params": [
+    "Multiply 4,096 input features by 4,096 outputs.",
+    "The weight matrix has 16,777,216 parameters.",
+    "Add 4,096 bias parameters for 16,781,312 total.",
+    "Transformer attention projections and MLPs contain several such layers."
+  ],
+  "deep-learning-training-questions:dl-conv-params": [
+    "Each output channel has a 3 by 3 by 64 filter.",
+    "Add one bias per output channel.",
+    "Compute 128 times 577 to obtain 73,856 parameters.",
+    "Spatial image size does not change shared convolution parameters."
+  ],
+  "deep-learning-training-questions:dl-weights-memory": [
+    "BF16 uses two bytes per parameter.",
+    "Seven billion parameters occupy 14 GB.",
+    "Serving also needs KV cache and activation memory.",
+    "Training requires more than weight storage alone."
+  ],
+  "deep-learning-training-questions:dl-adam-memory": [
+    "Count weights, gradients, master weights and two Adam moments.",
+    "The stated layout uses sixteen bytes per parameter.",
+    "Seven billion parameters need 112 GB before activations.",
+    "Use sharding or LoRA to reduce full-fine-tuning memory demands."
+  ],
+  "deep-learning-training-questions:dl-oom-accumulate": [
+    "Activation memory scales with micro-batch size.",
+    "Accumulate gradients across multiple forward and backward passes.",
+    "Step the optimizer once per accumulated batch, with batch-norm caveats.",
+    "Add checkpointing and mixed precision for further memory savings."
+  ],
+  "deep-learning-training-questions:dl-effective-batch": [
+    "Effective batch multiplies micro-batch, accumulation steps and GPU count.",
+    "Use eight examples per micro-batch.",
+    "Sixteen accumulation steps across four GPUs gives 512 examples.",
+    "Use effective batch when reasoning about learning rate."
+  ],
+  "deep-learning-training-questions:dl-training-time": [
+    "Eight GPUs at 50,000 tokens each give 400,000 tokens per second.",
+    "Divide one billion tokens by aggregate throughput.",
+    "The ideal run takes 2,500 seconds or 41.7 minutes.",
+    "Budget extra time for loading, evaluation, checkpointing and communication."
+  ],
+  "deep-learning-training-questions:dl-bf16": [
+    "FP16 and BF16 both use sixteen bits.",
+    "FP16 has more mantissa precision but limited range.",
+    "BF16 uses the FP32 exponent range with seven mantissa bits.",
+    "BF16 avoids overflow sensitivity and usually needs no loss scaling."
+  ],
+  "deep-learning-training-questions:dl-augment-split": [
+    "Keep near-duplicate groups on one side of the split.",
+    "Split by patient, video or augmentation group first.",
+    "Augment training examples only, preferably on demand.",
+    "Check cross-split duplicates with perceptual hashes or embeddings."
+  ],
+  "repo:gpu-memory-quantization:the-kv-cache-trap": [
+    "Weight quantization does not shrink the separate KV budget.",
+    "KV usage grows with context and concurrent requests.",
+    "Recompute cache size from the actual model configuration.",
+    "Budget weights, peak cache and activations and inspect startup pool size."
+  ],
+  "repo:gpu-memory-quantization:an-8b-model-on-a-24-gb-card": [
+    "The engine can inherit a 40,960-token model context limit.",
+    "At 144 KiB per token that needs about 5.6 GiB per request.",
+    "Weights can leave too little cache room on a 24 GB card.",
+    "Set max-model-len to the longest real prompt plus answer."
+  ],
+  "repo:gpu-memory-quantization:kv-bytes-per-token": [
+    "KV bytes equal two times layers, KV heads, head size and value bytes.",
+    "The stated 8B model needs 144 KiB per token.",
+    "The stated 30B model needs 96 KiB per token.",
+    "Total concurrency also depends on memory left after weight storage."
+  ],
+  "repo:gpu-memory-quantization:pick-a-4-bit-format": [
+    "Prefer a published four-bit checkpoint to load-time quantization.",
+    "Match the format to engine and workload.",
+    "The answer chooses AWQ with Marlin for GPU serving and GPTQ for LoRA.",
+    "It reserves GGUF for CPU or edge workloads."
+  ],
+  "repo:gpu-memory-quantization:kv-scales-silently-at-one": [
+    "Check whether KV scaling silently defaults to one.",
+    "Distinguish vLLM loader warnings from SGLang scale-path warnings.",
+    "Inspect checkpoint indices for k_scale and v_scale tensors.",
+    "Use working scales or BF16 and rerun task accuracy after changes."
+  ],
+  "repo:gpu-memory-quantization:an-empty-pool-and-an-oom": [
+    "KV pools reserve memory at startup.",
+    "Low occupied-token percentage does not mean reserved memory is free.",
+    "Forward activations need space outside the pool.",
+    "Set mem-fraction-static explicitly when other programs share memory."
+  ],
+  "repo:gpu-memory-quantization:fp8-grew-the-pool-twice": [
+    "FP8 weights free memory that can enlarge the KV pool.",
+    "FP8 cache also halves each token's bytes.",
+    "These two effects multiply token capacity.",
+    "The stated pool grew from 227,243 to 1,083,008 tokens."
+  ],
+  "repo:gpu-memory-quantization:split-or-copy-on-two-cards": [
+    "Tensor parallelism splits weights and KV cache across cards.",
+    "Data parallelism keeps complete copies and separate pools.",
+    "PCIe collectives can make tensor splitting expensive.",
+    "Benchmark tensor, pipeline and replica layouts using whole GPUs."
+  ],
+  "repo:gpu-memory-quantization:unified-memory-fraction-on-a-gb10": [
+    "Budget weights, desired KV cache and startup overhead.",
+    "Leave shared unified memory for the OS and other programs.",
+    "Divide the planned allocation by total memory.",
+    "Treat the fraction as a plan whose pool varies with free-memory snapshots."
+  ],
+  "repo:gpu-memory-quantization:attention-data-parallel-for-latent-attention": [
+    "Latent attention stores one compressed latent per token and layer.",
+    "Tensor ranks replicate a cache they cannot split by head.",
+    "Attention data parallelism assigns separate requests and caches to groups.",
+    "Expert layers remain split while chunk size and admission settings change."
+  ],
+  "genai-prompt-structured-outputs": [
+    "Constrained decoding masks tokens that violate a schema.",
+    "Define the expected structure with a typed schema.",
+    "Validate response values in application code.",
+    "Retry validation failures with feedback and a fixed retry limit."
+  ],
+  "genai-prompt-cot-reasoning": [
+    "Use chain-of-thought for multi-step maths, logic or planning.",
+    "Simple lookups and classification rarely justify the extra tokens.",
+    "Reasoning adds latency and cost and is not proof.",
+    "Separate reasoning from the final answer and measure task gains."
+  ],
+  "repo:prompting-structured-output:cot-when-it-hurts": [
+    "Reasoning tokens help solve multi-step tasks.",
+    "Simple recall and classification can gain no accuracy from extra reasoning.",
+    "Reasoning models may worsen with redundant chain-of-thought instructions.",
+    "Choose per task using accuracy, latency and cost requirements."
+  ],
+  "repo:prompting-structured-output:json-mode-is-not-a-schema": [
+    "JSON mode guarantees parsing only for completed output.",
+    "Check finish reason for truncation.",
+    "JSON mode does not enforce fields, types or enums.",
+    "Use schema-constrained decoding plus semantic value checks."
+  ],
+  "repo:prompting-structured-output:system-user-prefill": [
+    "System messages define persistent identity, rules and output constraints.",
+    "User messages carry the changing task.",
+    "Assistant prefill starts the generated reply.",
+    "An opening brace can suppress a JSON preamble where prefill is supported."
+  ],
+  "repo:prompting-structured-output:few-shot-example-count": [
+    "Use three to five examples for most tasks.",
+    "For many-label classification, cover each label.",
+    "Choose examples semantically close to the input.",
+    "Balance too little pattern signal against repeated context cost."
+  ],
+  "repo:prompting-structured-output:lost-in-the-middle-order": [
+    "Put critical instructions and system content first.",
+    "Place the current question and most relevant context last.",
+    "Leave lower-priority material in the middle.",
+    "Repeat an unavoidable middle-position key point at the end."
+  ],
+  "repo:prompting-structured-output:structured-output-vs-function-call": [
+    "Use structured output when typed data is the final product.",
+    "Validate final data against the schema.",
+    "Use function calling for an intermediate intent to act.",
+    "Application code executes the function and returns its result."
+  ],
+  "repo:prompting-structured-output:three-failure-modes-structured": [
+    "Distinguish parse errors, schema violations and refusals.",
+    "Strict schema enforcement handles format failures for completed responses.",
+    "Treat refusals as logged typed outcomes rather than retries.",
+    "Check stop reason before parsing potentially truncated output."
+  ],
+  "repo:prompting-structured-output:timestamp-kills-the-cache": [
+    "Inspect changing fields before the cache breakpoint.",
+    "Check timestamps, request IDs and unstable tool ordering.",
+    "Compare near-duplicate text and minimum cacheable size.",
+    "The first different token invalidates the remaining prefix match."
+  ],
+  "repo:prompting-structured-output:tool-description-is-a-prompt": [
+    "Tool descriptions guide model tool selection.",
+    "Describe what the tool does and returns in a full sentence.",
+    "Give parameter examples and enums for closed sets.",
+    "Validate arguments against the schema before execution."
+  ],
+  "repo:prompting-structured-output:answer-before-reasoning": [
+    "An answer-first field order commits the decision before reasoning.",
+    "Later reasoning cannot influence an already generated answer.",
+    "Place reasoning before the answer field.",
+    "Schema validation alone will not catch this ordering issue."
+  ],
+  "repo:prompting-structured-output:self-consistency-at-temperature-zero": [
+    "Temperature-zero samples mostly repeat the same path.",
+    "Serving nondeterminism does not provide useful reasoning diversity.",
+    "Sample diverse paths and standardize the extracted final-answer format.",
+    "Check whether single-path accuracy is in a range where voting helps."
+  ],
+  "repo:prompting-structured-output:cache-break-even": [
+    "Compare cache write and read prices with normal input cost.",
+    "The stated five-minute cache breaks even on its first read.",
+    "Reads refresh the five-minute lifetime.",
+    "Use the longer cache when reuse has gaps beyond five minutes."
+  ],
+  "repo:prompting-structured-output:design-extraction-with-refusals": [
+    "Require fields, closed enums, nonnegative totals and no extra properties.",
+    "Use strict schema decoding with reasoning before decision.",
+    "Route truncation to errors and typed refusals to review.",
+    "Validate real-email fields and shadow the human process before writes."
+  ],
+  "repo:prompting-structured-output:schema-valid-value-wrong": [
+    "Schema validity guarantees shape rather than factual truth.",
+    "Wrong numbers and allowed-but-wrong enums can pass.",
+    "Evaluate gold records with exact match and per-field accuracy.",
+    "Route uncertain fields to humans using extraction confidence signals."
+  ],
+  "repo:prompting-structured-output:tool-budget-fifty-tools": [
+    "Tool definitions consume tokens on every call.",
+    "Fifty definitions at 150 tokens cost 7,500 tokens.",
+    "Classify intent and include only matching tool definitions.",
+    "Keep all product tools while reducing each call's tool list."
+  ],
+  "repo:prompting-structured-output:tool-call-security-rules": [
+    "Expose allowlisted functions with typed parameters.",
+    "Validate arguments before execution and sanitize returned results.",
+    "Cap calls per conversation.",
+    "Run untrusted code in a separate process or container."
+  ],
+  "repo:prompting-structured-output:sleep-time-consolidation": [
+    "Background consolidation removes memory work from response latency.",
+    "It allows a slower model at extra coordination and storage cost.",
+    "Version memory blocks and expose rewrite diffs in traces.",
+    "Treat background edits to persona and safety blocks as untrusted."
+  ],
+  "repo:prompting-structured-output:take-home-two-tier-memory": [
+    "Cap main context and pin core memory.",
+    "Compact old messages when the cap is exceeded.",
+    "Store facts with IDs, tags, session and turn provenance.",
+    "Retrieve stored facts after overflow and splice them into the next turn."
+  ],
+  "repo:prompting-structured-output:fusion-weights-per-product": [
+    "Fuse relevance, importance and recency scores.",
+    "Tune weights to each product's needs.",
+    "Keep user, session and agent write scopes explicit.",
+    "Prevent retrieval from leaking facts across scopes."
+  ],
+  "repo:prompting-structured-output:escalation-pipeline-cost": [
+    "Resolve most queries at the cheapest stage.",
+    "Start voting with three samples and expand on disagreement.",
+    "Reserve expensive tree search for unresolved cases.",
+    "Measure held-out accuracy, cost and resolved share at each stage."
+  ],
+  "classical-ml-questions:cml-drift-no-labels": [
+    "Monitor feature distributions with PSI or KS tests.",
+    "Track prediction distributions and missing or out-of-range values.",
+    "Treat drift as an investigation signal rather than proof of degradation.",
+    "Compute performance metrics when labels arrive and retain both views."
+  ],
+  "classical-ml-questions:cml-psi": [
+    "Use the sum of actual-minus-expected times log of their ratio.",
+    "Each swapped bucket contributes about 0.339.",
+    "The total PSI is approximately 0.678.",
+    "Under the stated rule of thumb, above 0.25 is a large shift."
+  ],
+  "classical-ml-questions:cml-ab-z": [
+    "Use the pooled conversion rate of 0.105.",
+    "Compute the standard error as about 0.00613.",
+    "The one-point difference gives z about 1.63.",
+    "Below 1.96, the result is not significant in a two-sided five-percent test."
+  ],
+  "classical-ml-questions:cml-ab-peeking": [
+    "Fixed-sample p-values assume the sample size was chosen upfront.",
+    "Stopping on the first significant result inflates false positives.",
+    "Fix the sample size and inspect once.",
+    "Use sequential boundaries or always-valid p-values for monitoring."
+  ],
+  "rag-interview-questions:rag-cost-dominant": [
+    "Generation input and output tokens dominate the stated cost breakdown.",
+    "Embedding and vector search each contribute a smaller share.",
+    "Prompt caching directly reduces generation input cost.",
+    "Model tiering targets expensive model calls before retrieval optimization."
+  ],
+  "rag-interview-questions:rag-prompt-cache-saving": [
+    "Caching 6,000 of 6,500 tokens at ten-percent price saves about 83.1 percent.",
+    "The provider reuses static-prefix KV tensors.",
+    "Keep the prefix byte-identical across requests.",
+    "Reuse must occur within the cache lifetime to pay off."
+  ],
+  "rag-interview-questions:9c40f93cebcb": [
+    "Assign each stage the cheapest model meeting its quality bar.",
+    "Routing, rewrites and binary relevance checks may use smaller models.",
+    "Keep complex synthesis and nuanced reasoning on larger models.",
+    "Measure quality regression separately for every downgraded stage."
+  ],
+  "rag-interview-questions:fd1cae4c06c0": [
+    "Cache stable prompt prefixes first.",
+    "Set type-specific output-token budgets.",
+    "Route simple queries to cheaper models and cache frequent semantic repeats.",
+    "Consider chunk compression and test each change against the golden set."
+  ],
+  "rag-interview-questions:df566f8b56dc": [
+    "Exact-match response caches require identical query strings.",
+    "Semantic caches reuse responses for similar query embeddings.",
+    "Semantic similarity can conflate genuinely different intents.",
+    "Provider prompt caching reuses KV state but still runs inference."
+  ],
+  "rag-interview-questions:rag-cache-stampede": [
+    "Concurrent misses can duplicate expensive recomputation.",
+    "Coalesce same-key requests with single-flight.",
+    "Lock cache recomputation and writes.",
+    "Spread refreshes with early expiry and warm caches before spikes."
+  ],
+  "rag-interview-questions:rag-dont-cache": [
+    "Avoid shared answer caching for personalized responses.",
+    "Do not let cache lifetime outlast knowledge freshness.",
+    "Near-unique queries make cache infrastructure low value.",
+    "Strict latest-document requirements conflict with stale cached answers."
+  ],
+  "rag-interview-questions:4cd8afc91b12": [
+    "Route deterministic cases with cheap rules.",
+    "Classify remaining semantic intent with a lightweight model.",
+    "Promote weak retrieval results to a more thorough tier.",
+    "Keep routing cheap and monitor expensive-tier traffic share."
+  ],
+  "rag-interview-questions:d362d057aaa3": [
+    "Run retrieval strategies or sub-corpus searches in parallel.",
+    "Merge their results into one ranked list.",
+    "Reciprocal Rank Fusion handles differently scaled rankings.",
+    "RAG-Fusion fans out LLM-generated reformulations of one query."
+  ],
+  "rag-interview-questions:f14d75460f40": [
+    "Follow-up queries can lose the context needed for retrieval.",
+    "Distinguish conversational loss from single-turn retrieval failure.",
+    "Compare condensed-query similarity with retrieved results.",
+    "Alert on sharp relevance drops after topic-shifting follow-ups."
+  ],
+  "rag-interview-questions:rag-p99-doubled": [
+    "Use trace-level latency to locate the slow stage.",
+    "Inspect vector database changes and reranker candidate counts.",
+    "Check for prompt-prefix cache misses.",
+    "Compare traffic tiers and retrieval-hop mix before choosing a fix."
+  ],
+  "rag-interview-questions:2bc9224e23a1": [
+    "Irrelevant answers and low confidence are symptoms.",
+    "Check embedding vocabulary mismatch and chunk boundaries.",
+    "Check stale indices and top-k configuration.",
+    "Find the cause before adding context or changing the pipeline."
+  ],
+  "rag-interview-questions:b712e77b8bca": [
+    "One stage's error can amplify through later stages.",
+    "A wrong HyDE document retrieves evidence for the wrong hypothesis.",
+    "Convincing wrong-context retrieval may evade simple relevance checks.",
+    "Wrong intermediate facts can steer every later retrieval hop."
+  ],
+  "rag-interview-questions:688d3385bca1": [
+    "Full rebuilds remain costly and leave staleness windows.",
+    "Track per-document hashes or modification times.",
+    "Re-embed changed documents incrementally and continuously.",
+    "Recognize that stale evidence can produce confident outdated answers."
+  ],
+  "rag-interview-questions:a606e67386ea": [
+    "Domain and language shifts can weaken embedding alignment.",
+    "Changing models without re-embedding mixes incompatible vectors.",
+    "Model-version drift can also cause mismatch.",
+    "Distinguish query-document embedding mismatch from encoder quality decline."
+  ],
+  "repo:production-mlops:evals-or-ab-test": [
+    "Offline evals test capability on fixed labelled data.",
+    "Randomized live experiments measure whether users benefit.",
+    "An offline prompt win may fail to improve product metrics.",
+    "Use evals before deployment and experiments afterward."
+  ],
+  "repo:production-mlops:shadow-mode-is-a-smoke-test": [
+    "Shadow mode copies production requests to a hidden candidate.",
+    "Log crashes, refusals, cost and output length.",
+    "Hidden outputs cannot establish user preference.",
+    "Use a canary to test visible quality effects."
+  ],
+  "repo:production-mlops:span-kind-client-or-internal": [
+    "Use CLIENT spans for calls leaving the process.",
+    "Model API calls are CLIENT operations.",
+    "Remote tool-server calls are also CLIENT operations.",
+    "Use INTERNAL spans for agent steps and in-process tools."
+  ],
+  "repo:production-mlops:chaos-before-you-start": [
+    "Define service indicators and objectives before chaos tests.",
+    "Provide traces, metrics and logs.",
+    "Have automated rollback and structured runbooks.",
+    "Assign an on-call owner to stop or repair failures."
+  ],
+  "repo:production-mlops:canary-samples-at-one-percent": [
+    "One percent of 1,000 requests per minute is ten canary requests.",
+    "Five and fifteen minutes provide about fifty and 150 observations.",
+    "Early samples support latency and error checks rather than user feedback.",
+    "Gate latency, cost, errors and length first, then feedback later."
+  ],
+  "repo:production-mlops:checks-in-order-of-cost": [
+    "Reject oversized bodies before reading them.",
+    "Check authentication and rate limits before JSON validation.",
+    "Apply the daily usage cap before the paid model call.",
+    "Return stable structured errors with the appropriate status code."
+  ],
+  "repo:production-mlops:drift-score-on-prompts": [
+    "Embed prompts and pool them by week.",
+    "Compare with a trailing distribution using PSI or KL divergence.",
+    "Alert when the drift score crosses a threshold.",
+    "Label shifted traffic, refresh evals and recheck routing and prompts."
+  ],
+  "repo:production-mlops:keep-every-error-trace": [
+    "Keep every error and high-cost trace.",
+    "Sample only a small share of successful traces.",
+    "Retain aggregate metrics always.",
+    "Use tail sampling after completion so status and cost are known."
+  ],
+  "repo:production-mlops:prompts-in-span-attributes": [
+    "Leave prompt and completion capture disabled in spans.",
+    "Store content separately under access control.",
+    "Set a retention period for the content store.",
+    "Put a reference ID on spans for authorized support lookup."
+  ],
+  "repo:production-mlops:renamed-token-attribute": [
+    "Inspect currently emitted span attribute names.",
+    "Input-token attributes can change across convention versions.",
+    "A dashboard querying the old name can show zero tokens.",
+    "Pin emitted convention versions and stability opt-ins."
+  ],
+  "genai-guardrails-prompt-injection-pii": [
+    "Treat external text as untrusted data.",
+    "Delimit it from system instructions without claiming complete protection.",
+    "Apply least privilege and approvals for risky tool actions.",
+    "Classify unsafe content and redact personal data on input and output."
+  ],
+  "rag-interview-questions:e0c916e86d58": [
+    "Fixed sanitization patterns miss paraphrased attacks.",
+    "Attackers can preserve malicious meaning while changing wording.",
+    "Retrieved instructions can compete with system instructions in context.",
+    "System-prompt hardening cannot guarantee priority under every conflict."
+  ],
+  "rag-interview-questions:c52c8f35379e": [
+    "Separate retrieved data from trusted instructions.",
+    "Filter ingestion and sandbox executable document processing.",
+    "Inspect outputs and restrict privileges.",
+    "Layer partial defenses while acknowledging residual injection risk."
+  ],
+  "rag-interview-questions:d65eb132225b": [
+    "Resolve tenant identity and per-chunk permission metadata.",
+    "Pre-filter inside ANN search with current group memberships.",
+    "Recheck final chunks against authoritative permissions and fail closed.",
+    "Scope caches and citations to permissions and audit cross-tenant behavior."
+  ],
+  "rag-interview-questions:rag-post-acl-stage": [
+    "Later pipeline stages can reintroduce unauthorized content.",
+    "Reranking and link expansion must preserve ACL checks.",
+    "Caches and memory must respect the current permission scope.",
+    "Enforce authorization at the last content entry into the prompt."
+  ],
+  "rag-interview-questions:46c7fd012825": [
+    "Restricted context crosses the trust boundary before output exists.",
+    "Providers may log or retain restricted inputs.",
+    "Post-generation leak detectors are bypassable.",
+    "Filter retrieval inputs before they reach the model."
+  ],
+  "rag-interview-questions:rag-post-filter-recall": [
+    "Post-filtering one hundred results at two-percent visibility leaves about two.",
+    "Filter during search or partition by permissions.",
+    "Filtered HNSW traversal can lose connectivity.",
+    "Use filterable graphs or brute-force fallback for tiny eligible sets."
+  ],
+  "rag-interview-questions:af14ef959196": [
+    "Cross-tenant answer reuse can leak cached content.",
+    "Hit latency can reveal another tenant's query history.",
+    "Cached chunk IDs can reveal relevant document identities.",
+    "Namespace keys by tenant or user and current-permission hash."
+  ],
+  "rag-interview-questions:cdccadc5f125": [
+    "Give cached permissions a short freshness TTL.",
+    "Recheck final chunks against the authoritative permission source.",
+    "Invalidate affected sessions when permissions change.",
+    "Flush cached answers that reference revoked documents."
+  ],
+  "rag-interview-questions:b2fe1318151c": [
+    "Separate tenant namespaces or indices simplify offboarding.",
+    "Dropping the tenant partition supports demonstrable erasure.",
+    "Shared indices require deletion across every tenant chunk.",
+    "Verify removal from live vectors, snapshots and backups."
+  ],
+  "repo:safety:six-jailbreak-categories": [
+    "Classify attacks by the trust boundary abused.",
+    "Include role play, instruction override and context smuggling.",
+    "Include multi-turn ramps, encoding tricks and prefix injection.",
+    "Use category histograms to identify coverage gaps."
+  ],
+  "repo:safety:goodhart-over-optimization-curve": [
+    "Reward models are proxies for the real target.",
+    "Optimization can raise proxy scores while true quality falls.",
+    "Plot gold reward against square root of policy KL distance.",
+    "The widening proxy-target gap indicates reward hacking."
+  ],
+  "repo:safety:two-refusal-metrics": [
+    "Under-refusal measures unsafe prompts that receive answers.",
+    "Over-refusal measures safe prompts that get refused.",
+    "Label prompt safety and detect output refusals.",
+    "Report both rates, accuracy and category breakdowns."
+  ],
+  "repo:safety:four-costumes-one-mechanism": [
+    "Optimizers exploit proxy features correlated with training quality.",
+    "Length, agreement and plausible reasoning can be cheaper than real quality.",
+    "Reduce the gap between proxy reward and target quality.",
+    "Limit optimization pressure or select harder-to-game features."
+  ],
+  "repo:safety:normalize-then-match": [
+    "Normalize into a separate cleaned working copy.",
+    "Strip zero-width and bidirectional controls and decode base64 before lowercasing.",
+    "Decode hex and rot13 and map leet digits.",
+    "Match both raw and normalized text to retain encoding evidence."
+  ],
+  "repo:safety:one-regex-is-not-a-detector": [
+    "Measure precision and recall per attack category.",
+    "Return a confidence score and best matching category.",
+    "Layer normalization, substring rules and token regexes.",
+    "Test changes against labelled attacks and benign fixtures."
+  ],
+  "repo:safety:output-router-severity": [
+    "Classify toxicity, personal data and instruction leakage.",
+    "Route using the maximum returned severity.",
+    "Block high severity, redact medium, warn low and log none.",
+    "Buffer the full response when enforcement must cover earlier streamed chunks."
+  ],
+  "repo:safety:rlaif-is-not-cheaper-rlhf": [
+    "Model preference labels change failure modes rather than removing them.",
+    "Principle interpretation replaces human labeler psychology.",
+    "Measure sycophancy even if the labeler has no user to please.",
+    "Reward-model training and policy optimization still face Goodhart effects."
+  ],
+  "repo:safety:rule-needs-three-parts": [
+    "Version and review declarative response rules.",
+    "Give rules names, severities, explanations and scope predicates.",
+    "Compose response predicates with all, any and not.",
+    "Apply local fixes, recheck and log structured diffs."
+  ],
+  "repo:safety:sycophancy-is-the-loss": [
+    "High-reward base outputs can overrepresent sycophancy.",
+    "Upweighting those outputs amplifies agreement behavior.",
+    "The stated lesson reports more sycophancy after alignment.",
+    "More optimization steps can worsen the effect."
   ]
 }
