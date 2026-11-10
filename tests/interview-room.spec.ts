@@ -744,7 +744,8 @@ test('self-ratings survive a late automated check and reload; topic page and ans
   for(const width of [375,1440])for(const theme of ['light','dark']){
     await page.setViewportSize({width,height:1000});
     await page.evaluate(theme=>document.documentElement.setAttribute('data-theme',theme),theme);
-    expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBe(width);
+    const overflow=await page.evaluate(()=>[...document.querySelectorAll('body *')].filter(e=>e.getBoundingClientRect().right>innerWidth+0.5).slice(-6).map(e=>`${e.tagName}.${(e as HTMLElement).className} right=${Math.round(e.getBoundingClientRect().right)}`).join(' | '));
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth),overflow).toBe(width);
     await rating.screenshot({path:testInfo.outputPath(`rating-${width}-${theme}.png`)});
   }
   await page.reload();

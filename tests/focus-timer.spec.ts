@@ -147,7 +147,8 @@ test.describe('Focus Pomodoro Timer E2E', () => {
         await measure();
         // The timer starts on its own when the site opens, so the control is already running.
         await page.getByRole('button', { name: 'Open menu', exact: true }).click();
-        await page.getByRole('button', { name: /focus timer running/i }).filter({ visible: true }).click();
+        // The running control shows in the bar and in the drawer; use the drawer's one.
+        await page.getByRole('dialog', { name: 'Site navigation' }).getByRole('button', { name: /focus timer running/i }).click();
         const popover = await page.locator('.nm-timer-popover').boundingBox();
         expect(popover!.x).toBeGreaterThanOrEqual(0);
         expect(popover!.x + popover!.width).toBeLessThanOrEqual(width);
