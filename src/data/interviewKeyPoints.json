@@ -3598,5 +3598,605 @@
     "Compress-and-carry retains an evolving summary.",
     "Summary size bounds context cost but loses exact detail.",
     "Keep recent turns verbatim alongside the summary."
+  ],
+  "rag-interview-questions:5746c08f66d6": [
+    "MemGPT gives the model explicit memory-management tools.",
+    "The model decides what to append, archive or search.",
+    "Selective memory can preserve constraints a fixed window would lose.",
+    "Memory calls add latency and can be mismanaged."
+  ],
+  "rag-interview-questions:d84fe768bce9": [
+    "Extract durable user facts after each session.",
+    "Store preferences and constraints rather than raw transcripts.",
+    "Use a per-user namespaced vector store.",
+    "Retrieve relevant facts into the next session's user-context block."
+  ],
+  "rag-interview-questions:rag-conversational-drift": [
+    "Follow-up queries can lose their original referents.",
+    "Raw query embeddings then become under-specified.",
+    "Use conversation history to resolve references.",
+    "Rewrite follow-ups into self-contained retrieval queries."
+  ],
+  "rag-interview-questions:3f8a7262d314": [
+    "CLIP learns from naturally paired images and alt text.",
+    "Contrastive loss pulls matching image-text embeddings together.",
+    "It pushes mismatched batch pairs apart.",
+    "Shared-space embeddings enable text-to-image cosine retrieval."
+  ],
+  "rag-interview-questions:e5fb03a0a4b0": [
+    "Early fusion combines raw modalities before encoding.",
+    "Late fusion encodes modalities independently.",
+    "Late fusion combines the resulting vectors.",
+    "Independent encoders allow modality upgrades without retraining everything."
+  ],
+  "rag-interview-questions:b88e0cc1b1d2": [
+    "Parse documents and route by content type.",
+    "Embed text, extracted figures and linearized tables appropriately.",
+    "Store modality metadata in the shared index.",
+    "Flag uncaptioned figures for manual review."
+  ],
+  "repo:rag:bi-encoder-vs-cross-encoder": [
+    "Bi-encoders compute document vectors once at indexing.",
+    "Compare independent query and document vectors cheaply.",
+    "Cross-encoders jointly read each query-document pair.",
+    "Their per-pair forward passes limit them to shortlists."
+  ],
+  "repo:rag:rag-or-fine-tune": [
+    "Use retrieval to supply current knowledge.",
+    "Update document stores without changing the model.",
+    "Show source passages behind answers.",
+    "Tune for behavior or reasoning patterns that prompts cannot achieve."
+  ],
+  "repo:rag:recall-at-k-first": [
+    "Measure retrieval recall at k first.",
+    "Missing gold evidence cannot be recovered by reranking.",
+    "Other retrieved chunks may still contain equivalent evidence.",
+    "Then inspect ranking and generated answers for downstream failures."
+  ],
+  "repo:rag:cosine-is-the-default": [
+    "Cosine is dot product divided by vector lengths.",
+    "It compares direction rather than magnitude.",
+    "Chunk lengths then compete on angle rather than size.",
+    "Use raw dot product only when vector magnitude is meaningful."
+  ],
+  "repo:rag:chunk-size-by-query-type": [
+    "Choose chunk size from query type.",
+    "Factoids need smaller chunks than analytical or section queries.",
+    "Begin with recursive 512-token splitting and no overlap.",
+    "Measure recall at 5 on labelled queries before tuning."
+  ],
+  "repo:rag:cross-encoder-passes-per-query": [
+    "Cross-encoding ten million chunks needs ten million forward passes.",
+    "Precompute document vectors with a bi-encoder.",
+    "Cross-encode only 50 to 200 retrieved candidates.",
+    "The per-pair cost is much higher than vector comparison."
+  ],
+  "repo:rag:error-code-query-misses": [
+    "Rare error codes may be treated as embedding noise.",
+    "Add a BM25 lexical index.",
+    "Run dense and lexical retrieval together.",
+    "Use reciprocal rank fusion to recover exact-token matches."
+  ],
+  "repo:rag:faithfulness-vs-relevance": [
+    "Faithfulness checks claim support in retrieved context.",
+    "Relevance checks whether the answer addresses the question.",
+    "A grounded summary can still miss the question.",
+    "An answer from model memory can be relevant but ungrounded."
+  ],
+  "repo:rag:filter-before-search": [
+    "Store source, date, category, author and version metadata.",
+    "Apply filters before similarity search.",
+    "Filter security documents to the last 30 days.",
+    "Use role and jurisdiction labels to enforce access scope."
+  ],
+  "repo:rag:rrf-beats-score-sum": [
+    "BM25 and cosine have incompatible raw score scales.",
+    "Weighted sums need recalibration as the corpus changes.",
+    "RRF sums reciprocal rank terms with k at 60.",
+    "Comparable ranks avoid raw-score calibration."
+  ],
+  "repo:rag:overlap-measure-first": [
+    "Compare zero overlap against current overlap.",
+    "Use the same stratified recall-at-5 evaluation.",
+    "Keep overlap only for measured retrieval gains.",
+    "Overlap increases index cost in proportion to its size."
+  ],
+  "repo:rag:pick-the-query-rewriter": [
+    "Decompose questions that combine distinct topics.",
+    "Use HyDE when query wording differs from corpus jargon.",
+    "Use paraphrases for short queries with many valid phrasings.",
+    "Match the rewrite strategy to the query failure mode."
+  ],
+  "repo:rag:reranker-magic-in-eval": [
+    "Check reranker training data for evaluation-query leakage.",
+    "Cross-encoder query-document ordering is not symmetric.",
+    "Verify pair order in production.",
+    "Measure real candidate-pool recall because it caps reranking."
+  ],
+  "repo:rag:design-rag-over-company-docs": [
+    "Ingest with structure-aware chunks and access metadata.",
+    "Build dense and BM25 indexes and filter access before search.",
+    "Fuse, rerank and generate cited answers with refusal.",
+    "Evaluate expert-labelled query slices and production faithfulness and cost."
+  ],
+  "repo:rag:refuse-when-confidence-is-low": [
+    "Log the reranker's top score per query.",
+    "Refuse below a corpus-specific threshold.",
+    "Require snippet-only answers with citations.",
+    "Measure refusals on unanswerable queries and false confidence."
+  ],
+  "repo:rag:take-home-stratified-eval": [
+    "Build stratified queries with gold documents and answers.",
+    "Compare configurations on the same labelled set.",
+    "Report recall at 5, MRR and answer-bearing top-5 coverage.",
+    "Use document labels or relabel chunk-specific qrels after chunker changes."
+  ],
+  "repo:rag:diagnose-from-the-metric-table": [
+    "Stable recall with falling MRR points to ranking.",
+    "Faithfulness can hold while gold evidence moves down.",
+    "Compare per-query gold ranks before and after release.",
+    "Inspect reranker weights, pool size and pair ordering."
+  ],
+  "repo:rag:hyde-invents-a-symbol": [
+    "HyDE can invent nonexistent code symbols.",
+    "Rewriting can erase the real lexical match.",
+    "Keep hypothetical answers short and reduce their lexical fusion weight.",
+    "Bypass rewriting when queries already contain literal symbols."
+  ],
+  "repo:rag:judge-grades-its-own-work": [
+    "Same-family judges can overrate their generator's output.",
+    "Switch to a different judge family.",
+    "Hand-grade a sample.",
+    "Review whole answers because sentence-level support can still mislead."
+  ],
+  "repo:rag:rerank-pool-size": [
+    "Sweep rerank candidate count on held-out queries.",
+    "Choose the recall-curve knee within the latency budget.",
+    "Extra candidates each require a forward pass.",
+    "Keep candidate count at least three times final top-k."
+  ],
+  "repo:rag:eval-passes-users-complain": [
+    "High aggregate metrics can hide unrepresented users.",
+    "Add that unit's real queries to qrels.",
+    "Slice results by query and document type.",
+    "Review qrels regularly and block releases on slice regressions."
+  ],
+  "repo:rag:jurisdiction-leak-in-shared-index": [
+    "Jurisdiction leakage starts with missing retrieval pre-filters.",
+    "Tag chunks with role and jurisdiction during ingestion.",
+    "Filter both before hybrid retrieval.",
+    "Run severity-scored cross-jurisdiction probes before releases."
+  ],
+  "repo:rag:design-cross-repo-code-search": [
+    "Chunk code by syntax-tree functions and classes.",
+    "Index code embeddings, weighted symbols and summaries.",
+    "Hybrid-retrieve, rerank and enforce file-and-line citations.",
+    "Re-embed changed symbols and affected edges on each push."
+  ],
+  "genai-fm-fundamentals": [
+    "Foundation models learn broad representations through large-scale pretraining.",
+    "Adapt them with prompts or fine-tuning.",
+    "Traditional models target specific tasks.",
+    "Classical models can suit tabular data, latency, cost or explainability constraints."
+  ],
+  "qa-quick-reference:ee37eab62c02": [
+    "LLMs are usually decoder-only neural Transformers.",
+    "Pretraining predicts the next token.",
+    "Prediction conditions on preceding tokens.",
+    "Scale and post-training support chat, code and reasoning behavior."
+  ],
+  "qa-quick-reference:a90852b31b07": [
+    "Tokenization splits text into fixed-vocabulary units.",
+    "Subwords are the units the model operates on.",
+    "Character sequences can become excessively long.",
+    "Whole-word vocabularies cannot handle unbounded unseen words well."
+  ],
+  "qa-quick-reference:qa-bpe-rare-word": [
+    "BPE begins with characters or bytes.",
+    "Repeatedly merge the most frequent adjacent pair.",
+    "Stop at the target vocabulary size.",
+    "Frequent words become whole tokens while rare words split."
+  ],
+  "qa-quick-reference:cfeb2ec2bf65": [
+    "Embeddings are dense numeric vectors.",
+    "They represent tokens, sentences or documents.",
+    "Semantic similarity corresponds to geometric closeness.",
+    "Attention and retrieval operate on these representations."
+  ],
+  "qa-quick-reference:qa-positional-encoding": [
+    "Self-attention alone lacks token-order information.",
+    "Permutation invariance obscures order-sensitive meaning.",
+    "Positional encoding injects sequence order.",
+    "It distinguishes reversed relationships such as who bites whom."
+  ],
+  "qa-quick-reference:90e4b1c73699": [
+    "Self-attention lets tokens inspect other sequence positions.",
+    "Each token weights the relevance of other tokens.",
+    "Query, key and value projections come from the same input.",
+    "Weighted information updates each token's representation."
+  ],
+  "qa-quick-reference:b1df57199f99": [
+    "Queries, keys and values are learned linear projections.",
+    "Queries express what a position seeks.",
+    "Keys express what positions offer.",
+    "Query-key similarity weights the values combined into output."
+  ],
+  "qa-quick-reference:qa-sqrt-dk": [
+    "Dot products grow with key dimensionality.",
+    "Large scores saturate softmax toward one-hot weights.",
+    "Saturation drives most gradients close to zero.",
+    "Divide by the square root of key width to stabilize scores."
+  ],
+  "qa-quick-reference:dcd9920ddca7": [
+    "Multi-head attention runs smaller attention operations in parallel.",
+    "Each head has its own learned projections.",
+    "Concatenate head outputs.",
+    "Heads can specialize in syntax, coreference or position."
+  ],
+  "qa-quick-reference:qa-cross-attention": [
+    "Self-attention gets queries, keys and values from one sequence.",
+    "Cross-attention gets queries from another sequence.",
+    "Keys and values can come from encoder output.",
+    "This lets a decoder attend to its source input."
+  ],
+  "qa-quick-reference:qa-causal-mask": [
+    "Causal masks block attention to future positions.",
+    "Autoregressive generation predicts from preceding tokens.",
+    "Future tokens are unavailable at inference.",
+    "Without masking, training can expose prediction targets."
+  ],
+  "qa-quick-reference:qa-kv-cache-size": [
+    "Cache keys and values rather than recomputing old projections.",
+    "The example requires 98304 bytes per token.",
+    "Four thousand tokens need about 375 MiB for one user.",
+    "GQA and MQA reduce the serving cache footprint."
+  ],
+  "repo:transformers:query-key-value-lookup": [
+    "Queries ask for information and keys describe available information.",
+    "Softmax normalizes query-key scores.",
+    "Outputs are weighted sums of values.",
+    "Transformers learn separate Q, K and V projections from one sequence."
+  ],
+  "repo:transformers:permutation-blind-attention": [
+    "Shuffling tokens shuffles attention outputs correspondingly.",
+    "Pairwise similarity alone does not encode order.",
+    "Add learned or sinusoidal position vectors.",
+    "Alternatively rotate Q/K or penalize attention by distance."
+  ],
+  "repo:transformers:why-scale-by-sqrt-dk": [
+    "Unscaled dot products grow with key dimension.",
+    "Large logits concentrate softmax on one key.",
+    "Near-zero gradients impede learning at other keys.",
+    "Square-root scaling stabilizes score variance across head sizes."
+  ],
+  "repo:transformers:count-attention-ops-with-cache": [
+    "Without caching, 100 steps recompute 5050 token states.",
+    "Caching computes only 100 new token states.",
+    "Queries still make 5050 comparisons with stored keys.",
+    "Store keys and values; past queries are not reused."
+  ],
+  "repo:transformers:pick-encoder-or-decoder": [
+    "Use encoder-only models for embeddings and ranking.",
+    "Use decoder-only models for generation.",
+    "Encoder-decoder models suit explicit source-to-output tasks.",
+    "The training loss and causal mask determine generation behavior."
+  ],
+  "repo:transformers:attention-shape-bug": [
+    "Silent broadcasting can preserve execution while breaking attention.",
+    "Write score, weight and context shapes first.",
+    "Fix swapped or untransposed matmul operands.",
+    "Assert shapes and that weights sum to one."
+  ],
+  "repo:transformers:causal-mask-minus-infinity": [
+    "Apply minus infinity to future scores before softmax.",
+    "Exponentiation then assigns those positions zero mass.",
+    "Rows normalize over past positions only.",
+    "Zeroing weights afterward breaks normalization and leaks future influence."
+  ],
+  "repo:transformers:loss-drops-to-zero-no-mask": [
+    "Near-zero early loss with nonsense samples suggests target leakage.",
+    "Missing causal masks expose future targets.",
+    "Unshifted labels make inputs equal targets.",
+    "Inspect above-diagonal attention and compare input-target columns."
+  ],
+  "repo:transformers:pre-norm-vs-post-norm": [
+    "Post-norm puts normalization on the skip gradient path.",
+    "Pre-norm keeps that identity path unnormalized.",
+    "Compare embedding gradient norms in equally initialized deep stacks.",
+    "RMSNorm removes mean subtraction while retaining practical stability."
+  ],
+  "repo:transformers:residual-stream-and-dropout": [
+    "Residual paths add gradients across depth.",
+    "Blocks learn updates rather than replacing representations.",
+    "Only attention mixes tokens; the MLP acts per position.",
+    "Keep dropout off the identity skip path."
+  ],
+  "repo:transformers:gqa-mla-cache-tradeoff": [
+    "Query-head count stays fixed across the compared variants.",
+    "MQA shares one KV head and minimizes cache.",
+    "GQA shares grouped KV heads with a quality-memory trade-off.",
+    "Latent attention compresses KV state at extra compute cost."
+  ],
+  "repo:transformers:heads-are-nearly-free": [
+    "At fixed model width, head reshaping leaves projection counts unchanged.",
+    "Head computations run as batched matrix multiplication.",
+    "Heads specialize and the output projection mixes them.",
+    "Keep head widths within the lesson's practical range."
+  ],
+  "repo:transformers:rope-relative-from-absolute": [
+    "RoPE rotates coordinate pairs by position-dependent angles.",
+    "Query-key products depend on the position difference.",
+    "Shifting both absolute positions preserves their dot product.",
+    "Test that invariance within floating-point tolerance."
+  ],
+  "repo:transformers:attention-weights-as-proof": [
+    "Attention weights show mass rather than causal importance.",
+    "Alternative weights can leave predictions unchanged.",
+    "Ablate or shuffle heads and observe output changes.",
+    "Test specific roles such as previous-token, copy and induction heads."
+  ],
+  "repo:transformers:block-parameter-count": [
+    "Attention projections cost about four times width squared.",
+    "SwiGLU costs about three times expansion times width squared.",
+    "The example yields about 198M parameters per block.",
+    "Add embeddings and account for GQA and FFN width in the total."
+  ],
+  "repo:transformers:char-level-gpt-take-home": [
+    "Build character embeddings with learned positions and pre-norm blocks.",
+    "Use causal multi-head attention, RMSNorm and SwiGLU.",
+    "Train shifted cross-entropy with AdamW, scheduling and clipping.",
+    "Hold out the final text slice and inspect validation loss and samples."
+  ],
+  "repo:transformers:extend-context-past-training": [
+    "Read the model's positional scheme before extending context.",
+    "Learned absolute tables need new rows.",
+    "RoPE can use scaling or interpolation plus long-sequence tuning.",
+    "Linear biases extrapolate but cannot freely replace a trained scheme."
+  ],
+  "repo:transformers:flash-attention-is-exact": [
+    "FlashAttention computes exact dense attention.",
+    "Tile scores and accumulate online softmax on chip.",
+    "Avoid writing the full quadratic score matrix to main memory.",
+    "Outputs match ordinary attention up to floating-point reordering."
+  ],
+  "repo:transformers:modernize-a-2017-block": [
+    "Move normalization before sublayers and use RMSNorm.",
+    "Replace ReLU FFNs with parameter-matched SwiGLU.",
+    "Use rotary positions and remove biases.",
+    "Use grouped-query attention to reduce decode cache."
+  ],
+  "repo:transformers:compute-split-params-tokens": [
+    "Training compute scales approximately as six times parameters times tokens.",
+    "The compute-optimal split is about 20 tokens per parameter.",
+    "Too many parameters for the token budget leaves models undertrained.",
+    "High-volume serving can justify smaller models trained longer."
+  ],
+  "repo:transformers:emergence-or-scorer-artifact": [
+    "Ask whether the scorer is discontinuous.",
+    "Exact-match thresholds can turn smooth gains into cliffs.",
+    "Rescore checkpoints with continuous target cross-entropy.",
+    "Use continuous curves for budget planning."
+  ],
+  "repo:transformers:attention-for-128k-context": [
+    "Count KV memory before choosing a 128K architecture.",
+    "Use grouped or latent attention and reduced-precision KV.",
+    "Scale rotary positions and use tiled exact attention.",
+    "Quantize weights as well when a 70B model must fit an 80 GB card."
+  ],
+  "genai-rag-vs-finetuning": [
+    "Use RAG for changing factual knowledge.",
+    "Retrieval enables citations and access controls.",
+    "Fine-tuning changes behavior, format or specialized skills.",
+    "Combine tuned behavior with retrieved current facts."
+  ],
+  "genai-lora-production-serving": [
+    "LoRA freezes base weights and trains low-rank updates.",
+    "Small trainable matrices reduce optimizer memory.",
+    "Merge adapters to avoid additional inference latency.",
+    "Share one GPU base and swap adapters for multiple customers."
+  ],
+  "genai-finetuning-alignment-dpo-rlhf": [
+    "PPO-style RLHF trains a reward model then an RL policy.",
+    "DPO learns directly from preference pairs.",
+    "It uses an implicit reward relative to a reference model.",
+    "DPO simplifies training but still depends on preference quality and task fit."
+  ],
+  "genai-finetuning-data-curation-forgetting": [
+    "Prefer clean representative expert-checked examples.",
+    "Deduplicate and separate train and test data.",
+    "Mix general or prior examples to reduce forgetting.",
+    "Evaluate both the new task and previous capabilities."
+  ],
+  "llm-serving-and-fine-tuning-questions:ft-rag-or-finetune": [
+    "Use retrieval for factual knowledge.",
+    "Use tuning for behavior and task-specific skills.",
+    "Retrieval keeps sources current and citable.",
+    "Combine both in a model trained to answer from retrieved evidence."
+  ],
+  "llm-serving-and-fine-tuning-questions:ft-lora-what": [
+    "LoRA uses a frozen W plus a scaled BA update.",
+    "A and B have rank much smaller than model width.",
+    "Only adapter parameters receive gradients and optimizer state.",
+    "Merge adapters or keep them swappable per customer."
+  ],
+  "llm-serving-and-fine-tuning-questions:ft-lora-params": [
+    "A has shape 16 by 4096.",
+    "B has shape 4096 by 16.",
+    "Together they train 131072 parameters.",
+    "The full matrix contains 16777216 parameters."
+  ],
+  "llm-serving-and-fine-tuning-questions:ft-lora-pct": [
+    "Divide adapter parameters by full-matrix parameters.",
+    "The example trains about 0.781 percent.",
+    "Whole-model LoRA commonly trains 0.1 to 1 percent.",
+    "Optimizer-state reduction enables single-GPU tuning."
+  ],
+  "llm-serving-and-fine-tuning-questions:ft-qlora": [
+    "QLoRA stores frozen base weights in 4-bit NormalFloat.",
+    "Dequantize base weights during forward computation.",
+    "Backpropagate into bf16 LoRA adapters.",
+    "Paged optimizers handle memory spikes."
+  ],
+  "llm-serving-and-fine-tuning-questions:ft-tokens": [
+    "Multiply examples by tokens per example and epochs.",
+    "10000 times 1500 times 3 gives 45 million tokens.",
+    "Training-token count determines hosted tuning cost.",
+    "Divide tokens by processing throughput to estimate time."
+  ],
+  "llm-serving-and-fine-tuning-questions:ft-forgetting": [
+    "Narrow training can overwrite general behavior.",
+    "Mix 10 to 30 percent general instruction replay.",
+    "Reduce learning rate and epochs or use LoRA.",
+    "Include general tasks in the regression evaluation."
+  ],
+  "llm-serving-and-fine-tuning-questions:ft-loss-vs-quality": [
+    "Teacher-forced validation sees correct previous tokens.",
+    "Generated outputs accumulate their own errors.",
+    "Lower loss can reflect reference phrasing rather than task quality.",
+    "Choose checkpoints with held-out generated-output evaluations."
+  ],
+  "llm-serving-and-fine-tuning-questions:ft-chat-template": [
+    "Chat models learn exact role and special-token formats.",
+    "Template mismatches create unfamiliar inputs or missing turn endings.",
+    "Use the tokenizer's template in training and serving.",
+    "Test the served endpoint with a training prompt."
+  ],
+  "llm-serving-and-fine-tuning-questions:ft-dpo": [
+    "PPO-style RLHF learns an explicit reward model.",
+    "A KL penalty keeps its policy near the reference.",
+    "DPO directly optimizes preferred versus rejected likelihood ratios.",
+    "It removes the separate reward-model and RL loop."
+  ],
+  "llm-serving-and-fine-tuning-questions:ft-data-quality": [
+    "Alignment tuning mostly teaches behavior and format.",
+    "Small consistent datasets can work well.",
+    "Large noisy datasets teach inconsistency.",
+    "New skills require more data while retaining quality."
+  ],
+  "repo:post-training:classifier-head-or-full": [
+    "Replace the language head with a two-class linear layer.",
+    "Freeze the body for the initial classifier run.",
+    "Head-only training is cheap and limits small-data overfitting.",
+    "Unfreeze only for measured accuracy gaps and domain shift."
+  ],
+  "repo:post-training:lora-parameter-count": [
+    "Rank-16 A and B each hold 65536 values.",
+    "Together they train 131072 parameters.",
+    "That is about 0.78 percent of the frozen matrix.",
+    "Doubling rank doubles adapter parameter count."
+  ],
+  "repo:post-training:sft-data-quality-wins": [
+    "Prefer the smaller skilled-writer SFT dataset.",
+    "SFT teaches behavior rather than new facts.",
+    "Clean thousands-to-tens-of-thousands examples can suffice.",
+    "Scraped noise is learned alongside good behavior."
+  ],
+  "repo:post-training:sft-loss-mask": [
+    "Compute SFT loss only on answer tokens.",
+    "Instruction loss teaches question writing rather than answering.",
+    "Ignore instruction and padding labels.",
+    "Ignore the answer boundary token as specified in the recipe."
+  ],
+  "repo:post-training:grpo-groups-teach-nothing": [
+    "Inspect GRPO reward groups before changing learning rate.",
+    "Uniformly correct or wrong groups have zero advantages.",
+    "Too many uniform groups thin the training signal.",
+    "Change prompt mix or dynamic sampling rather than increasing step size."
+  ],
+  "repo:post-training:reward-model-pairwise": [
+    "Collect pairwise preferences rather than unreliable absolute scores.",
+    "Replace the SFT vocabulary head with a scalar reward head.",
+    "Train with negative log sigmoid of preferred-minus-rejected reward.",
+    "Bradley-Terry maps reward differences to preference log-odds."
+  ],
+  "repo:post-training:constitutional-ai-not-cheaper": [
+    "Constitutional training first critiques and revises by principles.",
+    "Train SFT on those revisions.",
+    "Use feedback-model preferences for reward training and RL.",
+    "Principle interpretation replaces rater bias while proxy risk remains."
+  ],
+  "repo:post-training:qlora-on-one-gpu": [
+    "Full tuning stores weights, gradients and optimizer states.",
+    "LoRA shrinks trainable-state memory with adapters.",
+    "QLoRA also stores the frozen base in 4-bit.",
+    "The resulting savings leave activation room on a consumer card."
+  ],
+  "repo:post-training:sft-learning-rate-gap": [
+    "Excessive SFT learning rates can cause forgetting.",
+    "Track raw-text loss alongside SFT loss.",
+    "Reduce rates into the cited 1e-5 to 5e-5 range.",
+    "Use one to three epochs and check broader capabilities."
+  ],
+  "repo:post-training:dpo-implicit-reward": [
+    "The optimal policy scales the reference by exponentiated reward.",
+    "Inverting gives reward as beta times the policy/reference log ratio.",
+    "Prompt-only terms cancel between preference pairs.",
+    "The resulting DPO loss uses differences of policy log ratios."
+  ],
+  "repo:post-training:kl-penalty-purpose": [
+    "Reward models are reliable mainly near SFT-like outputs.",
+    "Unregularized PPO can exploit unseen high-scoring strings.",
+    "KL penalizes distribution drift rather than imposing a hard constraint.",
+    "Tune beta using measured KL and policy movement."
+  ],
+  "repo:post-training:rl-engine-died-silent": [
+    "The rollout engine failed while the trainer kept retrying.",
+    "Router 503s accumulated without stopping training.",
+    "Inspect engine logs before the first error and count errors per minute.",
+    "Use a watchdog to terminate persistent unattended failures."
+  ],
+  "repo:post-training:dpo-or-rlhf": [
+    "DPO suits offline preference pairs with a simple supervised loop.",
+    "It trains one policy against a frozen reference.",
+    "Choose full RLHF for inspectable multidimensional rewards or online samples.",
+    "Reconsider when DPO plateaus on the evaluation."
+  ],
+  "repo:post-training:preference-loss-picker": [
+    "Match preference loss to the violated data assumption.",
+    "Use single-label-compatible losses for click labels.",
+    "Use length-normalized reference-free losses for length skew.",
+    "Use odds-ratio or bounded-margin losses for missing SFT or mixed strengths."
+  ],
+  "repo:post-training:dpo-chosen-logprob-falls": [
+    "DPO optimizes a difference of log ratios.",
+    "Chosen likelihood can fall if rejected likelihood falls faster.",
+    "Monitor absolute chosen log-probability.",
+    "Penalize chosen degradation or use bounded margins and generation evals."
+  ],
+  "repo:post-training:gap-remove-before-reweight": [
+    "Identify tokenization, routing, sampling, numeric and staleness gaps.",
+    "Remove causal mismatches before importance reweighting.",
+    "Reweighting retains mismatch and adds gradient variance.",
+    "Measure the residual kernel floor and correct only what remains."
+  ],
+  "repo:post-training:logprob-gap-at-step-zero": [
+    "Stop on an abnormal step-zero log-probability gap.",
+    "Identical weights should give comparable model computations.",
+    "Check checkpoint paths and format interpretation.",
+    "Fix setup and compare with healthy runs; determinism alone is insufficient."
+  ],
+  "repo:post-training:reward-up-humans-flat": [
+    "Rising proxy reward with flat human scores suggests reward hacking.",
+    "Inspect KL, output length and repetitive formats.",
+    "Rollback to the human-preferred checkpoint.",
+    "Increase regularization or stop earlier and broaden reward data."
+  ],
+  "repo:post-training:rl-custom-reward-take-home": [
+    "Extract the last numeric values from answer and label.",
+    "Compare values rather than substrings.",
+    "Test correct, wrong, empty and truncated answers.",
+    "Verify equal-reward groups produce zero advantages despite float rounding."
+  ],
+  "repo:post-training:rl-report-a-change": [
+    "Measure baseline spread before interpreting gains.",
+    "Single-seed improvements can sit within noise.",
+    "Change one setting and compare identical step numbers.",
+    "Use at least two seeds and exclude thermal-pause timings."
+  ],
+  "repo:post-training:daa-still-overoptimize": [
+    "Direct alignment still optimizes an implicit reward proxy.",
+    "Preference data constrains it only where data has coverage.",
+    "Out-of-distribution optimization can peak then collapse gold reward.",
+    "Use blind evals, early stopping, broader data and multiple signals."
   ]
 }
