@@ -49,7 +49,7 @@ export function speechSeconds(audio: Float32Array, rate = 16000) {
 export function promptedTranscriptLooksWrong(text: string, audio: Float32Array, rate = 16000) {
   const words = text.toLowerCase().match(/[a-z0-9']+/g) ?? [];
   const speech = speechSeconds(audio, rate);
-  if (speech >= 3 && words.length < speech * 1.2) return true;
+  if (speech >= 3 && words.length < speech * 1.7) return true;
   const grams = new Map<string, number>();
   for (let i = 0; i + 3 <= words.length; i++) {
     const g = words.slice(i, i + 3).join(' ');

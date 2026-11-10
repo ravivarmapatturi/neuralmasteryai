@@ -161,6 +161,7 @@ export default function ThemePicker() {
                 key={t.id}
                 role="option"
                 aria-selected={isSelected}
+                aria-label={t.name}
                 onClick={() => selectTheme(t.id)}
                 style={{
                   display: 'flex',

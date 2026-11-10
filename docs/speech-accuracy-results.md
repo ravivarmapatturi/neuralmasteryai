@@ -355,3 +355,17 @@ Two things this run found that were not being measured before:
 2. Losing everything after a pause is the largest single source of error on this set, larger than accent.
 
 Reproduce a row with `node scripts/speech-accuracy/evaluate-tiers.mjs --only=whisper-base-wasm --set=v2 --name=v2-base --repeat` on the `speech-eval` branch, add `--prompt=wide` or `--prompt=wide --promptText=BM25.` for the prompt rows, use `--set=terms` for the 10 term clips, then `node scripts/speech-accuracy/summarize-v2.mjs scripts/speech-accuracy/tier-v2-*.json`. Stored runs: `tier-v2-base.json`, `tier-v2-small.json`, `tier-v2-base-wide.json`, `tier-v2-base-one-term.json`, `tier-v2-base-four-terms.json`, `tier-terms-base-off.json`, `tier-terms-base-question.json`, `tier-terms-base-wide.json`.
+
+### Prompt guard, 11 November 2026
+
+When a prompted transcript has too few words for the speech heard, or repeats a three-word phrase three times, Whisper decodes the audio again without the prompt (`src/lib/speechTest/whisperPrompt.ts`). Same 123 clips and 10 term clips, Whisper Base.
+
+| Prompt | No guard | Guard at 1.2 words per speech second | Guard at 1.7 (shipped) |
+| --- | --- | --- | --- |
+| Indian lecture, one term (production uses question-title terms) | 27.4% | 23.6% | 21.9% |
+| Indian lecture, 16 terms (not shipped) | 68.5% | 31.4% | 44.5% |
+| Indian read, one term | 4.8% | 4.8% | 4.8% |
+| ML terms heard, title prompt | 10 of 10 | 10 of 10 | 10 of 10 |
+| Prompt terms invented | 0 | 0 | 0 |
+
+No prompt is still best on off-topic lecture speech (17.6%), so the gap is narrowed, not closed. The 16-term prompt result moving the wrong way at the stricter setting is not explained yet; it is not shipped. Runs: `tier-v2-base-*-guard*.json`, `tier-terms-base-*-guard*.json`.
