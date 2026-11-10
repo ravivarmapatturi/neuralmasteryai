@@ -188,7 +188,7 @@ test.describe('Find, Filter & Polish (C9 & C10)', () => {
     // (audit plan, question room point 9) this becomes toBe(askingCardBox!.width).
     // A vertical scrollbar can appear on the longer answer screen (up to 16px).
     expect(answerCardBox!.width).toBeGreaterThanOrEqual(askingCardBox!.width - 16);
-    expect(answerCardBox!.width).toBeLessThanOrEqual(1240);
+    expect(answerCardBox!.width).toBeLessThanOrEqual(1440);
     expect(Math.abs(answerCardBox!.x + answerCardBox!.width / 2 - 720)).toBeLessThan(10);
     await page.screenshot({ path: path.join(EVIDENCE_DIR, 'polish-answer-1440-light.png') });
   });

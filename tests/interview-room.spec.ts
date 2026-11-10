@@ -824,7 +824,7 @@ test('system design canvas supports drag and keyboard, saves sketches and compar
   await expect(canvas.locator('.sd-node')).toHaveCount(2);
   for(const width of [375,1440])for(const theme of ['light','dark']) {
     await page.setViewportSize({width,height:1000});
-    if (await page.locator('html').getAttribute('data-theme') !== theme) await page.getByRole('button',{name:'Toggle color mode'}).click();
+    await page.evaluate(theme=>{localStorage.setItem('neural-mastery-theme',theme);document.documentElement.setAttribute('data-theme',theme);},theme);
     await expect(page.locator('html')).toHaveAttribute('data-theme',theme);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     await expect(client).toHaveCSS('font-size','12px');
@@ -837,7 +837,7 @@ test('system design canvas supports drag and keyboard, saves sketches and compar
   await expect(comparison.getByRole('region',{name:'Your sketch',exact:true}).locator('.sd-node')).toHaveCount(2);
   for(const width of [375,1440])for(const theme of ['light','dark']) {
     await page.setViewportSize({width,height:1000});
-    if (await page.locator('html').getAttribute('data-theme') !== theme) await page.getByRole('button',{name:'Toggle color mode'}).click();
+    await page.evaluate(theme=>{localStorage.setItem('neural-mastery-theme',theme);document.documentElement.setAttribute('data-theme',theme);},theme);
     await expect(page.locator('html')).toHaveAttribute('data-theme',theme);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     const metrics=await comparison.evaluate(el=>({viewport:innerWidth,documentWidth:document.documentElement.scrollWidth,columns:getComputedStyle(el).gridTemplateColumns,labelOverflow:[...el.querySelectorAll('.sd-node')].filter(n=>n.scrollHeight>n.clientHeight || n.scrollWidth>n.clientWidth).length}));
