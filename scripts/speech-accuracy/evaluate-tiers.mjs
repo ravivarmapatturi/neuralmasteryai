@@ -11,7 +11,11 @@ import { wordErrors, termMatches } from './metrics.mjs';
 const metadata=JSON.parse(fs.readFileSync('scripts/speech-accuracy/tier-model-metadata.json'));
 const args=Object.fromEntries(process.argv.slice(2).map(s=>s.replace(/^--/,'').split('=')));
 const candidates=args.capture ? [[`capture-${args.capture}`,'onnx-community/whisper-base.en','wasm','q8']] : [['turbo-gpu','onnx-community/whisper-large-v3-turbo','webgpu','q4'],['distil-small-wasm','distil-whisper/distil-small.en','wasm','q8'],['whisper-base-wasm','onnx-community/whisper-base.en','wasm','q8'],['small-gpu','onnx-community/whisper-small.en','webgpu','q8'],['small-wasm','onnx-community/whisper-small.en','wasm','q8'],['base-live','onnx-community/moonshine-base-ONNX','wasm','q8']].filter(c=>!args.only||c[0]===args.only);
-const rows=['corpus','human-terms','sequence'].flatMap(name=>JSON.parse(fs.readFileSync(`scripts/speech-accuracy/${name}.json`)).filter(r=>r.split==='heldout').map(r=>({...r,corpus:name})));
+// --set=v2 is the answer-length set (heldout-v2.json); --set=terms is every clip with a labelled technical term.
+const rowSets={v2:['heldout-v2'],terms:['human-terms','terms']};
+const rows=(rowSets[args.set]??['corpus','human-terms','sequence']).flatMap(name=>JSON.parse(fs.readFileSync(`scripts/speech-accuracy/${name}.json`)).filter(r=>r.split==='heldout').map(r=>({...r,corpus:name})));
+// --prompt=wide gives every clip the same topic vocabulary, to measure a list wider than the question title.
+const widePrompt='XGBoost, RAG, LoRA, QLoRA, embeddings, BM25, LLM, GPU, PyTorch, Kubernetes, Transformer, tokenization, fine-tuning, FAISS, HNSW, reranker.';
 if(args.capture){
  const long=JSON.parse(fs.readFileSync('scripts/speech-accuracy/capture-cases.json'))[0];
  rows.push({...long,corpus:'capture-long'}, {...long,id:'capture-long-quiet-tail',corpus:'capture-quiet-tail',quietAfterSeconds:35,quietGain:0.03});
@@ -37,7 +41,7 @@ const server=http.createServer((req,res)=>{
  else if(url.pathname==='/src/workers/speechCaptureWorklet.js')file=path.join(temp,'capture-worklet.js');
  else if(url.pathname==='/src/lib/interviewRoom/qualitySettings.ts')file=path.join(temp,'quality.js');
  else if(url.pathname==='/src/lib/speechTest/audioPreparation.ts')file=path.join(temp,'preparation.js');
- else if(url.pathname.startsWith('/scripts/speech-accuracy/audio/')&&!url.pathname.includes('..'))file=path.join(process.cwd(),url.pathname.slice(1));
+ else if(/^\/scripts\/speech-accuracy\/audio(-v2)?\//.test(url.pathname)&&!url.pathname.includes('..'))file=path.join(process.cwd(),url.pathname.slice(1));
  else if(url.pathname.endsWith('.mjs'))file=path.join(process.cwd(),'node_modules/onnxruntime-web/dist',path.basename(url.pathname));
  else {res.statusCode=404;res.end();return;}
  try{res.setHeader('Content-Type',file.endsWith('.wav')?'audio/wav':'text/javascript');fs.createReadStream(file).on('error',()=>{res.statusCode=404;res.end();}).pipe(res);}catch{res.statusCode=404;res.end();}
@@ -48,7 +52,7 @@ try {for(const [id,model,device,dtype] of candidates){
  if(fs.existsSync(file)&&!args.repeat)throw Error('Refusing to overwrite '+file);
  const availableMB=()=>Number(fs.readFileSync('/proc/meminfo','utf8').match(/^MemAvailable:\s+(\d+)/m)[1])/1024;
  if(availableMB()<2048)throw Error('Less than 2 GiB available; refusing heavy model run');
- const out={bundleHashes:Object.fromEntries(['worker','quality','preparation','prompt','capture-worklet'].map(name=>[name,crypto.createHash('sha256').update(fs.readFileSync(path.join(temp,name+'.js'))).digest('hex')])),workerBundleSHA256:crypto.createHash('sha256').update(fs.readFileSync(path.join(temp,'worker.js'))).digest('hex'),transformersVersion:JSON.parse(fs.readFileSync('node_modules/@huggingface/transformers/package.json')).version,ortVersion:JSON.parse(fs.readFileSync('node_modules/onnxruntime-web/package.json')).version,prompt:args.prompt??'off',cpuBrowser:args.cpuBrowser==='true',capture:args.capture??null,baselineRevision:args.capture==='before'?baselineRevision:null,harness:'esbuild-bundled production worker over static HTTP; no Vite/dev server during inference',availableBeforeMB:availableMB(),id,model,device,dtype,revision:metadata[model].revision,timestamp:new Date().toISOString(),results:[],browserRSSLimitMB:2304,memoryMetric:'Peak sampled total Chromium process RSS (includes shared pages more than once); not GPU/OS peak memory',peakBrowserRSSMB:null,nonReadRequests:[],responseContentLengths:{}};
+ const out={bundleHashes:Object.fromEntries(['worker','quality','preparation','prompt','capture-worklet'].map(name=>[name,crypto.createHash('sha256').update(fs.readFileSync(path.join(temp,name+'.js'))).digest('hex')])),workerBundleSHA256:crypto.createHash('sha256').update(fs.readFileSync(path.join(temp,'worker.js'))).digest('hex'),transformersVersion:JSON.parse(fs.readFileSync('node_modules/@huggingface/transformers/package.json')).version,ortVersion:JSON.parse(fs.readFileSync('node_modules/onnxruntime-web/package.json')).version,prompt:args.prompt??'off',promptText:args.prompt==='wide'?widePrompt:null,set:args.set??'default',cpuBrowser:args.cpuBrowser==='true',capture:args.capture??null,baselineRevision:args.capture==='before'?baselineRevision:null,harness:'esbuild-bundled production worker over static HTTP; no Vite/dev server during inference',availableBeforeMB:availableMB(),id,model,device,dtype,revision:metadata[model].revision,timestamp:new Date().toISOString(),results:[],browserRSSLimitMB:2304,memoryMetric:'Peak sampled total Chromium process RSS (includes shared pages more than once); not GPU/OS peak memory',peakBrowserRSSMB:null,nonReadRequests:[],responseContentLengths:{}};
  let browser,timer;
  const save=()=>{try{const group=fs.readFileSync('/proc/self/cgroup','utf8').trim().split('::')[1];const base='/sys/fs/cgroup'+group;out.cgroup={path:group,memoryMax:fs.readFileSync(base+'/memory.max','utf8').trim(),swapMax:fs.readFileSync(base+'/memory.swap.max','utf8').trim(),peakBytes:Number(fs.readFileSync(base+'/memory.peak','utf8').trim())};}catch{}fs.writeFileSync(file,JSON.stringify(out,null,2)+'\n');};
  try {
@@ -79,7 +83,7 @@ try {for(const [id,model,device,dtype] of candidates){
     (!args.corpus || row.corpus === args.corpus || (args.corpus === 'long' && row.corpus.startsWith('capture-'))));
   for(const row of selectedRows){
    const bytes=fs.readFileSync('scripts/speech-accuracy/'+row.path);if(crypto.createHash('sha256').update(bytes).digest('hex')!==row.sha256)throw Error('Corrupt corpus '+row.id);
-   const result=await page.evaluate(async ({row,capture,prompt})=>{
+   const result=await page.evaluate(async ({row,capture,prompt,widePrompt})=>{
     if(capture){
       const ctx=new AudioContext({sampleRate:48000});await ctx.resume();
       const audio=await ctx.decodeAudioData(await(await fetch('/scripts/speech-accuracy/'+row.path)).arrayBuffer());
@@ -92,8 +96,8 @@ try {for(const [id,model,device,dtype] of candidates){
       await engine.stop();const finishMs=performance.now()-ended;const metrics=engine.getMetrics();off();dest.stream.getTracks().forEach(t=>t.stop());await ctx.close();
       return {text:metrics.finalText,finishMs,wallMs:finishMs,playbackWallMs:ended-started,liveAtEnd,metrics};
     }
-    const ctx=new AudioContext({sampleRate:16000});const buffer=await ctx.decodeAudioData(await(await fetch('/scripts/speech-accuracy/'+row.path)).arrayBuffer());const pcm=buffer.getChannelData(0);const {normalizeQuietAudio}=await import('/src/lib/speechTest/audioPreparation.ts');const start=performance.now();const {questionSpeechPrompt}=await import('/prompt.js');const result=await window.rpc('batch',{audio:normalizeQuietAudio(pcm),initialPrompt:prompt==='question'?questionSpeechPrompt(row.questionTitle??''):''});await ctx.close();return {...result,wallMs:performance.now()-start};},{row,capture:args.capture,prompt:args.prompt});
-   out.results.push({corpus:row.corpus,accent:row.accent,sourceSHA256:row.sha256,quietAfterSeconds:row.quietAfterSeconds,quietGain:row.quietGain,...result,id:row.id,...(row.corpus==='human-terms'?{termScore:termMatches(row.terms,result.text)}:{wer:wordErrors(row.reference,result.text)})});save();console.log(id,row.id,Math.round(result.wallMs));
+    const ctx=new AudioContext({sampleRate:16000});const buffer=await ctx.decodeAudioData(await(await fetch('/scripts/speech-accuracy/'+row.path)).arrayBuffer());const pcm=buffer.getChannelData(0);const {normalizeQuietAudio}=await import('/src/lib/speechTest/audioPreparation.ts');const start=performance.now();const {questionSpeechPrompt}=await import('/prompt.js');const result=await window.rpc('batch',{audio:normalizeQuietAudio(pcm),initialPrompt:prompt==='question'?questionSpeechPrompt(row.questionTitle??''):prompt==='wide'?widePrompt:''});await ctx.close();return {...result,wallMs:performance.now()-start};},{row,capture:args.capture,prompt:args.prompt,widePrompt});
+   out.results.push({corpus:row.corpus,accent:row.accent,sourceSHA256:row.sha256,quietAfterSeconds:row.quietAfterSeconds,quietGain:row.quietGain,...result,id:row.id,...(row.corpus==='human-terms'?{termScore:termMatches(row.terms,result.text)}:{wer:wordErrors(row.reference,result.text),...(row.terms?.length?{termScore:termMatches(row.terms,result.text)}:{})})});save();console.log(id,row.id,Math.round(result.wallMs));
   }
   out.completed=true;save();
  }catch(e){out.error=String(e);out.loads??=false;save();console.error(id,out.error);}finally{clearInterval(timer);await browser?.close();}

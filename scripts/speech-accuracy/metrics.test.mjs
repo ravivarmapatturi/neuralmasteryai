@@ -16,3 +16,8 @@ test('missing term labels are unavailable and a split mismatch fails closed',()=
  assert.equal(summarize(c,{split:'heldout',results:[{id:'one',text:'one'}]}).termAccuracyPct,null);
  assert.throws(()=>summarize(c,{split:'tune',results:[{id:'one',text:'one'}]}),/Split mismatch/);
 });
+test('contractions and their expanded forms count as the same words',()=>{
+ assert.deepEqual(wordErrors("It is fast and they are not sure I am right","It's fast and they're not sure I'm right"),{edits:0,words:11});
+ assert.deepEqual(wordErrors("It\u2019s here, we cannot stop","it is here we can't stop"),{edits:0,words:7});
+ assert.deepEqual(wordErrors("the model's weights","the models weights"),{edits:1,words:3});
+});
