@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""Audit B3 against a frozen Git baseline without rewriting any content."""
+import ast
+import hashlib
+import json
+import subprocess
+from collections import Counter
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+BASE = "9fcc2846"
+
+
+def read(name):
+    return json.loads((ROOT / name).read_text())
+
+
+def flat(bank):
+    rows = [q for topic in bank["topics"] for q in topic["questions"]]
+    assert len({q["id"] for q in rows}) == len(rows), "Duplicate question ID"
+    return {q["id"]: q for q in rows}
+
+
+before = flat(json.loads(subprocess.check_output(
+    ["git", "show", f"{BASE}:src/data/interviewPractice.json"], cwd=ROOT)))
+bank = read("src/data/interviewPractice.json")
+after = flat(bank)
+overrides = read("src/data/interviewKeyPoints.json")
+assert len(before) == len(after) == 917
+assert before.keys() == after.keys(), "Question IDs changed"
+assert len(overrides) == 200
+module = ast.parse((ROOT / "scripts/interview/build_practice_data.py").read_text())
+validator = next(n for n in module.body if isinstance(n, ast.FunctionDef) and n.name == "validate_key_points")
+namespace = {}
+exec(compile(ast.Module(body=[validator], type_ignores=[]), "<validator>", "exec"), namespace)
+for qid, question in after.items():
+    original = before[qid]
+    assert {k: v for k, v in question.items() if k != "keyPoints"} == {
+        k: v for k, v in original.items() if k != "keyPoints"
+    }, f"Answer or non-rubric metadata changed: {qid}"
+    if qid in overrides:
+        assert "keyPoints" not in original, f"Existing rubric overwritten: {qid}"
+        assert question["keyPoints"] == overrides[qid], f"Override not carried through: {qid}"
+        namespace["validate_key_points"](question)
+    else:
+        assert question.get("keyPoints") == original.get("keyPoints"), f"Unrelated rubric changed: {qid}"
+
+sample = read("docs/evidence/interview/b3-support-sample.json")
+assert len(sample["questions"]) == 30
+assert len({q["questionId"] for q in sample["questions"]}) == 30
+for row in sample["questions"]:
+    question = after[row["questionId"]]
+    assert [c["point"] for c in row["checks"]] == overrides[row["questionId"]]
+    for check in row["checks"]:
+        assert check["verdict"] == "supported"
+        assert all(excerpt in question["answer"] for excerpt in check["answerExcerpts"]), row["questionId"]
+# These assertions verify provenance integrity, not semantic entailment; the sample
+# verdicts are a recorded manual reading of each point against its own answer.
+heldout = read("docs/evidence/interview/judge-v2-heldout.json")
+ground_truth = read("docs/evidence/interview/judge-v2-ground-truth.json")
+for example in heldout["examples"]:
+    qid = example["questionId"]
+    for field in ("answer", "keyPoints"):
+        assert after[qid].get(field) == before[qid].get(field) == ground_truth[qid].get(field)
+answers = sorted((qid, q["answer"]) for qid, q in after.items())
+print(json.dumps({
+    "baseline": BASE,
+    "questionsBefore": len(before), "questionsAfter": len(after),
+    "answersChanged": 0, "otherQuestionMetadataChanged": 0,
+    "existingRubricsPreserved": sum("keyPoints" in q for q in before.values()),
+    "newRubrics": len(overrides), "rubricsAfter": sum("keyPoints" in q for q in after.values()),
+    "newPoints": sum(map(len, overrides.values())),
+    "newRubricsByTopic": dict(Counter(t["id"] for t in bank["topics"] for q in t["questions"] if q["id"] in overrides)),
+    "answerPairsSha256": hashlib.sha256(json.dumps(answers, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest(),
+    "sampleQuestions": len(sample["questions"]), "samplePoints": sum(len(r["checks"]) for r in sample["questions"]),
+    "unchangedHeldoutAnswers": len(heldout["examples"]),
+    "heldoutNote": "Inputs match the frozen baseline; this is not an inference measurement.",
+}, indent=2))

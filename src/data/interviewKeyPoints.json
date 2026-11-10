@@ -598,5 +598,605 @@
     "Per-channel scales handle consistently large feature dimensions.",
     "Per-token dynamic scales isolate token-specific outliers.",
     "Dynamic scale computation adds kernel overhead."
+  ],
+  "senior:quant-qlora-nf4-double-quant": [
+    "NF4 uses a quantile grid suited to normally distributed weights.",
+    "Double quantization compresses the quantization scale factors.",
+    "Paged optimizers move optimizer memory to CPU during spikes.",
+    "Train full-precision LoRA adapters while accepting dequantization overhead."
+  ],
+  "senior:a2a-supervisor-vs-peer-choreography": [
+    "Supervisors decompose tasks, delegate and maintain global state.",
+    "Peer choreography communicates directly without a central controller.",
+    "Supervisors can bottleneck while peer messaging risks storms and deadlocks.",
+    "Bound peer communication with hop counters and timeout deadlines."
+  ],
+  "senior:a2a-protocol-mcp-vs-jsonrpc": [
+    "MCP standardizes Tools, Resources and Prompts over JSON-RPC.",
+    "Discover tool capabilities and schemas through tools/list.",
+    "Clients handle isolation and approval while servers execute actions.",
+    "Standard framing adds overhead but reduces custom integration code."
+  ],
+  "senior:a2a-distributed-tracing-opentelemetry": [
+    "Start a root span and propagate W3C trace context on delegation.",
+    "Subagents extract headers and create linked child spans.",
+    "Record roles, token counts and tool parameters in span metadata.",
+    "Centralized tracing adds overhead but exposes stalled subagent calls."
+  ],
+  "senior:a2a-shared-workspace-concurrency-control": [
+    "Capture the file's SHA-256 hash before editing.",
+    "Check the original version hash before an atomic write.",
+    "Reject conflicts and provide the current diff for reapplication.",
+    "Optimistic concurrency avoids locks but requires conflict retries."
+  ],
+  "senior:dist-ddp-allreduce-synchronous": [
+    "DDP replicas must apply identical synchronized gradient updates.",
+    "Bucket gradients and start asynchronous all-reduce as buckets become ready.",
+    "Overlap communication with remaining backward computation.",
+    "Large buckets favor bandwidth while small buckets begin overlap sooner."
+  ],
+  "senior:dist-zero-stages-memory-tradeoff": [
+    "ZeRO-1 shards optimizer states and ZeRO-2 additionally shards gradients.",
+    "ZeRO-3 also shards model parameters.",
+    "Gather layer weights for computation and reduce-scatter gradients.",
+    "Greater memory savings require more interconnect communication."
+  ],
+  "senior:dist-fsdp-layer-allgather": [
+    "FSDP shards parameters, gradients and optimizer states by layer.",
+    "All-gather layer weights before forward and backward computation.",
+    "Free full weights after use and reduce-scatter gradients.",
+    "Overlap next-layer gathering with current computation to reduce overhead."
+  ],
+  "senior:dist-pipeline-parallelism-bubbles": [
+    "Pipeline stages idle while awaiting activations or gradients.",
+    "Splitting batches into more micro-batches reduces the bubble fraction.",
+    "1F1B alternates forward and backward micro-batches to release activations sooner.",
+    "More in-flight micro-batches increase activation-memory pressure."
+  ],
+  "senior:dist-tensor-parallelism-megatron": [
+    "Column-shard QKV projections so ranks compute separate heads.",
+    "Row-shard output projections and all-reduce partial outputs.",
+    "Apply column then row sharding to feed-forward layers.",
+    "Frequent layer collectives favor high-bandwidth intra-node links."
+  ],
+  "senior:dist-gradient-accumulation-boundary": [
+    "Accumulate gradients over micro-batches without zeroing between them.",
+    "Use no_sync on intermediate DDP micro-batches.",
+    "Synchronize, step the optimizer and clear gradients at the accumulation boundary.",
+    "Less frequent updates require adjusted warmup schedules."
+  ],
+  "senior:dist-nccl-timeout-debugging": [
+    "A collective timeout can be caused by another rank failing to enter.",
+    "Enable NCCL diagnostics and identify the delayed rank.",
+    "Check data loading, uneven work and GPU health.",
+    "Test network collectives if compute ranks look healthy."
+  ],
+  "senior:dist-activation-checkpointing-overhead": [
+    "Save block inputs instead of every intermediate activation.",
+    "Recompute discarded activations during backward before calculating gradients.",
+    "Checkpointing reduces memory at the cost of extra forward computation.",
+    "Use it to fit deeper models or longer sequences."
+  ],
+  "senior:dist-bf16-vs-fp16-mixed-precision": [
+    "FP16 has a narrower exponent range and may need loss scaling.",
+    "BF16 matches FP32 exponent range and preserves small gradient magnitudes.",
+    "BF16 has fewer mantissa bits and more rounding error.",
+    "Hardware support and numerical needs affect the format choice."
+  ],
+  "senior:dist-data-loader-sharding-determinism": [
+    "Use DistributedSampler to assign data across ranks.",
+    "Call set_epoch each epoch to change the deterministic shuffle.",
+    "Save epoch, step and random states for reproducible resumption.",
+    "Uneven dataset sizes require padding or dropping samples."
+  ],
+  "senior:coding-chunker-token-aware": [
+    "Count tokenizer subwords rather than raw characters.",
+    "Split by paragraphs, then sentences, then words as needed.",
+    "Emit at the token limit and retain trailing overlap.",
+    "Test oversized sentences, small documents, Unicode and overlap continuity."
+  ],
+  "senior:coding-bm25-from-scratch": [
+    "Combine inverse document frequency with saturated term frequency.",
+    "Normalize by document length so length alone does not dominate.",
+    "Handle empty documents, unmatched queries and unseen vocabulary.",
+    "BM25 favors exact lexical matches but misses semantic synonyms."
+  ],
+  "senior:coding-cross-encoder-reranker": [
+    "Cross-encoders jointly attend to concatenated query and passage tokens.",
+    "Rerank candidates after a fast first-stage retriever.",
+    "Normalize and blend retrieval scores with cross-encoder logits.",
+    "Test keyword decoys while accounting for per-candidate latency."
+  ],
+  "senior:coding-json-output-parser": [
+    "Track object depth, array depth, string state and escapes incrementally.",
+    "Emit completed scalar key-value pairs before the full object closes.",
+    "Handle numbers split across chunks and escaped quotes.",
+    "Downstream consumers must tolerate partial output after truncation."
+  ],
+  "senior:coding-eval-harness-precision-recall": [
+    "Tally true positives, false positives and false negatives per class.",
+    "Micro metrics pool counts across classes.",
+    "Macro metrics average per-class precision, recall and F1 equally.",
+    "Macro-F1 reveals rare-class failures hidden by traffic-dominated micro metrics."
+  ],
+  "senior:coding-dynamic-batcher": [
+    "Queue concurrent requests asynchronously.",
+    "Dispatch when maximum batch size or timeout is reached.",
+    "Pad inputs and map responses back through caller futures.",
+    "Batching improves utilization but adds waiting latency."
+  ],
+  "senior:coding-token-bucket-rate-limiter": [
+    "Store capacity, refill rate, balance and last-check time.",
+    "Refill lazily from elapsed time and cap at capacity.",
+    "Lock refill and debit together for thread safety.",
+    "Reject exhausted requests with retry-after estimates while controlling bursts."
+  ],
+  "senior:coding-streaming-sse-client": [
+    "Buffer incoming bytes until a complete double-newline-delimited SSE event arrives.",
+    "Parse event fields and deserialize data payloads.",
+    "Reconnect with exponential backoff and Last-Event-ID.",
+    "HTTP text framing is easy to proxy but adds string-processing overhead."
+  ],
+  "senior:coding-vector-l2-cosine-distance": [
+    "Normalize embedding rows and use matrix multiplication for cosine similarity.",
+    "Compute squared distance from norms and dot products.",
+    "Unit-normalized squared distance equals two minus twice cosine similarity.",
+    "Normalization discards magnitude information that may encode confidence."
+  ],
+  "senior:coding-exponential-decay-cache": [
+    "Compare query embeddings with cached vectors using cosine similarity.",
+    "Return a hit only above the threshold and before TTL expiry.",
+    "Evict expired entries on access or by sweep.",
+    "Low thresholds confuse negation or constraints despite better paraphrase hits."
+  ],
+  "senior:coding-reciprocal-rank-fusion": [
+    "Fuse ranks rather than uncalibrated raw retriever scores.",
+    "Sum 1/(60 + one-based rank) for each document.",
+    "Sort by fused score with document-ID tie breaking.",
+    "Test disjoint lists and ties while recognizing score margins are discarded."
+  ],
+  "senior:coding-retry-backoff-jitter": [
+    "Compute each retry ceiling as min(max_delay, base_delay times two to the attempt).",
+    "Draw full-jitter delays uniformly between zero and that ceiling.",
+    "Test cap behavior, zero attempts and seeded reproducibility.",
+    "Jitter disperses synchronized retries but can yield near-zero waits."
+  ],
+  "senior:coding-agent-loop-guardrails": [
+    "Check step and total token budgets during every iteration.",
+    "Track tool signatures using names and sorted JSON arguments.",
+    "Abort repeated consecutive failed tool calls.",
+    "Test graceful budget exhaustion and normal completion."
+  ],
+  "senior:coding-idempotent-tool-wrapper": [
+    "Look up the idempotency key before executing a mutating tool.",
+    "Store a parameter hash and result after first execution.",
+    "Return cached results for matching duplicate parameters.",
+    "Reject reused keys with different parameters and validate missing keys."
+  ],
+  "senior:coding-agent-parse-tool": [
+    "Extract JSON from code fences or inline invocation text.",
+    "Validate the parsed tool name and arguments dictionary.",
+    "Return structured parse errors for model correction.",
+    "Test preambles, fenced output and malformed syntax."
+  ],
+  "senior:coding-hybrid-retrieval-fusion": [
+    "Normalize dense and BM25 scores separately to zero through one.",
+    "Blend normalized scores with alpha and one minus alpha.",
+    "Assign zero for documents missing from a retriever.",
+    "Test equal-score lists, alpha boundaries, empty inputs and ties."
+  ],
+  "senior:coding-rag-assemble-context": [
+    "Select chunks by descending relevance within a token budget.",
+    "Skip chunks that would overflow the budget.",
+    "Restore document and character order after selection.",
+    "Merge adjacent selected chunks and test continuity and token counts."
+  ],
+  "senior:coding-rag-near-duplicates": [
+    "Represent chunks as lowercase three-word shingle sets.",
+    "Compare candidates with retained chunks using Jaccard similarity.",
+    "Drop chunks above the duplicate threshold before indexing.",
+    "Test exact duplicates, boilerplate variants and short chunks."
+  ],
+  "senior:coding-rag-check-citations": [
+    "Split responses into sentences and extract bracketed source numbers.",
+    "Validate citation indices against the available source list.",
+    "Flag uncited sentences as well as out-of-range references.",
+    "Test multi-source brackets and valid citations."
+  ],
+  "senior:coding-kv-cache-decode": [
+    "Project the incoming token into query, key and value vectors.",
+    "Append new keys and values to historical cache tensors.",
+    "Attend the new query over cached keys with head-dimension scaling and softmax.",
+    "Test concatenation shapes and recurrent cache accumulation."
+  ],
+  "senior:voice-streaming-tts-neural-vocoder": [
+    "Accumulate generated text into short grammatical phrase chunks.",
+    "Send phrases to an acoustic model and synthesize incremental audio with a vocoder.",
+    "Stream audio while the model continues generating text.",
+    "Smaller chunks reduce first-audio latency but weaken cross-phrase prosody."
+  ],
+  "senior:voice-vad-pause-detection-turn-taking": [
+    "Combine neural VAD with semantic end-of-turn classification.",
+    "Distinguish reflective pauses from completed turns.",
+    "Extend the silence threshold for incomplete clauses.",
+    "Balance interruption risk against response delay and classifier latency."
+  ],
+  "senior:voice-streaming-asr-chunk-overlap": [
+    "Overlap adjacent audio windows to avoid splitting phonemes.",
+    "Align successive transcripts and freeze stable prefixes.",
+    "Use VAD to bypass silent chunks and prevent hallucination loops.",
+    "Overlap improves boundary stability but repeats compute."
+  ],
+  "senior:voice-wer-normalization-accents": [
+    "Compute WER as substitutions, deletions and insertions divided by reference words.",
+    "Normalize case, numbers, punctuation and contractions before scoring.",
+    "Report separate accent, noise and speaking-rate cohorts.",
+    "Aggregate WER can hide severe regional-accent failures."
+  ],
+  "senior:voice-full-duplex-barge-in": [
+    "Keep the microphone active while the agent speaks.",
+    "Remove speaker echo before speech detection using AEC.",
+    "On genuine user speech, cancel generation and flush playback buffers.",
+    "Thresholds trade responsive barge-in against accidental interruptions."
+  ],
+  "rag-interview-questions:bcf8b4d2f56d": [
+    "Use structural per-tenant index isolation for sensitive legal data.",
+    "Enforce passage-level attribution with NLI checks.",
+    "Apply late-binding permissions within each firm's access tiers.",
+    "Audit users, applied filters and retrieved chunk IDs."
+  ],
+  "rag-interview-questions:9219b939f9c2": [
+    "Check source format and schema changes first.",
+    "Check for provider-side embedding or generation model changes.",
+    "Compare traffic mix for harder query distributions.",
+    "Inspect stale or partially corrupted indexes through systematic elimination."
+  ],
+  "rag-interview-questions:rag-embedding-migration": [
+    "Build a new embedding index alongside the serving index.",
+    "Validate the new index on a golden set before atomic cutover.",
+    "Never mix old and new embedding spaces within one index.",
+    "Dual-embed documents arriving during the rebuild window."
+  ],
+  "rag-interview-questions:5d9b8c2a0b2d": [
+    "CAG fits a small stable corpus within the model's KV-cache budget.",
+    "Including the full corpus avoids selective retrieval misses.",
+    "Corpus growth and frequent invalidation make CAG less suitable.",
+    "Use RAG or a cached stable core plus retrieved changing content when needed."
+  ],
+  "rag-interview-questions:9d5eba796e50": [
+    "Use coarse BM25 and quantized dense retrieval to narrow the corpus.",
+    "Rerank only the candidate subset with a cross-encoder or ColBERT.",
+    "Partition early by a natural dimension such as topic or date.",
+    "Early partitioning makes later sharding easier."
+  ],
+  "rag-interview-questions:6d88306c9184": [
+    "Fine-tuned facts require retraining when knowledge changes.",
+    "Weight-encoded facts lack document-level citation provenance.",
+    "RAG updates through re-indexing and can cite sources.",
+    "Fine-tuning remains useful for tone, format or a narrow skill."
+  ],
+  "repo:system-design:when-not-ml": [
+    "Check whether a short rule already meets the goal.",
+    "Confirm labels, usable decision-time signal and an action on predictions.",
+    "Compare model cost and error tolerance with decision value.",
+    "Prefer a learned model when heuristics become long and fragile."
+  ],
+  "repo:system-design:demo-to-product-signals": [
+    "External recurring users and uptime expectations signal product needs.",
+    "Sign-in, history, model budgets and regulated inputs add production obligations.",
+    "Add authentication, fallback models and tracing.",
+    "Track model cost per user."
+  ],
+  "repo:system-design:metric-layers-churn-auc": [
+    "Define the action and match score delivery to the decision cadence.",
+    "Check cancellation-related label leakage and compare the existing rule.",
+    "Measure precision in the top five percent rather than relying on AUC.",
+    "Pair offline metrics with online, business and guardrail metrics."
+  ],
+  "repo:system-design:llm-cost-projection": [
+    "Apply the cache hit rate before calculating billable model traffic.",
+    "A 35 percent hit rate leaves 32,500 daily model queries.",
+    "The answer's monthly input and output costs total about $7,556.",
+    "Limit output length because output tokens cost more per token."
+  ],
+  "repo:system-design:drift-monitoring-design": [
+    "Monitor system health, inputs, predictions and delayed outcomes.",
+    "Compare fixed reference and sliding current windows with statistical tests.",
+    "Require corrected significance, effect size and persistence before alerting.",
+    "Send warnings to a dashboard rather than paging a person."
+  ],
+  "repo:system-design:streaming-and-fallback": [
+    "Stream responses over server-sent events for early first tokens.",
+    "Retry with exponential backoff and jitter up to three retries.",
+    "Fall through models, cached answers and an unavailable response.",
+    "Degrade secondary cache and retrieval failures gracefully."
+  ],
+  "repo:system-design:classifier-head-swap-choice": [
+    "Replace the vocabulary head with a two-class linear head over masked mean pooling.",
+    "Freeze the pretrained body for the small 800-example dataset.",
+    "Head-only training reduces time, memory and overfitting risk.",
+    "Full fine-tuning becomes more useful with more examples or domain shift."
+  ],
+  "repo:system-design:ab-test-prompt-rollout": [
+    "Run the prompt in shadow before exposing its answers.",
+    "Roll out to increasing user shares while quality metrics hold.",
+    "Assign versions by deterministic user-ID hash.",
+    "Roll back automatically when the new error rate doubles over a request window."
+  ],
+  "repo:system-design:batch-vs-online-serving-choice": [
+    "Account for job duration when satisfying a batch staleness limit.",
+    "Hourly batch runs cost more than two online replicas in this example.",
+    "Online serving provides fresher data for the stated traffic.",
+    "Relaxed freshness or higher peak traffic can reverse the cost choice."
+  ],
+  "repo:system-design:churn-model-system": [
+    "Predict 30-day churn and select the top five percent nightly.",
+    "Use batch scoring because fresher online scores are unnecessary.",
+    "Require lift over the idle-days heuristic.",
+    "Roll out through shadow and canary with heuristic fallback."
+  ],
+  "repo:system-design:feature-store-design": [
+    "Keep feature entity, window, default, TTL and version in one registry.",
+    "Store timestamped history offline and materialize latest values online.",
+    "Join training features at or before label time within their TTL.",
+    "Latest-snapshot joins leak future information and degrade new-data performance."
+  ],
+  "repo:system-design:public-demo-controls": [
+    "Define bounded validated input and structured output errors.",
+    "Run cheap checks before the model: size, auth, quota, validation and daily cap.",
+    "Return stable codes with hints and request IDs.",
+    "Log operational metadata and keyed client hashes without raw text or addresses."
+  ],
+  "repo:system-design:eval-platform-ship-gate": [
+    "Describe runs with manifests, seeds, revisions and stage hashes.",
+    "Freeze numeric evaluation gates before execution.",
+    "Gate core regressions and policy KL drift separately.",
+    "Log named-reviewer overrides and content-address reports for replay."
+  ],
+  "repo:system-design:batched-inference-api-budget": [
+    "Authenticate, rate-limit, guard inputs and check cache before model inference.",
+    "Stream model output through guardrails, evaluation logging and cost tracking.",
+    "Set latency, cache-hit, block-rate and per-request cost budgets.",
+    "Scale I/O-bound asynchronous servers behind a load balancer."
+  ],
+  "repo:system-design:finetune-pipeline-design": [
+    "Version configurations for data preparation, SFT, preference tuning, quantization and serving.",
+    "Deduplicate, scrub personal data and check evaluation contamination.",
+    "Compare base and tuned variants in an ablation table.",
+    "Report serving throughput, draft acceptance, cost, safety and model provenance."
+  ],
+  "repo:system-design:fraud-check-100ms": [
+    "Use online fraud scoring with approve, review and block thresholds.",
+    "Train with time splits and payment-time features because labels are delayed.",
+    "Roll out shadow then canary with heuristic fallback on timeout.",
+    "Monitor blocked-payment feedback loops and outcome-based concept drift."
+  ],
+  "repo:system-design:rag-service-company-docs": [
+    "Chunk code at function and class boundaries with embeddings, sparse terms and summaries.",
+    "Fuse dense and sparse results, deduplicate and cross-encode a narrowed set.",
+    "Require file-and-line citations and drop uncited claims.",
+    "Re-embed changed symbols and evaluate retrieval, faithfulness and latency."
+  ],
+  "repo:system-design:concept-drift-blind-spot": [
+    "Concept drift changes the input-label relationship without necessarily changing inputs.",
+    "Input and score monitors can miss the changed conditional label distribution.",
+    "Outcome monitoring detects it only after labels arrive.",
+    "Collect post-change labels before retraining instead of relearning old-quarter relationships."
+  ],
+  "repo:system-design:skew-triage": [
+    "Compare online reads with training joins for matching entities and times.",
+    "Compare fresh computation with joins to isolate stale features.",
+    "Compare alternate code paths with fresh computation to isolate logic differences.",
+    "Use one registry definition and verify logged serving features against it."
+  ],
+  "repo:system-design:design-doc-blocking-review": [
+    "Require a decision, business metric and meaningful baseline before review.",
+    "Confirm features exist at prediction time and serving meets freshness constraints.",
+    "Require rollout, rollback and default failure actions.",
+    "Ask for precision at the operating threshold rather than AUC alone."
+  ],
+  "repo:system-design:pipeline-rollback-plan": [
+    "Choose reruns by stage cost and preserve expensive base checkpoints.",
+    "Invalidate a failed stage and all descendants in the hashed dependency graph.",
+    "Rerun cheaper downstream stages when possible.",
+    "Replay promises the same recipe and data with comparable metrics, not identical weights."
+  ],
+  "repo:system-design:feedback-loop-clean-data": [
+    "Model interventions change the data used to train later versions.",
+    "Keep a random holdout or small random-decision share free of model influence.",
+    "Log scores and decisions with each row.",
+    "Join decision-time features to distinguish influenced and clean data."
+  ],
+  "rag-interview-questions:f5c12c573de0": [
+    "Clarify corpus type, freshness and query volume before choosing components.",
+    "Establish latency budget and user access boundaries.",
+    "Define domain correctness, including exact facts versus synthesis.",
+    "Requirements determine the architecture rather than a memorized vendor stack."
+  ],
+  "rag-interview-questions:60066a4a1419": [
+    "Separate offline ingestion, chunking, embedding and indexing from serving.",
+    "Online serving includes query understanding, retrieval, reranking and generation.",
+    "Include context assembly and guardrails in the online path.",
+    "Offline work favors throughput while each user request is latency-critical."
+  ],
+  "rag-interview-questions:rag-debug-stage-first": [
+    "Verify ingestion and indexing before changing generation prompts.",
+    "Check permissions, chunk boundaries and query transformation for exclusions or drift.",
+    "Inspect retrieval ranks and whether context was truncated or overlooked.",
+    "Localize the failed stage before selecting a fix."
+  ],
+  "rag-interview-questions:2e13795da5b5": [
+    "Naive RAG suits small-to-medium corpora and single-fact lookups.",
+    "Use it when latency, cost and operational capacity are constrained.",
+    "Simple failure modes are easier to diagnose.",
+    "Multi-hop or synthesis needs may justify more complex pipelines."
+  ],
+  "rag-interview-questions:3a10c5cac37f": [
+    "Progress from naive to advanced, modular and agentic architectures as needed.",
+    "Tie each addition to a measured failure of the previous design.",
+    "Add one component at a time and evaluate on a fixed golden set.",
+    "Retain components only when they improve the metric."
+  ],
+  "rag-interview-questions:462d2fe379be": [
+    "Measure chunk-size effects rather than assuming smaller is better.",
+    "Confirm multi-hop failures before adding agentic loops.",
+    "Add reranking only when first-stage retrieval is demonstrably inadequate.",
+    "Use tenant isolation and a fixed CI golden set."
+  ],
+  "rag-interview-questions:rag-ft-long-context": [
+    "Use RAG for changing facts and large document collections.",
+    "Fine-tune for tone, format or narrow skills.",
+    "Use long context for bounded corpora when token cost is acceptable.",
+    "Combine these approaches when their purposes differ."
+  ],
+  "rag-interview-questions:rag-chunk-code": [
+    "Chunk code at AST-defined function or method boundaries.",
+    "Preserve signature, docstring and body together.",
+    "Use a real parser to locate exact boundaries.",
+    "Fixed-character splits can break signatures and harm grounded code generation."
+  ],
+  "rag-interview-questions:91ab7f6540d9": [
+    "Detect text, tables and images as separate content regions.",
+    "Chunk prose by structure with overlap and serialize tables separately.",
+    "Generate text descriptions for charts before embedding.",
+    "Carry page and section metadata on every chunk."
+  ],
+  "rag-interview-questions:81d655b86d86": [
+    "Match extraction tools to PDFs, rendered websites, databases, APIs and SaaS sources.",
+    "Validate that extraction returns non-empty text.",
+    "Route scanned PDFs to OCR when no text layer is available.",
+    "Incorrect source tooling can return nothing rather than degrade gracefully."
+  ],
+  "rag-interview-questions:575cc6c04f5a": [
+    "Choose pdfplumber for structured tables despite lower throughput.",
+    "Use PyMuPDF for fast layout-aware extraction.",
+    "Choose pypdf when a pure-Python dependency matters most.",
+    "Scanned PDFs require OCR regardless of the text-extraction library."
+  ],
+  "rag-interview-questions:rag-chunk-too-long": [
+    "Oversized chunks can be silently truncated by the embedding model.",
+    "Truncation drops trailing content from the index.",
+    "Long tables and dense unsplit paragraphs are vulnerable.",
+    "Silent content loss degrades retrieval without an explicit pipeline error."
+  ],
+  "rag-interview-questions:7ea5129725e0": [
+    "Short queries and long passages have a style and length distribution mismatch.",
+    "HyDE embeds a generated answer-like passage.",
+    "INSTRUCTOR adds a task-specific embedding instruction.",
+    "E5 learns query-passage asymmetry using explicit prefixes."
+  ],
+  "rag-interview-questions:5e132e72450b": [
+    "Use a cross-lingually aligned multilingual embedding model for broad coverage.",
+    "Query translation is an alternative with per-request cost and latency.",
+    "Fine-tune on domain cross-lingual pairs if needed.",
+    "Validate on held-out target-language queries rather than relying on model cards."
+  ],
+  "rag-interview-questions:rag-billion-vectors": [
+    "A billion 768-dimensional float32 vectors need about 3.07 TB before index overhead.",
+    "Quantize vectors and shard the index across nodes.",
+    "Keep hot segments in memory and cold segments on SSD.",
+    "Plan incremental indexing alongside expensive full rebuilds."
+  ],
+  "rag-interview-questions:rag-diskann": [
+    "DiskANN addresses the RAM cost of very large resident HNSW indexes.",
+    "Keep PQ-compressed vectors in RAM for navigation.",
+    "Fetch full-precision SSD vectors for final reranking.",
+    "SSD reads add latency that may not suit sub-millisecond requirements."
+  ],
+  "rag-interview-questions:3d6a2d33d3cd": [
+    "Index loading after restart causes cold queries to slow or fail.",
+    "Warm nodes with probes before admitting real traffic.",
+    "Scale through warm replicas instead of restarting the primary directly.",
+    "Use memory locking or mapped files to manage paging and startup loading."
+  ],
+  "rag-interview-questions:230ea10b8577": [
+    "Serverless bills by operations and stored data and suits bursty traffic.",
+    "Cold namespaces add startup latency.",
+    "Provisioned nodes cost money while idle but stay warm.",
+    "Steady high volume favors predictable provisioned capacity."
+  ],
+  "rag-interview-questions:rag-rerank-first": [
+    "Tune the reranker first because pairwise training needs fewer labels.",
+    "Reranker changes do not require corpus re-indexing.",
+    "Embedding changes require full re-embedding and slower feedback.",
+    "Compare iteration cost before choosing which model to tune."
+  ],
+  "rag-interview-questions:rag-hard-negatives": [
+    "Random negatives are often too easy to teach the relevance boundary.",
+    "Mine hard negatives with BM25 or current model embeddings.",
+    "Hard negatives may include relevant but unlabeled documents.",
+    "Filter suspicious high-scoring negatives with a cross-encoder."
+  ],
+  "rag-interview-questions:3c9457d43706": [
+    "Regenerate all vectors when switching embedding models.",
+    "Mixed model versions occupy incompatible geometric spaces.",
+    "Build the new index alongside the old and cut over atomically.",
+    "Handle documents arriving during the migration window explicitly."
+  ],
+  "rag-interview-questions:aecd9ff3fe5c": [
+    "Domain-only updates can overwrite general semantic representations.",
+    "Hold out a general-domain slice alongside domain evaluations.",
+    "Compare recall, MRR and nDCG before and after tuning on both slices.",
+    "A sharp general-domain drop signals catastrophic forgetting."
+  ],
+  "rag-interview-questions:bfbbfd3c81a1": [
+    "Advanced RAG adds rewriting, hybrid search and reranking to naive retrieval.",
+    "The enhancements run as one fixed end-to-end pass.",
+    "Modular RAG differs by making components swappable and routable.",
+    "The distinction is orchestration rather than the individual techniques."
+  ],
+  "rag-interview-questions:548f7d703d2f": [
+    "Modular RAG exposes independent retrievers, fusion, routing and memory components.",
+    "A router selects strategy or data source per query.",
+    "Orchestration decides which modules to invoke.",
+    "Advanced RAG instead follows the same fixed sequence."
+  ],
+  "rag-interview-questions:68adb8eaa723": [
+    "Generate draft answers and rationales from document subsets in parallel.",
+    "A larger verifier selects among drafts without reading all raw documents.",
+    "Traffic must amortize running two models.",
+    "Similar subsets reduce meaningful draft disagreement and the benefit."
+  ],
+  "rag-interview-questions:464a23ee38fb": [
+    "Feed larger document spans directly into a long-context window.",
+    "This trades precise retrieval for fewer chunk-boundary failures.",
+    "Small corpora or prompt-cached stable documents can make it worthwhile.",
+    "The approach fails when the corpus exceeds context capacity."
+  ],
+  "rag-interview-questions:aa993df62e4b": [
+    "Train with a golden document plus plausible retrieval distractors.",
+    "Omit the golden document in some examples to teach retrieval-miss behavior.",
+    "Standard clean QA tuning does not expose distractors or misses.",
+    "RAFT targets robustness to imperfect retrieved context."
+  ],
+  "rag-interview-questions:1bea9812d7a6": [
+    "Both methods retrieve for multiple query rephrasings.",
+    "Multi-query retrieval unions result sets.",
+    "RAG-Fusion merges ranked lists with Reciprocal Rank Fusion.",
+    "Fusion rewards documents ranking well across rephrasings."
+  ],
+  "rag-interview-questions:rag-multihop-chain": [
+    "Each hop forms its query from previous retrieved evidence.",
+    "Sequential retrieval connects facts across documents.",
+    "Early wrong facts propagate and compound through later hops.",
+    "Four hops at 0.9 reliability yield 0.656 chain reliability in the example."
+  ],
+  "rag-interview-questions:da872d982290": [
+    "Build a graph-like associative index.",
+    "Seed Personalized PageRank with query entities.",
+    "Weighted multiple paths increase a connected node's relevance.",
+    "BFS and DFS do not express the same weighted-path aggregation."
+  ],
+  "rag-interview-questions:4b87c24eacc4": [
+    "Keep graph and source text linked through mutual indexing.",
+    "Fall back to source text when graph facts are incomplete.",
+    "Use logical-form-guided deterministic operations for parts of a query.",
+    "KAG targets graph incompleteness and multi-step reasoning reliability."
+  ],
+  "rag-interview-questions:2ff790e9ef2a": [
+    "GraphReader uses an agent to explore the graph step by step.",
+    "Carry compressed findings instead of the full document context.",
+    "GNN-RAG learns graph traversal with a graph neural network.",
+    "Pass retrieved output to the LLM for final verbalization."
   ]
 }
