@@ -51,4 +51,4 @@ The run used the existing `evaluate-judge-v2.mjs baseline heldout` harness again
 
 The four-layer ship gate remains blocked by memory. These commits are for review, not deployment sign-off. All started model servers and browsers were stopped. No push; MockInterviewPage.tsx and timedMock files were untouched. The unrelated untracked judge brief was preserved.
 
-Batch 1: `14680ee1`, 100 new rubrics, coverage 179/917. Batch 2 contains the other 100, coverage 279/917, and this audit evidence. Files were staged by name.
+Batch 1: `14680ee1`, 100 new rubrics, coverage 179/917. Batch 2: `32f0dba8`, the other 100, coverage 279/917, and this audit evidence. Files were staged by name.
