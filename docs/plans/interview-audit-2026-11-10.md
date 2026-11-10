@@ -86,6 +86,17 @@ Severity: P0 breaks or blocks the main job, P1 makes the page feel unprofessiona
 | F8 | P1 | Thin or missing areas for senior AI roles: behavioural (23 total, 3 "tell me about a time"), project deep-dive on the candidate's own work (1), frameworks such as LangGraph, LlamaIndex, DSPy (0 by title), PyTorch hands-on (3), SQL and data (3), reasoning models (1), agent memory (2), guardrails (3), leadership and stakeholder questions (8). | Title keyword screen, a rough check |
 | F9 | P2 | 64 questions are bare "What is X?" definitions. Fine as warm-ups, but they should be marked as such and not counted as senior practice. | Title screen |
 
+### G. Owner report, 10 November (top priority)
+
+| # | Sev | Issue |
+| --- | --- | --- |
+| G1 | P0 | Background and text colours are bad. Dark theme is navy on navy with dim grey secondary text and cream headings; light theme is beige with grey buttons. Text does not stand out from its background. |
+| G2 | P0 | The interview screen does not fit the device screen. The question room should fill exactly one viewport at every size, with the action always visible and no page scroll during Listen and Answer. |
+
+Fix for G1: a new palette for the interview pages in both themes. Dark: near-black neutral background (not blue), one raised surface, near-white primary text, secondary text at 4.5:1 or better, one accent colour for actions. Light: white or very light neutral background, near-black text, the same accent. Every text and background pair measured at 4.5:1 or better (3:1 for large headings), with the measured ratios listed in the evidence.
+
+Fix for G2: the question room uses the dynamic viewport height (100dvh minus the site header) as a column: header, question, answer area that flexes, fixed action bar. Only the Review step scrolls. Checked at 320x568, 375x667, 375x812, 414x896, 768x1024, 1024x768, 1366x768, 1440x900, 1920x1080, and with the phone keyboard open.
+
 ## 2. The fix: what the page becomes
 
 One idea drives the design: **a visitor should be answering a question within one click, and should always know what to do next.**
