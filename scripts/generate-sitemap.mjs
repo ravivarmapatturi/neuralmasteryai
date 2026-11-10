@@ -1,3 +1,4 @@
+import { interviewQuestionRoutes } from './interview-routes.mjs';
 // Walks src/content/docs/**/*.mdx the same way src/lib/contentTree.ts does
 // at runtime (route = "/docs/" + relative path minus .mdx) and writes a
 // sitemap.xml into dist/ at build time. Kept as a plain filesystem walk
@@ -45,6 +46,8 @@ const urls = [
   { loc: `${SITE_URL}/glossary`, lastmod: null },
   ...glossarySlugs.map((slug) => ({ loc: `${SITE_URL}/glossary/${slug}`, lastmod: null })),
   { loc: `${SITE_URL}/interview`, lastmod: null },
+  { loc: `${SITE_URL}/interview/mock`, lastmod: null },
+  ...interviewQuestionRoutes.map(route => ({ loc: `${SITE_URL}${route}`, lastmod: null })),
   { loc: `${SITE_URL}/interview/questions`, lastmod: null },
   { loc: `${SITE_URL}/blog`, lastmod: null },
   ...JSON.parse(readFileSync(resolve(import.meta.dirname, '..', 'src', 'data', 'blogMeta.generated.json'), 'utf8')).map((p) => ({
