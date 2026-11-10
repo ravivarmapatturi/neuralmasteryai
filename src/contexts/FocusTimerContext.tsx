@@ -453,11 +453,19 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const onVisibilityChange = () => {
+    // visibilitychange covers switching tabs, minimising the window and locking the screen;
+    // pagehide/pageshow cover closing the tab and the back-forward cache.
+    const onVisibilityChange = (event?: Event) => {
       const now = Date.now();
       const current = stateRef.current;
-      if (document.hidden) {
-        if (current.status === 'running' && current.phase === 'focus') setState((prev) => pauseTimer(prev, 'away', now));
+      if (document.hidden || event?.type === 'pagehide') {
+        if (current.status === 'running' && current.phase === 'focus') {
+          // Saved straight away: the page may unload before React re-renders.
+          const paused = pauseTimer(current, 'away', now);
+          stateRef.current = paused;
+          writeStorage(TIMER_STORAGE_KEY, paused);
+          setState(paused);
+        }
         return;
       }
       if (current.status === 'running' && current.endsAt !== null && now >= current.endsAt) {
@@ -468,8 +476,12 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
     };
 
     document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pagehide', onVisibilityChange);
+    window.addEventListener('pageshow', onVisibilityChange);
     return () => {
       document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pagehide', onVisibilityChange);
+      window.removeEventListener('pageshow', onVisibilityChange);
     };
   }, [handlePhaseEnd]);
 

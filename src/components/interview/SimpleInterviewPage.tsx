@@ -13,6 +13,7 @@ import { questionSpeechPrompt } from '../../lib/interviewRoom/speechPrompt';
 import { useFocusMusic } from '../../contexts/FocusMusicContext';
 import type { SingleThreadASREngine } from '../../lib/speechTest/engines';
 import practice from '../../data/interviewPractice.json';
+import { LearnLinks } from './LearnLinks';
 import { InterviewGraph } from './InterviewGraph';
 import { DeliveryRow } from './DeliveryRow';
 import { measureDelivery, type DeliveryTiming } from '../../lib/interviewDelivery';
@@ -1370,6 +1371,7 @@ export default function SimpleInterviewPage() {
                 )}
               </h2>
             </div>
+            <LearnLinks questionId={question.id} topicQuestionIds={topic.questions.map(q => q.id)} />
             {question.options && (
               <ol className="si-options" type="A">
                 {question.options.map((o) => (
