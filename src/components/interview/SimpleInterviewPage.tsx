@@ -16,7 +16,6 @@ import practice from '../../data/interviewPractice.json';
 import { InterviewGraph } from './InterviewGraph';
 import { DeliveryRow } from './DeliveryRow';
 import { measureDelivery, type DeliveryTiming } from '../../lib/interviewDelivery';
-import { TodaysTen } from './TodaysTen';
 import { useInterviewLearning } from '../../contexts/InterviewLearningContext';
 import { rateQuestion, reviewDueAt, RATING_LABELS, type SelfRating } from '../../lib/interviewLearning';
 import { FollowUpAnswer } from './FollowUpAnswer';
@@ -393,7 +392,6 @@ export default function SimpleInterviewPage() {
   },[events,learning,learningReady,allCatalogQuestions,saveLearning]);
 
 
-  const learningQuestions = useMemo(()=>allCatalogQuestions.map(({q,topicId})=>({id:q.id,title:q.title,topicId})),[allCatalogQuestions]);
 
   const filteredList = useMemo(() => {
     return allCatalogQuestions.filter(({ q, topicId, topicTitle }) => {
@@ -1017,7 +1015,6 @@ export default function SimpleInterviewPage() {
             <p className="si-lede">
               <strong>{completedTotal}</strong> of <strong>{totalQuestions}</strong> questions completed across {graphTopics.length} topics.
             </p>
-            <TodaysTen questions={learningQuestions} onStart={(id,session)=>{const item=allCatalogQuestions.find(item=>item.q.id===id);if(item)startQuestionFromItem(item,session);}} />
             <div className="si-map">
               <InterviewGraph
                 topics={graphTopics}
