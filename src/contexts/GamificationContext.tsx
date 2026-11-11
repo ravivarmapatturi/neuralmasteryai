@@ -113,7 +113,8 @@ interface GamificationContextValue {
   /** Marking a blog post read (BlogPostPage): once per post. */
   awardBlogRead: (slug: string) => void;
   /** Marking an interview question complete on /interview: once per question, 10 points. */
-  awardInterviewCompleted: (questionId: string) => void;
+  /** points defaults to INTERVIEW_COMPLETED_POINTS; a self-rated answer passes INTERVIEW_RATING_POINTS[rating]. */
+  awardInterviewCompleted: (questionId: string, points?: number) => void;
 }
 
 const GamificationContext = createContext<GamificationContextValue | null>(null);
@@ -524,7 +525,8 @@ export function GamificationProvider({ children }: { children: React.ReactNode }
   const awardDepthRevealed = useCallback((id: string) => award(id, 'depth', DEPTH_REVEAL_POINTS), [award]);
   const awardBlogRead = useCallback((slug: string) => award(`/blog/${slug}`, 'blog', BLOG_READ_POINTS), [award]);
   const awardInterviewCompleted = useCallback(
-    (questionId: string) => award(`/interview#${questionId}`, 'interview', INTERVIEW_COMPLETED_POINTS),
+    (questionId: string, points: number = INTERVIEW_COMPLETED_POINTS) =>
+      award(`/interview#${questionId}`, 'interview', points),
     [award],
   );
   const awardSystemDesignCompleted = useCallback(

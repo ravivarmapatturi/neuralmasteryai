@@ -332,3 +332,9 @@ describe('getArchitectureAward', () => {
   })
 })
 
+describe('interview rating points', () => {
+  it('gives 10 for got it, 5 for partly and 0 for missed', async () => {
+    const { INTERVIEW_RATING_POINTS } = await import('./gamification');
+    expect(INTERVIEW_RATING_POINTS).toEqual({ 'got-it': 10, partly: 5, missed: 0 });
+  });
+});

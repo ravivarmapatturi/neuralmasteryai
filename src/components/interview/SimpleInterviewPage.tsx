@@ -29,7 +29,7 @@ import { speakInBrowser } from '../../lib/interviewRoom/browserVoice';
 import { useInterviewAttempts } from '../../contexts/InterviewAttemptsContext';
 import { compareAttempts, type InterviewAttempt } from '../../lib/interviewAttempts';
 import { useGamification } from '../../contexts/GamificationContext';
-import { INTERVIEW_COMPLETED_POINTS, hasAward } from '../../lib/gamification';
+import { INTERVIEW_COMPLETED_POINTS, INTERVIEW_RATING_POINTS, hasAward } from '../../lib/gamification';
 import { CategoryVisual } from '../widgets/CategoryVisual';
 import './interviewRoom.css';
 import './simpleInterview.css';
@@ -1699,7 +1699,7 @@ export default function SimpleInterviewPage() {
                       onClick={() => {
                         if (attemptId) {
                           const now = Date.now();
-                          awardInterviewCompleted(questionId);
+                          awardInterviewCompleted(questionId, INTERVIEW_RATING_POINTS[value]);
                           saveLearning([
                             { questionId, completion: { time: latest?.time ?? now, attemptId } },
                             rateQuestion(learning, questionId, attemptId, value, now),
@@ -1713,7 +1713,7 @@ export default function SimpleInterviewPage() {
                 </div>
                 <p className="si-status" role="status">
                   {selfRating
-                    ? `Self-rating saved. Question completed (+${INTERVIEW_COMPLETED_POINTS} points). Next review: ${new Date(reviewDueAt(currentLearning!)!).toLocaleDateString()}.`
+                    ? `Self-rating saved. Question completed (+${events.find((e) => e.kind === 'interview' && e.permalink === `/interview#${questionId}`)?.points ?? INTERVIEW_RATING_POINTS[selfRating.value]} points). Next review: ${new Date(reviewDueAt(currentLearning!)!).toLocaleDateString()}.`
                     : ''}
                 </p>
               </fieldset>
@@ -1771,7 +1771,7 @@ export default function SimpleInterviewPage() {
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }} aria-hidden="true">
                       <polyline points="20 6 9 17 4 12" />
                     </svg>
-                    Completed · +{INTERVIEW_COMPLETED_POINTS} points
+                    Completed · +{events.find((e) => e.kind === 'interview' && e.permalink === `/interview#${questionId}`)?.points ?? INTERVIEW_COMPLETED_POINTS} points
                   </span>
                 )}
               </div>

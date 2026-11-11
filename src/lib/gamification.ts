@@ -78,6 +78,9 @@ export const ARCHITECTURE_COMPLETED_POINTS = 50;
 /** Practising one interview question to the end and marking it complete: once per question. */
 export const INTERVIEW_COMPLETED_POINTS = 10;
 
+/** Points for an interview question by how the learner rated their own answer. */
+export const INTERVIEW_RATING_POINTS = { 'got-it': 10, partly: 5, missed: 0 } as const;
+
 /** Tiny, first-reveal-only award for the homepage's "Test yourself"
  * interview-question flashcards (see Home.tsx) -- deliberately much
  * smaller than a real solved practice problem, since revealing an answer
