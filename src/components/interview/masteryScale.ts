@@ -113,11 +113,48 @@ export function formatAccessibleTopicLabel(
   return `${title}, ${pct}% completed, ${done} of ${count} questions`;
 }
 
-/** The heat scale has five stops, at 0, 25, 50, 75 and 100 percent. */
+/** The mastery scale has five stops, at 0, 25, 50, 75 and 100 percent. */
 export const HEAT_STOPS = [0, 25, 50, 75, 100] as const;
+export const MASTERY_STOPS = HEAT_STOPS;
+
+/** The 5 stops for light themes: neutral paper grey through pale green to deep saturated green. */
+export const MASTERY_COLORS_LIGHT = [
+  '#9ca3af',
+  '#86efac',
+  '#4ade80',
+  '#15803d',
+  '#14532d',
+] as const;
+
+/** The 5 stops for dark and forest themes: neutral dark slate grey through forest green to bright saturated green. */
+export const MASTERY_COLORS_DARK = [
+  '#475569',
+  '#166534',
+  '#15803d',
+  '#22c55e',
+  '#4ade80',
+] as const;
+
+/** Text and numbers drawn on top of each step for $\ge 4.5:1$ contrast in light themes. */
+export const MASTERY_TEXT_COLORS_LIGHT = [
+  '#1b1f3b',
+  '#1b1f3b',
+  '#1b1f3b',
+  '#ffffff',
+  '#ffffff',
+] as const;
+
+/** Text and numbers drawn on top of each step for $\ge 4.5:1$ contrast in dark themes. */
+export const MASTERY_TEXT_COLORS_DARK = [
+  '#ffffff',
+  '#ffffff',
+  '#ffffff',
+  '#0d1713',
+  '#0d1713',
+] as const;
 
 /**
- * Colour for a completion percentage on the heat scale. The stops are the CSS
+ * Colour for a completion percentage on the mastery scale. The stops are the CSS
  * variables --heat-0 to --heat-4 (set per theme), and a percentage between
  * two stops is mixed from them, so every percent has its own colour.
  */

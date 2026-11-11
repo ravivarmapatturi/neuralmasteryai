@@ -154,7 +154,7 @@ export function InterviewGraph({
   const [isDark, setIsDark] = useState(() => {
     if (typeof document === 'undefined') return false;
     const theme = document.documentElement.getAttribute('data-theme');
-    return theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    return theme === 'dark' || theme === 'forest' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
   });
 
   useEffect(() => {
@@ -168,7 +168,7 @@ export function InterviewGraph({
   useEffect(() => {
     const checkTheme = () => {
       const theme = document.documentElement.getAttribute('data-theme');
-      setIsDark(theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches));
+      setIsDark(theme === 'dark' || theme === 'forest' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches));
     };
     const observer = new MutationObserver(checkTheme);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
@@ -437,7 +437,7 @@ export function InterviewGraph({
           );
         })}
       </div>
-      <div className="si-graph-legend" role="region" aria-label="Topic completion heat map legend">
+      <div className="si-graph-legend" role="region" aria-label="Topic completion progress legend">
         <span className="si-legend-title">Completed</span>
         <span className="si-legend-scale">
           <span className="si-legend-bar" aria-hidden="true" />

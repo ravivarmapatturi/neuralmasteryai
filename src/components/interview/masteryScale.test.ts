@@ -13,7 +13,52 @@ import {
   getHeatGlowSize,
   getHeatGlowOpacity,
   getHeatmapColorMix,
+  HEAT_STOPS,
+  MASTERY_STOPS,
+  MASTERY_COLORS_LIGHT,
+  MASTERY_COLORS_DARK,
+  MASTERY_TEXT_COLORS_LIGHT,
+  MASTERY_TEXT_COLORS_DARK,
 } from './masteryScale';
+import { getContrastRatio } from '../../theme/themes';
+
+function hexToRgb(hex: string): [number, number, number] {
+  const clean = hex.replace('#', '');
+  return [
+    parseInt(clean.slice(0, 2), 16),
+    parseInt(clean.slice(2, 4), 16),
+    parseInt(clean.slice(4, 6), 16),
+  ];
+}
+
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  const rf = r / 255;
+  const gf = g / 255;
+  const bf = b / 255;
+  const max = Math.max(rf, gf, bf);
+  const min = Math.min(rf, gf, bf);
+  let h = 0;
+  let s = 0;
+  const l = (max + min) / 2;
+
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case rf:
+        h = (gf - bf) / d + (gf < bf ? 6 : 0);
+        break;
+      case gf:
+        h = (bf - rf) / d + 2;
+        break;
+      case bf:
+        h = (rf - gf) / d + 4;
+        break;
+    }
+    h *= 60;
+  }
+  return [Math.round(h), Math.round(s * 100), Math.round(l * 100)];
+}
 
 describe('masteryScale unit tests', () => {
   describe('calculateTopicProgress', () => {
@@ -220,6 +265,83 @@ describe('masteryScale unit tests', () => {
       expect(getHeatGlowSize(50)).toBeLessThan(getHeatGlowSize(100));
       expect(getHeatGlowOpacity(1)).toBeLessThan(getHeatGlowOpacity(100));
       expect(getHeatGlowOpacity(100)).toBe(0.7);
+    });
+
+    it('defines 5 stops matching the green mastery scale', () => {
+      expect(HEAT_STOPS).toEqual([0, 25, 50, 75, 100]);
+      expect(MASTERY_STOPS).toEqual([0, 25, 50, 75, 100]);
+      expect(MASTERY_COLORS_LIGHT).toHaveLength(5);
+      expect(MASTERY_COLORS_DARK).toHaveLength(5);
+    });
+
+    it('ensures step 0 is neutral paper grey and steps 1 to 4 belong to the green hue family', () => {
+      // Light scale check
+      const [, l0S] = rgbToHsl(...hexToRgb(MASTERY_COLORS_LIGHT[0]));
+      expect(l0S).toBeLessThanOrEqual(20); // neutral paper grey
+
+      for (let i = 1; i <= 4; i++) {
+        const [h, s] = rgbToHsl(...hexToRgb(MASTERY_COLORS_LIGHT[i]));
+        expect(h).toBeGreaterThanOrEqual(120);
+        expect(h).toBeLessThanOrEqual(165);
+        expect(s).toBeGreaterThanOrEqual(50);
+      }
+      // Step 4 is deep, saturated green
+      const [, l4S, l4L] = rgbToHsl(...hexToRgb(MASTERY_COLORS_LIGHT[4]));
+      expect(l4S).toBeGreaterThanOrEqual(50);
+      expect(l4L).toBeLessThanOrEqual(30);
+
+      // Dark scale check
+      const [, d0S] = rgbToHsl(...hexToRgb(MASTERY_COLORS_DARK[0]));
+      expect(d0S).toBeLessThanOrEqual(25); // neutral dark slate grey
+
+      for (let i = 1; i <= 4; i++) {
+        const [h, s] = rgbToHsl(...hexToRgb(MASTERY_COLORS_DARK[i]));
+        expect(h).toBeGreaterThanOrEqual(120);
+        expect(h).toBeLessThanOrEqual(165);
+        expect(s).toBeGreaterThanOrEqual(50);
+      }
+      // Step 4 in dark is bright saturated green
+      const [, d4S, d4L] = rgbToHsl(...hexToRgb(MASTERY_COLORS_DARK[4]));
+      expect(d4S).toBeGreaterThanOrEqual(50);
+      expect(d4L).toBeGreaterThanOrEqual(50);
+    });
+
+    it('asserts that no step in the scale is in the red or orange hue range', () => {
+      const allStops = [...MASTERY_COLORS_LIGHT, ...MASTERY_COLORS_DARK];
+      for (const hex of allStops) {
+        const [h, s] = rgbToHsl(...hexToRgb(hex));
+        // Neutral steps (step 0) have very low saturation
+        // If color has any significant saturation (> 20%), hue must NOT be red/orange (0°-55° or 340°-360°)
+        if (s > 20) {
+          const isRedOrOrange = (h >= 0 && h <= 55) || (h >= 340 && h <= 360);
+          expect(isRedOrOrange, `Stop ${hex} (h=${h}, s=${s}) is in red/orange range`).toBe(false);
+          // It must be within the green range
+          expect(h, `Stop ${hex} hue must be in green family`).toBeGreaterThanOrEqual(100);
+          expect(h, `Stop ${hex} hue must be in green family`).toBeLessThanOrEqual(180);
+        }
+      }
+    });
+
+    it('ensures text and numbers drawn on top of each step keep at least 4.5:1 contrast in all five themes', () => {
+      const themes = [
+        { id: 'pure-white', stops: MASTERY_COLORS_LIGHT, texts: MASTERY_TEXT_COLORS_LIGHT },
+        { id: 'light', stops: MASTERY_COLORS_LIGHT, texts: MASTERY_TEXT_COLORS_LIGHT },
+        { id: 'sepia', stops: MASTERY_COLORS_LIGHT, texts: MASTERY_TEXT_COLORS_LIGHT },
+        { id: 'dark', stops: MASTERY_COLORS_DARK, texts: MASTERY_TEXT_COLORS_DARK },
+        { id: 'forest', stops: MASTERY_COLORS_DARK, texts: MASTERY_TEXT_COLORS_DARK },
+      ];
+
+      for (const theme of themes) {
+        for (let i = 0; i < 5; i++) {
+          const stepColor = theme.stops[i];
+          const textColor = theme.texts[i];
+          const ratio = getContrastRatio(textColor, stepColor);
+          expect(
+            ratio,
+            `Text ${textColor} on step ${i} (${stepColor}) in theme "${theme.id}" has contrast ${ratio.toFixed(2)}:1, below 4.5:1`
+          ).toBeGreaterThanOrEqual(4.5);
+        }
+      }
     });
   });
 });
