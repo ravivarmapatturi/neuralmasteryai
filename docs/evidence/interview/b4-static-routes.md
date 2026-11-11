@@ -1,9 +1,0 @@
-# Interview static route audit — 10 November 2026
-
-A live GET audit followed redirects for all 927 canonical interview destinations: the four index/mock destinations, six topic pages and 917 question pages. Nine returned HTTP 200; 918 returned HTTP 404. The missing destinations were `/interview/mock` and every `/interview/q/*` question page. The responses use the site's client-side 404 fallback; client rendering does not change their HTTP status. Per-URL statuses and the measurement timestamp are in `b4-live-routes.json`. The legacy `/interview/room` redirect and query-string variants are outside this count.
-
-The existing prerenderer already writes route-specific `index.html` files into `dist`. Its route list omitted the mock and question pages. Both the prerenderer and sitemap now use the same 917 generated question paths, with the same colon-to-double-underscore encoding as the interview room. The mock page also uses the existing metadata hook for its title, description, canonical URL and social tags. No CSS or component layout changed.
-
-An isolated run of the actual sitemap generator confirmed inclusion of `/interview/mock/` and all 917 question URLs. All 917 paths are unique and decode to existing practice IDs. Both edited build scripts passed Node syntax checks. The added pages use the existing concurrency control; run prerendering with `PRERENDER_CONCURRENCY=2` on this machine.
-
-These are source changes for the next deployment. No push occurred, and no claim is made that the live HTTP counts have changed. A fresh production build and full prerender pass could not run because available RAM stayed below the required 5 GB. Typecheck and full Vitest attempts stopped at the unchanged 2 GiB memory floor. Internal links, criteria, MDX compilation and the 19 focused InterviewPage, mock-page and key-point tests passed.
