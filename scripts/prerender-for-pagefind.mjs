@@ -34,7 +34,7 @@ import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync, rmSync, readdirSync, statSync, existsSync, readFileSync } from 'node:fs';
 import { join, relative, extname, dirname } from 'node:path';
-import { routeFromMdxPath, outputPathForRoute } from './lib/prerenderRoutes.mjs';
+import { routeFromMdxPath, outputPathForRoute, linkedHiddenPractice, withTrailingSlashLinks } from './lib/prerenderRoutes.mjs';
 import { studyRoutes } from './study-routes.mjs';
 
 const ROOT = join(import.meta.dirname, '..');
@@ -91,6 +91,17 @@ function routesFromContentTree() {
     .map((f) => routeFromMdxPath(f, CONTENT_ROOT, PRACTICE_SLUGS));
 }
 
+// Lessons link to some hidden problems, and without a file those URLs
+// answer 404 (Search Console reported five). They get a real page in dist/
+// but stay out of the search index and the sitemap: hidden means not listed.
+function linkedHiddenPracticeRoutes() {
+  const practiceDir = join(CONTENT_ROOT, 'practice-problems');
+  const files = walk(CONTENT_ROOT).filter((f) => !isPlaceholder(f));
+  const hiddenIds = new Set(files.filter(isHiddenPractice).map((f) => relative(practiceDir, f).slice(0, -'.mdx'.length)));
+  const published = files.filter((f) => !isHiddenPractice(f)).map((f) => readFileSync(f, 'utf8'));
+  return linkedHiddenPractice(published, hiddenIds, (id) => readFileSync(join(practiceDir, `${id}.mdx`), 'utf8')).map((id) => `/practice/${id}`);
+}
+
 // App.tsx's non-/docs/* routes -- these aren't in the content tree at all,
 // so routesFromContentTree() never sees them, and they were missing this
 // same crawlability fix entirely: confirmed live, '/' served a real 200 but
@@ -145,7 +156,8 @@ async function main() {
   try {
     await waitForServer(`http://localhost:${PORT}${BASE}/`);
 
-    const routes = [...APP_ROUTES, ...BLOG_ROUTES, ...TRACK_ROUTES, ...routesFromContentTree()];
+    const distOnlyRoutes = new Set(linkedHiddenPracticeRoutes());
+    const routes = [...APP_ROUTES, ...BLOG_ROUTES, ...TRACK_ROUTES, ...routesFromContentTree(), ...distOnlyRoutes];
     console.log(`prerender-for-pagefind: snapshotting ${routes.length} route(s)...`);
 
     // 208 routes taken one at a time (each waiting for full network-idle)
@@ -187,15 +199,17 @@ async function main() {
 
         const html = await page.content();
 
-        const pagefindOutFile = outputPathForRoute(route, PRERENDER_DIR);
-        mkdirSync(dirname(pagefindOutFile), { recursive: true });
-        writeFileSync(pagefindOutFile, html);
+        if (!distOnlyRoutes.has(route)) {
+          const pagefindOutFile = outputPathForRoute(route, PRERENDER_DIR);
+          mkdirSync(dirname(pagefindOutFile), { recursive: true });
+          writeFileSync(pagefindOutFile, html);
+        }
 
         // Real, crawlable static HTML at the route's own path in dist/ --
         // see the file header for why this exists.
         const distOutFile = outputPathForRoute(route, DIST_DIR);
         mkdirSync(dirname(distOutFile), { recursive: true });
-        writeFileSync(distOutFile, html);
+        writeFileSync(distOutFile, withTrailingSlashLinks(html));
       }
       await page.close();
     }

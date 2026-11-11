@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import path from 'node:path'
-import { outputPathForRoute, routeFromMdxPath } from './prerenderRoutes.mjs'
+import { linkedHiddenPractice, outputPathForRoute, routeFromMdxPath, withTrailingSlashLinks } from './prerenderRoutes.mjs'
 
 const CONTENT_ROOT = path.join('/repo', 'src', 'content', 'docs')
 
@@ -80,5 +80,31 @@ describe('outputPathForRoute', () => {
     // prerendering '/' deliberately overwrites dist/index.html with real
     // rendered homepage content instead of the empty <div id="root"> shell.
     expect(outputPathForRoute('/', '/repo/dist')).toBe(path.join('/repo/dist', 'index.html'))
+  })
+})
+
+describe('linkedHiddenPractice', () => {
+  const hidden = { softmax: 'see [next](/practice/top-p-sampling)', 'top-p-sampling': 'back to /practice/softmax', unused: '' }
+  const ids = new Set(Object.keys(hidden))
+
+  it('follows links from published pages through hidden problems, once each', () => {
+    const published = ['Try [softmax](/practice/softmax) and /practice/dense-layer-forward-pass.']
+    expect(linkedHiddenPractice(published, ids, (id) => hidden[id])).toEqual(['softmax', 'top-p-sampling'])
+  })
+
+  it('returns nothing when no published page links to a hidden problem', () => {
+    expect(linkedHiddenPractice(['plain text, /practice/ and /practice/track/agents'], ids, (id) => hidden[id])).toEqual([])
+  })
+})
+
+describe('withTrailingSlashLinks', () => {
+  it('adds the slash to internal page links, keeping query and hash', () => {
+    expect(withTrailingSlashLinks('<a class="x" href="/docs/a/b">b</a><a href="/blog?tag=rag">t</a><a href="/docs/a#top">h</a>'))
+      .toBe('<a class="x" href="/docs/a/b/">b</a><a href="/blog/?tag=rag">t</a><a href="/docs/a/#top">h</a>')
+  })
+
+  it('leaves the root, slashed links, files, external links and non-anchor tags alone', () => {
+    const html = '<a href="/">home</a><a href="/learn/">l</a><a href="/og-image.png">i</a><a href="https://x.com/a">x</a><a href="//cdn.x/a">c</a><link rel="icon" href="/favicon.svg?v=5"><link rel="canonical" href="/docs/a">'
+    expect(withTrailingSlashLinks(html)).toBe(html)
   })
 })
