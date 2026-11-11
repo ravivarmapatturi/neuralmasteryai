@@ -13,7 +13,7 @@ test.describe('Focus Pomodoro Timer E2E', () => {
     mkdirSync(EVIDENCE_DIR, { recursive: true });
   });
 
-  test('full focus session lifecycle: start, navigate, reload, finish, break card, stats and screenshots', async ({ page }) => {
+  test('full focus session lifecycle: start, navigate, reload, finish, automatic break, stats and screenshots', async ({ page }) => {
     // 1. Install fake clock starting at fixed local/UTC timestamp
     const startTime = new Date('2026-11-09T10:00:00.000Z');
     await page.clock.install({ time: startTime });
@@ -62,12 +62,11 @@ test.describe('Focus Pomodoro Timer E2E', () => {
     // Fast-forward remainder of the 25 minutes
     await page.clock.fastForward(26 * 60 * 1000);
 
-    // 7. Verify Break Card appears
-    const breakCard = page.locator('.nm-timer-break-card');
-    await expect(breakCard).toBeVisible();
-    await expect(page.getByText('Step away from the screen, stretch, or rest your eyes.')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Start break' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Skip break' })).toBeVisible();
+    // 7. The break starts on its own: no card to click, the timer keeps running
+    await expect(page.locator('.nm-focus-phase-pill')).toHaveText('Short break');
+    await expect(page.locator('.nm-focus-digits')).toHaveText(/^0[34]:\d\d$/);
+    await expect(page.getByRole('button', { name: /pause timer/i })).toBeVisible();
+    await expect(page.locator('.nm-timer-break-card')).toHaveCount(0);
 
     // 8. Verify session is recorded in stats on /focus
     await expect(page.getByText('No focus sessions recorded yet')).not.toBeVisible();
@@ -175,15 +174,16 @@ test.describe('Focus Pomodoro Timer E2E', () => {
 
     // Move wall time without firing interval callbacks: the persisted timer is
     // still running and unsaved when a real document reload discovers expiry.
-    await page.clock.setSystemTime(new Date(startTime.getTime() + 30 * 60 * 1000));
+    await page.clock.setSystemTime(new Date(startTime.getTime() + 27 * 60 * 1000));
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('nm_focus_sessions') || '[]'))).toEqual([]);
     await page.reload();
     await page.waitForLoadState('domcontentloaded');
 
-    // Break card should be visible
-    await expect(page.locator('.nm-timer-break-card')).toBeVisible();
+    // The break is already running, two minutes in
+    await expect(page.locator('.nm-focus-phase-pill')).toHaveText('Short break');
+    await expect(page.locator('.nm-focus-digits')).toHaveText(/^0[23]:\d\d$/);
 
-    // Stats should show exactly 25m (not 30m)
+    // Stats should show exactly 25m (not 27m)
     await expect(page.locator('.nm-focus-metrics-grid')).toHaveText(/25m/);
     const sessions = await page.evaluate(() => JSON.parse(localStorage.getItem('nm_focus_sessions') || '[]'));
     expect(sessions.length).toBe(1);
@@ -196,7 +196,24 @@ test.describe('Focus Pomodoro Timer E2E', () => {
     expect(sessionsAfter.length).toBe(1);
   });
 
-  test('timer starts on its own, pauses while the tab is hidden and resumes when visible', async ({ page }) => {
+  test('with auto-start switched off, the break card waits for a click', async ({ page }) => {
+    await page.clock.install({ time: new Date('2026-11-09T15:00:00.000Z') });
+    await page.goto('/focus');
+    await expect(page.locator('.nm-focus-phase-pill')).toHaveText('Focus');
+    const autoStart = page.locator('.nm-focus-hero-toggle-label', { hasText: 'Auto-start next phase' }).getByRole('switch');
+    await expect(autoStart).toHaveAttribute('aria-checked', 'true');
+    await autoStart.click();
+    await expect(autoStart).toHaveAttribute('aria-checked', 'false');
+
+    await page.clock.fastForward(26 * 60 * 1000);
+    await expect(page.locator('.nm-timer-break-card')).toBeVisible();
+    await expect(page.getByText('Step away from the screen, stretch, or rest your eyes.')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Skip break' })).toBeVisible();
+    await page.getByRole('button', { name: 'Start break' }).click();
+    await expect(page.locator('.nm-focus-phase-pill')).toHaveText('Short break');
+  });
+
+  test('timer starts on its own and keeps running while the tab is hidden', async ({ page }) => {
     await page.clock.install({ time: new Date('2026-11-09T16:00:00.000Z') });
     await page.goto('/focus');
     const readState = () => page.evaluate(() => JSON.parse(localStorage.getItem('nm_focus_timer_state') || 'null'));
@@ -211,12 +228,12 @@ test.describe('Focus Pomodoro Timer E2E', () => {
 
     await page.clock.fastForward(5000);
     await setHidden(true);
-    await expect.poll(async () => (await readState())?.status).toBe('paused');
-    expect((await readState()).pausedReason).toBe('away');
-    // Time away does not count: no 60-second grace rule.
+    // Only an explicit pause or stop halts the timer: time away still counts.
     await page.clock.fastForward(10 * 60 * 1000);
+    expect((await readState()).status).toBe('running');
+    expect((await readState()).pausedReason).toBeNull();
     await setHidden(false);
     await expect.poll(async () => (await readState())?.status).toBe('running');
-    await expect(page.locator('.nm-focus-digits')).toHaveText(/^24:5\d$/);
+    await expect(page.locator('.nm-focus-digits')).toHaveText(/^14:5\d$/);
   });
 });
