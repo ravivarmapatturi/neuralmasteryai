@@ -88,7 +88,12 @@ const ICONS: Record<string, string> = {
   debug: 'M3 12h4l2-6 4 12 2-6h6',
 };
 const FALLBACK_ICON = 'M12 5a7 7 0 1 0 0 14 7 7 0 0 0 0-14z';
-const BRANCH_RANGES = ['0%', '1–25%', '26–50%', '51–75%', '76–100%'];
+// Every topic gets its own ink colour, like a hand-coloured mind map.
+const INKS = [
+  '#e4572e', '#f29e4c', '#e9b10a', '#8ac926', '#2a9d8f', '#1982c4', '#6a4c93', '#d81b60',
+  '#ff6f59', '#43aa8b', '#577590', '#c77dff', '#f3722c', '#0fa3b1', '#b5179e', '#90be6d',
+  '#ef476f', '#118ab2', '#9c6644', '#06d6a0', '#7209b7', '#f8961e', '#3a86ff',
+];
 
 interface Spot {
   side: 'left' | 'right';
@@ -214,11 +219,17 @@ export function InterviewGraph({
       <div className={`si-stage${isMap ? ' is-map' : ' is-grid'}`} style={isMap ? { width: w, height: h } : undefined}>
         {isMap && (
           <svg className="si-branches" width={w} height={h} aria-hidden="true">
-            {topics.map((t) => {
+            <defs>
+              <filter id="si-pencil" x="-5%" y="-5%" width="110%" height="110%">
+                <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="7" />
+                <feDisplacementMap in="SourceGraphic" scale="4" />
+              </filter>
+            </defs>
+            {topics.map((t, i) => {
               const level = getBranchLevel(progressMap[t.id]?.pct ?? 0);
               const spot = spots[t.id];
               return (
-                <g key={t.id} className={`si-branch lvl-${level}`} data-topic={t.id}>
+                <g key={t.id} className={`si-branch lvl-${level}`} data-topic={t.id} filter="url(#si-pencil)" style={{ ['--ink' as string]: INKS[i % INKS.length] }}>
                   <path d={spot.path} fill="none" strokeLinecap="round" style={{ strokeWidth: getBranchStrokeWidth(level) }} />
                   <circle cx={spot.x} cy={spot.y} r={5.5 + level * 0.6} />
                 </g>
@@ -232,7 +243,7 @@ export function InterviewGraph({
             <span>Interview practice</span>
           </div>
         )}
-        {topics.map((t) => {
+        {topics.map((t, i) => {
           const progress = progressMap[t.id] ?? calculateTopicProgress(t.done ?? 0, t.count);
           const level = getBranchLevel(progress.pct);
           const spot = spots[t.id];
@@ -244,7 +255,7 @@ export function InterviewGraph({
               key={t.id}
               type="button"
               className={`si-node lvl-${level}${t.id === activeId ? ' on' : ''}${progress.isComplete ? ' is-complete' : ''}`}
-              style={position}
+              style={{ ...position, ['--ink' as string]: INKS[i % INKS.length], ['--tilt' as string]: `${((i * 37) % 5) - 2}deg` }}
               aria-pressed={t.id === activeId}
               aria-label={formatAccessibleTopicLabel(t.title, progress.pct, t.done ?? 0, t.count)}
               onClick={() => onActivate(t.id)}
@@ -262,28 +273,6 @@ export function InterviewGraph({
             </button>
           );
         })}
-      </div>
-      <div className="si-graph-legend" role="region" aria-label="Topic completion progress legend">
-        <span className="si-legend-part">
-          <span className="si-legend-title">Completion</span>
-          <span className="si-legend-scale">
-            <span className="si-legend-bar" aria-hidden="true" />
-            <span className="si-legend-ticks">
-              {[0, 25, 50, 75, 100].map((stop) => (
-                <span key={stop}>{stop}%</span>
-              ))}
-            </span>
-          </span>
-        </span>
-        <span className="si-legend-part si-legend-branches">
-          <span className="si-legend-title">Branch colour</span>
-          {BRANCH_RANGES.map((range, level) => (
-            <span key={range} className={`si-legend-chip lvl-${level}`}>
-              <i aria-hidden="true" />
-              {range}
-            </span>
-          ))}
-        </span>
       </div>
       <div className="si-group-totals" role="region" aria-label="Topic group totals">
         {groupSummaries.map((g) => {

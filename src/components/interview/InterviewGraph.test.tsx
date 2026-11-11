@@ -100,7 +100,7 @@ describe('InterviewGraph component', () => {
     const card = screen.getByRole('button', { name: /Transformers, 50% completed/i });
     expect(card.className).toContain('lvl-2');
     expect(card.querySelector<HTMLElement>('.si-bar i')!.style.width).toBe('50%');
-    expect(screen.getByRole('region', { name: /completion progress legend/i })).toHaveTextContent('76–100%');
+    expect(screen.queryByRole('region', { name: /completion progress legend/i })).toBeNull();
   });
 
   it('calls onActivate when a topic node or group pill is clicked', () => {

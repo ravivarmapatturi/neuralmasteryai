@@ -1037,8 +1037,8 @@ button:focus-visible, a:focus-visible, select:focus-visible, textarea:focus-visi
   inset: 0;
   overflow: visible;
 }
-.si-branch path { stroke: var(--b); }
-.si-branch circle { fill: var(--b); stroke: var(--bg); stroke-width: 2; }
+.si-branch path { stroke: var(--ink); opacity: 0.85; }
+.si-branch circle { fill: var(--ink); stroke: var(--fg); stroke-width: 1.4; }
 .lvl-0 { --b: var(--branch-0); }
 .lvl-1 { --b: var(--branch-1); }
 .lvl-2 { --b: var(--branch-2); }
@@ -1077,43 +1077,53 @@ button:focus-visible, a:focus-visible, select:focus-visible, textarea:focus-visi
   gap: 8px;
   box-sizing: border-box;
   padding: 5px 10px 5px 8px;
-  border: 1.5px solid color-mix(in srgb, var(--b) 55%, var(--line));
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--b) 10%, var(--surface, var(--bg)));
+  /* Uneven corners and a slight tilt make each card look drawn by hand. */
+  border: 2px solid var(--fg);
+  border-radius: 14px 5px 12px 6px / 6px 12px 5px 14px;
+  background: color-mix(in srgb, var(--ink) 16%, var(--bg));
+  box-shadow: 2px 3px 0 color-mix(in srgb, var(--ink) 70%, transparent);
   color: var(--fg);
   font: inherit;
   text-align: left;
   cursor: pointer;
+  transform: rotate(var(--tilt, 0deg));
   transition: transform 140ms, box-shadow 140ms;
 }
-.si-node:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1); }
-.si-node:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.si-node.on { box-shadow: 0 0 0 2.5px var(--accent); }
-.si-node-icon { flex: none; color: var(--b); }
+.si-node:hover { transform: rotate(0deg) translateY(-1px); box-shadow: 3px 4px 0 var(--ink); }
+.si-node:focus-visible { outline: 2px dashed var(--accent); outline-offset: 3px; }
+.si-node.on { box-shadow: 0 0 0 3px var(--ink), 3px 4px 0 var(--fg); }
+.si-node-icon { flex: none; color: var(--ink); }
 .si-node-text { display: grid; gap: 3px; min-width: 0; flex: 1; }
 .si-label {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   font-weight: 700;
-  font-size: 0.86rem;
+  font-size: 0.9rem;
   line-height: 1.1;
 }
 .si-node-meter { display: flex; align-items: center; gap: 6px; }
 .si-bar {
   flex: 1;
-  height: 5px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--fg) 12%, transparent);
+  height: 7px;
+  border: 1.5px solid var(--fg);
+  border-radius: 6px 3px 6px 3px;
+  background: var(--bg);
   overflow: hidden;
 }
-.si-bar i { display: block; height: 100%; border-radius: inherit; background: var(--b); }
-.si-label-pct { font-size: 0.74rem; font-variant-numeric: tabular-nums; color: var(--soft); }
-.si-graph .si-node.is-complete { background: var(--branch-4); border-color: var(--branch-4); color: #fff; }
+.si-bar i {
+  display: block;
+  height: 100%;
+  background: repeating-linear-gradient(-45deg, var(--ink) 0 3px, color-mix(in srgb, var(--ink) 60%, transparent) 3px 5px);
+}
+.si-label-pct { font-size: 0.78rem; font-variant-numeric: tabular-nums; color: var(--fg); }
+.si-graph .si-node.is-complete { background: var(--ink); color: #fff; }
 .si-node.is-complete .si-node-icon,
 .si-node.is-complete .si-label-pct { color: #fff; }
-.si-node.is-complete .si-bar { background: rgba(255, 255, 255, 0.3); }
+.si-node.is-complete .si-bar { border-color: #fff; background: transparent; }
 .si-node.is-complete .si-bar i { background: #fff; }
+
+.si-hub { border: 2.5px solid var(--fg); border-radius: 52% 48% 50% 50% / 48% 52% 48% 52%; box-shadow: 3px 3px 0 var(--accent); }
 
 /* Narrow screens: no room for a card on both sides, so the same cards sit in a grid. */
 .si-stage.is-grid {
@@ -1123,28 +1133,6 @@ button:focus-visible, a:focus-visible, select:focus-visible, textarea:focus-visi
 }
 .si-stage.is-grid .si-node { position: relative; min-height: 46px; }
 
-
-.si-graph-legend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 12px 28px;
-  margin: 14px auto 4px;
-  font-size: 0.8rem;
-  color: var(--soft);
-}
-.si-legend-part { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
-.si-legend-title { font-weight: 700; color: var(--fg); }
-.si-legend-scale { display: grid; gap: 3px; width: min(220px, 60vw); }
-.si-legend-bar {
-  height: 10px;
-  border-radius: 999px;
-  background: linear-gradient(to right, var(--branch-0), var(--branch-1), var(--branch-2), var(--branch-3), var(--branch-4));
-}
-.si-legend-ticks { display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--fg); }
-.si-legend-chip { display: inline-flex; align-items: center; gap: 4px; color: var(--fg); font-size: 0.74rem; }
-.si-legend-chip i { width: 10px; height: 10px; border-radius: 50%; background: var(--b); }
 
 .si-group-totals {
   display: flex;
