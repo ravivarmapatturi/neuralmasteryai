@@ -178,3 +178,15 @@ export function getHeatGlowOpacity(pct: number): number {
   const clamped = Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
   return clamped === 0 ? 0 : Number((0.25 + 0.0045 * clamped).toFixed(3));
 }
+
+/** Width in px of the line from the centre to a topic: 1.5 at 0%, 6 at 100%. */
+export function getSpokeStrokeWidth(pct: number): number {
+  const clamped = Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
+  return Number((1.5 + 0.045 * clamped).toFixed(2));
+}
+
+/** Opacity of that line: 0.55 at 0%, then 0.7 just above 0% up to 1 at 100%. */
+export function getSpokeOpacity(pct: number): number {
+  const clamped = Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
+  return clamped === 0 ? 0.55 : Number((0.7 + 0.003 * clamped).toFixed(3));
+}

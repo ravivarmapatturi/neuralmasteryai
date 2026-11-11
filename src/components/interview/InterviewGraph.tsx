@@ -2,17 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { curveBundle, line } from 'd3-shape';
 import {
   calculateTopicProgress,
-  calculateEdgeProgress,
-  getEdgeStrokeWidth,
-  getEdgeOpacity,
   getNodeDotSize,
-  getNodeRingSize,
-  getNodeRingStrokeWidth,
-  getNodeOpacity,
   formatAccessibleTopicLabel,
   getHeatmapColorMix,
-  getHeatGlowSize,
-  getHeatGlowOpacity,
+  getSpokeStrokeWidth,
+  getSpokeOpacity,
 } from './masteryScale';
 
 export interface GraphTopic {
@@ -145,6 +139,7 @@ export function InterviewGraph({
   const stageRef = useRef<HTMLDivElement>(null);
   const nodeRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const lineRefs = useRef<(SVGPathElement | null)[]>([]);
+  const spokeRefs = useRef<Record<string, SVGLineElement | null>>({});
   const pausedRef = useRef(false);
   const [width, setWidth] = useState(760);
   const [isMobile, setIsMobile] = useState(() => {
@@ -223,6 +218,8 @@ export function InterviewGraph({
 
   useEffect(() => {
     const centre = size / 2;
+    // On phones the topic name sits in the middle, so the spokes start outside it.
+    const spokeStart = isMobile ? radius * 0.52 : 12;
     const toXY = (angle: number, r: number): [number, number] => [centre + Math.cos(angle) * r, centre + Math.sin(angle) * r];
     const place = (time: number) => {
       const moved: Record<string, [number, number]> = {};
@@ -232,6 +229,15 @@ export function InterviewGraph({
         moved[t.id] = toXY(spot.angle + Math.cos(time * 0.0004 + i * 2.3) * 0.006, r);
         const node = nodeRefs.current[t.id];
         if (node) node.style.transform = `translate(${moved[t.id][0]}px, ${moved[t.id][1]}px)`;
+        // The spoke runs from the centre to the topic and carries the progress colour.
+        const spoke = spokeRefs.current[t.id];
+        if (spoke) {
+          const [sx, sy] = toXY(spot.angle, spokeStart);
+          spoke.setAttribute('x1', String(sx));
+          spoke.setAttribute('y1', String(sy));
+          spoke.setAttribute('x2', String(moved[t.id][0]));
+          spoke.setAttribute('y2', String(moved[t.id][1]));
+        }
       });
       LINKS.forEach(([a, b], i) => {
         const el = lineRefs.current[i];
@@ -241,7 +247,7 @@ export function InterviewGraph({
         const route: [number, number][] =
           ga === gb
             ? [moved[a], toXY(hubs[ga], radius * 0.62), moved[b]]
-            : [moved[a], toXY(hubs[ga], radius * 0.5), [centre, centre], toXY(hubs[gb], radius * 0.5), moved[b]];
+            : [moved[a], toXY(hubs[ga], radius * 0.5), toXY(hubs[gb], radius * 0.5), moved[b]];
         el.setAttribute('d', bundle(route) ?? '');
       });
     };
@@ -259,43 +265,43 @@ export function InterviewGraph({
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [topics, size, radius, spots, hubs]);
-
-  const near = new Set([activeId]);
-  LINKS.forEach(([a, b]) => {
-    if (a === activeId) near.add(b);
-    if (b === activeId) near.add(a);
-  });
-  const isLit = (a: string, b: string) => a === activeId || b === activeId;
+  }, [topics, size, radius, spots, hubs, isMobile]);
 
   return (
     <div className="si-graph" ref={stageRef}>
       <div className="si-stage" style={{ width: size, height: size }}>
         <svg className="si-edges" width={size} height={size} aria-hidden="true">
-          {LINKS.map(([a, b], i) => {
-            const edgeProg = calculateEdgeProgress(
-              progressMap[a]?.ratio ?? 0,
-              progressMap[b]?.ratio ?? 0
-            );
-            const strokeWidth = getEdgeStrokeWidth(edgeProg, isLit(a, b));
-            const opacity = getEdgeOpacity(edgeProg, isLit(a, b), isDark);
+          {LINKS.map(([a, b], i) => (
+            <path
+              key={`${a}-${b}`}
+              ref={(el) => {
+                lineRefs.current[i] = el;
+              }}
+              fill="none"
+            />
+          ))}
+        </svg>
+        <svg className="si-spokes" width={size} height={size} aria-hidden="true">
+          {topics.map((t) => {
+            const pct = progressMap[t.id]?.pct ?? 0;
             return (
-              <path
-                key={`${a}-${b}`}
+              <line
+                key={t.id}
                 ref={(el) => {
-                  lineRefs.current[i] = el;
+                  spokeRefs.current[t.id] = el;
                 }}
-                fill="none"
-                stroke={groupColours[spots[a]?.group]}
+                data-topic={t.id}
+                strokeLinecap="round"
                 style={{
-                  strokeWidth,
-                  opacity,
+                  stroke: getHeatmapColorMix(pct),
+                  strokeWidth: getSpokeStrokeWidth(pct),
+                  opacity: getSpokeOpacity(pct),
                 }}
-                className={isLit(a, b) ? 'on' : undefined}
               />
             );
           })}
         </svg>
+        {!isMobile && <span className="si-hub" aria-hidden="true" />}
         {activeTopic && (() => {
           const activeProgress = progressMap[activeTopic.id] ?? calculateTopicProgress(activeTopic.done, activeTopic.count);
           const activeGroup = groupSummaries.find((g) => g.id === activeTopic.group);
@@ -359,16 +365,10 @@ export function InterviewGraph({
           const flip = Math.cos(angle) < 0;
           const degrees = (angle * 180) / Math.PI + (flip ? 180 : 0);
           const progress = progressMap[t.id] ?? calculateTopicProgress(t.done ?? 0, t.count);
-          const isNear = near.has(t.id);
-          const isFar = !isNear;
-          const nodeOpacity = getNodeOpacity(progress.ratio, isFar);
           const dotSize = getNodeDotSize(t.count, progress.ratio);
-          const ringStroke = getNodeRingStrokeWidth(progress.ratio);
-          const ringSize = getNodeRingSize(dotSize, progress.ratio);
           const isComplete = progress.isComplete;
           const baseTitle = SHORT_TITLES[t.id] ?? t.title;
           const ariaLabel = formatAccessibleTopicLabel(t.title, progress.pct, t.done ?? 0, t.count);
-          const nodeColor = getHeatmapColorMix(progress.pct);
 
           return (
             <button
@@ -377,11 +377,7 @@ export function InterviewGraph({
               ref={(el) => {
                 nodeRefs.current[t.id] = el;
               }}
-              className={`si-node${t.id === activeId ? ' on' : ''}${isFar ? ' far' : ''}${isComplete ? ' is-complete' : ''}`}
-              style={{
-                color: nodeColor,
-                opacity: nodeOpacity,
-              }}
+              className={`si-node${t.id === activeId ? ' on' : ''}${isComplete ? ' is-complete' : ''}`}
               aria-pressed={t.id === activeId}
               aria-label={ariaLabel}
               onMouseEnter={() => {
@@ -394,17 +390,6 @@ export function InterviewGraph({
               onFocus={() => onActivate(t.id)}
               onClick={() => onActivate(t.id)}
             >
-              {progress.pct > 0 && (
-                <span
-                  className="si-heat"
-                  aria-hidden="true"
-                  style={{
-                    width: getHeatGlowSize(progress.pct),
-                    height: getHeatGlowSize(progress.pct),
-                    opacity: getHeatGlowOpacity(progress.pct),
-                  }}
-                />
-              )}
               <span
                 className="si-dot"
                 style={{
@@ -412,20 +397,6 @@ export function InterviewGraph({
                   height: dotSize,
                 }}
               />
-              {progress.pct > 0 && (
-                <span
-                  className={`si-ring${isComplete ? ' is-complete' : ''}`}
-                  style={{
-                    width: ringSize,
-                    height: ringSize,
-                    background: isComplete
-                      ? 'currentColor'
-                      : `conic-gradient(currentColor ${progress.pct * 3.6}deg, var(--line) 0deg)`,
-                    WebkitMask: `radial-gradient(farthest-side, transparent calc(100% - ${ringStroke}px), #000 calc(100% - ${ringStroke - 0.5}px))`,
-                    mask: `radial-gradient(farthest-side, transparent calc(100% - ${ringStroke}px), #000 calc(100% - ${ringStroke - 0.5}px))`,
-                  }}
-                />
-              )}
               <span
                 className={`si-label${flip ? ' flip' : ''}${isComplete ? ' is-complete' : ''}`}
                 style={{ transform: `rotate(${degrees}deg)` }}

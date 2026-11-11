@@ -85,6 +85,35 @@ describe('InterviewGraph component', () => {
     expect(transformersBtn.className).toContain('is-complete');
   });
 
+  it('keeps every topic at full strength and puts the progress colour on the centre spokes', () => {
+    const topics = sampleTopics.map((t) => (t.id === 'transformers' ? { ...t, done: 12 } : t));
+    const { container } = render(<InterviewGraph topics={topics} activeId="rag" onActivate={vi.fn()} />);
+
+    const nodes = Array.from(container.querySelectorAll<HTMLButtonElement>('.si-node'));
+    expect(nodes).toHaveLength(sampleTopics.length);
+    for (const node of nodes) {
+      expect(node.className).not.toContain('far');
+      expect(node.style.opacity).toBe('');
+      expect(node.style.color).toBe('');
+    }
+    expect(container.querySelector('.si-heat')).toBeNull();
+    expect(container.querySelector('.si-ring')).toBeNull();
+
+    const spokes = container.querySelectorAll('.si-spokes line');
+    expect(spokes).toHaveLength(sampleTopics.length);
+    const started = container.querySelector<SVGLineElement>('.si-spokes line[data-topic="transformers"]')!;
+    const untouched = container.querySelector<SVGLineElement>('.si-spokes line[data-topic="rag"]')!;
+    expect(started.style.stroke).toBe('var(--heat-2)');
+    expect(untouched.style.stroke).toBe('var(--heat-0)');
+    expect(Number(started.style.strokeWidth)).toBeGreaterThan(Number(untouched.style.strokeWidth));
+    expect(Number(started.style.opacity)).toBeGreaterThan(Number(untouched.style.opacity));
+
+    // Connections between topics look the same whichever topic is selected.
+    const edges = Array.from(container.querySelectorAll('.si-edges path'));
+    expect(edges.length).toBeGreaterThan(0);
+    for (const edge of edges) expect(edge.getAttribute('class')).toBeNull();
+  });
+
   it('calls onActivate when a topic node or group pill is clicked', () => {
     const onActivate = vi.fn();
     render(<InterviewGraph topics={sampleTopics} activeId="transformers" onActivate={onActivate} />);
