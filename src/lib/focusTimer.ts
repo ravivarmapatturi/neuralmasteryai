@@ -217,6 +217,7 @@ export function rolloverTimer(state: FocusTimerState, now = Date.now()): Rollove
   while (now >= curEndsAt && steps < MAX_ROLLOVER_STEPS) {
     steps++;
     phaseChangesCount++;
+    const endedPhase = curPhase;
 
     if (curPhase === 'focus') {
       const plannedMinutes = state.preset.focusMinutes;
@@ -261,7 +262,8 @@ export function rolloverTimer(state: FocusTimerState, now = Date.now()): Rollove
       return {
         nextState: {
           ...state,
-          phase: curPhase,
+          // Stay on the phase that just ended, as completePhase does: the break card keys on it.
+          phase: endedPhase,
           status: 'phaseEnded',
           completedFocusCount: curCount,
           remainingMs: 0,

@@ -208,6 +208,7 @@ describe('focusTimer pure logic', () => {
     const stoppedState = { ...runningState, autoStartNext: false };
     const manualRestored = restoreStateFromStorage(stoppedState, lateReloadTime);
     expect(manualRestored.status).toBe('phaseEnded');
+    expect(manualRestored.phase).toBe('focus');
     expect(manualRestored.remainingMs).toBe(0);
   });
 
