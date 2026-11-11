@@ -1,12 +1,42 @@
 import { useEffect, useRef } from 'react';
 import { EditorView, basicSetup } from 'codemirror';
 import { EditorState, Prec } from '@codemirror/state';
-import { indentUnit } from '@codemirror/language';
+import { HighlightStyle, indentUnit, syntaxHighlighting } from '@codemirror/language';
 import { indentWithTab } from '@codemirror/commands';
 import { keymap } from '@codemirror/view';
 import { python } from '@codemirror/lang-python';
-import { oneDark } from '@codemirror/theme-one-dark';
+import { tags as tg } from '@lezer/highlight';
 import type { VizTokens } from '../../theme/vizTokens';
+
+const MONO = 'var(--font-mono)';
+
+const notebookChrome = EditorView.theme({
+  '&': { fontSize: '13.5px', height: '100%', color: 'var(--nm-code-text)', backgroundColor: 'var(--nm-code-bg)' },
+  '.cm-scroller': { fontFamily: MONO, lineHeight: '1.6', minHeight: '100%', overflow: 'auto' },
+  '.cm-content': { fontFamily: MONO, minHeight: '96px', padding: '10px 0', caretColor: 'var(--nm-code-cursor)' },
+  '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--nm-code-cursor)' },
+  '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
+    backgroundColor: 'var(--nm-code-selection)',
+  },
+  '.cm-gutters': { backgroundColor: 'var(--nm-code-gutter-bg)', color: 'var(--nm-code-gutter-text)', border: 'none', borderRight: '1px solid var(--nm-code-rule)' },
+  '.cm-gutterElement': { padding: '0 8px 0 12px' },
+  '.cm-activeLine': { backgroundColor: 'var(--nm-code-active-line)' },
+  '.cm-activeLineGutter': { backgroundColor: 'var(--nm-code-active-line)', color: 'var(--nm-code-text)' },
+  '&.cm-focused .cm-matchingBracket, &.cm-focused .cm-nonmatchingBracket': { backgroundColor: 'var(--nm-code-selection)', outline: 'none' },
+  '.cm-line': { padding: '0 12px' },
+});
+
+const notebookHighlight = HighlightStyle.define([
+  { tag: [tg.keyword, tg.controlKeyword, tg.moduleKeyword, tg.operatorKeyword, tg.definitionKeyword], color: 'var(--nm-code-keyword)', fontWeight: '600' },
+  { tag: [tg.string, tg.special(tg.string), tg.regexp], color: 'var(--nm-code-string)' },
+  { tag: [tg.number, tg.bool, tg.null, tg.atom], color: 'var(--nm-code-number)' },
+  { tag: [tg.comment, tg.lineComment, tg.blockComment, tg.docComment], color: 'var(--nm-code-comment)', fontStyle: 'italic' },
+  { tag: [tg.function(tg.variableName), tg.function(tg.propertyName), tg.definition(tg.variableName)], color: 'var(--nm-code-function)' },
+  { tag: [tg.className, tg.typeName, tg.namespace, tg.self], color: 'var(--nm-code-type)' },
+  { tag: [tg.operator, tg.compareOperator, tg.arithmeticOperator, tg.logicOperator, tg.definitionOperator], color: 'var(--nm-code-operator)' },
+  { tag: [tg.propertyName, tg.meta], color: 'var(--nm-code-property)' },
+  { tag: tg.invalid, color: 'var(--nm-code-invalid)' },
+]);
 
 /**
  * Real CodeMirror 6 editor for Python practice-problem input -- replaces a
@@ -50,25 +80,12 @@ export default function CodeEditor({
           python(),
           indentUnit.of('    '), // real 4-space Python indent, not CM6's 2-space default
           Prec.highest(keymap.of([indentWithTab])), // Tab inserts indent -- a Python-only tool needs this more than the a11y default of tabbing focus away
-          // Real bug this fixes: the previous hand-rolled EditorView.theme()
-          // only styled editor CHROME (background/gutter/cursor/selection)
-          // -- it never supplied a matching syntax HighlightStyle for
-          // actual code tokens (keywords, strings, identifiers, comments),
-          // so basicSetup's own default highlight style (tuned for a LIGHT
-          // background) rendered several token colors with poor-to-no
-          // contrast against this editor's dark background. Chrome theme
-          // and syntax highlight style are two separate CM6 systems that
-          // must be matched -- oneDark is a real, widely-used dark theme
-          // that ships both halves as one correctly-paired extension,
-          // rather than another from-scratch palette guess.
-          oneDark,
-          EditorView.theme({
-            '&': { fontSize: '13px', height: '100%' },
-            '.cm-scroller': { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', minHeight: '100%', overflow: 'auto' },
-            '.cm-content': { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', minHeight: '96px', padding: '10px 0' },
-            '.cm-gutterElement': { padding: '0 8px 0 12px' },
-            '.cm-line': { padding: '0 12px' },
-          }),
+          // Chrome and syntax colours are two separate CM6 systems and both
+          // read the --nm-code-* variables from theme.css, so the editor is
+          // light paper on the notebook themes and dark on the dark ones, and
+          // follows a theme switch without being re-mounted.
+          notebookChrome,
+          syntaxHighlighting(notebookHighlight),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) onChangeRef.current(update.state.doc.toString());
           }),
@@ -99,9 +116,7 @@ export default function CodeEditor({
     }
   }, [value]);
 
-  // #282c34 matches oneDark's own real background (Atom One Dark) --
-  // only used here as the pre-mount placeholder color so there's no
-  // flash of a different background before CodeMirror itself paints.
+  // Same variable as the editor itself, so nothing flashes before it paints.
   return (
     <div
       ref={containerRef}
@@ -110,7 +125,7 @@ export default function CodeEditor({
         minWidth: 0,
         maxWidth: '100%',
         overflow: 'hidden',
-        background: '#282c34',
+        background: 'var(--nm-code-bg)',
       }}
     />
   );

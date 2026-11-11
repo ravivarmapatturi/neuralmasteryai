@@ -633,13 +633,18 @@ pre.shiki,
 /* Inline maths can also be intrinsically wider than the prose column. This is
    especially easy to trigger when source text contains several currency
    amounts: remark-math may treat the text between dollar signs as one formula.
-   Keep that formula locally scrollable just like display maths. */
-.prose .katex:not(.katex-display > .katex) {
-  display: inline-block;
+   The paragraph scrolls sideways in that case. The formula itself stays a
+   plain inline box so it sits on the text baseline: making it a scrolling
+   inline-block lifted every subscript off the line and drew a scrollbar
+   under one-pixel overhangs. */
+.prose p:has(.katex) {
   max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
-  vertical-align: middle;
+  scrollbar-width: none;
+}
+.prose p:has(.katex)::-webkit-scrollbar {
+  display: none;
 }
 
 /* The doc shell's sidebar (260px) and table of contents (220px) are fixed-
@@ -1528,3 +1533,53 @@ pre.shiki,
   .nm-daily-text { padding-left: 0; animation: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
 }
 @media (max-width: 560px) { .nm-daily-link { flex-wrap: wrap; gap: 0 .6rem; } .nm-daily-window { flex-basis: 100%; order: 3; } .nm-daily-go { margin-left: auto; } }
+
+/* Code editor (CodeMirror) palette. Light paper with ink-coloured syntax on
+   the notebook themes; the dark themes keep a dark editor. */
+:root {
+  --nm-code-bg: #fbfcff;
+  --nm-code-gutter-bg: #f1f4ff;
+  --nm-code-gutter-text: #7a80a6;
+  --nm-code-rule: #c7d2fe;
+  --nm-code-text: #1b1f3b;
+  --nm-code-cursor: #3730a3;
+  --nm-code-selection: #c7d2fe;
+  --nm-code-active-line: #eef2ff;
+  --nm-code-keyword: #7c3aed;
+  --nm-code-string: #15803d;
+  --nm-code-number: #c2410c;
+  --nm-code-comment: #64748b;
+  --nm-code-function: #1d4ed8;
+  --nm-code-type: #0e7490;
+  --nm-code-operator: #be185d;
+  --nm-code-property: #1b1f3b;
+  --nm-code-invalid: #dc2626;
+}
+[data-theme='sepia'] {
+  --nm-code-bg: #fdf8ec;
+  --nm-code-gutter-bg: #f6ecd6;
+  --nm-code-gutter-text: #8a7a5c;
+  --nm-code-rule: #e2d3b0;
+  --nm-code-active-line: #f8efd9;
+  --nm-code-selection: #ead9ae;
+}
+[data-theme='dark'],
+[data-theme='forest'] {
+  --nm-code-bg: #282c34;
+  --nm-code-gutter-bg: #282c34;
+  --nm-code-gutter-text: #7d8799;
+  --nm-code-rule: #3a3f4b;
+  --nm-code-text: #abb2bf;
+  --nm-code-cursor: #528bff;
+  --nm-code-selection: #3e4451;
+  --nm-code-active-line: #2c313a;
+  --nm-code-keyword: #c678dd;
+  --nm-code-string: #98c379;
+  --nm-code-number: #d19a66;
+  --nm-code-comment: #8b95a7;
+  --nm-code-function: #61afef;
+  --nm-code-type: #e5c07b;
+  --nm-code-operator: #56b6c2;
+  --nm-code-property: #abb2bf;
+  --nm-code-invalid: #e06c75;
+}
