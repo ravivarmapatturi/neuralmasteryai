@@ -78,3 +78,70 @@ Owner's rule: when a focus session completes, the break starts at once. When the
 
 - **What is not verified**:
   - Physical display calibration on specialized external monitors. Full build and pagefind omitted per brief 8 GB rule.
+
+### Task 2 Report: Blog Covers (One Per Topic Motif)
+
+- **What changed**:
+  - Redesigned `src/components/BlogCover.tsx` with dedicated hand-drawn SVG motifs per topic family:
+    - `transformers-attention`: Query/Key cross matrix, scaling factor $1/\sqrt{d}$, softmax bar, and rolling KV cache buffer.
+    - `rag-retrieval`: Document chunk projection into dense vector space, hybrid BM25 + dense re-ranking funnel to Top-K context.
+    - `agents`: Perception-reason-action-tool loop with bash tool and MCP server dispatch branches and closed environment feedback.
+    - `training-optimization`: Loss landscape contours, gradient descent parameter updates $\theta_{t+1}$, and JEPA latent representation loss $D(s_x, s_y)$.
+    - `evaluation-safety`: Verification test harness gate, pass checklist, FlashProve 400B cryptographic proof seal, and empirical safety boundaries.
+    - `mlops-deployment`: Serving cluster gateway, Mixture of Experts (MoE) token routing to expert sub-networks, and PagedAttention dynamic batching.
+    - `system-design`: Distributed architecture, load balancer, stateless services, event queue, distributed database and replica sync.
+    - `careers-interviews`: The four disciplines roadmap (Harness, Inference, Context, Observability) with milestone checkpoints.
+    - `news`: Field dispatch announcement card with frontier capability benchmark sparkline.
+    - Dedicated healthcare series motifs (`healthcare-map`, `healthcare-coverage`, `healthcare-costshare`, `healthcare-codes`, `healthcare-policy`, `healthcare-network`, `healthcare-priorauth`, `healthcare-caremgmt`, `healthcare-visit`, `healthcare-claims`, `healthcare-sop`, `healthcare-payment`, `healthcare-pharmacy`, `healthcare-ai`, `healthcare-benefits`, `healthcare-eligibility`, `healthcare-um`, `healthcare-providerpay`).
+  - Added deterministic colour variation `getDeterministicColors(slug)` using a 6-color palette (Light: `#0f766e`, `#3730a3`, `#166534`, `#a21caf`, `#c2410c`, `#1d4ed8`; Dark: `#2dd4bf`, `#7ea2ff`, `#4ade80`, `#c084fc`, `#fbbf24`, `#38bdf8`) so two posts on the same topic differ visually.
+  - Updated `src/styles/theme.css` so `.nm-blog-cover-label` and `.nm-blog-cover svg text` use `var(--font-hand)` and adapt to dark and forest themes via `--cover-accent-dark`.
+  - Updated `src/components/BlogListPage.tsx` to pass post tags into `BlogCover`.
+  - Added comprehensive unit tests in `src/components/BlogCover.test.tsx` verifying:
+    1. Correct topic-to-motif mapping across all topic families and series.
+    2. Deterministic color generation per slug.
+    3. Maximum pair count $\le 3$ across all posts in the catalog (observed maximum: 1).
+    4. Generic fallback `'default'` is rare (observed: 0 posts in catalog).
+    5. Component rendering with handwritten font family and accessible labels.
+
+- **Post to Motif & Colour Mapping (All 27 Catalog Posts)**:
+
+| Post Slug | Topic Motif | Marker Colour (Light / Dark) |
+| :--- | :--- | :--- |
+| `claude-fable-5-2-what-anthropic-announced` | `news` | `#c2410c` / `#fbbf24` |
+| `flashprove-provable-inference` | `evaluation-safety` | `#c2410c` / `#fbbf24` |
+| `what-is-changing-in-ai-engineering-and-what-to-learn-next` | `careers-interviews` | `#166534` / `#4ade80` |
+| `jeva-decision-models` | `system-design` | `#0f766e` / `#2dd4bf` |
+| `kimi-k3-linear-attention` | `transformers-attention` | `#c2410c` / `#fbbf24` |
+| `world-models-verify-gui-agents` | `agents` | `#c2410c` / `#fbbf24` |
+| `agent-skills-explained` | `agents` | `#3730a3` / `#7ea2ff` |
+| `do-agents-need-a-memory-system` | `rag-retrieval` | `#a21caf` / `#c084fc` |
+| `from-classifiers-to-jepa` | `training-optimization` | `#166534` / `#4ade80` |
+| `us-healthcare-1-the-map` | `healthcare-map` | `#3730a3` / `#7ea2ff` |
+| `us-healthcare-2-public-and-private-coverage` | `healthcare-coverage` | `#166534` / `#4ade80` |
+| `us-healthcare-3-how-a-health-plan-works` | `healthcare-costshare` | `#1d4ed8` / `#38bdf8` |
+| `us-healthcare-4-the-code-systems` | `healthcare-codes` | `#0f766e` / `#2dd4bf` |
+| `us-healthcare-5-coverage-policy` | `healthcare-policy` | `#166534` / `#4ade80` |
+| `us-healthcare-6-eligibility-and-enrollment` | `healthcare-eligibility` | `#0f766e` / `#2dd4bf` |
+| `us-healthcare-7-network-management` | `healthcare-network` | `#a21caf` / `#c084fc` |
+| `us-healthcare-8-benefit-digitization` | `healthcare-benefits` | `#1d4ed8` / `#38bdf8` |
+| `us-healthcare-9-utilization-management` | `healthcare-um` | `#a21caf` / `#c084fc` |
+| `us-healthcare-10-prior-authorization` | `healthcare-priorauth` | `#3730a3` / `#7ea2ff` |
+| `us-healthcare-11-care-management` | `healthcare-caremgmt` | `#3730a3` / `#7ea2ff` |
+| `us-healthcare-12-from-visit-to-claim` | `healthcare-visit` | `#166534` / `#4ade80` |
+| `us-healthcare-13-claim-adjudication` | `healthcare-claims` | `#0f766e` / `#2dd4bf` |
+| `us-healthcare-14-the-claim-sop` | `healthcare-sop` | `#166534` / `#4ade80` |
+| `us-healthcare-15-payment-integrity` | `healthcare-payment` | `#0f766e` / `#2dd4bf` |
+| `us-healthcare-16-how-providers-get-paid` | `healthcare-providerpay` | `#0f766e` / `#2dd4bf` |
+| `us-healthcare-17-pharmacy-and-pbms` | `healthcare-pharmacy` | `#c2410c` / `#fbbf24` |
+| `us-healthcare-18-data-rules-and-ai` | `healthcare-ai` | `#166534` / `#4ade80` |
+
+- **What was verified and how**:
+  - Scoped unit tests: `flock /tmp/nm-heavy.lock npx vitest run src/components/BlogCover.test.tsx` -> 5/5 passed.
+  - Typecheck: `flock /tmp/nm-heavy.lock npm run typecheck` -> exit code 0.
+  - Banned words grep: zero matches.
+  - Visual confirmation & screenshots on port 5194:
+    - `docs/evidence/polish-b/blog-list-pure-white.png` (216 KB)
+    - `docs/evidence/polish-b/blog-list-dark.png` (225 KB)
+
+- **What is not verified**:
+  - Production CDN caching. Full build and pagefind omitted per brief 8 GB rule.
