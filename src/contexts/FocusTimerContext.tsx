@@ -11,10 +11,12 @@ import {
   startPhase,
   pauseTimer,
   resumeTimer,
-  completePhase,
   skipPhase,
   stopSession,
   restoreStateFromStorage,
+  rolloverTimer,
+  tickTimer,
+  createInitialState,
   updatePreset,
   mergeFocusSessions,
   formatClockTime,
@@ -221,36 +223,26 @@ function getInitialFocusTimerStateAndSessions(): InitialFocusData {
 
   const now = Date.now();
   if (savedTimer && savedTimer.status === 'running' && savedTimer.endsAt !== null && now >= savedTimer.endsAt) {
-    if (savedTimer.phase === 'focus' && savedTimer.currentSessionId) {
-      const alreadyHandled =
-        sessions.some((s) => s.id === savedTimer.currentSessionId) ||
-        savedTimer.lastHandledSessionId === savedTimer.currentSessionId;
-
-      if (!alreadyHandled) {
-        const plannedMinutes = savedTimer.preset?.focusMinutes || 25;
-        const targetMs = savedTimer.targetDurationMs || plannedMinutes * 60 * 1000;
-        const focusedSeconds = Math.floor(targetMs / 1000);
-        const started = savedTimer.startedAt
-          ? new Date(savedTimer.startedAt).toISOString()
-          : new Date(savedTimer.endsAt - targetMs).toISOString();
-
-        reloadCompletedSession = {
-          id: savedTimer.currentSessionId,
-          startedAt: started,
-          endedAt: new Date(savedTimer.endsAt).toISOString(), // focused time up to endsAt only
-          plannedMinutes,
-          focusedSeconds: Math.max(60, focusedSeconds),
-          completed: true,
-          section: savedTimer.currentSessionSection || 'home',
-        };
-
-        sessions = mergeFocusSessions(sessions, [reloadCompletedSession]);
+    const fullState: FocusTimerState = {
+      ...createInitialState(savedTimer.preset || DEFAULT_PRESET),
+      ...savedTimer,
+    };
+    const { nextState, completedSessions } = rolloverTimer(fullState, now);
+    if (completedSessions.length > 0) {
+      const newSessions = completedSessions.filter(
+        (cs) => !sessions.some((s) => s.id === cs.id) && savedTimer.lastHandledSessionId !== cs.id,
+      );
+      if (newSessions.length > 0) {
+        sessions = mergeFocusSessions(sessions, newSessions);
         writeStorage(SESSIONS_STORAGE_KEY, sessions);
         const pending = readStorage<FocusSession[]>(PENDING_SESSIONS_STORAGE_KEY) || [];
-        writeStorage(PENDING_SESSIONS_STORAGE_KEY, mergeFocusSessions(pending, [reloadCompletedSession]));
-        savedTimer.lastHandledSessionId = savedTimer.currentSessionId;
+        writeStorage(PENDING_SESSIONS_STORAGE_KEY, mergeFocusSessions(pending, newSessions));
+        reloadCompletedSession = newSessions[newSessions.length - 1];
       }
     }
+    const lastSessionId = completedSessions[completedSessions.length - 1]?.id || savedTimer.lastHandledSessionId;
+    writeStorage(TIMER_STORAGE_KEY, { ...nextState, lastHandledSessionId: lastSessionId });
+    return { timerState: nextState, sessions, reloadCompletedSession };
   }
 
   const timerState = restoreStateFromStorage(savedTimer, now);
@@ -371,41 +363,27 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
   const handlePhaseEnd = useCallback(
     (currentState: FocusTimerState, now: number) => {
       if (currentState.status !== 'running' || currentState.endsAt === null) return;
+      if (now < currentState.endsAt) return;
+
       const phaseKey = `${currentState.currentSessionId || currentState.phase}_${currentState.endsAt}`;
       if (phaseEndHandledRef.current === phaseKey) return;
       phaseEndHandledRef.current = phaseKey;
+
+      const { nextState, completedSessions, phaseChangesCount } = rolloverTimer(currentState, now);
+      if (phaseChangesCount === 0) return;
 
       playChime();
       if (currentState.notificationsEnabled) {
         notifyPhaseEnded(currentState.phase);
       }
 
-      if (currentState.phase === 'focus' && currentState.currentSessionId) {
-        const plannedMinutes = currentState.preset.focusMinutes;
-        const targetMs = currentState.targetDurationMs || plannedMinutes * 60 * 1000;
-        // Focused time is strictly capped up to endsAt only
-        const effectiveElapsed = currentState.lastTickTimestamp !== null
-          ? Math.max(0, currentState.endsAt - currentState.lastTickTimestamp)
-          : 0;
-        const totalMs = Math.min(targetMs, currentState.accumulatedFocusMs + effectiveElapsed);
-        const focusedSeconds = Math.floor(totalMs / 1000);
-        const started = currentState.startedAt ? new Date(currentState.startedAt).toISOString() : new Date(currentState.endsAt - totalMs).toISOString();
-
-        const completedSession: FocusSession = {
-          id: currentState.currentSessionId,
-          startedAt: started,
-          endedAt: new Date(currentState.endsAt).toISOString(),
-          plannedMinutes,
-          focusedSeconds: Math.max(60, focusedSeconds),
-          completed: true,
-          section: currentState.currentSessionSection || 'home',
-        };
-        recordSession(completedSession);
+      for (const session of completedSessions) {
+        recordSession(session);
       }
 
-      const next = completePhase(currentState, now);
-      setState(next);
-      writeStorage(TIMER_STORAGE_KEY, { ...next, lastHandledSessionId: currentState.currentSessionId });
+      setState(nextState);
+      const lastSessionId = completedSessions[completedSessions.length - 1]?.id || currentState.currentSessionId;
+      writeStorage(TIMER_STORAGE_KEY, { ...nextState, lastHandledSessionId: lastSessionId });
     },
     [recordSession],
   );
@@ -440,8 +418,7 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
     }
   }, [state.status, state.phase, musicEnabled, musicPlaying, playMusic, pauseMusic]);
 
-  // Focus time counts screen time on this tab: it starts on its own when the site opens,
-  // pauses the moment the tab is hidden and resumes when the learner comes back.
+  // Focus time starts on its own when the site opens:
   useEffect(() => {
     const now = Date.now();
     const current = stateRef.current;
@@ -455,30 +432,27 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // visibilitychange covers switching tabs, minimising the window and locking the screen;
     // pagehide/pageshow cover closing the tab and the back-forward cache.
+    // Timer runs continuously without pausing when tab is hidden, calculating elapsed phases from timestamps.
     const onVisibilityChange = (event?: Event) => {
       const now = Date.now();
       const current = stateRef.current;
       if (document.hidden || event?.type === 'pagehide') {
-        // A focus phase that already ran out (throttled tab, sleeping laptop) is finished,
-        // not paused: pausing here would save it as an "away" pause with 0 left and lose the session.
         if (current.status === 'running' && current.endsAt !== null && now >= current.endsAt) {
           handlePhaseEnd(current, now);
-          return;
-        }
-        if (current.status === 'running' && current.phase === 'focus') {
-          // Saved straight away: the page may unload before React re-renders.
-          const paused = pauseTimer(current, 'away', now);
-          stateRef.current = paused;
-          writeStorage(TIMER_STORAGE_KEY, paused);
-          setState(paused);
         }
         return;
       }
-      if (current.status === 'running' && current.endsAt !== null && now >= current.endsAt) {
-        handlePhaseEnd(current, now);
-        return;
+      // Tab visible again / pageshow
+      if (current.status === 'running' && current.endsAt !== null) {
+        if (now >= current.endsAt) {
+          handlePhaseEnd(current, now);
+        } else {
+          setState((prev) => tickTimer(prev, now));
+        }
       }
-      if (current.status === 'paused' && current.pausedReason === 'away') setState((prev) => resumeTimer(prev, now));
+      if (current.status === 'paused' && current.pausedReason === 'away') {
+        setState((prev) => resumeTimer(prev, now));
+      }
     };
 
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -634,7 +608,7 @@ const defaultTimerContext: FocusTimerContextType = {
   targetDurationMs: 25 * 60 * 1000,
   endsAt: null,
   startedAt: null,
-  autoStartNext: false,
+  autoStartNext: true,
   notificationsEnabled: false,
   pausedReason: null,
   sessions: [],

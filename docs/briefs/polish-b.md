@@ -145,3 +145,44 @@ Owner's rule: when a focus session completes, the break starts at once. When the
 
 - **What is not verified**:
   - Production CDN caching. Full build and pagefind omitted per brief 8 GB rule.
+
+### Task 3 Report: Continuous Focus Timer
+
+- **Current State Machine Analysis (Before Changes)**:
+  - Initial configuration: `autoStartNext` defaulted to `false`.
+  - When a focus or break phase timer reached 0 (`remainingMs <= 0` or timeout): `completePhase` transitioned `status` to `'phaseEnded'` with `remainingMs = 0`, forcing the user to manually click "Start break" or "Start focus".
+  - When switching tabs (`document.hidden` or `visibilitychange` or `pagehide`): `FocusTimerContext.tsx` previously paused running focus sessions with `pausedReason: 'away'` (or after 60s in `handleVisibilityChange`), interrupting continuous flow.
+  - As a result, the timer stopped between phases and auto-paused when hidden, violating the owner's rule of continuous focus/break cycling.
+
+- **What changed**:
+  - Implemented continuous auto-advance in `src/lib/focusTimer.ts`:
+    - Updated `createInitialState` and `defaultTimerContext` so `autoStartNext` defaults to `true`.
+    - Implemented `rolloverTimer(state, now)` pure state machine:
+      - Traverses all elapsed phase boundaries across wall-clock time (`now >= curEndsAt`).
+      - Automatically transitions: `focus` $\to$ `shortBreak` (or `longBreak` every 4th completed focus session), and `shortBreak`/`longBreak` $\to$ next `focus` session with a fresh `currentSessionId`.
+      - Automatically creates and records completed `FocusSession` entries (with exact planned minutes, focused seconds capped to duration, start/end ISO timestamps, and completed flag).
+      - Computes active phase status (`'running'`), exact `remainingMs = curEndsAt - now`, and accumulated focus milliseconds.
+      - Preserves manual stop mode if user explicitly sets `autoStartNext: false` (transitions to `'phaseEnded'`).
+    - Updated `tickTimer` to trigger `rolloverTimer` on phase boundary expiry (`now >= state.endsAt`).
+    - Updated `handleVisibilityChange` so background tabs do NOT auto-pause (`autoPaused: false`); computes timestamp rollover seamlessly across background duration.
+    - Updated `restoreStateFromStorage` to use `rolloverTimer` across browser reloads.
+  - Implemented continuous flow and background persistence in `src/contexts/FocusTimerContext.tsx`:
+    - Updated `handlePhaseEnd` to compute `rolloverTimer`, record all completed sessions via `recordSession`, update active state, and trigger `playChime()` and `notifyPhaseEnded()` once per phase change.
+    - Updated `onVisibilityChange`: removed `pausedReason: 'away'` pause; when tab is hidden or closing, persists active state; when returning, triggers `handlePhaseEnd` / `tickTimer` from wall-clock timestamps.
+    - Updated `getInitialFocusTimerStateAndSessions`: uses `rolloverTimer` on reload to retroactively record all completed sessions from background time and resume the active phase.
+  - Expanded unit test suites in `src/lib/focusTimer.test.ts` and `src/contexts/FocusTimerContext.test.tsx`:
+    - Verified focus ends $\to$ shortBreak is running with no action.
+    - Verified break ends $\to$ next focus is running with no action.
+    - Verified user pause holds across phase boundary (timer does not advance while paused).
+    - Verified stop resets state to idle.
+    - Verified long background gap (e.g. 65 minutes) landing in the exact active phase (Focus 3 with 20 minutes remaining) and recording exactly 2 completed sessions.
+
+- **What was verified and how**:
+  - Unit tests: `flock /tmp/nm-heavy.lock npx vitest run src/lib/focusTimer.test.ts src/contexts/FocusTimerContext.test.tsx` -> 2 test files passed, 27/27 tests passed.
+  - Full suite for polish-b files: `flock /tmp/nm-heavy.lock npx vitest run src/components/interview/masteryScale.test.ts src/components/interview/InterviewGraph.test.tsx src/components/BlogCover.test.tsx src/lib/focusTimer.test.ts src/contexts/FocusTimerContext.test.tsx` -> 5 test files passed, 64/64 tests passed.
+  - Typecheck: `flock /tmp/nm-heavy.lock npm run typecheck` -> exit code 0.
+  - Internal links: `flock /tmp/nm-heavy.lock npm run check:links` -> exit code 0.
+  - Banned words grep: zero matches across all modified files.
+
+- **What is not verified**:
+  - Full static build (`npm run build`) and Pagefind index omitted per brief 8 GB RAM rule.

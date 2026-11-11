@@ -6,6 +6,7 @@ import {
   resumeTimer,
   handleVisibilityChange,
   tickTimer,
+  rolloverTimer,
   completePhase,
   skipPhase,
   stopSession,
@@ -92,7 +93,7 @@ describe('focusTimer pure logic', () => {
     expect(state.accumulatedFocusMs).toBe(20000);
   });
 
-  it('enforces the 60-second background tab away rule', () => {
+  it('handles background tab visibility and timestamp rollover without auto-pausing', () => {
     const t0 = 1000000;
     let state = startPhase(createInitialState(), 'focus', 'labs', t0);
 
@@ -100,52 +101,58 @@ describe('focusTimer pure logic', () => {
     const resultShort = handleVisibilityChange(state, 30000, t0 + 30000);
     expect(resultShort.autoPaused).toBe(false);
     expect(resultShort.state.status).toBe('running');
+    expect(resultShort.state.remainingMs).toBe(25 * 60 * 1000 - 30000);
 
-    // Tab hidden for 90s (> 60s): credits only 60s, then auto-pauses
+    // Tab hidden for 90s: continues running and does NOT auto-pause
     state = startPhase(createInitialState(), 'focus', 'labs', t0);
     const resultLong = handleVisibilityChange(state, 90000, t0 + 90000);
-    expect(resultLong.autoPaused).toBe(true);
-    expect(resultLong.state.status).toBe('paused');
-    expect(resultLong.state.pausedReason).toBe('away');
-    expect(resultLong.state.accumulatedFocusMs).toBe(60000);
-    expect(resultLong.state.remainingMs).toBe(25 * 60 * 1000 - 60000);
+    expect(resultLong.autoPaused).toBe(false);
+    expect(resultLong.state.status).toBe('running');
+    expect(resultLong.state.remainingMs).toBe(25 * 60 * 1000 - 90000);
+
+    // Tab hidden for 30 minutes (past 25m focus phase):
+    // rolls over to shortBreak with 5 minutes remaining in break
+    const result30m = handleVisibilityChange(state, 30 * 60 * 1000, t0 + 27 * 60 * 1000);
+    expect(result30m.state.status).toBe('running');
+    expect(result30m.state.phase).toBe('shortBreak');
+    expect(result30m.completedSessions.length).toBe(1);
+    expect(result30m.state.remainingMs).toBe(3 * 60 * 1000);
   });
 
   it('triggers long break after 4 focus sessions', () => {
     const t0 = 1000000;
     let state = startPhase(createInitialState(), 'focus', 'learn', t0);
 
-    // Finish session 1 -> short break
+    // Finish session 1 -> automatically running short break
     state = completePhase({ ...state, remainingMs: 0 }, t0 + 25 * 60 * 1000);
     expect(state.completedFocusCount).toBe(1);
-    expect(state.status).toBe('phaseEnded');
+    expect(state.phase).toBe('shortBreak');
+    expect(state.status).toBe('running');
 
-    // Start & finish break 1
-    state = startPhase(state, 'shortBreak', 'learn', t0 + 25 * 60 * 1000);
+    // Finish break 1 -> automatically running focus 2
     state = completePhase({ ...state, remainingMs: 0 });
+    expect(state.phase).toBe('focus');
+    expect(state.status).toBe('running');
 
-    // Session 2
-    state = startPhase(state, 'focus', 'learn');
+    // Finish session 2 -> short break 2
     state = completePhase({ ...state, remainingMs: 0 });
     expect(state.completedFocusCount).toBe(2);
+    expect(state.phase).toBe('shortBreak');
 
-    // Break 2
-    state = startPhase(state, 'shortBreak', 'learn');
+    // Finish break 2 -> focus 3
     state = completePhase({ ...state, remainingMs: 0 });
+    expect(state.phase).toBe('focus');
 
-    // Session 3
-    state = startPhase(state, 'focus', 'learn');
+    // Finish session 3 -> short break 3
     state = completePhase({ ...state, remainingMs: 0 });
     expect(state.completedFocusCount).toBe(3);
+    expect(state.phase).toBe('shortBreak');
 
-    // Break 3
-    state = startPhase(state, 'shortBreak', 'learn');
+    // Finish break 3 -> focus 4
     state = completePhase({ ...state, remainingMs: 0 });
+    expect(state.phase).toBe('focus');
 
-    // Session 4
-    state = startPhase(state, 'focus', 'learn');
-    // When autoStartNext is true, check transition directly to longBreak
-    state.autoStartNext = true;
+    // Finish session 4 -> automatically running long break!
     state = completePhase({ ...state, remainingMs: 0 }, t0 + 100000);
     expect(state.phase).toBe('longBreak');
     expect(state.status).toBe('running');
@@ -189,11 +196,47 @@ describe('focusTimer pure logic', () => {
     expect(restored.remainingMs).toBe(20 * 60 * 1000);
     expect(restored.completedFocusCount).toBe(1);
 
-    // Reload after session has already finished while away
-    const lateReloadTime = t0 + 30 * 60 * 1000;
+    // Reload 28 minutes after start (3 minutes into 5-minute break)
+    const lateReloadTime = t0 + 28 * 60 * 1000;
     const finishedRestored = restoreStateFromStorage(runningState, lateReloadTime);
-    expect(finishedRestored.status).toBe('phaseEnded');
+    expect(finishedRestored.status).toBe('running');
+    expect(finishedRestored.phase).toBe('shortBreak');
+    expect(finishedRestored.remainingMs).toBe(2 * 60 * 1000);
     expect(finishedRestored.completedFocusCount).toBe(2);
+
+    // Reload when autoStartNext is false (manual stop mode)
+    const stoppedState = { ...runningState, autoStartNext: false };
+    const manualRestored = restoreStateFromStorage(stoppedState, lateReloadTime);
+    expect(manualRestored.status).toBe('phaseEnded');
+    expect(manualRestored.remainingMs).toBe(0);
+  });
+
+  it('rolls over continuous phases across large wall-clock gap', () => {
+    const t0 = 1000000;
+    const state = startPhase(createInitialState(), 'focus', 'learn', t0);
+    // 65 minutes later:
+    // 0-25m: Focus 1 (25m) -> count=1
+    // 25-30m: Break 1 (5m)
+    // 30-55m: Focus 2 (25m) -> count=2
+    // 55-60m: Break 2 (5m)
+    // 60-85m: Focus 3 (25m), currently 5 minutes in -> 20m remaining!
+    const t65 = t0 + 65 * 60 * 1000;
+    const { nextState, completedSessions, phaseChangesCount } = rolloverTimer(state, t65);
+
+    expect(phaseChangesCount).toBe(4);
+    expect(completedSessions.length).toBe(2);
+    expect(completedSessions[0].plannedMinutes).toBe(25);
+    expect(completedSessions[0].focusedSeconds).toBe(1500);
+    expect(completedSessions[0].completed).toBe(true);
+    expect(completedSessions[1].plannedMinutes).toBe(25);
+    expect(completedSessions[1].focusedSeconds).toBe(1500);
+    expect(completedSessions[1].completed).toBe(true);
+
+    expect(nextState.phase).toBe('focus');
+    expect(nextState.status).toBe('running');
+    expect(nextState.completedFocusCount).toBe(2);
+    expect(nextState.remainingMs).toBe(20 * 60 * 1000);
+    expect(nextState.accumulatedFocusMs).toBe(5 * 60 * 1000);
   });
 
   it('stops session and saves record if focused >= 60 seconds', () => {
@@ -401,10 +444,16 @@ describe('focus stats and merge logic', () => {
     expect(completedSession?.endedAt).toBe(new Date(endsAt).toISOString());
     expect(completedSession?.completed).toBe(true);
 
-    // Test restoreStateFromStorage after endsAt has passed
+    // Test restoreStateFromStorage after endsAt has passed:
+    // With autoStartNext: true, rolls over into active cycle
     const restored = restoreStateFromStorage(running, lateNow);
-    expect(restored.status).toBe('phaseEnded');
-    expect(restored.accumulatedFocusMs).toBe(25 * 60 * 1000);
-    expect(restored.remainingMs).toBe(0);
+    expect(restored.status).toBe('running');
+    expect(restored.completedFocusCount).toBe(2);
+
+    // With autoStartNext: false, completes phase and remains in phaseEnded
+    const manualStopState = { ...running, autoStartNext: false };
+    const manualRestored = restoreStateFromStorage(manualStopState, lateNow);
+    expect(manualRestored.status).toBe('phaseEnded');
+    expect(manualRestored.remainingMs).toBe(0);
   });
 });

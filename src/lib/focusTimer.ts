@@ -88,7 +88,7 @@ export function createInitialState(preset: FocusPreset = DEFAULT_PRESET): FocusT
     endsAt: null,
     remainingMs: targetMs,
     targetDurationMs: targetMs,
-    autoStartNext: false,
+    autoStartNext: true,
     notificationsEnabled: false,
     currentSessionId: null,
     currentSessionSection: 'home',
@@ -166,39 +166,158 @@ export function resumeTimer(state: FocusTimerState, now = Date.now()): FocusTime
   };
 }
 
-/** Handle background tab visibility change: away rule */
+export interface RolloverResult {
+  nextState: FocusTimerState;
+  completedSessions: FocusSession[];
+  phaseChangesCount: number;
+}
+
+/**
+ * Calculates phase transitions and records completed sessions across wall-clock time gaps
+ * (background tabs, sleep/wake, page reloads).
+ * Runs continuously through all elapsed phases until reaching the currently active phase.
+ */
+export function rolloverTimer(state: FocusTimerState, now = Date.now()): RolloverResult {
+  if (state.status !== 'running' || state.endsAt === null) {
+    return { nextState: state, completedSessions: [], phaseChangesCount: 0 };
+  }
+
+  if (now < state.endsAt) {
+    const remainingMs = state.endsAt - now;
+    let accumulated = state.accumulatedFocusMs;
+    if (state.phase === 'focus' && state.lastTickTimestamp !== null) {
+      const elapsed = Math.max(0, now - state.lastTickTimestamp);
+      accumulated = Math.min(state.targetDurationMs, accumulated + elapsed);
+    }
+    return {
+      nextState: {
+        ...state,
+        remainingMs,
+        accumulatedFocusMs: accumulated,
+        lastTickTimestamp: state.phase === 'focus' ? now : null,
+      },
+      completedSessions: [],
+      phaseChangesCount: 0,
+    };
+  }
+
+  // One or more phases have completed
+  let curPhase = state.phase;
+  let curCount = state.completedFocusCount;
+  let curEndsAt = state.endsAt;
+  let curStartedAt = state.startedAt ?? (curEndsAt - state.targetDurationMs);
+  let curSessionId = state.currentSessionId;
+  const curSection = state.currentSessionSection || 'home';
+  const completedSessions: FocusSession[] = [];
+  let phaseChangesCount = 0;
+
+  const MAX_ROLLOVER_STEPS = 500;
+  let steps = 0;
+
+  while (now >= curEndsAt && steps < MAX_ROLLOVER_STEPS) {
+    steps++;
+    phaseChangesCount++;
+
+    if (curPhase === 'focus') {
+      const plannedMinutes = state.preset.focusMinutes;
+      const targetMs = plannedMinutes * 60 * 1000;
+      const focusedSeconds = Math.floor(targetMs / 1000);
+      const startedIso = new Date(curStartedAt).toISOString();
+      const endedIso = new Date(curEndsAt).toISOString();
+      const sessionId = curSessionId || generateSessionId();
+
+      completedSessions.push({
+        id: sessionId,
+        startedAt: startedIso,
+        endedAt: endedIso,
+        plannedMinutes,
+        focusedSeconds,
+        completed: true,
+        section: curSection,
+      });
+
+      const nextCompletedCount = curCount + 1;
+      const isLongBreak = nextCompletedCount >= 4;
+      curPhase = isLongBreak ? 'longBreak' : 'shortBreak';
+      curCount = isLongBreak ? 0 : nextCompletedCount;
+      const breakMinutes = isLongBreak ? state.preset.longBreakMinutes : state.preset.shortBreakMinutes;
+      const breakDurationMs = breakMinutes * 60 * 1000;
+
+      curStartedAt = curEndsAt;
+      curEndsAt = curStartedAt + breakDurationMs;
+      curSessionId = null;
+    } else {
+      // Break phase ended -> start next focus session
+      curPhase = 'focus';
+      const focusMinutes = state.preset.focusMinutes;
+      const focusDurationMs = focusMinutes * 60 * 1000;
+
+      curStartedAt = curEndsAt;
+      curEndsAt = curStartedAt + focusDurationMs;
+      curSessionId = generateSessionId();
+    }
+
+    if (!state.autoStartNext) {
+      return {
+        nextState: {
+          ...state,
+          phase: curPhase,
+          status: 'phaseEnded',
+          completedFocusCount: curCount,
+          remainingMs: 0,
+          lastTickTimestamp: null,
+          pausedReason: null,
+        },
+        completedSessions,
+        phaseChangesCount,
+      };
+    }
+  }
+
+  // Active phase reached
+  const targetDurationMs = curPhase === 'focus'
+    ? state.preset.focusMinutes * 60 * 1000
+    : (curPhase === 'longBreak' ? state.preset.longBreakMinutes * 60 * 1000 : state.preset.shortBreakMinutes * 60 * 1000);
+
+  const remainingMs = Math.max(0, curEndsAt - now);
+  const elapsedInPhase = Math.max(0, now - curStartedAt);
+  const accumulatedFocusMs = curPhase === 'focus' ? Math.min(targetDurationMs, elapsedInPhase) : 0;
+  const lastTickTimestamp = curPhase === 'focus' ? now : null;
+
+  const nextState: FocusTimerState = {
+    ...state,
+    phase: curPhase,
+    status: 'running',
+    completedFocusCount: curCount,
+    startedAt: curStartedAt,
+    endsAt: curEndsAt,
+    remainingMs,
+    targetDurationMs,
+    currentSessionId: curSessionId,
+    accumulatedFocusMs,
+    lastTickTimestamp,
+    pausedReason: null,
+  };
+
+  return {
+    nextState,
+    completedSessions,
+    phaseChangesCount,
+  };
+}
+
+/** Handle background tab visibility change: computes rollover from timestamp */
 export function handleVisibilityChange(
   state: FocusTimerState,
-  hiddenDurationMs: number,
+  _hiddenDurationMs: number,
   now = Date.now(),
-): { state: FocusTimerState; autoPaused: boolean } {
+): { state: FocusTimerState; autoPaused: boolean; completedSessions: FocusSession[] } {
   if (state.status !== 'running') {
-    return { state, autoPaused: false };
+    return { state, autoPaused: false, completedSessions: [] };
   }
 
-  // If hidden for more than 60 seconds (60000 ms), auto-pause
-  if (hiddenDurationMs > 60000) {
-    let accumulated = state.accumulatedFocusMs;
-    // Up to 60 seconds of switching away counts as focus time
-    if (state.phase === 'focus') {
-      accumulated += 60000;
-    }
-    // The remaining time after crediting 60s:
-    const remainingMs = Math.max(0, state.remainingMs - 60000);
-
-    const pausedState: FocusTimerState = {
-      ...state,
-      status: 'paused',
-      remainingMs,
-      accumulatedFocusMs: accumulated,
-      lastTickTimestamp: null,
-      pausedReason: 'away',
-    };
-    return { state: pausedState, autoPaused: true };
-  }
-
-  // Hidden for <= 60 seconds: counts towards progress
-  return { state: tickTimer(state, now), autoPaused: false };
+  const { nextState, completedSessions } = rolloverTimer(state, now);
+  return { state: nextState, autoPaused: false, completedSessions };
 }
 
 /** Recalculate remaining time and accumulated focus on a clock tick */
@@ -207,25 +326,17 @@ export function tickTimer(state: FocusTimerState, now = Date.now()): FocusTimerS
     return state;
   }
 
+  if (now >= state.endsAt) {
+    const { nextState } = rolloverTimer(state, now);
+    return nextState;
+  }
+
   const remainingMs = Math.max(0, state.endsAt - now);
   let accumulated = state.accumulatedFocusMs;
 
   if (state.phase === 'focus' && state.lastTickTimestamp !== null) {
     const elapsed = Math.max(0, now - state.lastTickTimestamp);
-    accumulated += elapsed;
-  }
-
-  if (remainingMs <= 0) {
-    // Phase ended!
-    return completePhase(
-      {
-        ...state,
-        remainingMs: 0,
-        accumulatedFocusMs: accumulated,
-        lastTickTimestamp: null,
-      },
-      now,
-    );
+    accumulated = Math.min(state.targetDurationMs, accumulated + elapsed);
   }
 
   return {
@@ -456,26 +567,14 @@ export function restoreStateFromStorage(saved: Partial<FocusTimerState> | null, 
 
   if (state.status === 'running' && state.endsAt !== null) {
     if (now >= state.endsAt) {
-      // Completed while tab/browser was closed:
-      // Cap focus accumulation to endsAt / targetDurationMs
-      const effectiveAccumulatedMs = state.phase === 'focus'
-        ? (state.targetDurationMs > 0 ? state.targetDurationMs : Math.max(0, state.endsAt - (state.startedAt || state.endsAt)))
-        : state.accumulatedFocusMs;
-
-      return completePhase(
-        {
-          ...state,
-          accumulatedFocusMs: effectiveAccumulatedMs,
-          remainingMs: 0,
-        },
-        state.endsAt,
-      );
+      const { nextState } = rolloverTimer(state, now);
+      return nextState;
     }
     // Still running: recalculate remainingMs from timestamp
     const remainingMs = Math.max(0, state.endsAt - now);
     const elapsedSinceLastTick = state.lastTickTimestamp !== null ? Math.max(0, now - state.lastTickTimestamp) : 0;
     const accumulatedFocusMs = state.phase === 'focus'
-      ? state.accumulatedFocusMs + elapsedSinceLastTick
+      ? Math.min(state.targetDurationMs, state.accumulatedFocusMs + elapsedSinceLastTick)
       : state.accumulatedFocusMs;
 
     return {
