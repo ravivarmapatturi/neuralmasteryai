@@ -161,26 +161,134 @@ describe('FocusTimerContext', () => {
     expect(screen.getByTestId('countdown').textContent).toBe('24:45');
   });
 
-  it('counts only time on this tab: pauses when hidden and resumes on return', async () => {
+  it('auto-advances: focus ends then break is running with no action', async () => {
     render(
       <Wrapper>
         <TestTimerWidget />
       </Wrapper>,
     );
+
+    expect(screen.getByTestId('phase').textContent).toBe('focus');
     expect(screen.getByTestId('status').textContent).toBe('running');
 
-    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
-    fireEvent(document, new Event('visibilitychange'));
-    expect(screen.getByTestId('status').textContent).toBe('paused');
-    expect(screen.getByTestId('reason').textContent).toBe('away');
+    // Advance 25 minutes (the entire focus session)
     act(() => {
-      vi.advanceTimersByTime(70000);
+      vi.advanceTimersByTime(25 * 60 * 1000);
     });
 
-    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
-    fireEvent(document, new Event('visibilitychange'));
+    // Automatically transitions to shortBreak and stays running with no clicks
+    expect(screen.getByTestId('phase').textContent).toBe('shortBreak');
+    expect(screen.getByTestId('status').textContent).toBe('running');
+    expect(screen.getByTestId('countdown').textContent).toBe('05:00');
+    expect(screen.getByTestId('sessions-count').textContent).toBe('1');
+  });
+
+  it('auto-advances: break ends then next focus is running with no action', async () => {
+    render(
+      <Wrapper>
+        <TestTimerWidget />
+      </Wrapper>,
+    );
+
+    // Advance 25 minutes to complete focus
+    act(() => {
+      vi.advanceTimersByTime(25 * 60 * 1000);
+    });
+    expect(screen.getByTestId('phase').textContent).toBe('shortBreak');
+    expect(screen.getByTestId('status').textContent).toBe('running');
+
+    // Advance 5 minutes to complete short break
+    act(() => {
+      vi.advanceTimersByTime(5 * 60 * 1000);
+    });
+
+    // Automatically transitions back to focus and stays running
+    expect(screen.getByTestId('phase').textContent).toBe('focus');
     expect(screen.getByTestId('status').textContent).toBe('running');
     expect(screen.getByTestId('countdown').textContent).toBe('25:00');
+  });
+
+  it('user pause holds across a phase boundary and stop resets', async () => {
+    render(
+      <Wrapper>
+        <TestTimerWidget />
+      </Wrapper>,
+    );
+
+    expect(screen.getByTestId('phase').textContent).toBe('focus');
+    expect(screen.getByTestId('status').textContent).toBe('running');
+
+    // Advance 20 minutes (5m left)
+    act(() => {
+      vi.advanceTimersByTime(20 * 60 * 1000);
+    });
+    expect(screen.getByTestId('countdown').textContent).toBe('05:00');
+
+    // User explicitly pauses
+    fireEvent.click(screen.getByText('Pause'));
+    expect(screen.getByTestId('status').textContent).toBe('paused');
+    expect(screen.getByTestId('reason').textContent).toBe('user');
+
+    // Advance 10 minutes past what would have been the phase boundary (endsAt)
+    act(() => {
+      vi.advanceTimersByTime(10 * 60 * 1000);
+    });
+
+    // Phase boundary must NOT have advanced while paused!
+    expect(screen.getByTestId('phase').textContent).toBe('focus');
+    expect(screen.getByTestId('status').textContent).toBe('paused');
+    expect(screen.getByTestId('countdown').textContent).toBe('05:00');
+
+    // Resuming continues the remaining 5 minutes of the focus phase
+    fireEvent.click(screen.getByText('Resume'));
+    expect(screen.getByTestId('status').textContent).toBe('running');
+    expect(screen.getByTestId('countdown').textContent).toBe('05:00');
+
+    // Stop resets to idle
+    fireEvent.click(screen.getByText('Stop'));
+    expect(screen.getByTestId('phase').textContent).toBe('idle');
+    expect(screen.getByTestId('status').textContent).toBe('idle');
+  });
+
+  it('a long background gap covering several phases lands in the right phase with the right session count', async () => {
+    render(
+      <Wrapper>
+        <TestTimerWidget />
+      </Wrapper>,
+    );
+
+    expect(screen.getByTestId('phase').textContent).toBe('focus');
+    expect(screen.getByTestId('status').textContent).toBe('running');
+
+    // Tab goes into background
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+    fireEvent(document, new Event('visibilitychange'));
+    // Does NOT pause when hidden!
+    expect(screen.getByTestId('status').textContent).toBe('running');
+
+    // Simulate 65 minutes passing in background:
+    // Focus 1 (25m) -> Break 1 (5m) -> Focus 2 (25m) -> Break 2 (5m) -> 5m into Focus 3 (20m remaining)
+    act(() => {
+      vi.advanceTimersByTime(65 * 60 * 1000);
+    });
+
+    // Tab returns to foreground
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    fireEvent(document, new Event('visibilitychange'));
+
+    expect(screen.getByTestId('status').textContent).toBe('running');
+    expect(screen.getByTestId('phase').textContent).toBe('focus');
+    expect(screen.getByTestId('countdown').textContent).toBe('20:00');
+
+    // Exactly 2 focus sessions completed and recorded!
+    expect(screen.getByTestId('sessions-count').textContent).toBe('2');
+
+    const stored = JSON.parse(localStorage.getItem('nm_focus_sessions') || '[]');
+    expect(stored.length).toBe(2);
+    expect(stored[0].focusedSeconds).toBe(1500);
+    expect(stored[0].completed).toBe(true);
+    expect(stored[1].focusedSeconds).toBe(1500);
+    expect(stored[1].completed).toBe(true);
   });
 
   it('saves session on stop if focused >= 60 seconds', async () => {

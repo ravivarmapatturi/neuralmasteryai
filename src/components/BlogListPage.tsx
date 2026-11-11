@@ -130,7 +130,7 @@ export default function BlogListPage() {
               <>
                 {latest && !activeTag && (
                   <article className="nm-blog-latest">
-                    <BlogCover slug={latest.slug} className="nm-blog-latest-art" />
+                    <BlogCover slug={latest.slug} tags={latest.tags} className="nm-blog-latest-art" />
                     <div className="nm-blog-latest-body">
                       <p className="nm-blog-kicker">Latest essay · {latest.readingMinutes} min read</p>
                       <h2><Link to={latest.draft ? `/blog/write/${latest.slug}` : `/blog/${latest.slug}`}>{latest.title}</Link></h2>
@@ -148,7 +148,7 @@ export default function BlogListPage() {
                       tabIndex={-1}
                       aria-hidden="true"
                     >
-                      <BlogCover slug={post.slug} series={post.series} className="nm-blog-item-cover" />
+                      <BlogCover slug={post.slug} series={post.series} tags={post.tags} className="nm-blog-item-cover" />
                     </Link>
                     <div className="nm-blog-item-content">
                       <div className="nm-blog-meta-strip">
