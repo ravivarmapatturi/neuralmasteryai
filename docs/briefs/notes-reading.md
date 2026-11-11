@@ -89,3 +89,28 @@ Readers come for clear explanations and visuals. Go through `src/content/docs/` 
     - Additional checks at 1280px and 390px for neural-network-fundamentals, pca-svd, generative-models, and foundation-model-internals.
 - **What is not verified**:
   - Task 2 (Code playground colours in all themes, CodeEditorPane toolbar, etc.) and Task 3 (Note-style marks) which are executed next.
+
+### Task 2: Code playground colours
+- **What changed**:
+  - Investigated and settled the attention page loading issue: on initial dev-server compile of MDX with multiple embedded visualizers, the lazy chunk compiles within ~2-3s; verified with automated Playwright checks that the attention page loads completely and mounts the CodeMirror editor without hanging.
+  - Verified and tuned token contrast in `src/styles/theme.css`: adjusted `--nm-code-comment` to `#59677b` (achieving 5.61:1 on light/pure-white and 5.43:1 on sepia) and dark `--nm-code-invalid` to `#e57c85` (achieving 5.04:1 on dark/forest). All syntax tokens across all five themes (pure-white, light, sepia, dark, forest) exceed the 4.5:1 WCAG contrast requirement against their background.
+  - Aligned toolbar, Run button, output panel, tests display, and error panel in `src/components/content/RunnableCode.tsx` to read the `--nm-code-*` variables. No dark slabs on white/sepia notebook pages.
+  - Updated `src/components/practice/CodeEditorPane.tsx` to discard the static `#0f172a` `EDITOR_CHROME` toolbar and use `--nm-code-*` variables (`--nm-code-gutter-bg`, `--nm-code-rule`, `--nm-code-keyword`, `--nm-code-text`, etc.).
+  - Preserved typography invariant: editor text stays in `var(--font-mono)`; all buttons, toolbars, labels, and messages use `var(--font-hand)`. Verified 0 font offenders on practice routes.
+- **What was verified and how**:
+  - Token contrast script calculated relative luminance and WCAG contrast for every token in light, sepia, dark, and forest backgrounds (all $\ge 4.5:1$).
+  - Browser verification on `/docs/deep-learning/attention-transformers` across all 5 themes (`pure-white`, `light`, `sepia`, `dark`, `forest`) with screenshots captured:
+    - `docs/evidence/notes-reading/task2/attention-editor-pure-white.png`
+    - `docs/evidence/notes-reading/task2/attention-editor-light.png`
+    - `docs/evidence/notes-reading/task2/attention-editor-sepia.png`
+    - `docs/evidence/notes-reading/task2/attention-editor-dark.png`
+    - `docs/evidence/notes-reading/task2/attention-editor-forest.png`
+  - Browser verification on `/labs` and `/practice/gradient-descent-step` in pure-white and dark modes:
+    - `docs/evidence/notes-reading/task2/labs.png`
+    - `docs/evidence/notes-reading/task2/practice-pure-white.png`
+    - `docs/evidence/notes-reading/task2/practice-dark.png`
+  - Zero font offenders detected via DOM font family audit.
+  - Vitest test suite passed: `flock /tmp/nm-heavy.lock npx vitest run src/components/content/CodeEditor.test.tsx src/components/content/RunnableCode.test.tsx` (7/7 passed).
+  - Typecheck passed: `flock /tmp/nm-heavy.lock npm run typecheck` (0 errors).
+- **What is not verified**:
+  - Task 3 (Note-style marks) and Task 4 (Clarity and visuals audit) which are executed next.

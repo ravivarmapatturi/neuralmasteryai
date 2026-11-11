@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
-import { useVizTokens, RADIUS, SPACING, FONT_FAMILY } from '../../theme/vizTokens';
+import { useVizTokens, RADIUS, SPACING } from '../../theme/vizTokens';
 import { useGamification } from '../../contexts/GamificationContext';
 import { usePracticeCodePane } from '../../contexts/PracticeSplitPaneContext';
 import { normalizeRoute, getPageByRoute } from '../../lib/contentTree';
@@ -132,35 +132,35 @@ export default function RunnableCode({
   const codePane = usePracticeCodePane();
 
   const content = (
-    <div style={{ border: `1px solid ${t.border}`, borderRadius: RADIUS.md, margin: `${SPACING.sm}px 0`, background: t.surfaceAlt, fontFamily: FONT_FAMILY, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: `${SPACING.xs}px ${SPACING.sm}px`, borderBottom: `1px solid ${t.border}` }}>
-        <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: t.accentTeal }}>
+    <div style={{ border: '1px solid var(--nm-code-rule)', borderRadius: RADIUS.md, margin: `${SPACING.sm}px 0`, background: 'var(--nm-code-bg)', fontFamily: 'var(--font-hand)', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: `${SPACING.xs}px ${SPACING.sm}px`, borderBottom: '1px solid var(--nm-code-rule)', background: 'var(--nm-code-gutter-bg)' }}>
+        <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--nm-code-keyword)', fontFamily: 'var(--font-hand)' }}>
           {tests ? 'Implement it yourself' : 'Run it yourself'}
         </span>
         <div style={{ display: 'flex', gap: 8 }}>
           {isBusy && (
-            <button type="button" onClick={stop} style={btnStyle(t, 'secondary')}>
+            <button type="button" onClick={stop} style={btnStyle('secondary')}>
               Stop
             </button>
           )}
-          <button type="button" onClick={run} disabled={isBusy} style={btnStyle(t, 'primary', isBusy)}>
+          <button type="button" onClick={run} disabled={isBusy} style={btnStyle('primary', isBusy)}>
             {status === 'loading' ? 'Loading Python…' : status === 'running' ? 'Running…' : 'Run'}
           </button>
         </div>
       </div>
 
       {status === 'loading' && (
-        <div style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, borderBottom: `1px solid ${t.border}` }}>
-          <div style={{ fontSize: 11.5, color: t.textSecondary, marginBottom: 4 }}>
+        <div style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, borderBottom: '1px solid var(--nm-code-rule)', background: 'var(--nm-code-gutter-bg)' }}>
+          <div style={{ fontSize: 11.5, color: 'var(--nm-code-gutter-text)', marginBottom: 4, fontFamily: 'var(--font-hand)' }}>
             Downloading a real Python + NumPy runtime into your browser — usually under 20s, one time per page visit.
           </div>
-          <div style={{ height: 3, borderRadius: 2, background: t.border, overflow: 'hidden' }}>
+          <div style={{ height: 3, borderRadius: 2, background: 'var(--nm-code-rule)', overflow: 'hidden' }}>
             <div
               style={{
                 height: '100%',
                 width: '40%',
                 borderRadius: 2,
-                background: t.accentTeal,
+                background: 'var(--nm-code-keyword)',
                 animation: 'runnable-code-loading-sweep 1.1s ease-in-out infinite',
               }}
             />
@@ -185,14 +185,14 @@ export default function RunnableCode({
               width: '100%',
               boxSizing: 'border-box',
               padding: SPACING.sm,
-              background: t.surface,
-              color: t.textPrimary,
+              background: 'var(--nm-code-bg)',
+              color: 'var(--nm-code-text)',
               border: 'none',
               outline: 'none',
               resize: 'vertical',
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-              fontSize: 13,
-              lineHeight: 1.5,
+              fontFamily: 'var(--font-mono)',
+              fontSize: 13.5,
+              lineHeight: 1.6,
             }}
           />
         }
@@ -201,45 +201,45 @@ export default function RunnableCode({
       </Suspense>
 
       {tests && (
-        <div style={{ padding: `0 ${SPACING.sm}px`, fontSize: 12, color: t.textSecondary, fontFamily: 'ui-monospace, monospace', whiteSpace: 'pre-wrap' }}>
+        <div style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, fontSize: 12, color: 'var(--nm-code-comment)', background: 'var(--nm-code-gutter-bg)', borderTop: '1px solid var(--nm-code-rule)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap' }}>
           {tests}
         </div>
       )}
 
       {loadError && (
-        <div style={{ padding: SPACING.sm, fontSize: 13, color: t.accentDanger }}>
+        <div style={{ padding: SPACING.sm, fontSize: 13, color: 'var(--nm-code-invalid)', fontFamily: 'var(--font-hand)' }}>
           Couldn't load the in-browser Python runtime (needs network access to the CDN it loads from): {loadError}
         </div>
       )}
 
       {status === 'done' && !loadError && (
-        <div style={{ padding: SPACING.sm, borderTop: `1px solid ${t.border}` }}>
+        <div style={{ padding: SPACING.sm, borderTop: '1px solid var(--nm-code-rule)', background: 'var(--nm-code-bg)', fontFamily: 'var(--font-hand)' }}>
           {stdout && (
-            <pre style={{ margin: 0, marginBottom: error || testResults ? 8 : 0, fontSize: 12.5, color: t.textPrimary, whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, monospace' }}>
+            <pre style={{ margin: 0, marginBottom: error || testResults ? 8 : 0, fontSize: 12.5, color: 'var(--nm-code-text)', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)' }}>
               {stdout}
             </pre>
           )}
           {error && (
-            <pre style={{ margin: 0, fontSize: 12.5, color: t.accentDanger, whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, monospace' }}>
+            <pre style={{ margin: 0, fontSize: 12.5, color: 'var(--nm-code-invalid)', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)' }}>
               {error}
             </pre>
           )}
           {testResults && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontFamily: 'var(--font-hand)' }}>
               {testResults.map((r, i) => (
-                <div key={i} style={{ fontSize: 12.5, color: r.passed ? t.accentPrimary : t.accentDanger, fontFamily: 'ui-monospace, monospace' }}>
+                <div key={i} style={{ fontSize: 12.5, color: r.passed ? 'var(--nm-code-string)' : 'var(--nm-code-invalid)', fontFamily: 'var(--font-mono)' }}>
                   {r.passed ? '✓' : '✗'} {r.name}
-                  {!r.passed && <div style={{ paddingLeft: 16, color: t.textSecondary, whiteSpace: 'pre-wrap' }}>{r.detail}</div>}
+                  {!r.passed && <div style={{ paddingLeft: 16, color: 'var(--nm-code-gutter-text)', whiteSpace: 'pre-wrap' }}>{r.detail}</div>}
                 </div>
               ))}
               {testResults.length > 0 && (
-                <div style={{ marginTop: 4, fontSize: 12, color: t.textSecondary }}>
+                <div style={{ marginTop: 4, fontSize: 12, color: 'var(--nm-code-gutter-text)', fontFamily: 'var(--font-hand)' }}>
                   {testResults.filter((r) => r.passed).length} / {testResults.length} passed
                 </div>
               )}
             </div>
           )}
-          {!stdout && !error && !testResults && <div style={{ fontSize: 12.5, color: t.textSecondary }}>(no output)</div>}
+          {!stdout && !error && !testResults && <div style={{ fontSize: 12.5, color: 'var(--nm-code-gutter-text)', fontFamily: 'var(--font-hand)' }}>(no output)</div>}
         </div>
       )}
     </div>
@@ -255,17 +255,17 @@ export default function RunnableCode({
   return codePane ? createPortal(content, codePane) : content;
 }
 
-function btnStyle(t: ReturnType<typeof useVizTokens>, variant: 'primary' | 'secondary', disabled = false) {
+function btnStyle(variant: 'primary' | 'secondary', disabled = false) {
   return {
     cursor: disabled ? 'not-allowed' : 'pointer',
-    padding: '5px 12px',
+    padding: '4px 12px',
     borderRadius: RADIUS.sm,
     fontSize: 12.5,
-    fontFamily: FONT_FAMILY,
+    fontFamily: 'var(--font-hand)',
     fontWeight: 600,
-    border: `1px solid ${variant === 'primary' ? t.accentPrimary : t.border}`,
-    background: variant === 'primary' ? t.accentPrimary : 'transparent',
-    color: variant === 'primary' ? t.background : t.textPrimary,
+    border: `1px solid ${variant === 'primary' ? 'var(--nm-code-keyword)' : 'var(--nm-code-rule)'}`,
+    background: variant === 'primary' ? 'var(--nm-code-keyword)' : 'transparent',
+    color: variant === 'primary' ? '#ffffff' : 'var(--nm-code-text)',
     opacity: disabled ? 0.6 : 1,
   } as const;
 }

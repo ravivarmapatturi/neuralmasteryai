@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { useVizTokens, RADIUS, SPACING, FONT_FAMILY } from '../../theme/vizTokens';
+import { useVizTokens, RADIUS, SPACING } from '../../theme/vizTokens';
 
 const CodeEditor = lazy(() => import('../content/CodeEditor'));
 
@@ -55,11 +55,11 @@ export default function CodeEditorPane({
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
-        background: 'var(--nm-surface-alt, #020617)',
-        border: '1px solid var(--nm-border, rgba(255,255,255,0.1))',
+        background: 'var(--nm-code-bg)',
+        border: '1px solid var(--nm-code-rule)',
         borderRadius: RADIUS.md,
         overflow: 'hidden',
-        fontFamily: FONT_FAMILY,
+        fontFamily: 'var(--font-hand)',
       }}
       onKeyDown={(e) => {
         if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'Enter') {
@@ -79,20 +79,21 @@ export default function CodeEditorPane({
           justifyContent: 'space-between',
 
           padding: '6px 12px',
-          borderBottom: `1px solid ${EDITOR_CHROME.border}`,
-          background: EDITOR_CHROME.bar,
+          borderBottom: '1px solid var(--nm-code-rule)',
+          background: 'var(--nm-code-gutter-bg)',
+          fontFamily: 'var(--font-hand)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {modeToggle ? (
             modeToggle
           ) : (
-            <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: EDITOR_CHROME.label }}>
+            <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--nm-code-keyword)', fontFamily: 'var(--font-hand)' }}>
               Python3
             </span>
           )}
 
-          <span style={{ fontSize: 11, color: saveStatus === 'saving' ? '#f59e0b' : '#10b981', fontWeight: 500 }}>
+          <span style={{ fontSize: 11.5, color: saveStatus === 'saving' ? 'var(--nm-code-number)' : 'var(--nm-code-string)', fontWeight: 600, fontFamily: 'var(--font-hand)' }}>
             {saveStatus === 'saving' ? 'Saving…' : 'Saved ✓'}
           </span>
         </div>
@@ -158,7 +159,7 @@ export default function CodeEditorPane({
       </div>
 
       {/* CodeMirror Code Editor Area */}
-      <div style={{ flex: 1, position: 'relative', overflow: 'auto', background: '#020617' }}>
+      <div style={{ flex: 1, position: 'relative', overflow: 'auto', background: 'var(--nm-code-bg)' }}>
         <Suspense
           fallback={
             <textarea
@@ -171,14 +172,14 @@ export default function CodeEditorPane({
                 height: '100%',
                 boxSizing: 'border-box',
                 padding: SPACING.sm,
-                background: '#020617',
-                color: '#f8fafc',
+                background: 'var(--nm-code-bg)',
+                color: 'var(--nm-code-text)',
                 border: 'none',
                 outline: 'none',
                 resize: 'none',
-                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-                fontSize: 13,
-                lineHeight: 1.5,
+                fontFamily: 'var(--font-mono)',
+                fontSize: 13.5,
+                lineHeight: 1.6,
               }}
             />
           }
@@ -190,30 +191,17 @@ export default function CodeEditorPane({
   );
 }
 
-/** The editor is always dark (like most code editors), in both site themes,
- * so its toolbar uses fixed dark-surface colours rather than theme tokens:
- * theme text colours are dark ink in light mode, which made the toolbar
- * buttons invisible on this bar. */
-const EDITOR_CHROME = {
-  bar: '#0f172a',
-  border: 'rgba(148, 163, 184, 0.28)',
-  label: '#5eead4',
-  text: '#e2e8f0',
-  buttonBorder: 'rgba(148, 163, 184, 0.45)',
-  buttonHover: 'rgba(148, 163, 184, 0.14)',
-} as const;
-
 function btnStyle(variant: 'primary' | 'secondary', disabled = false) {
   return {
     cursor: disabled ? 'not-allowed' : 'pointer',
     padding: '4px 10px',
     borderRadius: RADIUS.sm,
     fontSize: 12,
-    fontFamily: FONT_FAMILY,
+    fontFamily: 'var(--font-hand)',
     fontWeight: 600,
-    border: `1px solid ${variant === 'primary' ? '#16a34a' : EDITOR_CHROME.buttonBorder}`,
-    background: variant === 'primary' ? '#16a34a' : 'transparent',
-    color: variant === 'primary' ? '#ffffff' : EDITOR_CHROME.text,
+    border: `1px solid ${variant === 'primary' ? 'var(--nm-code-keyword)' : 'var(--nm-code-rule)'}`,
+    background: variant === 'primary' ? 'var(--nm-code-keyword)' : 'transparent',
+    color: variant === 'primary' ? '#ffffff' : 'var(--nm-code-text)',
     opacity: disabled ? 0.6 : 1,
     transition: 'all 0.15s ease',
   } as const;
