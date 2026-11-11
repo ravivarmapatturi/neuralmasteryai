@@ -114,3 +114,22 @@ Readers come for clear explanations and visuals. Go through `src/content/docs/` 
   - Typecheck passed: `flock /tmp/nm-heavy.lock npm run typecheck` (0 errors).
 - **What is not verified**:
   - Task 3 (Note-style marks) and Task 4 (Clarity and visuals audit) which are executed next.
+
+### Task 3: Note-style marks for the important points
+- **What changed**:
+  - Added `<Key>` and `<Mark>` MDX components in `src/components/content/NoteMarks.tsx` and registered them globally in `src/components/content/mdxComponents.ts`.
+  - Added marker color tokens (`--nm-mark-yellow`, `--nm-mark-pen`, `--nm-mark-pen-soft`) for all five themes (pure-white, light, sepia, dark, forest) in `src/styles/theme.css`.
+  - Styled `strong` in `.prose` with a soft natural highlighter stroke along the text baseline (`linear-gradient(transparent 62%, var(--nm-mark-yellow) 62%, var(--nm-mark-yellow) 94%, transparent 94%)`) with `box-decoration-break: clone`.
+  - Styled `<Key>` with a coloured pen underline (`text-decoration: underline; text-decoration-color: var(--nm-mark-pen); text-decoration-thickness: 2px; text-underline-offset: 3.5px`).
+  - Styled `<Mark>` and `mark` with a soft highlighter stroke (`linear-gradient(104deg, transparent 0%, var(--nm-mark-yellow) 2%, var(--nm-mark-yellow) 98%, transparent 100%)`).
+  - Applied restrained note-style marks by hand to the reference pages (`linear-regression.mdx` and `attention-transformers.mdx`), marking key definitions with `<Key>` and primary findings with `<Mark>`, eliminating whole-sentence bolding.
+- **What was verified and how**:
+  - Automated browser verification on `/docs/machine-learning/linear-regression` and `/docs/deep-learning/attention-transformers` in pure-white, sepia, dark, and forest themes.
+  - Zero font offenders detected via DOM font family audit.
+  - Typecheck passed: `flock /tmp/nm-heavy.lock npm run typecheck` (0 errors).
+  - Before and after screenshots captured:
+    - Before: `docs/evidence/notes-reading/linear-regression-marks-before.png`, `docs/evidence/notes-reading/attention-marks-before.png`
+    - After: `docs/evidence/notes-reading/task3/linear-regression-marks-after-pure-white.png`, `linear-regression-marks-after-sepia.png`, `linear-regression-marks-after-dark.png`, `linear-regression-marks-after-forest.png`
+    - After: `docs/evidence/notes-reading/task3/attention-transformers-marks-after-pure-white.png`, `attention-transformers-marks-after-sepia.png`, `attention-transformers-marks-after-dark.png`, `attention-transformers-marks-after-forest.png`
+- **What is not verified**:
+  - Task 4 (Clarity and visuals audit) which continues next.

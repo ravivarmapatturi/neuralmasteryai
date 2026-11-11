@@ -39,9 +39,9 @@ You already know the equation for a line from algebra: $y = mx + b$, where $m$ i
 
 $$\hat{y} = w \cdot x + b$$
 
-The hat on $\hat{y}$ (read "y-hat") matters: it means *predicted* value, not the actual observed value $y$. Real data is noisy — two students who both studied 5 hours won't score identically — so the line can't pass through every point exactly. $\hat{y}$ is the line's best estimate for a given $x$; the gap between $\hat{y}$ and the real $y$ for any point is called the **residual**, and it's exactly what the rest of this page is about minimizing.
+The hat on $\hat{y}$ (read "y-hat") matters: it means *predicted* value, not the actual observed value $y$. Real data is noisy — two students who both studied 5 hours won't score identically — so the line can't pass through every point exactly. $\hat{y}$ is the line's best estimate for a given $x$; the gap between $\hat{y}$ and the real $y$ for any point is called the <Key>residual</Key>, and it's exactly what the rest of this page is about minimizing.
 
-**Simple vs. multiple linear regression:** the one-input example above is *simple* linear regression. Most real problems use several inputs at once — predicting a house's price from its size, location, and age, for instance — which is *multiple* linear regression: $\hat{y} = w_1 x_1 + w_2 x_2 + \cdots + w_d x_d + b$. Section 1 below writes this generally using vectors so both cases are the same formula.
+**Simple vs. multiple linear regression:** the one-input example above is *simple* linear regression. Most real problems use several inputs at once — predicting a house's price from its size, location, and age, for instance — which is <Key>multiple linear regression</Key>: $\hat{y} = w_1 x_1 + w_2 x_2 + \cdots + w_d x_d + b$. Section 1 below writes this generally using vectors so both cases are the same formula.
 
 **A warning worth internalizing early:** a strong fit tells you $x$ and $y$ move together — it does *not* tell you $x$ *causes* $y$. Students who study more may also be more motivated overall, and that motivation — not the studying itself — could be doing some of the work. Linear regression describes correlation; establishing causation requires a controlled experiment, not just a good fit.
 
@@ -77,7 +77,7 @@ $$\hat{y} = \mathbf{w}^T \mathbf{x} + b$$
 
 $w$ (the weights) and $b$ (the bias/intercept) are the parameters we need to *learn* — the entire rest of this page is about finding the $w, b$ that make $\hat{y}$ match the real data $y$ as closely as possible.
 
-**Why is it called "linear"?** Not because the *input* has to appear to the first power — because the model is linear *in its parameters*. $\hat{y} = w_1 x^2 + w_2 x + b$ is still linear regression (fit $x^2$ as just another input column, and it's identical math to fitting any other feature) — only $\hat{y} = w_1 x^{w_2}$, where a parameter multiplies or exponentiates another parameter, would break linearity. This distinction matters in practice: polynomial regression is a linear model in disguise, solvable with everything on this page unchanged.
+**Why is it called "linear"?** Not because the *input* has to appear to the first power — because the model is <Mark>linear in its parameters</Mark>. $\hat{y} = w_1 x^2 + w_2 x + b$ is still linear regression (fit $x^2$ as just another input column, and it's identical math to fitting any other feature) — only $\hat{y} = w_1 x^{w_2}$, where a parameter multiplies or exponentiates another parameter, would break linearity. This distinction matters in practice: polynomial regression is a linear model in disguise, solvable with everything on this page unchanged.
 
 ## 2. The Cost Function (Mean Squared Error)
 
@@ -88,7 +88,7 @@ $$J(w, b) = \frac{1}{n} \sum_{i=1}^{n} \left( \hat{y}^{(i)} - y^{(i)} \right)^2 
 **Why squared error, specifically?** Three reasons that all matter:
 - It's differentiable everywhere (unlike absolute error, which has a sharp corner at zero — its derivative is undefined right where the error is smallest, which complicates gradient-based optimization).
 - It penalizes large errors disproportionately more than small ones, which is often the right behavior — being off by 10 should hurt more than 10x being off by 1.
-- It's exactly the loss function that falls out of assuming Gaussian-distributed noise and doing Maximum Likelihood Estimation (see [Probability & Statistics — MLE vs MAP](/docs/mathematics-for-ai/probability-statistics#mle-vs-map)) — minimizing MSE *is* finding the maximum-likelihood parameters under that assumption, not an arbitrary choice.
+- It's exactly the loss function that falls out of assuming Gaussian-distributed noise and doing Maximum Likelihood Estimation (see [Probability & Statistics — MLE vs MAP](/docs/mathematics-for-ai/probability-statistics#mle-vs-map)) — minimizing MSE <Mark>is finding the maximum-likelihood parameters</Mark> under that assumption, not an arbitrary choice.
 
 <GoDeeper title="Go deeper: derive the MLE-MSE equivalence">
 
@@ -126,7 +126,7 @@ Now sum across all $n$ examples and divide by $n$ (matching the $\frac{1}{n}$ in
 
 $$\frac{\partial J}{\partial w} = \frac{2}{n} \sum_{i=1}^{n} \left( \hat{y}^{(i)} - y^{(i)} \right) x^{(i)} \qquad\qquad \frac{\partial J}{\partial b} = \frac{2}{n} \sum_{i=1}^{n} \left( \hat{y}^{(i)} - y^{(i)} \right)$$
 
-**Reading the intuition directly off the formula:** if a prediction is too high ($\hat{y}^{(i)} > y^{(i)}$), the gradient is positive, so the update step (below) *decreases* $w$ — pulling the prediction back down. If the estimate is already close to correct, the error term is small, so the gradient is small and the update barely moves $w$ at all. The gradient is literally "error times input" — the size of the correction is proportional to both how wrong you are and how much that particular input contributed to the prediction.
+**Reading the intuition directly off the formula:** if a prediction is too high ($\hat{y}^{(i)} > y^{(i)}$), the gradient is positive, so the update step (below) *decreases* $w$ — pulling the prediction back down. If the estimate is already close to correct, the error term is small, so the gradient is small and the update barely moves $w$ at all. The gradient is literally <Mark>"error times input"</Mark> — the size of the correction is proportional to both how wrong you are and how much that particular input contributed to the prediction.
 
 ## 4. Vectorized Form
 
@@ -148,7 +148,7 @@ $$\nabla_w J = 0 \;\;\Rightarrow\;\; X^T(X\mathbf{w} - \mathbf{y}) = 0 \;\;\Righ
 
 $$\mathbf{w} = (X^TX)^{-1}X^T\mathbf{y}$$
 
-This is the **normal equation** — it gives the exact optimal weights in one shot, no learning rate, no iterations. So why doesn't everyone just use this?
+This is the <Key>normal equation</Key> — it <Mark>gives the exact optimal weights in one shot</Mark>, no learning rate, no iterations. So why doesn't everyone just use this?
 
 **Because $(X^TX)^{-1}$ is expensive and sometimes doesn't exist.** Computing a matrix inverse costs roughly $O(d^3)$ where $d$ is the number of features (see [Algorithms & Data Structures](/docs/mathematics-for-ai/algorithms-data-structures)) — fine for a handful of features, prohibitive for thousands. And if features are linearly dependent (multicollinearity), $X^TX$ isn't invertible at all. This is exactly why gradient descent — next section — is the practical default at any real scale, even though the normal equation is "more exact."
 
@@ -234,7 +234,7 @@ For a small, well-conditioned dataset, both should converge to (nearly) the same
 
 <GoDeeper title="Go deeper: why forming X^TX specifically destroys precision">
 
-"Less stable" is a specific, measurable claim, not a vague warning. A matrix's **condition number** $\kappa(A)$ — the ratio of its largest to smallest singular value, $\kappa(A) = \sigma_{\max}(A)/\sigma_{\min}(A)$ — measures how much a small error in the input can get amplified in the output when you solve a linear system with it; a large $\kappa$ means small floating-point rounding errors can blow up into large errors in the answer.
+"Less stable" is a specific, measurable claim, not a vague warning. A matrix's <Key>condition number</Key> $\kappa(A)$ — the ratio of its largest to smallest singular value, $\kappa(A) = \sigma_{\max}(A)/\sigma_{\min}(A)$ — measures how much a small error in the input can get amplified in the output when you solve a linear system with it; a large $\kappa$ means small floating-point rounding errors can blow up into large errors in the answer.
 
 Here's the fact that makes forming $X^TX$ dangerous: **the singular values of $X^TX$ are exactly the squares of the singular values of $X$.** That follows directly from the SVD: write $X = U\Sigma V^T$ (see [Linear Algebra — SVD](/docs/mathematics-for-ai/linear-algebra#singular-value-decomposition-svd)), then $X^TX = V\Sigma U^T U \Sigma V^T = V\Sigma^2 V^T$ — since $U^TU = I$ ($U$'s columns are orthonormal). $V\Sigma^2V^T$ is itself a valid SVD-like decomposition of $X^TX$ (orthogonal $V$ on both sides, diagonal in between), so its singular values are literally the diagonal entries of $\Sigma^2$ — each of $X$'s singular values, squared.
 
@@ -242,7 +242,7 @@ That means:
 
 $$\kappa(X^TX) = \frac{\sigma_{\max}(X)^2}{\sigma_{\min}(X)^2} = \kappa(X)^2$$
 
-**Forming $X^TX$ squares the condition number.** If $X$ itself is only mildly ill-conditioned — say $\kappa(X) = 10^8$, plausible with correlated real-world features — then $\kappa(X^TX) = 10^{16}$. Double-precision floats carry roughly 15–16 significant decimal digits of precision, so a condition number at $10^{16}$ means the normal equation's matrix inverse can lose *all* of it — the computed $\mathbf{w}$ becomes numerically meaningless, even though the underlying least-squares problem (solved via SVD or QR directly on $X$, never forming $X^TX$) was perfectly well-posed. This is precisely why real solvers work from $X$'s own decomposition instead of squaring their way into a much worse-conditioned problem first.
+Forming $X^TX$ <Mark>squares the condition number</Mark>. If $X$ itself is only mildly ill-conditioned — say $\kappa(X) = 10^8$, plausible with correlated real-world features — then $\kappa(X^TX) = 10^{16}$. Double-precision floats carry roughly 15–16 significant decimal digits of precision, so a condition number at $10^{16}$ means the normal equation's matrix inverse can lose *all* of it — the computed $\mathbf{w}$ becomes numerically meaningless, even though the underlying least-squares problem (solved via SVD or QR directly on $X$, never forming $X^TX$) was perfectly well-posed. This is precisely why real solvers work from $X$'s own decomposition instead of squaring their way into a much worse-conditioned problem first.
 
 </GoDeeper>
 
