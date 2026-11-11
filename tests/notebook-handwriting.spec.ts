@@ -16,15 +16,17 @@ const PAGES = [
   '/docs/deep-learning/attention-transformers',
 ];
 
-// Every visible piece of text must be handwritten. Code is the only thing
-// allowed to be monospace, and nothing may fall back to a system face.
+// Every visible piece of text must be handwritten. Code may be monospace and
+// typeset maths keeps its own faces; nothing else may use a computer font.
 async function fontOffenders(page: Page): Promise<string[]> {
   return page.evaluate(() => {
     const CODE = 'pre, code, kbd, samp, .katex, .cm-editor, .monaco-editor, textarea';
+    const MATH = '.katex, math';
     const offenders: string[] = [];
     for (const el of Array.from(document.querySelectorAll('body *'))) {
       const rect = el.getBoundingClientRect();
       if (!rect.width || !rect.height) continue;
+      if (el.closest(MATH)) continue;
       const style = getComputedStyle(el);
       if (style.visibility === 'hidden' || style.display === 'none') continue;
       const hasText = Array.from(el.childNodes).some(
@@ -44,7 +46,8 @@ async function fontOffenders(page: Page): Promise<string[]> {
 
 async function open(page: Page, path: string) {
   await page.goto(`${BASE}${path}`, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('main, .si-panel, .si-card, .nm-mock-title');
+  await page.waitForSelector('.nm-navbar-header');
+  await page.waitForLoadState('networkidle').catch(() => undefined);
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(500);
 }
