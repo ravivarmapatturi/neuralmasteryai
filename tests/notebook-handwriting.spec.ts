@@ -47,7 +47,7 @@ async function fontOffenders(page: Page): Promise<string[]> {
 async function open(page: Page, path: string) {
   await page.goto(`${BASE}${path}`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('.nm-navbar-header');
-  await page.waitForLoadState('networkidle').catch(() => undefined);
+  await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => undefined);
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(500);
 }
