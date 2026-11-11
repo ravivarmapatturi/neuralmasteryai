@@ -85,9 +85,11 @@ test.describe('White notebook: one handwritten face everywhere', () => {
     }
   });
 
-  test('the progress legend is one continuous 0 to 100 scale', async ({ page }) => {
+  test('every topic card on the interview map shows its own percentage, with no separate legend', async ({ page }) => {
     await open(page, '/interview');
-    await expect(page.locator('.si-legend-bar')).toHaveCount(1);
-    await expect(page.locator('.si-legend-ticks')).toHaveText(/0%.*25%.*50%.*75%.*100%/);
+    const cards = page.locator('.si-node');
+    await expect(cards.first()).toBeVisible();
+    await expect(page.locator('.si-node .si-label-pct')).toHaveCount(await cards.count());
+    await expect(page.locator('.si-graph-legend')).toHaveCount(0);
   });
 });
