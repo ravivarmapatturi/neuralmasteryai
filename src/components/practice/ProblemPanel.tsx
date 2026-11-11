@@ -533,7 +533,7 @@ export default function ProblemPanel({
                         <span style={{ whiteSpace: 'pre', display: 'inline-block', verticalAlign: 'top', maxWidth: '100%', overflowX: 'auto' }}>{tc.expectError ? `Raises ${tc.expectError}` : formatPy(tc.expectedOutput)}</span>
                       </div>
                       {tc.description && (
-                        <div style={{ color: 'var(--nm-text-muted)', fontSize: 12, marginTop: 4, fontFamily: 'sans-serif', overflowWrap: 'break-word' }}>
+                        <div style={{ color: 'var(--nm-text-muted)', fontSize: 12, marginTop: 4, fontFamily: 'var(--font-hand)', overflowWrap: 'break-word' }}>
                           Explanation: {tc.description}
                         </div>
                       )}

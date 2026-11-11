@@ -71,19 +71,19 @@ export const PURE_WHITE: VizTokens = {
   background: '#FFFFFF',
   surface: '#FFFFFF',
   surfaceAlt: '#FFFFFF',
-  border: '#C7D2FE',
-  textPrimary: '#1A1A2E',
+  border: '#A5B4FC',
+  textPrimary: '#1B1F3B',
   textSecondary: '#334155',
   textMuted: '#475569',
-  accentPrimary: '#3730A3',
-  accentSecondary: '#0F766E',
+  accentPrimary: '#4338CA',
+  accentSecondary: '#1D4ED8',
   accentWarn: '#C2410C',
-  accentDanger: '#B91C1C',
+  accentDanger: '#BE123C',
   accentPurple: '#A21CAF',
   accentTeal: '#0F766E',
-  nodeFill: '#FFFFFF',
-  nodeBorder: '#C7D2FE',
-  edge: '#3730A3',
+  nodeFill: '#EEF2FF',
+  nodeBorder: '#4338CA',
+  edge: '#1D4ED8',
 };
 
 export const SEPIA: VizTokens = {
@@ -136,8 +136,7 @@ export const VIZ_THEMES: Record<ThemeId, VizTokens> = {
 
 export const RADIUS = { sm: 6, md: 12, lg: 20 };
 export const SPACING = { xs: 8, sm: 16, md: 24, lg: 40, xl: 64 };
-export const FONT_FAMILY =
-  'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+export const FONT_FAMILY = "'Kalam', 'Comic Sans MS', 'Segoe Print', cursive";
 
 /** A small, consistent per-feature color palette -- used anywhere a chart
  * needs to distinguish up to 4 named features by color (currently Ridge and

@@ -17,12 +17,18 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
+// The white notebook is the default; a theme the reader picks is kept.
+const DEFAULT_THEME: ThemeId = 'pure-white';
+
 function getInitialTheme(): ThemeId {
-  if (typeof window === 'undefined') return 'dark';
-  const stored = window.localStorage.getItem(STORAGE_KEY);
-  if (stored && stored in THEMES) return stored as ThemeId;
-  // Fall back to dark / light preference
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  if (typeof window === 'undefined') return DEFAULT_THEME;
+  try {
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    if (stored && stored in THEMES) return stored as ThemeId;
+  } catch {
+    // Storage can be blocked; the default still applies.
+  }
+  return DEFAULT_THEME;
 }
 
 /**
@@ -47,8 +53,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const setColorMode = setTheme;
 
   const toggleColorMode = useCallback(() => {
-    // If dark or forest, toggle to light; if light, pure-white, or sepia, toggle to dark
-    setTheme(isDarkTheme(theme) ? 'light' : 'dark');
+    setTheme(isDarkTheme(theme) ? DEFAULT_THEME : 'dark');
   }, [theme, setTheme]);
 
   const isDark = isDarkTheme(theme);

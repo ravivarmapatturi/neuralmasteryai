@@ -113,19 +113,31 @@ export function formatAccessibleTopicLabel(
   return `${title}, ${pct}% completed, ${done} of ${count} questions`;
 }
 
-/**
- * Calculates the percentage weight for color-mix interpolation [18, 100].
- */
-export function getHeatmapWeight(pct: number): number {
-  const clamped = Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
-  return Math.round(18 + 0.82 * clamped);
-}
+/** The heat scale has five stops, at 0, 25, 50, 75 and 100 percent. */
+export const HEAT_STOPS = [0, 25, 50, 75, 100] as const;
 
 /**
- * Returns CSS color-mix expression for node heatmap on sequential scale.
- * Scales from a pale tint (18% accent) at 0% to the full accent (100% accent) at 100%.
+ * Colour for a completion percentage on the heat scale. The stops are the CSS
+ * variables --heat-0 to --heat-4 (set per theme), and a percentage between
+ * two stops is mixed from them, so every percent has its own colour.
  */
 export function getHeatmapColorMix(pct: number): string {
-  const weight = getHeatmapWeight(pct);
-  return `color-mix(in srgb, var(--accent) ${weight}%, var(--surface-alt))`;
+  const clamped = Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
+  const segment = Math.min(3, Math.floor(clamped / 25));
+  const share = Math.round(((clamped - segment * 25) / 25) * 100);
+  if (share === 0) return `var(--heat-${segment})`;
+  if (share === 100) return `var(--heat-${segment + 1})`;
+  return `color-mix(in oklab, var(--heat-${segment + 1}) ${share}%, var(--heat-${segment}))`;
+}
+
+/** Diameter in px of the soft glow behind a topic: 0 at 0%, 86 at 100%. */
+export function getHeatGlowSize(pct: number): number {
+  const clamped = Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
+  return clamped === 0 ? 0 : Math.round(34 + 0.52 * clamped);
+}
+
+/** Opacity of that glow: 0.25 just above 0%, 0.7 at 100%. */
+export function getHeatGlowOpacity(pct: number): number {
+  const clamped = Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
+  return clamped === 0 ? 0 : Number((0.25 + 0.0045 * clamped).toFixed(3));
 }

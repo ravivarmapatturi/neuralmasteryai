@@ -149,37 +149,37 @@ export const THEMES: Record<ThemeId, ThemeMeta> = {
       nmBg: '#ffffff',
       nmSurface: '#ffffff',
       nmSurfaceAlt: '#ffffff',
-      nmBorder: '#c7d2fe',
-      nmTextPrimary: '#1a1a2e',
+      nmBorder: '#a5b4fc',
+      nmTextPrimary: '#1b1f3b',
       nmTextSecondary: '#334155',
       nmTextMuted: '#475569',
       nmHeading1: '#3730a3',
-      nmHeading2: '#3730a3',
-      nmHeading3: '#3730a3',
-      nmAccentPrimary: '#3730a3',
-      nmAccentSecondary: '#0f766e',
+      nmHeading2: '#0e7490',
+      nmHeading3: '#a21caf',
+      nmAccentPrimary: '#4338ca',
+      nmAccentSecondary: '#1d4ed8',
       nmAccentWarn: '#c2410c',
-      nmAccentDanger: '#b91c1c',
+      nmAccentDanger: '#be123c',
       nmAccentPurple: '#a21caf',
       nmAccentTeal: '#0f766e',
 
       bg: '#ffffff',
-      fg: '#1a1a2e',
+      fg: '#1b1f3b',
       soft: '#475569',
-      line: '#c7d2fe',
+      line: '#a5b4fc',
       surface: '#ffffff',
       surfaceAlt: '#ffffff',
-      accent: '#3730a3',
-      accentFill: '#e0e7ff',
-      accentText: '#3730a3',
-      accentHover: '#312e81',
+      accent: '#4338ca',
+      accentFill: '#eef2ff',
+      accentText: '#4338ca',
+      accentHover: '#3730a3',
       onAccent: '#ffffff',
       good: '#15803d',
       goodFill: '#e8f7ee',
       warn: '#c2410c',
       warnFill: '#fff2eb',
-      bad: '#b91c1c',
-      badFill: '#fee2e2',
+      bad: '#be123c',
+      badFill: '#ffe4e6',
     },
   },
   sepia: {
@@ -283,7 +283,7 @@ export function getThemeMeta(themeId: string | null | undefined): ThemeMeta {
   if (themeId && themeId in THEMES) {
     return THEMES[themeId as ThemeId];
   }
-  return THEMES.light;
+  return THEMES['pure-white'];
 }
 
 /**

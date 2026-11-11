@@ -9,7 +9,7 @@ export default function TrainingTechniqueDiagram({ kind, name }: Props) {
   const markerId = useId().replace(/:/g, '');
   const line = { stroke: t.edge, strokeWidth: 2, fill: 'none', markerEnd: `url(#${markerId})` };
   const box = { fill: t.surfaceAlt, stroke: t.border, strokeWidth: 1.5 };
-  const label = { fill: t.textPrimary, fontSize: 12, fontFamily: 'Inter, sans-serif' };
+  const label = { fill: t.textPrimary, fontSize: 12, fontFamily: "'Kalam', 'Comic Sans MS', cursive" };
   const muted = { ...label, fill: t.textSecondary, fontSize: 11 };
   const accent = { fill: t.accentPrimary, stroke: t.accentPrimary };
 

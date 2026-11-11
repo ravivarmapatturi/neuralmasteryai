@@ -11,26 +11,26 @@ test.describe('Stage 4: One Visual System', () => {
     await expect(preloadLink).toHaveCount(1);
     const href = await preloadLink.getAttribute('href');
     expect(href).toContain('display=swap');
-    expect(href).toContain('Space+Mono');
+    expect(href).toContain('Kalam');
 
     // No dynamically injected stylesheet for fonts
     const dynamicFontLink = page.locator('#nm-interview-room-fonts');
     await expect(dynamicFontLink).toHaveCount(0);
   });
 
-  test('timed mock page aligns with main platform visual tokens and Space Mono display font', async ({ page }) => {
+  test('timed mock page aligns with main platform visual tokens and the handwritten display font', async ({ page }) => {
     await page.goto(`http://localhost:${PORT}/interview/mock`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.nm-mock-title');
 
-    // Title and section headings use Space Mono display font
+    // Title and section headings use the handwritten font
     const titleFont = await page.locator('.nm-mock-title').evaluate(el => window.getComputedStyle(el).fontFamily);
-    expect(titleFont).toContain('Space Mono');
+    expect(titleFont).toContain('Kalam');
 
     const sectionTitleFont = await page.locator('.nm-mock-section-title').first().evaluate(el => window.getComputedStyle(el).fontFamily);
-    expect(sectionTitleFont).toContain('Space Mono');
+    expect(sectionTitleFont).toContain('Kalam');
 
     const roleNameFont = await page.locator('.nm-mock-role-name').first().evaluate(el => window.getComputedStyle(el).fontFamily);
-    expect(roleNameFont).toContain('Space Mono');
+    expect(roleNameFont).toContain('Kalam');
   });
 
   test('light theme buttons have a crisp outlined style instead of flat grey', async ({ page }) => {
@@ -79,6 +79,6 @@ test.describe('Stage 4: One Visual System', () => {
     const heading = page.locator('.si-question-title');
     await expect(heading).toBeVisible();
     const headingFont = await heading.evaluate(el => window.getComputedStyle(el).fontFamily);
-    expect(headingFont).toContain('Space Mono');
+    expect(headingFont).toContain('Kalam');
   });
 });

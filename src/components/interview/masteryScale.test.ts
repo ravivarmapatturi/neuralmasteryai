@@ -10,7 +10,8 @@ import {
   getNodeOpacity,
   formatTopicLabel,
   formatAccessibleTopicLabel,
-  getHeatmapWeight,
+  getHeatGlowSize,
+  getHeatGlowOpacity,
   getHeatmapColorMix,
 } from './masteryScale';
 
@@ -187,24 +188,38 @@ describe('masteryScale unit tests', () => {
     });
   });
 
-  describe('heatmap sequential color scale', () => {
-    it('scales weight monotonically from 18% at 0% to 100% at 100%', () => {
-      expect(getHeatmapWeight(0)).toBe(18);
-      expect(getHeatmapWeight(50)).toBe(59);
-      expect(getHeatmapWeight(100)).toBe(100);
-      expect(getHeatmapWeight(0)).toBeLessThan(getHeatmapWeight(50));
-      expect(getHeatmapWeight(50)).toBeLessThan(getHeatmapWeight(100));
+  describe('heat scale', () => {
+    it('returns the stop itself at 0, 25, 50, 75 and 100 percent', () => {
+      expect(getHeatmapColorMix(0)).toBe('var(--heat-0)');
+      expect(getHeatmapColorMix(25)).toBe('var(--heat-1)');
+      expect(getHeatmapColorMix(50)).toBe('var(--heat-2)');
+      expect(getHeatmapColorMix(75)).toBe('var(--heat-3)');
+      expect(getHeatmapColorMix(100)).toBe('var(--heat-4)');
     });
 
-    it('clamps out of bounds percentages safely', () => {
-      expect(getHeatmapWeight(-10)).toBe(18);
-      expect(getHeatmapWeight(150)).toBe(100);
+    it('mixes the two nearest stops in between', () => {
+      expect(getHeatmapColorMix(10)).toBe('color-mix(in oklab, var(--heat-1) 40%, var(--heat-0))');
+      expect(getHeatmapColorMix(60)).toBe('color-mix(in oklab, var(--heat-3) 40%, var(--heat-2))');
+      expect(getHeatmapColorMix(99)).toBe('color-mix(in oklab, var(--heat-4) 96%, var(--heat-3))');
     });
 
-    it('generates valid CSS color-mix expressions', () => {
-      expect(getHeatmapColorMix(0)).toBe('color-mix(in srgb, var(--accent) 18%, var(--surface-alt))');
-      expect(getHeatmapColorMix(50)).toBe('color-mix(in srgb, var(--accent) 59%, var(--surface-alt))');
-      expect(getHeatmapColorMix(100)).toBe('color-mix(in srgb, var(--accent) 100%, var(--surface-alt))');
+    it('gives every whole percent from 1 to 100 its own colour', () => {
+      const colours = new Set(Array.from({ length: 101 }, (_, pct) => getHeatmapColorMix(pct)));
+      expect(colours.size).toBe(101);
+    });
+
+    it('clamps values outside 0 to 100', () => {
+      expect(getHeatmapColorMix(-10)).toBe('var(--heat-0)');
+      expect(getHeatmapColorMix(150)).toBe('var(--heat-4)');
+    });
+
+    it('grows the glow with progress and shows none at 0', () => {
+      expect(getHeatGlowSize(0)).toBe(0);
+      expect(getHeatGlowOpacity(0)).toBe(0);
+      expect(getHeatGlowSize(1)).toBeLessThan(getHeatGlowSize(50));
+      expect(getHeatGlowSize(50)).toBeLessThan(getHeatGlowSize(100));
+      expect(getHeatGlowOpacity(1)).toBeLessThan(getHeatGlowOpacity(100));
+      expect(getHeatGlowOpacity(100)).toBe(0.7);
     });
   });
 });

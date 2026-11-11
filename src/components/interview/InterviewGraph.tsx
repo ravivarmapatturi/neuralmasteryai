@@ -11,6 +11,8 @@ import {
   getNodeOpacity,
   formatAccessibleTopicLabel,
   getHeatmapColorMix,
+  getHeatGlowSize,
+  getHeatGlowOpacity,
 } from './masteryScale';
 
 export interface GraphTopic {
@@ -392,6 +394,17 @@ export function InterviewGraph({
               onFocus={() => onActivate(t.id)}
               onClick={() => onActivate(t.id)}
             >
+              {progress.pct > 0 && (
+                <span
+                  className="si-heat"
+                  aria-hidden="true"
+                  style={{
+                    width: getHeatGlowSize(progress.pct),
+                    height: getHeatGlowSize(progress.pct),
+                    opacity: getHeatGlowOpacity(progress.pct),
+                  }}
+                />
+              )}
               <span
                 className="si-dot"
                 style={{
@@ -425,17 +438,14 @@ export function InterviewGraph({
         })}
       </div>
       <div className="si-graph-legend" role="region" aria-label="Topic completion heat map legend">
-        <span className="si-legend-item">
-          <span className="si-legend-swatch" style={{ background: getHeatmapColorMix(0) }} />
-          <span>0%</span>
-        </span>
-        <span className="si-legend-item">
-          <span className="si-legend-swatch" style={{ background: getHeatmapColorMix(50) }} />
-          <span>50%</span>
-        </span>
-        <span className="si-legend-item">
-          <span className="si-legend-swatch" style={{ background: getHeatmapColorMix(100) }} />
-          <span>100%</span>
+        <span className="si-legend-title">Completed</span>
+        <span className="si-legend-scale">
+          <span className="si-legend-bar" aria-hidden="true" />
+          <span className="si-legend-ticks">
+            {[0, 25, 50, 75, 100].map((stop) => (
+              <span key={stop}>{stop}%</span>
+            ))}
+          </span>
         </span>
       </div>
       <div className="si-group-totals" role="region" aria-label="Topic group totals">
