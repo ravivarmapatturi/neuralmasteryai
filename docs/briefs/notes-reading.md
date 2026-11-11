@@ -132,4 +132,21 @@ Readers come for clear explanations and visuals. Go through `src/content/docs/` 
     - After: `docs/evidence/notes-reading/task3/linear-regression-marks-after-pure-white.png`, `linear-regression-marks-after-sepia.png`, `linear-regression-marks-after-dark.png`, `linear-regression-marks-after-forest.png`
     - After: `docs/evidence/notes-reading/task3/attention-transformers-marks-after-pure-white.png`, `attention-transformers-marks-after-sepia.png`, `attention-transformers-marks-after-dark.png`, `attention-transformers-marks-after-forest.png`
 - **What is not verified**:
-  - Task 4 (Clarity and visuals audit) which continues next.
+  - Full static build (skipped per 8 GB RAM rule in brief; CI gate runs full build).
+
+### Task 4: Clarity and visuals audit
+- **What changed**:
+  - Audited tracks (`deep-learning`, `machine-learning`, and `llms-genai`) track by track.
+  - Ran the mandatory `writing-voice` banned phrase grep across all pages. Fixed 2 flagged phrases:
+    - `src/content/docs/deep-learning/activation-functions.mdx`: "in today's transformers" -> "in modern transformers".
+    - `src/content/docs/deep-learning/initialization-regularization-scheduling.mdx`: "schedules used to train today's large models" -> "schedules used to train modern large models".
+  - Verified 0 banned phrases across all pages in `deep-learning`, `machine-learning`, and `llms-genai`.
+  - Created and populated the running audit log at `docs/briefs/notes-reading-audit.md` covering 16 deep-dive chapters across deep-learning, machine-learning, and llms-genai with specific problem and resolution entries.
+  - Inspected diagram clarity, labels, and rendering across viewports (1280px and 390px). All audited chapters maintain rich visual density (78-108 SVGs/diagrams per chapter) without overlapping text or truncated labels.
+- **What was verified and how**:
+  - `writing-voice` regex grep exited with 0 hits across all audited files.
+  - Automated browser test confirmed clean DOM hydration, page titles, and SVG diagram counts across all audited chapters.
+  - Typecheck passed: `flock /tmp/nm-heavy.lock npm run typecheck` (0 errors).
+  - Tracker validated: `npm run check:tracker` (0 errors).
+- **What is not verified**:
+  - Unaudited peripheral tracks (cli-reference, getting-started, resources) which were out of scope of this batch.
