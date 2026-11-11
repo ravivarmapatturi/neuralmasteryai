@@ -345,3 +345,12 @@ describe('masteryScale unit tests', () => {
     });
   });
 });
+
+describe('branch colour levels', () => {
+  it('puts each percentage in one of five buckets', async () => {
+    const { getBranchLevel, getBranchStrokeWidth } = await import('./masteryScale');
+    expect([0, 1, 25, 26, 50, 51, 75, 76, 100, 140, Number.NaN].map(getBranchLevel)).toEqual([0, 1, 1, 2, 2, 3, 3, 4, 4, 4, 0]);
+    expect(getBranchStrokeWidth(0)).toBe(1.8);
+    expect(getBranchStrokeWidth(4)).toBe(4.6);
+  });
+});

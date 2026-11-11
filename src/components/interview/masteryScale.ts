@@ -179,14 +179,18 @@ export function getHeatGlowOpacity(pct: number): number {
   return clamped === 0 ? 0 : Number((0.25 + 0.0045 * clamped).toFixed(3));
 }
 
-/** Width in px of the line from the centre to a topic: 1.5 at 0%, 6 at 100%. */
-export function getSpokeStrokeWidth(pct: number): number {
+/**
+ * Which of the five branch colours a completion percentage gets:
+ * 0 for 0%, 1 for 1 to 25, 2 for 26 to 50, 3 for 51 to 75, 4 for 76 to 100.
+ */
+export function getBranchLevel(pct: number): 0 | 1 | 2 | 3 | 4 {
   const clamped = Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
-  return Number((1.5 + 0.045 * clamped).toFixed(2));
+  if (clamped === 0) return 0;
+  return Math.min(4, Math.ceil(clamped / 25)) as 1 | 2 | 3 | 4;
 }
 
-/** Opacity of that line: 0.55 at 0%, then 0.7 just above 0% up to 1 at 100%. */
-export function getSpokeOpacity(pct: number): number {
-  const clamped = Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
-  return clamped === 0 ? 0.55 : Number((0.7 + 0.003 * clamped).toFixed(3));
+/** Width in px of the branch from the centre to a topic: 1.8 at level 0, 4.6 at level 4. */
+export function getBranchStrokeWidth(level: number): number {
+  const clamped = Math.max(0, Math.min(4, Number.isFinite(level) ? level : 0));
+  return Number((1.8 + 0.7 * clamped).toFixed(1));
 }

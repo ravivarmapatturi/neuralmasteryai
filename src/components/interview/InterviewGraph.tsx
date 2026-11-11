@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { curveBundle, line } from 'd3-shape';
+import BrandMark from '../brand/BrandMark';
 import {
   calculateTopicProgress,
-  getNodeDotSize,
   formatAccessibleTopicLabel,
-  getHeatmapColorMix,
-  getSpokeStrokeWidth,
-  getSpokeOpacity,
+  getBranchLevel,
+  getBranchStrokeWidth,
 } from './masteryScale';
 
 export interface GraphTopic {
@@ -16,43 +14,6 @@ export interface GraphTopic {
   count: number;
   done?: number;
 }
-
-// What builds on what, using the topic ids in interviewPractice.json.
-const LINKS: [string, string][] = [
-  ['math-classical-ml', 'deep-learning'],
-  ['deep-learning', 'transformers'],
-  ['transformers', 'tokenization-decoding'],
-  ['deep-learning', 'post-training'],
-  ['transformers', 'post-training'],
-  ['transformers', 'inference-serving'],
-  ['tokenization-decoding', 'inference-serving'],
-  ['inference-serving', 'gpu-memory-quantization'],
-  ['transformers', 'rag'],
-  ['tokenization-decoding', 'prompting-structured-output'],
-  ['post-training', 'evaluation'],
-  ['rag', 'evaluation'],
-  ['prompting-structured-output', 'evaluation'],
-  ['transformers', 'multimodal'],
-  ['prompting-structured-output', 'agents'],
-  ['rag', 'agents'],
-  ['agents', 'protocols'],
-  ['agents', 'multi-agent'],
-  ['agents', 'sandboxes'],
-  ['sandboxes', 'evidence-reverse-engineering'],
-  ['inference-serving', 'production-mlops'],
-  ['evaluation', 'production-mlops'],
-  ['gpu-memory-quantization', 'cost-capacity'],
-  ['production-mlops', 'cost-capacity'],
-  ['evaluation', 'safety'],
-  ['sandboxes', 'safety'],
-  ['production-mlops', 'system-design'],
-  ['production-mlops', 'debug'],
-  ['debug', 'system-design'],
-  ['multi-agent', 'system-design'],
-  ['safety', 'system-design'],
-  ['math-classical-ml', 'coding'],
-  ['system-design', 'behavioral'],
-];
 
 const GROUP_ORDER = ['foundations', 'models', 'applications', 'agents', 'production', 'rounds'];
 const GROUP_LABELS: Record<string, string> = {
@@ -79,7 +40,12 @@ const GROUP_COLOURS_DARK: Record<string, string> = {
   production: '#6fd3a8',
   rounds: '#f39a8e',
 };
-const MAX_STAGE = 780;
+const MAX_STAGE = 820;
+// Below this stage width the map has no room for a card on each side, so the topics become a plain grid.
+const MAP_MIN_WIDTH = 600;
+const CARD_W = 158;
+const CARD_H = 46;
+const ROW_GAP = 10;
 const SHORT_TITLES: Record<string, string> = {
   'math-classical-ml': 'Classical ML',
   'deep-learning': 'Deep Learning',
@@ -95,36 +61,74 @@ const SHORT_TITLES: Record<string, string> = {
   'cost-capacity': 'Cost',
   debug: 'Debug',
 };
-const bundle = line<[number, number]>().curve(curveBundle.beta(0.85));
+// One small line icon per topic, drawn on a 24 by 24 grid.
+const ICONS: Record<string, string> = {
+  'math-classical-ml': 'M4 20L20 6M6 8h.01M10 13h.01M15 17h.01M18 11h.01',
+  'deep-learning': 'M12 3l9 5-9 5-9-5zM3 13l9 5 9-5',
+  transformers: 'M4 6h16M4 12h16M4 18h16M8 6v12M16 6v12',
+  'tokenization-decoding': 'M5 5h14M12 5v14M9 19h6',
+  'post-training': 'M4 7h10M18 7h2M4 17h2M10 17h10M16 5v4M8 15v4',
+  'inference-serving': 'M7 18a4 4 0 0 1 0-8 5 5 0 0 1 9.6-1.3A4.5 4.5 0 0 1 17 18z',
+  'gpu-memory-quantization': 'M7 7h10v10H7zM10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4',
+  rag: 'M5 6c0-1.7 3.1-3 7-3s7 1.3 7 3-3.1 3-7 3-7-1.3-7-3zM5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3',
+  'prompting-structured-output': 'M4 5h16v11H9l-5 4z',
+  evaluation: 'M4 20h16M7 20v-6M12 20V8M17 20V11',
+  multimodal: 'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9h.01',
+  agents: 'M7 9h10v9H7zM12 9V5M12 5h.01M10 13h.01M14 13h.01M4 13v3M20 13v3',
+  protocols: 'M9 15l6-6M8 12l-2 2a3.5 3.5 0 0 0 5 5l2-2M16 12l2-2a3.5 3.5 0 0 0-5-5l-2 2',
+  'multi-agent': 'M12 4a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM5 16a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM19 16a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM12 8v4M12 12l-5.5 4.5M12 12l5.5 4.5',
+  sandboxes: 'M12 3l8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9',
+  'evidence-reverse-engineering': 'M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h4',
+  'production-mlops': 'M7 9a3 3 0 1 0 0 6c2.5 0 3.5-2 5-3s2.5-3 5-3a3 3 0 1 1 0 6c-2.5 0-3.5-2-5-3s-2.5-3-5-3z',
+  'cost-capacity': 'M12 3v18M16 8c0-1.7-1.8-3-4-3s-4 1.1-4 3c0 4 8 2 8 6 0 1.9-1.8 3-4 3s-4-1.3-4-3',
+  safety: 'M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z',
+  'system-design': 'M9 3h6v5H9zM3 16h6v5H3zM15 16h6v5h-6zM12 8v4M6 16v-4h12v4',
+  coding: 'M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16',
+  behavioral: 'M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 21c0-4 3.6-6 8-6s8 2 8 6',
+  debug: 'M3 12h4l2-6 4 12 2-6h6',
+};
+const FALLBACK_ICON = 'M12 5a7 7 0 1 0 0 14 7 7 0 0 0 0-14z';
+const BRANCH_RANGES = ['0%', '1–25%', '26–50%', '51–75%', '76–100%'];
 
-interface NodeSpot {
-  angle: number;
-  group: string;
+interface Spot {
+  side: 'left' | 'right';
+  /** Where the branch ends and the card begins. */
+  x: number;
+  y: number;
+  path: string;
 }
 
-// Topics sit around a circle, grouped, with a small gap between groups.
-// Margin must accommodate maximum label reach (text + percentage + padding) so
-// bounding boxes never clip against the stage boundary at any angle.
-function layout(topics: GraphTopic[], width: number, isMobile: boolean) {
-  const size = Math.min(width, MAX_STAGE);
-  const margin = isMobile ? 36 : 158;
-  const radius = Math.max(90, size / 2 - margin);
-  const groups = GROUP_ORDER.map((g) => topics.filter((t) => t.group === g));
-  const gap = 0.14;
-  const step = (Math.PI * 2 - gap * groups.length) / topics.length;
-  const spots: Record<string, NodeSpot> = {};
-  const hubs: Record<string, number> = {};
-  let angle = -Math.PI / 2;
-  groups.forEach((group, i) => {
-    const start = angle;
-    group.forEach((t) => {
-      spots[t.id] = { angle: angle + step / 2, group: GROUP_ORDER[i] };
-      angle += step;
-    });
-    hubs[GROUP_ORDER[i]] = (start + angle) / 2;
-    angle += gap;
+// The first half of the topics runs down the right side and the rest runs back up the left,
+// so groups stay together going clockwise. Rows are evenly spaced, so cards never overlap.
+function layout(topics: GraphTopic[], width: number) {
+  const w = Math.min(width, MAX_STAGE);
+  const rightCount = Math.ceil(topics.length / 2);
+  const leftCount = topics.length - rightCount;
+  const h = rightCount * CARD_H + (rightCount - 1) * ROW_GAP + 16;
+  const cx = w / 2;
+  const cy = h / 2;
+  const rx = w / 2 - CARD_W - 22;
+  const ry = h * 0.62;
+  const top = 8 + CARD_H / 2;
+  const span = h - 16 - CARD_H;
+  const spots: Record<string, Spot> = {};
+  topics.forEach((t, i) => {
+    const right = i < rightCount;
+    const rowShare = right
+      ? (rightCount > 1 ? i / (rightCount - 1) : 0.5)
+      : (leftCount > 1 ? 1 - (i - rightCount) / (leftCount - 1) : 0.5);
+    const y = top + span * rowShare;
+    const reach = rx * Math.sqrt(Math.max(0, 1 - ((y - cy) / ry) ** 2));
+    const x = right ? cx + reach : cx - reach;
+    const mid = cx + (x - cx) * 0.5;
+    spots[t.id] = {
+      side: right ? 'right' : 'left',
+      x,
+      y,
+      path: `M${cx.toFixed(1)} ${cy.toFixed(1)}C${mid.toFixed(1)} ${cy.toFixed(1)} ${mid.toFixed(1)} ${y.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)}`,
+    };
   });
-  return { size, radius, spots, hubs };
+  return { w, h, spots };
 }
 
 export function InterviewGraph({
@@ -137,28 +141,12 @@ export function InterviewGraph({
   onActivate: (id: string) => void;
 }) {
   const stageRef = useRef<HTMLDivElement>(null);
-  const nodeRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const lineRefs = useRef<(SVGPathElement | null)[]>([]);
-  const spokeRefs = useRef<Record<string, SVGLineElement | null>>({});
-  const pausedRef = useRef(false);
   const [width, setWidth] = useState(760);
-  const [isMobile, setIsMobile] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return window.matchMedia('(max-width: 640px)').matches;
-  });
   const [isDark, setIsDark] = useState(() => {
     if (typeof document === 'undefined') return false;
     const theme = document.documentElement.getAttribute('data-theme');
     return theme === 'dark' || theme === 'forest' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
   });
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    const media = window.matchMedia('(max-width: 640px)');
-    const update = () => setIsMobile(media.matches);
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, []);
 
   useEffect(() => {
     const checkTheme = () => {
@@ -208,215 +196,93 @@ export function InterviewGraph({
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage || typeof ResizeObserver === 'undefined') return undefined;
-    const observer = new ResizeObserver(() => setWidth(stage.clientWidth));
+    // A hidden or unmeasured stage reports 0; keep the last real width then.
+    const measure = () => {
+      if (stage.clientWidth > 0) setWidth(stage.clientWidth);
+    };
+    const observer = new ResizeObserver(measure);
     observer.observe(stage);
-    setWidth(stage.clientWidth);
+    measure();
     return () => observer.disconnect();
   }, []);
 
-  const { size, radius, spots, hubs } = useMemo(() => layout(topics, width, isMobile), [topics, width, isMobile]);
-
-  useEffect(() => {
-    const centre = size / 2;
-    // On phones the topic name sits in the middle, so the spokes start outside it.
-    const spokeStart = isMobile ? radius * 0.52 : 12;
-    const toXY = (angle: number, r: number): [number, number] => [centre + Math.cos(angle) * r, centre + Math.sin(angle) * r];
-    const place = (time: number) => {
-      const moved: Record<string, [number, number]> = {};
-      topics.forEach((t, i) => {
-        const spot = spots[t.id];
-        const r = radius + Math.sin(time * 0.0005 + i * 1.7) * 4;
-        moved[t.id] = toXY(spot.angle + Math.cos(time * 0.0004 + i * 2.3) * 0.006, r);
-        const node = nodeRefs.current[t.id];
-        if (node) node.style.transform = `translate(${moved[t.id][0]}px, ${moved[t.id][1]}px)`;
-        // The spoke runs from the centre to the topic and carries the progress colour.
-        const spoke = spokeRefs.current[t.id];
-        if (spoke) {
-          const [sx, sy] = toXY(spot.angle, spokeStart);
-          spoke.setAttribute('x1', String(sx));
-          spoke.setAttribute('y1', String(sy));
-          spoke.setAttribute('x2', String(moved[t.id][0]));
-          spoke.setAttribute('y2', String(moved[t.id][1]));
-        }
-      });
-      LINKS.forEach(([a, b], i) => {
-        const el = lineRefs.current[i];
-        if (!el || !spots[a] || !spots[b] || !moved[a] || !moved[b]) return;
-        const ga = spots[a].group;
-        const gb = spots[b].group;
-        const route: [number, number][] =
-          ga === gb
-            ? [moved[a], toXY(hubs[ga], radius * 0.62), moved[b]]
-            : [moved[a], toXY(hubs[ga], radius * 0.5), toXY(hubs[gb], radius * 0.5), moved[b]];
-        el.setAttribute('d', bundle(route) ?? '');
-      });
-    };
-    place(0);
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
-    let frame = 0;
-    let clock = 0;
-    let last = performance.now();
-    const tick = (now: number) => {
-      // The clock stops while a node is hovered, so the target does not move under the cursor.
-      if (!pausedRef.current) clock += now - last;
-      last = now;
-      place(clock);
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [topics, size, radius, spots, hubs, isMobile]);
+  const isMap = width >= MAP_MIN_WIDTH;
+  const { w, h, spots } = useMemo(() => layout(topics, width), [topics, width]);
 
   return (
     <div className="si-graph" ref={stageRef}>
-      <div className="si-stage" style={{ width: size, height: size }}>
-        <svg className="si-edges" width={size} height={size} aria-hidden="true">
-          {LINKS.map(([a, b], i) => (
-            <path
-              key={`${a}-${b}`}
-              ref={(el) => {
-                lineRefs.current[i] = el;
-              }}
-              fill="none"
-            />
-          ))}
-        </svg>
-        <svg className="si-spokes" width={size} height={size} aria-hidden="true">
-          {topics.map((t) => {
-            const pct = progressMap[t.id]?.pct ?? 0;
-            return (
-              <line
-                key={t.id}
-                ref={(el) => {
-                  spokeRefs.current[t.id] = el;
-                }}
-                data-topic={t.id}
-                strokeLinecap="round"
-                style={{
-                  stroke: getHeatmapColorMix(pct),
-                  strokeWidth: getSpokeStrokeWidth(pct),
-                  opacity: getSpokeOpacity(pct),
-                }}
-              />
-            );
-          })}
-        </svg>
-        {!isMobile && <span className="si-hub" aria-hidden="true" />}
-        {activeTopic && (() => {
-          const activeProgress = progressMap[activeTopic.id] ?? calculateTopicProgress(activeTopic.done, activeTopic.count);
-          const activeGroup = groupSummaries.find((g) => g.id === activeTopic.group);
-          return (
-            <div
-              className="si-graph-hud"
-              style={{
-                position: 'absolute',
-                left: '50%',
-                top: '50%',
-                transform: 'translate(-50%, -50%)',
-                textAlign: 'center',
-                pointerEvents: 'none',
-                maxWidth: Math.max(120, radius * 1.3),
-                zIndex: 1,
-              }}
-            >
-              <span
-                className="si-hud-group"
-                style={{
-                  color: groupColours[activeTopic.group],
-                  fontSize: '0.68rem',
-                  fontWeight: 700,
-                  letterSpacing: '0.06em',
-                  textTransform: 'uppercase',
-                  display: 'block',
-                }}
-              >
-                {activeGroup && activeGroup.pct > 0
-                  ? `${activeGroup.label} · ${activeGroup.pct}%`
-                  : activeTopic.group}
-              </span>
-              <span
-                className="si-hud-title"
-                style={{
-                  display: 'block',
-                  fontWeight: 700,
-                  fontSize: width < 400 ? '0.86rem' : '0.96rem',
-                  lineHeight: 1.2,
-                  color: 'var(--fg)',
-                  margin: '2px 0 3px',
-                }}
-              >
-                {activeTopic.title}{activeProgress.pct > 0 ? ` ${activeProgress.pct}%` : ''}
-              </span>
-              <span
-                className="si-hud-count"
-                style={{
-                  fontSize: '0.72rem',
-                  color: 'var(--soft)',
-                  display: 'block',
-                }}
-              >
-                {activeTopic.count} Qs{activeTopic.done ? ` · ${activeTopic.done} done` : ''}
-              </span>
-            </div>
-          );
-        })()}
+      <div className={`si-stage${isMap ? ' is-map' : ' is-grid'}`} style={isMap ? { width: w, height: h } : undefined}>
+        {isMap && (
+          <svg className="si-branches" width={w} height={h} aria-hidden="true">
+            {topics.map((t) => {
+              const level = getBranchLevel(progressMap[t.id]?.pct ?? 0);
+              const spot = spots[t.id];
+              return (
+                <g key={t.id} className={`si-branch lvl-${level}`} data-topic={t.id}>
+                  <path d={spot.path} fill="none" strokeLinecap="round" style={{ strokeWidth: getBranchStrokeWidth(level) }} />
+                  <circle cx={spot.x} cy={spot.y} r={5.5 + level * 0.6} />
+                </g>
+              );
+            })}
+          </svg>
+        )}
+        {isMap && (
+          <div className="si-hub" aria-hidden="true">
+            <BrandMark size={34} />
+            <span>Interview practice</span>
+          </div>
+        )}
         {topics.map((t) => {
-          const angle = spots[t.id]?.angle ?? 0;
-          const flip = Math.cos(angle) < 0;
-          const degrees = (angle * 180) / Math.PI + (flip ? 180 : 0);
           const progress = progressMap[t.id] ?? calculateTopicProgress(t.done ?? 0, t.count);
-          const dotSize = getNodeDotSize(t.count, progress.ratio);
-          const isComplete = progress.isComplete;
-          const baseTitle = SHORT_TITLES[t.id] ?? t.title;
-          const ariaLabel = formatAccessibleTopicLabel(t.title, progress.pct, t.done ?? 0, t.count);
-
+          const level = getBranchLevel(progress.pct);
+          const spot = spots[t.id];
+          const position = isMap
+            ? { left: spot.side === 'right' ? spot.x + 12 : spot.x - 12 - CARD_W, top: spot.y - CARD_H / 2, width: CARD_W, height: CARD_H }
+            : undefined;
           return (
             <button
               key={t.id}
               type="button"
-              ref={(el) => {
-                nodeRefs.current[t.id] = el;
-              }}
-              className={`si-node${t.id === activeId ? ' on' : ''}${isComplete ? ' is-complete' : ''}`}
+              className={`si-node lvl-${level}${t.id === activeId ? ' on' : ''}${progress.isComplete ? ' is-complete' : ''}`}
+              style={position}
               aria-pressed={t.id === activeId}
-              aria-label={ariaLabel}
-              onMouseEnter={() => {
-                pausedRef.current = true;
-                onActivate(t.id);
-              }}
-              onMouseLeave={() => {
-                pausedRef.current = false;
-              }}
-              onFocus={() => onActivate(t.id)}
+              aria-label={formatAccessibleTopicLabel(t.title, progress.pct, t.done ?? 0, t.count)}
               onClick={() => onActivate(t.id)}
             >
-              <span
-                className="si-dot"
-                style={{
-                  width: dotSize,
-                  height: dotSize,
-                }}
-              />
-              <span
-                className={`si-label${flip ? ' flip' : ''}${isComplete ? ' is-complete' : ''}`}
-                style={{ transform: `rotate(${degrees}deg)` }}
-              >
-                <span className="si-label-title">{baseTitle}</span>
-                {progress.pct > 0 && <span className="si-label-pct"> {progress.pct}%</span>}
+              <svg className="si-node-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden="true">
+                <path d={ICONS[t.id] ?? FALLBACK_ICON} stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span className="si-node-text">
+                <span className="si-label">{SHORT_TITLES[t.id] ?? t.title}</span>{' '}
+                <span className="si-node-meter">
+                  <span className="si-bar"><i style={{ width: `${progress.pct}%` }} /></span>
+                  <span className="si-label-pct">{progress.pct}%</span>
+                </span>
               </span>
             </button>
           );
         })}
       </div>
       <div className="si-graph-legend" role="region" aria-label="Topic completion progress legend">
-        <span className="si-legend-title">Completed</span>
-        <span className="si-legend-scale">
-          <span className="si-legend-bar" aria-hidden="true" />
-          <span className="si-legend-ticks">
-            {[0, 25, 50, 75, 100].map((stop) => (
-              <span key={stop}>{stop}%</span>
-            ))}
+        <span className="si-legend-part">
+          <span className="si-legend-title">Completion</span>
+          <span className="si-legend-scale">
+            <span className="si-legend-bar" aria-hidden="true" />
+            <span className="si-legend-ticks">
+              {[0, 25, 50, 75, 100].map((stop) => (
+                <span key={stop}>{stop}%</span>
+              ))}
+            </span>
           </span>
+        </span>
+        <span className="si-legend-part si-legend-branches">
+          <span className="si-legend-title">Branch colour</span>
+          {BRANCH_RANGES.map((range, level) => (
+            <span key={range} className={`si-legend-chip lvl-${level}`}>
+              <i aria-hidden="true" />
+              {range}
+            </span>
+          ))}
         </span>
       </div>
       <div className="si-group-totals" role="region" aria-label="Topic group totals">

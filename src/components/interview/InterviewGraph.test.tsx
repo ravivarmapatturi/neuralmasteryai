@@ -39,9 +39,8 @@ describe('InterviewGraph component', () => {
     });
     expect(transformersBtn).toBeInTheDocument();
 
-    // In 0% state, the visible label text contains the title without percentage attached
-    expect(transformersBtn).toHaveTextContent('Transformers');
-    expect(transformersBtn).not.toHaveTextContent('Transformers 0%');
+    // Every card shows its percentage, untouched topics included
+    expect(transformersBtn).toHaveTextContent('Transformers 0%');
 
     // Group totals strip displays all groups
     const groupTotals = screen.getByRole('region', { name: /topic group totals/i });
@@ -85,33 +84,23 @@ describe('InterviewGraph component', () => {
     expect(transformersBtn.className).toContain('is-complete');
   });
 
-  it('keeps every topic at full strength and puts the progress colour on the centre spokes', () => {
+  it('draws a branch from the centre to every topic, coloured by how much is done', () => {
     const topics = sampleTopics.map((t) => (t.id === 'transformers' ? { ...t, done: 12 } : t));
     const { container } = render(<InterviewGraph topics={topics} activeId="rag" onActivate={vi.fn()} />);
 
-    const nodes = Array.from(container.querySelectorAll<HTMLButtonElement>('.si-node'));
-    expect(nodes).toHaveLength(sampleTopics.length);
-    for (const node of nodes) {
-      expect(node.className).not.toContain('far');
-      expect(node.style.opacity).toBe('');
-      expect(node.style.color).toBe('');
-    }
-    expect(container.querySelector('.si-heat')).toBeNull();
-    expect(container.querySelector('.si-ring')).toBeNull();
+    expect(container.querySelector('.si-hub')).toHaveTextContent('Interview practice');
+    const branches = container.querySelectorAll('.si-branch');
+    expect(branches).toHaveLength(sampleTopics.length);
+    const started = container.querySelector('.si-branch[data-topic="transformers"]')!;
+    const untouched = container.querySelector('.si-branch[data-topic="rag"]')!;
+    expect(started.getAttribute('class')).toContain('lvl-2');
+    expect(untouched.getAttribute('class')).toContain('lvl-0');
 
-    const spokes = container.querySelectorAll('.si-spokes line');
-    expect(spokes).toHaveLength(sampleTopics.length);
-    const started = container.querySelector<SVGLineElement>('.si-spokes line[data-topic="transformers"]')!;
-    const untouched = container.querySelector<SVGLineElement>('.si-spokes line[data-topic="rag"]')!;
-    expect(started.style.stroke).toBe('var(--heat-2)');
-    expect(untouched.style.stroke).toBe('var(--heat-0)');
-    expect(Number(started.style.strokeWidth)).toBeGreaterThan(Number(untouched.style.strokeWidth));
-    expect(Number(started.style.opacity)).toBeGreaterThan(Number(untouched.style.opacity));
-
-    // Connections between topics look the same whichever topic is selected.
-    const edges = Array.from(container.querySelectorAll('.si-edges path'));
-    expect(edges.length).toBeGreaterThan(0);
-    for (const edge of edges) expect(edge.getAttribute('class')).toBeNull();
+    // The card carries the same colour and a filled bar
+    const card = screen.getByRole('button', { name: /Transformers, 50% completed/i });
+    expect(card.className).toContain('lvl-2');
+    expect(card.querySelector<HTMLElement>('.si-bar i')!.style.width).toBe('50%');
+    expect(screen.getByRole('region', { name: /completion progress legend/i })).toHaveTextContent('76–100%');
   });
 
   it('calls onActivate when a topic node or group pill is clicked', () => {
