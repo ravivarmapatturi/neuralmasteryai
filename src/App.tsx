@@ -132,6 +132,7 @@ export default function App() {
                       <Route path="/glossary" element={<GlossaryPage />} />
                       <Route path="/glossary/:slug" element={<GlossaryTermPage />} />
                       <Route path="/docs/deep-learning/training-technique-atlas" element={<Navigate to="/docs/atlas/training" replace />} />
+                      <Route path="/docs/deep-learning/backpropagation" element={<Navigate to="/docs/deep-learning/neural-network-fundamentals" replace />} />
                       <Route path="/docs/inference-engineering/technique-atlas" element={<Navigate to="/docs/atlas/inference" replace />} />
                       <Route path="/changelog" element={<Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading changelog…</p>}><ChangelogPage /></Suspense>} />
                       <Route path="/about" element={<AboutPage />} />
