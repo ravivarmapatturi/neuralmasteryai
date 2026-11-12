@@ -204,12 +204,13 @@ describe('focusTimer pure logic', () => {
     expect(finishedRestored.remainingMs).toBe(2 * 60 * 1000);
     expect(finishedRestored.completedFocusCount).toBe(2);
 
-    // Reload when autoStartNext is false (manual stop mode)
+    // Reload when autoStartNext was false in saved state: migrated to continuous running
     const stoppedState = { ...runningState, autoStartNext: false };
     const manualRestored = restoreStateFromStorage(stoppedState, lateReloadTime);
-    expect(manualRestored.status).toBe('phaseEnded');
-    expect(manualRestored.phase).toBe('focus');
-    expect(manualRestored.remainingMs).toBe(0);
+    expect(manualRestored.status).toBe('running');
+    expect(manualRestored.autoStartNext).toBe(true);
+    expect(manualRestored.phase).toBe('shortBreak');
+    expect(manualRestored.remainingMs).toBe(2 * 60 * 1000);
   });
 
   it('rolls over continuous phases across large wall-clock gap', () => {
@@ -451,10 +452,130 @@ describe('focus stats and merge logic', () => {
     expect(restored.status).toBe('running');
     expect(restored.completedFocusCount).toBe(2);
 
-    // With autoStartNext: false, completes phase and remains in phaseEnded
+    // With autoStartNext: false in saved state, migrated to true and rolls over into continuous running
     const manualStopState = { ...running, autoStartNext: false };
     const manualRestored = restoreStateFromStorage(manualStopState, lateNow);
-    expect(manualRestored.status).toBe('phaseEnded');
-    expect(manualRestored.remainingMs).toBe(0);
+    expect(manualRestored.status).toBe('running');
+    expect(manualRestored.autoStartNext).toBe(true);
+    expect(manualRestored.completedFocusCount).toBe(2);
+  });
+});
+
+describe('continuous timer always-on behaviour', () => {
+  it('focus ends → break running', () => {
+    const t0 = 1000000;
+    const runningFocus = startPhase(createInitialState(), 'focus', 'learn', t0);
+    const completed = completePhase(runningFocus, t0 + 25 * 60 * 1000);
+    expect(completed.phase).toBe('shortBreak');
+    expect(completed.status).toBe('running');
+    expect(completed.remainingMs).toBe(5 * 60 * 1000);
+    expect(completed.autoStartNext).toBe(true);
+  });
+
+  it('break ends → focus running', () => {
+    const t0 = 1000000;
+    const runningBreak = startPhase(createInitialState(), 'shortBreak', 'learn', t0);
+    const completed = completePhase(runningBreak, t0 + 5 * 60 * 1000);
+    expect(completed.phase).toBe('focus');
+    expect(completed.status).toBe('running');
+    expect(completed.remainingMs).toBe(25 * 60 * 1000);
+    expect(completed.currentSessionId).toBeTruthy();
+    expect(completed.autoStartNext).toBe(true);
+  });
+
+  it('4th focus → long break', () => {
+    const t0 = 1000000;
+    const state4thFocus: FocusTimerState = {
+      ...startPhase(createInitialState(), 'focus', 'learn', t0),
+      completedFocusCount: 3,
+    };
+    const completed = completePhase(state4thFocus, t0 + 25 * 60 * 1000);
+    expect(completed.phase).toBe('longBreak');
+    expect(completed.status).toBe('running');
+    expect(completed.remainingMs).toBe(15 * 60 * 1000);
+    expect(completed.completedFocusCount).toBe(0);
+    expect(completed.autoStartNext).toBe(true);
+  });
+
+  it('a 3-hour gap while the tab was closed rolls over to the correct phase and stays running', () => {
+    const t0 = 1000000;
+    const initialRunning = startPhase(createInitialState(), 'focus', 'learn', t0);
+    // 3 hours = 180 minutes
+    const t180 = t0 + 180 * 60 * 1000;
+    const { nextState, completedSessions } = rolloverTimer(initialRunning, t180);
+
+    // 130 min for full cycle (4 focus sessions + 3 short breaks + 1 long break)
+    // 50 min left in cycle 2: 25m Focus 1 + 5m Short break 1 + 20m into Focus 2 (5m left)
+    expect(nextState.status).toBe('running');
+    expect(nextState.phase).toBe('focus');
+    expect(nextState.remainingMs).toBe(5 * 60 * 1000);
+    expect(nextState.completedFocusCount).toBe(1);
+    expect(completedSessions.length).toBe(5);
+
+    // Also testing restoreStateFromStorage with a saved state across a 3-hour gap
+    const restored = restoreStateFromStorage(initialRunning, t180);
+    expect(restored.status).toBe('running');
+    expect(restored.phase).toBe('focus');
+    expect(restored.remainingMs).toBe(5 * 60 * 1000);
+    expect(restored.completedFocusCount).toBe(1);
+  });
+
+  it('Pause stops it and nothing restarts it', () => {
+    const t0 = 1000000;
+    const running = startPhase(createInitialState(), 'focus', 'learn', t0);
+    const paused = pauseTimer(running, 'user', t0 + 5000);
+
+    expect(paused.status).toBe('paused');
+    expect(paused.pausedReason).toBe('user');
+
+    // Ticking while paused does not change status
+    const ticked = tickTimer(paused, t0 + 100000);
+    expect(ticked.status).toBe('paused');
+    expect(ticked.pausedReason).toBe('user');
+
+    // Visibility change does not resume or restart it
+    const visibilityResult = handleVisibilityChange(paused, 60000, t0 + 160000);
+    expect(visibilityResult.state.status).toBe('paused');
+    expect(visibilityResult.state.pausedReason).toBe('user');
+
+    // Restoring from storage keeps it paused
+    const restored = restoreStateFromStorage(paused, t0 + 3600000);
+    expect(restored.status).toBe('paused');
+    expect(restored.pausedReason).toBe('user');
+  });
+
+  it('a saved state with autoStartNext: false loads as running continuously', () => {
+    const t0 = 1000000;
+    const oldSavedState: Partial<FocusTimerState> = {
+      preset: DEFAULT_PRESET,
+      phase: 'focus',
+      status: 'running',
+      autoStartNext: false,
+      startedAt: t0,
+      endsAt: t0 + 25 * 60 * 1000,
+      targetDurationMs: 25 * 60 * 1000,
+      remainingMs: 0,
+      completedFocusCount: 0,
+    };
+
+    // Restoring after endsAt has passed (e.g. 28 min after start)
+    const lateNow = t0 + 28 * 60 * 1000;
+    const restored = restoreStateFromStorage(oldSavedState, lateNow);
+
+    expect(restored.autoStartNext).toBe(true);
+    expect(restored.status).toBe('running');
+    expect(restored.phase).toBe('shortBreak');
+    expect(restored.remainingMs).toBe(2 * 60 * 1000);
+    expect(restored.completedFocusCount).toBe(1);
+
+    // Even if saved state was phaseEnded
+    const phaseEndedSavedState: Partial<FocusTimerState> = {
+      ...oldSavedState,
+      status: 'phaseEnded',
+    };
+    const fromPhaseEnded = restoreStateFromStorage(phaseEndedSavedState, lateNow);
+    expect(fromPhaseEnded.autoStartNext).toBe(true);
+    expect(fromPhaseEnded.status).toBe('running');
+    expect(fromPhaseEnded.phase).toBe('shortBreak');
   });
 });

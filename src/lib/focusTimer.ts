@@ -217,7 +217,6 @@ export function rolloverTimer(state: FocusTimerState, now = Date.now()): Rollove
   while (now >= curEndsAt && steps < MAX_ROLLOVER_STEPS) {
     steps++;
     phaseChangesCount++;
-    const endedPhase = curPhase;
 
     if (curPhase === 'focus') {
       const plannedMinutes = state.preset.focusMinutes;
@@ -256,23 +255,6 @@ export function rolloverTimer(state: FocusTimerState, now = Date.now()): Rollove
       curStartedAt = curEndsAt;
       curEndsAt = curStartedAt + focusDurationMs;
       curSessionId = generateSessionId();
-    }
-
-    if (!state.autoStartNext) {
-      return {
-        nextState: {
-          ...state,
-          // Stay on the phase that just ended, as completePhase does: the break card keys on it.
-          phase: endedPhase,
-          status: 'phaseEnded',
-          completedFocusCount: curCount,
-          remainingMs: 0,
-          lastTickTimestamp: null,
-          pausedReason: null,
-        },
-        completedSessions,
-        phaseChangesCount,
-      };
     }
   }
 
@@ -360,54 +342,35 @@ export function completePhase(state: FocusTimerState, now = Date.now()): FocusTi
     const breakMinutes = isLongBreak ? state.preset.longBreakMinutes : state.preset.shortBreakMinutes;
     const breakDurationMs = breakMinutes * 60 * 1000;
 
-    if (state.autoStartNext) {
-      return {
-        ...state,
-        phase: nextPhase,
-        status: 'running',
-        completedFocusCount: isLongBreak ? 0 : nextCompletedCount,
-        startedAt: now,
-        endsAt: now + breakDurationMs,
-        remainingMs: breakDurationMs,
-        targetDurationMs: breakDurationMs,
-        lastTickTimestamp: null,
-        pausedReason: null,
-      };
-    }
-
     return {
       ...state,
-      status: 'phaseEnded',
+      phase: nextPhase,
+      status: 'running',
+      autoStartNext: true,
       completedFocusCount: isLongBreak ? 0 : nextCompletedCount,
-      remainingMs: 0,
+      startedAt: now,
+      endsAt: now + breakDurationMs,
+      remainingMs: breakDurationMs,
+      targetDurationMs: breakDurationMs,
       lastTickTimestamp: null,
       pausedReason: null,
     };
   }
 
-  // Break phase ended
+  // Break phase ended -> start next focus session
   const focusDurationMs = state.preset.focusMinutes * 60 * 1000;
-  if (state.autoStartNext) {
-    return {
-      ...state,
-      phase: 'focus',
-      status: 'running',
-      startedAt: now,
-      endsAt: now + focusDurationMs,
-      remainingMs: focusDurationMs,
-      targetDurationMs: focusDurationMs,
-      currentSessionId: generateSessionId(),
-      accumulatedFocusMs: 0,
-      lastTickTimestamp: now,
-      pausedReason: null,
-    };
-  }
-
   return {
     ...state,
-    status: 'phaseEnded',
-    remainingMs: 0,
-    lastTickTimestamp: null,
+    phase: 'focus',
+    status: 'running',
+    autoStartNext: true,
+    startedAt: now,
+    endsAt: now + focusDurationMs,
+    remainingMs: focusDurationMs,
+    targetDurationMs: focusDurationMs,
+    currentSessionId: generateSessionId(),
+    accumulatedFocusMs: 0,
+    lastTickTimestamp: now,
     pausedReason: null,
   };
 }
@@ -565,13 +528,26 @@ export function restoreStateFromStorage(saved: Partial<FocusTimerState> | null, 
   const state: FocusTimerState = {
     ...base,
     ...saved,
+    autoStartNext: true, // Always migrate old states with autoStartNext: false to true
   };
 
+  if (state.pausedReason === 'away') {
+    state.pausedReason = null;
+    state.status = 'running';
+  }
+
+  // If saved state was phaseEnded (or running past endsAt), roll over to the active continuous phase
+  if (state.status === 'phaseEnded' || (state.status === 'running' && state.endsAt !== null && now >= state.endsAt)) {
+    const rolloverBase: FocusTimerState = {
+      ...state,
+      status: 'running',
+      endsAt: state.endsAt ?? now,
+    };
+    const { nextState } = rolloverTimer(rolloverBase, now);
+    return nextState;
+  }
+
   if (state.status === 'running' && state.endsAt !== null) {
-    if (now >= state.endsAt) {
-      const { nextState } = rolloverTimer(state, now);
-      return nextState;
-    }
     // Still running: recalculate remainingMs from timestamp
     const remainingMs = Math.max(0, state.endsAt - now);
     const elapsedSinceLastTick = state.lastTickTimestamp !== null ? Math.max(0, now - state.lastTickTimestamp) : 0;

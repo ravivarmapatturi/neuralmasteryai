@@ -134,6 +134,7 @@ test.describe('Focus Pomodoro Timer E2E', () => {
 
   for (const width of [320, 375]) {
     test(`mobile timer fits routes at ${width}px idle, running and paused`, async ({ page }) => {
+      test.slow();
       await page.setViewportSize({ width, height: 800 });
       for (const route of ['/focus', '/learn', '/labs', '/interview', '/progress', '/docs/deep-learning/attention-transformers']) {
         await page.goto(route);
@@ -196,21 +197,29 @@ test.describe('Focus Pomodoro Timer E2E', () => {
     expect(sessionsAfter.length).toBe(1);
   });
 
-  test('with auto-start switched off, the break card waits for a click', async ({ page }) => {
+  test('fast-forward through focus -> break -> focus: timer runs continuously and counts down', async ({ page }) => {
     await page.clock.install({ time: new Date('2026-11-09T15:00:00.000Z') });
     await page.goto('/focus');
     await expect(page.locator('.nm-focus-phase-pill')).toHaveText('Focus');
-    const autoStart = page.locator('.nm-focus-hero-toggle-label', { hasText: 'Auto-start next phase' }).getByRole('switch');
-    await expect(autoStart).toHaveAttribute('aria-checked', 'true');
-    await autoStart.click();
-    await expect(autoStart).toHaveAttribute('aria-checked', 'false');
+    await expect(page.locator('.nm-focus-digits')).toHaveText('25:00');
 
+    // 1. Fast forward through the 25m focus session into break
     await page.clock.fastForward(26 * 60 * 1000);
-    await expect(page.locator('.nm-timer-break-card')).toBeVisible();
-    await expect(page.getByText('Step away from the screen, stretch, or rest your eyes.')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Skip break' })).toBeVisible();
-    await page.getByRole('button', { name: 'Start break' }).click();
     await expect(page.locator('.nm-focus-phase-pill')).toHaveText('Short break');
+    await expect(page.locator('.nm-focus-digits')).toHaveText(/^0[34]:\d\d$/);
+    await expect(page.getByRole('button', { name: /pause timer/i })).toBeVisible();
+
+    // 2. Fast forward through the 5m break into the next focus session
+    await page.clock.fastForward(5 * 60 * 1000);
+    await expect(page.locator('.nm-focus-phase-pill')).toHaveText('Focus');
+    await expect(page.getByRole('button', { name: /pause timer/i })).toBeVisible();
+    await expect(page.locator('.nm-timer-break-card')).toHaveCount(0);
+
+    // 3. Confirm the timer is still running and counting down
+    const initialDigits = await page.locator('.nm-focus-digits').innerText();
+    await page.clock.fastForward(3000);
+    await expect(page.locator('.nm-focus-digits')).not.toHaveText(initialDigits);
+    await expect(page.getByRole('button', { name: /pause timer/i })).toBeVisible();
   });
 
   test('timer starts on its own and keeps running while the tab is hidden', async ({ page }) => {

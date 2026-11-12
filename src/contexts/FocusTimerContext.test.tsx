@@ -317,10 +317,10 @@ describe('FocusTimerContext', () => {
   });
 
   it('handles reload after endsAt has passed: saves session exactly once with time up to endsAt only', async () => {
-    // Simulate user had started a 25m session 30 minutes ago, then reloaded the tab
+    // Simulate user had started a 25m session 27 minutes ago (2 minutes into break), then reloaded the tab
     const now = Date.now();
-    const startedAt = now - 30 * 60 * 1000;
-    const endsAt = startedAt + 25 * 60 * 1000; // passed 5 minutes ago
+    const startedAt = now - 27 * 60 * 1000;
+    const endsAt = startedAt + 25 * 60 * 1000; // passed 2 minutes ago
 
     localStorage.setItem(
       'nm_focus_timer_state',
@@ -349,8 +349,9 @@ describe('FocusTimerContext', () => {
       </Wrapper>,
     );
 
-    // Initial render should restore state to phaseEnded and save the session
-    expect(screen.getByTestId('status').textContent).toBe('phaseEnded');
+    // Initial render should restore state into continuous running (break phase) and save the session
+    expect(screen.getByTestId('status').textContent).toBe('running');
+    expect(screen.getByTestId('phase').textContent).toBe('shortBreak');
     expect(screen.getByTestId('sessions-count').textContent).toBe('1');
 
     const stored = JSON.parse(localStorage.getItem('nm_focus_sessions') || '[]');
@@ -480,5 +481,50 @@ describe('FocusTimerContext', () => {
       expect(saved.length).toBe(2);
       expect(JSON.parse(localStorage.getItem('nm_focus_pending_sync') || '[]').length).toBe(0);
     });
+  });
+
+  it('starts focus session automatically even if tab is hidden on initial mount', async () => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+    render(
+      <Wrapper>
+        <TestTimerWidget />
+      </Wrapper>,
+    );
+
+    expect(screen.getByTestId('status').textContent).toBe('running');
+    expect(screen.getByTestId('phase').textContent).toBe('focus');
+  });
+
+  it('migrates a saved state with autoStartNext: false to running continuously', async () => {
+    localStorage.setItem(
+      'nm_focus_timer_state',
+      JSON.stringify({
+        phase: 'shortBreak',
+        status: 'phaseEnded',
+        preset: { id: '25-5', focusMinutes: 25, shortBreakMinutes: 5, longBreakMinutes: 15 },
+        completedFocusCount: 1,
+        startedAt: Date.now() - 30 * 60 * 1000,
+        endsAt: Date.now() - 5 * 60 * 1000,
+        remainingMs: 0,
+        targetDurationMs: 5 * 60 * 1000,
+        autoStartNext: false,
+        notificationsEnabled: false,
+        currentSessionId: null,
+        currentSessionSection: 'home',
+        accumulatedFocusMs: 0,
+        lastTickTimestamp: null,
+        pausedReason: null,
+      }),
+    );
+
+    render(
+      <Wrapper>
+        <TestTimerWidget />
+      </Wrapper>,
+    );
+
+    // Should migrate from phaseEnded into running continuous focus phase
+    expect(screen.getByTestId('status').textContent).toBe('running');
+    expect(screen.getByTestId('phase').textContent).toBe('focus');
   });
 });

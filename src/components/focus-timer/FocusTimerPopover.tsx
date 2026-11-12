@@ -129,31 +129,6 @@ export default function FocusTimerPopover({ isOpen, onClose }: FocusTimerPopover
         </div>
       )}
 
-      {/* Break suggestion card */}
-      {timer.status === 'phaseEnded' && timer.phase === 'focus' && (
-        <div className="nm-timer-break-card" role="region" aria-label="Break card">
-          <p className="nm-timer-break-suggestion">
-            Step away from the screen, stretch, or rest your eyes.
-          </p>
-          <div className="nm-timer-break-actions">
-            <button
-              ref={primaryActionRef}
-              type="button"
-              className="nm-timer-btn-primary"
-              onClick={timer.startBreak}
-            >
-              Start break
-            </button>
-            <button
-              type="button"
-              className="nm-timer-btn-secondary"
-              onClick={timer.skip}
-            >
-              Skip break
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Transport controls */}
       {timer.status === 'idle' && (
@@ -251,19 +226,6 @@ export default function FocusTimerPopover({ isOpen, onClose }: FocusTimerPopover
 
       {/* Toggles */}
       <div className="nm-timer-toggles">
-        <label className="nm-timer-toggle-item">
-          <span className="nm-timer-toggle-label">Auto-start next phase</span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={timer.autoStartNext}
-            className={`nm-timer-switch ${timer.autoStartNext ? 'is-on' : ''}`}
-            onClick={() => timer.setAutoStartNext(!timer.autoStartNext)}
-          >
-            <span className="nm-timer-switch-thumb" />
-          </button>
-        </label>
-
         <label className="nm-timer-toggle-item">
           <span className="nm-timer-toggle-label">Browser notifications</span>
           <button

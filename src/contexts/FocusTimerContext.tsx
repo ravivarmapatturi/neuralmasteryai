@@ -222,10 +222,28 @@ function getInitialFocusTimerStateAndSessions(): InitialFocusData {
   let reloadCompletedSession: FocusSession | null = null;
 
   const now = Date.now();
-  if (savedTimer && savedTimer.status === 'running' && savedTimer.endsAt !== null && now >= savedTimer.endsAt) {
+  if (savedTimer) {
+    savedTimer.autoStartNext = true;
+    if (savedTimer.pausedReason === 'away') {
+      savedTimer.pausedReason = null;
+      savedTimer.status = 'running';
+    }
+  }
+
+  const isExpired =
+    savedTimer &&
+    (savedTimer.status === 'running' || savedTimer.status === 'phaseEnded') &&
+    savedTimer.endsAt !== null &&
+    now >= savedTimer.endsAt;
+  const isStalePhaseEnded = savedTimer && savedTimer.status === 'phaseEnded';
+
+  if (isExpired || isStalePhaseEnded) {
     const fullState: FocusTimerState = {
       ...createInitialState(savedTimer.preset || DEFAULT_PRESET),
       ...savedTimer,
+      status: 'running',
+      autoStartNext: true,
+      endsAt: savedTimer.endsAt ?? now,
     };
     const { nextState, completedSessions } = rolloverTimer(fullState, now);
     if (completedSessions.length > 0) {
@@ -422,9 +440,16 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const now = Date.now();
     const current = stateRef.current;
-    if (current.status === 'paused' && current.pausedReason === 'away') setState((prev) => resumeTimer(prev, now));
-    else if (current.status === 'idle' && !document.hidden) {
-      const sec = window.location.pathname.replace(/^\/+/, '').split('/')[0] || 'home';
+    if (current.status === 'paused' && current.pausedReason === 'user') {
+      // User explicitly paused: do not restart
+      return;
+    }
+    if (current.status === 'paused' && current.pausedReason === 'away') {
+      setState((prev) => resumeTimer(prev, now));
+    } else if (current.status === 'idle' || current.status === 'phaseEnded') {
+      const sec = typeof window !== 'undefined'
+        ? window.location.pathname.replace(/^\/+/, '').split('/')[0] || 'home'
+        : 'home';
       setState((prev) => startPhase(prev, 'focus', sec));
     }
   }, []);
@@ -538,8 +563,9 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
     setState((prev) => updatePreset(prev, preset));
   }, []);
 
-  const setAutoStartNext = useCallback((autoStartNext: boolean) => {
-    setState((prev) => ({ ...prev, autoStartNext }));
+  const setAutoStartNext = useCallback((_autoStartNext: boolean) => {
+    // Continuous running is always on
+    setState((prev) => ({ ...prev, autoStartNext: true }));
   }, []);
 
   const setNotificationsEnabled = useCallback(async (enable: boolean) => {

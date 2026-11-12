@@ -152,30 +152,6 @@ export default function FocusPage() {
             </div>
           )}
 
-          {/* Phase ended break card */}
-          {timer.status === 'phaseEnded' && timer.phase === 'focus' && (
-            <div className="nm-timer-break-card" role="region" aria-label="Break recommendation" style={{ maxWidth: 400, margin: '0 auto 1.5rem' }}>
-              <p className="nm-timer-break-suggestion">
-                Step away from the screen, stretch, or rest your eyes.
-              </p>
-              <div className="nm-timer-break-actions">
-                <button
-                  type="button"
-                  className="nm-focus-btn-lg-primary"
-                  onClick={timer.startBreak}
-                >
-                  Start break
-                </button>
-                <button
-                  type="button"
-                  className="nm-focus-btn-lg-secondary"
-                  onClick={timer.skip}
-                >
-                  Skip break
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* Primary Transport Actions */}
           <div className="nm-focus-hero-actions">
@@ -308,19 +284,6 @@ export default function FocusPage() {
 
           {/* Settings toggles */}
           <div className="nm-focus-hero-toggles">
-            <label className="nm-focus-hero-toggle-label">
-              <span>Auto-start next phase</span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={timer.autoStartNext}
-                className={`nm-timer-switch ${timer.autoStartNext ? 'is-on' : ''}`}
-                onClick={() => timer.setAutoStartNext(!timer.autoStartNext)}
-              >
-                <span className="nm-timer-switch-thumb" />
-              </button>
-            </label>
-
             <label className="nm-focus-hero-toggle-label">
               <span>Browser notifications</span>
               <button
