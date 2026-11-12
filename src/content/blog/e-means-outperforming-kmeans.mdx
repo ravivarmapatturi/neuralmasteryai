@@ -1,172 +1,177 @@
 ---
-title: "e-Means: Scaling k-Means to Billion-Vector Datasets in One-Tenth the Epochs"
-description: "Meta FAIR's e-means replaces Lloyd's full-batch passes with exponential moving averages across streaming mini-batches, matching 25-epoch loss in under 3 passes."
+title: "e-means, Explained: k-Means That Learns From Small Batches"
+description: "How e-means groups billions of vectors in two or three passes over the data instead of twenty-five, explained step by step with interactive figures."
 date: 2026-11-12
 tags: [clustering, vector search, retrieval, optimization]
 ---
 
 import KMeansVsEMeansVisual from '../../components/atlas/ml-models/KMeansVsEMeansVisual';
 import RunnableCode from '../../components/content/RunnableCode';
+import { ForgettingWeights, OneBatchStep, CosineStepSchedule, DeadClusterRevival } from '../../components/blog/emeans/EMeansExplainers';
 
-# e-Means: Scaling k-Means to Billion-Vector Datasets in One-Tenth the Epochs
+# e-means, Explained: k-Means That Learns From Small Batches
 
-On 11 November 2026, researchers from Meta FAIR and École des Ponts ParisTech published [e-means: outperforming k-means (in one-tenth the epochs)](https://arxiv.org/abs/2611.09501) by Swann Bessa, Pierre-Emmanuel Mazaré, Gergely Szilvasy, Hugo Touvron, David Picard, Matthijs Douze, and Hervé Jégou (code released in `faiss/contrib/e_means`, interactive explorer at [e-means.github.io](https://e-means.github.io/)). The authors demonstrate that updating cluster statistics through an exponential moving average across streaming mini-batches matches or surpasses the loss of a 25-epoch Lloyd baseline in about 1.2 to 3 epochs (between 1.6 and 2.4 epochs across the VIBE benchmark; 1.4 to 2.6 epochs in the arXiv 2611.09501 Abstract). On an NVIDIA H100 GPU, this yields 10× to 45× wall-clock speedups over Flash-KMeans, and 8× to 15× speedups over Faiss CPU implementations, as reported by the authors.
+Vector search, the engine behind RAG and image search, starts by sorting millions or billions of embeddings into groups so a query only has to look inside a few of them. The tool that builds those groups is **k-means**. At that scale the slow part is not the idea, it is the number of times k-means has to read the whole dataset: usually around 25.
 
-Clustering modern datasets often means partitioning 10 billion high-dimensional embeddings into millions of centroids. When you run standard Lloyd's k-means on a collection that large, each pass touches every single vector in memory before adjusting a single centroid coordinate. By the end of this post, you will understand the exact mathematical update that powers e-means, how fitted scaling laws set batch sizes and decay rates without manual grid searches, how Lloyd emerges as an exact special case, and how to run a minimal implementation in pure NumPy.
+In November 2026 a team from Meta FAIR and École des Ponts published **e-means** ([paper](https://arxiv.org/abs/2611.09501), [project page](https://e-means.github.io/)). It reaches the quality that standard k-means gets after 25 passes in about **1.2 to 3 passes**. This post builds it up one piece at a time, with a figure for each piece you can play with.
 
-## 1. Why k-means is everywhere, and why Lloyd fails at scale
+## k-means in one paragraph
 
-Every retrieval-augmented generation (RAG) system, image search engine, and multimodal embedding pipeline relies on vector quantization. Inverted File (IVF) indexes in Faiss partition high-dimensional vector spaces into $k$ Voronoi cells so that queries search only the vectors assigned to the closest centroids rather than scanning the entire collection. When training these index codebooks, practitioners turn to **k-means clustering**, an unsupervised method that assigns points to their nearest centroid and repositions each centroid to the mean of its assigned points.
+You want $k$ groups. Each group has a **centroid**, the point that represents it. k-means repeats two moves: give every point to its nearest centroid, then move every centroid to the average of the points it was given. Each round, the average squared distance from points to their centroid (the **loss**) goes down. The classic version is **Lloyd's algorithm** (1957), and it does each round over the whole dataset.
 
-Stuart Lloyd formulated the standard alternating algorithm in 1957. Lloyd's algorithm executes two alternating operations per iteration:
+That is the problem. With a billion points, every single move of every centroid waits for a billion distance calculations. If the starting centroids were bad, you spend a full pass of the data just to find out.
 
-1. **Assignment step**: Compute the squared Euclidean distance between every point $x_i$ and all $k$ centroids, assigning each point to its closest centroid.
-2. **Update step**: Recompute every centroid as the exact arithmetic average of all points assigned to it across the entire dataset.
-
-This full-batch structure creates an engineering bottleneck at scale. To partition $n = 10^9$ vectors into $k = 10^5$ centroids, a single Lloyd iteration must compute $10^{14}$ distance evaluations before taking a single optimization step. If the initial centroids are poorly positioned, an entire full-dataset pass is spent discovering that fact. In contrast, modern deep learning optimizers make continuous progress after every small mini-batch. Previous attempts to train k-means with mini-batches (such as Sculley's 2010 heuristic) updated centroids with decaying learning rates, but they suffered from high distortion, sensitivity to step sizes, and empty cluster collapse.
-
-## 2. Tracking sufficient statistics with exponential moving averages
-
-The central insight of e-means is to treat clustering as tracking two running sufficient statistics per cluster: a cumulative vector sum $S_j$ and an accumulated point count $N_j$. Instead of overwriting these statistics from scratch on each full dataset pass, e-means updates them across streaming mini-batches with an **exponential moving average** (EMA), an update rule that blends previous historical statistics with fresh batch observations using a smoothing factor $\alpha$.
-
-When a mini-batch $B$ of vectors arrives:
-
-1. Each vector $x \in B$ is assigned to its nearest existing centroid $c_j = S_j / N_j$.
-2. We compute the batch-local sum $s_j = \sum_{x \in B, z_x = j} x$ and batch-local count $n_j = |\{x \in B : z_x = j\}|$ for each cluster $j$.
-3. The running statistics update via the exponential moving average:
-   $$S_j \leftarrow (1 - \alpha) S_j + \alpha \cdot s_j$$
-   $$N_j \leftarrow (1 - \alpha) N_j + \alpha \cdot n_j$$
-4. The centroid position updates directly:
-   $$c_j = \frac{S_j}{N_j}$$
-
-Notice what happens when the batch size $B$ equals the full dataset size $n$, and we set the smoothing parameter $\alpha = 1.0$. The historical terms $(1 - \alpha) S_j$ and $(1 - \alpha) N_j$ vanish to zero, leaving $S_j = s_j$ and $N_j = n_j$. The updated centroid is $c_j = s_j / n_j$, which is identical to Lloyd's algorithm. **Lloyd's classical algorithm is the special case of e-means where $B = n$ and $\alpha = 1$.**
-
-## 3. The maths and a worked step by hand
-
-To see how the numbers behave during a single mini-batch step, consider a toy 2D clustering problem with $k = 2$ clusters.
-
-Suppose the two centroids currently sit at:
-$$c_1 = [0.0, 0.0], \quad c_2 = [10.0, 10.0]$$
-
-Each cluster stores its current running sum and running count:
-$$S_1 = [0.0, 0.0], \quad N_1 = 10.0$$
-$$S_2 = [100.0, 100.0], \quad N_2 = 10.0$$
-
-We receive a mini-batch of 4 points:
-$$x_1 = [1.0, 1.0], \quad x_2 = [2.0, 0.0], \quad x_3 = [9.0, 11.0], \quad x_4 = [10.0, 8.0]$$
-
-We evaluate Euclidean distances to assign each point to its nearest centroid:
-- $x_1$ and $x_2$ are closest to $c_1$ ($d^2 = 2$ and $4$, versus $162$ and $164$ to $c_2$).
-- $x_3$ and $x_4$ are closest to $c_2$ ($d^2 = 2$ and $4$, versus $202$ and $164$ to $c_1$).
-
-We sum the vectors and count assignments inside this batch:
-$$s_1 = [1.0, 1.0] + [2.0, 0.0] = [3.0, 1.0], \quad n_1 = 2$$
-$$s_2 = [9.0, 11.0] + [10.0, 8.0] = [19.0, 19.0], \quad n_2 = 2$$
-
-Let the current smoothing rate be $\alpha = 0.20$. We compute the exponential moving average update:
-
-For cluster 1:
-$$S_1 \leftarrow (1 - 0.20)[0.0, 0.0] + 0.20[3.0, 1.0] = [0.60, 0.20]$$
-$$N_1 \leftarrow (1 - 0.20)(10.0) + 0.20(2) = 8.0 + 0.40 = 8.40$$
-$$c_1 = \frac{[0.60, 0.20]}{8.40} \approx [0.0714, 0.0238]$$
-
-For cluster 2:
-$$S_2 \leftarrow (1 - 0.20)[100.0, 100.0] + 0.20[19.0, 19.0] = [80.0, 80.0] + [3.80, 3.80] = [83.80, 83.80]$$
-$$N_2 \leftarrow (1 - 0.20)(10.0) + 0.20(2) = 8.0 + 0.40 = 8.40$$
-$$c_2 = \frac{[83.80, 83.80]}{8.40} \approx [9.9762, 9.9762]$$
-
-Centroid $c_1$ moved smoothly toward the batch center of mass $[1.5, 0.5]$ without overreacting or discarding its prior positioning.
-
-## 4. The side-by-side visual: Lloyd vs. e-means
-
-The interactive diagram below runs both Lloyd's full-batch algorithm and e-means on the identical 24-point dataset. Use the step buttons to observe how centroids evolve and how distortion drops over successive updates.
+Step through both methods below on the same 24 points. Lloyd's moves only after looking at all 24 points; e-means moves after every batch of 8.
 
 <KMeansVsEMeansVisual />
 
-Notice the key difference in convergence dynamics: Lloyd takes large, discrete steps that require scanning all 24 points before updating centroids. In contrast, e-means streams mini-batches of 8 points and updates running centroids continuously, producing smooth trajectories and dropping distortion within the earliest updates.
+## Why not just use small batches?
 
-## 5. Scaling laws, cosine decay, and reviving dead clusters
+Deep learning learns from small batches, so the obvious fix is to move the centroids after every batch. This was tried long ago (MacQueen in 1967, Sculley in 2010). In those versions, a centroid is the running average of **every point ever given to it**. Every batch counts the same, forever.
 
-Prior mini-batch k-means variants required manual trial-and-error hyperparameter tuning for batch sizes and step decays. The authors of e-means resolved this by establishing empirical scaling laws that formulate batch size $B$ and initial decay rate $\alpha_0$ directly from dataset size $n$, cluster count $k$, and dimension $d$:
+The trouble is the early batches. They were assigned when the centroids were still in poor places, so many of those points went to the wrong group. A plain running average never forgets them, and the steps a centroid takes get smaller and smaller as its count grows, so it slows down before it has finished moving.
 
-1. **Scaling-law batch sizing**: The recommended batch size scales proportionally with the number of clusters, ensuring each cluster receives updates with sufficient frequency while fitting neatly in GPU SRAM.
-2. **Cosine decay schedule**: The smoothing parameter $\alpha$ follows a cosine schedule across training steps $t \in [0, T-1]$, decaying from initial $\alpha_0$ down to $10\%$ of its initial value:
-   $$\alpha(t) = 0.1\alpha_0 + 0.5(1 - 0.1)\alpha_0 \left(1 + \cos\left(\frac{\pi t}{T}\right)\right)$$
-   High $\alpha$ in early iterations allows centroids to migrate rapidly across the feature space; lower $\alpha$ near the end stabilizes fine-grained cluster boundaries.
-3. **Dead-cluster revival**: In any clustering procedure, an outlier centroid can end up with zero assigned points. e-means monitors $N_j$. When a cluster's effective count drops below a threshold, the algorithm splits the cluster with the highest within-cluster variance along its primary axis, assigning one half to revive the dead centroid.
-4. **Exact finalization**: After completing the planned training epochs, e-means performs one final evaluation pass where each centroid is reset to the exact arithmetic mean of its assigned points, eliminating any lingering EMA lag.
+Move the slider below. The top row is the plain running average: the first three batches keep 30% of the say no matter what. The bottom row is what e-means does: old batches fade, so early mistakes stop mattering.
 
-## 6. Runnable code: Lloyd vs. e-means in NumPy
+<ForgettingWeights />
 
-Here is a self-contained Python implementation showing one step of Lloyd alongside one step of e-means on synthetic 2D data. You can execute this directly:
+## The e-means update: keep a sum and a count, and let both fade
+
+For every cluster $j$, e-means stores two numbers instead of a centroid:
+
+- $S_j$, a running **sum** of the points given to the cluster, and
+- $N_j$, a running **count** of how many points that was.
+
+The centroid is never stored. It is read off as the sum divided by the count: $c_j = S_j / N_j$.
+
+When a batch arrives, each point goes to its nearest centroid. For each cluster, add up the points it got in this batch ($s_j$) and count them ($n_j$). Then blend the old numbers with the new ones using a **step** $\alpha$ between 0 and 1:
+
+$$S_j \leftarrow (1-\alpha)\,S_j + \alpha\, s_j \qquad N_j \leftarrow (1-\alpha)\,N_j + \alpha\, n_j$$
+
+That is the whole update. Multiplying the old numbers by $(1-\alpha)$ every batch is what makes old batches fade: a batch from $a$ updates ago is weighted by $(1-\alpha)^a$. This kind of fading average is called an **exponential moving average** (EMA), which is where the "e" in e-means comes from.
+
+Why keep a sum and a count instead of just nudging the centroid? Because the count tells the update how much evidence the batch brought. Try it below: with the usual number of points the centroid moves about $\alpha$ of the way to the batch's average; with more points it moves further; with **zero** points the sum and the count shrink by the same factor, so their ratio, the centroid, does not move at all. A cluster that happens to miss one batch is left alone instead of being dragged somewhere.
+
+<OneBatchStep />
+
+### The same step with numbers
+
+Take two clusters in 2D. Cluster 1 sits at $(0, 0)$ with $S_1 = (0, 0)$ and $N_1 = 2$. Cluster 2 sits at $(10, 10)$ with $S_2 = (20, 20)$ and $N_2 = 2$. A batch of four points arrives: $(1, 1)$, $(2, 0)$, $(9, 11)$, $(10, 8)$, and the step is $\alpha = 0.2$.
+
+The first two points are nearest cluster 1, so $s_1 = (3, 1)$ and $n_1 = 2$. The other two are nearest cluster 2, so $s_2 = (19, 19)$ and $n_2 = 2$.
+
+$$S_1 = 0.8\,(0, 0) + 0.2\,(3, 1) = (0.6,\ 0.2) \qquad N_1 = 0.8 \cdot 2 + 0.2 \cdot 2 = 2$$
+
+$$c_1 = (0.6,\ 0.2) / 2 = (0.3,\ 0.1)$$
+
+The batch's average for cluster 1 was $(1.5, 0.5)$, and the centroid moved exactly 20% of the way there. Cluster 2 does the same: $S_2 = 0.8\,(20, 20) + 0.2\,(19, 19) = (19.8, 19.8)$, $N_2 = 2$, so $c_2 = (9.9, 9.9)$, 20% of the way from $(10, 10)$ to its batch average $(9.5, 9.5)$.
+
+### Lloyd's algorithm is the extreme case
+
+Set the batch to the whole dataset and $\alpha = 1$. Then $(1-\alpha) = 0$ wipes out the old sum and count, $S_j$ becomes the sum of all the cluster's points, $N_j$ their number, and $S_j / N_j$ is their average. That is exactly one round of Lloyd's algorithm. The paper's point is that this extreme is a poor choice: smaller batches with a smaller step make far more progress per pass over the data.
+
+## Big moves first, small moves at the end
+
+Early on, centroids are far from where they belong and should move boldly. Near the end they should settle. So e-means does not keep $\alpha$ fixed. It starts at a peak value $\alpha_0$ and lowers it along a cosine curve to one tenth of that by the last update ([paper, eq. 5](https://arxiv.org/abs/2611.09501)):
+
+$$\alpha(t) = \alpha_0 \left(0.1 + 0.9 \cdot \tfrac{1}{2}\left(1 + \cos\tfrac{\pi t}{M}\right)\right)$$
+
+Here $t$ counts updates and $M$ is the total number of updates in the run. Drag the marker to see the step at any point of training.
+
+<CosineStepSchedule />
+
+## Fixing clusters that go empty
+
+Sometimes a centroid ends up somewhere no points are nearest to it. It then gets nothing, never moves, and is wasted. The paper's ablation finds that handling this is the single most important part of the recipe: without it the training loss is about 3% worse (Table 1).
+
+Every five batches, e-means looks for clusters whose count has dropped below a tenth of the average count. For each one it picks a busy **donor** cluster, with bigger clusters more likely to be chosen, and copies the donor's centroid twice with a tiny nudge in opposite directions. The donor's count is split between the two copies. One copy stays with the donor, the other takes over the empty slot, and the next few batches pull them apart so each ends up with about half of the old cluster. Step through it:
+
+<DeadClusterRevival />
+
+## The finishing step
+
+After the last pass, each centroid is replaced by the plain average of the points it was given during that last pass. The assignments are already known, so this costs almost nothing, and it can only lower the training loss. For applications that care about new data rather than the training set, the paper also describes a second, slower-fading set of sums and counts kept on the side.
+
+## Choosing the batch size and the step without guessing
+
+Older mini-batch methods left you to guess the batch size $B$ and the step. The authors ran a large sweep and fitted two formulas that pick both from the size of the problem: $n$ points, $k$ clusters and $T$ passes ([paper, section 3.3 and Table 2](https://arxiv.org/abs/2611.09501)):
+
+$$B = 0.035\, k^{0.13}\, n^{0.88}\, T^{0.81} \quad \text{(rounded to a power of two)}$$
+
+$$\alpha_0 = \min\!\left(0.824\, k^{-0.46}\, B^{0.90}\, n^{-0.45}\, T^{-0.11},\ 1\right)$$
+
+Plugging in one million points, 16,384 clusters and 3 passes gives $B = 65{,}536$ and $\alpha_0 \approx 0.36$ (our arithmetic from the published coefficients). Above two million points the authors divide the batch formula by 8. They fitted these on one dataset and found they carried over to others, though they note the formulas are tuned for high-dimensional embeddings and are not ideal for very small, low-dimensional data.
+
+## Try it: Lloyd against e-means in NumPy
+
+The code below builds 4,000 points in 8 groups, runs Lloyd for 25 passes and e-means for 2 passes with batches of 256, and prints the loss along the way. It leaves out the empty-cluster fix to stay short.
 
 <RunnableCode code={`import numpy as np
 
-# Seeded toy 2D dataset with two Gaussian blobs
-np.random.seed(42)
-c1 = np.random.randn(20, 2) + np.array([2.0, 2.0])
-c2 = np.random.randn(20, 2) + np.array([8.0, 8.0])
-X = np.vstack([c1, c2])
+rng = np.random.default_rng(0)
+# 8 groups of 500 points each in 2D
+centres = rng.uniform(-10, 10, size=(8, 2))
+X = np.vstack([c + rng.normal(0, 1.0, size=(500, 2)) for c in centres])
+n, k = len(X), 8
 
-def lloyd_step(data, centroids):
-    dists = np.linalg.norm(data[:, None, :] - centroids[None, :, :], axis=2)
-    labels = np.argmin(dists, axis=1)
-    new_c = np.array([data[labels == j].mean(axis=0) for j in range(len(centroids))])
-    loss = np.mean(np.min(dists**2, axis=1))
-    return new_c, loss
+def loss(X, C):
+    d = ((X[:, None, :] - C[None, :, :]) ** 2).sum(-1)
+    return d.min(1).mean()
 
-def emeans_step(batch, centroids, S, N, alpha):
-    dists = np.linalg.norm(batch[:, None, :] - centroids[None, :, :], axis=2)
-    labels = np.argmin(dists, axis=1)
-    k = len(centroids)
-    new_S = np.zeros_like(S)
-    new_N = np.zeros_like(N)
-    for j in range(k):
-        mask = (labels == j)
-        s_j = batch[mask].sum(axis=0) if np.any(mask) else np.zeros(2)
-        n_j = np.sum(mask)
-        new_S[j] = (1 - alpha) * S[j] + alpha * s_j
-        new_N[j] = (1 - alpha) * N[j] + alpha * n_j
-    new_c = np.array([new_S[j] / new_N[j] if new_N[j] > 1e-7 else centroids[j] for j in range(k)])
-    return new_c, new_S, new_N
+def assign(X, C):
+    return ((X[:, None, :] - C[None, :, :]) ** 2).sum(-1).argmin(1)
 
-init_c = np.array([[1.0, 5.0], [9.0, 4.0]])
-c_lloyd, loss_lloyd = lloyd_step(X, init_c)
+start = X[rng.choice(n, k, replace=False)]
 
-# Initialize e-means running statistics
-S = init_c.copy() * 10.0
-N = np.array([10.0, 10.0])
-batch = X[:8]  # First mini-batch of 8 samples
-c_emeans, S, N = emeans_step(batch, init_c, S, N, alpha=0.3)
+# Lloyd: every update looks at all n points
+C = start.copy()
+for epoch in range(1, 26):
+    a = assign(X, C)
+    C = np.array([X[a == j].mean(0) if np.any(a == j) else C[j] for j in range(k)])
+    if epoch in (1, 2, 3, 25):
+        print(f"Lloyd    after {epoch:2d} full passes: loss {loss(X, C):.3f}")
 
-all_dists = np.linalg.norm(X[:, None, :] - c_emeans[None, :, :], axis=2)
-loss_emeans = np.mean(np.min(all_dists**2, axis=1))
+# e-means: running sum S and count N per cluster, faded by (1 - alpha) each batch
+B, T, alpha0 = 256, 2, 0.4
+M = T * (n // B)
+S = start * 1e-10
+N = np.full(k, 1e-10)
+t = 0
+for epoch in range(1, T + 1):
+    order = rng.permutation(n)
+    for i in range(n // B):
+        batch = X[order[i * B:(i + 1) * B]]
+        alpha = alpha0 * (0.1 + 0.9 * 0.5 * (1 + np.cos(np.pi * t / M)))
+        a = assign(batch, S / N[:, None])
+        for j in range(k):
+            pts = batch[a == j]
+            S[j] = (1 - alpha) * S[j] + alpha * pts.sum(0)
+            N[j] = (1 - alpha) * N[j] + alpha * len(pts)
+        t += 1
+    print(f"e-means  after {epoch:2d} pass(es):      loss {loss(X, S / N[:, None]):.3f}")
 
-print(f"Lloyd pass 1 full loss:  {loss_lloyd:.4f}")
-print(f"e-means step 1 full loss: {loss_emeans:.4f}")
+# Finish: each centroid becomes the plain average of the points it owns now
+a = assign(X, S / N[:, None])
+final = np.array([X[a == j].mean(0) if np.any(a == j) else (S / N[:, None])[j] for j in range(k)])
+print(f"e-means  after finishing step:    loss {loss(X, final):.3f}")
 `} />
 
-## 7. About 1.2–3 epochs instead of 25: 10–45× faster on GPU, 8–15× on CPU
+Two details match the paper: the starting count is $10^{-10}$, so the starting centroids carry almost no weight once real batches arrive, and the starting centroids are just random points from the data. When we ran this on five random datasets, e-means after one pass was within about 1% of Lloyd's loss after 25 passes, and on one of them it finished lower. On 4,000 points Lloyd is fast anyway; the saving matters when one pass over the data takes hours.
 
-The authors evaluated e-means across 24 embedding and synthetic configurations, including the VIBE embedding benchmark (Jääsaari et al., 2025: 11 datasets spanning text, code, image and multimodal embeddings, $d = 200$ to $3,072$, $k = 8,192$ or $16,384$) and Meta's DINO10B dataset (Siméoni et al., 2025). The quantitative gains reported by the authors ([e-means.github.io](https://e-means.github.io/) and [arXiv:2611.09501](https://arxiv.org/abs/2611.09501)) are:
+## What the authors measured
 
-- **Epoch efficiency**: Across a wide range of scales and datasets, e-means reaches a test loss below Lloyd's at 25 epochs in **1.2 to 3 epochs** (reported on [e-means.github.io](https://e-means.github.io/); specifically between 1.6 and 2.4 epochs across all 11 datasets of the VIBE benchmark, and 1.4 to 2.6 epochs reported in the arXiv:2611.09501 Abstract).
-- **GPU wall-clock acceleration**: On H100 GPUs, at $n = 10\text{M}$ vectors with $k = 65,536$ clusters and at $n = 100\text{M}$ with $k = 262,144$, e-means reports a **10× to 45× wall-clock speedup** over Flash-KMeans (Section 4 of [arXiv:2611.09501](https://arxiv.org/abs/2611.09501); [e-means.github.io](https://e-means.github.io/)).
-- **CPU acceleration**: Measured against Faiss on CPU, e-means reports an **8× to 15× wall-clock speedup** ([e-means.github.io](https://e-means.github.io/) and arXiv:2611.09501 Section 1).
-- **Extreme-scale demonstration on DINO10B**: In the paper (arXiv:2611.09501 Abstract, Table 3, and Appendix M), the authors cluster **DINO10B** ($10^{10}$ 1,024-dimensional DINO embeddings into $k = 2^{24} \approx 16.7\text{M}$ clusters) on NVIDIA H100 GPUs. In Table 3 (page 6), e-means reaches Lloyd's 25-epoch test loss in only 2.5 epochs, requiring 779 GPU hours for exact assignment and 22.8 GPU hours with Inverted File (IVF) assignment.
+All of these are the authors' numbers, from the [paper](https://arxiv.org/abs/2611.09501) and the [project page](https://e-means.github.io/):
 
-Every figure above is cited directly from the authors' page and arXiv:2611.09501 as reported by the authors.
+- e-means beats the loss of Lloyd's algorithm after 25 passes in **1.4 to 2.6 passes** (abstract). On the 11 embedding datasets of the VIBE benchmark (text, code, image and multimodal, 200 to 3,072 dimensions) each needs **1.6 to 2.4 passes**.
+- On H100 GPUs it is **10 to 45 times faster** in wall-clock time than Flash-KMeans, and on CPU **8 to 15 times faster** than Faiss.
+- On DINO10B, a new dataset of 10 billion 1,024-dimensional image embeddings, it trains about 16.7 million centroids in **2.5 passes**, taking 779 GPU hours with exact nearest-centroid search or 22.8 GPU hours with an approximate (IVF) search (Table 3).
 
-## 8. Where it breaks and what it does not replace
+## When e-means is the wrong tool
 
-e-means is an optimization procedure for the k-means objective; it does not alter the geometric assumptions of k-means itself:
+It speeds up k-means; it does not change what k-means can find. Groups still have to be roughly round blobs, because the method minimises straight-line squared distance. Rings, spirals and curved shapes need [spectral clustering](/docs/machine-learning/gmm-spectral-clustering) or [DBSCAN](/docs/machine-learning/dbscan-hdbscan). You still have to choose $k$ yourself. And it is designed for a fixed dataset, such as building a search index; the authors contrast it with neural networks whose embeddings keep changing during training.
 
-1. **Convex spherical geometries only**: Like all k-means algorithms, e-means minimizes squared Euclidean distance. It cannot separate concentric rings, intertwined spirals, or non-convex manifold structures. For manifold-shaped clusters, [Spectral Clustering](/docs/machine-learning/gmm-spectral-clustering) or [DBSCAN](/docs/machine-learning/dbscan-hdbscan) remain necessary.
-2. **Preset cluster count**: e-means requires specifying the number of clusters $k$ in advance. It does not determine the optimal number of centroids automatically.
-3. **Static datasets versus moving targets**: The authors note on [e-means.github.io](https://e-means.github.io/) that e-means is formulated for fixed, static datasets (as in vector search index construction and large-scale data curation), unlike codebook learning in VQ-VAEs where the underlying feature distribution continuously shifts during neural network training.
+## What you can do now
 
-## Summary
+You can explain e-means in four sentences: keep a sum and a count per cluster, fade both a little every batch, start with big steps and end with small ones, and refill empty clusters by splitting busy ones. You can also predict how a centroid will move from one batch, and you know where the speed-up comes from: many small, cheap moves per pass instead of one expensive move.
 
-e-means modernizes classical k-means by adopting standard practices from deep learning: mini-batch streaming, exponential moving average updates on sufficient statistics, cosine schedules, and variance-driven cluster splitting. It treats Stuart Lloyd's 1957 algorithm as a special case ($\alpha = 1, B = n$), eliminating the need for dozens of slow full-batch passes across large-scale vector indexes.
-
-To explore how e-means fits into the broader 220-year history of machine learning algorithms, visit the [Machine Learning Models Atlas](/docs/atlas/ml-models#e-means). To understand the geometric trade-offs between centroid partitioning and tree-based clustering, read [K-Means and Hierarchical Clustering](/docs/machine-learning/kmeans-hierarchical-clustering).
+To place it in the long history of machine learning methods, open the [Machine Learning Models Atlas](/docs/atlas/ml-models#e-means). For the basics of k-means and its relatives, read [k-Means and Hierarchical Clustering](/docs/machine-learning/kmeans-hierarchical-clustering).

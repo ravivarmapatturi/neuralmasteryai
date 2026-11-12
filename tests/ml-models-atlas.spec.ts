@@ -97,7 +97,7 @@ test.describe('Machine Learning Models Atlas', () => {
     await page.waitForSelector('h1', { timeout: 15000 });
 
     const title = page.locator('h1').first();
-    await expect(title).toContainText('e-Means: Scaling k-Means');
+    await expect(title).toContainText('e-means, Explained');
 
     // Visual is mounted and visible
     const visual = page.locator('svg[aria-label="Distortion loss curves over steps"]');

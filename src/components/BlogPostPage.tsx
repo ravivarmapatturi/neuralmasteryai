@@ -1,4 +1,5 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
+import BrandMark from './brand/BrandMark';
 import { Link, useParams } from 'react-router-dom';
 import Navbar from './layout/Navbar';
 import NotFoundPage from './NotFoundPage';
@@ -98,7 +99,7 @@ export default function BlogPostPage() {
               )}
               <h1 className="nm-post-title">{title}</h1>
               {description && <p className="nm-post-standfirst">{description}</p>}
-              <div className="nm-post-author"><span className="nm-post-author-mark">RV</span><span><strong>Ravi Varma Patturi</strong><small>Neural Mastery · technical field notes</small></span></div>
+              <div className="nm-post-author"><span className="nm-post-author-mark"><BrandMark size={32} /></span><span><strong>Neural Mastery</strong><small>Technical field notes</small></span></div>
               <BlogCover slug={slug} series={filePost?.series} className="nm-post-cover" />
             </header>
             {series && <BlogSeriesBox {...series} variant="inline" />}
