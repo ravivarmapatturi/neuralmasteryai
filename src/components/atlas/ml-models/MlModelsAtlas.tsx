@@ -156,19 +156,19 @@ export default function MlModelsAtlas() {
                   <div className="ml-models-atlas__detail">
                     {/* 1. What problem it was built to solve */}
                     <section className="ml-models-atlas__section" aria-label="1. Problem solved">
-                      <h3 style={{ color: t.textPrimary }}>1. What problem it was built to solve</h3>
+                      <h4 style={{ color: t.textPrimary }}>1. What problem it was built to solve</h4>
                       <p style={{ color: t.textSecondary }}>{entry.problem}</p>
                     </section>
 
                     {/* 2. What came before and what it fixed */}
                     <section className="ml-models-atlas__section" aria-label="2. What came before">
-                      <h3 style={{ color: t.textPrimary }}>2. What came before and what it fixed</h3>
+                      <h4 style={{ color: t.textPrimary }}>2. What came before and what it fixed</h4>
                       <p style={{ color: t.textSecondary }}>{entry.previousLimit}</p>
                     </section>
 
                     {/* 3. How it works — the maths */}
                     <section className="ml-models-atlas__section" aria-label="3. The maths">
-                      <h3 style={{ color: t.textPrimary }}>3. How it works — the maths</h3>
+                      <h4 style={{ color: t.textPrimary }}>3. How it works — the maths</h4>
                       <div
                         className="ml-models-atlas__math-box"
                         style={{ background: t.surface, borderColor: t.border }}
@@ -192,7 +192,7 @@ export default function MlModelsAtlas() {
 
                     {/* 4. Visualisation */}
                     <section className="ml-models-atlas__section" aria-label="4. Visualisation">
-                      <h3 style={{ color: t.textPrimary }}>4. Visualisation</h3>
+                      <h4 style={{ color: t.textPrimary }}>4. Visualisation</h4>
                       <div
                         className="ml-models-atlas__diagram"
                         style={{ background: t.surface, borderColor: t.border }}
@@ -206,13 +206,13 @@ export default function MlModelsAtlas() {
 
                     {/* 5. Evaluation metrics */}
                     <section className="ml-models-atlas__section" aria-label="5. Evaluation metrics">
-                      <h3 style={{ color: t.textPrimary }}>5. Evaluation metrics</h3>
+                      <h4 style={{ color: t.textPrimary }}>5. Evaluation metrics</h4>
                       <p style={{ color: t.textSecondary }}>{entry.evaluationMetrics}</p>
                     </section>
 
                     {/* 6. Applications */}
                     <section className="ml-models-atlas__section" aria-label="6. Applications">
-                      <h3 style={{ color: t.textPrimary }}>6. Applications</h3>
+                      <h4 style={{ color: t.textPrimary }}>6. Applications</h4>
                       <ul style={{ color: t.textSecondary }}>
                         {entry.applications.map((app) => (
                           <li key={app}>{app}</li>
@@ -222,7 +222,7 @@ export default function MlModelsAtlas() {
 
                     {/* 7. Primary source and Learn page link */}
                     <section className="ml-models-atlas__section" aria-label="7. Primary source and Learn link">
-                      <h3 style={{ color: t.textPrimary }}>7. Primary source and Learn page</h3>
+                      <h4 style={{ color: t.textPrimary }}>7. Primary source and Learn page</h4>
                       <p className="ml-models-atlas__links">
                         <a
                           href={entry.source.url}
