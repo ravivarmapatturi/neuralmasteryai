@@ -6,7 +6,7 @@ test.describe('Machine Learning Models Atlas', () => {
     await page.goto(`/docs/atlas/ml-models`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.ml-models-atlas', { timeout: 15000 });
 
-    const title = page.locator('h1');
+    const title = page.locator('h1').first();
     await expect(title).toContainText('Machine Learning Models Atlas');
 
     const firstEntry = page.locator('#linear-regression');
@@ -96,7 +96,7 @@ test.describe('Machine Learning Models Atlas', () => {
     await page.goto(`/blog/e-means-outperforming-kmeans`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('h1', { timeout: 15000 });
 
-    const title = page.locator('h1');
+    const title = page.locator('h1').first();
     await expect(title).toContainText('e-Means: Scaling k-Means');
 
     // Visual is mounted and visible
