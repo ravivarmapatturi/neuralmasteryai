@@ -7,6 +7,7 @@ import './atlasHub.css';
 
 // Counts and year ranges come from src/data/*Atlas.ts; update them when an atlas changes.
 const ATLASES = [
+  { to: '/docs/atlas/ml-models', title: 'Machine Learning Models', years: '1805–2026', count: 24, question: 'How did algorithms evolve from line fitting to scalable clustering?', body: 'From Legendre least squares through support vector machines, trees and boosting to e-means.' },
   { to: '/docs/atlas/agent-protocols', title: 'Agent Protocols', years: '1984–2025', count: 22, question: 'How did software learn to talk to software, and then to models?', body: 'From remote procedure calls through REST and OAuth to function calling, MCP and agent-to-agent protocols.' },
   { to: '/docs/atlas/agent-architecture', title: 'Agent Architecture', years: '2021–2025', count: 21, question: 'How did a chained prompt become a long-running agent?', body: 'From prompt chaining and ReAct through planning, memory and multi-agent systems to today\'s harnesses.' },
   { to: '/docs/atlas/training', title: 'Training', years: '1951–2024', count: 39, question: 'What made neural networks trainable at scale?', body: 'The techniques behind training, from data preparation and optimisation to evaluation.' },
@@ -23,7 +24,7 @@ export default function AtlasHubPage() {
       <main className="nm-landing-shell">
         <header className="atlas-hub__head">
           <h1 className="nb-heading">Atlas</h1>
-          <p className="nb-body">112 techniques across four fields, in date order. Lines show what led to what.</p>
+          <p className="nb-body">136 techniques across five fields, in date order. Lines show what led to what.</p>
         </header>
         <AtlasTimeline />
         <ul className="nm-category-widget-grid" style={{ marginTop: '2rem' }}>

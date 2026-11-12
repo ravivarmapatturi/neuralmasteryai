@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { atlasHashEntry, setAtlasHash } from './useAtlasHash';
+import { mlModelsAtlas } from '../../data/mlModelsAtlas';
 import { trainingAtlas } from '../../data/trainingAtlas';
 import { inferenceAtlasEntries } from '../../data/inferenceAtlas';
 import { architectureEntries } from '../../data/agentArchitectureAtlas';
@@ -15,6 +16,7 @@ interface TimelineEntry {
 }
 
 export const ATLAS_FIELDS = [
+  { id: 'm', name: 'Classical ML', colour: '#c2410c', to: '/docs/atlas/ml-models' },
   { id: 't', name: 'Training', colour: '#1d4fc4', to: '/docs/atlas/training' },
   { id: 'i', name: 'Inference', colour: '#0f7f8c', to: '/docs/atlas/inference' },
   { id: 'a', name: 'Agent architecture', colour: '#7a3fc0', to: '/docs/atlas/agent-architecture' },
@@ -22,14 +24,22 @@ export const ATLAS_FIELDS = [
 ];
 
 export const atlasEntries: TimelineEntry[] = [
-  ...trainingAtlas.map((e) => ({ key: `t:${e.id}`, name: e.name, year: e.year, lane: 0, about: e.whatItIs })),
-  ...inferenceAtlasEntries.map((e) => ({ key: `i:${e.id}`, name: e.name, year: e.year, lane: 1, about: e.whatItIs })),
-  ...architectureEntries.map((e) => ({ key: `a:${e.id}`, name: e.name, year: Number(e.date.slice(0, 4)), lane: 2, about: e.what })),
-  ...protocolEntries.map((e) => ({ key: `p:${e.id}`, name: e.name, year: e.year, lane: 3, about: e.what })),
+  ...mlModelsAtlas.map((e) => ({ key: `m:${e.id}`, name: e.name, year: e.year, lane: 0, about: e.problem })),
+  ...trainingAtlas.map((e) => ({ key: `t:${e.id}`, name: e.name, year: e.year, lane: 1, about: e.whatItIs })),
+  ...inferenceAtlasEntries.map((e) => ({ key: `i:${e.id}`, name: e.name, year: e.year, lane: 2, about: e.whatItIs })),
+  ...architectureEntries.map((e) => ({ key: `a:${e.id}`, name: e.name, year: Number(e.date.slice(0, 4)), lane: 3, about: e.what })),
+  ...protocolEntries.map((e) => ({ key: `p:${e.id}`, name: e.name, year: e.year, lane: 4, about: e.what })),
 ];
 
 // Drawn from each entry's "came before" and "led to" text. Only direct, stated steps are linked.
 export const atlasLinks: [string, string][] = [
+  ['m:linear-regression', 'm:logistic-regression'], ['m:linear-regression', 'm:ridge'],
+  ['m:ridge', 'm:lasso'], ['m:lasso', 'm:elastic-net'], ['m:pca-svd', 'm:tsne-umap'],
+  ['m:lda-qda', 'm:naive-bayes'], ['m:kmeans', 'm:e-means'], ['m:kmeans', 'm:hierarchical-clustering'],
+  ['m:kmeans', 'm:gmm-em'], ['m:decision-trees', 'm:random-forest'], ['m:decision-trees', 'm:adaboost-gbm'],
+  ['m:adaboost-gbm', 'm:xgboost-lightgbm-catboost'], ['m:svm', 'm:adaboost-gbm'],
+  ['m:dbscan-hdbscan', 'm:spectral-clustering'], ['m:random-forest', 'm:isolation-forest'],
+  ['m:conformal-prediction', 'm:isolation-forest'],
   ['t:perceptron', 't:backprop'], ['t:sgd', 't:momentum'], ['t:momentum', 't:adam'], ['t:adam', 't:adamw'],
   ['t:regularization', 't:adamw'], ['t:backprop', 't:bptt'], ['t:initialization', 't:batch-norm'],
   ['t:batch-norm', 't:layer-norm'], ['t:cnn-training', 't:transfer-learning'], ['t:transfer-learning', 't:sft'],
@@ -56,19 +66,21 @@ export const atlasLinks: [string, string][] = [
 
 // Each range is a zoom level: the chosen years fill the full width.
 export const ATLAS_RANGES = [
-  { from: 1950, label: 'All years', ticks: [1950, 1980, 2000, 2010, 2015, 2018, 2020, 2022, 2024] },
-  { from: 2000, label: '2000 on', ticks: [2000, 2005, 2010, 2015, 2020, 2024] },
-  { from: 2015, label: '2015 on', ticks: [2015, 2017, 2019, 2021, 2023, 2025] },
-  { from: 2020, label: '2020 on', ticks: [2020, 2021, 2022, 2023, 2024, 2025] },
+  { from: 1800, label: 'All years', ticks: [1800, 1900, 1950, 1980, 2000, 2010, 2020, 2026] },
+  { from: 1950, label: '1950 on', ticks: [1950, 1980, 2000, 2010, 2015, 2018, 2020, 2024, 2026] },
+  { from: 2000, label: '2000 on', ticks: [2000, 2005, 2010, 2015, 2020, 2024, 2026] },
+  { from: 2015, label: '2015 on', ticks: [2015, 2017, 2019, 2021, 2023, 2025, 2026] },
+  { from: 2020, label: '2020 on', ticks: [2020, 2021, 2022, 2023, 2024, 2025, 2026] },
 ];
-const END = 2025.6;
+const END = 2026.8;
 
 // At full range, recent years hold most entries, so they get most of the width.
-export function scale(year: number, from = 1950) {
-  if (from > 1950) return (year - from) / (END - from);
-  if (year < 1990) return ((year - 1950) / 40) * 0.12;
-  if (year < 2015) return 0.12 + ((year - 1990) / 25) * 0.3;
-  return 0.42 + ((year - 2015) / (END - 2015)) * 0.58;
+export function scale(year: number, from = 1800) {
+  if (from > 1800) return (year - from) / (END - from);
+  if (year < 1950) return ((year - 1800) / 150) * 0.10;
+  if (year < 1990) return 0.10 + ((year - 1950) / 40) * 0.12;
+  if (year < 2015) return 0.22 + ((year - 1990) / 25) * 0.30;
+  return 0.52 + ((year - 2015) / (END - 2015)) * 0.48;
 }
 
 export const hashOf = (key: string) => key.replace(':', '-');
@@ -79,7 +91,7 @@ function layout(width: number, from: number) {
   const height = vertical ? (from > 1950 ? 900 : 1240) : 600;
   const positions = new Map<string, { x: number; y: number }>();
   const counts = new Map<string, number>();
-  const laneSize = vertical ? (width - 44) / 4 : height / 4;
+  const laneSize = vertical ? (width - 44) / ATLAS_FIELDS.length : height / ATLAS_FIELDS.length;
   atlasEntries.forEach((e) => {
     if (e.year < from) return;
     const bucket = `${e.lane}:${e.year}`;
