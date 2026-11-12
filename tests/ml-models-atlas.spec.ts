@@ -92,4 +92,34 @@ test.describe('Machine Learning Models Atlas', () => {
 
     expect(offenders).toEqual([]);
   });
+
+  test('e-means blog post loads, renders visual, runnable code, and fits 375px without overflow', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 750 });
+    await page.goto(`${BASE}/blog/e-means-outperforming-kmeans`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('h1', { timeout: 15000 });
+
+    const title = page.locator('h1');
+    await expect(title).toContainText('e-Means: Scaling k-Means');
+
+    // Visual is mounted and visible
+    const visual = page.locator('svg[aria-label="Distortion loss curves over steps"]');
+    await expect(visual).toBeVisible();
+
+    // Check no horizontal overflow at 375px
+    const overflow375 = await page.evaluate(() => {
+      const doc = document.documentElement;
+      return doc.scrollWidth - doc.clientWidth;
+    });
+    expect(overflow375).toBeLessThanOrEqual(1);
+
+    // Check at 320px
+    await page.setViewportSize({ width: 320, height: 600 });
+    await page.waitForTimeout(200);
+
+    const overflow320 = await page.evaluate(() => {
+      const doc = document.documentElement;
+      return doc.scrollWidth - doc.clientWidth;
+    });
+    expect(overflow320).toBeLessThanOrEqual(1);
+  });
 });

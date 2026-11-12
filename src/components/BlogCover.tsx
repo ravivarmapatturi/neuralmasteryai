@@ -103,9 +103,10 @@ export function variantFor(
 
   // 4. RAG, retrieval, vector search, and long-term memory
   if (
-    hasTag('memory', 'retrieval', 'rag', 'prompt caching') ||
+    hasTag('memory', 'retrieval', 'rag', 'prompt caching', 'vector search', 'clustering') ||
     slug.includes('memory') ||
-    slug.includes('retrieval')
+    slug.includes('retrieval') ||
+    slug.includes('e-means')
   ) {
     return 'rag-retrieval';
   }
