@@ -90,7 +90,7 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: '\\min_{w} \\sum_{i=1}^n \\left(y_i - x_i^T w\\right)^2 = \\|y - X w\\|_2^2',
       updateOrClosedForm: 'w^* = (X^T X)^{-1} X^T y',
       workedExample:
-        'Given points (1, 2), (2, 3), and (3, 5): means are \\bar{x} = 2.0, \\bar{y} = 3.333. Slope w_1 = \\frac{(-1)(-1.333) + 0 + (1)(1.667)}{(-1)^2 + 0^2 + 1^2} = \\frac{3.0}{2.0} = 1.5. Intercept w_0 = 3.333 - 1.5(2.0) = 0.333. For input x=4, \\hat{y} = 1.5(4) + 0.333 = 6.333.',
+        'Given points (1, 2), (2, 3), and (3, 5): means are $\\bar{x} = 2.0$, $\\bar{y} = 3.333$. Slope $w_1 = \\frac{(-1)(-1.333) + 0 + (1)(1.667)}{(-1)^2 + 0^2 + 1^2} = \\frac{3.0}{2.0} = 1.5$. Intercept $w_0 = 3.333 - 1.5(2.0) = 0.333$. For input $x=4$, $\\hat{y} = 1.5(4) + 0.333 = 6.333$.',
     },
     evaluationMetrics:
       'Mean Squared Error (MSE) and Root Mean Squared Error (RMSE) measure average prediction error in output units. R² (coefficient of determination) indicates the fraction of target variance explained by the model relative to a mean baseline.',
@@ -124,7 +124,7 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: '\\max_{v} v^T \\Sigma v \\quad \\text{subject to} \\quad \\|v\\|_2 = 1',
       updateOrClosedForm: '\\Sigma v_j = \\lambda_j v_j \\quad \\text{or} \\quad X = U \\Sigma V^T',
       workedExample:
-        'Centered data X = \\begin{bmatrix} 2 & 1 \\\\ -2 & -1 \\end{bmatrix}. Covariance \\Sigma = \\frac{1}{2} X^T X = \\begin{bmatrix} 4 & 2 \\\\ 2 & 1 \\end{bmatrix}. Characteristic equation \\lambda^2 - 5\\lambda = 0 gives eigenvalues \\lambda_1 = 5, \\lambda_2 = 0. First eigenvector v_1 = \\frac{1}{\\sqrt{5}}[2, 1]^T \\approx [0.894, 0.447]^T. Projecting [2, 1] yields 1D coordinate z = 2(0.894) + 1(0.447) = 2.236.',
+        'Centered data $X = \\begin{bmatrix} 2 & 1 \\\\ -2 & -1 \\end{bmatrix}$. Covariance $\\Sigma = \\frac{1}{2} X^T X = \\begin{bmatrix} 4 & 2 \\\\ 2 & 1 \\end{bmatrix}$. Characteristic equation $\\lambda^2 - 5\\lambda = 0$ gives eigenvalues $\\lambda_1 = 5$, $\\lambda_2 = 0$. First eigenvector $v_1 = \\frac{1}{\\sqrt{5}}[2, 1]^T \\approx [0.894, 0.447]^T$. Projecting $[2, 1]$ yields 1D coordinate $z = 2(0.894) + 1(0.447) = 2.236$.',
     },
     evaluationMetrics:
       'Explained variance ratio per principal component tracks retained information. Reconstruction error (Frobenius norm between original and projected-back matrices) measures information lost during projection.',
@@ -158,7 +158,7 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: '\\max_{w} \\frac{w^T S_B w}{w^T S_W w} \\quad \\text{where } S_B = (\\mu_1 - \\mu_0)(\\mu_1 - \\mu_0)^T',
       updateOrClosedForm: 'w = \\Sigma^{-1}(\\mu_1 - \\mu_0) \\quad \\text{for LDA}',
       workedExample:
-        'In 1D, class 0 has mean \\mu_0 = 1.0, class 1 has mean \\mu_1 = 4.0, with shared variance \\sigma^2 = 1.0 and equal priors \\pi_0 = \\pi_1 = 0.5. Decision threshold sits at x^* = \\frac{\\mu_0 + \\mu_1}{2} = \\frac{1.0 + 4.0}{2} = 2.5. For observation x = 3.0, discriminant score \\delta_1(3.0) = 3(4) - 8 = 4.0 > \\delta_0(3.0) = 3(1) - 0.5 = 2.5, classifying x into class 1.',
+        'In 1D, class 0 has mean $\\mu_0 = 1.0$, class 1 has mean $\\mu_1 = 4.0$, with shared variance $\\sigma^2 = 1.0$ and equal priors $\\pi_0 = \\pi_1 = 0.5$. Decision threshold sits at $x^* = \\frac{\\mu_0 + \\mu_1}{2} = \\frac{1.0 + 4.0}{2} = 2.5$. For observation $x = 3.0$, discriminant score $\\delta_1(3.0) = 3(4) - 8 = 4.0 > \\delta_0(3.0) = 3(1) - 0.5 = 2.5$, classifying $x$ into class 1.',
     },
     evaluationMetrics:
       'Classification accuracy, macro-averaged F1 score, and confusion matrices. Discriminant ratio evaluates separation between projected class centroids.',
@@ -192,7 +192,7 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: '\\hat{y}(x) = \\arg\\max_{c} \\sum_{i \\in N_k(x)} \\mathbb{I}(y_i = c)',
       updateOrClosedForm: 'd(x, x_i) = \\sqrt{\\sum_{j=1}^d (x_j - x_{i,j})^2}',
       workedExample:
-        'Points: A(1, 1, y=0), B(2, 2, y=0), C(5, 5, y=1), D(6, 4, y=1). Query q(2, 3). Distances: d(q, B) = \\sqrt{0^2 + 1^2} = 1.0, d(q, A) = \\sqrt{1^2 + 2^2} = 2.236, d(q, C) = \\sqrt{3^2 + 2^2} = 3.606, d(q, D) = 4.123. For k=3, neighbors are B(0), A(0), C(1). Plurality vote gives 2 votes for class 0 versus 1 for class 1, predicting \\hat{y}=0.',
+        'Points: A(1, 1, y=0), B(2, 2, y=0), C(5, 5, y=1), D(6, 4, y=1). Query q(2, 3). Distances: $d(q, B) = \\sqrt{0^2 + 1^2} = 1.0$, $d(q, A) = \\sqrt{1^2 + 2^2} = 2.236$, $d(q, C) = \\sqrt{3^2 + 2^2} = 3.606$, $d(q, D) = 4.123$. For $k=3$, neighbors are $B(0)$, $A(0)$, $C(1)$. Plurality vote gives 2 votes for class 0 versus 1 for class 1, predicting $\\hat{y}=0$.',
     },
     evaluationMetrics:
       'Accuracy, precision, recall, and multi-class log-loss. Latency profile (p95 query response time) is critical because all compute occurs during inference.',
@@ -226,10 +226,10 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: '\\min_{w, b} -\\sum_{i \\in \\mathcal{M}} y_i \\left(w^T x_i + b\\right) \\quad (y_i \\in \\{-1, +1\\})',
       updateOrClosedForm: '\\text{If } y_i(w^T x_i + b) \\le 0: \\quad w \\leftarrow w + \\eta y_i x_i, \\quad b \\leftarrow b + \\eta y_i',
       workedExample:
-        'Current weight w = [0, 0]^T, b = 0, step \\eta = 1.0. Point x = [2, 1]^T, label y = +1. Prediction is \\mathrm{sign}(0^T x + 0) = -1 (mistake). Update: w \\leftarrow [0, 0]^T + 1.0(+1)[2, 1]^T = [2, 1]^T; b \\leftarrow 0 + 1.0(+1) = 1.0. Next score on x: [2, 1][2, 1]^T + 1 = 4 + 1 + 1 = 6 > 0, producing correct output +1.',
+        'Current weight $w = [0, 0]^T$, $b = 0$, step $\\eta = 1.0$. Point $x = [2, 1]^T$, label $y = +1$. Prediction is $\\mathrm{sign}(0^T x + 0) = -1$ (mistake). Update: $w \\leftarrow [0, 0]^T + 1.0(+1)[2, 1]^T = [2, 1]^T$; $b \\leftarrow 0 + 1.0(+1) = 1.0$. Next score on $x$: $[2, 1][2, 1]^T + 1 = 4 + 1 + 1 = 6 > 0$, producing correct output $+1$.',
     },
     evaluationMetrics:
-      'Mistake count on training passes (bounded by Novikoff theorem (R/\\gamma)² when linearly separable) and binary classification accuracy.',
+      'Mistake count on training passes (bounded by Novikoff theorem $(R/\\gamma)^2$ when linearly separable) and binary classification accuracy.',
     applications: [
       'Hardware-based binary pattern recognition in early optical scanners',
       'Linear threshold gating for streaming spam detection filters',
@@ -260,7 +260,7 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: '\\min_{\\{c_j\\}} \\sum_{i=1}^n \\min_{j \\in \\{1,\\dots,k\\}} \\|x_i - c_j\\|_2^2',
       updateOrClosedForm: 'c_j^{(t+1)} = \\frac{1}{|C_j^{(t)}|} \\sum_{i \\in C_j^{(t)}} x_i',
       workedExample:
-        'Points x = [1, 2, 7, 8]. Initial centroids c_1 = 2.0, c_2 = 5.0. Assignments: |1-2|=1 < |1-5|=4 \\implies x_1 \\in C_1; |2-2|=0 \\implies x_2 \\in C_1; |7-2|=5 > |7-5|=2 \\implies x_3 \\in C_2; |8-2|=6 > |8-5|=3 \\implies x_4 \\in C_2. New centroids: c_1 = (1+2)/2 = 1.5; c_2 = (7+8)/2 = 7.5. Inertia decreases from 14.0 to 1.0.',
+        'Points x = [1, 2, 7, 8]. Initial centroids c_1 = 2.0, c_2 = 5.0. Assignments: $|1-2|=1 < |1-5|=4 \\implies x_1 \\in C_1$; $|2-2|=0 \\implies x_2 \\in C_1$; $|7-2|=5 > |7-5|=2 \\implies x_3 \\in C_2$; $|8-2|=6 > |8-5|=3 \\implies x_4 \\in C_2$. New centroids: $c_1 = (1+2)/2 = 1.5$; $c_2 = (7+8)/2 = 7.5$. Inertia decreases from 14.0 to 1.0.',
     },
     evaluationMetrics:
       'Inertia (Within-Cluster Sum of Squares, WCSS), Silhouette Coefficient (measuring cluster tightness versus separation, from -1 to +1), and Davies-Bouldin index.',
@@ -294,7 +294,7 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: '\\min_{A, B} d(A, B) \\quad \\text{(agglomerative linkage)}',
       updateOrClosedForm: 'd_{\\text{Ward}}(A, B) = \\frac{|A||B|}{|A| + |B|} \\|\\mu_A - \\mu_B\\|_2^2',
       workedExample:
-        'Three 1D clusters: A={1}, B={3}, C={8}. Pairwise distances: d(A, B)=2, d(B, C)=5, d(A, C)=7. Minimum distance is 2.0 between A and B: merge into D={1, 3} at height 2.0. Single linkage distance from D to C is \\min(|1-8|, |3-8|) = 5.0. Final merge connects D and C at height 5.0, completing the dendrogram.',
+        'Three 1D clusters: A={1}, B={3}, C={8}. Pairwise distances: d(A, B)=2, d(B, C)=5, d(A, C)=7. Minimum distance is 2.0 between A and B: merge into D={1, 3} at height 2.0. Single linkage distance from $D$ to $C$ is $\\min(|1-8|, |3-8|) = 5.0$. Final merge connects D and C at height 5.0, completing the dendrogram.',
     },
     evaluationMetrics:
       'Cophenetic correlation coefficient (correlation between original pairwise distances and dendrogram cophenetic distances) and silhouette score across horizontal cuts.',
@@ -328,7 +328,7 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: '\\min_{w, b} -\\frac{1}{n} \\sum_{i=1}^n \\left[ y_i \\ln \\hat{p}_i + (1 - y_i) \\ln(1 - \\hat{p}_i) \\right]',
       updateOrClosedForm: '\\hat{p}_i = \\sigma(w^T x_i + b) = \\frac{1}{1 + e^{-(w^T x_i + b)}}, \\quad \\nabla_w L = \\frac{1}{n} X^T (\\hat{p} - y)',
       workedExample:
-        'Feature x = 2.0, weight w = 1.5, bias b = -2.0, true label y = 1. Logit z = 1.5(2.0) - 2.0 = 1.0. Probability \\hat{p} = \\frac{1}{1 + e^{-1.0}} = \\frac{1}{1 + 0.3679} = 0.731. Log loss L = -\\ln(0.731) = 0.313. Error residual is (\\hat{p} - y) = 0.731 - 1 = -0.269, yielding gradient \\nabla_w = (-0.269)(2.0) = -0.538.',
+        'Feature $x = 2.0$, weight $w = 1.5$, bias $b = -2.0$, true label $y = 1$. Logit $z = 1.5(2.0) - 2.0 = 1.0$. Probability $\\hat{p} = \\frac{1}{1 + e^{-1.0}} = \\frac{1}{1 + 0.3679} = 0.731$. Log loss $L = -\\ln(0.731) = 0.313$. Error residual is $(\\hat{p} - y) = 0.731 - 1 = -0.269$, yielding gradient $\\nabla_w = (-0.269)(2.0) = -0.538$.',
     },
     evaluationMetrics:
       'Log-loss (cross-entropy), Area Under the ROC Curve (ROC-AUC), Brier score for probability calibration, and precision-recall trade-offs at specific decision thresholds.',
@@ -362,7 +362,7 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: '\\hat{y} = \\arg\\max_c P(Y=c) \\prod_{j=1}^d P(X_j = x_j \\mid Y=c)',
       updateOrClosedForm: 'P(X_j = v \\mid Y=c) = \\frac{N_{c,j,v} + \\alpha}{N_c + \\alpha K} \\quad (\\text{Laplace smoothing})',
       workedExample:
-        'Priors: P(spam)=0.4, P(ham)=0.6. Features: x_1 (free=1), x_2 (meeting=0). Likelihoods: P(free=1|spam)=0.8, P(meeting=0|spam)=0.9; P(free=1|ham)=0.1, P(meeting=0|ham)=0.5. Joint: P(x, spam) = 0.4(0.8)(0.9) = 0.288; P(x, ham) = 0.6(0.1)(0.5) = 0.030. Normalized posterior P(spam|x) = \\frac{0.288}{0.288 + 0.030} = 0.906 (90.6%).',
+        'Priors: P(spam)=0.4, P(ham)=0.6. Features: x_1 (free=1), x_2 (meeting=0). Likelihoods: P(free=1|spam)=0.8, P(meeting=0|spam)=0.9; P(free=1|ham)=0.1, P(meeting=0|ham)=0.5. Joint: P(x, spam) = 0.4(0.8)(0.9) = 0.288; P(x, ham) = 0.6(0.1)(0.5) = 0.030. Normalized posterior $P(\\text{spam} \\mid x) = \\frac{0.288}{0.288 + 0.030} = 0.906$ (90.6%).',
     },
     evaluationMetrics:
       'Multi-class log loss, balanced accuracy, and calibration curves. Brier score checks whether predicted probabilities match true event frequencies.',
@@ -396,10 +396,10 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: '\\min_w \\|y - X w\\|_2^2 + \\lambda \\|w\\|_2^2',
       updateOrClosedForm: 'w^* = (X^T X + \\lambda I)^{-1} X^T y',
       workedExample:
-        'Scalar problem: X = [2.0]^T, y = [6.0]. OLS estimate is w = 6.0/2.0 = 3.0. Adding L2 penalty \\lambda = 1.0: w^* = (2.0^2 + 1.0)^{-1}(2.0 \\times 6.0) = \\frac{12.0}{5.0} = 2.4. The coefficient shrinks from 3.0 to 2.4 by shrinkage ratio \\frac{4}{4+1} = 0.8, trading small bias for lower prediction variance.',
+        'Scalar problem: X = [2.0]^T, y = [6.0]. OLS estimate is w = 6.0/2.0 = 3.0. Adding L2 penalty $\\lambda = 1.0$: $w^* = (2.0^2 + 1.0)^{-1}(2.0 \\times 6.0) = \\frac{12.0}{5.0} = 2.4$. The coefficient shrinks from 3.0 to 2.4 by shrinkage ratio $\\frac{4}{4+1} = 0.8$, trading small bias for lower prediction variance.',
     },
     evaluationMetrics:
-      'Root Mean Squared Error (RMSE) on cross-validation folds, condition number of the regularized matrix (X^T X + \\lambda I), and effective degrees of freedom trace(X(X^T X + \\lambda I)^{-1}X^T).',
+      'Root Mean Squared Error (RMSE) on cross-validation folds, condition number of the regularized matrix $(X^T X + \\lambda I)$, and effective degrees of freedom $\\mathrm{trace}(X(X^T X + \\lambda I)^{-1}X^T)$.',
     applications: [
       'Spectroscopic chemical concentration estimation across collinear wavelengths',
       'Econometric modeling with inter-correlated macroeconomic indicators',
@@ -430,7 +430,7 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: '\\max_{\\{\\pi_k, \\mu_k, \\Sigma_k\\}} \\sum_{i=1}^n \\ln \\left( \\sum_{k=1}^K \\pi_k \\mathcal{N}(x_i \\mid \\mu_k, \\Sigma_k) \\right)',
       updateOrClosedForm: '\\gamma_{i,k} = \\frac{\\pi_k \\mathcal{N}(x_i \\mid \\mu_k, \\Sigma_k)}{\\sum_j \\pi_j \\mathcal{N}(x_i \\mid \\mu_j, \\Sigma_j)}, \\quad \\mu_k = \\frac{\\sum_i \\gamma_{i,k} x_i}{\\sum_i \\gamma_{i,k}}',
       workedExample:
-        'Point x = 4.0. Two 1D components: C_1(\\mu_1=2.0, \\sigma^2=1.0, \\pi_1=0.5), C_2(\\mu_2=5.0, \\sigma^2=1.0, \\pi_2=0.5). Densities: \\mathcal{N}(4; 2, 1) = 0.0540, \\mathcal{N}(4; 5, 1) = 0.2419. Responsibility \\gamma(z_2) = \\frac{0.5(0.2419)}{0.5(0.0540) + 0.5(0.2419)} = \\frac{0.1210}{0.1479} = 0.818. Point x has 81.8% responsibility in cluster 2.',
+        'Point $x = 4.0$. Two 1D components: $C_1(\\mu_1=2.0, \\sigma^2=1.0, \\pi_1=0.5)$, $C_2(\\mu_2=5.0, \\sigma^2=1.0, \\pi_2=0.5)$. Densities: $\\mathcal{N}(4; 2, 1) = 0.0540$, $\\mathcal{N}(4; 5, 1) = 0.2419$. Responsibility $\\gamma(z_2) = \\frac{0.5(0.2419)}{0.5(0.0540) + 0.5(0.2419)} = \\frac{0.1210}{0.1479} = 0.818$. Point $x$ has 81.8% responsibility in cluster 2.',
     },
     evaluationMetrics:
       'Log-likelihood on held-out test data, Akaike Information Criterion (AIC), and Bayesian Information Criterion (BIC) to penalize component count.',
@@ -464,10 +464,10 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: '\\max_{j, s} \\Delta I = I(D) - \\left( \\frac{|D_L|}{|D|} I(D_L) + \\frac{|D_R|}{|D|} I(D_R) \\right)',
       updateOrClosedForm: 'I_{\\text{Gini}}(D) = 1 - \\sum_{c=1}^C p_c^2, \\quad I_{\\text{Entropy}}(D) = -\\sum_{c=1}^C p_c \\log_2 p_c',
       workedExample:
-        'Parent node has 6 positive and 4 negative instances (N=10). Parent Gini = 1 - (0.6^2 + 0.4^2) = 0.48. Split at x_1 \\le 3: Left child has 5 positive and 0 negative (Gini = 0); Right child has 1 positive and 4 negative (Gini = 1 - (0.2^2 + 0.8^2) = 0.32). Weighted child impurity is 0.5(0) + 0.5(0.32) = 0.16. Gini gain \\Delta = 0.48 - 0.16 = 0.32.',
+        'Parent node has 6 positive and 4 negative instances (N=10). Parent Gini = 1 - (0.6^2 + 0.4^2) = 0.48. Split at $x_1 \\le 3$: Left child has 5 positive and 0 negative (Gini = 0); Right child has 1 positive and 4 negative (Gini = $1 - (0.2^2 + 0.8^2) = 0.32$). Weighted child impurity is $0.5(0) + 0.5(0.32) = 0.16$. Gini gain $\\Delta = 0.48 - 0.16 = 0.32$.',
     },
     evaluationMetrics:
-      'Accuracy, tree depth, leaf count, cost-complexity pruning path (\alpha penalty), and Mean Squared Error for regression trees.',
+      'Accuracy, tree depth, leaf count, cost-complexity pruning path ($\alpha$ penalty), and Mean Squared Error for regression trees.',
     applications: [
       'Clinical diagnosis decision rules in emergency medical protocols',
       'Credit underwriting rules requiring auditable human explanations',
@@ -498,7 +498,7 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: '\\min_{w, b} \\frac{1}{2} \\|w\\|_2^2 + C \\sum_{i=1}^n \\xi_i \\quad \\text{subject to } y_i(w^T \\phi(x_i) + b) \\ge 1 - \\xi_i',
       updateOrClosedForm: 'f(x) = \\mathrm{sign}\\left( \\sum_{i \\in SV} \\alpha_i y_i K(x_i, x) + b \\right), \\quad K(x_i, x_j) = \\exp(-\\gamma \\|x_i - x_j\\|^2)',
       workedExample:
-        'In 1D: point x_1 = 1.0 (y_1 = -1), point x_2 = 3.0 (y_2 = +1). Support vector equations: w(1.0) + b = -1 and w(3.0) + b = +1. Subtracting gives 2w = 2 \\implies w = 1.0. Solving for intercept gives b = -2.0. Decision boundary sits at x = 2.0. Margin width \\gamma = \\frac{2}{\\|w\\|} = \\frac{2}{1.0} = 2.0.',
+        'In 1D: point x_1 = 1.0 (y_1 = -1), point x_2 = 3.0 (y_2 = +1). Support vector equations: w(1.0) + b = -1 and w(3.0) + b = +1. Subtracting gives $2w = 2 \\implies w = 1.0$. Solving for intercept gives $b = -2.0$. Decision boundary sits at $x = 2.0$. Margin width $\\gamma = \\frac{2}{\\|w\\|} = \\frac{2}{1.0} = 2.0$.',
     },
     evaluationMetrics:
       'Hinge loss, ROC-AUC, support vector ratio (fraction of dataset stored as support vectors), and classification accuracy.',
@@ -532,7 +532,7 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: '\\min_w \\frac{1}{2n} \\|y - X w\\|_2^2 + \\lambda \\sum_{j=1}^d |w_j|',
       updateOrClosedForm: 'w_j^* = S(z_j, \\lambda) = \\mathrm{sign}(z_j) \\max(0, |z_j| - \\lambda) \\quad (\\text{Soft-thresholding})',
       workedExample:
-        'Single orthogonal feature with unpenalized OLS correlation z = 4.0. With penalty \\lambda = 1.5: w^* = \\mathrm{sign}(4.0) \\max(0, 4.0 - 1.5) = 2.5. If penalty is increased to \\lambda = 5.0: |z| = 4.0 \\le 5.0 \\implies w^* = 0. The coefficient is eliminated from the model.',
+        'Single orthogonal feature with unpenalized OLS correlation z = 4.0. With penalty $\\lambda = 1.5$: $w^* = \\mathrm{sign}(4.0) \\max(0, 4.0 - 1.5) = 2.5$. If penalty is increased to $\\lambda = 5.0$: $|z| = 4.0 \\le 5.0 \\implies w^* = 0$. The coefficient is eliminated from the model.',
     },
     evaluationMetrics:
       'Sparsity ratio (fraction of zero weights), validation RMSE, and cross-validated lambda regularization paths.',
@@ -566,7 +566,7 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: 'N_\\varepsilon(p) = \\{q \\in D \\mid \\mathrm{dist}(p, q) \\le \\varepsilon\\}',
       updateOrClosedForm: '\\text{Core: } |N_\\varepsilon(p)| \\ge \\text{MinPts}; \\quad \\text{Border: } |N_\\varepsilon(p)| < \\text{MinPts} \\land p \\in N_\\varepsilon(\\text{Core})',
       workedExample:
-        'Parameters \\varepsilon = 1.5, \\text{MinPts} = 3. Points: p_1(1, 1), p_2(1, 2), p_3(2, 1), p_4(6, 6). Distances from p_1: d(p_1, p_2) = 1.0 \\le 1.5; d(p_1, p_3) = 1.0 \\le 1.5; d(p_1, p_4) = \\sqrt{5^2+5^2} = 7.07. Point p_1 has neighborhood size 3 \\ge 3, making p_1 a core point. Points p_2 and p_3 are density-reachable. Point p_4 has no neighbors within 1.5 and is labeled noise (-1).',
+        'Parameters $\\varepsilon = 1.5$, $\\mathrm{MinPts} = 3$. Points: $p_1(1, 1)$, $p_2(1, 2)$, $p_3(2, 1)$, $p_4(6, 6)$. Distances from $p_1$: $d(p_1, p_2) = 1.0 \\le 1.5$; $d(p_1, p_3) = 1.0 \\le 1.5$; $d(p_1, p_4) = \\sqrt{5^2+5^2} = 7.07$. Point $p_1$ has neighborhood size $3 \\ge 3$, making $p_1$ a core point. Points $p_2$ and $p_3$ are density-reachable. Point $p_4$ has no neighbors within 1.5 and is labeled noise (-1).',
     },
     evaluationMetrics:
       'DBCV (Density-Based Clustering Validation, from -1 to +1), Adjusted Rand Index (ARI) against ground truth, and percentage of points marked as noise.',
@@ -600,7 +600,7 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: 'F_m(x) = F_{m-1}(x) + \\gamma_m h_m(x)',
       updateOrClosedForm: 'r_{i,m} = -\\left[ \\frac{\\partial L(y_i, F(x_i))}{\\partial F(x_i)} \\right]_{F=F_{m-1}} \\quad (\\text{Pseudo-residuals})',
       workedExample:
-        'Three points with initial weights w = [1/3, 1/3, 1/3]. A weak stump misclassifies point 1 (error \\epsilon = 0.333). Learner weight \\alpha = \\frac{1}{2} \\ln((1 - 0.333)/0.333) = \\frac{1}{2} \\ln(2.0) = 0.347. Updated weight for error point: w_1 \\leftarrow \\frac{1}{3} e^{0.347} = 0.471. Correct points: w_2, w_3 \\leftarrow \\frac{1}{3} e^{-0.347} = 0.235. Renormalized weights focus the next tree on the missed point.',
+        'Three points with initial weights w = [1/3, 1/3, 1/3]. A weak stump misclassifies point 1 (error $\\epsilon = 0.333$). Learner weight $\\alpha = \\frac{1}{2} \\ln((1 - 0.333)/0.333) = \\frac{1}{2} \\ln(2.0) = 0.347$. Updated weight for error point: $w_1 \\leftarrow \\frac{1}{3} e^{0.347} = 0.471$. Correct points: $w_2, w_3 \\leftarrow \\frac{1}{3} e^{-0.347} = 0.235$. Renormalized weights focus the next tree on the missed point.',
     },
     evaluationMetrics:
       'Exponential loss for AdaBoost, deviance / negative log-likelihood for GBM, early stopping validation loss, and feature importance rankings.',
@@ -634,10 +634,10 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: '\\min_{A_1,\\dots,A_k} \\sum_{j=1}^k \\frac{\\mathrm{cut}(A_j, \\bar{A}_j)}{\\mathrm{vol}(A_j)} \\quad (\\text{Normalized Cut})',
       updateOrClosedForm: 'L_{\\text{sym}} = I - D^{-1/2} W D^{-1/2}, \\quad L v = \\lambda v',
       workedExample:
-        'Two tightly knit communities {1, 2} and {3, 4} connected by a single sparse bridge edge (2, 3). Unnormalized graph Laplacian L = D - W has trivial first eigenvector v_1 = [1, 1, 1, 1]^T (\\lambda_1 = 0). The second eigenvector (Fiedler vector) is v_2 \\approx [-0.707, -0.408, 0.408, 0.707]^T. Nodes 1 and 2 have negative signs while 3 and 4 have positive signs; thresholding at 0 cleanly isolates the two graph clusters.',
+        'Two tightly knit communities {1, 2} and {3, 4} connected by a single sparse bridge edge (2, 3). Unnormalized graph Laplacian $L = D - W$ has trivial first eigenvector $v_1 = [1, 1, 1, 1]^T$ ($\\lambda_1 = 0$). The second eigenvector (Fiedler vector) is $v_2 \\approx [-0.707, -0.408, 0.408, 0.707]^T$. Nodes 1 and 2 have negative signs while 3 and 4 have positive signs; thresholding at 0 cleanly isolates the two graph clusters.',
     },
     evaluationMetrics:
-      'Normalized Cut cost, modularity score on graph partitions, and eigengap \\lambda_{k+1} - \\lambda_k to select optimal cluster count k.',
+      'Normalized Cut cost, modularity score on graph partitions, and eigengap $\\lambda_{k+1} - \\lambda_k$ to select optimal cluster count $k$.',
     applications: [
       'Image segmentation partitioning visual scenes into coherent objects',
       'Community detection in social graphs and citation networks',
@@ -668,7 +668,7 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: '\\mathrm{Var}(\\bar{f}) = \\rho \\sigma^2 + \\frac{1 - \\rho}{B} \\sigma^2',
       updateOrClosedForm: 'm = \\lfloor \\sqrt{d} \\rfloor \\quad (\\text{classification}), \\quad m = \\lfloor d / 3 \\rfloor \\quad (\\text{regression})',
       workedExample:
-        'Suppose individual trees have error variance \\sigma^2 = 9.0 and pairwise tree prediction correlation \\rho = 0.20. With an ensemble of B = 100 trees, total ensemble variance is \\mathrm{Var} = 0.20(9.0) + \\frac{1 - 0.20}{100}(9.0) = 1.80 + 0.072 = 1.872. Random feature selection reduces correlation from 0.8 to 0.2, lowering error variance by almost 5×.',
+        'Suppose individual trees have error variance $\\sigma^2 = 9.0$ and pairwise tree prediction correlation $\\rho = 0.20$. With an ensemble of $B = 100$ trees, total ensemble variance is $\\mathrm{Var} = 0.20(9.0) + \\frac{1 - 0.20}{100}(9.0) = 1.80 + 0.072 = 1.872$. Random feature selection reduces correlation from 0.8 to 0.2, lowering error variance by almost 5×.',
     },
     evaluationMetrics:
       'Out-Of-Bag (OOB) error (unbiased validation score computed without a separate test set), Permutation Feature Importance, and Mean Decrease in Impurity (MDI).',
@@ -702,10 +702,10 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: 'P(Y_{n+1} \\in C(X_{n+1})) \\ge 1 - \\alpha \\quad (\\text{Finite-sample guarantee})',
       updateOrClosedForm: 'q = \\text{Quantile}\\left( \\frac{\\lceil (n+1)(1-\\alpha) \\rceil}{n}, \\; \\{s_i\\}_{i=1}^n \\right), \\quad C(x) = [\\hat{y}(x) - q, \\; \\hat{y}(x) + q]',
       workedExample:
-        'Calibration set of n = 99 residuals |y_i - \\hat{y}_i|. Desired coverage 90% (\\alpha = 0.10). Rank index is p = \\lceil (99 + 1)(1 - 0.10) \\rceil = \\lceil 100 \\times 0.90 \\rceil = 90. We sort the 99 residuals and read the 90th value, say q = 3.2. For a new test point with prediction \\hat{y} = 25.0, the guaranteed 90% prediction interval is [25.0 - 3.2, 25.0 + 3.2] = [21.8, 28.2].',
+        'Calibration set of $n = 99$ residuals $|y_i - \\hat{y}_i|$. Desired coverage 90% ($\\alpha = 0.10$). Rank index is $p = \\lceil (99 + 1)(1 - 0.10) \\rceil = \\lceil 100 \\times 0.90 \\rceil = 90$. We sort the 99 residuals and read the 90th value, say $q = 3.2$. For a new test point with prediction $\\hat{y} = 25.0$, the guaranteed 90% prediction interval is $[25.0 - 3.2, 25.0 + 3.2] = [21.8, 28.2]$.',
     },
     evaluationMetrics:
-      'Empirical coverage rate (must be \\ge 1 - \\alpha on test data) and average set size or interval width (measuring statistical efficiency).',
+      'Empirical coverage rate (must be $\\ge 1 - \\alpha$ on test data) and average set size or interval width (measuring statistical efficiency).',
     applications: [
       'Safety-critical medical dosing bounds where missing the true target has severe clinical cost',
       'Autonomous vehicle trajectory tolerance bounds under changing road conditions',
@@ -736,7 +736,7 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: '\\min_w \\|y - X w\\|_2^2 + \\lambda_1 \\|w\\|_1 + \\lambda_2 \\|w\\|_2^2',
       updateOrClosedForm: '\\hat{w}_j = \\frac{S(X_j^T (y - X_{-j} w_{-j}), \\; \\lambda_1)}{1 + \\lambda_2}',
       workedExample:
-        'Two strongly correlated features x_1 and x_2 (r=0.98). Target y. OLS has ill-conditioned matrix inversion; Lasso arbitrarily drops one feature. Elastic Net with \\lambda_1 = 0.5, \\lambda_2 = 1.0 adds strict convexity from \\lambda_2, forcing the coefficients to share weight equally (e.g. w_1 = 1.15, w_2 = 1.10) while zeroing out unrelated noise variables.',
+        'Two strongly correlated features x_1 and x_2 (r=0.98). Target y. OLS has ill-conditioned matrix inversion; Lasso arbitrarily drops one feature. Elastic Net with $\\lambda_1 = 0.5$, $\\lambda_2 = 1.0$ adds strict convexity from $\\lambda_2$, forcing the coefficients to share weight equally (e.g. $w_1 = 1.15, w_2 = 1.10$) while zeroing out unrelated noise variables.',
     },
     evaluationMetrics:
       'Mean Squared Error on cross-validation folds, number of selected non-zero feature groups, and coefficient path stability.',
@@ -770,7 +770,7 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: 'KL(P \\parallel Q) = \\sum_{i \\neq j} p_{ij} \\ln \\frac{p_{ij}}{q_{ij}}',
       updateOrClosedForm: 'q_{ij} = \\frac{(1 + \\|y_i - y_j\\|_2^2)^{-1}}{\\sum_k \\sum_{l \\neq k} (1 + \\|y_k - y_l\\|_2^2)^{-1}} \\quad (\\text{Student-t heavy tail})',
       workedExample:
-        'In high dimensions, distance d=2.0 between two points yields joint probability p_{ij} = 0.05. In 2D, the Student-t kernel q_{ij} \\propto (1 + d^2)^{-1} has much heavier tails than a Gaussian. To achieve equal probability, the 2D distance must push out to d_{2D} = 4.36, resolving the "crowding problem" and opening visible white space between clusters.',
+        'In high dimensions, distance d=2.0 between two points yields joint probability p_{ij} = 0.05. In 2D, the Student-t kernel $q_{ij} \\propto (1 + d^2)^{-1}$ has much heavier tails than a Gaussian. To achieve equal probability, the 2D distance must push out to d_{2D} = 4.36, resolving the "crowding problem" and opening visible white space between clusters.',
     },
     evaluationMetrics:
       'Trustworthiness and continuity metrics (quantifying whether nearest neighbors in high-D remain neighbors in 2D), and Shepard diagram correlation.',
@@ -804,7 +804,7 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: 's(x, n) = 2^{-\\frac{E(h(x))}{c(n)}} \\quad (\\text{Anomaly score})',
       updateOrClosedForm: 'c(n) = 2(\\ln(n - 1) + 0.5772156649) - \\frac{2(n - 1)}{n}',
       workedExample:
-        'Dataset size n = 256, average tree path length for normal points c(256) \\approx 9.2 splits. An extreme fraud outlier is isolated on the very first random cut: path length h(x) = 1. Anomaly score s = 2^{-1 / 9.2} = 2^{-0.108} = 0.927. Scores near 1.0 flag definite anomalies, whereas normal points near path length 9.2 yield score 2^{-1} = 0.50.',
+        'Dataset size n = 256, average tree path length for normal points $c(256) \\approx 9.2$ splits. An extreme fraud outlier is isolated on the very first random cut: path length h(x) = 1. Anomaly score s = 2^{-1 / 9.2} = 2^{-0.108} = 0.927. Scores near 1.0 flag definite anomalies, whereas normal points near path length 9.2 yield score 2^{-1} = 0.50.',
     },
     evaluationMetrics:
       'Precision at k (P@k), ROC-AUC on labeled fraud benchmarks, inference latency per record, and false alarm rate at operational thresholds.',
@@ -838,7 +838,7 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: '\\mathcal{L}^{(t)} \\approx \\sum_{i=1}^n \\left[ g_i f_t(x_i) + \\frac{1}{2} h_i f_t(x_i)^2 \\right] + \\gamma T + \\frac{1}{2} \\lambda \\sum_{j=1}^T w_j^2',
       updateOrClosedForm: 'w_j^* = -\\frac{\\sum_{i \\in I_j} g_i}{\\sum_{i \\in I_j} h_i + \\lambda}, \\quad \\text{Gain} = \\frac{1}{2} \\left[ \\frac{G_L^2}{H_L + \\lambda} + \\frac{G_R^2}{H_R + \\lambda} - \\frac{(G_L + G_R)^2}{H_L + H_R + \\lambda} \\right] - \\gamma',
       workedExample:
-        'Split evaluation with L2 penalty \\lambda = 1.0, complexity cost \\gamma = 0. Left child gradients G_L = -4.0, Hessians H_L = 2.0; Right child G_R = 6.0, H_R = 3.0. Combined G = 2.0, H = 5.0. Score = \\frac{1}{2}\\left( \\frac{(-4)^2}{2+1} + \\frac{6^2}{3+1} - \\frac{2^2}{5+1} \\right) = \\frac{1}{2}(5.333 + 9.000 - 0.667) = 6.833. The positive gain indicates the split should be taken.',
+        'Split evaluation with L2 penalty $\\lambda = 1.0$, complexity cost $\\gamma = 0$. Left child gradients $G_L = -4.0$, Hessians $H_L = 2.0$; Right child $G_R = 6.0$, $H_R = 3.0$. Combined $G = 2.0$, $H = 5.0$. $\\mathrm{Score} = \\frac{1}{2}\\left( \\frac{(-4)^2}{2+1} + \\frac{6^2}{3+1} - \\frac{2^2}{5+1} \\right) = \\frac{1}{2}(5.333 + 9.000 - 0.667) = 6.833$. The positive gain indicates the split should be taken.',
     },
     evaluationMetrics:
       'Validation log-loss / RMSE, early stopping iteration index, learning rate shrinkage schedules, and SHAP feature attribution values.',
@@ -872,7 +872,7 @@ export const mlModelsAtlas: MlModelAtlasEntry[] = [
       objective: '\\min_{\\{c_j\\}} \\frac{1}{n} \\sum_{i=1}^n \\min_j \\|x_i - c_j\\|_2^2 \\quad (\\text{Standard k-means objective})',
       updateOrClosedForm: 'S_j \\leftarrow (1 - \\alpha) S_j + \\alpha s_j, \\quad N_j \\leftarrow (1 - \\alpha) N_j + \\alpha n_j, \\quad c_j = \\frac{S_j}{N_j}',
       workedExample:
-        'Centroid c_1 starts at [0, 0] with running sum S_1 = [0, 0] and count N_1 = 10.0. Current learning rate \\alpha = 0.20. A mini-batch arrives with two points assigned to cluster 1: x_1 = [1, 1], x_2 = [2, 0]. Batch sum s_1 = [3, 1], batch count n_1 = 2. EMA update: S_1 \\leftarrow 0.8[0, 0] + 0.2[3, 1] = [0.6, 0.2]; N_1 \\leftarrow 0.8(10.0) + 0.2(2) = 8.4. Updated centroid c_1 = [0.6, 0.2] / 8.4 = [0.0714, 0.0238]. When batch size B = n and \\alpha = 1, the formula simplifies exactly to Lloyd: c_1 = s_1 / n_1.',
+        'Centroid c_1 starts at [0, 0] with running sum S_1 = [0, 0] and count N_1 = 10.0. Current learning rate $\\alpha = 0.20$. A mini-batch arrives with two points assigned to cluster 1: $x_1 = [1, 1]$, $x_2 = [2, 0]$. Batch sum $s_1 = [3, 1]$, batch count $n_1 = 2$. EMA update: $S_1 \\leftarrow 0.8[0, 0] + 0.2[3, 1] = [0.6, 0.2]$; $N_1 \\leftarrow 0.8(10.0) + 0.2(2) = 8.4$. Updated centroid $c_1 = [0.6, 0.2] / 8.4 = [0.0714, 0.0238]$. When batch size $B = n$ and $\\alpha = 1$, the formula simplifies exactly to Lloyd: $c_1 = s_1 / n_1$.',
     },
     evaluationMetrics:
       'Test distortion / inertia reached per epoch (matches 25-epoch Lloyd in 1.2–3 epochs), GPU wall-clock speedup (10–45× vs Flash-KMeans), and CPU speedup (8–15× vs Faiss).',

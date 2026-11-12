@@ -122,4 +122,52 @@ test.describe('Machine Learning Models Atlas', () => {
     });
     expect(overflow320).toBeLessThanOrEqual(1);
   });
+
+  test('capture screenshots of all 24 visuals at 1200px and 375px in light and dark modes', async ({ page }) => {
+    test.setTimeout(120000);
+    const ALL_MODEL_IDS = [
+      'linear-regression', 'pca-svd', 'lda-qda', 'knn', 'perceptron', 'kmeans',
+      'hierarchical-clustering', 'logistic-regression', 'naive-bayes', 'ridge',
+      'gmm-em', 'decision-trees', 'svm', 'lasso', 'dbscan-hdbscan', 'adaboost-gbm',
+      'spectral-clustering', 'random-forest', 'conformal-prediction', 'elastic-net',
+      'tsne-umap', 'isolation-forest', 'xgboost-lightgbm-catboost', 'e-means'
+    ];
+
+    const viewports = [
+      { width: 1200, height: 900, name: '1200px' },
+      { width: 375, height: 750, name: '375px' },
+    ];
+    const themes = ['light', 'dark'] as const;
+
+    for (const vp of viewports) {
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await page.goto(`${BASE}/docs/atlas/ml-models`, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.ml-models-atlas', { timeout: 15000 });
+
+      // Open all details so visuals mount
+      await page.evaluate(() => {
+        document.querySelectorAll('.ml-models-atlas details').forEach((d) => {
+          (d as HTMLDetailsElement).open = true;
+        });
+      });
+      await page.waitForTimeout(400);
+
+      for (const th of themes) {
+        await page.evaluate((theme) => {
+          document.documentElement.setAttribute('data-theme', theme);
+          localStorage.setItem('theme', theme);
+          window.dispatchEvent(new Event('storage'));
+        }, th);
+        await page.waitForTimeout(250);
+
+        for (const id of ALL_MODEL_IDS) {
+          const diagram = page.locator(`#${id} .ml-models-atlas__diagram`);
+          await expect(diagram).toBeVisible();
+          await diagram.screenshot({
+            path: `docs/screenshots/ml-atlas/${id}-${th}-${vp.name}.png`,
+          });
+        }
+      }
+    }
+  });
 });

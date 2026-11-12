@@ -34,6 +34,49 @@ function KatexDisplay({ latex }: { latex: string }) {
   );
 }
 
+export function InlineMathText({ text }: { text: string }) {
+  const parts = useMemo(() => {
+    const segments: Array<{ isMath: boolean; content: string }> = [];
+    const regex = /\$([^$]+)\$/g;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        segments.push({ isMath: false, content: text.slice(lastIndex, match.index) });
+      }
+      segments.push({ isMath: true, content: match[1] });
+      lastIndex = regex.lastIndex;
+    }
+    if (lastIndex < text.length) {
+      segments.push({ isMath: false, content: text.slice(lastIndex) });
+    }
+    return segments;
+  }, [text]);
+
+  return (
+    <>
+      {parts.map((part, idx) => {
+        if (!part.isMath) {
+          return <span key={idx}>{part.content}</span>;
+        }
+        let html = '';
+        try {
+          html = katex.renderToString(part.content, { throwOnError: false, displayMode: false });
+        } catch {
+          html = part.content;
+        }
+        return (
+          <span
+            key={idx}
+            className="ml-models-atlas__inline-math"
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        );
+      })}
+    </>
+  );
+}
+
 export default function MlModelsAtlas() {
   const t = useVizTokens();
   const [query, setQuery] = useState('');
@@ -142,7 +185,7 @@ export default function MlModelsAtlas() {
                     <span>
                       <strong style={{ color: t.textPrimary }}>{entry.name}</strong>
                       <small style={{ color: t.textSecondary }}>
-                        {entry.cameBefore} → {entry.ledTo}
+                        <InlineMathText text={entry.cameBefore} /> → <InlineMathText text={entry.ledTo} />
                       </small>
                     </span>
                     <span
@@ -157,13 +200,17 @@ export default function MlModelsAtlas() {
                     {/* 1. What problem it was built to solve */}
                     <section className="ml-models-atlas__section" aria-label="1. Problem solved">
                       <h4 style={{ color: t.textPrimary }}>1. What problem it was built to solve</h4>
-                      <p style={{ color: t.textSecondary }}>{entry.problem}</p>
+                      <p style={{ color: t.textSecondary }}>
+                        <InlineMathText text={entry.problem} />
+                      </p>
                     </section>
 
                     {/* 2. What came before and what it fixed */}
                     <section className="ml-models-atlas__section" aria-label="2. What came before">
                       <h4 style={{ color: t.textPrimary }}>2. What came before and what it fixed</h4>
-                      <p style={{ color: t.textSecondary }}>{entry.previousLimit}</p>
+                      <p style={{ color: t.textSecondary }}>
+                        <InlineMathText text={entry.previousLimit} />
+                      </p>
                     </section>
 
                     {/* 3. How it works — the maths */}
@@ -184,7 +231,7 @@ export default function MlModelsAtlas() {
                         <div className="ml-models-atlas__math-item">
                           <span style={{ color: t.accentPrimary }}>Tiny Worked Example:</span>
                           <p style={{ margin: '0.2rem 0', color: t.textSecondary, fontSize: '0.85rem' }}>
-                            {entry.maths.workedExample}
+                            <InlineMathText text={entry.maths.workedExample} />
                           </p>
                         </div>
                       </div>
@@ -207,7 +254,9 @@ export default function MlModelsAtlas() {
                     {/* 5. Evaluation metrics */}
                     <section className="ml-models-atlas__section" aria-label="5. Evaluation metrics">
                       <h4 style={{ color: t.textPrimary }}>5. Evaluation metrics</h4>
-                      <p style={{ color: t.textSecondary }}>{entry.evaluationMetrics}</p>
+                      <p style={{ color: t.textSecondary }}>
+                        <InlineMathText text={entry.evaluationMetrics} />
+                      </p>
                     </section>
 
                     {/* 6. Applications */}
@@ -215,7 +264,9 @@ export default function MlModelsAtlas() {
                       <h4 style={{ color: t.textPrimary }}>6. Applications</h4>
                       <ul style={{ color: t.textSecondary }}>
                         {entry.applications.map((app) => (
-                          <li key={app}>{app}</li>
+                          <li key={app}>
+                            <InlineMathText text={app} />
+                          </li>
                         ))}
                       </ul>
                     </section>

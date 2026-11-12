@@ -412,11 +412,11 @@ export default function KMeansVsEMeansVisual() {
         </div>
 
         <svg
-          viewBox="0 0 240 60"
+          viewBox="0 0 250 82"
           style={{
             width: '100%',
             height: 'auto',
-            maxHeight: '80px',
+            maxHeight: '110px',
             background: t.background,
             borderRadius: '6px',
             border: `1px solid ${t.border}`,
@@ -425,58 +425,115 @@ export default function KMeansVsEMeansVisual() {
           aria-label="Distortion loss curves over steps"
         >
           {/* Axis lines */}
-          <line x1="25" y1="5" x2="25" y2="48" stroke={t.border} strokeWidth="1" />
-          <line x1="25" y1="48" x2="235" y2="48" stroke={t.border} strokeWidth="1" />
+          <line x1="36" y1="8" x2="36" y2="56" stroke={t.border} strokeWidth="1" />
+          <line x1="36" y1="56" x2="242" y2="56" stroke={t.border} strokeWidth="1" />
 
-          {/* Lloyd loss polyline */}
+          {/* Y-axis labels */}
+          <text x="32" y="14" textAnchor="end" fill={t.textMuted} fontSize="8" fontFamily="'Kalam', cursive">Max</text>
+          <text x="32" y="56" textAnchor="end" fill={t.textMuted} fontSize="8" fontFamily="'Kalam', cursive">0</text>
+          <text x="12" y="34" fill={t.textSecondary} fontSize="8" fontFamily="'Kalam', cursive" transform="rotate(-90 12 34)" textAnchor="middle">MSE</text>
+
+          {/* X-axis ticks and labels */}
+          {[0, 1, 2, 3, 4, 5, 6].map((i) => {
+            const x = 36 + (i / totalSteps) * 196;
+            return (
+              <g key={`x-tick-${i}`}>
+                <line x1={x} y1="56" x2={x} y2="59" stroke={t.border} strokeWidth="1" />
+                <text x={x} y="68" textAnchor="middle" fill={t.textMuted} fontSize="8" fontFamily="'Kalam', cursive">
+                  {i}
+                </text>
+              </g>
+            );
+          })}
+          <text x="134" y="78" textAnchor="middle" fill={t.textSecondary} fontSize="8" fontFamily="'Kalam', cursive">
+            Steps / Epochs
+          </text>
+
+          {/* Full background curve for all steps (computed up front) */}
           <polyline
             fill="none"
             stroke={t.accentPrimary}
-            strokeWidth="2"
+            strokeWidth="1.5"
+            strokeOpacity="0.3"
             points={lloydHistory
-              .slice(0, step + 1)
               .map((h, i) => {
-                const x = 25 + (i / totalSteps) * 200;
-                const y = 48 - (h.loss / maxLoss) * 40;
+                const x = 36 + (i / totalSteps) * 196;
+                const y = 56 - (h.loss / maxLoss) * 44;
                 return `${x},${y}`;
               })
               .join(' ')}
           />
-
-          {/* e-means loss polyline */}
           <polyline
             fill="none"
             stroke={t.accentWarn}
-            strokeWidth="2"
-            strokeDasharray="4 2"
+            strokeWidth="1.5"
+            strokeOpacity="0.3"
+            strokeDasharray="3 2"
             points={eMeansHistory
-              .slice(0, step + 1)
               .map((h, i) => {
-                const x = 25 + (i / totalSteps) * 200;
-                const y = 48 - (h.loss / maxLoss) * 40;
+                const x = 36 + (i / totalSteps) * 196;
+                const y = 56 - (h.loss / maxLoss) * 44;
                 return `${x},${y}`;
               })
               .join(' ')}
           />
 
-          {/* Current step marker */}
+          {/* Active Lloyd loss trajectory up to current step */}
+          {step > 0 && (
+            <polyline
+              fill="none"
+              stroke={t.accentPrimary}
+              strokeWidth="2.5"
+              points={lloydHistory
+                .slice(0, step + 1)
+                .map((h, i) => {
+                  const x = 36 + (i / totalSteps) * 196;
+                  const y = 56 - (h.loss / maxLoss) * 44;
+                  return `${x},${y}`;
+                })
+                .join(' ')}
+            />
+          )}
+
+          {/* Active e-means loss trajectory up to current step */}
+          {step > 0 && (
+            <polyline
+              fill="none"
+              stroke={t.accentWarn}
+              strokeWidth="2.5"
+              points={eMeansHistory
+                .slice(0, step + 1)
+                .map((h, i) => {
+                  const x = 36 + (i / totalSteps) * 196;
+                  const y = 56 - (h.loss / maxLoss) * 44;
+                  return `${x},${y}`;
+                })
+                .join(' ')}
+            />
+          )}
+
+          {/* Current step marker dots */}
           <circle
-            cx={25 + (step / totalSteps) * 200}
-            cy={48 - (lState.loss / maxLoss) * 40}
-            r="3"
+            cx={36 + (step / totalSteps) * 196}
+            cy={56 - (lState.loss / maxLoss) * 44}
+            r="4"
             fill={t.accentPrimary}
+            stroke="#ffffff"
+            strokeWidth="1.2"
           />
           <circle
-            cx={25 + (step / totalSteps) * 200}
-            cy={48 - (eState.loss / maxLoss) * 40}
-            r="3"
+            cx={36 + (step / totalSteps) * 196}
+            cy={56 - (eState.loss / maxLoss) * 44}
+            r="4"
             fill={t.accentWarn}
+            stroke="#ffffff"
+            strokeWidth="1.2"
           />
         </svg>
       </div>
 
       <div style={{ fontSize: '0.74rem', color: t.textSecondary, lineHeight: 1.45 }}>
-        <strong>Observation:</strong> Lloyd requires evaluating all points across every cluster per step. e-means achieves equivalent low distortion in a fraction of passes by streaming mini-batches and updating running sums via exponential moving averages, saving 10–45× GPU compute.
+        <strong>Observation:</strong> Lloyd requires evaluating all points across every cluster per step. e-means achieves equivalent low distortion in a fraction of passes by streaming mini-batches and updating running sums via exponential moving averages (10–45× wall-clock speedup vs Flash-KMeans on GPU, and 8–15× vs Faiss on CPU, as reported by the authors).
       </div>
     </div>
   );

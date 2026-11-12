@@ -10,7 +10,7 @@ import RunnableCode from '../../components/content/RunnableCode';
 
 # e-Means: Scaling k-Means to Billion-Vector Datasets in One-Tenth the Epochs
 
-On 11 November 2026, researchers from Meta FAIR and École des Ponts ParisTech published [e-means: outperforming k-means (in one-tenth the epochs)](https://arxiv.org/abs/2611.09501) by Swann Bessa, Pierre-Emmanuel Mazaré, Gergely Szilvasy, Hugo Touvron, David Picard, Matthijs Douze, and Hervé Jégou (code released in `faiss/contrib/e_means`, interactive explorer at [e-means.github.io](https://e-means.github.io/)). The authors demonstrate that updating cluster statistics through an exponential moving average across streaming mini-batches matches or surpasses the loss of a 25-epoch Lloyd baseline in 1.4 to 2.6 epochs. On an NVIDIA H100 GPU, this yields 10× to 45× wall-clock speedups over Flash-KMeans, and 8× to 15× speedups over Faiss CPU implementations.
+On 11 November 2026, researchers from Meta FAIR and École des Ponts ParisTech published [e-means: outperforming k-means (in one-tenth the epochs)](https://arxiv.org/abs/2611.09501) by Swann Bessa, Pierre-Emmanuel Mazaré, Gergely Szilvasy, Hugo Touvron, David Picard, Matthijs Douze, and Hervé Jégou (code released in `faiss/contrib/e_means`, interactive explorer at [e-means.github.io](https://e-means.github.io/)). The authors demonstrate that updating cluster statistics through an exponential moving average across streaming mini-batches matches or surpasses the loss of a 25-epoch Lloyd baseline in about 1.2 to 3 epochs (between 1.6 and 2.4 epochs across the VIBE benchmark; 1.4 to 2.6 epochs in the arXiv 2611.09501 Abstract). On an NVIDIA H100 GPU, this yields 10× to 45× wall-clock speedups over Flash-KMeans, and 8× to 15× speedups over Faiss CPU implementations, as reported by the authors.
 
 Clustering modern datasets often means partitioning 10 billion high-dimensional embeddings into millions of centroids. When you run standard Lloyd's k-means on a collection that large, each pass touches every single vector in memory before adjusting a single centroid coordinate. By the end of this post, you will understand the exact mathematical update that powers e-means, how fitted scaling laws set batch sizes and decay rates without manual grid searches, how Lloyd emerges as an exact special case, and how to run a minimal implementation in pure NumPy.
 
@@ -146,16 +146,16 @@ print(f"Lloyd pass 1 full loss:  {loss_lloyd:.4f}")
 print(f"e-means step 1 full loss: {loss_emeans:.4f}")
 `} />
 
-## 7. The reported numbers: 10× fewer epochs, 10–45× faster GPUs
+## 7. About 1.2–3 epochs instead of 25: 10–45× faster on GPU, 8–15× on CPU
 
-The authors evaluated e-means across standard vision and language embedding benchmarks, including ImageNet features, text embeddings, and Meta's 10-billion vector DINO10B dataset. The quantitative gains reported in their paper are:
+The authors evaluated e-means across 24 embedding and synthetic configurations, including the VIBE embedding benchmark (Jääsaari et al., 2025: 11 datasets spanning text, code, image and multimodal embeddings, $d = 200$ to $3,072$, $k = 8,192$ or $16,384$) and Meta's DINO10B dataset (Siméoni et al., 2025). The quantitative gains reported by the authors ([e-means.github.io](https://e-means.github.io/) and [arXiv:2611.09501](https://arxiv.org/abs/2611.09501)) are:
 
-- **Epoch efficiency**: e-means achieves the test distortion of a 25-epoch Lloyd baseline in approximately **1.2 to 3 epochs** (specifically 1.4 to 2.6 epochs across core vision benchmarks), representing a ~10× reduction in total dataset passes.
-- **GPU wall-clock acceleration**: When evaluated against Flash-KMeans on modern GPU architectures (NVIDIA H100 and A100), e-means delivers **10× to 45× wall-clock speedup** to reach target index distortion.
-- **CPU acceleration**: When compared against Faiss CPU k-means routines, e-means reports **8× to 15× speedups**.
-- **Extreme-scale demonstration**: On **DINO10B** (10 billion 256-dimensional DINO embeddings clustered into 16 million centroids), e-means converged in just 2.5 epochs, completing a clustering task that would require weeks of GPU cluster time with full-batch passes.
+- **Epoch efficiency**: Across a wide range of scales and datasets, e-means reaches a test loss below Lloyd's at 25 epochs in **1.2 to 3 epochs** (reported on [e-means.github.io](https://e-means.github.io/); specifically between 1.6 and 2.4 epochs across all 11 datasets of the VIBE benchmark, and 1.4 to 2.6 epochs reported in the arXiv:2611.09501 Abstract).
+- **GPU wall-clock acceleration**: On a single NVIDIA H100 GPU ($n = 10\text{M}$ vectors, $k = 65,536$ clusters), 25 epochs of plain PyTorch Lloyd take 142 to 155 seconds, Flash-KMeans takes 14 to 22 seconds, and e-means achieves a **10× to 45× wall-clock speedup** over Flash-KMeans (Table 9 and Section 4 in arXiv:2611.09501; [e-means.github.io](https://e-means.github.io/)).
+- **CPU acceleration**: Measured against Faiss on CPU, e-means reports an **8× to 15× wall-clock speedup** ([e-means.github.io](https://e-means.github.io/) and arXiv:2611.09501 Section 1).
+- **Extreme-scale demonstration on DINO10B**: In the paper (arXiv:2611.09501 Abstract, Table 3, and Appendix M), the authors cluster **DINO10B** ($10^{10}$ 1,024-dimensional DINO embeddings into $k = 2^{24} \approx 16.7\text{M}$ clusters) on NVIDIA H100 GPUs. In Table 3 (page 6), e-means reaches Lloyd's 25-epoch test loss in only 2.5 epochs, requiring 779 GPU hours for exact assignment and 22.8 GPU hours with Inverted File (IVF) assignment.
 
-Every figure above is cited directly from Bessa et al. (2026) as reported by the authors.
+Every figure above is cited directly from the authors' page and arXiv:2611.09501 as reported by the authors.
 
 ## 8. Where it breaks and what it does not replace
 
@@ -163,8 +163,7 @@ e-means is an optimization procedure for the k-means objective; it does not alte
 
 1. **Convex spherical geometries only**: Like all k-means algorithms, e-means minimizes squared Euclidean distance. It cannot separate concentric rings, intertwined spirals, or non-convex manifold structures. For manifold-shaped clusters, [Spectral Clustering](/docs/machine-learning/gmm-spectral-clustering) or [DBSCAN](/docs/machine-learning/dbscan-hdbscan) remain necessary.
 2. **Preset cluster count**: e-means requires specifying the number of clusters $k$ in advance. It does not determine the optimal number of centroids automatically.
-3. **Sensitivity to extreme learning rates**: While the scaling laws provide strong defaults, an aggressively high $\alpha_0$ combined with tiny batch sizes can cause centroid oscillations on noisy, heavy-tailed data distributions.
-4. **Finalization pass overhead**: To guarantee zero lag from the exponential moving average, e-means requires a final assignment pass over the dataset. On multi-terabyte datasets where reading the data once is already slow, this final pass represents a measurable fixed cost.
+3. **Static datasets versus moving targets**: The authors note on [e-means.github.io](https://e-means.github.io/) that e-means is formulated for fixed, static datasets (as in vector search index construction and large-scale data curation), unlike codebook learning in VQ-VAEs where the underlying feature distribution continuously shifts during neural network training.
 
 ## Summary
 

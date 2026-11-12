@@ -49,6 +49,27 @@ describe('mlModelsAtlas data integrity', () => {
       expect(entry.diagram.trim()).toBeTruthy();
     }
   });
+
+  it('no prose field contains a raw backslash command outside $...$ math spans', () => {
+    const backslashCommandRegex = /\\[a-zA-Z]+/;
+    for (const entry of mlModelsAtlas) {
+      const proseFields = [
+        entry.problem,
+        entry.previousLimit,
+        entry.maths.workedExample,
+        entry.evaluationMetrics,
+        entry.cameBefore,
+        entry.ledTo,
+        ...entry.applications,
+      ];
+
+      for (const prose of proseFields) {
+        // Strip out valid inline math spans: $...$
+        const plainTextOutsideMath = prose.replace(/\$[^$]+\$/g, '');
+        expect(plainTextOutsideMath).not.toMatch(backslashCommandRegex);
+      }
+    }
+  });
 });
 
 describe('MlModelsAtlas component', () => {
@@ -116,5 +137,27 @@ describe('MlModelsAtlas component', () => {
     expect(scoped.getByRole('heading', { name: '5. Evaluation metrics' })).toBeInTheDocument();
     expect(scoped.getByRole('heading', { name: '6. Applications' })).toBeInTheDocument();
     expect(scoped.getByRole('heading', { name: '7. Primary source and Learn page' })).toBeInTheDocument();
+  });
+
+  it('no rendered entry prose contains a backslash command outside KaTeX output', () => {
+    const { container } = render(
+      <ThemeProvider>
+        <MlModelsAtlas />
+      </ThemeProvider>
+    );
+
+    // Open all details so all sections are rendered
+    const allDetails = container.querySelectorAll('details');
+    allDetails.forEach((d) => {
+      d.open = true;
+    });
+
+    // Clone container to inspect non-KaTeX text
+    const clone = container.cloneNode(true) as HTMLElement;
+    // Remove all KaTeX elements (.katex)
+    clone.querySelectorAll('.katex').forEach((el) => el.remove());
+
+    const renderedText = clone.textContent || '';
+    expect(renderedText).not.toMatch(/\\[a-zA-Z]+/);
   });
 });
