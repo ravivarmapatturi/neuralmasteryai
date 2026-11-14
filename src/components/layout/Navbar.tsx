@@ -17,7 +17,7 @@ export const NAV_GROUPS = [
     items: [
       { to: '/learn', label: 'Learn', note: 'Lessons with diagrams and live code' },
       { to: '/labs', label: 'Labs', note: 'Practice problems in Python' },
-      { to: '/focus', label: 'Focus', note: 'Pomodoro timer and focus time stats' },
+      { to: '/focus', label: 'Focus', note: 'Your screen time on Neural Mastery' },
       { to: '/interview', label: 'Interview', note: 'Spoken mock interview and question bank' },
       { to: '/study-plans', label: 'Study plans', note: 'Named sheets of problems' },
       { to: '/research', label: 'Research', note: 'Papers built step by step' },
