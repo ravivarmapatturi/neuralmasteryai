@@ -3,23 +3,18 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
 } from 'react';
 import {
-  startPhase,
-  pauseTimer,
-  resumeTimer,
-  skipPhase,
-  stopSession,
   restoreStateFromStorage,
-  rolloverTimer,
-  tickTimer,
-  createInitialState,
-  updatePreset,
+  recordScreenTimeTick,
   mergeFocusSessions,
-  formatClockTime,
+  todayFocusSeconds,
+  formatTodayFocusTime,
+  extractSection,
   DEFAULT_PRESET,
   type FocusPreset,
   type FocusPhase,
@@ -34,6 +29,7 @@ import { useFocusMusic } from './FocusMusicContext';
 const TIMER_STORAGE_KEY = 'nm_focus_timer_state';
 const SESSIONS_STORAGE_KEY = 'nm_focus_sessions';
 const PENDING_SESSIONS_STORAGE_KEY = 'nm_focus_pending_sync';
+const TICK_LOCK_KEY = 'nm_screen_time_last_tick';
 const MAX_STORED_SESSIONS = 500;
 
 function readStorage<T>(key: string): T | null {
@@ -52,66 +48,6 @@ function writeStorage<T>(key: string, value: T) {
     window.localStorage.setItem(key, JSON.stringify(value));
   } catch {
     // Storage is optional / quota exceeded
-  }
-}
-
-export function playChime() {
-  if (typeof window === 'undefined') return;
-  try {
-    const AudioContextClass =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const ctx = new AudioContextClass();
-    const now = ctx.currentTime;
-
-    const osc1 = ctx.createOscillator();
-    const gain1 = ctx.createGain();
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(523.25, now); // C5
-    gain1.gain.setValueAtTime(0.12, now);
-    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
-    osc1.connect(gain1);
-    gain1.connect(ctx.destination);
-    osc1.start(now);
-    osc1.stop(now + 0.6);
-
-    const osc2 = ctx.createOscillator();
-    const gain2 = ctx.createGain();
-    osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(783.99, now + 0.15); // G5
-    gain2.gain.setValueAtTime(0.12, now + 0.15);
-    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
-    osc2.connect(gain2);
-    gain2.connect(ctx.destination);
-    osc2.start(now + 0.15);
-    osc2.stop(now + 0.9);
-
-    setTimeout(() => {
-      ctx.close().catch(() => {});
-    }, 1200);
-  } catch {
-    // Audio unsupported or restricted
-  }
-}
-
-export function notifyPhaseEnded(phase: FocusPhase) {
-  if (typeof window === 'undefined' || !('Notification' in window)) return;
-  if (Notification.permission !== 'granted') return;
-
-  const title = phase === 'focus' ? 'Focus session completed' : 'Break completed';
-  const body =
-    phase === 'focus'
-      ? 'Great work! Take a breath and step away for a break.'
-      : 'Break finished. Ready to focus again?';
-
-  try {
-    new Notification(title, {
-      body,
-      icon: '/favicon.ico',
-    });
-  } catch {
-    // Notifications unavailable
   }
 }
 
@@ -181,116 +117,333 @@ async function syncFocusSessionsToRemote(
 }
 
 export interface FocusTimerContextType {
-  phase: FocusPhase;
   status: TimerStatus;
-  preset: FocusPreset;
-  completedFocusCount: number;
+  isPaused: boolean;
+  todaySeconds: number;
+  formattedToday: string;
+  sessions: FocusSession[];
+  isDistractionFree: boolean;
+
+  pause: () => void;
+  resume: () => void;
+  togglePause: () => void;
+  setDistractionFree: (enabled: boolean) => void;
+  toggleDistractionFree: () => void;
+  recordSession: (session: FocusSession) => void;
+
+  // Backward compatibility fields
+  phase: FocusPhase;
   remainingMs: number;
   targetDurationMs: number;
   endsAt: number | null;
   startedAt: number | null;
   autoStartNext: boolean;
   notificationsEnabled: boolean;
+  completedFocusCount: number;
   pausedReason: PausedReason;
-  sessions: FocusSession[];
+  preset: FocusPreset;
 
   startFocus: (section?: string) => void;
   startBreak: () => void;
-  pause: () => void;
-  resume: () => void;
   skip: () => void;
   stop: () => void;
   setPreset: (preset: FocusPreset) => void;
   setAutoStartNext: (enabled: boolean) => void;
   setNotificationsEnabled: (enabled: boolean) => Promise<boolean>;
   dismissAwayPause: () => void;
-  recordSession: (session: FocusSession) => void;
 }
 
 const FocusTimerContext = createContext<FocusTimerContextType | null>(null);
 
-interface InitialFocusData {
-  timerState: FocusTimerState;
-  sessions: FocusSession[];
-  reloadCompletedSession: FocusSession | null;
-}
-
-function getInitialFocusTimerStateAndSessions(): InitialFocusData {
-  const savedTimer = readStorage<Partial<FocusTimerState> & { lastHandledSessionId?: string }>(TIMER_STORAGE_KEY);
+function getInitialStateAndSessions(): { timerState: FocusTimerState; sessions: FocusSession[] } {
+  const savedTimer = readStorage<any>(TIMER_STORAGE_KEY);
   const savedSessions = readStorage<FocusSession[]>(SESSIONS_STORAGE_KEY);
-  let sessions: FocusSession[] = Array.isArray(savedSessions) ? savedSessions : [];
-  let reloadCompletedSession: FocusSession | null = null;
-
-  const now = Date.now();
-  if (savedTimer) {
-    savedTimer.autoStartNext = true;
-    if (savedTimer.pausedReason === 'away') {
-      savedTimer.pausedReason = null;
-      savedTimer.status = 'running';
-    }
-  }
-
-  const isExpired =
-    savedTimer &&
-    (savedTimer.status === 'running' || savedTimer.status === 'phaseEnded') &&
-    savedTimer.endsAt !== null &&
-    now >= savedTimer.endsAt;
-  const isStalePhaseEnded = savedTimer && savedTimer.status === 'phaseEnded';
-
-  if (isExpired || isStalePhaseEnded) {
-    const fullState: FocusTimerState = {
-      ...createInitialState(savedTimer.preset || DEFAULT_PRESET),
-      ...savedTimer,
-      status: 'running',
-      autoStartNext: true,
-      endsAt: savedTimer.endsAt ?? now,
-    };
-    const { nextState, completedSessions } = rolloverTimer(fullState, now);
-    if (completedSessions.length > 0) {
-      const newSessions = completedSessions.filter(
-        (cs) => !sessions.some((s) => s.id === cs.id) && savedTimer.lastHandledSessionId !== cs.id,
-      );
-      if (newSessions.length > 0) {
-        sessions = mergeFocusSessions(sessions, newSessions);
-        writeStorage(SESSIONS_STORAGE_KEY, sessions);
-        const pending = readStorage<FocusSession[]>(PENDING_SESSIONS_STORAGE_KEY) || [];
-        writeStorage(PENDING_SESSIONS_STORAGE_KEY, mergeFocusSessions(pending, newSessions));
-        reloadCompletedSession = newSessions[newSessions.length - 1];
-      }
-    }
-    const lastSessionId = completedSessions[completedSessions.length - 1]?.id || savedTimer.lastHandledSessionId;
-    writeStorage(TIMER_STORAGE_KEY, { ...nextState, lastHandledSessionId: lastSessionId });
-    return { timerState: nextState, sessions, reloadCompletedSession };
-  }
-
-  const timerState = restoreStateFromStorage(savedTimer, now);
-  return { timerState, sessions, reloadCompletedSession };
+  const sessions: FocusSession[] = Array.isArray(savedSessions) ? savedSessions : [];
+  const timerState = restoreStateFromStorage(savedTimer);
+  // Persist clean migrated timer state
+  writeStorage(TIMER_STORAGE_KEY, { status: timerState.status, isPaused: timerState.isPaused });
+  return { timerState, sessions };
 }
 
 export function FocusTimerProvider({ children }: { children: ReactNode }) {
   const { user, loading: authLoading } = useAuth();
   const { enabled: musicEnabled, playing: musicPlaying, play: playMusic, pause: pauseMusic } = useFocusMusic();
 
-  const [initialData] = useState<InitialFocusData>(() => getInitialFocusTimerStateAndSessions());
-  const [state, setState] = useState<FocusTimerState>(initialData.timerState);
+  const [initialData] = useState(() => getInitialStateAndSessions());
+  const [isPaused, setIsPaused] = useState(initialData.timerState.isPaused);
   const [sessions, setSessions] = useState<FocusSession[]>(initialData.sessions);
+  const [isDistractionFree, setIsDistractionFree] = useState(false);
 
-  const stateRef = useRef(state);
-  useEffect(() => {
-    stateRef.current = state;
-    writeStorage(TIMER_STORAGE_KEY, state);
-  }, [state]);
+  // Active tracking state: visible and focused
+  const [isVisible, setIsVisible] = useState(() => {
+    if (typeof document === 'undefined') return true;
+    return document.visibilityState === 'visible';
+  });
+
+  const [isFocused, setIsFocused] = useState(() => {
+    if (typeof document === 'undefined') return true;
+    return typeof document.hasFocus === 'function' ? document.hasFocus() : true;
+  });
 
   const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
+
+  const isPausedRef = useRef(isPaused);
+  isPausedRef.current = isPaused;
+
+  const isVisibleRef = useRef(isVisible);
+  isVisibleRef.current = isVisible;
+
+  const isFocusedRef = useRef(isFocused);
+  isFocusedRef.current = isFocused;
+
+  const lastTickRef = useRef<number | null>(null);
+
+  // Multi-tab BroadcastChannel
+  const channelRef = useRef<BroadcastChannel | null>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof BroadcastChannel === 'undefined') return;
+    const ch = new BroadcastChannel('nm_screen_time_sync');
+    channelRef.current = ch;
+
+    ch.onmessage = (event: MessageEvent) => {
+      const msg = event.data;
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.type === 'TICK' && Array.isArray(msg.sessions)) {
+        sessionsRef.current = msg.sessions;
+        setSessions(msg.sessions);
+      } else if (msg.type === 'PAUSE') {
+        setIsPaused(true);
+      } else if (msg.type === 'RESUME') {
+        setIsPaused(false);
+      }
+    };
+
+    return () => {
+      ch.close();
+      channelRef.current = null;
+    };
+  }, []);
+
   const updateSessions = useCallback((next: FocusSession[]) => {
-    // Keep stored data bounded to last 500 sessions
     const bounded = next.length > MAX_STORED_SESSIONS ? next.slice(-MAX_STORED_SESSIONS) : next;
     sessionsRef.current = bounded;
     setSessions(bounded);
     writeStorage(SESSIONS_STORAGE_KEY, bounded);
   }, []);
 
-  // Sync with Firestore for signed-in users (initial fetch, retry pending, and live onSnapshot)
+  const broadcastTick = useCallback((nextSessions: FocusSession[]) => {
+    try {
+      channelRef.current?.postMessage({ type: 'TICK', sessions: nextSessions });
+    } catch {
+      // Ignore broadcast errors
+    }
+  }, []);
+
+  const pause = useCallback(() => {
+    setIsPaused(true);
+    writeStorage(TIMER_STORAGE_KEY, { status: 'paused', isPaused: true });
+    try {
+      channelRef.current?.postMessage({ type: 'PAUSE' });
+    } catch {}
+  }, []);
+
+  const resume = useCallback(() => {
+    setIsPaused(false);
+    lastTickRef.current = Date.now();
+    writeStorage(TIMER_STORAGE_KEY, { status: 'running', isPaused: false });
+    try {
+      channelRef.current?.postMessage({ type: 'RESUME' });
+    } catch {}
+  }, []);
+
+  const togglePause = useCallback(() => {
+    if (isPausedRef.current) {
+      resume();
+    } else {
+      pause();
+    }
+  }, [pause, resume]);
+
+  // Window focus & document visibility listeners
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const onFocus = () => {
+      setIsFocused(true);
+      setIsVisible(document.visibilityState === 'visible');
+      lastTickRef.current = Date.now();
+    };
+
+    const onBlur = () => {
+      setIsFocused(false);
+      lastTickRef.current = null;
+    };
+
+    const onVisibilityChange = () => {
+      const visible = document.visibilityState === 'visible';
+      setIsVisible(visible);
+      if (visible) {
+        setIsFocused(typeof document.hasFocus === 'function' ? document.hasFocus() : true);
+        lastTickRef.current = Date.now();
+      } else {
+        lastTickRef.current = null;
+      }
+    };
+
+    const onPageHide = () => {
+      setIsVisible(false);
+      setIsFocused(false);
+      lastTickRef.current = null;
+    };
+
+    const onPageShow = () => {
+      const visible = document.visibilityState === 'visible';
+      setIsVisible(visible);
+      setIsFocused(typeof document.hasFocus === 'function' ? document.hasFocus() : true);
+      lastTickRef.current = Date.now();
+    };
+
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('blur', onBlur);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('pageshow', onPageShow);
+
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('blur', onBlur);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('pageshow', onPageShow);
+    };
+  }, []);
+
+  // Multi-tab storage event sync fallback
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === SESSIONS_STORAGE_KEY && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) {
+            sessionsRef.current = parsed;
+            setSessions(parsed);
+          }
+        } catch {}
+      } else if (e.key === TIMER_STORAGE_KEY && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (typeof parsed?.isPaused === 'boolean') {
+            setIsPaused(parsed.isPaused);
+          } else if (parsed?.status === 'paused') {
+            setIsPaused(true);
+          } else if (parsed?.status === 'running') {
+            setIsPaused(false);
+          }
+        } catch {}
+      }
+    };
+
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  // Main screen-time clock tick:
+  // Counts while document is visible, window has focus, and timer is not manually paused.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const interval = setInterval(() => {
+      const isActivelyCounting = isVisibleRef.current && isFocusedRef.current && !isPausedRef.current;
+      if (!isActivelyCounting) {
+        lastTickRef.current = null;
+        return;
+      }
+
+      const now = Date.now();
+      const currentSection = extractSection(window.location.pathname);
+      const lockVal = Number(window.localStorage.getItem(TICK_LOCK_KEY) || 0);
+
+      const result = recordScreenTimeTick(
+        sessionsRef.current,
+        currentSection,
+        now,
+        lastTickRef.current,
+        { lockTimestamp: lockVal },
+      );
+
+      if (result.ticked) {
+        lastTickRef.current = result.newLastTickTimestamp;
+        try {
+          window.localStorage.setItem(TICK_LOCK_KEY, String(result.newLockTimestamp));
+        } catch {}
+        updateSessions(result.sessions);
+        broadcastTick(result.sessions);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [updateSessions, broadcastTick]);
+
+  // Distraction-free mode handling
+  const setDistractionFree = useCallback((enable: boolean) => {
+    setIsDistractionFree(enable);
+    if (typeof document === 'undefined') return;
+
+    if (enable) {
+      document.documentElement.classList.add('distraction-free');
+      try {
+        if (document.documentElement.requestFullscreen) {
+          const promise = document.documentElement.requestFullscreen();
+          if (promise && typeof promise.catch === 'function') {
+            promise.catch(() => {});
+          }
+        }
+      } catch {
+        // Refused or unsupported
+      }
+    } else {
+      document.documentElement.classList.remove('distraction-free');
+      try {
+        if (document.fullscreenElement && document.exitFullscreen) {
+          const promise = document.exitFullscreen();
+          if (promise && typeof promise.catch === 'function') {
+            promise.catch(() => {});
+          }
+        }
+      } catch {
+        // Refused or unsupported
+      }
+    }
+  }, []);
+
+  const toggleDistractionFree = useCallback(() => {
+    setDistractionFree(!isDistractionFree);
+  }, [isDistractionFree, setDistractionFree]);
+
+  // React to fullscreen change (e.g. Esc or F11 keypress)
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const onFullscreenChange = () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.classList.remove('distraction-free');
+        setIsDistractionFree(false);
+      }
+    };
+
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
+      document.documentElement.classList.remove('distraction-free');
+    };
+  }, []);
+
+  // Firestore sync for signed in users
   useEffect(() => {
     if (authLoading) return;
     if (!user) {
@@ -371,284 +524,108 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
     [user, updateSessions],
   );
 
-  // Phase completion deduplication ref
-  const phaseEndHandledRef = useRef<string | null>(
-    initialData.reloadCompletedSession
-      ? `${initialData.reloadCompletedSession.id}_${new Date(initialData.reloadCompletedSession.endedAt).getTime()}`
-      : null,
-  );
-
-  const handlePhaseEnd = useCallback(
-    (currentState: FocusTimerState, now: number) => {
-      if (currentState.status !== 'running' || currentState.endsAt === null) return;
-      if (now < currentState.endsAt) return;
-
-      const phaseKey = `${currentState.currentSessionId || currentState.phase}_${currentState.endsAt}`;
-      if (phaseEndHandledRef.current === phaseKey) return;
-      phaseEndHandledRef.current = phaseKey;
-
-      const { nextState, completedSessions, phaseChangesCount } = rolloverTimer(currentState, now);
-      if (phaseChangesCount === 0) return;
-
-      playChime();
-      if (currentState.notificationsEnabled) {
-        notifyPhaseEnded(currentState.phase);
-      }
-
-      for (const session of completedSessions) {
-        recordSession(session);
-      }
-
-      setState(nextState);
-      const lastSessionId = completedSessions[completedSessions.length - 1]?.id || currentState.currentSessionId;
-      writeStorage(TIMER_STORAGE_KEY, { ...nextState, lastHandledSessionId: lastSessionId });
-    },
-    [recordSession],
-  );
-
-  // If a session completed while tab was reloaded or closed, chime and notify once on mount
+  // Focus music coordination
   useEffect(() => {
-    if (initialData.reloadCompletedSession) {
-      playChime();
-      if (initialData.timerState.notificationsEnabled) {
-        notifyPhaseEnded('focus');
-      }
+    if (!musicEnabled) return;
+    if (!isPaused && !musicPlaying) {
+      void playMusic();
+    } else if (isPaused && musicPlaying) {
+      pauseMusic();
     }
-  }, [initialData]);
+  }, [isPaused, musicEnabled, musicPlaying, playMusic, pauseMusic]);
 
-  // Music coordination:
-  // "Focus music: if music is enabled, play during focus and pause during breaks, through the existing useFocusMusic. Do not change music behaviour when the timer is not running."
+  // Derived calculations
+  const todaySeconds = useMemo(() => todayFocusSeconds(sessions), [sessions]);
+  const formattedToday = useMemo(() => formatTodayFocusTime(todaySeconds), [todaySeconds]);
+
+  // Update document title
   useEffect(() => {
-    if (state.status === 'running') {
-      if (state.phase === 'focus') {
-        if (musicEnabled && !musicPlaying) {
-          void playMusic();
-        }
-      } else if (state.phase === 'shortBreak' || state.phase === 'longBreak') {
-        if (musicPlaying) {
-          pauseMusic();
-        }
-      }
-    } else if (state.status === 'phaseEnded' && state.phase === 'focus') {
-      if (musicPlaying) {
-        pauseMusic();
-      }
-    }
-  }, [state.status, state.phase, musicEnabled, musicPlaying, playMusic, pauseMusic]);
-
-  // Focus time starts on its own when the site opens:
-  useEffect(() => {
-    const now = Date.now();
-    const current = stateRef.current;
-    if (current.status === 'paused' && current.pausedReason === 'user') {
-      // User explicitly paused: do not restart
-      return;
-    }
-    if (current.status === 'paused' && current.pausedReason === 'away') {
-      setState((prev) => resumeTimer(prev, now));
-    } else if (current.status === 'idle' || current.status === 'phaseEnded') {
-      const sec = typeof window !== 'undefined'
-        ? window.location.pathname.replace(/^\/+/, '').split('/')[0] || 'home'
-        : 'home';
-      setState((prev) => startPhase(prev, 'focus', sec));
-    }
-  }, []);
-
-  useEffect(() => {
-    // visibilitychange covers switching tabs, minimising the window and locking the screen;
-    // pagehide/pageshow cover closing the tab and the back-forward cache.
-    // Timer runs continuously without pausing when tab is hidden, calculating elapsed phases from timestamps.
-    const onVisibilityChange = (event?: Event) => {
-      const now = Date.now();
-      const current = stateRef.current;
-      if (document.hidden || event?.type === 'pagehide') {
-        if (current.status === 'running' && current.endsAt !== null && now >= current.endsAt) {
-          handlePhaseEnd(current, now);
-        }
-        return;
-      }
-      // Tab visible again / pageshow
-      if (current.status === 'running' && current.endsAt !== null) {
-        if (now >= current.endsAt) {
-          handlePhaseEnd(current, now);
-        } else {
-          setState((prev) => tickTimer(prev, now));
-        }
-      }
-      if (current.status === 'paused' && current.pausedReason === 'away') {
-        setState((prev) => resumeTimer(prev, now));
-      }
-    };
-
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    window.addEventListener('pagehide', onVisibilityChange);
-    window.addEventListener('pageshow', onVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-      window.removeEventListener('pagehide', onVisibilityChange);
-      window.removeEventListener('pageshow', onVisibilityChange);
-    };
-  }, [handlePhaseEnd]);
-
-  // Phase completion timer effect
-  useEffect(() => {
-    if (state.status !== 'running' || state.endsAt === null) {
-      return;
-    }
-
-    const msUntilEnd = Math.max(0, state.endsAt - Date.now());
-    const timeout = setTimeout(() => {
-      handlePhaseEnd(stateRef.current, Date.now());
-    }, msUntilEnd);
-
-    return () => {
-      clearTimeout(timeout);
-    };
-  }, [state.status, state.endsAt, state.phase, handlePhaseEnd]);
-
-  // Document title updater while running
-  useEffect(() => {
-    if (state.status !== 'running' || !state.endsAt) {
-      return;
-    }
-
+    if (typeof document === 'undefined') return;
     const prevTitle = document.title;
-    const updateTitle = () => {
-      if (stateRef.current.status !== 'running' || !stateRef.current.endsAt) return;
-      const rem = Math.max(0, stateRef.current.endsAt - Date.now());
-      const label = stateRef.current.phase === 'focus' ? 'Focus' : 'Break';
-      document.title = `(${formatClockTime(rem)}) ${label} — NeuralMastery`;
-    };
-
-    updateTitle();
-    const interval = setInterval(updateTitle, 1000);
-
+    if (isPaused) {
+      document.title = `(Paused) Focus — NeuralMastery`;
+    } else {
+      document.title = `(${formattedToday}) Focus — NeuralMastery`;
+    }
     return () => {
-      clearInterval(interval);
       document.title = prevTitle;
     };
-  }, [state.status, state.phase, state.endsAt]);
-
-  const startFocus = useCallback((section?: string) => {
-    const sec = section || (typeof window !== 'undefined' ? window.location.pathname.replace(/^\/+/, '').split('/')[0] : 'home');
-    setState((prev) => startPhase(prev, 'focus', sec || 'home'));
-  }, []);
-
-  const startBreak = useCallback(() => {
-    const isLong = stateRef.current.completedFocusCount >= 4;
-    setState((prev) => startPhase(prev, isLong ? 'longBreak' : 'shortBreak', prev.currentSessionSection));
-  }, []);
-
-  const pause = useCallback(() => {
-    setState((prev) => pauseTimer(prev, 'user'));
-  }, []);
-
-  const resume = useCallback(() => {
-    setState((prev) => resumeTimer(prev));
-  }, []);
-
-  const skip = useCallback(() => {
-    setState((prev) => skipPhase(prev, prev.currentSessionSection));
-  }, []);
-
-  const stop = useCallback(() => {
-    const { nextState, completedSession } = stopSession(stateRef.current);
-    if (completedSession) {
-      recordSession(completedSession);
-    }
-    setState(nextState);
-  }, [recordSession]);
-
-  const setPreset = useCallback((preset: FocusPreset) => {
-    setState((prev) => updatePreset(prev, preset));
-  }, []);
-
-  const setAutoStartNext = useCallback((_autoStartNext: boolean) => {
-    // Continuous running is always on
-    setState((prev) => ({ ...prev, autoStartNext: true }));
-  }, []);
-
-  const setNotificationsEnabled = useCallback(async (enable: boolean) => {
-    if (!enable) {
-      setState((prev) => ({ ...prev, notificationsEnabled: false }));
-      return false;
-    }
-
-    if (typeof window === 'undefined' || !('Notification' in window)) {
-      return false;
-    }
-
-    let permission = Notification.permission;
-    if (permission === 'default') {
-      try {
-        permission = await Notification.requestPermission();
-      } catch {
-        return false;
-      }
-    }
-
-    const granted = permission === 'granted';
-    setState((prev) => ({ ...prev, notificationsEnabled: granted }));
-    return granted;
-  }, []);
-
-  const dismissAwayPause = useCallback(() => {
-    setState((prev) => ({ ...prev, pausedReason: null }));
-  }, []);
+  }, [isPaused, formattedToday]);
 
   const value: FocusTimerContextType = {
-    phase: state.phase,
-    status: state.status,
-    preset: state.preset,
-    completedFocusCount: state.completedFocusCount,
-    remainingMs: state.remainingMs,
-    targetDurationMs: state.targetDurationMs,
-    endsAt: state.endsAt,
-    startedAt: state.startedAt,
-    autoStartNext: state.autoStartNext,
-    notificationsEnabled: state.notificationsEnabled,
-    pausedReason: state.pausedReason,
+    status: isPaused ? 'paused' : 'running',
+    isPaused,
+    todaySeconds,
+    formattedToday,
     sessions,
-    startFocus,
-    startBreak,
+    isDistractionFree,
+
     pause,
     resume,
-    skip,
-    stop,
-    setPreset,
-    setAutoStartNext,
-    setNotificationsEnabled,
-    dismissAwayPause,
+    togglePause,
+    setDistractionFree,
+    toggleDistractionFree,
     recordSession,
+
+    // Backward compatibility fields
+    phase: 'focus',
+    remainingMs: todaySeconds * 1000,
+    targetDurationMs: 0,
+    endsAt: null,
+    startedAt: null,
+    autoStartNext: true,
+    notificationsEnabled: false,
+    completedFocusCount: sessions.length,
+    pausedReason: isPaused ? 'user' : null,
+    preset: DEFAULT_PRESET,
+
+    startFocus: () => resume(),
+    startBreak: () => {},
+    skip: () => {},
+    stop: () => pause(),
+    setPreset: () => {},
+    setAutoStartNext: () => {},
+    setNotificationsEnabled: async () => false,
+    dismissAwayPause: () => {},
   };
 
   return <FocusTimerContext.Provider value={value}>{children}</FocusTimerContext.Provider>;
 }
 
 const defaultTimerContext: FocusTimerContextType = {
-  phase: 'idle',
-  status: 'idle',
-  preset: DEFAULT_PRESET,
-  completedFocusCount: 0,
-  remainingMs: 25 * 60 * 1000,
-  targetDurationMs: 25 * 60 * 1000,
+  status: 'running',
+  isPaused: false,
+  todaySeconds: 0,
+  formattedToday: '00:00',
+  sessions: [],
+  isDistractionFree: false,
+
+  pause: () => {},
+  resume: () => {},
+  togglePause: () => {},
+  setDistractionFree: () => {},
+  toggleDistractionFree: () => {},
+  recordSession: () => {},
+
+  phase: 'focus',
+  remainingMs: 0,
+  targetDurationMs: 0,
   endsAt: null,
   startedAt: null,
   autoStartNext: true,
   notificationsEnabled: false,
+  completedFocusCount: 0,
   pausedReason: null,
-  sessions: [],
+  preset: DEFAULT_PRESET,
+
   startFocus: () => {},
   startBreak: () => {},
-  pause: () => {},
-  resume: () => {},
   skip: () => {},
   stop: () => {},
   setPreset: () => {},
   setAutoStartNext: () => {},
   setNotificationsEnabled: async () => false,
   dismissAwayPause: () => {},
-  recordSession: () => {},
 };
 
 export function useFocusTimer(): FocusTimerContextType {
@@ -656,39 +633,11 @@ export function useFocusTimer(): FocusTimerContextType {
   return context ?? defaultTimerContext;
 }
 
-/**
- * Lightweight hook for timer display components that updates countdown each second.
- * Does NOT cause the entire app or un-subscribed components to re-render.
- */
 export function useFocusCountdown() {
-  const { status, endsAt, remainingMs: staticRemainingMs, targetDurationMs } = useFocusTimer();
-
-  const calculateRemaining = useCallback(() => {
-    if (status === 'running' && endsAt !== null) {
-      return Math.max(0, endsAt - Date.now());
-    }
-    return staticRemainingMs;
-  }, [status, endsAt, staticRemainingMs]);
-
-  const [remainingMs, setRemainingMs] = useState(calculateRemaining);
-
-  useEffect(() => {
-    setRemainingMs(calculateRemaining());
-    if (status !== 'running' || endsAt === null) {
-      return;
-    }
-
-    const interval = setInterval(() => {
-      setRemainingMs(calculateRemaining());
-    }, 500);
-
-    return () => {
-      clearInterval(interval);
-    };
-  }, [status, endsAt, calculateRemaining]);
-
-  const progress = targetDurationMs > 0 ? Math.min(1, Math.max(0, 1 - remainingMs / targetDurationMs)) : 0;
-  const formatted = formatClockTime(remainingMs);
-
-  return { remainingMs, formatted, progress };
+  const { formattedToday, todaySeconds } = useFocusTimer();
+  return {
+    formatted: formattedToday,
+    remainingMs: todaySeconds * 1000,
+    progress: 0,
+  };
 }

@@ -1,7 +1,21 @@
 /**
- * Pure logic for the Pomodoro focus timer, session recording, and focus stats.
+ * Pure logic for screen time tracking, session recording, and focus stats.
  * Zero React dependencies so it can be tested deterministically.
  */
+
+export interface FocusSession {
+  id: string;
+  startedAt: string; // ISO string
+  endedAt: string; // ISO string
+  focusedSeconds: number;
+  completed: boolean;
+  section: string; // first path segment (e.g. 'learn', 'labs', 'interview', 'home')
+  plannedMinutes?: number; // legacy backward compat
+}
+
+export type TimerStatus = 'running' | 'paused';
+export type FocusPhase = 'focus' | 'idle' | 'shortBreak' | 'longBreak';
+export type PausedReason = 'user' | 'away' | null;
 
 export interface FocusPreset {
   id: '25-5' | '50-10' | 'custom';
@@ -26,36 +40,23 @@ export const PRESET_50_10: FocusPreset = {
 
 export const DEFAULT_PRESET: FocusPreset = PRESET_25_5;
 
-export type FocusPhase = 'idle' | 'focus' | 'shortBreak' | 'longBreak';
-export type TimerStatus = 'idle' | 'running' | 'paused' | 'phaseEnded';
-export type PausedReason = 'user' | 'away' | null;
-
-export interface FocusSession {
-  id: string;
-  startedAt: string; // ISO string
-  endedAt: string; // ISO string
-  plannedMinutes: number;
-  focusedSeconds: number;
-  completed: boolean;
-  section: string; // first path segment (e.g. 'learn', 'labs', 'interview', 'home')
-}
-
 export interface FocusTimerState {
-  phase: FocusPhase;
   status: TimerStatus;
-  preset: FocusPreset;
-  completedFocusCount: number; // 0..4 in current cycle
-  startedAt: number | null; // epoch ms of phase start
-  endsAt: number | null; // epoch ms when phase is scheduled to end
-  remainingMs: number; // ms remaining
-  targetDurationMs: number;
-  autoStartNext: boolean;
-  notificationsEnabled: boolean;
-  currentSessionId: string | null;
-  currentSessionSection: string;
-  accumulatedFocusMs: number;
+  isPaused: boolean;
+  todaySeconds: number;
+  currentSection: string;
   lastTickTimestamp: number | null;
-  pausedReason: PausedReason;
+  // Legacy fields for backward compat
+  phase?: FocusPhase;
+  preset?: FocusPreset;
+  remainingMs?: number;
+  targetDurationMs?: number;
+  endsAt?: number | null;
+  startedAt?: number | null;
+  autoStartNext?: boolean;
+  notificationsEnabled?: boolean;
+  completedFocusCount?: number;
+  pausedReason?: PausedReason;
 }
 
 /** Helper to generate UUIDs in browser or node environments */
@@ -77,493 +78,149 @@ export function extractSection(pathname: string): string {
   return clean || 'home';
 }
 
-export function createInitialState(preset: FocusPreset = DEFAULT_PRESET): FocusTimerState {
-  const targetMs = preset.focusMinutes * 60 * 1000;
+export function createInitialState(_preset?: FocusPreset): FocusTimerState {
   return {
-    phase: 'idle',
-    status: 'idle',
-    preset,
-    completedFocusCount: 0,
-    startedAt: null,
-    endsAt: null,
-    remainingMs: targetMs,
-    targetDurationMs: targetMs,
-    autoStartNext: true,
-    notificationsEnabled: false,
-    currentSessionId: null,
-    currentSessionSection: 'home',
-    accumulatedFocusMs: 0,
-    lastTickTimestamp: null,
-    pausedReason: null,
-  };
-}
-
-export function startPhase(
-  state: FocusTimerState,
-  phase: 'focus' | 'shortBreak' | 'longBreak',
-  section: string,
-  now = Date.now(),
-): FocusTimerState {
-  let minutes = state.preset.focusMinutes;
-  if (phase === 'shortBreak') minutes = state.preset.shortBreakMinutes;
-  if (phase === 'longBreak') minutes = state.preset.longBreakMinutes;
-
-  const targetDurationMs = minutes * 60 * 1000;
-  const isFocus = phase === 'focus';
-
-  return {
-    ...state,
-    phase,
     status: 'running',
-    startedAt: now,
-    endsAt: now + targetDurationMs,
-    remainingMs: targetDurationMs,
-    targetDurationMs,
-    pausedReason: null,
-    currentSessionId: isFocus ? (state.currentSessionId || generateSessionId()) : state.currentSessionId,
-    currentSessionSection: isFocus ? (section || state.currentSessionSection || 'home') : state.currentSessionSection,
-    lastTickTimestamp: isFocus ? now : null,
+    isPaused: false,
+    todaySeconds: 0,
+    currentSection: 'home',
+    lastTickTimestamp: null,
   };
 }
 
-/** Pause the timer */
-export function pauseTimer(state: FocusTimerState, reason: PausedReason = 'user', now = Date.now()): FocusTimerState {
-  if (state.status !== 'running') return state;
-
-  let accumulated = state.accumulatedFocusMs;
-  let remainingMs = state.remainingMs;
-
-  if (state.endsAt !== null) {
-    remainingMs = Math.max(0, state.endsAt - now);
-  }
-
-  if (state.phase === 'focus' && state.lastTickTimestamp !== null) {
-    const elapsed = Math.max(0, now - state.lastTickTimestamp);
-    accumulated += elapsed;
-  }
-
+export function pauseTimer(state: FocusTimerState, _reason: PausedReason = 'user', _now = Date.now()): FocusTimerState {
   return {
     ...state,
     status: 'paused',
-    remainingMs,
-    accumulatedFocusMs: accumulated,
+    isPaused: true,
     lastTickTimestamp: null,
-    pausedReason: reason,
+    pausedReason: 'user',
   };
 }
 
-/** Resume the timer */
 export function resumeTimer(state: FocusTimerState, now = Date.now()): FocusTimerState {
-  if (state.status !== 'paused' || state.remainingMs <= 0) return state;
-
   return {
     ...state,
     status: 'running',
-    startedAt: now - (state.targetDurationMs - state.remainingMs),
-    endsAt: now + state.remainingMs,
-    lastTickTimestamp: state.phase === 'focus' ? now : null,
-    pausedReason: null,
-  };
-}
-
-export interface RolloverResult {
-  nextState: FocusTimerState;
-  completedSessions: FocusSession[];
-  phaseChangesCount: number;
-}
-
-/**
- * Calculates phase transitions and records completed sessions across wall-clock time gaps
- * (background tabs, sleep/wake, page reloads).
- * Runs continuously through all elapsed phases until reaching the currently active phase.
- */
-export function rolloverTimer(state: FocusTimerState, now = Date.now()): RolloverResult {
-  if (state.status !== 'running' || state.endsAt === null) {
-    return { nextState: state, completedSessions: [], phaseChangesCount: 0 };
-  }
-
-  if (now < state.endsAt) {
-    const remainingMs = state.endsAt - now;
-    let accumulated = state.accumulatedFocusMs;
-    if (state.phase === 'focus' && state.lastTickTimestamp !== null) {
-      const elapsed = Math.max(0, now - state.lastTickTimestamp);
-      accumulated = Math.min(state.targetDurationMs, accumulated + elapsed);
-    }
-    return {
-      nextState: {
-        ...state,
-        remainingMs,
-        accumulatedFocusMs: accumulated,
-        lastTickTimestamp: state.phase === 'focus' ? now : null,
-      },
-      completedSessions: [],
-      phaseChangesCount: 0,
-    };
-  }
-
-  // One or more phases have completed
-  let curPhase = state.phase;
-  let curCount = state.completedFocusCount;
-  let curEndsAt = state.endsAt;
-  let curStartedAt = state.startedAt ?? (curEndsAt - state.targetDurationMs);
-  let curSessionId = state.currentSessionId;
-  const curSection = state.currentSessionSection || 'home';
-  const completedSessions: FocusSession[] = [];
-  let phaseChangesCount = 0;
-
-  const MAX_ROLLOVER_STEPS = 500;
-  let steps = 0;
-
-  while (now >= curEndsAt && steps < MAX_ROLLOVER_STEPS) {
-    steps++;
-    phaseChangesCount++;
-
-    if (curPhase === 'focus') {
-      const plannedMinutes = state.preset.focusMinutes;
-      const targetMs = plannedMinutes * 60 * 1000;
-      const focusedSeconds = Math.floor(targetMs / 1000);
-      const startedIso = new Date(curStartedAt).toISOString();
-      const endedIso = new Date(curEndsAt).toISOString();
-      const sessionId = curSessionId || generateSessionId();
-
-      completedSessions.push({
-        id: sessionId,
-        startedAt: startedIso,
-        endedAt: endedIso,
-        plannedMinutes,
-        focusedSeconds,
-        completed: true,
-        section: curSection,
-      });
-
-      const nextCompletedCount = curCount + 1;
-      const isLongBreak = nextCompletedCount >= 4;
-      curPhase = isLongBreak ? 'longBreak' : 'shortBreak';
-      curCount = isLongBreak ? 0 : nextCompletedCount;
-      const breakMinutes = isLongBreak ? state.preset.longBreakMinutes : state.preset.shortBreakMinutes;
-      const breakDurationMs = breakMinutes * 60 * 1000;
-
-      curStartedAt = curEndsAt;
-      curEndsAt = curStartedAt + breakDurationMs;
-      curSessionId = null;
-    } else {
-      // Break phase ended -> start next focus session
-      curPhase = 'focus';
-      const focusMinutes = state.preset.focusMinutes;
-      const focusDurationMs = focusMinutes * 60 * 1000;
-
-      curStartedAt = curEndsAt;
-      curEndsAt = curStartedAt + focusDurationMs;
-      curSessionId = generateSessionId();
-    }
-  }
-
-  // Active phase reached
-  const targetDurationMs = curPhase === 'focus'
-    ? state.preset.focusMinutes * 60 * 1000
-    : (curPhase === 'longBreak' ? state.preset.longBreakMinutes * 60 * 1000 : state.preset.shortBreakMinutes * 60 * 1000);
-
-  const remainingMs = Math.max(0, curEndsAt - now);
-  const elapsedInPhase = Math.max(0, now - curStartedAt);
-  const accumulatedFocusMs = curPhase === 'focus' ? Math.min(targetDurationMs, elapsedInPhase) : 0;
-  const lastTickTimestamp = curPhase === 'focus' ? now : null;
-
-  const nextState: FocusTimerState = {
-    ...state,
-    phase: curPhase,
-    status: 'running',
-    completedFocusCount: curCount,
-    startedAt: curStartedAt,
-    endsAt: curEndsAt,
-    remainingMs,
-    targetDurationMs,
-    currentSessionId: curSessionId,
-    accumulatedFocusMs,
-    lastTickTimestamp,
-    pausedReason: null,
-  };
-
-  return {
-    nextState,
-    completedSessions,
-    phaseChangesCount,
-  };
-}
-
-/** Handle background tab visibility change: computes rollover from timestamp */
-export function handleVisibilityChange(
-  state: FocusTimerState,
-  _hiddenDurationMs: number,
-  now = Date.now(),
-): { state: FocusTimerState; autoPaused: boolean; completedSessions: FocusSession[] } {
-  if (state.status !== 'running') {
-    return { state, autoPaused: false, completedSessions: [] };
-  }
-
-  const { nextState, completedSessions } = rolloverTimer(state, now);
-  return { state: nextState, autoPaused: false, completedSessions };
-}
-
-/** Recalculate remaining time and accumulated focus on a clock tick */
-export function tickTimer(state: FocusTimerState, now = Date.now()): FocusTimerState {
-  if (state.status !== 'running' || state.endsAt === null) {
-    return state;
-  }
-
-  if (now >= state.endsAt) {
-    const { nextState } = rolloverTimer(state, now);
-    return nextState;
-  }
-
-  const remainingMs = Math.max(0, state.endsAt - now);
-  let accumulated = state.accumulatedFocusMs;
-
-  if (state.phase === 'focus' && state.lastTickTimestamp !== null) {
-    const elapsed = Math.max(0, now - state.lastTickTimestamp);
-    accumulated = Math.min(state.targetDurationMs, accumulated + elapsed);
-  }
-
-  return {
-    ...state,
-    remainingMs,
-    accumulatedFocusMs: accumulated,
-    lastTickTimestamp: state.phase === 'focus' ? now : null,
-  };
-}
-
-/** Transition when current phase ends */
-export function completePhase(state: FocusTimerState, now = Date.now()): FocusTimerState {
-  const currentPhase = state.phase;
-
-  if (currentPhase === 'focus') {
-    const nextCompletedCount = state.completedFocusCount + 1;
-    const isLongBreak = nextCompletedCount >= 4;
-    const nextPhase: FocusPhase = isLongBreak ? 'longBreak' : 'shortBreak';
-    const breakMinutes = isLongBreak ? state.preset.longBreakMinutes : state.preset.shortBreakMinutes;
-    const breakDurationMs = breakMinutes * 60 * 1000;
-
-    return {
-      ...state,
-      phase: nextPhase,
-      status: 'running',
-      autoStartNext: true,
-      completedFocusCount: isLongBreak ? 0 : nextCompletedCount,
-      startedAt: now,
-      endsAt: now + breakDurationMs,
-      remainingMs: breakDurationMs,
-      targetDurationMs: breakDurationMs,
-      lastTickTimestamp: null,
-      pausedReason: null,
-    };
-  }
-
-  // Break phase ended -> start next focus session
-  const focusDurationMs = state.preset.focusMinutes * 60 * 1000;
-  return {
-    ...state,
-    phase: 'focus',
-    status: 'running',
-    autoStartNext: true,
-    startedAt: now,
-    endsAt: now + focusDurationMs,
-    remainingMs: focusDurationMs,
-    targetDurationMs: focusDurationMs,
-    currentSessionId: generateSessionId(),
-    accumulatedFocusMs: 0,
+    isPaused: false,
     lastTickTimestamp: now,
     pausedReason: null,
   };
 }
 
-/** Skip current phase to next */
-export function skipPhase(state: FocusTimerState, section: string, now = Date.now()): FocusTimerState {
-  if (state.phase === 'focus') {
-    const nextCompletedCount = state.completedFocusCount + 1;
-    const isLongBreak = nextCompletedCount >= 4;
-    const nextPhase: FocusPhase = isLongBreak ? 'longBreak' : 'shortBreak';
-    return startPhase(
-      {
-        ...state,
-        completedFocusCount: isLongBreak ? 0 : nextCompletedCount,
-      },
-      nextPhase,
-      section,
-      now,
-    );
-  }
-
-  // In break or idle -> start focus
-  return startPhase(
-    {
-      ...state,
-      accumulatedFocusMs: 0,
-      currentSessionId: generateSessionId(),
-    },
-    'focus',
-    section,
-    now,
-  );
-}
-
-/** Stop current session */
-export function stopSession(state: FocusTimerState, now = Date.now()): {
-  nextState: FocusTimerState;
-  completedSession: FocusSession | null;
-} {
-  let session: FocusSession | null = null;
-  const isFocus = state.phase === 'focus';
-  const effectiveNow = state.endsAt !== null ? Math.min(now, state.endsAt) : now;
-  let totalFocusedMs = state.accumulatedFocusMs;
-
-  if (isFocus && state.status === 'running' && state.lastTickTimestamp !== null) {
-    totalFocusedMs += Math.max(0, effectiveNow - state.lastTickTimestamp);
-  }
-
-  // Focused time is capped by targetDurationMs for focus phases
-  if (isFocus && state.targetDurationMs > 0) {
-    totalFocusedMs = Math.min(state.targetDurationMs, totalFocusedMs);
-  }
-
-  const focusedSeconds = Math.floor(totalFocusedMs / 1000);
-
-  // A session is saved when it completes or is stopped, if it has at least 1 minute (60s) of focus
-  if (focusedSeconds >= 60 && state.currentSessionId) {
-    const started = state.startedAt ? new Date(state.startedAt).toISOString() : new Date(now - totalFocusedMs).toISOString();
-    const sessionEndedAt = (state.endsAt !== null && now >= state.endsAt)
-      ? new Date(state.endsAt).toISOString()
-      : new Date(effectiveNow).toISOString();
-
-    session = {
-      id: state.currentSessionId,
-      startedAt: started,
-      endedAt: sessionEndedAt,
-      plannedMinutes: state.preset.focusMinutes,
-      focusedSeconds,
-      completed: state.remainingMs <= 0 || (state.endsAt !== null && now >= state.endsAt),
-      section: state.currentSessionSection || 'home',
-    };
-  }
-
-  const resetTargetMs = state.preset.focusMinutes * 60 * 1000;
-  const nextState: FocusTimerState = {
-    ...state,
-    phase: 'idle',
-    status: 'idle',
-    startedAt: null,
-    endsAt: null,
-    remainingMs: resetTargetMs,
-    targetDurationMs: resetTargetMs,
-    currentSessionId: null,
-    accumulatedFocusMs: 0,
-    lastTickTimestamp: null,
-    pausedReason: null,
-  };
-
-  return { nextState, completedSession: session };
-}
-
-/** Finalize a completed focus session into a FocusSession record if eligible (>= 60s) */
-export function finalizeFocusSession(
-  state: FocusTimerState,
-  completed: boolean,
-  now = Date.now(),
-): FocusSession | null {
-  const focusedSeconds = Math.floor(state.accumulatedFocusMs / 1000);
-  if (focusedSeconds < 60 || !state.currentSessionId) {
-    return null;
-  }
-
-  const started = state.startedAt ? new Date(state.startedAt).toISOString() : new Date(now - state.accumulatedFocusMs).toISOString();
-
-  return {
-    id: state.currentSessionId,
-    startedAt: started,
-    endedAt: new Date(now).toISOString(),
-    plannedMinutes: state.preset.focusMinutes,
-    focusedSeconds,
-    completed,
-    section: state.currentSessionSection || 'home',
-  };
-}
-
-/** Update preset */
-export function updatePreset(state: FocusTimerState, preset: FocusPreset): FocusTimerState {
-  if (state.status === 'idle') {
-    const targetMs = preset.focusMinutes * 60 * 1000;
-    return {
-      ...state,
-      preset,
-      remainingMs: targetMs,
-      targetDurationMs: targetMs,
-    };
-  }
-  // The focus phase that is already running takes the new length, keeping the time already focused.
-  if (state.phase === 'focus' && (state.status === 'running' || state.status === 'paused')) {
-    const now = Date.now();
-    const remainingNow = state.status === 'running' && state.endsAt !== null ? Math.max(0, state.endsAt - now) : state.remainingMs;
-    const elapsed = state.targetDurationMs - remainingNow;
-    const targetMs = preset.focusMinutes * 60 * 1000;
-    const remainingMs = Math.max(60 * 1000, targetMs - elapsed);
-    return {
-      ...state,
-      preset,
-      targetDurationMs: targetMs,
-      remainingMs,
-      endsAt: state.status === 'running' ? now + remainingMs : state.endsAt,
-    };
-  }
-  return {
-    ...state,
-    preset,
-  };
-}
-
-/** Resume timer state from persisted localStorage payload after page reload */
-export function restoreStateFromStorage(saved: Partial<FocusTimerState> | null, now = Date.now()): FocusTimerState {
-  if (!saved || !saved.preset) {
+/** Drops old Pomodoro timer properties (phase, preset, autoStartNext, endsAt, etc.) */
+export function restoreStateFromStorage(saved: any, _now = Date.now()): FocusTimerState {
+  if (!saved || typeof saved !== 'object') {
     return createInitialState();
   }
 
-  const base = createInitialState(saved.preset);
-  const state: FocusTimerState = {
-    ...base,
-    ...saved,
-    autoStartNext: true, // Always migrate old states with autoStartNext: false to true
+  const isPaused = Boolean(saved.isPaused || (saved.status === 'paused' && saved.pausedReason !== 'away'));
+  const section = saved.currentSection || saved.currentSessionSection || 'home';
+  return {
+    status: isPaused ? 'paused' : 'running',
+    isPaused,
+    todaySeconds: typeof saved.todaySeconds === 'number' ? saved.todaySeconds : 0,
+    currentSection: typeof section === 'string' ? section : 'home',
+    lastTickTimestamp: null,
+    pausedReason: isPaused ? 'user' : null,
   };
+}
 
-  if (state.pausedReason === 'away') {
-    state.pausedReason = null;
-    state.status = 'running';
-  }
+export interface ScreenTimeTabState {
+  isVisible: boolean;
+  isFocused: boolean;
+  isPaused: boolean;
+}
 
-  // If saved state was phaseEnded (or running past endsAt), roll over to the active continuous phase
-  if (state.status === 'phaseEnded' || (state.status === 'running' && state.endsAt !== null && now >= state.endsAt)) {
-    const rolloverBase: FocusTimerState = {
-      ...state,
-      status: 'running',
-      endsAt: state.endsAt ?? now,
-    };
-    const { nextState } = rolloverTimer(rolloverBase, now);
-    return nextState;
-  }
+/** Counting condition: active tab on Neural Mastery while visible and focused, and not manually paused */
+export function shouldCountScreenTime(tab: ScreenTimeTabState): boolean {
+  return tab.isVisible && tab.isFocused && !tab.isPaused;
+}
 
-  if (state.status === 'running' && state.endsAt !== null) {
-    // Still running: recalculate remainingMs from timestamp
-    const remainingMs = Math.max(0, state.endsAt - now);
-    const elapsedSinceLastTick = state.lastTickTimestamp !== null ? Math.max(0, now - state.lastTickTimestamp) : 0;
-    const accumulatedFocusMs = state.phase === 'focus'
-      ? Math.min(state.targetDurationMs, state.accumulatedFocusMs + elapsedSinceLastTick)
-      : state.accumulatedFocusMs;
+export interface RecordTickOptions {
+  lockTimestamp?: number;
+  lockThresholdMs?: number;
+  maxGapMs?: number;
+}
 
+/**
+ * Pure function to record a screen-time tick across tabs, detecting gaps and midnight rollover.
+ * - Tab lock: if another tab ticked within lockThresholdMs, it does not tick (no double counting).
+ * - Gap detection: if gap > maxGapMs, time spent away is dropped (no catch-up).
+ * - Midnight rollover: if local date changed, a new session is started for the new calendar day.
+ */
+export function recordScreenTimeTick(
+  sessions: FocusSession[],
+  section: string,
+  now: number,
+  lastTickTimestamp: number | null,
+  options?: RecordTickOptions,
+): {
+  sessions: FocusSession[];
+  ticked: boolean;
+  newLockTimestamp: number;
+  newLastTickTimestamp: number;
+} {
+  const threshold = options?.lockThresholdMs ?? 900;
+  const lock = options?.lockTimestamp ?? 0;
+
+  // Multi-tab deduplication: another tab already claimed this interval
+  if (now - lock < threshold) {
     return {
-      ...state,
-      remainingMs,
-      accumulatedFocusMs,
-      lastTickTimestamp: state.phase === 'focus' ? now : null,
+      sessions,
+      ticked: false,
+      newLockTimestamp: lock,
+      newLastTickTimestamp: lastTickTimestamp ?? now,
     };
   }
 
-  return state;
+  const nowIso = new Date(now).toISOString();
+  const todayStr = localDateString(new Date(now));
+  const maxGap = options?.maxGapMs ?? 2000;
+
+  // If a large gap occurred (> maxGap), do not catch up; start fresh
+  const isGap = lastTickTimestamp !== null && (now - lastTickTimestamp) > maxGap;
+
+  const currentSec = section || 'home';
+  const nextSessions = [...sessions];
+  const lastIndex = nextSessions.length - 1;
+
+  if (lastIndex >= 0 && !isGap) {
+    const prev = nextSessions[lastIndex];
+    const prevDateStr = localDateString(new Date(prev.endedAt));
+
+    // Can extend the previous session if same section and same calendar day
+    if (prev.section === currentSec && prevDateStr === todayStr) {
+      nextSessions[lastIndex] = {
+        ...prev,
+        endedAt: nowIso,
+        focusedSeconds: prev.focusedSeconds + 1,
+      };
+      return {
+        sessions: nextSessions,
+        ticked: true,
+        newLockTimestamp: now,
+        newLastTickTimestamp: now,
+      };
+    }
+  }
+
+  // Create a new session (first tick, section changed, midnight rollover, or returned after gap)
+  nextSessions.push({
+    id: generateSessionId(),
+    startedAt: nowIso,
+    endedAt: nowIso,
+    focusedSeconds: 1,
+    completed: true,
+    section: currentSec,
+  });
+
+  return {
+    sessions: nextSessions,
+    ticked: true,
+    newLockTimestamp: now,
+    newLastTickTimestamp: now,
+  };
 }
 
 // -------------------------------------------------------------
@@ -650,7 +307,6 @@ export function mergeFocusSessions(remote: FocusSession[], local: FocusSession[]
     if (!existing) {
       map.set(s.id, s);
     } else {
-      // Keep version with more focused seconds or marked completed
       if (s.focusedSeconds > existing.focusedSeconds || (!existing.completed && s.completed)) {
         map.set(s.id, s);
       }
@@ -721,8 +377,13 @@ export function completedSessionCount(sessions: FocusSession[]): number {
 export function focusStreak(sessions: FocusSession[], now = Date.now()): number {
   const completedDates = new Set<string>();
   for (const s of sessions) {
-    if (s.completed) {
-      completedDates.add(localDateString(new Date(s.endedAt)));
+    if (s.completed && s.focusedSeconds > 0) {
+      const splits = splitSessionByLocalDay(s);
+      for (const sp of splits) {
+        if (sp.seconds > 0) {
+          completedDates.add(sp.date);
+        }
+      }
     }
   }
 
@@ -735,7 +396,6 @@ export function focusStreak(sessions: FocusSession[], now = Date.now()): number 
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayStr = localDateString(yesterday);
 
-  // Streak must include either today or yesterday to be active
   let currentCheckDate: Date;
   if (completedDates.has(todayStr)) {
     currentCheckDate = today;
@@ -767,7 +427,6 @@ export function sevenDayBarStats(sessions: FocusSession[], now = Date.now()): Da
   const days: DayBarStat[] = [];
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-  // Map dates to total seconds using proportional midnight splitting
   const dateToSeconds: Record<string, number> = {};
   for (const s of sessions) {
     const splits = splitSessionByLocalDay(s);
@@ -804,8 +463,7 @@ export interface HeatmapDay {
 /** 12-week heatmap stats (12 weeks * 7 days = 84 days ending on Saturday of current week) */
 export function twelveWeekHeatmapStats(sessions: FocusSession[], now = Date.now()): HeatmapDay[] {
   const current = new Date(now);
-  const currentDayOfWeek = current.getDay(); // 0 is Sun, 6 is Sat
-  // End on the coming Saturday (or today if Saturday)
+  const currentDayOfWeek = current.getDay();
   const endDate = new Date(current);
   endDate.setDate(current.getDate() + (6 - currentDayOfWeek));
 
@@ -919,4 +577,48 @@ export function formatClockTime(ms: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+/**
+ * Formatter for today's focus time in the navbar control:
+ * e.g. "mm:ss" under an hour, or "1h 12m" / "1h" at or above 1 hour.
+ */
+export function formatTodayFocusTime(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  if (s < 3600) {
+    const mins = Math.floor(s / 60);
+    const secs = s % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+  const hours = Math.floor(s / 3600);
+  const mins = Math.floor((s % 3600) / 60);
+  return mins === 0 ? `${hours}h` : `${hours}h ${mins}m`;
+}
+
+// -------------------------------------------------------------
+// Legacy compatibility stubs
+// -------------------------------------------------------------
+export function startPhase(state: FocusTimerState, _phase: any, section: string, _now = Date.now()): FocusTimerState {
+  return { ...state, status: 'running', isPaused: false, currentSection: section || 'home' };
+}
+export function skipPhase(state: FocusTimerState, _section: string, _now = Date.now()): FocusTimerState {
+  return state;
+}
+export function stopSession(state: FocusTimerState, _now = Date.now()): { nextState: FocusTimerState; completedSession: FocusSession | null } {
+  return { nextState: state, completedSession: null };
+}
+export function updatePreset(state: FocusTimerState, preset: FocusPreset): FocusTimerState {
+  return { ...state, preset };
+}
+export function tickTimer(state: FocusTimerState, now = Date.now()): FocusTimerState {
+  return state.isPaused ? state : { ...state, lastTickTimestamp: now };
+}
+export function rolloverTimer(state: FocusTimerState, _now = Date.now()): { nextState: FocusTimerState; completedSessions: FocusSession[]; phaseChangesCount: number } {
+  return { nextState: state, completedSessions: [], phaseChangesCount: 0 };
+}
+export function handleVisibilityChange(state: FocusTimerState, _hiddenDurationMs: number, _now = Date.now()): { state: FocusTimerState; autoPaused: boolean; completedSessions: FocusSession[] } {
+  return { state, autoPaused: false, completedSessions: [] };
+}
+export function completePhase(state: FocusTimerState, _now = Date.now()): FocusTimerState {
+  return state;
 }

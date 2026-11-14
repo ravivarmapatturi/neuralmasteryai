@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { useFocusTimer, useFocusCountdown } from '../../contexts/FocusTimerContext';
-import { PRESET_25_5, PRESET_50_10 } from '../../lib/focusTimer';
+import { useFocusTimer } from '../../contexts/FocusTimerContext';
 
 interface FocusTimerPopoverProps {
   isOpen: boolean;
@@ -10,21 +9,8 @@ interface FocusTimerPopoverProps {
 
 export default function FocusTimerPopover({ isOpen, onClose }: FocusTimerPopoverProps) {
   const timer = useFocusTimer();
-  const { formatted } = useFocusCountdown();
   const panelRef = useRef<HTMLDivElement>(null);
   const primaryActionRef = useRef<HTMLButtonElement>(null);
-  const [announcement, setAnnouncement] = useState('');
-
-  // Keep screen reader updated on phase changes without polling every second
-  useEffect(() => {
-    if (timer.status === 'running') {
-      setAnnouncement(`${timer.phase === 'focus' ? 'Focus' : 'Break'} phase running.`);
-    } else if (timer.status === 'paused') {
-      setAnnouncement(`Timer paused${timer.pausedReason === 'away' ? ' while you were away' : ''}.`);
-    } else if (timer.status === 'phaseEnded') {
-      setAnnouncement(`${timer.phase === 'focus' ? 'Focus session' : 'Break'} complete.`);
-    }
-  }, [timer.status, timer.phase, timer.pausedReason]);
 
   // Handle escape and outside clicks
   useEffect(() => {
@@ -58,17 +44,6 @@ export default function FocusTimerPopover({ isOpen, onClose }: FocusTimerPopover
 
   if (!isOpen) return null;
 
-  const isBreak = timer.phase === 'shortBreak' || timer.phase === 'longBreak';
-  const phaseLabel = timer.status === 'idle'
-    ? 'Ready'
-    : timer.status === 'paused'
-    ? 'Paused'
-    : timer.phase === 'focus'
-    ? 'Focus'
-    : timer.phase === 'longBreak'
-    ? 'Long break'
-    : 'Short break';
-
   return (
     <div
       ref={panelRef}
@@ -76,13 +51,9 @@ export default function FocusTimerPopover({ isOpen, onClose }: FocusTimerPopover
       role="dialog"
       aria-label="Focus timer controls"
     >
-      <div className="sr-only" aria-live="polite">
-        {announcement}
-      </div>
-
       <header className="nm-timer-popover-header">
         <h3 className="nm-timer-popover-title">
-          <span aria-hidden="true">⏱</span> Focus Timer
+          <span aria-hidden="true">⏱</span> Focus Time
         </h3>
         <button
           type="button"
@@ -94,108 +65,25 @@ export default function FocusTimerPopover({ isOpen, onClose }: FocusTimerPopover
         </button>
       </header>
 
-      {/* Main countdown and phase card */}
+      {/* Main screen time card */}
       <div className="nm-timer-display-card">
-        <span
-          className={`nm-timer-popover-phase ${isBreak ? 'is-break' : ''} ${timer.status === 'paused' ? 'is-paused' : ''}`}
-        >
-          {phaseLabel}
+        <span className={`nm-timer-popover-phase ${timer.isPaused ? 'is-paused' : ''}`}>
+          {timer.isPaused ? 'Paused' : 'Active today'}
         </span>
-        <div className="nm-timer-popover-digits" aria-label={`Time remaining: ${formatted}`}>
-          {formatted}
+        <div
+          className="nm-timer-popover-digits"
+          aria-label={`Today's focus time: ${timer.formattedToday}`}
+        >
+          {timer.formattedToday}
         </div>
         <div className="nm-timer-session-info">
-          {timer.phase === 'focus'
-            ? `Session ${Math.min(4, timer.completedFocusCount + 1)} of 4`
-            : timer.status === 'idle'
-            ? `${timer.preset.focusMinutes} min session`
-            : 'Break time'}
+          {timer.isPaused ? 'Counting paused' : 'Counting your active screen time'}
         </div>
       </div>
 
-      {/* Away pause notification */}
-      {timer.status === 'paused' && timer.pausedReason === 'away' && (
-        <div className="nm-timer-away-alert" role="alert">
-          <div>
-            <strong>Paused while you were away</strong>
-          </div>
-          <button
-            type="button"
-            className="nm-timer-btn-secondary"
-            onClick={timer.resume}
-          >
-            Resume
-          </button>
-        </div>
-      )}
-
-
-      {/* Transport controls */}
-      {timer.status === 'idle' && (
-        <>
-          <div className="nm-timer-presets-row" role="group" aria-label="Preset duration">
-            <button
-              type="button"
-              className={`nm-timer-preset-btn ${timer.preset.id === '25-5' ? 'is-active' : ''}`}
-              onClick={() => timer.setPreset(PRESET_25_5)}
-              aria-pressed={timer.preset.id === '25-5'}
-            >
-              <span>25m / 5m</span>
-            </button>
-            <button
-              type="button"
-              className={`nm-timer-preset-btn ${timer.preset.id === '50-10' ? 'is-active' : ''}`}
-              onClick={() => timer.setPreset(PRESET_50_10)}
-              aria-pressed={timer.preset.id === '50-10'}
-            >
-              <span>50m / 10m</span>
-            </button>
-          </div>
-          <div className="nm-timer-controls-row">
-            <button
-              ref={primaryActionRef}
-              type="button"
-              className="nm-timer-btn-primary"
-              onClick={() => timer.startFocus()}
-            >
-              <span aria-hidden="true">▶</span> Start {timer.preset.focusMinutes}m focus
-            </button>
-          </div>
-        </>
-      )}
-
-      {timer.status === 'running' && (
-        <div className="nm-timer-controls-row">
-          <button
-            ref={primaryActionRef}
-            type="button"
-            className="nm-timer-btn-secondary"
-            onClick={timer.pause}
-            aria-label="Pause timer"
-          >
-            <span aria-hidden="true">Ⅱ</span> Pause
-          </button>
-          <button
-            type="button"
-            className="nm-timer-btn-secondary"
-            onClick={timer.skip}
-            aria-label="Skip phase"
-          >
-            <span aria-hidden="true">⏭</span> Skip
-          </button>
-          <button
-            type="button"
-            className="nm-timer-btn-danger"
-            onClick={timer.stop}
-            aria-label="Stop timer"
-          >
-            <span aria-hidden="true">⏹</span> Stop
-          </button>
-        </div>
-      )}
-
-      {timer.status === 'paused' && timer.pausedReason !== 'away' && (
-        <div className="nm-timer-controls-row">
+      {/* Transport control: Pause / Resume */}
+      <div className="nm-timer-controls-row">
+        {timer.isPaused ? (
           <button
             ref={primaryActionRef}
             type="button"
@@ -205,35 +93,30 @@ export default function FocusTimerPopover({ isOpen, onClose }: FocusTimerPopover
           >
             <span aria-hidden="true">▶</span> Resume
           </button>
+        ) : (
           <button
+            ref={primaryActionRef}
             type="button"
             className="nm-timer-btn-secondary"
-            onClick={timer.skip}
-            aria-label="Skip phase"
+            onClick={timer.pause}
+            aria-label="Pause timer"
           >
-            <span aria-hidden="true">⏭</span> Skip
+            <span aria-hidden="true">Ⅱ</span> Pause
           </button>
-          <button
-            type="button"
-            className="nm-timer-btn-danger"
-            onClick={timer.stop}
-            aria-label="Stop timer"
-          >
-            <span aria-hidden="true">⏹</span> Stop
-          </button>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Toggles */}
+      {/* Distraction-free switch */}
       <div className="nm-timer-toggles">
         <label className="nm-timer-toggle-item">
-          <span className="nm-timer-toggle-label">Browser notifications</span>
+          <span className="nm-timer-toggle-label">Distraction-free</span>
           <button
             type="button"
             role="switch"
-            aria-checked={timer.notificationsEnabled}
-            className={`nm-timer-switch ${timer.notificationsEnabled ? 'is-on' : ''}`}
-            onClick={() => void timer.setNotificationsEnabled(!timer.notificationsEnabled)}
+            aria-label="Distraction-free"
+            aria-checked={timer.isDistractionFree}
+            className={`nm-timer-switch ${timer.isDistractionFree ? 'is-on' : ''}`}
+            onClick={timer.toggleDistractionFree}
           >
             <span className="nm-timer-switch-thumb" />
           </button>

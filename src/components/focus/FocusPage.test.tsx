@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BrowserRouter } from 'react-router-dom';
 import FocusPage from './FocusPage';
@@ -32,10 +32,29 @@ describe('FocusPage Component', () => {
     localStorage.clear();
     vi.useFakeTimers();
     Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    Object.defineProperty(document, 'hasFocus', { configurable: true, value: () => true });
+
+    document.documentElement.requestFullscreen = vi.fn().mockImplementation(async () => {
+      Object.defineProperty(document, 'fullscreenElement', {
+        configurable: true,
+        value: document.documentElement,
+      });
+      document.dispatchEvent(new Event('fullscreenchange'));
+    });
+
+    document.exitFullscreen = vi.fn().mockImplementation(async () => {
+      Object.defineProperty(document, 'fullscreenElement', {
+        configurable: true,
+        value: null,
+      });
+      document.dispatchEvent(new Event('fullscreenchange'));
+    });
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    document.documentElement.classList.remove('distraction-free');
   });
 
   it('renders empty state when there are zero focus sessions', () => {
@@ -46,7 +65,7 @@ describe('FocusPage Component', () => {
     );
 
     expect(screen.getByRole('heading', { level: 1, name: 'Focus' })).toBeInTheDocument();
-    expect(screen.getAllByText('25:00').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('00:00').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('No focus sessions recorded yet')).toBeInTheDocument();
     expect(screen.getAllByText('0m').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('0 days')).toBeInTheDocument();
@@ -59,7 +78,6 @@ describe('FocusPage Component', () => {
         id: 'sess-1',
         startedAt: new Date(Date.now() - 3600000).toISOString(),
         endedAt: new Date(Date.now() - 2100000).toISOString(),
-        plannedMinutes: 25,
         focusedSeconds: 1500, // 25m
         completed: true,
         section: 'learn',
@@ -68,9 +86,8 @@ describe('FocusPage Component', () => {
         id: 'sess-2',
         startedAt: new Date(Date.now() - 1800000).toISOString(),
         endedAt: new Date(Date.now() - 600000).toISOString(),
-        plannedMinutes: 25,
         focusedSeconds: 1200, // 20m
-        completed: false,
+        completed: true,
         section: 'labs',
       },
     ];
@@ -85,7 +102,7 @@ describe('FocusPage Component', () => {
     expect(screen.queryByText('No focus sessions recorded yet')).not.toBeInTheDocument();
     expect(screen.getAllByText('45m').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('1 day')).toBeInTheDocument();
-    expect(screen.getByText('1 session')).toBeInTheDocument();
+    expect(screen.getByText('2 sessions')).toBeInTheDocument();
 
     // Verify charts and sections are visible
     expect(screen.getByText('Past 7 Days')).toBeInTheDocument();
@@ -95,20 +112,34 @@ describe('FocusPage Component', () => {
     expect(screen.getAllByText('Labs').length).toBeGreaterThanOrEqual(1);
   });
 
-  it('allows switching presets and custom duration', () => {
+  it('toggles Pause / Resume and Distraction-free switch on the Focus page', async () => {
     render(
       <Wrapper>
         <FocusPage />
       </Wrapper>,
     );
 
-    const btn50 = screen.getByRole('button', { name: '50 / 10 / 30' });
-    fireEvent.click(btn50);
-    expect(screen.getAllByText('50:00').length).toBeGreaterThanOrEqual(1);
+    // Initial state is running -> shows Pause button
+    const pauseBtn = screen.getByRole('button', { name: 'Pause timer' });
+    expect(pauseBtn).toBeInTheDocument();
 
-    const btnCustom = screen.getByRole('button', { name: 'Custom' });
-    fireEvent.click(btnCustom);
-    expect(screen.getByLabelText(/focus \(5–120 min\)/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/break \(1–30 min\)/i)).toBeInTheDocument();
+    fireEvent.click(pauseBtn);
+
+    // Now paused -> shows Resume button and status
+    expect(screen.getByRole('button', { name: 'Resume timer' })).toBeInTheDocument();
+    expect(screen.getByText('Counting paused')).toBeInTheDocument();
+
+    // Click Resume
+    fireEvent.click(screen.getByRole('button', { name: 'Resume timer' }));
+    expect(screen.getByRole('button', { name: 'Pause timer' })).toBeInTheDocument();
+
+    // Toggle distraction-free switch
+    const dfSwitch = screen.getByRole('switch', { name: 'Distraction-free' });
+    await act(async () => {
+      fireEvent.click(dfSwitch);
+    });
+
+    expect(document.documentElement.requestFullscreen).toHaveBeenCalled();
+    expect(document.documentElement.classList.contains('distraction-free')).toBe(true);
   });
 });

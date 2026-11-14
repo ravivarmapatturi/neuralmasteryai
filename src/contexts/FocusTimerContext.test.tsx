@@ -14,24 +14,22 @@ function TestTimerWidget() {
 
   return (
     <div>
-      <span data-testid="phase">{timer.phase}</span>
       <span data-testid="status">{timer.status}</span>
+      <span data-testid="is-paused">{String(timer.isPaused)}</span>
+      <span data-testid="today-formatted">{timer.formattedToday}</span>
       <span data-testid="countdown">{countdown.formatted}</span>
-      <span data-testid="reason">{timer.pausedReason || 'none'}</span>
+      <span data-testid="distraction-free">{String(timer.isDistractionFree)}</span>
       <span data-testid="sessions-count">{timer.sessions.length}</span>
 
-      <button onClick={() => timer.startFocus('learn')}>Start Focus</button>
       <button onClick={timer.pause}>Pause</button>
       <button onClick={timer.resume}>Resume</button>
-      <button onClick={timer.stop}>Stop</button>
-      <button onClick={timer.skip}>Skip</button>
+      <button onClick={timer.toggleDistractionFree}>Toggle Distraction Free</button>
       <button
         onClick={() =>
           timer.recordSession({
             id: 'device-a-session',
             startedAt: new Date(Date.now() - 1500000).toISOString(),
             endedAt: new Date().toISOString(),
-            plannedMinutes: 25,
             focusedSeconds: 1500,
             completed: true,
             section: 'learn',
@@ -46,7 +44,6 @@ function TestTimerWidget() {
             id: 'session-retry-1',
             startedAt: new Date(Date.now() - 3000000).toISOString(),
             endedAt: new Date(Date.now() - 1500000).toISOString(),
-            plannedMinutes: 25,
             focusedSeconds: 1500,
             completed: true,
             section: 'learn',
@@ -61,7 +58,6 @@ function TestTimerWidget() {
             id: 'session-retry-2',
             startedAt: new Date(Date.now() - 1500000).toISOString(),
             endedAt: new Date().toISOString(),
-            plannedMinutes: 25,
             focusedSeconds: 1500,
             completed: true,
             section: 'learn',
@@ -84,11 +80,30 @@ function Wrapper({ children }: { children: React.ReactNode }) {
   );
 }
 
-describe('FocusTimerContext', () => {
+describe('FocusTimerContext (Screen Time)', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.useFakeTimers();
     Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    Object.defineProperty(document, 'hasFocus', { configurable: true, value: () => true });
+
+    document.documentElement.requestFullscreen = vi.fn().mockImplementation(async () => {
+      Object.defineProperty(document, 'fullscreenElement', {
+        configurable: true,
+        value: document.documentElement,
+      });
+      document.dispatchEvent(new Event('fullscreenchange'));
+    });
+
+    document.exitFullscreen = vi.fn().mockImplementation(async () => {
+      Object.defineProperty(document, 'fullscreenElement', {
+        configurable: true,
+        value: null,
+      });
+      document.dispatchEvent(new Event('fullscreenchange'));
+    });
+
     vi.stubGlobal('Audio', class extends EventTarget {
       paused = true;
       src = '';
@@ -113,262 +128,142 @@ describe('FocusTimerContext', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    document.documentElement.classList.remove('distraction-free');
   });
 
-  it('starts focus on its own when the site opens', async () => {
+  it('starts running on its own when site opens and counts up while visible and focused', () => {
     render(
       <Wrapper>
         <TestTimerWidget />
       </Wrapper>,
     );
 
-    expect(screen.getByTestId('phase').textContent).toBe('focus');
     expect(screen.getByTestId('status').textContent).toBe('running');
+    expect(screen.getByTestId('is-paused').textContent).toBe('false');
+    expect(screen.getByTestId('today-formatted').textContent).toBe('00:00');
+
+    // Advance 5 seconds while visible and focused
     act(() => {
       vi.advanceTimersByTime(5000);
     });
-    expect(screen.getByTestId('countdown').textContent).toBe('24:55');
+
+    expect(screen.getByTestId('today-formatted').textContent).toBe('00:05');
   });
 
-  it('pauses and resumes timer', async () => {
+  it('pauses and resumes counting', () => {
     render(
       <Wrapper>
         <TestTimerWidget />
       </Wrapper>,
     );
 
-    fireEvent.click(screen.getByText('Start Focus'));
     act(() => {
-      vi.advanceTimersByTime(10000);
+      vi.advanceTimersByTime(3000);
     });
+    expect(screen.getByTestId('today-formatted').textContent).toBe('00:03');
 
+    // Pause timer
     fireEvent.click(screen.getByText('Pause'));
     expect(screen.getByTestId('status').textContent).toBe('paused');
+    expect(screen.getByTestId('is-paused').textContent).toBe('true');
 
-    // Time does not tick while paused
+    // Time does not count while paused
     act(() => {
       vi.advanceTimersByTime(10000);
     });
-    expect(screen.getByTestId('countdown').textContent).toBe('24:50');
+    expect(screen.getByTestId('today-formatted').textContent).toBe('00:03');
 
     // Resume
     fireEvent.click(screen.getByText('Resume'));
     expect(screen.getByTestId('status').textContent).toBe('running');
+    expect(screen.getByTestId('is-paused').textContent).toBe('false');
 
     act(() => {
-      vi.advanceTimersByTime(5000);
+      vi.advanceTimersByTime(2000);
     });
-    expect(screen.getByTestId('countdown').textContent).toBe('24:45');
+    expect(screen.getByTestId('today-formatted').textContent).toBe('00:05');
   });
 
-  it('auto-advances: focus ends then break is running with no action', async () => {
+  it('stops counting when tab is hidden or window blurs and resumes when focused', () => {
     render(
       <Wrapper>
         <TestTimerWidget />
       </Wrapper>,
     );
 
-    expect(screen.getByTestId('phase').textContent).toBe('focus');
-    expect(screen.getByTestId('status').textContent).toBe('running');
-
-    // Advance 25 minutes (the entire focus session)
     act(() => {
-      vi.advanceTimersByTime(25 * 60 * 1000);
+      vi.advanceTimersByTime(2000);
     });
+    expect(screen.getByTestId('today-formatted').textContent).toBe('00:02');
 
-    // Automatically transitions to shortBreak and stays running with no clicks
-    expect(screen.getByTestId('phase').textContent).toBe('shortBreak');
-    expect(screen.getByTestId('status').textContent).toBe('running');
-    expect(screen.getByTestId('countdown').textContent).toBe('05:00');
-    expect(screen.getByTestId('sessions-count').textContent).toBe('1');
-  });
-
-  it('auto-advances: break ends then next focus is running with no action', async () => {
-    render(
-      <Wrapper>
-        <TestTimerWidget />
-      </Wrapper>,
-    );
-
-    // Advance 25 minutes to complete focus
-    act(() => {
-      vi.advanceTimersByTime(25 * 60 * 1000);
-    });
-    expect(screen.getByTestId('phase').textContent).toBe('shortBreak');
-    expect(screen.getByTestId('status').textContent).toBe('running');
-
-    // Advance 5 minutes to complete short break
-    act(() => {
-      vi.advanceTimersByTime(5 * 60 * 1000);
-    });
-
-    // Automatically transitions back to focus and stays running
-    expect(screen.getByTestId('phase').textContent).toBe('focus');
-    expect(screen.getByTestId('status').textContent).toBe('running');
-    expect(screen.getByTestId('countdown').textContent).toBe('25:00');
-  });
-
-  it('user pause holds across a phase boundary and stop resets', async () => {
-    render(
-      <Wrapper>
-        <TestTimerWidget />
-      </Wrapper>,
-    );
-
-    expect(screen.getByTestId('phase').textContent).toBe('focus');
-    expect(screen.getByTestId('status').textContent).toBe('running');
-
-    // Advance 20 minutes (5m left)
-    act(() => {
-      vi.advanceTimersByTime(20 * 60 * 1000);
-    });
-    expect(screen.getByTestId('countdown').textContent).toBe('05:00');
-
-    // User explicitly pauses
-    fireEvent.click(screen.getByText('Pause'));
-    expect(screen.getByTestId('status').textContent).toBe('paused');
-    expect(screen.getByTestId('reason').textContent).toBe('user');
-
-    // Advance 10 minutes past what would have been the phase boundary (endsAt)
-    act(() => {
-      vi.advanceTimersByTime(10 * 60 * 1000);
-    });
-
-    // Phase boundary must NOT have advanced while paused!
-    expect(screen.getByTestId('phase').textContent).toBe('focus');
-    expect(screen.getByTestId('status').textContent).toBe('paused');
-    expect(screen.getByTestId('countdown').textContent).toBe('05:00');
-
-    // Resuming continues the remaining 5 minutes of the focus phase
-    fireEvent.click(screen.getByText('Resume'));
-    expect(screen.getByTestId('status').textContent).toBe('running');
-    expect(screen.getByTestId('countdown').textContent).toBe('05:00');
-
-    // Stop resets to idle
-    fireEvent.click(screen.getByText('Stop'));
-    expect(screen.getByTestId('phase').textContent).toBe('idle');
-    expect(screen.getByTestId('status').textContent).toBe('idle');
-  });
-
-  it('a long background gap covering several phases lands in the right phase with the right session count', async () => {
-    render(
-      <Wrapper>
-        <TestTimerWidget />
-      </Wrapper>,
-    );
-
-    expect(screen.getByTestId('phase').textContent).toBe('focus');
-    expect(screen.getByTestId('status').textContent).toBe('running');
-
-    // Tab goes into background
+    // Tab hidden
     Object.defineProperty(document, 'hidden', { configurable: true, value: true });
-    fireEvent(document, new Event('visibilitychange'));
-    // Does NOT pause when hidden!
-    expect(screen.getByTestId('status').textContent).toBe('running');
-
-    // Simulate 65 minutes passing in background:
-    // Focus 1 (25m) -> Break 1 (5m) -> Focus 2 (25m) -> Break 2 (5m) -> 5m into Focus 3 (20m remaining)
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
     act(() => {
-      vi.advanceTimersByTime(65 * 60 * 1000);
+      document.dispatchEvent(new Event('visibilitychange'));
     });
 
-    // Tab returns to foreground
+    // 10s pass while hidden: must NOT count!
+    act(() => {
+      vi.advanceTimersByTime(10000);
+    });
+    expect(screen.getByTestId('today-formatted').textContent).toBe('00:02');
+
+    // Tab visible again and focused
     Object.defineProperty(document, 'hidden', { configurable: true, value: false });
-    fireEvent(document, new Event('visibilitychange'));
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+      window.dispatchEvent(new Event('focus'));
+    });
 
-    expect(screen.getByTestId('status').textContent).toBe('running');
-    expect(screen.getByTestId('phase').textContent).toBe('focus');
-    expect(screen.getByTestId('countdown').textContent).toBe('20:00');
+    // Resumes counting 1s per tick
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(screen.getByTestId('today-formatted').textContent).toBe('00:05');
 
-    // Exactly 2 focus sessions completed and recorded!
-    expect(screen.getByTestId('sessions-count').textContent).toBe('2');
+    // Window blurs
+    act(() => {
+      window.dispatchEvent(new Event('blur'));
+    });
 
-    const stored = JSON.parse(localStorage.getItem('nm_focus_sessions') || '[]');
-    expect(stored.length).toBe(2);
-    expect(stored[0].focusedSeconds).toBe(1500);
-    expect(stored[0].completed).toBe(true);
-    expect(stored[1].focusedSeconds).toBe(1500);
-    expect(stored[1].completed).toBe(true);
+    // 10s pass while blurred: must NOT count!
+    act(() => {
+      vi.advanceTimersByTime(10000);
+    });
+    expect(screen.getByTestId('today-formatted').textContent).toBe('00:05');
   });
 
-  it('saves session on stop if focused >= 60 seconds', async () => {
+  it('distraction-free toggle calls requestFullscreen and reacts to fullscreenchange', async () => {
     render(
       <Wrapper>
         <TestTimerWidget />
       </Wrapper>,
     );
 
-    fireEvent.click(screen.getByText('Start Focus'));
+    expect(screen.getByTestId('distraction-free').textContent).toBe('false');
 
-    // Advance 65 seconds
-    act(() => {
-      vi.advanceTimersByTime(65000);
+    // Toggle on
+    await act(async () => {
+      fireEvent.click(screen.getByText('Toggle Distraction Free'));
     });
 
-    fireEvent.click(screen.getByText('Stop'));
-    expect(screen.getByTestId('status').textContent).toBe('idle');
-    expect(screen.getByTestId('sessions-count').textContent).toBe('1');
+    expect(document.documentElement.requestFullscreen).toHaveBeenCalled();
+    expect(document.documentElement.classList.contains('distraction-free')).toBe(true);
+    expect(screen.getByTestId('distraction-free').textContent).toBe('true');
 
-    // Verify localStorage has the session
-    const stored = JSON.parse(localStorage.getItem('nm_focus_sessions') || '[]');
-    expect(stored.length).toBe(1);
-    expect(stored[0].section).toBe('learn');
-    expect(stored[0].focusedSeconds).toBeGreaterThanOrEqual(60);
-  });
-
-  it('handles reload after endsAt has passed: saves session exactly once with time up to endsAt only', async () => {
-    // Simulate user had started a 25m session 27 minutes ago (2 minutes into break), then reloaded the tab
-    const now = Date.now();
-    const startedAt = now - 27 * 60 * 1000;
-    const endsAt = startedAt + 25 * 60 * 1000; // passed 2 minutes ago
-
-    localStorage.setItem(
-      'nm_focus_timer_state',
-      JSON.stringify({
-        phase: 'focus',
-        status: 'running',
-        preset: { id: '25-5', focusMinutes: 25, shortBreakMinutes: 5, longBreakMinutes: 15 },
-        completedFocusCount: 0,
-        startedAt,
-        endsAt,
-        remainingMs: 0,
-        targetDurationMs: 25 * 60 * 1000,
-        autoStartNext: false,
-        notificationsEnabled: false,
-        currentSessionId: 'reload-test-session',
-        currentSessionSection: 'learn',
-        accumulatedFocusMs: 0,
-        lastTickTimestamp: startedAt,
-        pausedReason: null,
-      }),
-    );
-
-    render(
-      <Wrapper>
-        <TestTimerWidget />
-      </Wrapper>,
-    );
-
-    // Initial render should restore state into continuous running (break phase) and save the session
-    expect(screen.getByTestId('status').textContent).toBe('running');
-    expect(screen.getByTestId('phase').textContent).toBe('shortBreak');
-    expect(screen.getByTestId('sessions-count').textContent).toBe('1');
-
-    const stored = JSON.parse(localStorage.getItem('nm_focus_sessions') || '[]');
-    expect(stored.length).toBe(1);
-    expect(stored[0].id).toBe('reload-test-session');
-    // Focused time must be 25 minutes (1500s), NOT 30 minutes
-    expect(stored[0].focusedSeconds).toBe(1500);
-    expect(stored[0].endedAt).toBe(new Date(endsAt).toISOString());
-    expect(stored[0].completed).toBe(true);
-
-    // Re-rendering or advancing timers must NOT save a duplicate session
-    act(() => {
-      vi.advanceTimersByTime(5000);
+    // Fullscreen exit via Esc (fullscreenElement becomes null)
+    await act(async () => {
+      Object.defineProperty(document, 'fullscreenElement', {
+        configurable: true,
+        value: null,
+      });
+      document.dispatchEvent(new Event('fullscreenchange'));
     });
-    expect(screen.getByTestId('sessions-count').textContent).toBe('1');
-    const storedAfter = JSON.parse(localStorage.getItem('nm_focus_sessions') || '[]');
-    expect(storedAfter.length).toBe(1);
+
+    expect(document.documentElement.classList.contains('distraction-free')).toBe(false);
+    expect(screen.getByTestId('distraction-free').textContent).toBe('false');
   });
 
   it('cross-device sync: two devices each save a session and both survive', async () => {
@@ -385,7 +280,6 @@ describe('FocusTimerContext', () => {
           id: 'device-b-session',
           startedAt: new Date(Date.now() - 3600000).toISOString(),
           endedAt: new Date(Date.now() - 2100000).toISOString(),
-          plannedMinutes: 25,
           focusedSeconds: 1500,
           completed: true,
           section: 'interview',
@@ -483,19 +377,7 @@ describe('FocusTimerContext', () => {
     });
   });
 
-  it('starts focus session automatically even if tab is hidden on initial mount', async () => {
-    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
-    render(
-      <Wrapper>
-        <TestTimerWidget />
-      </Wrapper>,
-    );
-
-    expect(screen.getByTestId('status').textContent).toBe('running');
-    expect(screen.getByTestId('phase').textContent).toBe('focus');
-  });
-
-  it('migrates a saved state with autoStartNext: false to running continuously', async () => {
+  it('migrates a saved state with old Pomodoro properties cleanly', async () => {
     localStorage.setItem(
       'nm_focus_timer_state',
       JSON.stringify({
@@ -523,8 +405,8 @@ describe('FocusTimerContext', () => {
       </Wrapper>,
     );
 
-    // Should migrate from phaseEnded into running continuous focus phase
+    // Should migrate from phaseEnded to running screen time
     expect(screen.getByTestId('status').textContent).toBe('running');
-    expect(screen.getByTestId('phase').textContent).toBe('focus');
+    expect(screen.getByTestId('is-paused').textContent).toBe('false');
   });
 });
