@@ -58,7 +58,7 @@ describe('FocusTimerControl and Popover', () => {
 
     // Initial today focus time starts at 00:00
     expect(screen.getByText('00:00')).toBeInTheDocument();
-    const navBtn = screen.getByRole('button', { name: /focus timer running/i });
+    const navBtn = screen.getByRole('button', { name: /focus time today/i });
     expect(navBtn).toBeInTheDocument();
 
     // Open popover
@@ -73,7 +73,7 @@ describe('FocusTimerControl and Popover', () => {
       </Wrapper>,
     );
 
-    const navBtn = screen.getByRole('button', { name: /focus timer running/i });
+    const navBtn = screen.getByRole('button', { name: /focus time today/i });
     fireEvent.click(navBtn);
 
     // Click Pause
@@ -98,7 +98,7 @@ describe('FocusTimerControl and Popover', () => {
     );
 
     // Open popover
-    const navBtn = screen.getByRole('button', { name: /focus timer running/i });
+    const navBtn = screen.getByRole('button', { name: /focus time today/i });
     fireEvent.click(navBtn);
 
     const dfSwitch = screen.getByRole('switch', { name: 'Distraction-free' });
@@ -128,6 +128,6 @@ describe('FocusTimerControl and Popover', () => {
 
     expect(document.documentElement.classList.contains('distraction-free')).toBe(false);
     expect(screen.queryByRole('button', { name: 'Exit distraction-free' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /focus timer running/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /focus time today/i })).toBeInTheDocument();
   });
 });

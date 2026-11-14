@@ -41,8 +41,8 @@ export default function FocusTimerControl() {
         onClick={() => setPopoverOpen((prev) => !prev)}
         aria-label={
           isRunning
-            ? `Focus timer running: ${timer.formattedToday} today. Open controls`
-            : `Focus timer paused: ${timer.formattedToday} today. Open controls`
+            ? `Focus time today: ${timer.formattedToday}. Open controls`
+            : `Focus time paused: ${timer.formattedToday} today. Open controls`
         }
         aria-expanded={popoverOpen}
         title="Focus Time"
