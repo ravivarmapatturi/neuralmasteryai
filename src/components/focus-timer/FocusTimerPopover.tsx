@@ -77,7 +77,7 @@ export default function FocusTimerPopover({ isOpen, onClose }: FocusTimerPopover
           {timer.formattedToday}
         </div>
         <div className="nm-timer-session-info">
-          {timer.isPaused ? 'Counting paused' : 'Counting your active screen time'}
+          {timer.isPaused ? 'Counting paused' : 'Counting your focus time'}
         </div>
       </div>
 
