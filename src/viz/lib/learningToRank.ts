@@ -161,11 +161,17 @@ export interface DecisionStump {
   rightValue: number;
 }
 
+/**
+ * Pedagogical first-order approximation: fits tree leaves to mean pseudo-residuals
+ * (virtual lambda forces). In full production LambdaMART (such as LightGBM), leaves
+ * are scaled using second-order Newton-Raphson steps gamma = sum(lambda_i) / sum(w_i)
+ * with Hessian weights w_i.
+ */
 export function fitLambdaMartStump(
   docs: LtrDoc[],
   lambdas: number[]
 ): DecisionStump {
-  // Simple stump on featureQueryMatch
+  // Simple pedagogical decision stump on featureQueryMatch
   const threshold = 0.5;
   let leftSum = 0;
   let leftCount = 0;

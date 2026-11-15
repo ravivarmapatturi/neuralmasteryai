@@ -81,7 +81,7 @@ export default function PageRankVisualizer() {
                   cursor: 'pointer',
                   border: `1px solid ${stepIndex === step ? t.accentPrimary : t.border}`,
                   background: stepIndex === step ? t.accentPrimary : t.surface,
-                  color: stepIndex === step ? '#fff' : t.textPrimary,
+                  color: stepIndex === step ? t.background : t.textPrimary,
                   transition: 'all 0.15s ease',
                 }}
               >
@@ -99,7 +99,7 @@ export default function PageRankVisualizer() {
                 cursor: 'pointer',
                 border: `1px solid ${isConvergedView ? t.accentPrimary : t.border}`,
                 background: isConvergedView ? t.accentPrimary : t.surface,
-                color: isConvergedView ? '#fff' : t.textPrimary,
+                color: isConvergedView ? t.background : t.textPrimary,
                 transition: 'all 0.15s ease',
               }}
             >

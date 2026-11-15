@@ -18,7 +18,7 @@ Imagine a university admissions office reviewing hundreds of applicants. The com
 
 ## What a Ranker Scores
 
-In search and recommendation architectures, candidate generation reduces a catalog of millions of items down to several hundred viable candidates. The ranking stage then evaluates this bounded candidate pool with an expressive scoring function:
+In multi-stage search and recommendation architectures, candidate generation (retrieval) filters a massive catalog down to a bounded pool of viable candidates (e.g. an illustrative retrieval pool of several hundred documents). The ranking stage then evaluates this bounded candidate pool with an expressive scoring function:
 
 $$s(q, d, u, c) = f_{\boldsymbol{\theta}}\left(\mathbf{x}(q, d, u, c)\right)$$
 
@@ -92,9 +92,9 @@ When training an offline ranking model on historical interaction logs from times
 </NotebookCallout>
 
 ### The Data Leakage Trap
-Consider a document feature: `historical_30d_click_count`.
-- **The Bug**: An offline ETL pipeline queries the production database table at midnight, computing the total clicks accrued by document $d$ over the last 30 days, and joins this scalar onto all search logs from that day.
-- **The Consequence**: A document that received 10,000 clicks *after* 6:00 PM will have a massive click count attached to its 9:00 AM impression log. The offline model observes this enormous feature value and learns that whenever this feature is high, users click the item. In offline validation, the model achieves near-perfect NDCG.
+Consider an illustrative document feature scenario: `historical_30d_click_count`.
+- **The Hypothetical Scenario**: An offline ETL pipeline queries the production database table at midnight, computing the total clicks accrued by document $d$ over the last 30 days, and joins this scalar onto all search logs from that day.
+- **The Consequence**: In this scenario, a document that received 10,000 clicks *after* 6:00 PM has that full daily total attached to its 9:00 AM impression log. The offline model observes this inflated feature value and learns that whenever this feature is high, users click the item. In offline validation, the model achieves artificially inflated NDCG.
 - **The Production Disaster**: When deployed live, newly published documents have zero historical clicks at 9:00 AM. The model starves them of traffic, causing severe performance collapse.
 
 Production platforms prevent temporal leakage by deploying **Feature Stores** (such as Feast, Tecton, or Hopsworks) that enforce point-in-time joins, or by logging the entire computed feature vector $\mathbf{x}$ inline at the exact millisecond the ranking request executes.
@@ -106,7 +106,7 @@ Supervised ranking models require training labels. While editorial human judgmen
 However, implicit feedback suffers from severe **position bias**.
 
 <PredictFirst
-  question="If an eye-tracking experiment reveals that document #1 receives 40% of all user clicks while document #5 receives only 4%, does this prove document #1 is 10 times more relevant?"
+  question="In a hypothetical eye-tracking illustration where document #1 receives 40% of observed user clicks while document #5 receives 4%, does this demonstrate document #1 is 10 times more relevant?"
   options={[
     "No. Users preferentially look at higher positions regardless of content quality (examination bias); a click requires both examination and relevance.",
     "Yes. Modern users scan the entire page before clicking, so clicks directly reflect intrinsic document quality.",
@@ -114,7 +114,7 @@ However, implicit feedback suffers from severe **position bias**.
     "Yes, because ranking algorithms always sort documents perfectly."
   ]}
   correctIndex={0}
-  explanation="According to the Examination Hypothesis (Craswell et al., 2008), a user clicks document d at position k if and only if two independent events occur: the user examines position k, and the document is relevant given examination: P(click) = P(examine | k) * P(relevant | d). An irrelevant item placed at rank 1 receives substantial clicks purely due to high examination probability."
+  explanation="According to the Examination Hypothesis (Craswell et al., 2008), a user clicks document d at position k if and only if two independent events occur: the user examines position k, and the document is relevant given examination: P(click) = P(examine | k) * P(relevant | d). In this hypothetical scenario, an item placed at rank 1 receives substantial clicks purely due to higher examination probability."
 />
 
 ### The Examination Hypothesis
@@ -175,9 +175,12 @@ Because $0 < d < 1$, every entry in $\mathbf{G}$ is strictly positive: $G_{v, u}
 2. The largest eigenvalue is unique and equals $\lambda_1 = 1$.
 3. There exists a unique stationary probability distribution vector $\boldsymbol{\pi} \in \mathbb{R}^N$ satisfying $\boldsymbol{\pi} \mathbf{G} = \boldsymbol{\pi}$ with $\sum_i \pi_i = 1$.
 4. Power iteration $\mathbf{p}^{(t+1)} = \mathbf{p}^{(t)} \mathbf{G}$ converges from any initial probability vector $\mathbf{p}^{(0)}$ at a geometric rate governed by the second eigenvalue:
-$$\|\mathbf{p}^{(t)} - \boldsymbol{\pi}\|_1 \le C \cdot |\lambda_2|^t \le C \cdot d^t$$
+$$\|\mathbf{p}^{(t)} - \boldsymbol{\pi}\|_1 \le \|\mathbf{p}^{(0)} - \boldsymbol{\pi}\|_1 \cdot |\lambda_2|^t \le 2 \cdot d^t$$
+(since the $L_1$ distance between any two probability distribution vectors is bounded by $2$).
 
-With $d = 0.85$, each iteration contracts error by at least $15\%$, requiring only 20 to 30 iterations for high-precision convergence across millions of nodes.
+Under this uniform teleportation model, the iteration error contracts by a factor bounded by $d$ at each power iteration step. For an illustrative error tolerance of $\epsilon = 10^{-3}$, setting $2 \cdot d^t \le 10^{-3}$ with $d = 0.85$ yields:
+$$t \ge \frac{\ln(10^{-3} / 2)}{\ln(0.85)} = \frac{\ln(0.0005)}{\ln(0.85)} \approx 46.8 \implies \lceil 47 \rceil \text{ iterations}$$
+This theoretical upper bound on iteration count is determined by damping factor $d$ and target precision $\epsilon$, independent of graph size $N$. In practice, the observed convergence rate depends on the graph's specific spectral gap and the chosen stopping criterion.
 </GoDeeper>
 
 ## A Full Worked Example: 4-Node Directed Graph
@@ -374,7 +377,7 @@ While PageRank serves as an effective global quality prior in hyperlinked corpor
 | **Chronological notification feeds** | Reverse-Chronological Order ($O(1)$) | Users expect strict temporal ordering; non-linear ranking confuses mental models of message arrival. |
 | **Strict business rule dispatch** (e.g. emergency alerts, legal subpoenas) | Deterministic Filter / Boolean Logic | Algorithmic ranking introduces non-deterministic edge cases and potential compliance violations. |
 | **Static documents in unlinked corpora** | Pure BM25 + Dense RRF | Without a genuine user citation graph, synthetic graph link metrics introduce arbitrary ranking noise. |
-| **Cold-start platforms with $<1{,}000$ daily queries** | Rule-Based Scoring / Heuristics | Insufficient click volume to fit unbiased IPS propensities or multi-feature boosted trees without severe overfitting. |
+| **Low-traffic cold-start platforms** (e.g. early prototypes or internal tools with minimal daily query volume) | Rule-Based Scoring / Heuristics | Insufficient click volume to fit unbiased IPS propensities or multi-feature boosted trees without severe variance and overfitting. |
 
 ## Remember
 

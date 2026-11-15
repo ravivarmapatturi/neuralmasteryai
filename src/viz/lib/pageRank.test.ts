@@ -45,9 +45,9 @@ describe('pageRank calculations', () => {
     // PR(B) = 0.1958
     // PR(C) = 0.3941
     // PR(D) = 0.0375
-    expect(converged.A).toBeCloseTo(0.3725, 3);
-    expect(converged.B).toBeCloseTo(0.1958, 3);
-    expect(converged.C).toBeCloseTo(0.3941, 3);
+    expect(converged.A).toBeCloseTo(0.3725, 4);
+    expect(converged.B).toBeCloseTo(0.1958, 4);
+    expect(converged.C).toBeCloseTo(0.3941, 4);
     expect(converged.D).toBeCloseTo(0.0375, 4);
 
     const total = converged.A + converged.B + converged.C + converged.D;

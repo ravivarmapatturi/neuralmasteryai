@@ -16,7 +16,7 @@ const WEIGHT_PRESETS: PresetOption[] = [
 ];
 
 const K_OPTIONS = [
-  { label: 'k = 60 (Standard)', value: 60 },
+  { label: 'k = 60 (Reference default)', value: 60 },
   { label: 'k = 20 (Responsive)', value: 20 },
   { label: 'k = 1 (Rank-1 Dominant)', value: 1 },
 ];

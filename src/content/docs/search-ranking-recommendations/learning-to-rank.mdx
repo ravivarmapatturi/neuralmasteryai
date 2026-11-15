@@ -54,8 +54,8 @@ The pointwise paradigm reduces ranking to standard regression or ordinal classif
 $$\mathcal{L}_{\text{pointwise}}(\boldsymbol{\theta}) = \sum_{q \in Q} \sum_{d \in D_q} \left( f_{\boldsymbol{\theta}}(\mathbf{x}_{q, d}) - y_{q, d} \right)^2$$
 
 **The Structural Flaws of Pointwise LTR**:
-1. **Query-Group Blindness**: Pointwise loss treats candidate documents across different queries as independent training samples. A query with 50 mediocre documents dominates gradient updates over a query with 3 highly competitive candidates.
-2. **Position Insensitivity**: An error of $1.0$ on document #1 carries the exact same penalty as an error of $1.0$ on document #50, even though users rarely look past the top few results.
+1. **Candidate Group Imbalance**: In an unweighted per-document formulation ($\mathcal{L}_{\text{pointwise}} = \sum_{q} \sum_{d \in D_q} (f(x) - y)^2$), candidate documents across different queries are treated as independent regression instances. Consequently, queries with larger candidate pools exert proportionally greater influence on parameter gradients. For instance, in a hypothetical scenario where query $Q_A$ has 50 judged documents and query $Q_B$ has only 3, unweighted per-document MSE weights $Q_A$ roughly 16× more than $Q_B$, unless explicit per-query group normalization ($\frac{1}{|D_q|}$) is applied.
+2. **Position Insensitivity**: In unweighted pointwise loss, an error of $1.0$ on the top-ranked document carries the exact same squared penalty as an error of $1.0$ on a deep candidate (such as position #50), despite user attention being heavily concentrated at the top of the slate.
 
 ### 2. The Pairwise Approach (RankNet)
 The pairwise paradigm transforms ranking into binary classification over pairs of documents associated with the same query.
@@ -94,15 +94,15 @@ Each $\lambda_i$ acts as a directional force pushing document $i$ up or down the
 </GoDeeper>
 
 <PredictFirst
-  question="RankNet optimizes pairwise 0/1 preference accuracy. Why does minimizing pairwise inversions still fail to maximize NDCG@10 in production search?"
+  question="RankNet optimizes pairwise preference accuracy. Why does minimizing pairwise inversions still fail to maximize NDCG@10 in production search?"
   options={[
-    "Pairwise loss treats an inversion between rank 1 and rank 2 identically to an inversion between rank 99 and rank 100, whereas NDCG applies logarithmic position discounting that heavily penalizes top-rank errors.",
+    "Pairwise loss treats an inversion between top ranks identically to an inversion deep in the list for the same score difference, whereas NDCG applies logarithmic position discounting that heavily penalizes top-rank errors.",
     "Pairwise loss requires all documents to have binary 0/1 labels and cannot accept graded relevance.",
     "Pairwise loss cannot be optimized using gradient descent because sigmoid derivatives are non-convex.",
     "Pairwise loss only works when every query has an even number of retrieved candidates."
   ]}
   correctIndex={0}
-  explanation="In RankNet, an inversion between two items with score difference delta produces the exact same loss regardless of whether the items are displayed at slots #1 and #2 or slots #99 and #100. But in search, a swap at slot #1 ruins the user experience and severely damages NDCG, whereas a swap at slot #99 is virtually invisible to users."
+  explanation="In RankNet, an inversion between two items with score difference delta produces the exact same loss regardless of whether the items appear at top positions (e.g. slots #1 and #2) or deep in the list (e.g. slots #99 and #100). But in search, an inversion at the top of the slate degrades the user experience and severely reduces NDCG, whereas a swap deep in the result list is rarely examined."
 />
 
 ## Metric-Driven Gradients: LambdaRank
@@ -135,7 +135,7 @@ $$|\Delta\text{NDCG}_{ij}| = \left| \frac{2^{y_i} - 2^{y_j}}{\text{IDCG}} \cdot 
 
 While LambdaRank was initially formulated for neural networks, neural architectures historically struggled on tabular ranking features containing noisy scales, high sparsity, and skewed continuous distributions.
 
-Wu et al. (2010) unified LambdaRank gradients with **Multiple Additive Regression Trees (MART)**, creating **LambdaMART**. LambdaMART is the production algorithm that powers ranking in engines like Bing, Yahoo, and open-source LightGBM/XGBoost.
+Wu et al. (2010) unified LambdaRank gradients with **Multiple Additive Regression Trees (MART)**, creating **LambdaMART**. The LambdaMART framework emerged as a winning approach in major industry benchmarks (such as the Yahoo! Learning to Rank Challenge; Chapelle & Chang, 2011) and forms the foundation for gradient-boosted ranking implementations in engines like LightGBM and XGBoost.
 
 ```
                            LambdaMART Training Loop
@@ -159,8 +159,9 @@ Wu et al. (2010) unified LambdaRank gradients with **Multiple Additive Regressio
                           Leaves predict pseudo-residuals λ_i
                                        │
                                        ▼
-                       5. Compute Newton-Raphson Leaf Steps
-                          γ_km = Σ λ_i / Σ w_i
+                       5. Compute Leaf Step Sizes
+                          Newton: γ_km = Σ λ_i / Σ w_i
+                          (First-order mean: γ_km = Σ λ_i / |R|)
                           Update ensemble: s_i ← s_i + η * γ_km
 ```
 
@@ -169,13 +170,15 @@ Wu et al. (2010) unified LambdaRank gradients with **Multiple Additive Regressio
 2. For each boosting round $m = 1, \dots, M$:
    - Compute current document rankings and slate NDCG scores.
    - For every document $i$, compute its virtual gradient $\lambda_i = \sum_{j} \lambda_{ij}$ and second-derivative weight $w_i = \sum_{j} \frac{\partial \lambda_{ij}}{\partial s_i}$.
-   - Train a decision tree to predict pseudo-residuals $\lambda_i$ from feature vectors $\mathbf{x}_i$.
-   - For each terminal leaf $k$, compute the optimal Newton-Raphson step size:
-     $$\gamma_{km} = \frac{\sum_{i \in R_{km}} \lambda_i}{\sum_{i \in R_{km}} w_i}$$
+   - Train a regression tree to partition feature space $\mathbf{x}_i$ into disjoint leaf regions $R_{km}$.
+   - For each terminal leaf $k$, compute the leaf step size:
+     - In full production implementations (e.g. LightGBM), leaf values use second-order Newton-Raphson steps scaled by Hessian weights:
+       $$\gamma_{km} = \frac{\sum_{i \in R_{km}} \lambda_i}{\sum_{i \in R_{km}} w_i}$$
+     - In pedagogical reference implementations, leaf values use a first-order approximation: predicting the mean pseudo-residual $\bar{\lambda}_{km} = \frac{1}{|R_{km}|} \sum_{i \in R_{km}} \lambda_i$.
    - Update model predictions: $s_i^{(m)} = s_i^{(m-1)} + \eta \cdot \gamma_{km}$, where $\eta \in (0, 1]$ is the learning rate.
 
-<NotebookCallout color="green" title="Why LambdaMART Dominates Tabular Ranking">
-Gradient Boosted Decision Trees (GBDT) handle missing feature values natively, require zero feature normalization (unlike neural networks, tree split points are monotonic transformations of single features), and automatically discover non-linear feature interactions (such as combining PageRank with query length).
+<NotebookCallout color="green" title="Why Decision Trees Excel on Tabular Ranking Features">
+Gradient Boosted Decision Trees (GBDT) handle missing feature values natively, require zero monotonic feature scaling (unlike neural networks, tree split points are invariant to monotonic transformations of single features), and efficiently discover non-linear feature interactions (such as combining PageRank with query length).
 </NotebookCallout>
 
 ## A Full Worked Example: 3-Document Query
@@ -294,9 +297,9 @@ print(f"  LambdaRank Scaled Lambda: {lambda_lambdarank:.4f}")
 # Observe how P(D1 > D2) rises above 0.5 and the lambda gradient force collapses.
 `} />
 
-## Implementing a LambdaMART Decision Stump
+## Implementing a Pedagogical LambdaMART Decision Stump (First-Order Approximation)
 
-In LambdaMART, decision trees fit the accumulated lambda forces $\lambda_i$ as pseudo-residuals. Execute the script below to fit a single decision stump on tabular features.
+In LambdaMART, decision trees fit the accumulated lambda forces $\lambda_i$ as pseudo-residuals. The runnable snippet below demonstrates a pedagogical first-order decision stump that fits tree leaves to the mean pseudo-residuals across candidate documents (in production LambdaMART, tree leaves are scaled via second-order Newton-Raphson steps $\gamma = \sum \lambda_i / \sum w_i$ using Hessian weights).
 
 <RunnableCode code={`import numpy as np
 
@@ -318,15 +321,16 @@ threshold = 0.5
 left_mask = X[:, feature_idx] <= threshold
 right_mask = X[:, feature_idx] > threshold
 
-# In LambdaMART, leaf values are optimal step sizes minimizing surrogate loss
+# Pedagogical first-order leaf approximation: predict mean pseudo-residual per partition
+# (Production LambdaMART uses second-order Newton-Raphson steps: sum(lambdas) / sum(hessians))
 left_update = np.mean(lambdas[left_mask]) if np.any(left_mask) else 0.0
 right_update = np.mean(lambdas[right_mask]) if np.any(right_mask) else 0.0
 
 print(f"Decision Stump Split Rule: [X[:, {feature_idx}] <= {threshold}]")
 print(f"  Left Leaf (Query Match <= {threshold}, Doc D3):")
-print(f"    Target Lambda Update: {left_update:.4f}")
+print(f"    Mean Pseudo-Residual (First-Order Leaf Update): {left_update:.4f}")
 print(f"  Right Leaf (Query Match > {threshold}, Docs D1 & D2):")
-print(f"    Target Lambda Update: {right_update:.4f}")
+print(f"    Mean Pseudo-Residual (First-Order Leaf Update): {right_update:.4f}")
 
 # Try it: Change threshold to 0.8 to isolate D1 into its own leaf.
 # Observe how the tree routes the entire -0.1180 upward gradient directly to D1.
@@ -349,18 +353,18 @@ For deep-dive formulations of NDCG, MRR, and MAP across evaluation splits, consu
 
 | Failure Mode | Root Cause | Engineering Fix |
 | :--- | :--- | :--- |
-| **LambdaMART severely overfits top ranking slots on rare queries** | Shallow trees memorize noisy query-document pairs with small leaf sample counts. | Set `min_child_samples >= 50` in LightGBM and apply feature subsampling (`colsample_bytree = 0.8`). |
-| **Listwise loss training diverges on long candidate lists** | Normalizing permutations across queries with hundreds of documents introduces numerical underflow in Softmax. | Truncate training lists to top-$K$ candidates (e.g. $K=30$); compute listwise loss over truncated candidate windows. |
-| **Pairwise models produce circular preference cycles** | Training data contains inconsistent user click feedback where $A \succ B$, $B \succ C$, and $C \succ A$. | Aggregate historical pair observations; prune pairs where statistical significance under a binomial test fails ($p > 0.05$). |
-| **Serving latency exceeds SLA during high-traffic spikes** | Scoring candidates through 1,000 boosted trees with 64 leaves takes $>20\text{ ms}$. | Deploy tree pruning, compress models using QuickScorer or Treelite, or evaluate only the top 50 candidates through the deep ensemble. |
+| **LambdaMART overfits top ranking slots on rare queries** | Shallow trees memorize noisy query-document pairs with small leaf sample counts. | Increase minimum child leaf samples (e.g. tuning `min_child_samples`) and apply feature subsampling (e.g. `colsample_bytree`) to regularize splits. |
+| **Listwise loss training diverges on long candidate lists** | Normalizing permutations across queries with large candidate sets introduces numerical instability in softmax denominators. | Truncate training candidate lists to a fixed top-$K$ cutoff (e.g. an illustrative window such as $K=30$); compute listwise loss over the truncated window. |
+| **Pairwise models encounter conflicting preference cycles** | Training logs contain noisy user click feedback where preference signals conflict across sessions ($A \succ B$, $B \succ C$, $C \succ A$). | Aggregate repeated pair impressions across sessions; filter out ambiguous pairs that lack statistically significant preference margins. |
+| **Serving latency exceeds SLA during high-traffic spikes** | Scoring large candidate sets through deep boosted tree ensembles strains the inference budget. | Prune ensemble depth, compile trees with native inference runtimes (such as Treelite), or restrict deep ensemble scoring to an illustrative top candidate pool (e.g. top 50). |
 
 ## When Not to Use Complex Learning to Rank
 
 | Situation | Recommended Alternative | Reason |
 | :--- | :--- | :--- |
-| **Zero labeled historical interaction data** | BM25 + Field Weighting Rules | Supervised LTR models require thousands of queries with graded judgments or click feedback to learn valid splits. |
+| **Zero labeled historical interaction data** | BM25 + Field Weighting Rules | Supervised LTR models require substantial collections of judged queries or logged implicit feedback to learn generalizable ranking splits. |
 | **Strictly navigational search** (login pages, homepage URLs) | Exact Match Lexical Index / MRR Filter | Graded listwise optimization adds computational overhead when only a single target URL satisfies the query. |
-| **Strict latency budgets $<1\text{ ms}$** | Lightweight Linear Model / Dot Product | Evaluating hundreds of decision tree paths or cross-encoders violates ultra-low latency guarantees. |
+| **Strict sub-millisecond latency budgets** | Lightweight Linear Model / Dot Product | Evaluating deep tree ensembles or neural cross-encoders exceeds ultra-low latency guarantees. |
 | **Catalog with extreme item turnover** (breaking news feeds, live auctions) | Freshness Heuristic + Inverted Index | Boosted tree features decay immediately when items exist for only minutes before expiring. |
 
 ## Remember
@@ -368,11 +372,11 @@ For deep-dive formulations of NDCG, MRR, and MAP across evaluation splits, consu
 | Concept | Formulation | Advantage | Limitation |
 | :--- | :--- | :--- | :--- |
 | **Pointwise LTR** | $\min \sum (f(x) - y)^2$ | Standard regression, fast training | Treats all ranks identically; ignores slate context. |
-| **Pairwise RankNet** | $\min -\log \sigma(s_i - s_j)$ | Optimizes relative preference order | Position-blind: rank 1 swap penalized same as rank 100. |
+| **Pairwise RankNet** | $\min -\log \sigma(s_i - s_j)$ | Optimizes relative preference order | Position-blind: top-rank swap penalized same as deep swap. |
 | **LambdaRank** | $\lambda_{ij} = \lambda^{\text{RankNet}} \cdot \vert\Delta\text{NDCG}\vert$ | Metric-sensitive gradients, heavily weights top ranks | Heuristic gradient without an analytical global loss. |
-| **LambdaMART** | MART trees fit to pseudo-gradients $\lambda_i$ | SOTA on tabular features, handles non-linearities | High memory during tree expansion; slow on deep slates. |
+| **LambdaMART** | MART trees fit to pseudo-gradients $\lambda_i$ | Highly effective on tabular features, handles non-linearities | High memory during tree expansion; latency scales with ensemble depth. |
 | **Listwise LTR** | Loss over entire permutation $\pi$ | Direct theoretical alignment with slate metrics | Computationally expensive; sensitive to candidate list length. |
-| **Newton-Raphson Step** | $\gamma = \sum \lambda_i / \sum w_i$ | Optimal second-order leaf update in GBDT | Requires positive-definite Hessian approximations. |
+| **Leaf Update (First-Order vs Newton)** | Mean $\frac{1}{\vert R \vert}\sum \lambda_i$ vs Newton $\frac{\sum \lambda_i}{\sum w_i}$ | First-order is simple mean residual; Newton-Raphson scales by Hessian curvature | Newton step requires strictly positive Hessian weights. |
 
 Next: [Search & Recommendation Pipelines](/docs/search-ranking-recommendations/overview) — review how candidate generation, filtering, ranking, and re-ranking orchestrate together in high-throughput production infrastructure.
 

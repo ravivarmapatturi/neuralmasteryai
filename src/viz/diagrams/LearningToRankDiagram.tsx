@@ -338,10 +338,10 @@ export default function LearningToRankDiagram() {
           {selectedObjective === 'LambdaMART (GBDT Ensembles)' && (
             <div>
               <div style={{ fontSize: 14, fontWeight: 700, color: t.accentPrimary, marginBottom: 6 }}>
-                Tree Ensemble Objective: LambdaMART GBDT Split
+                Tree Ensemble Objective: LambdaMART GBDT Split (First-Order Stump)
               </div>
               <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 10 }}>
-                GBDT fits regression trees directly to the virtual lambda forces &lambda;_i as pseudo-residuals.
+                GBDT fits regression trees directly to the virtual lambda forces &lambda;_i as pseudo-residuals (pedagogical first-order approximation).
               </div>
               <div
                 style={{
@@ -355,14 +355,14 @@ export default function LearningToRankDiagram() {
               >
                 <div>Decision Stump Split: [{stump.splitFeature} &le; {stump.threshold}]</div>
                 <div style={{ marginTop: 4, color: t.accentPrimary }}>
-                  Left Leaf (match &le; 0.5): update &gamma; = {stump.leftValue.toFixed(4)}
+                  Left Leaf (match &le; 0.5): mean residual update &gamma; = {stump.leftValue.toFixed(4)}
                 </div>
                 <div style={{ color: t.accentPrimary }}>
-                  Right Leaf (match &gt; 0.5): update &gamma; = {stump.rightValue.toFixed(4)}
+                  Right Leaf (match &gt; 0.5): mean residual update &gamma; = {stump.rightValue.toFixed(4)}
                 </div>
               </div>
               <div style={{ fontSize: 11, color: t.textMuted, marginTop: 10 }}>
-                In production, LightGBM or XGBoost fits hundreds of shallow trees with Newton-Raphson leaf updates to optimize NDCG directly without differentiating discrete ranks.
+                This simulator computes a first-order mean pseudo-residual leaf update; production engines (LightGBM/XGBoost) scale leaves using second-order Newton-Raphson steps with Hessian weights.
               </div>
             </div>
           )}
