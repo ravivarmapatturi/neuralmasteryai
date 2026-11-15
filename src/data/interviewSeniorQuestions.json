@@ -666,7 +666,193 @@
         "DistributedSampler guarantees non-overlapping rank partitions, but requires calling set_epoch() every epoch to ensure shuffling across epochs.",
         "Padding uneven datasets ensures equal batch counts per rank, avoiding deadlock in AllReduce, but introduces duplicate border samples."
       ]
-    ]
+    ],
+    {
+      "0": "gap-dist-tp-communication-overhead",
+      "id": "gap-dist-tp-communication-overhead",
+      "title": "A 70B parameter dense model running Megatron-style tensor parallelism across 8 GPUs on a single node experiences high inter-GPU communication latency during MLP and attention blocks. Which collective operations are executed in each transformer layer, and where do communication bottlenecks arise?",
+      "answer": "Megatron tensor parallelism executes exactly two All-Reduce collectives per transformer layer: one after the row-parallel projection in multi-head attention, and one after the row-parallel down-projection in the MLP block. In column-parallel linear projections, weight matrices are partitioned column-wise and inputs are broadcast implicitly without network communication. Row-parallel linear layers split weights row-wise and require an All-Reduce sum across all eight ranks before adding the residual connection. When all eight GPUs reside on a single node connected via NVLink (900 GB/s bidirectional), All-Reduce transfer latency is negligible. However, if tensor-parallel ranks cross node boundaries over InfiniBand or PCIe switches, network latency stalls forward compute because these collectives occur on the critical path of every layer and cannot be overlapped with backward compute. The trade-off is that tensor parallelism divides layer activations and weights to fit large models in GPU memory, but enforces tight synchronous barriers on every layer.",
+      "level": "senior",
+      "keyPoints": [
+        "Megatron TP executes exactly two All-Reduce operations per transformer layer in the forward pass.",
+        "Column-parallel projections require no communication while row-parallel projections require an All-Reduce.",
+        "TP collectives occur on every layer and cannot be overlapped with backward compute like DDP.",
+        "Restricting TP within a single NVLink node avoids cross-node InfiniBand latency penalties."
+      ],
+      "followUps": [
+        "Why is sequence parallelism often combined with tensor parallelism in Megatron-LM?"
+      ],
+      "wrongAnswers": [
+        "Assuming column-parallel projections require an All-Gather collective before row-parallel linear layers.",
+        "Suggesting tensor parallelism can span across high-latency multi-node Ethernet switches without throughput collapse."
+      ],
+      "rounds": [
+        "systems-design",
+        "ml-depth"
+      ],
+      "roles": [
+        "ml-systems-engineer",
+        "pre-training-engineer"
+      ],
+      "tradeOffs": [
+        "TP splits model weights and activations to fit large layers in SRAM and HBM, but introduces synchronous All-Reduce barriers on every layer."
+      ]
+    },
+    {
+      "0": "gap-dist-zero3-vs-fsdp-memory",
+      "id": "gap-dist-zero3-vs-fsdp-memory",
+      "title": "When training a 14B parameter model in FP16/BF16 across 64 GPUs, how does ZeRO Stage 3 (or full FSDP) partition states across ranks compared to ZeRO Stage 2, and what additional communication is required during forward and backward passes?",
+      "answer": "ZeRO Stage 3 shards optimizer states, gradients, and model parameters across all 64 ranks, whereas ZeRO Stage 2 shards only optimizer states and gradients while replicating full model parameters on every rank. In ZeRO-3, each GPU holds only 1/64th of the parameters. During the forward pass, an All-Gather collective dynamically fetches full layer parameters right before computation and discards them immediately afterward. During the backward pass, a second All-Gather fetches the layer parameters to compute input activations gradients, followed by a Reduce-Scatter collective that accumulates and shards gradients across ranks. Total communication increases by 50% compared to standard DDP: from 2× parameter size for gradient synchronization to 3× (1× forward All-Gather, 1× backward All-Gather, 1× backward Reduce-Scatter). The trade-off is that ZeRO-3 shrinks per-GPU memory footprint linearly with cluster rank count, but increases network communication volume by 1.5× and requires aggressive parameter prefetching to avoid execution stalls.",
+      "level": "senior",
+      "keyPoints": [
+        "ZeRO-2 shards optimizer states and gradients; ZeRO-3 additionally shards model parameters.",
+        "ZeRO-3 requires an All-Gather per layer in forward pass and backward pass, plus a Reduce-Scatter for gradients.",
+        "ZeRO-3 increases per-step communication volume from 2× parameter size in DDP to 3× in ZeRO-3.",
+        "Layer parameter prefetching is required to hide All-Gather latency behind previous layer computation."
+      ],
+      "followUps": [
+        "How does activation checkpointing affect the communication volume in ZeRO Stage 3?"
+      ],
+      "wrongAnswers": [
+        "Believing ZeRO-3 replicates parameters during the forward pass and keeps them cached in HBM across the full step.",
+        "Claiming ZeRO-2 requires an All-Gather of model parameters on every layer during forward propagation."
+      ],
+      "rounds": [
+        "systems-design",
+        "ml-depth"
+      ],
+      "roles": [
+        "ml-systems-engineer",
+        "ml-infrastructure-engineer"
+      ],
+      "tradeOffs": [
+        "ZeRO-3 reduces parameter memory linearly with cluster rank count, but trades memory for a 50% increase in communication bandwidth and tight prefetch scheduling."
+      ]
+    },
+    {
+      "0": "gap-dist-pipeline-bubble-arithmetic",
+      "id": "gap-dist-pipeline-bubble-arithmetic",
+      "title": "A cluster trains a model using 1F1B (1-Forward-1-Backward) pipeline parallelism with P = 8 pipeline stages and M = 32 micro-batches per global batch. What is the pipeline bubble fraction, and how many micro-batches M are needed to keep the bubble overhead below 10%?",
+      "answer": "For a standard 1F1B schedule with P = 8 pipeline stages and M = 32 micro-batches, the bubble fraction is (P - 1) / (M + P - 1) = (8 - 1) / (32 + 8 - 1) = 7 / 39, which equals approximately 17.95%. To reduce the bubble overhead below 10%, at least M = 64 micro-batches are required. The bubble represents idle GPU execution slots during warmup and cooldown phases when boundary stages wait for in-flight activations or backward gradients. Solving (P - 1) / (M + P - 1) <= 0.10 with P = 8 yields 7 / (M + 7) <= 0.10, which simplifies to 7 <= 0.10M + 0.70, giving 0.10M >= 6.30, so M >= 63 micro-batches. Selecting M = 64 achieves a bubble fraction of 7 / 71, or approximately 9.86%. The trade-off is that increasing the micro-batch count M shrinks the idle bubble and boosts GPU utilization, but linearly expands the memory required to buffer in-flight activation tensors across stages.",
+      "level": "senior",
+      "keyPoints": [
+        "Calculates the 1F1B bubble fraction as (P - 1) / (M + P - 1), yielding 7/39 or roughly 18% for P=8 and M=32.",
+        "Derives that M >= 63 micro-batches (e.g. M=64) is mathematically required to bring bubble fraction under 10%.",
+        "Explains that the bubble represents idle GPU time during pipeline warmup and cooldown phases.",
+        "Identifies the trade-off that larger micro-batch counts increase activation memory retention across stages."
+      ],
+      "followUps": [
+        "How does interleaved 1F1B (virtual pipeline stages) alter this bubble calculation?"
+      ],
+      "wrongAnswers": [
+        "Calculating the bubble fraction as P / M, resulting in 8/32 = 25% without accounting for total step duration.",
+        "Asserting that increasing the number of pipeline stages P decreases the bubble fraction."
+      ],
+      "rounds": [
+        "ml-depth",
+        "systems-design"
+      ],
+      "roles": [
+        "ml-systems-engineer",
+        "pre-training-engineer"
+      ],
+      "tradeOffs": [
+        "Scaling micro-batches shrinks pipeline idle bubble overhead, but linearly increases the memory needed to store in-flight activations."
+      ]
+    },
+    {
+      "0": "gap-dist-fsdp-gradient-sync-straggler",
+      "id": "gap-dist-fsdp-gradient-sync-straggler",
+      "title": "During distributed training across 128 GPUs in a synchronous DDP setup, the iteration time intermittently spikes from 420 ms to 1,850 ms every few steps, while GPU utilization drops to near zero during backward pass. How do you isolate whether the cause is a network straggler, thermal throttling, or CPU data loader starvation?",
+      "answer": "Profile per-rank execution timelines with PyTorch Profiler or NCCL trace logs to determine whether the delay originates from kernel computation, network transfer, or pre-step data loading. In synchronous data parallelism, all 128 ranks must synchronize gradients before optimizer step; the AllReduce collective blocks until the slowest rank participates. If CPU data loading starves, the delay manifests as an idle gap before the forward pass on that specific rank. If a GPU undergoes thermal throttling or clock frequency downscaling, its local CUDA kernel durations for forward and backward compute will stretch, while other ranks show prolonged ncclKernel_AllReduce wait time. If network packet drop, switch buffer bloat, or bad optical transceivers cause congestion, compute runtimes remain identical across ranks, but NCCL collective duration inflates on the affected communication ring. The trade-off is that granular profiling pinpoints silent hardware degradation, but collecting continuous multi-node traces introduces minor runtime overhead and large trace storage volume.",
+      "level": "senior",
+      "keyPoints": [
+        "Distinguishes straggler root causes by comparing local CUDA kernel durations against NCCL wait times.",
+        "Identifies that a compute or thermal straggler shows prolonged backward kernel execution on one rank.",
+        "Explains that network congestion inflates NCCL AllReduce transfer durations across communicating pairs.",
+        "Verifies whether data loader starvation delays forward pass entry before collective synchronization."
+      ],
+      "followUps": [
+        "Why does NCCL timeout detection often trigger on a healthy rank rather than the actual failed worker?"
+      ],
+      "wrongAnswers": [
+        "Assuming NCCL AllReduce automatically isolates and drops straggling nodes without blocking the rest of the cluster.",
+        "Attributing the intermittent drop to optimizer state updates without verifying backward collective timeline metrics."
+      ],
+      "rounds": [
+        "debugging",
+        "systems-design"
+      ],
+      "roles": [
+        "ml-systems-engineer",
+        "ml-infrastructure-engineer"
+      ],
+      "tradeOffs": [
+        "Continuous tracing isolates silent hardware stragglers without stopping jobs, but generates gigabytes of trace data and minor runtime overhead."
+      ]
+    },
+    {
+      "0": "gap-dist-nccl-watchdog-flight-recorder",
+      "id": "gap-dist-nccl-watchdog-flight-recorder",
+      "title": "A multi-node pre-training cluster with 512 GPUs encounters an unrecoverable NCCL error: \"Watchdog caught collective operation timeout after 1800 seconds\". How do you triage whether this was a silent node lockup, an InfiniBand cable link degradation, or a CUDA kernel hang?",
+      "answer": "Inspect the NCCL Flight Recorder dump and host kernel dmesg logs to identify the first rank that failed to enter the collective, rather than the ranks that timed out waiting for it. When an NCCL collective hangs, the watchdog timeout triggers across all healthy ranks waiting at the barrier. To diagnose: First, read the NCCL Flight Recorder circular buffer to identify the exact collective sequence number and which rank was absent from the ring communicator. Second, check dmesg and system logs on that specific worker for PCIe Advanced Error Reporting (AER) events or NVIDIA XID errors, such as XID 31 (GPU memory page fault) or XID 43 (GPU fell off bus). Third, query InfiniBand port performance counters using perfquery to check for SymbolErrors and LinkDownedCounter, which indicate physical optical cable degradation. The trade-off is that aggressive watchdog timeouts (such as 300 seconds) fail fast to trigger prompt job rescheduling, but risk aborting healthy jobs during legitimate prolonged checkpoint I/O.",
+      "level": "senior",
+      "keyPoints": [
+        "Names NCCL Flight Recorder and kernel dmesg/XID logs as primary diagnostics to find the non-reporting rank.",
+        "Recognizes that collective timeouts fire on healthy waiting ranks, not necessarily the culprit node.",
+        "Uses InfiniBand hardware counters like SymbolErrors to isolate physical cable or port degradation.",
+        "Balances watchdog timeout thresholds between early failure recovery and false-positive abortion."
+      ],
+      "followUps": [
+        "What is an XID error in NVIDIA GPU drivers, and which XID code signals an unrecoverable hardware fall-off-bus?"
+      ],
+      "wrongAnswers": [
+        "Restarting the entire training run without checking node logs, assuming collective timeouts are random transient software glitches.",
+        "Blaming the rank that printed the first error message in the console, ignoring that healthy ranks time out first when waiting."
+      ],
+      "rounds": [
+        "debugging",
+        "production-mlops"
+      ],
+      "roles": [
+        "ml-systems-engineer",
+        "ml-infrastructure-engineer"
+      ],
+      "tradeOffs": [
+        "Aggressive watchdog timeouts reduce wasted idle GPU hours on deadlocks, but cause premature aborts during legitimately long checkpoint writes."
+      ]
+    },
+    {
+      "0": "gap-dist-3d-parallelism-placement",
+      "id": "gap-dist-3d-parallelism-placement",
+      "title": "When deploying 3D parallelism (Data Parallelism, Tensor Parallelism, Pipeline Parallelism) across 32 nodes with 8 H100 GPUs per node (256 GPUs total), what is the optimal hierarchical assignment of parallelism dimensions to physical interconnects (NVLink vs. InfiniBand)?",
+      "answer": "Map Tensor Parallelism strictly within the single-node 8-GPU NVLink domain (TP = 8), place Pipeline Parallelism across adjacent nodes over InfiniBand (PP = 4), and place Data Parallelism across the remaining cluster ranks (DP = 8, where 8 × 4 × 8 = 256). Tensor parallelism requires fine-grained All-Reduce collectives at every transformer layer, generating tens of gigabytes of traffic per step that saturates any network below intra-node NVLink bandwidth (900 GB/s per GPU). Pipeline parallelism transmits only boundary activation and gradient tensors between consecutive stages at micro-batch transitions, generating point-to-point network communication that tolerates inter-node InfiniBand latencies. Data parallelism synchronizes bucketed gradients asynchronously once per iteration, overlapping communication with backward compute across the full cluster network. The trade-off is that binding TP strictly to the node boundary (maximum 8) avoids multi-node All-Reduce bottlenecks, but caps single-layer weight partitioning to eight ways.",
+      "level": "senior",
+      "keyPoints": [
+        "Assigns Tensor Parallelism strictly within the single-node 8-GPU NVLink domain to sustain high All-Reduce bandwidth.",
+        "Maps Pipeline Parallelism across adjacent nodes because point-to-point boundary tensor transfers tolerate InfiniBand latency.",
+        "Places Data Parallelism across the highest network hierarchy since gradient AllReduce overlaps with backward pass.",
+        "Validates that the product of TP, PP, and DP dimensions equals total cluster GPU count (8 x 4 x 8 = 256)."
+      ],
+      "followUps": [
+        "How does Context Parallelism (sequence parallelism across nodes) fit into this hierarchical mapping for long-context pre-training?"
+      ],
+      "wrongAnswers": [
+        "Placing Tensor Parallelism across nodes over InfiniBand and Pipeline Parallelism within the single node.",
+        "Running DP within the node and TP across nodes, claiming gradient communication requires higher bandwidth than TP."
+      ],
+      "rounds": [
+        "systems-design",
+        "ml-depth"
+      ],
+      "roles": [
+        "ml-systems-engineer",
+        "pre-training-engineer"
+      ],
+      "tradeOffs": [
+        "Mapping TP strictly to NVLink boundaries minimizes communication stalls, but caps tensor partition scale to 8 GPUs per layer."
+      ]
+    }
   ],
   "transformers": [
     [
@@ -1733,7 +1919,131 @@
         "The Four-Fifths Rule provides a clear regulatory compliance metric, but enforces equality of outcome regardless of underlying feature distribution differences.",
         "Equalized Odds guarantees equal error rates across groups, but requires access to ground-truth outcomes which are often delayed or biased."
       ]
-    ]
+    ],
+    {
+      "0": "gap-gov-immutable-audit-logging",
+      "id": "gap-gov-immutable-audit-logging",
+      "title": "A production agentic AI system performs loan pre-approval decisions. Regulatory compliance mandates that every decision can be audited up to five years later. How do you design an immutable audit logging pipeline that records model reasoning, tool inputs, and intermediate outputs without leaking PII?",
+      "answer": "Stream structured execution traces to an append-only write-once-read-many (WORM) storage system, replacing raw PII with deterministic salted cryptographic tokens. For every loan decision, the orchestrator assigns a unique trace ID and logs each execution step: system prompt version, retrieved context document IDs, raw model thought, tool call arguments, tool responses, and final decision. Before persistence, an automated redaction pipeline scans payloads for PII (names, Social Security numbers, addresses), replacing them with salted cryptographic hashes that allow entity linkage without plaintext exposure. The scrubbed trace record is signed with a private key, timestamped, and stored in an immutable S3 bucket with Object Lock in compliance mode (WORM). Encryption keys are rotated and access is logged via audit trails. The trade-off is that immutable WORM audit trails guarantee tamper-proof regulatory defensibility for years, but increase long-term storage costs and require strict PII tokenization pipelines before data write.",
+      "level": "senior",
+      "keyPoints": [
+        "Captures complete step-by-step agent execution traces including prompts, tool calls, and model outputs.",
+        "Applies automated PII tokenization and redaction prior to long-term storage persistence.",
+        "Stores audit traces in append-only WORM storage (e.g. S3 Object Lock) to prevent tampering.",
+        "Cryptographically signs log manifests to provide non-repudiation during regulatory audits."
+      ],
+      "followUps": [
+        "How do you handle 'right to be forgotten' (GDPR Article 17) requests when audit logs are stored in immutable WORM storage?"
+      ],
+      "wrongAnswers": [
+        "Storing raw prompts and PII in standard developer logging tables with open write and delete permissions.",
+        "Logging only the final approval decision without saving intermediate tool calls, prompts, or retrieval context."
+      ],
+      "rounds": [
+        "security-governance",
+        "systems-design"
+      ],
+      "roles": [
+        "ai-governance-lead",
+        "security-engineer"
+      ],
+      "tradeOffs": [
+        "WORM storage and PII tokenization guarantee regulatory compliance and forensic integrity, but prevent log modification and require secure salt-key management for de-identification."
+      ]
+    },
+    {
+      "0": "gap-gov-model-data-lineage-dag",
+      "id": "gap-gov-model-data-lineage-dag",
+      "title": "Six months after deploying a customer-facing fine-tuned model, a copyrighted dataset is ordered removed by a court. How do you trace exactly which model checkpoints, evaluation runs, and production endpoints were trained on or evaluated with that specific data subset?",
+      "answer": "Maintain a directed acyclic graph (DAG) of data and model lineage using metadata tracking tools, binding immutable dataset content hashes to training job manifests. In a compliant ML pipeline, datasets are never referenced by mutable file paths; they are versioned by cryptographic content hashes (such as SHA-256 snapshots in DVC). Every training run record logs: exact input dataset hashes, tokenizer hashes, base model commit ID, hyperparameters, and resulting checkpoint weights hash. When a data takedown occurs, the governance team queries the lineage metadata store for all runs whose input dependency graph includes the revoked dataset hash. This identifies all downstream artifact IDs, fine-tuned checkpoints, and active deployment endpoints. The identified models can then be systematically decommissioned and scheduled for retraining. The trade-off is that strict content-hash lineage tracking enables immediate blast-radius discovery and defensible legal compliance, but requires rigid data ingestion pipelines and forbids untracked manual dataset modifications.",
+      "level": "senior",
+      "keyPoints": [
+        "Binds training runs to immutable dataset version hashes rather than mutable file system paths.",
+        "Maintains a directed lineage DAG connecting raw data, fine-tuning jobs, and deployed model checkpoints.",
+        "Enforces deterministic reproducibility across training code, environment containers, and data artifacts.",
+        "Enables instantaneous querying of downstream model artifacts when a training data subset must be revoked."
+      ],
+      "followUps": [
+        "What is machine unlearning, and why is full retraining often preferred over unlearning techniques in enterprise compliance?"
+      ],
+      "wrongAnswers": [
+        "Searching training scripts manually for hardcoded folder paths and guessing which models used the data.",
+        "Assuming that once a model is trained, the source data cannot be challenged legally so no lineage is needed."
+      ],
+      "rounds": [
+        "security-governance",
+        "production-mlops"
+      ],
+      "roles": [
+        "ai-governance-lead",
+        "ml-systems-engineer"
+      ],
+      "tradeOffs": [
+        "Cryptographic data-to-model lineage tracking guarantees rapid compliance auditing and legal traceability, but imposes strict discipline on all data pipelines and storage."
+      ]
+    },
+    {
+      "0": "gap-gov-deployment-records-model-cards",
+      "id": "gap-gov-deployment-records-model-cards",
+      "title": "Before rolling out an autonomous agent to production in a regulated financial setting, what operational deployment record (model card) must be compiled, and which quantitative safety thresholds must be verified?",
+      "answer": "A standardized deployment record documenting model architecture, training data provenance, intended operational scope, quantitative safety evaluations, and out-of-scope failure boundaries must be verified and cryptographically signed. The operational record includes: System identity: model base, fine-tuning recipe, and runtime container digest. Intended use: permissible domains and explicit out-of-scope tasks. Benchmark metrics: task performance on golden test sets and calibration curves. Safety thresholds: jailbreak resilience rate (>99.5% on automated red-teaming sets), hallucination rate under 2% on ground-truth retrieval, and zero PII leakage under test prompts. Failure modes and fallback paths: human escalation procedures when model confidence drops below 0.85. The record is reviewed by security, legal, and engineering leads before releasing the model registry deployment gate. The trade-off is that formal deployment records and pre-flight evaluation gates prevent unsafe models from reaching production, but add testing latency to continuous delivery pipelines.",
+      "level": "senior",
+      "keyPoints": [
+        "Compiles standardized deployment manifests specifying model provenance, intended scope, and limits.",
+        "Enforces empirical safety gates including jailbreak resistance, hallucination rate, and PII leakage tests.",
+        "Defines explicit out-of-scope boundaries and automated fallback escalation pathways.",
+        "Requires cross-functional sign-off (security, engineering, legal) before promoting models to production."
+      ],
+      "followUps": [
+        "How do you automate model card generation within a continuous integration (CI/CD) deployment pipeline?"
+      ],
+      "wrongAnswers": [
+        "Treating a model card as an informal post-launch marketing blog post written by product managers.",
+        "Deploying models based solely on validation loss without measuring safety, bias, or adversarial robustness."
+      ],
+      "rounds": [
+        "security-governance",
+        "production-mlops"
+      ],
+      "roles": [
+        "ai-governance-lead",
+        "ai-evaluation-reliability-engineer"
+      ],
+      "tradeOffs": [
+        "Rigorous model deployment cards and automated gating eliminate compliance blindspots and unvetted models, but lengthen release cycles."
+      ]
+    },
+    {
+      "0": "gap-gov-post-incident-review-traceability",
+      "id": "gap-gov-post-incident-review-traceability",
+      "title": "A production customer support agent mistakenly offered a customer a 90% discount code during an adversarial prompt injection incident. How do you conduct a forensic post-incident review to trace the failure and prevent recurrence across the fleet?",
+      "answer": "Replay the exact conversation session from recorded execution traces, isolate whether the vulnerability was a guardrail bypass or missing tool validation, and deploy regression test cases to the CI safety gate. Extract the complete OpenTelemetry session trace using the transaction ID to inspect the exact prompt, token stream, and tool call payload. Determine root cause: did an input guardrail fail to classify the injection, or did the discount tool accept parameters outside allowed business logic? Reproduce the attack in a sandboxed test harness against the model. Apply defense-in-depth: add a deterministic parameter check on the discount tool (discount_pct <= 20), update input guardrail classifiers, and refine system prompt instructions. Add the adversarial prompt to the automated red-teaming regression test suite so subsequent model deployments must pass it. The trade-off is that full trace replay isolates prompt vulnerabilities immediately, but requires maintaining comprehensive telemetry logs and continuous regression evaluation suites.",
+      "level": "senior",
+      "keyPoints": [
+        "Reconstructs the incident timeline using deterministic session trace logs and tool execution records.",
+        "Identifies whether the failure occurred in input guardrails, model reasoning, or downstream tool validation.",
+        "Enforces defense-in-depth by placing deterministic business constraints directly on tool implementations.",
+        "Converts the exploit into an automated regression test in the CI/CD deployment verification gate."
+      ],
+      "followUps": [
+        "Why should business policy limits be enforced in tool code rather than solely relying on LLM prompt adherence?"
+      ],
+      "wrongAnswers": [
+        "Simply asking the LLM in the system prompt 'Please never give discounts greater than 20%' and closing the incident.",
+        "Deleting the conversation log to avoid customer embarrassment and blaming user bad faith."
+      ],
+      "rounds": [
+        "security-governance",
+        "debugging"
+      ],
+      "roles": [
+        "security-engineer",
+        "ai-governance-lead"
+      ],
+      "tradeOffs": [
+        "Deep forensic replay and deterministic tool bounds permanently prevent repeat exploits, but require dedicated incident analysis and continuous test maintenance."
+      ]
+    }
   ],
   "multimodal": [
     [
@@ -3006,7 +3316,316 @@
         "Atomic step checkpointing guarantees workspace consistency on sudden aborts, but adds disk snapshot overhead to each step.",
         "Preserving partial progress on a review branch gives users salvageable work, but requires branch management and cleanup."
       ]
-    ]
+    ],
+    {
+      "0": "gap-action-idempotent-tool-execution",
+      "id": "gap-action-idempotent-tool-execution",
+      "title": "An autonomous agent executing an external payment refund tool crashes due to a network timeout after sending the HTTP POST request. When the supervisor agent retries the step, how do you prevent issuing a duplicate refund?",
+      "answer": "Enforce deterministic idempotency keys generated from execution context and normalized tool arguments, transmitted in request headers and validated by the target API prior to execution. When an agent invokes a mutating tool, the agent runtime computes a deterministic hash of the task identifier, step index, tool name, and normalized argument payload. This key is sent in the Idempotency-Key header to the destination payment service. The service executes an atomic lookup in a distributed store (such as Redis SET NX or a database uniqueness constraint). If the key already exists and completed, the API returns the cached transaction response without re-executing the payment debit. If the key is currently locked in-flight, retries wait or receive an in-progress response. The trade-off is that idempotency keys eliminate duplicate financial mutations across retry attempts, but require downstream services to maintain persistent, TTL-bounded transaction state and handle concurrent lease contention.",
+      "level": "senior",
+      "keyPoints": [
+        "Generates deterministic idempotency keys derived from execution context and normalized tool arguments.",
+        "Transmits idempotency tokens via HTTP headers to downstream mutating tool endpoints.",
+        "Uses atomic distributed locks or unique database constraints to deduplicate concurrent or retried requests.",
+        "Returns cached historical results upon duplicate submission instead of executing duplicate side effects."
+      ],
+      "followUps": [
+        "How long should the downstream system retain idempotency keys in its cache, and what happens after TTL expiration?"
+      ],
+      "wrongAnswers": [
+        "Relying on the LLM to inspect conversational scratchpad logs and promise never to call the tool twice.",
+        "Converting the HTTP POST mutation to an HTTP GET request to make it naturally idempotent."
+      ],
+      "rounds": [
+        "systems-design",
+        "agent-architecture"
+      ],
+      "roles": [
+        "agent-engineer",
+        "applied-ai-engineer"
+      ],
+      "tradeOffs": [
+        "Idempotency keys eliminate duplicate external side effects during retries, but impose persistent deduplication storage and strict payload normalization requirements."
+      ]
+    },
+    {
+      "0": "gap-action-tool-permission-boundaries",
+      "id": "gap-action-tool-permission-boundaries",
+      "title": "An enterprise coding agent has access to tools for querying GitHub issues, modifying local files, and creating pull requests. How do you structure permission boundaries so a malicious prompt injection in a public issue cannot exfiltrate code to an external server?",
+      "answer": "Enforce capability-based security boundaries with isolated tool execution environments and strict outbound network egress controls, denying file-reading tools access to external network sockets. Tools must operate under the principle of least privilege in decoupled runtimes. Local file reading and workspace modification tools execute inside an ephemeral, network-isolated container with network namespace set to none. GitHub API operations run through an authenticated reverse proxy that permits only whitelisted domains (api.github.com) and explicit target repository scopes, preventing raw socket connections or arbitrary HTTP POST requests. Content retrieved from untrusted public issues is marked as tainted context, prohibiting the runtime from invoking egress-capable tools without human intervention. The trade-off is that containerized network isolation eliminates socket-level exfiltration vectors, but prevents tools from downloading arbitrary external debugging dependencies or third-party packages without authenticated proxy configuration.",
+      "level": "senior",
+      "keyPoints": [
+        "Applies capability-based security by running local file-access tools in network-isolated containers.",
+        "Restricts outbound API tools to domain-whitelisted HTTP proxies, blocking arbitrary socket connections.",
+        "Treats external inputs like public GitHub issues as untrusted data that cannot trigger sensitive tools.",
+        "Enforces short-lived, narrowly scoped authentication tokens rather than granting ambient root credentials."
+      ],
+      "followUps": [
+        "How can the Model Context Protocol (MCP) enforce tool-level access control lists between clients and servers?"
+      ],
+      "wrongAnswers": [
+        "Appending a system prompt warning telling the LLM not to execute curl commands when reading issues.",
+        "Allowing all tools to run in the host environment while relying on regex output filters to catch exfiltrated secrets."
+      ],
+      "rounds": [
+        "systems-design",
+        "security-governance"
+      ],
+      "roles": [
+        "security-engineer",
+        "agent-engineer"
+      ],
+      "tradeOffs": [
+        "Containerized network isolation halts data exfiltration vectors, but introduces container startup overhead and limits tools requiring arbitrary package mirrors."
+      ]
+    },
+    {
+      "0": "gap-action-policy-enforcement-approval-gates",
+      "id": "gap-action-policy-enforcement-approval-gates",
+      "title": "A customer support agent can answer questions, view user order history, and initiate order cancellations or refunds up to $500. How do you design an out-of-band policy enforcement layer and human approval gate for actions exceeding risk thresholds?",
+      "answer": "Implement a deterministic policy interceptor between model tool-calling outputs and the execution runtime that pauses execution and registers an approval ticket when arguments exceed risk limits. The model never calls sensitive business APIs directly. When the LLM outputs a tool call (such as issue_refund(amount=450)), a policy evaluation proxy evaluates declarative Open Policy Agent (OPA) or CEL rules against the action, target entity, and user role. If the action is read-only (such as view_order), it executes immediately. If it exceeds defined thresholds (such as amount > $100 or cancel_order), the policy proxy halts the agent loop, transitions session state to AWAITING_APPROVAL, persists a signed snapshot of the session state, and alerts human reviewers. Upon human approval via a signed callback webhook, execution resumes with the verified parameters. The trade-off is that deterministic approval gates prevent compromised models from committing unauthorized financial mutations, but introduce asynchronous latency and human reviewer bottlenecks into autonomous workflows.",
+      "level": "senior",
+      "keyPoints": [
+        "Places a deterministic policy engine (e.g. OPA or CEL) between model tool-call generation and execution.",
+        "Classifies tools into read-only autonomous actions versus high-risk actions requiring approval gates.",
+        "Suspends agent state deterministically in persistent storage while awaiting human sign-off.",
+        "Validates that the human-approved payload matches the original execution parameters before resumption."
+      ],
+      "followUps": [
+        "How do you prevent time-of-check to time-of-use (TOCTOU) race conditions while an action is waiting for human approval?"
+      ],
+      "wrongAnswers": [
+        "Instructing the LLM in the system prompt to ask the user 'Are you sure?' before executing refunds.",
+        "Letting the tool execute immediately and relying on an asynchronous post-hoc email report to detect invalid refunds."
+      ],
+      "rounds": [
+        "systems-design",
+        "security-governance"
+      ],
+      "roles": [
+        "agent-engineer",
+        "applied-ai-engineer"
+      ],
+      "tradeOffs": [
+        "Hard approval gates eliminate catastrophic financial actions by compromised agents, but convert real-time agent responses into asynchronous human-in-the-loop tickets."
+      ]
+    },
+    {
+      "0": "gap-action-least-privilege-token-scoping",
+      "id": "gap-action-least-privilege-token-scoping",
+      "title": "An autonomous DevOps agent is tasked with diagnosing and restarting a stalled worker container in Kubernetes. How do you provide the agent with credentials that satisfy the principle of least privilege, rather than providing a cluster-admin kubeconfig?",
+      "answer": "Issue an ephemeral, short-lived Kubernetes ServiceAccount token bound via namespace-scoped RBAC strictly to get, list, and delete verbs on pods in a single target namespace. Rather than granting ambient cluster-wide credentials, the agent orchestrator mints a temporary token with a 15-minute TTL using the Kubernetes TokenRequest API. The associated Role and RoleBinding permit only diagnostic queries and pod restarts (delete pod). Sensitive resources and privilege-escalation endpoints—including secrets, configmaps, nodes, persistent volumes, and pod exec—are strictly denied. In addition, the agent communicates through an API gateway that validates pod label selectors before forwarding requests, preventing the agent from restarting ingress controllers, system daemons, or monitoring pods. The trade-off is that fine-grained RBAC and dynamic token scoping contain the blast radius of prompt injections or hallucinations, but require credential broker infrastructure to mint and renew scoped tokens dynamically.",
+      "level": "senior",
+      "keyPoints": [
+        "Mints short-lived ephemeral ServiceAccount tokens scoped to a strict 15-minute time window.",
+        "Applies namespace-scoped RBAC roles restricting actions to specific verbs (get/list/delete pod).",
+        "Denies access to privilege escalation resources including secrets, cluster roles, and container exec.",
+        "Restricts blast radius so that hallucinated or hijacked commands cannot compromise the wider cluster."
+      ],
+      "followUps": [
+        "Why is kubectl exec considered significantly higher risk than kubectl delete pod for an autonomous agent?"
+      ],
+      "wrongAnswers": [
+        "Mounting the host root Docker socket or cluster-admin kubeconfig directly into the agent container.",
+        "Using static long-lived admin credentials and asking the model not to touch production namespaces."
+      ],
+      "rounds": [
+        "systems-design",
+        "security-governance"
+      ],
+      "roles": [
+        "platform-engineer",
+        "agent-engineer"
+      ],
+      "tradeOffs": [
+        "Dynamic least-privilege scoping prevents catastrophic cluster-wide outages from runaway agents, but adds token brokering complexity and RBAC maintenance overhead."
+      ]
+    },
+    {
+      "0": "gap-action-distributed-lock-agent-race",
+      "id": "gap-action-distributed-lock-agent-race",
+      "title": "Two autonomous procurement agents run concurrently to restock warehouse inventory. When inventory falls below 10 units, both agents detect the shortfall simultaneously and attempt to issue supplier purchase orders. How do you prevent over-ordering?",
+      "answer": "Acquire a distributed lock with a lease and fencing token on the specific SKU before evaluating inventory levels and dispatching the supplier purchase order. When an agent detects a reorder condition, it acquires a distributed lock in Redis or PostgreSQL for the SKU (such as acquire_lock('sku_12345', ttl=30s)). The lock service issues a monotonically increasing fencing token. The agent re-queries the latest confirmed stock and pending order records under the lock. If another agent has already dispatched a replenishment order, the agent releases the lock and terminates the task. When sending the purchase order to the external supplier API, the fencing token is attached, ensuring the supplier database rejects stale or out-of-order mutations from workers whose lease expired. The trade-off is that distributed locks with fencing tokens guarantee mutual exclusion and eliminate double-ordering, but introduce latency, lock acquisition overhead, and potential queue contention under concurrent agent spikes.",
+      "level": "senior",
+      "keyPoints": [
+        "Acquires a distributed lock on the specific resource key before reading state and committing side effects.",
+        "Uses monotonically increasing fencing tokens to prevent stale agents with expired leases from committing writes.",
+        "Re-checks condition predicates under the lock to detect whether a concurrent agent already took action.",
+        "Enforces TTL-bounded leases to ensure automatic release if the executing agent terminates unexpectedly."
+      ],
+      "followUps": [
+        "What is the purpose of a fencing token in Martin Kleppmann's critique of distributed locking algorithms?"
+      ],
+      "wrongAnswers": [
+        "Allowing both agents to fire orders and relying on human warehouse staff to return duplicate physical shipments.",
+        "Checking inventory in memory and ordering without locking, assuming agent execution is fast enough to avoid races."
+      ],
+      "rounds": [
+        "systems-design"
+      ],
+      "roles": [
+        "ml-systems-engineer",
+        "agent-engineer"
+      ],
+      "tradeOffs": [
+        "Distributed locks with fencing tokens prevent race conditions and inventory double-spend, but require distributed lock infrastructure and introduce lock acquisition overhead."
+      ]
+    },
+    {
+      "0": "gap-action-tool-call-schema-validation",
+      "id": "gap-action-tool-call-schema-validation",
+      "title": "An LLM agent generates structured JSON arguments for a database modification tool: update_user_role(user_id: str, new_role: str). How do you protect the backend from SQL injection, privilege escalation, and type confusion caused by malicious inputs?",
+      "answer": "Validate tool arguments against a strict Pydantic or JSON schema using constrained enums and parameterized database queries, rejecting unvalidated payloads before executing database drivers. The agent output is treated as untrusted input. The runtime parses the JSON payload and validates it against a typed schema where new_role must strictly match a closed enum (such as ['viewer', 'editor']), completely rejecting strings like 'admin' or SQL fragments like '' OR 1=1;--'. The user_id is validated against a standard UUID regex pattern. Database queries execute exclusively via parameterized SQL or ORM queries, eliminating string interpolation injection. An independent authorization check confirms whether the authenticated caller has permission to assign the requested role. The trade-off is that strict schema validation and enum constraints deterministically eliminate injection vulnerabilities, but require upfront schema definitions that reject unexpected or novel model tool outputs.",
+      "level": "senior",
+      "keyPoints": [
+        "Treats all model-generated tool arguments as untrusted inputs requiring deterministic validation.",
+        "Validates parameters against strict schemas using typed enums and regex constraints rather than raw strings.",
+        "Enforces parameterized database queries to eliminate SQL injection vulnerabilities.",
+        "Verifies caller authorization independently of what the model claims in its tool arguments."
+      ],
+      "followUps": [
+        "How does constrained decoding (e.g. Outlines, Instructor) at the inference layer complement application-level validation?"
+      ],
+      "wrongAnswers": [
+        "Passing the model-generated JSON directly into string-concatenated SQL queries because the model was told to be safe.",
+        "Relying solely on LLM self-reflection to review its own generated SQL queries for injection attacks."
+      ],
+      "rounds": [
+        "security-governance",
+        "systems-design"
+      ],
+      "roles": [
+        "security-engineer",
+        "agent-engineer"
+      ],
+      "tradeOffs": [
+        "Strict schema parsing and enum validation eliminate parameter injection vulnerabilities, but require maintaining rigid schemas that limit open-ended tool evolution."
+      ]
+    },
+    {
+      "0": "gap-stop-infinite-loop-detection",
+      "id": "gap-stop-infinite-loop-detection",
+      "title": "An autonomous web research agent gets trapped in a cycle: it visits Page A, clicks a link to Page B, extracts a redirect to Page A, and repeats this indefinitely. How do you design an algorithmic loop detector into the agent supervisor to terminate cyclic behaviour?",
+      "answer": "Maintain a rolling history of hashed action signatures (tool name and normalized arguments) and intervene when cycle detection thresholds are breached. The supervisor maintains a bounded sliding-window buffer of recent tool executions (such as the last 10 steps). For every tool call, the runtime computes a deterministic hash of the tool name and sorted, normalized arguments. If the identical hash appears more than twice within the window, or if an alternating sequence (such as A -> B -> A -> B) is detected using n-gram repetition checks or Floyd's cycle detection, the supervisor intervenes. The supervisor either appends a corrective steering prompt ('You have visited this URL repeatedly; try an alternative query or terminate') or transitions the workflow to an escalation state, preventing runaway token consumption. The trade-off is that action hashing catches deterministic repetitive loops with minimal compute cost, but requires careful normalization of volatile arguments such as timestamps or random request IDs.",
+      "level": "senior",
+      "keyPoints": [
+        "Hashes normalized tool names and arguments into an action history buffer to detect repetitive invocations.",
+        "Applies sliding-window or n-gram cycle detection algorithms to identify alternating loop patterns.",
+        "Intervenes automatically by injecting corrective steering context or forcing state termination.",
+        "Normalizes non-deterministic arguments (like timestamps or UUIDs) before calculating action signatures."
+      ],
+      "followUps": [
+        "How can semantic embedding similarity detect loops where the agent rephrases searches without repeating exact strings?"
+      ],
+      "wrongAnswers": [
+        "Relying on the LLM to realize on its own that it is stuck in a loop without external supervisor monitoring.",
+        "Terminating the agent after any single repeated URL visit, breaking legitimate pagination workflows."
+      ],
+      "rounds": [
+        "agent-architecture",
+        "systems-design"
+      ],
+      "roles": [
+        "agent-engineer",
+        "applied-ai-engineer"
+      ],
+      "tradeOffs": [
+        "Algorithmic cycle detection halts infinite agent loops deterministically, but requires tuning repetition thresholds to avoid terminating valid iterative workflows."
+      ]
+    },
+    {
+      "0": "gap-stop-budget-limits-step-token-time",
+      "id": "gap-stop-budget-limits-step-token-time",
+      "title": "A coding agent tasked with fixing a bug encounters a complex compile error and consumes 45 minutes and $30 in API tokens attempting hundreds of small variations. How do you structure a multi-dimensional budget enforcement policy to guarantee bounded execution?",
+      "answer": "Enforce a strict tri-partite budget covering maximum step count, cumulative token consumption, and wall-clock execution time, monitored by an out-of-band supervisor process. When initiating an agent task, the runtime assigns explicit limits: maximum steps (such as 15), maximum cumulative tokens (such as 100,000 tokens), and maximum elapsed duration (such as 300 seconds). At each loop cycle: The supervisor checks elapsed wall-clock time; if exceeded, it terminates running tool subprocesses. The orchestrator tallies prompt and completion tokens across all LLM requests; if cumulative spend crosses the limit, further generation is halted. The step counter increments with each reasoning-action cycle; reaching the step ceiling triggers termination. When any limit is reached, the supervisor halts execution, preserves partial outputs and diffs, and returns a bounded failure state. The trade-off is that multi-dimensional budgets establish hard financial and latency guarantees, but risk cutting off complex tasks that were nearing a correct solution.",
+      "level": "senior",
+      "keyPoints": [
+        "Enforces three simultaneous constraints: maximum steps, cumulative token budget, and wall-clock timeout.",
+        "Tracks budget consumption externally via an out-of-band supervisor rather than relying on agent self-accounting.",
+        "Gracefully terminates execution by preserving partial findings and documenting which limit was breached.",
+        "Guarantees a deterministic upper bound on API financial cost and compute resource allocation per task."
+      ],
+      "followUps": [
+        "How should an agent allocate its remaining token budget between exploration and final synthesis as it nears limits?"
+      ],
+      "wrongAnswers": [
+        "Using only a step counter without tracking token volumes, allowing a single prompt with 100k tokens to blow costs.",
+        "Allowing the agent to self-extend its own budget by calling a tool whenever it feels it needs more time."
+      ],
+      "rounds": [
+        "agent-architecture",
+        "cost-capacity"
+      ],
+      "roles": [
+        "agent-engineer",
+        "ml-systems-engineer"
+      ],
+      "tradeOffs": [
+        "Hard tri-partite budgets strictly cap API costs and compute runaway, but require calibrated thresholds to prevent premature termination of legitimate long-horizon tasks."
+      ]
+    },
+    {
+      "0": "gap-stop-safe-human-handoff-state",
+      "id": "gap-stop-safe-human-handoff-state",
+      "title": "An autonomous customer support agent fails to resolve an angry user's billing dispute after three tool retries. How do you structure a safe, low-friction hand-off to a human representative that preserves context without overwhelming the human with raw prompt history?",
+      "answer": "Transition the agent session to a hand-off state that runs a summarization pass, generating a structured hand-off card containing customer intent, tried tools, failure reason, and recommended next steps for the human. When an escalation condition occurs (explicit user request, sentiment score drop, or budget exhaustion), the agent loop terminates tool access. A dedicated summarization prompt processes the trajectory and outputs structured metadata: Verified customer identity and core intent, key facts established, actions taken (such as looked up order #8192, attempted refund), specific blocker (such as refund rejected: exceeds $50 limit), and suggested human action. The human agent receives this concise five-bullet summary alongside an expandable full transcript drawer, allowing comprehension within 10 seconds without reading through hundreds of raw JSON tool calls. The trade-off is that automated hand-off summarization saves substantial human agent onboarding time, but adds one final LLM call latency and risks omitting nuanced customer complaints in the summary.",
+      "level": "senior",
+      "keyPoints": [
+        "Terminates agent autonomous tool access immediately upon triggering hand-off conditions.",
+        "Generates a structured, concise summary card highlighting intent, actions taken, blockers, and next steps.",
+        "Provides the human reviewer with immediate high-level context plus access to raw underlying transcripts.",
+        "Reduces customer friction by preventing the customer from having to repeat their problem from scratch."
+      ],
+      "followUps": [
+        "How do you ensure state synchronization between the automated agent session and the human CRM ticket?"
+      ],
+      "wrongAnswers": [
+        "Dumping the entire raw JSON execution trace into the human agent's chat window without summarization.",
+        "Abruptly terminating the chat session and asking the user to call a 1-800 phone number with no shared state."
+      ],
+      "rounds": [
+        "agent-architecture",
+        "systems-design"
+      ],
+      "roles": [
+        "agent-engineer",
+        "applied-ai-engineer"
+      ],
+      "tradeOffs": [
+        "Structured hand-off cards reduce human triage time from minutes to seconds, but require an extra LLM summarization step and rigorous context preservation."
+      ]
+    },
+    {
+      "0": "gap-stop-condition-evaluator",
+      "id": "gap-stop-condition-evaluator",
+      "title": "An autonomous agent is tasked with researching competitive pricing for a product across five vendor websites. How do you design a deterministic termination evaluator that halts the agent as soon as the goal criteria are satisfied, preventing unnecessary tool calls?",
+      "answer": "Decouple the termination decision from the generative model by using an external predicate evaluator that tests output state against explicit satisfaction criteria after each step. Allowing generative models to decide when they are finished leads to premature termination or redundant exploratory iterations. Instead, define an independent evaluator function (such as has_all_fields(collected_data, ['vendor_a', 'vendor_b', 'vendor_c', 'vendor_d', 'vendor_e'])). After each tool execution, the state graph supervisor executes the evaluator. Once all five prices are populated with valid numerical data satisfying the schema, the evaluator marks the goal as satisfied, overrides model generation, and transitions the state machine directly to the final formatting step. If the criteria are not met before the step budget runs out, it terminates with a partial result flag. The trade-off is that external predicate evaluators guarantee that execution stops precisely when objectives are met, but require programmatic definition of unambiguous completion predicates.",
+      "level": "senior",
+      "keyPoints": [
+        "Decouples termination logic from the generative LLM into an external, deterministic evaluator.",
+        "Defines explicit, programmatic completion criteria (e.g. schema validation and required field coverage).",
+        "Evaluates state predicates after each tool execution to trigger immediate early stopping.",
+        "Eliminates unnecessary token spend and tool calls caused by open-ended agent deliberation."
+      ],
+      "followUps": [
+        "How do you formulate completion predicates for ambiguous or open-ended research tasks where exact fields are unknown?"
+      ],
+      "wrongAnswers": [
+        "Letting the agent loop until it hits the max step limit every time, assuming more steps always improve quality.",
+        "Relying solely on the model outputting the word 'DONE' in free-form prose without validating underlying state."
+      ],
+      "rounds": [
+        "agent-architecture",
+        "systems-design"
+      ],
+      "roles": [
+        "agent-engineer",
+        "applied-ai-engineer"
+      ],
+      "tradeOffs": [
+        "External predicate evaluators cut redundant token and API costs by halting the moment criteria are met, but require formal, verifiable completion rules."
+      ]
+    }
   ],
   "cost-capacity": [
     [
@@ -3208,7 +3827,162 @@
         "Slurm offers native, zero-overhead gang scheduling and topology awareness for batch training, but lacks modern service routing and auto-scaling APIs.",
         "Kubernetes provides rich cloud-native APIs, service meshes, and auto-scaling for inference, but requires specialized operators (Volcano, Kueue) for gang training."
       ]
-    ]
+    ],
+    {
+      "0": "gap-gpu-credit-accounting-fair-share",
+      "id": "gap-gpu-credit-accounting-fair-share",
+      "title": "A multi-tenant GPU platform serves three research teams sharing a pool of 64 H100 GPUs. Team A submits a 500-GPU-hour batch job that monopolizes the cluster, blocking interactive development by Teams B and C. How do you design a credit accounting and fair-share scheduling mechanism to balance batch and interactive workloads?",
+      "answer": "Implement a fair-share scheduler (such as Slurm or Kubernetes Volcano/Kueue) backed by decayed credit consumption accounting and priority preemption queues. Each team is allocated a periodic budget of compute credits (GPU-hours per month). The scheduler tracks a rolling decay-weighted usage metric. When Team A consumes a disproportionate share of recent GPU time, its fair-share dynamic priority score drops. Interactive jobs from Teams B and C are assigned higher queue priority with shorter maximum wall-time limits (such as two hours). When Team B submits an interactive job, the scheduler pauses or preempts Team A's low-priority batch workers via checkpoint-and-stop, allocating GPUs to Team B. Once interactive workloads complete, Team A resumes from its checkpoint. The trade-off is that fair-share scheduling prevents cluster starvation and maintains low latency for interactive development, but requires batch jobs to support frequent checkpointing and introduces preemption thrashing if priority thresholds are misconfigured.",
+      "level": "senior",
+      "keyPoints": [
+        "Uses decayed usage accounting to dynamically penalize the scheduling priority of heavy consumers.",
+        "Distinguishes high-priority short-lived interactive queues from low-priority long-running batch jobs.",
+        "Employs preemption with checkpoint-and-resume to reclaim capacity for starving tenants.",
+        "Allocates periodic credit budgets to enforce organizational spending and resource boundaries."
+      ],
+      "followUps": [
+        "How does gang scheduling prevent deadlocks when multiple distributed training jobs compete for partial node allocations?"
+      ],
+      "wrongAnswers": [
+        "Using a naive First-Come-First-Served (FCFS) FIFO queue that lets the first batch job block all subsequent users for days.",
+        "Granting all teams hard static physical partitions (e.g. 21 GPUs each), wasting idle capacity when teams are inactive."
+      ],
+      "rounds": [
+        "systems-design",
+        "cost-capacity"
+      ],
+      "roles": [
+        "platform-engineer",
+        "ml-infrastructure-engineer"
+      ],
+      "tradeOffs": [
+        "Fair-share preemption maximizes global cluster utilization while protecting interactive agility, but requires robust job checkpointing and adds queuing complexity."
+      ]
+    },
+    {
+      "0": "gap-gpu-preemption-graceful-checkpointing",
+      "id": "gap-gpu-preemption-graceful-checkpointing",
+      "title": "To reduce training costs by 60%, your team migrates distributed fine-tuning to spot/preemptible cloud GPU instances that receive a 30-second termination notice via instance metadata. How do you design the training loop to survive preemption without losing hours of progress?",
+      "answer": "Run an asynchronous background metadata watcher thread that intercepts the preemption notice, triggers an emergency synchronous weight checkpoint to distributed object storage, and exits cleanly. A daemon thread polls the cloud provider instance metadata service every second. Upon receiving a termination warning: First, the watcher sets a threading event preemption_signaled. Second, at the end of the current backward step, the training rank detects the event and breaks the step loop. Third, the rank flushes optimizer and model tensors into host RAM or local NVMe and streams the checkpoint snapshot asynchronously to persistent remote object storage. Fourth, the cluster orchestrator reschedules the job on replacement instances, loading the latest confirmed checkpoint from storage. The trade-off is that rapid emergency checkpointing minimizes lost training progress to less than one step, but requires completing state serialization and network upload within the tight 30-second cloud termination window.",
+      "level": "senior",
+      "keyPoints": [
+        "Polls cloud metadata endpoints to intercept termination notices with sub-second latency.",
+        "Signals the main training loop to complete the active step and initiate an immediate checkpoint.",
+        "Flushes model and optimizer states to persistent remote storage within the 30-second window.",
+        "Resumes the training run automatically from the latest validated checkpoint upon node replacement."
+      ],
+      "followUps": [
+        "What is the difference between synchronous checkpointing and asynchronous double-buffered checkpointing when saving large models?"
+      ],
+      "wrongAnswers": [
+        "Waiting for the node to shut down and relying on EBS volume reattachment without saving application-level checkpoints.",
+        "Ignoring the termination signal and saving checkpoints only on a fixed schedule every 4 hours."
+      ],
+      "rounds": [
+        "systems-design",
+        "cost-capacity"
+      ],
+      "roles": [
+        "ml-systems-engineer",
+        "ml-infrastructure-engineer"
+      ],
+      "tradeOffs": [
+        "Preemptible instances cut compute costs drastically, but require sub-30-second emergency checkpoint serialization and automated orchestration failover."
+      ]
+    },
+    {
+      "0": "gap-gpu-noisy-neighbor-memory-isolation",
+      "id": "gap-gpu-noisy-neighbor-memory-isolation",
+      "title": "Two production microservices share an NVIDIA H100 80GB GPU on an inference cluster: Service A handles steady-state text classification, while Service B processes bursty embedding requests. Service B intermittently triggers CUDA Out-Of-Memory (OOM) errors that crash Service A. How do you enforce strict hardware and memory isolation?",
+      "answer": "Partition the physical H100 using NVIDIA Multi-Instance GPU (MIG) into isolated hardware instances with dedicated compute engines and dedicated memory slices. Standard process co-location allows processes to compete for global HBM3 memory and streaming multiprocessors (SMs), where an unconstrained allocation in one service causes a shared CUDA OOM crash or memory bandwidth starvation. Enabling MIG divides the H100 into up to seven independent GPU instances (such as two 3g.40gb profiles). Each MIG instance has physically isolated crossbar paths, memory controllers, and SM clusters. Service A and Service B run in separate container pods, each mounted to a distinct MIG resource name (nvidia.com/mig-3g.40gb). If Service B exceeds its allocated 40GB, its process terminates inside its own sandbox without affecting Service A's memory space or latency. The trade-off is that MIG provides true hardware fault and latency isolation with zero cross-tenant interference, but requires static profile partitioning that prevents dynamic memory borrowing when one service is idle.",
+      "level": "senior",
+      "keyPoints": [
+        "Identifies that unconstrained GPU co-location causes cross-process memory corruption and OOM crashes.",
+        "Configures NVIDIA Multi-Instance GPU (MIG) to provide hardware-level SM and HBM memory partitioning.",
+        "Assigns independent MIG slices to separate container pods via Kubernetes device plugins.",
+        "Guarantees that an OOM failure in one tenant cannot crash or degrade neighboring workloads."
+      ],
+      "followUps": [
+        "When is dynamic software-level memory capping (e.g. PyTorch set_per_process_memory_fraction) preferable to hardware MIG partitioning?"
+      ],
+      "wrongAnswers": [
+        "Increasing Linux swap space to handle GPU Out-Of-Memory allocation spikes.",
+        "Relying on application-level try/except blocks to catch CUDA OOM errors and continue processing."
+      ],
+      "rounds": [
+        "systems-design",
+        "production-mlops"
+      ],
+      "roles": [
+        "ml-infrastructure-engineer",
+        "inference-platform-engineer"
+      ],
+      "tradeOffs": [
+        "MIG provides complete hardware and memory fault isolation between co-located workloads, but locks GPU capacity into rigid partition boundaries that prevent dynamic pooling."
+      ]
+    },
+    {
+      "0": "gap-gpu-token-cost-attribution",
+      "id": "gap-gpu-token-cost-attribution",
+      "title": "Your enterprise serves internal teams through a unified LLM gateway backed by self-hosted vLLM clusters. Finance requires precise monthly cost attribution per department, but teams share the same base model instances. How do you design an accurate usage attribution and chargeback system?",
+      "answer": "Instrument the LLM API gateway to extract prompt and completion token counts per request, tag them with department metadata, and compute blended dollar costs based on allocated GPU infrastructure amortization. All client requests authenticate with departmental API keys. The gateway intercepts requests and responses, extracting prompt_tokens and completion_tokens from response headers or stream chunks. An event is published to a streaming bus (such as Kafka) containing timestamp, department_id, model, input_tokens, output_tokens, and latency_ms. To attribute self-hosted cluster costs: compute total monthly cluster operational cost (GPU server leases, power, and networking), calculate total tokens served, and weight input versus output tokens (typically 1:3 ratio reflecting prefill versus decode compute cost). Cost is assigned proportionally to departmental token consumption. The trade-off is that gateway token metering enables transparent chargeback and deters wasteful model over-consumption, but requires maintaining real-time event streaming pipelines and accurate weight-ratio models between prefill and decode phases.",
+      "level": "senior",
+      "keyPoints": [
+        "Authenticates requests with department-specific API keys to track caller lineage.",
+        "Captures prompt and completion token counts from the API gateway proxy stream.",
+        "Apports fixed GPU cluster lease and hosting costs proportionally across tenant token consumption.",
+        "Weights input versus output tokens to reflect the higher computational cost of autoregressive decoding."
+      ],
+      "followUps": [
+        "How do you account for GPU capacity that sits idle during off-peak night hours in the departmental billing model?"
+      ],
+      "wrongAnswers": [
+        "Dividing the cloud GPU bill equally among all departments regardless of how many tokens they processed.",
+        "Tracking only request counts without measuring token lengths or input/output ratios."
+      ],
+      "rounds": [
+        "systems-design",
+        "cost-capacity"
+      ],
+      "roles": [
+        "platform-engineer",
+        "ai-evaluation-reliability-engineer"
+      ],
+      "tradeOffs": [
+        "Granular token-level chargeback aligns infrastructure spend directly with departmental consumption, but requires deploying dedicated telemetry streaming and price-accounting services."
+      ]
+    },
+    {
+      "0": "gap-gpu-rate-limiting-token-bucket",
+      "id": "gap-gpu-rate-limiting-token-bucket",
+      "title": "An LLM inference cluster can handle a sustained throughput of 20,000 tokens per second across all users before queue latency spikes exponentially. How do you implement a token-bucket rate limiting system that protects the cluster from overload while supporting tiered customer SLAs?",
+      "answer": "Deploy a distributed token-bucket rate limiter at the gateway layer implemented in Redis with Lua scripts, tracking both Requests-Per-Minute (RPM) and Tokens-Per-Minute (TPM) per customer tier. A single request can consume between 10 tokens and 8,000 tokens, so request-rate limiting alone is insufficient. Each customer tier has two configured buckets: an RPM bucket for request overhead and a TPM bucket for KV-cache and compute load. When a request arrives, the gateway estimates tokens (prompt tokens plus max_tokens). A Redis Lua script atomically decrements the token bucket. If tokens are available, the request proceeds to vLLM; once generation completes, the gateway reconciles actual token usage against the reservation. If the bucket is exhausted, the gateway returns HTTP 429 with Retry-After. The trade-off is that dual-dimensional token-bucket limiting shields inference engines from KV cache exhaustion and concurrency collapse, but introduces atomic Redis coordination latency on every incoming request.",
+      "level": "senior",
+      "keyPoints": [
+        "Enforces dual rate limits on both Requests-Per-Minute (RPM) and Tokens-Per-Minute (TPM).",
+        "Uses atomic Redis Lua scripts to update token bucket balances without concurrency race conditions.",
+        "Applies speculative token reservation prior to execution with post-generation reconciliation.",
+        "Returns standard HTTP 429 Too Many Requests with accurate Retry-After headers when quotas deplete."
+      ],
+      "followUps": [
+        "Why must prompt tokens and max_tokens both be factored into the reservation before dispatching to vLLM?"
+      ],
+      "wrongAnswers": [
+        "Relying on web server connection limits (e.g. Nginx max_connections) without tracking token volumes.",
+        "Letting requests hit the inference engine freely and waiting for CUDA OOM errors to reject incoming users."
+      ],
+      "rounds": [
+        "systems-design",
+        "production-mlops"
+      ],
+      "roles": [
+        "platform-engineer",
+        "inference-platform-engineer"
+      ],
+      "tradeOffs": [
+        "Dual-bucket rate limiting protects GPU memory from sudden burst oversubscription, but adds a Redis network hop to the critical path of every request."
+      ]
+    }
   ],
   "inference-serving": [
     [
