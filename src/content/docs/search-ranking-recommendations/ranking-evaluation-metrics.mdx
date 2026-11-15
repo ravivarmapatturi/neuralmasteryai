@@ -1,0 +1,383 @@
+---
+title: "Ranking Evaluation Metrics"
+sidebar_position: 3
+description: "Master offline ranking metrics from Precision@k and MRR to NDCG, and contrast offline held-out evaluations with online interleaving experiments."
+---
+
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
+import RunnableCode from '../../../components/content/RunnableCode';
+import RankingMetricsExplorer from '../../../viz/diagrams/RankingMetricsExplorer';
+
+# Ranking Evaluation Metrics
+
+<ELI5>
+Imagine searching for a doctor's clinic. If a search engine gives you five addresses on a page, and the real doctor's clinic is buried down at the very bottom in fifth place while four closed pet shops appear above it, you will probably be annoyed and leave. Standard classification metrics like accuracy or precision only ask: "Did the list contain the doctor?" They do not care whether the doctor was at the top or at the bottom. Ranking metrics exist because in real life, nobody wants to dig to the bottom of the list.
+</ELI5>
+
+## Why Ranking Demands Order-Aware Metrics
+
+Standard machine learning evaluation evaluates unordered sets: binary classification measures whether an item was predicted positive or negative, and regression measures the distance between a predicted continuous scalar and the ground truth.
+
+In search and recommendation systems, position is everything:
+1. **User Attention Decays Exponentially**: Eye-tracking studies and telemetry logs consistently reveal that over 70% of clicks concentrate in the top three positions. Result #1 receives significantly more impressions than result #10.
+2. **Relevance is Graded, Not Binary**: A document can be a perfect match (grade 3), somewhat helpful (grade 2), tangentially related (grade 1), or completely irrelevant (grade 0).
+3. **Cutoffs Define User Experience**: Users rarely browse past the visible slate or page one. Systems are judged on their top-$k$ results (typically $k \in \{3, 5, 10\}$), rendering accuracy across the remaining 999,990 catalog items irrelevant to user satisfaction.
+
+We evaluate ranking algorithms through two complementary lenses: **set-based metrics** that evaluate retrieval coverage, and **rank-aware metrics** that penalize delaying relevant results.
+
+## Set-Based Metrics: Precision, Recall, and Hit Rate
+
+Set-based metrics treat the top-$k$ items as an unranked bucket. They measure whether relevant items appeared, ignoring their permutation within the cutoff.
+
+Let binary relevance $r_i \in \{0, 1\}$ indicate whether the item at position $i$ is relevant ($r_i = 1$ when graded relevance exceeds an operational threshold, e.g. $\text{grade} \ge 1$).
+
+### Precision@k
+The fraction of retrieved items in the top-$k$ that are relevant:
+$$\text{Precision@}k = \frac{1}{k} \sum_{i=1}^{k} r_i$$
+
+- **Denominator**: Exactly $k$. If the system returns fewer than $k$ items, the denominator remains $k$ to penalize incomplete slates.
+- **Limitation**: Precision ignores document order within the top-$k$. A list with relevant items at ranks 1 and 2 has the exact same Precision@3 as a list with relevant items at ranks 2 and 3.
+
+### Recall@k
+The fraction of all known relevant items in the corpus ($R_{\text{total}}$) retrieved in the top-$k$:
+$$\text{Recall@}k = \frac{1}{R_{\text{total}}} \sum_{i=1}^{k} r_i$$
+
+- **Denominator**: $R_{\text{total}}$—the total count of known relevant documents in the evaluation collection for that query.
+- **Trade-off**: In web search, $R_{\text{total}}$ might equal 10,000 pages, meaning Recall@10 is mathematically bounded at $10 / 10,000 = 0.001$. In top-$N$ recommendation evaluation with small candidate pools, Recall@k evaluates how many items from a held-out test basket were surfaced.
+
+### Hit Rate@k
+A binary indicator showing whether at least one relevant item appeared in the top-$k$:
+$$\text{HitRate@}k = \begin{cases} 1 & \text{if } \sum_{i=1}^k r_i > 0 \\ 0 & \text{otherwise} \end{cases}$$
+
+Hit Rate is standard in conversational agents, question answering, and e-commerce product search where finding a single acceptable result satisfies the user.
+
+## Rank-Aware Metrics: MRR, MAP, and NDCG
+
+To penalize systems that bury relevant items beneath irrelevant clutter, rank-aware metrics incorporate position discounting.
+
+### Mean Reciprocal Rank (MRR)
+Reciprocal Rank (RR) evaluates the position of the **very first relevant result**:
+$$\text{RR} = \frac{1}{\text{rank}_1}$$
+
+Where $\text{rank}_1$ is the 1-indexed rank of the first relevant document. If no relevant document appears in the list, $\text{RR} = 0$.
+
+Averaged across a benchmark set of $Q$ queries, this becomes **Mean Reciprocal Rank (MRR)**:
+$$\text{MRR} = \frac{1}{|Q|} \sum_{q=1}^{|Q|} \frac{1}{\text{rank}_1(q)}$$
+
+- If the first relevant item appears at rank 1, $\text{RR} = 1.0$.
+- If it is delayed to rank 2, $\text{RR} = 0.5$.
+- If it is delayed to rank 4, $\text{RR} = 0.25$.
+
+MRR is the primary evaluation metric for navigational search (e.g. querying `"github login"` or finding a single target entity). Its limitation is that it completely ignores all relevant documents after the first hit.
+
+### Mean Average Precision (MAP)
+For queries with multiple relevant answers, Average Precision ($\text{AP}$) computes the average of Precision@$i$ evaluated at every position where a relevant document occurs:
+
+$$\text{AP@}k = \frac{1}{\min(k, R_{\text{total}})} \sum_{i=1}^{k} \text{Precision@}i \times r_i$$
+
+Across a collection of test queries, the mean of $\text{AP}$ is **Mean Average Precision (MAP)**:
+$$\text{MAP} = \frac{1}{|Q|} \sum_{q=1}^{|Q|} \text{AP}(q)$$
+
+MAP rewards systems that place relevant documents at the very top, while still evaluating every relevant item retrieved.
+
+### Discounted Cumulative Gain (DCG & NDCG)
+Neither MRR nor MAP natively handles **graded relevance** (e.g., distinguishing an exact 5-star match from an acceptable 3-star substitute). In 2002, Kalervo Järvelin and Jaana Kekäläinen introduced Cumulative Gain and Discounted Cumulative Gain.
+
+#### Cumulative Gain (CG)
+The unweighted sum of graded relevance scores $g_i \in \{0, 1, 2, 3\}$ up to cutoff $k$:
+$$\text{CG@}k = \sum_{i=1}^{k} g_i$$
+
+#### Discounted Cumulative Gain (DCG)
+To penalize placing high-grade results lower down the list, each item's gain is divided by a logarithmic discount factor:
+$$\text{DCG@}k = \sum_{i=1}^{k} \frac{\text{gain}(g_i)}{\log_2(i + 1)}$$
+
+Two primary gain conventions exist in the literature:
+- **Exponential Gain (Burges et al., 2005 / Manning et al., 2008)**: $\text{gain}(g_i) = 2^{g_i} - 1$. This heavily emphasizes surfacing perfect matches (grade 3 has gain $2^3 - 1 = 7$, compared to grade 1 with gain $2^1 - 1 = 1$). This is the standard in web search and modern benchmark competitions.
+- **Linear Gain (Järvelin & Kekäläinen, 2002)**: $\text{gain}(g_i) = g_i$.
+
+At rank 1 ($i = 1$), the denominator is $\log_2(1 + 1) = \log_2(2) = 1.0$, applying no discount. At rank 3, the denominator is $\log_2(4) = 2.0$, discounting the gain by 50%.
+
+#### Normalized Discounted Cumulative Gain (NDCG)
+Because raw DCG depends on the number and grades of relevant items for a specific query, raw DCG scores cannot be averaged across queries. We normalize DCG by the **Ideal DCG (IDCG)**—the DCG score of the exact same candidate items sorted in perfect descending order of relevance:
+
+$$\text{NDCG@}k = \frac{\text{DCG@}k}{\text{IDCG@}k}$$
+
+$\text{NDCG@}k$ is bounded strictly in the range $[0.0, 1.0]$. A score of $1.0$ indicates that the top-$k$ results are ordered in ideal descending relevance order.
+
+<PredictFirst
+  question="Suppose a search engine returns 3 items for a query. In List A, the items have relevance grades [3, 0, 2]. In List B, the items are reordered to [0, 3, 2]. How do Precision@3 and NDCG@3 compare?"
+  options={[
+    "Both Precision@3 and NDCG@3 are identical because both lists contain the exact same items.",
+    "Precision@3 is identical (2/3 = 0.67), but NDCG@3 drops significantly in List B because the highly relevant item is delayed behind an irrelevant one.",
+    "Precision@3 drops in List B, but NDCG@3 stays identical because total cumulative gain is unchanged.",
+    "Both metrics drop by exactly 50% because the rank of the first item dropped from 1 to 2."
+  ]}
+  correctIndex={1}
+  explanation="Precision@3 evaluates the set of items inside the top-3 cutoff without regard to order: both lists contain 2 relevant items out of 3, yielding Precision@3 = 0.67. NDCG@3 discounts each position logarithmically; delaying the grade 3 item to rank 2 reduces its DCG contribution from 7.0 to 4.42, dropping NDCG@3 from 0.90 to 0.63."
+/>
+
+## Interactive Ranking Evaluation Calculator
+
+Experiment with item ordering below. Use the **Preset 1** and **Preset 2** buttons to observe the decoupling between set-based metrics and rank-aware metrics.
+
+<RankingMetricsExplorer />
+
+## Full Worked Comparison: Identical Precision, Divergent NDCG
+
+To inspect the mathematical mechanics, consider a fixed toy evaluation set with $N = 5$ candidate documents. A human rater has assigned graded relevance scores on a 0 to 3 scale:
+- **Doc A**: Grade $3$ (Highly relevant, binary $r=1$)
+- **Doc B**: Grade $2$ (Relevant, binary $r=1$)
+- **Doc C**: Grade $1$ (Marginally relevant, binary $r=1$)
+- **Doc D**: Grade $0$ (Irrelevant, binary $r=0$)
+- **Doc E**: Grade $0$ (Irrelevant, binary $r=0$)
+
+Total known relevant documents in the evaluation collection: $R_{\text{total}} = 3$ (Docs A, B, C).
+
+Let us compare two distinct candidate orderings at cutoff $k = 3$:
+- **Order 1 (High Relevance First)**: `[Doc A, Doc D, Doc B, Doc C, Doc E]` $\to$ Grades `[3, 0, 2, 1, 0]`
+- **Order 2 (Delayed Relevance)**: `[Doc D, Doc A, Doc B, Doc C, Doc E]` $\to$ Grades `[0, 3, 2, 1, 0]`
+
+### Evaluating Set Metrics at Cutoff k
+Both Order 1 and Order 2 contain Doc A and Doc B within their top 3 results:
+- **Precision@3**:
+  $$\text{Order 1} = \frac{1 + 0 + 1}{3} = \frac{2}{3} \approx \mathbf{0.6667}, \quad \text{Order 2} = \frac{0 + 1 + 1}{3} = \frac{2}{3} \approx \mathbf{0.6667}$$
+- **Recall@3**:
+  $$\text{Order 1} = \frac{2}{R_{\text{total}}} = \frac{2}{3} \approx \mathbf{0.6667}, \quad \text{Order 2} = \frac{2}{3} \approx \mathbf{0.6667}$$
+- **Hit Rate@3**:
+  $$\text{Order 1} = \mathbf{1.0}, \quad \text{Order 2} = \mathbf{1.0}$$
+
+Under every set-based metric, Order 1 and Order 2 appear completely identical.
+
+### Evaluating Rank-Aware Metrics at Cutoff k
+
+#### 1. Reciprocal Rank (MRR)
+- **Order 1**: First relevant item (Doc A) is at rank 1:
+  $$\text{RR}_1 = \frac{1}{1} = \mathbf{1.0000}$$
+- **Order 2**: First relevant item (Doc A) is delayed to rank 2:
+  $$\text{RR}_2 = \frac{1}{2} = \mathbf{0.5000}$$
+
+#### 2. Average Precision (AP@3)
+- **Order 1**:
+  - Rank 1 (Doc A, relevant): $\text{Precision@}1 = 1/1 = 1.0$
+  - Rank 2 (Doc D, non-relevant): ignored
+  - Rank 3 (Doc B, relevant): $\text{Precision@}3 = 2/3 \approx 0.6667$
+  $$\text{AP@}3 = \frac{1.0 + 0.6667}{R_{\text{total}}} = \frac{5/3}{3} = \frac{5}{9} \approx \mathbf{0.5556}$$
+- **Order 2**:
+  - Rank 1 (Doc D, non-relevant): ignored
+  - Rank 2 (Doc A, relevant): $\text{Precision@}2 = 1/2 = 0.5$
+  - Rank 3 (Doc B, relevant): $\text{Precision@}3 = 2/3 \approx 0.6667$
+  $$\text{AP@}3 = \frac{0.5 + 0.6667}{3} = \frac{7/6}{3} = \frac{7}{18} \approx \mathbf{0.3889}$$
+
+#### 3. DCG@3 and NDCG@3 (Exponential Gain: $2^g - 1$)
+First, compute **Ideal DCG@3 (IDCG@3)** by sorting the available grades in descending order: `[3, 2, 1]`:
+$$\text{IDCG@}3 = \frac{2^3 - 1}{\log_2(2)} + \frac{2^2 - 1}{\log_2(3)} + \frac{2^1 - 1}{\log_2(4)} = \frac{7}{1.0} + \frac{3}{1.58496} + \frac{1}{2.0} \approx 7.0 + 1.8928 + 0.5 = \mathbf{9.3928}$$
+
+Now evaluate actual DCG@3:
+- **Order 1** (grades `[3, 0, 2]`):
+  $$\text{DCG@}3 = \frac{2^3 - 1}{\log_2(2)} + \frac{2^0 - 1}{\log_2(3)} + \frac{2^2 - 1}{\log_2(4)} = \frac{7}{1.0} + 0 + \frac{3}{2.0} = 7.0 + 1.5 = \mathbf{8.5000}$$
+  $$\text{NDCG@}3 = \frac{8.5000}{9.3928} \approx \mathbf{0.9049}$$
+- **Order 2** (grades `[0, 3, 2]`):
+  $$\text{DCG@}3 = \frac{2^0 - 1}{\log_2(2)} + \frac{2^3 - 1}{\log_2(3)} + \frac{2^2 - 1}{\log_2(4)} = 0 + \frac{7}{1.58496} + \frac{3}{2.0} \approx 4.4165 + 1.5 = \mathbf{5.9165}$$
+  $$\text{NDCG@}3 = \frac{5.9165}{9.3928} \approx \mathbf{0.6299}$$
+
+NDCG reveals what set-based metrics hide: delaying the most relevant document behind an irrelevant one costs nearly $30\%$ of total ranking utility ($0.9049 \to 0.6299$).
+
+For full theoretical derivations of ranking loss functions that optimize NDCG directly, see [Learning-to-Rank](/docs/machine-learning/learning-to-rank#ranking-evaluation-metrics).
+
+## Run It Yourself: Computing Ranking Metrics in Python
+
+Execute the complete metric calculation below to verify the exact numbers computed in our worked example:
+
+<RunnableCode code={`import math
+
+def compute_ranking_metrics(grades, k=3, total_relevant=3):
+    # Binary relevance: grade >= 1 indicates relevance
+    binary = [1 if g >= 1 else 0 for g in grades]
+    
+    # 1. Precision@k
+    p_k = sum(binary[:k]) / k
+    
+    # 2. Recall@k
+    r_k = sum(binary[:k]) / total_relevant if total_relevant > 0 else 0.0
+    
+    # 3. Hit Rate@k
+    hr_k = 1.0 if sum(binary[:k]) > 0 else 0.0
+    
+    # 4. Reciprocal Rank (MRR for a single query)
+    rr = 0.0
+    for idx, b in enumerate(binary):
+        if b > 0:
+            rr = 1.0 / (idx + 1)
+            break
+            
+    # 5. Average Precision @ k (AP@k)
+    hits = 0
+    prec_sum = 0.0
+    for idx in range(min(k, len(binary))):
+        if binary[idx] > 0:
+            hits += 1
+            prec_sum += hits / (idx + 1)
+    ap_k = prec_sum / total_relevant if total_relevant > 0 else 0.0
+    
+    # 6. Exponential DCG@k and NDCG@k
+    def calc_dcg(g_list, cutoff):
+        val = 0.0
+        for i in range(min(cutoff, len(g_list))):
+            val += (2.0**g_list[i] - 1.0) / math.log2(i + 2)
+        return val
+        
+    dcg_k = calc_dcg(grades, k)
+    ideal_grades = sorted(grades, reverse=True)
+    idcg_k = calc_dcg(ideal_grades, k)
+    ndcg_k = dcg_k / idcg_k if idcg_k > 0 else 0.0
+    
+    return {
+        "P@k": round(p_k, 4),
+        "R@k": round(r_k, 4),
+        "HitRate@k": round(hr_k, 2),
+        "MRR": round(rr, 4),
+        "AP@k": round(ap_k, 4),
+        "DCG@k": round(dcg_k, 4),
+        "NDCG@k": round(ndcg_k, 4),
+    }
+
+order_1 = [3, 0, 2, 1, 0]  # [Doc A, Doc D, Doc B, Doc C, Doc E]
+order_2 = [0, 3, 2, 1, 0]  # [Doc D, Doc A, Doc B, Doc C, Doc E]
+
+print("Order 1 (High relevance first):", compute_ranking_metrics(order_1, k=3, total_relevant=3))
+print("Order 2 (Delayed relevance):   ", compute_ranking_metrics(order_2, k=3, total_relevant=3))
+
+# Try it: Change cutoff k to 5 to evaluate across the entire list.
+# Notice how Recall@5 reaches 1.0 (3/3) in both orderings once all relevant items are retrieved.
+`} />
+
+## Recommendation-Specific Metrics: Beyond Relevance
+
+In recommendation systems, optimizing purely for accuracy or NDCG produces a well-known pathological failure mode: **the popularity trap**. The model repeatedly recommends the same top 10 blockbuster movies or viral products to every user, achieving high click accuracy while destroying discovery.
+
+Production recommenders evaluate four operational proxy metrics alongside NDCG:
+
+### 1. Catalog Coverage
+The fraction of unique items in the catalog that are recommended to at least one user over an evaluation window:
+$$\text{Coverage} = \frac{|\bigcup_{u \in U} R_u|}{|I_{\text{catalog}}|}$$
+
+Where $R_u$ is the recommended slate for user $u$, and $I_{\text{catalog}}$ is the total catalog. Low coverage indicates that the algorithm ignores the long tail of valuable inventory.
+
+### 2. Intra-List Diversity
+Users dislike slates where all five recommendations belong to the exact same narrow subcategory. Intra-List Diversity measures the pairwise distance between items within a single slate:
+$$\text{Diversity}(R_u) = \frac{2}{k(k - 1)} \sum_{i=1}^{k} \sum_{j=i+1}^{k} \text{dist}(d_i, d_j)$$
+
+Where $\text{dist}(d_i, d_j)$ can be category divergence or cosine distance between item embeddings.
+
+### 3. Novelty
+Novelty measures how unexpected or non-obvious recommendations are relative to global platform popularity. A standard operational proxy uses negative log probability (self-information):
+$$\text{Novelty}(R_u) = \frac{1}{k} \sum_{i \in R_u} -\log_2(P(i))$$
+
+Where $P(i)$ is the item's historical interaction share. Highly popular items have high $P(i)$ and low novelty; long-tail items have low $P(i)$ and high novelty.
+
+### 4. Serendipity
+Serendipity measures recommendations that are both **novel** and **relevant**—surprising discoveries that expand user taste rather than obscure, irrelevant noise.
+
+For offline top-$N$ recommendation evaluation formulas, see [Recommender Systems: Evaluating Offline](/docs/machine-learning/recommender-systems#7-evaluating-a-recommender-offline).
+
+<RunnableCode code={`import math
+
+def evaluate_recs_slate(recommended_ids, catalog_metadata, user_historical_categories):
+    k = len(recommended_ids)
+    
+    # 1. Intra-List Diversity: Fraction of distinct categories in the slate
+    categories = [catalog_metadata[item_id]["category"] for item_id in recommended_ids]
+    diversity = len(set(categories)) / k if k > 0 else 0.0
+    
+    # 2. Novelty Proxy: Mean self-information -log2(P(item))
+    total_platform_views = sum(item["views"] for item in catalog_metadata.values())
+    self_info_sum = 0.0
+    for item_id in recommended_ids:
+        views = catalog_metadata[item_id]["views"]
+        p = max(views / total_platform_views, 1e-6)
+        self_info_sum += -math.log2(p)
+    novelty = self_info_sum / k if k > 0 else 0.0
+    
+    # 3. Serendipity Proxy: Relevant items from unvisited categories
+    unvisited = [item_id for item_id in recommended_ids if catalog_metadata[item_id]["category"] not in user_historical_categories]
+    serendipity_ratio = len(unvisited) / k if k > 0 else 0.0
+    
+    return {
+        "diversity_ratio": round(diversity, 4),
+        "mean_novelty_bits": round(novelty, 2),
+        "serendipity_ratio": round(serendipity_ratio, 4),
+    }
+
+catalog = {
+    "item_1": {"category": "Search", "views": 10000},       # Viral hit
+    "item_2": {"category": "Ranking", "views": 2500},
+    "item_3": {"category": "Reinforcement", "views": 120},  # Long-tail niche
+    "item_4": {"category": "Infrastructure", "views": 450},
+}
+
+# User who has historically only browsed "Search"
+slate = ["item_1", "item_2", "item_3"]
+history = {"Search"}
+
+print("Slate Operational Metrics:", evaluate_recs_slate(slate, catalog, history))
+
+# Try it: Replace 'item_3' with 'item_1' to simulate duplicate recommendations.
+# Observe how diversity collapses immediately.
+`} />
+
+## Offline Evaluation vs. Online A/B Testing & Interleaving
+
+An algorithm that achieves superior NDCG on a frozen test dataset does not automatically drive user engagement in production.
+
+### Offline Evaluation
+- **How it works**: Evaluates candidate models against historical interaction logs or human-curated editorial relevance labels.
+- **Advantages**: Fast, inexpensive, completely reproducible, and poses zero risk to live user experience.
+- **Failure Modes**: Suffers from **position bias** (historical users clicked item #1 because it was displayed at the top, not because it was inherently better) and **selection bias** (we have zero logged labels for the 99% of catalog items that were never retrieved).
+
+### Online A/B Testing
+- **How it works**: Routes 50% of live traffic to Model A (Control) and 50% to Model B (Treatment), observing business outcomes (conversion rate, 30-day retention, revenue, session dwell time).
+- **Primary Outcomes vs. Guardrails**: A healthy experiment designates one primary metric (such as session completion rate) alongside critical guardrail metrics (such as page load latency, unsubscribe rates, and return-request volume).
+
+<NotebookCallout color="amber" title="The CTR Goodhart Trap">
+Never use raw Click-Through Rate (CTR) as an unconstrained primary ranking metric. Ranking clickbait titles or sensationalist thumbnails dramatically inflates CTR in the first 48 hours, but drives down session duration and accelerates 30-day user churn.
+</NotebookCallout>
+
+### Interleaving
+Running an A/B test with statistical significance often requires weeks of traffic. **Team Draft Interleaving** blends the ranked outputs of Model A and Model B into a single merged result list presented to the user:
+1. Model A picks its top candidate (placed at slot 1).
+2. Model B picks its top candidate not yet in the list (placed at slot 2).
+3. If the user clicks slot 2, Model B is awarded a preference point.
+
+Interleaving eliminates user-level variance and achieves statistical sensitivity with roughly $100\times$ less traffic than a standard independent-arm A/B test.
+
+## When Not to Use Complex Ranking Metrics
+
+| Situation | Recommended Metric | Reason |
+| :--- | :--- | :--- |
+| **Navigational & lookup queries** (`"account settings"`, `"login"`) | Reciprocal Rank (MRR) | Only the single target destination matters; graded NDCG over 10 slots adds noise. |
+| **Unsorted discovery feeds** (infinite photo grid, casual social browsing) | Catalog Coverage & Dwell Time | Strict rank order matters less than discovery breadth and prolonged engagement. |
+| **Regulatory compliance & e-discovery** (legal subpoena data extraction) | Recall@$k$ with high cutoff | Missing a single relevant document carries legal liability; top-1 position discounting is irrelevant. |
+| **Small candidate pools with identical grades** | Precision@$k$ or Hit Rate | Graded metrics collapse to binary precision when all positive matches carry equal utility. |
+
+## Remember
+
+| Metric | Form | Sensitivity | Typical Use Case |
+| :--- | :--- | :--- | :--- |
+| **Precision@k** | $\frac{1}{k}\sum_{i=1}^k r_i$ | Unranked set inside cutoff | Quick sanity check on candidate quality. |
+| **Recall@k** | $\frac{1}{R_{\text{total}}}\sum_{i=1}^k r_i$ | Unranked set against corpus | Retrieval candidate generation evaluation. |
+| **Hit Rate@k** | $\mathbb{I}(\sum_{i=1}^k r_i > 0)$ | Binary success in top-$k$ | Conversational agents, single-item lookup. |
+| **MRR** | $\frac{1}{\vert Q \vert}\sum_{q} \frac{1}{\text{rank}_1}$ | First relevant result only | Navigational search, entity extraction. |
+| **MAP** | Mean of $\text{AP@}k$ | All relevant positions | Multi-relevant ad-hoc information retrieval. |
+| **NDCG@k** | $\frac{\text{DCG@}k}{\text{IDCG@}k}$ | Graded relevance + log position discount | Production web search, e-commerce, LTR. |
+| **Interleaving** | Shared blended slate | Relative pairwise preference | Fast online model comparison ($100\times$ less traffic). |
+
+Next: [Semantic & Hybrid Search](/docs/search-ranking-recommendations/overview) — merge sparse BM25 lexical signals with dense neural embeddings using reciprocal rank fusion.
+
+## Sources
+
+- Järvelin, K., & Kekäläinen, J. (2002). *Cumulated Gain-based Evaluation of IR Techniques*. ACM Transactions on Information Systems (TOIS), 20(4), 422–446. [https://doi.org/10.1145/582415.582418](https://doi.org/10.1145/582415.582418)
+- Manning, C. D., Raghavan, P., & Schütze, H. (2008). *Introduction to Information Retrieval* (Chapter 8: Evaluation in information retrieval). Cambridge University Press. [https://nlp.stanford.edu/IR-book/html/htmledition/evaluation-in-information-retrieval-1.html](https://nlp.stanford.edu/IR-book/html/htmledition/evaluation-in-information-retrieval-1.html)
+- Burges, C., Shaked, T., Renshaw, E., Lazier, A., Deeds, M., Hamilton, N., & Hullender, G. (2005). *Learning to Rank using Gradient Descent*. Proceedings of the 22nd International Conference on Machine Learning (ICML), 89–96. [https://doi.org/10.1145/1102351.1102363](https://doi.org/10.1145/1102351.1102363)
+- Chapelle, O., Joachims, T., Radlinski, F., & Shen, Y. (2012). *Large-scale Validation and Analysis of Interleaved Search Evaluation*. ACM Transactions on Information Systems (TOIS), 30(1), 1–41. [https://doi.org/10.1145/2094072.2094078](https://doi.org/10.1145/2094072.2094078)

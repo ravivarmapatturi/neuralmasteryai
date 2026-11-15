@@ -1,0 +1,162 @@
+---
+title: "Search & Recommendation Pipelines"
+sidebar_position: 1
+description: "Master the shared retrieval, filtering, ranking, and re-ranking pipeline that turns millions of candidate items into an ordered list under 50ms."
+---
+
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
+import SearchRecommendationPipelineDiagram from '../../../viz/diagrams/SearchRecommendationPipelineDiagram';
+
+# Search & Recommendation Pipelines
+
+<ELI5>
+Imagine walking into a warehouse with ten million books. If you ask a librarian for books about space exploration, they do not read every single book in the warehouse while you wait at the desk. Instead, they first run to the astronomy aisle and grab fifty candidate books in thirty seconds. Next, they discard books that are checked out or damaged. Finally, they sit down, compare the remaining candidates carefully, and hand you the best five in order of relevance. Search and recommendation systems do the exact same thing in software.
+</ELI5>
+
+## Why Multi-Stage Pipelines Exist
+
+Search and recommendation engines face an identical fundamental engineering tension: catalog size versus scoring complexity. A modern platform contains between $10^6$ and $10^9$ items—web pages, catalog products, short videos, or audio tracks. Scoring a single item with a modern transformer or gradient-boosted decision tree requires computing hundreds of cross-features, comparing dense text embeddings, or evaluating deep neural networks.
+
+If we evaluated all ten million catalog items through a multi-layer neural network on every user keystroke, query latency would exceed ten seconds and infrastructure costs would explode. Conversely, if we relied exclusively on fast keyword matching or nearest-neighbor vector scans, we could answer in five milliseconds but the ordering would miss subtle user preferences, contextual affinities, and business constraints.
+
+We resolve this tension by structuring the system as a multi-stage funnel. Fast, cheap algorithms discard 99.9% of the catalog in the first ten milliseconds, passing only the most promising candidates to progressively richer, more computationally intensive scoring models.
+
+## The Multi-Stage Architecture
+
+Every production search and recommendation system organizes into five sequential stages. While search begins with an explicit user query (such as `"wireless noise cancelling headphones"`) and recommendation begins with an implicit user context (such as past listening history, current time of day, and device type), both systems route items through the exact same linear funnel.
+
+<SearchRecommendationPipelineDiagram />
+
+### 1. Candidate Generation (Retrieval)
+Candidate generation reduces the catalog from millions down to roughly 500 to 2,000 candidates within 10 to 20 milliseconds. The primary optimization objective is **high recall**: if a truly relevant item fails to make the candidate pool, no downstream model can ever score or display it. We use complementary lightweight retrieval channels in parallel:
+- **Lexical Retrieval**: Inverted indexes with BM25 score exact keyword matches, SKU lookups, and brand titles.
+- **Dense Vector Retrieval**: Two-tower neural encoders project users and items into a shared 256-dimensional embedding space, running Approximate Nearest Neighbor (ANN) search via HNSW or IVF indexes.
+- **Graph & Collaborative Filtering**: Item-to-item co-occurrence tables ("users who viewed $X$ also bought $Y$").
+
+### 2. Hard Filtering
+The raw candidate pool inevitably contains items that cannot be shown to the user. Hard filtering applies deterministic business logic and operational constraints before scoring:
+- Removing out-of-stock inventory or items outside the user's delivery postal code.
+- Enforcing age restrictions, region licensing rights, or blocked merchant lists.
+- Filtering out items the user has already purchased or explicitly dismissed.
+
+### 3. Ranking (Scoring)
+The surviving 300 to 500 items enter the ranking stage. Here, latency budgets permit complex models that spend 15 to 25 milliseconds computing deep interaction features:
+- Historical click-through rates (CTR) and conversion rates conditioned on user demographic slices.
+- Cross-encoder transformer attention between query tokens and item text.
+- Dense feature interactions through Gradient Boosted Decision Trees (LightGBM/XGBoost) or Deep Learning Recommendation Models (DLRM).
+
+The model outputs a continuous calibrated score for each item, representing predicted probability of engagement: $\hat{y} = P(\text{click}) \times P(\text{purchase} \mid \text{click})$.
+
+### 4. Re-Ranking & Business Logic
+The top 30 to 50 scored items enter re-ranking, which balances raw predicted relevance against platform-level constraints:
+- **Intra-List Diversity**: Preventing five consecutive results from the exact same manufacturer or artist.
+- **Freshness & Exploration**: Injecting newly published items via contextual multi-armed bandits to learn their baseline engagement.
+- **Fairness & Sponsored Allocation**: Blending paid partner listings into designated organic slots with explicit attribution.
+
+### 5. Serving & Presentation
+The final 10 to 20 items are formatted into the API payload. The serving layer fetches dynamic pricing, localized thumbnail URLs, and generates cryptographic tracking tokens so client-side impressions and clicks can be joined back to offline training logs.
+
+## The Core Misconception: Retrieval vs. Ranking
+
+Engineers approaching search or recommendation for the first time frequently assume retrieval and ranking are interchangeable words for the same task.
+
+<PredictFirst
+  question="Why can we not replace the two-stage retrieve-then-rank architecture with a single end-to-end transformer that directly emits the final top 10 items from the entire catalog?"
+  options={[
+    "A single model cannot optimize both lexical keyword matching and semantic meaning at the same time.",
+    "Evaluating deep cross-features between a user and 10 million catalog items exceeds real-time latency budgets by orders of magnitude.",
+    "Hardware accelerators such as GPUs lack enough VRAM to hold more than 1,000 document IDs at once.",
+    "Re-ranking business rules require SQL database transactions that cannot run inside neural networks."
+  ]}
+  correctIndex={1}
+  explanation="Cross-attention between query features and catalog items requires quadratic compute per pair. With a 10M item catalog and a 50ms SLA, scoring every item is mathematically impossible under modern datacenter hardware budgets. Retrieval provides high recall at low cost; ranking provides high precision over small sets."
+/>
+
+Retrieval and ranking optimize for fundamentally opposite mathematical properties:
+- **Retrieval maximizes Recall at scale**: It asks, *"Did we capture the best items somewhere in this set of 1,000 candidates?"* It evaluates simple, decoupled representations (such as single-term index postings or dot products of precomputed embeddings) where per-item evaluation costs are measured in microseconds.
+- **Ranking maximizes Precision at the top**: It asks, *"Is item #1 better than item #2?"* It evaluates deep cross-features (user history crossed with item brand, real-time weather, query-document term proximity) where scoring costs hundreds of microseconds per candidate.
+
+<NotebookCallout color="amber" title="The Retriever Bottleneck Invariant">
+No ranking algorithm can ever surface an item that was dropped by candidate generation. If your candidate generator retrieves 1,000 items with 85% recall, your system's overall recall has a hard mathematical ceiling of 85%, even if your ranking model has perfect accuracy.
+</NotebookCallout>
+
+## Tracing a Concrete Candidate Lifecycle
+
+To understand how data transforms across each boundary, consider an illustrative e-commerce platform with a catalog of 2,000,000 products.
+
+A user submits the search query `"wireless noise cancelling headphones"`. Simultaneously, the recommendation engine receives their user profile: a customer in Chicago who previously browsed audio recording gear.
+
+Here is how candidate item **H1** (a pair of high-end noise-cancelling headphones) moves through the funnel:
+
+```
+[Entire Catalog: 2,000,000 Products]
+        │
+        ▼ (Stage 1: Retrieval via BM25 + Vector ANN)
+[Candidate Pool: 1,200 Products]
+  - Item H1 is retrieved: BM25 score 14.2 (exact title match)
+  - Item H3 (competitor headphones) is retrieved via vector cosine similarity 0.84
+  - Cable C4 (replacement audio cable) is retrieved via keyword match
+        │
+        ▼ (Stage 2: Deterministic Filtering)
+[Filtered Candidates: 450 Products]
+  - Item H1 passes: in-stock at Chicago regional fulfillment center
+  - Cable C4 is discarded: out-of-stock across Midwest region
+        │
+        ▼ (Stage 3: GBDT / Cross-Encoder Ranking)
+[Scored Pool: Top 50 Ordered by P(click) * P(buy)]
+  - Item H1: Score = 0.94 (Rank 1)
+  - Item H3: Score = 0.88 (Rank 2)
+  - Earbuds E2: Score = 0.82 (Rank 3)
+  - Speaker S5: Score = 0.71 (Rank 4)
+        │
+        ▼ (Stage 4: Re-Ranking & Business Logic)
+[Adjusted Top 10]
+  - Rank 1: Item H1 (Retained top slot)
+  - Rank 2: Earbuds E2 (Swapped ahead of H3 to avoid consecutive listings from same brand)
+  - Rank 3: Item H3
+        │
+        ▼ (Stage 5: Client Serving Payload)
+[JSON Response delivered in 34ms]
+```
+
+At each transition, the candidate pool contracts while feature richness expands. Candidate generation operates over static document embeddings; ranking operates over real-time feature joins; re-ranking operates over list-level properties.
+
+## When Not to Use a Multi-Stage Pipeline
+
+A full five-stage architecture introduces distributed complexity, maintenance overhead, and latency serialization. Several common product scenarios do not warrant this architecture:
+
+| Situation | Recommended Architecture | Reason |
+| :--- | :--- | :--- |
+| **Catalog size under 5,000 items** (internal documentation, small SaaS settings) | Single-stage lexical or dense retrieval directly to UI | The entire catalog can be scanned or ranked in under 5ms without candidate generation. |
+| **Strict FIFO or deterministic audit logs** (financial ledgers, compliance records) | Direct database index lookups (`ORDER BY timestamp DESC`) | Learned ranking introduces non-deterministic score drift and breaks compliance guarantees. |
+| **Purely transactional SKU searches** (exact part number or barcode lookup) | Direct primary key hash lookup in Redis or PostgreSQL | Semantic embeddings and ranking models introduce noise and false positives for exact identifiers. |
+| **Cold-start products with zero interaction logs** | Rule-based curation or editorial popularity fallback | Ranking models overfit and degenerate without verified training impressions. |
+
+## Remember
+
+| Architectural Stage | Input Volume | Output Volume | Primary Target Metric | Typical Technology |
+| :--- | :--- | :--- | :--- | :--- |
+| **1. Candidate Gen** | $10^6 - 10^9$ | $500 - 2,000$ | High Recall | BM25, Two-Tower ANN (HNSW), Item2Vec |
+| **2. Filtering** | $1,000 - 2,000$ | $200 - 500$ | Availability & Compliance | Redis Bloom filters, SQL boolean predicates |
+| **3. Ranking** | $200 - 500$ | $30 - 50$ | High Precision (NDCG) | GBDT (LightGBM), DLRM, Cross-Encoders |
+| **4. Re-Ranking** | $30 - 50$ | $10 - 20$ | Diversity, Fairness & Freshness | Contextual Bandits, Deterministic Slates |
+| **5. Serving** | $10 - 20$ | 10 | End-to-end Latency (&lt;50ms) | Low-latency RPC gateway, CDN caching |
+
+Next: [Text Search & BM25](/docs/search-ranking-recommendations/text-search-bm25) — derive Robertson BM25 from first principles, dissect term-frequency saturation, and calculate exact document scores.
+
+## Related Topics & Further Reading
+
+- [Learning-to-Rank](/docs/machine-learning/learning-to-rank) — pointwise, pairwise, and listwise loss functions that train ranking models.
+- [Recommender Systems](/docs/machine-learning/recommender-systems) — collaborative filtering, matrix factorization, and user-item interaction matrices.
+- [RAG Architectures](/docs/llms-genai/rag) — dense vs. sparse retrieval and hybrid reciprocal rank fusion for generative language models.
+- [Multi-Armed Bandits](/docs/reinforcement-learning/bandits) — exploration versus exploitation strategies for slate recommendation.
+- [Recommendation Systems System Design](/docs/ml-system-design/case-studies#case-study-personalized-recommendations-for-a-50-million-item-catalog) — end-to-end infrastructure case study covering feature stores, retraining cadences, and caching.
+
+## Sources
+
+- Covington, P., Adams, J., & Sargin, E. (2016). *Deep Neural Networks for YouTube Recommendations*. Proceedings of the 10th ACM Conference on Recommender Systems, 191–198. [https://doi.org/10.1145/2959100.2959190](https://doi.org/10.1145/2959100.2959190)
+- Burges, C. J. (2010). *From RankNet to LambdaRank to LambdaMART: An Overview*. Microsoft Research Technical Report MSR-TR-2010-82.
+- Manning, C. D., Raghavan, P., & Schütze, H. (2008). *Introduction to Information Retrieval*. Cambridge University Press. [https://nlp.stanford.edu/IR-book/](https://nlp.stanford.edu/IR-book/)
+- Naumov, M., et al. (2019). *Deep Learning Recommendation Model for Personalization and Recommendation Systems*. arXiv:1906.00091. [https://arxiv.org/abs/1906.00091](https://arxiv.org/abs/1906.00091)

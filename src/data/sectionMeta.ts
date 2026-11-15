@@ -50,7 +50,7 @@ export const SECTION_META: Record<string, SectionMetaEntry> = {
     icon: '',
     color: '#5B8CFF',
     description: 'Classical ML, deep learning, vision, NLP, speech, LLMs, graph ML, and RL.',
-    pageCount: 83,
+    pageCount: 86,
     difficulty: 'Intermediate → Advanced',
     prerequisites: 'Foundations',
     leadsTo: 'Agents & Applications',
@@ -63,6 +63,7 @@ export const SECTION_META: Record<string, SectionMetaEntry> = {
       { dir: 'llms-genai', label: 'LLMs & GenAI' },
       { dir: 'graph-ml', label: 'Graph ML' },
       { dir: 'reinforcement-learning', label: 'Reinforcement Learning' },
+      { dir: 'search-ranking-recommendations', label: 'Search, Ranking & Recommendations', landing: '/docs/search-ranking-recommendations/overview' },
     ],
   },
   '/docs/category/agents--applications': {
