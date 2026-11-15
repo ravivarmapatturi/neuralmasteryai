@@ -1,7 +1,7 @@
 ---
 title: "Search & Recommendation Pipelines"
 sidebar_position: 1
-description: "Master the shared retrieval, filtering, ranking, and re-ranking pipeline that turns millions of candidate items into an ordered list under 50ms."
+description: "Master the multi-stage funnel of retrieval, filtering, ranking, and re-ranking that transforms vast catalogs into personalized, ordered result sets."
 ---
 
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
@@ -15,134 +15,247 @@ import SearchRecommendationPipelineDiagram from '../../../viz/diagrams/SearchRec
 Imagine walking into a warehouse with ten million books. If you ask a librarian for books about space exploration, they do not read every single book in the warehouse while you wait at the desk. Instead, they first run to the astronomy aisle and grab fifty candidate books in thirty seconds. Next, they discard books that are checked out or damaged. Finally, they sit down, compare the remaining candidates carefully, and hand you the best five in order of relevance. Search and recommendation systems do the exact same thing in software.
 </ELI5>
 
-## Why Multi-Stage Pipelines Exist
+## Why Multi-Stage Funnels Exist
 
-Search and recommendation engines face an identical fundamental engineering tension: catalog size versus scoring complexity. A modern platform contains between $10^6$ and $10^9$ items—web pages, catalog products, short videos, or audio tracks. Scoring a single item with a modern transformer or gradient-boosted decision tree requires computing hundreds of cross-features, comparing dense text embeddings, or evaluating deep neural networks.
+Search and recommendation engines face an identical fundamental engineering tension: catalog size versus scoring complexity. A modern platform contains vast catalogs—web pages, e-commerce products, short videos, or audio tracks—frequently scaling from millions to billions of items. Conversely, scoring a candidate item with a modern transformer or gradient-boosted decision tree requires computing dozens to hundreds of cross-features, comparing dense text embeddings, or evaluating deep neural networks.
 
-If we evaluated all ten million catalog items through a multi-layer neural network on every user keystroke, query latency would exceed ten seconds and infrastructure costs would explode. Conversely, if we relied exclusively on fast keyword matching or nearest-neighbor vector scans, we could answer in five milliseconds but the ordering would miss subtle user preferences, contextual affinities, and business constraints.
+If we evaluated millions of catalog items through a deep cross-attention model on every user request, computational demands would require millions of full neural forward passes, violating interactive response budgets by orders of magnitude. Conversely, if we relied exclusively on fast keyword matching or unranked nearest-neighbor vector scans, responses would arrive rapidly, but the ordering would fail to capture subtle user preferences, contextual affinities, and business constraints.
 
-We resolve this tension by structuring the system as a multi-stage funnel. Fast, cheap algorithms discard 99.9% of the catalog in the first ten milliseconds, passing only the most promising candidates to progressively richer, more computationally intensive scoring models.
+We resolve this tension by structuring the system as a multi-stage funnel. Early stages employ lightweight, sub-linear filtering and vector indexing to discard the vast majority of non-viable items, passing only a bounded candidate set to progressively richer, more computationally intensive scoring layers.
 
 ## The Multi-Stage Architecture
 
-Every production search and recommendation system organizes into five sequential stages. While search begins with an explicit user query (such as `"wireless noise cancelling headphones"`) and recommendation begins with an implicit user context (such as past listening history, current time of day, and device type), both systems route items through the exact same linear funnel.
+Large-scale search and recommendation platforms typically decompose request processing into a sequential funnel. While search begins with an explicit user query (such as `"wireless noise cancelling headphones"`) and recommendation begins from an implicit user or session context (such as past interaction history, time of day, and client device), both paradigms route items through five core funnel stages: Candidate Generation, Hard Filtering, Ranking, Re-Ranking, and Serving.
 
 <SearchRecommendationPipelineDiagram />
 
 ### 1. Candidate Generation (Retrieval)
-Candidate generation reduces the catalog from millions down to roughly 500 to 2,000 candidates within 10 to 20 milliseconds. The primary optimization objective is **high recall**: if a truly relevant item fails to make the candidate pool, no downstream model can ever score or display it. We use complementary lightweight retrieval channels in parallel:
-- **Lexical Retrieval**: Inverted indexes with BM25 score exact keyword matches, SKU lookups, and brand titles.
-- **Dense Vector Retrieval**: Two-tower neural encoders project users and items into a shared 256-dimensional embedding space, running Approximate Nearest Neighbor (ANN) search via HNSW or IVF indexes.
-- **Graph & Collaborative Filtering**: Item-to-item co-occurrence tables ("users who viewed $X$ also bought $Y$").
+In an illustrative production setup with millions of items, candidate generation reduces the search space down to several hundred or a few thousand candidates. The primary optimization objective is **high recall**: if a truly relevant item fails to make the candidate pool, downstream models cannot score or display it. Systems typically query complementary lightweight retrieval channels in parallel:
+- **Lexical Retrieval**: Inverted indexes with BM25 score exact keyword matches, SKU lookups, and brand titles with sub-millisecond posting-list intersections.
+- **Dense Vector Retrieval**: Two-tower neural encoders project users and items into a shared embedding space, executing Approximate Nearest Neighbor (ANN) search via HNSW or IVF indexes.
+- **Graph & Collaborative Filtering**: Item-to-item co-occurrence tables and user-interaction graphs ("users who viewed item $X$ also engaged with item $Y$").
 
 ### 2. Hard Filtering
-The raw candidate pool inevitably contains items that cannot be shown to the user. Hard filtering applies deterministic business logic and operational constraints before scoring:
-- Removing out-of-stock inventory or items outside the user's delivery postal code.
+The raw candidate pool frequently contains items that cannot be served to the requesting user. Hard filtering applies deterministic business logic and operational constraints before scoring models execute:
+- Removing out-of-stock inventory or items outside the user's regional fulfillment boundary.
 - Enforcing age restrictions, region licensing rights, or blocked merchant lists.
-- Filtering out items the user has already purchased or explicitly dismissed.
+- Filtering out items the user has already purchased, consumed, or explicitly dismissed.
 
 ### 3. Ranking (Scoring)
-The surviving 300 to 500 items enter the ranking stage. Here, latency budgets permit complex models that spend 15 to 25 milliseconds computing deep interaction features:
-- Historical click-through rates (CTR) and conversion rates conditioned on user demographic slices.
+The surviving candidates (often several hundred items in an illustrative setup) enter the ranking stage. Here, computational budgets permit expressive models that evaluate deep interaction features:
+- Historical click-through rates (CTR) and conversion rates conditioned on user demographic segments and temporal contexts.
 - Cross-encoder transformer attention between query tokens and item text.
 - Dense feature interactions through Gradient Boosted Decision Trees (LightGBM/XGBoost) or Deep Learning Recommendation Models (DLRM).
 
-The model outputs a continuous calibrated score for each item, representing predicted probability of engagement: $\hat{y} = P(\text{click}) \times P(\text{purchase} \mid \text{click})$.
+The ranking model outputs a continuous calibrated score for each item, representing predicted probability of engagement: $\hat{y} = P(\text{click}) \times P(\text{conversion} \mid \text{click})$.
 
 ### 4. Re-Ranking & Business Logic
-The top 30 to 50 scored items enter re-ranking, which balances raw predicted relevance against platform-level constraints:
-- **Intra-List Diversity**: Preventing five consecutive results from the exact same manufacturer or artist.
-- **Freshness & Exploration**: Injecting newly published items via contextual multi-armed bandits to learn their baseline engagement.
-- **Fairness & Sponsored Allocation**: Blending paid partner listings into designated organic slots with explicit attribution.
+The top-scoring candidates enter re-ranking, which balances raw predicted relevance against platform-level constraints:
+- **Intra-List Diversity**: Preventing multiple consecutive results from the exact same merchant, brand, or creator.
+- **Freshness & Exploration**: Injecting newly published items via contextual multi-armed bandits to learn their baseline engagement distribution without historical interaction logs.
+- **Fairness & Sponsored Allocation**: Blending paid partner listings into designated organic slots with explicit attribution and quality guards.
 
 ### 5. Serving & Presentation
-The final 10 to 20 items are formatted into the API payload. The serving layer fetches dynamic pricing, localized thumbnail URLs, and generates cryptographic tracking tokens so client-side impressions and clicks can be joined back to offline training logs.
+The final top-$k$ results (typically 5 to 20 items in an illustrative response slate) are packaged into the API payload. The serving layer fetches dynamic pricing, localized thumbnail URLs, and generates cryptographic tracking tokens so client-side impressions and clicks can be joined back to offline training logs.
 
-## The Core Misconception: Retrieval vs. Ranking
+## Retrieval vs. Ranking: Complementary Objectives
 
-Engineers approaching search or recommendation for the first time frequently assume retrieval and ranking are interchangeable words for the same task.
+Engineers approaching search or recommendation for the first time frequently assume retrieval and ranking are interchangeable words for the same task. They are complementary operations with fundamentally distinct mathematical and systems properties:
 
 <PredictFirst
   question="Why can we not replace the two-stage retrieve-then-rank architecture with a single end-to-end transformer that directly emits the final top 10 items from the entire catalog?"
   options={[
     "A single model cannot optimize both lexical keyword matching and semantic meaning at the same time.",
-    "Evaluating deep cross-features between a user and 10 million catalog items exceeds real-time latency budgets by orders of magnitude.",
+    "Evaluating deep cross-features between a user and millions of catalog items exceeds real-time latency and compute budgets by orders of magnitude.",
     "Hardware accelerators such as GPUs lack enough VRAM to hold more than 1,000 document IDs at once.",
     "Re-ranking business rules require SQL database transactions that cannot run inside neural networks."
   ]}
   correctIndex={1}
-  explanation="Cross-attention between query features and catalog items requires quadratic compute per pair. With a 10M item catalog and a 50ms SLA, scoring every item is mathematically impossible under modern datacenter hardware budgets. Retrieval provides high recall at low cost; ranking provides high precision over small sets."
+  explanation="Cross-attention requires jointly encoding query and candidate tokens for every catalog item, scaling quadratically with sequence length and linearly with catalog size. For millions of items, scoring every candidate in real time exceeds latency and compute budgets by orders of magnitude. Bi-encoder retrieval separates query and document representations so candidate vectors can be precomputed and queried via approximate nearest neighbor search; ranking evaluates expressive cross-features over the small retrieved subset."
 />
 
-Retrieval and ranking optimize for fundamentally opposite mathematical properties:
-- **Retrieval maximizes Recall at scale**: It asks, *"Did we capture the best items somewhere in this set of 1,000 candidates?"* It evaluates simple, decoupled representations (such as single-term index postings or dot products of precomputed embeddings) where per-item evaluation costs are measured in microseconds.
-- **Ranking maximizes Precision at the top**: It asks, *"Is item #1 better than item #2?"* It evaluates deep cross-features (user history crossed with item brand, real-time weather, query-document term proximity) where scoring costs hundreds of microseconds per candidate.
+### Comparing the Two Stages
+
+- **Candidate Generation maximizes Recall over the whole catalog**: It asks, *"Did we capture the best items somewhere in this set of candidates?"* It evaluates decoupled representations (such as single-term index postings or dot products of precomputed embeddings) where per-item evaluation costs are minimal.
+- **Ranking maximizes Order and Precision at the top**: It asks, *"Is item #1 better than item #2?"* It evaluates deep cross-features (user history crossed with item brand, real-time context, query-document term proximity) where scoring costs are higher per candidate.
 
 <NotebookCallout color="amber" title="The Retriever Bottleneck Invariant">
-No ranking algorithm can ever surface an item that was dropped by candidate generation. If your candidate generator retrieves 1,000 items with 85% recall, your system's overall recall has a hard mathematical ceiling of 85%, even if your ranking model has perfect accuracy.
+No ranking algorithm can surface an item dropped during candidate generation. If candidate generation retrieves candidates with 85% recall, the overall system recall has an absolute upper bound of 85%, regardless of how accurate the downstream ranking model is.
 </NotebookCallout>
 
-## Tracing a Concrete Candidate Lifecycle
+## Theoretical Foundations: The Probability Ranking Principle
 
-To understand how data transforms across each boundary, consider an illustrative e-commerce platform with a catalog of 2,000,000 products.
+The theoretical bedrock of information retrieval and ranking is Stephen Robertson's **Probability Ranking Principle (PRP)** (1977).
+
+<GoDeeper title="Formal Derivation of the Probability Ranking Principle">
+Let $q$ denote a user query, and let $d$ denote a candidate document in catalog $\mathcal{C}$. Let binary random variable $R \in \{0, 1\}$ represent document relevance, where $R = 1$ indicates that document $d$ satisfies user $q$, and $R = 0$ indicates non-relevance.
+
+Assume that a user examines the retrieved list sequentially from rank $1$ to rank $k$. Let $C_1$ denote the utility (reward) gained by the user when encountering a relevant document, and let $C_0$ denote the penalty (cost in time or effort) incurred when examining a non-relevant document.
+
+For an arbitrary document $d$, its expected utility is:
+$$\mathbb{E}[U(d)] = C_1 \cdot P(R = 1 \mid d, q) + C_0 \cdot P(R = 0 \mid d, q)$$
+
+Because $P(R = 0 \mid d, q) = 1 - P(R = 1 \mid d, q)$, we rearrange:
+$$\mathbb{E}[U(d)] = (C_1 - C_0) \cdot P(R = 1 \mid d, q) + C_0$$
+
+Assuming that finding a relevant document provides strictly greater utility than finding a non-relevant document ($C_1 > C_0$), the expected utility $\mathbb{E}[U(d)]$ is a strictly increasing linear function of the posterior probability of relevance $P(R = 1 \mid d, q)$.
+
+Therefore, total expected user utility across a ranked slate is maximized if and only if documents are ordered in strictly decreasing order of their posterior probabilities of relevance:
+$$P(R = 1 \mid d_1, q) \ge P(R = 1 \mid d_2, q) \ge \dots \ge P(R = 1 \mid d_k, q)$$
+</GoDeeper>
+
+### Why Modern Systems Extend Beyond Pure PRP
+
+While the PRP provides the mathematical justification for sorting by predicted relevance, modern production systems must balance constraints that the classic PRP ignores:
+1. **Relevance Independence Assumption**: The PRP assumes the utility of document $d_i$ is independent of document $d_j$. In practice, if document $d_1$ and document $d_2$ are identical duplicates, finding $d_1$ fulfills the user need; $d_2$ provides zero marginal utility despite having an identical probability of relevance.
+2. **Diversity and Portfolio Effects**: Presenting five near-identical top-ranked items increases the risk of complete user abandonment if the user's specific intent differed slightly from the query interpretation. Re-ranking balances individual relevance against portfolio coverage.
+3. **Multi-Objective Utilities**: Modern platforms optimize composite objectives that blend user satisfaction with business sustainability: $\text{Utility} = \alpha \cdot P(\text{click}) + \beta \cdot P(\text{purchase} \mid \text{click}) - \gamma \cdot \text{ReturnRate}$.
+
+## Mathematical Analysis of Funnel Recall Cascading
+
+To understand why candidate generation requires high recall, let us formalize how items flow through the funnel boundaries.
+
+Let $\mathcal{C}$ denote the full catalog. Let $\mathcal{R}_q \subset \mathcal{C}$ represent the set of all items truly relevant to query or user context $q$.
+
+The multi-stage funnel generates a sequence of progressively smaller candidate sets:
+$$\mathcal{C} = C_0 \supset C_1 \supset C_2 \supset C_3 \supset C_4 = \text{Slate}$$
+
+Where:
+- $C_1$: Retrieved candidates from candidate generation.
+- $C_2$: Surviving candidates after hard business filtering.
+- $C_3$: Top candidates selected by the ranking model.
+- $C_4$: Final presentation slate produced by re-ranking.
+
+Because each stage operates strictly as a filter on the preceding stage's output ($C_{i} \subseteq C_{i-1}$), relevance recall is monotonically non-increasing across stages:
+
+$$\text{Recall}(C_i) = \frac{|C_i \cap \mathcal{R}_q|}{|\mathcal{R}_q|}$$
+
+$$\text{Recall}(C_1) \ge \text{Recall}(C_2) \ge \text{Recall}(C_3) \ge \text{Recall}(C_4)$$
+
+### The Unrecoverable Loss Invariant
+
+If a relevant item $d^* \in \mathcal{R}_q$ is excluded during candidate generation ($d^* \notin C_1$), its downstream survival probability is strictly zero:
+$$\mathbb{P}(d^* \in C_4 \mid d^* \notin C_1) = 0$$
+
+This asymmetric risk profile dictates the engineering trade-off at each stage:
+- **Stage 1 (Retrieval)**: Tolerates low precision to minimize false negatives (type II errors). Surfacing 900 irrelevant candidates alongside 100 relevant candidates (precision = 0.10) is acceptable because downstream stages will eliminate the irrelevant items.
+- **Stage 3 (Ranking)**: Must achieve high precision at the top ranks (minimizing false positives in slots 1 through 5) because users rarely inspect past the initial screen.
+
+## Feature Engineering and Storage Across Stages
+
+Data representations evolve fundamentally as candidates advance through the funnel:
+
+```
+[Catalog Level]      ──► Static Precomputed Embeddings, Inverted Postings, Taxonomy
+                           (Read-only, sub-linear indices, updated daily/hourly)
+
+[Retrieval Level]    ──► Bi-Encoder Vector Dot Products, BM25 Scores, Graph Proximity
+                           (Decoupled representations, <1ms lookups)
+
+[Ranking Level]      ──► Dynamic Feature Joins: User Profiling, Real-time Interaction Logs,
+                           Cross-Attention Features, GBDT Trees
+                           (High dimensionality, compute intensive)
+
+[Re-Ranking Level]   ──► Slate-Level Features: Category Dispersion, Brand Coverage, Novelty
+                           (Operates over sets of items rather than isolated items)
+```
+
+### 1. Static vs. Dynamic Features
+- **Static Document Features**: Precomputed properties that do not depend on the user or immediate query. Examples include document length, item category, brand ID, historical quality score, and precomputed text embeddings. These are stored directly in index postings or memory-mapped arrays.
+- **Dynamic Contextual Features**: Properties that exist only at the moment of request. Examples include current query text, user device type, user geo-IP location, time of day, and weather context.
+- **Real-Time Interaction Features**: Rolling aggregations capturing immediate platform feedback. Examples include the number of times an item was viewed in the last 15 minutes, or whether the user dismissed a similar item three seconds ago in the current session. These require low-latency distributed key-value stores (e.g. Redis or Dragonfly) fed by streaming event engines (e.g. Apache Flink or Kafka).
+
+### 2. The Point-in-Time Correctness Invariant
+When training offline ranking models, logged training examples must reconstruct features exactly as they existed at the moment the prediction was served. If offline training logs join an item's current 30-day conversion rate rather than its historical rate at the timestamp of the impression, the model learns to exploit future data leakage, resulting in severe performance collapse when deployed to live traffic.
+
+## Architectural Trade-Offs: Two-Tower vs. Cross-Encoder
+
+A central architectural pattern across search and recommendation is the division between **Two-Tower Bi-Encoders** (used in candidate generation) and **Cross-Encoders** (used in ranking):
+
+```
+Two-Tower Architecture (Candidate Generation)
+
+Query / User Context ──► [ Tower 1: f_θ ] ──► Vector u ──┐
+                                                           ├──► Dot Product ⟨u, v⟩ ──► ANN Score
+Item Document        ──► [ Tower 2: g_ϕ ] ──► Vector v ──┘
+                          (Precomputed)
+
+
+Cross-Encoder Architecture (Ranking / Scoring)
+
+[ Query Tokens + Item Tokens ] ──► [ Full Multi-Head Cross Attention ] ──► Calibrated P(click)
+```
+
+| Dimension | Two-Tower Bi-Encoder | Cross-Encoder Ranker |
+| :--- | :--- | :--- |
+| **Stage in Funnel** | Candidate Generation (Retrieval) | Ranking / Scoring |
+| **Interaction Mechanism** | Late interaction: dot product or cosine similarity $\langle u, v \rangle$ | Early interaction: all query tokens attend to all item tokens |
+| **Document Representation** | Precomputed offline and indexed in vector databases | Jointly computed at request time per (query, document) pair |
+| **Computational Complexity** | $O(d)$ vector dot product per candidate | $O((L_q + L_d)^2)$ quadratic attention over concatenated tokens |
+| **Throughput & Capacity** | Millions of items via ANN indexing (HNSW, IVF-PQ) | Hundreds of items via GPU/accelerator batches |
+| **Semantic Precision** | Moderate: misses fine-grained token alignments and negations | High: models complex token interactions and contextual nuances |
+
+## Tracing an Illustrative Candidate Lifecycle
+
+To trace how representations and volumes evolve across stage boundaries, consider an illustrative e-commerce toy scenario with a hypothetical 2,000,000-item catalog. (All candidate counts, latencies, and scores below serve solely as a concrete walkthrough of stage mechanics).
 
 A user submits the search query `"wireless noise cancelling headphones"`. Simultaneously, the recommendation engine receives their user profile: a customer in Chicago who previously browsed audio recording gear.
 
 Here is how candidate item **H1** (a pair of high-end noise-cancelling headphones) moves through the funnel:
 
 ```
-[Entire Catalog: 2,000,000 Products]
+[Entire Catalog: 2,000,000 Products (Illustrative Toy Example)]
         │
-        ▼ (Stage 1: Retrieval via BM25 + Vector ANN)
-[Candidate Pool: 1,200 Products]
+        ▼ (Stage 1: Candidate Generation via Sparse BM25 + Vector ANN)
+[Candidate Pool: ~1,200 Products]
   - Item H1 is retrieved: BM25 score 14.2 (exact title match)
   - Item H3 (competitor headphones) is retrieved via vector cosine similarity 0.84
   - Cable C4 (replacement audio cable) is retrieved via keyword match
         │
         ▼ (Stage 2: Deterministic Filtering)
-[Filtered Candidates: 450 Products]
+[Filtered Candidates: ~450 Products]
   - Item H1 passes: in-stock at Chicago regional fulfillment center
   - Cable C4 is discarded: out-of-stock across Midwest region
         │
         ▼ (Stage 3: GBDT / Cross-Encoder Ranking)
-[Scored Pool: Top 50 Ordered by P(click) * P(buy)]
+[Scored Pool: Top 50 Ordered by P(click) * P(conversion)]
   - Item H1: Score = 0.94 (Rank 1)
   - Item H3: Score = 0.88 (Rank 2)
   - Earbuds E2: Score = 0.82 (Rank 3)
   - Speaker S5: Score = 0.71 (Rank 4)
         │
         ▼ (Stage 4: Re-Ranking & Business Logic)
-[Adjusted Top 10]
+[Adjusted Top 10 Slate]
   - Rank 1: Item H1 (Retained top slot)
-  - Rank 2: Earbuds E2 (Swapped ahead of H3 to avoid consecutive listings from same brand)
+  - Rank 2: Earbuds E2 (Promoted ahead of H3 to avoid consecutive listings from same brand)
   - Rank 3: Item H3
         │
         ▼ (Stage 5: Client Serving Payload)
-[JSON Response delivered in 34ms]
+[Illustrative JSON response returned to client]
 ```
 
 At each transition, the candidate pool contracts while feature richness expands. Candidate generation operates over static document embeddings; ranking operates over real-time feature joins; re-ranking operates over list-level properties.
 
 ## When Not to Use a Multi-Stage Pipeline
 
-A full five-stage architecture introduces distributed complexity, maintenance overhead, and latency serialization. Several common product scenarios do not warrant this architecture:
+A full multi-stage architecture introduces distributed complexity, operational overhead, and serialized network boundaries. Several common product scenarios do not warrant this architecture:
 
 | Situation | Recommended Architecture | Reason |
 | :--- | :--- | :--- |
-| **Catalog size under 5,000 items** (internal documentation, small SaaS settings) | Single-stage lexical or dense retrieval directly to UI | The entire catalog can be scanned or ranked in under 5ms without candidate generation. |
+| **Small catalogs under a few thousand items** (internal documentation, small SaaS settings) | Single-stage lexical or dense retrieval directly to UI | The entire catalog can be scanned or ranked directly without an intermediate candidate generation stage. |
 | **Strict FIFO or deterministic audit logs** (financial ledgers, compliance records) | Direct database index lookups (`ORDER BY timestamp DESC`) | Learned ranking introduces non-deterministic score drift and breaks compliance guarantees. |
 | **Purely transactional SKU searches** (exact part number or barcode lookup) | Direct primary key hash lookup in Redis or PostgreSQL | Semantic embeddings and ranking models introduce noise and false positives for exact identifiers. |
 | **Cold-start products with zero interaction logs** | Rule-based curation or editorial popularity fallback | Ranking models overfit and degenerate without verified training impressions. |
 
 ## Remember
 
-| Architectural Stage | Input Volume | Output Volume | Primary Target Metric | Typical Technology |
+| Architectural Stage | Illustrative Input Volume | Illustrative Output Volume | Primary Optimization Objective | Representative Technologies |
 | :--- | :--- | :--- | :--- | :--- |
-| **1. Candidate Gen** | $10^6 - 10^9$ | $500 - 2,000$ | High Recall | BM25, Two-Tower ANN (HNSW), Item2Vec |
-| **2. Filtering** | $1,000 - 2,000$ | $200 - 500$ | Availability & Compliance | Redis Bloom filters, SQL boolean predicates |
-| **3. Ranking** | $200 - 500$ | $30 - 50$ | High Precision (NDCG) | GBDT (LightGBM), DLRM, Cross-Encoders |
-| **4. Re-Ranking** | $30 - 50$ | $10 - 20$ | Diversity, Fairness & Freshness | Contextual Bandits, Deterministic Slates |
-| **5. Serving** | $10 - 20$ | 10 | End-to-end Latency (&lt;50ms) | Low-latency RPC gateway, CDN caching |
+| **1. Candidate Gen** | Millions of items | Hundreds to thousands | High Recall | BM25, Two-Tower ANN (HNSW), Item2Vec |
+| **2. Filtering** | Thousands of items | Hundreds of items | Availability & Compliance | Redis Bloom filters, SQL boolean predicates |
+| **3. Ranking** | Hundreds of items | Tens of items | High Precision (NDCG) | GBDT (LightGBM), DLRM, Cross-Encoders |
+| **4. Re-Ranking** | Tens of items | Final display slate (5–20) | Diversity, Fairness & Freshness | Contextual Bandits, Deterministic Slates |
+| **5. Serving** | Final display slate | Formatted client payload | Responsive End-to-End Latency | Low-latency RPC gateway, CDN caching |
 
 Next: [Text Search & BM25](/docs/search-ranking-recommendations/text-search-bm25) — derive Robertson BM25 from first principles, dissect term-frequency saturation, and calculate exact document scores.
 
@@ -156,7 +269,9 @@ Next: [Text Search & BM25](/docs/search-ranking-recommendations/text-search-bm25
 
 ## Sources
 
+- Robertson, S. E. (1977). *The probability ranking principle in IR*. Journal of Documentation, 33(4), 294–304. [https://doi.org/10.1108/eb026647](https://doi.org/10.1108/eb026647)
 - Covington, P., Adams, J., & Sargin, E. (2016). *Deep Neural Networks for YouTube Recommendations*. Proceedings of the 10th ACM Conference on Recommender Systems, 191–198. [https://doi.org/10.1145/2959100.2959190](https://doi.org/10.1145/2959100.2959190)
-- Burges, C. J. (2010). *From RankNet to LambdaRank to LambdaMART: An Overview*. Microsoft Research Technical Report MSR-TR-2010-82.
+- Burges, C. J. (2010). *From RankNet to LambdaRank to LambdaMART: An Overview*. Microsoft Research Technical Report MSR-TR-2010-82. [https://www.microsoft.com/en-us/research/publication/from-ranknet-to-lambdarank-to-lambdamart-an-overview/](https://www.microsoft.com/en-us/research/publication/from-ranknet-to-lambdarank-to-lambdamart-an-overview/)
 - Manning, C. D., Raghavan, P., & Schütze, H. (2008). *Introduction to Information Retrieval*. Cambridge University Press. [https://nlp.stanford.edu/IR-book/](https://nlp.stanford.edu/IR-book/)
 - Naumov, M., et al. (2019). *Deep Learning Recommendation Model for Personalization and Recommendation Systems*. arXiv:1906.00091. [https://arxiv.org/abs/1906.00091](https://arxiv.org/abs/1906.00091)
+- Haldar, M., et al. (2019). *Applying Deep Learning To Airbnb Search*. Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining, 2827–2835. [https://doi.org/10.1145/3292500.3330658](https://doi.org/10.1145/3292500.3330658)
