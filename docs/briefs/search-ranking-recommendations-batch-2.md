@@ -82,3 +82,130 @@ Run each heavy command sequentially, only through `flock /tmp/nm-heavy.lock`:
 Inspect the complete diff against the allowed file list. Commit in focused commits on this branch. Never push.
 
 ## Report from agy
+
+### 1. Summary of Work Completed
+Executed Batch 2 in full according to `docs/briefs/search-ranking-recommendations-batch-2.md`:
+
+1. **Authored Three Deep-Dive Learn Pages** under `src/content/docs/search-ranking-recommendations/`:
+   - `semantic-and-hybrid-search.mdx` (sidebar_position: 4, 3,624 prose words, 141-character description):
+     - Derives when lexical retrieval, dense bi-encoder retrieval, and late interaction differ.
+     - Details HNSW skip-graphs, IVF Voronoi cells, and Product Quantization (PQ) memory trade-offs.
+     - Formulates ColBERT late interaction token embeddings and the MaxSim alignment operator.
+     - Derives Reciprocal Rank Fusion (RRF) with full worked example ($D_1$..$D_4$ with $k=60$ yielding $D_2 \succ D_1 \succ D_3 \succ D_4$ under equal weights, and $D_1 \succ D_2$ under lexical bias $w_{\text{lex}}=2.0$).
+     - Features interactive visualizer `SemanticHybridSearchDiagram`, two `<RunnableCode>` blocks (pure RRF and ColBERT MaxSim in NumPy), 2 `<PredictFirst>` active recall challenges, `<GoDeeper>` PQ derivation, failure modes table, When Not to Use table, 7-row Remember table, and 6 primary sources with URLs.
+   - `ranking-fundamentals.mdx` (sidebar_position: 5, 3,822 prose words, 143-character description):
+     - Formulates the ranker scoring function $s = f(\mathbf{x}(q, d, u, c))$ and structures the five multi-modal feature families.
+     - Analyzes logging-time feature correctness, point-in-time joins, and offline temporal leakage traps.
+     - Derives the Examination Hypothesis and Inverse Propensity Scoring (IPS) for counterfactual unbiasing of implicit click logs; links to `/docs/reinforcement-learning/bandits` for exploration.
+     - Derives PageRank on directed hyperlink graphs: random surfer model, damping factor $d=0.85$, teleportation base $(1-d)/N = 0.0375$, dangling node mass preservation, Perron-Frobenius convergence proof, and personalization.
+     - Features a concrete 4-node directed graph ($\{A, B, C, D\}$ with identical numbers across prose, diagram, and NumPy code: Step 0 uniform $0.2500$, Step 1 $A=0.2500, B=0.1438, C=0.5688, D=0.0375$, converging to $A=0.3725, B=0.1958, C=0.3941, D=0.0375$).
+     - Features interactive visualizer `PageRankVisualizer`, two `<RunnableCode>` blocks (NumPy PageRank solver and IPS click unbiasing simulation), 2 `<PredictFirst>` prompts, failure modes table, When Not to Use table, 6-row Remember table, and 7 primary sources with URLs.
+   - `learning-to-rank.mdx` (sidebar_position: 6, 3,506 prose words, 137-character description):
+     - Teaches pointwise (MSE/regression), pairwise (RankNet/LambdaRank), and listwise (LambdaMART/ListNet) ranking paradigms through a concrete 3-document worked example ($Q$: "neural ranking model", labels $\{3, 2, 0\}$, model scores $[1.2, 2.1, 0.4]$, exhibiting top-slot inversion $D_2 \succ D_1$).
+     - Derives RankNet pairwise logistic cross-entropy loss, sigmoid probability $P_{12} = \sigma(-0.90) \approx 0.2891$, and gradient force $\lambda_{12} = -0.7109$.
+     - Solves the non-differentiable ranking metric bottleneck via LambdaRank: scales RankNet gradient by metric shift $|\Delta\text{NDCG}_{12}| = |8.8928 - 7.4165|/8.8928 \approx 0.1660$, producing virtual gradient $\lambda_{12}^{\text{LambdaRank}} = -0.1180$.
+     - Explains LambdaMART Multiple Additive Regression Trees: fitting pseudo-residuals $\lambda_i$, second-order Newton-Raphson leaf updates $\gamma_{km} = \sum \lambda_i / \sum w_i$, and why GBDT dominates tabular production ranking.
+     - Cross-links to batch-1 `/docs/search-ranking-recommendations/ranking-evaluation-metrics` and acknowledges existing classical route `/docs/machine-learning/learning-to-rank` as a complementary foundational guide.
+     - Features interactive visualizer `LearningToRankDiagram`, two `<RunnableCode>` blocks (exact LambdaRank gradient calculation and LambdaMART decision stump fit), 2 `<PredictFirst>` prompts, failure modes table, When Not to Use table, 7-row Remember table, and 7 primary sources with URLs.
+
+2. **Created Calculation Libraries and Unit Tests** in `src/viz/lib/`:
+   - `hybridSearch.ts` and `hybridSearch.test.ts` (3/3 passing unit tests).
+   - `pageRank.ts` and `pageRank.test.ts` (4/4 passing unit tests).
+   - `learningToRank.ts` and `learningToRank.test.ts` (4/4 passing unit tests).
+
+3. **Created Interactive Visual Diagrams and RTL Tests** in `src/viz/diagrams/`:
+   - `SemanticHybridSearchDiagram.tsx` and `SemanticHybridSearchDiagram.test.tsx` (3/3 passing tests).
+   - `PageRankVisualizer.tsx` and `PageRankVisualizer.test.tsx` (3/3 passing tests).
+   - `LearningToRankDiagram.tsx` and `LearningToRankDiagram.test.tsx` (5/5 passing tests).
+
+4. **Captured 12 Evidence Screenshots & Verified Clean Browser Execution**:
+   - Captured desktop (1200px) and mobile (375px) in light and dark modes in `docs/evidence/search-ranking-recommendations/batch-2/`.
+   - Verified 0 horizontal overflow at 375px (`document.documentElement.scrollWidth === 375` across all pages).
+   - Verified Pyodide runtime in browser: executed NumPy and AST evaluation cleanly with zero uncaught exceptions.
+
+5. **Updated Metadata**:
+   - Regenerated `src/data/pageMeta.generated.json` (1,984 pages).
+
+---
+
+### 2. Exact Commands and Verification Output
+
+1. `flock /tmp/nm-heavy.lock node scripts/generate-page-meta.mjs`
+   - Output: `generate-page-meta: wrote 28 blog posts to src/data/blogMeta.generated.json`, `generate-page-meta: wrote 1984 pages, 44 categories to src/data/pageMeta.generated.json`
+   - Exit Code: `0` (Pass)
+
+2. `flock /tmp/nm-heavy.lock npm run check:mdx`
+   - Output: `check-mdx-compile: 2012 files, 0 failed.`
+   - Exit Code: `0` (Pass)
+
+3. `flock /tmp/nm-heavy.lock npm run check:links`
+   - Output: `check-internal-links: scanned 1984 MDX file(s), found 2140 valid route(s). check-internal-links: no broken internal prose links found. check-anchor-links: no broken anchor links found.`
+   - Exit Code: `0` (Pass)
+
+4. `flock /tmp/nm-heavy.lock npm run typecheck`
+   - Command: `tsc -b`
+   - Output: Clean compilation with 0 errors.
+   - Exit Code: `0` (Pass)
+
+5. `flock /tmp/nm-heavy.lock npx vitest run src/viz/lib/hybridSearch.test.ts src/viz/lib/pageRank.test.ts src/viz/lib/learningToRank.test.ts src/viz/diagrams/SemanticHybridSearchDiagram.test.tsx src/viz/diagrams/PageRankVisualizer.test.tsx src/viz/diagrams/LearningToRankDiagram.test.tsx src/data/sectionMeta.test.ts`
+   - Output: `Test Files  7 passed (7) | Tests  33 passed (33)`
+   - Exit Code: `0` (Pass)
+
+6. `npm run check:tracker`
+   - Output: `check-agent-tracker: AGENT_TRACKER.md is valid, structured, and properly maintained.`
+   - Exit Code: `0` (Pass)
+
+7. `git diff --check`
+   - Output: Clean (0 trailing whitespace / conflict marker errors).
+   - Exit Code: `0` (Pass)
+
+8. Banned-phrase grep (`writing-voice` standard):
+   - Output: 0 matches found across all new batch-2 files.
+   - Exit Code: `0` (Pass)
+
+9. Browser Interaction, Overflow & Pyodide Verification:
+   - Captured 12 responsive screenshots across 1200px and 375px viewports in light and dark modes.
+   - Horizontal overflow test: `document.documentElement.scrollWidth` strictly equal to `375` (0 overflow).
+   - Pyodide client-side execution verified: `<RunnableCode>` blocks executed in Chromium, loaded WebAssembly runtime and NumPy (`[browser] log Loaded numpy`), and ran with zero uncaught exceptions.
+
+10. Memory Measurement & Build Guard:
+    - Command: `flock /tmp/nm-heavy.lock free -h`
+    - Output: `Mem total: 7.2Gi, used: 4.3Gi, free: 1.5Gi, available: 2.4Gi`
+    - Result: Available memory (2.4 GiB) is below the 5 GiB threshold required for safe in-memory Rollup compilation. Full static build is left to CI per AGENTS.md 8GB RAM rule.
+
+---
+
+### 3. Screenshot Verification Evidence (2×2 Tables)
+
+#### 1. Semantic & Hybrid Search (`/docs/search-ranking-recommendations/semantic-and-hybrid-search`)
+| Theme | Desktop (1200px) | Mobile (375px) |
+| :--- | :--- | :--- |
+| **Light** | [semantic-and-hybrid-search-light-desktop.png](file:///home/ravivarma/Documents/DREAM_PROJECT/neuralmastery/platform-vite-srr/docs/evidence/search-ranking-recommendations/batch-2/semantic-and-hybrid-search-light-desktop.png) | [semantic-and-hybrid-search-light-mobile.png](file:///home/ravivarma/Documents/DREAM_PROJECT/neuralmastery/platform-vite-srr/docs/evidence/search-ranking-recommendations/batch-2/semantic-and-hybrid-search-light-mobile.png) |
+| **Dark** | [semantic-and-hybrid-search-dark-desktop.png](file:///home/ravivarma/Documents/DREAM_PROJECT/neuralmastery/platform-vite-srr/docs/evidence/search-ranking-recommendations/batch-2/semantic-and-hybrid-search-dark-desktop.png) | [semantic-and-hybrid-search-dark-mobile.png](file:///home/ravivarma/Documents/DREAM_PROJECT/neuralmastery/platform-vite-srr/docs/evidence/search-ranking-recommendations/batch-2/semantic-and-hybrid-search-dark-mobile.png) |
+
+#### 2. Ranking Fundamentals & Link Analysis (`/docs/search-ranking-recommendations/ranking-fundamentals`)
+| Theme | Desktop (1200px) | Mobile (375px) |
+| :--- | :--- | :--- |
+| **Light** | [ranking-fundamentals-light-desktop.png](file:///home/ravivarma/Documents/DREAM_PROJECT/neuralmastery/platform-vite-srr/docs/evidence/search-ranking-recommendations/batch-2/ranking-fundamentals-light-desktop.png) | [ranking-fundamentals-light-mobile.png](file:///home/ravivarma/Documents/DREAM_PROJECT/neuralmastery/platform-vite-srr/docs/evidence/search-ranking-recommendations/batch-2/ranking-fundamentals-light-mobile.png) |
+| **Dark** | [ranking-fundamentals-dark-desktop.png](file:///home/ravivarma/Documents/DREAM_PROJECT/neuralmastery/platform-vite-srr/docs/evidence/search-ranking-recommendations/batch-2/ranking-fundamentals-dark-desktop.png) | [ranking-fundamentals-dark-mobile.png](file:///home/ravivarma/Documents/DREAM_PROJECT/neuralmastery/platform-vite-srr/docs/evidence/search-ranking-recommendations/batch-2/ranking-fundamentals-dark-mobile.png) |
+
+#### 3. Learning to Rank (`/docs/search-ranking-recommendations/learning-to-rank`)
+| Theme | Desktop (1200px) | Mobile (375px) |
+| :--- | :--- | :--- |
+| **Light** | [learning-to-rank-light-desktop.png](file:///home/ravivarma/Documents/DREAM_PROJECT/neuralmastery/platform-vite-srr/docs/evidence/search-ranking-recommendations/batch-2/learning-to-rank-light-desktop.png) | [learning-to-rank-light-mobile.png](file:///home/ravivarma/Documents/DREAM_PROJECT/neuralmastery/platform-vite-srr/docs/evidence/search-ranking-recommendations/batch-2/learning-to-rank-light-mobile.png) |
+| **Dark** | [learning-to-rank-dark-desktop.png](file:///home/ravivarma/Documents/DREAM_PROJECT/neuralmastery/platform-vite-srr/docs/evidence/search-ranking-recommendations/batch-2/learning-to-rank-dark-desktop.png) | [learning-to-rank-dark-mobile.png](file:///home/ravivarma/Documents/DREAM_PROJECT/neuralmastery/platform-vite-srr/docs/evidence/search-ranking-recommendations/batch-2/learning-to-rank-dark-mobile.png) |
+
+---
+
+### 4. Suggested Batch 4 Cross-Link Integration
+Per brief instructions, out-of-scope files were not edited in Batch 2. Suggested updates for Batch 4 global section polish:
+- In `src/content/docs/search-ranking-recommendations/ranking-evaluation-metrics.mdx`: update `Next: [Dense vs. Sparse Retrieval & Hybrid Search](/docs/llms-genai/rag#dense-vs-sparse-retrieval-and-bm25)` to point directly to `[Semantic & Hybrid Search](/docs/search-ranking-recommendations/semantic-and-hybrid-search)`.
+- In `src/content/docs/search-ranking-recommendations/overview.mdx`: in candidate generation section, add direct link to `/docs/search-ranking-recommendations/semantic-and-hybrid-search`.
+
+---
+
+### 5. Commits on `search-rank-rec`
+- `a57222ab` — `docs(tracker): register batch-2 semantic search and ranking implementation`
+- `98a23a7a` — `feat(viz): add diagrams and calculations for batch-2 semantic search and ranking`
+- `1e4caa10` — `feat(docs): add semantic-and-hybrid-search, ranking-fundamentals, and learning-to-rank chapters`
+- `c1d1fe55` — `docs(evidence): capture 1200px and 375px light and dark screenshots for batch 2 diagrams`
