@@ -143,22 +143,25 @@ Change the query below to observe how document frequencies, IDF values, and docu
 
 Beyond summing scalar weights, TF-IDF forms the mathematical foundation of the **Vector Space Model** (Salton et al., 1975).
 
-Imagine a vocabulary dictionary containing $|V| = 10,000$ unique words across a catalog. Each document and query can be represented as a vector in a 10,000-dimensional geometric space:
+In the vector space model, a collection of documents shares a common vocabulary $V = \{t_1, t_2, \dots, t_{|V|}\}$. Each document $d$ and query $q$ is mapped to a vector in a $|V|$-dimensional Euclidean space:
 
 $$\mathbf{d} = \big[ \text{TF-IDF}(t_1, d),\, \text{TF-IDF}(t_2, d),\, \dots,\, \text{TF-IDF}(t_{|V|}, d) \big]^T \in \mathbb{R}^{|V|}$$
 
-Because a single document typically contains only a few dozen unique words, the document vector has nonzero values in only a tiny fraction of its coordinates ($>99.5\%$ of dimensions are exactly zero):
+$$\mathbf{q} = \big[ \text{TF-IDF}(t_1, q),\, \text{TF-IDF}(t_2, q),\, \dots,\, \text{TF-IDF}(t_{|V|}, q) \big]^T \in \mathbb{R}^{|V|}$$
+
+Each coordinate corresponds to exactly one term in the global vocabulary $V$. Because an individual document contains only a small subset of all vocabulary terms, coordinates for terms absent from the document are zero:
 
 ```python
-# Sparse vector representation in a 10,000-word vocabulary
-# Only matching terms have nonzero weights
+# Sparse vector representation over vocabulary V:
+# Each coordinate corresponds to one vocabulary term t_i.
+# Terms absent from document d receive a weight of exactly 0.0.
 doc_vector = [
     0.0, 0.0, 0.0719, 0.0, 0.0, 
-    0.0719, 0.0, 0.0, 0.0, ...  # 9,996 zeros
+    0.0719, 0.0, 0.0, ...  # 0.0 for every vocabulary term absent from d
 ]
 ```
 
-This is why TF-IDF belongs to the **sparse retrieval** family: vectors are high-dimensional, but extremely sparse.
+This is why TF-IDF belongs to the **sparse retrieval** family: vector dimensionality is determined by the total vocabulary size $|V|$, while each document's representation has non-zero coordinates only for terms that appear in that document.
 
 ### Measuring Relevance via Cosine Similarity
 In the vector space model, the relevance of document $\mathbf{d}$ to query $\mathbf{q}$ is measured by the **cosine similarity** between their respective vectors:
@@ -325,7 +328,7 @@ for i, doc in enumerate(corpus, 1):
 | **Term Frequency (TF)** | $\frac{\text{count}(t, d)}{\vert d \vert}$ | Measures local word density; prevents long documents from dominating purely on volume. |
 | **Inverse Document Frequency (IDF)** | $\ln\left(\frac{N}{\text{df}(t)}\right)$ | Measures global specificity; rewards rare terms and discounts ubiquitous words. |
 | **TF-IDF Weight** | $\text{TF}(t, d) \times \text{IDF}(t)$ | Combines local frequency with corpus-wide discriminative power. |
-| **Sparse Vector Space** | $\mathbf{d} \in \mathbb{R}^{\vert V \vert}$ | Documents represented as high-dimensional vectors with $>99\%$ zeros. |
+| **Sparse Vector Space** | $\mathbf{d} \in \mathbb{R}^{\vert V \vert}$ | Documents represented as high-dimensional vectors with coordinates equal to zero for all absent vocabulary terms. |
 | **Vocabulary Mismatch** | $q \cap d = \emptyset \implies \text{Score} = 0$ | The inability of lexical search to recognize semantic synonyms without dense vectors. |
 
 Next: [BM25: Term Saturation & Length Normalization](/docs/search-ranking-recommendations/bm25) — learn how BM25 solves TF-IDF's keyword-stuffing vulnerability using saturating curves and tunable length normalization.
