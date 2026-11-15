@@ -50,7 +50,7 @@ export const SECTION_META: Record<string, SectionMetaEntry> = {
     icon: '',
     color: '#5B8CFF',
     description: 'Classical ML, deep learning, vision, NLP, speech, LLMs, graph ML, and RL.',
-    pageCount: 91,
+    pageCount: 93,
     difficulty: 'Intermediate → Advanced',
     prerequisites: 'Foundations',
     leadsTo: 'Agents & Applications',

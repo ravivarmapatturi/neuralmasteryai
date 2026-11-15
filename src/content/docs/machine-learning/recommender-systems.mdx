@@ -107,7 +107,7 @@ $$
 
 In-batch negatives are drawn in proportion to popularity (popular items appear in more batches), which would push popular items' scores down too much; subtracting $\log P(\text{item in batch})$ from each score, the **logQ correction**, removes the bias (Yi et al., 2019).
 
-**Why two separate towers.** Because user and item embeddings are computed independently, every item's embedding can be computed once and stored. Recommending then means one user-tower pass and a nearest-neighbour search for the items with the largest dot product, done approximately in milliseconds over millions of items by a [vector index](/docs/databases/vector/overview). A model that took user and item together could capture richer interactions, but would need a forward pass for every candidate. That trade is why production systems use stages.
+**Why two separate towers.** Because user and item embeddings are computed independently, every item's embedding can be computed once and stored. Recommending then means one user-tower pass and a nearest-neighbour search for the items with the largest dot product, done approximately in milliseconds over millions of items by a [vector index](/docs/databases/vector/overview). A model that took user and item together could capture richer interactions, but would need a forward pass for every candidate. That trade is why production systems use stages (for architectural comparisons across Two-Tower, Wide & Deep, DLRM, and SASRec, see [Deep Recommenders: Two-Tower to Sequential Models](/docs/search-ranking-recommendations/deep-recommenders)).
 
 ## 5. The Production Pipeline
 
@@ -119,7 +119,7 @@ A real system can't run its best model on every item for every request, so it wo
 2. **Ranking**: a feature-rich model scores each candidate for the business objective: probability of click, purchase, watch time, often several at once (multi-task). It can use cross features between user and item that two-tower models can't. Gradient-boosted trees and deep models such as DCN (Wang et al., 2017) are common; [Learning to Rank](/docs/machine-learning/learning-to-rank) covers how ranking objectives are trained.
 3. **Re-ranking**: adjust the final list for things no single score captures: **diversity** (not ten near-identical items), freshness, removing items already bought, fairness to suppliers, and business rules.
 
-Covington, Adams and Sargin (2016) describe this design for YouTube's recommendations, and the same retrieve-then-rank pattern appears in search and in retrieval-augmented generation (see [ML System Design](/docs/ml-system-design/roadmap)).
+Covington, Adams and Sargin (2016) describe this design for YouTube's recommendations, and the same retrieve-then-rank pattern appears in search and in retrieval-augmented generation (see [Search & Recommendation Pipelines](/docs/search-ranking-recommendations/overview) and [Search & Recommendation System Design](/docs/search-ranking-recommendations/search-recommendation-system-design) for end-to-end latency budgets and fallback ladders).
 
 ### CTR Prediction
 
@@ -266,7 +266,7 @@ hit rate at 10 over 649 users: most popular 0.245, factorization 0.166
 
 ---
 
-Next: [Learning to Rank](/docs/machine-learning/learning-to-rank), how the ranking stage is trained to optimize the order of a list directly.
+Next: [Learning to Rank](/docs/machine-learning/learning-to-rank), how the ranking stage is trained to optimize the order of a list directly; or explore the complete [Search, Ranking & Recommendations](/docs/search-ranking-recommendations/overview) track.
 
 ## Sources
 

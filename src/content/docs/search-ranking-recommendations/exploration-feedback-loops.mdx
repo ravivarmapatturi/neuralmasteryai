@@ -1,0 +1,310 @@
+---
+title: "Exploration, Feedback Loops & Counterfactual Evaluation"
+sidebar_position: 12
+description: "Master recommender feedback loops, popularity bias, contextual bandits, and offline counterfactual evaluation with Inverse Propensity Scoring (IPS)."
+---
+
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
+import RunnableCode from '../../../components/content/RunnableCode';
+import ExplorationFeedbackLoopExplorer from '../../../viz/diagrams/ExplorationFeedbackLoopExplorer';
+
+# Exploration, Feedback Loops & Counterfactual Evaluation
+
+<ELI5>
+Imagine a music streaming app that only plays songs you have already listened to twenty times. You might enjoy the first afternoon, but within a week you hear no new artists, the catalog feels stale, and talented new musicians never get discovered. If the system only exploits what it already knows, it creates a closed echo chamber. To break this loop, production engines deliberately spend a small fraction of their recommendations exploring uncertain items. By recording the exact probability of each recommendation, they can later evaluate new algorithms on historical logs without risking live users.
+</ELI5>
+
+## The Exposure Feedback Problem
+
+In supervised machine learning, we assume training data is sampled independently from a stationary distribution ($\mathcal{D} \sim P(X, Y)$). Production recommender systems violate this assumption fundamentally. A recommender does not passively observe the world; its own predictions decide what items users get to see.
+
+When an algorithm ranks popular items at the top of the slate:
+1. **Exposure Concentration**: Users predominantly examine and click items displayed at top positions due to position bias (see [Ranking Fundamentals & Link Analysis](/docs/search-ranking-recommendations/ranking-fundamentals)).
+2. **Biased Logging**: The telemetry pipeline records interaction logs where popular items receive millions of impressions while fresh or niche items receive near zero.
+3. **Model Retraining**: Tomorrow's scoring models train on today's logged clicks. Because unexposed items have zero recorded positive interactions, models predict near-zero engagement for them.
+4. **Rich-Get-Richer Reinforcement**: The retrained model promotes the popular items even more aggressively, starving the rest of the catalog of discovery traffic.
+
+This positive feedback loop causes **catalog collapse**: the effective catalog shrinks to a tiny fraction of available inventory, filter bubbles isolate user segments, and newly published items suffer indefinite cold start.
+
+<ExplorationFeedbackLoopExplorer />
+
+## Balancing Exploration and Exploitation: Contextual Bandits
+
+To break the exposure feedback loop without degrading user experience, production platforms formulate slate selection as a **contextual multi-armed bandit**. 
+
+Rather than treating item quality as a static score, a contextual bandit treats recommendation as sequential decision-making under uncertainty. Given a user and query context vector $x_t \in \mathbb{R}^d$, the system chooses an item (arm) $a_t \in \mathcal{A}$ to maximize cumulative user reward while maintaining sufficient parameter variance across all arms.
+
+For a full formal derivation of multi-armed bandit regret bounds (including UCB1, Thompson Sampling, and logarithmic regret proofs), see [Multi-Armed & Contextual Bandits](/docs/reinforcement-learning/bandits).
+
+### Contextual LinUCB Formulation
+
+In large catalogs, arms share underlying contextual features (user category affinity, time of day, device type). The canonical production algorithm is **LinUCB** (Li et al., 2010), which assumes the expected reward of arm $a$ is linear in the context vector $x$:
+
+$$\mathbb{E}[r_t \mid x_t, a] = x_t^\top \theta_a^*$$
+
+Because the true parameter vector $\theta_a^*$ is unknown, we maintain an online ridge regression estimate $\hat{\theta}_a$ and an inverse covariance matrix $A_a^{-1} \in \mathbb{R}^{d \times d}$:
+
+$$A_a = I_d + \sum_{\tau=1}^{t-1} x_\tau x_\tau^\top, \quad b_a = \sum_{\tau=1}^{t-1} r_\tau x_\tau, \quad \hat{\theta}_a = A_a^{-1} b_a$$
+
+At each request, LinUCB selects the arm that maximizes the **Upper Confidence Bound**:
+
+$$a_t = \arg\max_{a \in \mathcal{A}} \left[ x_t^\top \hat{\theta}_a + \alpha \sqrt{x_t^\top A_a^{-1} x_t} \right]$$
+
+Here, $\alpha > 0$ controls the exploration aggressiveness:
+- The first term $x_t^\top \hat{\theta}_a$ represents **exploitation** (predicted click probability).
+- The second term $\alpha \sqrt{x_t^\top A_a^{-1} x_t}$ represents **exploration** (standard deviation of the estimate in the direction of context $x_t$).
+
+When an arm has rarely been displayed for a specific user context, its covariance matrix $A_a$ has small eigenvalues, inflating $A_a^{-1}$ in that direction. This uncertainty bonus allows promising fresh items to win the top slot over heavily exploited blockbusters.
+
+<PredictFirst
+  question="Suppose Arm A has an estimated CTR of 5.0% based on 50,000 impressions. Arm B has an estimated CTR of 4.8% based on only 30 impressions. How does LinUCB treat these arms for a user context matching both?"
+  options={[
+    "LinUCB always picks Arm A because 5.0% is higher than 4.8%.",
+    "LinUCB picks Arm B because Arm B's large uncertainty bonus pushes its upper confidence bound above Arm A's narrow bound.",
+    "LinUCB selects randomly with 50/50 probability regardless of impressions.",
+    "LinUCB ignores impressions and ranks by cosine similarity of embeddings."
+  ]}
+  correctIndex={1}
+  explanation="With 50,000 impressions, Arm A's covariance matrix is large, driving its confidence bonus close to zero (bound ≈ 5.01%). Arm B has only 30 impressions, so its inverse covariance yields a wide uncertainty interval (e.g. +3.5%, bound ≈ 8.3%). LinUCB prioritizes Arm B to test whether its true mean exceeds 5.0%."
+/>
+
+## A Hand-Checkable Worked Decision Example
+
+To verify the mathematical mechanics across prose, diagram, and code, consider a concrete, reproducible decision scenario with three candidate items and a 2-dimensional user context vector $x = [0.8, 0.4]$ (representing $[ \text{tech affinity}, \text{audio affinity} ]$):
+
+| Candidate Item | Category | True/Estimated $\hat{\theta}$ | Historical Impressions | Covariance Scale ($\text{diag}(A^{-1})$) | Description |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Arm 1** | Trending Blockbuster | $[0.05, 0.02]$ | 10,000 | $0.0001$ | High volume, narrow confidence interval |
+| **Arm 2** | Fresh Emerging Release | $[0.04, 0.05]$ | 100 | $0.0016$ | Moderate volume, strong audio affinity |
+| **Arm 3** | Niche Long-Tail | $[0.03, 0.01]$ | 20 | $0.0081$ | Small sample size, large exploration bonus |
+
+Let exploration hyperparameter $\alpha = 1.0$.
+
+First, compute the squared Euclidean norm of context vector $x$:
+$$\|x\|^2 = 0.8^2 + 0.4^2 = 0.64 + 0.16 = 0.80$$
+
+Now compute the exact score decomposition for each arm:
+
+1. **Arm 1 (Blockbuster)**:
+   - Predicted reward: $\hat{\mu}_1 = 0.8(0.05) + 0.4(0.02) = 0.040 + 0.008 = 0.048$ (4.80% CTR)
+   - Confidence bonus: $CB_1 = 1.0 \times \sqrt{0.0001 \times 0.80} = \sqrt{0.00008} \approx 0.0089$ (+0.89%)
+   - UCB Score: $0.0480 + 0.0089 = \mathbf{0.0569}$
+
+2. **Arm 2 (Fresh Item)**:
+   - Predicted reward: $\hat{\mu}_2 = 0.8(0.04) + 0.4(0.05) = 0.032 + 0.020 = \mathbf{0.0520}$ (5.20% CTR)
+   - Confidence bonus: $CB_2 = 1.0 \times \sqrt{0.0016 \times 0.80} = \sqrt{0.00128} \approx 0.0358$ (+3.58%)
+   - UCB Score: $0.0520 + 0.0358 = \mathbf{0.0878}$
+
+3. **Arm 3 (Niche Long-Tail)**:
+   - Predicted reward: $\hat{\mu}_3 = 0.8(0.03) + 0.4(0.01) = 0.024 + 0.004 = 0.0280$ (2.80% CTR)
+   - Confidence bonus: $CB_3 = 1.0 \times \sqrt{0.0081 \times 0.80} = \sqrt{0.00648} \approx 0.0805$ (+8.05%)
+   - UCB Score: $0.0280 + 0.0805 = \mathbf{0.1085}$
+
+### Strategic Decision Outcome:
+- **Pure Greedy Policy ($\alpha = 0.0$)**: Selects **Arm 2** ($\hat{\mu}_2 = 0.0520 > \hat{\mu}_1 = 0.0480 > \hat{\mu}_3 = 0.0280$). Arm 3 is completely starved.
+- **LinUCB Policy ($\alpha = 1.0$)**: Selects **Arm 3** because its total UCB score ($0.1085$) dominates both Arm 2 ($0.0878$) and Arm 1 ($0.0569$). The system deliberately pays an expected short-term CTR penalty to acquire high-value information about Arm 3.
+
+## Freshness, Diversity & Fairness Tradeoffs
+
+Contextual bandits address item-level uncertainty, but production slate recommenders must also satisfy list-level properties:
+
+### 1. Freshness and Temporal Decay
+User preferences shift rapidly, and newly indexed content must compete with established items that accumulated months of engagement logs. Systems introduce temporal decay into the interaction sums:
+
+$$A_{a, t} = \gamma A_{a, t-1} + x_t x_t^\top, \quad b_{a, t} = \gamma b_{a, t-1} + r_t x_t$$
+
+where $\gamma \in (0.95, 0.999)$ is a decay discount factor. Observations older than a few weeks exponentially lose weight, preventing historical blockbusters from permanently dominating static priors.
+
+### 2. Intra-Slate Diversity (Determinantal Point Processes & MMR)
+Presenting five noise-cancelling headphones in the top five slots creates high redundancy. If the user does not want headphones today, the entire recommendation session fails. 
+
+**Maximal Marginal Relevance (MMR)** (Carbonell & Goldstein, 1998) greedy-selects the next item $d_i$ by balancing item relevance against similarity to already selected items in slate $\mathcal{S}$:
+
+$$\text{MMR}(d_i) = \lambda \cdot \text{Score}(d_i, q) - (1 - \lambda) \max_{d_j \in \mathcal{S}} \text{Sim}(d_i, d_j)$$
+
+Advanced engines employ **Determinantal Point Processes (DPP)** (Kulesza & Taskar, 2012) to sample slates according to the determinant of a kernel matrix, ensuring mathematical diversity in $O(k^2)$ runtime per slate.
+
+### 3. Exposure Fairness
+In multi-sided marketplaces (e.g. streaming audio, job boards, e-commerce vendors), algorithms balance user relevance against provider fairness. **Calibrated recommendation** (Steck, 2018) constrains the genre distribution of recommended items to match the user's historical consumption ratios, preventing niche interests from being crowded out by dominant categories.
+
+<NotebookCallout color="amber" title="The Exploration Tax">
+Exploration is not free. Showing uncertain items incurs a direct short-term conversion cost ("regret"). Production architectures bound this exploration tax by reserving explicit exploration slots (e.g. slot 4 on a mobile card carousel) or capping total exploration traffic to 5–10% of total requests.
+</NotebookCallout>
+
+## Counterfactual Evaluation with Inverse Propensity Scoring (IPS)
+
+Before deploying a new recommendation algorithm to live traffic in an A/B test, we must evaluate it offline. However, offline validation on historical logs is fundamentally confounded by the logging policy that generated those logs.
+
+If historical policy $\pi_{\text{log}}$ rarely displayed Arm 2, the interaction logs contain very few clicks for Arm 2. Evaluating a new policy $\pi_{\text{new}}$ by naively averaging observed clicks produces catastrophic bias.
+
+<GoDeeper title="Formal Proof: Unbiased Off-Policy Evaluation via Inverse Propensity Scoring">
+
+Let $x$ denote user context, $a$ denote the chosen item, and $r(x, a)$ denote the true user reward.
+
+Historical data was logged by policy $\pi_{\text{log}}(a \mid x) = P(a \text{ was displayed} \mid x)$. The logging policy recorded tuples $(x_i, a_i, r_i, p_i)$ where $p_i = \pi_{\text{log}}(a_i \mid x_i) > 0$.
+
+We want to estimate the expected reward of a target policy $\pi_{\text{new}}$:
+$$V(\pi_{\text{new}}) = \mathbb{E}_{x \sim \mathcal{D}, a \sim \pi_{\text{new}}}[r(x, a)]$$
+
+Using importance sampling, we take the expectation over the logging distribution:
+
+$$\mathbb{E}_{a \sim \pi_{\text{log}}}\left[ \frac{\pi_{\text{new}}(a \mid x)}{\pi_{\text{log}}(a \mid x)} r(x, a) \right] = \sum_{a \in \mathcal{A}} \pi_{\text{log}}(a \mid x) \left( \frac{\pi_{\text{new}}(a \mid x)}{\pi_{\text{log}}(a \mid x)} r(x, a) \right)$$
+
+$$= \sum_{a \in \mathcal{A}} \pi_{\text{new}}(a \mid x) r(x, a) = \mathbb{E}_{a \sim \pi_{\text{new}}}[r(x, a)] = V(\pi_{\text{new}})$$
+
+Thus, reweighting each observed reward by the **propensity ratio** $w_i = \frac{\pi_{\text{new}}(a_i \mid x_i)}{\pi_{\text{log}}(a_i \mid x_i)}$ yields an unbiased offline estimator of the target policy's live performance.
+
+</GoDeeper>
+
+### The Three Counterfactual Estimators
+
+1. **Standard Inverse Propensity Scoring (IPS)**:
+   $$\hat{V}_{\text{IPS}}(\pi_{\text{new}}) = \frac{1}{N} \sum_{i=1}^N \frac{\pi_{\text{new}}(a_i \mid x_i)}{\pi_{\text{log}}(a_i \mid x_i)} r_i$$
+   *Property*: Strictly unbiased, but suffers from high variance if logging propensity $\pi_{\text{log}}(a_i \mid x_i)$ is very small (producing gigantic weights).
+
+2. **Clipped IPS**:
+   $$w_i^{\text{clip}} = \min\left( \frac{\pi_{\text{new}}(a_i \mid x_i)}{\pi_{\text{log}}(a_i \mid x_i)}, M \right), \quad \hat{V}_{\text{cIPS}}(\pi_{\text{new}}) = \frac{1}{N} \sum_{i=1}^N w_i^{\text{clip}} r_i$$
+   *Property*: Clips weights at threshold $M$ (typically 5 to 20). Introduces slight negative bias but eliminates extreme variance spikes.
+
+3. **Self-Normalized IPS (SNIPS)**:
+   $$\hat{V}_{\text{SNIPS}}(\pi_{\text{new}}) = \frac{\sum_{i=1}^N w_i r_i}{\sum_{i=1}^N w_i}$$
+   *Property*: Normalizes importance weights by their empirical sum. Bounded between 0 and 1; significantly more stable on real telemetry.
+
+<NotebookCallout color="cobalt" title="The Logging Propensity Invariant">
+Propensities must be logged at the exact moment of decision. If your serving infrastructure logs user clicks without logging the denominator $\pi_{\text{log}}(a \mid x)$, offline counterfactual estimation is mathematically impossible. You cannot reconstruct propensities after the fact because model weights, feature store values, and context vectors will have shifted.
+</NotebookCallout>
+
+## Runnable Python Example: LinUCB & IPS Verification
+
+The following script simulates the worked 3-arm bandit, computes the exact LinUCB bounds, and performs offline counterfactual IPS evaluation using NumPy.
+
+```python
+import numpy as np
+import textwrap
+
+# Verified in in-browser Pyodide runtime
+def run_exploration_simulation():
+    # 1. Setup worked 3-arm contextual bandit
+    context = np.array([0.8, 0.4])  # [tech_affinity, audio_affinity]
+    arms = [
+        {"id": "arm-1", "name": "Blockbuster", "theta": np.array([0.05, 0.02]), "var_scale": 0.0001},
+        {"id": "arm-2", "name": "Fresh Item",  "theta": np.array([0.04, 0.05]), "var_scale": 0.0016},
+        {"id": "arm-3", "name": "Niche Tail",  "theta": np.array([0.03, 0.01]), "var_scale": 0.0081},
+    ]
+    
+    alpha = 1.0
+    norm_sq = np.sum(context ** 2)  # 0.8^2 + 0.4^2 = 0.80
+    
+    print("--- 1. Contextual LinUCB Decision Decomposition ---")
+    for arm in arms:
+        expected_ctr = float(np.dot(context, arm["theta"]))
+        conf_bonus = float(alpha * np.sqrt(arm["var_scale"] * norm_sq))
+        ucb_score = expected_ctr + conf_bonus
+        print(f"{arm['name']:12} | Predicted: {expected_ctr*100:4.2f}% | Bonus: +{conf_bonus*100:4.2f}% | UCB: {ucb_score:6.4f}")
+    
+    # 2. Counterfactual Evaluation with Logged Data
+    # 10 logged interactions from epsilon-greedy policy: P_log = [0.80, 0.15, 0.05]
+    logged_actions = np.array([0, 0, 0, 1, 0, 1, 2, 0, 1, 0])
+    logged_rewards = np.array([0, 1, 0, 1, 0, 0, 1, 1, 1, 0])
+    logged_props   = np.array([0.80, 0.80, 0.80, 0.15, 0.80, 0.15, 0.05, 0.80, 0.15, 0.80])
+    
+    # Target Policy: Always recommend Fresh Item (arm 1)
+    target_probs = (logged_actions == 1).astype(float)
+    
+    # Importance weights
+    weights = target_probs / logged_props
+    clipped_weights = np.minimum(weights, 5.0)
+    
+    ips_score = float(np.mean(weights * logged_rewards))
+    clipped_ips = float(np.mean(clipped_weights * logged_rewards))
+    snips_score = float(np.sum(weights * logged_rewards) / np.sum(weights))
+    
+    print("\n--- 2. Counterfactual Off-Policy Evaluation (Evaluating Arm 2) ---")
+    print(f"Standard IPS Estimate:   {ips_score:6.4f}")
+    print(f"Clipped IPS (cap=5.0):   {clipped_ips:6.4f}")
+    print(f"Self-Normalized (SNIPS): {snips_score:6.4f}")
+    print(f"Rounds displaying Arm 2: {int(np.sum(logged_actions == 1))} of {len(logged_actions)}")
+
+run_exploration_simulation()
+```
+
+<RunnableCode code={`import numpy as np
+
+# 1. Setup worked 3-arm contextual bandit
+context = np.array([0.8, 0.4])  # [tech_affinity, audio_affinity]
+arms = [
+    {"id": "arm-1", "name": "Blockbuster", "theta": np.array([0.05, 0.02]), "var_scale": 0.0001},
+    {"id": "arm-2", "name": "Fresh Item",  "theta": np.array([0.04, 0.05]), "var_scale": 0.0016},
+    {"id": "arm-3", "name": "Niche Tail",  "theta": np.array([0.03, 0.01]), "var_scale": 0.0081},
+]
+
+alpha = 1.0
+norm_sq = np.sum(context ** 2)
+
+print("--- 1. Contextual LinUCB Decision Decomposition ---")
+for arm in arms:
+    expected_ctr = float(np.dot(context, arm["theta"]))
+    conf_bonus = float(alpha * np.sqrt(arm["var_scale"] * norm_sq))
+    ucb_score = expected_ctr + conf_bonus
+    print(f"{arm['name']:12} | Predicted: {expected_ctr*100:4.2f}% | Bonus: +{conf_bonus*100:4.2f}% | UCB: {ucb_score:6.4f}")
+
+# 2. Counterfactual Evaluation with Logged Data
+logged_actions = np.array([0, 0, 0, 1, 0, 1, 2, 0, 1, 0])
+logged_rewards = np.array([0, 1, 0, 1, 0, 0, 1, 1, 1, 0])
+logged_props   = np.array([0.80, 0.80, 0.80, 0.15, 0.80, 0.15, 0.05, 0.80, 0.15, 0.80])
+
+target_probs = (logged_actions == 1).astype(float)
+weights = target_probs / logged_props
+clipped_weights = np.minimum(weights, 5.0)
+
+ips_score = float(np.mean(weights * logged_rewards))
+clipped_ips = float(np.mean(clipped_weights * logged_rewards))
+snips_score = float(np.sum(weights * logged_rewards) / np.sum(weights))
+
+print("\n--- 2. Counterfactual Off-Policy Evaluation (Evaluating Arm 2) ---")
+print(f"Standard IPS Estimate:   {ips_score:6.4f}")
+print(f"Clipped IPS (cap=5.0):   {clipped_ips:6.4f}")
+print(f"Self-Normalized (SNIPS): {snips_score:6.4f}")
+print(f"Rounds displaying Arm 2: {int(np.sum(logged_actions == 1))} of {len(logged_actions)}")`} />
+
+## Common Problems & Fixes
+
+| Problem | Root Cause | Engineering Fix |
+| :--- | :--- | :--- |
+| **Exploration Regret Shock** | Bandit assigns excessive traffic to low-quality random items | Bound exploration to a dedicated slot or warm-start item representations using content-based embeddings. |
+| **IPS Variance Explosion** | Target policy selects items with near-zero logging propensity ($\pi_{\text{log}} \ll 0.01$) | Enforce minimum exploration floors ($\epsilon \ge 0.05$) in logging policies and apply weight clipping ($w \le 10$). |
+| **Feedback Lag & Delayed Attribution** | Purchases or subscriptions arrive hours or days after recommendation | Apply importance-weighted delayed feedback windows or train auxiliary short-term proxy models (e.g. click + dwell). |
+| **Cold-Start Arm Explosion** | Thousands of new items added daily overwhelm the bandit arm set | Group long-tail items into hierarchical clusters or use Two-Tower vector representations for contextual bandits. |
+| **Position Bias Confounding** | Clicks on top slots are attributed entirely to item relevance rather than screen real estate | De-bias training clicks with inverse examination propensities: $P(\text{click}) = P(\text{examine} \mid \text{rank}) \times P(\text{relevant})$. |
+
+## When Not to Use Bandits & Counterfactual Replay
+
+| Architecture / Scenario | Recommended Alternative | Rationale |
+| :--- | :--- | :--- |
+| **Static Reference Catalogs** (legal statutes, internal code documentation) | Deterministic BM25 or Dense Vector Retrieval | Documents have fixed relevance; exploration introduces unwanted non-deterministic ranking shifts. |
+| **High-Risk Transactional Domains** (medical diagnosis, financial risk scoring) | Calibrated Supervised Classifiers with Human-in-the-Loop | Autonomous exploration carries intolerable safety and regulatory liabilities. |
+| **Sequential Multi-Step Conversational Tasks** | Full Reinforcement Learning (MDPs / Actor-Critic) | Bandits assume memoryless single-turn rewards; multi-step dialogues require Bellman credit assignment. |
+| **Pre-Launch Products with Zero Traffic** | Content-Based Heuristics & Editorial Baselines | Counterfactual IPS requires existing logged interaction data with known non-zero propensities. |
+
+## Remember
+
+| Concept | Mathematical Formulation | Operational Role |
+| :--- | :--- | :--- |
+| **Exposure Feedback Loop** | $\text{Retrained Model} \leftarrow \text{Biased Logs} \leftarrow \text{Past Model}$ | Degenerative rich-get-richer dynamics that cause catalog collapse. |
+| **LinUCB Scoring** | $a^* = \arg\max_a [x^\top \hat{\theta}_a + \alpha \sqrt{x^\top A_a^{-1} x}]$ | Contextual bandit balancing predicted reward against parameter uncertainty. |
+| **Unbiased IPS** | $\hat{V}_{\text{IPS}} = \frac{1}{N} \sum_{i=1}^N \frac{\pi_{\text{new}}(a_i \mid x_i)}{\pi_{\text{log}}(a_i \mid x_i)} r_i$ | Off-policy evaluation reweighting historical rewards by propensity ratios. |
+| **Clipped IPS** | $w^{\text{clip}} = \min(w, M)$ | Variance reduction technique trading slight bias for bounded estimation variance. |
+| **Logging Propensity** | $p_i = \pi_{\text{log}}(a_i \mid x_i)$ | Mandatory logging invariant required for any offline policy evaluation. |
+
+Next: [Search & Recommendation System Design](/docs/search-ranking-recommendations/search-recommendation-system-design) — engineer end-to-end production infrastructure covering latency budgets, multi-stage retrieval, feature store pipelines, and failure recovery.
+
+## Sources
+
+- Li, L., Chu, W., Langford, J., & Schapire, R. E. (2010). *A Contextual-Bandit Approach to Personalized News Article Recommendation*. Proceedings of the 19th International Conference on World Wide Web (WWW), 661–670. [https://arxiv.org/abs/1003.0146](https://arxiv.org/abs/1003.0146)
+- Li, L., Chu, W., Langford, J., & Wang, X. (2011). *Unbiased Offline Evaluation of Contextual-bandit-based News Article Recommendation Algorithms*. Proceedings of the 4th ACM International Conference on Web Search and Data Mining (WSDM), 297–306. [https://arxiv.org/abs/1003.5956](https://arxiv.org/abs/1003.5956)
+- Dudík, M., Langford, J., & Li, L. (2011). *Doubly Robust Policy Evaluation and Learning*. Proceedings of the 28th International Conference on Machine Learning (ICML), 1097–1104. [https://arxiv.org/abs/1103.4601](https://arxiv.org/abs/1103.4601)
+- Swaminathan, A., & Joachims, T. (2015). *Counterfactual Risk Minimization: Learning from Logged Bandit Feedback*. Proceedings of the 32nd International Conference on Machine Learning (ICML), 814–823. [https://arxiv.org/abs/1502.02362](https://arxiv.org/abs/1502.02362)
+- Steck, H. (2018). *Calibrated Recommendations*. Proceedings of the 12th ACM Conference on Recommender Systems (RecSys), 154–162. [https://doi.org/10.1145/3240323.3240372](https://doi.org/10.1145/3240323.3240372)
+- Bottou, L., et al. (2013). *Counterfactual Reasoning and Learning Systems: The Example of Display Advertising*. Journal of Machine Learning Research (JMLR), 14(1), 3207–3260. [https://jmlr.org/papers/v14/bottou13a.html](https://jmlr.org/papers/v14/bottou13a.html)

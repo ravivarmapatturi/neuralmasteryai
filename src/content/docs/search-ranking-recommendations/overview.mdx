@@ -31,9 +31,9 @@ Large-scale search and recommendation platforms typically decompose request proc
 
 ### 1. Candidate Generation (Retrieval)
 In an illustrative production setup with millions of items, candidate generation reduces the search space down to several hundred or a few thousand candidates. The primary optimization objective is **high recall**: if a truly relevant item fails to make the candidate pool, downstream models cannot score or display it. Systems typically query complementary lightweight retrieval channels in parallel:
-- **Lexical Retrieval**: Inverted indexes with TF-IDF and BM25 score exact keyword matches, SKU lookups, and brand titles with sub-millisecond posting-list intersections.
-- **Dense Vector Retrieval**: Two-tower neural encoders project users and items into a shared embedding space, executing Approximate Nearest Neighbor (ANN) search via HNSW or IVF indexes.
-- **Graph & Collaborative Filtering**: Item-to-item co-occurrence tables and user-interaction graphs ("users who viewed item $X$ also engaged with item $Y$").
+- **Lexical Retrieval**: Inverted indexes with [TF-IDF](/docs/search-ranking-recommendations/tf-idf) and [BM25](/docs/search-ranking-recommendations/bm25) score exact keyword matches, SKU lookups, and brand titles with sub-millisecond posting-list intersections (see [Text Search & Inverted Indexes](/docs/search-ranking-recommendations/text-search-bm25)).
+- **Dense Vector Retrieval**: Two-tower neural encoders project users and items into a shared embedding space, executing Approximate Nearest Neighbor (ANN) search via HNSW or IVF indexes (see [Semantic & Hybrid Search](/docs/search-ranking-recommendations/semantic-and-hybrid-search)).
+- **Graph & Collaborative Filtering**: Item-to-item co-occurrence tables and user-interaction graphs (see [Recommendation Foundations](/docs/search-ranking-recommendations/recommendation-foundations) and [Matrix Factorization & Latent Factor Embeddings](/docs/search-ranking-recommendations/matrix-factorization-embeddings)).
 
 ### 2. Hard Filtering
 The raw candidate pool frequently contains items that cannot be served to the requesting user. Hard filtering applies deterministic business logic and operational constraints before scoring models execute:
@@ -43,20 +43,20 @@ The raw candidate pool frequently contains items that cannot be served to the re
 
 ### 3. Ranking (Scoring)
 The surviving candidates (often several hundred items in an illustrative setup) enter the ranking stage. Here, computational budgets permit expressive models that evaluate deep interaction features:
-- Historical click-through rates (CTR) and conversion rates conditioned on user demographic segments and temporal contexts.
-- Cross-encoder transformer attention between query tokens and item text.
-- Dense feature interactions through Gradient Boosted Decision Trees (LightGBM/XGBoost) or Deep Learning Recommendation Models (DLRM).
+- Historical click-through rates (CTR) and conversion rates conditioned on user demographic segments and temporal contexts (see [Ranking Fundamentals & Link Analysis](/docs/search-ranking-recommendations/ranking-fundamentals)).
+- Cross-encoder transformer attention and gradient-boosted decision trees trained via pairwise and listwise losses (see [Learning to Rank](/docs/search-ranking-recommendations/learning-to-rank)).
+- Dense feature interactions through Deep Learning Recommendation Models (such as DLRM and Wide & Deep, covered in [Deep Recommenders](/docs/search-ranking-recommendations/deep-recommenders)).
 
-The ranking model outputs a continuous calibrated score for each item, representing predicted probability of engagement: $\hat{y} = P(\text{click}) \times P(\text{conversion} \mid \text{click})$.
+The ranking model outputs a continuous calibrated score for each item, representing predicted probability of engagement: $\hat{y} = P(\text{click}) \times P(\text{conversion} \mid \text{click})$. For offline evaluation of these rankings, see [Ranking Evaluation Metrics](/docs/search-ranking-recommendations/ranking-evaluation-metrics).
 
 ### 4. Re-Ranking & Business Logic
 The top-scoring candidates enter re-ranking, which balances raw predicted relevance against platform-level constraints:
 - **Intra-List Diversity**: Preventing multiple consecutive results from the exact same merchant, brand, or creator.
-- **Freshness & Exploration**: Injecting newly published items via contextual multi-armed bandits to learn their baseline engagement distribution without historical interaction logs.
+- **Freshness & Exploration**: Injecting newly published items via contextual multi-armed bandits to learn their baseline engagement distribution without historical interaction logs (see [Exploration, Feedback Loops & Counterfactual Evaluation](/docs/search-ranking-recommendations/exploration-feedback-loops)).
 - **Fairness & Sponsored Allocation**: Blending paid partner listings into designated organic slots with explicit attribution and quality guards.
 
 ### 5. Serving & Presentation
-The final top-$k$ results (typically 5 to 20 items in an illustrative response slate) are packaged into the API payload. The serving layer fetches dynamic pricing, localized thumbnail URLs, and generates cryptographic tracking tokens so client-side impressions and clicks can be joined back to offline training logs.
+The final top-$k$ results (typically 5 to 20 items in an illustrative response slate) are packaged into the API payload. The serving layer fetches dynamic pricing, localized thumbnail URLs, and generates cryptographic tracking tokens so client-side impressions and clicks can be joined back to offline training logs (see [Search & Recommendation System Design](/docs/search-ranking-recommendations/search-recommendation-system-design)).
 
 ## Retrieval vs. Ranking: Complementary Objectives
 
@@ -256,6 +256,24 @@ A full multi-stage architecture introduces distributed complexity, operational o
 | **3. Ranking** | Hundreds of items | Tens of items | High Precision (NDCG) | GBDT (LightGBM), DLRM, Cross-Encoders |
 | **4. Re-Ranking** | Tens of items | Final display slate (5–20) | Diversity, Fairness & Freshness | Contextual Bandits, Deterministic Slates |
 | **5. Serving** | Final display slate | Formatted client payload | Responsive End-to-End Latency | Low-latency RPC gateway, CDN caching |
+
+## Track Roadmap
+
+This track develops search, ranking, and recommendations systematically across 13 dedicated chapters:
+
+1. **Foundations & Pipelines**: [Search & Recommendation Pipelines](/docs/search-ranking-recommendations/overview) (Current Chapter).
+2. **Lexical Indexing**: [Text Search & Inverted Indexes](/docs/search-ranking-recommendations/text-search-bm25) — tokenization, postings lists, and Boolean search.
+3. **TF-IDF**: [TF-IDF from First Principles](/docs/search-ranking-recommendations/tf-idf) — term specificity and sparse vector retrieval.
+4. **BM25**: [BM25: Term Saturation & Length Normalization](/docs/search-ranking-recommendations/bm25) — non-linear term saturation and document length normalizers.
+5. **Dense & Hybrid**: [Semantic & Hybrid Search](/docs/search-ranking-recommendations/semantic-and-hybrid-search) — bi-encoders, vector ANN indexes, and Reciprocal Rank Fusion.
+6. **Ranking Signals**: [Ranking Fundamentals & Link Analysis](/docs/search-ranking-recommendations/ranking-fundamentals) — multi-modal features, position bias, and PageRank.
+7. **Machine Learning to Rank**: [Learning to Rank](/docs/search-ranking-recommendations/learning-to-rank) — pointwise, pairwise (RankNet), and listwise (LambdaMART) objectives.
+8. **Evaluation Metrics**: [Ranking Evaluation Metrics](/docs/search-ranking-recommendations/ranking-evaluation-metrics) — Precision@k, Recall@k, MAP, MRR, NDCG, and interleaving.
+9. **Recommendation Foundations**: [Recommendation Foundations: Interactions & Neighborhoods](/docs/search-ranking-recommendations/recommendation-foundations) — interaction matrices and collaborative filtering.
+10. **Latent Factor Models**: [Matrix Factorization & Latent Factor Embeddings](/docs/search-ranking-recommendations/matrix-factorization-embeddings) — ALS ridge updates and implicit feedback.
+11. **Deep Architectures**: [Deep Recommenders: Two-Tower to Sequential Models](/docs/search-ranking-recommendations/deep-recommenders) — Two-Tower retrieval, Wide & Deep, DLRM, and SASRec.
+12. **Exploration & Feedback**: [Exploration, Feedback Loops & Counterfactual Evaluation](/docs/search-ranking-recommendations/exploration-feedback-loops) — contextual LinUCB bandits, popularity bias, and IPS.
+13. **System Design at Scale**: [Search & Recommendation System Design](/docs/search-ranking-recommendations/search-recommendation-system-design) — production latency budgets, feature stores, and failure ladders.
 
 Next: [Text Search & Inverted Indexes](/docs/search-ranking-recommendations/text-search-bm25) — master tokenization, inverted index postings, and sub-millisecond Boolean search algorithms.
 

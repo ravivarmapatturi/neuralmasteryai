@@ -1,0 +1,337 @@
+---
+title: "Search & Recommendation System Design"
+sidebar_position: 13
+description: "Design production search and recommendation systems: multi-stage funnels, latency budgets, feature pipelines, online evaluation, and failure recovery modes."
+---
+
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
+import RunnableCode from '../../../components/content/RunnableCode';
+import SearchSystemDesignExplorer from '../../../viz/diagrams/SearchSystemDesignExplorer';
+
+# Search & Recommendation System Design
+
+<ELI5>
+Building a search and recommendation engine for tens of millions of items is like designing an airport terminal that handles ten thousand passengers a minute. If every passenger had to be thoroughly interviewed by the chief security director at the front door, the airport would grind to a halt within seconds. Instead, the airport uses fast ticket scanners at the entrance, automated baggage belts in the middle, and reserves thorough inspections for only a small, flagged group. System design is the art of orchestrating fast, specialized stages so every request finishes in milliseconds without crashing under load.
+</ELI5>
+
+## The System Design Interview Scenario
+
+In this chapter, we synthesize the algorithms developed across this track—lexical BM25, dense vector ANN, learning-to-rank, deep recommenders, and contextual exploration—into a complete, production-grade distributed architecture.
+
+To anchor the architecture in concrete numbers, we examine an illustrative large-scale e-commerce and media discovery platform. 
+
+*(Note: All operational figures, latency budgets, and traffic statistics throughout this chapter represent explicit pedagogical design assumptions and derived engineering budgets rather than measured benchmarks of any specific company).*
+
+### 1. Architectural Scale Assumptions
+- **Catalog Size**: $50,000,000$ active items.
+- **User Base**: $20,000,000$ Daily Active Users (DAU).
+- **Peak Query Throughput**: $5,000$ queries per second (QPS).
+- **Catalog Update Rate**: $\approx 500$ new or updated items per second (price changes, inventory adjustments, new uploads).
+
+### 2. Service Level Agreements (SLAs)
+- **End-to-End Latency**: $T_{\text{p99}} \le 100\text{ ms}$ measured at the API gateway under peak load.
+- **Availability**: $99.99\%$ uptime (less than 4.38 minutes of downtime per month).
+- **Feature Freshness**: In-session user engagement signals (clicks, add-to-carts) reflected in ranking features within $t \le 1\text{ second}$. Catalog inventory changes reflected in filtering within $t \le 5\text{ seconds}$.
+
+<SearchSystemDesignExplorer />
+
+## Latency Budget Allocation: The 100ms Envelope
+
+Interactive user experience degrades noticeably when response latencies exceed 150–200 ms. For the server-side processing envelope, we establish a strict p99 budget of **100 ms**. Because microservice hops and parallel fan-outs incur variance, each stage in the funnel receives a non-negotiable latency slice:
+
+| Funnel Stage | Illustrative Input | Illustrative Output | Budgeted $T_{\text{p99}}$ | Typical $T_{\text{p50}}$ | Typical $T_{\text{p99}}$ | Primary Infrastructure |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **1. API Gateway & Auth** | Client Request | Validated Session | $5\text{ ms}$ | $2\text{ ms}$ | $4\text{ ms}$ | Envoy Proxy / OAuth2 Cache |
+| **2. Candidate Generation** | 50M Catalog | 1,000 Candidates | $25\text{ ms}$ | $14\text{ ms}$ | $23\text{ ms}$ | Elasticsearch (BM25) + HNSW (ANN) |
+| **3. Hard Filtering & Hydration** | 1,000 Candidates | 400 Valid Items | $10\text{ ms}$ | $4\text{ ms}$ | $8\text{ ms}$ | Redis Bloom Filters & Key-Value |
+| **4. Heavy ML Ranking** | 400 Candidates | 50 Scored Items | $40\text{ ms}$ | $22\text{ ms}$ | $36\text{ ms}$ | Triton Inference / GBDT / Cross-Encoder |
+| **5. Re-Ranking & Rules** | 50 Candidates | 10 Display Slate | $10\text{ ms}$ | $3\text{ ms}$ | $7\text{ ms}$ | LinUCB Bandits & MMR Deduplication |
+| **6. Serialization & Egress** | 10 Display Slate | Client JSON/Protobuf | $10\text{ ms}$ | $3\text{ ms}$ | $6\text{ ms}$ | API Gateway + Kafka Telemetry |
+| **Total System Envelope** | **50M Items** | **10 Results** | **$100\text{ ms}$** | **$48\text{ ms}$** | **$84\text{ ms}$** | **Headroom Margin: $+16\text{ ms}$** |
+
+Notice that the sum of typical p99 latencies across stages is $84\text{ ms}$, leaving a **$16\text{ ms}$ safety margin** before breaching the $100\text{ ms}$ SLA.
+
+<PredictFirst
+  question="Why can we not let the Heavy Ranking stage score all 1,000 raw candidates returned by candidate generation instead of filtering down to 400 first?"
+  options={[
+    "Ranking models cannot mathematically score odd numbers of candidates.",
+    "Evaluating deep cross-features over 1,000 candidates would expand ranking latency from ~36ms to over 90ms, instantly violating the 100ms end-to-end SLA.",
+    "Hard filtering requires GPU execution, which preempts the ranking model.",
+    "Candidate generation embeddings lose numerical precision if not filtered immediately."
+  ]}
+  correctIndex={1}
+  explanation="Scoring complexity in GBDT and cross-encoders scales linearly with candidate volume ($O(N \cdot F)$ where $F$ is feature count). Scoring 1,000 candidates pushes inference from 36ms to over 90ms, exceeding the entire end-to-end SLA budget on a single stage. Filtering out-of-stock and blocked items first reduces compute waste by 60%."
+/>
+
+## Parallel Multi-Channel Candidate Generation
+
+At the top of the funnel, candidate generation executes a **scatter-gather fan-out** across complementary retrieval channels in parallel. To satisfy the $25\text{ ms}$ candidate generation budget, each retrieval engine operates independently with a hard timeout of $20\text{ ms}$:
+
+1. **Lexical Keyword Retrieval (BM25)**:
+   - Sharded Elasticsearch or Apache Lucene cluster.
+   - Evaluates exact query terms, brand names, and SKU tokens (see [BM25: Term Saturation & Length Normalization](/docs/search-ranking-recommendations/bm25)).
+   - Emits top 400 candidates by BM25 score.
+2. **Dense Vector Retrieval (Two-Tower ANN)**:
+   - In-memory HNSW vector indexes (ScaNN / Milvus / FAISS) indexing 256-dimensional item embeddings (see [Semantic & Hybrid Search](/docs/search-ranking-recommendations/semantic-and-hybrid-search) and [Deep Recommenders](/docs/search-ranking-recommendations/deep-recommenders)).
+   - Query embedding computed by a lightweight bi-encoder in $< 5\text{ ms}$; ANN index searches 50M items in $< 10\text{ ms}$.
+   - Emits top 400 candidates by cosine similarity.
+3. **Graph & Collaborative Filtering**:
+   - Precomputed item-to-item co-occurrence tables and real-time user-sequence lookups in Redis (see [Recommendation Foundations](/docs/search-ranking-recommendations/recommendation-foundations)).
+   - Emits top 200 candidates based on recent user session history.
+
+The candidate aggregator gathers the responses, performs **Reciprocal Rank Fusion (RRF)** or linear score blending, and deduplicates the merged set into $\approx 1,000$ unique items in $< 2\text{ ms}$.
+
+## Dual Feature Store Architecture: Preventing Training-Serving Skew
+
+Scoring models require three distinct categories of features:
+- **Static Item Features**: Item category, brand, historical average rating, creation timestamp (updated daily/weekly).
+- **Slow User Profiles**: Long-term user demographic segment, preferred price tier, lifetime purchase count (updated nightly).
+- **Real-Time Dynamic Features**: User's last 5 clicked categories in the current session, real-time item click velocity in the last 15 minutes, device context, current hour of day.
+
+To serve these features reliably without introducing **training-serving skew** (see [ML System Design Case Studies](/docs/ml-system-design/case-studies)), the infrastructure employs a **Dual Feature Store** (e.g. Feast / Hopsworks):
+
+```
+[Raw Event Stream: Kafka] ───► [Apache Flink Stream Processor]
+                                      │
+              ┌───────────────────────┴───────────────────────┐
+              ▼                                               ▼
+     [Online Feature Store]                         [Offline Feature Store]
+    - Low-latency Redis / Aerospike                - Data Lakehouse (Apache Iceberg)
+    - Sub-millisecond point lookups                - Point-in-time correct joins
+    - Serves Request-Time Ranking Stage            - Serves Offline Model Training
+```
+
+### The Point-in-Time Join Invariant
+When generating training data, the offline pipeline must compute feature values exactly as they existed at the millisecond the historical prediction occurred. If today's item price or lifetime purchase count is joined with last month's impression, the model learns future leakage, failing catastrophically in production. The offline feature store guarantees time-travel point-in-time correctness.
+
+## High-Precision Ranking & Re-Ranking
+
+The surviving $\approx 400$ filtered candidates enter the heavy ranking stage:
+- **Model Architecture**: LightGBM / XGBoost ensembles (hundreds of decision trees) or deep feature interaction networks (such as DLRM or Wide & Deep, covered in [Deep Recommenders](/docs/search-ranking-recommendations/deep-recommenders)).
+- **Serving Engine**: Optimized C++ serving runtimes (Triton Inference Server or ONNX Runtime) with multithreaded batch inference.
+- **Scoring Output**: Calibrated engagement probabilities:
+  $$\text{Score} = P(\text{click}) \times P(\text{conversion} \mid \text{click})^\beta$$
+
+The top 50 scored candidates advance to **Re-Ranking & Business Logic**:
+- **Deduplication**: Suppress consecutive items sharing the exact same merchant or brand.
+- **Exploration**: Inject fresh or uncertain candidates via contextual LinUCB bandits (see [Exploration, Feedback Loops & Counterfactual Evaluation](/docs/search-ranking-recommendations/exploration-feedback-loops)).
+- **Fairness & Sponsorship**: Blend paid partner listings into designated slots with explicit badges, ensuring relevance scores exceed quality guardrails.
+
+<GoDeeper title="Capacity Planning & Little's Law for Inference Servers">
+
+To calculate the hardware footprint required to serve 5,000 peak QPS within an 85 ms typical p99 latency envelope, we apply **Little's Law**:
+
+$$L = \lambda \cdot W$$
+
+where:
+- $\lambda = 5,000\text{ requests/second}$ (arrival rate).
+- $W = 0.085\text{ seconds}$ (average service residency time).
+- $L = 5,000 \times 0.085 = 425\text{ concurrent in-flight requests}$.
+
+To prevent CPU queue saturation and tail latency spikes, production clusters target a maximum average CPU utilization of $U = 65\%$:
+
+$$\text{Required Compute Cores} = \frac{L}{U} = \frac{425}{0.65} \approx 654\text{ vCPU cores}$$
+
+Provisioning standard 16-vCPU compute instances:
+$$\text{Recommended Serving Nodes} = \left\lceil \frac{654}{16} \right\rceil = 41\text{ nodes}$$
+
+For catalog vector memory: storing 50 million items with 256-dimensional `float32` embeddings requires:
+$$50{,}000{,}000 \times 256 \times 4\text{ bytes} \approx 51.2\text{ GB RAM}$$
+With HNSW graph overhead and inverted index postings, the candidate cluster requires $\approx 76.8\text{ GB RAM}$, easily partitioned across 4–8 cluster shards.
+
+</GoDeeper>
+
+## Resilience Engineering: The 4-Level Degradation Ladder
+
+A distributed system with dozens of microservices must expect component timeouts and hardware failures. Production platforms must never return an HTTP 500 or blank white screen to users. Instead, the serving layer implements a **4-Level Resilience Degradation Ladder**:
+
+```
+[Level 1: Full High-Precision Pipeline (Normal)]
+  - All services healthy (p99 latency < 90 ms)
+  - Full Neural/GBDT Ranker + Real-Time Features
+  - Quality: 100% (NDCG@10 = 0.85) | Latency: 84 ms p99
+         │
+         ▼ (Trigger: Heavy Ranker p99 > 40 ms or queue saturation)
+[Level 2: Degraded Ranking (Lightweight Scoring)]
+  - Bypass Cross-Features & Deep GBDT
+  - Score via Fast Linear Model or Vector Dot-Product in Redis
+  - Quality: ~85% (NDCG@10 = 0.72) | Latency: 38 ms p99
+         │
+         ▼ (Trigger: Candidate Gen timeout > 25 ms or Redis connection drop)
+[Level 3: Cached Precomputed Recommendations]
+  - Bypass live retrieval & scoring
+  - Fetch precomputed hourly recommendation slate from local Redis cache
+  - Quality: ~76% (NDCG@10 = 0.65) | Latency: 12 ms p99
+         │
+         ▼ (Trigger: Catastrophic Redis / Network Partition)
+[Level 4: In-Memory Static Popularity Fallback]
+  - Zero network RPCs; served directly from API gateway process memory
+  - Global or regional top-selling catalog items
+  - Quality: ~47% (NDCG@10 = 0.40) | Latency: 2 ms p99
+```
+
+Circuit breakers (e.g. Resilience4j / Envoy) monitor downstream error rates and latencies. If the heavy ranking service fails more than 2% of calls over a 10-second window, the circuit breaker opens, automatically downgrading incoming requests to Level 2 without waiting for timeouts.
+
+<NotebookCallout color="cobalt" title="Fail Open, Degrade Gracefully">
+Never let a non-critical feature take down the recommendation engine. If the real-time feature store times out, score with static features. If candidate generation times out, serve cached recommendations. If the cache fails, serve static top-sellers. A degraded recommendation slate is infinitely better than a broken user experience.
+</NotebookCallout>
+
+## Runnable Python Example: Capacity Sizing & Fallback Simulation
+
+The following executable Python script calculates the end-to-end latency budget breakdown, validates SLA margins, computes cluster capacity via Little's Law, and simulates the 4-level fallback degradation ladder.
+
+```python
+import numpy as np
+import textwrap
+
+# Verified in in-browser Pyodide runtime
+def run_system_design_audit():
+    # 1. Multi-Stage Latency Budget Breakdown
+    stages = [
+        {"name": "1. API Gateway & Auth",    "budget": 5,  "p50": 2,  "p99": 4},
+        {"name": "2. Candidate Gen (Multi)", "budget": 25, "p50": 14, "p99": 23},
+        {"name": "3. Hard Filtering & Hydr", "budget": 10, "p50": 4,  "p99": 8},
+        {"name": "4. Heavy ML Ranking",      "budget": 40, "p50": 22, "p99": 36},
+        {"name": "5. Re-Ranking & Rules",    "budget": 10, "p50": 3,  "p99": 7},
+        {"name": "6. Egress & Serialization", "budget": 10, "p50": 3,  "p99": 6},
+    ]
+    
+    total_budget = sum(s["budget"] for s in stages)
+    total_p50 = sum(s["p50"] for s in stages)
+    total_p99 = sum(s["p99"] for s in stages)
+    target_sla = 100
+    margin = target_sla - total_p99
+    
+    print("--- 1. Multi-Stage Latency Budget Audit ---")
+    print(f"Total Budgeted SLA: {total_budget} ms")
+    print(f"Typical Sum: p50 = {total_p50} ms | p99 = {total_p99} ms")
+    print(f"SLA Margin: {margin:+} ms ({'PASS: Within 100ms SLA' if margin >= 0 else 'FAIL: Exceeds SLA'})")
+    
+    # 2. Capacity Sizing via Little's Law
+    peak_qps = 5000
+    target_latency_sec = total_p99 / 1000.0  # 0.084 seconds
+    target_utilization = 0.65
+    cores_per_node = 16
+    
+    concurrency = peak_qps * target_latency_sec
+    required_cores = int(np.ceil(concurrency / target_utilization))
+    required_nodes = int(np.ceil(required_cores / cores_per_node))
+    
+    # Catalog memory: 50M items * 256d * 4 bytes float32
+    embedding_ram_gb = (50_000_000 * 256 * 4) / (1024 ** 3)
+    
+    print("\n--- 2. Production Capacity & Hardware Sizing ---")
+    print(f"In-Flight Concurrent Requests: {concurrency:.1f}")
+    print(f"Required vCPU Cores: {required_cores} cores (at {int(target_utilization*100)}% CPU target)")
+    print(f"Recommended 16-vCPU Serving Nodes: ~{required_nodes} nodes")
+    print(f"Catalog Vector RAM Footprint: {embedding_ram_gb:.1f} GB")
+    
+    # 3. Resilience Ladder Simulation
+    levels = [
+        {"lvl": 1, "name": "Normal Full Pipeline",    "p99": 84, "ndcg": 0.85, "coverage": 100},
+        {"lvl": 2, "name": "Degraded Light Ranker",   "p99": 38, "ndcg": 0.72, "coverage": 95},
+        {"lvl": 3, "name": "Cached Recommendations",  "p99": 12, "ndcg": 0.65, "coverage": 80},
+        {"lvl": 4, "name": "Static Popularity Slate", "p99": 2,  "ndcg": 0.40, "coverage": 30},
+    ]
+    
+    print("\n--- 3. Resilience Fallback Ladder Metrics ---")
+    for l in levels:
+        print(f"Level {l['lvl']} ({l['name']:25}) | p99: {l['p99']:2d} ms | NDCG: {l['ndcg']:.2f} | Catalog Reach: {l['coverage']}%")
+
+run_system_design_audit()
+```
+
+<RunnableCode code={`import numpy as np
+
+# 1. Multi-Stage Latency Budget Breakdown
+stages = [
+    {"name": "1. API Gateway & Auth",    "budget": 5,  "p50": 2,  "p99": 4},
+    {"name": "2. Candidate Gen (Multi)", "budget": 25, "p50": 14, "p99": 23},
+    {"name": "3. Hard Filtering & Hydr", "budget": 10, "p50": 4,  "p99": 8},
+    {"name": "4. Heavy ML Ranking",      "budget": 40, "p50": 22, "p99": 36},
+    {"name": "5. Re-Ranking & Rules",    "budget": 10, "p50": 3,  "p99": 7},
+    {"name": "6. Egress & Serialization", "budget": 10, "p50": 3,  "p99": 6},
+]
+
+total_budget = sum(s["budget"] for s in stages)
+total_p50 = sum(s["p50"] for s in stages)
+total_p99 = sum(s["p99"] for s in stages)
+target_sla = 100
+margin = target_sla - total_p99
+
+print("--- 1. Multi-Stage Latency Budget Audit ---")
+print(f"Total Budgeted SLA: {total_budget} ms")
+print(f"Typical Sum: p50 = {total_p50} ms | p99 = {total_p99} ms")
+print(f"SLA Margin: {margin:+} ms ({'PASS: Within 100ms SLA' if margin >= 0 else 'FAIL: Exceeds SLA'})")
+
+# 2. Capacity Sizing via Little's Law
+peak_qps = 5000
+target_latency_sec = total_p99 / 1000.0  # 0.084 seconds
+target_utilization = 0.65
+cores_per_node = 16
+
+concurrency = peak_qps * target_latency_sec
+required_cores = int(np.ceil(concurrency / target_utilization))
+required_nodes = int(np.ceil(required_cores / cores_per_node))
+
+embedding_ram_gb = (50_000_000 * 256 * 4) / (1024 ** 3)
+
+print("\n--- 2. Production Capacity & Hardware Sizing ---")
+print(f"In-Flight Concurrent Requests: {concurrency:.1f}")
+print(f"Required vCPU Cores: {required_cores} cores (at {int(target_utilization*100)}% CPU target)")
+print(f"Recommended 16-vCPU Serving Nodes: ~{required_nodes} nodes")
+print(f"Catalog Vector RAM Footprint: {embedding_ram_gb:.1f} GB")
+
+# 3. Resilience Ladder Simulation
+levels = [
+    {"lvl": 1, "name": "Normal Full Pipeline",    "p99": 84, "ndcg": 0.85, "coverage": 100},
+    {"lvl": 2, "name": "Degraded Light Ranker",   "p99": 38, "ndcg": 0.72, "coverage": 95},
+    {"lvl": 3, "name": "Cached Recommendations",  "p99": 12, "ndcg": 0.65, "coverage": 80},
+    {"lvl": 4, "name": "Static Popularity Slate", "p99": 2,  "ndcg": 0.40, "coverage": 30},
+]
+
+print("\n--- 3. Resilience Fallback Ladder Metrics ---")
+for l in levels:
+    print(f"Level {l['lvl']} ({l['name']:25}) | p99: {l['p99']:2d} ms | NDCG: {l['ndcg']:.2f} | Catalog Reach: {l['coverage']}%")`} />
+
+## Common Problems & Fixes
+
+| Failure Mode | Root Cause | Engineering Fix |
+| :--- | :--- | :--- |
+| **Tail Latency Spikes (p99 > 250ms)** | Slow vector ANN shards or JVM garbage collection in Elasticsearch | Set strict per-stage client timeouts with scatter-gather fallback; size memory pools to prevent GC pauses. |
+| **Training-Serving Skew** | Feature computation logic re-implemented in Python (offline) vs C++/Go (online) | Deploy a shared Feature Store (Feast/Hopsworks) with unified feature transformation definitions. |
+| **Cascading Gateway Overload** | Retries during upstream slow-downs multiply incoming QPS | Implement exponential backoff with jitter on clients; drop non-critical requests using token bucket rate limiters. |
+| **Cold-Start Pipeline Starvation** | Newly indexed items have no engagement features in the online store | Populate default feature priors from item category and text embeddings at ingestion time. |
+| **Model Drift Silently Degrades CTR** | User consumption habits change without model retraining | Deploy automated drift detectors tracking Population Stability Index (PSI) and feature distributions daily. |
+
+## When Not to Build a Multi-Stage System
+
+| Scenario | Recommended Alternative | Rationale |
+| :--- | :--- | :--- |
+| **Catalogs under 10,000 items** | Single-Stage PostgreSQL Full-Text or Direct Embedding Scan | Multi-stage distributed funnels introduce microservice operational overhead unjustified by tiny catalog sizes. |
+| **Strictly Transactional Keyword Search** (e.g. part numbers, order ID lookups) | B-tree Primary Key Index or Elastic Match Query | Machine learning ranking introduces unnecessary latency and non-deterministic false positives. |
+| **Static Document Archives** (legal codes, corporate handbooks) | Single-Stage Hybrid Search (BM25 + Dense) with Cross-Encoder | Query volumes and update rates do not warrant real-time streaming feature stores or bandit exploration. |
+| **Batch Offline Generation** (e.g. weekly newsletter recommendations) | Nightly Spark / Ray Batch Matrix Factorization Jobs | Precomputing recommendations in batch avoids all real-time serving infrastructure costs. |
+
+## Remember
+
+| Architecture Pillar | Core Engineering Mechanism | Production SLA / Invariant |
+| :--- | :--- | :--- |
+| **Multi-Stage Funnel** | Multi-channel Retrieval → Hard Filtering → ML Ranking → Re-Ranking | High recall at top; high precision and business rules at bottom. |
+| **Latency Budget** | Strict stage-by-stage p99 breakdown ($25\text{ms} + 10\text{ms} + 40\text{ms} + 10\text{ms} \dots$) | Total server-side response $T_{\text{p99}} \le 100\text{ ms}$. |
+| **Dual Feature Store** | Redis (Online KV) + Apache Iceberg (Offline Lakehouse) | Point-in-time correctness; elimination of training-serving skew. |
+| **Degradation Ladder** | 4-tier fallback: Full ML → Light Ranker → Redis Cache → Static Top-Sellers | High availability ($99.99\%$); zero user-facing 500 errors. |
+| **Capacity Sizing** | Little's Law ($L = \lambda W$) with 65% target CPU utilization | Prevents queuing tail latency explosions under peak 5,000 QPS. |
+
+Search, Ranking & Recommendations track complete. Return to [Search & Recommendation Pipelines](/docs/search-ranking-recommendations/overview) to review the unified progression from lexical indexing to large-scale serving architectures.
+
+## Sources
+
+- Covington, P., Adams, J., & Sargin, E. (2016). *Deep Neural Networks for YouTube Recommendations*. Proceedings of the 10th ACM Conference on Recommender Systems (RecSys), 191–198. [https://doi.org/10.1145/2959100.2959190](https://doi.org/10.1145/2959100.2959190)
+- Haldar, M., et al. (2019). *Applying Deep Learning To Airbnb Search*. Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining, 2827–2835. [https://doi.org/10.1145/3292500.3330658](https://doi.org/10.1145/3292500.3330658)
+- Naumov, M., et al. (2019). *Deep Learning Recommendation Model for Personalization and Recommendation Systems*. arXiv:1906.00091. [https://arxiv.org/abs/1906.00091](https://arxiv.org/abs/1906.00091)
+- McMahan, H. B., et al. (2013). *Ad Click Prediction: a View from the Trenches*. Proceedings of the 19th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining, 1222–1230. [https://doi.org/10.1145/2487575.2488215](https://doi.org/10.1145/2487575.2488215)
+- Kleppmann, M. (2017). *Designing Data-Intensive Applications: The Big Ideas Behind Reliable, Scalable, and Maintainable Systems*. O'Reilly Media. [https://dataintensive.net/](https://dataintensive.net/)
+- Sculley, D., et al. (2015). *Hidden Technical Debt in Machine Learning Systems*. Advances in Neural Information Processing Systems (NeurIPS), 28, 2503–2511. [https://papers.nips.cc/paper/5656-hidden-technical-debt-in-machine-learning-systems](https://papers.nips.cc/paper/5656-hidden-technical-debt-in-machine-learning-systems)
