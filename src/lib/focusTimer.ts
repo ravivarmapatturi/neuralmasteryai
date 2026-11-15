@@ -581,7 +581,7 @@ export function formatClockTime(ms: number): string {
 
 /**
  * Formatter for today's focus time in the navbar control:
- * e.g. "mm:ss" under an hour, or "1h 12m" / "1h" at or above 1 hour.
+ * e.g. "mm:ss" under an hour, or "1h 12m 05s" at or above 1 hour (seconds always shown).
  */
 export function formatTodayFocusTime(totalSeconds: number): string {
   const s = Math.max(0, Math.floor(totalSeconds));
@@ -592,7 +592,8 @@ export function formatTodayFocusTime(totalSeconds: number): string {
   }
   const hours = Math.floor(s / 3600);
   const mins = Math.floor((s % 3600) / 60);
-  return mins === 0 ? `${hours}h` : `${hours}h ${mins}m`;
+  const secs = s % 60;
+  return `${hours}h ${String(mins).padStart(2, '0')}m ${String(secs).padStart(2, '0')}s`;
 }
 
 // -------------------------------------------------------------

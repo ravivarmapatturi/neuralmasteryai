@@ -263,13 +263,14 @@ describe('screenTime / focusTimer pure logic', () => {
   });
 
   describe('formatters', () => {
-    it('formatTodayFocusTime formats mm:ss under 1 hour and Xh Ym at or above 1 hour', () => {
+    it('formatTodayFocusTime formats mm:ss under 1 hour and Xh MMm SSs at or above 1 hour', () => {
       expect(formatTodayFocusTime(0)).toBe('00:00');
       expect(formatTodayFocusTime(5)).toBe('00:05');
       expect(formatTodayFocusTime(72)).toBe('01:12');
       expect(formatTodayFocusTime(3599)).toBe('59:59');
-      expect(formatTodayFocusTime(3600)).toBe('1h');
-      expect(formatTodayFocusTime(4320)).toBe('1h 12m');
+      expect(formatTodayFocusTime(3600)).toBe('1h 00m 00s');
+      expect(formatTodayFocusTime(4320)).toBe('1h 12m 00s');
+      expect(formatTodayFocusTime(43530)).toBe('12h 05m 30s');
     });
 
     it('formatFocusTime formats into human readable time', () => {
