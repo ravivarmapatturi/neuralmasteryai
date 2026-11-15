@@ -13,6 +13,8 @@
 ## Active & Historical Task Board
 
 | Timestamp (ISO) | Agent Name | Session ID / Branch | Target Files / Feature Area | Task Objective | Status | Verification Gate | Summary & Notes |
+| `2026-11-15T19:30:00+05:30` | `Codex` | `search-rank-rec` | `AGENT_TRACKER.md`, `docs/briefs/tfidf-bm25-pages.md`, TF-IDF/BM25 docs, helpers, diagrams/tests, metadata/navigation/evidence, plan report | Implement and review the owner-requested dedicated TF-IDF and BM25 pages with exact worked values and report to Claude | `IN_PROGRESS` | Pending verification | Batch-2 report committed as `6c45c0de`. Existing text-search page is the indexing lead-in; preserve its route. Reuse the established smoothed BM25 IDF helper and add the toy BM25 calculator fixture. Heavy commands only via `/tmp/nm-heavy.lock`; no push. |
+
 | `2026-11-15T19:05:00+05:30` | `Codex` | `search-rank-rec` | `AGENT_TRACKER.md`, `docs/briefs/search-ranking-recommendations-batch-2-fix-3.md`, batch-2 evidence, batch-2 report, TF-IDF/BM25 plan/pages/visuals/tests/evidence/report, batches 3–4 | Resume batch 2 final review, complete dedicated TF-IDF and BM25 pages, then supervise batches 3 and 4 and report each | `IN_PROGRESS` | Pending verification | No agy process detected; worktree clean. Batch-2 fix-3 report empty, so dispatch next. Heavy commands only through `/tmp/nm-heavy.lock`; no push. |
 
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
