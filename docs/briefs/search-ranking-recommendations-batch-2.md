@@ -209,3 +209,10 @@ Per brief instructions, out-of-scope files were not edited in Batch 2. Suggested
 - `98a23a7a` — `feat(viz): add diagrams and calculations for batch-2 semantic search and ranking`
 - `1e4caa10` — `feat(docs): add semantic-and-hybrid-search, ranking-fundamentals, and learning-to-rank chapters`
 - `c1d1fe55` — `docs(evidence): capture 1200px and 375px light and dark screenshots for batch 2 diagrams`
+
+---
+
+### 6. Review Fix 1 Resolution (`search-ranking-recommendations-batch-2-fix-1.md`)
+- Resolved all 11 Codex review feedback items across the three chapters and visualizers.
+- Commits: `cf14c348` (content, viz & tests), `097c8209` (recaptured screenshots).
+- Full verification logs documented in `docs/briefs/search-ranking-recommendations-batch-2-fix-1.md`.
