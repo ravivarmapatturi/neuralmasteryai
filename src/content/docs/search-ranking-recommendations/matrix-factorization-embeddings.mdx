@@ -1,0 +1,537 @@
+---
+title: "Matrix Factorization & Latent Factor Embeddings"
+sidebar_position: 10
+description: "Derive low-rank matrix factorization from first principles: ALS ridge updates, rotational non-identifiability, and implicit confidence ranking objectives."
+---
+
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
+import RunnableCode from '../../../components/content/RunnableCode';
+import MatrixFactorizationExplorer from '../../../viz/diagrams/MatrixFactorizationExplorer';
+
+# Matrix Factorization & Latent Factor Embeddings
+
+<ELI5>
+Imagine placing every student and textbook on a 2D map with axes for "Mathematical Rigor" and "Visual Intuition". Alice has high rigor and low visual preference; Textbook 1 has high rigor and low visual examples. By multiplying Alice's two coordinates by the textbook's two coordinates (their dot product), we predict whether Alice will like the book. Matrix factorization is the algorithm that discovers these hidden coordinates automatically from a sparse table of past reviews.
+</ELI5>
+
+For an end-to-end Python implementation of alternating least squares on synthetic interaction data and baseline bias adjustments, see [Recommender Systems](/docs/machine-learning/recommender-systems). In this chapter, we derive matrix factorization from first principles, prove why learned latent dimensions are mathematically unidentifiable, contrast explicit squared loss with implicit confidence and pairwise ranking (BPR), and compare Alternating Least Squares against Stochastic Gradient Descent.
+
+---
+
+## Decomposing Sparse Tables into Dense Latent Factors
+
+Neighborhood collaborative filtering operates directly on raw rows and columns of the interaction matrix $R \in \mathbb{R}^{m \times n}$. When catalogs expand to millions of items and sparsity exceeds 99.9%, mutual co-occurrence drops toward zero.
+
+Matrix factorization resolves sparsity by projecting both users and items into a shared, low-dimensional latent space of rank $k \ll \min(m, n)$ (Koren, Bell, & Volinsky, 2009).
+
+```
+Sparse Interaction Matrix R (m × n)       Latent Matrices: U (m × k) and V (n × k)
+   Items: i1  i2  i3  i4                         Dim 1  Dim 2              Dim 1  Dim 2
+u1 ┌   5   4   ·   1   ┐                  u1 ┌  0.84   0.12 ┐        i1 ┌  0.88   0.10 ┐
+u2 │   4   5   2   ·   │    ══════════►   u2 │  0.78   0.24 │        i2 │  0.82   0.21 │
+u3 │   ·   2   5   4   │                  u3 │  0.22   0.81 │        i3 │  0.24   0.79 │
+u4 └   1   ·   4   5   ┘                  u4 └  0.11   0.89 ┘        i4 └  0.12   0.88 ┘
+                                                 User Factors              Item Factors
+                                                     (U)                       (V)
+```
+
+Each user $u$ is represented by a dense embedding vector $u_u \in \mathbb{R}^k$. Each item $i$ is represented by a dense embedding vector $v_i \in \mathbb{R}^k$. The predicted rating $\hat{r}_{ui}$ is their inner product:
+
+$$
+\hat{r}_{ui} = u_u^T v_i = \sum_{d=1}^k u_{ud} v_{id}
+$$
+
+In full matrix notation, we seek factor matrices $U \in \mathbb{R}^{m \times k}$ and $V \in \mathbb{R}^{n \times k}$ such that:
+
+$$
+R \approx U V^T
+$$
+
+Rather than storing $m \times n$ separate parameters, the model stores $(m + n) \times k$ parameters. For $m=10^6$ users, $n=10^5$ items, and rank $k=64$, this reduces the parameter footprint from $10^{11}$ cells to $7.04 \times 10^7$ floats: a compression ratio of more than 1,400×.
+
+---
+
+## The Explicit Squared Error Objective
+
+Let $\mathcal{K} = \{(u, i) : r_{ui} \text{ is observed}\}$ denote the set of observed interactions in matrix $R$. In explicit feedback datasets, we minimize the squared error between observed ratings and predicted inner products:
+
+$$
+\mathcal{L}(U, V) = \sum_{(u,i) \in \mathcal{K}} \left(r_{ui} - u_u^T v_i\right)^2 + \lambda \left(\sum_{u=1}^m \|u_u\|_2^2 + \sum_{i=1}^n \|v_i\|_2^2\right)
+$$
+
+The hyperparameter $\lambda \ge 0$ applies $L_2$ Tikhonov regularization. Regularization is mandatory: without it, users or items with very few ratings can scale their latent coordinates to extreme values to overfit their single observed rating, destroying generalization on unobserved cells.
+
+<NotebookCallout color="cobalt">
+Notice that the summation runs only over observed pairs $(u, i) \in \mathcal{K}$. This distinguishes matrix factorization from classical Singular Value Decomposition (SVD). Standard SVD requires a completely dense matrix with no missing entries. Imputing zeros for missing entries corrupts explicit ratings because an unobserved movie is not a 0-star movie.
+</NotebookCallout>
+
+---
+
+## The Alternating Least Squares (ALS) Derivation
+
+The optimization problem $\min_{U, V} \mathcal{L}(U, V)$ is non-convex when optimizing $U$ and $V$ simultaneously, because the product $u_u^T v_i$ couples both unknown parameter sets.
+
+However, if we **fix the item matrix $V$**, the objective decouples into $m$ completely independent linear ridge regression sub-problems, one for each user $u$. Conversely, if we **fix the user matrix $U$**, the objective decouples into $n$ independent linear ridge regression sub-problems for each item $i$.
+
+This alternation between two convex sub-problems is **Alternating Least Squares (ALS)**.
+
+### 1. Deriving the User Update Rule
+
+Fix the item factor matrix $V$. For an individual user $u$, consider only the terms in $\mathcal{L}$ that depend on $u_u$:
+
+$$
+\mathcal{L}(u_u) = \sum_{i \in \mathcal{I}_u} \left(r_{ui} - u_u^T v_i\right)^2 + \lambda \|u_u\|_2^2
+$$
+
+where $\mathcal{I}_u$ is the set of items rated by user $u$. Let:
+- $V_{\mathcal{I}_u} \in \mathbb{R}^{|\mathcal{I}_u| \times k}$ be the sub-matrix of $V$ containing only the item vectors rated by user $u$.
+- $r_u \in \mathbb{R}^{|\mathcal{I}_u|}$ be the vector of observed ratings for user $u$.
+
+We express the user loss in matrix quadratic form:
+
+$$
+\mathcal{L}(u_u) = \left(r_u - V_{\mathcal{I}_u} u_u\right)^T \left(r_u - V_{\mathcal{I}_u} u_u\right) + \lambda u_u^T I_k u_u
+$$
+
+Expanding the quadratic terms:
+
+$$
+\mathcal{L}(u_u) = r_u^T r_u - 2 u_u^T V_{\mathcal{I}_u}^T r_u + u_u^T \left(V_{\mathcal{I}_u}^T V_{\mathcal{I}_u} + \lambda I_k\right) u_u
+$$
+
+Taking the gradient with respect to $u_u$ and setting it to zero:
+
+$$
+\nabla_{u_u} \mathcal{L} = -2 V_{\mathcal{I}_u}^T r_u + 2 \left(V_{\mathcal{I}_u}^T V_{\mathcal{I}_u} + \lambda I_k\right) u_u = 0
+$$
+
+Solving for $u_u$ yields the closed-form ridge regression update:
+
+$$
+u_u = \left(V_{\mathcal{I}_u}^T V_{\mathcal{I}_u} + \lambda I_k\right)^{-1} V_{\mathcal{I}_u}^T r_u
+$$
+
+### 2. Deriving the Item Update Rule
+
+By exact symmetry, fixing $U$ and differentiating with respect to item vector $v_i$ over the users $\mathcal{U}_i$ who rated item $i$ yields:
+
+$$
+v_i = \left(U_{\mathcal{U}_i}^T U_{\mathcal{U}_i} + \lambda I_k\right)^{-1} U_{\mathcal{U}_i}^T r_i
+$$
+
+where $U_{\mathcal{U}_i} \in \mathbb{R}^{|\mathcal{U}_i| \times k}$ and $r_i \in \mathbb{R}^{|\mathcal{U}_i|}$.
+
+Because $\left(V_{\mathcal{I}_u}^T V_{\mathcal{I}_u} + \lambda I_k\right)$ is a $k \times k$ symmetric positive-definite matrix, inversion takes $O(k^3)$ time. Since $k$ is small (typically $k \in [32, 128]$), each user update takes $O(|\mathcal{I}_u| k^2 + k^3)$ operations. Every user update can run concurrently across distributed worker threads without any lock contention.
+
+---
+
+## The Hand-Checkable 4x4 Factorization Example
+
+To ground the ALS mechanics, we evaluate our 4x4 matrix with rank $k=2$ and regularizer $\lambda = 0.1$:
+
+$$
+R = \begin{bmatrix}
+5 & 4 & \cdot & 1 \\
+4 & 5 & 2 & \cdot \\
+\cdot & 2 & 5 & 4 \\
+1 & \cdot & 4 & 5
+\end{bmatrix}
+$$
+
+Let user 1 (Alice) have observed ratings on Items 1, 2, and 4: $r_1 = [5, 4, 1]^T$.
+
+Suppose the current item factor matrix $V \in \mathbb{R}^{4 \times 2}$ is:
+
+$$
+V = \begin{bmatrix}
+0.9 & 0.1 \\
+0.8 & 0.2 \\
+0.2 & 0.8 \\
+0.1 & 0.9
+\end{bmatrix}
+$$
+
+The sub-matrix $V_{\mathcal{I}_1}$ for Alice's items (rows 0, 1, 3) is:
+
+$$
+V_{\mathcal{I}_1} = \begin{bmatrix}
+0.9 & 0.1 \\
+0.8 & 0.2 \\
+0.1 & 0.9
+\end{bmatrix}
+$$
+
+Compute the $2 \times 2$ Gram matrix $V_{\mathcal{I}_1}^T V_{\mathcal{I}_1}$:
+
+$$
+(V^T V)_{00} = 0.9^2 + 0.8^2 + 0.1^2 = 0.81 + 0.64 + 0.01 = 1.46
+$$
+
+$$
+(V^T V)_{01} = (0.9 \times 0.1) + (0.8 \times 0.2) + (0.1 \times 0.9) = 0.09 + 0.16 + 0.09 = 0.34
+$$
+
+$$
+(V^T V)_{11} = 0.1^2 + 0.2^2 + 0.9^2 = 0.01 + 0.04 + 0.81 = 0.86
+$$
+
+Adding regularization $\lambda I_2 = \begin{bmatrix} 0.1 & 0 \\ 0 & 0.1 \end{bmatrix}$:
+
+$$
+A = V_{\mathcal{I}_1}^T V_{\mathcal{I}_1} + 0.1 I_2 = \begin{bmatrix}
+1.56 & 0.34 \\
+0.34 & 0.96
+\end{bmatrix}
+$$
+
+Compute the determinant:
+
+$$
+\det(A) = (1.56 \times 0.96) - (0.34 \times 0.34) = 1.4976 - 0.1156 = 1.3820
+$$
+
+The analytic $2 \times 2$ inverse $A^{-1}$ is:
+
+$$
+A^{-1} = \frac{1}{1.3820} \begin{bmatrix}
+0.96 & -0.34 \\
+-0.34 & 1.56
+\end{bmatrix} \approx \begin{bmatrix}
+0.6946 & -0.2460 \\
+-0.2460 & 1.1288
+\end{bmatrix}
+$$
+
+Now compute the right-hand side vector $V_{\mathcal{I}_1}^T r_1$:
+
+$$
+b_0 = (0.9 \times 5) + (0.8 \times 4) + (0.1 \times 1) = 4.5 + 3.2 + 0.1 = 7.80
+$$
+
+$$
+b_1 = (0.1 \times 5) + (0.2 \times 4) + (0.9 \times 1) = 0.5 + 0.8 + 0.9 = 2.20
+$$
+
+Multiply $A^{-1} b$ to find Alice's updated factor vector $u_1$:
+
+$$
+u_{1,0} = (0.6946 \times 7.80) + (-0.2460 \times 2.20) = 5.418 - 0.541 = 4.877
+$$
+
+$$
+u_{1,1} = (-0.2460 \times 7.80) + (1.1288 \times 2.20) = -1.919 + 2.483 = 0.564
+$$
+
+Alice's updated 2D embedding is **$u_1 \approx [4.88, 0.56]^T$**. Dimension 1 dominates because Alice rated Items 1 and 2 (which load heavily on dimension 1) with 5 and 4 stars, while rating Item 4 (which loads heavily on dimension 2) with only 1 star.
+
+---
+
+## Rotational Invariance: Why Factors Are Unidentifiable
+
+<PredictFirst
+  title="Active Recall: Geometric Factor Identifiability"
+  question="Suppose we train rank-2 factor matrices U and V that minimize squared loss. If we apply an orthogonal 2D rotation matrix Q(θ) to every user vector and every item vector, what happens to the training loss and predicted ratings?"
+  options={[
+    "Training loss increases because rotated embeddings no longer match the canonical axes.",
+    "Training loss and all predicted ratings remain 100% identical.",
+    "Only user predictions remain unchanged; item predictions change.",
+    "Loss decreases because rotation adds an extra degree of freedom."
+  ]}
+  answer={1}
+  explanation="Inner products are invariant under orthogonal transformations: (U Q)(V Q)^T = U Q Q^T V^T = U I V^T = U V^T. Because every predicted rating is identical, training loss and predictions are completely invariant under rotation."
+/>
+
+A widespread misconception is that matrix factorization yields uniquely interpretable axes (e.g., claiming "Dimension 1 is definitely Action movies").
+
+Mathematically, latent factor models are **rotationally unidentifiable**. 
+
+Let $Q \in \mathbb{R}^{k \times k}$ be any orthogonal matrix, meaning $Q Q^T = Q^T Q = I_k$. In two dimensions, $Q$ is the standard rotation matrix parameterized by angle $\theta$:
+
+$$
+Q(\theta) = \begin{bmatrix}
+\cos\theta & -\sin\theta \\
+\sin\theta & \cos\theta
+\end{bmatrix}
+$$
+
+Define the rotated user factors $\tilde{U} = U Q$ and rotated item factors $\tilde{V} = V Q$. The new predicted rating matrix $\tilde{R}$ is:
+
+$$
+\tilde{R} = \tilde{U} \tilde{V}^T = (U Q)(V Q)^T = U \left(Q Q^T\right) V^T = U I_k V^T = U V^T = \hat{R}
+$$
+
+Furthermore, because orthogonal transformations preserve Euclidean norms ($\|x Q\|_2 = \|x\|_2$), the regularizer is also identical:
+
+$$
+\sum_{u=1}^m \|\tilde{u}_u\|_2^2 + \sum_{i=1}^n \|\tilde{v}_i\|_2^2 = \sum_{u=1}^m \|u_u\|_2^2 + \sum_{i=1}^n \|v_i\|_2^2
+$$
+
+The objective value $\mathcal{L}(\tilde{U}, \tilde{V})$ is strictly identical to $\mathcal{L}(U, V)$ for every angle $\theta \in [0, 2\pi)$. Without imposing additional structural constraints (such as non-negativity in NMF or sparsity priors), individual latent coordinates have no intrinsic semantic meaning.
+
+---
+
+## Interactive Exploration: ALS Convergence and Factor Rotation
+
+In the visualizer below, inspect the 4x4 matrix factorization model. Adjust the ALS iteration count to observe the mean squared error drop, then drag the rotation slider to empirically verify that rotating the factor coordinates preserves predicted ratings to 6 decimal places.
+
+<MatrixFactorizationExplorer />
+
+---
+
+## Implicit Feedback Matrix Factorization (iALS)
+
+When moving from 5-star ratings to implicit clicks or view times, we cannot sum only over observed pairs $(u, i) \in \mathcal{K}$. If we did, setting $U=1, V=1$ would trivialize the loss because zero negative examples would exist.
+
+Hu, Koren, and Volinsky (2008) introduced **implicit ALS (iALS)**, which sums over **all $m \times n$ user-item pairs**, weighting each pair by its confidence $c_{ui}$:
+
+$$
+\mathcal{L}_{\text{iALS}}(U, V) = \sum_{u=1}^m \sum_{i=1}^n c_{ui} \left(p_{ui} - u_u^T v_i\right)^2 + \lambda \left(\sum_{u=1}^m \|u_u\|_2^2 + \sum_{i=1}^n \|v_i\|_2^2\right)
+$$
+
+where:
+- $p_{ui} = 1$ if an interaction occurred ($r_{ui} > 0$), and $p_{ui} = 0$ if unobserved.
+- $c_{ui} = 1 + \alpha r_{ui}$ if observed, and $c_{ui} = 1$ if unobserved.
+
+### The Computational Bottleneck and the Sparse Inversion Bypass
+
+At first glance, optimizing over all $m \times n$ pairs seems computationally impossible for large platforms where $m \times n \approx 10^{13}$.
+
+The closed-form update for user $u$ under iALS is:
+
+$$
+u_u = \left(V^T C^u V + \lambda I_k\right)^{-1} V^T C^u p_u
+$$
+
+where $C^u = \text{diag}(c_{u1}, c_{u2}, \dots, c_{un}) \in \mathbb{R}^{n \times n}$ is the diagonal matrix of confidences for user $u$.
+
+The bottleneck is computing $V^T C^u V$, which takes $O(n k^2)$ operations per user. Across $m$ users, this requires $O(m n k^2)$ work: identical to dense matrix multiplication.
+
+Hu et al. solved this by observing that $C^u - I_n$ is sparse. Since $c_{ui} = 1$ for all unobserved items, $c_{ui} - 1 = 0$ for all but the small number of observed items $|\mathcal{I}_u|$:
+
+$$
+V^T C^u V = V^T V + V^T \left(C^u - I_n\right) V
+$$
+
+Notice:
+1. $V^T V = \sum_{i=1}^n v_i v_i^T$ depends only on the item matrix $V$. It can be computed **once** in $O(n k^2)$ time and shared across all $m$ users.
+2. The correction term $V^T (C^u - I_n) V = \sum_{i \in \mathcal{I}_u} (c_{ui} - 1) v_i v_i^T$ involves only the items user $u$ actually consumed. It takes only $O(|\mathcal{I}_u| k^2)$ time.
+
+This algebraic refactoring reduces the total complexity per iteration from $O(m n k^2)$ down to $O(m k^3 + |R| k^2 + n k^2)$, making exact implicit matrix factorization scalable to hundreds of millions of interactions.
+
+---
+
+## Bayesian Personalized Ranking (BPR)
+
+While iALS frames implicit feedback as confidence-weighted regression toward $p_{ui} \in \{0, 1\}$, ranking evaluation metrics (like NDCG and MRR) care only about the relative ordering of items.
+
+Rendle et al. (2009) introduced **Bayesian Personalized Ranking (BPR)**, which optimizes pairwise ranking directly.
+
+For each user $u$, we sample a triplet $(u, i, j)$ where item $i \in \mathcal{I}_u$ is an observed (positive) item and item $j \notin \mathcal{I}_u$ is an unobserved item. We assume user $u$ prefers item $i$ over item $j$:
+
+$$
+\hat{x}_{uij} = \hat{r}_{ui} - \hat{r}_{uj} = u_u^T v_i - u_u^T v_j
+$$
+
+BPR models the probability that user $u$ prefers item $i$ over item $j$ using the logistic sigmoid function $\sigma(z) = \frac{1}{1 + e^{-z}}$:
+
+$$
+P(i >_u j \mid \Theta) = \sigma\left(\hat{x}_{uij}\right) = \frac{1}{1 + e^{-(u_u^T v_i - u_u^T v_j)}}
+$$
+
+Maximizing the posterior log-likelihood with Gaussian priors corresponds to minimizing the BPR loss:
+
+$$
+\mathcal{L}_{\text{BPR}} = -\sum_{(u,i,j) \in \mathcal{D}_S} \ln \sigma\left(u_u^T v_i - u_u^T v_j\right) + \frac{\lambda}{2} \left(\|u_u\|_2^2 + \|v_i\|_2^2 + \|v_j\|_2^2\right)
+$$
+
+The stochastic gradient update for a sampled triplet $(u, i, j)$ is:
+
+$$
+\frac{\partial \mathcal{L}}{\partial u_u} = -\frac{e^{-\hat{x}_{uij}}}{1 + e^{-\hat{x}_{uij}}} \left(v_i - v_j\right) + \lambda u_u = -\left(1 - \sigma(\hat{x}_{uij})\right) (v_i - v_j) + \lambda u_u
+$$
+
+When the model correctly ranks $i$ far above $j$ ($\hat{x}_{uij} \gg 0$), $\sigma(\hat{x}_{uij}) \approx 1$ and the gradient shrinks to zero. When the model incorrectly ranks $j$ above $i$, the gradient pushes $u_u$ along $(v_i - v_j)$, pulling positive item vector $v_i$ closer to $u_u$ while repelling negative item vector $v_j$.
+
+---
+
+## Executable Verification: Matrix Factorization in Python
+
+The following runnable Python script implements both closed-form ALS on our exact 4x4 matrix and validates rotational invariance with NumPy.
+
+```python
+import numpy as np
+
+# Exact 4x4 rating matrix R (NaN represents unobserved)
+R = np.array([
+    [5.0, 4.0, np.nan, 1.0],
+    [4.0, 5.0, 2.0, np.nan],
+    [np.nan, 2.0, 5.0, 4.0],
+    [1.0, np.nan, 4.0, 5.0]
+])
+
+m, n = R.shape
+k = 2
+lam = 0.1
+
+# Deterministic initial factor matrices
+U = np.array([[0.8, 0.2], [0.7, 0.3], [0.2, 0.8], [0.1, 0.9]])
+V = np.array([[0.9, 0.1], [0.8, 0.2], [0.2, 0.8], [0.1, 0.9]])
+
+# Run 10 ALS iterations
+for step in range(10):
+    # Solve for U given V
+    for u in range(m):
+        observed = ~np.isnan(R[u])
+        V_sub = V[observed]
+        r_sub = R[u, observed]
+        A = V_sub.T @ V_sub + lam * np.eye(k)
+        U[u] = np.linalg.solve(A, V_sub.T @ r_sub)
+        
+    # Solve for V given U
+    for i in range(n):
+        observed = ~np.isnan(R[:, i])
+        U_sub = U[observed]
+        r_sub = R[observed, i]
+        A = U_sub.T @ U_sub + lam * np.eye(k)
+        V[i] = np.linalg.solve(A, U_sub.T @ r_sub)
+
+R_pred = U @ V.T
+observed_mask = ~np.isnan(R)
+mse = np.mean((R[observed_mask] - R_pred[observed_mask])**2)
+
+print(f"Converged Observed MSE (10 iterations): {mse:.4f}")
+print("Predicted Matrix R_hat:")
+print(np.round(R_pred, 2))
+```
+
+<RunnableCode
+  code={`import numpy as np
+
+R = np.array([
+    [5.0, 4.0, np.nan, 1.0],
+    [4.0, 5.0, 2.0, np.nan],
+    [np.nan, 2.0, 5.0, 4.0],
+    [1.0, np.nan, 4.0, 5.0]
+])
+m, n = R.shape
+k, lam = 2, 0.1
+U = np.array([[0.8, 0.2], [0.7, 0.3], [0.2, 0.8], [0.1, 0.9]])
+V = np.array([[0.9, 0.1], [0.8, 0.2], [0.2, 0.8], [0.1, 0.9]])
+
+for _ in range(10):
+    for u in range(m):
+        obs = ~np.isnan(R[u])
+        U[u] = np.linalg.solve(V[obs].T @ V[obs] + lam * np.eye(k), V[obs].T @ R[u, obs])
+    for i in range(n):
+        obs = ~np.isnan(R[:, i])
+        V[i] = np.linalg.solve(U[obs].T @ U[obs] + lam * np.eye(k), U[obs].T @ R[obs, i])
+
+R_hat = U @ V.T
+obs = ~np.isnan(R)
+print("Observed MSE:", round(float(np.mean((R[obs] - R_hat[obs])**2)), 4))
+print("Alice (u1) predictions:", np.round(R_hat[0], 2))
+# Try it: Change regularization lambda to 1.0 and observe how predictions shrink toward mean`}
+/>
+
+Now let us empirically verify rotational invariance by rotating $U$ and $V$ by $\theta = 45^\circ$:
+
+```python
+import numpy as np
+
+# Apply 2D rotation matrix Q to factors
+theta = np.radians(45.0)
+Q = np.array([
+    [np.cos(theta), -np.sin(theta)],
+    [np.sin(theta),  np.cos(theta)]
+])
+
+# Rotated factor matrices
+U_rotated = U @ Q
+V_rotated = V @ Q
+
+# Predictions from rotated factors: (U Q) (V Q)^T
+R_pred_rotated = U_rotated @ V_rotated.T
+
+max_abs_diff = np.max(np.abs(R_pred - R_pred_rotated))
+print(f"Max absolute difference between R_hat and rotated R_hat: {max_abs_diff:.2e}")
+print(f"Original U[0]: {np.round(U[0], 3)} -> Rotated U[0]: {np.round(U_rotated[0], 3)}")
+```
+
+<RunnableCode
+  code={`import numpy as np
+
+# Continuing from converged U and V:
+theta = np.radians(45.0)
+Q = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
+
+# Original factor coordinates vs Rotated coordinates
+u0_orig = U[0]
+u0_rot = U[0] @ Q
+
+diff = np.max(np.abs((U @ V.T) - ((U @ Q) @ (V @ Q).T)))
+print("Original Alice Factor u1:", np.round(u0_orig, 3))
+print("Rotated Alice Factor u1: ", np.round(u0_rot, 3))
+print("Max Prediction Diff across all entries:", f"{diff:.2e}")
+# Proves mathematically: predictions are strictly invariant under rotation!`}
+/>
+
+---
+
+## Alternating Least Squares vs. Stochastic Gradient Descent
+
+In production recommender engineering, two optimization paradigms dominate matrix factorization:
+
+| Dimension | Alternating Least Squares (ALS) | Stochastic Gradient Descent (SGD) |
+| :--- | :--- | :--- |
+| **Optimization Nature** | Solves closed-form linear systems iteratively. Guaranteed monotonic loss descent. | Steps along noisy negative gradient estimates per interaction sample. |
+| **Hyperparameter Sensitivity** | Requires tuning rank $k$ and regularizer $\lambda$. Robust to convergence failures. | Highly sensitive to learning rate $\eta$, decay schedules, and momentum. |
+| **Parallelization** | Embarrassingly parallel across CPU sockets. Each user and item updates independently. | Requires Hogwild! style asynchronous lock-free shared memory or distributed parameter servers. |
+| **Handling Implicit Zeros** | Uses the $V^T (C^u - I) V$ sparse trick to train over all $m \times n$ unobserved pairs in $O(|R| k^2)$. | Cannot evaluate all zeros; must rely on negative sampling or BPR pairwise triplets. |
+| **Hardware Fit** | High-memory multicore CPU clusters (BLAS matrix inversion libraries). | GPUs / TPUs with dense mini-batch GEMM accelerators. |
+
+---
+
+## Common Failure Modes in Latent Factor Models
+
+| Failure Mode | Root Cause | Production Symptom | Engineering Solution |
+| :--- | :--- | :--- | :--- |
+| **Shrinkage Toward Global Mean** | Over-regularization ($\lambda$ too large) dominates small observed counts. | Active users receive flat, generic predictions with near-zero recommendation variance. | Scale regularizer adaptively by user activity: $\lambda_u = \lambda \cdot \vert \mathcal{I}_u \vert$. |
+| **Latent Dimension Collapse** | Rank $k$ is set too large relative to interaction volume. | High-order factors contain near-zero weights, wasting memory and slowing serving dot products. | Inspect singular value decay of factor matrices; apply early stopping on validation NDCG. |
+| **Catastrophic Cold Start** | User $u$ has $\vert \mathcal{I}_u \vert = 0$, causing $V_{\mathcal{I}_u}^T r_u = 0$. | Updated factor $u_u$ collapses to exact zero vector, predicting zero for all catalog items. | Fall back to user baseline biases: $\hat{r}_{ui} = \mu + b_u + b_i$ or initialize from metadata. |
+
+---
+
+## When Not to Use Classical Matrix Factorization
+
+| Scenario | Preferred Alternative | Why Matrix Factorization Fails |
+| :--- | :--- | :--- |
+| **Rich Query Context (Time, Location, Device)** | Deep Cross Networks (DCN, Wide & Deep) | Classical matrix factorization is purely bilinear ($u_u^T v_i$); it cannot ingest dynamic context features like current time or weather. |
+| **Fast In-Session Sequential Evolution** | Transformer Sequence Models (SASRec) | User factor $u_u$ is a static vector; it cannot model short-term item transition dynamics within a single browsing session. |
+| **Multi-Modal Content Signals (Images, Text)** | Two-Tower Neural Retrieval | When new items arrive constantly, item factors $v_i$ cannot be learned without observed user interactions. |
+
+---
+
+## Remember
+
+| Concept | Key Invariant | Production Role |
+| :--- | :--- | :--- |
+| **Bilinear Prediction** | $\hat{r}_{ui} = u_u^T v_i$ | Compresses $m \times n$ table to $(m+n)k$ parameters; inner products enable fast MIPS retrieval. |
+| **ALS User Step** | $u_u = (V_{\mathcal{I}_u}^T V_{\mathcal{I}_u} + \lambda I)^{-1} V_{\mathcal{I}_u}^T r_u$ | Closed-form ridge regression step; embarrassingly parallel across users. |
+| **Rotational Invariance** | $(U Q)(V Q)^T = U V^T$ | Latent dimensions cannot be assigned fixed human labels without external constraints. |
+| **iALS Trick** | $V^T C^u V = V^T V + V^T(C^u - I)V$ | Allows exact optimization over all $m \times n$ pairs in $O(|R| k^2)$ instead of $O(m n k^2)$. |
+| **BPR Loss** | $-\ln \sigma(u_u^T v_i - u_u^T v_j)$ | Optimizes relative pairwise AUC directly; ideal for implicit binary click data. |
+
+Next: [Deep Recommenders: Two-Tower to Sequential Models](/docs/search-ranking-recommendations/deep-recommenders) — analyze why two-tower architectures decouple query and item representations to enable ANN search, and how downstream ranking re-introduces rich cross-feature interactions.
+
+---
+
+## Sources
+
+- Koren, Y., Bell, R., & Volinsky, C. (2009). *Matrix Factorization Techniques for Recommender Systems*. Computer, 42(8), 30–37. [https://doi.org/10.1109/MC.2009.263](https://doi.org/10.1109/MC.2009.263)
+- Hu, Y., Koren, Y., & Volinsky, C. (2008). *Collaborative Filtering for Implicit Feedback Datasets*. 2008 Eighth IEEE International Conference on Data Mining, 263–272. [https://doi.org/10.1109/ICDM.2008.22](https://doi.org/10.1109/ICDM.2008.22)
+- Rendle, S., Freudenthaler, C., Gantner, Z., & Schmidt-Thieme, L. (2009). *BPR: Bayesian Personalized Ranking from Implicit Feedback*. Proceedings of the Twenty-Fifth Conference on Uncertainty in Artificial Intelligence (UAI), 452–461. [https://arxiv.org/abs/1205.2618](https://arxiv.org/abs/1205.2618)
+- Srebro, N., Rennie, J., & Jaakkola, T. (2004). *Maximum-Margin Matrix Factorization*. Advances in Neural Information Processing Systems (NeurIPS 17), 1329–1336. [https://proceedings.neurips.cc/paper/2004/hash/48aedb8880cab8c45637abc7493ecddd-Abstract.html](https://proceedings.neurips.cc/paper/2004/hash/48aedb8880cab8c45637abc7493ecddd-Abstract.html)
+- Bell, R. M., & Koren, Y. (2007). *Scalable Collaborative Filtering with Jointly Derived Neighborhood Interpolation Weights*. Seventh IEEE International Conference on Data Mining (ICDM), 43–52. [https://doi.org/10.1109/ICDM.2007.82](https://doi.org/10.1109/ICDM.2007.82)
+- Takács, G., Pilászy, I., Németh, B., & Tikk, D. (2009). *Scalable Collaborative Filtering Approaches for Large Recommender Systems*. Journal of Machine Learning Research (JMLR), 10, 623–656. [https://www.jmlr.org/papers/v10/takacs09a.html](https://www.jmlr.org/papers/v10/takacs09a.html)

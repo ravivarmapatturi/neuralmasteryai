@@ -50,7 +50,7 @@ export default function MatrixFactorizationExplorer() {
           marginTop: SPACING.md,
           background: t.surfaceAlt,
           padding: SPACING.md,
-          borderRadius: RADIUS.card,
+          borderRadius: RADIUS.md,
           border: `1px solid ${t.border}`,
         }}
       >
@@ -95,7 +95,7 @@ export default function MatrixFactorizationExplorer() {
               onClick={() => setViewTab(tab.id as typeof viewTab)}
               style={{
                 padding: '6px 12px',
-                borderRadius: RADIUS.pill,
+                borderRadius: 9999,
                 fontSize: 12,
                 fontWeight: 600,
                 cursor: 'pointer',
@@ -116,7 +116,7 @@ export default function MatrixFactorizationExplorer() {
         style={{
           marginTop: SPACING.md,
           background: t.surface,
-          borderRadius: RADIUS.card,
+          borderRadius: RADIUS.md,
           padding: SPACING.md,
           border: `1px solid ${t.border}`,
         }}

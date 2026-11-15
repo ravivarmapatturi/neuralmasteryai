@@ -1,0 +1,501 @@
+---
+title: "Recommendation Foundations: Interactions & Neighborhoods"
+sidebar_position: 9
+description: "Explore recommendation foundations from interaction matrices and user-item collaborative filtering to implicit feedback and cold-start candidate retrieval."
+---
+
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
+import RunnableCode from '../../../components/content/RunnableCode';
+import RecommendationFoundationsExplorer from '../../../viz/diagrams/RecommendationFoundationsExplorer';
+
+# Recommendation Foundations: Interactions & Neighborhoods
+
+<ELI5>
+In search, the user tells us what they want by typing an explicit query ("learning to rank algorithms"). In recommendations, there is no search query. The system must infer intent from history: what items the user clicked, purchased, skipped, or rated. Collaborative filtering solves this by identifying shared taste. If Alice and Bob both read chapters on matrix algebra and vector search, and Bob also reads two-tower retrieval, the system recommends two-tower retrieval to Alice without needing to understand the underlying prose.
+</ELI5>
+
+For a broader architectural overview of recommendation baselines, global biases, and full-funnel retrieval pipelines, review our dedicated guide in [Recommender Systems](/docs/machine-learning/recommender-systems). In this chapter, we derive the mathematical foundations of user-item candidate generation, examine the structural shift from explicit to implicit feedback, and analyze why unobserved interactions must never be conflated with negative preference.
+
+---
+
+## Ranking Without an Explicit Query
+
+Information retrieval systems operate in two distinct modalities: query-driven search and context-driven recommendation.
+
+In search, the query provides immediate intentional focus. The candidate generation layer filters millions of documents down to thousands by matching lexical terms or semantic query embeddings. 
+
+In recommendations, the user arrives at a home screen or feed with no typed tokens. The system's input is a user context vector $x_u$ (past interactions, timestamp, device, locale) and an interaction matrix $R \in \mathbb{R}^{m \times n}$ representing historical interactions between $m$ users and $n$ catalog items.
+
+```
+Query-Driven Search:
+[User Query: "vector index"] ──► Lexical / Dense Match ──► Top 1,000 Candidates ──► LTR Reranker
+
+Context-Driven Recommendation:
+[User Context: History + Time] ──► Collaborative Neighborhoods ──► Candidate Pool ──► Deep CTR Ranker
+                                ──► Content-Based Filters
+```
+
+The fundamental challenge of recommender systems is extreme matrix sparsity. In typical production catalogs (such as e-commerce stores with $10^7$ items or video platforms with $10^8$ items), any single user interacts with at most $10^2$ to $10^3$ items. More than 99.9% of the interaction matrix cells are completely unobserved.
+
+---
+
+## The Hand-Checkable Interaction Matrix
+
+To make every equation hand-checkable, we define a concrete toy universe of $m=4$ users and $n=4$ items:
+
+- **Users**: Alice ($u_1$), Bob ($u_2$), Charlie ($u_3$), Diana ($u_4$)
+- **Items**: Item 1 (*Matrix Algebra*), Item 2 (*Vector Search*), Item 3 (*Two-Tower Nets*), Item 4 (*Graph RAG*)
+
+Consider the observed explicit rating matrix $R$ on a 1-to-5 star scale:
+
+$$
+R = \begin{bmatrix}
+5 & 4 & 1 & \cdot \\
+4 & 5 & \cdot & 2 \\
+1 & 2 & 5 & 4 \\
+\cdot & 1 & 4 & 5
+\end{bmatrix}
+$$
+
+Alice and Bob exhibit high interest in foundational mathematical topics ($I_1, I_2$) and low interest in deep neural architectures ($I_3$). Charlie and Diana exhibit the inverse taste profile: high interest in deep neural and graph architectures ($I_3, I_4$) and low interest in foundational algebra ($I_1, I_2$).
+
+Notice the unobserved cells ($\cdot$):
+- Alice has not interacted with Item 4 (*Graph RAG*).
+- Bob has not interacted with Item 3 (*Two-Tower Nets*).
+- Charlie has not interacted with Item 1 (*Matrix Algebra*).
+- Diana has not interacted with Item 1 (*Matrix Algebra*).
+
+Our primary task in candidate generation is predicting whether Alice will appreciate Item 4.
+
+---
+
+## Explicit Feedback vs. Implicit Exposure
+
+Early recommendation research focused almost exclusively on **explicit feedback**: 1-to-5 star ratings or thumbs-up/thumbs-down signals deliberately submitted by users (Koren et al., 2009).
+
+In modern consumer platforms, explicit feedback accounts for less than 1% of total user activity. Systems instead collect **implicit feedback**: clicks, video watch duration, page scroll depth, add-to-cart events, and purchases (Hu, Koren, & Volinsky, 2008).
+
+Implicit feedback introduces three structural properties:
+
+1. **No Negative Signals**: An explicit 1-star rating unambiguously conveys dislike. In implicit logs, we observe what the user consumed, but we never observe an explicit "dislike" button.
+2. **Missing-Not-At-Random (MNAR)**: Unobserved entries do not mean the user disliked the item. In most cases, the user simply was never exposed to the item. The item was buried on page 10 of a category list or never shown by earlier ranking heuristics.
+3. **Variable Confidence**: An explicit 5-star rating is a single observation. An implicit signal carries varying confidence: a user who watched a 60-minute lecture to 100% completion conveys far higher confidence than a user who bounced after 4 seconds.
+
+<NotebookCallout color="amber">
+Treating unobserved implicit entries as zeros in standard squared loss causes severe exposure bias. The model learns to predict that unexposed high-quality niche items are hated by everyone, reinforcing popularity bias and trapping users in feedback loops.
+</NotebookCallout>
+
+To formulate implicit feedback mathematically, Hu, Koren, and Volinsky (2008) bifurcated raw observations $r_{ui}$ into a binary preference indicator $p_{ui}$ and a confidence measure $c_{ui}$:
+
+$$
+p_{ui} = \begin{cases}
+1 & \text{if } r_{ui} > 0 \\
+0 & \text{if } r_{ui} = 0 \text{ (unobserved)}
+\end{cases}
+$$
+
+$$
+c_{ui} = 1 + \alpha r_{ui}
+$$
+
+Here, $\alpha$ is a positive tuning hyperparameter (typically between 10 and 40 in production settings). When $r_{ui} = 0$, the preference is set to $p_{ui} = 0$, but the confidence is at its minimal baseline $c_{ui} = 1$. When an action is observed, confidence scales linearly with the interaction magnitude.
+
+---
+
+## User-User Collaborative Filtering
+
+The core hypothesis of **user-user collaborative filtering** is that users who agreed on item evaluations in the past will agree on item evaluations in the future (Resnick et al., 1994).
+
+To predict Alice's rating for unobserved Item 4, we measure the similarity between Alice ($u_1$) and every other user $u_v$ over their mutually co-rated items $I_{uv} = I_u \cap I_v$.
+
+<PredictFirst
+  title="Active Recall: Similarity Under Different Baselines"
+  question="If Alice rates items [5, 4, 1] and Bob rates co-rated items [4, 5, ?], while user Charlie rates [1, 2, 5], will cosine similarity between Alice and Charlie be positive or negative?"
+  options={[
+    "Negative, because Charlie gave high ratings to items Alice disliked and low ratings to items Alice liked.",
+    "Positive, because standard cosine similarity on positive star ratings (1 to 5) has no negative values.",
+    "Zero, because they share no co-rated items.",
+    "Undefined, because Charlie did not rate Item 4."
+  ]}
+  answer={1}
+  explanation="Standard uncentered cosine similarity uses raw positive vectors in [1, 5]^d, so the dot product and cosine are strictly positive (> 0) even for polar opposites. To produce negative similarity for opposing tastes, we must mean-center ratings using Pearson correlation."
+/>
+
+### 1. Uncentered Cosine Similarity
+
+The uncentered cosine similarity between users $u$ and $v$ over their co-rated items $I_{uv}$ is:
+
+$$
+\text{sim}_{\text{cos}}(u, v) = \frac{\sum_{i \in I_{uv}} r_{ui} r_{vi}}{\sqrt{\sum_{i \in I_{uv}} r_{ui}^2} \sqrt{\sum_{i \in I_{uv}} r_{vi}^2}}
+$$
+
+Let us compute the exact similarity between Alice ($u_1$) and Bob ($u_2$). Their co-rated items are Item 1 and Item 2:
+- Alice: $r_{1,1} = 5, r_{1,2} = 4$
+- Bob: $r_{2,1} = 4, r_{2,2} = 5$
+
+$$
+\text{dot}(u_1, u_2) = (5 \times 4) + (4 \times 5) = 20 + 20 = 40
+$$
+
+$$
+\|u_1\|_{I_{12}} = \sqrt{5^2 + 4^2} = \sqrt{25 + 16} = \sqrt{41} \approx 6.4031
+$$
+
+$$
+\|u_2\|_{I_{12}} = \sqrt{4^2 + 5^2} = \sqrt{16 + 25} = \sqrt{41} \approx 6.4031
+$$
+
+$$
+\text{sim}_{\text{cos}}(u_1, u_2) = \frac{40}{\sqrt{41} \times \sqrt{41}} = \frac{40}{41} \approx 0.9756
+$$
+
+Now compute similarity between Alice ($u_1$) and Charlie ($u_3$). Their co-rated items are Items 1, 2, and 3:
+- Alice: $r_{1,1} = 5, r_{1,2} = 4, r_{1,3} = 1$
+- Charlie: $r_{3,1} = 1, r_{3,2} = 2, r_{3,3} = 5$
+
+$$
+\text{dot}(u_1, u_3) = (5 \times 1) + (4 \times 2) + (1 \times 5) = 5 + 8 + 5 = 18
+$$
+
+$$
+\|u_1\|_{I_{13}} = \sqrt{5^2 + 4^2 + 1^2} = \sqrt{25 + 16 + 1} = \sqrt{42} \approx 6.4807
+$$
+
+$$
+\|u_3\|_{I_{13}} = \sqrt{1^2 + 2^2 + 5^2} = \sqrt{1 + 4 + 25} = \sqrt{30} \approx 5.4772
+$$
+
+$$
+\text{sim}_{\text{cos}}(u_1, u_3) = \frac{18}{\sqrt{42} \times \sqrt{30}} = \frac{18}{\sqrt{1260}} = \frac{18}{35.4965} \approx 0.5071
+$$
+
+Even though Alice and Charlie possess diametrically opposed preferences, their uncentered cosine similarity is $+0.5071$. This occurs because raw 1-to-5 ratings are all strictly positive numbers.
+
+### 2. Mean-Centered Cosine (Pearson Correlation)
+
+To capture true alignment and divergence, we subtract each user's mean rating $\bar{r}_u$ from their observed scores:
+
+$$
+\bar{r}_u = \frac{1}{|I_u|} \sum_{i \in I_u} r_{ui}
+$$
+
+For our users:
+- Alice ($u_1$): $\bar{r}_1 = \frac{5 + 4 + 1}{3} = \frac{10}{3} \approx 3.3333$
+- Bob ($u_2$): $\bar{r}_2 = \frac{4 + 5 + 2}{3} = \frac{11}{3} \approx 3.6667$
+- Charlie ($u_3$): $\bar{r}_3 = \frac{1 + 2 + 5 + 4}{4} = \frac{12}{4} = 3.0000$
+
+The Pearson correlation coefficient over co-rated items is:
+
+$$
+\text{sim}_{\text{Pearson}}(u, v) = \frac{\sum_{i \in I_{uv}} (r_{ui} - \bar{r}_u)(r_{vi} - \bar{r}_v)}{\sqrt{\sum_{i \in I_{uv}} (r_{ui} - \bar{r}_u)^2} \sqrt{\sum_{i \in I_{uv}} (r_{vi} - \bar{r}_v)^2}}
+$$
+
+Calculating Pearson similarity between Alice and Charlie on items 1, 2, 3:
+- Alice centered: $[5 - 3.33, 4 - 3.33, 1 - 3.33] = [+1.67, +0.67, -2.33]$
+- Charlie centered: $[1 - 3.00, 2 - 3.00, 5 - 3.00] = [-2.00, -1.00, +2.00]$
+
+$$
+\text{Numerator} = (1.67 \times -2.0) + (0.67 \times -1.0) + (-2.33 \times 2.0) = -3.34 - 0.67 - 4.66 = -8.67
+$$
+
+Because both vectors are centered around zero, the correlation becomes **$-0.9636$**. Pearson correlation correctly detects that Alice and Charlie have opposing tastes.
+
+---
+
+## Predicting the Unobserved Rating
+
+Once neighborhood similarities $\text{sim}(u, v)$ are computed, we predict the target rating $\hat{r}_{ui}$ using a baseline-adjusted weighted average across the $k$ nearest neighbors $N_i(u)$ who rated item $i$:
+
+$$
+\hat{r}_{ui} = \bar{r}_u + \frac{\sum_{v \in N_i(u)} \text{sim}(u, v) \cdot (r_{vi} - \bar{r}_v)}{\sum_{v \in N_i(u)} |\text{sim}(u, v)|}
+$$
+
+Let us predict Alice's rating for Item 4 (*Graph RAG*). The users who rated Item 4 are Bob ($r_{2,4} = 2$) and Charlie ($r_{3,4} = 4$).
+
+Using our positive cosine similarities ($\text{sim}(u_1, u_2) = 0.9756$, $\text{sim}(u_1, u_3) = 0.5071$):
+
+$$
+\text{Bob's residual}: r_{2,4} - \bar{r}_2 = 2 - 3.6667 = -1.6667
+$$
+
+$$
+\text{Charlie's residual}: r_{3,4} - \bar{r}_3 = 4 - 3.0000 = +1.0000
+$$
+
+$$
+\text{Weighted sum} = (0.9756 \times -1.6667) + (0.5071 \times 1.0000) = -1.6260 + 0.5071 = -1.1189
+$$
+
+$$
+\text{Sum of similarities} = 0.9756 + 0.5071 = 1.4827
+$$
+
+$$
+\hat{r}_{1,4} = \bar{r}_1 + \frac{-1.1189}{1.4827} = 3.3333 - 0.7546 = 2.58
+$$
+
+The system predicts Alice will rate Item 4 at **2.58 / 5.0**. Despite Charlie awarding Item 4 a strong 4 stars, Alice's close neighbor Bob rated it poorly, pulling Alice's prediction downward. Item 4 will not be recommended to Alice as a top candidate.
+
+---
+
+## Interactive Exploration: Neighborhood Candidates & Exposure
+
+Use the interactive visual below to inspect the 4x4 interaction matrix, switch between user-user and item-item similarity modes, and observe how implicit confidence transforms missing data into positive-unlabeled observations.
+
+<RecommendationFoundationsExplorer />
+
+---
+
+## Item-Item Collaborative Filtering in Production
+
+While user-user collaborative filtering provides clear pedagogical intuition, production systems rarely compute user-user similarities online.
+
+In 2001, Sarwar et al. and Linden et al. (Amazon) demonstrated that **item-item collaborative filtering** is far superior for production scale:
+
+1. **Item Tastes Are More Stable**: An e-commerce catalog contains items whose identities and attributes remain static over months. Users, by contrast, change interests dynamically across sessions.
+2. **Offline Precomputation**: A platform may have $10^8$ users but only $10^5$ active items. Computing an $n \times n$ item similarity matrix requires $O(n^2)$ time and can be calculated in nightly batch jobs. At serving time, generating candidates for user $u$ requires only looking up the precomputed nearest neighbors for the items the user recently clicked.
+
+The item-item cosine similarity between items $i$ and $j$ over mutual raters $U_{ij}$ is:
+
+$$
+\text{sim}_{\text{item}}(i, j) = \frac{\sum_{u \in U_{ij}} r_{ui} r_{uj}}{\sqrt{\sum_{u \in U_{ij}} r_{ui}^2} \sqrt{\sum_{u \in U_{ij}} r_{uj}^2}}
+$$
+
+Let us calculate the similarity between Item 1 (*Matrix Algebra*) and Item 2 (*Vector Search*) in our matrix. The mutual raters are Alice, Bob, and Charlie:
+
+$$
+\text{dot}(I_1, I_2) = (5 \times 4) + (4 \times 5) + (1 \times 2) = 20 + 20 + 2 = 42
+$$
+
+$$
+\|I_1\|_{U_{12}} = \sqrt{5^2 + 4^2 + 1^2} = \sqrt{25 + 16 + 1} = \sqrt{42} \approx 6.4807
+$$
+
+$$
+\|I_2\|_{U_{12}} = \sqrt{4^2 + 5^2 + 2^2} = \sqrt{16 + 25 + 4} = \sqrt{45} \approx 6.7082
+$$
+
+$$
+\text{sim}_{\text{item}}(I_1, I_2) = \frac{42}{\sqrt{42 \times 45}} = \frac{42}{\sqrt{1890}} = \frac{42}{43.4741} \approx 0.9661
+$$
+
+Items 1 and 2 share an exceptionally high similarity of **0.9661**. When any user consumes Item 1, Item 2 is immediately retrieved as an elite candidate.
+
+---
+
+## Executable Verification: Computing Similarities in Python
+
+The following Python script implements user-user and item-item collaborative filtering on our exact 4x4 matrix, reproducing every number derived above.
+
+```python
+import numpy as np
+
+# 4 users x 4 items (np.nan represents unobserved entries)
+# Row order: Alice (u1), Bob (u2), Charlie (u3), Diana (u4)
+# Col order: Matrix Alg (i1), Vector Search (i2), Two-Tower (i3), Graph RAG (i4)
+R = np.array([
+    [5.0, 4.0, 1.0, np.nan],
+    [4.0, 5.0, np.nan, 2.0],
+    [1.0, 2.0, 5.0, 4.0],
+    [np.nan, 1.0, 4.0, 5.0]
+])
+
+def user_cosine_similarity(u_idx, v_idx, matrix):
+    u = matrix[u_idx]
+    v = matrix[v_idx]
+    co_rated = ~np.isnan(u) & ~np.isnan(v)
+    if not np.any(co_rated):
+        return 0.0
+    u_co = u[co_rated]
+    v_co = v[co_rated]
+    dot = np.dot(u_co, v_co)
+    norm_u = np.linalg.norm(u_co)
+    norm_v = np.linalg.norm(v_co)
+    return dot / (norm_u * norm_v)
+
+# 1. Verify Alice (0) vs Bob (1)
+sim_alice_bob = user_cosine_similarity(0, 1, R)
+# 2. Verify Alice (0) vs Charlie (2)
+sim_alice_charlie = user_cosine_similarity(0, 2, R)
+
+print(f"Alice-Bob Cosine Similarity:     {sim_alice_bob:.4f}")
+print(f"Alice-Charlie Cosine Similarity: {sim_alice_charlie:.4f}")
+
+# 3. Predict Alice's rating for Item 4 (col index 3)
+alice_mean = np.nanmean(R[0])
+bob_mean = np.nanmean(R[1])
+charlie_mean = np.nanmean(R[2])
+
+bob_res = R[1, 3] - bob_mean
+charlie_res = R[2, 3] - charlie_mean
+
+weighted_res = (sim_alice_bob * bob_res) + (sim_alice_charlie * charlie_res)
+sim_sum = sim_alice_bob + sim_alice_charlie
+pred_alice_item4 = alice_mean + (weighted_res / sim_sum)
+
+print(f"Predicted Alice Rating for Item 4: {pred_alice_item4:.2f} / 5.00")
+```
+
+<RunnableCode
+  code={`import numpy as np
+
+# 4 users x 4 items
+R = np.array([
+    [5.0, 4.0, 1.0, np.nan],
+    [4.0, 5.0, np.nan, 2.0],
+    [1.0, 2.0, 5.0, 4.0],
+    [np.nan, 1.0, 4.0, 5.0]
+])
+
+def user_sim(u_idx, v_idx):
+    u = R[u_idx]
+    v = R[v_idx]
+    mask = ~np.isnan(u) & ~np.isnan(v)
+    return np.dot(u[mask], v[mask]) / (np.linalg.norm(u[mask]) * np.linalg.norm(v[mask]))
+
+s_01 = user_sim(0, 1)
+s_02 = user_sim(0, 2)
+print("Alice-Bob Sim:", round(s_01, 4))
+print("Alice-Charlie Sim:", round(s_02, 4))
+
+# Mean centered prediction for Alice (0) on Item 4 (3)
+m0 = np.nanmean(R[0])
+m1 = np.nanmean(R[1])
+m2 = np.nanmean(R[2])
+pred = m0 + (s_01 * (R[1, 3] - m1) + s_02 * (R[2, 3] - m2)) / (s_01 + s_02)
+print("Predicted Alice Item 4:", round(pred, 2))
+# Try it: Change Bob's rating on Item 4 from 2.0 to 5.0 and re-run!`}
+/>
+
+Now let us execute the item-item similarity calculation in Python to verify Item 1 vs Item 2:
+
+```python
+import numpy as np
+
+R = np.array([
+    [5.0, 4.0, 1.0, np.nan],
+    [4.0, 5.0, np.nan, 2.0],
+    [1.0, 2.0, 5.0, 4.0],
+    [np.nan, 1.0, 4.0, 5.0]
+])
+
+def item_sim(i_idx, j_idx):
+    col_i = R[:, i_idx]
+    col_j = R[:, j_idx]
+    mask = ~np.isnan(col_i) & ~np.isnan(col_j)
+    return np.dot(col_i[mask], col_j[mask]) / (np.linalg.norm(col_i[mask]) * np.linalg.norm(col_j[mask]))
+
+sim_i1_i2 = item_sim(0, 1)
+print(f"Item 1 vs Item 2 Cosine Similarity: {sim_i1_i2:.4f}")
+```
+
+<RunnableCode
+  code={`import numpy as np
+
+R = np.array([
+    [5.0, 4.0, 1.0, np.nan],
+    [4.0, 5.0, np.nan, 2.0],
+    [1.0, 2.0, 5.0, 4.0],
+    [np.nan, 1.0, 4.0, 5.0]
+])
+
+col_0 = R[:, 0]
+col_1 = R[:, 1]
+valid = ~np.isnan(col_0) & ~np.isnan(col_1)
+sim = np.dot(col_0[valid], col_1[valid]) / (np.linalg.norm(col_0[valid]) * np.linalg.norm(col_1[valid]))
+print("Item 1 vs Item 2 Cosine Sim:", round(sim, 4))
+# Try it: Check similarity between Item 1 and Item 4 by comparing col_0 and col_3`}
+/>
+
+---
+
+## The Cold-Start Dilemma
+
+Collaborative filtering fails completely when either the user or the item has zero historical interactions. This failure state is known as the **cold-start problem** (Schein et al., 2002).
+
+```
+                      ┌────────────────────────────────────────────────────────┐
+                      │                   New User Arrives                     │
+                      └──────────────────────────┬─────────────────────────────┘
+                                                 │
+                                                 ▼
+                                     Has Interaction History?
+                                     ├─── YES ──► Collaborative Filtering (k-NN, Matrix Factorization)
+                                     │
+                                     └─── NO  ──► Cold-Start Triage:
+                                                  ├── Contextual Heuristics (device, country, time)
+                                                  ├── Popularity & Editorial Top-Charts
+                                                  ├── Content-Based Metadata Embedding
+                                                  └── Multi-Armed Bandit Exploration (ε-greedy, Thompson)
+```
+
+In production architectures, cold-start is resolved through three complementary layers:
+
+1. **Content-Based Filtering**: If a new article on "Transformer Attention Kernels" is published, collaborative filtering cannot recommend it because zero users have clicked it. However, a content-based model extracts token embeddings, category tags ("Deep Learning"), and author metadata, projecting the article into an embedding space near existing popular transformer articles.
+2. **Contextual Popularity Fallbacks**: For brand-new anonymous visitors, the retrieval layer serves trending or universally high-engagement items segmented by geo-location, referrer URL, or device type.
+3. **Bandit Exploration**: Rather than serving only historical winners, the system allocates a small exploration budget (e.g., 2% to 5% of traffic) to test unexposed items, rapidly accumulating interactions to exit the cold-start regime (Li et al., 2010).
+
+<GoDeeper title="Formalizing the Exposure Bias in Implicit Feedback">
+In observational interaction logs, the observed interaction indicator $O_{ui} \in \{0, 1\}$ represents whether item $i$ was exposed to user $u$. The true interaction outcome $Y_{ui}$ is only observed when $O_{ui} = 1$:
+
+$$
+R_{ui} = O_{ui} \cdot Y_{ui}
+$$
+
+The probability of exposure $P(O_{ui} = 1 \mid x_u, x_i)$ is called the **propensity score** (Schnabel et al., 2016). When popular items receive disproportionately higher exposure, naive training on $R_{ui}$ optimizes for past exposure rather than intrinsic user preference. Inverse Propensity Scoring (IPS) corrects this by weighting each observed interaction inversely to its exposure probability:
+
+$$
+\mathcal{L}_{\text{IPS}} = \sum_{(u,i): O_{ui}=1} \frac{\ell(Y_{ui}, \hat{Y}_{ui})}{P(O_{ui} = 1 \mid x_u, x_i)}
+$$
+</GoDeeper>
+
+---
+
+## Common Failure Modes in Production Neighborhoods
+
+| Failure Mode | Root Cause | System Manifestation | Production Fix |
+| :--- | :--- | :--- | :--- |
+| **Popularity Cannibalization** | Blockbuster items co-occur with almost every item in interaction logs. | Blockbusters appear in every user's candidate set, crowding out niche recommendations. | Normalize item-item co-occurrence by product of marginal frequencies: $\frac{C_{ij}}{\sqrt{C_i C_j}}$ or apply inverse document frequency discounts. |
+| **Sparsity Horizon** | High dimensional catalogs with long-tail items have 0 mutual raters ($\vert I_{uv} \vert = 0$). | Similarity evaluates to zero or defaults to global mean; long-tail items are never retrieved. | Transition from discrete neighborhood overlap to dense latent factor models (Matrix Factorization) or two-tower embeddings. |
+| **Hubness Problem** | High-dimensional geometry causes certain items to become nearest neighbors to almost all queries. | Unrelated generic items appear as top recommendations across diverse users. | Apply local scaling or mutual proximity corrections to distance matrices (Radovanović et al., 2010). |
+| **Feedback Loop Amplification** | Items placed at top positions receive more clicks, artificially boosting future similarity scores. | Catalogs freeze into self-reinforcing echo chambers with declining catalog coverage over time. | Inject randomized exploration traffic or apply position-bias propensity weighting. |
+
+---
+
+## When Not to Use Neighborhood Collaborative Filtering
+
+| Scenario | Preferred Alternative | Why Neighborhood Methods Fail |
+| :--- | :--- | :--- |
+| **Catalog $> 10^7$ Items** | Two-Tower Vector Retrieval (ScaNN / HNSW) | Computing and storing all-pairs item similarity matrices scales as $O(n^2)$, exceeding memory budgets. |
+| **High Session Volatility (News, TikTok)** | Sequential Transformers (SASRec, BERT4Rec) | User intent shifts rapidly within a single session; static user-user historical averages miss short-term context. |
+| **Strict Sub-10ms Serving Latency** | Precomputed Dense Embeddings + Approximate Nearest Neighbors | Searching dynamic user neighborhoods at query time requires random memory access over large graph structures. |
+| **Extreme Cold-Start Catalogs** | Content-Based Dense Retrieval | Zero co-occurrence overlap makes collaborative filtering mathematically impossible without metadata. |
+
+---
+
+## Remember
+
+| Concept | Key Equation / Invariant | Operational Role |
+| :--- | :--- | :--- |
+| **Explicit Feedback** | $R_{ui} \in [1, 5]$ | High signal-to-noise ratio, but represents $<1\%$ of production consumer interactions. |
+| **Implicit Feedback** | $p_{ui} \in \{0, 1\}, c_{ui} = 1 + \alpha r_{ui}$ | Pervasive interaction signal; unobserved entries represent lack of exposure rather than dislike. |
+| **User Mean Centering** | $r_{ui} - \bar{r}_u$ | Normalizes for user rating leniency; converts raw positive cosine into true Pearson correlation. |
+| **Item-Item CF** | $\text{sim}(i, j) = \frac{i \cdot j}{\|i\| \|j\|}$ | Preferred production architecture: item tastes are more stable and can be precomputed offline. |
+| **Baseline Predictor** | $\hat{r}_{ui} = \bar{r}_u + \frac{\sum s \cdot (r_v - \bar{r}_v)}{\sum \vert s \vert}$ | Interpolates neighborhood residuals on top of individual user rating baselines. |
+| **Cold Start** | Content + Bandits | Unseen users/items cannot be retrieved via interaction overlap alone. |
+
+Next: [Matrix Factorization & Latent Embeddings](/docs/search-ranking-recommendations/matrix-factorization-embeddings) — derive how low-rank factor matrices compress sparse interaction tables into dense geometric embeddings using Alternating Least Squares.
+
+---
+
+## Sources
+
+- Koren, Y., Bell, R., & Volinsky, C. (2009). *Matrix Factorization Techniques for Recommender Systems*. Computer, 42(8), 30–37. [https://doi.org/10.1109/MC.2009.263](https://doi.org/10.1109/MC.2009.263)
+- Hu, Y., Koren, Y., & Volinsky, C. (2008). *Collaborative Filtering for Implicit Feedback Datasets*. 2008 Eighth IEEE International Conference on Data Mining, 263–272. [https://doi.org/10.1109/ICDM.2008.22](https://doi.org/10.1109/ICDM.2008.22)
+- Sarwar, B., Karypis, G., Konstan, J., & Riedl, J. (2001). *Item-based Collaborative Filtering Recommendation Algorithms*. Proceedings of the 10th International Conference on World Wide Web, 285–295. [https://doi.org/10.1145/371920.372071](https://doi.org/10.1145/371920.372071)
+- Linden, G., Smith, B., & York, J. (2003). *Amazon.com Recommendations: Item-to-Item Collaborative Filtering*. IEEE Internet Computing, 7(1), 76–80. [https://doi.org/10.1109/MIC.2003.1167344](https://doi.org/10.1109/MIC.2003.1167344)
+- Resnick, P., Iacovou, N., Suchak, M., Bergstrom, P., & Riedl, J. (1994). *GroupLens: An Open Architecture for Collaborative Filtering of Netnews*. Proceedings of the 1994 ACM Conference on Computer Supported Cooperative Work, 175–186. [https://doi.org/10.1145/192844.192905](https://doi.org/10.1145/192844.192905)
+- Schein, A. I., Popescul, A., Ungar, L. H., & Pennock, D. M. (2002). *Methods and Metrics for Cold-Start Recommendations*. Proceedings of the 25th Annual International ACM SIGIR Conference, 253–260. [https://doi.org/10.1145/564376.564421](https://doi.org/10.1145/564376.564421)
+- Schnabel, T., Swaminathan, A., Singh, A., Chandak, N., & Joachims, T. (2016). *Recommendations as Treatments: Debiasing Learning and Evaluation*. Proceedings of the 33rd International Conference on Machine Learning (ICML), 1670–1679. [https://proceedings.mlr.press/v48/schnabel16.html](https://proceedings.mlr.press/v48/schnabel16.html)

@@ -1,0 +1,505 @@
+---
+title: "Deep Recommenders: Two-Tower to Sequential Models"
+sidebar_position: 11
+description: "Compare deep recommender architectures: Two-Tower retrieval, Wide & Deep feature crosses, DLRM embedding interactions, and SASRec sequential self-attention."
+---
+
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
+import RunnableCode from '../../../components/content/RunnableCode';
+import DeepRecommendersArchitectureExplorer from '../../../viz/diagrams/DeepRecommendersArchitectureExplorer';
+
+# Deep Recommenders: Two-Tower to Sequential Models
+
+<ELI5>
+Imagine a catalog with 50 million videos. When a user opens their app, we have roughly 15 milliseconds to choose what to show. We cannot evaluate a complex neural network on all 50 million candidates. Instead, we use two separate networks: one compresses the user into a 64-dimensional vector, while another precomputes vectors for all videos offline. We retrieve the top 500 candidates using fast geometric vector search (Two-Tower retrieval). Then, and only then, do we run an expressive deep model with full cross-feature interactions (Wide & Deep, DLRM) to rank the final 20 results.
+</ELI5>
+
+For architectural coverage of end-to-end production pipelines and sampled softmax loss formulations, see [Recommender Systems](/docs/machine-learning/recommender-systems). For the mathematical derivation of causal multi-head self-attention projection matrices, see [Attention & Transformers](/docs/deep-learning/attention-transformers). In this chapter, we compare the primary deep learning recommender architectures, examine why two-tower models decouple representations for Approximate Nearest Neighbor (ANN) search, analyze why downstream ranking models re-introduce explicit cross-feature interactions, and trace the rise of self-attentive sequential models (SASRec).
+
+---
+
+## Retrieval Funnel vs. Scoring Ranker
+
+Production recommender systems partition latency and computational complexity across two distinct stages: candidate retrieval and candidate ranking (Covington, Adams, & Sargin, 2016).
+
+```
+Catalog: 10^7 - 10^8 Items
+          │
+          ▼  [Stage 1: Candidate Retrieval]
+             • Two-Tower Bi-Encoders / Matrix Factorization
+             • Offline precomputed item index
+             • Approximate Nearest Neighbor (ScaNN, HNSW)
+             • Budget: 5 - 15 ms
+          │
+          ▼  Candidates: 500 - 1,000 Items
+             │
+             ▼  [Stage 2: Scoring & Ranking]
+                • Wide & Deep / DLRM / DeepFM
+                • Rich user-item cross-features (user_zip == merchant_zip)
+                • Heavy non-linear interactions
+                • Budget: 20 - 40 ms
+             │
+             ▼
+Final Slate: Top 10 - 20 Items Displayed
+```
+
+These stages demand fundamentally different architectural trade-offs:
+
+1. **Retrieval Architectures (Two-Tower)** must decouple user features from item features so item vectors can be indexed in geometric search structures (ANN). Any architecture where item scoring requires running a joint neural layer with user features cannot operate at the retrieval stage.
+2. **Ranking Architectures (Wide & Deep, DLRM)** receive a small candidate pool (e.g., 500 items). Because computational budgets permit tens of millions of FLOPs over 500 items, rankers can ingest complex, non-linear cross-features between user context, historical session signals, and candidate attributes.
+
+---
+
+## Two-Tower Neural Retrieval
+
+The **Two-Tower Architecture** (also known as a dual-encoder) parameterizes candidate generation using two independent neural networks (Covington et al., 2016; Yi et al., 2019):
+
+1. **User Tower $f(x_u) \in \mathbb{R}^d$**: Ingests user context features $x_u$ (user ID, demographic embeddings, historical click sequences, device, time, locale) through multi-layer perceptrons (MLP) to output an $L_2$-normalized user embedding $\mathbf{u} \in \mathbb{R}^d$.
+2. **Item Tower $g(x_i) \in \mathbb{R}^d$**: Ingests item features $x_i$ (item ID, title tokens, category embeddings, price, engagement counts) through a separate MLP to output an $L_2$-normalized item embedding $\mathbf{v} \in \mathbb{R}^d$.
+
+```
+User Features (x_u)                         Item Features (x_i)
+[ID, History, Device, Hour]                 [ID, Title, Category, Length]
+         │                                               │
+         ▼                                               ▼
+┌──────────────────┐                            ┌──────────────────┐
+│    User Tower    │                            │    Item Tower    │
+│  MLP: 512 → 128  │                            │  MLP: 512 → 128  │
+└────────┬─────────┘                            └────────┬─────────┘
+         │                                               │
+         ▼                                               ▼
+User Embedding u ∈ ℝ^d                         Item Embedding v ∈ ℝ^d
+         │                                               │
+         └───────────────────────┬───────────────────────┘
+                                 │
+                                 ▼
+                     Inner Product: s(u, v) = ⟨u, v⟩
+```
+
+The predicted retrieval score is the inner product (or cosine similarity when vectors are $L_2$-normalized):
+
+$$
+s(u, i) = \langle f(x_u), g(x_i) \rangle = \sum_{j=1}^d u_j v_j
+$$
+
+### The Serving Breakthrough: Precomputed ANN Indexing
+
+The decisive operational advantage of the two-tower model is that $g(x_i)$ **does not depend on $x_u$**.
+
+For a catalog of $N = 50,000,000$ items:
+1. **Offline Batch Precomputation**: We run $g(x_i)$ once per item in an offline job, storing the resulting $d$-dimensional vectors in an Approximate Nearest Neighbor index (such as Google ScaNN or Hierarchical Navigable Small World, HNSW).
+2. **Online Query Evaluation**: When user Alice requests recommendations:
+   - Run the User Tower $f(x_{\text{Alice}})$ once to produce vector $\mathbf{u}_{\text{Alice}}$ (takes $\approx 2 \text{ ms}$).
+   - Query the ANN index for the nearest neighbors to $\mathbf{u}_{\text{Alice}}$ using Maximum Inner Product Search (MIPS) (takes $\approx 5 \text{ ms}$).
+
+Total retrieval latency is under 10 milliseconds across tens of millions of items.
+
+---
+
+## The Two-Tower Limitation: Zero Early Cross-Features
+
+<PredictFirst
+  title="Active Recall: The Two-Tower Cross-Feature Barrier"
+  question="Can a Two-Tower retrieval model learn a feature rule that activates if and only if 'user_preferred_language == item_audio_language'?"
+  options={[
+    "Yes, because multi-layer perceptrons are universal function approximators.",
+    "No, because the towers process user features and item features in complete isolation prior to the final dot product.",
+    "Yes, if we increase the latent dimension d to 1,024.",
+    "Yes, if we add dropout and LayerNorm inside both towers."
+  ]}
+  answer={1}
+  explanation="Because the user tower never sees item features and the item tower never sees user features, the model cannot evaluate conditional comparisons (e.g. matching languages or zip codes) inside the network. The final dot product is purely bilinear, limiting feature interaction."
+/>
+
+Despite its retrieval efficiency, the two-tower model has a fundamental mathematical limitation: **zero early feature interaction**.
+
+Because $f(x_u)$ and $g(x_i)$ run in complete isolation, the system cannot compute non-linear cross-terms between user features and candidate features:
+
+$$
+s(u, i) = f(x_u)^T g(x_i) = \sum_{j=1}^d f_j(x_u) \cdot g_j(x_i)
+$$
+
+The interaction is strictly **bilinear**. The model cannot learn conditional logical rules such as:
+- *"If user device is Mobile, suppress items with duration $> 45\text{ minutes}$."*
+- *"If user country equals item merchant country, boost probability by $1.8\times$."*
+
+In a two-tower system, the item tower must produce a single static embedding $\mathbf{v}_i$ that applies identically whether the viewing user is on a mobile phone in Tokyo at midnight or on a desktop in New York at noon.
+
+This limitation is precisely why modern systems deploy **ranking models** downstream.
+
+---
+
+## Wide & Deep: Memorization Meets Generalization
+
+To bridge the gap between simple linear models (which excel at memorizing specific feature interactions) and deep neural networks (which generalize to unseen feature combinations), Cheng et al. (Google, 2016) proposed **Wide & Deep Learning**.
+
+```
+                           Output: P(y = 1 | x)
+                                    ▲
+                                    │
+                                 ┌──┴──┐
+                                 │  σ  │  (Logistic Sigmoid)
+                                 └──┬──┘
+                                    │
+                  ┌─────────────────┴─────────────────┐
+                  │                                   │
+                  ▼                                   ▼
+          Wide Component                      Deep Component
+     (Linear Cross-Products)             (Feedforward Dense MLP)
+                  │                                   │
+          w^T · [x, ϕ(x)]                       w_deep^T · a^(L)
+                  │                                   │
+      ┌───────────┴───────────┐                       ▼
+      │                       │                 Hidden Layer 2
+User Device               Item Category               ▲
+ [Mobile]                  [AI Books]                 │
+      │                       │                 Hidden Layer 1
+      └───────────┬───────────┘                       ▲
+                  │                                   │
+                  ▼                                   ▼
+           Cross Product:                    Dense Embeddings
+    (Mobile × AI Books) = 1                  [User ID, Item ID, Tags]
+```
+
+Wide & Deep combines two distinct pathways into a single objective:
+
+1. **Wide Component (Memorization)**: A generalized linear model over raw categorical features and engineered cross-product transformations:
+   $$
+   y_{\text{wide}} = w^T x + \sum_{k} w_k \phi_k(x)
+   $$
+   where $\phi_k(x) = \prod_{j=1}^{d_k} x_{j}^{c_{kj}}$ represents cross-product transformations (e.g., $\text{AND}(\text{UserDevice}=\text{Mobile}, \text{ItemCategory}=\text{AIBooks})$). This allows the model to memorize specific, high-precision rules learned from historical logs.
+2. **Deep Component (Generalization)**: High-cardinality sparse IDs are mapped to dense embedding vectors $\mathbf{e} \in \mathbb{R}^k$, concatenated with continuous numerical features, and passed through multiple non-linear feedforward layers:
+   $$
+   a^{(l+1)} = \text{ReLU}\left(W^{(l)} a^{(l)} + b^{(l)}\right)
+   $$
+   This enables the model to generalize to novel user-item pairs with similar embedding representations.
+
+The combined prediction is trained jointly using binary cross-entropy:
+
+$$
+P(Y = 1 \mid x) = \sigma\left(w_{\text{wide}}^T [x, \phi(x)] + w_{\text{deep}}^T a^{(L)} + b\right)
+$$
+
+---
+
+## DLRM: Explicit Pairwise Embedding Interactions
+
+In 2019, Naumov et al. (Meta) introduced **DLRM (Deep Learning Recommendation Model)**, which powers large-scale click-through rate (CTR) prediction across Meta's infrastructure.
+
+Earlier deep models simply concatenated all sparse embeddings and passed them directly into an MLP, forcing the dense layers to learn basic multiplicative interactions implicitly. DLRM recognized that categorical features interact predominantly through pairwise inner products.
+
+```
+Dense Features (Cont.)                      Sparse Categorical IDs
+[Hour, Duration, Price]                     [User ID, Item ID, Category, Locale]
+         │                                                    │
+         ▼                                                    ▼
+┌──────────────────┐                               ┌──────────────────────┐
+│    Bottom MLP    │                               │   Embedding Tables   │
+│  Dense Projection│                               │  Lookups: E_1 ... E_S│
+└────────┬─────────┘                               └──────────┬───────────┘
+         │                                                    │
+         ▼                                                    ▼
+  Vector v_0 ∈ ℝ^d                                    Vectors v_1 ... v_S ∈ ℝ^d
+         │                                                    │
+         └──────────────────────────┬─────────────────────────┘
+                                    │
+                                    ▼
+                     ┌──────────────────────────────┐
+                     │ Pairwise Dot Products (⊙)   │
+                     │ All pairs: ⟨v_i, v_j⟩        │
+                     │ S(S+1)/2 Interaction Scalars │
+                     └──────────────┬───────────────┘
+                                    │
+                                    ▼
+       Concat: [v_0, ⟨v_0,v_1⟩, ⟨v_0,v_2⟩, ..., ⟨v_(S-1),v_S⟩]
+                                    │
+                                    ▼
+                     ┌──────────────────────────────┐
+                     │           Top MLP            │
+                     │     Final CTR Prediction     │
+                     └──────────────┬───────────────┘
+                                    │
+                                    ▼
+                            P(Click | Context)
+```
+
+The DLRM computational sequence:
+
+1. **Bottom MLP**: Dense numerical features pass through a bottom MLP to produce a dense representation $\mathbf{v}_0 \in \mathbb{R}^d$.
+2. **Embedding Tables**: Each sparse categorical feature maps to an embedding table of dimension $d$, yielding $S$ vectors: $\mathbf{v}_1, \mathbf{v}_2, \dots, \mathbf{v}_S \in \mathbb{R}^d$.
+3. **Explicit Pairwise Interaction**: Compute the dot product between every pair of vectors:
+   $$
+   \text{Interaction}(i, j) = \langle \mathbf{v}_i, \mathbf{v}_j \rangle \quad \text{for } 0 \le i < j \le S
+   $$
+   This yields exactly $\frac{S(S+1)}{2}$ scalar interaction terms.
+4. **Top MLP**: The original dense vector $\mathbf{v}_0$ is concatenated with all $\frac{S(S+1)}{2}$ scalar dot products and passed to the Top MLP to predict the probability of click:
+   $$
+   \hat{y} = \sigma\left(\text{TopMLP}\left(\left[\mathbf{v}_0, \text{vec}\left(\left\{\langle \mathbf{v}_i, \mathbf{v}_j \rangle\right\}\right)\right]\right)\right)
+   $$
+
+<NotebookCallout color="green">
+DLRM separates compute from memory bandwidth. Looking up sparse embeddings in massive terabyte-scale tables is memory-bandwidth bound (dominated by DRAM latency). Computing the dense MLPs and pairwise dot products is compute bound (dominated by tensor cores). This architectural separation enables Meta to partition embedding tables across distributed memory while co-locating MLPs on GPUs.
+</NotebookCallout>
+
+---
+
+## Sequential Recommenders: Self-Attention (SASRec)
+
+Traditional recommenders treat user history as an unordered bag of items. However, real user behavior is strictly sequential: a user who reads *Matrix Algebra* $\to$ *Vector Search* $\to$ *Two-Tower Retrieval* is on an escalating learning path. Recommending *Introduction to Python* is a regression, even if the user previously enjoyed introductory material.
+
+In 2018, Kang and McAuley introduced **SASRec (Self-Attentive Sequential Recommendation)**, adapting the Transformer architecture (Vaswani et al., 2017) to interaction traces.
+
+```
+User Action History: [Item 1, Item 3]
+         │
+         ▼
+[Item Embeddings E] + [Positional Embeddings P]
+         │
+         ▼
+┌────────────────────────────────────────────────────────┐
+│             Causal Self-Attention Block                │
+│                                                        │
+│   Attention(Q, K, V) = softmax( (QK^T / √d) + M ) V    │
+│   (M is causal mask: position t cannot attend to t+1)  │
+└──────────────────────────┬─────────────────────────────┘
+                           │
+                           ▼
+            Updated User State at Step t: s_t ∈ ℝ^d
+                           │
+                           ▼
+        Inner Product with Candidate Item Embedding e_i:
+                   Score = ⟨s_t, e_candidate⟩
+```
+
+Given a user interaction sequence $S = (i_1, i_2, \dots, i_t)$, SASRec projects each item ID into embedding $\mathbf{e}_i \in \mathbb{R}^d$ and adds learnable positional embedding $\mathbf{p}_t \in \mathbb{R}^d$:
+
+$$
+\mathbf{h}_t^{(0)} = \mathbf{e}_{i_t} + \mathbf{p}_t
+$$
+
+The sequence passes through stacked Transformer self-attention blocks with a causal mask $M \in \mathbb{R}^{t \times t}$ (preventing step $t$ from attending to future tokens):
+
+$$
+\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{Q K^T}{\sqrt{d}} + M\right) V
+$$
+
+The final hidden state $\mathbf{s}_t = \mathbf{h}_t^{(L)}$ represents the user's dynamic taste at time $t$. The score for candidate item $i$ is evaluated by inner product:
+
+$$
+s(S, i) = \langle \mathbf{s}_t, \mathbf{e}_i \rangle
+$$
+
+Notice that because candidate item $i$ interacts with $\mathbf{s}_t$ only through an inner product, **SASRec can also serve as a high-speed retrieval model**! Item embeddings $\mathbf{e}_i$ can be precomputed and stored in an ANN index, while the Transformer runs once over the user's recent clicks to generate query vector $\mathbf{s}_t$.
+
+---
+
+## Interactive Architecture Comparison
+
+In the interactive diagram below, select between Two-Tower retrieval, Wide & Deep, DLRM, and SASRec. Inspect how candidate features flow through each model and examine the architectural trade-offs between offline ANN indexing and online cross-feature capacity.
+
+<DeepRecommendersArchitectureExplorer />
+
+---
+
+## Executable Verification: Scoring Architectures in Python
+
+The following Python script implements both Two-Tower inner product scoring and DLRM pairwise embedding interactions on our shared candidate example.
+
+```python
+import numpy as np
+
+# Concrete candidate example
+# User Alice vector (from user tower)
+u = np.array([0.6, 0.8, 0.1])
+# Candidate Item 2 vector (from item tower)
+v = np.array([0.7, 0.5, 0.2])
+
+# 1. Two-Tower Retrieval Score
+two_tower_score = np.dot(u, v)
+print(f"Two-Tower Dot Product Score: {two_tower_score:.4f}")
+
+# 2. DLRM Pairwise Interaction Layer
+# Bottom MLP dense output
+v_dense = np.array([0.7, 0.5, 0.3])
+# Categorical embeddings: User ID, Item ID, Category
+v_user = u
+v_item = v
+v_cat = np.array([0.5, 0.8, 0.3])
+
+embeddings = [v_dense, v_user, v_item, v_cat]
+num_vectors = len(embeddings)
+
+# Compute all S(S-1)/2 pairwise dot products
+pairwise_products = []
+names = ["DenseBottom", "EmbUser", "EmbItem", "EmbCat"]
+
+for i in range(num_vectors):
+    for j in range(i + 1, num_vectors):
+        dot = np.dot(embeddings[i], embeddings[j])
+        pairwise_products.append(dot)
+        print(f"Interaction {names[i]} ⊙ {names[j]}: {dot:.4f}")
+
+print(f"Total DLRM Interaction Dimension: {len(pairwise_products)} scalar terms")
+```
+
+<RunnableCode
+  code={`import numpy as np
+
+u = np.array([0.6, 0.8, 0.1])
+v = np.array([0.7, 0.5, 0.2])
+
+# Two-Tower Dot Product
+score = np.dot(u, v)
+print("Two-Tower Score: 0.6*0.7 + 0.8*0.5 + 0.1*0.2 =", round(score, 4))
+
+# DLRM Pairwise Interactions
+v_dense = np.array([0.7, 0.5, 0.3])
+v_cat = np.array([0.5, 0.8, 0.3])
+vecs = [v_dense, u, v, v_cat]
+
+dots = [np.dot(vecs[i], vecs[j]) for i in range(4) for j in range(i+1, 4)]
+print("DLRM Pairwise Interactions Count (4*3/2):", len(dots))
+print("First 3 Interactions:", [round(d, 3) for d in dots[:3]])
+# Try it: Change v_cat to orthogonal vector [0, 0, 1] and see dot product change`}
+/>
+
+Now let us execute the SASRec causal self-attention step in Python to observe how user history $[i_1, i_3]$ is compressed into dynamic user vector $\mathbf{s}_t$:
+
+```python
+import numpy as np
+
+# History sequence: Item 1 and Item 3 embeddings (d=3)
+E = np.array([
+    [0.6, 0.4, 0.2],  # Item 1 at t=0
+    [0.2, 0.8, 0.7]   # Item 3 at t=1
+])
+
+# Single head self-attention at step t=1 (query is Item 3)
+q = E[1]
+d = E.shape[1]
+sqrt_d = np.sqrt(d)
+
+# Attention dot products with causal mask (can attend to t=0 and t=1)
+raw_scores = np.array([np.dot(q, E[0]) / sqrt_d, np.dot(q, E[1]) / sqrt_d])
+exp_scores = np.exp(raw_scores - np.max(raw_scores))
+attn_weights = exp_scores / np.sum(exp_scores)
+
+# Context vector: weighted sum of value vectors
+s_t = attn_weights[0] * E[0] + attn_weights[1] * E[1]
+
+print("Causal Attention Weights:", np.round(attn_weights, 4))
+print("Updated User State Vector s_t:", np.round(s_t, 4))
+```
+
+<RunnableCode
+  code={`import numpy as np
+
+E = np.array([[0.6, 0.4, 0.2], [0.2, 0.8, 0.7]])
+q = E[1]
+d = 3.0
+
+scores = np.array([np.dot(q, E[0]), np.dot(q, E[1])]) / np.sqrt(d)
+weights = np.exp(scores - np.max(scores))
+weights /= np.sum(weights)
+
+s_t = weights[0] * E[0] + weights[1] * E[1]
+print("Attention Weights [t=0, t=1]:", np.round(weights, 4))
+print("Context Vector s_t:", np.round(s_t, 4))
+# Try it: Change E[0] to see how past interactions alter Alice's current context vector`}
+/>
+
+---
+
+## Negative Sampling & In-Batch Negatives
+
+When training deep retrieval models on implicit click data, we cannot evaluate the full softmax denominator over millions of catalog items:
+
+$$
+P(i \mid u) = \frac{\exp(s(u, i))}{\sum_{j=1}^N \exp(s(u, j))}
+$$
+
+Evaluating the denominator requires computing $N$ item tower forward passes per training sample, which is computationally prohibitive when $N \ge 10^7$.
+
+Modern two-tower models employ **in-batch negative sampling** (Yi et al., 2019):
+
+```
+Batch of B (User, Positive Item) pairs:
+[(u_1, i_1), (u_2, i_2), ..., (u_B, i_B)]
+
+Similarity Matrix S (B × B):
+         i_1       i_2       i_3       i_B
+u_1 ┌   ⟨u1,i1⟩+  ⟨u1,i2⟩-  ⟨u1,i3⟩-  ⟨u1,iB⟩- ┐
+u_2 │   ⟨u2,i1⟩-  ⟨u2,i2⟩+  ⟨u2,i3⟩-  ⟨u2,iB⟩- │
+u_3 │   ⟨u3,i1⟩-  ⟨u3,i2⟩-  ⟨u3,i3⟩+  ⟨u3,iB⟩- │
+u_B └   ⟨uB,i1⟩-  ⟨uB,i2⟩-  ⟨uB,i3⟩-  ⟨uB,iB⟩+ ┘
+        (Diagonal = Positive Pairs; Off-Diagonal = In-Batch Negatives)
+```
+
+In a mini-batch of size $B$, the items consumed by the other $B-1$ users serve as sampled negatives for user $u$. The batch loss is evaluated using standard cross-entropy along the rows:
+
+$$
+\mathcal{L}_{\text{in-batch}} = -\frac{1}{B} \sum_{i=1}^B \log \frac{\exp(s(u_i, v_i) / \tau)}{\sum_{j=1}^B \exp(s(u_i, v_j) / \tau)}
+$$
+
+where $\tau$ is a learnable temperature scalar. 
+
+<GoDeeper title="Correcting Popularity Bias in In-Batch Negatives">
+In-batch negatives introduce a subtle distribution mismatch: the probability that item $j$ appears as a negative in the mini-batch is proportional to its catalog consumption frequency $p_j$. Popular items appear far more frequently as negatives than long-tail items.
+
+Without correction, the model penalizes popular items excessively, artificially suppressing legitimate blockbusters. Yi et al. (Google, 2019) corrected this by subtracting the log-marginal frequency $\log p_j$ from logits prior to softmax:
+
+$$
+s_{\text{corrected}}(u_i, v_j) = s(u_i, v_j) - \log p_j
+$$
+
+This mathematically neutralizes the frequency sampling bias, recovering the true unbiased conditional distribution.
+</GoDeeper>
+
+---
+
+## Common Failure Modes in Deep Recommenders
+
+| Failure Mode | Root Cause | System Symptom | Engineering Solution |
+| :--- | :--- | :--- | :--- |
+| **Index-Model Drift** | Offline ANN index contains stale item embeddings while user tower is updated continuously. | Dot product geometry misaligns; retrieved items score poorly in the downstream ranking stage. | Re-index item vectors on scheduled batch cadences or run dual-version blue/green serving clusters. |
+| **ANN Boundary Misses** | Top candidates fall just outside the nearest Voronoi cell in inverted-file (IVF) index. | High-quality niche items are skipped during candidate generation. | Increase probe count (e.g. `nprobe=16` in Faiss) or tune graph expansion budget in HNSW (`efSearch`). |
+| **Catastrophic Embedding Bloat** | Categorical embedding tables scale linearly with vocabulary size ($V \times d$), exceeding GPU VRAM. | Training jobs crash with Out-Of-Memory (OOM) errors. | Apply hashing tricks, mixed-dimension embeddings (smaller $d$ for rare items), or distributed parameter servers. |
+| **Over-Recommendation of Recent Clicks** | Sequential self-attention over-indexes on the immediate last item in the history. | Recommended feed becomes a repetitive mirror of the user's last 5 minutes of browsing. | Add session boundary tokens or inject catalog-level diversity constraints in the reranking stage. |
+
+---
+
+## When Not to Use Deep Recommenders
+
+| Scenario | Preferred Alternative | Why Deep Models Fail |
+| :--- | :--- | :--- |
+| **Strict Sub-Millisecond Compute Budgets** | Item-Item Precomputed Lookup (Linden et al., 2003) | Evaluating deep MLPs and transformer attention blocks takes 5–25ms, violating tight SLA deadlines. |
+| **Low Interaction Volume ($< 50,000$ events)** | Classical Matrix Factorization (ALS / BPR) | Deep neural networks with millions of parameters overfit catastrophically without dense interaction data. |
+| **Auditability & Explainability Constraints** | Rule-Based or Linear Models | Complex non-linear embedding crosses in DLRM cannot provide transparent attribution for regulatory compliance. |
+
+---
+
+## Remember
+
+| Architecture | Primary Paper | Funnel Role | ANN Compatible? | Core Innovation |
+| :--- | :--- | :--- | :--- | :--- |
+| **Two-Tower** | Covington (2016), Yi (2019) | Candidate Retrieval | **YES** | Independent towers allow offline precomputation and sub-10ms MIPS retrieval. |
+| **Wide & Deep** | Cheng et al. Google (2016) | Scoring / Ranking | **NO** | Combines memorization of sparse crosses with generalization of dense embeddings. |
+| **DLRM** | Naumov et al. Meta (2019) | Scoring / Ranking | **NO** | Explicit pairwise dot-product interactions of all embeddings + bottom MLP. |
+| **SASRec** | Kang & McAuley (2018) | Retrieval / Ranking | **YES** | Causal self-attention captures sequential taste trajectory over interaction history. |
+| **In-Batch Negatives** | Yi et al. (2019) | Model Training | N/A | Evaluates softmax over mini-batch diagonal; requires log-popularity subtraction. |
+
+Next: Explore how search, ranking, and recommendation converge in full production architectures, or review the comprehensive baseline models in [Recommender Systems](/docs/machine-learning/recommender-systems).
+
+---
+
+## Sources
+
+- Covington, P., Adams, J., & Sargin, E. (2016). *Deep Neural Networks for YouTube Recommendations*. Proceedings of the 10th ACM Conference on Recommender Systems (RecSys), 191–198. [https://doi.org/10.1145/2959100.2959190](https://doi.org/10.1145/2959100.2959190)
+- Cheng, H. T., Koc, L., Harmsen, J., Shaked, T., Chandra, T., Aradhye, H., Anderson, G., Corrado, G., Chai, W., Ispir, M., Anil, R., Haque, Z., Hong, L., Jain, V., Liu, X., & Shah, H. (2016). *Wide & Deep Learning for Recommender Systems*. Proceedings of the 1st Workshop on Deep Learning for Recommender Systems, 7–10. [https://doi.org/10.1145/2988450.2988454](https://doi.org/10.1145/2988450.2988454)
+- Naumov, M., Mudigere, D., Shi, H. J. M., Huang, J., Narayanan, N., Wang, Q., Yang, J., Yang, R., Miao, B., Liu, C., Rao, Z., Xu, Z., Shen, B., Yang, T., Ren, B., Chen, Q., Sun, Z., Zhang, J., Liu, H., ... & Rao, M. (2019). *Deep Learning Recommendation Model for Personalization and Recommendation Systems*. arXiv preprint arXiv:1906.00091. [https://arxiv.org/abs/1906.00091](https://arxiv.org/abs/1906.00091)
+- Kang, W. C., & McAuley, J. (2018). *Self-Attentive Sequential Recommendation*. 2018 IEEE International Conference on Data Mining (ICDM), 197–206. [https://doi.org/10.1109/ICDM.2018.00035](https://doi.org/10.1109/ICDM.2018.00035)
+- Yi, X., Yang, J., Hong, L., Cheng, D. Z., Heldt, L., Kumthekar, A., Zhao, Z., Wei, L., & Chi, E. (2019). *Sampling-Bias-Corrected Neural Modeling for Large Corpus Recommendations*. Proceedings of the 13th ACM Conference on Recommender Systems (RecSys), 269–277. [https://doi.org/10.1145/3298689.3347043](https://doi.org/10.1145/3298689.3347043)
+- Sun, F., Liu, C., Wu, X., Chen, Q., Liu, R., Yang, X., Zhou, Y., & Zou, L. (2019). *BERT4Rec: Sequential Recommendation with Bidirectional Encoder Representations from Transformer*. Proceedings of the 28th ACM International Conference on Information and Knowledge Management (CIKM), 1441–1450. [https://doi.org/10.1145/3357384.3357895](https://doi.org/10.1145/3357384.3357895)
+- Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, Ł., & Polosukhin, I. (2017). *Attention Is All You Need*. Advances in Neural Information Processing Systems (NeurIPS 30), 5998–6008. [https://proceedings.neurips.cc/paper/2017/hash/3f5ee243547dee91fbd053c1c4a845aa-Abstract.html](https://proceedings.neurips.cc/paper/2017/hash/3f5ee243547dee91fbd053c1c4a845aa-Abstract.html)

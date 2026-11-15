@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   TOY_MF_RATINGS,
   invert2x2,
-  mul2x2Vec,
   runAlsExplicit,
   rotateFactors2D,
 } from './matrixFactorization';

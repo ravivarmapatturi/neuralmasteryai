@@ -23,7 +23,7 @@ export default function RecommendationFoundationsExplorer() {
   const missingItemIdx = activeUserRatings.findIndex((r) => r === null);
   const targetItemIdx = missingItemIdx !== -1 ? missingItemIdx : 0;
 
-  const { predicted, neighborWeights } = predictUserCollaborative(
+  const { predicted } = predictUserCollaborative(
     ratings,
     activeUserIdx,
     targetItemIdx
@@ -69,7 +69,7 @@ export default function RecommendationFoundationsExplorer() {
                 onClick={() => setActiveUserIdx(idx)}
                 style={{
                   padding: '5px 10px',
-                  borderRadius: RADIUS.pill,
+                  borderRadius: 9999,
                   fontSize: 12,
                   fontWeight: 600,
                   cursor: 'pointer',
@@ -101,7 +101,7 @@ export default function RecommendationFoundationsExplorer() {
                 onClick={() => setViewMode(mode.id as typeof viewMode)}
                 style={{
                   padding: '5px 10px',
-                  borderRadius: RADIUS.pill,
+                  borderRadius: 9999,
                   fontSize: 12,
                   fontWeight: 600,
                   cursor: 'pointer',
@@ -131,7 +131,7 @@ export default function RecommendationFoundationsExplorer() {
         <div
           style={{
             background: t.surfaceAlt,
-            borderRadius: RADIUS.card,
+            borderRadius: RADIUS.md,
             padding: SPACING.md,
             border: `1px solid ${t.border}`,
             overflowX: 'auto',
@@ -245,7 +245,7 @@ export default function RecommendationFoundationsExplorer() {
         <div
           style={{
             background: t.surface,
-            borderRadius: RADIUS.card,
+            borderRadius: RADIUS.md,
             padding: SPACING.md,
             border: `1px solid ${t.border}`,
             display: 'flex',

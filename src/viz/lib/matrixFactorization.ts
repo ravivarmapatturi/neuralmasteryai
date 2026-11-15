@@ -61,7 +61,6 @@ export function runAlsExplicit(
 } {
   const m = ratings.length;
   const n = ratings[0].length;
-  const k = 2;
 
   // Pedagogical fixed initialization
   let U: number[][] = [

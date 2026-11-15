@@ -75,7 +75,7 @@ export default function DeepRecommendersArchitectureExplorer() {
               onClick={() => setSelectedArch(arch.id as typeof selectedArch)}
               style={{
                 padding: '6px 14px',
-                borderRadius: RADIUS.pill,
+                borderRadius: 9999,
                 fontSize: 12,
                 fontWeight: 600,
                 cursor: 'pointer',
@@ -104,7 +104,7 @@ export default function DeepRecommendersArchitectureExplorer() {
         <div
           style={{
             background: t.surface,
-            borderRadius: RADIUS.card,
+            borderRadius: RADIUS.md,
             padding: SPACING.md,
             border: `1px solid ${t.border}`,
             display: 'flex',
@@ -121,7 +121,7 @@ export default function DeepRecommendersArchitectureExplorer() {
                 style={{
                   fontSize: 11,
                   padding: '2px 8px',
-                  borderRadius: RADIUS.pill,
+                  borderRadius: 9999,
                   background: profile.canUseANN ? `${t.accentPrimary}20` : `${t.accentWarn}20`,
                   color: profile.canUseANN ? t.accentPrimary : t.accentWarn,
                   fontWeight: 700,
@@ -222,7 +222,7 @@ export default function DeepRecommendersArchitectureExplorer() {
         <div
           style={{
             background: t.surfaceAlt,
-            borderRadius: RADIUS.card,
+            borderRadius: RADIUS.md,
             padding: SPACING.md,
             border: `1px solid ${t.border}`,
           }}
