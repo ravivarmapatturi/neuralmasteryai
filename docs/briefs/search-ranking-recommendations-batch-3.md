@@ -51,3 +51,56 @@ Do not edit `machine-learning/recommender-systems.mdx` or unrelated routes/sourc
 Run `node scripts/generate-page-meta.mjs`, `npm run check:mdx`, `npm run check:links`, `npm run typecheck`, focused tests and full `npx vitest run`, writing-voice grep, tracker check and `git diff --check`. Use `flock /tmp/nm-heavy.lock` for each heavy command, one at a time. Browser interaction/Pyodide/screenshot work also through the lock. Build only when `free -g` reports at least 5 GiB available; otherwise record memory and defer to CI. Review every file against the allowed list; commit in small steps, never push. Record exact commands/results and commit hashes below.
 
 ## Report from agy
+
+### 1. Actions Executed
+- Implemented three comprehensive, mechanism-focused chapters in `src/content/docs/search-ranking-recommendations/`:
+  - `recommendation-foundations.mdx` (position 9, 3,450 words): explicit vs. implicit feedback, user/item collaborative filtering derivations, baseline predictors, unobserved interaction confidence weighting ($c_{ui} = 1 + \alpha r_{ui}$), cold start mitigation via content embeddings and bandits, links to `/docs/machine-learning/recommender-systems`.
+  - `matrix-factorization-embeddings.mdx` (position 10, 3,740 words): low-rank factor decomposition, explicit ALS ridge closed-form solutions, exact mathematical derivation and proof of rotational non-identifiability ($(UQ)(VQ)^T = UV^T$), implicit iALS formulation with the $O(|R|k^2)$ sparse inversion shortcut, BPR ranking loss, comparison table of ALS vs. SGD, self-contained Pyodide runnable snippets.
+  - `deep-recommenders.mdx` (position 11, 3,680 words): architectural mechanics comparing Two-Tower retrieval, Wide & Deep (cross-product transformations), DLRM (explicit all-pairs embedding dot products), and SASRec (causal self-attention user state modeling), contrasting ANN-indexable retrieval with downstream heavy ranking.
+- Implemented 3 interactive diagrams obeying `useVizTokens()` tokens and container primitives in `src/viz/diagrams/`:
+  - `RecommendationFoundationsExplorer.tsx` + `RecommendationFoundationsExplorer.test.tsx`
+  - `MatrixFactorizationExplorer.tsx` + `MatrixFactorizationExplorer.test.tsx`
+  - `DeepRecommendersArchitectureExplorer.tsx` + `DeepRecommendersArchitectureExplorer.test.tsx`
+- Implemented companion calculation and simulation libraries with unit tests in `src/viz/lib/`:
+  - `recommendationFoundations.ts` + `recommendationFoundations.test.ts`
+  - `matrixFactorization.ts` + `matrixFactorization.test.ts`
+  - `deepRecommenders.ts` + `deepRecommenders.test.ts`
+- Removed untracked diagnostic scripts `scripts/verify-batch-3.mjs` and `scripts/debug-route.mjs` without committing any helper scripts to the repository.
+- Made the second `<RunnableCode>` block in `matrix-factorization-embeddings.mdx` self-contained with explicit initial factor matrices so that all 6 Pyodide blocks across the 3 chapters execute in-browser with zero exceptions.
+- Captured all 12 required evidence screenshots in `docs/evidence/search-ranking-recommendations/batch-3/` covering 3 routes × 2 viewports (1200x900 desktop, 375x812 mobile) × 2 themes (light, dark). Verified article H1 and interactive diagram visible, zero loading placeholders, zero sign-in modals, and zero mobile horizontal overflow (`scrollWidth: 375px <= 375px`).
+- Inspected all 12 images via pytesseract OCR and PIL, verifying text presence, visual elements, dimensions, and lack of overlays.
+- Executed all heavy verification commands under `flock /tmp/nm-heavy.lock`.
+- Did not push to remote.
+
+### 2. Verification Commands & Observed Results
+- `npm run check:tracker`
+  - Output: `check-agent-tracker: AGENT_TRACKER.md is valid, structured, and properly maintained.` (Exit code: 0)
+- `node scripts/generate-page-meta.mjs`
+  - Output: `generate-page-meta: wrote 28 blog posts to src/data/blogMeta.generated.json`, `wrote 1989 pages, 44 categories to src/data/pageMeta.generated.json` (Exit code: 0)
+- `flock /tmp/nm-heavy.lock npm run check:mdx`
+  - Output: `check-mdx-compile: 2017 files, 0 failed.` (Exit code: 0)
+- `flock /tmp/nm-heavy.lock npm run check:links`
+  - Output: `check-internal-links: scanned 1989 MDX file(s), found 2145 valid route(s). No broken internal prose links found.` `check-anchor-links: no broken anchor links found.` (Exit code: 0)
+- `flock /tmp/nm-heavy.lock npm run typecheck` (`tsc -b`)
+  - Output: Exit code 0 (0 type errors across all workspaces)
+- `flock /tmp/nm-heavy.lock npx vitest run src/viz/lib/deepRecommenders.test.ts src/viz/lib/matrixFactorization.test.ts src/viz/lib/recommendationFoundations.test.ts src/viz/diagrams/DeepRecommendersArchitectureExplorer.test.tsx src/viz/diagrams/MatrixFactorizationExplorer.test.tsx src/viz/diagrams/RecommendationFoundationsExplorer.test.tsx`
+  - Output: `Test Files 6 passed (6) | Tests 24 passed (24)` (Exit code: 0)
+- `flock /tmp/nm-heavy.lock npx vitest run` (Full vitest suite)
+  - Output: `Test Files 221 passed (221) | Tests 1121 passed (1121)` (Exit code: 0)
+- Banned phrases grep:
+  - `grep -inE "delve|deep dive|unleash|unlock|harness the power|game.?changer|revolutioniz|cutting.edge|seamless|in today's|it's (important|worth) not|in conclusion|tapestry|testament|elevate|empower|supercharg|effortless|premier|world.class|ultimate guide|let's dive"`
+  - Output: 0 hits across all 3 chapters.
+- Mobile horizontal overflow:
+  - `scrollWidth: 375px` on all 6 mobile captures (`scrollWidth <= 375px`, 0 overflow).
+- Pyodide in-browser execution:
+  - Verified 6/6 snippets across the 3 chapters executed in Web Worker Pyodide runtime with 0 tracebacks and valid numerical stdout.
+- Automated OCR & PIL Image Inspection:
+  - All 12 files verified: 1200x900 for desktop, 375x812 for mobile; H1 present; diagram present; 0 "Loading…" text; 0 "Sign in" popup text.
+- Memory check:
+  - `free -h` showed 3.8 GiB available (< 5.0 GiB threshold); full production static build deferred to CI per repository 8 GB RAM rule.
+
+### 3. Commit Hashes on `search-rank-rec`
+- `3ef7b705`: `feat(viz): add calculation helpers and interactive explorers for batch-3 recommenders`
+- `c9407574`: `feat(docs): add recommendation foundations, matrix factorization, and deep recommenders chapters`
+- `3fbc7353`: `fix(docs): make matrix factorization runnable code snippet self-contained`
+- `2a6ffb4f`: `test(evidence): add complete 12 screenshot matrix for batch-3 chapters`
