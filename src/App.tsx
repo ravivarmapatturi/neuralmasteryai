@@ -44,6 +44,7 @@ import PrivacyPolicyPage from './components/PrivacyPolicyPage';
 import TermsOfServicePage from './components/TermsOfServicePage';
 import NotFoundPage from './components/NotFoundPage';
 import AnalyticsTracker from './components/AnalyticsTracker';
+import SignInNudge from './components/layout/SignInNudge';
 import Footer from './components/layout/Footer';
 import { ConfettiCanvas } from './components/ui/Confetti';
 
@@ -87,6 +88,7 @@ export default function App() {
                   truth prevents outright. */}
               <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
                 <AnalyticsTracker />
+                <SignInNudge />
                 {/* Footer renders once here, after whatever route matched,
                     so every page gets it without each page component
                     needing to render it itself -- see Footer.tsx. */}

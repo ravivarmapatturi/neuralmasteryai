@@ -317,7 +317,7 @@ export default function MockInterviewPage() {
   const totalRemainingSeconds = Math.max(0, totalTargetSeconds - (session?.totalElapsedSeconds || 0));
 
   return (
-    <div className="nb-theme" style={{ minHeight: '100vh', background: 'var(--nm-bg)' }}>
+    <div className="nb-theme" data-nm-mock-recording={isRecording ? 'true' : 'false'} style={{ minHeight: '100vh', background: 'var(--nm-bg)' }}>
       <Navbar />
       <main className="nm-timed-mock-shell">
         <p className="nm-mock-eyebrow">

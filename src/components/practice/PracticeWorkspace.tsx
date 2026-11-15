@@ -483,6 +483,7 @@ export default function PracticeWorkspace({ problemId, mdxContent, onSolve, onRe
   return (
     <div
       className="nm-practice-workspace"
+      data-nm-practice-running={isBusy ? 'true' : 'false'}
       style={{
         display: 'flex',
         flexDirection: 'column',

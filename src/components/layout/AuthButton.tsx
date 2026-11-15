@@ -4,6 +4,7 @@ import BrandMark from '../brand/BrandMark';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { PersonIcon } from '../icons/UiIcons';
+import { SIGN_IN_DIALOG_OPEN_EVENT } from '../../lib/signInDialog';
 
 /** Real, honest messages for the Firebase Auth error codes a visitor can
  * actually hit here -- never a bare "auth/email-already-in-use" code
@@ -131,6 +132,16 @@ export default function AuthButton() {
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
 
+  useEffect(() => {
+    const handleOpen = () => {
+      if (!loading && !user) {
+        setMenuOpen(true);
+      }
+    };
+    window.addEventListener(SIGN_IN_DIALOG_OPEN_EVENT, handleOpen);
+    return () => window.removeEventListener(SIGN_IN_DIALOG_OPEN_EVENT, handleOpen);
+  }, [loading, user]);
+
   if (loading) return null; // avoid flashing "Sign in" before the real (likely signed-in) state is known
 
   if (!user) {
@@ -142,22 +153,10 @@ export default function AuthButton() {
           aria-label="Sign in"
           aria-expanded={menuOpen}
           title="Sign in"
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: '50%',
-            fontSize: 15,
-            color: 'var(--nm-text-primary)',
-            background: 'transparent',
-            border: '1px solid var(--nm-border)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 0,
-          }}
+          className="nm-auth-signin-btn"
         >
           <PersonIcon />
+          <span className="nm-auth-signin-label">Sign in</span>
         </button>
         {menuOpen && (
           <>
