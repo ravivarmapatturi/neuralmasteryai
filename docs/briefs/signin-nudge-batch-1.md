@@ -137,3 +137,46 @@ Do not start a second server, browser suite, build, or agy process while one is 
 ## Finish and commit
 
 After implementation and checks, append a concise report here with: files changed, commit hash(es), each command and result, `free -g` value and whether build ran, any visual/browser checks, and open questions. Commit source changes and this brief report in one or more conventional commits on `signin-nudge`; do not push. If anything cannot be verified, state the exact limitation instead of claiming it passed.
+
+---
+
+## Implementation Report
+
+### Files Changed
+Modified:
+- `src/App.tsx`: Mounted `<SignInNudge />` once inside `BrowserRouter` beside `<AnalyticsTracker />`.
+- `src/components/layout/AuthButton.tsx`: Added listener for `SIGN_IN_DIALOG_OPEN_EVENT` to open existing sign-in panel; added visible `Sign in` span with class `nm-auth-signin-label` and `nm-auth-signin-btn` container class.
+- `src/components/practice/PracticeWorkspace.tsx`: Added `data-nm-practice-running={isBusy ? 'true' : 'false'}` to the `.nm-practice-workspace` root element.
+- `src/components/interview/MockInterviewPage.tsx`: Added `data-nm-mock-recording={isRecording ? 'true' : 'false'}` to the `.nb-theme` root element.
+
+Added:
+- `src/lib/signInDialog.ts`: Exported `SIGN_IN_DIALOG_OPEN_EVENT = 'nm:open-sign-in-dialog'`.
+- `src/components/layout/SignInNudge.tsx`: Non-modal gentle note component respecting 5s timer, 7-day dismissal (`nm_signin_nudge_dismissed_at`), conversion (`nm_signin_nudge_converted`), 1-show-per-session (`nm_signin_nudge_shown`), path and DOM activity/dialog exclusions.
+- `src/components/layout/signInNudge.css`: Responsive mobile bottom sheet (<640px) and desktop bottom-right card (>=640px), `--nm-*` theme tokens and Kalam font; navbar button media queries (icon-only <900px, pill with text >=900px).
+- `src/components/layout/SignInNudge.test.tsx`: 10 unit tests covering signed-in suppression, 5s delay, 7-day dismiss, distraction-free mode, route exclusion, open dialog suppression, activity marker suppression, Google/email actions, and Escape key behavior.
+- `playwright.signin-nudge.config.ts`: Dedicated Playwright config with Chromium, 1 worker, and Vite dev server webServer at `http://127.0.0.1:5173`.
+- `tests/signin-nudge.spec.ts`: E2E tests verifying 5s timer appearance, copy/buttons/close matching specifications, dismissal and reload suppression, and responsive fit without horizontal overflow at 320px and 375px.
+
+### Commits
+- Implementation commit: `5a8a8233` (`feat(auth): add gentle save-your-progress sign-in nudge`)
+
+### Commands & Results
+1. `npm run check:tracker` -> Passed (Exit code 0, AGENT_TRACKER.md valid)
+2. `flock /tmp/nm-heavy.lock npm run typecheck` -> Passed (Exit code 0, `tsc -b` clean)
+3. `flock /tmp/nm-heavy.lock npm run check:links` -> Passed (Exit code 0, 0 broken prose or anchor links across 1,978 MDX and 1,009 TSX files)
+4. `flock /tmp/nm-heavy.lock npx vitest run src/components/layout/SignInNudge.test.tsx src/components/layout/AuthButton.test.tsx` -> Passed (Exit code 0, 18/18 unit tests passed)
+5. `flock /tmp/nm-heavy.lock npx playwright test --config=playwright.signin-nudge.config.ts tests/signin-nudge.spec.ts --workers=1` -> Passed (Exit code 0, 2/2 tests passed in 8.4s)
+6. `free -g` check:
+   - Output: `Mem: total 7, used 4, free 1, buff/cache 1, available 2` (available: 2 GB).
+   - Production build guard: Required >= 5 GB available. Skipped per brief rule to prevent OOM on 8 GB machine.
+7. `git diff --check` -> Clean (0 whitespace/formatting errors)
+
+### Visual / Browser Checks
+- Verified via Playwright against Chromium on Vite dev server:
+  - 320px viewport: `document.documentElement.scrollWidth <= document.documentElement.clientWidth` (true, no overflow).
+  - 375px viewport: `document.documentElement.scrollWidth <= document.documentElement.clientWidth` (true, no overflow).
+  - Layout: Mobile full-width bottom sheet with safe-area padding; desktop fixed card.
+  - Controls: "Sign in with Google" button, "Use email" button, "×" close button with `aria-label="Close"`, title "Save your progress" in Kalam font.
+
+### Open Questions
+- None. All requirements, route exclusions, storage keys, and interaction flows followed the specification and binding review decisions exactly.
