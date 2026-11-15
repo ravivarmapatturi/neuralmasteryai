@@ -1,0 +1,331 @@
+---
+title: "BM25: Term Saturation & Length Normalization"
+sidebar_position: 4
+description: "Master Robertson BM25 from first principles: term-frequency saturation, length normalization, the Robertson/Lucene smoothed IDF variant, and RAG hybrid search."
+---
+
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
+import RunnableCode from '../../../components/content/RunnableCode';
+import Bm25SaturationExplorer from '../../../viz/diagrams/Bm25SaturationExplorer';
+import Bm25ScoringExplorer from '../../../viz/diagrams/Bm25ScoringExplorer';
+
+# BM25: Term Saturation & Length Normalization
+
+<ELI5>
+Imagine reading product reviews for a digital camera. If Review A mentions the word "battery" once, it is somewhat relevant. If Review B mentions "battery" three times, it is noticeably more informative. But if Review C mentions "battery" one hundred times in a row, is it thirty-three times more helpful than Review B? Of course not—it is almost certainly spam or an excessively long manual. BM25 is the mathematical formula that fixes this: it rewards words for appearing a few times, but flattens out so that repeating a word dozens of times yields diminishing returns.
+</ELI5>
+
+## The Two Critical Flaws of TF-IDF
+
+In the previous chapter, we derived [TF-IDF from First Principles](/docs/search-ranking-recommendations/tf-idf). While TF-IDF introduced the foundational concept of term specificity ($\text{IDF}$), deploying raw TF-IDF in production reveals two severe architectural vulnerabilities:
+
+### 1. Linear Term Frequency Bias (Spam & Repetition)
+Under standard linear term frequency, relevance scales proportionally with the number of times a term appears:
+- Mentioning a term 1 time gives weight $1 \times \text{IDF}$.
+- Mentioning a term 100 times gives weight $100 \times \text{IDF}$.
+
+In the real world, the 10th or 50th mention of a term provides negligible marginal evidence of additional relevance. Linear scaling creates a massive vulnerability: web pages can easily manipulate rankings through **keyword stuffing** (repeating `"cheap flights"` dozens of times in hidden text or meta tags).
+
+### 2. Document Length Vulnerability (Verbosity vs. Conciseness)
+Information retrieval systems must compare documents of wildly varying lengths:
+- **Case A: Raw Count**: A 500-page encyclopedia entry will naturally mention almost every dictionary word more times than a concise 1-page technical whitepaper, scoring higher simply because of sheer volume.
+- **Case B: Raw Division ($\text{count} / |d|$)**: Dividing raw count strictly by document length over-penalizes comprehensive documents. A 2,000-word tutorial that thoroughly covers ten distinct topics will have a lower term density for any single topic than a shallow 50-word tweet, unfairly demoting high-quality long-form articles.
+
+**BM25** (**Best Matching 25**), developed by Stephen Robertson, Karen Spärck Jones, and collaborators (1994, 2009), resolves both vulnerabilities.
+
+---
+
+## Interactive BM25 Saturation & Calculator
+
+Explore how BM25 controls term-frequency saturation and document-length penalization using the interactive tool below:
+
+<Bm25SaturationExplorer />
+
+---
+
+## Deriving the Robertson BM25 Formula
+
+BM25 addresses keyword repetition and document length by wrapping term frequency inside a nonlinear saturating curve parameterized by $k_1$ and $b$.
+
+For a query $Q$ with terms $q_1, q_2, \dots, q_m$ and a document $D$ in a corpus of $N$ documents:
+
+$$\text{BM25}(D, Q) = \sum_{i=1}^{m} \text{IDF}(q_i) \cdot \frac{f(q_i, D) \cdot (k_1 + 1)}{f(q_i, D) + k_1 \cdot \left(1 - b + b \cdot \dfrac{|D|}{\text{avgdl}}\right)}$$
+
+### Symbol Table
+
+| Symbol | Mathematical Meaning | Typical Values &amp; Role |
+| :--- | :--- | :--- |
+| **$f(q_i, D)$** | Term frequency ($\text{tf}$): raw count of query term $q_i$ in document $D$ | Positive integer ($0, 1, 2, \dots$). |
+| **$|D|$** | Document length: total token count of document $D$ | Measured in words or subword tokens. |
+| **$\text{avgdl}$** | Average document length across all $N$ documents in the corpus | $\text{avgdl} = \frac{1}{N} \sum_{j=1}^N |D_j|$. |
+| **$k_1$** | Term-frequency saturation constant | Commonly set between $1.2$ and $2.0$ (Robertson &amp; Zaragoza, 2009). Caps marginal score gain. |
+| **$b$** | Document-length normalization constant | Range $[0, 1]$, commonly set to $0.75$. Controls length penalty severity. |
+| **$\text{IDF}(q_i)$** | Inverse document frequency weight of query term $q_i$ | Measures term rarity across catalog. |
+
+<NotebookCallout color="cobalt" title="Parameter Heuristics in Production">
+The canonical defaults $k_1 \in [1.2, 1.5]$ and $b = 0.75$ originated from historical TREC evaluations on newswire and web benchmark corpora (Robertson et al., 1994). In modern production systems, these serve as empirical baselines rather than universal constants:
+- For short, homogeneous text (such as product titles or FAQ headers), length normalization is often dialed down ($b \approx 0.3 - 0.5$ or $b = 0$) to avoid unfairly penalizing descriptive titles.
+- For heterogeneous collections mixing short abstracts with 50-page technical manuals, higher $b$ values ($b \approx 0.75 - 0.85$) ensure long documents do not dominate.
+</NotebookCallout>
+
+---
+
+## The Robertson-Zaragoza / Lucene Smoothed IDF Variant
+
+Classical Robertson-Spärck Jones IDF computes:
+
+$$\text{IDF}_{\text{classic}}(q) = \ln\left(\frac{N - \text{df}(q) + 0.5}{\text{df}(q) + 0.5}\right)$$
+
+However, if a term appears in more than half the corpus ($\text{df} > N / 2$), the numerator becomes smaller than the denominator ($N - \text{df} + 0.5 < \text{df} + 0.5$), and $\text{IDF}_{\text{classic}}$ becomes **negative**. If a document contains a common word alongside relevant rare words, a negative IDF actively subtracts from the document's total score.
+
+To prevent common words from penalizing documents, modern production search engines (including Apache Lucene, Elasticsearch, and OpenSearch) implement Robertson &amp; Zaragoza's (2009) smoothed variant:
+
+$$\text{IDF}(q) = \ln\left(1 + \frac{N - \text{df}(q) + 0.5}{\text{df}(q) + 0.5}\right)$$
+
+Because $\frac{N - \text{df} + 0.5}{\text{df} + 0.5} \ge 0$ for all valid $\text{df} \le N$, the term inside the natural logarithm is guaranteed to be $\ge 1$. Consequently, $\text{IDF}(q) \ge 0$ under all circumstances.
+
+---
+
+## Detailed Walkthrough: The BM25 Benchmark Fixture
+
+To verify BM25 calculations independently, consider a canonical test scenario specified across information retrieval literature:
+
+```
+Corpus Size (N)             = 1,000 documents
+Term Document Frequency (df) = 100 documents
+Average Document Length     = 100 words (avgdl)
+Target Document Length (|D|) = 100 words
+Term Frequency in Doc (tf)  = 3 occurrences
+Saturation Parameter (k1)   = 1.2
+Length Normalization (b)    = 0.75
+```
+
+Let us derive each component step by step:
+
+### Step 1: Compute Smoothed IDF
+$$\text{IDF} = \ln\left(1 + \frac{1000 - 100 + 0.5}{100 + 0.5}\right) = \ln\left(1 + \frac{900.5}{100.5}\right) = \ln\left(1 + 8.960199\right) = \ln(9.960199) \approx \mathbf{2.2986} \quad (\mathbf{2.299})$$
+
+### Step 2: Compute Document Length Factor ($B$)
+$$B = 1 - b + b \cdot \left(\frac{|D|}{\text{avgdl}}\right) = 1 - 0.75 + 0.75 \times \left(\frac{100}{100}\right) = 0.25 + 0.75(1.0) = \mathbf{1.000}$$
+
+When a document's length equals the corpus average ($|D| = \text{avgdl}$), $B$ is exactly $1.0$ regardless of $b$.
+
+### Step 3: Compute Saturating Term Frequency Factor
+$$\text{TF Factor} = \frac{\text{tf} \cdot (k_1 + 1)}{\text{tf} + k_1 \cdot B} = \frac{3 \cdot (1.2 + 1)}{3 + 1.2 \cdot (1.0)} = \frac{3 \times 2.2}{3 + 1.2} = \frac{6.6}{4.2} = \frac{11}{7} \approx \mathbf{1.5714} \quad (\mathbf{1.571})$$
+
+### Step 4: Compute Total BM25 Term Score
+$$\text{Score} = \text{IDF} \times \text{TF Factor} = 2.298602 \times 1.571429 \approx \mathbf{3.6121} \quad (\mathbf{3.612})$$
+
+### What Happens When We Alter Parameters?
+
+1. **Increasing Term Frequency ($3 \to 30$)**:
+   $$\text{TF Factor} = \frac{30 \times 2.2}{30 + 1.2 \times 1.0} = \frac{66}{31.2} \approx 2.1154 \implies \text{Score} = 2.2986 \times 2.1154 \approx \mathbf{4.862}$$
+   Even though the term frequency increased by $10\times$ (from 3 to 30), the score only rose from $3.612$ to $4.862$ ($1.35\times$). The score can never exceed the theoretical ceiling:
+   $$\text{Max Score} = \text{IDF} \times (k_1 + 1) = 2.2986 \times 2.2 = \mathbf{5.057}$$
+2. **Increasing Document Length ($100 \to 500$, with $b = 0.75$)**:
+   $$B = 1 - 0.75 + 0.75 \times \left(\frac{500}{100}\right) = 0.25 + 3.75 = 4.0$$
+   $$\text{TF Factor} = \frac{6.6}{3 + 1.2 \times 4.0} = \frac{6.6}{3 + 4.8} = \frac{6.6}{7.8} \approx 0.8462 \implies \text{Score} = 2.2986 \times 0.8462 \approx \mathbf{1.945}$$
+   The verbose document is penalized, cutting its score nearly in half.
+3. **Disabling Length Penalty ($b = 0$)**:
+   When $b = 0$, $B = 1.0$ regardless of length. The 500-word document receives the exact same score ($3.612$) as the 100-word document.
+
+---
+
+## Worked Multi-Document Corpus Scoring
+
+To observe BM25 across an entire collection, explore the 4-document toy search engine below:
+
+<Bm25ScoringExplorer />
+
+---
+
+## TF-IDF vs. BM25: Comprehensive Comparison
+
+| Architectural Dimension | Classic TF-IDF | Okapi BM25 | Production Impact |
+| :--- | :--- | :--- | :--- |
+| **Term Frequency Growth** | Linear ($\text{tf}$) or ad-hoc logarithmic ($1 + \ln \text{tf}$) | Nonlinear saturating curve $\frac{\text{tf}(k_1 + 1)}{\text{tf} + k_1 B}$ | Prevents keyword stuffing; caps maximum single-term gain at $k_1 + 1$. |
+| **Document Length Normalization** | Raw division by length ($\text{count} / |d|$) or cosine vector norm | Flexible interpolation $B = 1 - b + b \frac{|d|}{\text{avgdl}}$ | Tunable via $b$: $b=0$ ignores length, $b=1$ scales strictly with length. |
+| **IDF Formulation** | $\ln(N / \text{df})$ or $\ln((1+N)/(1+\text{df})) + 1$ | Probabilistic smoothed $\ln\left(1 + \frac{N - \text{df} + 0.5}{\text{df} + 0.5}\right)$ | Derived from 2-Poisson odds of relevance; strictly non-negative. |
+| **Tunable Knobs** | Typically none (fixed heuristics) | $k_1$ (saturation) and $b$ (length penalty) | Hyperparameters can be tuned via grid search or Bayesian optimization. |
+| **Theoretical Origin** | Geometric Vector Space Model (Salton, 1975) | Probabilistic Relevance Framework &amp; 2-Poisson Model (Robertson, 1994) | Grounded in formal decision theory and odds of relevance. |
+| **Semantic Understanding** | None (exact string tokens only) | None (exact string tokens only) | Both require dense neural vectors for semantic synonym matching. |
+
+<NotebookCallout color="amber" title="BM25 Is Not Merely TF-IDF with Two Tunable Knobs">
+Engineers sometimes describe BM25 as "just TF-IDF with $k_1$ and $b$ added." This is mathematically and historically incorrect. TF-IDF originated as an empirical geometric heuristic in vector spaces (Salton &amp; Buckley, 1988). BM25 was derived from the **Probabilistic Relevance Framework** and the **2-Poisson indexing model** (Robertson &amp; Spärck Jones, 1976; Robertson et al., 1994). The saturating term $\frac{\text{tf}}{\text{tf} + k_1}$ is a formal approximation of the probability that a term appears in a document given that the document is topically relevant versus non-relevant.
+</NotebookCallout>
+
+<GoDeeper title="The 2-Poisson Model Intuition">
+The 2-Poisson indexing model assumes that for any term $t$, documents in a corpus fall into two latent classes:
+1. **Elitist documents ($E$)**: Documents that are genuinely *about* concept $t$. In this class, term occurrences follow a Poisson distribution with a high mean rate $\lambda$.
+2. **Non-elitist documents ($\bar{E}$)**: Documents where $t$ appears only incidentally as an off-hand mention. Occurrences follow a Poisson distribution with a low mean rate $\mu$.
+
+Relevance depends on the posterior odds that document $D$ belongs to the elitist class $E$ given that term $t$ appears $\text{tf}$ times:
+$$\frac{P(E \mid \text{tf})}{P(\bar{E} \mid \text{tf})} = \frac{P(\text{tf} \mid E) P(E)}{P(\text{tf} \mid \bar{E}) P(\bar{E})}$$
+Under Poisson distributions, as $\text{tf}$ increases, the evidence that document $D$ is elitist increases rapidly at first, but asymptotically approaches 1.0 (certainty of elitism). BM25's rational function $\frac{\text{tf}}{\text{tf} + k_1}$ was chosen by Robertson as a lightweight, closed-form algebraic approximation to this exact posterior odds ratio, avoiding expensive Poisson factorial computations during real-time retrieval.
+</GoDeeper>
+
+---
+
+## Why BM25 Still Matters in Modern RAG & Hybrid Retrieval
+
+With the advent of massive transformer-based embedding models (such as OpenAI `text-embedding-3`, Cohere `embed-v3`, and BGE), developers often ask: *Why not replace BM25 entirely with dense semantic vector search?*
+
+In production Retrieval-Augmented Generation (RAG) and search architectures, dense vector search repeatedly fails in four critical enterprise retrieval scenarios:
+
+1. **Exact Alphanumeric Identifiers & Error Codes**:
+   When an engineer searches for `ERR_SSL_PROTOCOL_ERROR` or a database error `ORA-00942`, embedding models often project the query to generic articles about SSL certificates or Oracle databases, failing to retrieve the exact error reference. BM25 locates the exact string posting in $<1\text{ms}$.
+2. **Healthcare & Billing Codes**:
+   Medical and clinical billing depends on exact codes: CPT (e.g. `99213`), ICD-10 (e.g. `E11.9` for Type 2 Diabetes), and HCPCS. A dense embedding frequently confuses adjacent diagnostic codes that share similar text descriptions but have different legal and financial meanings.
+3. **Legal Citations & Regulatory Policies**:
+   Legal statutes (e.g. `15 U.S.C. § 78j(b)` or `28 CFR § 36.302`) demand literal citation matches. Semantic embeddings often retrieve discussions of securities fraud or disability access in general rather than the binding statutory text.
+4. **Rare Proper Nouns & Out-of-Vocabulary Terms**:
+   When new product SKUs (`WH-1000XM5`), new drug compounds, or rare personal names are queried, pretrained embedding models suffer from token fragmentation or out-of-vocabulary artifacts, whereas BM25 indexes the exact subword or word token.
+
+### Hybrid Retrieval & Reciprocal Rank Fusion (RRF)
+Modern production search pipelines combine lexical and semantic retrieval in a **hybrid architecture**:
+```
+User Query ──┬──► [ Inverted Index: BM25 ] ────► Lexical Top 100 ────┐
+             │                                                         ├──► [ Reciprocal Rank Fusion (RRF) ] ──► Cross-Encoder Ranker
+             └──► [ Vector ANN Index: HNSW ] ──► Semantic Top 100 ───┘
+```
+Lexical BM25 guarantees precision on exact identifiers and keyword constraints; dense vector embeddings ensure high recall on conceptual and synonym inquiries. Reciprocal Rank Fusion blends both ranked lists without requiring score scale calibration.
+
+---
+
+## Run It Yourself: Pure Python BM25 Calculator
+
+Execute the complete BM25 calculator below. The code implements the exact Robertson/Lucene smoothed IDF formula, reproducing our worked fixture ($N=1000, \text{df}=100, \text{tf}=3 \implies 3.612$) to four decimal places.
+
+<RunnableCode code={`import math
+
+def bm25_one_term(tf, doc_len, avgdl, df, N, k1=1.2, b=0.75):
+    # 1. Robertson / Lucene smoothed IDF
+    idf = math.log(1.0 + (N - df + 0.5) / (df + 0.5))
+    
+    # 2. Length normalization factor B
+    B = 1.0 - b + b * (doc_len / avgdl)
+    
+    # 3. Saturating TF factor
+    tf_factor = (tf * (k1 + 1.0)) / (tf + k1 * B) if tf > 0 else 0.0
+    
+    # 4. Total score
+    score = idf * tf_factor
+    return idf, B, tf_factor, score
+
+# Benchmark Fixture from text
+N = 1000
+df = 100
+avgdl = 100
+k1 = 1.2
+b = 0.75
+
+print("=== BM25 BENCHMARK CALCULATOR ===")
+idf, B, tf_fac, score = bm25_one_term(tf=3, doc_len=100, avgdl=avgdl, df=df, N=N, k1=k1, b=b)
+print(f"1. Baseline (tf=3, |D|=100):")
+print(f"   IDF: {idf:.4f} (rounds to {idf:.3f})")
+print(f"   B:   {B:.4f}")
+print(f"   TF Factor: {tf_fac:.4f} (rounds to {tf_fac:.3f})")
+print(f"   BM25 Score: {score:.4f} (rounds to {score:.3f})\\n")
+
+# Experiment A: 10x Term Frequency (Diminishing Returns)
+_, _, tf_fac_30, score_30 = bm25_one_term(tf=30, doc_len=100, avgdl=avgdl, df=df, N=N, k1=k1, b=b)
+print(f"2. High Repetition (tf=30, |D|=100):")
+print(f"   Score: {score_30:.4f} (10x tf resulted in only {score_30/score:.2f}x score increase)\\n")
+
+# Experiment B: 5x Document Length (Length Penalty)
+_, _, tf_fac_long, score_long = bm25_one_term(tf=3, doc_len=500, avgdl=avgdl, df=df, N=N, k1=k1, b=b)
+print(f"3. Long Document (tf=3, |D|=500, b=0.75):")
+print(f"   Score: {score_long:.4f} (penalized due to excessive length)\\n")
+
+# Experiment C: Disable Length Penalty (b=0.0)
+_, _, _, score_b0 = bm25_one_term(tf=3, doc_len=500, avgdl=avgdl, df=df, N=N, k1=k1, b=0.0)
+print(f"4. Long Document without Length Penalty (tf=3, |D|=500, b=0.0):")
+print(f"   Score: {score_b0:.4f} (matches baseline because length is ignored)")
+`} />
+
+## Full BM25 Corpus Search Engine in Pure Python
+
+To observe multi-term query execution and document ranking across an indexed collection, inspect the complete implementation below:
+
+<RunnableCode code={`from collections import defaultdict
+import math
+
+class BM25SearchEngine:
+    def __init__(self, corpus, k1=1.2, b=0.75):
+        self.corpus = corpus
+        self.N = len(corpus)
+        self.avgdl = sum(len(doc) for doc in corpus) / self.N
+        self.k1 = k1
+        self.b = b
+        
+        # Build inverted index
+        self.index = defaultdict(dict)
+        for doc_id, doc in enumerate(corpus):
+            for token in doc:
+                self.index[token][doc_id] = self.index[token].get(doc_id, 0) + 1
+
+    def search(self, query):
+        scores = defaultdict(float)
+        for term in query:
+            if term not in self.index:
+                continue
+            postings = self.index[term]
+            df = len(postings)
+            idf = math.log(1.0 + (self.N - df + 0.5) / (df + 0.5))
+            
+            for doc_id, tf in postings.items():
+                doc_len = len(self.corpus[doc_id])
+                B = 1.0 - self.b + self.b * (doc_len / self.avgdl)
+                tf_sat = (tf * (self.k1 + 1.0)) / (tf + self.k1 * B)
+                scores[doc_id] += idf * tf_sat
+                
+        ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        return [(f"D{doc_id + 1}", round(score, 4)) for doc_id, score in ranked]
+
+corpus = [
+    ["search", "ranking", "engine"],                       # D1: len 3
+    ["search", "ranking", "ranking", "neural", "ranking"], # D2: len 5
+    ["neural", "search", "recommendation", "system"],      # D3: len 4
+    ["recommendation", "deep", "learning", "model"],       # D4: len 4
+]
+
+engine = BM25SearchEngine(corpus, k1=1.2, b=0.75)
+results = engine.search(["search", "ranking"])
+
+print("Ranked Results for Query ['search', 'ranking']:")
+for doc_id, score in results:
+    print(f"  {doc_id} -> BM25 Score: {score}")
+`} />
+
+## When Not to Use BM25
+
+| Scenario | Recommended Alternative | Core Reason |
+| :--- | :--- | :--- |
+| **Broad exploratory or conversational queries** (`"recommend a thoughtful gift"`) | Dense semantic retrieval (Bi-encoders / DPR) | Abstract queries do not share literal keywords with relevant answers. |
+| **Cross-lingual retrieval** (English query $\to$ Spanish documents) | Multilingual embeddings (mE5, Cohere Multilingual) | Lexical tokenizers cannot bridge disjoint language vocabularies. |
+| **Purely transactional SKU searches** (barcode or exact part ID) | Direct hash index or database primary key | Exact primary key lookups execute in $O(1)$ without BM25 scoring overhead. |
+| **Small static lists (&lt;100 items)** | Linear regex scan or client-side filter | Indexing and maintaining inverted postings adds unnecessary code complexity. |
+
+## Remember
+
+| BM25 Component | Formula | Architectural Role |
+| :--- | :--- | :--- |
+| **Term Frequency Saturation** | $\frac{\text{tf} \cdot (k_1 + 1)}{\text{tf} + k_1 B}$ | Flattens marginal score gains; caps contribution at $k_1 + 1$. |
+| **Length Normalization ($B$)** | $1 - b + b \cdot \left(\frac{|D|}{\text{avgdl}}\right)$ | Scales denominator: $B < 1$ boosts concise docs, $B > 1$ penalizes long docs. |
+| **Smoothed IDF** | $\ln\left(1 + \frac{N - \text{df} + 0.5}{\text{df} + 0.5}\right)$ | Guarantees non-negative term weights even when $\text{df} > N / 2$. |
+| **$k_1$ Parameter** | Typically $1.2 - 2.0$ | Controls how rapidly saturation sets in. Higher $k_1$ behaves more like linear TF. |
+| **$b$ Parameter** | Typically $0.75$ | Controls severity of document length penalty ($b=0$ disables length penalty). |
+| **Hybrid RAG Role** | Combined with dense vectors via RRF | Essential for retrieving exact identifiers, codes, and rare proper nouns. |
+
+Next: [Semantic & Hybrid Search](/docs/search-ranking-recommendations/semantic-and-hybrid-search) — explore dense vector retrieval, approximate nearest neighbor (ANN) indexes, and Reciprocal Rank Fusion.
+
+## Sources
+
+- Robertson, S., & Zaragoza, H. (2009). *The Probabilistic Relevance Framework: BM25 and Beyond*. Foundations and Trends in Information Retrieval, 3(4), 333–381. [https://doi.org/10.1561/1500000019](https://doi.org/10.1561/1500000019)
+- Robertson, S. E., Walker, S., Jones, S., Hancock-Beaulieu, M. M., & Gatford, M. (1994). *Okapi at TREC-3*. Proceedings of the Third Text REtrieval Conference (TREC-3), NIST Special Publication 500-225. [https://trec.nist.gov/pubs/trec3/papers/city.ps.gz](https://trec.nist.gov/pubs/trec3/papers/city.ps.gz)
+- Robertson, S. E., & Spärck Jones, K. (1976). *Relevance weighting of search terms*. Journal of the American Society for Information Science, 27(3), 129–146. [https://doi.org/10.1002/asi.4630270302](https://doi.org/10.1002/asi.4630270302)
+- Manning, C. D., Raghavan, P., & Schütze, H. (2008). *Introduction to Information Retrieval* (Chapter 11: Probabilistic information retrieval). Cambridge University Press. [https://nlp.stanford.edu/IR-book/html/htmledition/probabilistic-information-retrieval-1.html](https://nlp.stanford.edu/IR-book/html/htmledition/probabilistic-information-retrieval-1.html)
+- Trotman, A., Puurula, A., & Burgess, B. (2014). *Improvements to BM25 and Language Models Examined*. Proceedings of the 2014 Australasian Document Computing Symposium (ADCS), 58–65. [https://doi.org/10.1145/2682862.2682863](https://doi.org/10.1145/2682862.2682863)
+- Kamphuis, C., de Vries, A. P., Boytsov, L., & Lin, J. (2020). *Which BM25 Do You Mean? A Large-Scale Reproducibility Study of BM25 Variants in Lucene*. Advances in Information Retrieval (ECIR 2020), 416–430. [https://doi.org/10.1007/978-3-030-45442-5_4](https://doi.org/10.1007/978-3-030-45442-5_4)

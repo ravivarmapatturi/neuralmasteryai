@@ -1,0 +1,340 @@
+---
+title: "TF-IDF from First Principles"
+sidebar_position: 3
+description: "Derive TF-IDF scoring from first principles with a 4-document worked corpus, analyze sparse vector spaces, and explore lexical vocabulary mismatch."
+---
+
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
+import RunnableCode from '../../../components/content/RunnableCode';
+import TfidfSearchExplorer from '../../../viz/diagrams/TfidfSearchExplorer';
+
+# TF-IDF from First Principles
+
+<ELI5>
+Imagine reading four short notes on a refrigerator. If you are looking for information on "machine learning", you want to find notes that mention both words. But not all words are equally informative: common words like "the" or "is" tell you nothing about the topic, while specific words like "machine" or "learning" carry the actual subject matter. TF-IDF does two simple calculations: it rewards a note for mentioning your search words frequently (Term Frequency), but discounts words that appear everywhere across all notes (Inverse Document Frequency).
+</ELI5>
+
+## Beyond Binary Boolean Matching
+
+In the previous chapter, we built an [Inverted Index](/docs/search-ranking-recommendations/text-search-bm25) to evaluate Boolean queries. While Boolean matching filters documents with sub-millisecond latency, it suffers from a fatal limitation: it cannot rank. If a query matches ten thousand documents, Boolean retrieval treats all ten thousand matches as identically relevant.
+
+To rank search results from most relevant to least relevant, information retrieval systems require a continuous scoring function. The foundational algorithm of modern text ranking is **TF-IDF** (**Term Frequency &ndash; Inverse Document Frequency**), formalized by Karen Spärck Jones (1972) and Gerard Salton (1988).
+
+TF-IDF evaluates relevance by balancing two core intuitions:
+1. **Term Frequency ($\text{TF}$)**: A document that mentions a query term multiple times is generally more relevant than one mentioning it once.
+2. **Inverse Document Frequency ($\text{IDF}$)**: A term that appears in almost every document in the corpus is uninformative for distinguishing relevance; rare, highly specific terms carry much higher discriminative evidence.
+
+## A Worked Example: The 4-Document Toy Corpus
+
+To understand TF-IDF from first principles, consider an illustrative toy corpus of $N = 4$ documents:
+
+```
+Document 1 (D1): "machine learning is powerful"               (Length |D1| = 4 words)
+Document 2 (D2): "deep learning is part of machine learning"   (Length |D2| = 7 words)
+Document 3 (D3): "machine learning improves search"            (Length |D3| = 4 words)
+Document 4 (D4): "cooking food is fun"                         (Length |D4| = 4 words)
+```
+
+**Target User Query**: `"machine learning"` (query terms: $q_1 = \text{"machine"}$, $q_2 = \text{"learning"}$).
+
+Our objective is to calculate the exact TF-IDF score for each document and rank them in order of relevance.
+
+---
+
+### Step 1: Term Frequency (TF)
+
+Term Frequency measures how frequently a query word occurs inside a given document. In its normalized formulation, raw count is scaled by the total word count of the document to prevent long documents from gaining an unfair advantage:
+
+$$\text{TF}(t, d) = \frac{\text{Count of term } t \text{ in } d}{\text{Total words in } d}$$
+
+Let us compute the exact term frequencies for both query terms:
+
+| Document | Total Words | Count(`"machine"`) | $\text{TF}(\text{"machine"})$ | Count(`"learning"`) | $\text{TF}(\text{"learning"})$ | Total $\text{TF}$ Sum |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **D1** (`"machine learning is powerful"`) | 4 | 1 | $1 / 4 = 0.2500$ | 1 | $1 / 4 = 0.2500$ | $0.5000$ |
+| **D2** (`"deep learning is part of machine learning"`) | 7 | 1 | $1 / 7 \approx 0.1429$ | 2 | $2 / 7 \approx 0.2857$ | $3 / 7 \approx 0.4286$ |
+| **D3** (`"machine learning improves search"`) | 4 | 1 | $1 / 4 = 0.2500$ | 1 | $1 / 4 = 0.2500$ | $0.5000$ |
+| **D4** (`"cooking food is fun"`) | 4 | 0 | $0 / 4 = 0.0000$ | 0 | $0 / 4 = 0.0000$ | $0.0000$ |
+
+<NotebookCallout color="amber" title="Word Count Precision">
+Notice that D2 mentions `"learning"` twice and `"machine"` once (3 query words in total). However, because D2 has 7 words, its normalized term frequency for `"machine"` is only $1/7 \approx 0.1429$, compared to $1/4 = 0.2500$ in D1 and D3.
+</NotebookCallout>
+
+---
+
+### Step 2: Inverse Document Frequency (IDF)
+
+Term Frequency alone is insufficient: if a query contains both a common word and a rare word, TF treats both equally. **Inverse Document Frequency** measures how rare a term is across the entire catalog of $N$ documents:
+
+$$\text{IDF}(t) = \ln\left(\frac{N}{\text{df}(t)}\right)$$
+
+Where:
+- $N$: Total number of documents in the corpus ($N = 4$).
+- $\text{df}(t)$: Document frequency—the number of distinct documents containing term $t$.
+- $\ln$: Natural logarithm.
+
+Let us compute the IDF for each vocabulary term:
+- **`"machine"`**: Appears in D1, D2, and D3 $\implies \text{df} = 3$.
+  $$\text{IDF}(\text{"machine"}) = \ln\left(\frac{4}{3}\right) \approx 0.287682 \dots \approx 0.2877$$
+- **`"learning"`**: Appears in D1, D2, and D3 $\implies \text{df} = 3$.
+  $$\text{IDF}(\text{"learning"}) = \ln\left(\frac{4}{3}\right) \approx 0.287682 \dots \approx 0.2877$$
+
+Now contrast this with a rare word like `"cooking"`, which appears in only 1 document (D4):
+$$\text{IDF}(\text{"cooking"}) = \ln\left(\frac{4}{1}\right) = \ln(4) \approx 1.3863$$
+
+Because `"cooking"` is rare, its IDF is nearly five times higher than that of `"machine"` ($1.3863$ vs $0.2877$). Rare terms receive higher scores because their presence is stronger evidence of specific topical relevance.
+
+---
+
+### Step 3: Computing TF-IDF and Query Scores
+
+The TF-IDF weight for a single term in a document is simply:
+
+$$\text{TF-IDF}(t, d) = \text{TF}(t, d) \times \text{IDF}(t)$$
+
+To score a multi-term search query $q$, we sum the TF-IDF weights of all query terms:
+
+$$\text{Score}(d, q) = \sum_{t \in q} \text{TF-IDF}(t, d) = \sum_{t \in q} \left[\text{TF}(t, d) \times \text{IDF}(t)\right]$$
+
+Let us compute the step-by-step scores for each document on query `"machine learning"`:
+
+#### Document 1: Length $|D_1| = 4$
+- $\text{TF-IDF}(\text{"machine"}, D_1) = 0.2500 \times \ln(4/3) \approx 0.2500 \times 0.287682 \approx 0.07192$
+- $\text{TF-IDF}(\text{"learning"}, D_1) = 0.2500 \times \ln(4/3) \approx 0.2500 \times 0.287682 \approx 0.07192$
+- **Total Score ($D_1$)**: $0.07192 + 0.07192 = 0.5000 \times \ln(4/3) \approx \mathbf{0.1438}$ (rounded to 4 decimal places).
+
+#### Document 3: Length $|D_3| = 4$
+- $\text{TF-IDF}(\text{"machine"}, D_3) = 0.2500 \times \ln(4/3) \approx 0.07192$
+- $\text{TF-IDF}(\text{"learning"}, D_3) = 0.2500 \times \ln(4/3) \approx 0.07192$
+- **Total Score ($D_3$)**: $0.07192 + 0.07192 = 0.5000 \times \ln(4/3) \approx \mathbf{0.1438}$.
+
+#### Document 2: Length $|D_2| = 7$
+- $\text{TF-IDF}(\text{"machine"}, D_2) = (1/7) \times \ln(4/3) \approx 0.142857 \times 0.287682 \approx 0.04110$
+- $\text{TF-IDF}(\text{"learning"}, D_2) = (2/7) \times \ln(4/3) \approx 0.285714 \times 0.287682 \approx 0.08220$
+- **Total Score ($D_2$)**: $0.04110 + 0.08220 = (3/7) \times \ln(4/3) \approx \mathbf{0.1233}$.
+
+#### Document 4: Length $|D_4| = 4$
+- Neither `"machine"` nor `"learning"` appears in D4 $\implies \mathbf{0.0000}$.
+
+### Final Ranking Summary Table
+
+| Rank | Document ID | Document Text | TF(`"machine"`) | TF(`"learning"`) | Total TF Sum | Exact TF-IDF Score |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **#1 (Tie)** | **D1** | `"machine learning is powerful"` | $0.2500$ | $0.2500$ | $0.5000$ | $\mathbf{0.1438}$ |
+| **#1 (Tie)** | **D3** | `"machine learning improves search"` | $0.2500$ | $0.2500$ | $0.5000$ | $\mathbf{0.1438}$ |
+| **#3** | **D2** | `"deep learning is part of machine learning"` | $0.1429$ | $0.2857$ | $0.4286$ | $\mathbf{0.1233}$ |
+| **#4** | **D4** | `"cooking food is fun"` | $0.0000$ | $0.0000$ | $0.0000$ | $\mathbf{0.0000}$ |
+
+<NotebookCallout color="cobalt" title="Explaining the Mathematical Tie: D1 vs. D3">
+Notice that D1 and D3 tie at **0.1438**. This tie is **not a rounding accident**. Both documents have an identical total length of 4 words, and each contains exactly 1 occurrence of `"machine"` and 1 occurrence of `"learning"`. Because both query terms share the same document frequency ($\text{df} = 3$), their score contributions are identical:
+$$\text{Score}(D_1) = \text{Score}(D_3) = \left(\frac{1}{4} + \frac{1}{4}\right) \times \ln\left(\frac{4}{3}\right) = \frac{1}{2} \ln\left(\frac{4}{3}\right) \approx 0.143841 \dots$$
+Furthermore, observe that D2 contains **3 query words** (one `"machine"`, two `"learning"`), whereas D1 and D3 contain only 2 query words. Despite having more keyword matches, D2 ranks lower ($0.1233$) because its length of 7 words dilutes its normalized term frequencies ($3/7 \approx 0.4286 < 0.5000$).
+</NotebookCallout>
+
+## Interactive TF-IDF Search Engine
+
+Change the query below to observe how document frequencies, IDF values, and document rankings change in real time:
+
+<TfidfSearchExplorer />
+
+## The Vector Space Model & Sparse Retrieval
+
+Beyond summing scalar weights, TF-IDF forms the mathematical foundation of the **Vector Space Model** (Salton et al., 1975).
+
+Imagine a vocabulary dictionary containing $|V| = 10,000$ unique words across a catalog. Each document and query can be represented as a vector in a 10,000-dimensional geometric space:
+
+$$\mathbf{d} = \big[ \text{TF-IDF}(t_1, d),\, \text{TF-IDF}(t_2, d),\, \dots,\, \text{TF-IDF}(t_{|V|}, d) \big]^T \in \mathbb{R}^{|V|}$$
+
+Because a single document typically contains only a few dozen unique words, the document vector has nonzero values in only a tiny fraction of its coordinates ($>99.5\%$ of dimensions are exactly zero):
+
+```python
+# Sparse vector representation in a 10,000-word vocabulary
+# Only matching terms have nonzero weights
+doc_vector = [
+    0.0, 0.0, 0.0719, 0.0, 0.0, 
+    0.0719, 0.0, 0.0, 0.0, ...  # 9,996 zeros
+]
+```
+
+This is why TF-IDF belongs to the **sparse retrieval** family: vectors are high-dimensional, but extremely sparse.
+
+### Measuring Relevance via Cosine Similarity
+In the vector space model, the relevance of document $\mathbf{d}$ to query $\mathbf{q}$ is measured by the **cosine similarity** between their respective vectors:
+
+$$\text{CosineSimilarity}(\mathbf{q}, \mathbf{d}) = \frac{\mathbf{q} \cdot \mathbf{d}}{\|\mathbf{q}\|_2 \|\mathbf{d}\|_2} = \frac{\sum_{t \in q \cap d} \text{TF-IDF}(t, q) \cdot \text{TF-IDF}(t, d)}{\sqrt{\sum_{t \in q} \text{TF-IDF}(t, q)^2} \cdot \sqrt{\sum_{t \in d} \text{TF-IDF}(t, d)^2}}$$
+
+Cosine similarity naturally normalizes for document length by dividing by the Euclidean norm $\|\mathbf{d}\|_2$, projecting all documents onto a unit hypersphere.
+
+<PredictFirst
+  question="If document A is identical to document B in content, but document B simply repeats the entire text of document A twice in a row, what happens to their cosine similarity with query Q?"
+  options={[
+    "Document B scores twice as high as Document A because its term counts doubled.",
+    "Document A and Document B receive the exact same cosine similarity score.",
+    "Document A scores higher because Document B is penalized for excessive length.",
+    "Cosine similarity becomes undefined because of collinear vector duplication."
+  ]}
+  correctIndex={1}
+  explanation="In the Vector Space Model with L2 normalization, repeating a document doubles all coordinates: d_B = 2 * d_A. The Euclidean norm also doubles: ||d_B|| = 2 * ||d_A||. When computing cosine similarity, the factor of 2 in the numerator cancels with the factor of 2 in the denominator, yielding an identical score: (q · 2d_A) / (||q|| · 2||d_A||) = (q · d_A) / (||q|| · ||d_A||)."
+/>
+
+<GoDeeper title="Scikit-Learn vs. Textbook TF-IDF Variants">
+In production libraries such as Python's `scikit-learn` (`TfidfVectorizer`), several smoothing adjustments are applied to prevent zero divisions and negative weights:
+
+1. **Smoothed IDF**: To prevent division by zero when a term is absent from training documents, `smooth_idf=True` adds 1 to both numerator and denominator, plus an additional constant 1:
+   $$\text{IDF}_{\text{sklearn}}(t) = \ln\left(\frac{1 + N}{1 + \text{df}(t)}\right) + 1$$
+2. **Sublinear Term Frequency**: Instead of raw or normalized counts, many systems apply logarithmic dampening to prevent high term counts from dominating:
+   $$\text{TF}_{\text{sublinear}}(t, d) = 1 + \ln(\text{count}(t, d)) \quad \text{for count} > 0$$
+3. **L2 Vector Normalization**: Coordinates are normalized so each document vector has unit length:
+   $$\mathbf{v}_{\text{norm}} = \frac{\mathbf{v}}{\sqrt{\sum_i v_i^2}}$$
+</GoDeeper>
+
+## Limitations: The Semantic Vocabulary Mismatch Problem
+
+While TF-IDF provides principled relevance weighting, it suffers from a fundamental limitation inherent to all lexical matching: **it has zero understanding of semantic meaning**.
+
+Consider this classic failure mode:
+- **User Query**: `"automobile repair"`
+- **Document Text**: `"how to fix a car"`
+
+Even though the document answers the user's inquiry with 100% relevance, `"automobile"` does not literally match `"car"`, and `"repair"` does not literally match `"fix"`. Because the set of overlapping vocabulary terms is empty ($q \cap d = \emptyset$), the TF-IDF score is strictly:
+
+$$\text{Score}(\text{"automobile repair"}, \text{"how to fix a car"}) = 0.0000$$
+
+This vulnerability is known as the **vocabulary mismatch problem** (Furnas et al., 1987). Dense semantic models (such as Bi-encoders and sentence transformers, covered in [Semantic & Hybrid Search](/docs/search-ranking-recommendations/semantic-and-hybrid-search)) resolve this by projecting synonyms into nearby points in continuous embedding spaces.
+
+## Run It Yourself: Pure Python TF-IDF from Scratch
+
+Run the complete TF-IDF search engine below. The code implements the exact normalized TF and natural-log IDF formulas, matching our worked mathematical derivation to four decimal places.
+
+<RunnableCode code={`import math
+
+# The 4-document illustrative toy corpus
+corpus = [
+    {"id": "D1", "text": "machine learning is powerful"},
+    {"id": "D2", "text": "deep learning is part of machine learning"},
+    {"id": "D3", "text": "machine learning improves search"},
+    {"id": "D4", "text": "cooking food is fun"},
+]
+
+def tokenize(text):
+    return text.lower().split()
+
+def compute_tfidf(corpus, query):
+    N = len(corpus)
+    tokenized_docs = [tokenize(doc["text"]) for doc in corpus]
+    query_terms = tokenize(query)
+    
+    # 1. Compute document frequency (df) and IDF for query terms
+    idf = {}
+    print("--- Step A: Query Term IDF ---")
+    for term in query_terms:
+        df = sum(1 for d in tokenized_docs if term in d)
+        idf[term] = math.log(N / df) if df > 0 else 0.0
+        print(f"Term '{term}': df={df}/{N}, IDF={idf[term]:.4f}")
+        
+    # 2. Score documents: sum of (TF * IDF)
+    print("\\n--- Step B: Document Scores & Ranking ---")
+    results = []
+    for doc, tokens in zip(corpus, tokenized_docs):
+        doc_len = len(tokens)
+        score = 0.0
+        breakdown = []
+        for term in query_terms:
+            count = tokens.count(term)
+            tf = count / doc_len if doc_len > 0 else 0.0
+            term_score = tf * idf.get(term, 0.0)
+            score += term_score
+            breakdown.append(f"{term}: {count}/{doc_len} ({tf:.3f}) * {idf[term]:.3f} = {term_score:.4f}")
+            
+        results.append((doc["id"], score, doc["text"], breakdown))
+        
+    # Sort descending by score; if tied, sort by doc ID
+    results.sort(key=lambda x: (-round(x[1], 4), x[0]))
+    for rank, (doc_id, score, text, bd) in enumerate(results, 1):
+        print(f"#{rank} {doc_id} -> Score: {score:.4f} | '{text}'")
+        print(f"     Breakdown: {' | '.join(bd)}")
+
+compute_tfidf(corpus, "machine learning")
+`} />
+
+## Vector Space Cosine Similarity in Pure Python
+
+To understand how modern search libraries evaluate sparse vectors, inspect the cosine similarity implementation below:
+
+<RunnableCode code={`import math
+from collections import Counter
+
+def vectorize(text, vocabulary, idf):
+    tokens = text.lower().split()
+    counts = Counter(tokens)
+    length = len(tokens)
+    vec = {}
+    for term in vocabulary:
+        if term in counts:
+            tf = counts[term] / length
+            vec[term] = tf * idf[term]
+        else:
+            vec[term] = 0.0
+    return vec
+
+def cosine_similarity(v1, v2):
+    dot_product = sum(v1[t] * v2[t] for t in v1)
+    norm1 = math.sqrt(sum(v1[t] ** 2 for t in v1))
+    norm2 = math.sqrt(sum(v2[t] ** 2 for t in v2))
+    if norm1 == 0 or norm2 == 0:
+        return 0.0
+    return dot_product / (norm1 * norm2)
+
+corpus = [
+    "machine learning is powerful",
+    "deep learning is part of machine learning",
+    "machine learning improves search",
+    "cooking food is fun"
+]
+query = "machine learning"
+
+# Build shared vocabulary and IDF
+all_tokens = [doc.lower().split() for doc in corpus]
+vocab = sorted(list(set(t for d in all_tokens for t in d)))
+N = len(corpus)
+idf = {t: math.log(N / sum(1 for d in all_tokens if t in d)) for t in vocab}
+
+q_vec = vectorize(query, vocab, idf)
+print("Cosine Similarity Scores against Query:")
+for i, doc in enumerate(corpus, 1):
+    d_vec = vectorize(doc, vocab, idf)
+    sim = cosine_similarity(q_vec, d_vec)
+    print(f"  D{i}: {sim:.4f} | '{doc}'")
+`} />
+
+## When Not to Use TF-IDF
+
+| Scenario | Recommended Alternative | Core Reason |
+| :--- | :--- | :--- |
+| **Production keyword search at scale** | BM25 (Best Matching 25) | Linear TF allows repeated keywords to inflate relevance; lack of saturation invites keyword stuffing. |
+| **Synonym and conceptual search** (`"car fix"` $\to$ `"automobile repair"`) | Dense neural embeddings (Bi-encoder / DPR) | TF-IDF requires exact token overlap; vocabulary mismatch yields zero matching score. |
+| **Multi-field structured search** (title vs. body vs. tags) | BM25F or Field-Weighted Search | TF-IDF cannot weight title matches higher than body matches without ad-hoc heuristic scaling. |
+| **Short, query-like documents** (FAQ titles, catalog SKU lookups) | Exact prefix indexing or n-gram matching | Normalizing by length overly penalizes or distorts short titles with high variance. |
+
+## Remember
+
+| Concept | Mathematical Form | Systems Intuition |
+| :--- | :--- | :--- |
+| **Term Frequency (TF)** | $\frac{\text{count}(t, d)}{\vert d \vert}$ | Measures local word density; prevents long documents from dominating purely on volume. |
+| **Inverse Document Frequency (IDF)** | $\ln\left(\frac{N}{\text{df}(t)}\right)$ | Measures global specificity; rewards rare terms and discounts ubiquitous words. |
+| **TF-IDF Weight** | $\text{TF}(t, d) \times \text{IDF}(t)$ | Combines local frequency with corpus-wide discriminative power. |
+| **Sparse Vector Space** | $\mathbf{d} \in \mathbb{R}^{\vert V \vert}$ | Documents represented as high-dimensional vectors with $>99\%$ zeros. |
+| **Vocabulary Mismatch** | $q \cap d = \emptyset \implies \text{Score} = 0$ | The inability of lexical search to recognize semantic synonyms without dense vectors. |
+
+Next: [BM25: Term Saturation & Length Normalization](/docs/search-ranking-recommendations/bm25) — learn how BM25 solves TF-IDF's keyword-stuffing vulnerability using saturating curves and tunable length normalization.
+
+## Sources
+
+- Spärck Jones, K. (1972). *A Statistical Interpretation of Term Specificity and Its Application in Retrieval*. Journal of Documentation, 28(1), 11–21. [https://doi.org/10.1108/eb026526](https://doi.org/10.1108/eb026526)
+- Salton, G., & Buckley, C. (1988). *Term-weighting approaches in automatic text retrieval*. Information Processing & Management, 24(5), 513–523. [https://doi.org/10.1016/0306-4573(88)90021-0](https://doi.org/10.1016/0306-4573(88)90021-0)
+- Salton, G., Wong, A., & Yang, C. S. (1975). *A vector space model for automatic indexing*. Communications of the ACM, 18(11), 613–620. [https://doi.org/10.1145/361219.361220](https://doi.org/10.1145/361219.361220)
+- Manning, C. D., Raghavan, P., & Schütze, H. (2008). *Introduction to Information Retrieval* (Chapter 6: Scoring, term weighting and the vector space model). Cambridge University Press. [https://nlp.stanford.edu/IR-book/html/htmledition/scoring-term-weighting-and-the-vector-space-model-1.html](https://nlp.stanford.edu/IR-book/html/htmledition/scoring-term-weighting-and-the-vector-space-model-1.html)
+- Scikit-learn Developers (2024). *Feature Extraction: TF-IDF term weighting*. scikit-learn documentation. [https://scikit-learn.org/stable/modules/feature_extraction.html#tfidf-term-weighting](https://scikit-learn.org/stable/modules/feature_extraction.html#tfidf-term-weighting)
+- Furnas, G. W., Landauer, T. K., Gomez, L. M., & Dumais, S. T. (1987). *The vocabulary problem in human-system communication*. Communications of the ACM, 30(11), 964–971. [https://doi.org/10.1145/32206.32212](https://doi.org/10.1145/32206.32212)

@@ -1,321 +1,252 @@
 ---
-title: "Text Search & BM25"
+title: "Text Search & Inverted Indexes"
 sidebar_position: 2
-description: "Derive Robertson BM25 from first principles, dissect term-frequency saturation and length normalization, and implement an inverted index."
+description: "Master the mechanics of lexical retrieval: tokenization, text normalization, inverted postings lists, and sub-millisecond Boolean search algorithms."
 ---
 
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import RunnableCode from '../../../components/content/RunnableCode';
-import Bm25ScoringExplorer from '../../../viz/diagrams/Bm25ScoringExplorer';
+import InvertedIndexVisualizer from '../../../viz/diagrams/InvertedIndexVisualizer';
 
-# Text Search & BM25
+# Text Search & Inverted Indexes
 
 <ELI5>
-Imagine looking up recipes in a giant cookbook index at the back of the book. Instead of skimming through every recipe page for the word "vanilla", you turn straight to the letter V in the index, find "vanilla", and look at the list of recipe numbers written beside it. Next, if you search for "vanilla sugar", you compare recipes that mention both words. A recipe that mentions vanilla twice is probably more relevant than one that mentions it once, but a recipe that mentions it fifty times is not fifty times as relevant—it is probably just a long book. BM25 is the mathematical formula that calculates this balance.
+Imagine looking up recipes in the back index of a 1,000-page cookbook. Instead of reading every page from front to back to see if it contains the word "vanilla", you turn straight to the letter V, locate "vanilla", and look at the list of recipe page numbers printed beside it. If you search for "vanilla AND sugar", you take the page list for vanilla and the page list for sugar and keep only the page numbers that appear on both lists. An inverted index does the exact same thing for computer search.
 </ELI5>
 
 ## Why Lexical Retrieval Matters
 
-Dense neural embeddings and semantic vector models excel at capturing broad concepts, but they frequently fail when precision matters: error codes (`ERR_CONNECTION_REFUSED`), SKU model numbers (`WH-1000XM5`), legal citations, and exact proper nouns. If a user searches for an exact five-digit flight number, semantic models often retrieve flights with similar destinations rather than the literal identifier.
+Dense neural embeddings and semantic vector models excel at capturing broad concepts, but they frequently fail when exact precision matters: error codes (`ERR_CONNECTION_REFUSED`), SKU model numbers (`WH-1000XM5`), medical identifiers (CPT, ICD-10), and proper nouns. If a user searches for an exact five-digit flight code, semantic models often retrieve flights with similar destinations rather than the literal identifier.
 
-Lexical retrieval solves this by evaluating exact string tokens. Rather than embedding documents into dense vectors, lexical systems index the exact vocabulary. The central challenge of lexical search is twofold:
-1. **Finding candidate documents in sub-millisecond time** without scanning the entire text corpus sequentially.
-2. **Scoring relevance soundly** so that concise, on-topic documents rank above spammy documents that repeat query keywords dozens of times.
+Lexical retrieval solves this by evaluating exact string tokens. Rather than embedding documents into dense continuous vectors, lexical systems index the exact vocabulary. The central engineering challenge of lexical search is twofold:
+1. **Finding candidate documents in sub-millisecond time** without scanning millions of document text files sequentially.
+2. **Structuring terms and postings efficiently** so that multi-term Boolean filters execute via fast list operations.
 
-The foundation of modern production lexical search (powering Lucene, Elasticsearch, OpenSearch, and Vespa) is the **Inverted Index** coupled with **Okapi BM25**.
+The foundation of production search engines—powering Apache Lucene, Elasticsearch, OpenSearch, and Vespa—is the **Inverted Index**.
 
-## From Raw Text to Inverted Index
+## The Text Normalization Pipeline
 
-Before we can score any text, raw document strings pass through a text normalization pipeline:
+Before text can be indexed or searched, raw document strings pass through a deterministic text normalization pipeline:
 
-1. **Tokenization**: Splitting continuous strings into discrete term tokens (e.g. `"Search, ranking & recs"` $\to$ `["search", "ranking", "recs"]`).
-2. **Case Normalization**: Converting terms to lowercase so `"Search"` and `"search"` map to the same token.
-3. **Punctuation & Stop-word Filtering**: Stripping symbols and optionally removing high-frequency filler words (`"the"`, `"and"`, `"of"`).
-4. **Stemming or Lemmatization**: Reducing inflected words to their root form (e.g. `"ranking"`, `"ranked"`, and `"ranks"` $\to$ `"rank"` via the Porter stemmer).
+```
+[Raw Document Text]
+        │
+        ▼ (Stage 1: Tokenization)
+["Search,", "ranking", "&", "recs!"]
+        │
+        ▼ (Stage 2: Case Normalization)
+["search,", "ranking", "&", "recs!"]
+        │
+        ▼ (Stage 3: Punctuation & Character Filtering)
+["search", "ranking", "recs"]
+        │
+        ▼ (Stage 4: Stemming / Lemmatization)
+["search", "rank", "rec"]
+```
 
-Once normalized, documents are mapped into an **inverted index**. A traditional forward index maps documents to their constituent words (`Doc 1 -> [words]`). An inverted index flips this relationship: it maps each dictionary term to a **posting list** containing every document ID where the term appears, alongside the term's frequency within that document:
+1. **Tokenization**: Splitting continuous character streams into discrete term tokens (e.g. `"Search, ranking & recs"` $\to$ `["search,", "ranking", "&", "recs!"]`). Language-specific rules handle hyphenated words, URLs, and compound nouns.
+2. **Case Normalization (Case Folding)**: Converting all tokens to lowercase so that `"Search"`, `"SEARCH"`, and `"search"` map to the same dictionary entry.
+3. **Punctuation & Stop-Word Filtering**: Stripping symbols and optionally removing high-frequency grammatical glue words (`"the"`, `"and"`, `"of"`). In modern engines, stop-words are frequently retained to support exact phrase matching (`"to be or not to be"`), but down-weighted during scoring.
+4. **Stemming or Lemmatization**: Reducing inflected word variants to a base root (e.g. `"ranking"`, `"ranked"`, and `"ranks"` $\to$ `"rank"` via the algorithmic Porter or Snowball stemmer; lemmatization uses morphological vocabularies to map `"better"` $\to$ `"good"`).
+
+## Forward Index vs. Inverted Index
+
+A traditional **forward index** stores documents and lists the words contained within each document:
+- Document 1 $\to$ `["search", "ranking", "engine"]`
+- Document 2 $\to$ `["search", "ranking", "neural"]`
+- Document 3 $\to$ `["neural", "search", "recommendation"]`
+
+Evaluating a search query like `"engine"` against a forward index requires scanning every document in the catalog sequentially ($O(N)$ full table scan).
+
+An **inverted index** flips this relationship. It builds a dictionary of all distinct vocabulary terms across the corpus. Each term points to a **posting list** containing every document ID where that term appears, alongside metadata such as the term frequency ($\text{tf}$) within that document:
 
 ```
 Term Dictionary          Posting Lists
 "engine"         ───►   [ (D1, tf=1) ]
+"learning"       ───►   [ (D4, tf=1) ]
 "neural"         ───►   [ (D2, tf=1), (D3, tf=1) ]
-"ranking"        ───►   [ (D1, tf=1), (D2, tf=3) ]
+"ranking"        ───►   [ (D1, tf=1), (D2, tf=2) ]
+"recommendation" ───►   [ (D3, tf=1), (D4, tf=1) ]
 "search"         ───►   [ (D1, tf=1), (D2, tf=1), (D3, tf=1) ]
 ```
 
-When a user submits a multi-term query such as `"search ranking"`, the search engine does not inspect document text. It fetches the posting list for `"search"` and the posting list for `"ranking"`, then intersects the two lists using list-intersection algorithms (such as galloping search or skip-pointers). Only documents that appear in the intersected posting lists require relevance scoring.
+When a user submits a query, the search engine does not touch document text. It performs $O(1)$ dictionary lookups to retrieve the posting lists for each query word, then intersects or merges the posting lists.
 
-## The Limits of TF-IDF
+## Interactive Inverted Index Explorer
 
-Early information retrieval scored documents using classic **TF-IDF**:
-$$\text{TF-IDF}(t, D, \mathcal{C}) = \text{TF}(t, D) \times \text{IDF}(t, \mathcal{C})$$
+Explore how an inverted index stores term postings and evaluates Boolean operators below:
 
-Where $\text{TF}(t, D)$ is raw count and $\text{IDF}(t) = \ln(N / \text{df}_t)$. While intuitive, raw TF-IDF suffers from two critical production flaws:
-- **Linear Term Frequency Bias**: If document $A$ mentions `"search"` 1 time and document $B$ mentions `"search"` 10 times, raw TF scores document $B$ ten times higher. In reality, the 5th or 10th mention offers diminishing marginal evidence of additional relevance.
-- **Document Length Vulnerability**: A 50-page legal omnibus will naturally mention almost every dictionary word more times than a 1-page technical whitepaper, scoring higher simply because of verbosity.
+<InvertedIndexVisualizer />
 
-## Deriving the Robertson BM25 Formula
+## Boolean Retrieval Algorithms
 
-Developed by Stephen Robertson, Karen Spärck Jones, and collaborators (1994, 2009), **BM25** (Best Matching 25) addresses both flaws by introducing two nonlinear saturating components into the probabilistic relevance framework.
+Boolean retrieval evaluates logical queries using set operations over sorted posting lists:
 
-For a query $Q$ with terms $q_1, q_2, \dots, q_m$ and a document $D$ in a corpus of $N$ documents:
+### 1. Boolean AND (List Intersection)
+To evaluate `"search AND ranking"`, we fetch the posting list for `"search"` ($[D1, D2, D3]$) and the posting list for `"ranking"` ($[D1, D2]$). Because postings are stored in strictly ascending order of document ID, we find matching documents using a two-pointer merge algorithm in $O(L_1 + L_2)$ time:
 
-$$\text{BM25}(D, Q) = \sum_{i=1}^{m} \text{IDF}(q_i) \cdot \frac{f(q_i, D) \cdot (k_1 + 1)}{f(q_i, D) + k_1 \cdot \left(1 - b + b \cdot \dfrac{|D|}{\text{avgdl}}\right)}$$
+```
+Pointer 1 on "search":   [ D1,  D2,  D3 ]
+                           ▲
+Pointer 2 on "ranking":  [ D1,  D2 ]
+                           ▲
+Match found: D1. Advance both pointers.
 
-Let us define every mathematical term and constant:
-- $N$: Total number of documents in the corpus.
-- $\text{df}(q_i)$: Document frequency—the number of documents containing query term $q_i$.
-- $f(q_i, D)$: Raw term frequency ($\text{tf}$)—the count of occurrences of $q_i$ in document $D$.
-- $|D|$: Document length—the total token count of document $D$.
-- $\text{avgdl}$: Average document length across all $N$ documents in the corpus: $\text{avgdl} = \frac{1}{N}\sum_{j=1}^N |D_j|$.
-- $k_1$: Term-frequency saturation parameter ($k_1 \ge 0$). Standard starting defaults are typically set between $1.2$ and $2.0$ in common search engines, serving as empirical baselines rather than universal constants.
-- $b$: Document-length normalization parameter ($0 \le b \le 1$). Standard starting default is typically $0.75$.
+Pointer 1 on "search":   [ D1,  D2,  D3 ]
+                                ▲
+Pointer 2 on "ranking":  [ D1,  D2 ]
+                                ▲
+Match found: D2. Advance both pointers.
 
-<NotebookCallout color="cobalt" title="Defaults as Empirical Starting Points">
-The canonical defaults $k_1 \in [1.2, 1.5]$ and $b = 0.75$ originated from historical TREC benchmark evaluations on newswire and web collections. In production, these parameters are starting points, not universal settings. For short, concise documents such as product titles, e-commerce catalog items, or FAQ headings, length normalization is often dialed down ($b \approx 0.3 - 0.5$ or $b=0$) to avoid unfairly penalizing concise descriptive titles. For long technical manuals or heterogeneous corpora, higher $b$ values prevent long documents from dominating results simply by virtue of length. Production systems determine optimal $(k_1, b)$ via sweep or Bayesian optimization over held-out relevance judgments.
-</NotebookCallout>
+Pointer 2 reaches end. Intersection result: [ D1, D2 ].
+```
 
-### The Robertson-Zaragoza / Lucene Smoothed IDF Variant
-Classical Robertson-Spärck Jones IDF computes:
-$$\text{IDF}_{\text{classic}}(q) = \ln\left(\frac{N - \text{df}(q) + 0.5}{\text{df}(q) + 0.5}\right)$$
+<GoDeeper title="Accelerating Intersections with Skip Pointers">
+For long posting lists with millions of entries, linear scanning remains bottlenecked by sequential memory reads. Search engines augment posting lists with **skip pointers** placed at regular intervals of $\sqrt{L}$ elements.
 
-However, if a term appears in more than half the corpus ($\text{df} > N / 2$), the numerator becomes smaller than the denominator and the classic IDF becomes negative. To prevent common terms from penalizing document scores, modern engines (including Lucene and Elasticsearch) apply Robertson & Zaragoza's smoothed version:
+If pointer 1 is at $D12$ and pointer 2 is at $D85$, pointer 1 inspects its next skip pointer ($D90$). Because $D90 > D85$, the engine skips directly to $D90$ without decoding the intermediate documents ($D13$ through $D89$). This reduces worst-case comparisons from $O(L_1 + L_2)$ to $O(L_1 + L_2 / \sqrt{L_1})$.
+</GoDeeper>
 
-$$\text{IDF}(q) = \ln\left(1 + \frac{N - \text{df}(q) + 0.5}{\text{df}(q) + 0.5}\right)$$
+### 2. Boolean OR (List Union)
+To evaluate `"ranking OR recommendation"`, the engine performs a parallel merge scan, outputting every document that appears in at least one list without duplicates:
+- `"ranking"`: $[D1, D2]$
+- `"recommendation"`: $[D3, D4]$
+- Union result: $[D1, D2, D3, D4]$
 
-Because $1 + \frac{N - \text{df} + 0.5}{\text{df} + 0.5} \ge 1$ for all valid $\text{df} \le N$, the logarithm is guaranteed to remain strictly non-negative ($\text{IDF} \ge 0$).
-
-### Term Frequency Saturation and k1
-The core innovation of BM25 is replacing linear $\text{tf}$ with a saturating curve:
-$$\text{Saturation}(\text{tf}) = \frac{\text{tf} \cdot (k_1 + 1)}{\text{tf} + k_1}$$
-
-As $\text{tf} \to \infty$, this term approaches an asymptote of $k_1 + 1$. When $k_1 = 1.2$, the maximum multiplier any single term can ever achieve is $2.2$, regardless of whether it appears 10 times or 10,000 times.
-
-### Length Normalization and b
-BM25 scales the denominator using document length relative to the corpus average:
-$$B = 1 - b + b \cdot \left(\frac{|D|}{\text{avgdl}}\right)$$
-
-- When $|D| = \text{avgdl}$, $\frac{|D|}{\text{avgdl}} = 1.0$, so $B = 1 - b + b(1) = 1.0$ regardless of what value of $b$ is selected.
-- When a document is shorter than average ($|D| < \text{avgdl}$), $B < 1.0$, reducing the denominator and boosting the score.
-- When a document is longer than average ($|D| > \text{avgdl}$), $B > 1.0$, increasing the denominator and penalizing the score.
-- Setting $b = 0$ completely turns off length normalization ($B = 1$). Setting $b = 1$ fully penalizes documents in direct proportion to their length.
+### 3. Boolean NOT (Set Difference)
+To evaluate `"search AND NOT neural"`, the engine scans the `"search"` postings and filters out any document present in the `"neural"` posting list:
+- Candidate list (`"search"`): $[D1, D2, D3]$
+- Negation list (`"neural"`): $[D2, D3]$
+- Difference result: $[D1]$
 
 <PredictFirst
-  question="If we set parameter b = 0 in BM25, what happens when comparing a 100-word document and a 10,000-word document that both mention the query term exactly 3 times?"
+  question="If we evaluate query 'A AND B AND C', and the posting list sizes are |A| = 1,000,000, |B| = 500, and |C| = 10,000, in what order should the search engine intersect the lists to minimize CPU operations?"
   options={[
-    "The 100-word document receives a much higher score because its term density is 100x higher.",
-    "Both documents receive the exact same score for that term because length normalization is completely disabled.",
-    "The 10,000-word document receives a higher score because its total document length increases the numerator.",
-    "BM25 throws a division by zero error because the denominator collapses to zero."
+    "Intersect A with B first, then intersect the result with C.",
+    "Intersect B with C first, then intersect the small intermediate result with A.",
+    "Intersect A with C first, because larger lists contain more candidate matches.",
+    "Order does not matter because Boolean AND is mathematically commutative."
   ]}
   correctIndex={1}
-  explanation="When b = 0, the length factor B = 1 - 0 + 0 * (|D| / avgdl) = 1.0 for all documents. The denominator depends purely on tf and k1. Because both documents have tf = 3, their BM25 term scores are identical."
+  explanation="While Boolean AND is mathematically commutative, execution efficiency depends heavily on list ordering. Intersecting B (|B| = 500) and C (|C| = 10,000) produces an intermediate candidate list with at most 500 documents. Intersecting those ≤500 documents against A requires at most 500 skip-pointer lookups. Intersecting A with B first would require scanning across 1,000,000 entries."
 />
 
-## Interactive BM25 Parameter Explorer
+## The Limits of Pure Boolean Retrieval
 
-Explore the interaction between $k_1$ and $b$ below on our illustrative 4-document toy corpus.
+While Boolean matching is blazing fast, it has severe limitations for human search:
 
-<Bm25ScoringExplorer />
+1. **No Ranked Relevance**: Boolean retrieval is binary: a document either matches (1) or does not match (0). If a query matches 10,000 documents, Boolean retrieval cannot tell us which document is the most relevant.
+2. **The Feast or Famine Problem**:
+   - If a query is too specific (`"wireless noise cancelling over ear headphones travel case blue"`), a Boolean `AND` often returns 0 results (**famine**).
+   - If a query is too general (`"headphones"`), a Boolean `OR` returns 500,000 results with no ordering (**feast**).
+3. **Term Specificity Blindness**: Boolean retrieval treats all words equally. In the query `"how to fix python indentation error"`, the word `"error"` is treated as equally important as `"indentation"`, even though `"indentation"` is far more specific.
 
-## Full Worked Example: A 4-Document Toy Corpus
+To solve these problems, search systems transition from binary Boolean matching to continuous **relevance scoring**:
+- **Chapter 3**: [TF-IDF from First Principles](/docs/search-ranking-recommendations/tf-idf) introduces term frequency and inverse document frequency to score matches based on word rarity.
+- **Chapter 4**: [BM25: Term Saturation & Length Normalization](/docs/search-ranking-recommendations/bm25) introduces non-linear saturation curves and document-length normalizers that power production search engines.
 
-To verify all calculations independently, we define an illustrative toy corpus of $N = 4$ documents with a vocabulary of clean technical terms.
+## Run It Yourself: Building an Inverted Index in Pure Python
 
-### 1. The Corpus
-- **Document 1 (D1)**: `"search ranking engine"` (Length $|D_1| = 3$)
-- **Document 2 (D2)**: `"search ranking ranking neural ranking"` (Length $|D_2| = 5$)
-- **Document 3 (D3)**: `"neural search recommendation system"` (Length $|D_3| = 4$)
-- **Document 4 (D4)**: `"recommendation deep learning model"` (Length $|D_4| = 4$)
-
-Total token count = $3 + 5 + 4 + 4 = 16$.
-Average document length:
-$$\text{avgdl} = \frac{16}{4} = 4.0$$
-
-### 2. The Query & Term Statistics
-Query $Q = \text{"search ranking"}$ (terms: $q_1 = \text{"search"}$, $q_2 = \text{"ranking"}$).
-
-We evaluate document frequency ($\text{df}$) and smoothed IDF:
-- Term `"search"`: appears in D1, D2, D3 $\to \text{df} = 3$.
-  $$\text{IDF}(\text{"search"}) = \ln\left(1 + \frac{4 - 3 + 0.5}{3 + 0.5}\right) = \ln\left(1 + \frac{1.5}{3.5}\right) = \ln\left(\frac{10}{7}\right) \approx 0.3567$$
-- Term `"ranking"`: appears in D1, D2 $\to \text{df} = 2$.
-  $$\text{IDF}(\text{"ranking"}) = \ln\left(1 + \frac{4 - 2 + 0.5}{2 + 0.5}\right) = \ln\left(1 + \frac{2.5}{2.5}\right) = \ln(2) \approx 0.6931$$
-
-Notice that `"ranking"` has a higher IDF than `"search"` because it appears in fewer documents in the corpus.
-
-### 3. Step-by-Step Document Scoring (k1 = 1.2, b = 0.75)
-
-#### Document 1: Length $|D_1| = 3$ (Concise)
-Length factor $B$:
-$$B = 1 - 0.75 + 0.75 \times \left(\frac{3}{4.0}\right) = 0.25 + 0.5625 = 0.8125$$
-- Term `"search"` ($\text{tf} = 1$):
-  $$\text{Score}(\text{"search"}, D_1) = 0.3567 \times \frac{1 \times (1.2 + 1)}{1 + 1.2 \times 0.8125} = 0.3567 \times \frac{2.2}{1 + 0.975} = 0.3567 \times 1.1139 \approx 0.3973$$
-- Term `"ranking"` ($\text{tf} = 1$):
-  $$\text{Score}(\text{"ranking"}, D_1) = 0.6931 \times \frac{1 \times 2.2}{1 + 0.975} = 0.6931 \times 1.1139 \approx 0.7721$$
-- **Total BM25 Score ($D_1$)**: $0.3973 + 0.7721 = \mathbf{1.1694}$.
-
-#### Document 2: Length $|D_2| = 5$ (Verbose, Repeated Term)
-Length factor $B$:
-$$B = 1 - 0.75 + 0.75 \times \left(\frac{5}{4.0}\right) = 0.25 + 0.9375 = 1.1875$$
-- Term `"search"` ($\text{tf} = 1$):
-  $$\text{Score}(\text{"search"}, D_2) = 0.3567 \times \frac{1 \times 2.2}{1 + 1.2 \times 1.1875} = 0.3567 \times \frac{2.2}{1 + 1.425} = 0.3567 \times 0.9072 \approx 0.3236$$
-- Term `"ranking"` ($\text{tf} = 3$):
-  $$\text{Score}(\text{"ranking"}, D_2) = 0.6931 \times \frac{3 \times 2.2}{3 + 1.2 \times 1.1875} = 0.6931 \times \frac{6.6}{4.425} = 0.6931 \times 1.4915 \approx 1.0338$$
-- **Total BM25 Score ($D_2$)**: $0.3236 + 1.0338 = \mathbf{1.3574}$.
-
-Notice that even though D2 mentioned `"ranking"` 3 times as often as D1, its saturation term only grew from $1.1139$ to $1.4915$—not $3\times$. Furthermore, for `"search"`, D2 scored lower ($0.3236$ vs $0.3973$) because its extra length penalized it.
-
-#### Document 3 & Document 4
-- **Document 3**: $|D_3| = 4 == \text{avgdl} \to B = 1.0$. Contains `"search"` ($\text{tf}=1$) and zero `"ranking"`.
-  $$\text{Score}(D_3) = 0.3567 \times \frac{1 \times 2.2}{1 + 1.2 \times 1.0} = 0.3567 \times 1.0 = \mathbf{0.3567}$$
-- **Document 4**: Contains neither query term. Total score = $\mathbf{0.0000}$.
-
-Final ranked list: **$D_2$ (1.3574) > $D_1$ (1.1694) > $D_3$ (0.3567) > $D_4$ (0.0000)**.
-
-## Run It Yourself: Pure Python BM25
-
-Execute the complete BM25 calculation below directly in your browser. The outputs match our worked equations to four decimal places.
-
-<RunnableCode code={`import math
-
-def bm25_score(corpus, query, k1=1.2, b=0.75):
-    N = len(corpus)
-    avgdl = sum(len(doc) for doc in corpus) / N
-    scores = []
-    
-    print(f"Corpus size N={N}, avgdl={avgdl:.1f}")
-    for i, doc in enumerate(corpus):
-        score = 0.0
-        doc_len = len(doc)
-        B = 1.0 - b + b * (doc_len / avgdl)
-        
-        for term in query:
-            tf = doc.count(term)
-            if tf == 0:
-                continue
-            df = sum(1 for d in corpus if term in d)
-            idf = math.log(1.0 + (N - df + 0.5) / (df + 0.5))
-            tf_sat = (tf * (k1 + 1.0)) / (tf + k1 * B)
-            score += idf * tf_sat
-            
-        scores.append((f"D{i+1}", round(score, 4)))
-    return scores
-
-# Illustrative toy corpus
-corpus = [
-    ["search", "ranking", "engine"],                       # D1: len 3
-    ["search", "ranking", "ranking", "neural", "ranking"], # D2: len 5
-    ["neural", "search", "recommendation", "system"],      # D3: len 4
-    ["recommendation", "deep", "learning", "model"],       # D4: len 4
-]
-query = ["search", "ranking"]
-
-results = bm25_score(corpus, query, k1=1.2, b=0.75)
-for doc_id, score in results:
-    print(f"{doc_id} BM25 Score: {score}")
-
-# Try it: Change b to 0.0 (disable length normalization) and re-run.
-# Notice how D2's score jumps even higher because its verbose length is no longer penalized.
-`} />
-
-## Inverted Index & Query Execution in Practice
-
-In production, we do not loop over all documents sequentially. We build an inverted index with dictionary hash tables and evaluate postings lists.
+Execute the complete text normalization and inverted index implementation below. Notice how the index extracts postings and evaluates Boolean queries directly in Python.
 
 <RunnableCode code={`from collections import defaultdict
-import math
+import re
 
-class FastBM25Index:
-    def __init__(self, corpus, k1=1.2, b=0.75):
-        self.corpus = corpus
-        self.N = len(corpus)
-        self.avgdl = sum(len(d) for d in corpus) / self.N
-        self.k1 = k1
-        self.b = b
+def tokenize(text):
+    # Lowercase and extract alphanumeric tokens
+    return re.findall(r'\\b[a-z0-9]+\\b', text.lower())
+
+class InvertedIndex:
+    def __init__(self):
+        # term -> list of (doc_id, term_frequency)
+        self.postings = defaultdict(list)
+        self.doc_lengths = {}
+        self.docs = {}
+
+    def add_document(self, doc_id, text):
+        tokens = tokenize(text)
+        self.docs[doc_id] = text
+        self.doc_lengths[doc_id] = len(tokens)
         
-        # Build inverted index: term -> {doc_id: tf}
-        self.index = defaultdict(dict)
-        for doc_id, doc in enumerate(corpus):
-            for token in doc:
-                self.index[token][doc_id] = self.index[token].get(doc_id, 0) + 1
-
-    def search(self, query):
-        scores = defaultdict(float)
-        for term in query:
-            if term not in self.index:
-                continue
-            postings = self.index[term]
-            df = len(postings)
-            idf = math.log(1.0 + (self.N - df + 0.5) / (df + 0.5))
+        # Count term frequencies within this document
+        tf_counts = defaultdict(int)
+        for token in tokens:
+            tf_counts[token] += 1
             
-            for doc_id, tf in postings.items():
-                doc_len = len(self.corpus[doc_id])
-                B = 1.0 - self.b + self.b * (doc_len / self.avgdl)
-                tf_sat = (tf * (self.k1 + 1.0)) / (tf + self.k1 * B)
-                scores[doc_id] += idf * tf_sat
-                
-        # Sort descending by BM25 score
-        ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-        return [(f"D{doc_id + 1}", round(score, 4)) for doc_id, score in ranked]
+        for token, count in tf_counts.items():
+            self.postings[token].append((doc_id, count))
 
-corpus = [
-    ["search", "ranking", "engine"],
-    ["search", "ranking", "ranking", "neural", "ranking"],
-    ["neural", "search", "recommendation", "system"],
-    ["recommendation", "deep", "learning", "model"],
-]
+    def get_postings(self, term):
+        term_clean = term.lower()
+        return [doc_id for doc_id, tf in self.postings.get(term_clean, [])]
 
-index = FastBM25Index(corpus)
-ranked_docs = index.search(["search", "ranking"])
-print("Ranked Documents from Inverted Index:")
-for doc, score in ranked_docs:
-    print(f"  {doc}: {score}")
+    def boolean_and(self, term1, term2):
+        list1 = self.get_postings(term1)
+        list2 = self.get_postings(term2)
+        # Linear two-pointer intersection
+        i, j = 0, 0
+        matches = []
+        while i < len(list1) and j < len(list2):
+            if list1[i] == list2[j]:
+                matches.append(list1[i])
+                i += 1
+                j += 1
+            elif list1[i] < list2[j]:
+                i += 1
+            else:
+                j += 1
+        return matches
 
-# Try it: Query an absent term like ["quantum", "search"].
-# Observe that terms absent from the dictionary are skipped with zero overhead.
+    def boolean_or(self, term1, term2):
+        set1 = set(self.get_postings(term1))
+        set2 = set(self.get_postings(term2))
+        return sorted(list(set1 | set2))
+
+# Index sample corpus
+idx = InvertedIndex()
+idx.add_document("D1", "search ranking engine")
+idx.add_document("D2", "search ranking neural ranking")
+idx.add_document("D3", "neural search recommendation system")
+idx.add_document("D4", "recommendation deep learning model")
+
+print("Dictionary Terms:", sorted(list(idx.postings.keys())))
+print("Postings for 'ranking':", idx.postings["ranking"])
+
+# Execute Boolean Queries
+print("\\nQuery: search AND ranking")
+print("Matches:", idx.boolean_and("search", "ranking"))
+
+print("\\nQuery: ranking OR recommendation")
+print("Matches:", idx.boolean_or("ranking", "recommendation"))
 `} />
 
-## Common Problems & Production Extensions
+## When Not to Use Pure Lexical Indexing
 
-### 1. The Semantic Vocabulary Mismatch
-BM25's greatest strength is its greatest vulnerability: it matches literal terms. If a user searches for `"heart attack"` and a medical article only mentions `"myocardial infarction"`, BM25 scores the document zero. In modern search systems, BM25 operates in tandem with dense vector search in a hybrid pipeline (see the [RAG BM25 and hybrid retrieval discussion](/docs/llms-genai/rag#dense-vs-sparse-retrieval-and-bm25) for Reciprocal Rank Fusion).
-
-### 2. Multi-Field Weighting (BM25F)
-Real documents have structure: title, abstract, body, and URL slugs. A match in a product title is far more predictive than a match buried in page footer text. **BM25F** extends BM25 by combining term frequencies across fields with field-specific weights and length normalization factors before applying saturation, preventing title repetition from dominating the score.
-
-### 3. Query Expansion & Fuzzy Matching
-When users misspell terms (`"wireles headpones"`), an exact inverted index yields zero postings. Production systems layer spelling correction (Levenshtein distance automata) and query expansion (synonym injection) before index lookup.
-
-See [Databases](/docs/databases/roadmap) for indexing architectures and on-disk inverted index layouts at scale.
-
-## When Not to Use BM25
-
-| Situation | Recommended Alternative | Reason |
+| Scenario | Recommended Alternative | Core Reason |
 | :--- | :--- | :--- |
-| **Broad thematic or conceptual queries** (`"how to become healthier"`) | Dense semantic retrieval (Bi-encoders / DPR) | Thematic inquiries do not share exact keywords with high-quality answers. |
-| **Multimodal retrieval** (images, audio, video frames) | Multi-modal embeddings (CLIP, SigLIP) | Media files lack natural text tokens for inverted indexing without OCR/ASR. |
-| **High typo and phonetic variance in mobile search** | N-gram tokenization or dense vector retrieval | Exact term tokenizers miss typos; char-ngram or dense embeddings provide robust fallbacks. |
-| **Small in-memory lists (&lt;200 items)** | Linear regex scan or JavaScript `Array.filter` | Building and maintaining an inverted index adds unnecessary memory and code complexity. |
+| **Broad thematic or conceptual queries** (`"how to improve health"`) | Dense semantic retrieval (Bi-encoders / DPR) | Conceptual queries share zero literal keywords with high-quality answers. |
+| **Multimodal assets** (images, audio waveforms, video) | Multimodal embeddings (CLIP, SigLIP) | Media files lack natural text tokens for inverted indexing without upstream OCR/ASR. |
+| **High typo and phonetic variance in mobile queries** | Character n-gram tokenization or vector search | Exact token matching fails when words are misspelled (`"iphnoe case"`). |
+| **Small in-memory collections (&lt;500 items)** | Linear regex scan or JavaScript `Array.filter` | Building and maintaining an inverted index adds unnecessary memory and runtime overhead. |
 
 ## Remember
 
-| Concept | Definition | Mathematical Role |
+| Architectural Element | Definition | Systems Role |
 | :--- | :--- | :--- |
-| **Inverted Index** | Hash table mapping term tokens to posting lists | Allows sub-millisecond retrieval without scanning corpus text. |
-| **Smoothed IDF** | $\ln(1 + \frac{N - \text{df} + 0.5}{\text{df} + 0.5})$ | Rewards rare terms; guaranteed non-negative even when $\text{df} > N / 2$. |
-| **$k_1$ Parameter** | Term frequency saturation constant (typically 1.2–1.5) | Caps marginal score gain of repeated terms at $k_1 + 1$. |
-| **$b$ Parameter** | Document length normalization constant (typically 0.75) | Penalizes long documents when $b > 0$; neutral when $\vert D \vert = \text{avgdl}$. |
-| **Vocabulary Mismatch** | Inability of lexical search to recognize synonyms | Motivated the emergence of dense vector and hybrid search pipelines. |
+| **Normalization Pipeline** | Tokenization, case folding, punctuation stripping, stemming | Converts raw text into canonical dictionary terms. |
+| **Forward Index** | Mapping from document IDs to word tokens ($D \to [w]$) | Natural document representation; inefficient for search. |
+| **Inverted Index** | Mapping from vocabulary terms to posting lists ($w \to [D]$) | Enables sub-millisecond candidate retrieval over millions of documents. |
+| **Posting List** | Sorted array of document IDs and term frequencies | Enables linear merge intersections and skip-pointer lookups. |
+| **Boolean Retrieval** | Binary set logic (AND, OR, NOT) over posting lists | Fast candidate filtering; lacks ranked relevance scoring. |
 
-Next: [Ranking Evaluation Metrics](/docs/search-ranking-recommendations/ranking-evaluation-metrics) — master offline metrics (Precision@k, Recall@k, MRR, MAP, NDCG) and online experiment designs.
+Next: [TF-IDF from First Principles](/docs/search-ranking-recommendations/tf-idf) — master term frequency, inverse document frequency, and vector space relevance scoring.
 
 ## Sources
 
-- Robertson, S., & Zaragoza, H. (2009). *The Probabilistic Relevance Framework: BM25 and Beyond*. Foundations and Trends in Information Retrieval, 3(4), 333–381. [https://doi.org/10.1561/1500000019](https://doi.org/10.1561/1500000019)
-- Robertson, S. E., Walker, S., Jones, S., Hancock-Beaulieu, M. M., & Gatford, M. (1994). *Okapi at TREC-3*. Proceedings of the Third Text REtrieval Conference (TREC-3), NIST Special Publication 500-225. [https://trec.nist.gov/pubs/trec3/papers/city.ps.gz](https://trec.nist.gov/pubs/trec3/papers/city.ps.gz)
-- Manning, C. D., Raghavan, P., & Schütze, H. (2008). *Introduction to Information Retrieval*. Cambridge University Press. [https://nlp.stanford.edu/IR-book/](https://nlp.stanford.edu/IR-book/)
-- Spärck Jones, K. (1972). *A Statistical Interpretation of Term Specificity and Its Application in Retrieval*. Journal of Documentation, 28(1), 11–21. [https://doi.org/10.1108/eb026526](https://doi.org/10.1108/eb026526)
-- Trotman, A., Puurula, A., & Burgess, B. (2014). *Improvements to BM25 and Language Models Examined*. Proceedings of the 2014 Australasian Document Computing Symposium (ADCS), 58–65. [https://doi.org/10.1145/2682862.2682863](https://doi.org/10.1145/2682862.2682863)
-- Kamphuis, C., de Vries, A. P., Boytsov, L., & Lin, J. (2020). *Which BM25 Do You Mean? A Large-Scale Reproducibility Study of BM25 Variants in Lucene*. Advances in Information Retrieval (ECIR 2020), 416–430. [https://doi.org/10.1007/978-3-030-45442-5_4](https://doi.org/10.1007/978-3-030-45442-5_4)
+- Manning, C. D., Raghavan, P., & Schütze, H. (2008). *Introduction to Information Retrieval* (Chapters 1 & 2: Boolean retrieval and the inverted index). Cambridge University Press. [https://nlp.stanford.edu/IR-book/html/htmledition/boolean-retrieval-1.html](https://nlp.stanford.edu/IR-book/html/htmledition/boolean-retrieval-1.html)
+- Zobel, J., & Moffat, A. (2006). *Inverted files for text search engines*. ACM Computing Surveys (CSUR), 38(2), 6-es. [https://doi.org/10.1145/1132956.1132959](https://doi.org/10.1145/1132956.1132959)
+- Moffat, A., & Zobel, J. (1996). *Self-indexing inverted files for fast text retrieval*. ACM Transactions on Information Systems (TOIS), 14(4), 349–379. [https://doi.org/10.1145/237496.237497](https://doi.org/10.1145/237496.237497)
+- Witten, I. H., Moffat, A., & Bell, T. C. (1999). *Managing Gigabytes: Compressing and Indexing Documents and Images* (2nd ed.). Morgan Kaufmann.
+- Porter, M. F. (1980). *An algorithm for suffix stripping*. Program, 14(3), 130–137. [https://doi.org/10.1108/eb046814](https://doi.org/10.1108/eb046814)

@@ -31,7 +31,7 @@ Large-scale search and recommendation platforms typically decompose request proc
 
 ### 1. Candidate Generation (Retrieval)
 In an illustrative production setup with millions of items, candidate generation reduces the search space down to several hundred or a few thousand candidates. The primary optimization objective is **high recall**: if a truly relevant item fails to make the candidate pool, downstream models cannot score or display it. Systems typically query complementary lightweight retrieval channels in parallel:
-- **Lexical Retrieval**: Inverted indexes with BM25 score exact keyword matches, SKU lookups, and brand titles with sub-millisecond posting-list intersections.
+- **Lexical Retrieval**: Inverted indexes with TF-IDF and BM25 score exact keyword matches, SKU lookups, and brand titles with sub-millisecond posting-list intersections.
 - **Dense Vector Retrieval**: Two-tower neural encoders project users and items into a shared embedding space, executing Approximate Nearest Neighbor (ANN) search via HNSW or IVF indexes.
 - **Graph & Collaborative Filtering**: Item-to-item co-occurrence tables and user-interaction graphs ("users who viewed item $X$ also engaged with item $Y$").
 
@@ -257,7 +257,7 @@ A full multi-stage architecture introduces distributed complexity, operational o
 | **4. Re-Ranking** | Tens of items | Final display slate (5–20) | Diversity, Fairness & Freshness | Contextual Bandits, Deterministic Slates |
 | **5. Serving** | Final display slate | Formatted client payload | Responsive End-to-End Latency | Low-latency RPC gateway, CDN caching |
 
-Next: [Text Search & BM25](/docs/search-ranking-recommendations/text-search-bm25) — derive Robertson BM25 from first principles, dissect term-frequency saturation, and calculate exact document scores.
+Next: [Text Search & Inverted Indexes](/docs/search-ranking-recommendations/text-search-bm25) — master tokenization, inverted index postings, and sub-millisecond Boolean search algorithms.
 
 ## Related Topics & Further Reading
 
