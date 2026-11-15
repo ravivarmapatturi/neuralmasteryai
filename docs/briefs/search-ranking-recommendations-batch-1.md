@@ -183,3 +183,6 @@ Captured 12 screenshot contact sheets under `docs/evidence/search-ranking-recomm
 ### Limitations & Questions
 - Full static production build (`npm run build`) was omitted locally per AGENTS.md 8 GB RAM rule (available system memory 3.0 GB < 5 GB threshold) to avoid out-of-memory process aborts; CI will execute the full static build and Pagefind index.
 - No questions or blockers encountered; all requirements executed strictly per specification.
+
+### Follow-Up: Review Fixes (Batch 1 Fix 1)
+All review findings in `docs/briefs/search-ranking-recommendations-batch-1-fix-1.md` have been addressed and verified in full. See `docs/briefs/search-ranking-recommendations-batch-1-fix-1.md` for the detailed report, commit history (`0964026f` through `6d399844`), and 2×2 screenshot contact tables.
