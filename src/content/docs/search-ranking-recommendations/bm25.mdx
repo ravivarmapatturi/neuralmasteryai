@@ -58,8 +58,8 @@ $$\text{BM25}(D, Q) = \sum_{i=1}^{m} \text{IDF}(q_i) \cdot \frac{f(q_i, D) \cdot
 | Symbol | Mathematical Meaning | Typical Values &amp; Role |
 | :--- | :--- | :--- |
 | **$f(q_i, D)$** | Term frequency ($\text{tf}$): raw count of query term $q_i$ in document $D$ | Positive integer ($0, 1, 2, \dots$). |
-| **$|D|$** | Document length: total token count of document $D$ | Measured in words or subword tokens. |
-| **$\text{avgdl}$** | Average document length across all $N$ documents in the corpus | $\text{avgdl} = \frac{1}{N} \sum_{j=1}^N |D_j|$. |
+| **$\vert D \vert$** | Document length: total token count of document $D$ | Measured in words or subword tokens. |
+| **$\text{avgdl}$** | Average document length across all $N$ documents in the corpus | $\text{avgdl} = \frac{1}{N} \sum_{j=1}^N \vert D_j \vert$. |
 | **$k_1$** | Term-frequency saturation constant | Commonly set between $1.2$ and $2.0$ (Robertson &amp; Zaragoza, 2009). Caps marginal score gain. |
 | **$b$** | Document-length normalization constant | Range $[0, 1]$, commonly set to $0.75$. Controls length penalty severity. |
 | **$\text{IDF}(q_i)$** | Inverse document frequency weight of query term $q_i$ | Measures term rarity across catalog. |
@@ -146,7 +146,7 @@ To observe BM25 across an entire collection, explore the 4-document toy search e
 | Architectural Dimension | Classic TF-IDF | Okapi BM25 | Production Impact |
 | :--- | :--- | :--- | :--- |
 | **Term Frequency Growth** | Linear ($\text{tf}$) or ad-hoc logarithmic ($1 + \ln \text{tf}$) | Nonlinear saturating curve $\frac{\text{tf}(k_1 + 1)}{\text{tf} + k_1 B}$ | Prevents keyword stuffing; caps maximum single-term gain at $k_1 + 1$. |
-| **Document Length Normalization** | Raw division by length ($\text{count} / |d|$) or cosine vector norm | Flexible interpolation $B = 1 - b + b \frac{|d|}{\text{avgdl}}$ | Tunable via $b$: $b=0$ ignores length, $b=1$ scales strictly with length. |
+| **Document Length Normalization** | Raw division by length ($\text{count} / \vert d \vert$) or cosine vector norm | Flexible interpolation $B = 1 - b + b \frac{\vert d \vert}{\text{avgdl}}$ | Tunable via $b$: $b=0$ ignores length, $b=1$ scales strictly with length. |
 | **IDF Formulation** | $\ln(N / \text{df})$ or $\ln((1+N)/(1+\text{df})) + 1$ | Probabilistic smoothed $\ln\left(1 + \frac{N - \text{df} + 0.5}{\text{df} + 0.5}\right)$ | Derived from 2-Poisson odds of relevance; strictly non-negative. |
 | **Tunable Knobs** | Typically none (fixed heuristics) | $k_1$ (saturation) and $b$ (length penalty) | Hyperparameters can be tuned via grid search or Bayesian optimization. |
 | **Theoretical Origin** | Geometric Vector Space Model (Salton, 1975) | Probabilistic Relevance Framework &amp; 2-Poisson Model (Robertson, 1994) | Grounded in formal decision theory and odds of relevance. |
@@ -313,7 +313,7 @@ for doc_id, score in results:
 | BM25 Component | Formula | Architectural Role |
 | :--- | :--- | :--- |
 | **Term Frequency Saturation** | $\frac{\text{tf} \cdot (k_1 + 1)}{\text{tf} + k_1 B}$ | Flattens marginal score gains; caps contribution at $k_1 + 1$. |
-| **Length Normalization ($B$)** | $1 - b + b \cdot \left(\frac{|D|}{\text{avgdl}}\right)$ | Scales denominator: $B < 1$ boosts concise docs, $B > 1$ penalizes long docs. |
+| **Length Normalization ($B$)** | $1 - b + b \cdot \left(\frac{\vert D \vert}{\text{avgdl}}\right)$ | Scales denominator: $B < 1$ boosts concise docs, $B > 1$ penalizes long docs. |
 | **Smoothed IDF** | $\ln\left(1 + \frac{N - \text{df} + 0.5}{\text{df} + 0.5}\right)$ | Guarantees non-negative term weights even when $\text{df} > N / 2$. |
 | **$k_1$ Parameter** | Typically $1.2 - 2.0$ | Controls how rapidly saturation sets in. Higher $k_1$ behaves more like linear TF. |
 | **$b$ Parameter** | Typically $0.75$ | Controls severity of document length penalty ($b=0$ disables length penalty). |

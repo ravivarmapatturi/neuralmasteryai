@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useVizTokens, RADIUS, SPACING } from '../../theme/vizTokens';
 import { VisualizationContainer, VisualizationHeader, Slider } from '../primitives';
 import {
-  bm25Idf,
   bm25LengthNorm,
   bm25OneTermBreakdown,
   bm25TermFrequencySaturation,
