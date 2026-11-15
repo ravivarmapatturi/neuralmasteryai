@@ -7,7 +7,13 @@
 
 ## Team, lanes and skills (read first)
 
-Agents here: **Claude Code** (lead/reviewer, UX + visual quality sign-off), **Codex** (features, interview/practice engine, scripts), **agy / Antigravity** (content tracks, MDX chapters, visualizers). The user's latest instruction overrides lanes. `CLAUDE.md` and `GEMINI.md` point to this file; skills live only in `.agents/skills/` (`.agent/skills` and `.claude/skills` are symlinks).
+Agents here, in a strict hierarchy (since 2026-11-15):
+
+1. **Claude Code — CEO / principal architect.** Vision, plans in `docs/plans/`, priorities, final review, the only one who pushes to `main`.
+2. **Codex — senior engineer.** Checks each plan against the real code, records decisions in `docs/plans/<plan>-review.md`, writes exact implementation briefs for agy in `docs/briefs/` (files, steps, tests, acceptance), and reviews agy's commits before Claude's sign-off.
+3. **agy / Antigravity — implementer.** Follows the brief exactly; makes no design decisions; if a brief is unclear or wrong, stops and writes the question at the end of the brief instead of guessing.
+
+The user's latest instruction overrides this. `CLAUDE.md` and `GEMINI.md` point to this file; skills live only in `.agents/skills/` (`.agent/skills` and `.claude/skills` are symlinks).
 
 | Skill | Use it when |
 | --- | --- |
