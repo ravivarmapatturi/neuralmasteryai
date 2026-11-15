@@ -819,13 +819,13 @@
     },
     {
       "id": "gap-dist-3d-parallelism-placement",
-      "title": "When deploying 3D parallelism (Data Parallelism, Tensor Parallelism, Pipeline Parallelism) across 32 nodes with 8 H100 GPUs per node (256 GPUs total), what is the optimal hierarchical assignment of parallelism dimensions to physical interconnects (NVLink vs. InfiniBand)?",
-      "answer": "Map Tensor Parallelism strictly within the single-node 8-GPU NVLink domain (TP = 8), place Pipeline Parallelism across adjacent nodes over InfiniBand (PP = 4), and place Data Parallelism across the remaining cluster ranks (DP = 8, where 8 × 4 × 8 = 256). Tensor parallelism requires fine-grained All-Reduce collectives at every transformer layer, generating heavy inter-GPU traffic that demands high-bandwidth, low-latency intra-node interconnects (such as NVLink). Placing TP across nodes causes severe communication stalls due to inter-node network latency and bandwidth limits. Pipeline parallelism transmits only boundary activation and gradient tensors between consecutive stages at micro-batch transitions, generating point-to-point network communication that tolerates inter-node InfiniBand latencies. Data parallelism synchronizes bucketed gradients asynchronously once per iteration, overlapping communication with backward compute across the full cluster network. The trade-off is that binding TP strictly to the node boundary (maximum 8) avoids multi-node All-Reduce bottlenecks, but caps single-layer weight partitioning to eight ways.",
+      "title": "When deploying 3D parallelism (Data Parallelism, Tensor Parallelism, Pipeline Parallelism) across 32 nodes with 8 H100 GPUs per node (256 GPUs total), given a model architecture requirement of four pipeline stages, what is a feasible hierarchical assignment of parallelism dimensions to physical interconnects (NVLink vs. InfiniBand)?",
+      "answer": "Assign Tensor Parallelism within the single-node 8-GPU NVLink domain (TP = 8), Pipeline Parallelism across adjacent nodes over InfiniBand (PP = 4, satisfying the four-stage architectural requirement), and Data Parallelism across the remaining cluster ranks (DP = 256 / (8 × 4) = 8). Tensor parallelism requires fine-grained All-Reduce collectives at every transformer layer, generating heavy inter-GPU traffic that demands high-bandwidth, low-latency intra-node interconnects like NVLink. Placing TP across node boundaries introduces severe communication stalls from inter-node network latency. Pipeline parallelism transmits only boundary activation and gradient tensors between consecutive stages at micro-batch boundaries, creating point-to-point network communication that tolerates inter-node InfiniBand latencies. Data parallelism synchronizes bucketed gradients asynchronously once per iteration, overlapping communication with backward compute across the remaining ranks. The trade-off is that binding TP to the 8-GPU node boundary avoids multi-node All-Reduce bottlenecks, but caps single-layer weight partitioning to eight ways while fixing PP at 4.",
       "level": "senior",
       "keyPoints": [
-        "Assigns Tensor Parallelism strictly within the single-node 8-GPU NVLink domain to sustain high All-Reduce bandwidth.",
-        "Maps Pipeline Parallelism across adjacent nodes because point-to-point boundary tensor transfers tolerate InfiniBand latency.",
-        "Places Data Parallelism across the highest network hierarchy since gradient AllReduce overlaps with backward pass.",
+        "Assigns Tensor Parallelism within the single-node 8-GPU NVLink domain (TP = 8) to sustain high All-Reduce bandwidth.",
+        "Maps Pipeline Parallelism (PP = 4) across adjacent nodes to satisfy the four-stage architectural requirement over InfiniBand.",
+        "Places Data Parallelism across the remaining ranks (DP = 256 / (8 x 4) = 8) where gradient AllReduce overlaps with backward compute.",
         "Validates that the product of TP, PP, and DP dimensions equals total cluster GPU count (8 x 4 x 8 = 256)."
       ],
       "followUps": [
@@ -844,7 +844,7 @@
         "pre-training-engineer"
       ],
       "tradeOffs": [
-        "Mapping TP strictly to NVLink boundaries minimizes communication stalls, but caps tensor partition scale to 8 GPUs per layer."
+        "Mapping TP strictly to NVLink boundaries minimizes communication stalls, but caps tensor partition scale to 8 GPUs per layer while fixing PP at 4."
       ]
     }
   ],
@@ -1947,7 +1947,7 @@
     {
       "id": "gap-gov-model-data-lineage-dag",
       "title": "Six months after deploying a customer-facing fine-tuned model, a copyrighted dataset is ordered removed by a court. How do you trace exactly which model checkpoints, evaluation runs, and production endpoints were trained on or evaluated with that specific data subset?",
-      "answer": "Maintain a directed acyclic graph (DAG) of data and model lineage using metadata tracking tools, binding immutable dataset content hashes to training job manifests. In a compliant ML pipeline, datasets are never referenced by mutable file paths; they are versioned by cryptographic content hashes (such as SHA-256 snapshots in DVC). Every training run record logs: exact input dataset hashes, tokenizer hashes, base model commit ID, hyperparameters, and resulting checkpoint weights hash. When a data takedown occurs, the governance team queries the lineage metadata store for all runs whose input dependency graph includes the revoked dataset hash. This identifies all downstream artifact IDs, fine-tuned checkpoints, and active deployment endpoints. The identified models can then be systematically decommissioned and scheduled for retraining. The trade-off is that strict content-hash lineage tracking enables immediate blast-radius discovery and defensible legal compliance, but requires rigid data ingestion pipelines and forbids untracked manual dataset modifications.",
+      "answer": "Maintain a directed acyclic graph (DAG) of data and model lineage using metadata tracking tools, binding immutable dataset content hashes to training job manifests. In a compliant ML pipeline, datasets are never referenced by mutable file paths; they are versioned by cryptographic content hashes. Every training run record logs: exact input dataset hashes, tokenizer hashes, base model commit ID, hyperparameters, and resulting checkpoint weights hash. When a data takedown occurs, the governance team queries the lineage metadata store for all runs whose input dependency graph includes the revoked dataset hash. This identifies all downstream artifact IDs, fine-tuned checkpoints, and active deployment endpoints. The identified models can then be systematically decommissioned and scheduled for retraining. The trade-off is that strict content-hash lineage tracking enables immediate blast-radius discovery and defensible legal compliance, but requires rigid data ingestion pipelines and forbids untracked manual dataset modifications.",
       "level": "senior",
       "keyPoints": [
         "Binds training runs to immutable dataset version hashes rather than mutable file system paths.",
