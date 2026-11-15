@@ -70,8 +70,12 @@ Let us define every mathematical term and constant:
 - $f(q_i, D)$: Raw term frequency ($\text{tf}$)—the count of occurrences of $q_i$ in document $D$.
 - $|D|$: Document length—the total token count of document $D$.
 - $\text{avgdl}$: Average document length across all $N$ documents in the corpus: $\text{avgdl} = \frac{1}{N}\sum_{j=1}^N |D_j|$.
-- $k_1$: Term-frequency saturation parameter ($k_1 \ge 0$, standard default is $1.2$ or $1.5$).
-- $b$: Document-length normalization parameter ($0 \le b \le 1$, standard default is $0.75$).
+- $k_1$: Term-frequency saturation parameter ($k_1 \ge 0$). Standard starting defaults are typically set between $1.2$ and $2.0$ in common search engines, serving as empirical baselines rather than universal constants.
+- $b$: Document-length normalization parameter ($0 \le b \le 1$). Standard starting default is typically $0.75$.
+
+<NotebookCallout color="cobalt" title="Defaults as Empirical Starting Points">
+The canonical defaults $k_1 \in [1.2, 1.5]$ and $b = 0.75$ originated from historical TREC benchmark evaluations on newswire and web collections. In production, these parameters are starting points, not universal settings. For short, concise documents such as product titles, e-commerce catalog items, or FAQ headings, length normalization is often dialed down ($b \approx 0.3 - 0.5$ or $b=0$) to avoid unfairly penalizing concise descriptive titles. For long technical manuals or heterogeneous corpora, higher $b$ values prevent long documents from dominating results simply by virtue of length. Production systems determine optimal $(k_1, b)$ via sweep or Bayesian optimization over held-out relevance judgments.
+</NotebookCallout>
 
 ### The Robertson-Zaragoza / Lucene Smoothed IDF Variant
 Classical Robertson-Spärck Jones IDF computes:
@@ -310,6 +314,8 @@ Next: [Ranking Evaluation Metrics](/docs/search-ranking-recommendations/ranking-
 ## Sources
 
 - Robertson, S., & Zaragoza, H. (2009). *The Probabilistic Relevance Framework: BM25 and Beyond*. Foundations and Trends in Information Retrieval, 3(4), 333–381. [https://doi.org/10.1561/1500000019](https://doi.org/10.1561/1500000019)
-- Robertson, S. E., Walker, S., Jones, S., Hancock-Beaulieu, M. M., & Gatford, M. (1994). *Okapi at TREC-3*. Proceedings of the Third Text REtrieval Conference (TREC-3), NIST Special Publication 500-225.
+- Robertson, S. E., Walker, S., Jones, S., Hancock-Beaulieu, M. M., & Gatford, M. (1994). *Okapi at TREC-3*. Proceedings of the Third Text REtrieval Conference (TREC-3), NIST Special Publication 500-225. [https://trec.nist.gov/pubs/trec3/papers/city.ps.gz](https://trec.nist.gov/pubs/trec3/papers/city.ps.gz)
 - Manning, C. D., Raghavan, P., & Schütze, H. (2008). *Introduction to Information Retrieval*. Cambridge University Press. [https://nlp.stanford.edu/IR-book/](https://nlp.stanford.edu/IR-book/)
-- Spärck Jones, K. (1972). *A Statistical Interpretation of Term Specificity and Its Application in Retrieval*. Journal of Documentation, 28(1), 11–21.
+- Spärck Jones, K. (1972). *A Statistical Interpretation of Term Specificity and Its Application in Retrieval*. Journal of Documentation, 28(1), 11–21. [https://doi.org/10.1108/eb026526](https://doi.org/10.1108/eb026526)
+- Trotman, A., Puurula, A., & Burgess, B. (2014). *Improvements to BM25 and Language Models Examined*. Proceedings of the 2014 Australasian Document Computing Symposium (ADCS), 58–65. [https://doi.org/10.1145/2682862.2682863](https://doi.org/10.1145/2682862.2682863)
+- Kamphuis, C., de Vries, A. P., Boytsov, L., & Lin, J. (2020). *Which BM25 Do You Mean? A Large-Scale Reproducibility Study of BM25 Variants in Lucene*. Advances in Information Retrieval (ECIR 2020), 416–430. [https://doi.org/10.1007/978-3-030-45442-5_4](https://doi.org/10.1007/978-3-030-45442-5_4)
