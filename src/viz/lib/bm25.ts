@@ -42,6 +42,36 @@ export function bm25LengthNorm(
   return 1 - b + b * (docLength / avgDocLength);
 }
 
+/** One-term BM25 calculation breakdown for interactive visualizers and test fixtures. */
+export interface Bm25OneTermResult {
+  idf: number;
+  tfFactor: number;
+  score: number;
+}
+
+export function bm25OneTermBreakdown(
+  tf: number,
+  docLength: number,
+  avgDocLength: number,
+  df: number,
+  N: number,
+  k1: number = BM25_DEFAULT_K1,
+  b: number = BM25_DEFAULT_B,
+): Bm25OneTermResult {
+  const idf = bm25Idf(df, N);
+  if (tf <= 0) {
+    return { idf, tfFactor: 0, score: 0 };
+  }
+  const lenNorm = bm25LengthNorm(docLength, avgDocLength, b);
+  const denom = tf + k1 * lenNorm;
+  const tfFactor = denom > 0 ? (tf * (k1 + 1)) / denom : 0;
+  return {
+    idf,
+    tfFactor,
+    score: idf * tfFactor,
+  };
+}
+
 /** Full Robertson / Okapi BM25 score for a single term in a document:
  * score(t, D) = IDF(t) * [tf * (k1 + 1)] / [tf + k1 * (1 - b + b * (|D| / avgdl))] */
 export function bm25TermScore(

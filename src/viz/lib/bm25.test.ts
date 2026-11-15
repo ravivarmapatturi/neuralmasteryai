@@ -4,6 +4,7 @@ import {
   BM25_DEFAULT_K1,
   bm25Idf,
   bm25LengthNorm,
+  bm25OneTermBreakdown,
   bm25Score,
   bm25TermFrequencySaturation,
   bm25TermScore,
@@ -101,6 +102,57 @@ describe('bm25TermScore', () => {
 
   it('returns 0 when tf is 0', () => {
     expect(bm25TermScore(0, 3, 4, 3, 4)).toBe(0);
+  });
+});
+
+describe('BM25 calculator fixture per brief requirement 5', () => {
+  // N=1000, df=100, avgdl=100, tf=3, docLength=100, k1=1.2, b=0.75
+  // Robertson/Lucene smoothed IDF variant: ln(1 + (N - df + 0.5) / (df + 0.5))
+  const N = 1000;
+  const df = 100;
+  const avgdl = 100;
+  const tf = 3;
+  const docLength = 100;
+  const k1 = 1.2;
+  const b = 0.75;
+
+  it('matches exact fixture values: IDF 2.299, TF factor 1.571, score 3.612', () => {
+    const res = bm25OneTermBreakdown(tf, docLength, avgdl, df, N, k1, b);
+
+    // Exact Robertson/Lucene smoothed IDF: ln(1 + 900.5 / 100.5) = ln(9.960199) approx 2.298602
+    expect(res.idf).toBeCloseTo(2.2986, 4);
+    expect(Math.round(res.idf * 1000) / 1000).toBe(2.299);
+
+    // TF factor: (3 * 2.2) / (3 + 1.2 * 1.0) = 6.6 / 4.2 approx 1.571428
+    expect(res.tfFactor).toBeCloseTo(1.5714, 4);
+    expect(Math.round(res.tfFactor * 1000) / 1000).toBe(1.571);
+
+    // Total score: 2.298602 * 1.571428 approx 3.612089
+    expect(res.score).toBeCloseTo(3.6121, 3);
+    expect(Math.round(res.score * 1000) / 1000).toBe(3.612);
+  });
+
+  it('demonstrates diminishing returns when tf increases 10x from 3 to 30', () => {
+    const at3 = bm25OneTermBreakdown(3, docLength, avgdl, df, N, k1, b);
+    const at30 = bm25OneTermBreakdown(30, docLength, avgdl, df, N, k1, b);
+
+    // TF increased 10x, but score only increases from ~3.61 to ~4.85 (< 1.35x), not 10x
+    expect(at30.score).toBeGreaterThan(at3.score);
+    expect(at30.score).toBeLessThan(at3.score * 1.5);
+  });
+
+  it('penalizes verbose documents when doc length increases from 100 to 500 (b=0.75)', () => {
+    const normalDoc = bm25OneTermBreakdown(tf, 100, avgdl, df, N, k1, b);
+    const longDoc = bm25OneTermBreakdown(tf, 500, avgdl, df, N, k1, b);
+
+    expect(longDoc.score).toBeLessThan(normalDoc.score);
+  });
+
+  it('disables document length penalty when b=0', () => {
+    const normalDoc = bm25OneTermBreakdown(tf, 100, avgdl, df, N, k1, 0.0);
+    const longDoc = bm25OneTermBreakdown(tf, 500, avgdl, df, N, k1, 0.0);
+
+    expect(longDoc.score).toBeCloseTo(normalDoc.score, 6);
   });
 });
 
