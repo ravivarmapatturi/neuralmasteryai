@@ -73,7 +73,7 @@ export default function SemanticHybridSearchDiagram() {
       <div role="group" aria-label="Reciprocal Rank Fusion Hybrid Search Explorer">
         <VisualizationHeader
           title="Reciprocal Rank Fusion (RRF) Interactive Simulator"
-          subtitle="Observe how lexical keyword precision and dense embedding semantics combine through reciprocal rank position"
+          description="Observe how lexical keyword precision and dense embedding semantics combine through reciprocal rank position"
         />
 
         {/* Controls Row */}
@@ -285,9 +285,9 @@ export default function SemanticHybridSearchDiagram() {
               style={{
                 fontSize: 13,
                 fontWeight: 700,
-                color: t.accentSuccess,
+                color: t.accentTeal,
                 marginBottom: SPACING.xs,
-                borderBottom: `2px solid ${t.accentSuccess}`,
+                borderBottom: `2px solid ${t.accentTeal}`,
                 paddingBottom: 4,
               }}
             >
@@ -304,13 +304,13 @@ export default function SemanticHybridSearchDiagram() {
                     style={{
                       padding: '6px 8px',
                       borderRadius: RADIUS.sm,
-                      border: `1px solid ${isHovered ? t.accentSuccess : t.border}`,
-                      background: isHovered ? `${t.accentSuccess}15` : t.surface,
+                      border: `1px solid ${isHovered ? t.accentTeal : t.border}`,
+                      background: isHovered ? `${t.accentTeal}15` : t.surface,
                       transition: 'all 0.15s ease',
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontWeight: 800, fontSize: 13, color: t.accentSuccess }}>
+                      <span style={{ fontWeight: 800, fontSize: 13, color: t.accentTeal }}>
                         #{doc.fusedRank} {doc.id}
                       </span>
                       <span

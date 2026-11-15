@@ -1,0 +1,400 @@
+---
+title: "Ranking Fundamentals & Link Analysis"
+sidebar_position: 5
+description: "Formulate ranking scoring functions, structure multi-modal feature families, correct for position bias, and derive PageRank on directed graphs."
+---
+
+import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PageRankVisualizer from '../../../viz/diagrams/PageRankVisualizer';
+
+# Ranking Fundamentals & Link Analysis
+
+<ELI5>
+Imagine a university admissions office reviewing hundreds of applicants. The committee does not just read each student's personal essay (text keyword match). They also look at standardized test scores, letters of recommendation from recognized professors (link authority / PageRank), whether grades improved over time (freshness), and whether earlier admissions officers spent more time reading applications at the top of the stack simply because they were fresh and awake in the morning (position bias). Ranking models combine these diverse signals into a single score while mathematically removing display-order unfairness.
+</ELI5>
+
+## What a Ranker Scores
+
+In search and recommendation architectures, candidate generation reduces a catalog of millions of items down to several hundred viable candidates. The ranking stage then evaluates this bounded candidate pool with an expressive scoring function:
+
+$$s(q, d, u, c) = f_{\boldsymbol{\theta}}\left(\mathbf{x}(q, d, u, c)\right)$$
+
+Where:
+- $q$ is the user's explicit query (or empty in unprompted feed recommendations).
+- $d$ is a candidate document or item from the catalog.
+- $u$ represents the user profile, historical interaction sequence, and demographic segment.
+- $c$ encapsulates real-time session context (client device, geohash location, time of day, network connection type).
+- $\mathbf{x}(\cdot) \in \mathbb{R}^D$ is the synthesized feature vector.
+- $f_{\boldsymbol{\theta}}$ is a parameterized scoring model—traditionally a Gradient Boosted Decision Tree (LightGBM/XGBoost) or a Deep Learning Recommendation Model (DLRM).
+
+The scalar output $s \in \mathbb{R}$ represents the predicted utility, expected engagement rate, or calibrated conversion probability: $\hat{y} = P(\text{click} \mid q, d, u, c)$.
+
+## The Five Feature Families
+
+High-performance ranking systems decompose feature engineering into five complementary families to capture both static item authority and dynamic query-context interactions:
+
+```
+                            Feature Space x(q, d, u, c)
+                                        │
+     ┌──────────────────┬───────────────┴───────────────┬──────────────────┐
+     ▼                  ▼                               ▼                  ▼
+┌───────────┐    ┌─────────────┐                 ┌─────────────┐    ┌─────────────┐
+│  Query    │    │  Document   │                 │ Interaction │    │ User/Context│
+│  Features │    │  Features   │                 │ (q ⨯ d)     │    │ Features    │
+└─────┬─────┘    └──────┬──────┘                 └──────┬──────┘    └──────┬──────┘
+      │                 │                               │                  │
+      ▼                 ▼                               ▼                  ▼
+• Length/Tokens   • Static Quality                • BM25 Score       • Dwell History
+• Intent Category • PageRank Authority            • Cosine Sim       • Geohash Match
+• Click Entropy   • Document Age / Half-Life      • Exact Title Match• Device Class
+• Historical CTR  • In-Stock Inventory Ratio     • Entity Overlap   • Time of Day
+```
+
+### 1. Query Features
+Static and historical properties of the query string itself:
+- **Lexical Properties**: Token count, character length, presence of numeric digits, stop-word ratio.
+- **Intent Categorization**: Predicted query intent (navigational, informational, transactional) from a lightweight classifier.
+- **Historical Ambiguity**: Query click entropy $H(q) = -\sum_{d} P(d \mid q) \log_2 P(d \mid q)$. A high entropy indicates an ambiguous query (such as `"python"` which might refer to the programming language or the snake), demanding diversified result slates.
+
+### 2. Document Features
+Query-independent properties reflecting intrinsic item quality, authority, and freshness:
+- **Structural Link Authority**: PageRank, HITS authority score, or internal knowledge graph degree centrality.
+- **Freshness & Decay**: Elapsed hours since publication $t - t_{\text{pub}}$, transformed via exponential half-life decay: $e^{-\lambda (t - t_{\text{pub}})}$.
+- **Catalog Health**: Seller rating, refund rate, historical view count, in-stock inventory count.
+
+### 3. Query-Document Interaction Features
+Signals measuring how closely document $d$ satisfies query $q$:
+- **Text Match Scores**: Okapi BM25 and TF-IDF calculated over distinct document zones (title, headings, anchor text, body).
+- **Dense Semantic Similarities**: Cosine similarity $\frac{\mathbf{v}_q \cdot \mathbf{v}_d}{\|\mathbf{v}_q\| \|\mathbf{v}_d\|}$ across multi-modal embedding spaces.
+- **Field Matching Ratios**: Exact phrase match boolean flags in the page title or URL slug.
+
+### 4. User Features
+User-specific historical preferences and affinities:
+- **Category Preferences**: Historical engagement distribution across topic verticals over the past 30 days.
+- **Price Sensitivity**: Median price of purchased or clicked items relative to the category mean.
+- **Interaction Recency**: Short-term session interactions (last 5 clicked categories in the active session).
+
+### 5. Contextual Features
+Environmental parameters at the exact moment of request dispatch:
+- **Temporal Signals**: Hour of the day, day of the week, holiday indicators.
+- **Client Modality**: Mobile viewport vs. desktop browser, connection bandwidth (5G vs. low-bandwidth cellular).
+- **Geolocation**: Distance between user GPS coordinates and physical merchant coordinates.
+
+## Logging-Time Feature Correctness & Data Leakage
+
+The most insidious failure in machine learning ranking systems is **data leakage through temporal feature pollution**.
+
+<NotebookCallout color="amber" title="The Point-in-Time Logging Invariant">
+When training an offline ranking model on historical interaction logs from timestamp $T_0$, every input feature must reflect the exact state of knowledge available at $T_0$. Never populate features using subsequent data aggregated at the end of the day or offline during dataset generation.
+</NotebookCallout>
+
+### The Data Leakage Trap
+Consider a document feature: `historical_30d_click_count`.
+- **The Bug**: An offline ETL pipeline queries the production database table at midnight, computing the total clicks accrued by document $d$ over the last 30 days, and joins this scalar onto all search logs from that day.
+- **The Consequence**: A document that received 10,000 clicks *after* 6:00 PM will have a massive click count attached to its 9:00 AM impression log. The offline model observes this enormous feature value and learns that whenever this feature is high, users click the item. In offline validation, the model achieves near-perfect NDCG.
+- **The Production Disaster**: When deployed live, newly published documents have zero historical clicks at 9:00 AM. The model starves them of traffic, causing severe performance collapse.
+
+Production platforms prevent temporal leakage by deploying **Feature Stores** (such as Feast, Tecton, or Hopsworks) that enforce point-in-time joins, or by logging the entire computed feature vector $\mathbf{x}$ inline at the exact millisecond the ranking request executes.
+
+## Click Feedback & Position Bias
+
+Supervised ranking models require training labels. While editorial human judgments (e.g. assigning grades 0 to 4) provide clean ground truth, they are expensive, slow to collect, and fail to reflect personalized tastes or long-tail queries. Consequently, ranking systems rely on implicit user feedback: clicks, conversions, and dwell time.
+
+However, implicit feedback suffers from severe **position bias**.
+
+<PredictFirst
+  question="If an eye-tracking experiment reveals that document #1 receives 40% of all user clicks while document #5 receives only 4%, does this prove document #1 is 10 times more relevant?"
+  options={[
+    "No. Users preferentially look at higher positions regardless of content quality (examination bias); a click requires both examination and relevance.",
+    "Yes. Modern users scan the entire page before clicking, so clicks directly reflect intrinsic document quality.",
+    "No, but only because document #5 might have a slower network loading time.",
+    "Yes, because ranking algorithms always sort documents perfectly."
+  ]}
+  correctIndex={0}
+  explanation="According to the Examination Hypothesis (Craswell et al., 2008), a user clicks document d at position k if and only if two independent events occur: the user examines position k, and the document is relevant given examination: P(click) = P(examine | k) * P(relevant | d). An irrelevant item placed at rank 1 receives substantial clicks purely due to high examination probability."
+/>
+
+### The Examination Hypothesis
+Formally, let $C_i \in \{0, 1\}$ denote a click on position $i$, and $E_i \in \{0, 1\}$ denote whether the user visually examines position $i$:
+
+$$P(C_i = 1 \mid d, i) = P(E_i = 1 \mid i) \cdot P(R = 1 \mid d)$$
+
+Where:
+- $p_i = P(E_i = 1 \mid i)$ is the **examination propensity** at rank $i$.
+- $r(d) = P(R = 1 \mid d)$ is the intrinsic document relevance.
+
+If we train a machine learning model directly on raw click logs without position correction, the model learns to reproduce historical presentation bias rather than discovering true relevance.
+
+### Counterfactual Risk Minimization via Inverse Propensity Scoring (IPS)
+Joachims, Swaminathan, and Schnabel (2017) demonstrated that we can form an unbiased empirical risk estimator using **Inverse Propensity Scoring (IPS)**. By weighting each logged click inversely by the examination propensity of the slot where the item appeared:
+
+$$\hat{R}_{\text{IPS}}(f) = \sum_{(q, d, i) \in \mathcal{D}} \frac{c_{q, d, i}}{p_i} \cdot \ell\left(f(q, d), y_{q, d}\right)$$
+
+Where $c_{q, d, i} \in \{0, 1\}$ is the observed click and $p_i$ is the examination propensity at position $i$.
+
+Because $\mathbb{E}_{E_i}[c_{q, d, i} / p_i] = P(R = 1 \mid d)$, the expected loss equals the true uncorrupted full-information loss. For online exploration strategies that estimate propensities and discover fresh items without degrading immediate user experience, search architectures deploy bandit algorithms—see our dedicated guide on [Multi-Armed & Contextual Bandits](/docs/reinforcement-learning/bandits).
+
+## Link Analysis & The PageRank Algorithm
+
+In open web search, malicious publishers actively manipulate textual content and keyword density to inflate BM25 scores (term spamming). To identify authoritative sources, Google's founders (Brin & Page, 1998; Page et al., 1999) introduced link analysis via **PageRank**.
+
+PageRank models the hyperlink topology of the World Wide Web as a directed graph $G = (V, E)$, where web pages are vertices and hyperlinks are directed edges.
+
+### The Random Surfer Model
+Imagine a web surfer browsing the internet. With probability $d$ (the **damping factor**, typically $0.85$), the surfer clicks an outgoing hyperlink on the current page chosen uniformly at random. With probability $1 - d$, the surfer grows bored, abandons the current chain, and teleports to a completely random web page chosen uniformly across the entire graph.
+
+The PageRank of a page $u$ is the stationary probability that the random surfer is visiting page $u$ at any given moment:
+
+$$PR(u) = \frac{1 - d}{N} + d \sum_{v \in \text{In}(u)} \frac{PR(v)}{L(v)}$$
+
+Where:
+- $N = |V|$ is the total number of pages in the corpus.
+- $\text{In}(u) = \{v \in V \mid (v, u) \in E\}$ is the set of pages with hyperlinks pointing to $u$.
+- $L(v) = \text{out-degree}(v)$ is the total number of outgoing hyperlinks leaving page $v$.
+- $\frac{1 - d}{N}$ represents the uniform random teleportation mass.
+
+### Dangling Nodes & Rank Sinks
+Two structural graph patterns break naive link propagation:
+1. **Dangling Nodes**: Pages with zero outgoing links ($L(v) = 0$, such as PDF files or dead-end pages). If unaddressed, probability mass enters dangling nodes and vanishes, causing the sum of PageRank across the graph to decay toward zero.
+   - **Fix**: Treat dangling nodes as having virtual links to every node in the graph, distributing their mass $(d/N) \cdot PR(v)$ uniformly across all $N$ pages.
+2. **Spider Traps / Rank Sinks**: A group of pages that link only to each other with no outbound links to the rest of the web. Without teleportation, probability mass endlessly loops inside the trap, absorbing 100% of the graph's mass.
+   - **Fix**: The uniform teleportation term $\frac{1 - d}{N}$ guarantees an escape route from any closed subgraph.
+
+<GoDeeper title="Go deeper: Convergence proof and the Perron-Frobenius Theorem">
+Let $\mathbf{P} \in \mathbb{R}^{N \times N}$ denote the row-stochastic hyperlink transition matrix, where $P_{v, u} = 1/L(v)$ if edge $v \to u$ exists, and $P_{v, u} = 1/N$ if $L(v) = 0$.
+
+With damping factor $d$, the modified Google transition matrix $\mathbf{G}$ is:
+$$\mathbf{G} = d \mathbf{P} + \frac{1 - d}{N} \mathbf{E}$$
+Where $\mathbf{E} = \mathbf{1}_{N \times N}$ is the all-ones matrix.
+
+Because $0 < d < 1$, every entry in $\mathbf{G}$ is strictly positive: $G_{v, u} \ge \frac{1 - d}{N} > 0$. By the **Perron-Frobenius Theorem**:
+1. $\mathbf{G}$ is a strictly positive, irreducible, and aperiodic Markov transition matrix.
+2. The largest eigenvalue is unique and equals $\lambda_1 = 1$.
+3. There exists a unique stationary probability distribution vector $\boldsymbol{\pi} \in \mathbb{R}^N$ satisfying $\boldsymbol{\pi} \mathbf{G} = \boldsymbol{\pi}$ with $\sum_i \pi_i = 1$.
+4. Power iteration $\mathbf{p}^{(t+1)} = \mathbf{p}^{(t)} \mathbf{G}$ converges from any initial probability vector $\mathbf{p}^{(0)}$ at a geometric rate governed by the second eigenvalue:
+$$\|\mathbf{p}^{(t)} - \boldsymbol{\pi}\|_1 \le C \cdot |\lambda_2|^t \le C \cdot d^t$$
+
+With $d = 0.85$, each iteration contracts error by at least $15\%$, requiring only 20 to 30 iterations for high-precision convergence across millions of nodes.
+</GoDeeper>
+
+## A Full Worked Example: 4-Node Directed Graph
+
+Let us trace PageRank power iteration on a concrete 4-node directed graph $\{A, B, C, D\}$ with identical numbers across prose, visualizer, and code:
+
+```
+         ┌────────────────────────┐
+   1/2   │                        ▼
+ ┌───────┴──────┐      1/2      ┌──────────────┐
+ │    Node A    ├──────────────►│    Node B    │
+ └───────▲──────┘               └──────┬───────┘
+         │                             │
+         │ 1                           │ 1
+         │ (curved back)               │
+ ┌───────┴──────┐               ┌──────▼───────┐
+ │    Node C    │◄──────────────┤    Node D    │
+ └───────▲──────┘       1       └──────────────┘
+         │
+         │ 1
+ ┌───────┴──────┐
+ │    Node D    │ (Wait: D -> C is edge; D has in-degree 0)
+ └──────────────┘
+```
+
+**Graph Specifications**:
+- Nodes: $N = 4$ ($A, B, C, D$)
+- Directed Edges:
+  - $A \to B$ ($1/2$ mass of $A$), $A \to C$ ($1/2$ mass of $A$) $\implies L(A) = 2$
+  - $B \to C$ (all mass of $B$) $\implies L(B) = 1$
+  - $C \to A$ (all mass of $C$) $\implies L(C) = 1$
+  - $D \to C$ (all mass of $D$) $\implies L(D) = 1$
+- In-Degrees: $A$ receives from $C$; $B$ receives from $A$; $C$ receives from $A, B, D$; $D$ receives from none ($\text{In}(D) = \emptyset$).
+- Parameters: Damping factor $d = 0.85$, base teleport $\frac{1 - d}{N} = \frac{0.15}{4} = \mathbf{0.0375}$.
+
+### Step 0: Uniform Initialization
+Every node begins with equal probability mass:
+$$p_0(A) = 0.2500, \quad p_0(B) = 0.2500, \quad p_0(C) = 0.2500, \quad p_0(D) = 0.2500$$
+
+### Step 1: First Power Iteration
+- **Node A**:
+  $$p_1(A) = 0.0375 + 0.85 \times \left(\frac{p_0(C)}{L(C)}\right) = 0.0375 + 0.85 \times \frac{0.25}{1} = 0.0375 + 0.2125 = \mathbf{0.2500}$$
+- **Node B**:
+  $$p_1(B) = 0.0375 + 0.85 \times \left(\frac{p_0(A)}{L(A)}\right) = 0.0375 + 0.85 \times \frac{0.25}{2} = 0.0375 + 0.10625 = \mathbf{0.1438}$$
+- **Node C**:
+  $$p_1(C) = 0.0375 + 0.85 \times \left(\frac{p_0(A)}{2} + \frac{p_0(B)}{1} + \frac{p_0(D)}{1}\right)$$
+  $$p_1(C) = 0.0375 + 0.85 \times (0.125 + 0.25 + 0.25) = 0.0375 + 0.85 \times 0.625 = 0.0375 + 0.53125 = \mathbf{0.5688}$$
+- **Node D**:
+  Since $\text{In}(D) = \emptyset$, node $D$ receives zero link mass:
+  $$p_1(D) = 0.0375 + 0.85 \times 0 = \mathbf{0.0375}$$
+
+Total mass sum at Step 1: $0.2500 + 0.14375 + 0.56875 + 0.0375 = \mathbf{1.0000}$.
+
+### Converged Steady-State Solution
+Solving the linear balance equations:
+1. $PR(D) = \mathbf{0.0375}$
+2. $PR(A) = 0.0375 + 0.85 \cdot PR(C)$
+3. $PR(B) = 0.0375 + 0.425 \cdot PR(A)$
+4. $PR(C) = 0.0375 + 0.85 \cdot (0.5 \cdot PR(A) + PR(B) + PR(D))$
+
+Substituting yields the exact steady-state probability vector:
+- $PR(A) \approx \mathbf{0.3725}$
+- $PR(B) \approx \mathbf{0.1958}$
+- $PR(C) \approx \mathbf{0.3941}$
+- $PR(D) = \mathbf{0.0375}$
+
+Node $C$ ranks highest ($0.3941$) because it aggregates inbound links from three distinct nodes ($A, B, D$). Node $A$ ranks second ($0.3725$) because it receives the entirety of $C$'s concentrated link authority. Node $D$ finishes with lowest authority ($0.0375$) because no node links to it.
+
+## The Shape of It: Interactive PageRank Visualizer
+
+Interact with the directed graph below. Step through power iteration steps or jump to the converged steady-state. Observe how altering the damping factor $d$ redistributes probability mass.
+
+<PageRankVisualizer />
+
+### Run It Yourself: Python PageRank Solver
+
+Execute power iteration on our exact 4-node graph using NumPy. Observe how the numerical outputs match our derived values across all steps.
+
+<RunnableCode code={`import numpy as np
+
+# Directed graph transition matrix M (4x4)
+# Column v represents out-links from v; Row u represents in-links to u
+# Nodes: 0:A, 1:B, 2:C, 3:D
+# Edges: A->B (0.5), A->C (0.5); B->C (1.0); C->A (1.0); D->C (1.0)
+M = np.array([
+    [0.0, 0.0, 1.0, 0.0],  # In-links to A (from C)
+    [0.5, 0.0, 0.0, 0.0],  # In-links to B (from A)
+    [0.5, 1.0, 0.0, 1.0],  # In-links to C (from A, B, D)
+    [0.0, 0.0, 0.0, 0.0],  # In-links to D (none)
+], dtype=float)
+
+d = 0.85
+N = 4
+teleport = (1.0 - d) / N
+
+p = np.array([0.25, 0.25, 0.25, 0.25], dtype=float)
+print("Step 0 (Uniform):", np.round(p, 4))
+
+# Step 1
+p1 = teleport + d * M.dot(p)
+print("Step 1:", np.round(p1, 4), f"(B={p1[1]:.5f}, C={p1[2]:.5f})")
+
+# Run to convergence
+tolerance = 1e-6
+for iteration in range(2, 50):
+    p_next = teleport + d * M.dot(p1)
+    if np.max(np.abs(p_next - p1)) < tolerance:
+        print(f"Converged at iteration {iteration}:")
+        break
+    p1 = p_next
+
+for node, name in enumerate(["A", "B", "C", "D"]):
+    print(f"  PageRank({name}) = {p1[node]:.4f}")
+
+# Try it: Add an edge from C to D (change M[3, 2] = 0.5 and M[0, 2] = 0.5)
+# Observe how PageRank(D) increases from 0.0375 to over 0.15.
+`} />
+
+## Simulating Inverse Propensity Scoring (IPS) for Clicks
+
+To see how position bias corrupts naive CTR ranking and how IPS corrects it, run the simulation below.
+
+<RunnableCode code={`import numpy as np
+
+# True underlying document relevance: P(Relevant | d)
+true_relevance = {
+    "Doc_1": 0.10,  # Mediocre document
+    "Doc_2": 0.80,  # Outstanding document
+    "Doc_3": 0.30,  # Average document
+}
+
+# Examination propensities by displayed position (steep attention decay)
+propensities = [0.80, 0.35, 0.12]  # Position 1, 2, 3
+
+# Historical presentation: Doc_1 was placed at slot 1, Doc_2 at slot 2, Doc_3 at slot 3
+slate = ["Doc_1", "Doc_2", "Doc_3"]
+
+# Simulate 10,000 user impressions
+np.random.seed(42)
+n_impressions = 10000
+
+clicks = {doc: 0 for doc in slate}
+ips_weighted_clicks = {doc: 0.0 for doc in slate}
+
+for _ in range(n_impressions):
+    for pos, doc in enumerate(slate):
+        p_exam = propensities[pos]
+        p_rel = true_relevance[doc]
+        
+        # User examines slot with probability p_exam
+        examined = np.random.rand() < p_exam
+        # If examined, user clicks if relevant
+        clicked = examined and (np.random.rand() < p_rel)
+        
+        if clicked:
+            clicks[doc] += 1
+            # IPS weighting: divide by examination propensity
+            ips_weighted_clicks[doc] += 1.0 / p_exam
+
+print("--- Naive Observed Click Counts (Misleading) ---")
+for doc in slate:
+    raw_ctr = clicks[doc] / n_impressions
+    print(f"  {doc}: Clicks = {clicks[doc]} | Raw CTR = {raw_ctr:.4f}")
+
+print("\\n--- IPS-Corrected Relevance Estimates (Unbiased) ---")
+for doc in slate:
+    ips_est = ips_weighted_clicks[doc] / n_impressions
+    print(f"  {doc}: Estimated Rel = {ips_est:.4f} (True Rel = {true_relevance[doc]:.2f})")
+
+# Try it: Notice how Naive CTR ranks Doc_1 close to Doc_2, whereas IPS recovers
+# the true 8x gap between Doc_2 (0.80) and Doc_1 (0.10).
+`} />
+
+## When Link Analysis Fails as a Relevance Signal
+
+While PageRank serves as an effective global quality prior in hyperlinked corpora, relying on it as a primary relevance feature causes critical failures:
+1. **Query Independence**: PageRank measures global domain prominence, not query satisfaction. Ranking high-PageRank root domains (such as `wikipedia.org` or `nytimes.com`) above specific technical documents degrades relevance for precise informational queries.
+2. **E-Commerce & Private Catalogs**: Product catalogs (e.g. Amazon or retail stores) have no organic hyperlink graphs. Products do not link to competing products. Relying on link analysis is meaningless; item graphs must instead be constructed from user co-purchase sessions ("customers who viewed $X$ also purchased $Y$").
+3. **Commercial Link Farms & SEO Manipulation**: Spammers construct circular link networks to artificially inflate PageRank. Production search engines rely heavily on TrustRank (Gyöngyi et al., 2004)—biasing the random teleport vector $\mathbf{v}$ toward known reputable seed domains.
+
+## Common Problems & Fixes
+
+| Failure Mode | Root Cause | Engineering Fix |
+| :--- | :--- | :--- |
+| **Model over-indexes on historical high-CTR clickbait** | Training on raw binary click logs without correcting for position and selection bias. | Apply Inverse Propensity Scoring (IPS) with randomized exploration traffic or run interleaving evaluation slates. |
+| **Severe training/serving feature skew** | Offline training features computed using daily aggregates rather than exact request-time state. | Deploy point-in-time feature stores; record the computed feature vector inline during production inference. |
+| **PageRank mass leaks to zero during power iteration** | Graph contains dangling nodes with zero outgoing links ($L(v) = 0$). | Redistribute dangling node probability mass $(d/N) \cdot PR(v)$ uniformly across all $N$ nodes at each iteration step. |
+| **Newly added catalog items starve of traffic** | Zero logged historical clicks causes ranker to rank items at the bottom of the funnel. | Implement $\epsilon$-greedy or Thompson Sampling exploration bands to allocate guaranteed baseline impressions. |
+
+## When Not to Use Complex Ranking
+
+| Situation | Recommended Alternative | Reason |
+| :--- | :--- | :--- |
+| **Chronological notification feeds** | Reverse-Chronological Order ($O(1)$) | Users expect strict temporal ordering; non-linear ranking confuses mental models of message arrival. |
+| **Strict business rule dispatch** (e.g. emergency alerts, legal subpoenas) | Deterministic Filter / Boolean Logic | Algorithmic ranking introduces non-deterministic edge cases and potential compliance violations. |
+| **Static documents in unlinked corpora** | Pure BM25 + Dense RRF | Without a genuine user citation graph, synthetic graph link metrics introduce arbitrary ranking noise. |
+| **Cold-start platforms with $<1{,}000$ daily queries** | Rule-Based Scoring / Heuristics | Insufficient click volume to fit unbiased IPS propensities or multi-feature boosted trees without severe overfitting. |
+
+## Remember
+
+| Concept | Formulation | Primary Strength | Limitation |
+| :--- | :--- | :--- | :--- |
+| **Pointwise Ranker** | $s = f(\mathbf{x}_{q, d, u, c})$ | Evaluates arbitrary multi-modal feature combinations | Fails to model document competition within a slate. |
+| **Position Bias** | $P(\text{click}) = P(\text{exam} \mid k) \cdot P(\text{rel})$ | Identifies why top slots receive disproportionate clicks | Uncorrected clicks severely distort model training. |
+| **IPS Unbiasing** | $\hat{R} = \sum \frac{c_i}{p_i} \ell(f(x), y)$ | Provides mathematically unbiased offline risk estimates | High variance when examination propensities $p_i$ are tiny. |
+| **Point-in-Time Join** | Features locked to $t_{\text{request}}$ | Prevents catastrophic offline data leakage | Requires immutable feature logging infrastructure. |
+| **PageRank** | $PR(u) = \frac{1-d}{N} + d \sum \frac{PR(v)}{L(v)}$ | Query-independent measure of structural authority | Ineffective in non-hyperlinked corpora (e-commerce). |
+| **Dangling Nodes** | Out-degree $L(v) = 0$ | Fixed by uniform virtual link redistribution | Without fix, total graph probability decays to 0. |
+
+Next: [Learning to Rank](/docs/search-ranking-recommendations/learning-to-rank) — explore how pointwise, pairwise, and listwise objective functions optimize ranked orderings directly, and derive LambdaRank gradients for LambdaMART tree ensembles.
+
+## Sources
+
+- Brin, S., & Page, L. (1998). *The Anatomy of a Large-Scale Hypertextual Web Search Engine*. Computer Networks and ISDN Systems, 30(1–7), 107–117. [https://doi.org/10.1016/S0169-7552(98)00110-X](https://doi.org/10.1016/S0169-7552(98)00110-X)
+- Page, L., Brin, S., Motwani, R., & Winograd, T. (1999). *The PageRank Citation Ranking: Bringing Order to the Web*. Stanford InfoLab Technical Report. [http://ilpubs.stanford.edu:8090/422/](http://ilpubs.stanford.edu:8090/422/)
+- Joachims, T., Granka, L., Pan, B., Hembrooke, H., & Gay, G. (2005). *Accurately Interpreting Clickthrough Data as Implicit Feedback*. Proceedings of the 28th Annual International ACM SIGIR Conference, 154–161. [https://doi.org/10.1145/1076034.1076063](https://doi.org/10.1145/1076034.1076063)
+- Joachims, T., Swaminathan, A., & Schnabel, T. (2017). *Unbiased Learning-to-Rank with Counterfactual Risk Minimization*. Proceedings of the 10th ACM International Conference on Web Search and Data Mining (WSDM), 781–789. [https://doi.org/10.1145/3018661.3018699](https://doi.org/10.1145/3018661.3018699)
+- Craswell, N., Zoeter, O., Taylor, M., & Ramsey, M. (2008). *An Experimental Comparison of Click Position-Bias Models*. Proceedings of the 2008 International Conference on Web Search and Data Mining (WSDM), 87–94. [https://doi.org/10.1145/1341531.1341545](https://doi.org/10.1145/1341531.1341545)
+- Haveliwala, T. H. (2002). *Topic-Sensitive PageRank*. Proceedings of the 11th International Conference on World Wide Web (WWW), 517–526. [https://doi.org/10.1145/511446.511513](https://doi.org/10.1145/511446.511513)
+- Gyöngyi, Z., Garcia-Molina, H., & Pedersen, J. (2004). *Combating Web Spam with TrustRank*. Proceedings of the 30th VLDB Conference, 576–587. [https://doi.org/10.1016/B978-012088469-8.50052-8](https://doi.org/10.1016/B978-012088469-8.50052-8)

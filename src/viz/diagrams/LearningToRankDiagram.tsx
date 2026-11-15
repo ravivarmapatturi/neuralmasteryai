@@ -6,7 +6,7 @@ import {
   computePointwiseMse,
   computeRankNet,
   fitLambdaMartStump,
-  LtrDoc,
+  type LtrDoc,
 } from '../lib/learningToRank';
 
 const OBJECTIVES = [
@@ -72,7 +72,7 @@ export default function LearningToRankDiagram() {
       <div role="group" aria-label="Learning to Rank Objectives and Lambda Gradients Simulator">
         <VisualizationHeader
           title="Learning to Rank (LTR) Objectives & Lambda Gradients"
-          subtitle="Compare Pointwise MSE, Pairwise RankNet, Metric-discounted LambdaRank, and LambdaMART tree boosting"
+          description="Compare Pointwise MSE, Pairwise RankNet, Metric-discounted LambdaRank, and LambdaMART tree boosting"
         />
 
         {/* Controls */}
@@ -110,9 +110,9 @@ export default function LearningToRankDiagram() {
               fontSize: 12,
               fontWeight: 700,
               cursor: 'pointer',
-              border: `1px solid ${isResolved ? t.accentSuccess : t.accentPrimary}`,
-              background: isResolved ? `${t.accentSuccess}20` : `${t.accentPrimary}20`,
-              color: isResolved ? t.accentSuccess : t.accentPrimary,
+              border: `1px solid ${isResolved ? t.accentPrimary : t.accentSecondary}`,
+              background: isResolved ? `${t.accentPrimary}20` : `${t.accentSecondary}20`,
+              color: isResolved ? t.accentPrimary : t.accentSecondary,
               transition: 'all 0.15s ease',
             }}
           >
@@ -169,11 +169,11 @@ export default function LearningToRankDiagram() {
                     <span
                       style={{
                         padding: '2px 6px',
-                        borderRadius: RADIUS.xs,
+                        borderRadius: RADIUS.sm,
                         fontSize: 10,
                         fontWeight: 700,
-                        background: doc.label > 0 ? `${t.accentSuccess}25` : `${t.border}`,
-                        color: doc.label > 0 ? t.accentSuccess : t.textMuted,
+                        background: doc.label > 0 ? `${t.accentPrimary}25` : `${t.border}`,
+                        color: doc.label > 0 ? t.accentPrimary : t.textMuted,
                       }}
                     >
                       Grade {doc.label}
@@ -326,7 +326,7 @@ export default function LearningToRankDiagram() {
                     <span style={{ fontSize: 11, fontFamily: 'monospace', color: t.textMuted }}>
                       Base &lambda; = {pair.lambda.toFixed(4)}
                     </span>
-                    <span style={{ fontSize: 11, fontFamily: 'monospace', fontWeight: 800, color: t.accentSuccess }}>
+                    <span style={{ fontSize: 11, fontFamily: 'monospace', fontWeight: 800, color: t.accentPrimary }}>
                       LambdaRank &lambda; = {pair.scaledLambda.toFixed(4)}
                     </span>
                   </div>
@@ -357,7 +357,7 @@ export default function LearningToRankDiagram() {
                 <div style={{ marginTop: 4, color: t.accentPrimary }}>
                   Left Leaf (match &le; 0.5): update &gamma; = {stump.leftValue.toFixed(4)}
                 </div>
-                <div style={{ color: t.accentSuccess }}>
+                <div style={{ color: t.accentPrimary }}>
                   Right Leaf (match &gt; 0.5): update &gamma; = {stump.rightValue.toFixed(4)}
                 </div>
               </div>

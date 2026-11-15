@@ -45,7 +45,7 @@ export default function PageRankVisualizer() {
       <div role="group" aria-label="PageRank Power Iteration Simulator">
         <VisualizationHeader
           title="PageRank Graph & Power Iteration Visualizer"
-          subtitle="Inspect step-by-step probability mass propagation, damping teleports, and steady-state convergence"
+          description="Inspect step-by-step probability mass propagation, damping teleports, and steady-state convergence"
         />
 
         {/* Controls */}
@@ -97,8 +97,8 @@ export default function PageRankVisualizer() {
                 fontSize: 12,
                 fontWeight: 600,
                 cursor: 'pointer',
-                border: `1px solid ${isConvergedView ? t.accentSuccess : t.border}`,
-                background: isConvergedView ? t.accentSuccess : t.surface,
+                border: `1px solid ${isConvergedView ? t.accentPrimary : t.border}`,
+                background: isConvergedView ? t.accentPrimary : t.surface,
                 color: isConvergedView ? '#fff' : t.textPrimary,
                 transition: 'all 0.15s ease',
               }}
