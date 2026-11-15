@@ -80,7 +80,7 @@ $$\text{IDF}_{\text{classic}}(q) = \ln\left(\frac{N - \text{df}(q) + 0.5}{\text{
 
 However, if a term appears in more than half the corpus ($\text{df} > N / 2$), the numerator becomes smaller than the denominator ($N - \text{df} + 0.5 < \text{df} + 0.5$), and $\text{IDF}_{\text{classic}}$ becomes **negative**. If a document contains a common word alongside relevant rare words, a negative IDF actively subtracts from the document's total score.
 
-To prevent common words from penalizing documents, modern production search engines (including Apache Lucene, Elasticsearch, and OpenSearch) implement Robertson &amp; Zaragoza's (2009) smoothed variant:
+To prevent common words from receiving negative weights, search engines such as Apache Lucene (and engines built upon it, including Elasticsearch and OpenSearch) implement Robertson &amp; Zaragoza's (2009) smoothed variant:
 
 $$\text{IDF}(q) = \ln\left(1 + \frac{N - \text{df}(q) + 0.5}{\text{df}(q) + 0.5}\right)$$
 
@@ -147,23 +147,31 @@ To observe BM25 across an entire collection, explore the 4-document toy search e
 | :--- | :--- | :--- | :--- |
 | **Term Frequency Growth** | Linear ($\text{tf}$) or ad-hoc logarithmic ($1 + \ln \text{tf}$) | Nonlinear saturating curve $\frac{\text{tf}(k_1 + 1)}{\text{tf} + k_1 B}$ | Prevents keyword stuffing; caps maximum single-term gain at $k_1 + 1$. |
 | **Document Length Normalization** | Raw division by length ($\text{count} / \vert d \vert$) or cosine vector norm | Flexible interpolation $B = 1 - b + b \frac{\vert d \vert}{\text{avgdl}}$ | Tunable via $b$: $b=0$ ignores length, $b=1$ scales strictly with length. |
-| **IDF Formulation** | $\ln(N / \text{df})$ or $\ln((1+N)/(1+\text{df})) + 1$ | Probabilistic smoothed $\ln\left(1 + \frac{N - \text{df} + 0.5}{\text{df} + 0.5}\right)$ | Derived from 2-Poisson odds of relevance; strictly non-negative. |
+| **IDF Formulation** | $\ln(N / \text{df})$ or $\ln((1+N)/(1+\text{df})) + 1$ | Probabilistic smoothed $\ln\left(1 + \frac{N - \text{df} + 0.5}{\text{df} + 0.5}\right)$ | Probabilistic Robertson smoothed variant; strictly non-negative. |
 | **Tunable Knobs** | Typically none (fixed heuristics) | $k_1$ (saturation) and $b$ (length penalty) | Hyperparameters can be tuned via grid search or Bayesian optimization. |
 | **Theoretical Origin** | Geometric Vector Space Model (Salton, 1975) | Probabilistic Relevance Framework &amp; 2-Poisson Model (Robertson, 1994) | Grounded in formal decision theory and odds of relevance. |
 | **Semantic Understanding** | None (exact string tokens only) | None (exact string tokens only) | Both require dense neural vectors for semantic synonym matching. |
 
 <NotebookCallout color="amber" title="BM25 Is Not Merely TF-IDF with Two Tunable Knobs">
-Engineers sometimes describe BM25 as "just TF-IDF with $k_1$ and $b$ added." This is mathematically and historically incorrect. TF-IDF originated as an empirical geometric heuristic in vector spaces (Salton &amp; Buckley, 1988). BM25 was derived from the **Probabilistic Relevance Framework** and the **2-Poisson indexing model** (Robertson &amp; Spärck Jones, 1976; Robertson et al., 1994). The saturating term $\frac{\text{tf}}{\text{tf} + k_1}$ is a formal approximation of the probability that a term appears in a document given that the document is topically relevant versus non-relevant.
+Engineers sometimes describe BM25 as "just TF-IDF with $k_1$ and $b$ added." This is mathematically and historically incorrect. TF-IDF originated as an empirical geometric heuristic in vector spaces (Salton &amp; Buckley, 1988). BM25 emerged from the **Probabilistic Relevance Framework** (Robertson &amp; Spärck Jones, 1976; Robertson et al., 1994), motivated by the qualitative behavior of the **2-Poisson indexing model**. Rather than treating term frequency as an ad-hoc linear count, BM25 models term saturation using a tractable rational function that captures diminishing marginal relevance.
 </NotebookCallout>
 
-<GoDeeper title="The 2-Poisson Model Intuition">
-The 2-Poisson indexing model assumes that for any term $t$, documents in a corpus fall into two latent classes:
-1. **Elitist documents ($E$)**: Documents that are genuinely *about* concept $t$. In this class, term occurrences follow a Poisson distribution with a high mean rate $\lambda$.
-2. **Non-elitist documents ($\bar{E}$)**: Documents where $t$ appears only incidentally as an off-hand mention. Occurrences follow a Poisson distribution with a low mean rate $\mu$.
+<GoDeeper title="The 2-Poisson Model Motivation">
+The 2-Poisson indexing model (Harter, 1975; Robertson et al., 1994) offers a theoretical perspective on term recurrence by positing two latent document classes for any term $t$:
+1. **Elitist documents ($E$)**: Documents that are genuinely *about* the concept denoted by term $t$. In this class, term occurrences are modeled as following a Poisson distribution with a higher mean rate $\lambda$.
+2. **Non-elitist documents ($\bar{E}$)**: Documents where $t$ appears only incidentally or peripherally. Occurrences follow a Poisson distribution with a lower mean rate $\mu$ ($\mu < \lambda$).
 
-Relevance depends on the posterior odds that document $D$ belongs to the elitist class $E$ given that term $t$ appears $\text{tf}$ times:
-$$\frac{P(E \mid \text{tf})}{P(\bar{E} \mid \text{tf})} = \frac{P(\text{tf} \mid E) P(E)}{P(\text{tf} \mid \bar{E}) P(\bar{E})}$$
-Under Poisson distributions, as $\text{tf}$ increases, the evidence that document $D$ is elitist increases rapidly at first, but asymptotically approaches 1.0 (certainty of elitism). BM25's rational function $\frac{\text{tf}}{\text{tf} + k_1}$ was chosen by Robertson as a lightweight, closed-form algebraic approximation to this exact posterior odds ratio, avoiding expensive Poisson factorial computations during real-time retrieval.
+In probabilistic relevance modeling (Robertson &amp; Spärck Jones, 1976; Manning et al., 2008), the optimal term weight depends on the log-odds ratio of relevance given the observed term frequency:
+$$w(\text{tf}) = \ln \left( \frac{P(\text{Relevant} \mid \text{tf})\, P(\text{Non-Relevant})}{P(\text{Non-Relevant} \mid \text{tf})\, P(\text{Relevant})} \right)$$
+
+Under 2-Poisson mixtures, this log-odds weight exhibits three key structural properties:
+- It starts at zero when $\text{tf} = 0$.
+- It increases monotonically with additional term occurrences.
+- It exhibits diminishing marginal increases, approaching an asymptotic upper bound as $\text{tf}$ grows large.
+
+However, calculating the exact 2-Poisson relevance weight requires estimating unobservable latent mixture parameters ($\lambda$, $\mu$, and class prior probabilities) for every vocabulary term, which is intractable without extensive relevance judgments.
+
+As detailed by Robertson &amp; Zaragoza (2009, Section 3.2–3.3), BM25 does not calculate an exact posterior odds ratio or directly evaluate Poisson probabilities. Instead, Robertson and colleagues adopted the rational saturation function $\frac{\text{tf}}{\text{tf} + k_1}$ as a simple, closed-form formula that mimics the qualitative saturation curve suggested by the 2-Poisson model while remaining fast and numerically stable during query evaluation.
 </GoDeeper>
 
 ---
@@ -175,7 +183,7 @@ With the advent of massive transformer-based embedding models (such as OpenAI `t
 In production Retrieval-Augmented Generation (RAG) and search architectures, dense vector search repeatedly fails in four critical enterprise retrieval scenarios:
 
 1. **Exact Alphanumeric Identifiers & Error Codes**:
-   When an engineer searches for `ERR_SSL_PROTOCOL_ERROR` or a database error `ORA-00942`, embedding models often project the query to generic articles about SSL certificates or Oracle databases, failing to retrieve the exact error reference. BM25 locates the exact string posting in $<1\text{ms}$.
+   When an engineer searches for `ERR_SSL_PROTOCOL_ERROR` or a database error `ORA-00942`, embedding models often project the query to generic articles about SSL certificates or Oracle databases, failing to retrieve the exact error reference. When tokenized without lossy stripping, BM25 matches the literal token directly in the inverted index postings.
 2. **Healthcare & Billing Codes**:
    Medical and clinical billing depends on exact codes: CPT (e.g. `99213`), ICD-10 (e.g. `E11.9` for Type 2 Diabetes), and HCPCS. A dense embedding frequently confuses adjacent diagnostic codes that share similar text descriptions but have different legal and financial meanings.
 3. **Legal Citations & Regulatory Policies**:
@@ -190,7 +198,7 @@ User Query ──┬──► [ Inverted Index: BM25 ] ────► Lexical T
              │                                                         ├──► [ Reciprocal Rank Fusion (RRF) ] ──► Cross-Encoder Ranker
              └──► [ Vector ANN Index: HNSW ] ──► Semantic Top 100 ───┘
 ```
-Lexical BM25 guarantees precision on exact identifiers and keyword constraints; dense vector embeddings ensure high recall on conceptual and synonym inquiries. Reciprocal Rank Fusion blends both ranked lists without requiring score scale calibration.
+In many retrieval tasks, lexical and semantic methods provide complementary strengths: BM25 provides strong literal matching for exact terminology, code identifiers, and rare terms (conditional on analyzer tokenization), whereas dense vector embeddings handle paraphrases and conceptual synonyms. Reciprocal Rank Fusion (RRF) blends candidate lists from both modalities without requiring cross-system score calibration.
 
 ---
 
