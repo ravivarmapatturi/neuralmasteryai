@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FocusMusicProvider, useFocusMusic } from './FocusMusicContext';
 let player: EventTarget & { paused: boolean; src: string; preload: string; loop: boolean; volume: number; play: ReturnType<typeof vi.fn>; pause: ReturnType<typeof vi.fn>; load: ReturnType<typeof vi.fn> };
-function Controls() { const m = useFocusMusic(); return <><button onClick={m.pause}>Pause</button><button onClick={m.play}>Play</button><button onClick={() => m.setTrackById('white-noise')}>Noise</button><span>{m.currentTrack.id}</span><span>{m.autoplayBlocked ? 'blocked' : 'ready'}</span></>; }
+function Controls() { const m = useFocusMusic(); return <><button onClick={m.pause}>Pause</button><button onClick={m.play}>Play</button><button onClick={() => m.setTrackById('rain')}>Rain</button><span>{m.currentTrack.id}</span><span>{m.autoplayBlocked ? 'blocked' : 'ready'}</span></>; }
 beforeEach(() => {
   localStorage.clear(); vi.useFakeTimers();
   Object.defineProperty(document,'hidden',{configurable:true,value:false});
@@ -33,7 +33,7 @@ describe('focus playback intent', () => {
   it('keeps saved opt-out and changes the source when selecting a track', async () => {
     localStorage.setItem('nm_focus_music_enabled','false'); render(<FocusMusicProvider><Controls /></FocusMusicProvider>);
     await act(async () => { vi.advanceTimersByTime(3000); }); expect(player.play).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByText('Noise')); expect(player.src).toContain('white-noise.ogg'); expect(screen.getByText('white-noise')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Rain')); expect(player.src).toContain('rain-meditation.m4a'); expect(screen.getByText('rain')).toBeInTheDocument();
   });
   it('offers a fallback after browser rejection and retries on a gesture', async () => {
     localStorage.setItem('nm_focus_music_enabled','true');

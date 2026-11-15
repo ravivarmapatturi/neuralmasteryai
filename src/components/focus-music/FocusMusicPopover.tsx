@@ -5,7 +5,7 @@ interface FocusMusicPopoverProps { isOpen: boolean; onClose: () => void }
 const sounds = [
   { id: 'bamboo-flute', label: 'Bamboo', mark: '〰' },
   { id: 'lofi-study', label: 'Lo-fi', mark: '♫' },
-  { id: 'white-noise', label: 'White noise', mark: '≋' },
+  { id: 'rain', label: 'Rain', mark: '☂' },
 ];
 export default function FocusMusicPopover({ isOpen, onClose }: FocusMusicPopoverProps) {
   const { playing, volume, currentTrack, autoplayBlocked, error, play, setVolume, setEnabled, setTrackById } = useFocusMusic();
