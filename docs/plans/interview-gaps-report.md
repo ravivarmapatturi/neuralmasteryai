@@ -35,8 +35,10 @@ All reported commands completed with the shown result. Agy ran potentially heavy
 - `python3 -I scripts/interview/build_practice_data.py` — passed; generated 942 practice questions and matching count.
 - `npm run typecheck` — passed.
 - `npm run check:links` — passed; 1,978 MDX files scanned, no broken prose or anchor links.
+- `npm run check:mdx` — passed; 2,006 MDX files compiled, zero failures.
 - `npx vitest run src/data/interviewCounts.test.ts` — passed after the test was updated for both source shapes; 2/2 tests.
 - `npx vitest run src/components/interview/` — passed; 9 suites, 55 tests.
+- `npx vitest run` — passed; 200 test files, 1,005 tests.
 - `npm run check:tracker` — passed.
 - Final independent data check — passed; 25 unique records in the specified allocation, allowed schema keys only, 3–5 key points per record, every answer under 200 words, 25 existing Learn mappings, all linked MDX routes present, and generated practice/count totals both 942.
 - `git diff --check` — passed.
