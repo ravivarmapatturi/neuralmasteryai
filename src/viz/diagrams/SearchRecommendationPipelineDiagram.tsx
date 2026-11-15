@@ -78,13 +78,14 @@ export default function SearchRecommendationPipelineDiagram() {
         `Both search and recommendations run through the same five-stage linear funnel: candidate generation reduces ` +
         `millions to hundreds, filtering drops invalid items, ranking scores survivors, re-ranking balances business ` +
         `rules, and serving packages the final payload. In ${isSearch ? 'search' : 'recommendation'} mode, ${activeStage.title} ` +
-        `processes ${activeStage.volume} within ${activeStage.latency}.`
+        `processes an illustrative ${activeStage.volume} within an illustrative ${activeStage.latency}. All stage counts, ` +
+        `latencies, and candidate scores are illustrative walkthrough examples; production figures vary by system architecture and workload.`
       }
     >
       <VisualizationHeader
-        eyebrow="Architectural Pattern"
+        eyebrow="Architectural Pattern · Illustrative Funnel"
         title="Unified Funnel: From Millions of Items to a Ranked Top-10"
-        description="Search starts with an explicit query; recommendations start with a user context. Both flow through the same linear pipeline stages."
+        description="Search starts with an explicit query; recommendations start with a user context. Both flow through the same linear pipeline stages. All stage item counts and latency figures are illustrative examples; production numbers vary widely by system architecture, corpus scale, and workload."
       />
 
       <div style={{ marginBottom: SPACING.sm }}>
@@ -97,6 +98,43 @@ export default function SearchRecommendationPipelineDiagram() {
             { value: 'recommendation', label: 'Recommendation (User Context: "Audio enthusiast")' },
           ]}
         />
+      </div>
+
+      {/* Prominent Illustrative Example Notice */}
+      <div
+        style={{
+          background: t.surfaceAlt,
+          border: `1px solid ${t.border}`,
+          borderRadius: RADIUS.md,
+          padding: '8px 12px',
+          marginBottom: SPACING.sm,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          fontSize: 11,
+          lineHeight: 1.4,
+          color: t.textSecondary,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            padding: '2px 6px',
+            borderRadius: RADIUS.sm,
+            background: `${accentColor}20`,
+            color: accentColor,
+            textTransform: 'uppercase',
+            letterSpacing: '0.04em',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+          }}
+        >
+          Illustrative Example
+        </span>
+        <span>
+          Stage volume, latency, and candidate lifecycle values are illustrative walkthrough figures. Actual counts and latency vary by system and workload.
+        </span>
       </div>
 
       {/* Stage Selection Steps */}
@@ -159,7 +197,7 @@ export default function SearchRecommendationPipelineDiagram() {
           <div style={{ fontSize: 15, fontWeight: 700, color: t.textPrimary }}>
             Stage {activeStage.id}: {activeStage.title.split('. ')[1]}
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <span
               style={{
                 fontSize: 11,
@@ -170,7 +208,7 @@ export default function SearchRecommendationPipelineDiagram() {
                 fontWeight: 600,
               }}
             >
-              Volume: {activeStage.volume}
+              Illustrative Volume: {activeStage.volume}
             </span>
             <span
               style={{
@@ -183,7 +221,7 @@ export default function SearchRecommendationPipelineDiagram() {
                 fontWeight: 600,
               }}
             >
-              Latency: {activeStage.latency}
+              Illustrative Latency: {activeStage.latency}
             </span>
           </div>
         </div>
@@ -202,7 +240,7 @@ export default function SearchRecommendationPipelineDiagram() {
           }}
         >
           <div style={{ fontSize: 11, fontWeight: 700, color: accentColor, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>
-            Illustrative Item Lifecycle (Candidate H1)
+            Illustrative Item Lifecycle & Scores (Candidate H1)
           </div>
           <div style={{ fontSize: 12, color: t.textSecondary }}>
             {activeStage.exampleState}
