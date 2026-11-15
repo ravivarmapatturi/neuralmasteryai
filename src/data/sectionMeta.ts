@@ -56,6 +56,7 @@ export const SECTION_META: Record<string, SectionMetaEntry> = {
     leadsTo: 'Agents & Applications',
     subsections: [
       { dir: 'machine-learning', label: 'Machine Learning' },
+      { dir: 'search-ranking-recommendations', label: 'Search, Ranking & Recommendations', landing: '/docs/search-ranking-recommendations/overview' },
       { dir: 'deep-learning', label: 'Deep Learning' },
       { dir: 'computer-vision', label: 'Computer Vision' },
       { dir: 'nlp', label: 'NLP' },
@@ -63,7 +64,6 @@ export const SECTION_META: Record<string, SectionMetaEntry> = {
       { dir: 'llms-genai', label: 'LLMs & GenAI' },
       { dir: 'graph-ml', label: 'Graph ML' },
       { dir: 'reinforcement-learning', label: 'Reinforcement Learning' },
-      { dir: 'search-ranking-recommendations', label: 'Search, Ranking & Recommendations', landing: '/docs/search-ranking-recommendations/overview' },
     ],
   },
   '/docs/category/agents--applications': {
