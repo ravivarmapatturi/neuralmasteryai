@@ -117,11 +117,37 @@ export function catalogCoverage(recommendedIds: string[], totalCatalogCount: num
   return Math.min(1, uniqueRecommended.size / totalCatalogCount);
 }
 
-/** Intra-List Diversity proxy: fraction of unique categories among the top-k items. */
-export function intraListDiversity(categories: string[]): number {
+/** Category Diversity proxy: fraction of unique categories among the top-k items. */
+export function categoryDiversityProxy(categories: string[]): number {
   if (categories.length === 0) return 0;
   const unique = new Set(categories);
   return unique.size / categories.length;
+}
+
+/** Backward-compatible alias for categoryDiversityProxy. */
+export const intraListDiversity = categoryDiversityProxy;
+
+/** Unvisited-Category Ratio proxy: fraction of recommended items from categories
+ * not present in the user's historical profile.
+ *
+ * NOTE: This is an unvisited-category exploration ratio, NOT true serendipity.
+ * True serendipity requires both novelty/unexpectedness AND demonstrated relevance
+ * or positive user engagement; an unvisited category containing irrelevant items
+ * is not serendipitous. */
+export function unvisitedCategoryRatio(
+  recommendedCategories: string[],
+  userHistoricalCategories: Set<string> | string[],
+): number {
+  if (recommendedCategories.length === 0) return 0;
+  const histSet =
+    userHistoricalCategories instanceof Set
+      ? userHistoricalCategories
+      : new Set(userHistoricalCategories);
+  let unvisitedCount = 0;
+  for (const cat of recommendedCategories) {
+    if (!histSet.has(cat)) unvisitedCount++;
+  }
+  return unvisitedCount / recommendedCategories.length;
 }
 
 /** Novelty proxy: mean negative log probability (-log2(p(i))) based on historical item popularity.

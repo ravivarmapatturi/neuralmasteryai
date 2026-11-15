@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   averagePrecisionAtK,
   catalogCoverage,
+  categoryDiversityProxy,
   dcgAtK,
   hitRateAtK,
   idcgAtK,
@@ -11,6 +12,7 @@ import {
   precisionAtK,
   recallAtK,
   reciprocalRank,
+  unvisitedCategoryRatio,
 } from './rankingMetrics';
 
 describe('rankingMetrics', () => {
@@ -108,6 +110,15 @@ describe('rankingMetrics', () => {
       expect(recallAtK(bin, 5, 2)).toBe(0.5); // 1 / 2
     });
 
+    it('handles k < R_total dividing strictly by totalRelevantInCorpus', () => {
+      // k=2, totalRelevantInCorpus=4, hits at rank 1:
+      // prec@1 = 1/1 = 1.0. precSum = 1.0.
+      // Dividing by totalRelevantInCorpus (4) gives 1.0 / 4 = 0.25
+      // (If it incorrectly divided by min(k, R_total)=2, it would have been 0.50)
+      const bin = [1, 0];
+      expect(averagePrecisionAtK(bin, 2, 4)).toBe(0.25);
+    });
+
     it('handles zero total relevant in corpus', () => {
       expect(recallAtK([1, 1], 2, 0)).toBe(0);
       expect(averagePrecisionAtK([1, 1], 2, 0)).toBe(0);
@@ -120,10 +131,18 @@ describe('rankingMetrics', () => {
       expect(catalogCoverage(recommended, 10)).toBe(0.3); // 3 unique / 10
     });
 
-    it('computes intra-list diversity correctly', () => {
+    it('computes category-diversity proxy and intra-list alias correctly', () => {
       const categories = ['audio', 'audio', 'books', 'electronics'];
       // 3 unique categories / 4 items = 0.75
+      expect(categoryDiversityProxy(categories)).toBe(0.75);
       expect(intraListDiversity(categories)).toBe(0.75);
+    });
+
+    it('computes unvisited-category ratio and clarifies non-serendipity semantics', () => {
+      const recommendedCategories = ['audio', 'books', 'electronics'];
+      const userHistory = ['audio'];
+      // 2 unvisited ('books', 'electronics') out of 3 = 2/3
+      expect(unvisitedCategoryRatio(recommendedCategories, userHistory)).toBeCloseTo(2 / 3, 4);
     });
 
     it('computes novelty proxy higher for rare items', () => {
