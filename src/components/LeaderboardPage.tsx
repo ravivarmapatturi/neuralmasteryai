@@ -227,8 +227,8 @@ export default function LeaderboardPage() {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: top3.length >= 3 ? '1fr 1.12fr 1fr' : 'repeat(auto-fit, minmax(220px, 1fr))',
-                gap: 16,
+                gridTemplateColumns: top3.length >= 3 ? 'minmax(0, 1fr) minmax(0, 1.12fr) minmax(0, 1fr)' : 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))',
+                gap: 'clamp(6px, 2vw, 16px)',
                 alignItems: 'end',
                 maxWidth: 860,
                 margin: '0 auto',
@@ -506,7 +506,9 @@ function PodiumCard({ entry, rank, medal, color, bgGradient, borderColor, isSelf
     <div
       style={{
         minHeight: height,
-        padding: isFirst ? '1.75rem 1.25rem 1.5rem' : '1.25rem 1rem',
+        minWidth: 0,
+        overflowWrap: 'anywhere',
+        padding: isFirst ? 'clamp(1rem, 4vw, 1.75rem) clamp(0.4rem, 2.5vw, 1.25rem) clamp(0.9rem, 3vw, 1.5rem)' : 'clamp(0.8rem, 3vw, 1.25rem) clamp(0.35rem, 2vw, 1rem)',
         borderRadius: 16,
         background: bgGradient,
         border: `1.5px solid ${borderColor}`,
